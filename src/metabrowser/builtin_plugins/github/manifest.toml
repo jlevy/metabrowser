@@ -34,10 +34,10 @@ route = "pull-comparison"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_comparison_handler"
 methods = ["GET"]
 
-# Open an admitted comparison side without changing the served pin.
+# An image at an admitted comparison's head, which its rendered Markdown shows.
 [[data_hook]]
-route = "pull-snapshot"
-sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_snapshot_handler"
+route = "pull-image"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_image_handler"
 methods = ["GET"]
 
 # One changed Markdown file of an admitted comparison as a bounded rendered redline.
@@ -112,6 +112,13 @@ methods = ["POST"]
 [[data_hook]]
 route = "pull-files"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_files_handler"
+methods = ["GET"]
+
+# What each named pull request's cached changed-files list sums to, by status and in lines,
+# for the brief change line its Pulls row shows. From the cache alone: no gh and no Git.
+[[data_hook]]
+route = "pull-files-summary"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_files_summary_handler"
 methods = ["GET"]
 
 # Start or join that list's refresh in the refresh coordinator. A POST with a JSON object

@@ -81,7 +81,7 @@ and the agent skill.
 
 ## The Mac App
 
-The optional macOS app opens each folder in its own window or tab, with recent folders,
+The optional macOS app opens each folder in its own window or tab, with recent items,
 session restore, and folders dropped on its Dock icon.
 It runs the `metab` you installed, so it shows the same pages.
 It is an alpha, built from source and not yet a signed release.
@@ -116,8 +116,9 @@ plugins load and how to add a file type.
 
 Planned work, each linked to its plan:
 
-- **The Mac app and agents:** a signed, notarized download, and `metab --present`, one
-  front door that shows content in the running app or browser
+- **The Mac app and agents:** a signed, notarized download, and a `metab --present` that
+  the app answers and that falls back to a browser when there is no app; today it hands
+  a target to the app alone
   ([native macOS app plan](docs/project/specs/active/plan-2026-11-10-native-macos-app.md))
 - **Editing:** opt-in editing of trusted local files
   ([trusted-local editing plan](docs/project/specs/active/plan-2026-07-16-trusted-local-file-editing.md))
@@ -140,7 +141,7 @@ Using Metabrowser:
 - [Browsing history](docs/browsing-history.md): the Commits tab, commits, and diffs
 - [Reviewing pull requests](docs/reviewing-pull-requests.md): the Pulls tab and pages
 - [Working with agents](docs/working-with-agents.md): the skill and agent-log timelines
-- [The Mac app](docs/macos-app.md): windows, tabs, recent folders, and restore
+- [The Mac app](docs/macos-app.md): windows, tabs, recent items, and restore
 - [Keyboard shortcuts](docs/keyboard-shortcuts.md): every shortcut
 - [Command line](docs/command-line.md): every mode, option, and environment variable
 - [Scale benchmark](docs/scale-benchmark.md): what it measures and how to run it

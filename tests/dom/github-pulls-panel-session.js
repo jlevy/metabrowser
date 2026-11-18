@@ -1001,11 +1001,21 @@ async function paintStory(panel, selection = false) {
     const list = container.childNodes.find((node) => node.localName === "ul");
     const [hostile, shown] = list.childNodes;
     const row = (item) => item.firstElementChild;
+    // A row's third line, its change line, the row's one child, which owns its files.
+    const change = (item) =>
+      item.childNodes.find((node) => node.classList?.contains("github-pulls-change-group"))
+        .firstElementChild;
     const fileWindow = () => answers.findIndex((request) => request.route.includes("/pull-files?"));
-    const previewDisclosure = row(shown).getAttribute("aria-expanded");
+    const previewDisclosure = change(shown).getAttribute("aria-expanded");
     if (!selection) {
       assert(previewDisclosure === "false", "a PR preview stays collapsed");
       assert(fileWindow() === -1, "a PR preview reads no changed-file metadata");
+      // Right goes to the row's change line and opens nothing; Right again opens its files.
+      mounted.expand();
+      assert(
+        document.activeElement === change(shown) && fileWindow() === -1,
+        "Right on a row goes to its change line, and reads no files",
+      );
       mounted.expand();
       await settle();
       const group = shown.childNodes.find((node) => node.classList?.contains("github-pull-files"));
@@ -1119,6 +1129,8 @@ async function paintStory(panel, selection = false) {
           .map((node) => node.getAttribute("href"));
       assert(selected(current).length === 1, "initial page observation selects its actual file");
       list.listeners.get("focusin")({ target: row(shown) });
+      // Right to the change line, then Right into its files.
+      mounted.expand();
       mounted.expand();
       const oldAnchor = walk(container).find(
         (node) =>
@@ -1145,7 +1157,7 @@ async function paintStory(panel, selection = false) {
       await settle();
       observations.leaving = selected(current);
       assert(
-        row(shown).getAttribute("aria-expanded") === "true",
+        change(shown).getAttribute("aria-expanded") === "true",
         "reader-expanded old tree remains open",
       );
       assert(oldAnchor.getAttribute("tabindex") === "0", "leaving keeps the old roving anchor");
@@ -1231,23 +1243,31 @@ async function paintStory(panel, selection = false) {
     const id = child(line, "github-pulls-id");
     const numberLabel = child(id, "github-pulls-number");
     const by = child(line, "github-pulls-by");
-    // The stylesheet lays the row out as two lines (mb-lkkt, mb-3cbf): the chevron, the
-    // icon, the number's line, where a stack member's place comes before the number
-    // (mb-dzsi), and the age; then the title alone, so it has the room.
-    // tests/dom/github-pull-header-chrome.mjs lays these rows out in Chrome.
-    const order = row(hostile)
-      .childNodes.filter((node) => typeof node.className === "string")
-      .map((node) => node.className.split(" ").find((name) => name.startsWith("github-pull")));
+    // The stylesheet lays the row out as three lines (mb-lkkt, mb-3cbf, mb-d0a3): the icon,
+    // the number's line, where a stack member's place comes before the number (mb-dzsi), and
+    // the age; then the title alone, so it has the room; then the change line, with the
+    // chevron. tests/dom/github-pull-header-chrome.mjs lays these rows out in Chrome.
+    const classesOf = (node) =>
+      node.childNodes
+        .filter((child) => typeof child.className === "string")
+        .map((child) => child.className.split(" ").find((name) => name.startsWith("github-pull")));
+    const order = classesOf(row(hostile));
     assert(
       JSON.stringify(order) ===
         JSON.stringify([
-          "github-pulls-toggle",
           "github-pull-state-icon",
           "github-pulls-title",
           "github-pulls-age",
           "github-pulls-meta",
         ]),
-      `the row is the toggle, the state icon, the title, the age, and the muted line: ${order}`,
+      `the row's link is the state icon, the title, the age, and the muted line: ${order}`,
+    );
+    assert(
+      JSON.stringify(classesOf(hostile).slice(0, 2)) ===
+        JSON.stringify(["github-pulls-row", "github-pulls-change-group"]) &&
+        JSON.stringify(classesOf(change(hostile))) ===
+          JSON.stringify(["github-pulls-toggle", "github-pulls-change-line"]),
+      "under the link, the change line: the chevron, then the line",
     );
     assert(
       id.childNodes[0].classList.contains("github-pulls-place") &&
@@ -1314,16 +1334,17 @@ async function paintStory(panel, selection = false) {
       "a row": [described(hostile), described(row(hostile))],
       "the row whose page is shown": described(row(shown)),
       "its parts": row(shown).childNodes.map(described),
-      // The stylesheet draws the number's line first and the title under it (mb-lkkt); the
-      // DOM keeps the title the row's first text. This reads the text, not the accessible
+      // The stylesheet draws the title first and the number's line under it (mb-lkkt); the
+      // DOM keeps the title the row's first text too. This reads the text, not the accessible
       // name, which gives the state icon's label first and then the title.
       "its text leads with its title": row(shown)
         .textContent.trim()
-        .startsWith(row(shown).childNodes[2].textContent),
+        .startsWith(row(shown).childNodes[1].textContent),
       "a PR preview leaves its files expanded": previewDisclosure === "true",
-      "Right opens its cached changed files": filesRead,
+      "Right to its change line, and Right again, opens its cached changed files": filesRead,
       "they hang under it as a group it owns": shown.childNodes.map(described),
-      "a title written as markup is one text node": row(hostile).childNodes[2].childNodes.map(
+      "its change line, the row's child, owns them": described(change(shown)),
+      "a title written as markup is one text node": row(hostile).childNodes[1].childNodes.map(
         (node) => ({ node: node.nodeName, data: node.data }),
       ),
       "rows built for the first window": built,
@@ -1410,7 +1431,9 @@ async function paintStory(panel, selection = false) {
     const many = list.childNodes
       .filter((item) => Number(row(item).dataset.number) !== current)
       .slice(0, 12);
-    const click = (item) => list.listeners.get("click")({ target: row(item), preventDefault() {} });
+    // A press on a row's change line toggles its files; a press on the row opens it.
+    const click = (item) =>
+      list.listeners.get("click")({ target: change(item), preventDefault() {} });
     const retained = () =>
       list.childNodes.filter((item) =>
         item.childNodes.some(
@@ -1432,12 +1455,12 @@ async function paintStory(panel, selection = false) {
     const afterClosingAll = retained();
     assert(afterClosingAll === panel.MAX_HELD_TREES + 1, "closed trees must be bounded on close");
     assert(
-      row(many[0]).getAttribute("aria-owns") === null,
+      change(many[0]).getAttribute("aria-owns") === null,
       "the longest-closed tree must go first",
     );
-    assert(row(shown).getAttribute("aria-owns") !== null, "the shown page's tree must remain");
+    assert(change(shown).getAttribute("aria-owns") !== null, "the shown page's tree must remain");
     assert(
-      row(many.at(-1)).getAttribute("aria-owns") !== null,
+      change(many.at(-1)).getAttribute("aria-owns") !== null,
       "the most recently closed tree must remain",
     );
     story["closing twelve expanded trees enforces retention immediately"] = {

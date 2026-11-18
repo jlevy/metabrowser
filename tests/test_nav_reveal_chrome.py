@@ -12,8 +12,10 @@ pull request 106 has 250 changed files, with a deep folder, a document linking i
 and a folder longer than the tree draws at once; and, on a second server, a repository
 with 300 commits, for a commit's address. A step within the pull request shown, another
 tab of its page or one of its changed files, is checked to move nothing, and a pull
-request's address is loaded once with the page's stacks held past the list's first
-window, so that the regroup they bring comes after the reveal, as on a loaded machine.
+request's address is loaded twice with the page's stacks held past the list's first
+window, so that the regroup they bring comes after the reveal, as on a loaded machine:
+once while the reader stays, and once while the reader goes to Files and back with the
+tab buttons.
 Every page has a Mac's navigator, on every host, so Control-N and Control-P are bound,
 as they are only on macOS and iOS (``tests/dom/control-chords-chrome.mjs`` sets one too).
 ``tests/dom/nav-reveal-chrome.mjs`` drives each route in the running app.

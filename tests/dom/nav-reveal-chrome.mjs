@@ -9,10 +9,11 @@
 // process's whole group, Chrome included, however the run ends (tests/process_group.py).
 //
 // After each route it reads the navigation pane as a reader sees it: which tab is in front,
-// which row is selected, whether that row lies inside the pane's scroller, what a panel
-// says of an item it cannot show, and where focus is (docs/design-system.md, "Navigation
-// Reveals the Item"). The decisions behind them run browserlessly in
-// tests/dom/nav-reveal-session.js.
+// which row is selected, whether that row lies inside the pane's scroller with nothing
+// between them clipping it and no folder above it still travelling, what a panel says of
+// an item it cannot show, and where focus is
+// (docs/design-system.md, "Navigation Reveals the Item"). The decisions behind them run
+// browserlessly in tests/dom/nav-reveal-session.js.
 //
 // Each step writes `phase <name> <ms since start>` to stderr, so a slow run says where.
 import fs from "node:fs";
@@ -42,12 +43,45 @@ const check = (label, ok, detail = "") => {
   }
 };
 
+// In the page: the box between *element* and the pane's scroller that clips away any of its
+// *rect*, as a class name, or null. A folder's body clips its rows while it opens, and it
+// can scroll, so a row scrolled into view while its folder opened was scrolled within that
+// body and lay inside the pane's bounds, seen by no reader, until the folder was open and
+// the row far below the pane (app.js, folderTravelAbove; mb-551m).
+const CLIPPED_BY = `((element, rect, scroller) => {
+  for (let box = element.parentElement; box && box !== scroller; box = box.parentElement) {
+    if (getComputedStyle(box).overflowY !== "visible") {
+      const clip = box.getBoundingClientRect();
+      if (rect.top < clip.top - 1 || rect.bottom > clip.bottom + 1) {
+        return box.className;
+      }
+    }
+  }
+  return null;
+})`;
+
+// In the page: whether a folder body above *element* still travels, opening or closing. A
+// row is read in view only once they stand still: in the first frame of the travel, a row
+// scrolled within the opening body sat at that body's top, unclipped and inside the pane,
+// and the next frame carried it far below the pane (app.js, folderTravelAbove; mb-551m).
+// Each body's own animations, not the document's: others keep running after a landing.
+const TRAVELLING = `((element) => {
+  for (let body = element.parentElement?.closest(".tree-children"); body; body = body.parentElement?.closest(".tree-children")) {
+    if (body.getAnimations().some((animation) => animation.playState === "running")) {
+      return true;
+    }
+  }
+  return false;
+})`;
+
 // In the page: the navigation pane as a reader sees it, for the row *selector* names.
 const PANE = (selector) => `(() => {
   const scroller = document.getElementById("tree-content");
   const view = scroller.getBoundingClientRect();
   const row = document.querySelector(${JSON.stringify(selector)});
   const box = row?.getBoundingClientRect();
+  const clip = row ? ${CLIPPED_BY}(row, box, scroller) : null;
+  const travelling = row ? ${TRAVELLING}(row) : false;
   const active = document.activeElement;
   const notes = [...document.querySelectorAll(".tree-selection-note, .github-pulls-outside")]
     .filter((note) => note.offsetParent !== null)
@@ -57,8 +91,10 @@ const PANE = (selector) => `(() => {
     address: location.pathname,
     row: row ? {
       selected: row.classList.contains("selected") || row.getAttribute("aria-current") === "page",
-      inView: row.offsetParent !== null && box.height > 0 && box.top >= view.top - 1 && box.bottom <= view.bottom + 1,
+      inView: row.offsetParent !== null && box.height > 0 && box.top >= view.top - 1 && box.bottom <= view.bottom + 1 && clip === null && !travelling,
       at: [Math.round(box.top), Math.round(box.bottom), Math.round(view.top), Math.round(view.bottom), scroller.scrollTop],
+      clip,
+      travelling,
     } : null,
     selectedFiles: [...document.querySelectorAll("#tab-files .tree-item.selected")].map((r) => r.dataset.path),
     notes,
@@ -201,7 +237,12 @@ try {
     });
     return async () => {
       for (const requestId of pausedStacks.splice(0)) {
-        await send("Fetch.continueRequest", { requestId });
+        // A read the page has since stopped, as hiding the Pulls tab stops it, is not paused.
+        await send("Fetch.continueRequest", { requestId }).catch((error) => {
+          if (!error.message.includes("Invalid InterceptionId")) {
+            throw error;
+          }
+        });
       }
       await send("Fetch.disable");
     };
@@ -501,15 +542,30 @@ try {
 
   // 10. Quick Search for the pull request shown, after the Pulls tab's button returned to it
   // with the list as the reader left it: the reveal ends that kept place, and opens the
-  // stack the reader closed since.
+  // stack the reader closed since. The page's stacks are held past the list's first window
+  // until the reader is on Files, as a loaded machine can read them: the regroup they bring
+  // while the reader is away, or as the list returns, leaves #7 where its reveal put it,
+  // under its stack's row. A list that forgot that place on the way came back where #7 had
+  // stood in the flat list, with #7 regrouped far above the pane and its stack's row
+  // undrawn (CI on main at 5b1d2b055).
+  const releaseAway = await holdStacks();
   await load(`${base}/pull/7`);
   await revealed("a pull request's address, before its tab's button", pullRow(7), "pulls");
   await evaluate(`${tabButton("files")}.click()`);
   await waitFor(activeIs("files"), "the Files tab's button");
+  await releaseAway();
   await evaluate(`${tabButton("pulls")}.click()`);
   await waitFor(
     `${activeIs("pulls")} && location.pathname === "/pull/7"`,
     "the Pulls tab's button returns to #7",
+  );
+  await waitFor(`${level} === "2"`, "#7 is grouped under its stack after the tab's button");
+  await frames();
+  const returned = await evaluate(PANE(pullRow(7)));
+  check(
+    "the Pulls tab's button, stacks after the first window: #7 stays in view",
+    returned.row?.inView === true && returned.row?.selected === true,
+    JSON.stringify(returned),
   );
   await closeStack();
   await scrollAway();
@@ -554,6 +610,12 @@ try {
   await load(`${base}/pull/106`);
   await revealed("a pull request with 250 changed files", pullRow(106), "pulls");
   await evaluate(`document.querySelector(${JSON.stringify(pullRow(106))}).focus()`);
+  // Right goes to the row's change line, and Right there opens its changed files (mb-d0a3).
+  await press("ArrowRight", { code: "ArrowRight", keyCode: 39 });
+  await waitFor(
+    `document.activeElement?.matches?.('#tab-pulls .github-pulls-change[data-number="106"]') === true`,
+    "Right goes to #106's change line",
+  );
   await press("ArrowRight", { code: "ArrowRight", keyCode: 39 });
   const FILE_ROW = (name) =>
     `#tab-pulls a.github-pull-file-row[href="/pull/106/files/src/app/plugins/github/${name}"]`;
@@ -608,7 +670,7 @@ try {
     return {
       address: location.pathname,
       row: row?.getAttribute?.("href") ?? null,
-      inView: Boolean(box) && row.offsetParent !== null && box.height > 0 && box.top >= view.top - 1 && box.bottom <= view.bottom + 1,
+      inView: Boolean(box) && row.offsetParent !== null && box.height > 0 && box.top >= view.top - 1 && box.bottom <= view.bottom + 1 && ${CLIPPED_BY}(row, box, scroller) === null && !${TRAVELLING}(row),
       scrollTop: scroller.scrollTop,
     };
   })()`;

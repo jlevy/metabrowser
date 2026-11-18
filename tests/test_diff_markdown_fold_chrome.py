@@ -14,6 +14,14 @@ Before the fold's rule in ``builtin_plugins/diff/styles.css``, it drew KPress's 
 border and 12px block margins, and opening it drew a rule under its summary, moving the
 blocks after it 1px further than the blocks it inserted.
 
+The session then mounts a comparison of a quote holding inline code and of a code block
+beside a document holding the same blocks, and holds, in the light and the dark theme,
+that the comparison's quote rule, quoted text, and code edges, corners, padding, and
+colors are the document's, in the app's border and muted tokens. The comparison's
+article is outside ``.metabrowser-kpress-host``; while the token bridge in
+``static/styles.css`` was keyed on that host, KPress 0.3.8 drew the comparison's quote
+rule and muted text in its own palette, and on 0.3.6 its quote had no rule at all.
+
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``).
 ``FOLD_SHOTS`` in the environment names a directory for a screenshot closed and open.
 """
@@ -50,6 +58,10 @@ _OLD = (
     + b"The old closing line.\n"
 )
 _NEW = _OLD.replace(b"old opening", b"new opening").replace(b"old closing", b"new closing")
+# A quote holding inline code and a code block, unchanged beside one edit, so they stand
+# as context rows outside any fold.
+_QUOTED_OLD = b"> Quoted text with `inline code`.\n\n```\nmake test\n```\n\nThe old line.\n"
+_QUOTED_NEW = _QUOTED_OLD.replace(b"old line", b"new line")
 
 
 def test_a_fold_expands_in_place_without_a_box_in_chrome(
@@ -63,9 +75,19 @@ def test_a_fold_expands_in_place_without_a_box_in_chrome(
         )
     )
     assert projection["status"] == "ready"
+    quoted = dict(
+        project_markdown_diff(
+            old=_QUOTED_OLD,
+            new=_QUOTED_NEW,
+            patch=_patch(_QUOTED_OLD, _QUOTED_NEW),
+            namespace="comparison/docs/quoted.md",
+        )
+    )
+    assert quoted["status"] == "ready"
     fold_input = tmp_path / "input.json"
     fold_input.write_text(
-        json.dumps({"sheets": sheets, "blocks": projection["blocks"]}), encoding="utf-8"
+        json.dumps({"sheets": sheets, "blocks": projection["blocks"], "quoted": quoted["blocks"]}),
+        encoding="utf-8",
     )
     # The session leads a process group of its own, which Chrome joins, and the whole group
     # is stopped however it ends; its profile is the fixture's to remove.

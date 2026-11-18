@@ -286,6 +286,9 @@ function createPage(runtime, options) {
     },
     now: () => clock.now,
     isVisible: () => visible,
+    // A hold's lift as the page says it, in en-US and UTC so the golden is the same on every
+    // machine (`holdLiftText`).
+    formatHold: (liftMs, nowMs) => runtime.holdLiftText(liftMs, nowMs, "en-US", "UTC"),
     render(model) {
       paints.push(model);
     },
@@ -298,7 +301,14 @@ function createPage(runtime, options) {
     navigate(href) {
       navigations.push(href);
     },
+    // The page's one pin switch, the diff plugin's own (diff-view-file.js), which in the
+    // browser posts with fetch and here through the scripted pin route.
+    switchPin: (selection, wanted) => pinSwitch.switchTo(selection, wanted),
   };
+  const pinSwitch = runtime.createPinSwitch({
+    post: (selection) => deps.request("POST", "/api/source/pin", { body: selection }),
+    onRestored: () => () => {},
+  });
   const controller = runtime.createPullController(deps, options);
   const isAskDelay = (delayMs) => delayMs === 0 || delayMs === runtime.REFRESH_ASK_MS;
 
@@ -779,7 +789,14 @@ function writesWhileMoving(runtime, betweenMs) {
 }
 
 async function main() {
-  const runtime = await import(pathToFileURL(pagePath).href);
+  const viewFilePath = path.join(
+    repoRoot,
+    "src/metabrowser/builtin_plugins/diff/diff-view-file.js",
+  );
+  const runtime = {
+    ...(await import(pathToFileURL(pagePath).href)),
+    createPinSwitch: (await import(pathToFileURL(viewFilePath).href)).createPinSwitch,
+  };
   const record = recorded.current.body.record;
   const comment = record.issue_comments[0].id;
   const review = record.reviews[1].id;
@@ -1024,7 +1041,7 @@ async function main() {
   held.clock.now = refusedAt + 10_000;
   held.server.pull = { status: 200, etag: '"rate limited"', body: limited };
   const holding = await held.step("GitHub's rate limit refused it", async () => held.fire());
-  const named = new Date(refusedAt + 60_000).toISOString().replace(".000Z", "Z");
+  const named = runtime.holdLiftText(refusedAt + 60_000, held.clock.now, "en-US", "UTC");
   assert(
     holding.paint.canRefresh === false &&
       holding.paint.failure === `GitHub rate limit · next check at ${named}`,

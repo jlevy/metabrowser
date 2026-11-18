@@ -1,0 +1,23 @@
+{
+    "archiveFilename": "Metabrowser-0.1.0-arm64.dmg",
+    "issues": [
+        {
+            "message": "An example warning: the notary service accepted the archive and noted this.",
+            "path": "Metabrowser-0.1.0-arm64.dmg/Metabrowser.app/Contents/MacOS/Metabrowser",
+            "severity": "warning"
+        }
+    ],
+    "jobId": "6F1D2C3B-4A59-4E8F-8C7D-1B2A3C4D5E6F",
+    "logFormatVersion": 1,
+    "status": "Accepted",
+    "statusSummary": "Ready for distribution",
+    "ticketContents": [
+        {
+            "arch": "arm64",
+            "cdhash": "89abcdef0123456789abcdef0123456789abcdef",
+            "digestAlgorithm": "SHA-256",
+            "path": "Metabrowser-0.1.0-arm64.dmg/Metabrowser.app"
+        }
+    ],
+    "uploadDate": "2026-11-17T09:20:00Z"
+}

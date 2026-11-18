@@ -68,6 +68,7 @@ from tests.github_pull_fixture import (
     seed_catalog,
 )
 from tests.golden_harness import JSON_BODY, check_recording, read_recording, run_session
+from tests.loop_gate import held_until
 from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git
 
@@ -186,8 +187,8 @@ def _record(
     original: Callable[..., Awaitable[Any]] = pull_list_refresh.refresh_pull_list
 
     async def held(*args: Any, **kwargs: Any) -> Any:
-        # The test thread sets it; a worker thread waits, so the job runs until then.
-        await asyncio.to_thread(gate.wait, 30)
+        # The test thread sets it; the job is held on the loop until then.
+        await held_until(gate, 30)
         return await original(*args, **kwargs)
 
     monkeypatch.setattr(pull_list_refresh, "refresh_pull_list", held)
@@ -619,7 +620,7 @@ def test_viewport_resize_and_distant_focus_keep_the_mounted_window_complete() ->
     assert result == {
         "case": "viewport-height-increase",
         "before": 43,
-        "after": 113,
+        "after": 90,
         "observedRoot": 1,
         "gapStartsAt": None,
         "viewportHeight": 3000,
@@ -629,9 +630,13 @@ def test_viewport_resize_and_distant_focus_keep_the_mounted_window_complete() ->
         # receipt, a new window, or going offline ends it; `beat` is alignRefreshing's one
         # start time ("Refreshing Content" in docs/design-system.md; review A on #354).
         "titleBreathing": {
-            "admitted": {"asked": [407, 406, 405], "breathing": [407, 406, 405], "busyRows": 0},
+            "admitted": {
+                "asked": [438, 437, 436, 435],
+                "breathing": [438, 437, 436, 435],
+                "busyRows": 0,
+            },
             "settled": [],
-            "moved": {"asked": [311, 310, 309, 308], "breathing": [311, 310, 309, 308]},
+            "moved": {"asked": [372, 371, 370], "breathing": [372, 371, 370]},
             "offline": [],
             "beat": [100, 100, 50, 100],
         },
@@ -959,7 +964,7 @@ def test_rows_likely_to_be_expanded_have_their_files_listed_behind_the_reader() 
     assert facts["admissionAnswered"] == {"askedAfterMs": 3000, "first": 104}
 
 
-def test_background_freshness_asks_only_while_visible_and_says_how_old_each_part_is() -> None:
+def test_background_freshness_asks_only_while_visible_and_names_one_fetch_age() -> None:
     """The prefetch policy and the page's catalog ask; the transcript shows the rest."""
 
     facts = run_session("github-pulls-prefetch-behavior.js")
@@ -977,7 +982,8 @@ def test_background_freshness_asks_only_while_visible_and_says_how_old_each_part
         "GET /api/plugin/github/pull?number=7",
     ]
     assert facts["withinWindow"] == ["GET /api/plugin/github/pull?number=7"]
-    assert facts["checked"].startswith("Checked ") and " · fetched 3 h ago" in facts["checked"]
+    # One time, never two (mb-ne91): a record the catalog checked since still says its fetch.
+    assert facts["checked"] == "Fetched 3 h ago via GitHub CLI"
     assert facts["pendingChecks"][-1] == "POST /api/plugin/github/pull-refresh"
     assert facts["pendingFreshness"].startswith("Fetched ")
     assert facts["headMoved"] == "New commits were pushed; updating."

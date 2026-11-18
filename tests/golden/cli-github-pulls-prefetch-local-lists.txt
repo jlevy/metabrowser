@@ -1,0 +1,350 @@
+## The catalog is read. Each open pull request's row names its head and base branch, and none has a record, so none has a comparison. It still calls 8 open, merged since.
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls-refresh
+status: 202
+{
+  "refresh": "started",
+  "pulls": {
+    "state": "pending",
+    "fetched_at": null,
+    "reader": null
+  },
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+}
+after: /api/plugin/github/pulls?state=open&limit=0
+status: 200
+{
+  "state": "current",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "reader": "gh:octo-reader",
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  }
+}
+--- stderr ---
+cloning https://github.com/octo/demo into <HOME>
+cloned https://github.com/octo/demo in 0.0 s
+--- body ---
+{}
+--- gh ---
+gh api repos/octo/demo --jq .size
+gh auth status
+gh api graphql catalog state=open cursor=start
+gh api graphql catalog state=open cursor=open-100
+gh api graphql catalog state=all cursor=start
+gh api graphql catalog state=all cursor=all-100
+## A visible page asks for open 10's changed files. Its head is on the mirrored `wip`, so the one fetch brings only its base branch, `topic`, as the origin has it now, and the list is the store's comparison of the head with it: no request goes to GitHub, and the hour's cap of lists is not charged.
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-prefetch --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls-prefetch
+status: 202
+{
+  "prefetch": "started",
+  "queued": 1,
+  "status_route": "/api/plugin/github/pulls-prefetch"
+}
+after: /api/plugin/github/pulls-prefetch
+status: 200
+{
+  "source": "https://github.com/octo/demo",
+  "running": null,
+  "queued": [],
+  "records": {
+    "per_scan": 8,
+    "scan": null,
+    "scan_used": 0,
+    "per_hour": 40,
+    "hour_used": 0
+  },
+  "files": {
+    "per_hour": 100,
+    "hour_used": 0
+  },
+  "governor": {
+    "floor": 0.25,
+    "admits": true,
+    "reason": null,
+    "held_until": null,
+    "observed": {}
+  },
+  "recent": [
+    {
+      "kind": "files",
+      "number": 10,
+      "outcome": "refreshed",
+      "at": "2026-09-17T12:00:00Z"
+    }
+  ]
+}
+--- stderr ---
+--- body ---
+{"files": [10]}
+--- gh ---
+## It asks for open 7's too. 10's list is current, so it is left out; 7's head, from a fork, is not in the store, and one fetch brings it with its base branch.
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-prefetch --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls-prefetch
+status: 202
+{
+  "prefetch": "started",
+  "queued": 2,
+  "status_route": "/api/plugin/github/pulls-prefetch"
+}
+after: /api/plugin/github/pulls-prefetch
+status: 200
+{
+  "source": "https://github.com/octo/demo",
+  "running": null,
+  "queued": [],
+  "records": {
+    "per_scan": 8,
+    "scan": null,
+    "scan_used": 0,
+    "per_hour": 40,
+    "hour_used": 0
+  },
+  "files": {
+    "per_hour": 100,
+    "hour_used": 0
+  },
+  "governor": {
+    "floor": 0.25,
+    "admits": true,
+    "reason": null,
+    "held_until": null,
+    "observed": {}
+  },
+  "recent": [
+    {
+      "kind": "files",
+      "number": 7,
+      "outcome": "refreshed",
+      "at": "2026-09-17T12:00:00Z"
+    },
+    {
+      "kind": "files",
+      "number": 10,
+      "outcome": "skipped:not_due",
+      "at": "2026-09-17T12:00:00Z"
+    }
+  ]
+}
+--- stderr ---
+--- body ---
+{"files": [7, 10]}
+--- gh ---
+## Each list names the head and base branch it was listed for, which the row still names: current.
+# metab https://github.com/octo/demo --api '/api/plugin/github/pull-files?number=7&limit=0'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-files?number=7&limit=0
+status: 200
+{
+  "number": 7,
+  "state": "current",
+  "listed_from": "comparison",
+  "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+  "base_ref": "topic",
+  "fetched": 2
+}
+--- stderr ---
+--- gh ---
+# metab https://github.com/octo/demo --api '/api/plugin/github/pull-files?number=10&limit=0'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-files?number=10&limit=0
+status: 200
+{
+  "number": 10,
+  "state": "current",
+  "listed_from": "comparison",
+  "head": "7a7d6596e515735d244dc1d942463c95851e139c",
+  "base_ref": "topic",
+  "fetched": 1
+}
+--- stderr ---
+--- gh ---
+# metab https://github.com/octo/demo --api '/api/plugin/github/pull-files-summary?numbers=7,10'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-files-summary?numbers=7,10
+status: 200
+{
+  "source": "https://github.com/octo/demo",
+  "rows": [
+    {
+      "number": 7,
+      "state": "listed",
+      "reason": null,
+      "listing": false,
+      "listed_from": "comparison",
+      "generation": "<GENERATION_7>",
+      "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+      "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
+      "base_ref": "topic",
+      "files": 2,
+      "additions": 2,
+      "deletions": 0,
+      "exact": true,
+      "statuses": [
+        {
+          "status": "added",
+          "count": 1
+        },
+        {
+          "status": "modified",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "number": 10,
+      "state": "listed",
+      "reason": null,
+      "listing": false,
+      "listed_from": "comparison",
+      "generation": "<GENERATION_10>",
+      "head": "7a7d6596e515735d244dc1d942463c95851e139c",
+      "base": "c691256511d05858850bc7684ae062fea0d41132",
+      "base_ref": "topic",
+      "files": 1,
+      "additions": 1,
+      "deletions": 0,
+      "exact": true,
+      "statuses": [
+        {
+          "status": "added",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}
+--- stderr ---
+--- gh ---
+## It asks for 8's. `topic` already holds 8's head, so their merge base is the head and the store would list nothing. 8's list is asked of GitHub instead, which this stand-in does not answer.
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-prefetch --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls-prefetch
+status: 202
+{
+  "prefetch": "started",
+  "queued": 1,
+  "status_route": "/api/plugin/github/pulls-prefetch"
+}
+after: /api/plugin/github/pulls-prefetch
+status: 200
+{
+  "source": "https://github.com/octo/demo",
+  "running": null,
+  "queued": [],
+  "records": {
+    "per_scan": 8,
+    "scan": null,
+    "scan_used": 0,
+    "per_hour": 40,
+    "hour_used": 0
+  },
+  "files": {
+    "per_hour": 100,
+    "hour_used": 1
+  },
+  "governor": {
+    "floor": 0.25,
+    "admits": true,
+    "reason": null,
+    "held_until": null,
+    "observed": {}
+  },
+  "recent": [
+    {
+      "kind": "files",
+      "number": 8,
+      "outcome": "failed:not_found_or_private",
+      "at": "2026-09-17T12:00:00Z"
+    }
+  ]
+}
+--- stderr ---
+--- body ---
+{"files": [8]}
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/8/files?per_page=100&page=1
+# metab https://github.com/octo/demo --api '/api/plugin/github/pull-files?number=8&limit=0'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-files?number=8&limit=0
+status: 200
+{
+  "number": 8,
+  "state": "absent",
+  "listed_from": null,
+  "head": null,
+  "base_ref": null,
+  "fetched": 0
+}
+--- stderr ---
+--- gh ---
+## Asked again for 7 and 10, both lists are current: nothing is fetched or asked.
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-prefetch --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls-prefetch
+status: 202
+{
+  "prefetch": "started",
+  "queued": 2,
+  "status_route": "/api/plugin/github/pulls-prefetch"
+}
+after: /api/plugin/github/pulls-prefetch
+status: 200
+{
+  "source": "https://github.com/octo/demo",
+  "running": null,
+  "queued": [],
+  "records": {
+    "per_scan": 8,
+    "scan": null,
+    "scan_used": 0,
+    "per_hour": 40,
+    "hour_used": 0
+  },
+  "files": {
+    "per_hour": 100,
+    "hour_used": 0
+  },
+  "governor": {
+    "floor": 0.25,
+    "admits": true,
+    "reason": null,
+    "held_until": null,
+    "observed": {}
+  },
+  "recent": [
+    {
+      "kind": "files",
+      "number": 7,
+      "outcome": "skipped:not_due",
+      "at": "2026-09-17T12:00:00Z"
+    },
+    {
+      "kind": "files",
+      "number": 10,
+      "outcome": "skipped:not_due",
+      "at": "2026-09-17T12:00:00Z"
+    }
+  ]
+}
+--- stderr ---
+--- body ---
+{"files": [7, 10]}
+--- gh ---

@@ -15,13 +15,13 @@ plugins own how each kind of file is drawn.
 Each aim ships in part today; the planned rest links its plan.
 
 - **Agents show you content.** The `metabrowser` agent skill
-  (`skills/metabrowser/SKILL.md`) lets an agent serve a path or a pull-request URL and
-  hand you the page. `metab --api`, `--show`, and `--walk` give an agent the same data
-  the page draws, which the
-  [Parity Registry](project/architecture/arch-parity-registry.md) enforces, and the
-  `agent-log` plugin draws coding-agent logs as timelines.
-  Planned: `metab --present`, one command that shows content in the running app or
-  browser
+  (`skills/metabrowser/SKILL.md`) lets an agent hand you a path or a pull-request URL in
+  the macOS app, or serve it and hand you the page.
+  `metab --api`, `--show`, and `--walk` give an agent the same data the page draws,
+  which the [Parity Registry](project/architecture/arch-parity-registry.md) enforces,
+  and the `agent-log` plugin draws coding-agent logs as timelines.
+  `metab --present` hands a folder, a file, or a GitHub URL to the macOS app; planned: a
+  reply from the app, and a browser when there is no app
   ([native macOS app plan](project/specs/active/plan-2026-11-10-native-macos-app.md),
   Phase 3).
 - **Local, in your browser or a Mac app.** `metab` serves on `127.0.0.1` by default to
@@ -54,7 +54,7 @@ metab CLI (cli/)                          native macOS shell (apps/macos/)
   │ serves, or answers --api in process     │ runs one metab server per folder
   ▼                                         ▼
 server and routes (server.py)  ◄──  kinds and plugin system (plugin_loader/)
-  ├─ source session (source.py): a folder, or a pinned Git revision
+  ├─ source session (source.py): a folder’s working tree, or a pinned revision
   ├─ inventory provider (inventory_engine/): the contract above, an engine below
   ├─ live delivery (events_route.py): the change feed as server-sent events
   ├─ Git (git/) and diff (diff/)
@@ -73,14 +73,15 @@ Module paths are under `src/metabrowser/` unless they start with `apps/`.
 | Inventory provider and engine | `inventory_engine/` (`contract.py`, `coordinator.py`, `factory.py`, engines under `providers/`), `inventory_rollup.py`, `file_type_registry.py`; the Python engine’s `walker.py` and `watch_backends.py`; `walk.py` for `--walk` | Hold a bounded index of the served tree and answer bounded, versioned queries over it | [Inventory Provider](project/architecture/arch-inventory-provider.md), [Python Engine](project/architecture/arch-inventory-engine-python.md) |
 | Live delivery | `events.py`, `events_route.py`, `sse.py`, `active_tracker.py`, `activity.py`; `static/catalog-feed.js` | Carry the provider’s change feed to the browser’s stores, and recover a client that falls behind | [Live Delivery](project/architecture/arch-live-delivery.md) |
 | Git | `git/` | Run every Git command on a served repository through one bounded process boundary (`git/process.py`), and serve history, graph checkpoints, commit detail, and Git trees | [Git](project/architecture/arch-git.md) |
-| Source sessions and pins | `source.py`, `source_routes.py`, `root_identity.py`; `static/source-pin-guard.js` | Hold the one subject a server serves, a folder or a pinned Git revision, with its capabilities, and switch the pin | [Source Sessions and Pins](project/architecture/arch-source-sessions-and-pins.md) |
+| Source sessions and pins | `source.py`, `source_routes.py`, `root_identity.py`; `static/source-pin-guard.js` | Hold the one view a server shows, a folder’s working tree or a pinned revision, with its capabilities, and switch the pin | [Open Modes](project/architecture/arch-open-modes.md), [Source Sessions and Pins](project/architecture/arch-source-sessions-and-pins.md) |
 | Diff | `diff/`, `builtin_plugins/diff/` | Build change sets from patch files, commits, and pull requests in File Diff Format, and hydrate them file by file | [Diff Pipeline](project/architecture/arch-diff-pipeline.md) |
 | Repository cache and mirrors | `cache/`, `mirror_refresh.py` | Acquire repositories into the application cache as mirrors, keep their records, and refresh them in the background | [Repository Cache](project/architecture/arch-repository-cache.md), [Mirror Acquisition and Refresh](project/architecture/arch-mirror-acquisition-and-refresh.md) |
 | GitHub provider | `builtin_plugins/github/`, behind `cache/providers.py` | Reduce GitHub URLs to sources and pins, and serve pull-request records, the catalog, changed files, checks, and stacks through `gh` | [GitHub Pull Requests](project/architecture/arch-github-pull-requests.md) |
 | Kinds and plugin system | `plugin_loader/`, `plugin_api.py`, `file_kinds.py`, `builtin_plugins/*/manifest.toml` | Discover and validate manifests, classify files into kinds, mount data hooks and plugin assets, and gate the SDK version | [Plugin System](project/architecture/arch-plugin-system.md), [the map](project/architecture/arch-views-models-routes.md) |
 | Browser shell and SDK | `static/` (`app.js`, `navigation.js`, `main-tabs.js`, `plugin-sdk.js`, `asset-loader.js`) | Own navigation, the tree, tabs, client stores, view mounting and disposal, asset loading, and the `window.metabrowser` SDK | [Browser Shell](project/architecture/arch-browser-shell.md), [Plugins](plugins.md) |
 | Renderers | `builtin_plugins/*/` views; KPress for Markdown | Draw each kind within the bounds of the large-content rules | [the map](project/architecture/arch-views-models-routes.md), [Rendering Large Content](large-content-rendering.md), [Design System](design-system.md) |
-| Native macOS shell | `apps/macos/` | Supervise one `metab` server per folder and show it in an AppKit window with `WKWebView`: windows, tabs, recent folders, and restore | [macOS App](project/architecture/arch-macos-app.md) |
+| Recent targets | `recent_targets.py`, `cli/recent_cli.py` | Keep the one list of folders and repositories the user opened lately, which every shell reads through `metab` | [Recent Targets](project/architecture/arch-recent-targets.md) |
+| Native macOS shell | `apps/macos/` | Supervise one `metab` server per folder and show it in an AppKit window with `WKWebView`: windows, tabs, recent items, and restore | [macOS App](project/architecture/arch-macos-app.md) |
 
 ## Rules That Cross Layers
 
@@ -128,14 +129,16 @@ the map and the [Plugin System](project/architecture/arch-plugin-system.md).
 4. [Plugin System](project/architecture/arch-plugin-system.md) and
    [Browser Shell](project/architecture/arch-browser-shell.md): how kinds are claimed
    and views are mounted.
-5. For Git and review: [Git](project/architecture/arch-git.md),
+5. For Git and review: [Open Modes](project/architecture/arch-open-modes.md), the model
+   of what a folder or a URL opens; then [Git](project/architecture/arch-git.md),
    [Source Sessions and Pins](project/architecture/arch-source-sessions-and-pins.md),
    [Diff Pipeline](project/architecture/arch-diff-pipeline.md),
    [Repository Cache](project/architecture/arch-repository-cache.md),
    [Mirror Acquisition and Refresh](project/architecture/arch-mirror-acquisition-and-refresh.md),
    and [GitHub Pull Requests](project/architecture/arch-github-pull-requests.md).
 6. The entry points: [CLI](project/architecture/arch-cli.md) and
-   [macOS App](project/architecture/arch-macos-app.md).
+   [macOS App](project/architecture/arch-macos-app.md), and the list of
+   [Recent Targets](project/architecture/arch-recent-targets.md) they share.
 7. The standards, before changing a bound or a hot path.
 
 ## Architecture Documents
@@ -160,6 +163,7 @@ In `docs/project/architecture/`:
 | [arch-plugin-system.md](project/architecture/arch-plugin-system.md) | Manifests, discovery, classification, the SDK gate, containers, and adding a file type |
 | [arch-browser-shell.md](project/architecture/arch-browser-shell.md) | Shell modules, stores, lifecycle, and asset loading tiers |
 | [arch-macos-app.md](project/architecture/arch-macos-app.md) | Server supervision, windows and tabs, restore, and WebKit differences |
+| [arch-recent-targets.md](project/architecture/arch-recent-targets.md) | The recent targets store, what records an open, its `metab` modes, and the app’s Open Recent |
 | [file-diff-format/](project/architecture/file-diff-format/file-diff-format.md) | File Diff Format v1, a tool-neutral change-set format |
 | [file-rollup-format/](project/architecture/file-rollup-format/file-rollup-format.md) | File Rollup Format, file classification and directory totals |
 

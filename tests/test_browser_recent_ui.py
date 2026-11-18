@@ -958,7 +958,8 @@ def test_styles_css_keeps_tab_padding_compact() -> None:
 def test_styles_css_keeps_recency_list_states() -> None:
     css = _read_styles_css()
     assert ".recent-empty {" in css
-    assert ".recent-truncated-note {" in css
+    # The truncation note had no producer, so its rule went with it (review A2 on #493).
+    assert ".recent-truncated-note" not in css
     assert ".tab-bar.nav-tab-bar {" in css
 
 

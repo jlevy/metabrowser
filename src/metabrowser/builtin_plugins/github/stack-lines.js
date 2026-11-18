@@ -48,6 +48,7 @@
 // heading does not pulse and go blank (review of #484, A4). Nor does a heading whose read is
 // queued behind another, or whose read the cap holds.
 
+import { changeLineInput, createBoundedIndex } from "./change-lines.js";
 import { createWarmBudget, documentComparisons } from "./comparison-prefetch.js";
 import { stackLabel } from "./pull-stacks.js";
 
@@ -191,47 +192,25 @@ export function isStackChange(value) {
 }
 
 /**
- * The change line's input from a stack's change: its statuses in the header's order, each
- * with its letter and word, from the changed-files tree's own breakdown, which the Diff
- * summary's header reads, and its line totals. With no tree, a line of its totals alone, as
- * the Diff summary's fallback line is.
+ * The change line's input from a stack's change, built as a pull request row's is
+ * (change-lines.js), so a stack of one draws its row's line.
  *
  * @param {StackChange} change
  * @param {((statuses: Iterable<string>) => MetabrowserChangeLineInput["statuses"]) | null} breakdown
  * @returns {MetabrowserChangeLineInput}
  */
 export function stackLineInput(change, breakdown) {
-  const statuses =
-    breakdown === null
-      ? []
-      : breakdown(
-          change.statuses.flatMap((entry) =>
-            Array.from({ length: entry.count }, () => entry.status),
-          ),
-        );
-  return { statuses, additions: change.additions, deletions: change.deletions };
+  return changeLineInput(change, breakdown);
 }
 
 /**
  * Each stack's last outcome, for the document: a stack of a repository (`stackKey`) to the
  * identity it was read under and the key of its change in the keep, or none.
+ *
+ * @returns {import("./change-lines.js").BoundedIndex<StackLineOutcome>}
  */
 export function createStackLineIndex() {
-  /** @type {Map<string, StackLineOutcome>} */
-  const outcomes = new Map();
-  return Object.freeze({
-    /** @param {string} stack */
-    get: (stack) => outcomes.get(stack),
-    /** @param {string} stack @param {StackLineOutcome} outcome */
-    set(stack, outcome) {
-      outcomes.delete(stack);
-      outcomes.set(stack, outcome);
-      if (outcomes.size > REMEMBERED_STACKS) {
-        outcomes.delete(/** @type {string} */ (outcomes.keys().next().value));
-      }
-    },
-    clear: () => outcomes.clear(),
-  });
+  return createBoundedIndex(REMEMBERED_STACKS);
 }
 
 /** The document's index, which every Pulls tab mounted in it shares. */

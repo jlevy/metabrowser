@@ -264,8 +264,8 @@
      (below) bridges them to platform stacks; `data-prose-font="sans"` bridges
      just --kpress-host-font-prose to --prose-sans-font. The mono hook is always
      bridged, to --app-mono, so document code matches the shell's. Embedded
-     document colors use KPress's public --kpress-doc-* seam in the scoped
-     bridge below. */
+     document colors use KPress's public --kpress-doc-* seam in the bridge
+     below, on every .kpress in the page. */
   --kpress-host-font-mono: var(--app-mono);
   /* No --kpress-measure here. KPress declares it on
      `:root, .kpress, .kpress-page-main, .kpress-tooltip`, so a value set here
@@ -292,14 +292,18 @@
      ramp — never a one-off rem at a single use site.
 
      Chrome (interface) sizes:
-       --body-font-size      14px  primary chrome text (default, inputs,
-                                   empty states, stat values)
-       --nav-font-size       13px  dense navigation rows + path
-                                   breadcrumbs (tree items, header path),
-                                   and the .nav-metadata line under each
-                                   main tab's toolbar that totals them
-       --ui-small-font-size  12px  secondary chrome (metadata, chips,
-                                   tooltips, notes, filters, summaries)
+       --body-font-size      14px  reading text: the main view's lines,
+                                   cards, notes, tables, inputs, empty and
+                                   error states, dialogs, and tooltips
+       --nav-font-size       13px  list text: the navigation column (set
+                                   once, on .tree-pane), its header path
+                                   among it, a tree's rows wherever one is
+                                   drawn, and Quick Search's and Help's
+                                   lists
+       --ui-small-font-size  12px  controls: chips, badges, buttons,
+                                   filters, and menus
+       --kbd-font-size       =ui-small  keycaps, and the hint strips they
+                                   label
        --label-font-size     =ui-small  all-caps section labels (tabs,
                                    panel/table headers, stat labels, and
                                    the embedded-document CONTENTS title
@@ -308,9 +312,18 @@
                                    is the distinction
        --mono-block-font-size =ui-small  mono blocks in chrome contexts
                                    (source views, logs, raw JSON)
-       --micro-font-size     10px  deliberately-minimized marks (the
-                                   brand line)
+       --micro-font-size     10px  deliberately-minimized marks: a chip's
+                                   count badge, and the dot between a
+                                   stack's badges
        --page-title-font-size 24px the title of a page no file stands behind
+     Secondary metadata (ages, update and fetch times, counts, sizes, a
+     row's second line, notes, captions) has no size of its own: it reads
+     at the size of the text it accompanies, and steps back by its ink,
+     never by a smaller size. Where its container sets that size, it sets
+     none and inherits it (docs/design-system.md, "Type Scale").
+     test_secondary_metadata_reads_at_its_texts_size holds the small and
+     micro sizes to the roles above, and the metadata it names in
+     _INHERITED_METADATA to none.
      One exception: .compression-badge draws a 7px glyph — iconography,
      not text, and not part of the ramp.
 
@@ -334,12 +347,13 @@
   /* The app's tooltip reads at body size, not at small-chrome size.
 
      Its own token rather than a reference to --ui-small-font-size, which is
-     the size of chips, counts and row metadata: pointing the tooltip at that
-     made its size a side effect of a decision about chrome, so the next
-     adjustment to small chrome text would have moved every tooltip with it. A
-     tooltip is prose the reader has stopped to read. */
+     the size of chips and controls: pointing the tooltip at that made its
+     size a side effect of a decision about chrome, so the next adjustment to
+     small chrome text would have moved every tooltip with it. A tooltip is
+     prose the reader has stopped to read. Its detail lines, a file's size
+     and age under its name, are secondary metadata, so they set no size and
+     read at the tooltip's, muted, as metadata does everywhere. */
   --tooltip-font-size: var(--body-font-size);
-  --tooltip-detail-font-size: var(--ui-small-font-size);
   --micro-font-size: 10px;
   --page-title-font-size: 24px;
   /* A ref chip is slightly smaller than the text around it: one ratio, not
@@ -489,6 +503,16 @@
   --mb-distribution-track: var(--viz-surface-sunken);
   --mb-distribution-track-height: 8px;
   --mb-distribution-segment-gap: 1px;
+  /* A hovered family's ink: the name of its legend entry while the hover marks it
+     is the family's color mixed in OKLab with --text, this much the family's. The
+     text ink sits past every family's color from the page, so the mix deepens it on
+     the light page and lifts it on the dark one, the way the marks' lift runs, and
+     keeps 4.5:1 on --bg: computed for every registered family, the lowest is 5.27:1
+     (TypeScript) in light and 8.01:1 (Markdown) in dark, where the family's own
+     color would read 2.31:1 and 4.93:1. 70% fell to 4.24:1 in light.
+     tests/test_design_vocabulary.py holds the 4.5:1 for every family; see
+     "Aggregate Distributions" in docs/design-system.md. */
+  --mb-distribution-ink-share: 60%;
 
   /* Icons — one glyph size for every icon in the chrome, whether it is a
      button (gear, printer, copy), a file-type mark in a row, or a menu
@@ -505,7 +529,8 @@
   --icon-box: 16px;
   --icon-btn-size: 24px;
   /* A person's avatar box and the gap before the name (`.actor-identity`), on every page
-     that names a person: a commit's author, a pull request's, a comment's, a Pulls row's.
+     that names a person: a commit's author, a pull request's, a comment's; a Pulls row's
+     is a tenth smaller (`.github-pulls-by`, github/styles.css).
      The Conversation timeline's geometry is derived from both (github/styles.css). */
   --actor-avatar-size: 18px;
   --actor-identity-gap: 4px;
@@ -955,9 +980,16 @@
   --viz-hover-duration: 120ms;
   --viz-hover-ease: ease;
   --viz-hover-filter: brightness(0.94);
-  --viz-data-mark-hover-filter: brightness(0.78) saturate(1.3);
-  /* How a hovered data mark grows, and the curve it grows on.
-  
+  /* The lift, a step stronger since 2026-11-18 at the owner's ask ("a little
+     darker"): brightness 0.78 and saturate 1.3 before. Measured in headless
+     Chrome 152 on File Overview's Total row, five families at 1280 by 900 (a
+     2 by 2 pixel sample at each segment's centre): the hovered colour moves
+     0.086 to 0.160 from rest in OKLab, where the old step moved 0.052 to
+     0.114, and every lifted segment reads darker against the page, the
+     yellow TypeScript at 4.27:1 where it read 3.56:1. */
+  --viz-data-mark-hover-filter: brightness(0.7) saturate(1.35);
+  /* How a hovered data mark grows, and how it moves.
+
      Motion rather than an outline, which is what this replaces twice over — a
      translucent ring, then an opaque grey one. A ring is a mark drawn ON the
      data: it covers the colour it is meant to point at, it competes with the
@@ -965,19 +997,6 @@
      is a quarter of the height. Growth is the mark answering instead. Nothing
      is covered, and the eye is already good at spotting the one thing that
      moved.
-
-     The curve is what makes it read as an answer. It overshoots past the
-     target and settles back, so the mark goes wider than it ends up and comes
-     back — which at this duration is a flick rather than a resize. A plain
-     ease over the same distance reads as the layout being sluggish.
-
-     The overshoot is worth more than the growth, and it has to be big enough
-     to see. The stock ease-out-back (y1 1.56) peaks only 0.5% past its target,
-     which on a 257px segment is 1.3px of bounce against 13px of growth — the
-     move lands but the spring does not. At y1 2.2 the peak is 2% past, so the
-     same segment overshoots by 5px and a mid-sized one by 2px. Measured, not
-     guessed: evaluate the bezier rather than adjusting it by eye, because the
-     part being tuned lasts about a tenth of a second.
 
      Grow the axis that carries NO data. On a horizontal bar the width is the
      value, so it is the one dimension that must not move — growing it states a
@@ -991,12 +1010,58 @@
      not reflow under the pointer, and centred so the mark grows either side of
      the baseline the eye follows along the row.
 
-     The factor is large because the axis is small: an eight-pixel bar at 1.5
-     is twelve, and the overshoot carries it past thirteen before it settles. A
-     few percent would be a fraction of a pixel. */
-  --viz-hover-grow: 1.5;
-  --viz-hover-grow-duration: 170ms;
-  --viz-hover-grow-ease: cubic-bezier(0.34, 2.2, 0.64, 1);
+     The factor is large because the axis is small: an eight-pixel bar at 2 is
+     sixteen, a band twice the track (1.5, twelve, before 2026-11-18, when the
+     owner asked for "a wider band"). A legend entry grows its family's segment
+     in every tally row at once, so the band is bounded by its neighbours.
+     Measured in headless Chrome 152 at 1280 by 900 with File Overview's
+     Python entry hovered, every row marked: 11 px between the Files and
+     Ignored rows' grown segments, 12 px between Ignored and Total, 5.5 px from
+     Total's to the legend's box, and 15 px from a Details row's to the next
+     row's track. 2.25 left 4.5 px to the legend. That no layout box moves
+     under the hover is tests/test_overview_legend_hover_chrome.py's to hold.
+
+     It moves on the viz layout scale, a size shift, eased in and out on a
+     plain ease and run back the same way on leave. It overshot once, a
+     170 ms spring past its target that read as a flick; the owner asked for
+     it smoother (2026-11-18). The lift moves on the same tokens, so the mark
+     answers as one motion. */
+  --viz-hover-grow: 2;
+  --viz-hover-grow-duration: var(--viz-layout-duration);
+  --viz-hover-grow-ease: var(--viz-layout-ease);
+  /* The hover shimmer: while a data mark is hovered, a sheen of
+     --viz-hover-shimmer-sheen over its colour breathes in to
+     --viz-hover-shimmer-strength and settles, once a period, after the growth
+     (@keyframes viz-hover-shimmer, beside the progress pulse's). It is a
+     sibling of the progress blocks' pulse (tally-pending-pulse), one opacity
+     keyframe on the compositor, and is meant not to read as one: the progress
+     pulse fades a whole block between 0.45 and 0.85 every 1.6 s, without
+     pause, which says "waiting"; this lightens a mark by a sheen of at most
+     0.15 (0.1 on the dark page, where the lifted marks are already light),
+     rises over 30% of a 3.6 s period, settles by 70%, and rests, so it reads
+     as a glint on something that is there.
+
+     Measured in headless Chrome 152 (2026-11-18), the five families of File
+     Overview's Total row: at its peak the sheen moves a lifted segment 0.025
+     to 0.056 in OKLab on the light page and 0.034 to 0.053 on the dark one,
+     against 0.086 to 0.160 for the lift, so the mark stays its family's
+     colour and stays at least 0.052 from its rest; a dark-page family whose
+     lift already reaches sRGB's ceiling (JSON, TypeScript) does not visibly
+     shimmer. The sheen is a pseudo-element's opacity: for 2.5 s of a held
+     hover, with Details open or closed, no style, layout, pre-paint, or paint
+     ran on the main thread and no animation failed to composite, while the
+     compositor drew 174 frames (one run each, on a 10-core Mac at a load
+     average near 20). Entering the hover cost 20 style
+     recalculations (3.6 ms) and 43 paints (5.1 ms) over 600 ms, the tooltip's
+     appearance included; a legend entry's name easing to its family's ink is
+     the one transition not composited (color), and added 1.4 ms of style and
+     2.2 ms of paint over its 180 ms. Marks the hover enters together shimmer
+     in step; one marked later, a Details row opened under a held hover or a
+     segment redrawn under it, starts its own cycle. With
+     prefers-reduced-motion: reduce there is no shimmer. */
+  --viz-hover-shimmer-period: 3.6s;
+  --viz-hover-shimmer-strength: 0.15;
+  --viz-hover-shimmer-sheen: oklch(100% 0 89.9);
   --viz-hover-transition:
     filter var(--viz-hover-duration) var(--viz-hover-ease),
     background-color var(--viz-hover-duration) var(--viz-hover-ease),
@@ -1017,7 +1082,9 @@
      visual density already fills the viewport (an opacity-only fade
      can read as a flicker on modern fast-refresh displays). See
      @keyframes viz-fade-in in viz.css. */
-  --viz-layout-transition: 180ms ease;
+  --viz-layout-duration: 180ms;
+  --viz-layout-ease: ease;
+  --viz-layout-transition: var(--viz-layout-duration) var(--viz-layout-ease);
   --viz-fade-duration: 240ms;
   --viz-fade-ease: ease;
 
@@ -1244,10 +1311,16 @@
 
   /* File change letters. Renamed is a blue of its own rather than a ref
      color: the letter sits beside added's green, and the ref colors below
-     answer a different question. */
+     answer a different question.
+     Modified is a yellow that reads as yellow, dark only as far as text
+     needs (mb-easi): at 50% and 0.1 chroma it read olive, so it is as
+     light as 4.5:1 allows, at about the most chroma sRGB holds there:
+     4.76:1 on --hover-bg, and 4.57:1 on its lowest ground, the current
+     row's --highlight-bg over --sidebar-bg, under a Pulls row's change line
+     and its files; hue 84 in both themes. */
   --git-status-added: oklch(48% 0.09 149.18);
   --git-status-deleted: oklch(50% 0.12 27.2);
-  --git-status-modified: oklch(50% 0.1 85);
+  --git-status-modified: oklch(52.5% 0.107 84);
   --git-status-renamed: oklch(50% 0.1 259.52);
 
   /* Ref chips. Each is text on the chip ground below, so all three sit
@@ -1334,8 +1407,17 @@
      the light tokens. */
   --kbd-badge-border: oklch(66% 0.12 98.1);
   /* Lift rather than deepen: the dark categorical palette is already light
-     against a near-black page (see the light-theme note beside this token). */
-  --viz-data-mark-hover-filter: brightness(1.22) saturate(1.2);
+     against a near-black page (see the light-theme note beside this token). A
+     step stronger since 2026-11-18, as the light lift is (brightness 1.22 and
+     saturate 1.2 before): the five Total-row families move 0.068 to 0.158 from
+     rest in OKLab, where they moved 0.048 to 0.151, measured as the light
+     token says. JSON and TypeScript reached sRGB's ceiling at the old step, so
+     they move least. */
+  --viz-data-mark-hover-filter: brightness(1.3) saturate(1.25);
+  /* A lighter sheen than the light page's, since the lifted marks are already
+     light here: at 0.15 it moved Markdown and YAML 0.078 and 0.064 in OKLab,
+     against 0.053 and 0.042 at 0.1 (see the light token). */
+  --viz-hover-shimmer-strength: 0.1;
 
   --viz-text: var(--text);
   --viz-text-muted: oklch(74.1% 0.019 256.7);
@@ -1403,7 +1485,9 @@
      7.06:1. */
   --git-status-added: oklch(78% 0.09 149.18);
   --git-status-deleted: oklch(78% 0.12 27.2);
-  --git-status-modified: oklch(78% 0.1 85);
+  /* A clear yellow, not khaki (mb-easi): 0.1 chroma here read as tan;
+     0.16 is near what sRGB holds at this lightness, 6.32:1 on --hover-bg. */
+  --git-status-modified: oklch(79% 0.16 84);
   --git-status-renamed: oklch(74% 0.1 259.52);
   --git-ref-remote: oklch(0.74 0.1 259.52);
   --git-ref-local: oklch(0.74 0.1 205);
@@ -2211,13 +2295,25 @@ html.theme-anim .menu {
    listing. Holds the served-root file count + total size. Rendered by
    loadTree() in app.js as a navigation metadata line (`.nav-metadata`, under
    "Navigation metadata line" below), which owns its box, type, and spacing;
-   the spans inside it carry colour only.
+   the spans inside it carry colour and where the ignored count goes only.
 
-   The settled height is not a constant: `.tree-summary-split` reports tracked
-   and ignored files separately and wraps to a second line in a narrow pane.
-   The line reserves one line box, not two, which would leave dead space in
-   every other case, so the wrap is tracked as H54 instead -- shape the pending
-   row like the settled one. */
+   The ignored count is a line of its own (`flex-basis: 100%`), "+ 248,189
+   ignored (10.1 GB)" under the tracked one, and one line in every pane: in one
+   too narrow for it its size is cut short at its end rather than wrapped, as
+   "+ 7,906 ignored (133.4 …" at the 180 px minimum, where it took a second
+   line of its own. So the band is one line with nothing ignored and two with
+   something, whatever the figures' lengths. As half of one line it wrapped only
+   when the two halves outgrew the pane: in the default 300 px pane the tree
+   moved down 19.5 px when the split arrived (mb-h3hc, measured in headless
+   Chrome 152 on 2026-11-16; H54 before it). While the line cannot tell yet
+   whether anything is ignored, it holds that line with the shell's pending
+   placeholder, after the quiet period (`.tree-summary-ignored-pending`, app.js
+   `rootTotals`, navigation.js `createRootTotals`); the shell inlines the
+   root's totals, so that is only a shell drawn before the walk finished the root.
+   A page keeps a line it has drawn: with nothing ignored it says so,
+   `.tree-summary-ignored-none`, "No ignored files", in the same box. Cut short,
+   the line's whole phrase is its tooltip (`data-tip-text`). The tracked count is
+   one line by the same rule (`.tree-summary-line`). */
 /* The ignored half is muted to the same degree the gitignored rows
    below it are, so the header reads at a glance as "this much is
    yours, that much is build output". */
@@ -2227,8 +2323,36 @@ html.theme-anim .menu {
 }
 .tree-summary-ignored {
   display: inline-flex;
+  flex-basis: 100%;
+  min-width: 0;
   align-items: baseline;
   gap: var(--nav-metadata-gap);
+  white-space: nowrap;
+}
+/* The tracked count's line keeps the same rule: one line, its size cut short at its end. */
+.tree-summary-line {
+  display: inline-flex;
+  flex-basis: 100%;
+  min-width: 0;
+  align-items: baseline;
+  gap: var(--nav-metadata-gap);
+  white-space: nowrap;
+}
+.tree-summary-line > :last-child,
+.tree-summary-ignored > .tree-summary-bytes {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* The held ignored line: one line box of the line's type, its strut holding the
+   pending block (`.tally-pending`) across the middle of the line, where the count
+   will be, from the line's start, about as wide as a count of tens of thousands
+   with its size ("+ 7,898 ignored (132.5 MB)" is 11.5 em in the default font set). */
+.tree-summary-ignored-pending {
+  flex-basis: 100%;
+}
+.tree-summary-ignored-pending > .tally-pending {
+  width: min(100%, 11em);
 }
 
 /* Walker-truncation banner: shown only when /api/tree returns
@@ -2395,7 +2519,11 @@ html.theme-anim .menu {
 
 /* ── Tree pane ───────────────────────────────────────────────── */
 
+/* The navigation column reads at the list size, once, here: a primitive it shares with
+   the main view, a notice or an age, takes the column's size from it, as it takes the
+   body size there (docs/design-system.md, "Type Scale"). */
 .tree-pane {
+  font-size: var(--nav-font-size);
   width: var(--tree-pane-width);
   min-width: 180px;
   max-width: none;
@@ -2426,25 +2554,40 @@ html.theme-anim .menu {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  /* One row, always: keyboard-help.js drops the items that do not fit, from the end,
+     and never the lead, Shift. */
+  flex-wrap: nowrap;
   gap: 6px;
   padding: 6px 12px;
   border-top: 1px solid var(--border);
   background: var(--sidebar-bg);
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--kbd-font-size);
   line-height: 1.2;
   /* The containing block of the revealed layer below. */
   position: relative;
 }
 /* The server ships the strip empty and hidden, and keyboard-help.js fills it once
-   the shell's tools load; it always has Help then. Until that, it keeps one row's
+   the shell's tools load; it always has Shift then. Until that, it keeps one row's
    height, so the tree above it is the same height before and after: its border,
-   padding, a hint's padding, and a keycap's border and 1.5 lines. */
+   padding, a hint's padding, and a keycap's border and 1.5 lines.
+   Filled, it leads with Shift, Reveal keys, then Help and Quick Search, on that one
+   row: where they do not all fit, keyboard-help.js (`keepStripOnOneRow`) hides them
+   from the end, so Quick Search goes first, then Help, and Shift always shows. In
+   headless Chrome 152 on macOS, with the default font set, all three show in a pane
+   273px wide or wider, the default 300px among them, Shift and Help from 181px, and
+   Shift alone at the 180px minimum; with the system font set, Shift and Help from
+   198px and all three from 301px, so the default pane drops Quick Search there.
+   tests/test_shortcut_strip_chrome.py holds every width from 180 to 300px in both
+   font sets to the rule. Safari's widths are not yet measured. */
 .nav-shortcut-hints[hidden] {
   display: flex;
   visibility: hidden;
   min-height: calc(1px + 12px + 6px + 2px + 1.5em);
+}
+/* An item the row has no room for. Its own rule below would otherwise keep it drawn. */
+.nav-shortcut-hints > [hidden] {
+  display: none;
 }
 .nav-shortcut-action,
 .nav-shortcut-hint,
@@ -2456,6 +2599,9 @@ html.theme-anim .menu {
 .nav-shortcut-hint {
   gap: 4px;
   padding: 3px 0;
+  /* A label never breaks onto a second line inside its item: the row drops the item
+     instead, and the width measured is the one it is drawn at. */
+  white-space: nowrap;
 }
 /* A shortcut hint carries exactly two boxes: the strip that groups every
    shortcut behind one border, and the keycap that says "this is a key". A
@@ -2542,7 +2688,6 @@ html.theme-anim .menu {
   border-top: 1px solid var(--border);
   background: var(--sidebar-bg);
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
   line-height: 1.2;
 }
 .index-progress-spinner {
@@ -2561,10 +2706,11 @@ html.theme-anim .menu {
   white-space: nowrap;
 }
 
-/* A served mirror's branch and tag selector: one compact button under the
-   header naming the served ref, and a .menu panel below it listing the
-   mirror's branches or tags with a filter box. Only a pin with a mirror has
-   one. */
+/* The branch and tag selector of a served mirror or checkout: one compact
+   button under the header naming what is served, and a .menu panel below it
+   listing the branches or tags with a filter box. A pin with a mirror has one,
+   and so does a folder that is a repository's root, whose panel begins with its
+   working tree. */
 .source-ref-selector[hidden] {
   display: none;
 }
@@ -2619,7 +2765,8 @@ html.theme-anim .menu {
   overflow-y: auto;
   list-style: none;
 }
-.source-ref-selector-row[aria-current="true"] {
+.source-ref-selector-row[aria-current="true"],
+.source-ref-selector-working-tree[aria-current="true"] {
   font-weight: var(--weight-medium);
 }
 .source-ref-selector-name {
@@ -2647,6 +2794,28 @@ html.theme-anim .menu {
 .source-ref-selector-error {
   color: var(--status-warning-strong);
 }
+/* A checkout's working tree: a row like a ref's, above the lists and ruled off
+   from them, since it is the one choice that is not a ref. What it is stands
+   where a ref's commit does. */
+.source-ref-selector-working-tree {
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--border);
+  border-radius: var(--radius-chrome) var(--radius-chrome) 0 0;
+}
+.source-ref-selector-working-tree[hidden],
+.source-ref-selector-stale[hidden] {
+  display: none;
+}
+/* What a checkout's page says, beside its button, once the server shows
+   something else: the words and the one action, as the freshness row offers
+   a reload on a mirror. */
+.source-ref-selector-stale {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+  color: var(--text);
+}
 
 /* A served mirror's freshness, at the foot of the navigation pane where a
    folder shows crawl progress: when it was last fetched, and an offer when a
@@ -2665,7 +2834,6 @@ html.theme-anim .menu {
   border-top: 1px solid var(--border);
   background: var(--sidebar-bg);
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
   line-height: 1.2;
 }
 .source-freshness-label {
@@ -2902,7 +3070,6 @@ html[data-prose-font="sans"] .kpress-prose h2,
   user-select: var(--toggle-user-select);
   color: var(--muted-slate);
   font-style: italic;
-  font-size: var(--ui-small-font-size);
 }
 .tree-item.tree-page-more:hover {
   background: var(--hover-bg);
@@ -3013,10 +3180,9 @@ html[data-prose-font="sans"] .kpress-prose h2,
   white-space: nowrap;
 }
 .tree-item-age-inline {
-  font-size: var(--ui-small-font-size);
   color: var(--muted);
-  /* Medium weight (not the 400 default) so small age labels stay legible;
-     warm-tier age classes below bump to --file-age-weight-recent. */
+  /* The age primitive's medium weight (not the 400 default), at the row's
+     size; warm-tier age classes below bump to --file-age-weight-recent. */
   font-weight: var(--file-age-weight);
   flex-shrink: 0;
   white-space: nowrap;
@@ -3024,21 +3190,21 @@ html[data-prose-font="sans"] .kpress-prose h2,
   align-items: center;
   margin-left: 6px;
 }
-/* Positioning + size only — color / weight / tabular-nums come from
-   the shared .size / .size-large rule (the sole source of truth). */
+/* Positioning only — color / weight / tabular-nums come from the shared
+   .size / .size-large rule (the sole source of truth), and the size from
+   the row. */
 .tree-item-size {
-  font-size: var(--ui-small-font-size);
   flex-shrink: 0;
   margin-left: auto;
   text-align: right;
   white-space: nowrap;
 }
-/* Row text shares one baseline; boxes stay centered. The name is
-   --nav-font-size and the age and size are --ui-small-font-size, and
+/* Row text shares one baseline; boxes stay centered. The name, age, and
+   size are the row's one size, and a change letter is a step smaller;
    centering line boxes of two sizes leaves their baselines a fraction of
    a pixel apart, because ascent scales with size. The fraction rounds
-   differently at each zoom and pixel ratio, so the row looked unsettled.
-   See "Row Text Shares a Baseline" in docs/design-system.md.
+   differently at each zoom and pixel ratio, so the row would look
+   unsettled. See "Row Text Shares a Baseline" in docs/design-system.md.
 
    The icon, chevron, spinner, and loading skeletons have no text
    baseline, and baseline-aligning one would sit its bottom edge on the
@@ -3113,13 +3279,14 @@ html[data-prose-font="sans"] .kpress-prose h2,
   --file-age-current: var(--file-age-old);
 }
 /* Every age anywhere — file rows, commit rows, commit detail — uses
-   the same tier hue, shared weight, and tabular numerals. Call sites
-   may adopt their container's type size and positioning, but never
-   override colour or weight, exactly as they do for `.size`. */
+   the same tier hue, shared weight, and tabular numerals, and no size of
+   its own: an age is secondary metadata, which reads at the size of the
+   text it sits in, so a 13px row's age is 13px and a page header's 14px
+   (docs/design-system.md, "Type Scale"). Call sites own its position,
+   never its colour, weight, or size, exactly as they do for `.size`. */
 :is(.age-live, .age-sec, .age-min, .age-hr, .age-day, .age-wk, .age-old) {
   color: var(--file-age-current);
   font-weight: var(--file-age-weight);
-  font-size: var(--ui-small-font-size);
   font-variant-numeric: var(--tabular-numerals);
 }
 :is(.age-live, .age-sec, .age-min) {
@@ -3638,20 +3805,51 @@ a.tab-btn {
   border-bottom: 1px solid var(--border);
   background: var(--sidebar-bg);
   flex-shrink: 0;
-  /* The server ships this element empty and filter-controls.js fills it, so
-     without a reserved height it stands 13px tall until the chips arrive and
-     then grows to 37 -- pushing the whole tree down on every load and every
-     reload. One line, this element's padding of a toolbar gap above and below
-     it, and its bottom border: the same height a populated bar computes to
-     while its row is one line, so nothing moves when the chips land.
-     `box-sizing` is border-box, so the padding and border are inside this
-     figure. */
+  /* The server ships this element holding only the pending tally, and app.js
+     fills it (renderNavFilterBar). Shipped empty and without a reserved height,
+     it stood 13px tall until the chips arrived and then grew to 37 -- pushing
+     the whole tree down on every load and every reload. One line, this
+     element's padding of a toolbar gap above and below it, and its bottom
+     border: the same height a populated bar computes to while its row is one
+     line, so nothing moves when the chips land. `box-sizing` is border-box,
+     so the padding and border are inside this figure. */
   min-height: var(--nav-toolbar-height);
   position: relative;
   z-index: 1;
   transition:
     box-shadow var(--transition-fast),
     row-gap var(--transition-fast);
+}
+/* The tree holds its first paint until the bar has its controls (mb-kiqm). The server
+   ships the bar one line tall around the pending placeholder, and app.js fills it
+   (renderNavFilterBar) in the task that draws the tree's first rows, just before them;
+   in a pane too narrow for its row the filled bar wraps (`.nav-toolbar-row`). The shell
+   paints `#tree-content` before any script runs, so the fill moved that box down by the
+   lines added, rows or none. Measured in headless Chrome on 2026-11-18 at the narrowest
+   pane: the bar went from 37 to 67 px and the tree moved 30 px, a layout shift of
+   `#tree-content` of 0.00255 to 0.00268, in every load with the bar filled at
+   DOMContentLoaded and in 11 of 12 with it filled before the rows; and rows drawn
+   before the fill were on screen under the one-line bar in 2 of 8 loads, 12 of 12 with
+   the CPU slowed 6x. Hidden until the bar is filled, the tree first shows under its
+   settled height, and no load shifted. Since the bar is filled just before the rows,
+   no row waits: in 48 loads, at full speed and with the CPU slowed 6x, 12x, and 20x,
+   every row was shown in the frame it was drawn.
+
+   The hold is bounded, so a bar that is never filled, as when filter-controls.js does
+   not load or app.js throws first, does not hide the tree for good: at the bound the
+   quiet period's keyframes show it, wrapping bar and all. From the tree's insertion to
+   the bar's fill, 12 loads each with the browser cache off took 21 to 55 ms at full
+   speed, 43 to 146 ms with the CPU slowed 6x, 105 to 316 ms at 12x, and 185 to 746 ms
+   at 20x; the bound is past the slowest. tests/test_files_totals_stable_chrome.py fails
+   filter-controls.js and sees the tree shown at the bound.
+
+   A loading spinner past its quiet period still shows, since `.mb-delayed-loading`
+   sets its own visibility. An alert app.js writes into the tree before the bar is
+   filled, on a pinned revision's page missing its path codec, shows at once. Where
+   another tab's toolbar is in front the bar is hidden, and the tree is not held. */
+.nav-filter-bar:not([hidden]):has(> .tally-pending) ~ .tree-content:not(:has(> [role="alert"])) {
+  visibility: hidden;
+  animation: mb-delayed-loading-reveal 0s linear 1s forwards;
 }
 /* Widens on the same token as the drawer's own grid track, so the gap
    grows with the reveal rather than snapping open ahead of it. */
@@ -3937,7 +4135,6 @@ a.tab-btn {
 .recent-empty {
   padding: 24px 12px;
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
   text-align: center;
 }
 /* The lines under the tally — what the filter narrowed the tree to
@@ -4012,14 +4209,6 @@ a.tab-btn {
     opacity: min(1, calc(var(--dimmed-content-opacity) / var(--loading-dim-opacity)));
   }
 }
-.recent-truncated-note {
-  padding: 8px 12px;
-  margin: 4px 0;
-  color: var(--muted);
-  font-size: var(--ui-small-font-size);
-  background: var(--sidebar-bg);
-  border-bottom: 1px solid var(--border);
-}
 
 /* ── File header ─────────────────────────────────────────────── */
 
@@ -4038,7 +4227,6 @@ a.tab-btn {
 }
 .file-header-path {
   font-family: var(--font-sans);
-  font-size: var(--nav-font-size);
   font-weight: var(--weight-bold);
   color: var(--text);
   flex: 1 1 180px;
@@ -4070,13 +4258,18 @@ a.tab-btn {
    directory by enough that it is effectively gone before one narrows, and a
    directory outshrinks the current segment the same way.
 
-   Measured on a 296px header, which is a 620px window at the default nav
-   width, showing a served root 494px wide followed by three components.
-   Below a 375px header the root has nothing left to give.
-   Without the rules below, the next 55px came out of the end of the run
-   rather than the start: at 320px the filename was cut 19px short with no
-   ellipsis, and the copy control sat 45px outside the clipped box, where it
-   could be neither seen nor clicked. */
+   At the header's size, the main view's 14px, the root has nothing left to
+   give below a 367px header (Chrome 152, root / src / metabrowser /
+   color_oklch.py), and at every header from 249px to 689px a filename cut
+   short ends in an ellipsis and the copy control stays inside the box.
+   The rules below make that so. Measured with the path at 13px,
+   on a 296px header, which is a 620px window at the default nav width,
+   showing a served root 494px wide followed by three components, the root
+   had nothing left to give below a 375px header, and without these rules
+   the next 55px came out of the end of the run rather than the start: at
+   320px the filename was cut 19px short with no ellipsis, and the copy
+   control sat 45px outside the clipped box, where it could be neither seen
+   nor clicked. */
 .folder-breadcrumb .folder-crumb {
   flex: 0 4 auto;
   min-width: 0;
@@ -4129,17 +4322,20 @@ a.tab-btn {
    fifth of a pixel turns "metabrowser" into "metabrow…".
 
    Measured on a 900px window showing ~/wrk/.../<root> / src / metabrowser /
-   color_oklch.py, as the largest width any crumb gave up:
+   color_oklch.py, as the largest width any crumb gave up, at the header's
+   14px in Chrome 152, and in the first run, at 13px, with what each showed:
 
-     weight    1000   0.164px   ellipsis
-     weight    5000   0.031px   clean
-     weight   20000   0.008px   clean
-     weight  100000   0.000px   clean
+                      14px      13px
+     weight    1000   0.219px   0.164px   ellipsis
+     weight    5000   0.047px   0.031px   clean
+     weight   20000   0.016px   0.008px   clean
+     weight  100000   0.000px   0.000px   clean
 
-   5000 is where it stops; 20000 is that with room, and still finite so the
-   ordering below stays real. Once the root reaches zero flex freezes it and
-   redistributes the rest, so the 4-to-1 ordering between the directories and
-   the filename applies from there down. */
+   The 14px run recorded the widths alone. 20000 gives up less at 14px than
+   5000 gave up cleanly at 13px, with room, and is still finite so the
+   ordering below stays real. Once the root reaches zero flex freezes
+   it and redistributes the rest, so the 4-to-1 ordering between the
+   directories and the filename applies from there down. */
 .file-header-root {
   color: var(--muted);
   min-width: 0;
@@ -4174,7 +4370,7 @@ a.tab-btn {
    repository's name, and no directory holds its files: they are read from a
    bare Git repository in the cache. So that directory is not the start of the
    address, where it would read as a folder of these files. It stands apart at
-   the far end, muted and at the summary's size, and its tooltip says what it is.
+   the far end, muted and at the header's size, and its tooltip says what it is.
    `order` puts it there: it is written with the address, ahead of a file's copy
    control, and drawn after it.
 
@@ -4192,10 +4388,14 @@ a.tab-btn {
    than starting with one, because the start is what says where the mirror is
    and the end is a store's hexadecimal key.
 
-   Measured on 12 heading widths from 250px to 1350px in the in-app browser,
-   with the long name metabrowser-v012-landing-docs: the root measures exactly
-   what it does with the note removed at every width. The old shrink weights
-   took up to 0.039px from that name while the note was present. */
+   Measured with the long name metabrowser-v012-landing-docs on 12 heading
+   widths from 250px to 1350px in the in-app browser, and again on 12 from
+   240px to 1340px in Chrome 152 at the header's 14px (Design Rule
+   Measurements, "Type by Role"): the root measures exactly what it does with
+   the note removed at every width, and the note, where it shows, sits on the
+   path's line. The old shrink weights took up to 0.039px from that name
+   while the note was present. At 14px, 14em is 196px against the 189.9px of
+   `mirror in ~/.metabrowser/cache/`. */
 .file-header-mirror {
   order: 1;
   flex: 1 1 0;
@@ -4208,7 +4408,6 @@ a.tab-btn {
   line-height: 1.5;
   overflow: hidden;
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
   font-weight: var(--weight-normal);
 }
 /* The first line is as tall as the note whatever is on it, so a text that wraps
@@ -4240,7 +4439,6 @@ a.tab-btn {
 }
 .folder-header-count,
 .folder-header-age {
-  font-size: var(--ui-small-font-size);
   color: var(--muted);
   font-variant-numeric: var(--tabular-numerals);
   white-space: nowrap;
@@ -4257,11 +4455,11 @@ a.tab-btn {
 /* Color / weight come from .size / .size-large — see the shared
    size-chip convention above. */
 .file-header-size {
-  font-size: var(--ui-small-font-size);
   flex-shrink: 0;
 }
-/* The --nav-font-size path and the --ui-small-font-size size and folder
-   summary share a baseline, as a tree row's text does (see .tree-item).
+/* The path, the size, and the folder summary are the header's one size, the
+   main view's, and share a baseline, as a tree row's text does (see
+   .tree-item).
    Buttons, badges, and skeletons are boxes and keep the header's
    centering.
 
@@ -4281,18 +4479,6 @@ a.tab-btn {
 .file-header > .folder-header-summary:not(:has(.tally-pending)) {
   align-self: baseline;
 }
-/* .file-header-icon (the print action) has no block of its own: it is
-   entirely the .icon-btn primitive. It sits beside the copy icon and,
-   across the header, the settings gear, so it must not grow chrome
-   that those do not have. */
-/* A view that cannot print keeps the button's slot, so switching views never
-   moves the header's size label beside it. Hidden, it is out of the tab order
-   and the accessibility tree all the same. */
-.file-header-print[hidden] {
-  display: inline-flex;
-  visibility: hidden;
-}
-
 /* A badge is one word or two on one line, and centers its capitals, not
    the font's line box. Centered by its line box, 12px Source Sans 3
    left 3.14px above its capitals and 5px below its baseline in a 16px
@@ -4444,9 +4630,16 @@ a.tab-btn {
    about design, not about restating a ratio KPress already owns.
 
    The caps-label size stays: matching app chrome labels is a real divergence.
-   Document colors use KPress's public direct-token seam on both the fragment
-   and tooltips KPress portals to document.body. */
-.metabrowser-kpress-host .kpress,
+
+   Document colors use KPress's public direct-token seam, and the app owns the
+   palette of every KPress fragment in the page, not only a document under this
+   host: a rendered Markdown diff mounts its `article.kpress` in the diff
+   plugin's host (builtin_plugins/diff/diff-markdown.js), and KPress portals
+   tooltips to document.body. Keyed on the host, the diff drew KPress's own
+   palette: its text and link colors, its border and muted tones on quoted text
+   and code, and in the dark theme a darker ground than the page's. So this and
+   the corner bridge below key on `.kpress` anywhere under `:root`. */
+:root .kpress,
 :root .kpress-tooltip {
   --kpress-doc-bg: var(--bg);
   --kpress-doc-text: var(--text);
@@ -4469,10 +4662,11 @@ a.tab-btn {
 
    KPress declares these on `.kpress` itself (style-tokens.css lists
    `:root, .kpress, .kpress-page-main, .kpress-tooltip`), so the override has
-   to land on the same element and win on specificity — two classes beats one.
-   Tooltips ride along for the same reason the color bridge above names them:
-   KPress portals them to document.body, outside the host. */
-.metabrowser-kpress-host .kpress,
+   to land on the same element and win on specificity — `:root` and a class
+   beats a class alone. The selectors are the color bridge's, for its reason:
+   every KPress fragment in the page, a rendered diff and body-portaled
+   tooltips included, is square. */
+:root .kpress,
 :root .kpress-tooltip {
   --kpress-radius-sm: var(--radius-document);
   --kpress-radius-md: var(--radius-document);
@@ -4508,9 +4702,9 @@ a.tab-btn {
    Headers"): its title, then its lines, each 6 px under the one before. Every line under
    the title is a `.page-header-line` at the body size, the Diff summary's row included (its
    header's own size is the diff plugin's, the same token), so the two pages read in one
-   type: an age in one keeps the line's size, not the age primitive's small one. The one
-   row that is not is a pull request's labels, a row of chips. A chip in a line keeps its
-   own size (Branch Chips, Label Colors), and a revision its one step down. */
+   type: an age in one keeps the line's size, as an age does everywhere. The one row that
+   is not is a pull request's labels, a row of chips. A chip in a line keeps its own size
+   (Branch Chips, Label Colors), and a revision its one step down. */
 .page-header {
   display: flex;
   flex-direction: column;
@@ -4521,9 +4715,6 @@ a.tab-btn {
 }
 .page-header-line {
   min-height: 1lh;
-  font-size: var(--body-font-size);
-}
-.page-header-line :is(.age-live, .age-sec, .age-min, .age-hr, .age-day, .age-wk, .age-old) {
   font-size: var(--body-font-size);
 }
 
@@ -4544,25 +4735,6 @@ a.tab-btn {
 .metabrowser-kpress-host .kpress {
   --kpress-caps-label-size: var(--label-font-size);
   --kpress-measure: var(--doc-measure);
-}
-
-/* Inline and block code are two sizes of the same document surface. Give both
-   the same quiet, explicitly solid edge and square, host-adjustable geometry;
-   prose blockquotes, tables, callouts, and code-copy controls keep their own
-   independent borders. The public code tokens above carry this decision once
-   KPress ships them; these explicit selectors are the corresponding bridge for
-   the currently pinned KPress 0.3.5 and can leave with that pin. */
-.metabrowser-kpress-host .kpress code:not(pre code),
-.metabrowser-kpress-host .kpress .kpress-code {
-  border: 1px solid var(--code-border);
-  border-radius: var(--radius-document);
-}
-
-.metabrowser-kpress-host .kpress code:not(pre code) {
-  /* Tighter than KPress's default: with a quieter edge the box no longer needs
-     to stand off the glyphs, and less padding keeps inline code on the prose
-     baseline rhythm when a line carries several of them. */
-  padding: 0.1em 0.25em;
 }
 
 /* MetaBrowser's content wrapper already supplies the outer document gutter,
@@ -4617,22 +4789,6 @@ a.tab-btn {
   margin-block-start: 1rem;
 }
 
-/* Blockquotes are the one place the embed deliberately adds to KPress rather
-   than deferring to it. KPress styles a blockquote with indentation alone
-   (`margin` + `padding-inline-start`, no rule and no color), which reads as an
-   ordinary indented paragraph in a dense file browser. This restores the
-   accent bar and muted text the rest of the app uses for quoted material.
-
-   It is stated here, scoped to the embed, rather than inherited from the
-   `.md-body` chrome rules below — those are scoped away from the KPress host
-   precisely so nothing reaches the document by accident. A divergence worth
-   keeping is worth naming. */
-.metabrowser-kpress-host .kpress blockquote {
-  border-left: 3px solid var(--border);
-  padding-inline-start: 1rem;
-  color: var(--muted);
-}
-
 /* The docked TOC is a quiet navigation rail beside the document, not another
    panel. Keep it scrollable without box chrome; KPress's narrow overlay drawer
    stays bordered and retains its scrollbar for definition. */
@@ -4646,21 +4802,6 @@ a.tab-btn {
   }
 }
 
-/* KPress's TOC pulls each entry's first line back by 1em (text-indent:
-   -1em against ~1.3rem of link padding), which lands the text ~5px from
-   the active-marker bar — it reads as flush against the highlight box.
-   Drop the hanging indent so wrapped lines align under the first, and
-   re-set the per-level insets from a moderate 0.75rem base (KPress's
-   full 1.3rem reads as too deep once the indent is gone), keeping the
-   upstream 0.7rem step per level. The CONTENTS title gets the same base
-   inset so it stays aligned with the level-1 entry text. */
-.metabrowser-kpress-host .kpress-toc a {
-  text-indent: 0;
-}
-.metabrowser-kpress-host .kpress-toc-title,
-.metabrowser-kpress-host .kpress-toc-level-1 > a {
-  padding-left: 0.75rem;
-}
 /* The CONTENTS title joins the app's single label tier (size arrives
    via the overridden --kpress-caps-label-size): same weight, color, and
    tracking as tabs, DIAGNOSTICS, FRONTMATTER, and table headers,
@@ -4671,21 +4812,6 @@ a.tab-btn {
   letter-spacing: var(--label-letter-spacing);
   text-transform: var(--label-text-transform);
   font-variant-caps: normal;
-}
-.metabrowser-kpress-host .kpress-toc-level-2 > a {
-  padding-left: 1.45rem;
-}
-.metabrowser-kpress-host .kpress-toc-level-3 > a {
-  padding-left: 2.15rem;
-}
-.metabrowser-kpress-host .kpress-toc-level-4 > a {
-  padding-left: 2.85rem;
-}
-.metabrowser-kpress-host .kpress-toc-level-5 > a {
-  padding-left: 3.55rem;
-}
-.metabrowser-kpress-host .kpress-toc-level-6 > a {
-  padding-left: 4.25rem;
 }
 
 /* Disclosure controls use the same label system as unselected tabs. */
@@ -4749,7 +4875,6 @@ a.tab-btn {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-sans);
-  font-size: var(--ui-small-font-size);
   line-height: 1.45;
 }
 
@@ -4795,7 +4920,7 @@ a.tab-btn {
   white-space: pre-wrap;
   color: var(--muted);
   font-family: var(--font-mono);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--mono-block-font-size);
 }
 /* ── Code blocks (highlight.js integration) ─────────────────── */
 
@@ -5411,7 +5536,7 @@ pre.code-block.metabrowser-source-lines > code {
 .help-shortcut-context {
   margin: 2px 0 6px;
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--nav-font-size);
 }
 .help-command-list {
   display: flex;
@@ -5439,7 +5564,7 @@ pre.code-block.metabrowser-source-lines > code {
 }
 .help-command-description {
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--nav-font-size);
 }
 
 /* ── Quick Search palette ─────────────────────────────────────────
@@ -5560,9 +5685,10 @@ pre.code-block.metabrowser-source-lines > code {
 .search-palette-hint {
   padding: 5px 12px;
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
 }
+/* The status counts the results above it, so it reads at their size. */
 .search-palette-status {
+  font-size: var(--nav-font-size);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -5572,8 +5698,10 @@ pre.code-block.metabrowser-source-lines > code {
   flex: none;
 }
 /* Keys render through .kbd; the connecting words are ordinary chrome
-   text, so the row reads as a sentence rather than a legend. */
+   text at the keycaps' size, so the row reads as a sentence rather than
+   a legend. */
 .search-palette-hint {
+  font-size: var(--kbd-font-size);
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -5600,15 +5728,13 @@ pre.code-block.metabrowser-source-lines > code {
   word-break: break-all;
   color: var(--viz-text);
 }
-/* One step below the tooltip's own size, so a tooltip has a hierarchy: the
-   name it is about, then the measurements under it. Relative rather than a
-   second absolute token — it is defined as "smaller than the tooltip", and
-   pinning it to a chrome token is what let base and detail drift to the same
-   size in the first place. */
+/* The measurements under the name a tooltip is about: secondary metadata, so
+   muted and regular at the tooltip's own size, which they inherit; the name's
+   medium weight and ink carry the hierarchy (docs/design-system.md, "One
+   Tooltip, and It Is Ours"). */
 .tip-detail {
   color: var(--viz-text-muted);
   font-weight: var(--weight-normal);
-  font-size: var(--tooltip-detail-font-size);
 }
 /* Recent-files rows while the first query is in flight: known row
    geometry, so it is drawn rather than announced. See design-system.md,
@@ -5757,15 +5883,12 @@ pre.code-block.metabrowser-source-lines > code {
 }
 
 /* Inline placeholder shown for a folder whose children are still
-   being lazy-loaded. Without this rule the text falls back to the
-   page default font (16px) and renders as a comically large block
-   inside the tree. */
+   being lazy-loaded, at the navigation column's size. */
 .tree-lazy-placeholder {
   display: flex;
   align-items: center;
   padding: 2px 12px 2px calc(28px + (var(--tree-depth, 1) - 1) * var(--tree-indent));
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
   font-style: italic;
 }
 .tree-lazy-error {
@@ -5829,7 +5952,6 @@ pre.code-block.metabrowser-source-lines > code {
 .tree-empty-note {
   padding: 2px 12px 2px calc(28px + (var(--tree-depth, 1) - 1) * var(--tree-indent));
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
 }
 
 /* ── Changed-file rows ───────────────────────────────────────────
@@ -5898,7 +6020,6 @@ pre.code-block.metabrowser-source-lines > code {
   flex-shrink: 0;
   gap: 4px;
   margin-left: auto;
-  font-size: var(--ui-small-font-size);
   font-variant-numeric: var(--tabular-numerals);
 }
 .changed-file-stats > .diff-stat-add {
@@ -6005,7 +6126,7 @@ pre.code-block.metabrowser-source-lines > code {
 /* A chrome tree, like the Navigator: sans labels. Counts keep column
    alignment through tabular numerals rather than a monospaced face. */
 .tally-tree {
-  font-size: var(--ui-small-font-size);
+  font-size: var(--nav-font-size);
   line-height: 1.8;
   padding: 8px 12px;
   font-family: var(--font-sans);
@@ -6043,7 +6164,7 @@ pre.code-block.metabrowser-source-lines > code {
   display: none;
 }
 .tally-metadata {
-  font-size: var(--ui-small-font-size);
+  font-size: var(--nav-font-size);
   color: var(--muted-slate);
   margin-bottom: 8px;
   padding: 4px 0;
@@ -6110,6 +6231,22 @@ pre.code-block.metabrowser-source-lines > code {
   }
   100% {
     opacity: 0.45;
+  }
+}
+/* The hover shimmer, a sibling of the progress pulse above and not the same:
+   a sheen rather than the block, at most --viz-hover-shimmer-strength rather
+   than a swing of 0.4, rising over 30% of a period more than twice as long
+   and settling by 70%, then resting, where the progress pulse never rests.
+   Opacity only, so the compositor runs it. The values, their measurements,
+   and why it should not read as loading are beside the tokens. */
+@keyframes viz-hover-shimmer {
+  0%,
+  70%,
+  100% {
+    opacity: 0;
+  }
+  30% {
+    opacity: var(--viz-hover-shimmer-strength);
   }
 }
 
@@ -6208,7 +6345,6 @@ pre.code-block.metabrowser-source-lines > code {
   .file-header,
   .tab-bar,
   .content-copy-btn,
-  .file-header-print,
   .settings-toggle,
   .custom-tooltip,
   /* Covers Quick File too: its overlay is a .modal-overlay. */
@@ -6350,7 +6486,6 @@ pre.code-block.metabrowser-source-lines > code {
   justify-content: center;
   flex: 0 0 auto;
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
 }
 
 /* ── Git history skeletons ──────────────────────────────────── */
@@ -6494,7 +6629,6 @@ pre.code-block.metabrowser-source-lines > code {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
 }
 
 /* The subject and the author/age share a baseline, as a file row's name,
@@ -6504,16 +6638,23 @@ pre.code-block.metabrowser-source-lines > code {
   align-self: baseline;
 }
 
-/* Positioning only — colour, weight, size, and numerals come from the
-   shared age primitive above. */
+/* Positioning only — colour, weight, and numerals come from the shared age
+   primitive above, and the size from the row. */
 .git-graph-age {
   flex-shrink: 0;
+}
+/* In a column too narrow for both, the author gives way and the age stays whole: "never
+   the age" (docs/design-system.md, "History Rows"), where the column's own clip cut the
+   age's end at the narrowest pane. */
+.git-graph-meta > .actor-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .git-graph-more {
   padding: 8px 12px;
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
 }
 
 .git-graph-more-failed {
@@ -6523,7 +6664,6 @@ pre.code-block.metabrowser-source-lines > code {
 .git-panel-empty {
   padding: 16px 12px;
   color: var(--muted);
-  font-size: var(--nav-font-size);
 }
 
 /* Rides the .btn primitive; only the spacing is local. */
@@ -6886,14 +7026,6 @@ pre.code-block.metabrowser-source-lines > code {
   column-gap: inherit;
 }
 
-.git-commit-summary .git-commit-age {
-  font-size: var(--body-font-size);
-}
-
-.git-commit-summary :is(.git-stat-add, .git-stat-del) {
-  font-size: var(--body-font-size);
-}
-
 .git-commit-summary-compact {
   max-width: min(340px, calc(100vw - 32px));
 }
@@ -6953,7 +7085,6 @@ pre.code-block.metabrowser-source-lines > code {
   gap: 8px;
   padding: 10px 0;
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
 }
 
 .git-commit-file {
@@ -6969,7 +7100,7 @@ pre.code-block.metabrowser-source-lines > code {
   color: inherit;
   cursor: pointer;
   font-family: inherit;
-  font-size: var(--ui-small-font-size);
+  font-size: var(--body-font-size);
   text-align: left;
 }
 
@@ -7019,7 +7150,6 @@ pre.code-block.metabrowser-source-lines > code {
 .git-stat-del,
 .git-stat-binary {
   flex-shrink: 0;
-  font-size: var(--micro-font-size);
   font-variant-numeric: var(--tabular-numerals);
 }
 

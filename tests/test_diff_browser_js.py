@@ -117,7 +117,7 @@ def test_markdown_diff_blocks_pass_the_pages_own_sanitizer(tmp_path: Path) -> No
     )
 
     require_node()
-    snapshot = Snapshot(7, "a" * 40, "b" * 40, "0123456789abcdef", "head")
+    snapshot = Snapshot(7, "a" * 40, "b" * 40, "0123456789abcdef")
     source = GitPath((b"docs", b"guide.md"))
     links = json.loads(
         (REPO_ROOT / "tests/fixtures/inert-html-hostile-links.json").read_text(encoding="utf-8")
@@ -147,12 +147,17 @@ def test_markdown_diff_blocks_pass_the_pages_own_sanitizer(tmp_path: Path) -> No
         for index, block in enumerate(projected["blocks"])
     ]
     cases[1]["expect"] = {
-        "contains": ["/api/plugin/github/pull-snapshot?", "#user-content-", "https://example.org/x"]
+        "contains": ['href="/view/g1-', "#user-content-", "https://example.org/x"]
     }
-    cases[2]["expect"] = {"contains": ["mode=image"]}
-    snapshot_image = cases[2]["html"]
-    assert isinstance(snapshot_image, str)
-    wrong_mode = snapshot_image.split('src="', 1)[1].split('"', 1)[0].replace("&amp;mode=image", "")
+    cases[2]["expect"] = {"contains": ["/api/plugin/github/pull-image?"]}
+    image = cases[2]["html"]
+    assert isinstance(image, str)
+    # The image route with a name it never takes beside its path.
+    wrong_mode = (
+        image.split('src="', 1)[1]
+        .split('"', 1)[0]
+        .replace("&amp;path=", "&amp;side=head&amp;path=")
+    )
     extra: list[dict[str, object]] = [
         {
             "name": "local and same-origin targets the server never sends",
@@ -164,9 +169,9 @@ def test_markdown_diff_blocks_pass_the_pages_own_sanitizer(tmp_path: Path) -> No
             "expect": {"lacks": ['href="/api/tree"', "127.0.0.1:8123", "../x.md", "t.gif", "src="]},
         },
         {
-            "name": "a forged snapshot marker",
-            "html": '<p><a href="mb-snapshot-target-0">forged</a></p>',
-            "expect": {"lacks": ["mb-snapshot-target"], "contains": ["<a>forged</a>"]},
+            "name": "a forged target marker",
+            "html": '<p><a href="mb-markdown-target-0">forged</a></p>',
+            "expect": {"lacks": ["mb-markdown-target"], "contains": ["<a>forged</a>"]},
         },
         {
             "name": "attributes the allowlist drops",
@@ -185,10 +190,10 @@ def test_markdown_diff_blocks_pass_the_pages_own_sanitizer(tmp_path: Path) -> No
         html = case["html"]
         assert isinstance(html, str)
         case["tree"] = html_tree(html)
-    from metabrowser.builtin_plugins.github.pull_route import snapshot_route
+    from metabrowser.builtin_plugins.github.pull_route import image_route
 
     recorded = tmp_path / "cases.json"
-    route = snapshot_route(snapshot.number, snapshot.base, snapshot.head, store=snapshot.store)
+    route = image_route(snapshot.number, snapshot.base, snapshot.head, store=snapshot.store)
     recorded.write_text(json.dumps({"route": route, "cases": cases}), encoding="utf-8")
     result = subprocess.run(
         ["node", str(DOM_DIR / "diff-markdown-sanitize-session.js"), str(REPO_ROOT), str(recorded)],

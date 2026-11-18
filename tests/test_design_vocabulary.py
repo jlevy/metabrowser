@@ -343,7 +343,6 @@ def _baseline_rows() -> list[tuple[str, str, _El]]:
                 text("file-header-path folder-breadcrumb", el("folder-crumb folder-crumb-current")),
                 box("file-header-badge-slot", el("file-header-badge badge-live")),
                 text("size file-header-size"),
-                box("icon-btn file-header-icon file-header-print"),
             ),
         ),
         (
@@ -394,9 +393,9 @@ def _baseline_rows() -> list[tuple[str, str, _El]]:
     bar = el(
         "diff-file-bar",
         toggle,
-        # View file controls: boxes at the path's size, which centering puts on its baseline.
-        box("diff-file-view diff-file-view-base"),
-        box("diff-file-view diff-file-view-head"),
+        # The View file or View on branch control: a box at the path's size, which centering
+        # puts on its baseline.
+        box("diff-file-view"),
         box("icon-btn icon-btn-reveal diff-file-copy"),
     )
     el("content-body metabrowser-diff-host", el("diff-file", bar))
@@ -465,11 +464,18 @@ def test_row_text_shares_one_baseline() -> None:
         "the header path no longer fills the header, so its text rides to the top"
     )
     # The diff bar's View file controls are centered boxes beside the toggle, so they
-    # land on the path's baseline only at the path's own size.
-    for selector in (".diff-file-path", ".diff-file-view"):
-        assert "font-size: var(--nav-font-size);" in _rule(
+    # land on the path's baseline only at the path's own size: the toggle's, which its
+    # path inherits, and the view's, both the main view's body size.
+    for selector in (".diff-file-toggle", ".diff-file-view"):
+        assert "font-size: var(--body-font-size);" in _rule(
             diff_css, f".metabrowser-diff-host {selector}"
         ), f"{selector} left the diff bar's one text size"
+    assert "font-size" not in _rule(diff_css, ".metabrowser-diff-host .diff-file-path")
+    # And at the toggle's line height, a button's `normal`: at the bar's 1.5, which a link
+    # inherits, the link form sat 0.5 px above the path's baseline in Chrome and the button
+    # form on it (Design Rule Measurements, "Row Baselines").
+    assert "line-height: normal;" in _rule(diff_css, ".metabrowser-diff-host .diff-file-view")
+    assert "line-height" not in _rule(diff_css, ".metabrowser-diff-host .diff-file-toggle")
 
 
 def test_disclosure_motion_is_one_recipe_everywhere() -> None:
@@ -685,8 +691,21 @@ def test_age_is_one_primitive_everywhere() -> None:
     tiers = _rule(
         styles, ":is(.age-live, .age-sec, .age-min, .age-hr, .age-day, .age-wk, .age-old)"
     )
-    for declaration in ("color:", "font-weight:", "font-size:", "font-variant-numeric:"):
+    for declaration in ("color:", "font-weight:", "font-variant-numeric:"):
         assert declaration in tiers, f"the age primitive lost {declaration}"
+    # An age is secondary metadata, which reads at the size of the text it sits in
+    # ("Type Scale"; mb-ctlu): the primitive sets no size, and no rule sets one on an age.
+    assert "font-size" not in tiers, "an age takes the size of the text it sits in"
+    # The classes an age's own element carries: the primitive's tiers and each call site's.
+    age_selector = re.compile(
+        r"\.(age-(live|sec|min|hr|day|wk|old)|tree-item-age|git-graph-age|git-commit-age"
+        r"|git-history-summary-age|github-pulls?-age)(?![\w-])"
+    )
+    for sheet in _stylesheets():
+        for selector, declarations in _rules_of(sheet):
+            assert not (age_selector.search(selector) and "font-size" in declarations), (
+                f"{sheet.name}: {selector} sizes an age"
+            )
     # A call site that restates color or weight has forked the vocabulary.
     graph_age = _rule(styles, ".git-graph-age")
     assert "color:" not in graph_age and "font-weight:" not in graph_age, (
@@ -1015,9 +1034,11 @@ def test_each_context_assigns_its_chip_kind() -> None:
 
     "Which Kind Each Context Gets" in the design system: a history row, a commit's summary,
     and its tooltip draw the wire's kind with the server's trunk and HEAD; a merge's two
-    branches are remote and never trunk or HEAD; the ref selector draws a branch as remote
-    and a tag as a tag, and never trunk, since the mirror's default is not the history's
-    trunk. `tests/test_git_api.py` holds that the detail and the refs listing carry the
+    branches are remote and never trunk or HEAD; the ref selector draws a mirror's branch
+    as remote, a checkout's own as local and its remote-tracking branch as remote, and a
+    tag as a tag, and never trunk or HEAD: the mirror's default is not the history's
+    trunk, and it says "default" and "checked out" in words.
+    `tests/test_git_api.py` holds that the detail and the refs listing carry the
     refs and trunk the history row does.
     """
     doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
@@ -1057,18 +1078,26 @@ def test_each_context_assigns_its_chip_kind() -> None:
         options = calls[0].rsplit("{", 1)[1]
         assert 'kind: "remote"' in options, f"{name}'s branches are remote"
         assert not re.search(r"\b(?:trunk|head):", calls[0]), f"{name} marks trunk or HEAD"
-    # The ref selector: a branch is remote and a tag a tag, on the button and in the list,
-    # and neither is trunk or HEAD; the list says "default" in words.
+    # The ref selector: a tag is a tag, and a branch is remote but for a checkout's own,
+    # which is local, on the button and in the list. Neither is trunk or HEAD; the list
+    # says "default", and "checked out" for a checkout's HEAD, in words.
     selector = (STATIC / "source-ref-selector.js").read_text(encoding="utf-8")
     chips = re.findall(r"metabrowser\.refChip\((.*?)\}\)", selector, re.S)
     assert len(chips) == 2, "the selector draws a chip on its button and on each row"
     for chip in chips:
-        assert re.search(
-            r'kind: (?:model\.selectedRef\.kind|model\.kind === "tag" \? "tag" : "remote"),', chip
-        )
+        assert re.search(r"kind: (?:model\.selectedRef\.kind|row\.chip),", chip)
         assert not re.search(r"\b(?:trunk|head):", chip), "the selector marks trunk or HEAD"
-    assert 'kind: label.kind === "Tag" ? "tag" : "remote",' in selector
-    assert 'badge.textContent = "default";' in selector
+    squeezed = re.sub(r"\s+", " ", selector)
+    # A list's rows, by the list shown, and the button, by what the page shows.
+    assert (
+        'state.kind === "tag" ? "tag" : state.kind === "branch" && checkout ? "local" : "remote";'
+        in squeezed
+    )
+    assert (
+        'label.kind === "Tag" ? "tag" : label.kind === "Branch" && checkout ? "local" : "remote",'
+        in squeezed
+    )
+    assert 'badge.textContent = row.default ? "default" : "checked out";' in selector
     # Trunk has one definition, on the server, and every answer that names a ref uses it.
     log = (REPO_ROOT / "src/metabrowser/git/log.py").read_text(encoding="utf-8")
     assert log.count('is_trunk_ref(ref["name"], ref["kind"])') == 2, "decoration and refs"
@@ -1141,9 +1170,7 @@ def test_git_commit_summary_is_one_component() -> None:
     summary_sha = _rule(styles, ".git-commit-sha")
     compact_subject = _rule(styles, ".git-commit-summary-compact .git-commit-subject")
     compact_meta = _rule(styles, ".git-commit-summary-compact .git-commit-meta")
-    summary_age = _rule(styles, ".git-commit-summary .git-commit-age")
     summary_body = _rule(styles, ".git-commit-body")
-    summary_lines = _rule(styles, ".git-commit-summary :is(.git-stat-add, .git-stat-del)")
     assert "max-width:" in compact
     assert "line-clamp:" in compact_subject
     assert "display: flex" in change_line
@@ -1159,12 +1186,9 @@ def test_git_commit_summary_is_one_component() -> None:
         meta,
         compact_subject,
         compact_meta,
-        summary_age,
-        summary_lines,
     ):
         assert "font-size: var(--body-font-size)" in rule
         assert "font-size: var(--ui-small-font-size)" not in rule
-        assert "font-size: var(--tooltip-detail-font-size)" not in rule
     # Its ref chips take their size from this text, by the chip ratio, and no rule here
     # sizes them: test_branch_chips_scale_with_their_text.
     assert ".git-commit-summary .git-ref" not in styles
@@ -1214,18 +1238,17 @@ def test_page_headers_set_every_line_under_the_title_at_the_body_size() -> None:
         "gap": "6px",
     }
     assert shell[".page-header-line"]["font-size"] == "var(--body-font-size)"
-    ages = (
-        ".page-header-line :is(.age-live, .age-sec, .age-min, .age-hr, .age-day, .age-wk, .age-old)"
-    )
-    assert shell[ages] == {"font-size": "var(--body-font-size)"}
+    # An age in a line takes the line's size because the age primitive sets none
+    # (test_age_is_one_primitive_everywhere), so no rule restates it here.
+    assert not any(":is(.age-live" in selector for selector in shell if ".page-header" in selector)
     diff = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "diff/styles.css"))
     assert diff[".metabrowser-diff-host .diff-summary"]["font-size"] == "var(--body-font-size)"
     github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
     assert github[".github-pull-summary-pending"]["font-size"] == "var(--body-font-size)"
-    # The rows of ages' quiet text is muted at its line's size, not the page's small quiet.
-    assert github[".github-pull-opened > .github-pull-quiet"]["font-size"] == (
-        "var(--body-font-size)"
-    )
+    # The rows of ages' quiet text is muted at its line's size, the body's, as quiet text is
+    # everywhere on the page (mb-ctlu), so the row restates no size.
+    assert github[".github-pull-quiet"]["font-size"] == "var(--body-font-size)"
+    assert "font-size" not in github[".github-pull-opened > .github-pull-quiet"]
     line = re.compile(r"\.(" + "|".join(_PAGE_HEADER_LINES) + r")(?![\w-])")
     for sheet in _stylesheets():
         for selector, declarations in _rules_of(sheet):
@@ -1356,9 +1379,11 @@ def test_one_document_surface_has_one_set_of_breakpoints() -> None:
     readme = (REPO_ROOT / "src/metabrowser/builtin_plugins/folder/readme-panel.js").read_text(
         encoding="utf-8"
     )
-    assert 'includeToc: "off"' in readme
+    assert "includeToc" not in readme
     doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
     assert "Overview renders the README at the same measure" in doc
+    # A README with a table of contents takes the column, as the opened file does.
+    assert ".kpress-doc-layout > .kpress-toc) {\n    width: 100%;" in folder
 
 
 # ── Tabs, type sizes, toggles, and reading width ───────────────────
@@ -1489,10 +1514,31 @@ _FONT_SIZE_EXEMPT: dict[tuple[str, str], str] = {
     ("styles.css", ".md-body:not(.metabrowser-kpress-host) h3"): "relative fallback heading",
     ("styles.css", ".md-body:not(.metabrowser-kpress-host) h4"): "relative fallback heading",
     ("styles.css", ".md-body:not(.metabrowser-kpress-host) .checkbox"): "relative to its text",
-    # One step below the structured view's mono, in em so it follows that view's size.
-    ("structured/styles.css", ".tok-meta"): "relative to the row it annotates",
+    # A treemap cell's label and value are sized from the cell's area, set on each cell inline
+    # by treemap.js; the stylesheet's defaults are the small size.
+    ("folder/styles.css", ".tm-cell-label"): "a cell's size, from its area",
+    ("folder/styles.css", ".tm-cell-sub"): "a cell's size, from its area",
 }
-_TYPE_SCALE_VALUE = re.compile(r"var\(--[a-z0-9-]+\)")
+# The ramp's tokens, and the role tokens that name one of them ("Type Scale"). A font size is
+# one of these, so a size is a decision about a role, not a variable a stylesheet invents.
+_TYPE_SCALE_TOKENS = frozenset(
+    {
+        "--page-title-font-size",
+        "--document-body-font-size",
+        "--body-font-size",
+        "--tooltip-font-size",
+        "--nav-font-size",
+        "--ui-small-font-size",
+        "--kbd-font-size",
+        "--label-font-size",
+        "--mono-block-font-size",
+        "--git-ref-font-size",
+        "--micro-font-size",
+    }
+)
+_TYPE_SCALE_VALUE = re.compile(
+    r"var\((" + "|".join(sorted(_TYPE_SCALE_TOKENS, key=len, reverse=True)) + r")\)"
+)
 
 
 def _sheet_name(sheet: Path) -> str:
@@ -1503,6 +1549,9 @@ def _sheet_name(sheet: Path) -> str:
 
 def test_font_sizes_come_from_the_type_scale() -> None:
     """No literal font size at a use site, as "Type Scale" says, or a reason named above.
+
+    And no size outside the ramp: a `var()` names one of its tokens, never a variable of its
+    own that a stylesheet sets to whatever it likes.
 
     A plugin's stylesheet is held to it too: it consumes the host's tokens, so a change to
     the ramp reaches it. `font` shorthands count, since they set a size just the same.
@@ -1521,6 +1570,145 @@ def test_font_sizes_come_from_the_type_scale() -> None:
             if re.search(r"\d(?:px|em|rem|pt|%)", shorthand):
                 offenders.append(f"{name}: {selector} sets font: {shorthand}")
     assert not offenders, "\n  ".join(["literal font sizes:", *offenders])
+
+
+# Who may set the small size, and why ("Type Scale"; mb-ctlu). The small size is the controls':
+# chips, badges, buttons, filters, and menus. Secondary metadata, an age, a size, a count, a
+# fetch or update time, a row's second line, a note, has no size of its own: it reads at the
+# size of the text it accompanies. It was the small size on a dozen surfaces, a step under the
+# 13 px rows and 14 px lines beside it, and the owner found an update time at three sizes on
+# one screen. A rule that reaches for the small size is a control named here, or it is
+# metadata at the wrong size.
+_SMALL_SIZE_ROLES: dict[tuple[str, str], str] = {
+    ("styles.css", ".app-header"): "the navigation header's controls; its path sets its own",
+    ("styles.css", ".btn"): "a button",
+    ("styles.css", ".parent-nav-arrow"): "a button's glyph",
+    ("styles.css", ".fold-expander"): "a control row (Fold Expanders)",
+    ("styles.css", ".menu-item"): "a menu",
+    ("styles.css", ".menu-version"): "a menu's line",
+    ("styles.css", ".menu-select"): "a menu's control",
+    ("styles.css", ".menu-row"): "a menu's line",
+    ("styles.css", ".menu-number"): "a menu's control",
+    ("styles.css", ".source-ref-selector"): "a chip and its menu",
+    ("styles.css", ".chip"): "a chip",
+    ("styles.css", ".chip-menu-count"): "a chip menu's count",
+    ("styles.css", ".filter-check"): "a filter",
+    ("styles.css", ".chip-clear"): "a chip's control",
+    ("styles.css", ".file-header-badge"): "a badge",
+    ("styles.css", ".tree-container-badge"): "a tree row's leading letter, its slot's glyph",
+    ("agent_log/styles.css", ".log-event-kind"): "a badge",
+    (
+        "diff/styles.css",
+        ".metabrowser-diff-host .diff-markdown details.diff-markdown-context > summary",
+    ): "a fold's control",
+    ("github/styles.css", ".github-pull-labels"): "a row of label chips",
+    ("github/styles.css", ".github-pull-label"): "a label chip",
+    ("github/styles.css", ".github-pull-stacks"): "the stack chip's slot",
+    ("html/styles.css", ".metabrowser-html-host .file-html-preview-open"): "a control",
+}
+# Who may set the micro size, a step under the controls': a mark, never running text.
+_MICRO_SIZE_ROLES: dict[tuple[str, str], str] = {
+    ("styles.css", ".chip-badge"): "a chip's count badge, a filled mark inside the chip",
+    ("github/styles.css", ".github-pull-stack-dot"): "the dot between a stack's badges",
+}
+# The role tokens that are the small size, each a role of its own.
+_SMALL_SIZE_TOKENS = frozenset({"--kbd-font-size", "--label-font-size", "--mono-block-font-size"})
+# Metadata whose container sets the size it reads at, so it sets none and inherits it, and the
+# parts of a line whose box sets the line's size (a Pulls row's number and place). A size
+# restated here is a second place to change when the text beside it moves: the file header
+# took four edits to follow the body size where it now takes none. A rule left off this list
+# is not checked.
+_INHERITED_METADATA: tuple[tuple[str, str], ...] = (
+    ("styles.css", ".notice"),
+    ("styles.css", ".tip-detail"),
+    ("styles.css", ".tree-item-size"),
+    ("styles.css", ".tree-item-age-inline"),
+    ("styles.css", ".tree-item.tree-page-more"),
+    ("styles.css", ".tree-lazy-placeholder"),
+    ("styles.css", ".tree-empty-note"),
+    ("styles.css", ".recent-empty"),
+    ("styles.css", ".source-freshness"),
+    ("styles.css", ".index-progress"),
+    ("styles.css", ".changed-file-stats"),
+    ("styles.css", ".git-graph-meta"),
+    ("styles.css", ".git-graph-more"),
+    ("styles.css", ".git-history-page-placeholder"),
+    ("styles.css", ".git-panel-empty"),
+    ("styles.css", ".git-commit-files-summary"),
+    ("styles.css", ".git-stat-add"),
+    ("styles.css", ".git-stat-del"),
+    ("styles.css", ".git-stat-binary"),
+    ("styles.css", ".file-header-path"),
+    ("styles.css", ".file-header-mirror"),
+    ("styles.css", ".file-header-size"),
+    ("styles.css", ".folder-header-count"),
+    ("styles.css", ".folder-header-age"),
+    ("diff/styles.css", ".metabrowser-diff-host .diff-file-path"),
+    ("diff/styles.css", ".metabrowser-diff-host .diff-file-note"),
+    ("github/styles.css", ".github-pulls-by"),
+    ("github/styles.css", ".github-pulls-number"),
+    ("github/styles.css", ".github-pulls-place"),
+    ("github/styles.css", ".github-pulls-empty"),
+    ("github/styles.css", ".github-pulls-foot"),
+    ("github/styles.css", ".github-pull-files-line"),
+    ("github/styles.css", ".github-pull-files-offer-floating"),
+    ("structured/styles.css", ".tok-meta"),
+)
+
+
+def test_secondary_metadata_reads_at_its_texts_size() -> None:
+    """The small size is the controls', and metadata takes its text's size ("Type Scale").
+
+    The navigation column sets the list size once, so a primitive it shares with the main view
+    takes it there; metadata whose container sets its size sets none; the hint strips take the
+    keycaps' token. `tests/dom/type-scale-chrome.mjs` reads the computed sizes in Chrome.
+    """
+
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    assert "test_secondary_metadata_reads_at_its_texts_size" in doc
+    offenders: list[str] = []
+    rules: dict[tuple[str, str], list[dict[str, str]]] = {}
+    for sheet in _stylesheets():
+        name = _sheet_name(sheet)
+        for selector, declarations in _rules_of(sheet):
+            rules.setdefault((name, selector), []).append(declarations)
+            size = declarations.get("font-size")
+            if size == "var(--ui-small-font-size)" and (name, selector) not in _SMALL_SIZE_ROLES:
+                offenders.append(f"{name}: {selector} sets the small size")
+            if size == "var(--micro-font-size)" and (name, selector) not in _MICRO_SIZE_ROLES:
+                offenders.append(f"{name}: {selector} sets the micro size")
+    assert not offenders, "\n  ".join(["sizes outside their roles:", *offenders])
+    for key in _INHERITED_METADATA:
+        assert key in rules, f"{key} is gone; update _INHERITED_METADATA"
+        assert all("font-size" not in rule for rule in rules[key]), f"{key} restates its size"
+    for key in (*_SMALL_SIZE_ROLES, *_MICRO_SIZE_ROLES):
+        assert key in rules, f"{key} is gone; update its role list"
+    shell = _rules_of(STATIC / "styles.css")
+    root = {
+        name: value
+        for selector, declarations in shell
+        if selector == ":root"
+        for name, value in declarations.items()
+    }
+    tokens = {
+        name
+        for name, value in root.items()
+        if value == "var(--ui-small-font-size)" and name.endswith("-font-size")
+    }
+    assert tokens == _SMALL_SIZE_TOKENS, tokens
+    assert "--tooltip-detail-font-size" not in root, "a tooltip's detail inherits its size"
+
+    def sizes(selector: str) -> list[str | None]:
+        return [rule.get("font-size") for named, rule in shell if named == selector]
+
+    assert "var(--nav-font-size)" in sizes(".tree-pane"), "the column sets its size once"
+    # A hint strip labels keys, so it reads at the keycaps' token and moves with them.
+    for strip in (".nav-shortcut-hints", ".search-palette-hint"):
+        assert "var(--kbd-font-size)" in sizes(strip), strip
+    # A commit's files outside the served folder are path rows in the main view, so they
+    # read at the body size, as a file's header and a diff file bar do; their summary line
+    # and line counts inherit it (_INHERITED_METADATA). No Chrome fixture draws them.
+    assert set(sizes(".git-commit-file")) - {None} == {"var(--body-font-size)"}
 
 
 def test_a_pill_is_the_pill_token_and_means_a_filter() -> None:
@@ -1797,7 +1985,7 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
     ),
     "diff/diff-markdown.js": ('summary.className = "disclosure-toggle"',),
     "github/pulls-panel.js": (
-        '"github-pulls-row disclosure-toggle collapsed"',
+        '"github-pulls-change disclosure-toggle collapsed"',
         '"github-pulls-row github-pulls-stack-row disclosure-toggle"',
     ),
     "github/pull-files-view.js": ('"changed-file-row github-pull-folder-row disclosure-toggle"',),
@@ -1851,7 +2039,7 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
         ('createElement("summary")', 'summary.className = "disclosure-toggle"'),
     ),
     "github/pulls-panel.js": (
-        ("[chevron()]", '"github-pulls-row disclosure-toggle collapsed"'),
+        ("[chevron()]", '"github-pulls-change disclosure-toggle collapsed"'),
         ("[chevron()]", '"github-pulls-row github-pulls-stack-row disclosure-toggle"'),
     ),
     "github/pull-files-view.js": (
@@ -2476,6 +2664,8 @@ def test_count_summaries_mute_their_punctuation_and_ink_their_status_counts() ->
         "builtin_plugins/github/pull-page.js",
         "builtin_plugins/github/pulls-panel.js",
         "builtin_plugins/github/stack-lines.js",
+        "builtin_plugins/github/row-lines.js",
+        "builtin_plugins/github/change-lines.js",
     ):
         source = (REPO_ROOT / "src/metabrowser" / path).read_text(encoding="utf-8")
         assert _PAINTED_CLASSES.findall(source) == [], path
@@ -2573,7 +2763,8 @@ def test_merges_read_source_to_target_in_one_notation() -> None:
     meta = github[".github-pulls-meta"]
     assert (meta["min-width"], meta["overflow"], meta["height"]) == ("0", "clip", "1lh")
     assert meta["font-size"] == "var(--nav-font-size)", "1lh is the number's line"
-    assert github[".github-pulls-by"]["font-size"] == "var(--ui-small-font-size)"
+    # The author is the number's line's secondary metadata, at its size, which it inherits.
+    assert "font-size" not in github[".github-pulls-by"]
     assert "text-overflow" not in meta
     line = github[".github-pulls-line"]
     assert (line["display"], line["flex-wrap"], line["white-space"]) == ("flex", "wrap", "pre")
@@ -2723,7 +2914,7 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     # The author, action, and relative age share one prose size and baseline.
     assert github[".github-pull-card-head"]["font-size"] == "var(--body-font-size)"
     age = github[".github-pull-card-head .github-pull-age"]
-    assert (age["font-size"], age["line-height"]) == ("var(--body-font-size)", "inherit")
+    assert age == {"line-height": "inherit"}, "an age takes its line's size from the primitive"
     assert ".github-pull-card-head .github-pull-author" not in github
     identity = shell[".actor-identity"]
     assert (identity["align-items"], identity["vertical-align"]) == ("baseline", "baseline")
@@ -2831,6 +3022,59 @@ def test_refreshing_text_breathes_on_the_compositor_and_keeps_its_contrast() -> 
             f"a muted line at rest reads {resting:.2f}:1, not muted's, in the {theme} theme"
         )
         assert rest < lift <= 1, "a muted line lifts toward primary ink, never below its rest"
+
+
+def _oklab(value: str) -> tuple[float, float, float]:
+    lightness, chroma, hue = _oklch_channels(value)
+    return (
+        lightness,
+        chroma * math.cos(math.radians(hue)),
+        chroma * math.sin(math.radians(hue)),
+    )
+
+
+def _oklab_luminance(lightness: float, a: float, b: float) -> float:
+    """WCAG relative luminance of an OKLab color, clipped to sRGB as a browser paints it."""
+
+    chroma = math.hypot(a, b)
+    hue = math.degrees(math.atan2(b, a)) % 360
+    return _relative_luminance(lightness, chroma, hue)
+
+
+def test_a_hovered_legend_entrys_ink_reads_for_every_family() -> None:
+    """A hovered family's legend name keeps 4.5:1 for every registered family, on both pages.
+
+    While the hover marks a File Overview legend entry, its name is drawn in its family's
+    ink: the family's color mixed in OKLab with `--text`, `--mb-distribution-ink-share` of it
+    the family's ("Aggregate Distributions"). A family's own color can read 2.3:1 on the
+    light page, so the share is what makes the name text. Every family the registry declares
+    is checked, at the color the server resolves for each theme, on `--bg`, which the legend
+    sits on. tests/test_overview_legend_hover_chrome.py reads one family's ink as Chrome
+    computes it.
+    """
+
+    from metabrowser.file_type_filters import serialize_distribution_colors
+
+    rules = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "folder/file_type_summary.css"))
+    label = ".file-type-summary-legend-item[data-hovered] .file-type-summary-legend-label"
+    assert " ".join(rules[label]["color"].split()) == (
+        "color-mix( in oklab, var(--mb-distribution-color) var(--mb-distribution-ink-share),"
+        " var(--text) )"
+    )
+    light_block, dark_block = _theme_blocks()
+    share = float(_declared(light_block, "--mb-distribution-ink-share").removesuffix("%")) / 100
+    colors = serialize_distribution_colors()
+    assert colors
+    for theme, block in (("light", light_block), ("dark", dark_block)):
+        text = _oklab(_declared(block, "--text"))
+        ground = _relative_luminance(*_oklch_channels(_declared(block, "--bg")))
+        for family in colors:
+            mixed = [
+                share * own + (1 - share) * ink
+                for own, ink in zip(_oklab(family[theme]), text, strict=True)
+            ]
+            ratio = _ratio(_oklab_luminance(*mixed), ground)
+            assert ratio >= 4.5, f"{family['key']} reads {ratio:.2f}:1 on the {theme} page"
 
 
 def test_only_the_group_by_wait_dims_shown_content_and_never_twice() -> None:
@@ -3180,6 +3424,20 @@ def test_file_status_ink_is_shared_and_legible() -> None:
             # (mb-8iwn).
             for ground in ("--bg", "--sidebar-bg", "--hover-bg", "--viz-surface-raised"):
                 assert _contrast(color, _declared(block, ground)) >= 4.5, (role, ground)
+    # The current row's ground, a translucent tint, under a Pulls row's change line and its
+    # file rows and the Files tree's current row: `--highlight-bg` over the ground it tints.
+    # Over `--sidebar-bg` it is the modified ink's lowest in the light theme, 4.57:1 (A5 of
+    # review A on #506).
+    for theme, tokens in _theme_tokens().items():
+        mix = _MIX_OVER_TRANSPARENT.fullmatch(_resolved(tokens, "--highlight-bg"))
+        assert mix is not None, theme
+        tint = _srgb(_resolved(tokens, mix["token"]))
+        for role in ("added", "deleted", "modified", "renamed"):
+            ink = _srgb_luminance(_srgb(_resolved(tokens, f"--git-status-{role}")))
+            for under in ("--bg", "--sidebar-bg"):
+                ground = _over(tint, _srgb(_resolved(tokens, under)), float(mix["percent"]) / 100)
+                ratio = _ratio(ink, _srgb_luminance(ground))
+                assert ratio >= 4.5, (theme, role, under, round(ratio, 2))
     for relative in (
         "static/git-panel.js",
         "builtin_plugins/diff/diff-view.js",

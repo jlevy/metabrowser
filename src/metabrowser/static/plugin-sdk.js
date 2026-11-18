@@ -404,8 +404,8 @@
     _loadMoreActions.set(name, action);
   }
 
-  // The document-wide delegates below (copy, Load more, and the shell's print and
-  // address controls) act only on an element application or plugin code created.
+  // The document-wide delegates below (copy, Load more, and the shell's address
+  // controls) act only on an element application or plugin code created.
   // No static marker can say so: a trusted folder's Markdown keeps class, id, and
   // data-* through KPress, so it could spell any attribute this code writes and turn
   // a click into a clipboard write or an application action. This value is drawn when
@@ -429,6 +429,14 @@
     return ` data-mb-owner="${_delegateOwner}"`;
   }
 
+  // The elements `ownDelegate` marked, by identity. The owner value is a string a
+  // trusted document's stylesheet can read and a document fetched later can then carry
+  // (docs/project/architecture/arch-server-and-content.md), so where a check need not
+  // admit markup page code wrote as text, as the tooltip inside a rendered document
+  // does not, it asks for the element itself (`ownsElement`).
+  /** @type {WeakSet<Element>} */
+  const _ownedElements = new WeakSet();
+
   /**
    * Mark an element page code created as a delegated control.
    * @template {Element} T
@@ -437,7 +445,16 @@
    */
   function ownDelegate(element) {
     element.setAttribute("data-mb-owner", _delegateOwner);
+    _ownedElements.add(element);
     return element;
+  }
+
+  /**
+   * Whether *element* is one `ownDelegate` marked: the element, not a copy of its mark.
+   * @param {Element | null | undefined} element
+   */
+  function ownsElement(element) {
+    return !!element && _ownedElements.has(element);
   }
 
   /** @param {Element | null | undefined} element */
@@ -454,6 +471,7 @@
     configureAssets,
     isOwnedDelegate,
     loadPluginsForKind,
+    ownsElement,
     registerLoadMoreAction,
     shortcutQueue: _shortcutQueue,
   });
@@ -1346,13 +1364,15 @@
   // Wire KPress's TOC for a freshly mounted document and return its disposer.
   // KPress's toc.js owns the behavior; the host's only jobs are to mark a scroll
   // element [data-kpress-viewport] (the preview pane) and call this on mount /
-  // dispose on unmount. Returns null if toc.js has not loaded yet.
-  function kpressInitToc(container) {
+  // dispose on unmount. Returns null if toc.js has not loaded yet. *config* is
+  // KPress's own per-binding configuration, such as the toggle's `visible` policy
+  // the Markdown plugin supplies (builtin_plugins/markdown/toc-toggle.js).
+  function kpressInitToc(container, config) {
     if (typeof _kpressInitTocFn !== "function" || !container) {
       return null;
     }
     try {
-      return _kpressInitTocFn(container);
+      return _kpressInitTocFn(container, config);
     } catch (err) {
       if (global.console?.warn) {
         global.console.warn("metabrowser: kpress toc init failed", err);

@@ -22,15 +22,17 @@ import subprocess
 import threading
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from dataclasses import fields
 from pathlib import Path
 from typing import Any
 
 import pytest
 from httpx2 import ASGITransport, AsyncClient
 
-from metabrowser import jsonl_view, kpress_adapter
+from metabrowser import frontmatter_yaml, jsonl_view, kpress_adapter
 from metabrowser.capabilities import Capabilities, set_capabilities
 from metabrowser.diff.format import validate_document
+from metabrowser.diff.markdown_projection_worker import InertRender, ProjectionWorker
 from metabrowser.git.content_routes import split_git_container_wire
 from metabrowser.git.process import repository_store_target
 from metabrowser.git.tree_source import (
@@ -50,6 +52,15 @@ from metabrowser.source import MAX_CONTAINER_INNER_DEPTH, attach_subject, reset_
 from metabrowser.wire_models import validate_rollup_node
 from tests.git_pin_harness import fast_import_store
 from tests.required_tools import needs_git
+from tests.test_frontmatter_bounds import (
+    CONSTRUCTOR_FAILURES,
+    NON_JSON_SAFE,
+    OVER_BUDGET,
+    OVER_BUDGET_SHAPES,
+    SURROGATES,
+    forbid_ruamel_collections,
+    merge_bomb,
+)
 
 pytestmark = needs_git
 
@@ -470,18 +481,30 @@ def test_git_tree_matches_logical_extensions_not_name_suffix(tmp_path: Path) -> 
     asyncio.run(_run())
 
 
+def _capture_pin_renders(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    """The fields of the last render a pin asked the Markdown child for.
+
+    A pin always runs under the untrusted profile (``capabilities.capabilities_for``),
+    so its document renders in the child (``InertRender``), never through
+    ``kpress_adapter.render_kpress_view`` in the server.
+    """
+
+    seen: dict[str, Any] = {}
+    original = ProjectionWorker.render_inert
+
+    async def _capture(worker: ProjectionWorker, request: InertRender) -> dict[str, Any]:
+        seen.update({field.name: getattr(request, field.name) for field in fields(request)})
+        return await original(worker, request)
+
+    monkeypatch.setattr(ProjectionWorker, "render_inert", _capture)
+    return seen
+
+
 def test_git_kpress_render_honors_gitpath_without_mtime(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     store, commit = _build_store(tmp_path)
-    seen: dict[str, Any] = {}
-    original = kpress_adapter.render_kpress_view
-
-    def _capture(**kwargs: Any) -> Any:
-        seen.update(kwargs)
-        return original(**kwargs)
-
-    monkeypatch.setattr(kpress_adapter, "render_kpress_view", _capture)
+    seen = _capture_pin_renders(monkeypatch)
 
     async def _run() -> None:
         async with _pinned_client(store, commit) as (client, _subject):
@@ -541,14 +564,7 @@ def test_git_file_and_kpress_surface_markdown_frontmatter(
     _git(work, "commit", "-qm", "frontmatter")
     commit = _git(work, "rev-parse", "HEAD").decode().strip()
     _git(tmp_path, "clone", "--bare", "--template=", str(work), str(store), env_root=tmp_path)
-    seen: dict[str, Any] = {}
-    original = kpress_adapter.render_kpress_view
-
-    def _capture(**kwargs: Any) -> Any:
-        seen.update(kwargs)
-        return original(**kwargs)
-
-    monkeypatch.setattr(kpress_adapter, "render_kpress_view", _capture)
+    seen = _capture_pin_renders(monkeypatch)
 
     async def _run() -> None:
         async with _pinned_client(store, commit) as (client, _subject):
@@ -590,6 +606,156 @@ def test_git_file_and_kpress_surface_markdown_frontmatter(
             assert seen["frontmatter_error"]
 
     asyncio.run(_run())
+
+
+BOMBS_ON_A_PIN = ("alias-12", "merge-12", "duplicate-key-12")
+
+
+def test_git_pin_answers_a_frontmatter_alias_bomb_as_text_parsed_off_the_loop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pinned page shares the bounded loader (``tests/test_frontmatter_bounds.py``).
+
+    Twelve levels of aliases, of merge keys, and of aliases under a duplicated key are
+    9**12 values written out, and none is built; no YAML constructor builds a
+    collection on this page at all. The file, its KPress render, and a request beside
+    them all answer; the parse runs on a worker thread, the tags JSON has no type for
+    arrive as JSON-safe values, a scalar or tag the loader does not read is a reason
+    rather than a server error, and a `.yaml` blob's prefix predicate refuses a merge
+    bomb too.
+    """
+
+    work = tmp_path / "work"
+    store = tmp_path / "store.git"
+    work.mkdir()
+    _git(work, "init", "-q", "-b", "main")
+    for shape in BOMBS_ON_A_PIN:
+        (work / f"{shape}.md").write_text(
+            f"---\n{OVER_BUDGET_SHAPES[shape]}---\n\n# Body\n", encoding="utf-8"
+        )
+    (work / "odd.md").write_text(f"---\n{NON_JSON_SAFE}---\nbody\n", encoding="utf-8")
+    (work / "plain.md").write_text("---\ntitle: Plain\n---\nbody\n", encoding="utf-8")
+    for case, (text, _raised) in CONSTRUCTOR_FAILURES.items():
+        (work / f"fails-{case}.md").write_text(f"---\n{text}---\nbody\n", encoding="utf-8")
+    (work / "escaped.md").write_text(f"---\n{SURROGATES}---\nbody\n", encoding="utf-8")
+    (work / "merge.yaml").write_text(merge_bomb(12), encoding="utf-8")
+    _git(work, "add", "-A")
+    _git(work, "commit", "-qm", "frontmatter bounds")
+    commit = _git(work, "rev-parse", "HEAD").decode().strip()
+    _git(tmp_path, "clone", "--bare", "--template=", str(work), str(store), env_root=tmp_path)
+
+    forbid_ruamel_collections(monkeypatch)
+    parse_threads: list[int] = []
+    real_load = frontmatter_yaml._load
+
+    def recording_load(*args: Any, **kwargs: Any) -> object:
+        parse_threads.append(threading.get_ident())
+        return real_load(*args, **kwargs)
+
+    monkeypatch.setattr(frontmatter_yaml, "_load", recording_load)
+    seen = _capture_pin_renders(monkeypatch)
+
+    async def _run() -> None:
+        loop_thread = threading.get_ident()
+        async with _pinned_client(store, commit) as (client, _subject):
+            for shape in BOMBS_ON_A_PIN:
+                path = _wire(f"{shape}.md".encode())
+                bomb, plain = await asyncio.gather(
+                    client.get("/api/file", params={"path": path}),
+                    client.get("/api/file", params={"path": _wire(b"plain.md")}),
+                )
+                assert bomb.status_code == 200, shape
+                assert len(bomb.content) < 4_096, shape
+                body = bomb.json()
+                assert (body["type"], body["kind"]) == ("text", "markdown")
+                assert body["content"].startswith("---\n" + OVER_BUDGET)
+                assert "frontmatter" not in body
+                assert "without its YAML aliases" in body["frontmatter_error"]
+                assert plain.json()["frontmatter"] == {"title": "Plain"}
+
+                seen.clear()
+                rendered = await client.get(
+                    "/api/kpress/render", params={"path": path, "view": "rendered"}
+                )
+                assert rendered.status_code == 200, shape
+                assert "lol" not in rendered.json()["html"]
+                assert seen["frontmatter"] is None
+                assert "without its YAML aliases" in seen["frontmatter_error"]
+
+            odd = (await client.get("/api/file", params={"path": _wire(b"odd.md")})).json()
+            assert "frontmatter_error" not in odd
+            assert odd["frontmatter"]["binary"] == "aGVsbG8="
+            assert odd["frontmatter"]["nan"] == ".nan"
+            assert odd["frontmatter"]["1"] == "int key"
+
+            for case, (_text, reason) in CONSTRUCTOR_FAILURES.items():
+                path = _wire(f"fails-{case}.md".encode())
+                failed = await client.get("/api/file", params={"path": path})
+                assert failed.status_code == 200, case
+                assert failed.json()["frontmatter_error"].startswith(
+                    f"Error parsing YAML metadata: {reason}"
+                ), case
+
+            escaped = await client.get("/api/file", params={"path": _wire(b"escaped.md")})
+            assert escaped.status_code == 200
+            assert escaped.json()["frontmatter"]["x"] == "\ufffd"
+
+            listing = await client.get("/api/file", params={"path": _wire(b"merge.yaml")})
+            assert listing.status_code == 200
+            assert listing.json()["type"] == "text"
+        assert parse_threads and loop_thread not in parse_threads
+
+    asyncio.run(_run())
+
+
+@pytest.mark.parametrize("trusted", [False, True], ids=["untrusted", "trusted"])
+def test_git_kpress_render_shows_fenced_code_plain_under_the_untrusted_profile(
+    trusted: bool, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pin runs under the untrusted profile, and there a fence never reaches a lexer.
+
+    Whatever the process's block is (*trusted*): a pin's profile is its subject's, never
+    the process's (``capabilities.capabilities_for``).
+
+    The inert render keeps no class a highlighter writes, so a mirror's fence already showed
+    as plain text; a lexer can cost far more than its input (review G on #348 timed a
+    1.6 KB ``console`` line at 12 s), so the render asks for plain code. A trusting profile
+    still highlights a folder's file; it never applies to a pin.
+
+    Under the untrusted profile the render runs in the server's Markdown child
+    (``diff/markdown_projection_worker.py``), which the patched highlighter here does not
+    reach, so there the HTML is the evidence: no span highlighting would add.
+    """
+
+    from kpress.format import markdown as kpress_markdown
+    from pygments import highlight
+
+    lexed: list[str] = []
+
+    def counted(code: str, *args: Any) -> Any:
+        lexed.append(code)
+        return highlight(code, *args)
+
+    # KPress highlights each fence with Pygments' `highlight`, imported into its module.
+    monkeypatch.setattr(kpress_markdown, "highlight", counted)
+    kpress_adapter.clear_render_cache()
+    fence = b"```console\n$ echo [a@] <b>\n```\n"
+    store, commit = fast_import_store(tmp_path, {b"README.md": b"# Fenced\n\n" + fence})
+
+    async def _run() -> tuple[int, str]:
+        async with _pinned_client(store, commit) as (client, _subject):
+            set_capabilities(Capabilities(active_content=trusted, mutations=False))
+            rendered = await client.get(
+                "/api/kpress/render", params={"path": _wire(b"README.md"), "view": "rendered"}
+            )
+            return rendered.status_code, str(rendered.json().get("html", ""))
+
+    status, html = asyncio.run(_run())
+    assert status == 200, html
+    code = html.split("<pre", 1)[1].split("</pre>", 1)[0]
+    assert lexed == []
+    assert "<span" not in code
+    assert "$ echo [a@] &lt;b&gt;" in code
 
 
 def test_git_text_preview_windows_match_filesystem_highlight_bound(tmp_path: Path) -> None:
@@ -1410,19 +1576,20 @@ def test_git_view_shell_honors_gitpath_and_refuses_filesystem_spelling(tmp_path:
     asyncio.run(_run())
 
 
-def _assert_git_raw_sandbox(response: Any, *, active_content: bool) -> None:
+def _assert_git_raw_sandbox(response: Any) -> None:
     """The raw trust headers, whichever layer produced the response.
 
     ``_RawTrustHeaderMiddleware`` owns these for the whole ``/raw`` path, so a
-    pinned Git subject must carry them exactly as a filesystem subject does --
-    on a hit, on a miss, and with active content on or off.
+    pinned Git subject carries the sandbox on a hit and on a miss. It never carries
+    ``allow-scripts``, whatever the process's block: a pin is never trusted
+    (``capabilities.capabilities_for``).
     """
 
     csp = response.headers["content-security-policy"]
     assert csp.startswith("sandbox ")
     assert "allow-same-origin" not in csp
     assert "frame-ancestors" not in csp
-    assert ("allow-scripts" in csp) is active_content
+    assert "allow-scripts" not in csp
     assert response.headers["x-content-type-options"] == "nosniff"
 
 
@@ -1454,16 +1621,16 @@ def test_git_raw_blobs_are_sandboxed_like_filesystem_raw(
                 assert hit.status_code == 200, name
                 # A wire names another blob once the pin is switched, so no cache keeps it.
                 assert hit.headers["cache-control"] == "no-store"
-                _assert_git_raw_sandbox(hit, active_content=active_content)
+                _assert_git_raw_sandbox(hit)
                 assert str(store) not in hit.text
             miss = await client.get("/raw", params={"path": _wire(b"absent.html")})
             assert miss.status_code == 404
-            _assert_git_raw_sandbox(miss, active_content=active_content)
+            _assert_git_raw_sandbox(miss)
             # A filesystem spelling is not a wire identity, so it is a miss
             # too -- and a miss is still sandboxed.
             spelled = await client.get("/raw", params={"path": "page.html"})
             assert spelled.status_code == 404
-            _assert_git_raw_sandbox(spelled, active_content=active_content)
+            _assert_git_raw_sandbox(spelled)
 
     asyncio.run(_run())
 
@@ -1485,7 +1652,7 @@ def test_git_raw_path_form_is_a_sandboxed_capability_refusal(tmp_path: Path) -> 
                 answered = await client.get(address)
                 assert answered.status_code == 409, (address, answered.status_code)
                 assert answered.json()["capability"] == "raw_document_path"
-                _assert_git_raw_sandbox(answered, active_content=True)
+                _assert_git_raw_sandbox(answered)
                 assert str(store) not in answered.text
 
     asyncio.run(_run())

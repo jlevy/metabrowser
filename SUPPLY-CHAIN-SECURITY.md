@@ -51,11 +51,12 @@ introduces.
 
 | Package | Reviewed against | Notes |
 | --- | --- | --- |
-| `kpress==0.3.6` | `0.3.5` | Planetaire Mono Text for code, which Metabrowser overrides through `--kpress-host-font-mono`; the sanitizer stops reporting comments and `&nbsp;` reserialization and admits `align` on `p`, `div`, `h1`–`h6`; runtime dependencies unchanged; lock delta is `kpress` alone, wheel SHA-256 `c2668a01…1db5e350` and sdist `f34fa604…958986b4` match `uv.lock` |
+| `kpress==0.3.8` | `0.3.6` | Browser assets plus two names in the public CSS contract (0.3.7 and 0.3.8 together): TOC scrollspy without `IntersectionObserver`, over host-rewritten same-document links, and past headings with no layout box; a reload scroll restore confirmed one frame later; the public `--kpress-code-border` and `--kpress-code-radius` tokens; TOC inset and blockquote defaults; `kbd`, `samp`, and link-preview code in the shipped mono face; runtime dependencies unchanged; lock delta is `kpress` alone, wheel SHA-256 `99c32266…f5b0efa9` and sdist `1db5df40…465833bd` match `uv.lock` |
 | `flowmark-rs==0.3.2` | `0.3.1` | Formatting output unchanged |
 | `softschema==0.8.1` | `0.8.0` | Runtime contract validation; adds SoftSchema and upgrades `frontmatter-format` from 0.3.0 to 0.4.0 |
 | `tryscript==0.3.0` | `0.1.7` | Removes the vulnerable fast-glob/micromatch/braces chain; adds tinyglobby discovery and the tsx loader |
 | `tryscript==0.3.1` | `0.3.0` | Security patch only; upgrades zod from 3.25.76 to 4.6.6 for GHSA-mrhx-c7xc-m3w5 |
+| `tryscript==0.4.0` | `0.3.1` | Replaces tinyglobby with tryscript’s own matcher, removing tinyglobby, fdir, and picomatch and with them GHSA-fc5q-39xc-vjpf; rejects extended globs, alternation groups, and brace ranges in test patterns, none of which this repository uses |
 | `get-tbd` | n/a | Issue tracker, first-party; not a build or runtime input |
 
 Tryscript 0.3.0 is a first-party exception to the release-age delay.
@@ -75,7 +76,9 @@ picomatch 4.0.7 on 2026-08-24. The esbuild platform packages have the same 0.28.
 version and are optional platform selections.
 No browser asset or Python runtime dependency changes.
 Install scripts remain disabled; the full golden suite exercises the installed runner,
-and the dependency audit has no exception for the advisory.
+and the dependency audit took no exception for the advisory the removed chain carried.
+picomatch 4.0.7, one of the branches this selection added, later drew
+GHSA-fc5q-39xc-vjpf; tryscript 0.4.0, below, removed that branch.
 
 Tryscript 0.3.1 is the same first-party exception, taken on 2026-10-26 because 0.3.0
 reaches the vulnerable zod 3.25.76 and `npm audit` fails on GHSA-mrhx-c7xc-m3w5 (high,
@@ -113,6 +116,53 @@ entry paths in union validation warnings, and development-only Vitest, Vite, and
 source-map-js advisories that this repository does not install.
 Golden parsing is unaffected — the full 278-check golden suite passes unchanged at
 0.3.1, which is the behavior the 0.3.0 selection had to realign.
+
+Tryscript 0.4.0 is the same first-party exception, taken on 2026-11-17 because 0.3.1
+reaches picomatch 4.0.7, through tinyglobby 0.2.17 and fdir 6.5.0, and from that day
+`npm audit` failed on
+[GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf) (high, a
+regular-expression denial of service through single-branch repeated extglobs), which no
+picomatch release fixes.
+That was the advisory’s only path into the lock, and
+[#523](https://github.com/jlevy/metabrowser/pull/523) tolerated it on that path alone
+until a release removed it.
+The [upstream release](https://github.com/jlevy/tryscript/releases/tag/v0.4.0) replaces
+tinyglobby with tryscript’s own matcher, which builds no regular expression from a
+pattern, so 0.4.0 depends on none of the three.
+This selection removes that exception with its check, its tests, and its fixture, so the
+audit again fails on any advisory at or above its level.
+The wrapper keeps what #523 fixed apart from the exception: a report is a finding even
+when an advisory’s title names an outage (see [Automated Checks](#automated-checks)).
+
+It was selected with `--min-release-age=0`, as 0.3.1 was, and npm applies that to the
+whole command; but the command moved no other package and added none, so no third-party
+release entered the lock without the age gate.
+`.npmrc` is unchanged.
+The published artifact SHA-512 matches the committed lockfile:
+`65hMMeYB0gDCHtbCFSOY1vIwVjlYrAHqYor4IoeaBwDqn8L7KE/RBD644qv+88WgFUtwmlg9paTit8yjf8Zk7A==`.
+Its npm provenance attestation names the `v0.4.0` tag of jlevy/tryscript, commit
+`4f33b3ccbc7aa7c470a6b1b25649eee5457957d7`, built by that repository’s release workflow.
+
+One package version changes, three packages are removed, and none is added: tryscript
+0.3.1 to 0.4.0, and tinyglobby 0.2.17, fdir 6.5.0, and picomatch 4.0.7 removed.
+That is the whole lockfile delta, six hunks, and it is reproducible from the base with
+one command:
+`npm install --package-lock-only --save-exact tryscript@0.4.0 --min-release-age=0`.
+tryscript’s own dependencies lose tinyglobby and are otherwise unchanged.
+`npm ls picomatch` is empty.
+No browser asset or Python runtime dependency changes.
+
+0.4.0 is a minor release because it stops the run with an error on a test pattern that
+uses an extended glob such as `+(a)`, an alternation group such as `(a|b)`, or a brace
+range such as `{1..3}`, and because it reads parentheses in a pattern literally.
+None of that reaches Metabrowser: its one test pattern is the Makefile’s
+`tests/golden/*.tryscript.md`, which `make test` and `make golden-update` pass, and no
+tryscript configuration file exists to add another.
+The release’s discovery fixes concern negations, dot directories, and symbolic links,
+and that pattern has no negation and names one directory, which holds no dot entry and
+no link. The full golden suite passes unchanged at 0.4.0, and
+`tests/test_tryscript_blocks.py` still finds the installed parser in agreement with
+`devtools/tryscript_blocks.py`.
 
 `get-tbd` carries no version review because it is not pinned to one, and the reason is
 narrower than “we publish it.”
@@ -206,6 +256,90 @@ release and the newest patched one.
 matrix to agree, and requires the matrix to include both floors from the version-gates
 fixture. Moving a floor therefore means pinning and reviewing the new release here.
 
+## CI Workflows
+
+`ci.yml` and `nightly.yml` give every job `contents: read`, and two jobs one permission
+more, reviewed on November 17, 2026:
+
+| Workflow | Job | Permission | What it reads |
+| --- | --- | --- | --- |
+| `ci.yml` | `plan` | `actions: read` | One page of `ci.yml`’s push runs on `main`, and the earlier attempt of a rerun, to learn whether `main` is red (`devtools/ci_plan.sh`) |
+| `nightly.yml` | `time-limits` | `actions: read` | `ci.yml`’s push runs on `main` and their jobs, for `make ci-report` |
+
+- **Reach.** `actions: read` reads this repository’s workflow runs, jobs, logs, and
+  artifacts, and writes nothing.
+  The repository is public, so it reads nothing an anonymous reader cannot; it is
+  declared so that the token’s scope is stated, not inherited.
+  No job may write issues, pull requests, or contents.
+- **Triggers.** `ci.yml` runs on a push to `main` and on `pull_request`, never on
+  `pull_request_target` or `workflow_run`. A pull request’s run therefore gets a
+  read-only token, and its workflow and the `devtools/ci_plan.sh` and
+  `devtools/ci_verdict.sh` it runs come from the pull request’s own merge commit, so a
+  change to the gate is reviewed as a change.
+  `nightly.yml` runs on a schedule and by hand.
+- **Untrusted input.** A branch name or a pull request’s title or body reaches a step
+  only through `env:`, quoted in the shell; no `run:` line or step input interpolates
+  the event. The `plan` job refuses a run id or head from the API that is not one, and
+  counts that answer as red, like a failed read.
+- **Nightly report.** The `time-limits` job installs its locked environment in a step
+  without the token, so the step that holds the token runs only `ci-report`.
+- **Actions.** No new action: the jobs use the pinned checkout, uv, Node, and cache
+  actions already reviewed, and the runner image’s own `gh` and `jq`. Every checkout
+  sets `persist-credentials: false`.
+
+`devtools/check_ci.py`, in `make lint-check`, fails:
+
+- in any workflow, a job whose permissions are not declared, at its own level or the
+  workflow’s, or that grants any `write` but `publish.yml`’s `id-token`;
+- in `ci.yml` and `nightly.yml`, a job given a permission this table does not name;
+- a `pull_request_target` or `workflow_run` trigger, and a checkout that keeps its
+  credentials;
+- an expression in a `run:` line, or in a step’s `with:` other than a commit or a
+  release tag, that reads the event, the head branch, or the whole `github` context, in
+  any spelling or case: `github.event.`, `github['event']`, `toJSON(github)`,
+  `GitHub.Head_Ref`, or inside `format()`, with the expression ended where the runner
+  ends it, so a `}}` in a quoted string hides nothing;
+- an expression in a `run:` line that reads `env`, which the shell reads as `"$NAME"`
+  instead.
+
+## Apple Developer ID Intermediate (November 17, 2026)
+
+`apps/macos/packaging/DeveloperIDG2CA.cer` is Apple’s “Developer ID - G2” intermediate
+certificate, committed so that the release Mac, and later a CI release job, installs it
+from the repository instead of downloading it.
+codesign builds a Developer ID identity’s chain from the keychains on the search list,
+and macOS’s own roots hold only the G1 intermediate, so without this file a G2 identity
+is not valid.
+
+| File | SHA-256 |
+| --- | --- |
+| `DeveloperIDG2CA.cer` | `f16cd3c54c7f83cea4bf1a3e6a0819c8aaa8e4a1528fd144715f350643d2df3a` |
+
+- **Source.** Downloaded on November 17, 2026, from
+  `https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer`, the link
+  [Apple PKI](https://www.apple.com/certificateauthority/) gives for it, and committed
+  unchanged (DER, 1,090 bytes).
+  Its subject is `CN=Developer ID Certification Authority, OU=G2, O=Apple Inc., C=US`,
+  its issuer is Apple Root CA, and it is valid from September 22, 2021, to September 17,
+  2031\.
+- **Chain.** `openssl verify` accepts it against Apple Root CA, downloaded from Apple
+  PKI at `https://www.apple.com/appleca/AppleIncRootCertificate.cer`, whose SHA-256
+  fingerprint is `b0b1730ecbc7ff4505142c49f1295e6eda6bcaed7e2c68c5be91b5a11001f024`.
+  That root is committed as `apps/macos/scripts/fixtures/AppleIncRootCertificate.cer`,
+  so `apps/macos/scripts/test-release-logic.sh` repeats the check on every test run, and
+  the signing doctor (`apps/macos/scripts/check-signing.sh`) repeats it on the release
+  Mac against the Apple Root CA in macOS’s own roots.
+- **Pin.** `g2_intermediate_sha256` in `apps/macos/scripts/signing-lib.sh` holds the
+  SHA-256 above. The doctor refuses a file that does not match it, and an installed
+  certificate with this subject and other contents.
+  `apple_root_ca_sha256` in `apps/macos/scripts/test-release-logic.sh` holds the root’s,
+  and the test checks the fixture against it before the chain.
+  `tests/test_macos_release_scripts.py` holds both values here to their pins, and each
+  pin to its file.
+- **Reach.** It is a public certificate and grants nothing by itself: installing it lets
+  macOS build the chain of an identity Apple already issued.
+  Replacing it is a new review here, with the pin changed in the same commit.
+
 ## Verification
 
 ### Development HTTP Client Review (September 8, 2026)
@@ -271,6 +405,54 @@ Its one dependency, `undici-types` 7.24.6 from
 March 25, 2026), is the only other new lock record.
 Neither is loaded at run time; only TypeScript reads them.
 
+### pytest-xdist Review (November 17, 2026)
+
+`pytest-xdist` is a new development dependency, and `execnet`, its one requirement that
+the lock did not hold, comes with it.
+`make test-parallel` and `make test-admitted-git` run their tests under it, one worker
+per logical processor and each test file on one worker (`--dist loadfile`), so a CI test
+leg uses its runner’s four processors where pytest alone used one.
+pytest has no way to run tests side by side without a plugin, and the owner approved
+this one on 2026-11-16.
+
+| Package | Release | Published | Source | License | Wheel SHA-256 | sdist SHA-256 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `pytest-xdist` | 3.8.0 | 2025-07-01 | [pytest-dev/pytest-xdist](https://github.com/pytest-dev/pytest-xdist) | MIT | `202ca578…d10f0b88` | `7e578125…d8d3a9f1` |
+| `execnet` | 2.1.2 | 2025-11-12 | [pytest-dev/execnet](https://github.com/pytest-dev/execnet) | MIT | `67fba928…79e296ec` | `63d83bfd…3e0befcd` |
+
+- **Cool-off.** Each is the newest release of its package, and each was published more
+  than a year before this selection, so neither needs an exception.
+- **Artifacts.** The four digests above were read from PyPI and match `uv.lock`, and the
+  artifacts downloaded for this review hash to them.
+  Both wheels are pure Python, `py3-none-any`, and hold no `.pth` file, console script,
+  or compiled module, so installing them runs no code.
+  The sdists build with setuptools and hatchling; uv installs the wheels.
+  PyPI holds a Trusted Publishing attestation for each of the four files, naming the
+  `deploy.yml` workflow and `deploy` environment of `pytest-dev/pytest-xdist` and
+  `pytest-dev/execnet`.
+- **Import.** The xdist wheel registers two `pytest11` entry points, `xdist.plugin` and
+  `xdist.looponfail`, so every pytest run in this environment imports them and gains
+  their options, the serial and Chrome tiers’ runs too.
+  `xdist.looponfail` imports `execnet` at module level, so every run imports that as
+  well. The imports open no socket and start no process; without `-n` or `--dist` nothing
+  starts.
+- **Runtime.** With `-n`, xdist starts each worker through execnet’s `popen` gateway: a
+  new `sys.executable` that reads execnet’s bootstrap from a pipe and sends its reports
+  back over the same pipes.
+  execnet’s `ssh`, `socket`, and `rsync` gateways open network connections, and nothing
+  here asks for them. execnet also ships scripts under `execnet/script/`, and
+  `socketserver.py` among them listens on a TCP port and runs what a client sends.
+  Three of them act only when run as a program; `shell.py` and `quitserver.py` connect
+  to the address their command line names when imported.
+  Nothing runs or imports them: the wheel gives them no console script, and the one
+  import, of `socketserver`, is in the `socket` gateway’s start.
+  `-n auto` counts physical cores through psutil, which this project already installs,
+  so `PYTEST_WORKERS` in the `Makefile` asks for `logical` instead and says why.
+- **Lock delta.** The two packages, and `pytest-xdist` among the `dev` group’s
+  requirements, and nothing else; pytest, xdist’s other requirement, is already locked.
+- **Reach.** Development only: neither is a runtime requirement, in the wheel, or used
+  by the publish workflow.
+
 ### Automated Checks
 
 `devtools/check_supply_chain.py` checks only safeguards that span configuration files:
@@ -284,16 +466,25 @@ workflows, and documentation.
 executes the tests and audits, builds the package, inspects its contents, and exercises
 the installed wheel and plugin surface.
 
-CI and publishing also run `npm audit --audit-level=moderate` after installing the exact
-lock, through `devtools/npm_audit.sh`. That wrapper exists because `npm audit` exits
-non-zero for two unrelated events: it found an advisory, or it could not reach the
-advisory endpoint. Only the first is a reason to stop.
-The wrapper retries, then reports an unreachable endpoint as **not performed** --
-loudly, and without failing the build, because a registry outage is not a finding and
-the lockfile is pinned, so the dependency set has not moved since the last run that did
-reach it. An advisory at or above the level still fails exactly as before.
-A run that reports “not performed” has not cleared the dependencies; re-run the gate
-once the registry answers before relying on it.
+CI and publishing also run `npm audit --include=dev --audit-level=moderate` after
+installing the exact lock, through `devtools/npm_audit.sh`. That wrapper exists because
+`npm audit` exits non-zero for two unrelated events: it found an advisory, or it could
+not reach the advisory endpoint.
+Only the first is a reason to stop.
+npm writes its report to stdout and its own errors to stderr, and the wrapper keeps them
+apart. A report is a finding and fails, whatever its advisories’ titles say, and even if
+npm also warned on stderr about a failed request.
+Only when there is no report does the wrapper search stderr for an unreachable endpoint.
+It retries, then reports the outage as **not performed** -- loudly, and without failing
+the build, because a registry outage is not a finding and the lockfile is pinned, so the
+dependency set has not moved since the last run that did reach it.
+Any other npm failure, such as a missing lockfile, fails, and so does an
+`NPM_AUDIT_ATTEMPTS` that is not a positive integer.
+Every npm package in this lock is a dev dependency, so `--include=dev` keeps an ambient
+`NODE_ENV=production` or `NPM_CONFIG_OMIT=dev` from reducing the audit to nothing.
+`tests/test_npm_audit.py` runs the wrapper against a stand-in `npm` for each of these
+cases. A run that reports “not performed” has not cleared the dependencies; re-run the
+gate once the registry answers before relying on it.
 
 Treat an unexpected lockfile source, install script, binary artifact, or publish-time
 change as a blocker until it is explained and reviewed.

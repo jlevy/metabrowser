@@ -125,27 +125,31 @@ def test_source_views_include_visible_truncation_warning() -> None:
     assert "container.innerHTML = truncationWarning + " in render
 
 
-def test_embedded_readme_suppresses_its_own_table_of_contents() -> None:
-    """The folder Overview's README asks KPress for no TOC.
+def test_embedded_readme_keeps_its_table_of_contents_on_the_folders_page() -> None:
+    """The folder Overview's README keeps the TOC it has opened as a file.
 
-    The panel stack around it is already the reader's way through the folder,
-    so a second navigation inside the embed competes with it. Opening the same
-    README as a file passes nothing and keeps KPress' ordinary thresholds, so
-    the suppression has to travel with this one call rather than being a
-    property of the renderer.
+    The panel asks for no TOC change and names the folder's page as the page
+    showing the document, so its entries are places on that page. The mount
+    hands that page to the link enhancer and hands KPress the toggle policy
+    every Metabrowser TOC follows. The browserless session in
+    ``tests/dom/markdown-toc-scrollspy-session.js`` runs this wiring.
     """
 
     folder_dir = PLUGIN_DIR.parent / "folder"
     readme_panel = (folder_dir / "readme-panel.js").read_text(encoding="utf-8")
-    assert 'includeToc: "off"' in readme_panel
+    assert "includeToc" not in readme_panel
+    assert "pagePath: context.path" in readme_panel
 
-    # The option has to survive the whole path or the panel's request is inert:
-    # renderer -> SDK -> query string.
     rendered = (PLUGIN_DIR / "rendered.js").read_text(encoding="utf-8")
-    assert "includeToc: options.includeToc" in rendered
+    assert "const pagePath = options.pagePath ?? path;" in rendered
+    assert "mb.kpressInitToc(container, kpressTocConfig(container))" in rendered
 
+    # The option still reaches the route, renderer -> SDK -> query, although no built-in
+    # browser caller sets it since the README panel stopped; mb-2nqa tracks removing it.
+    assert "includeToc: options.includeToc" in rendered
     sdk = (PLUGIN_DIR.parent.parent / "static" / "plugin-sdk.js").read_text(encoding="utf-8")
     assert 'url.searchParams.set("toc", includeToc)' in sdk
+    assert "return _kpressInitTocFn(container, config);" in sdk
 
 
 def test_a_readme_opened_as_a_file_keeps_its_table_of_contents() -> None:

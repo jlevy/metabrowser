@@ -326,10 +326,10 @@ function mirrorHeading(part) {
   return window.MetabrowserMirrorHeading?.[part]() ?? "";
 }
 
-// The shell's delegated controls (the address crumbs, the parent button, print, and
-// copy path) carry the SDK's per-page owner mark, and their document listeners act
-// only on a marked element: a trusted folder's Markdown keeps class, id, and data-*,
-// so it can spell the same markup. See `_delegateOwner` in plugin-sdk.js.
+// The shell's delegated controls (the address crumbs, the parent button, and copy path)
+// carry the SDK's per-page owner mark, and their document listeners act only on a marked
+// element: a trusted folder's Markdown keeps class, id, and data-*, so it can spell the
+// same markup. See `_delegateOwner` in plugin-sdk.js.
 function ownedControlAttr() {
   return window.metabrowser?.delegateOwnerAttribute?.() ?? "";
 }
@@ -337,6 +337,14 @@ function ownedControlAttr() {
 /** @param {Element | null} element */
 function isOwnedControl(element) {
   return window.MetabrowserPluginHost?.isOwnedDelegate?.(element) === true;
+}
+
+// Whether page code marked this very element with `mb.ownDelegate`: its identity, which a
+// document that carries a copy of the owner value cannot have. See `ownsElement` in
+// plugin-sdk.js.
+/** @param {Element | null} element */
+function isPageElement(element) {
+  return window.MetabrowserPluginHost?.ownsElement?.(element) === true;
 }
 
 /**
@@ -1083,6 +1091,9 @@ function withTreeIdScope(scope, build) {
 // paint from a snapshot the server took at page-render time would be a
 // regression, not a shortcut.
 let _inlineTreeRows = window.METABROWSER_INITIAL_TREE?.tree ?? null;
+// The Files totals line's source (`rootTotals`).
+/** @type {ReturnType<Window["MetabrowserNavigationRoute"]["createRootTotals"]> | null} */
+let _rootTotals = null;
 // The exact rows that reached the DOM from the shell. The first /api/tree
 // response reconciles against this snapshot instead of replacing the root,
 // which preserves the first paint while still converging to the newer index.
@@ -1126,7 +1137,7 @@ function renderInitialTreeRows() {
   // before it there were no rows in place to push.
   _lastTreeRender = {
     tree: rows,
-    chromeHtml: treeSummaryHtml(null, null, null),
+    chromeHtml: treeSummaryHtml(rootTotals().totals(), null, null),
     tallyCacheStatus: "scanning",
   };
   // Measured here rather than around the call, so the span exists only when
@@ -1237,12 +1248,18 @@ async function loadTree(options = {}) {
       // Summary row sits at the top of the scrollable tree listing, not
       // in the sticky header — visible on first paint, scrolls away with
       // the rest of the tree. Keeps the upper nav header clean.
-      // The index-wide tracked/ignored split is partial while scanning just
-      // like the visible-tree fallback. Gate the summary object itself; passing
-      // it through would make treeSummaryHtml prefer concrete partial values
-      // over the pending fallback we selected above.
-      var stableSummary = data.tally_cache_status === "scanning" ? null : data.summary;
-      var summaryHtml = treeSummaryHtml(stableSummary, summaryFiles, summarySize);
+      // The root's totals, never partial (docs/design-system.md, "The Files totals").
+      if (data.summary) {
+        rootTotals().fromSummary(data.summary, data.tally_cache_status);
+      }
+      var stableSummary = rootTotals().totals();
+      // Held, the figures stay pending: the combined figure counts the ignored files.
+      var holding = !stableSummary && rootTotals().keepsIgnoredLine();
+      var summaryHtml = treeSummaryHtml(
+        stableSummary,
+        holding ? null : summaryFiles,
+        holding ? null : summarySize,
+      );
       // Cached so the recency source, which paints over the whole panel,
       // can keep the same tally row above its own filtered count.
       _lastTreeSummaryHtml = summaryHtml;
@@ -1899,12 +1916,39 @@ function treeSummaryHtml(summary, fallbackFiles, fallbackSize) {
     fallbackFiles,
     fallbackSize,
     treeSummaryFormat(),
+    rootTotals().keepsIgnoredLine(),
   );
 }
 
-// The walker's root upsert carries gitignore-blind totals, so it
-// cannot refresh the split. Refetch the summary instead — depth=0 so
-// the response is the tally and nothing else.
+// What the Files totals line is drawn from (navigation.js, `createRootTotals`).
+function rootTotals() {
+  _rootTotals ??= window.MetabrowserNavigationRoute.createRootTotals({
+    gitRevision: isGitRevisionSource(),
+    shell: window.METABROWSER_INITIAL_TREE?.summary ?? null,
+  });
+  return _rootTotals;
+}
+
+// Draw the totals line in place, and keep both caches of it in step: chromeHtml feeds a
+// source swap back to the tree, and _lastTreeSummaryHtml is what the recency source
+// prepends.
+/** @param {string} html */
+function paintTreeSummary(html) {
+  var row = document.querySelector(".tree-summary");
+  if (row && row.outerHTML !== html) {
+    row.outerHTML = html;
+  }
+  _lastTreeSummaryHtml = html;
+  if (_lastTreeRender) {
+    _lastTreeRender.chromeHtml = _lastTreeRender.chromeHtml.replace(
+      /<div class="tree-summary(?: tree-summary-split)? nav-metadata">.*?<\/div>$/,
+      html,
+    );
+  }
+}
+
+// The root's tallies, asked of the server again, for the filter menus' counts and the
+// totals line while the root's entry has none; depth=0 so the response is the tally.
 //
 // One request at a time, however many callers ask (createRootSummaryRefresh in
 // navigation.js). A live tree upserts its root on every write, and each answer is a
@@ -2015,8 +2059,8 @@ async function fetchRootSummary() {
   if (!data?.summary || !_lastTreeRender) {
     return true;
   }
-  var row = document.querySelector(".tree-summary");
-  if (!row) {
+  rootTotals().fromSummary(data.summary, data.tally_cache_status);
+  if (!document.querySelector(".tree-summary")) {
     return true;
   }
   // Only rebuild the bar when no dropdown is open. Replacing
@@ -2030,17 +2074,7 @@ async function fetchRootSummary() {
       patchOpenRecencyTallyCounts();
     }
   }
-  var html = treeSummaryHtml(data.summary, null, null);
-  row.outerHTML = html;
-  // Keep both caches in step: chromeHtml feeds a source swap back
-  // to the tree, and _lastTreeSummaryHtml is what the recency
-  // source prepends. Updating only the first left the tally
-  // showing first-paint figures under a recency filter.
-  _lastTreeSummaryHtml = html;
-  _lastTreeRender.chromeHtml = _lastTreeRender.chromeHtml.replace(
-    /<div class="tree-summary(?: tree-summary-split)? nav-metadata">.*?<\/div>$/,
-    html,
-  );
+  paintTreeSummary(treeSummaryHtml(rootTotals().totals(), null, null));
   return true;
 }
 
@@ -3416,11 +3450,16 @@ if (typeof window !== "undefined") {
  * Unlike the action delegates it is not owner-marked (see `ownedControlAttr`):
  * it runs nothing, and plugins write plain `data-tip-text`. It does ignore a
  * rendered document's own markup, which a trusted folder's Markdown keeps, so a
- * document cannot label itself in the application's tooltip layer.
+ * document cannot label itself in the application's tooltip layer. A control page
+ * code placed in the document and marked with `mb.ownDelegate`, as the document's print
+ * button is (builtin_plugins/markdown/print-indicator.js), keeps its tooltip. That test
+ * is the element's identity, not its owner value, so a document that has come to carry
+ * the value still cannot label itself.
  */
 function tipTextAnchor(event) {
   var anchor = eventTargetElement(event)?.closest("[data-tip-text]");
-  return anchor instanceof HTMLElement && !anchor.closest(".metabrowser-kpress-host")
+  return anchor instanceof HTMLElement &&
+    (!anchor.closest(".metabrowser-kpress-host") || isPageElement(anchor))
     ? anchor
     : null;
 }
@@ -6880,9 +6919,6 @@ function renderFolderHeader(data) {
     upButton +
     `<span class="file-header-path folder-breadcrumb">${headerAddressHtml(path, false)}</span>` +
     summary +
-    `<button class="icon-btn file-header-icon file-header-print" type="button"${ownedControlAttr()} data-tip-text="Print view" aria-label="Print view" hidden>` +
-    (ICONS.print || "") +
-    "</button>" +
     "</div>"
   );
 }
@@ -7037,22 +7073,12 @@ function viewMetaAttrs(view) {
   return attrs;
 }
 
-// The header's print button, found by class and owner mark. It carries no `id`: a
-// document's `<label for=…>` would otherwise click it, and its stamp would pass.
-function shellPrintButton() {
-  return Array.from(queryHtmlAll(".file-header-print")).find((btn) => isOwnedControl(btn)) || null;
-}
-
-function updatePrintButton(printable) {
-  var btn = shellPrintButton();
-  if (!btn) {
-    return;
-  }
-  btn.hidden = !printable;
-  btn.setAttribute("aria-hidden", printable ? "false" : "true");
-}
-
-function setActivePreviewView(tabId, preview, syncShell = true) {
+// The preview's print state, which the print stylesheet reads: the active view prints
+// when it is printable, and otherwise the page prints a line saying it is not. Printing
+// itself is the browser's: Command-P (Control-P elsewhere), the app's File > Print, and a
+// rendered document's print button (builtin_plugins/markdown/print-indicator.js) all print
+// through it, so no shell control or command stands in front of it.
+function setActivePreviewView(tabId, preview) {
   preview = preview || document.getElementById("preview-pane");
   if (!preview) {
     return;
@@ -7079,9 +7105,6 @@ function setActivePreviewView(tabId, preview, syncShell = true) {
     preview.dataset.printProfile = "plain";
     delete preview.dataset.renderRuntime;
     delete preview.dataset.kpressEnabled;
-    if (syncShell) {
-      updatePrintButton(false);
-    }
     return;
   }
   var printable = boolData(active.dataset.printable);
@@ -7098,34 +7121,10 @@ function setActivePreviewView(tabId, preview, syncShell = true) {
   } else {
     delete preview.dataset.kpressEnabled;
   }
-  if (syncShell) {
-    updatePrintButton(printable);
-  }
-}
-
-function printActiveView() {
-  window.print();
-}
-
-if (typeof window !== "undefined") {
-  window.printActiveView = printActiveView;
 }
 
 // The partial-content notice's Load more runs the shell's text loader by name.
 window.MetabrowserPluginHost?.registerLoadMoreAction?.("loadMoreCurrentText", loadMoreCurrentText);
-
-// The file header's print button, delegated rather than an inline handler: the page
-// policy for an untrusted source runs no inline handler.
-/** @param {Event} event */
-function onPrintViewClick(event) {
-  if (
-    event.target instanceof Element &&
-    isOwnedControl(event.target.closest(".file-header-print"))
-  ) {
-    printActiveView();
-  }
-}
-document.addEventListener("click", onPrintViewClick);
 
 document.addEventListener("metabrowser:view-print-state", () => {
   var preview = document.getElementById("preview-pane");
@@ -7279,10 +7278,6 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
             "</span>";
           html += badges;
           html += sizeHtml(data.size, "file-header-size");
-          html +=
-            `<button class="icon-btn file-header-icon file-header-print" type="button"${ownedControlAttr()} data-tip-text="Print view" aria-label="Print view" hidden>` +
-            (ICONS.print || "") +
-            "</button>";
           html += "</div>";
         }
 
@@ -7388,9 +7383,9 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
           filePerfMeta(data, { html_chars: html.length }),
         );
         if (initialActiveView) {
-          setActivePreviewView(initialActiveView.id, stage, false);
+          setActivePreviewView(initialActiveView.id, stage);
         } else {
-          setActivePreviewView(null, stage, false);
+          setActivePreviewView(null, stage);
         }
 
         // The stage is connected so renderers can measure layout, but remains
@@ -8625,22 +8620,26 @@ function updateRootAggregatePresentation(entry) {
   var totalFiles = entry.total_files == null ? null : entry.total_files;
   var totalSize = entry.total_size == null ? null : entry.total_size;
   var newestMtime = entry.newest_mtime_ns ? entry.newest_mtime_ns / 1e9 : 0;
-  // When the split row is on screen these selectors find nothing by
-  // design (see treeSummaryHtml): the blind aggregate cannot express
-  // tracked-versus-ignored, so the split refreshes itself instead.
-  var countEl = queryHtml(".tree-summary-count");
-  var sizeEl = queryHtml(".tree-summary-size");
-  if (countEl) {
-    countEl.innerHTML = window.MetabrowserNavigationRoute.treeSummaryCountHtml(
-      totalFiles,
-      treeSummaryFormat(),
-    );
-  }
-  if (sizeEl) {
-    sizeEl.innerHTML = window.MetabrowserNavigationRoute.treeSummarySizeHtml(
-      totalSize,
-      treeSummaryFormat(),
-    );
+  if (rootTotals().fromRootEntry(entry)) {
+    if (_lastTreeRender) {
+      paintTreeSummary(treeSummaryHtml(rootTotals().totals(), null, null));
+    }
+  } else if (!rootTotals().totals()) {
+    // Until the root has totals, the fallback's two figures follow its aggregate.
+    var countEl = queryHtml(".tree-summary-count");
+    var sizeEl = queryHtml(".tree-summary-size");
+    if (countEl) {
+      countEl.innerHTML = window.MetabrowserNavigationRoute.treeSummaryCountHtml(
+        totalFiles,
+        treeSummaryFormat(),
+      );
+    }
+    if (sizeEl) {
+      sizeEl.innerHTML = window.MetabrowserNavigationRoute.treeSummarySizeHtml(
+        totalSize,
+        treeSummaryFormat(),
+      );
+    }
   }
   scheduleRootSummaryRefresh();
   var pathEl = queryHtml(".header-path");
@@ -9720,11 +9719,43 @@ async function revealWithin(
     return false;
   }
   setSelectedPath(path);
-  if (scroll) {
+  var travel = scroll ? folderTravelAbove(target) : null;
+  if (travel !== null) {
+    // Once the folders above have opened, if the reveal stands and its folder is open.
+    const revealed = target;
+    void travel.then(() => {
+      var row = revealed.isConnected ? revealed : scope.querySelector(selector);
+      if (row && isCurrent() && !row.closest(".tree-children-collapsed")) {
+        row.scrollIntoView({ block: "nearest" });
+      }
+    });
+  } else if (scroll) {
     target.scrollIntoView({ block: "nearest" });
   }
   synchronizeTreeNow();
   return true;
+}
+
+/**
+ * The end of every finite opening of a folder above *row*, or null (mb-551m).
+ * @param {Element} row
+ * @returns {Promise<unknown> | null}
+ */
+function folderTravelAbove(row) {
+  /** @type {Animation[]} */
+  var travel = [];
+  for (
+    var body = row.parentElement?.closest(".tree-children");
+    body;
+    body = body.parentElement?.closest(".tree-children")
+  ) {
+    travel.push(
+      ...body.getAnimations().filter((a) => a.effect?.getComputedTiming().endTime !== Infinity),
+    );
+  }
+  return travel.length > 0
+    ? Promise.allSettled(travel.map((animation) => animation.finished))
+    : null;
 }
 
 /**
@@ -10135,14 +10166,14 @@ function sourceFreshness() {
 }
 
 /**
- * A served mirror's branch and tag selector. The server renders its element only for
- * a pin with a mirror; the module is fetched on demand after the first tree request,
- * and static/source-ref-selector.js owns every decision; this only mounts it.
+ * The branch and tag selector. The server renders its element only where one mounts;
+ * the module is fetched on demand after the first tree request, and
+ * static/source-ref-selector.js owns every decision; this only mounts it.
  */
 async function startSourceRefSelector() {
   var element = document.getElementById("source-ref-selector");
   var assets = window.MetabrowserAssets;
-  if (!isGitRevisionSource() || !element || !assets) {
+  if (!element || !assets) {
     return;
   }
   await Promise.all([assets.ensureAsset("source-ref-selector"), assets.ensureAsset("sdk-views")]);
@@ -10170,6 +10201,7 @@ if (isGitRevisionSource() && !window.MetabrowserGitPath) {
   }
   throw new Error("metabrowser: git-path.js did not load on a pinned revision's page");
 }
+renderNavFilterBar();
 renderInitialTreeRows();
 
 document.addEventListener("DOMContentLoaded", async () => {

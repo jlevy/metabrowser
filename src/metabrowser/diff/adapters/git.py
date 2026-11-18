@@ -30,7 +30,7 @@ import logging
 import os
 import re
 from base64 import b64decode
-from collections.abc import AsyncIterator, Callable, Sequence
+from collections.abc import AsyncIterator, Callable, Coroutine, Sequence
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -90,6 +90,33 @@ MAX_MANIFEST_FILES = 2000
 """Manifest cap. A 2000-file change set is far past reviewable; beyond it
 the manifest reports `truncated` with a cursor rather than growing without
 bound, matching the patch-file parser's section cap."""
+
+MANIFEST_LISTING_OPTIONS = (
+    "--raw",
+    "--numstat",
+    "-z",
+    "--no-abbrev",
+    "-M50",
+    "-C",
+    "--diff-merges=first-parent",
+)
+"""The options the run that lists a comparison's manifest passes to `git diff`, before its
+endpoints. The run that prints the patch after its listing prints the same listing, which
+`test_one_run_prints_what_the_two_runs_print` in `tests/test_diff_one_run.py` holds."""
+
+MANIFEST_READING = 1
+"""The version of how a listing's output is read into a manifest (`_manifest_of` and the
+parsers it calls). A manifest kept on disk names it, not the build, so it outlives an
+upgrade or an edit of the source. Raise it with a change to what a listing reads as, and
+every kept manifest is listed again. `test_a_kept_manifest_names_how_it_was_read` in
+`tests/test_diff_git_adapter.py` pins the fixture comparison's manifest to it, so such a
+change fails there until it is raised."""
+
+MANIFEST_LISTING = (
+    f"{' '.join(MANIFEST_LISTING_OPTIONS)} files<={MAX_MANIFEST_FILES} reading={MANIFEST_READING}"
+)
+"""The listing a kept manifest names: its options, the file cap, and how it is read. How
+the store's Git is run is named beside it (`_STORE_READ` in `pull_manifest.py`)."""
 
 MAX_FILE_PATCH_BYTES = MAX_PATCH_BYTES
 """One file's patch, and what one run hydrates. A comparison is not a patch file a reader
@@ -519,6 +546,46 @@ def _pathspec(changes: Sequence[FileChange]) -> list[str] | None:
     return list(paths)
 
 
+async def _side_by_side[A, B](
+    first: Coroutine[Any, Any, A], second: Coroutine[Any, Any, B]
+) -> tuple[A, B]:
+    """What *first* and *second* return, run side by side, neither outliving the call.
+
+    :func:`asyncio.gather` raises the first failure and leaves the other running, with any
+    Git it started. A call ``asyncio.run`` makes, as ``metab --api`` and the tests do, then
+    returns with that task alive, and ``asyncio.run`` cancels it at shutdown with every
+    other task, CPython's own included. On Python 3.12, a spawn cancelled there before
+    asyncio connected its pipes is waited for forever, because that Python wakes
+    ``Process.wait()`` only once every pipe is connected and closed (gh-119710, fixed in
+    3.13); the comparison route's tests hung so (mb-pc9v). So when either fails, or the
+    caller is cancelled, both are cancelled and awaited, which kills and reaps their Git
+    (:func:`~metabrowser.git.process.run_git`), and the first failure propagates as raised.
+
+    ``gather`` hands a caller cancelled in the loop step in which a call fails that failure
+    in place of the cancellation, and the comparison would then go on to list alone, running
+    Git for a request nobody waits for. So a caller with a cancellation outstanding
+    (:meth:`asyncio.Task.cancelling`) gets :exc:`asyncio.CancelledError`, with the failure
+    as its cause. A failure of the call stopped beside it, which ``gather`` drops, is
+    logged.
+    """
+    one = asyncio.ensure_future(first)
+    two = asyncio.ensure_future(second)
+    try:
+        a, b = await asyncio.gather(one, two)
+    except BaseException as failure:
+        one.cancel()
+        two.cancel()
+        for result in await asyncio.gather(one, two, return_exceptions=True):
+            stopped = isinstance(result, asyncio.CancelledError)
+            if isinstance(result, BaseException) and not stopped and result is not failure:
+                log.debug("a call stopped beside a failure failed too", exc_info=result)
+        caller = asyncio.current_task()
+        if isinstance(failure, Exception) and caller is not None and caller.cancelling():
+            raise asyncio.CancelledError from failure
+        raise
+    return a, b
+
+
 class GitDiffSource:
     """File Diff Format from two revisions at a :class:`GitLocation`.
 
@@ -675,7 +742,10 @@ class GitDiffSource:
         oid fails every root-commit comparison there.
         """
         if self._empty_tree_oid is None:
-            out = await run_git_at(["hash-object", "-t", "tree", "/dev/null"], self._location)
+            # No filter: a store target refuses a hash-object that could run one.
+            out = await run_git_at(
+                ["hash-object", "--no-filters", "-t", "tree", "/dev/null"], self._location
+            )
             self._empty_tree_oid = out.decode("ascii").strip()
 
     def _endpoints(self, resolved: ResolvedComparison) -> list[str]:
@@ -702,13 +772,9 @@ class GitDiffSource:
         listed = await run_git_at(
             [
                 "diff",
-                "--raw",
-                "--numstat",
-                "-z",
-                "--no-abbrev",
-                "-M50",
-                "-C",
-                "--diff-merges=first-parent",
+                *MANIFEST_LISTING_OPTIONS,
+                # At a store target, no driver the repository's configuration names.
+                *self._location.diff_driver_args,
                 *endpoints,
             ],
             self._location,
@@ -728,17 +794,18 @@ class GitDiffSource:
         listing run alone, and the page's run of its own with its drivers, so the run is
         not started only to be thrown away. Otherwise the run starts at once, since
         ``--numstat`` runs no driver and its listing is the manifest whatever the answer,
-        and the answer is checked, or asked, beside it. A run that fails is None, so the
-        runs that answer are the ones that always did, in their own words. That includes a
-        run that takes more than half the read deadline: it does both runs' work, the
-        patch's pass over each pair after the listing's, and Git prints its listing only
-        at the end, so a listing that would finish in time alone is listed again, and one
-        that cannot is refused after a deadline and a half. A listing past the read cap is
-        refused as the listing run would refuse it, after this one run: its cap is raised
-        by the patch's bound and one read, so it overflows only where the listing alone
-        would. A run past :data:`MAX_LISTED_PATCH_BYTES` of patch is stopped there: its
-        listing is the manifest, and the patch is left to :meth:`hydrate`'s run. The output
-        is split and parsed once, off the event loop.
+        and the answer is checked, or asked, beside it; whichever fails first stops the
+        other, and its Git, before this returns (:func:`_side_by_side`). A run that fails
+        is None, so the runs that answer are the ones that always did, in their own words.
+        That includes a run that takes more than half the read deadline: it does both runs'
+        work, the patch's pass over each pair after the listing's, and Git prints its
+        listing only at the end, so a listing that would finish in time alone is listed
+        again, and one that cannot is refused after a deadline and a half. A listing past
+        the read cap is refused as the listing run would refuse it, after this one run: its
+        cap is raised by the patch's bound and one read, so it overflows only where the
+        listing alone would. A run past :data:`MAX_LISTED_PATCH_BYTES` of patch is stopped
+        there: its listing is the manifest, and the patch is left to :meth:`hydrate`'s run.
+        The output is split and parsed once, off the event loop.
         """
         if kept_textconv_named(self._location) is True:
             if await textconv_named(self._location):
@@ -747,7 +814,7 @@ class GitDiffSource:
         else:
             answer = textconv_answer(self._location)
         try:
-            out, named = await asyncio.gather(self._patch(resolved, None, listing=True), answer)
+            out, named = await _side_by_side(self._patch(resolved, None, listing=True), answer)
         except GitOutputCutError as exc:
             cut = await asyncio.to_thread(self._listed_from, exc.prefix, cut=True)
             return None if cut is None else cut[0]
@@ -1227,6 +1294,10 @@ class GitDiffSource:
                 "--src-prefix=a/",
                 "--dst-prefix=b/",
                 "--no-ext-diff",
+                # A pinned revision's patch runs no textconv driver either: its target may
+                # be a checkout's own Git directory (GitLocation.diff_driver_args). The
+                # listing run above already says so for every location.
+                *(["--no-textconv"] if self._location.target is not None and not listing else []),
                 "--no-color",
                 "--diff-merges=first-parent",
                 *self._endpoints(resolved),

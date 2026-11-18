@@ -19,12 +19,12 @@ stable; the absolute checkout prefix of each plugin’s `static_root` is elided 
 ```console
 $ metab --plugins
 NAME           SOURCE   KINDS       VIEWS  HOOKS
--------------  -------  ----------  -----  -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-------------  -------  ----------  -----  -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 agent-log      builtin  agent-log   3      charts
 binary         builtin  -           1      chunk
 diff           builtin  diff        1      document,children,comparison
 folder         builtin  -           2      -
-github         builtin  -           2      pull,pull-refresh,pull-cores-prepare,pull-comparison,pull-snapshot,pull-rendered-diff,pull-timeline,pull-markdown,pulls,pulls-refresh,stacks,stacks-refresh,stack-change,labels,labels-refresh,pull-files,pull-files-refresh,pulls-prefetch,cache-clear
+github         builtin  -           2      pull,pull-refresh,pull-cores-prepare,pull-comparison,pull-image,pull-rendered-diff,pull-timeline,pull-markdown,pulls,pulls-refresh,stacks,stacks-refresh,stack-change,labels,labels-refresh,pull-files,pull-files-summary,pull-files-refresh,pulls-prefetch,cache-clear
 html           builtin  html        2      -
 image          builtin  -           1      -
 markdown       builtin  markdown    2      -
@@ -128,7 +128,7 @@ $ metab --plugins --json
         "pull-refresh",
         "pull-cores-prepare",
         "pull-comparison",
-        "pull-snapshot",
+        "pull-image",
         "pull-rendered-diff",
         "pull-timeline",
         "pull-markdown",
@@ -140,6 +140,7 @@ $ metab --plugins --json
         "labels",
         "labels-refresh",
         "pull-files",
+        "pull-files-summary",
         "pull-files-refresh",
         "pulls-prefetch",
         "cache-clear"
@@ -284,11 +285,13 @@ assets in static_root:
   - markdown.css
   - package.json
   - place-rendered.js
+  - print-indicator.js
   - project-adapters.js
   - reconciliation-coordinator.js
+  - render-refusal.js
   - rendered.js
   - source.js
-  - toc-intersection-fallback.js
+  - toc-toggle.js
   - transclusion.js
   - wiki-enhancer.js
   - wiki-parser.js
@@ -358,11 +361,13 @@ $ metab --plugin markdown --json
       "markdown.css",
       "package.json",
       "place-rendered.js",
+      "print-indicator.js",
       "project-adapters.js",
       "reconciliation-coordinator.js",
+      "render-refusal.js",
       "rendered.js",
       "source.js",
-      "toc-intersection-fallback.js",
+      "toc-toggle.js",
       "transclusion.js",
       "wiki-enhancer.js",
       "wiki-parser.js",

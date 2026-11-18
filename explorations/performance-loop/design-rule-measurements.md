@@ -25,6 +25,85 @@ Before, at 760 px, the Diff summary was 13 px on both pages, a pull request’s 
 ages and status line were 12 px and 18 px tall, its header 229 and 255 px, and the
 commit’s metadata one line 8 px under its subject.
 
+## Type by Role
+
+For [Type Scale](../../docs/design-system.md#type-scale), recorded on 2026-11-16, when
+secondary metadata took the size of the text it accompanies (mb-ctlu): an inventory of
+every visible run of text, read in headless Chrome 152 on a Mac in a 1280 by 900 window,
+light theme, on the Pulls, Files, and Commits panels, a Pulls row opened, a pull
+request’s Conversation, Changes, and Checks, the Diff summary opened, a file view of
+each built-in plugin’s kind, a folder’s Overview and Treemap, a commit’s page and hover
+card, tooltips, the settings menu, the ref selector, the Files type menu, Help, and
+Quick Search, served from the GitHub stand-in (`tests/github_pull_fixture.py --serve 7`)
+and `tests/manual-fixtures`. Size and line height, in px, before and after; nothing else
+changed between the two runs.
+
+| Text | Before | After |
+| --- | --- | --- |
+| A tree row’s size and age, beside its 13 / 19.5 name | 12 / 18 | 13 / 19.5 |
+| A Pulls row’s age, and its second line’s author beside the 13 px number | 12 / 18 | 13 / 19.5 |
+| A Commits row’s author and age, and the Commits tally’s age inside its 13 px line | 12 / 18 | 13 / 19.5 |
+| The navigation column’s freshness line, “Fetched just now” | 12 / 14.4 | 13 / 15.6 |
+| A changed-files tree’s line counts, beside 13 px names | 12 / 18 | 13 / 19.5 |
+| A file’s and a folder’s header: its path | 13 / 19.5 | 14 / 21 |
+| A file’s and a folder’s header: size, count, age, and mirror note | 12 / 18 | 14 / 21 |
+| A diff file bar: its path, change letter, line counts, and View file | 13 / 19.5 | 14 / 21 |
+| A pull request’s Checks summary and each check | 12 / 18 | 14 / 21 |
+| A review comment’s file, in its 14 px card head | 13 / 19.5 | 14 / 21 |
+| A tooltip’s detail lines, under its 14 px text | 12 / 16.8 | 14 / 19.6 |
+| Help’s descriptions and group context, Quick Search’s status | 12 / 18 | 13 / 19.5 |
+| “Updated just now” and the navigation metadata line | 13 / 19.5 | 13 / 19.5 |
+| A pull request’s header lines, its status line among them | 14 / 21 | 14 / 21 |
+
+Chips, badges, buttons, menus, keycaps, labels, monospace, and titles read the same in
+both runs: controls 12 px, ref chips 0.9 of their text, labels 12 px in caps, section
+headings 14 px in caps, code 12 / 18, a revision 13 px, titles 24 / 30.
+
+No list’s row height moved, at panes of 300 and 180 px: a tree row 24 px, a Commits row
+22 px, and a Pulls row 43 px.
+The column’s foot is 30 px at 300 px; at 180 px, where it wraps, it grew 2.2 px, from
+45.8 to 48 px, and no list’s row constant depends on it.
+At the 180 px pane, the Commits row’s meta column clipped its age by 9.6 px at 12 px and
+by 14.2 px at 13 px; with the author ellipsizing first, the age is whole.
+The Pulls window’s estimate for an unmeasured row is 41.5 px against the 43 px it
+measures, before and after.
+`tests/test_type_scale_chrome.py`, run against the stylesheets as they were, failed 27
+of its checks, every role this changed.
+
+On 2026-11-17 a file’s or a folder’s header and a diff file bar took the main view’s 14
+px, by the owner’s rule that the navigation column is the one region set a step under
+the body size; the navigation column’s own header path stays 13 px.
+Measured again in headless Chrome 152 at a device pixel ratio of 1, against the same at
+13 px:
+
+- The header row stays 41 px.
+  On a 900 px window showing `root / src / metabrowser / color_oklch.py`, the largest
+  width a crumb gave up was 0.219 px at a root shrink weight of 1000, 0.047 px at 5000,
+  0.016 px at 20000, and none at 100000; at 13 px in the same run they were 0.188,
+  0.031, 0.016, and 0 px.
+  This run recorded the widths, not whether a crumb showed an ellipsis; the stylesheet’s
+  comment keeps the first 13 px run’s widths, 0.164, 0.031, 0.008, and 0 px, with what
+  each showed. The root had nothing left to give below a 367 px header, against 351 px at
+  13 px, and at every header from 249 to 689 px a filename cut short ended in an
+  ellipsis with the copy control inside the box.
+- With a mirror named `metabrowser-v012-landing-docs`, at 12 header widths from 240 to
+  1340 px the root measured what it did with the note removed, the note was whole or
+  absent, and where it showed its text box shared the path’s top.
+  14 em is 196 px against the 189.9 px of `mirror in ~/.metabrowser/cache/`.
+- A diff file bar is 24 px, and 29 px with the Markdown chooser, at both sizes, and an
+  empty bar, which the diff view measures to reserve one, is 24 px at both.
+- View file’s two forms were measured in headless Chrome 153 on a commit’s page, with
+  the two controls the diff view writes placed in each bar where it places them, since a
+  served checkout draws none, and each baseline read as the top of a zero-size inline
+  block on it. At device pixel ratios of 1 and 2, the button form sat on the path’s
+  baseline at 14 and at 13 px, and the link form sat above it, by 0.5 px at 14 px and
+  0.75 px at 13 px. The link took the bar’s 1.5 line height, 21 px, where the toggle and
+  the button take a button’s `normal`, 20 px.
+  With the link at `normal` too, both forms sit on the path’s baseline at both sizes and
+  both ratios, and the bar stays 24 px.
+- In a Pulls row, “12mo”, the longest compact age, is 31.1 px of its 32.3 px column at
+  13 px. WebKit was not measured.
+
 ## Row Baselines
 
 For
@@ -32,10 +111,16 @@ For
 
 - The diff file bar’s View file controls, set at `--ui-small-font-size` beside the path,
   sat off the path’s baseline, a link by 0.75px and a button by 0.5px, measured in
-  Chromium at a device pixel ratio of 2. Set at the path’s own size, they center onto
-  one baseline.
+  Chromium at a device pixel ratio of 2. Set at the path’s own size and line height,
+  they center onto one baseline.
+  At the path’s size alone the link form still sat 0.5 px above it at 14 px and 0.75 px
+  at 13 px, at ratios of 1 and 2, until it took the toggle’s `normal` line height
+  ([Type by Role](#type-by-role)).
 - A mirror’s location note at the far end of the file header, centered rather than
-  baseline-aligned, sits 0.25px above the path at a device pixel ratio of 1.
+  baseline-aligned, sits 0.25px above the path at a device pixel ratio of 1. On
+  2026-11-16 and 2026-11-17, at the header’s one size, 13 px and then 14 px
+  ([Type by Role](#type-by-role)), its text box, the path’s, and the size’s share one
+  top at a device pixel ratio of 1.
 - Aligning the Git commit summary’s monospace revision on one baseline with the
   body-size sans beside it grows that line by 1.25px at a device pixel ratio of 2, so it
   stays centered.
@@ -219,6 +304,39 @@ later.
 Recorded again on 2026-11-16, when the summary’s header took the body size (mb-26zj):
 the block is 203 by 11.89 px, still 14.5 em of the header’s type, now 14 px.
 
+Recorded on 2026-11-17, when the placeholder began at a page’s first paint rather than
+at its core preview (mb-30dz): headless Chrome 152, this repository served as a checkout
+on a copy of an everyday cache, three back-to-back pairs a case at a load average of 16
+to 41, each frame’s row read from navigation start, or from the click.
+A direct link to #470, its record not cached: the header was in sight with an empty row
+for 1455 to 1886 ms, the placeholder showed at 1822 to 2286 ms; after, the row was never
+seen empty and the placeholder showed at 286 to 315 ms, with the header.
+A Pulls row of #521, its record not cached, clicked: empty for 993 to 1268 ms, the
+placeholder at 1074 to 1419 ms; after, never empty, the placeholder at 67 to 87 ms.
+#502, cached, on a server’s first visit: empty for 517 to 596 ms, the placeholder at 849
+to 959 ms; after, never empty, at 295 to 330 ms.
+The summary arrived as before in each case, 2.7 to 4.8 s cold and 1.1 to 1.3 s warm.
+
+### The Cached Brief Line
+
+Recorded on 2026-11-17, when a pull request header’s Diff summary row began holding the
+cached changed-files list’s brief line while its comparison is read (mb-z8ea): measured
+in headless Chrome 152 at 560, 420, and 360 px in both themes by
+`tests/test_github_pull_header_chrome.py` (`summary-wait`), the brief line of “35 files
+changed · 2 A, 3 D, 30 M · +1,234 −3,423” has its words 16 px from the content edge and
+2 px under the row’s top, and its text ends 308.19 px from the content edge at 560 and
+420 px and 291 px at 360 px, where it is cut short, each the same as the summary that
+replaces it; the row is 24 px before and after, and the tab bar does not move.
+Without the toggle’s right padding the line cut short ended 6 px later, and without a
+button’s `normal` line its words were 0.5 px higher.
+On this repository served as a checkout, at a load average of 38 to 94, three runs a
+case: opened from a Pulls row, the line showed 110 and 151 ms after the click, read from
+the row’s line with no request (in the third run the row’s list was of another head, and
+the placeholder held the row), and the summary at 3.2 to 4.4 s; a direct link to #470,
+its record not cached, showed it at 1.3 to 2.2 s (before the line waited for a known
+head, which the core brings at about the same time), its read 0.66 to 1.27 s on a server
+just started, and the summary at 4.5 to 6.4 s.
+
 ### A Kept Comparison
 
 Recorded on 2026-11-16, when a pull request’s page began keeping the comparisons it read
@@ -235,6 +353,23 @@ summary arrived with its record: 16 to 27 ms after the click, 46 to 63 ms at fou
 slower CPU, and 16 to 23 ms with no `requestIdleCallback`, a pull request first opened
 on Changes included; and a first visit to a row the pointer rested on for 250 ms, 9 to
 12 ms after the click, where it was 283 to 343 ms.
+
+### A Pulls Row’s Change Line
+
+Recorded on 2026-11-17, when the Pulls tab’s prefetch began listing changed files from
+the store before it reads records (`_prepare_lists` in
+`src/metabrowser/builtin_plugins/github/pull_prefetch.py`, whose docstring has the same
+readings). Measured in headless Chrome 152 on this repository’s own Pulls tab, served
+from its checkout with a fresh cache, 11 open rows in view, at a load average of 11 to
+14; the list of pull requests was drawn 6.4 s after the tab opened in both.
+Before, the lane took turns, a record of 3.6 to 4.7 s and then a list from GitHub of 0.3
+to 2 s, and the rows’ change lines were drawn from 12.3 s to 40.6 s. After, every list
+is the store’s comparison of the row’s head with the mirror’s base branch, with no
+GitHub request: the lines were drawn from 9.4 s to 10.4 s, of which attaching the
+checkout’s store took 2.3 to 2.5 s once, 11 merge bases 0.42 s, and each list 42 to 134
+ms. A batch of heads the store lacks is one Git fetch: 39 of this repository’s pull
+request heads, fetched from GitHub into a store that borrows the checkout’s objects,
+took 0.76 s.
 
 ## The Pull Request Header
 
@@ -262,6 +397,36 @@ measured in Chrome 152 at 980 to 320 px on every tab, a summary of “35 files c
 A, 3 D, 30 M · +1,234 −3,423” arriving moved no row and not the tab bar, and kept its
 row’s 24 px on one line, its breakdown cut short at 320 px with the whole header as its
 tooltip.
+
+Recorded on 2026-11-17, when the freshness note moved to the end of the author’s row,
+Refresh to the end of the row of ages, and the status line came to be there only while
+it has something to say (mb-ne91): measured in Chrome 152 at 980 to 320 px on every tab,
+the header is 208 px with no labels and 234 px with labels or while its record is on its
+way, and 27 px more, a 21 px line and its 6 px gap, while the status line shows, as an
+offer makes it; a rate limit’s hold, said in the note’s place, adds nothing.
+Before, the freshness line was always there, and the header was 261 px with labels in
+every state.
+With the recorded record’s login, 38.08 px, its sentence, 153.27 px, and one
+stack’s chip, the note, 198.55 px at its widest age, is whole beside the sentence from
+980 px to 560 px and out of view from 420 px down; with a 39-character login it is out
+of view from 560 px down, and from 760 px with an avatar and two stacks’ chips too.
+Wherever it shows, the login and the sentence keep their natural widths.
+Shrunk together with the sentence, the note had cut it 0.38 px at 560 px, dropping whole
+letters to its ellipsis.
+
+Recorded on 2026-11-18, after review B on #506, measured in Chrome 152 at 980 to 320 px
+with the `current` record and one stack’s chip.
+A rate limit’s hold in the page’s own short form, “GitHub rate limit · next check at
+12/31/98, 4:00 PM”, 288 px, is whole at 980 and 760 px and cut short with its tooltip at
+560 px; from 420 px down it keeps its floor, 118 px of text, and the sentence gives way,
+to 102 of its 153 px at 420 and 6 at 320. A hold that lifts today, “… next check at 9:23
+PM”, 230 px, does the same.
+Before, the whole timestamp, 320 px, left the line from 640 px down.
+With ages of a record’s length, “Opened 12d ago · updated 5h ago”, 195 px, or 291 px
+with “merged 3d ago”, View on GitHub and Browse code show whole down to 420 px, where
+the ages have 45 px; at 360 and 320 px the ages are gone and the links are cut, 93% and
+73% of them shown. Before, cut at the row’s end, Browse code was cut from 560 px with
+every age whole.
 
 ## Pull Request Stacks and the Timeline
 
@@ -325,6 +490,47 @@ For [One Glyph Size](../../docs/design-system.md#one-glyph-size), recorded 2026-
 at a 16px slot a Files name started 22px from the row’s content edge and a Pulls title
 44px, past two slots; at 14px they start at 20 and 40, and a pull request’s title is 4px
 wider.
+
+## Pulls Rows
+
+For [The Pulls Tab](../../docs/design-system.md#the-pulls-tab).
+
+Recorded on 2026-11-17, when a Pulls row’s title moved to its first line, after the
+state icon, and its number’s line, with the age, to its second; its avatar went from the
+shell’s 18 px to 16 px; and a row’s or a stack heading’s statuses became whole or out of
+view rather than cut short with an ellipsis.
+Measured in headless Chrome 152 in both themes by
+`tests/dom/github-pulls-row-lines-chrome.mjs` and
+`tests/dom/github-pulls-stack-lines-chrome.mjs`, from 420 px to the 180 px minimum: a
+row’s link is still 41 px and its item, with the change line, 61 px, before and after
+its line arrives; #106’s line, “2 A, 3 D, 30 M · +1,234 −3,423” in the stand-in, shows
+whole down to 299 px and its totals alone from 260 px, where it showed its statuses cut
+short before. A stack heading’s line shows whole down to 260 px, its totals alone at 220
+and 200 px, and goes at 180 px, where it went before too.
+Measured again after review, on hand-built headings in headless Chrome 152 with the
+production stylesheet: a heading whose totals are estimated, “21 A, 7 D, 15 M · +1,234
+−567 (estimated)”, drops its “(estimated)” whole first and keeps its statuses to 360 px,
+then shows its totals alone with nothing after them, and goes at 240 px, as an exact one
+does. Before the review’s fix the statuses went at the first pixel of squeeze and left a
+blank run of 83 to 115 px, and before this change the note was cut to “(estimat” at 420
+px and the line went at 320 px.
+`tests/dom/github-pulls-stacks-chrome.mjs` holds the order: the title’s line above the
+number’s, the state icon centred on the title’s line, the title from the text column to
+the row’s end, and the number’s line in the title’s column.
+
+Recorded on 2026-11-18, when the title-first rows took one leading slot (mb-3vil, at the
+owner’s word): measured in headless Chrome 152 by
+`tests/dom/github-pulls-stacks-chrome.mjs` at the default 299 px pane, from the pane’s
+left edge, a row in no stack has its state icon and its change line’s chevron at 12 px
+and its title, its number’s line, and its change line’s values at 32 px, the 14 px slot
+and the rows’ 6 px gap past them; a stack’s row has its chevron at 12 px, its Layers
+icon at 32 px, and its label at 52 px; and a stack’s member has its state icon and
+chevron at 32 px, under the Layers icon, and its three lines’ text at 52 px, under the
+label.
+A pull request’s changed files start 16 px, one `--tree-indent`, past its chevron.
+Before, on the title-first rows, a row in no stack had an empty first slot, its state
+icon at 32 px and its title, number’s line, and values at 52 px, with its chevron at 12
+px, 26 px from the values.
 
 ## Grouping Cost
 

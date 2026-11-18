@@ -20,7 +20,7 @@
   --diff-notice-padding-y: 10px;
   --diff-header-row-height: calc(
     1.5 *
-    var(--ui-small-font-size) +
+    var(--mono-block-font-size) +
     2 *
     var(--diff-header-padding-y)
   );
@@ -233,7 +233,7 @@
   background: transparent;
   color: var(--text);
   font-family: var(--font-sans);
-  font-size: var(--nav-font-size);
+  font-size: var(--body-font-size);
   text-align: left;
   cursor: pointer;
 }
@@ -244,9 +244,11 @@
 }
 
 /* Filename styling and truncation, matching the shell's file header
-   path: rows are one line, long paths ellipsize. */
+   path: rows are one line, long paths ellipsize. The bar is a main-view
+   path strip, so its path, change letter, stats, and note read at the
+   toggle's body size, as the file header's do (docs/design-system.md,
+   "Type Scale"). */
 .metabrowser-diff-host .diff-file-path {
-  font-size: var(--nav-font-size);
   font-weight: var(--weight-bold);
   color: var(--text);
   min-width: 0;
@@ -257,13 +259,12 @@
 
 .metabrowser-diff-host .diff-file-note {
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
   flex: none;
 }
 
-/* The --ui-small-font-size note shares the path's baseline, as a nav
-   tree row's text does ("Row Text Shares a Baseline" in the design
-   system); the chevron is a box and stays centered. */
+/* The note, the change letter, and the stats share the path's baseline,
+   as a nav tree row's text does ("Row Text Shares a Baseline" in the
+   design system); the chevron is a box and stays centered. */
 .metabrowser-diff-host .diff-file-toggle
   > :is(.diff-file-kind, .diff-file-path, .diff-file-stats, .diff-file-note) {
   align-self: baseline;
@@ -288,17 +289,20 @@
   font-weight: var(--weight-bold);
 }
 
-/* View file: a quiet text action at the end of the bar, the same whether
+/* View file, or View on branch on a pull request: a quiet text action at
+   the end of the bar, the same whether
    it is a link (the page has the file's address) or a button (following
    it switches the served pin first). It stays visible, since it is how a
    reader leaves the diff for the file, and takes the link color on hover
    and focus like every other text action.
-   Set at the path's own size, not --ui-small-font-size: the control is a
-   centered box beside the toggle, and only text of the path's size
-   centers onto the path's baseline. Measured in Chromium at device pixel
-   ratio 2, a 12px link sat 0.75 px above the path's baseline and a 12px
-   button 0.5 px; at --nav-font-size both sit on it ("Row Text Shares a
-   Baseline" in the design system). */
+   Set at the path's own size and line height, the toggle's: the control is
+   a centered box beside the toggle, and only text of the path's size and
+   line height centers onto the path's baseline. The toggle and the button
+   form take a button's `normal` line height; the link form inherited the
+   bar's 1.5 and sat 0.5px above the path's baseline at 14px, at device
+   pixel ratios of 1 and 2, where the button form sat on it ("Row Text
+   Shares a Baseline" in the design system; Design Rule Measurements, "Row
+   Baselines"). */
 .metabrowser-diff-host .diff-file-view {
   flex: none;
   padding: 0 4px;
@@ -306,7 +310,8 @@
   background: transparent;
   color: var(--muted);
   font-family: var(--font-sans);
-  font-size: var(--nav-font-size);
+  font-size: var(--body-font-size);
+  line-height: normal;
   text-decoration: none;
   white-space: nowrap;
   cursor: pointer;
@@ -327,7 +332,7 @@
   cursor: progress;
 }
 
-/* Why a View file switch did not happen, under the bar so a collapsed
+/* Why a switch did not happen, under the bar so a collapsed
    body does not hide it. */
 .metabrowser-diff-host .diff-file-notice {
   border-bottom: 1px solid var(--border);
@@ -377,7 +382,7 @@
   white-space: nowrap;
   color: var(--muted);
   background: var(--highlight-bg);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--mono-block-font-size);
 }
 
 .metabrowser-diff-host .diff-line {
@@ -583,6 +588,9 @@
   display: none;
 }
 
+/* The comparison's article is a KPress fragment outside the document host; the shell's
+   bridge (static/styles.css) gives every `.kpress` the app's colors and corners, so its
+   quotes and code draw as a document's do. */
 .metabrowser-diff-host .diff-markdown {
   max-inline-size: calc(var(--doc-measure) + 2 * var(--content-padding-x));
   padding-block: 4px;

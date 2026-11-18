@@ -19,6 +19,7 @@ import subprocess
 import sys
 from collections.abc import AsyncGenerator, Callable
 from datetime import timedelta
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -278,6 +279,46 @@ def test_a_first_fill_is_published_page_by_page_and_a_reread_at_the_end(
     }
     assert len(seen) == 5
     assert all(isinstance(item, PullFileList) and len(item.rows) == 249 for item in seen)
+
+
+def test_a_read_during_a_republication_sees_the_old_stamp_and_list_or_the_new(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository: ListedRepository, home: Path
+) -> None:
+    """A job republishes its stamp and its list while the routes read them.
+
+    Each is renamed into place between a read's inspection of its entry and its open, as
+    the job's ``gh_missing`` stamp was while the route read ``files`` in CI run
+    44043888346, which then said that no refresh had ended and the list was current
+    (mb-kq72). Mutation check: open once in ``read_bytes_bounded``, and the stamp reads
+    ``None`` and the list ``unreadable``.
+    """
+
+    from metabrowser.cache.paths import source_pull_files_refresh
+
+    _answer(tmp_path, monkeypatch, file_pages(TREE_PULL, tree_files()))
+    old = _refresh(repository, TREE_PULL)
+    new = old.model_copy(update={"generation": "f" * 32})
+    stamp = PullRefreshStamp(outcome="gh_missing", at="2026-09-17T12:00:01Z")
+    stamp_name = source_pull_files_refresh(SOURCE.slug, TREE_PULL).rpartition("/")[2]
+    list_name = source_pull_files(SOURCE.slug, TREE_PULL).rpartition("/")[2]
+    republish: dict[str, Callable[[], None]] = {
+        stamp_name: partial(write_files_refresh, home, SOURCE.slug, TREE_PULL, stamp),
+        list_name: partial(write_pull_files, home, SOURCE.slug, new),
+    }
+    real_stat = os.stat
+
+    def racing_stat(path: Any, *args: Any, **kwargs: Any) -> os.stat_result:
+        result = real_stat(path, *args, **kwargs)
+        inspected = kwargs.get("follow_symlinks") is False and kwargs.get("dir_fd") is not None
+        publish = republish.pop(path, None) if inspected and isinstance(path, str) else None
+        if publish is not None:
+            publish()
+        return result
+
+    monkeypatch.setattr(os, "stat", racing_stat)
+    assert read_files_refresh(home, SOURCE.slug, TREE_PULL) == stamp
+    assert read_pull_files(home, SOURCE.slug, TREE_PULL) == new
+    assert republish == {}
 
 
 def test_concurrent_same_second_refreshes_keep_distinct_persisted_generations(
@@ -796,9 +837,12 @@ def test_the_newest_of_record_and_row_names_the_head(
             updated_at="2026-09-17T12:00:00Z",
             head=SimpleNamespace(sha="a" * 40),
             base=SimpleNamespace(ref="topic"),
+            state="open",
         )
     )
-    row = SimpleNamespace(updated_at="2026-09-17T12:00:00Z", head_oid=None, base_ref="topic")
+    row = SimpleNamespace(
+        updated_at="2026-09-17T12:00:00Z", head_oid=None, base_ref="topic", state="open"
+    )
     monkeypatch.setattr(pull_files_route, "PullRecord", SimpleNamespace)
     monkeypatch.setattr(pull_files_route, "cached_pull_record", lambda *_: (record, None, None))
     monkeypatch.setattr(pull_files_route, "cached_list_row", lambda *_: row)

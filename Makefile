@@ -30,7 +30,7 @@ unexport NPM_CONFIG_MINIMUM_RELEASE_AGE
 # npm 11. Repository installs must use the reviewed .npmrc policy instead.
 unexport NPM_CONFIG_BEFORE
 
-.PHONY: default install hooks-install biome-fix browser-types format format-markdown lint lint-check test test-admitted-git audit lock upgrade build verify clean
+.PHONY: default install hooks-install biome-fix browser-types format format-markdown lint lint-check test test-parallel test-serial test-chrome test-goldens test-admitted-git audit lock upgrade build verify clean
 
 default: install format lint test
 
@@ -51,7 +51,8 @@ browser-types:
 	npx --no-install tsc --noEmit -p tsconfig.legacy.json
 	npx --no-install tsc --noEmit -p apps/macos/webkit-gate/tsconfig.json
 
-format lint lint-check test test-admitted-git audit build: | install
+# A CI job calls each test tier's target directly, so each installs first, as `test` does.
+format lint lint-check test test-parallel test-serial test-chrome test-goldens test-admitted-git audit build: | install
 
 lint:
 	$(UV_RUN) python -m devtools.lint
@@ -59,6 +60,7 @@ lint:
 	$(UV_RUN) python -m devtools.check_file_type_colors --quiet
 	$(UV_RUN) python -m devtools.check_tooltips
 	$(UV_RUN) python -m devtools.check_supply_chain
+	$(UV_RUN) python -m devtools.check_ci
 	$(UV_RUN) python -m devtools.check_artifact_contracts
 	$(UV_RUN) python -m devtools.check_parity
 	$(UV_RUN) python -m devtools.check_goldens
@@ -87,6 +89,7 @@ lint-check:
 	$(UV_RUN) python -m devtools.check_file_type_colors --quiet
 	$(UV_RUN) python -m devtools.check_tooltips
 	$(UV_RUN) python -m devtools.check_supply_chain
+	$(UV_RUN) python -m devtools.check_ci
 	$(UV_RUN) python -m devtools.check_artifact_contracts
 	$(UV_RUN) python -m devtools.check_parity
 	$(UV_RUN) python -m devtools.check_goldens
@@ -101,8 +104,18 @@ lint-check:
 # `--api` requests of cli-api-cache.tryscript.md took 2.4 to 8.0 s and each printed the
 # line. It is a wall-clock measurement and not behavior, so the threshold is put past
 # tryscript's own 30 s command timeout, where it cannot fire before the command fails.
-TRYSCRIPT := PATH="$(CURDIR)/tests/no-real-gh:$$PATH" METABROWSER_SLOW_SERVER_MS=60000 \
+#
+# `env` sets both, so the same words work as a shell command and as the command
+# devtools/run_goldens.py runs once for each golden.
+TRYSCRIPT := env PATH="$(CURDIR)/tests/no-real-gh:$$PATH" METABROWSER_SLOW_SERVER_MS=60000 \
 	npx --no-install tryscript
+GOLDENS := tests/golden/*.tryscript.md
+# How many golden files devtools/run_goldens.py runs at a time: one per processor of a CI
+# runner, which has four. tryscript runs a file's commands one after another, each in a
+# process of its own. On a shared 4-processor machine at a load average near 1, the 82
+# goldens and their 457 commands took 307 s one at a time and 81 s four at a time, with
+# the same verdict for every file (2026-11-17); the longest file alone is 38 s.
+GOLDEN_JOBS ?= 4
 
 # In CI a skip has to belong to a tier docs/e2e-testing.md names, or the test fails:
 # a reason outside them means a test the suite is believed to run did not. Locally a
@@ -110,12 +123,52 @@ TRYSCRIPT := PATH="$(CURDIR)/tests/no-real-gh:$$PATH" METABROWSER_SLOW_SERVER_MS
 # the caller sets the variable; see tests/suite_gates.py.
 STRICT_SKIPS := $(if $(CI),METABROWSER_STRICT_SKIPS=1)
 
-# The default tier. -rs names every skipped test with its reason, so a skip is read
-# rather than counted, and --durations lists the slowest tests, so a run says where its
-# time went. A missing Node or Git stops the run; see tests/required_tools.py.
-test:
-	$(STRICT_SKIPS) $(UV_RUN) pytest -rs --durations=25
-	$(TRYSCRIPT) run 'tests/golden/*.tryscript.md'
+# Workers for the parallel tier and test-admitted-git, one per logical processor. xdist's
+# `auto` counts physical cores through psutil, which this project installs, and a CI
+# runner's four processors can be two cores with two threads each. A shared or loaded
+# machine lowers it, as in `make test PYTEST_WORKERS=2`. Measured only at three workers
+# (a shared 4-processor machine) and four (CI's runners), as the fast CI plan's Phase 1
+# Measurements record; a machine with more processors may want a cap.
+PYTEST_WORKERS ?= logical
+# `SHARD=I/N` runs the Ith of N disjoint parts of a pytest tier (tests/suite_tiers.py);
+# empty runs the whole tier.
+SHARD ?=
+# -rs names every skipped test with its reason, so a skip is read rather than counted,
+# and --durations and --file-durations list the slowest tests and test files
+# (tests/suite_timing.py), so a run says where its time went. A missing Node or Git
+# stops the run; see tests/required_tools.py.
+PYTEST := $(STRICT_SKIPS) $(UV_RUN) pytest -rs --durations=25 --file-durations=25 \
+	$(if $(SHARD),--shard=$(SHARD))
+# The tiers' -m expressions, which tests/suite_tiers.py defines as TIERS: together they
+# hold every test once, whatever is marked.
+PARALLEL_TIER := not serial and not chrome
+SERIAL_TIER := serial and not chrome
+CHROME_TIER := chrome
+
+# The default tier, as four parts that CI can also run one at a time. Each file of the
+# parallel tier runs on one worker, its tests in order (--dist loadfile), so module-scoped
+# fixtures behave as they do in one process. The serial and Chrome tiers run one test at
+# a time, after the parallel tier and so never beside its workers.
+#
+# For the same reason a SHARD of the parallel tier holds whole files (--shard-by=file).
+# Dealt by test, the CI unit jobs of run 44037230262 failed in two modules whose tests
+# rely on an earlier one in the module: tests/test_cli_git_pin_golden.py, whose first
+# test records the clone the rest reuse (bead mb-5zkq), and tests/test_github_pulls.py.
+# Whole files stay the right deal once mb-5zkq is fixed, since a module-scoped fixture is
+# then built once; the serial and Chrome tiers still deal by test.
+test: test-parallel test-serial test-chrome test-goldens
+
+test-parallel:
+	$(PYTEST) -m "$(PARALLEL_TIER)" -n $(PYTEST_WORKERS) --dist loadfile --shard-by=file
+
+test-serial:
+	$(PYTEST) -m "$(SERIAL_TIER)"
+
+test-chrome:
+	$(PYTEST) -m "$(CHROME_TIER)"
+
+test-goldens:
+	$(UV_RUN) python -m devtools.run_goldens --jobs $(GOLDEN_JOBS) '$(GOLDENS)' -- $(TRYSCRIPT)
 
 # The size of the suite by area, at the working tree or at the commits in REFS, and with
 # LOG the time each test file and golden took in that CI job log:
@@ -125,6 +178,16 @@ test:
 .PHONY: test-report
 test-report:
 	$(UV_RUN) python -m devtools.suite_report $(REFS) $(if $(LOG),--log $(LOG))
+
+# Each CI job's median and 90th percentile, push to green by kind of run, and reruns, over
+# the newest runs of ci.yml as gh reads them; CI_REPORT_FLAGS passes devtools/ci_report.py
+# its options:
+#   make ci-report
+#   make ci-report CI_REPORT_FLAGS="--runs 300 --branch main --steps --save attic/ci-runs"
+# docs/e2e-testing.md ("Measuring CI") says how each number is taken.
+.PHONY: ci-report
+ci-report:
+	$(UV_RUN) python -m devtools.ci_report $(CI_REPORT_FLAGS)
 
 # The baseline scale benchmark that docs/scale-benchmark.md records: one run of
 # devtools/bench_serving.py per size on its synthetic corpus under .bench/, then one
@@ -147,7 +210,9 @@ benchmark: | install
 # with nothing patched. They skip on a Git below the floor. The CI admitted-git
 # job builds each admitted release and sets METABROWSER_REQUIRE_ADMITTED_GIT, which
 # turns that skip into a failure; see tests/admitted_git.py. A test that asks for the
-# floor from a module this list leaves out fails; see tests/suite_gates.py.
+# floor from a module this list leaves out fails; see tests/suite_gates.py. The list runs
+# beside other workers, like the parallel tier, so the same gates fail a serial or chrome
+# test in it.
 ADMITTED_GIT_TESTS := \
 	tests/test_git_full_clone_acceptance.py \
 	tests/test_cli_live_acquire_golden.py \
@@ -175,11 +240,13 @@ ADMITTED_GIT_TESTS := \
 	tests/test_github_pull_list.py \
 	tests/test_pulls_nav.py \
 	tests/test_checkout_overlay.py \
+	tests/test_checkout_revisions.py \
+	tests/test_cli_source_checkout_golden.py \
 	tests/test_github_checkout.py \
 	tests/test_cli_github_checkout_golden.py \
 	tests/test_cli_checkout_golden.py \
 	tests/test_cli_github_pull_golden.py \
-	tests/test_cli_github_pull_snapshot_golden.py \
+	tests/test_cli_github_pull_image_golden.py \
 	tests/test_cli_github_pull_rendered_golden.py \
 	tests/test_cli_github_pulls_golden.py \
 	tests/test_cli_github_stacks_golden.py \
@@ -187,8 +254,11 @@ ADMITTED_GIT_TESTS := \
 	tests/test_github_stack_change.py \
 	tests/test_cli_github_labels_golden.py \
 	tests/test_cli_github_pull_files_golden.py \
+	tests/test_cli_github_pull_files_summary_golden.py \
 	tests/test_cli_github_pulls_prefetch_golden.py \
 	tests/test_github_pull_files.py \
+	tests/test_github_pull_files_summary.py \
+	tests/test_github_drawn_from_disk.py \
 	tests/test_cache_async_locks.py \
 	tests/test_cli_no_serve_surface.py \
 	tests/test_diff_view_file_session.py \
@@ -212,7 +282,8 @@ ADMITTED_GIT_TESTS := \
 	tests/test_admitted_git_gate.py
 
 test-admitted-git:
-	$(STRICT_SKIPS) $(UV_RUN) pytest -rs $(ADMITTED_GIT_TESTS)
+	$(STRICT_SKIPS) $(UV_RUN) pytest -rs --file-durations=25 -n $(PYTEST_WORKERS) --dist loadfile \
+		$(ADMITTED_GIT_TESTS)
 
 # The outer tiers nothing in CI runs. docs/e2e-testing.md ("Test Tiers") says what each
 # covers and when to run it.
@@ -252,6 +323,7 @@ GOLDEN_RECORDERS := \
 	tests/test_cli_github_checkout_golden.py \
 	tests/test_github_pulls_panel_session.py \
 	tests/test_github_stack_change.py \
+	tests/test_github_pull_files_summary.py \
 	tests/test_github_pull_files_tree_session.py \
 	tests/test_inert_toc.py \
 	tests/test_inert_html.py
@@ -265,23 +337,26 @@ GOLDEN_DRIVERS := \
 	tests/test_cli_git_refresh_golden.py \
 	tests/test_cli_github_url_golden.py \
 	tests/test_cli_github_pull_golden.py \
-	tests/test_cli_github_pull_snapshot_golden.py \
+	tests/test_cli_github_pull_image_golden.py \
 	tests/test_cli_github_pull_rendered_golden.py \
 	tests/test_cli_github_pulls_golden.py \
 	tests/test_cli_github_stacks_golden.py \
 	tests/test_cli_github_stack_change_golden.py \
 	tests/test_cli_github_labels_golden.py \
 	tests/test_cli_github_pull_files_golden.py \
+	tests/test_cli_github_pull_files_summary_golden.py \
 	tests/test_cli_github_pulls_prefetch_golden.py \
 	tests/test_cli_checkout_golden.py \
 	tests/test_cli_github_checkout_golden.py \
+	tests/test_cli_source_checkout_golden.py \
+	tests/test_cli_present_golden.py \
 	tests/test_diff_comparison_cache.py
 
 golden-update:
 	$(UV_RUN) python -m devtools.golden_update $(GOLDEN_RECORDERS)
-	$(TRYSCRIPT) run --update 'tests/golden/*.tryscript.md' || true
+	$(TRYSCRIPT) run --update '$(GOLDENS)' || true
 	$(UV_RUN) python -m devtools.golden_fixup
-	$(TRYSCRIPT) run 'tests/golden/*.tryscript.md'
+	$(TRYSCRIPT) run '$(GOLDENS)'
 	$(UV_RUN) python -m devtools.golden_update $(GOLDEN_DRIVERS)
 
 audit:
@@ -304,7 +379,7 @@ verify: install lint-check test audit build
 # The native macOS app in apps/macos (README.md there). It needs macOS and Swift, so
 # elsewhere these targets say so and succeed, and `verify` does not depend on them.
 MACOS_APP_TARGETS := macos-build macos-test macos-app macos-run macos-dmg macos-release \
-	macos-notarize macos-clean macos-webkit-gate
+	macos-notarize macos-signing-check macos-check-release macos-clean macos-webkit-gate
 .PHONY: $(MACOS_APP_TARGETS)
 $(MACOS_APP_TARGETS):
 ifeq ($(shell uname -s),Darwin)

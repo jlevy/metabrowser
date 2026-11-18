@@ -28,7 +28,19 @@
 
 .tm-totals {
   max-width: var(--tm-max-width);
+  margin: 0 0 12px;
+}
+
+/* File Overview's legend, under the bars it keys, 12px below them as there. Its line is
+   held while it has no entries, so at a width that fits them the map does not move when
+   they arrive. In a pane too narrow for them the entries wrap and the row grows by the
+   lines they take: the map moves down by those once, and treemap.js measures it again
+   when the row resizes. */
+.tm-legend-row {
+  max-width: var(--tm-max-width);
+  min-height: 1lh;
   margin: 0 0 18px;
+  font-family: var(--font-sans);
 }
 
 .folder-treemap-host > .folder-rollup-controls {
@@ -83,7 +95,8 @@
   background: var(--viz-surface);
   overflow: hidden;
   cursor: default;
-  transition: filter var(--viz-hover-duration) var(--viz-hover-ease);
+  /* The lift eases in and out as a bar segment's does (file_type_summary.css). */
+  transition: filter var(--viz-hover-grow-duration) var(--viz-hover-grow-ease);
 }
 
 .tm-actionable {
@@ -95,13 +108,52 @@
    docs/design-system.md.
 
    Two reasons, and either is enough. A cell's area IS its value here, so
-   growing one states a size it does not have, where a bar segment's overshoot
-   settles back to the width it earned. And growth needs the mark to lift above
+   growing one states a size it does not have, where a bar segment's growth
+   leaves the width it earned as it is. And growth needs the mark to lift above
    its neighbours, which this map cannot give it: a nested folder and its
    descendants are flattened into siblings, so raising a hovered container
-   paints it over every rectangle inside it. */
-.tm-cell:hover {
+   paints it over every rectangle inside it.
+
+   An attribute rather than :hover, because the pointer may be on a legend
+   entry naming the cell's family rather than on the cell: the map, its bars,
+   and its legend share one hover, which marks the cell under the pointer, or
+   every cell of the family an entry names (treemap.js, drawCellHover). */
+.tm-cell[data-hovered] {
   filter: var(--viz-data-mark-hover-filter);
+}
+
+/* The hover shimmer a bar segment has (file_type_summary.css), on the one cell
+   under the pointer, behind its label: the sheen is the lowest thing the
+   hovered cell paints, which its filter makes a stacking context, so a label
+   keeps its contrast.
+
+   Only that cell. A legend entry marks every cell of its family (treemap.js,
+   drawCellHover), and a family can hold every cell the map draws, up to
+   maxCells in treemap-layout.js; each shimmering cell is a layer of its own
+   and its own animation, so the cost grew with the family. Those cells take
+   the lift alone.
+
+   Measured in headless Chrome 152 at 1280 by 900 on a folder at maxCells,
+   800 cells, 790 of them Python's, holding the Python entry for 2.5 s, two
+   runs each at a load average near 30 (2026-11-18). With only the pointer's
+   cell shimmering: 16 composited layers, 3 shimmer animations (the two
+   Python segments and the entry's dot), the display drawing 87 to 90 frames
+   in 25 ms, and a page frame interval of 16.7 ms at the 95th percentile.
+   With every family cell shimmering, as this rule once let it: 1,629 layers,
+   793 animations, 35 to 41 frames in 570 to 650 ms, and 66.7 ms.
+   tests/test_treemap_legend_hover_chrome.py holds that an entry's hover runs
+   no cell's shimmer, and tests/test_browser_filter_ui.py that this is the
+   cells' only sheen. */
+.tm-cell[data-hovered="self"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--viz-hover-shimmer-sheen);
+  opacity: 0;
+  pointer-events: none;
+  animation: viz-hover-shimmer var(--viz-hover-shimmer-period) ease-in-out
+    var(--viz-hover-grow-duration) infinite;
 }
 
 /* Two-tone focus ring: the accent ring is backed by a neutral halo so
@@ -224,8 +276,12 @@
     animation: none;
     opacity: 0.75;
   }
+  /* The motion goes, the easing and the shimmer; the lift stays, drawn at once. */
   .tm-cell {
     transition: none;
+  }
+  .tm-cell[data-hovered="self"]::after {
+    content: none;
   }
 }
 
@@ -233,7 +289,7 @@
   margin-top: 8px;
   max-width: var(--tm-max-width);
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--body-font-size);
   font-variant-numeric: var(--tabular-numerals);
   -webkit-user-select: text;
   user-select: text;

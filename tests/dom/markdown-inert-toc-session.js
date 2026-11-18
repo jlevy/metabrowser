@@ -7,9 +7,11 @@
 // tests/test_inert_toc.py in tests/fixtures/inert-toc-render.json -- Python's HTML parse
 // of the server's inert HTML, rebuilt by the production static/inert-html.js -- then
 // wires the table of contents in a scrolling viewport: the entry for the section at the
-// reading line is active, the narrow toggle opens and closes the drawer, an entry click
-// closes it, and disposal removes every listener. Paint, the real scroll, and the
-// stylesheet's layout are the QA runbook's.
+// reading line is active, a heading with no layout box is stepped past, the narrow toggle
+// opens and closes the drawer, an entry click closes it, the toggle shows only once the
+// reader has reached the document (toc-toggle.js), and disposal removes every listener.
+// Paint, the real scroll, and the stylesheet's layout are the QA runbook's and
+// tests/test_overview_readme_toc_chrome.py's.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -259,8 +261,24 @@ async function main() {
   const article = render.inertArticle(target);
   assert(article, "the inert article is the render's container's child");
   const headings = article.querySelectorAll("h1, h2, h3, h4, h5, h6");
+  // Where the document starts down the viewport's scroll: at its top, as an opened file's
+  // does, until the session moves it below a folder Overview's other panels. The toggle
+  // measures the element the render is mounted in, which a folder Overview collapses to no
+  // height while the article clipped inside it keeps its own.
+  let documentTop = 0;
+  let mountedHeight = 10_000;
+  const box = (height) => ({
+    top: 100 + documentTop - viewport.scrollTop,
+    bottom: 100 + documentTop - viewport.scrollTop + height,
+    width: 1000,
+    height,
+  });
+  target.getBoundingClientRect = () => box(mountedHeight);
+  article.getBoundingClientRect = () => box(10_000);
   headings.forEach((heading, index) => {
-    heading.getBoundingClientRect = () => ({ top: 100 + index * 1000 - viewport.scrollTop });
+    heading.getBoundingClientRect = () => ({
+      top: 100 + documentTop + index * 1000 - viewport.scrollTop,
+    });
   });
 
   // A render KPress drew no table of contents for gets none, and entries that do not
@@ -335,6 +353,56 @@ async function main() {
   flush();
   transcript.scrolled = state(article, viewport);
 
+  // A heading with no layout box, as one inside a closed disclosure, reports an all-zero
+  // rectangle, whose top of 0 is above the reading line wherever the reader is. The search
+  // steps past it, so the section above it stays active; laid out again, it is active.
+  const constructorHeading = headings.find(
+    (heading) => heading.getAttribute("id") === "user-content-constructor",
+  );
+  const laidOut = constructorHeading.getBoundingClientRect;
+  constructorHeading.getBoundingClientRect = () => ({
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    width: 0,
+    height: 0,
+  });
+  viewport.dispatch("scroll");
+  flush();
+  transcript.hiddenHeading = state(article, viewport);
+  constructorHeading.getBoundingClientRect = laidOut;
+  viewport.dispatch("scroll");
+  flush();
+  transcript.shownAgain = state(article, viewport).active;
+
+  // A run of hidden headings that reaches the end of the search range: the step forward
+  // finds no laid-out heading, and the section above the run stays active.
+  const lastHeadings = headings.filter((heading) =>
+    ["user-content-constructor", "user-content-troubleshooting"].includes(
+      heading.getAttribute("id"),
+    ),
+  );
+  const shown = lastHeadings.map((heading) => heading.getBoundingClientRect);
+  for (const heading of lastHeadings) {
+    heading.getBoundingClientRect = () => ({
+      top: 0,
+      bottom: 0,
+      left: 0,
+      right: 0,
+      width: 0,
+      height: 0,
+    });
+  }
+  viewport.dispatch("scroll");
+  flush();
+  transcript.hiddenRun = state(article, viewport).active;
+  lastHeadings.forEach((heading, index) => {
+    heading.getBoundingClientRect = shown[index];
+  });
+  viewport.dispatch("scroll");
+  flush();
+
   const toggle = article.querySelector(".kpress-toc-toggle");
   transcript.toggleNamed = {
     accessible: toggle.getAttribute("aria-label"),
@@ -361,6 +429,47 @@ async function main() {
   toggle.dispatch("click");
   article.querySelector(".kpress-toc-backdrop").dispatch("click");
   transcript.backdropClicked = state(article, viewport);
+
+  // A README a folder's Overview shows 1,000px down the pane: the narrow toggle waits past
+  // the threshold until the reader reaches the README's beginning, and goes above it.
+  documentTop = 1000;
+  transcript.belowOtherPanels = {};
+  for (const [label, scrollTop] of [
+    ["pastThreshold", 500],
+    ["justAbove", 980],
+    ["reached", 1005],
+    ["backAbove", 500],
+  ]) {
+    viewport.scrollTop = scrollTop;
+    viewport.dispatch("scroll");
+    flush();
+    transcript.belowOtherPanels[label] = {
+      scrollTop,
+      toggleShown: toggle.classList.contains("show-toggle"),
+    };
+  }
+
+  // That README's panel collapsed, with the pane scrolled past it onto a panel below: the
+  // body it is mounted in has no height and the article clipped in it keeps its own, so the
+  // article still spans the pane's top and the body does not. The toggle goes, and comes
+  // back once the panel opens again.
+  transcript.collapsedPanel = {};
+  for (const [label, height] of [
+    ["collapsed", 0],
+    ["expandedAgain", 10_000],
+  ]) {
+    mountedHeight = height;
+    viewport.scrollTop = 1600;
+    viewport.dispatch("scroll");
+    flush();
+    const articleBox = article.getBoundingClientRect();
+    transcript.collapsedPanel[label] = {
+      scrollTop: viewport.scrollTop,
+      mountedHeight: target.getBoundingClientRect().height,
+      articleSpansPaneTop: articleBox.top <= 100 && articleBox.bottom > 100,
+      toggleShown: toggle.classList.contains("show-toggle"),
+    };
+  }
 
   dispose();
   const listeners = [viewport, toggle, ...article.descendants()].reduce(

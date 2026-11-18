@@ -22,7 +22,7 @@ SOURCE_DIR = PROJECT_FILE.parent / "src" / "metabrowser"
 def test_kpress_is_an_exact_required_runtime_dependency() -> None:
     project = tomllib.loads(PROJECT_FILE.read_text(encoding="utf-8"))
 
-    assert "kpress==0.3.6" in project["project"]["dependencies"]
+    assert "kpress==0.3.8" in project["project"]["dependencies"]
     assert "kpress" not in project["project"].get("optional-dependencies", {})
     assert "kpress" not in project.get("dependency-groups", {}).get("dev", [])
 
@@ -158,19 +158,145 @@ def test_runtime_has_no_optional_kpress_branch() -> None:
     assert "kpress_unavailable" not in server
 
 
+def _kpress_rule(css: str, selector: str) -> str:
+    """The declarations of the rule whose selector list is exactly *selector*."""
+
+    uncommented = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
+    for selectors, declarations in re.findall(r"([^{}]+)\{([^{}]*)\}", uncommented):
+        if selectors.strip() == selector:
+            return declarations
+    raise AssertionError(f"KPress ships no rule for {selector!r}")
+
+
 def test_pinned_kpress_owns_the_inline_code_base_style() -> None:
     css = get_static_asset("css/document.css").content.decode("utf-8")
-    code_start = css.index(".kpress code,\n.kpress-code {")
-    code_block = css[code_start : css.index("}\n", code_start) + 2]
-    inline_start = css.index(".kpress code:not(pre code) {")
-    inline_block = css[inline_start : css.index("}\n", inline_start) + 2]
+    code_block = _kpress_rule(css, ".kpress code,\n.kpress-code")
+    inline_block = _kpress_rule(css, ".kpress code:not(pre code)")
+    fenced_block = _kpress_rule(css, ".kpress-code")
 
     assert "background: var(--kpress-doc-surface-bg);" in code_block
     assert "font-family: var(--kpress-font-mono, ui-monospace, monospace);" in code_block
     assert "font-size: var(--kpress-font-size-mono);" in code_block
-    assert "border: 1px solid var(--color-hint-gentle);" in inline_block
-    assert "border-radius: var(--kpress-radius-sm);" in inline_block
-    assert "padding: 0.175em 0.2em;" in inline_block
+    for block in (inline_block, fenced_block):
+        assert "border: 1px solid var(--kpress-code-border);" in block
+        assert "border-radius: var(--kpress-code-radius);" in block
+    assert "padding: 0.1em 0.25em;" in inline_block
+
+
+def _kpress_values(css: str, selector: str, prop: str) -> list[str]:
+    """Each value KPress gives *prop* in a rule that lists exactly *selector*."""
+
+    uncommented = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
+    return [
+        value.strip()
+        for selectors, declarations in re.findall(r"([^{}]+)\{([^{}]*)\}", uncommented)
+        if selector in (one.strip() for one in selectors.split(","))
+        for value in re.findall(rf"(?:^|;)\s*{re.escape(prop)}\s*:\s*([^;]+)", declarations)
+    ]
+
+
+def _is_toc_entry(selector: str) -> bool:
+    """Whether *selector* styles a table-of-contents entry, its link, or its title, in any
+    state: the last compound starts with the tag or class, as `a.active` or `a:hover` does."""
+
+    subject = re.split(r"\s*[>+~]\s*|\s+", selector.strip())[-1]
+    return "kpress-toc" in selector and (
+        re.match(r"(?:a|li)\b|\.kpress-toc-(?:title|level-\d)", subject) is not None
+    )
+
+
+def test_pinned_kpress_owns_the_toc_insets() -> None:
+    """KPress sets each table-of-contents entry's inset, and the host restates none of it.
+
+    KPress 0.3.6 pulled an entry's first line back by a 1em hanging indent against a
+    1.3rem base, which put the text about 5px from the active bar, so Metabrowser dropped
+    the indent and re-set the insets from a 0.75rem base with KPress's 0.7rem step per
+    level, the CONTENTS title on the same base so it aligns with level-1 text. KPress
+    0.3.8 ships exactly that, as `padding-inline-start` so a right-to-left document
+    mirrors it, and the host's rules left. This fails if a release restores the hanging
+    indent, the old base, or the old step, or if the host takes any of it back.
+    """
+
+    components = get_static_asset("css/components.css").content.decode("utf-8")
+    uncommented = re.sub(r"/\*.*?\*/", "", components, flags=re.DOTALL)
+    toc_rules = [
+        (selectors.strip(), declarations)
+        for selectors, declarations in re.findall(r"([^{}]+)\{([^{}]*)\}", uncommented)
+        if "kpress-toc" in selectors
+    ]
+    insets = {
+        level: _kpress_values(components, f".kpress-toc-level-{level} > a", "padding-inline-start")
+        for level in range(1, 7)
+    }
+
+    assert [selectors for selectors, body in toc_rules if "text-indent" in body] == []
+    assert [selectors for selectors, body in toc_rules if "padding-left" in body] == []
+    # The 0.75rem base, then 0.7rem a level.
+    assert insets == {
+        1: ["0.75rem"],
+        2: ["1.45rem"],
+        3: ["2.15rem"],
+        4: ["2.85rem"],
+        5: ["3.55rem"],
+        6: ["4.25rem"],
+    }
+    assert _kpress_values(components, ".kpress-toc-title", "padding-inline-start") == ["0.75rem"]
+
+    inset = re.compile(
+        r"(?:^|;)\s*(?:text-indent|padding(?:-left|-right|-inline(?:-start|-end)?)?)\s*:"
+    )
+    restated: list[str] = []
+    for path in sorted(SOURCE_DIR.rglob("*.css")):
+        css = re.sub(r"/\*.*?\*/", "", path.read_text(encoding="utf-8"), flags=re.DOTALL)
+        for selectors, declarations in re.findall(r"([^{}]+)\{([^{}]*)\}", css):
+            for selector in selectors.split(","):
+                if _is_toc_entry(selector) and inset.search(declarations):
+                    restated.append(f"{path.relative_to(PROJECT_FILE.parent)}: {selector.strip()}")
+    assert restated == []
+
+
+def test_the_app_owns_the_palette_and_corners_of_every_kpress_fragment() -> None:
+    """Every KPress fragment in the page takes the app's color and corner tokens.
+
+    A rendered Markdown diff mounts its `article.kpress` in the diff plugin's host, not
+    under `.metabrowser-kpress-host`, so a bridge keyed on that host left it in KPress's
+    own palette: with 0.3.8, KPress's border and muted tones on its quote rule, quoted
+    text, and code edges, KPress's text and link colors, and a darker ground than the
+    page's in the dark theme. The bridge keys on `.kpress` anywhere in the page, in one place.
+    `tests/test_diff_markdown_fold_chrome.py` measures the diff's quote and code against a
+    document's in both themes.
+    """
+
+    bridged = {
+        "--kpress-doc-bg",
+        "--kpress-doc-text",
+        "--kpress-doc-muted",
+        "--kpress-doc-border",
+        "--kpress-doc-link",
+        "--kpress-code-border",
+        "--kpress-radius-sm",
+        "--kpress-radius-md",
+        "--kpress-radius-lg",
+        "--kpress-code-radius",
+    }
+    keyed: dict[str, set[str]] = {}
+    for selector, declarations in _rules_of(SOURCE_DIR / "static" / "styles.css"):
+        for token in bridged & declarations.keys():
+            keyed.setdefault(token, set()).add(selector)
+    elsewhere = [
+        f"{path.relative_to(PROJECT_FILE.parent)}: {token}"
+        for path in sorted(SOURCE_DIR.rglob("*.css"))
+        if path != SOURCE_DIR / "static" / "styles.css"
+        for token in sorted(bridged)
+        if re.search(rf"{re.escape(token)}\s*:", path.read_text(encoding="utf-8"))
+    ]
+    diff = (SOURCE_DIR / "builtin_plugins" / "diff" / "diff-markdown.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert keyed == {token: {":root .kpress", ":root .kpress-tooltip"} for token in bridged}
+    assert elsewhere == []
+    assert 'rendered.className = "kpress kpress-inert diff-markdown";' in diff
 
 
 def test_host_bridges_one_mono_stack_into_kpress_documents() -> None:
@@ -194,18 +320,28 @@ def test_host_bridges_one_mono_stack_into_kpress_documents() -> None:
 
 
 def test_host_unifies_inline_and_block_code_chrome() -> None:
+    """The host decides the code edge through KPress's two public tokens alone.
+
+    KPress applies `--kpress-code-border` and `--kpress-code-radius` to inline and block
+    code alike (the test above), so a host rule restating either on embedded code would
+    be a second place the same decision lives.
+    """
+
     styles = (SOURCE_DIR / "static" / "styles.css").read_text(encoding="utf-8")
     code_border = "--code-border: color-mix(in srgb, var(--border) 55%, transparent);"
-    code_surfaces = """.metabrowser-kpress-host .kpress code:not(pre code),
-.metabrowser-kpress-host .kpress .kpress-code {
-  border: 1px solid var(--code-border);
-  border-radius: var(--radius-document);
-}"""
+    code_selector = re.compile(r"\b(?:code|pre)\b|kpress-code")
+    restated = [
+        selector
+        for selector, declarations in _rules_of(SOURCE_DIR / "static" / "styles.css")
+        if ".metabrowser-kpress-host .kpress" in selector
+        and code_selector.search(selector)
+        and {"border", "border-radius", "padding"} & declarations.keys()
+    ]
 
     assert code_border in styles
     assert "--kpress-code-border: var(--code-border);" in styles
     assert "--kpress-code-radius: var(--radius-document);" in styles
-    assert code_surfaces in styles
+    assert restated == []
     assert "--inline-code-border" not in styles
 
 
@@ -215,17 +351,19 @@ def test_kpress_host_monospace_css_never_uses_a_dotted_border() -> None:
         r"(?:border(?:-[a-z-]+)?\s*:[^;{}]*\bdotted\b|border-style\s*:\s*dotted)",
         re.IGNORECASE,
     )
-    scanned: list[str] = []
     offenders: list[str] = []
     for path in sorted(SOURCE_DIR.rglob("*.css")):
         css = re.sub(r"/\*.*?\*/", "", path.read_text(encoding="utf-8"), flags=re.DOTALL)
         for selector, declarations in re.findall(r"([^{}]+)\{([^{}]*)\}", css):
             if ".metabrowser-kpress-host" not in selector or not code_selector.search(selector):
                 continue
-            scanned.append(selector.strip())
             if dotted_border.search(declarations):
                 offenders.append(f"{path.relative_to(PROJECT_FILE.parent)}: {selector.strip()}")
+    document = get_static_asset("css/document.css").content.decode("utf-8")
 
-    assert any(".kpress-code" in selector for selector in scanned)
-    assert any("code:not(pre code)" in selector for selector in scanned)
+    # The host sets only the edge's color; KPress names the style, and names it solid.
+    assert "border: 1px solid var(--kpress-code-border);" in _kpress_rule(
+        document, ".kpress code:not(pre code)"
+    )
+    assert "border: 1px solid var(--kpress-code-border);" in _kpress_rule(document, ".kpress-code")
     assert not offenders, f"dotted KPress-host code borders: {offenders}"
