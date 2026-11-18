@@ -1634,11 +1634,33 @@ async def index(
     # The branch and tag selector, filled by static/source-ref-selector.js: on a pin
     # served from a mirror, and on a checkout, whose working tree and revisions it
     # switches between. A plain folder and a pin with no mirror have nothing to switch to.
-    source_ref_selector_row = (
-        '\n      <div class="source-ref-selector" id="source-ref-selector" hidden></div>'
-        if (git_pin and mirror is not None) or checkout is not None
-        else ""
-    )
+    if checkout is not None:
+        # A checkout's row is drawn here with the button it will have, so that nothing
+        # below it moves when its module mounts, a moment after the tree's first rows:
+        # hidden until then, the row pushed the filter bar and every tree row down by its
+        # height (33 px in the default pane, which tests/test_files_totals_stable_chrome.py
+        # caught on a folder holding a `.git`). The module replaces the button with one of
+        # the same box (static/source-ref-selector.js#build).
+        if pin is None:
+            shown_ref = "Working tree"
+        else:
+            from metabrowser.checkout_revisions import checkout_ref_name
+
+            shown_ref = checkout_ref_name(pin.ref) or f"Commit: {pin.commit_oid[:12]}"
+        source_ref_selector_row = (
+            '\n      <div class="source-ref-selector" id="source-ref-selector">'
+            '<button type="button" class="chip chip-menu-trigger source-ref-selector-toggle'
+            ' disclosure-toggle" aria-haspopup="dialog" aria-expanded="false"'
+            ' data-tip-text="Switch branch or tag">'
+            f'<span class="source-ref-selector-label">{html_escape(shown_ref)}</span>'
+            '<span class="chip-menu-caret" aria-hidden="true"></span></button></div>'
+        )
+    else:
+        source_ref_selector_row = (
+            '\n      <div class="source-ref-selector" id="source-ref-selector" hidden></div>'
+            if git_pin and mirror is not None
+            else ""
+        )
     # The Pulls tab is decided here, from what the page already knows: a pin whose mirror is a
     # hosted repository, or a checkout, a subdirectory of one too, whose `origin` is on
     # github.com. It costs a plain folder nothing, not even a script in a bundle, and a page

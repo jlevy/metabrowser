@@ -30,7 +30,9 @@
 // SHOTS, when set, names a directory that gets a PNG of each step, for a person to look at.
 // tests/test_checkout_ref_selector_chrome.py owns the directories, runs this in a process
 // group of its own, which Chrome and the server join, and compares the checkout's every
-// byte before and after.
+// byte before and after. This script starts `metab` and Chrome and builds no repository:
+// the fixture is the test's, and tests/test_git_hook_environment.py holds every script
+// here to that.
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -143,6 +145,9 @@ async function capture(name) {
 }
 
 const SELECTOR = `document.querySelector("#source-ref-selector .source-ref-selector-toggle")`;
+// The server draws a checkout's row with its button, so the button alone does not say the
+// selector is there: its panel does, which only the mounted module builds.
+const MOUNTED = `(document.querySelector("#source-ref-selector .source-ref-selector-panel") !== null)`;
 const ROWS = `[...document.querySelectorAll("#tree-content .tree-item")]`;
 
 /** What the page shows of itself and its selector. */
@@ -178,7 +183,11 @@ const PANEL = `(() => {
   const row = (button) => ({
     text: button.innerText.replace(/\\s+/g, " ").trim(),
     current: button.getAttribute("aria-current") === "true",
-    chip: button.querySelector(".git-ref")?.className.match(/git-ref-(local|remote|tag)/)?.[1] ?? null,
+    // The chip is the name's one element, and its class says which kind it is drawn as.
+    chip:
+      button
+        .querySelector(".source-ref-selector-name > span")
+        ?.className.match(/-ref-(local|remote|tag)/)?.[1] ?? null,
   });
   return {
     open: !panel.hidden,
@@ -203,7 +212,7 @@ async function load(address) {
   const before = Date.now();
   await chrome.evaluate("window.__left = true; true").catch(() => {});
   await chrome.send("Page.navigate", { url: `${server.base}${address}` });
-  await chrome.waitFor(`!window.__left && ${SELECTOR} !== null && ${ROWS}.length > 0`);
+  await chrome.waitFor(`!window.__left && ${MOUNTED} && ${ROWS}.length > 0`);
   return Date.now() - before;
 }
 
@@ -242,23 +251,47 @@ async function switchBy(pick) {
   await chrome.evaluate(`(${pick}).click(); true`);
   await chrome.waitFor(`!window.__left && ${ROWS}.length > 0`);
   const rows = Date.now() - clicked;
-  await chrome.waitFor(`${SELECTOR} !== null`);
+  await chrome.waitFor(`${MOUNTED}`);
   return { rowsMs: rows, selectorMs: Date.now() - clicked };
 }
 
 const rowNamed = (name) =>
   `[...document.querySelectorAll(".source-ref-selector-list button")]
-    .find((button) => button.querySelector(".git-ref-label")?.textContent === ${JSON.stringify(name)})`;
+    .find((button) => button.querySelector(".source-ref-selector-name")?.textContent === ${JSON.stringify(name)})`;
+
+// From each document's start: every distinct height of the selector's row and every
+// distinct top of the tree's first row, frame by frame. The row is drawn by the server
+// with its button, so mounting the selector moves nothing below it.
+const LAYOUT_PROBE = `(() => {
+  window.__rowHeights = [];
+  window.__treeTops = [];
+  const note = (list, value) => {
+    if (value !== null && list[list.length - 1] !== value) {
+      list.push(value);
+    }
+  };
+  const frame = () => {
+    const row = document.getElementById("source-ref-selector");
+    const first = document.querySelector("#tree-content .tree-item");
+    note(window.__rowHeights, row ? Math.round(row.getBoundingClientRect().height * 10) / 10 : null);
+    note(window.__treeTops, first ? Math.round(first.getBoundingClientRect().top * 10) / 10 : null);
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+})()`;
+const LAYOUT = `({ rowHeights: window.__rowHeights, treeTops: window.__treeTops })`;
 
 const result = {};
 try {
   await chrome.send("Page.enable");
   await chrome.send("Network.enable");
+  await chrome.send("Page.addScriptToEvaluateOnNewDocument", { source: LAYOUT_PROBE });
 
   // 1. The working tree's page.
   result.workingTreeLoadMs = await load("/view/README.md");
   takeDataRequests();
   result.workingTree = await chrome.evaluate(PAGE);
+  result.workingTreeLayout = await chrome.evaluate(LAYOUT);
   // What the selector's bundle cost this page: the guard and the selector, on demand.
   result.bundle = await chrome.evaluate(`performance.getEntriesByType("resource")
     .filter((entry) => /source-(pin-guard|ref-selector)\\.js/.test(entry.name))
@@ -279,6 +312,7 @@ try {
   result.workingTreeBrowsing = takeDataRequests();
   result.toBranch = await switchBy(rowNamed("feature"));
   result.branch = await chrome.evaluate(PAGE);
+  result.branchLayout = await chrome.evaluate(LAYOUT);
   await capture("revision");
 
   // 3. Its lists.
@@ -303,7 +337,7 @@ try {
   // 5. Reload lands on the working tree, through the server's translation of the address.
   await chrome.evaluate("window.__left = true; true");
   await chrome.evaluate(`document.querySelector(".source-ref-selector-reload").click(); true`);
-  await chrome.waitFor(`!window.__left && ${SELECTOR} !== null && ${ROWS}.length > 0`);
+  await chrome.waitFor(`!window.__left && ${MOUNTED} && ${ROWS}.length > 0`);
   result.reloaded = await chrome.evaluate(PAGE);
 
   // To a tag, then back by the Working tree row.
@@ -320,13 +354,10 @@ try {
   // 6. Back, onto the tag's address, while the working tree is served.
   await chrome.evaluate("window.__left = true; true");
   await chrome.evaluate("history.back(); true");
-  await chrome.waitFor(`!window.__left && ${SELECTOR} !== null && ${ROWS}.length > 0`, 30000);
+  await chrome.waitFor(`!window.__left && ${MOUNTED} && ${ROWS}.length > 0`, 30000);
   // The landing may be a restored page that then reloads itself; wait for it to be the
   // working tree's, which is what the server serves.
-  await chrome.waitFor(
-    `window.METABROWSER_SOURCE_KIND === "filesystem" && ${SELECTOR} !== null`,
-    30000,
-  );
+  await chrome.waitFor(`window.METABROWSER_SOURCE_KIND === "filesystem" && ${MOUNTED}`, 30000);
   result.afterBack = await chrome.evaluate(PAGE);
   result.served = await chrome.evaluate(
     `fetch("/api/source/status").then((response) => response.json())`,
@@ -346,8 +377,11 @@ try {
   await chrome.waitFor(
     `(document.querySelector("#preview-pane")?.innerText ?? "").includes("Only on feature")`,
   );
-  await chrome.evaluate(`document.querySelector('.tab-btn[data-tab="git"]').click(); true`);
-  await chrome.waitFor(`document.querySelectorAll("#tab-git .git-graph-row").length > 0`);
+  await chrome.evaluate(
+    `[...document.querySelectorAll(".tab-btn")]
+      .find((tab) => tab.textContent.trim() === "Commits").click(); true`,
+  );
+  await chrome.waitFor(`document.querySelectorAll('[class$="graph-row"]').length > 0`);
   result.revisionBrowsing = takeDataRequests();
 
   result.documents = documents;

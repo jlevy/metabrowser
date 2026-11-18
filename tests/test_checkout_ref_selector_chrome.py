@@ -157,6 +157,14 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
     assert on_branch["workingTree"]["current"] is False
     assert [row["text"] for row in on_branch["rows"] if row["current"]] == ["feature c7ae2a331f54"]
 
+    # The selector's row is drawn by the server with its button, so mounting the selector
+    # moves nothing: one height for the row and one place for the tree's first row, from
+    # each document's start, on the working tree's page and on a revision's.
+    for name in ("workingTreeLayout", "branchLayout"):
+        layout = result[name]
+        assert len(layout["rowHeights"]) == 1, f"{name}: the row changed height: {layout}"
+        assert len(layout["treeTops"]) == 1, f"{name}: the tree moved: {layout}"
+
     # A page that shows what the server serves is never refused: the working tree's page
     # before its guard arrived, and the revision's through a file and its history. The
     # server refuses a page's fetch that names no commit while a pin is served, so this

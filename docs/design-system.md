@@ -4527,20 +4527,33 @@ primitive the control already had:
   Where a ref’s row has its commit, this one says what it is in the same muted ink,
   “Live local files, on topic”, so the two kinds of row read as one column of names and
   one of what each name is.
+
 - **The served choice is marked one way.** A ref’s row and the working-tree row both
   carry `aria-current` and the medium weight when they are what the server shows, and
   exactly one of them does.
   The checked-out branch is not that row unless it was chosen: it says “checked out” in
   the `.source-ref-selector-badge` a mirror’s default branch says “default” in.
+
 - **The button says “Working tree” in words,** with no chip, since a chip is a ref.
   On a revision it is the ref’s chip, as on a mirror, and the navigation heading carries
   the ref and the short commit beside the folder’s name, so a revision’s page is told
   from the working tree’s in two places before the list is opened.
+
 - **A page the server has moved on from says so beside the button,** in the text ink
   with one `.btn`, “Reload” (`.source-ref-selector-stale`): the offer a mirror’s
   freshness row makes at the foot of the pane.
   It is the one state in which the selector’s row grows, to a second line in the default
   pane, and it appears only after another tab has switched the server.
+
+- **The row keeps its box from first paint.** The module arrives after the tree’s first
+  rows, so a checkout’s server draws the row with the button it will have, and the
+  module replaces that button with one of the same box
+  ([Regions Keep Their Boxes](#regions-keep-their-boxes)). Hidden until the module
+  mounted, the row pushed the filter bar and every tree row down by its own height.
+  `tests/test_checkout_ref_selector_chrome.py` records the row’s height and the first
+  tree row’s place in every frame of the working tree’s page and of a revision’s, and
+  each has one value; `tests/test_files_totals_stable_chrome.py` holds the same for
+  every box of the Files navigation on a folder that holds a `.git`.
 
 What each state shows is pinned by
 `tests/golden/cli-ui-source-ref-selector.tryscript.md`, and

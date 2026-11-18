@@ -82,6 +82,11 @@ status: 200
   "limit": 100,
   "pin": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
   "ref": "refs/remotes/origin/trunk",
+  "kinds": [
+    "branch",
+    "tag"
+  ],
+  "working_tree": null,
   "total": 1,
   "truncated": false,
   "refs": [
@@ -90,6 +95,7 @@ status: 200
       "ref": "refs/remotes/origin/trunk",
       "commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
       "default": true,
+      "checked_out": false,
       "current": true
     }
   ]
