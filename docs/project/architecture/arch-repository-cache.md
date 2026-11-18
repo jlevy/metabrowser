@@ -32,9 +32,12 @@ user-facing order is in [Storage locations](../../command-line.md#storage-locati
   An environment override must be a nonempty absolute path without `..` components, and
   a relative flag is anchored to the working directory.
 - **No side effects:** resolution creates nothing.
-  Browsing a local folder never resolves, imports, or initializes either root: the
-  server imports only the cache route table at startup (`cache/routes.py`), and each
-  handler imports the rest when it is requested.
+  Browsing a local folder never resolves, imports, or initializes the cache, and reads
+  no `config.yml`: the server imports only the cache route table at startup
+  (`cache/routes.py`), and each handler imports the rest when it is requested.
+  Serving a folder writes one file in the configuration directory, its entry among the
+  [recent targets](arch-recent-targets.md), through `home.py` alone;
+  `test_local_browsing_in_process_never_calls_the_application_cache` holds both.
 - **No overlap:** `validate_storage_separation` refuses roots that overlap, through
   symlinked ancestors included, so deleting the cache cannot remove configuration.
 - **Configuration is the user’s:** `config.yml` is created once by atomic create-only

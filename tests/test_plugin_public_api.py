@@ -218,6 +218,10 @@ def test_version_command_does_not_load_git_source_or_server_modules() -> None:
         "metabrowser.mirror_refresh",
         "metabrowser.git.routes",
         "metabrowser.diff.adapters.git",
+        # Nor owner-only storage and the recent targets list, which only a serve and the
+        # --recent modes use.
+        "metabrowser.home",
+        "metabrowser.recent_targets",
     ):
         assert name not in loaded, name
 
