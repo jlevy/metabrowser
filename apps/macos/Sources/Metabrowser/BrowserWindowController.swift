@@ -2,17 +2,16 @@ import AppKit
 import ShellCore
 
 /// One folder window: the window and its chrome (the title, the mark, placement, and
-/// tabbing), showing one folder's page at a time (`FolderPage`). The page belongs to its
-/// folder's session; the window only hosts it, so it can show another page in its place
-/// without becoming another window.
+/// tabbing), showing one folder's page (`FolderPage`). The page belongs to its folder's
+/// session; the window only hosts it.
 final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     /// Shared by every folder window, so macOS merges folders into one window's tabs.
     static let tabbingIdentifier = "io.github.jlevy.metabrowser.folder"
 
     /// The page the window shows.
     private(set) var page: FolderPage
-    /// Holds the shown page's view, so a page can be put in place of another without the
-    /// window resizing to fit it, as setting a content view controller would.
+    /// Holds the page's view, filling the window. The page is not the window's content view
+    /// controller, since setting one resizes the window to fit its view.
     private let pageHost = NSView()
     private let titleAccessory = TitleAccessoryController()
     private let markAccessory = TitleBarMarkController()
@@ -110,8 +109,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     // MARK: - Menu actions
 
     /// The page's menu actions (Back, Reload, Find, Print, Zoom, and the rest) are the
-    /// page's: nil-targeted items reach the window and its controller, which hand them to
-    /// the page the window shows.
+    /// page's. Nil-targeted items reach the page along the responder chain while the focus
+    /// is in it, since the page follows its view there. While the window itself is first
+    /// responder, as before the page first loads, the chain is the window and this
+    /// controller, which hands them to the page here.
     override func supplementalTarget(forAction action: Selector, sender: Any?) -> Any? {
         page.responds(to: action) ? page : super.supplementalTarget(forAction: action, sender: sender)
     }

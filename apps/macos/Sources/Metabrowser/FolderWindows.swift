@@ -324,21 +324,21 @@ final class FolderWindows {
         return true
     }
 
-    /// Puts a window of `session`, showing `old`'s page, where `old` is: the tab after it,
-    /// selected and key if `old` was. Then closes `old`.
+    /// Puts a window of `session`, at the address of `old`'s page, where `old` is: the tab
+    /// after it, selected and key if `old` was. Then closes `old`.
     private func replace(_ old: BrowserWindowController, with session: FolderSession) {
         guard let oldWindow = old.window else { return }
-        let page = old.page.currentPage
+        let address = old.page.currentPage
         let isShown = !Self.isBackgroundTab(oldWindow)
         let wasKey = oldWindow.isKeyWindow
-        let replacement = session.makeWindow(page: page, discarded: !isShown)
+        let replacement = session.makeWindow(page: address, discarded: !isShown)
         guard let window = replacement.window else { return }
         oldWindow.addTabbedWindow(window, ordered: .above)
         if isShown {
             window.tabGroup?.selectedWindow = window
             // Joining a server that is ready loads nothing by itself. Without a page of its
             // own, the tab shows the folder's own page, the server's entry page.
-            replacement.page.show(page ?? .view(of: ""))
+            replacement.page.show(address ?? .view(of: ""))
         }
         lastShown[ObjectIdentifier(replacement)] = lastShown[ObjectIdentifier(old)]
         if wasKey { window.makeKeyAndOrderFront(nil) }

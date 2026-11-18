@@ -202,9 +202,9 @@ final class FolderSession: ManagedServer {
     /// not be the one this folder started with. Without one, nothing is stopped, and the
     /// restart waits for `resume()`.
     ///
-    /// - Parameter window: the window it was asked from, which says it waits while the
-    ///   restart of a ready server waits at the launch gate (`RestartWait`); nil, as for
-    ///   the restart an upgrade offers, is the front window.
+    /// - Parameter page: the page it was asked from, which says it waits while the restart
+    ///   of a ready server waits at the launch gate (`RestartWait`); nil, as for the
+    ///   restart an upgrade offers, is the front window's.
     func retry(from page: FolderPage? = nil) {
         restartWait.asked(from: page ?? frontPage, state: supervisor.state)?.showStarting()
         restartsInFlight += 1
@@ -251,10 +251,10 @@ final class FolderSession: ManagedServer {
     /// Brings the folder's front window forward, showing `page` in it if one is given,
     /// and checks that its server still answers: a hung one is stopped, and its windows
     /// say so and offer Retry.
-    func showFrontWindow(page: PageAddress? = nil) {
+    func showFrontWindow(page address: PageAddress? = nil) {
         let front = frontPage
-        if let page, let front {
-            front.show(page)  // which checks before it loads
+        if let address, let front {
+            front.show(address)  // which checks before it loads
         } else {
             Task { _ = await checkHealth() }
         }
@@ -348,7 +348,7 @@ final class FolderSession: ManagedServer {
         onLayoutChange?()
     }
 
-    /// A window showing `page` became key, or began to show it.
+    /// A window showing `page` became key.
     func pageShown(_ page: FolderPage) {
         guard let controller = page.host else { return }
         onWindowShown?(self, controller)
