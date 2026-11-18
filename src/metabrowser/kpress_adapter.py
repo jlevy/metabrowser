@@ -479,8 +479,8 @@ def inert_render(
     the headings' ``user-content-`` anchors, for the page to draw its own from them.
 
     *rewrite_local* is passed to :func:`~metabrowser.inert_html.harden_document`: a page
-    that shows a document from outside the served tree, such as a pull request's revision
-    file, gives it to write each reference inside the document as an address there.
+    that shows a document from outside the served tree, such as a pull request's rendered
+    Markdown, gives it to write each reference inside the document as an address there.
     """
 
     from metabrowser.inert_html import harden_document

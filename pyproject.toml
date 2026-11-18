@@ -76,6 +76,7 @@ dev = [
     "pytest>=9.1.1",
     "pytest-sugar>=1.1.1",
     "pytest-timeout>=2.4.0",
+    "pytest-xdist>=3.8.0",
     "rich>=15.0.0",
     "ruff>=0.15.20",
 ]
@@ -244,3 +245,5 @@ filterwarnings = []
 # measurement that forced it.
 timeout = 60
 timeout_method = "thread"
+# Under pytest-xdist this ends a worker, not the run, and its stack dump is lost with
+# the worker's output; tests/suite_workers.py dumps every stack to the log first.

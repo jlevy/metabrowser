@@ -62,7 +62,8 @@ Large files load as you reach them, and a commit that changes more files than th
 lists says that its diff is bounded.
 
 On a repository opened by its URL, each file’s bar also offers **View file**, which
-opens the file at the commit, and **View at parent** where the file existed before.
+opens the file the commit made, at the commit, switching the served commit first when
+the page shows another; a deleted file has none.
 
 A repository URL serves a mirror of the repository (see
 [the command line](command-line.md#serving-a-git-source)), which holds what its last

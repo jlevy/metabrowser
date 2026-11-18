@@ -210,7 +210,7 @@ Plugin hooks currently registered: `diff/document`, `diff/children`, and
 `diff/comparison` ([Diff Pipeline](arch-diff-pipeline.md)); `binary/chunk`,
 `structured/parsed`, and `agent-log/charts` ([Plugin System](arch-plugin-system.md));
 and `github/pull`, `github/pull-refresh`, `github/pull-cores-prepare`,
-`github/pull-comparison`, `github/pull-snapshot`, `github/pull-rendered-diff`,
+`github/pull-comparison`, `github/pull-image`, `github/pull-rendered-diff`,
 `github/pull-timeline`, `github/pull-markdown`, `github/pulls`, `github/pulls-refresh`,
 `github/pulls-prefetch`, `github/pull-files`, `github/pull-files-refresh`,
 `github/pull-files-summary`, `github/stacks`, `github/stacks-refresh`,
