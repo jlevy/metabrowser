@@ -44,6 +44,23 @@ All notable changes to Metabrowser are documented here.
   `_YAML_PREFIX_MAX_EXPANDED_SIZE`. A key that appears twice in it keeps its last value,
   as it did before. See [Kind Rules](docs/plugins.md#kind-rules).
 
+- Each pull request keeps its own comparison manifest beside the store, so a
+  repository’s Diff summaries no longer replace each other’s. The bank held sixteen
+  direct-mapped slots, where 19 open pull requests kept about 11 manifests, and each of
+  the rest was listed by Git again (about 77 ms) whenever it was opened.
+  Manifests are now `github-pull-manifests/pull-<n>.json`; their epochs are still
+  direct-mapped by comparison, so detecting a corrupt comparison invalidates it for
+  every pull request that keeps it.
+  The sixteen slot files v0.12 kept are no longer read; each is at most one manifest.
+
+- A pull request’s Diff summary and Changes are read from the manifest kept beside the
+  store after an upgrade, and after any edit of the source of an editable install.
+  A kept manifest named the build that wrote it, so each of those listed every
+  comparison with Git again.
+  It now names the diff document’s schema and the listing it was read from
+  (`MANIFEST_LISTING` in `diff/adapters/git.py`); manifests kept before this change are
+  listed once more.
+
 - A pull request’s page says how fresh it is once, at the end of the author’s line, in
   muted text after a dot: “jlevy wants to merge 1 commit · Fetched just now via GitHub
   CLI”. It no longer says “Checked just now · fetched 3 h ago”: a check that found
