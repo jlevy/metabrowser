@@ -205,6 +205,10 @@ between releases. Enforce the release cool-off in uv configuration instead, wher
 agent runs: set `exclude-newer` in the uv configuration of the agent’s environment, or
 `UV_EXCLUDE_NEWER` in that environment, as the
 [supply-chain policy](../SUPPLY-CHAIN-SECURITY.md) requires.
+The skill is tested against the `metab` of its own commit, so a skill installed from a
+release tag matches that release, and the skill on `main` can name a flag or route that
+no release has yet; it then needs the `metab` of a source checkout, as
+[Install metab](#install-metab) describes for the code on `main`.
 [Working with agents](working-with-agents.md) describes what the skill does.
 
 ## Uninstall
