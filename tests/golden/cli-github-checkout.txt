@@ -946,6 +946,7 @@ status: 200
 cloning https://github.com/octo/demo into <HOME>
 cloned https://github.com/octo/demo in 0.0 s
 --- gh ---
+gh auth status
 gh api repos/octo/demo --jq .size
 # metab checkout --api /api/cache/source/github-com--octo--demo--46386669dc01
 exit: 0

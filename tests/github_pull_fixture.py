@@ -645,6 +645,15 @@ def logged_gh_calls(directory: Path) -> list[str]:
     return calls
 
 
+# What a first clone of octo/demo asks gh, in order: the GitHub status check, then the
+# repository's size (`GithubProvider.check_first_clone`). A command that clones and
+# should otherwise ask GitHub nothing logs exactly these.
+FIRST_CLONE_GH_CALLS: Final[list[str]] = [
+    "gh auth status",
+    "gh api repos/octo/demo --jq .size",
+]
+
+
 def in_a_stable_order(calls: list[str]) -> list[str]:
     """The log's calls, with those that run together in one order.
 

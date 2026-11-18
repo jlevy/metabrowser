@@ -11,6 +11,7 @@ its view key report on operator plugins.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from collections.abc import Iterator
 from pathlib import Path
@@ -23,6 +24,14 @@ from metabrowser.cache.records import CACHE_LAYOUT_CONTRACT_ID
 from metabrowser.cli.main import _app
 
 _runner = CliRunner()
+# `--doctor` ends with the GitHub status check, which runs gh; this fake answers it as a
+# signed-in account, so no doctor run here reaches conftest's failing stand-in.
+_STATUS_GH = Path(__file__).parent / "fixtures" / "github-status"
+
+
+@pytest.fixture(autouse=True)
+def _fake_status_gh(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]
+    monkeypatch.setenv("PATH", f"{_STATUS_GH}{os.pathsep}{os.environ.get('PATH', '')}")
 
 
 def test_plugins_list_table_includes_builtin_plugins() -> None:
@@ -153,7 +162,7 @@ def test_plugins_doctor_json_reports_a_damaged_cache_contract(damaged_cache_sche
 
     assert result.exit_code == 1
     payload = json.loads(result.stdout)
-    assert set(payload) == {"ok", "plugin_count", "problems"}
+    assert set(payload) == {"ok", "plugin_count", "problems", "github"}
     assert payload["ok"] is False
     assert any(problem.startswith("cache record contracts:") for problem in payload["problems"])
     assert any(damaged_cache_schemas in problem for problem in payload["problems"])
@@ -246,7 +255,7 @@ key = "M"
 
     assert result.exit_code == 1
     assert result.stdout == ""
-    [problem] = [line for line in result.stderr.splitlines() if "key" in line]
+    [problem] = [line for line in result.stderr.splitlines() if line.startswith("  • ")]
     assert "plugin 'beta'" in problem
     assert "view 'alt' of kind 'myk'" in problem
     assert "view 'main' (plugin 'alpha') already holds it" in problem
@@ -286,7 +295,7 @@ default = true
     result = _runner.invoke(_app, ["--doctor", "--plugins-dir", str(tmp_path)])
 
     assert result.exit_code == 1
-    assert [line for line in result.stderr.splitlines() if "key" in line] == [
+    assert [line for line in result.stderr.splitlines() if line.startswith("  • ")] == [
         "  • plugin 'markdown': view 'source' of kind 'markdown' declares key 's', but view"
         " 'rendered' (plugin 'steal') already holds it; the view is served without a key"
     ]

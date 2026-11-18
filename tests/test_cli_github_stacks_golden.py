@@ -17,6 +17,7 @@ from tests.cache_home_fixture import FixtureSource
 from tests.github_pull_fixture import (
     CANONICAL,
     FETCHED_AT,
+    FIRST_CLONE_GH_CALLS,
     Origin,
     generated_item,
     install_fake_gh,
@@ -91,7 +92,7 @@ def test_golden_optional_stacks(
         calls = logged_gh_calls(tmp_path)
         blocks.append(result.block(" ".join(quoted(arg) for arg in shown), **sections, gh=calls))
         if body is None:
-            assert calls == ([] if opened else ["gh api repos/octo/demo --jq .size"])
+            assert calls == ([] if opened else FIRST_CLONE_GH_CALLS)
         opened = True
         if "status: 200\n{" in result.stdout:
             return json.loads(

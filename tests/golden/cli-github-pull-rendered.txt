@@ -12,6 +12,7 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 cloning <PATH> into <HOME>
 cloned <PATH> in 0.0 s
 --- gh ---
+gh auth status
 gh api repos/octo/demo --jq .size
 gh auth status
 gh api repos/octo/demo/pulls/7
