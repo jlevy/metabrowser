@@ -1,6 +1,6 @@
 # Plan for the Native macOS App
 
-**Date:** 2026-11-10 (last updated 2026-11-14)
+**Date:** 2026-11-10 (last updated 2026-11-18)
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
@@ -9,7 +9,8 @@ Epic `mb-1apq` tracks every item below as a bead.
 The app is on `main`: the spike and the v1 stack merged on 2026-11-13. The v1 milestone
 (`mb-s4y1`, below) waits on its end-to-end check (`mb-hwxu`); the WebKit gate failed,
 and what follows from that is the owner’s decision (`mb-gvtw`). Of Phase 3, only
-`--exit-on-eof` has shipped (jlevy/metabrowser#366); Phases 4 and 6 have not started.
+`--exit-on-eof` has shipped (jlevy/metabrowser#366). Of Phase 4, recent targets are
+built (`mb-40k4`); the rest of it and Phase 6 have not started.
 
 ## Overview
 
@@ -338,10 +339,12 @@ The steps run in this order, which the beads record as dependencies:
    installation guide (`mb-2hqz`).
 
 7. **Everyday use:** opening a file (`mb-tssz`), recents (`mb-cqxd`), native tabs
-   (`mb-ssed`), and lazy session restore (`mb-lc8c`). Recents are the list macOS keeps
-   through `NSDocumentController`, behind the Dock menu and File > Open Recent; it
-   replaces the app’s own list in `UserDefaults`, so the app owns no membership or
-   order. Recent roots persisted in `metab` and the switcher over them stay in Phase 4.
+   (`mb-ssed`), and lazy session restore (`mb-lc8c`). Recents were the list macOS keeps
+   through `NSDocumentController`, behind the Dock menu and File > Open Recent, which
+   replaced the app’s own list in `UserDefaults`. **Superseded on 2026-11-18 for File >
+   Open Recent:** it now lists `metab`’s recent targets
+   ([Phase 4](#phase-4-recent-targets-the-switcher-and-the-mcp-adapter)), and only the
+   Dock menu is still macOS’s list.
 
 8. **Independent review** (`mb-niod`): the strong tier reviews the upgraded app (senior,
    security, and correctness), and every finding is addressed, with follow-up rounds
@@ -429,14 +432,145 @@ confirms that root in the app.
   confirmation (`mb-rtgh`).
 - [ ] The skill uses the front door and documents sandbox settings (`mb-ko5d`).
 
-### Phase 4: Roots as State, the Switcher, and the MCP Adapter
+### Phase 4: Recent Targets, the Switcher, and the MCP Adapter
 
-- [ ] Persist recent and added roots in `metab`, served by a roots route; the chosen
-  security model decides which of them skip Phase 3’s confirmation (`mb-a5ru`).
-- [ ] Quick folder switcher, listing the roots route’s roots with live servers from the
-  registry (`mb-9lf4`). The switcher’s membership and order come from `metab`, so it
-  needs no shell-only exemption.
-  Dock and File menu recents, which macOS keeps, are v1’s `mb-cqxd`.
+#### Recent Targets
+
+**Status:** Built (`mb-40k4`), except the items unchecked below.
+[Recent Targets](../../architecture/arch-recent-targets.md) is the design and holds the
+format; this section records what was decided and why.
+
+The owner asked, on 2026-11-18:
+
+> “Why do I not see all the recent folders in Open recent in the menu on the macos app?
+> Can we save these in our configurations somewhere?
+> It should be compatible with both the CLI and the native app so that the logic can be
+> reused, e.g. for other shells in the future, around the CLI, or for features in the
+> CLI where recently open folders are useful, even if right now it will primarily be a
+> native app feature.”
+
+**Why folders were missing.** File > Open Recent drew macOS’s recent-documents list
+(`NSDocumentController`), and four things kept folders out of it:
+
+- macOS caps the list at the length System Settings gives recent documents, which is 10
+  unless it was changed; `NSDocumentController.maximumRecentDocumentCount` answered 10
+  on the owner’s Mac on 2026-11-18.
+- Only a folder the app itself was asked to open was registered.
+  A folder served by `metab` in Terminal never reached the list.
+- A folder restored with the last session was not registered again, so a folder that
+  stayed open across launches fell off as ten others were opened.
+- macOS keeps the list per bundle identifier, so a development build and a release each
+  had their own.
+
+**Decisions:**
+
+1. **`metab` keeps the list, and every shell reads it through `metab`.** Membership,
+   order, and the cap are data semantics, which the
+   [parity rule](../../../../AGENTS.md#cli-and-functional-ui-parity) gives to `metab`
+   and a golden, and a second shell or a CLI feature then gets the same list for free.
+   The app runs `metab --recent --json` and draws what it answers.
+2. **The store holds recent targets, not only folders.** An entry is a root and the
+   [mode](../../architecture/arch-open-modes.md#the-three-modes) it was opened in,
+   `folder` or `mirror`: a folder by its open root, or a repository by its address.
+   The modes, roots, and views are those of
+   [Open Modes](../../architecture/arch-open-modes.md).
+   An entry never records a view, so a recent folder reopens on its working tree, and it
+   may record where the open pointed, its `target`, beside the key.
+   The owner’s File menu, specified on 2026-11-18, needs both (`mb-387v`):
+   - **Open Folder…** opens a folder, a checkout of a GitHub repository included.
+   - **Open URL…** opens a supported GitHub URL (`mb-m4mg`).
+   - **Open Recent** opens any recent item, folders and GitHub targets alike.
+3. **An entry’s key is the app’s session key.** `mode` and `root` together are
+   `SessionRoot.key` (jlevy/metabrowser#539): a folder’s resolved path, or exactly
+   `https://github.com/<owner>/<repo>`, never a ref, a pull request, or a pin.
+   One entry is therefore one window, and reopening one that is open brings it forward.
+4. **A serve records itself, and only an open changes the order.** `metab ROOT` records
+   its root just before its `Serving` line, so the command line and the app record
+   through the one server start they share.
+   The app adds one call, `metab FOLDER --recent-add`, for a folder the user opens while
+   it is already open, where no server starts.
+   The owner decided on 2026-11-18 that a restore is not an open: the windows brought
+   back at launch, Retry, Restart Server, and an upgrade’s restart do not record, so the
+   app starts those servers with `METABROWSER_RECORD_RECENT=0`. The same variable keeps
+   benchmark, test, and development servers out of the list, also the owner’s decision.
+5. **Repository windows are recent targets.** jlevy/metabrowser#539 kept them out of
+   Open Recent because the app registered only folders with macOS. The server it starts
+   for a link now records the repository, with no code in the app, so that rule is
+   dropped. The app lists a repository entry once its build opens links, which it knows
+   from `MetabrowserOpensURLs` in its `Info.plist`, the key that pull request adds.
+   Repository windows still stay out of the saved session, which names folders by path.
+6. **The list lives in the configuration directory**, in a file of its own beside
+   `config.yml`: `recent-targets.yml`. The owner decided this on 2026-11-18. It is
+   history the user would miss, which rules out the cache, and the configuration
+   directory is the one durable place `metab` already has, with its override, its
+   owner-only checks, and its test isolation.
+   The alternative weighed was the XDG state directory, the conventional home for such a
+   file, at the cost of a third storage root.
+7. **Nothing looks at a listed folder.** Listing never checks whether a folder still
+   exists, because a look can raise a macOS privacy prompt or hang on a dead volume.
+   A folder that is gone is forgotten when the reader tries to open it.
+8. **The Dock menu lists the same targets.** The owner decided on 2026-11-18 that the
+   Dock icon’s menu and File > Open Recent list the same items while the app runs, so
+   `applicationDockMenu` draws from the same answer and the app no longer registers
+   folders with `NSDocumentController`. The first version of this decision, on the pull
+   request, kept macOS’s own list in the Dock; it is superseded.
+9. **The file is YAML with a format string.** The owner asked, on 2026-11-18, for
+   configuration files that a person can read and that carry “a very simple format
+   string … that is self-describing but simple”, updated only “when a new incompatible
+   format arises”. The list is YAML, as `config.yml` is, and its `format` follows the
+   application home’s convention in `cache/layout.py`: an append-only history, a
+   migration from each format to the next, and a refusal of a newer one.
+   Metabrowser’s strings are `mfNN`, to tell them from tbd’s `fNN`, and this file starts
+   at `mf01`. A new field on an entry keeps the string, since every reader keeps a field
+   it does not know; a new mode or key raises the number, and a file holding one a
+   reader does not know is left alone as a newer release’s. Applying the spelling to
+   `layout.yml` and `config.yml`, which are `f01`, is `mb-3x6y`.
+10. **No route serves the list yet.** The owner decided this on 2026-11-18: only
+    `metab --recent --json` reads it, until the switcher’s design says what a page may
+    learn of the user’s other roots.
+
+**Work:**
+
+- [x] The store, its bounds, and its concurrency (`recent_targets.py`), with
+  `metab --recent`, `--recent-add`, `--recent-forget`, and `--recent-clear`, and a
+  golden (`mb-40k4`).
+- [x] Every serve records its root, in both modes (`mb-40k4`).
+- [x] File > Open Recent lists `metab --recent --json` (`mb-40k4`).
+- [x] An entry’s optional `target`, where its open pointed, outside the key: a folder
+  writes the file or the `--path` named inside it, and every entry’s is checked to lie
+  inside its root (`mb-40k4`). The newest open’s target replaces the entry’s last one.
+- [x] One function decides a folder’s open root for both a serve and `--recent-add`:
+  `resolve_local_open` in `cli/common.py`, which today serves the folder named or a
+  file’s folder (`mb-40k4`).
+- [ ] Record the resolved root: the open-modes resolver (`mb-2wfk`) replaces
+  `resolve_local_open`’s body, and the list then records the repository’s root with the
+  path named as its `target`. Nothing in the store changes.
+- [ ] Write a mirror’s `target`, the canonical web URL of a pull request, a ref, a
+  commit, or a file, from `ProviderUrlReducer.web_url` (jlevy/metabrowser#540), so Open
+  Recent reopens a pull request and not only its repository, and Open URL… can offer
+  recent GitHub targets (`mb-m4mg`). This release already reads and keeps one
+  (`mb-8bds`). Until then Open URL… offers the recent entries whose mode is `mirror`.
+- [ ] Record a checkout’s repository with a folder entry, a new field that keeps `mf01`,
+  so Open URL… can offer the checkout beside the mirror, as
+  [the File Menu](../../architecture/arch-open-modes.md#the-file-menu) of the open-modes
+  design says.
+- [ ] The owner’s File menu: rename Open… to Open Folder…, and add Open URL… (`mb-m4mg`,
+  after jlevy/metabrowser#539), beside the Open Recent built here (`mb-387v`).
+- [ ] Restore repository windows with the saved session, which needs a saved tab to name
+  a `SessionRoot` rather than a path.
+
+This replaces the “persist recent and added roots in `metab`” half of `mb-a5ru`. What is
+left of that bead is the route below and which roots skip Phase 3’s confirmation.
+
+#### The Switcher and the MCP Adapter
+
+- [ ] A route that serves recent targets to a page, for a switcher in the browser, once
+  the security model says what a page may learn of the user’s other roots: a route would
+  give every page of every served root their names, over a loopback port that asks for
+  no credential (`mb-a5ru`).
+- [ ] Quick folder switcher, listing recent targets with live servers from the registry
+  (`mb-9lf4`). The switcher’s membership and order come from `metab`, so it needs no
+  shell-only exemption.
 - [ ] An optional MCP stdio adapter over registered routes (`mb-5lgp`).
 
 ### Phase 5: Setup, Runtime, and Updates

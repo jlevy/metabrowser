@@ -91,8 +91,8 @@ public nonisolated struct DiscoveryReport: Equatable, Sendable {
 /// `--version` executes it; one it refuses is recorded as `.untrusted`, with the reason,
 /// for Settings, the log, and the first-run steps.
 ///
-/// Cheap locations come first, each a file check plus `metab --exit-on-eof --version`
-/// (`validate`): the saved path, `METABROWSER_METAB`, `~/.local/bin`, uv's tool bin
+/// Cheap locations come first, each a file check plus
+/// `metab --exit-on-eof --present --recent --version` (`validate`): the saved path, `METABROWSER_METAB`, `~/.local/bin`, uv's tool bin
 /// directory, and the Homebrew prefixes. The login shell is consulted only when they do
 /// not answer for `metab`, `git`, or `gh`, because it runs the user's shell startup files
 /// in this app's name, which can take seconds and can raise privacy prompts the user
@@ -173,17 +173,18 @@ public nonisolated enum RuntimeDiscovery {
         return env.home + "/.local/bin"
     }
 
-    /// Runs `metab --exit-on-eof --present --version` with the same minimal environment a
-    /// server gets, and holds the version to `MetabRequirement`.
+    /// Runs `metab --exit-on-eof --present --recent --version` (`probeArguments`) with the
+    /// same minimal environment a server gets, and holds the version to `MetabRequirement`.
     ///
     /// The flags are `MetabRequirement.requiredFlags`: the one every server gets
-    /// (`CLIServeLaunch.exitOnEOF`), and the one that resolves a GitHub link
-    /// (`PresentDryRun.flag`). A version number cannot show them: a development build of the
-    /// minimum from before a flag counts as the minimum. Click rejects an unknown option
-    /// before the eager `--version` runs, so such a build exits 2 and names the flag
+    /// (`CLIServeLaunch.exitOnEOF`), the one that resolves a GitHub link
+    /// (`PresentDryRun.flag`), and the mode File > Open Recent lists with
+    /// (`RecentTargets.listFlag`). A version number cannot show them: a development build
+    /// of the minimum from before a flag counts as the minimum. Click rejects an unknown
+    /// option before the eager `--version` runs, so such a build exits 2 and names the flag
     /// (`rejectsServeFlag`). Only then does `--version` run alone, and a version this app
-    /// reads from it makes the `metab` too old whatever its number. Any other failed probe shows nothing about when the
-    /// build was made, so it is rejected with its own output and nothing more runs; so is
+    /// reads from it makes the `metab` too old whatever its number. Any other failed probe
+    /// shows nothing about when the build was made, so it is rejected with its own output and nothing more runs; so is
     /// a probe that could not start or did not finish. A current `metab` costs one run.
     ///
     /// Running it executes the file, whatever it prints, so a file the app found by itself
@@ -220,22 +221,19 @@ public nonisolated enum RuntimeDiscovery {
             }
             return judge(version, parsed)
         }
-        let probe = await run(MetabRequirement.requiredFlags + ["--version"])
+        let probe = await run(probeArguments)
         if let rejection = unfinished(probe) { return rejection }
         if probe.succeeded {
             return reading(probe) { MetabRequirement.accepts($1) ? .valid(version: $0) : .tooOld(version: $0) }
         }
         guard rejectsServeFlag(probe) else {
-            return .rejected("\(probeFlags) --version printed: \(probe.output.last ?? "nothing")")
+            return .rejected("\(probeArguments.joined(separator: " ")) printed: \(probe.output.last ?? "nothing")")
         }
         if let barred = barred() { return barred }
         let plain = await run(["--version"])
         if let rejection = unfinished(plain) { return rejection }
         return reading(plain) { version, _ in .tooOld(version: version) }
     }
-
-    /// The flags the probe passes, as a failure names them.
-    static var probeFlags: String { MetabRequirement.requiredFlags.joined(separator: " ") }
 
     /// Whether `result` is click's rejection of one of `MetabRequirement.requiredFlags` as
     /// an unknown option: exit status 2, with the flag named in what it printed. The
@@ -245,6 +243,11 @@ public nonisolated enum RuntimeDiscovery {
         guard let status = result.status, ExitStatus(waitStatus: status) == .exited(2) else { return false }
         return result.output.contains { line in MetabRequirement.requiredFlags.contains { line.contains($0) } }
     }
+
+    /// What `validate` runs first: every flag the app needs that a version number cannot
+    /// show, then `--version`. Click names the first option it does not know, so a build
+    /// from before any of them exits 2 naming one.
+    static let probeArguments = MetabRequirement.requiredFlags + ["--version"]
 
     /// `metab 0.12.0` → `0.12.0`. A checkout prints a longer description after it.
     public static func parseVersion(_ output: [String]) -> String? {

@@ -80,7 +80,8 @@ Module paths are under `src/metabrowser/` unless they start with `apps/`.
 | Kinds and plugin system | `plugin_loader/`, `plugin_api.py`, `file_kinds.py`, `builtin_plugins/*/manifest.toml` | Discover and validate manifests, classify files into kinds, mount data hooks and plugin assets, and gate the SDK version | [Plugin System](project/architecture/arch-plugin-system.md), [the map](project/architecture/arch-views-models-routes.md) |
 | Browser shell and SDK | `static/` (`app.js`, `navigation.js`, `main-tabs.js`, `plugin-sdk.js`, `asset-loader.js`) | Own navigation, the tree, tabs, client stores, view mounting and disposal, asset loading, and the `window.metabrowser` SDK | [Browser Shell](project/architecture/arch-browser-shell.md), [Plugins](plugins.md) |
 | Renderers | `builtin_plugins/*/` views; KPress for Markdown | Draw each kind within the bounds of the large-content rules | [the map](project/architecture/arch-views-models-routes.md), [Rendering Large Content](large-content-rendering.md), [Design System](design-system.md) |
-| Native macOS shell | `apps/macos/` | Supervise one `metab` server per folder and show it in an AppKit window with `WKWebView`: windows, tabs, recent folders, and restore | [macOS App](project/architecture/arch-macos-app.md) |
+| Recent targets | `recent_targets.py`, `cli/recent_cli.py` | Keep the one list of folders and repositories the user opened lately, which every shell reads through `metab` | [Recent Targets](project/architecture/arch-recent-targets.md) |
+| Native macOS shell | `apps/macos/` | Supervise one `metab` server per folder and show it in an AppKit window with `WKWebView`: windows, tabs, recent items, and restore | [macOS App](project/architecture/arch-macos-app.md) |
 
 ## Rules That Cross Layers
 
@@ -136,7 +137,8 @@ the map and the [Plugin System](project/architecture/arch-plugin-system.md).
    [Mirror Acquisition and Refresh](project/architecture/arch-mirror-acquisition-and-refresh.md),
    and [GitHub Pull Requests](project/architecture/arch-github-pull-requests.md).
 6. The entry points: [CLI](project/architecture/arch-cli.md) and
-   [macOS App](project/architecture/arch-macos-app.md).
+   [macOS App](project/architecture/arch-macos-app.md), and the list of
+   [Recent Targets](project/architecture/arch-recent-targets.md) they share.
 7. The standards, before changing a bound or a hot path.
 
 ## Architecture Documents
@@ -161,6 +163,7 @@ In `docs/project/architecture/`:
 | [arch-plugin-system.md](project/architecture/arch-plugin-system.md) | Manifests, discovery, classification, the SDK gate, containers, and adding a file type |
 | [arch-browser-shell.md](project/architecture/arch-browser-shell.md) | Shell modules, stores, lifecycle, and asset loading tiers |
 | [arch-macos-app.md](project/architecture/arch-macos-app.md) | Server supervision, windows and tabs, restore, and WebKit differences |
+| [arch-recent-targets.md](project/architecture/arch-recent-targets.md) | The recent targets store, what records an open, its `metab` modes, and the app’s Open Recent |
 | [file-diff-format/](project/architecture/file-diff-format/file-diff-format.md) | File Diff Format v1, a tool-neutral change-set format |
 | [file-rollup-format/](project/architecture/file-rollup-format/file-rollup-format.md) | File Rollup Format, file classification and directory totals |
 

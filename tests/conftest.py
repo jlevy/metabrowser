@@ -22,6 +22,11 @@ from tests.required_tools import require_git, require_node
 # Test discovery imports the server from several module scopes. Never let an
 # operator's shell or dotenv configuration alter collection or load external plugins.
 os.environ["METABROWSER_PLUGINS_DIRS"] = ""
+# No server a test starts is an open, so none records its root as a recent target: not in
+# a test's own configuration directory (`_isolated_configuration`), and not, from a
+# module- or session-scoped fixture that starts before any test's exists, in the list of
+# whoever runs the suite. A test of the record itself turns it back on.
+os.environ["METABROWSER_RECORD_RECENT"] = "0"
 for _capability_env in ("METAB_UNTRUSTED", "METAB_ACTIVE_CONTENT", "METAB_ALLOW_EDITS"):
     os.environ.pop(_capability_env, None)
 

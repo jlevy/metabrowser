@@ -139,3 +139,5 @@ def test_the_app_declares_what_present_reads() -> None:
 
     info = plistlib.loads((APP / "Resources" / "Info.plist").read_bytes())
     assert info.get(OPENS_URLS_KEY) is True
+    # File > Open Recent lists repositories only when the bundle declares the same key.
+    assert _swift_value("Folders/RecentTargets.swift", "opensURLsKey") == f'"{OPENS_URLS_KEY}"'

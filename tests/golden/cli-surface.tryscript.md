@@ -39,6 +39,7 @@ $ metab --help
  only acquires it into the cache. Diagnostics: --check-api, --plugins,
  --plugin, --doctor.
  Remote serving: --remote. The macOS app: --present hands it ROOT.
+ Recent targets: --recent, --recent-add, --recent-forget, --recent-clear.
 
 ╭─ Arguments ──────────────────────────────────────────────────────────────────╮
 │   [root]      TEXT  Root directory to serve, check, or walk; a file may be   │
@@ -141,32 +142,42 @@ $ metab --help
 │                                              [default: 60.0]                 │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Modes (default: serve ROOT) ────────────────────────────────────────────────╮
-│ --walk                    Walk ROOT with the inventory walker and dump the   │
-│                           result (no server).                                │
-│ --diff             SPEC   Show a change set: BASE..TARGET, one revision      │
-│                           (against its first parent), or a .patch/.diff file │
-│                           under ROOT.                                        │
-│ --api              ROUTE  Issue one /api/ route through the real request     │
-│                           stack and print the normalized envelope (no        │
-│                           browser, no listening port).                       │
-│ --show             PATH   Report the four layers for one selection: route,   │
-│                           kind, views, and a model summary.                  │
-│ --check-api               Run the navigation API scenario without a browser  │
-│                           or listening port.                                 │
-│ --no-serve                Acquire a file:// or https:// Git source into the  │
-│                           cache without starting a server.                   │
-│ --remote           HOST   SSH into HOST, start metab there, and tunnel it to │
-│                           localhost. Pass the remote directory with --path.  │
-│ --plugins                 List every discovered plugin.                      │
-│ --plugin           NAME   Print the full resolved manifest for one plugin.   │
-│ --doctor                  Validate every discovered plugin; exit non-zero on │
-│                           any problem.                                       │
-│ --present                 Hand ROOT, a folder, a file, or a GitHub URL, to   │
-│                           the Metabrowser macOS app through LaunchServices   │
-│                           and report what was sent. Clones and serves        │
-│                           nothing. Exit 3 when ROOT cannot be presented, 4   │
-│                           when no app takes it, 5 when LaunchServices could  │
-│                           not be asked or refused it.                        │
+│ --walk                        Walk ROOT with the inventory walker and dump   │
+│                               the result (no server).                        │
+│ --diff                 SPEC   Show a change set: BASE..TARGET, one revision  │
+│                               (against its first parent), or a .patch/.diff  │
+│                               file under ROOT.                               │
+│ --api                  ROUTE  Issue one /api/ route through the real request │
+│                               stack and print the normalized envelope (no    │
+│                               browser, no listening port).                   │
+│ --show                 PATH   Report the four layers for one selection:      │
+│                               route, kind, views, and a model summary.       │
+│ --check-api                   Run the navigation API scenario without a      │
+│                               browser or listening port.                     │
+│ --no-serve                    Acquire a file:// or https:// Git source into  │
+│                               the cache without starting a server.           │
+│ --remote               HOST   SSH into HOST, start metab there, and tunnel   │
+│                               it to localhost. Pass the remote directory     │
+│                               with --path.                                   │
+│ --plugins                     List every discovered plugin.                  │
+│ --plugin               NAME   Print the full resolved manifest for one       │
+│                               plugin.                                        │
+│ --doctor                      Validate every discovered plugin; exit         │
+│                               non-zero on any problem.                       │
+│ --present                     Hand ROOT, a folder, a file, or a GitHub URL,  │
+│                               to the Metabrowser macOS app through           │
+│                               LaunchServices and report what was sent.       │
+│                               Clones and serves nothing. Exit 3 when ROOT    │
+│                               cannot be presented, 4 when no app takes it, 5 │
+│                               when LaunchServices could not be asked or      │
+│                               refused it.                                    │
+│ --recent                      List the recent targets: the folders and       │
+│                               repositories opened lately, most recent first. │
+│                               Every serve records its ROOT.                  │
+│ --recent-add                  Record ROOT as a recent target, as serving it  │
+│                               would, without serving.                        │
+│ --recent-forget               Remove ROOT from the recent targets.           │
+│ --recent-clear                Empty the list of recent targets.              │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Diff (--diff SPEC) ─────────────────────────────────────────────────────────╮
 │ --diff-patch        PATH  Print one changed file's hunks from the comparison │
@@ -262,7 +273,7 @@ $ metab --help
 │                                                  --gcp).                     │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Plugins (--plugins / --plugin / --doctor) ──────────────────────────────────╮
-│ --json          Emit structured JSON (plugin modes).                         │
+│ --json          Emit structured JSON (plugin modes and --recent).            │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Present (--present) ────────────────────────────────────────────────────────╮
 │ --dry-run                  Resolve ROOT and print what --present would hand  │

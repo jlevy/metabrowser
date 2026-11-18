@@ -74,10 +74,13 @@ selected. Opening a path inside a Git repository at the repository’s root is p
 | `--remote HOST` | Serve a directory on another machine through an SSH tunnel |
 | `--plugins`, `--plugin NAME`, `--doctor` | List, show, or validate plugins |
 | `--present` | Hand a folder, a file, or a GitHub URL to the [macOS app](macos-app.md) |
+| `--recent`, `--recent-add`, `--recent-forget`, `--recent-clear` | List or change the [recent targets](#recent-targets) |
 
-The modes read, with two exceptions: a Git source is cloned into the cache by whichever
-mode opens it first, and `--api` writes when the route it names does, as a refresh
-writes to the cache and `/api/kpress/export` writes a file under `ROOT`.
+The modes read, with three exceptions: a Git source is cloned into the cache by
+whichever mode opens it first; `--api` writes when the route it names does, as a refresh
+writes to the cache and `/api/kpress/export` writes a file under `ROOT`; and serving
+records `ROOT` among the [recent targets](#recent-targets), which the three `--recent-`
+modes also change.
 
 ## Serving
 
@@ -562,6 +565,49 @@ A developer testing a build where it was built sets
 `APP_INSTALL_LOCATIONS` and the other constants in `cli/present.py` hold the locations,
 the bundle identifiers, the name, and the marker.
 
+## Recent Targets
+
+Metabrowser keeps one list of what you opened lately, which the
+[macOS app](macos-app.md#recent-items)’s File > Open Recent shows:
+
+```shell
+metab --recent                      # the list, most recently opened first
+metab --recent --json               # the same, for a script or another shell
+metab ~/src/project --recent-forget # remove one entry
+metab --recent-clear                # empty the list
+```
+
+- **What is recorded:** every time `metab` serves, it records what it serves just before
+  it prints `Serving`: a folder by its path with symbolic links resolved, or a
+  repository by its address.
+  `metab FILE` records the file’s folder, with the file as the entry’s `target`, where
+  the open pointed, and a GitHub URL records its repository, whichever pull request,
+  branch, or file it named.
+  The data modes (`--api`, `--show`, `--walk`, `--diff`, `--check-api`, and
+  `--no-serve`) record nothing.
+- **Each entry’s mode:** `folder` for your own files as they are on disk, or `mirror`
+  for Metabrowser’s cached copy of a repository.
+  No entry records which branch or commit was shown, so a folder reopens on its files as
+  they are on disk.
+- **Order and length:** opening something again moves its one entry to the front, and
+  the oldest entry falls off a full list.
+  `--recent --json` gives the list’s length as `limit`.
+- **Folders that are gone** stay listed until you forget them or open them: the list
+  never looks at a listed folder, since a look can raise a macOS privacy prompt or wait
+  on a drive that is not there.
+- **`--recent-add`** records `ROOT` without serving it, for a shell that shows something
+  already open.
+- **`METABROWSER_RECORD_RECENT=0`** keeps a `metab` from recording: it serves as usual
+  and leaves the list alone, and `--recent-add` records nothing.
+  Set it for a server nobody opened to read, such as a benchmark’s or a script’s.
+  `--remote` sets it for the server it starts on the far host, so a remote serve enters
+  no list on either machine.
+
+The list is `recent-targets.yml` in the [configuration directory](#storage-locations),
+readable only by you.
+A list that is damaged is replaced the next time something is opened; one written by a
+newer Metabrowser is left alone, and `--recent` says to upgrade.
+
 ## Remote Directories
 
 ```shell
@@ -615,7 +661,8 @@ Without either, `XDG_CACHE_HOME` and `XDG_CONFIG_HOME` choose the base directori
 A variable must be a nonempty absolute path with no `..`; a flag may be relative to the
 current directory. The two directories may not overlap.
 
-Browsing a folder creates neither directory.
+Serving a folder creates no cache and no `config.yml`; it creates the configuration
+directory, owner-only, for the one file it writes there, the recent targets.
 The first repository cloned creates the cache, owner-only, and writes `config.yml` if it
 is missing. `config.yml` records the cache format it was written for.
 Metabrowser keeps the keys and comments you add, and refuses keys that look like
@@ -658,6 +705,7 @@ Every variable is read from the process environment, so export it in the shell t
 | `METABROWSER_CACHE_DIR`, `METABROWSER_CONFIG_DIR` | [Storage locations](#storage-locations) |
 | `METABROWSER_ALLOWED_HOSTS` | Comma-separated host names the server accepts besides the one it binds, for reaching it by another trusted name; see the [security policy](../SECURITY.md) |
 | `METABROWSER_PLUGINS_DIRS` | Plugin directories, separated by `:`, loaded before any `--plugins-dir` |
+| `METABROWSER_RECORD_RECENT` | `0` keeps a serve, and `--recent-add`, from recording a [recent target](#recent-targets) |
 | `METABROWSER_LOG_LEVEL` | Log verbosity, as `--log-level`, which overrides it |
 | `METABROWSER_REQUEST_LOG` | `verbose` logs every request with its arrival and completion times |
 | `METABROWSER_SLOW_SERVER_MS` | The time, in milliseconds, past which a request is logged as slow, 2,000 by default |

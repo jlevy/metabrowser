@@ -16,7 +16,8 @@ nonisolated enum AppLog {
 /// App lifecycle: the runtime, the folder sessions, the menus, and quitting.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settings = RuntimeSettings()
-    private lazy var recentFolders = RecentFoldersMenu { [weak self] in self?.request($0) }
+    private lazy var recentFolders = RecentTargetsMenu(
+        setup: { [weak self] in self?.operations.launchableSetup() }, open: { [weak self] in self?.request($0) })
     private let launchGate = LaunchGate()
     /// The repositories' lane (`LaunchLane`), whose servers walk ports apart from a
     /// folder's, so they start behind a gate of their own, and a first clone holds up no
@@ -123,6 +124,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Coming back from Terminal, where an install or upgrade most likely ran.
     func applicationDidBecomeActive(_ notification: Notification) {
         lookForRuntimeChanges()
+        // And where `metab` may have served a folder, which File > Open Recent then lists.
+        recentFolders.refresh()
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { true }
@@ -131,6 +134,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// links sent with `open -b`, as `metab LINK --present` sends them.
     func application(_ application: NSApplication, open urls: [URL]) {
         urls.forEach(request)
+    }
+
+    /// The Dock icon's menu: the recent targets, as File > Open Recent lists them.
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        recentFolders.dockMenu()
     }
 
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { true }
@@ -254,7 +262,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let reason = CLIServeLaunch.unservableReason(root) {
             return refuse("Metabrowser cannot open this folder", "\(root.lastPathComponent) cannot be served: \(reason).")
         }
-        RecentFoldersMenu.noteOpened(root)
+        recentFolders.noteOpened(root, isOpen: sessions[root.path(percentEncoded: false)] != nil)
         if let session = sessions[root.path(percentEncoded: false)] as? FolderSession {
             session.showFrontWindow(page: target.page)
             return
@@ -269,7 +277,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         folderWindows.place(session.makeWindow(page: target.page))
-        Task { await session.startServer() }
+        Task {
+            await session.startServer()
+            self.recentFolders.refreshAfterOpen()
+        }
     }
 
     /// Opens a GitHub link. `metab` resolves each (`PresentDryRun`), one at a time
@@ -360,6 +371,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func open(_ plan: PresentPlan, with setup: RuntimeSetup) async {
         let root = SessionRoot.repository(plan.repository)
         if let session = sessions[root.key] as? FolderSession {
+            recentFolders.noteOpened(root.url, isOpen: true)
             return session.open(link: plan.link)
         }
         let name = root.identity().fullName
@@ -406,8 +418,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The repository's window, whose server starts again on `link`, or a new session whose
     /// server starts on it. Without a runtime accepted now, the link waits for one, and is
     /// resolved again.
+    ///
+    /// Either is an open, so the repository moves to the front of the recent targets: a
+    /// new session's server records it as it starts, and the app records one already open
+    /// itself, since starting its server again on a link records nothing
+    /// (`FolderServer.restart`).
     private func openRepository(_ root: SessionRoot, on link: URL) {
         if let session = sessions[root.key] as? FolderSession {
+            recentFolders.noteOpened(root.url, isOpen: true)
             return session.open(link: link)
         }
         guard selection.setupForOpening(link) != nil, let session = session(for: root, link: link) else {
@@ -415,7 +433,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         folderWindows.place(session.makeWindow())
-        Task { await session.startServer() }
+        Task {
+            await session.startServer()
+            self.recentFolders.refreshAfterOpen()
+        }
     }
 
     private func noteLinkProblem(_ alert: LinkAlert) {

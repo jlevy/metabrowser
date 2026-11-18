@@ -47,6 +47,8 @@ before one exists, windows, menus, the Dock, and file events.
 1. **Open.** File > Open, Open Recent, the Dock menu, a drop, Open With, `open -a`, and
    the restore all reach one `FolderSession` per folder, keyed by its canonical path, so
    a root has one server however many windows and tabs show it.
+   That path is also the folder’s key among the
+   [recent targets](arch-recent-targets.md).
    [Open Modes](arch-open-modes.md#what-keys-on-the-root) designs that key as the open
    root `metab` resolves, which for a path inside a repository is the repository’s root.
    A GitHub link reaches one per repository, keyed by its canonical URL
@@ -308,13 +310,13 @@ shim and no `gh`, and nothing from a Terminal launch’s `UV_*`, `VIRTUAL_ENV`, 
 
 `MetabRequirement.minimumRelease` in `Sources/ShellCore/Setup/MetabVersion.swift` is the
 oldest `metab` the app runs: the first release with `GET /api/identity`,
-`--exit-on-eof`, and `--present` (`MetabRequirement.requiredFlags`). A development build
-of that release counts as it, or no checkout would run, so the number alone does not
-prove the flags, and `RuntimeDiscovery.validate` runs
-`metab --exit-on-eof --present --version`. A printed version decides by its number; exit
-status 2 naming either flag means a build that predates it, which is too old whatever
-its number; anything else rejects the `metab` with the probe’s last line.
-Below the floor, discovery tries the next place.
+`--exit-on-eof`, `--present`, and `--recent` (`MetabRequirement.requiredFlags`). A
+development build of that release counts as it, or no checkout would run, so the number
+alone does not prove the flags, and `RuntimeDiscovery.validate` runs
+`metab --exit-on-eof --present --recent --version`. A printed version decides by its
+number; exit status 2 naming any of the flags means a build that predates it, which is
+too old whatever its number; anything else rejects the `metab` with the probe’s last
+line. Below the floor, discovery tries the next place.
 `MetabRequirement.upgradeCommand` asks uv for a floor rather than a pin, because uv
 keeps the requirement in the tool’s receipt.
 
@@ -390,8 +392,11 @@ Applications.
   (`NextPage`). By design the open folder that takes a file never lies above the file’s
   repository root, and a file with no such folder opens its open root
   ([Open Modes](arch-open-modes.md#what-keys-on-the-root)).
-- **Recents.** Opening a folder registers it with `NSDocumentController`, and File >
-  Open Recent and the Dock menu list what macOS keeps; the app keeps no list of its own.
+- **Recents.** File > Open Recent lists `metab`’s
+  [recent targets](arch-recent-targets.md#the-macos-app), which every server records as
+  it starts, so the app decides nothing about the list and keeps none of its own.
+  The Dock menu lists the same targets (`applicationDockMenu`), and a restored folder’s
+  server, like any restart, is told not to record.
 
 ### Session Restore
 
