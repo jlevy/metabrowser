@@ -2952,6 +2952,26 @@ Help and Quick Search.
 The registry marks the numbers’ command `situational`, so every surface renders them as
 that one run, and no surface special cases them.
 
+The shortcut strip at the navigation column’s foot lists Shift first, as Reveal keys,
+ahead of `?` for Help, because Shift is the one key that shows all the others.
+It is the strip’s one item that is not a command, since no binding may use Shift
+([Canonical Key Names](#canonical-key-names)): Help draws it once, as a reminder with
+the single-key entry point’s keycap, and hides it from assistive technology, as it hides
+the badges and the revealed strip.
+The `nav` surface’s commands follow in their order.
+The strip is always one row, the one the server reserves for it before the shell’s tools
+load: where its items do not all fit, Help hides them from the end (`keepStripOnOneRow`
+in `static/keyboard-help.js`), so Quick Search goes first, then Help, and Shift always
+shows.
+A dropped item leaves the tab order, and its key stays in Help and on the revealed
+strip, which Shift calls up.
+Where Shift shows alone, the strip’s named group is hidden from assistive technology as
+Shift is, rather than announced empty.
+`tests/dom/shortcut-strip-session.js` runs that code browserlessly on injected widths.
+The widths at which each item shows in Chrome are beside `.nav-shortcut-hints[hidden]`
+in `static/styles.css`, and `tests/test_shortcut_strip_chrome.py` holds every pane width
+from the narrowest to the default to the rule.
+
 Holding Shift reveals the keys in place: each live letter’s control and each numbered
 control carries its keycap, and the strip lists the common letters.
 The keycaps ease in on the [reveal motion](#reveals) and go at once when Shift is

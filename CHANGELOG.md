@@ -4,6 +4,13 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- The shortcut strip at the foot of the navigation pane now lists Shift first, as Reveal
+  keys, ahead of `?` for Help: holding Shift shows each key on the control it reaches.
+  The strip stays one row: in a navigation pane too narrow for all of it, it drops Quick
+  Search, then Help, and always shows Shift; their keys still work, and Help and holding
+  Shift still list them.
+  See [Keyboard Shortcuts](docs/keyboard-shortcuts.md).
+
 - Security: a Markdown file’s front matter can no longer stall the server.
   YAML aliases let a few hundred bytes of front matter stand for millions of values: 310
   bytes of seven alias levels made `/api/file` spend over a second building 39 MB of
