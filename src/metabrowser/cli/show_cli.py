@@ -595,8 +595,14 @@ def run_show(
     untrusted: bool = False,
     no_active_content: bool = False,
     allow_edits: bool = False,
+    revision: bool = False,
 ) -> None:
-    """Report route, kind, views, and model summary for one filesystem selection."""
+    """Report route, kind, views, and model summary for one filesystem selection.
+
+    *revision* says the folder opens on a branch or tag of its checkout (``--ref``), so
+    the selection is a path in that revision, named as a mirror's is, and not a file on
+    disk.
+    """
 
     resolved = root.expanduser().resolve()
     if not resolved.is_dir():
@@ -626,6 +632,6 @@ def run_show(
             fmt=fmt,
             index_timeout_s=index_timeout_s,
             normalize_root=resolved,
-            filesystem_root=resolved,
+            filesystem_root=None if revision else resolved,
         )
     )

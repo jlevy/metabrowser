@@ -82,12 +82,14 @@ Both names here are read that way — one through ``VALID_LOG_LEVELS``,
 one as an equality test — so the worst a browsed repository buys by
 setting them is a noisier terminal.
 
-The rendering budgets (``METABROWSER_*_MAX_BYTES``, ``STRUCTURED_*``, and
-``METABROWSER_SLOW_SERVER_MS``) are deliberately **not** here. Each is
-parsed with ``int()`` at import and is the upper bound on a request-path
-read, so a file value could crash the process before anything renders or
-lift a cap that exists to keep a large document from exhausting memory.
-They are operator knobs: export them.
+The rendering budgets (``METABROWSER_*_MAX_BYTES``, ``STRUCTURED_*``,
+``METABROWSER_SLOW_SERVER_MS``, and ``METABROWSER_INERT_RENDER_DEADLINE_MS``)
+are deliberately **not** here. Each is parsed with ``int()`` at import and
+is the upper bound on a request-path read or on an untrusted render's time,
+so a file value could crash the process before anything renders, lift a cap
+that exists to keep a large document from exhausting memory, or let a
+browsed repository's own documents run as long as they like. They are
+operator knobs: export them.
 
 Also outside, for the reason each name carries: what executes
 (``BROWSER``, ``GIT_EXTERNAL_DIFF``, ``PATH``), how far content is

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 from collections.abc import Generator
@@ -21,6 +22,11 @@ from tests.required_tools import require_git, require_node
 # Test discovery imports the server from several module scopes. Never let an
 # operator's shell or dotenv configuration alter collection or load external plugins.
 os.environ["METABROWSER_PLUGINS_DIRS"] = ""
+# No server a test starts is an open, so none records its root as a recent target: not in
+# a test's own configuration directory (`_isolated_configuration`), and not, from a
+# module- or session-scoped fixture that starts before any test's exists, in the list of
+# whoever runs the suite. A test of the record itself turns it back on.
+os.environ["METABROWSER_RECORD_RECENT"] = "0"
 for _capability_env in ("METAB_UNTRUSTED", "METAB_ACTIVE_CONTENT", "METAB_ALLOW_EDITS"):
     os.environ.pop(_capability_env, None)
 
@@ -90,6 +96,32 @@ def pytest_configure(config: pytest.Config) -> None:
     # Reports a pytest-xdist worker can send; see tests/suite_workers.py.
     config.pluginmanager.register(suite_workers)
     config.pluginmanager.register(suite_workers.StackDumps(), "suite-stack-dumps")
+
+
+@pytest.fixture(autouse=True)
+def fresh_markdown_child() -> Generator[None]:
+    """Give each test its own process-wide Markdown child worker, and stop it after.
+
+    ``shared_worker()`` keeps its refusals for the process, so without this a test whose
+    document an earlier test had refused would pass without rendering anything (review A
+    of #527, A13), and a worker a test left running would carry its child into the next.
+    A test that runs the serve path in-process marks the process as serving pages, which
+    starts the child ahead of documents; the next test begins as a one-shot command.
+    """
+
+    from metabrowser.diff import markdown_projection_worker as worker_module
+
+    shared = worker_module.shared_worker
+    shared.cache_clear()
+    serving = worker_module._SERVING  # pyright: ignore[reportPrivateUsage]
+    serving.pages = False
+    yield
+    serving.pages = False
+    if shared.cache_info().currsize:
+        # Its event loop may be closed by now; stopping kills the child by its process.
+        with contextlib.suppress(RuntimeError):
+            shared().stop()
+        shared.cache_clear()
 
 
 # ── Tests that must not be silently absent ─────────────────────────────────────

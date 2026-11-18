@@ -3,10 +3,12 @@
 **Status:** Designed and partly built.
 The owner settled the model on 2026-11-18: [Decisions](#decisions) lists each answer,
 and [Not Decided](#not-decided) what is still open.
-Built on `main`: mirror mode, and a folder served as the exact path named, with history
-only when that path is a repository’s root.
-Not built: resolving a path to its repository’s root, a repository folder’s revision
-views, the mode indicator, File > Open URL…, and recent targets kept by `metab`.
+Built on `main`: mirror mode; a folder served as the exact path named, with history only
+when that path is a repository’s root; a repository folder’s revision views with their
+chooser and `--ref`; recent targets kept by `metab`, behind File > Open Recent; and File
+\> Open URL…, without its offer of a known checkout.
+Not built: resolving a path to its repository’s root, Pulls and the toggle on a folder’s
+revision, the mode indicator, and Open URL…’s offer of a checkout.
 [Implementation Status](#implementation-status) names the pull request or bead for each
 part.
 
@@ -123,7 +125,8 @@ a second time.
 - **Asking without serving.** `metab TARGET --present --dry-run --format json` answers
   the open root, whether that root is a repository’s, and the place the reader named,
   and a golden pins its answers.
-  `--recent-add` records the root the same resolver answers.
+  `--recent-add` records the root the same resolver answers: today both ask
+  `resolve_local_open` in `cli/common.py`, whose body the resolver replaces.
 - **The app asks, and then serves exactly.** It starts each server on a root that is
   already resolved, with `--exact-root`, and that includes the servers a restore starts,
   so a saved root is never resolved again.
@@ -184,7 +187,10 @@ for that check, and not a second account.
 
 ## Views
 
-**Not built** for a repository folder, which today shows its working tree alone.
+**Built**, in a repository folder as in a mirror
+([Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout) is
+the mechanism), except Pulls and the toggle on a folder’s revision
+([Pull Requests in a Repository Folder](#pull-requests-in-a-repository-folder)).
 
 A server shows one view at a time: the working tree, or one revision.
 A link that selects a branch, and a branch shown beside the working tree in one server,
@@ -267,9 +273,9 @@ Two reads on `main` fall short of this rule, because Git itself writes during th
 
 ## Security Requirements
 
-None of the three parts below is built.
-Each requirement states its hole, its rule, and the test that must hold it before its
-part ships.
+The first part below is not built; the two about a revision are, with their tests.
+Each requirement states its hole, its rule, and the test that holds it, or must before
+its part ships.
 
 ### Opening a Path Never Widens a Server Unasked
 
@@ -352,15 +358,36 @@ Git directory is under its superproject’s.
   and every read sets `GIT_NO_LAZY_FETCH=1`, so a partial clone’s missing object is
   `object_unavailable` and is never fetched into the checkout.
   A mirror’s store names no driver, so the same options change nothing there.
+  That variable is all that keeps a partial clone from fetching, so a checkout’s
+  revisions are read only with a Git the acquisition floor admits, and an older one is
+  refused by name while the working tree is still served.
+  A partial clone’s are read only with a Git that also reads a missing object as missing
+  rather than ending (`PARTIAL_CLONE_GIT_MINIMUM` in `checkout_revisions.py`).
 - **The fallback.** A store with no origin whose `alternates` names the checkout’s
   objects reads them with no Git process in the checkout, as an
   [overlay](arch-mirror-acquisition-and-refresh.md#the-lending-checkout) does, and
   satisfies the requirement by construction.
+- **A second program.** `log.showSignature` in the checkout’s configuration makes `log`
+  and `show` verify signatures, which runs the program `gpg.program`, `gpg.ssh.program`,
+  or `gpg.x509.program` names.
+  Every command therefore sets `log.showSignature=false`, in a folder’s own Commits tab
+  too. That tab’s diffs still run a driver the folder’s configuration names, which is one
+  of the
+  [known gaps in the read-only rule](arch-git.md#known-gaps-in-the-read-only-rule).
+- **A submodule’s own diff.** A superproject’s `diff.submodule=diff` diffs a moved
+  submodule in a child Git that runs the submodule’s drivers, so every read at a store
+  target sets `diff.submodule=short`.
+- **Held where Git starts.** `spawn_git_process` refuses a store read that lacks the
+  options it needs, the argument shapes known to start a configured program, and under
+  the read policies any command outside those store reads use and any write, so a read
+  added later cannot omit them.
 - **Test:** `tests/test_checkout_revisions.py`, with a fixture that has a dirty index,
-  uncommitted and untracked files, and a local configuration naming a driver that would
-  leave a marker file, as an ordinary checkout and as a linked worktree.
-  It asserts no marker and the three places unchanged across a revision’s files, its
-  commit pages, and its Commits tab.
+  uncommitted and untracked files, a signed commit, and a local configuration naming a
+  driver and a signature program that would each leave a marker file.
+  It runs as an ordinary checkout, as a linked worktree, and as a submodule served as
+  the root, and asserts no marker and the three places unchanged across a revision’s
+  files, its commit pages, its comparisons, and its Commits tab.
+  A blobless clone answers `object_unavailable` there and gains no pack.
 
 ### A Revision Is Never Trusted
 
@@ -378,17 +405,15 @@ finished.
 - **The rule.** The profile comes from the subject the request resolved, never from
   process state read after a wait: in `git/content_routes.py`, in the page policy
   `server.py` writes, and in `/raw`. A revision is untrusted by construction.
-- **Test:** with the process’s block trusted, every route asked for a revision answers
-  with no active content.
-  [The pull-request review plan](../specs/active/plan-2026-11-02-pr-review-mirror-and-checkout.md#trust)
-  lists this test as planned.
+- **Test:** `tests/test_checkout_revisions.py`: with the process’s block trusted, every
+  route asked for a revision answers with no active content, and `/raw` answers as a pin
+  when the revision arrived after the request did.
 
 ## What Keys on the Root
 
 Three records name what is open.
 Each keys on the mode and the root, never on the view and never on the path the reader
-named. The first two are not on `main` yet
-([Implementation Status](#implementation-status)).
+named.
 
 | Record | Key | Holds |
 | --- | --- | --- |
@@ -399,10 +424,12 @@ named. The first two are not on `main` yet
 - **No record holds a view.** A recent folder reopens on its working tree, and a mirror
   on its default branch until recent targets record what a mirror was opened at.
 - **The path the reader named is not a key.** It may be kept beside one, as where to
-  land when the root reopens.
+  land when the root reopens: a recent target keeps it as its `target`
+  ([Recent Targets](arch-recent-targets.md#the-entry)).
 - **Recent targets are `metab`’s.** The list is kept in the configuration directory and
   reached through `metab` alone, with no route, so every shell reads one list.
-  The owner also chose its file’s format, which that feature’s own document states.
+  The owner also chose its file’s format, which
+  [Recent Targets](arch-recent-targets.md#the-store) states.
 - **A restore is not an open.** Restoring a session starts servers and reorders nothing
   in the recent list.
 - **In the app, a file joins the most specific open folder that contains it, never one
@@ -412,8 +439,12 @@ named. The first two are not on `main` yet
 
 ## The File Menu
 
-**Partly built.** Today the menu has Open…, for folders and files, and an Open Recent
-that lists what macOS keeps.
+**Partly built.** Today the menu has Open Folder…, for folders and files; Open URL…,
+which opens a mirror and offers no checkout yet (`mb-bkk2`); and an Open Recent that
+lists the recent targets `metab` keeps
+([Recent Targets](arch-recent-targets.md#the-macos-app)): folders, and repositories
+opened by URL, a GitHub link sent to the app or a URL entered in Open URL… among them
+([#539](https://github.com/jlevy/metabrowser/pull/539)).
 
 - **Open Folder…** opens a folder or a file in folder mode, resolved as
   [above](#resolving-a-target-to-a-root).
@@ -529,11 +560,11 @@ A pull request that builds a part updates its row.
 | History only at a repository’s root | Built; stays as the gate for a folder served exactly | [The Exact-Root Gate](arch-git.md#discovery-and-the-exact-root-gate) |
 | The resolver: a path to its repository’s root, the guards, `--exact-root`, and the root in the `Serving` line | Not built | `mb-2wfk` |
 | `metab TARGET --present`, whose dry run answers a resolution | Partly built: `--present` and its dry run, on the path named; answering a resolution waits on the resolver | [#540](https://github.com/jlevy/metabrowser/pull/540), `mb-d9tu`; `mb-2wfk` |
-| GitHub links opened in the app, and `SessionRoot` | Not built | [#539](https://github.com/jlevy/metabrowser/pull/539), `mb-87j0` |
-| A repository folder’s revision views, its chooser, and their command line, with the two revision requirements above | Not built | [#559](https://github.com/jlevy/metabrowser/pull/559), `mb-8ob8` |
+| GitHub links opened in the app, and `SessionRoot` | Built | [#539](https://github.com/jlevy/metabrowser/pull/539), `mb-87j0` |
+| A repository folder’s revision views, its chooser, and their command line, with the two revision requirements above | Built | [Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout); [#559](https://github.com/jlevy/metabrowser/pull/559), `mb-8ob8` |
 | Pulls and the toggle on a folder’s revision; View on branch and Browse code to the head as a revision | Not built | Follows `mb-8ob8` |
-| Recent targets kept by `metab`, behind File > Open Recent | Not built | [#546](https://github.com/jlevy/metabrowser/pull/546), `mb-40k4` |
-| File > Open URL… | Not built | `mb-m4mg` |
+| Recent targets kept by `metab`, behind File > Open Recent | Built; a mirror’s `target` waits for `ProviderUrlReducer.web_url` (`mb-8bds`), and the resolved root for the resolver | [Recent Targets](arch-recent-targets.md), `mb-40k4` |
+| File > Open URL… | Built, without the offer of a known checkout, which waits for a way to tell that an open folder is a checkout of the URL’s repository | [#560](https://github.com/jlevy/metabrowser/pull/560), `mb-m4mg`; the offer is `mb-bkk2` |
 | The GitHub toggle | Not built | [#552](https://github.com/jlevy/metabrowser/pull/552), `mb-zp7y` |
 | The mode indicator | Not built | `mb-wup3` |
 | One mode vocabulary across `IdentityKind`, the recent-targets store, and the app, held by a test; the shared resolution fixture | Not built | `mb-ajxe` |

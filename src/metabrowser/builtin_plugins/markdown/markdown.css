@@ -104,6 +104,12 @@
   }
 }
 
+/* A document whose render the server refused shows its source under one notice saying
+   why (render-refusal.js); the notice sits above the source as a render error would. */
+.metabrowser-render-refused {
+  margin: 0 0 12px;
+}
+
 /* A document's print button (print-indicator.js), in the upper right corner of KPress's
    card, where a host turns it on. It is the .icon-btn primitive, bare at rest.
 

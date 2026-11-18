@@ -149,6 +149,7 @@ async function startServer({ metab, tree, work, serverArgs }) {
           METABROWSER_LOG_LEVEL: "INFO",
           METABROWSER_CACHE_DIR: cache,
           METABROWSER_CONFIG_DIR: config,
+          METABROWSER_RECORD_RECENT: "0",
         },
       },
     );

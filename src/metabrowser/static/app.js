@@ -9786,11 +9786,43 @@ async function revealWithin(
     return false;
   }
   setSelectedPath(path);
-  if (scroll) {
+  var travel = scroll ? folderTravelAbove(target) : null;
+  if (travel !== null) {
+    // Once the folders above have opened, if the reveal stands and its folder is open.
+    const revealed = target;
+    void travel.then(() => {
+      var row = revealed.isConnected ? revealed : scope.querySelector(selector);
+      if (row && isCurrent() && !row.closest(".tree-children-collapsed")) {
+        row.scrollIntoView({ block: "nearest" });
+      }
+    });
+  } else if (scroll) {
     target.scrollIntoView({ block: "nearest" });
   }
   synchronizeTreeNow();
   return true;
+}
+
+/**
+ * The end of every finite opening of a folder above *row*, or null (mb-551m).
+ * @param {Element} row
+ * @returns {Promise<unknown> | null}
+ */
+function folderTravelAbove(row) {
+  /** @type {Animation[]} */
+  var travel = [];
+  for (
+    var body = row.parentElement?.closest(".tree-children");
+    body;
+    body = body.parentElement?.closest(".tree-children")
+  ) {
+    travel.push(
+      ...body.getAnimations().filter((a) => a.effect?.getComputedTiming().endTime !== Infinity),
+    );
+  }
+  return travel.length > 0
+    ? Promise.allSettled(travel.map((animation) => animation.finished))
+    : null;
 }
 
 /**
@@ -10201,14 +10233,14 @@ function sourceFreshness() {
 }
 
 /**
- * A served mirror's branch and tag selector. The server renders its element only for
- * a pin with a mirror; the module is fetched on demand after the first tree request,
- * and static/source-ref-selector.js owns every decision; this only mounts it.
+ * The branch and tag selector. The server renders its element only where one mounts;
+ * the module is fetched on demand after the first tree request, and
+ * static/source-ref-selector.js owns every decision; this only mounts it.
  */
 async function startSourceRefSelector() {
   var element = document.getElementById("source-ref-selector");
   var assets = window.MetabrowserAssets;
-  if (!isGitRevisionSource() || !element || !assets) {
+  if (!element || !assets) {
     return;
   }
   await Promise.all([assets.ensureAsset("source-ref-selector"), assets.ensureAsset("sdk-views")]);
@@ -10236,6 +10268,7 @@ if (isGitRevisionSource() && !window.MetabrowserGitPath) {
   }
   throw new Error("metabrowser: git-path.js did not load on a pinned revision's page");
 }
+renderNavFilterBar();
 renderInitialTreeRows();
 
 document.addEventListener("DOMContentLoaded", async () => {

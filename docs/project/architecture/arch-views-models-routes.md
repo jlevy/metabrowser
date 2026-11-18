@@ -114,8 +114,10 @@ Both are tool-neutral: nothing in a document references Metabrowser.
 The repository cache’s record contracts are an internal format: their installed
 inventory is maintained by `devtools/check_artifact_contracts.py`, described in
 [Repository Cache](arch-repository-cache.md), and this map registers no kind or view for
-them. Everything else travels as an envelope on `/api/*`, versioned with the shell and
-the built-in plugins as one artifact: an internal contract, not a standard.
+them. The list of [recent targets](arch-recent-targets.md), `recent-targets.yml` in the
+configuration directory, is an internal format as well, read only through `metab`.
+Everything else travels as an envelope on `/api/*`, versioned with the shell and the
+built-in plugins as one artifact: an internal contract, not a standard.
 [Where diff documents come from](arch-diff-pipeline.md#where-documents-come-from) maps
 the sources that produce diff documents.
 
@@ -189,7 +191,7 @@ counts is missing here; the asset routes are not counted.
 | Route | Serves | Contract |
 | --- | --- | --- |
 | `/api/file` | The file or folder envelope: kind, views, and a bounded content window | [Server and Content](arch-server-and-content.md) |
-| `/api/kpress/render`, `/api/kpress/export` | KPress rendering, reduced to inert HTML when active content is off, and export | [Server and Content](arch-server-and-content.md) |
+| `/api/kpress/render`, `/api/kpress/export` | KPress rendering, reduced to inert HTML in the Markdown child under a deadline when active content is off, and export | [Server and Content](arch-server-and-content.md) |
 | `/raw`, `/raw/<path>` | Bounded raw bytes with sandbox headers, and the document the HTML Preview frames | [Server and Content](arch-server-and-content.md) |
 | `/static/<path>`, `/plugin-static/<plugin>/<path>`, `/kpress-static/<path>` | Shell, plugin, and KPress assets at addresses stamped by content (`asset_stamps.py`) | [Server and Content](arch-server-and-content.md) |
 | `/api/routes` | Every route this build serves | [Server and Content](arch-server-and-content.md) |
@@ -200,7 +202,7 @@ counts is missing here; the asset routes are not counted.
 | `/api/stream`, `/api/activity` | The live tail of a JSONL file, and the files being written now | [Live Delivery](arch-live-delivery.md) |
 | `/api/diagnostics/pending-tallies` | `POST`: a client’s pending-tally warning, matched with server state | [Live Delivery](arch-live-delivery.md) |
 | `/api/git/repo`, `/api/git/refs`, `/api/git/summary`, `/api/git/log`, `/api/git/commit/<rev>` | Read-only history for the Commits tab | [Git](arch-git.md) |
-| `/api/source/status`, `/api/source/refs`, `/api/source/pin` | What the server serves, the served root’s branches and tags, and switching its view: a mirror’s today, and a repository folder’s by design | [Source Sessions and Pins](arch-source-sessions-and-pins.md), [Open Modes](arch-open-modes.md) |
+| `/api/source/status`, `/api/source/refs`, `/api/source/pin` | What the server serves; the served root’s branches and tags, a mirror’s or a repository folder’s, with a checkout’s remote-tracking branches; and switching its view: a mirror’s pin, or a checkout between a revision and its working tree. `metab PATH --ref NAME` starts a checkout on a revision, so every route that answers a pin answers a checkout’s revision from a terminal | [Source Sessions and Pins](arch-source-sessions-and-pins.md), [Open Modes](arch-open-modes.md) |
 | `/api/identity` | What the served subject is called, for a window’s title (`root_identity.py`) | [Source Sessions and Pins](arch-source-sessions-and-pins.md) |
 | `/api/source/refresh` | `POST`: start or join a background refresh of the served mirror | [Mirror Acquisition and Refresh](arch-mirror-acquisition-and-refresh.md) |
 | `/api/cache/layout`, `/api/cache/sources`, `/api/cache/source/<slug>`, `/api/cache/stores` | Read-only logical state of the repository cache (`cache/wire.py`) | [Repository Cache](arch-repository-cache.md) |

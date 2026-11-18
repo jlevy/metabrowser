@@ -51,10 +51,11 @@ public nonisolated enum ServerLog {
     }
 
     /// `<folder name>-<8 hex digits of the path's SHA-256>.log`: readable, and distinct
-    /// for two folders with the same name.
+    /// for two folders with the same name. A repository's is named for its last path
+    /// component, with the digest of its whole URL, so it never shares a folder's name.
     public static func fileName(for root: URL) -> String {
-        let path = root.path(percentEncoded: false)
-        let digest = SHA256.hash(data: Data(path.utf8)).prefix(4).map { String(format: "%02x", $0) }.joined()
+        let identity = root.isFileURL ? root.path(percentEncoded: false) : root.absoluteString
+        let digest = SHA256.hash(data: Data(identity.utf8)).prefix(4).map { String(format: "%02x", $0) }.joined()
         var name = String(root.lastPathComponent.map { $0.isLetter || $0.isNumber || "._-".contains($0) ? $0 : "-" })
         name = String(name.prefix(48)).trimmingCharacters(in: CharacterSet(charactersIn: ".-"))
         return (name.isEmpty ? "root" : name) + "-" + digest + ".log"

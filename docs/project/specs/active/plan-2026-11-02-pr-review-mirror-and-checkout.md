@@ -9,6 +9,9 @@ implemented scope; the
 [release-preparation record](../../qa/qa-2026-11-07-v012-release-preparation.md) records
 how the 0.12.0 candidate was qualified.
 Conversions and broader deepening remain future work.
+[Open Modes](#open-modes), added on 2026-11-18, records the owner’s decision on how a
+root is open, which [the open-modes design](../../architecture/arch-open-modes.md) now
+holds, and plans the indicator (`mb-wup3`).
 
 The design was proven by experiments on 2026-11-02 against a 1.2 GB private repository
 and small local replicas, reviewed the same day with the verdict *sound with changes*,
@@ -447,6 +450,61 @@ The
 [rendered file design](plan-2026-08-17-general-diff-rendering.md#rendered-diffs-and-revision-file-links)
 defines what the comparison’s immutable sides expose.
 
+### Open Modes
+
+**Status:** Decided 2026-11-18. The model is the open-modes design,
+[Open Modes](../../architecture/arch-open-modes.md), and this section does not restate
+it: the three modes (a plain folder, a repository folder, and a mirror), how a path
+resolves to its open root, what each view can do, and what is never written.
+Recent targets record each root with its mode, `folder` or `mirror`
+([Recent Targets](../../architecture/arch-recent-targets.md), `mb-40k4`). The indicator
+is planned (`mb-wup3`).
+
+The owner asked, on 2026-11-18:
+
+> “we should have clarity on the mode that something is opened in, either folder mode
+> (an existing checkout) or a mirror mode (metabrowser’s own cached copy).
+> In both cases, Metabrowser may maintain a cached copy, but some behaviors are
+> different. If we want to know that the actual files are changed, having two modes would
+> be best. And we could indicate with a small indicator which it is.”
+
+What this plan adds to the design:
+
+- **Open modes are not the [storage modes](#storage-modes) below.** `full` and `overlay`
+  say how a mirror’s store is filled; a mirror is in mirror mode either way, and
+  `--checkout` changes only where its objects come from.
+  A checkout in folder mode gets a store, borrowing from that checkout, when one of its
+  pull requests’ comparisons is prepared, so Metabrowser may keep a cached copy in
+  either mode.
+- **Notes for drawing the indicator** (`mb-wup3`). Where it sits and its fallback are
+  the design’s: with the root’s name, and the cloud alone when the badge does not read.
+  - **Data.** The mode is `kind` in `GET /api/identity`, which the shell’s `<title>` and
+    the app’s window title already read, so no route is added.
+    The server writes it into the navigation heading with the root’s name
+    (`data-served-root` on `.header-path`), so the indicator is in the first paint.
+  - **Icons.** A folder is the folder icon the tree already draws (`folder` in
+    `static/icons.js`, Lucide’s). A mirror is the GitHub mark the page ships for GitHub
+    links (`destinationGlyphs.github` in `static/plugin-sdk-views.js`, Primer Octicons’
+    `mark-github-16`), moved into the icon registry so core can draw it, with Lucide’s
+    `cloud` at its lower trailing corner, about half the slot wide, separated from the
+    mark by a one-pixel ring in the header’s ground color.
+    A mirror with no GitHub mark, such as a `file://` source, shows the cloud alone.
+    No icon library is added.
+  - **Placement.** In the page, inside the heading’s link before the root’s name, in the
+    icon slot the tree’s rows use (`--icon-glyph`) and the heading’s ink
+    (`--header-text`). In the app, before the name in the title-bar accessory
+    (`TitleAccessoryController`), dimmed with the title when the window is not main, and
+    as the image of each File > Open Recent item.
+  - **Words.** The icon carries `aria-label` “Folder” or “Mirror”, and its tooltip is
+    the mode’s name and then what the heading’s tooltip already says.
+    `KIND_LABELS` in `root_identity.py` keeps the app’s longer “Local folder” and
+    “Cached mirror”.
+  - **Contrast and parity.** Both icons are drawn in `currentColor` from a text token
+    and the ring in the ground token, and a real-browser check measures the ink against
+    the header in light and dark.
+    Which icon shows is data, pinned by the goldens of `/api/identity` behind
+    `shell.window-title`; how it is drawn is a `paint-exempt` row with a Chrome check.
+
 ### Storage Modes
 
 For URL acquisition with `--checkout`, the following mode/fallback rules apply.
@@ -635,7 +693,7 @@ The same rules in both scenarios, and one boundary the review sharpened.
   On a mirror it opens the file at the served pin when that is the head, else after
   switching the pin to the head under `refs/pull/<n>/head`. A pin runs under the
   untrusted profile, so its page renders a Markdown file inert, with fenced code as
-  plain text, but nothing bounds how long that render takes until `mb-273l`. On a folder
+  plain text, in the server’s Markdown child under a deadline (`mb-273l`). On a folder
   server, Changes renders the diff over the overlay.
   Beside a checkout whose `HEAD` is the head, View on branch opens the reader’s own
   working tree under the folder’s profile, as Browse the checkout already did: neither

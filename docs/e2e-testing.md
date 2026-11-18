@@ -430,17 +430,22 @@ Strict mode is off on a developer machine, which can add these:
   reads the face documents and chrome prose are drawn in under each reading font and
   font set; `tests/test_raw_profile_cache_chrome.py`, which follows a `/raw` answer
   Chrome kept under the trusted profile after the folder is served `--untrusted`;
-  `tests/test_overview_readme_toc_chrome.py`, which measures a folder Overview’s README
-  table of contents against the same README opened as a file;
-  `tests/test_document_print_chrome.py`, which measures a document’s print button in its
-  card’s corner, that nothing moves when it arrives, the table of contents toggle and
-  rail beside it, a click and Command-P, and print output;
+  `tests/test_inert_render_refusal_chrome.py`, which reads the notice and the source an
+  untrusted document past its render deadline shows in its Document tab and in the
+  folder Overview’s README panel; `tests/test_overview_readme_toc_chrome.py`, which
+  measures a folder Overview’s README table of contents against the same README opened
+  as a file; `tests/test_document_print_chrome.py`, which measures a document’s print
+  button in its card’s corner, that nothing moves when it arrives, the table of contents
+  toggle and rail beside it, a click and Command-P, and print output;
   `tests/test_diff_markdown_fold_chrome.py`, which measures a rendered Markdown diff’s
   fold of unchanged blocks closed, open, and under the pointer, and its quote and code
   against a document’s in the light and the dark theme;
-  `tests/test_control_chords_chrome.py`, which presses Control-N and Control-P through
-  Chrome’s input under a navigator overridden to name a Mac and then Linux, on every
-  host, and reads that only the Mac’s binds them;
+  `tests/test_checkout_ref_selector_chrome.py`, which serves a checkout with `metab` and
+  switches it between its working tree and its branches and tags from the page, reading
+  each document’s policy and the selector’s panel, and then compares every file under
+  the checkout with what it was; `tests/test_control_chords_chrome.py`, which presses
+  Control-N and Control-P through Chrome’s input under a navigator overridden to name a
+  Mac and then Linux, on every host, and reads that only the Mac’s binds them;
   `tests/test_overview_legend_hover_chrome.py`, which moves Chrome’s pointer onto a File
   Overview legend entry and a bar segment and reads which bars and entry are marked,
   what they compute to, where the tooltip lands, and that nothing moves;

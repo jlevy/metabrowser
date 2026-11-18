@@ -2556,7 +2556,9 @@ html.theme-anim .menu {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  /* One row, always: keyboard-help.js drops the items that do not fit, from the end,
+     and never the lead, Shift. */
+  flex-wrap: nowrap;
   gap: 6px;
   padding: 6px 12px;
   border-top: 1px solid var(--border);
@@ -2568,13 +2570,26 @@ html.theme-anim .menu {
   position: relative;
 }
 /* The server ships the strip empty and hidden, and keyboard-help.js fills it once
-   the shell's tools load; it always has Help then. Until that, it keeps one row's
+   the shell's tools load; it always has Shift then. Until that, it keeps one row's
    height, so the tree above it is the same height before and after: its border,
-   padding, a hint's padding, and a keycap's border and 1.5 lines. */
+   padding, a hint's padding, and a keycap's border and 1.5 lines.
+   Filled, it leads with Shift, Reveal keys, then Help and Quick Search, on that one
+   row: where they do not all fit, keyboard-help.js (`keepStripOnOneRow`) hides them
+   from the end, so Quick Search goes first, then Help, and Shift always shows. In
+   headless Chrome 152 on macOS, with the default font set, all three show in a pane
+   273px wide or wider, the default 300px among them, Shift and Help from 181px, and
+   Shift alone at the 180px minimum; with the system font set, Shift and Help from
+   198px and all three from 301px, so the default pane drops Quick Search there.
+   tests/test_shortcut_strip_chrome.py holds every width from 180 to 300px in both
+   font sets to the rule. Safari's widths are not yet measured. */
 .nav-shortcut-hints[hidden] {
   display: flex;
   visibility: hidden;
   min-height: calc(1px + 12px + 6px + 2px + 1.5em);
+}
+/* An item the row has no room for. Its own rule below would otherwise keep it drawn. */
+.nav-shortcut-hints > [hidden] {
+  display: none;
 }
 .nav-shortcut-action,
 .nav-shortcut-hint,
@@ -2586,6 +2601,9 @@ html.theme-anim .menu {
 .nav-shortcut-hint {
   gap: 4px;
   padding: 3px 0;
+  /* A label never breaks onto a second line inside its item: the row drops the item
+     instead, and the width measured is the one it is drawn at. */
+  white-space: nowrap;
 }
 /* A shortcut hint carries exactly two boxes: the strip that groups every
    shortcut behind one border, and the keycap that says "this is a key". A
@@ -2690,10 +2708,11 @@ html.theme-anim .menu {
   white-space: nowrap;
 }
 
-/* A served mirror's branch and tag selector: one compact button under the
-   header naming the served ref, and a .menu panel below it listing the
-   mirror's branches or tags with a filter box. Only a pin with a mirror has
-   one. */
+/* The branch and tag selector of a served mirror or checkout: one compact
+   button under the header naming what is served, and a .menu panel below it
+   listing the branches or tags with a filter box. A pin with a mirror has one,
+   and so does a folder that is a repository's root, whose panel begins with its
+   working tree. */
 .source-ref-selector[hidden] {
   display: none;
 }
@@ -2748,7 +2767,8 @@ html.theme-anim .menu {
   overflow-y: auto;
   list-style: none;
 }
-.source-ref-selector-row[aria-current="true"] {
+.source-ref-selector-row[aria-current="true"],
+.source-ref-selector-working-tree[aria-current="true"] {
   font-weight: var(--weight-medium);
 }
 .source-ref-selector-name {
@@ -2775,6 +2795,28 @@ html.theme-anim .menu {
 }
 .source-ref-selector-error {
   color: var(--status-warning-strong);
+}
+/* A checkout's working tree: a row like a ref's, above the lists and ruled off
+   from them, since it is the one choice that is not a ref. What it is stands
+   where a ref's commit does. */
+.source-ref-selector-working-tree {
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--border);
+  border-radius: var(--radius-chrome) var(--radius-chrome) 0 0;
+}
+.source-ref-selector-working-tree[hidden],
+.source-ref-selector-stale[hidden] {
+  display: none;
+}
+/* What a checkout's page says, beside its button, once the server shows
+   something else: the words and the one action, as the freshness row offers
+   a reload on a mirror. */
+.source-ref-selector-stale {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+  color: var(--text);
 }
 
 /* A served mirror's freshness, at the foot of the navigation pane where a
@@ -3772,20 +3814,51 @@ a.tab-btn {
   border-bottom: 1px solid var(--border);
   background: var(--sidebar-bg);
   flex-shrink: 0;
-  /* The server ships this element empty and filter-controls.js fills it, so
-     without a reserved height it stands 13px tall until the chips arrive and
-     then grows to 37 -- pushing the whole tree down on every load and every
-     reload. One line, this element's padding of a toolbar gap above and below
-     it, and its bottom border: the same height a populated bar computes to
-     while its row is one line, so nothing moves when the chips land.
-     `box-sizing` is border-box, so the padding and border are inside this
-     figure. */
+  /* The server ships this element holding only the pending tally, and app.js
+     fills it (renderNavFilterBar). Shipped empty and without a reserved height,
+     it stood 13px tall until the chips arrived and then grew to 37 -- pushing
+     the whole tree down on every load and every reload. One line, this
+     element's padding of a toolbar gap above and below it, and its bottom
+     border: the same height a populated bar computes to while its row is one
+     line, so nothing moves when the chips land. `box-sizing` is border-box,
+     so the padding and border are inside this figure. */
   min-height: var(--nav-toolbar-height);
   position: relative;
   z-index: 1;
   transition:
     box-shadow var(--transition-fast),
     row-gap var(--transition-fast);
+}
+/* The tree holds its first paint until the bar has its controls (mb-kiqm). The server
+   ships the bar one line tall around the pending placeholder, and app.js fills it
+   (renderNavFilterBar) in the task that draws the tree's first rows, just before them;
+   in a pane too narrow for its row the filled bar wraps (`.nav-toolbar-row`). The shell
+   paints `#tree-content` before any script runs, so the fill moved that box down by the
+   lines added, rows or none. Measured in headless Chrome on 2026-11-18 at the narrowest
+   pane: the bar went from 37 to 67 px and the tree moved 30 px, a layout shift of
+   `#tree-content` of 0.00255 to 0.00268, in every load with the bar filled at
+   DOMContentLoaded and in 11 of 12 with it filled before the rows; and rows drawn
+   before the fill were on screen under the one-line bar in 2 of 8 loads, 12 of 12 with
+   the CPU slowed 6x. Hidden until the bar is filled, the tree first shows under its
+   settled height, and no load shifted. Since the bar is filled just before the rows,
+   no row waits: in 48 loads, at full speed and with the CPU slowed 6x, 12x, and 20x,
+   every row was shown in the frame it was drawn.
+
+   The hold is bounded, so a bar that is never filled, as when filter-controls.js does
+   not load or app.js throws first, does not hide the tree for good: at the bound the
+   quiet period's keyframes show it, wrapping bar and all. From the tree's insertion to
+   the bar's fill, 12 loads each with the browser cache off took 21 to 55 ms at full
+   speed, 43 to 146 ms with the CPU slowed 6x, 105 to 316 ms at 12x, and 185 to 746 ms
+   at 20x; the bound is past the slowest. tests/test_files_totals_stable_chrome.py fails
+   filter-controls.js and sees the tree shown at the bound.
+
+   A loading spinner past its quiet period still shows, since `.mb-delayed-loading`
+   sets its own visibility. An alert app.js writes into the tree before the bar is
+   filled, on a pinned revision's page missing its path codec, shows at once. Where
+   another tab's toolbar is in front the bar is hidden, and the tree is not held. */
+.nav-filter-bar:not([hidden]):has(> .tally-pending) ~ .tree-content:not(:has(> [role="alert"])) {
+  visibility: hidden;
+  animation: mb-delayed-loading-reveal 0s linear 1s forwards;
 }
 /* Widens on the same token as the drawer's own grid track, so the gap
    grows with the reveal rather than snapping open ahead of it. */

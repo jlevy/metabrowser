@@ -742,7 +742,10 @@ class GitDiffSource:
         oid fails every root-commit comparison there.
         """
         if self._empty_tree_oid is None:
-            out = await run_git_at(["hash-object", "-t", "tree", "/dev/null"], self._location)
+            # No filter: a store target refuses a hash-object that could run one.
+            out = await run_git_at(
+                ["hash-object", "--no-filters", "-t", "tree", "/dev/null"], self._location
+            )
             self._empty_tree_oid = out.decode("ascii").strip()
 
     def _endpoints(self, resolved: ResolvedComparison) -> list[str]:
@@ -767,7 +770,13 @@ class GitDiffSource:
         # the two listings' bytes end to end. Measured 2026-11-02 on a comparison of 1,183
         # files at load average 15: 1,293 ms as two runs, 705 ms as one; 57 and 28 ms on 42.
         listed = await run_git_at(
-            ["diff", *MANIFEST_LISTING_OPTIONS, *endpoints],
+            [
+                "diff",
+                *MANIFEST_LISTING_OPTIONS,
+                # At a store target, no driver the repository's configuration names.
+                *self._location.diff_driver_args,
+                *endpoints,
+            ],
             self._location,
         )
         # Bounded by the read cap, not the manifest's: every record is parsed, off the loop.
@@ -1285,6 +1294,10 @@ class GitDiffSource:
                 "--src-prefix=a/",
                 "--dst-prefix=b/",
                 "--no-ext-diff",
+                # A pinned revision's patch runs no textconv driver either: its target may
+                # be a checkout's own Git directory (GitLocation.diff_driver_args). The
+                # listing run above already says so for every location.
+                *(["--no-textconv"] if self._location.target is not None and not listing else []),
                 "--no-color",
                 "--diff-merges=first-parent",
                 *self._endpoints(resolved),
