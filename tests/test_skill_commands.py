@@ -813,7 +813,7 @@ def test_the_skill_is_read_as_commands(skill: str, guide: str) -> None:
     assert read >= RECIPE_ROUTES and named >= PROSE_ROUTES, (read, named)
     assert any(not command.whole for command in found)
     assert len(_recipes(skill)) == 3
-    assert len(present_recipes(skill)) == 2
+    assert len(present_recipes(skill)) == 3
     assert len([c for c in commands(guide, GUIDE.name) if c.whole]) >= 8
 
 
@@ -1015,7 +1015,7 @@ def test_a_present_recipe_the_delivery_golden_does_not_run_fails(skill: str) -> 
 def test_a_report_field_the_golden_lacks_fails(skill: str) -> None:
     mutated = _mutated(skill, "`.target.page`, the address", "`.target.address`, the address")
     assert present_findings(mutated, PRESENT_GOLDEN.read_text(encoding="utf-8")) == [
-        "the report of status [0, 3, 4, 5] has no .target.address, which SKILL.md reads"
+        "the report of status [0, 1, 3, 4, 5] has no .target.address, which SKILL.md reads"
     ]
 
 

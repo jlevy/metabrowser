@@ -30,9 +30,13 @@ a separate front end that the skill hands pages with `--present`.
 ## Ask an Agent to Show You a Page
 
 Ask in your own words: “open the plan in Metabrowser,” “show me what the last commit
-changed,” or “open pull request 123.” On a Mac with the [macOS app](macos-app.md)
-installed, the agent hands a folder, a file, or a GitHub URL to the app; otherwise, and
-for an address the app cannot be handed, it serves the page and gives you its address.
+changed,” or “open pull request 123.” The agent presents a folder, a file, or a GitHub
+URL: on a Mac with the [macOS app](macos-app.md) installed it opens in the app, and
+otherwise in your browser, on a server `metab` starts for it.
+Your `open_in` setting chooses the app only or the browser only
+([the command-line guide](command-line.md#choosing-the-app-or-a-browser) has it).
+For an address presenting cannot name, the agent serves the page and gives you its
+address.
 
 ### In the App
 
@@ -42,15 +46,26 @@ metab --present https://github.com/owner/repo/pull/123 --format json
 ```
 
 `--present` hands the target to the app, which opens it in a window, and prints a report
-([the command-line guide](command-line.md#handing-a-target-to-the-app---present) has its
-fields and codes). The agent tells you what it handed over, and that the app was asked
-rather than that a window shows it, since the app does not reply yet.
-When no app takes the target, as on another machine or without the app installed, the
-agent serves it instead, as below.
+([the command-line guide](command-line.md#presenting-a-target---present) has its fields
+and codes). The agent tells you what it handed over, and that the app was asked rather
+than that a window shows it, since the app does not reply yet.
+When no app takes the target, as on another machine or without the app installed,
+`--present` starts a server for it that opens the page in your browser, and the report
+gives its address and process ID; the agent stops it with `kill` when you are done.
+With `--open-in app` or your `open_in: app`, nothing opens then, and the agent serves
+the page instead, as below.
 
 ### In a Browser
 
-The agent starts a server without opening a browser and gives you the address:
+When you ask for a browser, the agent presents with `--open-in browser`, which never
+looks for the app:
+
+```shell
+metab --present . --path docs/plan.md --open-in browser --format json
+```
+
+For any other address, or where presenting would start a browser you cannot see, the
+agent starts a server without opening a browser and gives you the address:
 
 ```shell
 metab . --no-open

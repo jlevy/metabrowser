@@ -7,6 +7,7 @@ env:
   TZ: "UTC"
   METABROWSER_PLUGINS_DIRS: ""
   METABROWSER_LOG_LEVEL: "WARNING"
+  METABROWSER_OPEN_IN: "browser"
 patterns:
   ROOT_ARG: '\[ROOT\]'
 before: >-
@@ -27,9 +28,12 @@ A target it cannot present has null `kind`, `root`, `page`, and `handoff`, a ref
 with a stable code and a message that names the fix, and exit status 3. The macOS app
 checks what a user types this way, so it parses no URL itself.
 
-Nothing here looks for the app, clones, fetches, or starts a server.
-Delivery to the app, with a recording `open`, is
-`tests/golden/cli-present-delivery.txt`.
+A target that resolves also carries a `decision`: where `--present` would open it, the
+app or a browser, and why.
+This file sets `METABROWSER_OPEN_IN=browser`, so the decision is the same on every
+machine: nothing here looks for the app, clones, fetches, or starts a server.
+Decisions under each preference, and delivery to the app with a recording `open` or to a
+browser on a stand-in server, are `tests/golden/cli-present-delivery.txt`.
 
 ## Test: a folder, a file, and a selection inside a folder
 
@@ -42,7 +46,17 @@ $ metab notes --present --dry-run --format json
   "handoff": [
     "[CWD]/notes"
   ],
-  "refusal": null
+  "refusal": null,
+  "decision": {
+    "delivers_to": "browser",
+    "open_in": "browser",
+    "open_in_source": "environment",
+    "bundle_id": null,
+    "bundle_path": null,
+    "code": "browser_preferred",
+    "reason": "open_in is browser, so --present looks for no app and starts a metab server for the target that opens it in a browser",
+    "fallback": null
+  }
 }
 ? 0
 ```
@@ -53,6 +67,10 @@ kind: folder
 root: [CWD]/notes
 page: /view/
 handoff: [CWD]/notes
+open_in: browser (environment)
+delivers_to: browser
+code: browser_preferred
+reason: open_in is browser, so --present looks for no app and starts a metab server for the target that opens it in a browser
 ? 0
 ```
 
@@ -69,7 +87,17 @@ $ metab notes/README.md --present --dry-run --format json
   "handoff": [
     "[CWD]/notes/README.md"
   ],
-  "refusal": null
+  "refusal": null,
+  "decision": {
+    "delivers_to": "browser",
+    "open_in": "browser",
+    "open_in_source": "environment",
+    "bundle_id": null,
+    "bundle_path": null,
+    "code": "browser_preferred",
+    "reason": "open_in is browser, so --present looks for no app and starts a metab server for the target that opens it in a browser",
+    "fallback": null
+  }
 }
 ? 0
 ```
@@ -83,7 +111,17 @@ $ metab notes/link.md --present --dry-run --format json
   "handoff": [
     "[CWD]/notes/docs/guide.md"
   ],
-  "refusal": null
+  "refusal": null,
+  "decision": {
+    "delivers_to": "browser",
+    "open_in": "browser",
+    "open_in_source": "environment",
+    "bundle_id": null,
+    "bundle_path": null,
+    "code": "browser_preferred",
+    "reason": "open_in is browser, so --present looks for no app and starts a metab server for the target that opens it in a browser",
+    "fallback": null
+  }
 }
 ? 0
 ```
@@ -102,7 +140,17 @@ $ metab notes --path docs/guide.md --present --dry-run --format json
     "[CWD]/notes",
     "[CWD]/notes/docs/guide.md"
   ],
-  "refusal": null
+  "refusal": null,
+  "decision": {
+    "delivers_to": "browser",
+    "open_in": "browser",
+    "open_in_source": "environment",
+    "bundle_id": null,
+    "bundle_path": null,
+    "code": "browser_preferred",
+    "reason": "open_in is browser, so --present looks for no app and starts a metab server for the target that opens it in a browser",
+    "fallback": null
+  }
 }
 ? 0
 ```
@@ -114,7 +162,17 @@ $ metab notes --path docs --present --dry-run --format json
   "root": "[CWD]/notes",
   "page": "/view/docs/",
   "handoff": null,
-  "refusal": null
+  "refusal": null,
+  "decision": {
+    "delivers_to": "browser",
+    "open_in": "browser",
+    "open_in_source": "environment",
+    "bundle_id": null,
+    "bundle_path": null,
+    "code": "browser_preferred",
+    "reason": "open_in is browser, so --present looks for no app and starts a metab server for the target that opens it in a browser",
+    "fallback": null
+  }
 }
 ? 0
 ```
@@ -133,7 +191,17 @@ $ metab https://github.com/Octo/Demo.git --present --dry-run --format json
   "handoff": [
     "https://github.com/octo/demo"
   ],
-  "refusal": null
+  "refusal": null,
+  "decision": {
+    "delivers_to": "browser",
+    "open_in": "browser",
+    "open_in_source": "environment",
+    "bundle_id": null,
+    "bundle_path": null,
+    "code": "browser_preferred",
+    "reason": "open_in is browser, so --present looks for no app and starts a metab server for the target that opens it in a browser",
+    "fallback": null
+  }
 }
 ? 0
 ```
@@ -144,6 +212,10 @@ kind: repository
 root: https://github.com/octo/demo
 page: /view/
 handoff: https://github.com/octo/demo
+open_in: browser (environment)
+delivers_to: browser
+code: browser_preferred
+reason: open_in is browser, so --present looks for no app and starts a metab server for the target that opens it in a browser
 ? 0
 ```
 
@@ -159,7 +231,17 @@ $ metab https://github.com/octo/demo/tree/main --present --dry-run --format json
   "handoff": [
     "https://github.com/octo/demo/tree/main"
   ],
-  "refusal": null
+  "refusal": null,
+  "decision": {
+    "delivers_to": "browser",
+    "open_in": "browser",
+    "open_in_source": "environment",
+    "bundle_id": null,
+    "bundle_path": null,
+    "code": "browser_preferred",
+    "reason": "open_in is browser, so --present looks for no app and starts a metab server for the target that opens it in a browser",
+    "fallback": null
+  }
 }
 ? 0
 ```
@@ -173,7 +255,17 @@ $ metab https://github.com/octo/demo/tree/refs/tags/v1.0 --present --dry-run --f
   "handoff": [
     "https://github.com/octo/demo/tree/refs/tags/v1.0"
   ],
-  "refusal": null
+  "refusal": null,
+  "decision": {
+    "delivers_to": "browser",
+    "open_in": "browser",
+    "open_in_source": "environment",
+    "bundle_id": null,
+    "bundle_path": null,
+    "code": "browser_preferred",
+    "reason": "open_in is browser, so --present looks for no app and starts a metab server for the target that opens it in a browser",
+    "fallback": null
+  }
 }
 ? 0
 ```
@@ -187,7 +279,17 @@ $ metab https://github.com/octo/demo/tree/HEAD/docs --present --dry-run --format
   "handoff": [
     "https://github.com/octo/demo/tree/HEAD/docs"
   ],
-  "refusal": null
+  "refusal": null,
+  "decision": {
+    "delivers_to": "browser",
+    "open_in": "browser",
+    "open_in_source": "environment",
+    "bundle_id": null,
+    "bundle_path": null,
+    "code": "browser_preferred",
+    "reason": "open_in is browser, so --present looks for no app and starts a metab server for the target that opens it in a browser",
+    "fallback": null
+  }
 }
 ? 0
 ```
@@ -203,7 +305,17 @@ $ metab 'https://github.com/octo/demo/blob/HEAD/docs/guide.md?plain=1#L3-L5' --p
   "handoff": [
     "https://github.com/octo/demo/blob/HEAD/docs/guide.md?plain=1#L3-L5"
   ],
-  "refusal": null
+  "refusal": null,
+  "decision": {
+    "delivers_to": "browser",
+    "open_in": "browser",
+    "open_in_source": "environment",
+    "bundle_id": null,
+    "bundle_path": null,
+    "code": "browser_preferred",
+    "reason": "open_in is browser, so --present looks for no app and starts a metab server for the target that opens it in a browser",
+    "fallback": null
+  }
 }
 ? 0
 ```
@@ -224,7 +336,17 @@ $ metab https://github.com/octo/demo/tree/claude/x/docs --present --dry-run --fo
   "handoff": [
     "https://github.com/octo/demo/tree/claude/x/docs"
   ],
-  "refusal": null
+  "refusal": null,
+  "decision": {
+    "delivers_to": "browser",
+    "open_in": "browser",
+    "open_in_source": "environment",
+    "bundle_id": null,
+    "bundle_path": null,
+    "code": "browser_preferred",
+    "reason": "open_in is browser, so --present looks for no app and starts a metab server for the target that opens it in a browser",
+    "fallback": null
+  }
 }
 ? 0
 ```
@@ -238,7 +360,17 @@ $ metab https://raw.githubusercontent.com/octo/demo/refs/heads/main/README.md --
   "handoff": [
     "https://github.com/octo/demo/blob/refs/heads/main/README.md"
   ],
-  "refusal": null
+  "refusal": null,
+  "decision": {
+    "delivers_to": "browser",
+    "open_in": "browser",
+    "open_in_source": "environment",
+    "bundle_id": null,
+    "bundle_path": null,
+    "code": "browser_preferred",
+    "reason": "open_in is browser, so --present looks for no app and starts a metab server for the target that opens it in a browser",
+    "fallback": null
+  }
 }
 ? 0
 ```
@@ -252,7 +384,17 @@ $ metab https://github.com/octo/demo/blob/release/v1 --present --dry-run --forma
   "handoff": [
     "https://github.com/octo/demo/blob/release/v1"
   ],
-  "refusal": null
+  "refusal": null,
+  "decision": {
+    "delivers_to": "browser",
+    "open_in": "browser",
+    "open_in_source": "environment",
+    "bundle_id": null,
+    "bundle_path": null,
+    "code": "browser_preferred",
+    "reason": "open_in is browser, so --present looks for no app and starts a metab server for the target that opens it in a browser",
+    "fallback": null
+  }
 }
 ? 0
 ```
@@ -263,6 +405,10 @@ kind: file
 root: https://github.com/octo/demo
 page: (the server's entry page)
 handoff: https://github.com/octo/demo/blob/main/docs/guide.md
+open_in: browser (environment)
+delivers_to: browser
+code: browser_preferred
+reason: open_in is browser, so --present looks for no app and starts a metab server for the target that opens it in a browser
 ? 0
 ```
 
@@ -278,7 +424,17 @@ $ metab https://github.com/octo/demo/pull/7 --present --dry-run --format json
   "handoff": [
     "https://github.com/octo/demo/pull/7"
   ],
-  "refusal": null
+  "refusal": null,
+  "decision": {
+    "delivers_to": "browser",
+    "open_in": "browser",
+    "open_in_source": "environment",
+    "bundle_id": null,
+    "bundle_path": null,
+    "code": "browser_preferred",
+    "reason": "open_in is browser, so --present looks for no app and starts a metab server for the target that opens it in a browser",
+    "fallback": null
+  }
 }
 ? 0
 ```
@@ -292,7 +448,17 @@ $ metab https://github.com/octo/demo/pull/7/checks --present --dry-run --format 
   "handoff": [
     "https://github.com/octo/demo/pull/7/checks"
   ],
-  "refusal": null
+  "refusal": null,
+  "decision": {
+    "delivers_to": "browser",
+    "open_in": "browser",
+    "open_in_source": "environment",
+    "bundle_id": null,
+    "bundle_path": null,
+    "code": "browser_preferred",
+    "reason": "open_in is browser, so --present looks for no app and starts a metab server for the target that opens it in a browser",
+    "fallback": null
+  }
 }
 ? 0
 ```
@@ -306,7 +472,17 @@ $ metab https://github.com/octo/demo/commit/1A2B3C4D --present --dry-run --forma
   "handoff": [
     "https://github.com/octo/demo/commit/1a2b3c4d"
   ],
-  "refusal": null
+  "refusal": null,
+  "decision": {
+    "delivers_to": "browser",
+    "open_in": "browser",
+    "open_in_source": "environment",
+    "bundle_id": null,
+    "bundle_path": null,
+    "code": "browser_preferred",
+    "reason": "open_in is browser, so --present looks for no app and starts a metab server for the target that opens it in a browser",
+    "fallback": null
+  }
 }
 ? 0
 ```
@@ -320,7 +496,17 @@ $ metab https://github.com/octo/demo/commit/0123456789ABCDEF0123456789abcdef0123
   "handoff": [
     "https://github.com/octo/demo/commit/0123456789abcdef0123456789abcdef01234567"
   ],
-  "refusal": null
+  "refusal": null,
+  "decision": {
+    "delivers_to": "browser",
+    "open_in": "browser",
+    "open_in_source": "environment",
+    "bundle_id": null,
+    "bundle_path": null,
+    "code": "browser_preferred",
+    "reason": "open_in is browser, so --present looks for no app and starts a metab server for the target that opens it in a browser",
+    "fallback": null
+  }
 }
 ? 0
 ```
@@ -334,7 +520,17 @@ $ metab https://github.com/octo/demo/pull/7/commits/0123456789abcdef0123456789ab
   "handoff": [
     "https://github.com/octo/demo/pull/7/commits/0123456789abcdef0123456789abcdef01234567"
   ],
-  "refusal": null
+  "refusal": null,
+  "decision": {
+    "delivers_to": "browser",
+    "open_in": "browser",
+    "open_in_source": "environment",
+    "bundle_id": null,
+    "bundle_path": null,
+    "code": "browser_preferred",
+    "reason": "open_in is browser, so --present looks for no app and starts a metab server for the target that opens it in a browser",
+    "fallback": null
+  }
 }
 ? 0
 ```
@@ -351,7 +547,8 @@ $ metab missing --present --dry-run --format json
   "refusal": {
     "code": "not_found",
     "message": "nothing is at [CWD]/missing; check the path"
-  }
+  },
+  "decision": null
 }
 ? 3
 ```
@@ -372,7 +569,8 @@ $ metab notes/pipe --present --dry-run --format json
   "refusal": {
     "code": "not_a_file_or_folder",
     "message": "[CWD]/notes/pipe is neither a file nor a folder; present a file or a folder"
-  }
+  },
+  "decision": null
 }
 ? 3
 ```
@@ -387,7 +585,8 @@ $ metab notes/README.md --path docs --present --dry-run --format json
   "refusal": {
     "code": "path_with_file",
     "message": "--path selects inside a folder, and ROOT is a file; present the file alone, or name its folder as ROOT"
-  }
+  },
+  "decision": null
 }
 ? 3
 ```
@@ -402,7 +601,8 @@ $ metab notes --path nope.md --present --dry-run --format json
   "refusal": {
     "code": "path_not_found",
     "message": "--path names nothing in [CWD]/notes; check nope.md"
-  }
+  },
+  "decision": null
 }
 ? 3
 ```
@@ -417,7 +617,8 @@ $ metab notes/docs --path ../README.md --present --dry-run --format json
   "refusal": {
     "code": "path_outside_root",
     "message": "--path names a place outside [CWD]/notes/docs; name one inside it"
-  }
+  },
+  "decision": null
 }
 ? 3
 ```
@@ -432,7 +633,8 @@ $ metab '' --present --dry-run --format json
   "refusal": {
     "code": "empty",
     "message": "ROOT is empty; write . for the current folder"
-  }
+  },
+  "decision": null
 }
 ? 3
 ```
@@ -452,7 +654,8 @@ $ metab https://github.com/octo/demo/issues/5 --present --dry-run --format json
   "refusal": {
     "code": "unsupported_github_url",
     "message": "GitHub issues pages are not opened; open the repository at https://github.com/octo/demo"
-  }
+  },
+  "decision": null
 }
 ? 3
 ```
@@ -467,7 +670,8 @@ $ metab https://github.com/octo/demo/pull/0 --present --dry-run --format json
   "refusal": {
     "code": "invalid_pull_request",
     "message": "a pull request URL names a positive number; open the repository at https://github.com/octo/demo"
-  }
+  },
+  "decision": null
 }
 ? 3
 ```
@@ -482,7 +686,8 @@ $ metab http://github.com/octo/demo --present --dry-run --format json
   "refusal": {
     "code": "insecure_http",
     "message": "GitHub is opened over https; use https://github.com/octo/demo"
-  }
+  },
+  "decision": null
 }
 ? 3
 ```
@@ -497,7 +702,8 @@ $ metab https://ghp_example@github.com/octo/demo --present --dry-run --format js
   "refusal": {
     "code": "credentials_in_url",
     "message": "the URL carries credentials"
-  }
+  },
+  "decision": null
 }
 ? 3
 ```
@@ -514,7 +720,8 @@ $ metab https://example.com/octo/demo.git --present --dry-run --format json
   "refusal": {
     "code": "unsupported_source",
     "message": "--present opens a local file or folder, or a GitHub URL; give one of those"
-  }
+  },
+  "decision": null
 }
 ? 3
 ```
@@ -529,7 +736,8 @@ $ metab file:///srv/git/demo.git --present --dry-run --format json
   "refusal": {
     "code": "unsupported_source",
     "message": "--present opens a local file or folder, or a GitHub URL; give one of those"
-  }
+  },
+  "decision": null
 }
 ? 3
 ```
@@ -544,7 +752,8 @@ $ metab ftp://example.com/demo --present --dry-run --format json
   "refusal": {
     "code": "unsupported_transport",
     "message": "ROOT is neither a path that exists nor a GitHub URL; give a local file or folder, or a github.com URL"
-  }
+  },
+  "decision": null
 }
 ? 3
 ```
@@ -561,7 +770,8 @@ $ metab https://github.com/octo/demo --path README.md --present --dry-run --form
   "refusal": {
     "code": "path_with_url",
     "message": "--path selects inside a local folder; for a GitHub URL, present the URL of the file or folder itself"
-  }
+  },
+  "decision": null
 }
 ? 3
 ```
@@ -569,11 +779,31 @@ $ metab https://github.com/octo/demo --path README.md --present --dry-run --form
 ## Test: usage errors stay status 2
 
 ```console
-$ metab notes --present --dry-run --app-bundle-id org.example.viewer 2>&1
+$ metab notes --present --dry-run --open-in browser --app-bundle-id org.example.viewer 2>&1
 Usage: metab [OPTIONS] [ROOT_ARG]
 Try 'metab --help' for help.
 ╭─ Error ──────────────────────────────────────────────────────────────────────╮
-│ --app-bundle-id not valid with --present --dry-run, which looks for no app   │
+│ --app-bundle-id not valid with --open-in browser, which looks for no app     │
+╰──────────────────────────────────────────────────────────────────────────────╯
+? 2
+```
+
+```console
+$ metab notes --present --dry-run --open-in sometimes 2>&1
+Usage: metab [OPTIONS] [ROOT_ARG]
+Try 'metab --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ Invalid value for --open-in: 'sometimes' is not one of auto, app, browser    │
+╰──────────────────────────────────────────────────────────────────────────────╯
+? 2
+```
+
+```console
+$ metab notes --walk --open-in app 2>&1
+Usage: metab [OPTIONS] [ROOT_ARG]
+Try 'metab --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ --open-in not valid with --walk                                              │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ? 2
 ```

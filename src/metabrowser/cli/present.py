@@ -970,8 +970,10 @@ def deliver(target: Presentable, bundle_ids: Sequence[str]) -> Delivery:
 # whatever is first on PATH. `-I` keeps the working directory, which is the user's and
 # may be any checkout, off the module path, as `diff/markdown_projection_worker.py` does
 # for its child; `-u` writes each line to the log as it is printed, so the `Serving` line
-# is there to read. A module attribute so tests replace it with a recording stand-in.
-server_command: tuple[str, ...] = (sys.executable, "-I", "-u", "-m", "metabrowser.cli.main")
+# is there to read.
+SERVER_COMMAND: Final = (sys.executable, "-I", "-u", "-m", "metabrowser.cli.main")
+# The command a browser delivery starts: SERVER_COMMAND, or the stand-in a test sets.
+server_command: tuple[str, ...] = SERVER_COMMAND
 
 
 def server_log_directory() -> str:
@@ -1075,6 +1077,35 @@ def _await_announcement(pid: int, log_path: str, timeout_s: float) -> _Announcem
             time.sleep(SERVER_POLL_S)
 
 
+def _inherited_descriptors() -> list[int]:
+    """The descriptors above standard error a child of this process would inherit.
+
+    Python opens every descriptor of its own non-inheritable, so these are ones this
+    process was started with, such as a pipe a harness passed on. A detached server
+    holding one open would keep whoever reads it waiting until the server stops, so the
+    server starts without them, as ``subprocess`` closes them for its children.
+    """
+
+    for folder in ("/dev/fd", "/proc/self/fd"):
+        try:
+            names = os.listdir(folder)
+        except OSError:
+            continue
+        found: list[int] = []
+        for name in names:
+            if not name.isdigit() or (descriptor := int(name)) <= 2:
+                continue
+            try:
+                inheritable = os.get_inheritable(descriptor)
+            except OSError:
+                # The listing's own descriptor, closed once the listing was read.
+                continue
+            if inheritable:
+                found.append(descriptor)
+        return sorted(found)
+    return []
+
+
 def _serve_arguments(value: str, path: str) -> list[str]:
     """``metab ROOT``, with ``--path``, as the server is started: options before ``--``,
     so ROOT is read as ROOT whatever it begins with, and without ``--no-open``."""
@@ -1087,8 +1118,10 @@ def serve_detached(
 ) -> Delivery:
     """Start ``metab ROOT`` for a browser, detached, and report it once it says where.
 
-    The server runs in a session of its own, with stdin at ``/dev/null`` and its output
-    in a log file, so neither this command's exit nor its terminal's hangup reaches it.
+    The server runs in a session of its own, with stdin at ``/dev/null``, its output in a
+    log file, and no other descriptor this command was given, so neither this command's
+    exit nor its terminal's hangup reaches it, and nothing reading this command's output
+    waits on the server.
     It is serve mode, which opens the page in a browser once it answers: what a user who
     ran ``metab ROOT`` would get, in the same working directory and environment.
     """
@@ -1128,6 +1161,7 @@ def serve_detached(
                 (os.POSIX_SPAWN_OPEN, 0, os.devnull, os.O_RDONLY, 0),
                 (os.POSIX_SPAWN_DUP2, descriptor, 1),
                 (os.POSIX_SPAWN_DUP2, descriptor, 2),
+                *((os.POSIX_SPAWN_CLOSE, inherited) for inherited in _inherited_descriptors()),
             ],
             setsid=True,
             # As `subprocess` restores them for every child: Python ignores SIGPIPE, and an
@@ -1501,6 +1535,7 @@ __all__ = [
     "DEV_BUNDLE_ID",
     "OPENS_URLS_KEY",
     "RELEASE_BUNDLE_ID",
+    "SERVER_COMMAND",
     "SERVER_LOG_PREFIX",
     "AppFinding",
     "AppLookupError",

@@ -47,8 +47,8 @@ metab https://github.com/owner/repo/pull/123 --present
 
 `metab ROOT --present` hands a folder, a file, or a GitHub URL to the app and says what
 it sent; the app opens it as it opens a folder from Finder, and starts if it is not
-running. [The command-line guide](command-line.md#handing-a-target-to-the-app---present)
-has the report, its codes, and `--dry-run`, which checks a target without sending it.
+running. [The command-line guide](command-line.md#presenting-a-target---present) has the
+report, its codes, and `--dry-run`, which checks a target without sending it.
 
 - **Which app:** `--present` asks LaunchServices, so it finds the app wherever macOS has
   registered it: an installed release first, then a development build, which is what
@@ -59,8 +59,8 @@ has the report, its codes, and `--dry-run`, which checks a target without sendin
   A build elsewhere, such as one left where it was built, is refused with
   `app_not_installed`, and an older build, or another app an override names, with
   `app_not_marked`, rather than send what it would drop or run.
-  [The command-line guide](command-line.md#handing-a-target-to-the-app---present) lists
-  the checks and the developer setting that lifts the first.
+  [The command-line guide](command-line.md#presenting-a-target---present) lists the
+  checks and the developer setting that lifts the first.
 - **A file:** a file named alone joins the most specific folder the app has open that
   holds it, and otherwise opens in its own folder.
   A file named with `--path` inside a folder opens in that folder, unless a folder

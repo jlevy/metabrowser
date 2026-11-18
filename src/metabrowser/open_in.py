@@ -23,7 +23,10 @@ Apple silicon Mac, to a mode that answers about as fast as ``metab --version``
 (``test_present_dry_run_loads_little_beyond_version`` in
 ``tests/test_plugin_public_api.py``). It reads the file within the same bound
 (``CONFIG_MAX_BYTES``), through the same owner-only helper, and changes nothing on disk.
-``tests/test_open_in.py`` holds the two readers to the same answer for the setting.
+``tests/test_open_in.py`` holds the two readers to the same answer for the setting. It
+checks only the ``config`` mapping it reads from: the softschema header and the record's
+other fields are the full reader's to check, which it does when the cache is next opened
+and names the file then.
 A ``config.yml`` this reader cannot read, or whose ``open_in`` is not one of
 :data:`OPEN_IN_CHOICES`, is an error that names the file and the fix; the flag and the
 environment are read first, so either one still chooses while the file is broken.

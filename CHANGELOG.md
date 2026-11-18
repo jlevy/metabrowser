@@ -197,6 +197,34 @@ All notable changes to Metabrowser are documented here.
   another app is never sent a file, and a build registered where it was built is refused
   unless `METABROWSER_ALLOW_UNINSTALLED_APP=1`.
 
+- `metab ROOT --present` opens the target in a browser when no app takes it, and the new
+  `open_in` preference chooses: `auto`, the default, uses the app when an installed
+  build takes the target and otherwise a browser; `app` uses the app or nothing, exiting
+  4 as before; and `browser` never looks for the app.
+  `--open-in WHERE` sets it for one command, `METABROWSER_OPEN_IN` for a shell, and
+  `open_in` in `config.yml`, a setting `ApplicationConfig` now declares, for good; a
+  value that is not one of the three is an `Error:` line naming where it was read.
+  For a browser, `--present` starts `metab ROOT` detached, in a session of its own with
+  its output in a log in the temporary folder, waits for its `Serving` line, and reports
+  `delivered_to: browser` with the server’s `url`, `pid`, and `log`; the server opens
+  the page once it answers and runs until `kill` stops it.
+  Its codes are `server_started` and `server_starting` (status 0) and `server_failed`
+  (status 1); under `auto` the report’s `fallback` says why no app took the target.
+  Every `--present` report gains `open_in`, `open_in_source`, `url`, `pid`, `log`, and
+  `fallback`, and `--present --dry-run` adds a `decision`: where the target would go and
+  why, looking the app up but sending nothing and starting nothing; its status still
+  says only whether ROOT resolved.
+  `--app-bundle-id` is now valid with `--dry-run`, and refused with `--open-in browser`.
+  `metab --doctor` reports the preference, where it was read, and the app it finds, as
+  an `open_in` line and an `open_in` object in `--doctor --json`; an unreadable
+  preference, or `app` with no app to take a target, is a problem.
+  Bare `metab ROOT` is unchanged and does not read the preference.
+  The agent skill gives the user `.url` for a page opened in a browser, adds
+  `--open-in browser` for when the user asks for one, and stops the server with `kill`
+  when the user is done.
+  See
+  [choosing the app or a browser](docs/command-line.md#choosing-the-app-or-a-browser).
+
 - The agent skill hands a folder, a file, or a GitHub URL to the macOS app with
   `metab --present TARGET --format json`, and acts on the exit status: it tells you what
   it handed over, and that the app was asked rather than that a window shows it (status

@@ -378,13 +378,15 @@ def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = Fal
             raise typer.Exit(code=1)
         return
 
-    typer.echo(open_in.line)
     if problems:
         typer.echo(f"metab --doctor: {len(problems)} problem(s):", err=True)
         for problem in problems:
             typer.echo(f"  • {problem}", err=True)
         raise typer.Exit(code=1)
 
+    # A run with a problem writes nothing to stdout, so the preference's line is part of
+    # the answer of a clean one.
+    typer.echo(open_in.line)
     typer.echo(f"metab --doctor: {len(result.plugins)} plugin(s) OK")
 
 
