@@ -103,10 +103,21 @@ def installed_providers() -> tuple[RepositoryProvider, ...]:
     return (GithubProvider(),)
 
 
+@cache
 def url_reducers() -> tuple[ProviderUrlReducer, ...]:
-    """Every provider's URL reducer, for ``classify_root_argument(reducers=)``."""
+    """Every provider's URL reducer, for ``classify_root_argument(reducers=)``.
 
-    return tuple(provider.reducer for provider in installed_providers())
+    Each is imported alone, without its provider. A reducer reads a string, and its
+    provider brings ``gh``, the pull-request records, and the mirror machinery, none of
+    which classifying a ROOT needs: on 2026-11-17 importing the GitHub provider loaded 55
+    more modules and took 0.77 s cold, against 7 modules and 14 ms for its reducer, and
+    ``--present --dry-run`` classifies a ROOT and opens nothing.
+    ``test_url_reducers_are_the_providers_reducers`` holds this list to the providers'.
+    """
+
+    from metabrowser.builtin_plugins.github.urls import GithubUrlReducer
+
+    return (GithubUrlReducer(),)
 
 
 def provider_git_config(remote_url: str) -> tuple[str, ...]:

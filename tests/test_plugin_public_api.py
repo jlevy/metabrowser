@@ -320,3 +320,52 @@ def test_a_local_folders_page_does_not_load_git_source_modules(
 
     assert answer["status"] == status, route
     assert _git_source_modules_in(set(answer["loaded"])) == []
+
+
+# What `--present` must not load: it reads TARGET and hands it to the app, so it builds no
+# server, opens no repository, and needs nothing that would reach the network or `gh`.
+# The macOS app runs `--present --dry-run` to check what a user types, so this is also
+# its startup cost.
+_PRESENT_UNNEEDED_MODULES = (
+    "metabrowser.server",
+    "metabrowser.source_routes",
+    "metabrowser.git.routes",
+    "metabrowser.mirror_refresh",
+    "metabrowser.cache.acquire",
+    "metabrowser.cache.repository_store",
+    "metabrowser.cache.resolve",
+    "metabrowser.builtin_plugins.github.provider",
+    "metabrowser.builtin_plugins.github.gh",
+    "metabrowser.builtin_plugins.github.pulls",
+    "metabrowser.cli.selection",
+    "metabrowser.cli.git_pin_cli",
+    "metabrowser.cli.acquire_cli",
+)
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        "browse",
+        "browse/README.md",
+        "https://github.com/octo/demo",
+        "https://github.com/octo/demo/blob/main/docs/guide.md#L2",
+        "https://github.com/octo/demo/pull/7/files",
+        "https://github.com/octo/demo/commit/1a2b3c4",
+    ],
+)
+def test_present_dry_run_builds_no_server_and_opens_no_repository(
+    tmp_path: Path, target: str
+) -> None:
+    root = tmp_path / "browse"
+    root.mkdir()
+    (root / "README.md").write_text("# Local\n")
+    argument = str(tmp_path / target) if target.startswith("browse") else target
+
+    loaded = _modules_loaded_by(argument, "--present", "--dry-run", "--json")
+
+    assert "metabrowser.cli.present" in loaded
+    assert sorted(name for name in _PRESENT_UNNEEDED_MODULES if name in loaded) == []
+    if target.startswith("browse"):
+        # A local target needs not even the Git tree source a URL's page is spelled with.
+        assert _git_source_modules_in(loaded) == []

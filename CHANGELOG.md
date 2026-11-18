@@ -4,6 +4,20 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- `metab TARGET --present` hands a folder, a file, or a GitHub URL to the macOS app and
+  reports what it sent.
+  It finds the app through LaunchServices, the release build first and then the
+  development build, or the one `--app-bundle-id` or `METABROWSER_APP_BUNDLE_ID` names,
+  and sends the target with `open -b`; it clones, fetches, and serves nothing.
+  `--present --dry-run --json` prints what would be sent: the target’s `kind`, its
+  `root` (an absolute folder, or the repository’s canonical GitHub URL with no ref), its
+  `page`, or a `refusal` with a code and a message.
+  It exits 3 when TARGET cannot be presented and 4 when nothing was sent, such as with
+  no app, and every report says `confirmed: false`, because the app does not answer yet.
+  A URL goes only to an app whose `Info.plist` declares `MetabrowserOpensURLs`, so an
+  older app is never sent a URL it would drop.
+  `--json` now applies to `--present` as well as the plugin modes.
+
 - The Pulls tab’s change lines, each row’s file and line totals, arrive in seconds
   rather than tens of seconds on a cold cache.
   The prefetch now lists the changed files of the open pull requests in view from the

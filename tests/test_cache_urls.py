@@ -12,6 +12,7 @@ from metabrowser.cache.urls import (
     GitSource,
     ReducerArbitrationError,
     ReducerOutcome,
+    RepositorySelection,
     classify_root_argument,
 )
 
@@ -23,6 +24,9 @@ class _ClaimingReducer:
     def reduce(self, value: str) -> ReducerOutcome | None:
         if "github.com" in value:
             return ReducerOutcome(clone_url=self.clone_url)
+        return None
+
+    def web_url(self, clone_url: str, selection: RepositorySelection) -> str | None:
         return None
 
 

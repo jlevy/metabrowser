@@ -36,6 +36,33 @@ Opening a folder in Desktop, Documents, Downloads, iCloud Drive, or on another v
 asks once for access, in Metabrowser’s name, because the app starts the server that
 reads it.
 
+## Opening From a Terminal or an Agent
+
+```shell
+metab ./notes --present
+metab ./notes/report.md --present
+metab https://github.com/owner/repo/pull/123 --present
+```
+
+`metab TARGET --present` hands a folder, a file, or a GitHub URL to the app and says
+what it sent; the app opens it as it opens a folder from Finder, and starts if it is not
+running. [The command-line guide](command-line.md#handing-a-target-to-the-app---present)
+has the report, its codes, and `--dry-run`, which checks a target without sending it.
+
+- **Which app:** `--present` asks LaunchServices, so it finds the app wherever macOS has
+  registered it: an installed release first, then a development build, which is what
+  every build from source is.
+  `--app-bundle-id` or `METABROWSER_APP_BUNDLE_ID` names another.
+- **GitHub URLs:** a URL goes only to a build of the app that opens GitHub URLs.
+  To an older build `--present` sends folders and files, and refuses a URL with
+  `app_opens_no_urls` rather than send what the app would drop.
+- **A folder inside another:** the app opens each folder in a window of its own, so
+  `--path` naming a folder is not sent; present that folder itself.
+- **No confirmation yet:** the app does not answer, so `--present` reports what
+  LaunchServices accepted, never that a window shows it.
+- **In an agent’s sandbox,** `open` may be refused; the report says so and gives the
+  command to run outside it.
+
 ## Windows and Tabs
 
 - **Titles:** each window is titled with its folder’s short name, or its full name while
@@ -169,8 +196,9 @@ The app moves nothing itself.
 - The app does not pass state-location variables (`XDG_CACHE_HOME`,
   `METABROWSER_CACHE_DIR`, and the rest) to its servers, so they always use the default
   cache and configuration locations.
-- There is no updater and no URL scheme, and an agent cannot yet show you a page in the
-  app; the
+- There is no updater and no URL scheme, and an agent can hand the app a target with
+  [`--present`](#opening-from-a-terminal-or-an-agent) but cannot yet learn which window
+  shows it or move a page that is already open; the
   [native macOS app plan](project/specs/active/plan-2026-11-10-native-macos-app.md) has
   what comes next.
 

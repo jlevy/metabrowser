@@ -124,6 +124,15 @@ class ProviderUrlReducer(Protocol):
     def reduce(self, value: str) -> ReducerOutcome | ReducerRejection | None:
         """Return a claim or a refusal, or ``None`` when *value* is not this provider's."""
 
+    def web_url(self, clone_url: str, selection: RepositorySelection) -> str | None:
+        """The canonical web URL this reducer reduces to *clone_url* and *selection*.
+
+        ``None`` when *clone_url* is not this provider's. It is what ``--present`` hands
+        the macOS app for a source: one ASCII spelling with nothing the reducer drops,
+        such as a query parameter, so what the app passes back to ``metab`` selects the
+        same thing.
+        """
+
 
 @dataclass(frozen=True, slots=True)
 class GitSource:

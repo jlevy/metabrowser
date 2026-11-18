@@ -23,8 +23,13 @@ import click
 from watchfiles import DefaultFilter
 
 from metabrowser.builtin_plugins.github.provider import MAX_FIRST_CLONE_ENV
-from metabrowser.cli.exit_codes import INTERRUPTED_EXIT_CODE
+from metabrowser.cli.exit_codes import (
+    INTERRUPTED_EXIT_CODE,
+    PRESENT_NOT_DELIVERED_EXIT_CODE,
+    PRESENT_REFUSED_EXIT_CODE,
+)
 from metabrowser.cli.hangup import HANGUP_EXIT_STATUS, TERMINATION_EXIT_STATUS
+from metabrowser.cli.present import BUNDLE_ID_ENV, OPENS_URLS_KEY
 from metabrowser.constants import LOGS_DIR, STATE_DIR
 from metabrowser.dotenv import ALLOWED_KEYS
 from metabrowser.file_extensions import BROWSER_TRACKABLE_EXTS
@@ -209,6 +214,30 @@ def stated_values() -> list[Stated]:
             "the hangup and interrupt statuses",
             r"^\| (\d+), (\d+) \| Stopped by a terminal hangup or Ctrl-C",
             (str(HANGUP_EXIT_STATUS), str(INTERRUPTED_EXIT_CODE)),
+        ),
+        Stated(
+            "docs/command-line.md",
+            "the --present refusal status",
+            r"^\| (\d+) \| `--present`: ROOT cannot be presented",
+            (str(PRESENT_REFUSED_EXIT_CODE),),
+        ),
+        Stated(
+            "docs/command-line.md",
+            "the --present status when nothing was sent",
+            r"^\| (\d+) \| `--present`: nothing was sent",
+            (str(PRESENT_NOT_DELIVERED_EXIT_CODE),),
+        ),
+        Stated(
+            "docs/command-line.md",
+            "the variable that names the app --present looks for",
+            r"^\| `(\w+)` \| The app `--present` hands a target to",
+            (BUNDLE_ID_ENV,),
+        ),
+        Stated(
+            "docs/command-line.md",
+            "the key an app that opens URLs declares",
+            r"whose `Info.plist` declares `(\w+)`",
+            (OPENS_URLS_KEY,),
         ),
         Stated(
             "docs/command-line.md",

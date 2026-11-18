@@ -38,7 +38,7 @@ $ metab --help
  or checked at the commit it selects under the untrusted profile; --no-serve
  only acquires it into the cache. Diagnostics: --check-api, --plugins,
  --plugin, --doctor.
- Remote serving: --remote.
+ Remote serving: --remote. The macOS app: --present hands it ROOT.
 
 ╭─ Arguments ──────────────────────────────────────────────────────────────────╮
 │   [root]      TEXT  Root directory to serve, check, or walk; a file may be   │
@@ -70,12 +70,12 @@ $ metab --help
 │                                              serving, --api, --show,         │
 │                                              --check-api, and --no-serve on  │
 │                                              a Git source.                   │
-│ --path                     TEXT              Serve: relative path from ROOT  │
-│                                              to select on launch. Walk:      │
-│                                              subtree for a JSON/YAML         │
-│                                              all-at-once tree envelope.      │
-│                                              Remote: remote directory to     │
-│                                              serve (required).               │
+│ --path                     TEXT              Serve and present: relative     │
+│                                              path from ROOT to select on     │
+│                                              launch. Walk: subtree for a     │
+│                                              JSON/YAML all-at-once tree      │
+│                                              envelope. Remote: remote        │
+│                                              directory to serve (required).  │
 │ --no-open                                    Don't auto-open the browser     │
 │                                              (serve and remote modes).       │
 │ --plugins-dir              PATH              Extra plugin directory; each    │
@@ -137,6 +137,8 @@ $ metab --help
 │                                              inventory to finish. Applies to │
 │                                              --api, --show, and --check-api. │
 │                                              [default: 60.0]                 │
+│ --json                                       Emit structured JSON (plugin    │
+│                                              modes and --present).           │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Modes (default: serve ROOT) ────────────────────────────────────────────────╮
 │ --walk                    Walk ROOT with the inventory walker and dump the   │
@@ -159,6 +161,11 @@ $ metab --help
 │ --plugin           NAME   Print the full resolved manifest for one plugin.   │
 │ --doctor                  Validate every discovered plugin; exit non-zero on │
 │                           any problem.                                       │
+│ --present                 Hand ROOT, a folder, a file, or a GitHub URL, to   │
+│                           the Metabrowser macOS app through LaunchServices   │
+│                           and report what was sent. Clones and serves        │
+│                           nothing. Exit 3 when ROOT cannot be presented, 4   │
+│                           when nothing was sent.                             │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Diff (--diff SPEC) ─────────────────────────────────────────────────────────╮
 │ --diff-patch        PATH  Print one changed file's hunks from the comparison │
@@ -253,8 +260,14 @@ $ metab --help
 │ --project            TEXT                        GCP project (only with      │
 │                                                  --gcp).                     │
 ╰──────────────────────────────────────────────────────────────────────────────╯
-╭─ Plugins (--plugins / --plugin / --doctor) ──────────────────────────────────╮
-│ --json          Emit structured JSON (plugin modes).                         │
+╭─ Present (--present) ────────────────────────────────────────────────────────╮
+│ --dry-run                  Resolve ROOT and print what --present would hand  │
+│                            the app, without looking for the app or sending   │
+│                            anything.                                         │
+│ --app-bundle-id        ID  The app to hand ROOT to, by bundle identifier,    │
+│                            instead of the release build and then the         │
+│                            development build. Env:                           │
+│                            METABROWSER_APP_BUNDLE_ID.                        │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 
  Examples:
@@ -267,6 +280,7 @@ $ metab --help
  metab file:///path/to/repo.git
  metab file:///path/to/repo.git --no-serve
  metab --remote example-host --path /srv/shared-files
+ metab ./notes/report.md --present
  metab --plugins
  Guide: https://github.com/jlevy/metabrowser/blob/main/docs/command-line.md
 ? 0

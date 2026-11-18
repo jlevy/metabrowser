@@ -1,7 +1,9 @@
 # Architecture: Command Line
 
-**Status:** Built, in `src/metabrowser/cli/`. Planned: `metab --present`, one front door
-that shows content in the running app or browser
+**Status:** Built, in `src/metabrowser/cli/`, including the first slice of `--present`:
+a handoff to the macOS app that the app does not yet answer.
+Planned: a reply from the app, navigation of a page already open, and a browser when
+there is no app
 ([native macOS app plan](../specs/active/plan-2026-11-10-native-macos-app.md), Phase 3).
 
 `metab` is one flat command whose default operation is serving a folder.
@@ -33,6 +35,7 @@ produce is refused rather than ignored.
 | Change set | `--diff SPEC` | `diff_cli.py` |
 | Remote host | `--remote HOST` | `remote.py` |
 | Plugins | `--plugins`, `--plugin NAME`, `--doctor` | `plugins.py` |
+| Hand a target to the macOS app | `--present` | `present.py` |
 
 `_classified_root` decides whether ROOT is a local path or a Git source.
 An `ssh` source is refused in every mode.
@@ -41,6 +44,11 @@ profile described in
 [Server and Content](arch-server-and-content.md#acquired-git-sources).
 The diff, API, acquire, and show modes import their modules inside their branch, so a
 mode on a local folder does not load the Git revision machinery it never uses.
+
+`--present` is a client mode, and reads ROOT without `_classified_root`, because a
+target it cannot present is a refusal it reports as data, with
+`PRESENT_REFUSED_EXIT_CODE`, rather than an `Error:` line;
+[Presenting to the App](#presenting-to-the-app) describes it.
 
 `cli/entrypoint.py` is the console-script boundary.
 It imports `cli/main.py` inside a `try`, so a Ctrl-C while Python is still importing
@@ -125,6 +133,40 @@ keys, and status codes, rather than only the library beneath a route; the parity
 On a Git source, `git_pin_cli.py` attaches a `GitRevisionSubject` and drives the same
 stack; a cache route (`/api/cache/…`) instead runs against an empty throwaway root after
 acquisition, so cache inspection cannot expose origin objects through `/api/tree`.
+
+## Presenting to the App
+
+`run_present` in `cli/present.py` resolves ROOT and, unless `--dry-run`, hands it to the
+macOS app. It imports no server, no inventory, and no acquisition or `gh` module, which
+`test_present_dry_run_builds_no_server_and_opens_no_repository` in
+`tests/test_plugin_public_api.py` holds, so the app can run `--present --dry-run` to
+check what a user types.
+
+1. **Resolve.** `resolve_target` reads a local ROOT as serve mode does: the resolved
+   folder, or a file’s folder with the file selected, and `--path` within it.
+   Anything else goes through `classify_root_argument` with `url_reducers()`, which
+   imports each provider’s reducer without the provider.
+   A source is presentable only when a reducer claims it and can spell it back as a web
+   URL (`ProviderUrlReducer.web_url`), which only GitHub’s does; that URL, canonical and
+   ASCII, is what the app is handed, and its root is the repository URL with no ref.
+   Its `page` is what `selection_view_href` (`cli/selection_href.py`) gives a pinned
+   server, with the first segment of a `tree` or `blob` path read as the ref, since no
+   mirror is read; a commit’s is its `/commit/` page.
+2. **Find the app.** `bundle_lookup` asks LaunchServices through
+   `LSCopyApplicationURLsForBundleIdentifier` for each identifier in turn, release
+   first, and takes the bundle LaunchServices prefers, the one `open -b` opens.
+   That is the database `open -b` reads; Spotlight’s index (`mdfind`) is not asked,
+   because it can be off or leave out the folder an app is in.
+   Off macOS the lookup is `None` and nothing is sent.
+3. **Check what the app takes.** A URL needs `OPENS_URLS_KEY` set in the bundle’s
+   `Info.plist`, because an older app drops a URL while `open` still succeeds; a folder
+   inside the root is refused, because the app opens each folder in a window of its own.
+4. **Send.** `open -b <bundle id> <path or URL>`, bounded by `OPEN_TIMEOUT_S`. Exit 0
+   from `open` means LaunchServices took it, so the report says `confirmed: false` until
+   the app can reply.
+5. **Report.** A `key: value` report, or with `--json` one object; a refusal exits with
+   `PRESENT_REFUSED_EXIT_CODE` and anything not sent with
+   `PRESENT_NOT_DELIVERED_EXIT_CODE` (`cli/exit_codes.py`).
 
 ## Remote Tunnels
 
