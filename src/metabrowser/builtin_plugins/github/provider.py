@@ -1,5 +1,6 @@
 """The GitHub repository provider: reducer, ``gh`` credential helper, size check, context,
-the head a pull-request URL pins, and the pull requests a server serves.
+the head a pull-request URL pins, the changed file its anchor names, and the pull
+requests a server serves.
 
 Core reaches this class only through
 :class:`~metabrowser.cache.providers.RepositoryProvider`.
@@ -12,6 +13,7 @@ import os
 from typing import TYPE_CHECKING, Final
 
 from metabrowser.builtin_plugins.github.gh import GhError, gh_executable, run_gh
+from metabrowser.builtin_plugins.github.pull_file_anchor import pull_file_for_anchor
 from metabrowser.builtin_plugins.github.pulls import PullDataError, open_pull_request
 from metabrowser.builtin_plugins.github.served_pull import ServedPulls
 from metabrowser.builtin_plugins.github.urls import (
@@ -27,8 +29,8 @@ from metabrowser.repository_context import RepositoryContext
 
 if TYPE_CHECKING:
     from metabrowser.cache.acquire import PublishedSource
-    from metabrowser.cache.providers import PullRequestFetch, PullRequestPin
-    from metabrowser.cache.urls import GitSource, ProviderUrlReducer
+    from metabrowser.cache.providers import PullRequestFetch, PullRequestFile, PullRequestPin
+    from metabrowser.cache.urls import FileAnchor, GitSource, ProviderUrlReducer
     from metabrowser.mirror_refresh import PullRequestSet
 
 log = logging.getLogger(__name__)
@@ -211,6 +213,13 @@ class GithubProvider:
             raise PullRequestUnavailableError(
                 exc.state, _unavailable(published, number, exc)
             ) from exc
+
+    async def pull_request_file(
+        self, published: PublishedSource, number: int, anchor: FileAnchor
+    ) -> PullRequestFile | None:
+        if parse_repository_url(published.source.normalized) is None:
+            return None
+        return await pull_file_for_anchor(published, number, anchor)
 
     def served_pull_requests(self, published: PublishedSource) -> PullRequestSet | None:
         if parse_repository_url(published.source.normalized) is None:

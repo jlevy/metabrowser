@@ -216,7 +216,9 @@ async def _select(
             else contextlib.nullcontext()
         )
         async with reading:
-            pull = await open_pull_for_cli(published, number, fetch=fetch)
+            pull = await open_pull_for_cli(
+                published, number, fetch=fetch, anchor=selection.pull_file
+            )
         head = pull.resolution() if selection.kind == "pull_request" else None
         if head is not None:
             return _Selected(published, head.commit, head.ref, head, False, pull)
@@ -486,7 +488,10 @@ async def _prove_servable(
             view_href = await _selection_href(subject, path)
         elif source.selection is not None and selected.resolved is not None:
             view_href = selection_view_href(
-                source.selection, selected.resolved.path, commit=selected.resolved.commit
+                source.selection,
+                selected.resolved.path,
+                commit=selected.resolved.commit,
+                pull_file=selected.pull.file_path if selected.pull is not None else "",
             )
         else:
             view_href = VIEW_ROUTE_PREFIX

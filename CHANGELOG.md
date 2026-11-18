@@ -24,6 +24,21 @@ All notable changes to Metabrowser are documented here.
   `GET /api/source/refs` rows gain `committed_at`, and its `working_tree` gains the
   folder’s `name` and `location`.
 
+- A link to one file of a pull request’s **Changes** on GitHub, such as
+  `https://github.com/o/r/pull/7/changes#diff-<hash>R12` or its older `/files` spelling,
+  now opens that file, and a `/pull/7/changes` link, which `metab` refused, opens the
+  Changes tab as `/pull/7/files` does.
+  GitHub names the file in the link only as a hash of its path, so `metab` finds which
+  changed file it is in the list of changed files it has cached, or in the pull
+  request’s comparison in the repository it has cloned, without fetching, and the page
+  opens at `/pull/7/files/<path>`. `metab <URL>` says so with `file:` and, for a link to
+  a line, `diff_line:` lines, since the Changes tab opens at the file and not yet at the
+  line. Before, the anchor was ignored and the link opened the whole Changes tab, which
+  is still what it opens, with the reason, when the file is not one the pull request
+  changes, its path has no address on the Changes tab, or the cache cannot yet say.
+  `metab <URL> --present --dry-run` reports no page for such a link, since only the
+  cache can name the file, and hands the app the link with its anchor.
+
 - With the Files tab grouped by age, each section’s name is drawn in the age color its
   files’ ages show: Past hour in the yellow of a file changed minutes ago, then quieter
   yellow-greens through Past month, Older in the oldest age’s gray, and Live in Live’s
