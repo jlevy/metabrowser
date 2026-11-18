@@ -176,7 +176,17 @@ Forgotten.
 ```
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config metab roots/leaving --recent-add && rmdir roots/leaving && METABROWSER_CONFIG_DIR=$PWD/config metab --recent
+$ METABROWSER_CONFIG_DIR=$PWD/config metab roots/leaving --recent-add
+? 0
+```
+
+```console
+$ rmdir roots/leaving
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config metab --recent
 folder  [TIMESTAMP]  [ROOTS]/leaving
 folder  [TIMESTAMP]  [ROOTS]/alpha
 folder  [TIMESTAMP]  [ROOTS]/gamma/sub
@@ -359,7 +369,12 @@ folder  [TIMESTAMP]  [ROOTS]/beta
 ## Test: clearing the list
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config metab roots/alpha --recent-add && METABROWSER_CONFIG_DIR=$PWD/config metab --recent-clear
+$ METABROWSER_CONFIG_DIR=$PWD/config metab roots/alpha --recent-add
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config metab --recent-clear
 Cleared 2 recent targets.
 ? 0
 ```

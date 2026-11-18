@@ -4,7 +4,9 @@ Repository stores and provider records may contain private content. This module 
 independent cache and configuration roots using application overrides and XDG defaults,
 verifies owner-only access before reading or writing, creates the cache skeleton, and
 publishes files atomically. The helpers also protect the separate configuration root.
-Browsing an ordinary local path never initializes either root.
+Browsing an ordinary local path never initializes the cache and reads no configuration.
+Serving one writes a single file below the configuration root: its entry in the recent
+targets list (:mod:`metabrowser.recent_targets`).
 
 Each rule answers a specific threat:
 

@@ -23,6 +23,7 @@ import pytest
 from typer.testing import CliRunner
 
 from metabrowser import home as home_module
+from metabrowser import recent_targets
 from metabrowser.cache import layout as layout_module
 from metabrowser.cache.atomic import write_record_atomic
 from metabrowser.cache.layout import (
@@ -225,10 +226,12 @@ def _home_variants(tmp_path: Path) -> dict[str, Path]:
     }
 
 
-_FORBIDDEN_CALLS = (
-    "application_cache",
-    "ensure_home",
-    "validate_private_home",
+# Nothing a folder's server does may call these at all.
+_FORBIDDEN_CALLS = ("application_cache", "ensure_home", "validate_private_home")
+# These reach the cache and the configuration directory alike, and serving a folder uses
+# them for one thing: its entry in the recent targets list, in the configuration
+# directory. So each is refused only for the cache.
+_FORBIDDEN_FOR_THE_CACHE = (
     "ensure_private_directory",
     "open_private_file",
     "write_private_file_atomic",
@@ -237,11 +240,23 @@ _FORBIDDEN_CALLS = (
 
 @pytest.mark.parametrize("variant", ["missing", "permissive", "symlinked"])
 def test_local_browsing_in_process_never_calls_the_application_cache(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, variant: str
+    tmp_path: Path,
+    tmp_path_factory: pytest.TempPathFactory,
+    monkeypatch: pytest.MonkeyPatch,
+    variant: str,
 ) -> None:
+    """Serving, ``--api``, and ``--show`` on a folder leave the cache alone, whatever it is.
+
+    The one thing a folder's server writes outside its root is its recent target, in the
+    configuration directory, which is kept apart here so that everything else, the cache
+    and the served folder included, is compared entry for entry.
+    """
+
     root = _browsing_root(tmp_path)
     chosen = _home_variants(tmp_path)[variant]
+    config = tmp_path_factory.mktemp("configuration") / "metabrowser"
     monkeypatch.setenv(METABROWSER_CACHE_DIR_ENV, str(chosen))
+    monkeypatch.setenv("METABROWSER_CONFIG_DIR", str(config))
     before = _snapshot(tmp_path)
     calls: list[str] = []
 
@@ -252,8 +267,22 @@ def test_local_browsing_in_process_never_calls_the_application_cache(
 
         return refuse
 
+    def forbid_for_the_cache(name: str) -> Any:
+        real = getattr(home_module, name)
+
+        def refuse_the_cache(home: Path, *args: Any, **kwargs: Any) -> Any:
+            if home == chosen or chosen in home.parents:
+                calls.append(name)
+                raise AssertionError(f"local browsing called metabrowser.home.{name} on the cache")
+            return real(home, *args, **kwargs)
+
+        return refuse_the_cache
+
     for name in _FORBIDDEN_CALLS:
         monkeypatch.setattr(home_module, name, forbid(name))
+    for name in _FORBIDDEN_FOR_THE_CACHE:
+        monkeypatch.setattr(home_module, name, forbid_for_the_cache(name))
+        monkeypatch.setattr(recent_targets, name, getattr(home_module, name), raising=False)
     runner = CliRunner()
 
     with (
@@ -261,6 +290,7 @@ def test_local_browsing_in_process_never_calls_the_application_cache(
         patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
     ):
         served = runner.invoke(_app, [str(root), "--no-open"])
+    recorded = recent_targets.read(config).targets
     api = runner.invoke(_app, [str(root), "--api", "/api/tree?depth=1"])
     shown = runner.invoke(_app, [str(root), "--show", "README.md"])
 
@@ -269,6 +299,11 @@ def test_local_browsing_in_process_never_calls_the_application_cache(
     assert shown.exit_code == 0, shown.output
     assert calls == []
     assert _snapshot(tmp_path) == before
+    # The serve recorded its folder, and the two data modes recorded nothing.
+    assert [(target.mode, target.root) for target in recorded] == [
+        ("folder", recent_targets.folder_root(root))
+    ]
+    assert recent_targets.read(config).targets == recorded
 
 
 @posix_only
