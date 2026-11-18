@@ -2498,7 +2498,7 @@ html.theme-anim .menu {
   position: relative;
 }
 /* The server ships the strip empty and hidden, and keyboard-help.js fills it once
-   the shell's tools load; it always has Help then. Until that, it keeps one row's
+   the shell's tools load; it always has Shift then. Until that, it keeps one row's
    height, so the tree above it is the same height before and after: its border,
    padding, a hint's padding, and a keycap's border and 1.5 lines.
    Filled, it leads with Shift, Reveal keys, then Help and Quick Search, on that one

@@ -11,14 +11,19 @@ The strip at the foot of the navigation pane lists Shift first, as Reveal keys, 
 items do not all fit, it drops them from the end, Quick Search first and then Help, and
 always keeps Shift; holding Shift lists what it dropped on the revealed layer, and a
 wider pane brings them back.
-Text that grows, as another face or font set draws it, is measured again.
+Text redrawn at other widths, as another face or font set draws it, is measured again
+with every item shown, even where some were dropped, and a command the strip gains in a
+narrow pane is fitted as it arrives.
+Where only Shift shows, the strip’s group is hidden from assistive technology
+(`unannounced`), since Shift is.
 
 This browserless session runs the production registry, Help and its strip, the Shift
 reveal, and Quick Search on the key reveal’s stand-in DOM, which lays nothing out: the
 session gives the strip its box, the pane’s width less the pane’s 1px border, with the
 stylesheet’s padding and gap, and gives its items the widths Chrome 152 drew them at in
-the default font set (`STRIP_WIDTHS` in `tests/dom/shortcut-strip-session.js`), then
-delivers each size change as a browser’s ResizeObserver would.
+the default font set (`STRIP_WIDTHS` in `tests/dom/shortcut-strip-session.js`), with no
+box for an item that is `hidden`, as in a browser, then delivers each size change as a
+browser’s ResizeObserver would.
 `panes` is what the strip shows at each pane width.
 `tests/test_shortcut_strip_chrome.py` holds every pane width from the narrowest to the
 default, in both font sets, to the same rule in Chrome itself.
@@ -43,7 +48,8 @@ $ node tests/dom/shortcut-strip-session.js
         [200,"Shift Reveal keys","? Help"],
         [181,"Shift Reveal keys","? Help"],
         [180,"Shift Reveal keys"]
-      ]
+      ],
+      "unannounced": true
     },
     {
       "step": "Shift held in the narrowest pane lists what the strip dropped",
@@ -59,7 +65,28 @@ $ node tests/dom/shortcut-strip-session.js
       "strip": {
         "surface": "nav",
         "items": ["Shift Reveal keys"]
-      }
+      },
+      "unannounced": true
+    },
+    {
+      "step": "text redrawn in the narrowest pane is measured with every item shown",
+      "panes": [
+        [180,"Shift Reveal keys"],
+        [181,"Shift Reveal keys","? Help"],
+        [273,"Shift Reveal keys","? Help","T Quick Search"]
+      ]
+    },
+    {
+      "step": "a command the strip gains in the narrowest pane is dropped there",
+      "strip": {
+        "surface": "nav",
+        "items": ["Shift Reveal keys"]
+      },
+      "panes": [
+        [180,"Shift Reveal keys"],
+        [273,"Shift Reveal keys","? Help","T Quick Search"],
+        [319,"Shift Reveal keys","? Help","T Quick Search","X Extra"]
+      ]
     },
     {
       "step": "a widening pane brings Help, then Quick Search, back",
@@ -69,7 +96,8 @@ $ node tests/dom/shortcut-strip-session.js
         [272,"Shift Reveal keys","? Help"],
         [273,"Shift Reveal keys","? Help","T Quick Search"],
         [300,"Shift Reveal keys","? Help","T Quick Search"]
-      ]
+      ],
+      "unannounced": false
     },
     {
       "step": "wider text is measured again: the default pane drops Quick Search, a pixel more keeps it",

@@ -10,10 +10,12 @@
 // (tests/dom/key-reveal-dom.js) with injected time. That DOM lays nothing out, so this
 // session gives the strip its box, the pane's width less the pane's 1px border, with the
 // stylesheet's padding and gap, and gives its items the widths Chrome 152 drew them at in
-// the default font set (`STRIP_WIDTHS`), then delivers each size change as a browser's
+// the default font set (`STRIP_WIDTHS`), by label, whenever Help reads one; an item that
+// is `hidden` has no box, as in a browser. It delivers each size change as a browser's
 // ResizeObserver would. Each step records what the strip shows: at each pane width in
 // `panes`, and in `strip` once the step is done, the revealed layer's items while Shift
-// is held. tests/dom/shortcut-strip-chrome.mjs holds every pane width to the same rule in
+// is held; and `unannounced`, whether the strip's group is hidden from assistive
+// technology, as it is where only Shift, itself hidden from it, shows. tests/dom/shortcut-strip-chrome.mjs holds every pane width to the same rule in
 // Chrome, with the widths Chrome itself draws.
 
 const fs = require("node:fs");
@@ -39,7 +41,13 @@ const SOURCES = new Map(
 const HOLD_MS = 200;
 // The widths, in px, Chrome 152 drew the strip's items at in the default font set, to a
 // tenth, by label; tests/dom/shortcut-strip-chrome.mjs reads them in Chrome.
-const STRIP_WIDTHS = Object.freeze({ "Reveal keys": 105.7, Help: 43.5, "Quick Search": 86.7 });
+// "Extra" is a command the session registers on the strip; it is no shell command.
+const STRIP_WIDTHS = Object.freeze({
+  "Reveal keys": 105.7,
+  Help: 43.5,
+  "Quick Search": 86.7,
+  Extra: 40,
+});
 // `.nav-shortcut-hints` in static/styles.css: its inline padding and its gap.
 const STRIP_PADDING = "12px";
 const STRIP_GAP = "6px";
@@ -165,6 +173,17 @@ function main() {
   hints.style.setProperty("padding-left", STRIP_PADDING);
   hints.style.setProperty("padding-right", STRIP_PADDING);
   hints.style.setProperty("column-gap", STRIP_GAP);
+  // The layout: a strip item's box is the width its label is drawn at in the current
+  // text, however the item was made, read as Help reads it.
+  let drawn = STRIP_WIDTHS;
+  const box = FakeElement.prototype.getBoundingClientRect;
+  FakeElement.prototype.getBoundingClientRect = function () {
+    if (this.parentNode === hints && !this.classList.contains("nav-shortcut-reveal")) {
+      const label = this.querySelector(".nav-shortcut-label")?.textContent ?? "";
+      this.rect = { left: 0, top: 0, width: drawn[label] ?? 0, height: 26 };
+    }
+    return box.call(this);
+  };
   const shortcuts = context.MetabrowserKeyboardShortcuts.create({ document });
   const help = context.MetabrowserKeyboardHelp.create({
     document,
@@ -217,14 +236,13 @@ function main() {
     });
   }
 
-  /** The items' widths, as a layout gives them, and the lead's change reported. */
+  /** Text drawn at new widths, as a face or font set draws it: the lead's change reported. */
   function layOutItems(widths) {
-    for (const item of hints.children) {
-      const label = item.querySelector(".nav-shortcut-label")?.textContent ?? "";
-      item.rect = { left: 0, top: 0, width: widths[label] ?? 0, height: 26 };
-    }
+    drawn = widths;
     resized(hints.children[0]);
   }
+  /** Whether the strip's group is hidden from assistive technology. */
+  const unannounced = () => hints.getAttribute("aria-hidden") === "true";
 
   const key = (type, name, init = {}) =>
     document.body.dispatchEvent(keyEvent(type, name, { target: document.body, ...init }));
@@ -239,6 +257,7 @@ function main() {
   steps.push({
     step: "a narrowing pane drops Quick Search, then Help, and keeps Shift",
     panes: atPanes([300, 273, 272, 200, 181, 180]),
+    unannounced: unannounced(),
   });
   key("keydown", "Shift", { shiftKey: true });
   clock.advance(HOLD_MS);
@@ -252,10 +271,37 @@ function main() {
     step: "Shift released, the narrowest pane shows Shift alone",
     reveal: reveal.snapshot().state,
     strip: strip(),
+    unannounced: unannounced(),
   });
+  // The text changes size in the narrowest pane, with Help and Quick Search dropped: Help
+  // measures every item shown, so the dropped ones are measured at their own widths.
+  layOutItems({ ...STRIP_WIDTHS });
+  steps.push({
+    step: "text redrawn in the narrowest pane is measured with every item shown",
+    panes: atPanes([180, 181, 273]),
+  });
+  atPanes([180]);
+  // A command the strip gains there, as a registration on the `nav` surface does.
+  const releaseExtra = shortcuts.register({
+    bindings: [{ key: "x" }],
+    copy: { action: "Extra", description: "A command the strip gains.", hint: "Extra" },
+    group: "anywhere",
+    handler: () => true,
+    id: "session.extra",
+    order: 90,
+    scope: "global",
+    surfaces: { nav: "always" },
+  });
+  steps.push({
+    step: "a command the strip gains in the narrowest pane is dropped there",
+    strip: strip(),
+    panes: atPanes([180, 273, 319]),
+  });
+  releaseExtra();
   steps.push({
     step: "a widening pane brings Help, then Quick Search, back",
     panes: atPanes([180, 181, 272, 273, 300]),
+    unannounced: unannounced(),
   });
   // A face or font set that widens the text: the lead's own box changes, so Help measures
   // every item again. These widths need a 301px pane for all three, as the system font

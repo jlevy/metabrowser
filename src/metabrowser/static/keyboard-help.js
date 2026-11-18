@@ -315,18 +315,22 @@
    * and its key stays in Help and on the revealed layer. The strip never wraps, so it is
    * always the one row the server reserves for it before the shell's tools load.
    *
-   * `fit()` measures every item, shown, after a reconcile. A size change refits: the
-   * strip's own, as the pane is dragged, from the widths measured last, and the lead's, as
-   * a face or the interface font set changes the text, by measuring again. It refits in
-   * the observer's own callback, so no frame shows an item cut off at the pane's edge.
-   * That changes no observed box: the strip's width is the pane's and its height the
-   * lead's row, which a dropped or restored item, one keycap tall, leaves as it is.
-   * Without a ResizeObserver, as in a browserless DOM, it returns null and every item
-   * shows.
+   * `reconciled()` measures every item, shown, and fits again after a reconcile that
+   * changed what the strip holds: an item added, removed, or replaced, or its text. A
+   * reconcile that left it as it was, as most registrations and scope changes do, reads
+   * no layout. A size change refits: the strip's own, as the pane is dragged, from the
+   * widths measured last, and the lead's, as a face or the interface font set changes the
+   * text, by measuring again. It refits in the observer's own callback, so no frame shows
+   * an item cut off at the pane's edge. That changes no observed box: the strip's width is
+   * the pane's and its height the lead's row, which a dropped or restored item, one keycap
+   * tall, leaves as it is. Where nothing assistive technology reads shows, as where Shift,
+   * hidden from it, shows alone, the strip's named group is hidden from it too, rather
+   * than announced empty. Without a ResizeObserver, as in a browserless DOM, it returns
+   * null and every item shows.
    *
    * @param {HTMLElement} host
    * @param {HTMLElement} lead
-   * @returns {{dispose: () => void, fit: (remeasure: boolean) => void} | null}
+   * @returns {{dispose: () => void, reconciled: () => void} | null}
    */
   function keepStripOnOneRow(host, lead) {
     const found = host.ownerDocument?.defaultView;
@@ -336,13 +340,20 @@
     const view = found;
     /** @type {Map<Element, number>} */
     let widths = new Map();
-    /** @param {boolean} remeasure */
-    function fit(remeasure) {
-      const items = /** @type {HTMLElement[]} */ (
+    /** What the strip held when it was last fitted after a reconcile, and their text.
+     * @type {readonly HTMLElement[]} */
+    let held = [];
+    /** @type {readonly string[]} */
+    let heldText = [];
+    const stripItems = () =>
+      /** @type {HTMLElement[]} */ (
         Array.from(host.children).filter(
           (child) => !child.classList.contains("nav-shortcut-reveal"),
         )
       );
+    /** @param {boolean} remeasure */
+    function fit(remeasure) {
+      const items = stripItems();
       if (remeasure || items.some((item) => !widths.has(item))) {
         for (const item of items) {
           item.hidden = false;
@@ -370,6 +381,27 @@
           item.hidden = index >= shown;
         }
       });
+      const readable = items.some(
+        (item, index) => index < shown && item.getAttribute("aria-hidden") !== "true",
+      );
+      if (readable) {
+        host.removeAttribute("aria-hidden");
+      } else if (host.getAttribute("aria-hidden") !== "true") {
+        host.setAttribute("aria-hidden", "true");
+      }
+    }
+    function reconciled() {
+      const items = stripItems();
+      const text = items.map((item) => item.textContent ?? "");
+      if (
+        items.length === held.length &&
+        items.every((item, index) => item === held[index] && text[index] === heldText[index])
+      ) {
+        return;
+      }
+      held = items;
+      heldText = text;
+      fit(true);
     }
     const sizes = new view.ResizeObserver((entries) => {
       fit(entries.some((entry) => entry.target === lead));
@@ -377,8 +409,11 @@
     sizes.observe(host);
     sizes.observe(lead);
     return Object.freeze({
-      dispose: () => sizes.disconnect(),
-      fit,
+      dispose: () => {
+        sizes.disconnect();
+        host.removeAttribute("aria-hidden");
+      },
+      reconciled,
     });
   }
 
@@ -548,7 +583,7 @@
         options.shortcuts.appendBinding,
         { lead: revealHint },
       );
-      stripFit?.fit(true);
+      stripFit?.reconciled();
       renderRevealLayer();
     }
 

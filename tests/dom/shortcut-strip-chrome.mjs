@@ -24,8 +24,11 @@
 // - the strip is one row: as tall as the server's hidden slot that holds its place before
 //   the shell's tools load.
 //
-// At the narrowest pane, holding Shift shows the revealed layer over the panel above the
-// strip, listing Help and Quick Search, which the resting strip dropped there.
+// A font set changed in a pane that has dropped items measures them again, shown: at
+// 190px the system font set shows Shift alone, and the default one, switched to
+// there, shows Shift and Help (review A1 on #544). At the narrowest pane, holding Shift
+// shows the revealed layer over the panel above the strip, listing Help and Quick Search,
+// which the resting strip dropped there.
 //
 // Each step writes `phase <name> <ms since start>` to stderr, so a slow run says where.
 import { launchChrome } from "./chrome-session.mjs";
@@ -40,6 +43,9 @@ const phase = (name) => process.stderr.write(`phase ${name} ${Date.now() - start
 // static/styles.css), and the default, `--tree-pane-width`.
 const NARROWEST = 180;
 const DEFAULT = 300;
+// A pane where the system font set shows Shift alone and the default one Shift and Help
+// (Chrome 152 on macOS: Help shows from 198px in the one and 181px in the other).
+const FONT_SWITCH_PX = 190;
 // Wide enough that every item shows in either font set, to read their widths.
 const WIDE = 420;
 // The strip's items, in their order, by label.
@@ -198,6 +204,31 @@ try {
       }
     }
   }
+
+  // A font set changed where items are dropped: the default set's widths, read in the wide pane,
+  // decide what it shows once it is drawn there.
+  phase("font switch");
+  const clean = await read({ width: WIDE, font: "clean", reserve: false });
+  const cleanWidths = new Map(clean.items.map((item) => [item.label, item.width]));
+  const system = await read({ width: FONT_SWITCH_PX, font: "system", reserve: false });
+  const switched = await read({ width: FONT_SWITCH_PX, font: "clean", reserve: false });
+  const fits = (count) =>
+    ORDER.slice(0, count).reduce((sum, label) => sum + cleanWidths.get(label), 0) +
+      switched.gap * (count - 1) <=
+    switched.available + FIT_EPSILON_PX;
+  const expectedSwitched = ORDER.filter((_label, index) => index === 0 || fits(index + 1));
+  const drawnBy = (at) => at.items.filter((item) => item.drawn).map((item) => item.label);
+  check(
+    `the system font set at ${FONT_SWITCH_PX}px shows Shift alone`,
+    JSON.stringify(drawnBy(system)) === JSON.stringify(ORDER.slice(0, 1)),
+    JSON.stringify(drawnBy(system)),
+  );
+  check(
+    `switched to the default font set at ${FONT_SWITCH_PX}px, the strip measures again and shows ${expectedSwitched.join(", ")}`,
+    JSON.stringify(drawnBy(switched)) === JSON.stringify(expectedSwitched) &&
+      expectedSwitched.length === 2,
+    JSON.stringify({ drawn: drawnBy(switched), expected: expectedSwitched }),
+  );
 
   // The narrowest pane, the default font set: hold Shift, and the revealed layer lists
   // what the resting strip dropped, over the panel above it.

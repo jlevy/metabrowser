@@ -2866,6 +2866,8 @@ in `static/keyboard-help.js`), so Quick Search goes first, then Help, and Shift 
 shows.
 A dropped item leaves the tab order, and its key stays in Help and on the revealed
 strip, which Shift calls up.
+Where Shift shows alone, the strip’s named group is hidden from assistive technology as
+Shift is, rather than announced empty.
 `tests/dom/shortcut-strip-session.js` runs that code browserlessly on injected widths.
 The widths at which each item shows in Chrome are beside `.nav-shortcut-hints[hidden]`
 in `static/styles.css`, and `tests/test_shortcut_strip_chrome.py` holds every pane width

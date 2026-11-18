@@ -437,8 +437,17 @@ class FakeElement extends FakeNode {
     return [];
   }
 
+  /** The box a session gave this element, or none, as layout gives an element that is not
+   * rendered: `hidden`, or `display: none` inline, or under such an ancestor. */
   getBoundingClientRect() {
-    const rect = this.rect ?? { left: 0, top: 0, width: 0, height: 0 };
+    let rendered = true;
+    for (let node = this; node instanceof FakeElement; node = node.parentNode) {
+      if (node.hidden || node.style.display === "none") {
+        rendered = false;
+        break;
+      }
+    }
+    const rect = (rendered && this.rect) || { left: 0, top: 0, width: 0, height: 0 };
     return {
       ...rect,
       right: rect.left + rect.width,

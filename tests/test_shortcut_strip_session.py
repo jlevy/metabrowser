@@ -45,12 +45,29 @@ def test_the_strip_drops_items_from_the_end_and_always_keeps_shift() -> None:
         for _pane, *shown in step["panes"]:
             assert shown == EVERYTHING[: len(shown)] and shown, step["step"]
 
+    # Where only Shift, hidden from assistive technology, shows, so is the strip's group.
+    assert narrowing["unannounced"] is True
+    assert widening["unannounced"] is False
+
     # What the narrowest pane dropped is on the revealed layer while Shift is held.
     held = steps["Shift held in the narrowest pane lists what the strip dropped"]
     assert held["reveal"] == "revealed"
     assert held["strip"] == {"surface": "reveal", "items": ["? Help", "T or / Quick Search"]}
     released = steps["Shift released, the narrowest pane shows Shift alone"]
     assert released["strip"] == {"surface": "nav", "items": EVERYTHING[:1]}
+    assert released["unannounced"] is True
+
+    # Text redrawn while items are dropped measures them shown, not at a hidden item's zero
+    # box, and an item the strip gains in a narrow pane is fitted as it arrives (review A1).
+    redrawn = steps["text redrawn in the narrowest pane is measured with every item shown"]
+    assert redrawn["panes"] == [[180, *EVERYTHING[:1]], [181, *EVERYTHING[:2]], [273, *EVERYTHING]]
+    gained = steps["a command the strip gains in the narrowest pane is dropped there"]
+    assert gained["strip"] == {"surface": "nav", "items": EVERYTHING[:1]}
+    assert gained["panes"] == [
+        [180, *EVERYTHING[:1]],
+        [273, *EVERYTHING],
+        [319, *EVERYTHING, "X Extra"],
+    ]
 
     # Wider text is measured again, not fitted from the widths measured before it.
     wider = steps[
