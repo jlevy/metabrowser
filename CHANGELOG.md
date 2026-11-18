@@ -7,6 +7,14 @@ All notable changes to Metabrowser are documented here.
 - An agent log event’s chevron and a code block’s copy button draw the app’s one chevron
   and copy icon. The chevron was larger and thinner than every other one, and the copy
   button an older shape than the app’s other copy buttons.
+  For plugin authors, `mb.icons` no longer has `chevron`, `step`, `process`, `dep`, or
+  `alert`, so each now returns `""`; a disclosure chevron is `mb.icons.toggle`. The type
+  registry schema’s `icon` (`file-type-registry.schema.json`) now permits only the
+  shapes the recommended registry gives a category or a format, so a registry that gives
+  one any of those five, or `folder`, `fileSymlink`, `gear`, `sun`, `moon`, `print`,
+  `serif`, `sans`, or `toggle`, fails validation.
+  `PLUGIN_SDK_VERSION` remains `0.7`. See the
+  [Icon Catalog](docs/design-system-icons.md).
 
 - On a checkout of a repository on github.com, or a mirror of one, a file’s or a
   folder’s header ends in a small toggle of two marks: Metabrowser’s, gray, the view the
