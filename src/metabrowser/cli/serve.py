@@ -12,6 +12,7 @@ import asyncio
 import logging
 import os
 import signal
+import sys
 import threading
 import webbrowser
 from collections.abc import Callable, Sequence
@@ -137,6 +138,12 @@ def _stop_now(sig: int, _frame: FrameType | None) -> NoReturn:
     """
     _write_stopping_notice()
     stop_process_groups()
+    # The Markdown child leads its own process group too, so the terminal's signal does
+    # not reach it. Only a process that imported its module can have started one, and a
+    # signal handler must not import.
+    markdown_child = sys.modules.get("metabrowser.diff.markdown_projection_worker")
+    if markdown_child is not None:
+        markdown_child.stop_children()
     exit_after_notices(HANGUP_EXIT_STATUS if sig == _HANGUP else INTERRUPTED_EXIT_CODE)
 
 
@@ -337,6 +344,10 @@ def serve_until_interrupted(
     # dotenv loading, CLI log-level application, and plugin-dir merging so all
     # startup configuration is visible on the first import.
     from metabrowser import kpress_adapter, server
+    from metabrowser.diff.markdown_projection_worker import serve_pages
+
+    # Pages follow: the server starts the Markdown child ahead of their first documents.
+    serve_pages()
 
     # The shell requests these assets on every load. Resolve them before the
     # inventory lifespan starts so a render-blocking request never owns the

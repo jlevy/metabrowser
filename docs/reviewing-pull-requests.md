@@ -338,6 +338,9 @@ the page.
 
 A pull request’s text and diff are untrusted and inert, beside a checkout too: nothing
 in them runs, and they cannot make the page load anything from another site.
+A description or comment that takes longer than a few seconds to render stays plain
+text, under one line saying so; the same line says when the renderer is busy with other
+texts or could not start, and reloading the page then tries again.
 A repository URL is served under the untrusted profile.
 Files of a local folder keep that folder’s
 [content-trust](command-line.md#content-trust) settings; reviewing a pull request does

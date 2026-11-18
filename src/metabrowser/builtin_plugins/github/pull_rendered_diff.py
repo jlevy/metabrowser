@@ -39,7 +39,7 @@ from metabrowser.diff.markdown_projection import (
     MARKDOWN_DIFF_VERSION,
     bind_markdown_diff,
 )
-from metabrowser.diff.markdown_projection_worker import ProjectionWorker
+from metabrowser.diff.markdown_projection_worker import ProjectionWorker, shared_worker
 from metabrowser.git.process import GitError, GitLocation, RepositoryStoreTarget
 from metabrowser.git.tree_source import (
     GitBlobTooLargeError,
@@ -123,12 +123,11 @@ class _Slot:
 
 
 def projection_worker(state: Any) -> ProjectionWorker:
-    """The server's projection worker, which a test may replace before a request."""
+    """The server's Markdown child, which renders its untrusted documents too, or the
+    worker a test put in its place before a request."""
 
     worker = getattr(state, "pull_rendered_diff_worker", None)
-    if worker is None:
-        worker = state.pull_rendered_diff_worker = ProjectionWorker()
-    return cast("ProjectionWorker", worker)
+    return shared_worker() if worker is None else cast("ProjectionWorker", worker)
 
 
 def _path(side: EntrySide) -> GitPath:
