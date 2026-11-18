@@ -1,17 +1,7 @@
 """A run in its own process group leaves nothing running, however it ends.
 
-The Chrome tests (``test_folder_overview_alignment.py``, ``test_transitions_instrument.py``,
-``test_control_chords_chrome.py``, ``test_diff_markdown_fold_chrome.py``,
-``test_document_print_chrome.py``, ``test_files_totals_stable_chrome.py``,
-``test_git_commit_summary_chrome.py``,
-``test_github_pull_header_chrome.py``, ``test_github_pull_text_chrome.py``,
-``test_github_pull_timeline_chrome.py``, ``test_github_pulls_stacks_chrome.py``,
-``test_nav_metadata_chrome.py``, ``test_overview_legend_hover_chrome.py``,
-``test_overview_readme_toc_chrome.py``, ``test_page_header_chrome.py``,
-``test_prose_faces_chrome.py``,
-``test_raw_profile_cache_chrome.py``, ``test_staged_fonts_chrome.py``,
-``test_title_prefix_chrome.py``) run a Node script
-that starts Chrome and its helpers. Stopping that script's process group is what stops
+The Chrome tests (``CHROME_TESTS`` below, every module that uses ``chrome_profile``)
+run a Node script that starts Chrome and its helpers. Stopping that script's process group is what stops
 them, so this holds:
 
 - that Chrome keeps every process it starts for a session in the group, both ways the
@@ -105,10 +95,16 @@ setInterval(() => {}, 1000);
 DEADLINE_S = 5.0
 # How far past its reserved time a teardown may run: a thread switch and a last ``ps``.
 SLACK_S = 0.5
+# Every module that uses ``chrome_profile``, which a check below holds, but this one and
+# tests/test_suite_tiers.py, whose Chrome tests are probes of the harness with their own
+# bounds.
 CHROME_TESTS = (
+    "tests.test_changed_file_rows_chrome",
+    "tests.test_chrome_starts",
     "tests.test_control_chords_chrome",
     "tests.test_diff_markdown_fold_chrome",
     "tests.test_document_print_chrome",
+    "tests.test_folder_home_chrome",
     "tests.test_folder_overview_alignment",
     "tests.test_files_tab_chrome",
     "tests.test_files_totals_stable_chrome",
@@ -117,8 +113,10 @@ CHROME_TESTS = (
     "tests.test_github_pull_text_chrome",
     "tests.test_github_pull_timeline_chrome",
     "tests.test_github_pulls_row_lines_chrome",
+    "tests.test_github_pulls_stack_lines_chrome",
     "tests.test_github_pulls_stacks_chrome",
     "tests.test_nav_metadata_chrome",
+    "tests.test_nav_reveal_chrome",
     "tests.test_overview_legend_hover_chrome",
     "tests.test_overview_readme_toc_chrome",
     "tests.test_page_header_chrome",
@@ -127,7 +125,9 @@ CHROME_TESTS = (
     "tests.test_staged_fonts_chrome",
     "tests.test_title_prefix_chrome",
     "tests.test_transitions_instrument",
+    "tests.test_type_scale_chrome",
 )
+CHROME_TESTS_EXEMPT = ("tests.test_process_group", "tests.test_suite_tiers")
 # Creating the profile and the test's own setup, before its bounds start.
 SETUP_ALLOWANCE_S = 3.0
 
@@ -563,6 +563,19 @@ def _timeout_of(module: object) -> float:
     suite = re.search(r"^timeout = (\d+)$", settings, re.MULTILINE)
     assert suite is not None
     return float(suite.group(1))
+
+
+def test_every_module_that_drives_chrome_has_its_lifecycle_checked() -> None:
+    """A module left out of CHROME_TESTS has no check that its bounds fit its timeout;
+    five were, until this check."""
+
+    using = {
+        f"tests.{path.stem}"
+        for path in (ROOT / "tests").glob("test_*.py")
+        if "chrome_profile" in path.read_text(encoding="utf-8")
+    }
+    assert sorted(using - set(CHROME_TESTS) - set(CHROME_TESTS_EXEMPT)) == []
+    assert sorted(set(CHROME_TESTS) - using) == []
 
 
 @pytest.mark.parametrize("name", CHROME_TESTS)
