@@ -356,6 +356,9 @@ def test_benchmark_observes_fast_scan_completion(
         assert completed is not None
         assert completed["files"] == 1
         assert completed["status"] == "done"
+        assert completed["provider"] == "python"
+        assert isinstance(completed["walk_ms"], int)
+        assert isinstance(completed["open_ms"], int)
 
 
 def test_project_corpus_materializes_linked_install_roots(

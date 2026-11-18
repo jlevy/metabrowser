@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import time
 import uuid
 from collections import deque
 from collections.abc import AsyncGenerator, Awaitable, Callable, Mapping
@@ -34,6 +35,7 @@ from metabrowser.inventory_engine.contract import (
     InventoryContractError,
     InventoryEntry,
     InventoryHandle,
+    LifecyclePhase,
     PriorityRequest,
     QueryKind,
     ReadRequest,
@@ -88,6 +90,30 @@ def _require_same_provider_identity(
         or observed.semantic_fingerprint != current.semantic_fingerprint
     ):
         raise InventoryConsistencyError("an opened inventory handle changed provider fingerprints")
+
+
+# The phases in which an opened root's first discovery has not ended. The host records
+# the first state outside them (`DiscoveryRecord`), and the engine harness
+# (`devtools/bench_engine.py`) waits for the same, so the two layers time one thing.
+DISCOVERY_PHASES: frozenset[LifecyclePhase] = frozenset(
+    {LifecyclePhase.OPENING, LifecyclePhase.DISCOVERING}
+)
+
+
+@dataclass(frozen=True, slots=True)
+class DiscoveryRecord:
+    """When the served root's first discovery ended, as the host first observed it.
+
+    The host times its own call to the backend's ``open()`` and the arrival, through a
+    read or a change batch, of the first provider state outside `DISCOVERY_PHASES`, so
+    every provider's discovery has one definition and no provider has to report it.
+    ``elapsed_ns`` starts when ``open()`` returns, because a provider discovers after
+    that, and ``open_ns`` is the time ``open()`` itself took.
+    """
+
+    open_ns: int
+    elapsed_ns: int
+    state: IndexState
 
 
 @dataclass(frozen=True, slots=True)
@@ -303,6 +329,11 @@ class InventoryCoordinator:
         self._transitioning = False
         self._closed = False
         self._close_task: asyncio.Task[None] | None = None
+        # When the open handle's `open()` returned, monotonic, and how long it took;
+        # `_note_discovery_locked` turns them into `_discovery`.
+        self._opened_at_ns: int | None = None
+        self._open_ns = 0
+        self._discovery: DiscoveryRecord | None = None
 
     async def open(self, root: Path) -> HostVersion:
         """Open the first root, or atomically replace the currently served root."""
@@ -521,6 +552,11 @@ class InventoryCoordinator:
             published,
         )
 
+    def discovery(self) -> DiscoveryRecord | None:
+        """The served root's first discovery, once it has ended; None until then."""
+
+        return self._discovery
+
     def changes(self, *, after: HostCursor | None) -> AsyncGenerator[HostChange]:
         """Yield resumable bounded host invalidations after *after*."""
 
@@ -591,8 +627,12 @@ class InventoryCoordinator:
         self._engine_version = None
         self._engine_cursor = None
         self._state = None
+        self._opened_at_ns = None
+        self._discovery = None
 
+        open_started_ns = time.monotonic_ns()
         handle = await self._backend.open(root, self._config)
+        opened_at_ns = time.monotonic_ns()
         try:
             initial = await handle.read(ReadRequest())
         except BaseException:
@@ -604,6 +644,9 @@ class InventoryCoordinator:
         self._engine_version = initial.version
         self._engine_cursor = initial.cursor
         self._state = initial.state
+        self._opened_at_ns = opened_at_ns
+        self._open_ns = opened_at_ns - open_started_ns
+        self._note_discovery_locked(initial.state)
         self._host_session = uuid.uuid4().hex
         self._host_sequence = 0
         self._history.clear()
@@ -748,6 +791,7 @@ class InventoryCoordinator:
                 self._engine_version = merged.version
                 self._engine_cursor = merged.cursor
                 self._state = merged.state
+                self._note_discovery_locked(merged.state)
             published = self._new_host_change_locked(
                 version=self._current_host_version_locked(),
                 state=self._require_state_locked(),
@@ -907,6 +951,21 @@ class InventoryCoordinator:
             self._engine_version = result.version
             self._engine_cursor = result.cursor
             self._state = result.state
+            self._note_discovery_locked(result.state)
+
+    def _note_discovery_locked(self, state: IndexState) -> None:
+        """Record the first state past discovery that reaches the host."""
+
+        opened_at_ns = self._opened_at_ns
+        if self._discovery is not None or opened_at_ns is None:
+            return
+        if state.phase in DISCOVERY_PHASES:
+            return
+        self._discovery = DiscoveryRecord(
+            open_ns=self._open_ns,
+            elapsed_ns=time.monotonic_ns() - opened_at_ns,
+            state=state,
+        )
 
     def _compose_read_locked(
         self,
@@ -1052,8 +1111,10 @@ class InventoryCoordinator:
 
 
 __all__ = [
+    "DISCOVERY_PHASES",
     "CoordinatedRead",
     "DecoratedInventoryEntry",
+    "DiscoveryRecord",
     "HostChange",
     "HostCursor",
     "HostVersion",

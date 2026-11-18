@@ -381,6 +381,14 @@ time when available; unavailable CPU time remains `None` rather than becoming ze
 Diagnostics use the fixed `ProviderDiagnostics` record rather than a provider-defined
 mapping, and `/_debug/inventory` reports it when `METABROWSER_DEBUG` is set.
 
+The host also records when the served root’s first discovery ended,
+`InventoryCoordinator.discovery()`: the first provider state outside `DISCOVERY_PHASES`
+to reach it, through a read or a change batch, timed from the provider’s `open()`
+returning, with the time `open()` took beside it.
+`/_debug/inventory` reports it as `discovery`, so every provider’s discovery is timed by
+one definition without any provider reporting it, and the serving benchmark and the
+performance loop read it rather than a provider’s log line.
+
 The serving benchmark records the same identities, so runs on two providers differ by a
 declared provider axis rather than by separate harnesses;
 [Scale Benchmark](../../scale-benchmark.md) says what it measures and how to run it.

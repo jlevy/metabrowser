@@ -4,6 +4,13 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- `/_debug/inventory` reports `discovery`, when the served root’s first discovery ended
+  as the server observed it: its index status and phase, and how long the inventory
+  provider’s open and then its discovery took, along with `files_indexed`.
+  `devtools/bench_serving.py` and the performance loop time discovery from it instead of
+  the Python provider’s log line, so any provider is timed the same way, and the
+  benchmark’s cold-scan row is now “cold scan, discovery (ms)”.
+
 - In a navigation pane too narrow for the Files toolbar’s controls, the Files tree no
   longer moves down as the page loads.
   The toolbar wraps to a second line when its controls arrive, and the tree, shown under

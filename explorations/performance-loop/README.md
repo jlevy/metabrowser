@@ -369,7 +369,9 @@ Such a release logs walk completion as
 `record` reads `walk_elapsed_ms` from that line only under this declaration, and refuses
 it from a run that did not make one.
 Do not use the option for a current build: current builds must report their provider and
-contract directly.
+contract directly. A current build also reports its walk directly, as the host’s
+discovery record in `/_debug/inventory`, which `record` reads in place of any provider’s
+log line; a build that predates the record is read from its walk line.
 
 ### Comparing a candidate with the previous release
 

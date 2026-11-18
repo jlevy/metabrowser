@@ -31,11 +31,31 @@ from typing import Any, cast
 import pytest
 
 from metabrowser import server
-from tests.inventory_harness import inventory_harness, selected_inventory_provider
+from metabrowser.inventory_engine.coordinator import DISCOVERY_PHASES
+from metabrowser.inventory_engine.seams import DiscoveryGate, ProviderSeams
+from tests.inventory_harness import (
+    inventory_harness,
+    selected_inventory_provider,
+    wait_until_settled,
+)
+
+# How long the discovery-record case holds discovery, so the record must cover it.
+_HELD_S = 0.2
 
 # The keys each consumer names. Recorded here as data because the point is the
 # contract with those two files, not this test's own idea of a good payload.
-IDENTITY_KEYS: tuple[str, ...] = ("provider", "contract", "phase", "complete", "version")
+IDENTITY_KEYS: tuple[str, ...] = (
+    "provider",
+    "contract",
+    "phase",
+    "complete",
+    "version",
+    "files_indexed",
+    "discovery",
+)
+# The host's discovery record, which both tools read to time discovery the same way
+# for every provider instead of parsing a provider's log line.
+DISCOVERY_KEYS: tuple[str, ...] = ("status", "phase", "open_ms", "elapsed_ms")
 # Named by `devtools/bench_serving.py` and the performance harness. Renaming one
 # of these does not fail either tool; it blanks a column.
 CONSUMER_KEYS: tuple[str, ...] = (
@@ -133,6 +153,43 @@ def test_work_counters_carry_every_name_the_benchmarks_print(
         assert work[key] >= 0, key
     for key in TIMING_KEYS:
         assert work[key] is None or isinstance(work[key], int), key
+
+
+def test_discovery_is_null_while_it_runs_and_timed_once_it_ends(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The record both benchmark tools read in place of a provider's log line.
+
+    Discovery is held for a while, so the record has to include the hold: it starts
+    when the provider's ``open()`` returns and ends at the first state past discovery.
+    """
+
+    monkeypatch.setenv("METABROWSER_DEBUG", "1")
+    (tmp_path / "a.md").write_text("a\n")
+    gate = DiscoveryGate(before="")
+
+    async def _run() -> tuple[Any, Any, Any]:
+        seams = ProviderSeams(discovery_gate=gate)
+        async with inventory_harness(tmp_path, settle=False, seams=seams) as harness:
+            await gate.wait_reached()
+            _status, held = await _debug_payload(harness.app)
+            await asyncio.sleep(_HELD_S)
+            gate.release()
+            await wait_until_settled(harness.runtime)
+            _status, settled = await _debug_payload(harness.app)
+            return held, settled, harness.runtime.coordinator.discovery()
+
+    held, settled, record = asyncio.run(_run())
+    assert held["discovery"] is None
+    discovery = settled["discovery"]
+    assert [key for key in DISCOVERY_KEYS if key not in discovery] == []
+    assert discovery["status"] == "done"
+    assert discovery["phase"] == settled["phase"]
+    assert isinstance(discovery["open_ms"], int)
+    assert discovery["elapsed_ms"] >= _HELD_S * 1000
+    assert settled["files_indexed"] == 1
+    assert record is not None
+    assert record.state.phase not in DISCOVERY_PHASES
 
 
 def test_work_accumulates_across_reads(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
