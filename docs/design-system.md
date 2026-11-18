@@ -788,9 +788,9 @@ The overlay’s toggle belongs to its document.
 It fades in once the pane has scrolled past KPress’s threshold and the reader has
 reached the document, whose top is at or above the pane’s, and fades out above the
 document or past its end.
-An opened file starts within the threshold, so the threshold decides, as in KPress; a
-folder Overview’s README starts below File Overview, so the toggle appears as the reader
-scrolls to the README’s beginning.
+An opened file’s document starts below its view header and tab bar, and a folder
+Overview’s README below File Overview, both further down than the threshold, so the
+toggle appears as the reader scrolls to the document’s beginning.
 One rule in `builtin_plugins/markdown/toc-toggle.js` serves KPress’s table of contents
 and an inert render’s.
 
