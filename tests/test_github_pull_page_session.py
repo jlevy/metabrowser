@@ -587,6 +587,13 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
                 "Fetched at an unknown time via GitHub CLI"
             ),
         },
+        # A hold's lift time in the short form, en-US in UTC: a time of day when it lifts
+        # today, a short date and time when not (B3 of review B on #506).
+        "holdLifts": {
+            "today": "2:05 PM",
+            "tomorrow": "9/18/26, 12:30 AM",
+            "next year": "1/2/27, 8:00 AM",
+        },
         # The Diff summary is the header's last row on every tab (mb-pb35), and holds the
         # shell's pending placeholder while a comparison is on its way and while it is read,
         # on Changes the mounted diff's, and nothing once a read draws none, until a read of
@@ -675,6 +682,18 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "numbered after a refresh with no pin: 1 View on GitHub, 2 Refresh",
             f"2: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
             "3: not handled",
+            # Code behind the head offers to switch to it, numbered after Refresh; while the
+            # refresh 3 asks for runs, Refresh waits, shown and disabled, and keeps 3, so the
+            # offer keeps 4 and a second 3 asks nothing (B2 of review B on #506).
+            f"2: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
+            "numbered with the code behind the head: "
+            "1 View on GitHub, 2 Browse code, 3 Refresh, 4 Switch to the head",
+            f"3: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
+            "numbered while that refresh runs: "
+            "1 View on GitHub, 2 Browse code, 3 Refresh, 4 Switch to the head",
+            "3: nothing asked",
+            "4: POST /api/source/pin "
+            '{"oid":"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a","under":"refs/pull/7/head"}',
             "Shift+H: not handled",
             "Shift+E: opened the checks route",
             "Shift+C: opened the conversation route",

@@ -1022,6 +1022,21 @@ async function tabKeys(page) {
   steps.push(`numbered after a refresh with no pin: ${numbered()}`);
   steps.push(await numberResult("2"));
   steps.push(await numberResult("3"));
+  // Served code behind the pull request's head offers to switch to it, on the status line,
+  // after the row of ages: its number follows Refresh's. While the refresh 3 asks for runs,
+  // Refresh waits, shown and disabled, and keeps 3, so the offer keeps 4, and a second 3
+  // asks nothing (B2 of review B on #506): hidden as it waited, it gave 3 to the offer.
+  const behind = structuredClone(recorded.current.body);
+  behind.pin = "1".repeat(40);
+  behind.pin_ref = "refs/pull/7/head";
+  answer = behind;
+  steps.push(await numberResult("2"));
+  steps.push(`numbered with the code behind the head: ${numbered()}`);
+  answer = { ...structuredClone(behind), refreshing: true };
+  steps.push(await numberResult("3"));
+  steps.push(`numbered while that refresh runs: ${numbered()}`);
+  steps.push(await numberResult("3"));
+  steps.push(await numberResult("4"));
   // H is the Commits tab's, so Checks is E.
   steps.push(result("h", { shiftKey: true }));
   steps.push(result("e", { shiftKey: true }));
@@ -1254,8 +1269,13 @@ async function headerAges(page) {
     const line = container
       .querySelector(".github-pull-opened")
       .children.find((node) => node.classes?.has("github-pull-quiet"));
-    const ages = line.children.filter((node) => node.classes?.has("github-pull-age"));
-    const link = line.children.find((node) => node.tag === "a");
+    // The ages, cut short before the links after them (B4 of review B on #506).
+    const [agesText, links] = line.children;
+    assert.ok(
+      agesText.classes.has("github-pull-ages") && links.classes.has("github-pull-ages-links"),
+    );
+    const ages = agesText.children.filter((node) => node.classes?.has("github-pull-age"));
+    const link = links.children.find((node) => node.tag === "a");
     assert.ok(link.classes.has("github-pull-external-action"), "View on GitHub is quiet");
     assert.equal(link.children[0].getAttribute("data-external-kind"), "github");
     handle.dispose();
@@ -1376,6 +1396,17 @@ async function headerShape(page) {
       return body;
     })(),
     "no GitHub repository": recorded.not_github.body,
+    // No record, and its last refresh failed: the page's word goes to the status line beside
+    // the failure, and the note is not there (A10 of review A, B6 of review B on #506).
+    "on its way, its last refresh failed": {
+      ...structuredClone(recorded.absent.body),
+      last_refresh: {
+        outcome: "network_error",
+        message: "gh could not reach api.github.com",
+        reset_at: null,
+        at: "2026-09-17T12:30:00Z",
+      },
+    },
   };
   /** What each variant's status line says, on every tab, or null where it is not there. */
   const STATUS = {
@@ -1384,9 +1415,12 @@ async function headerShape(page) {
       "This page's code is f7c5a9918657, not the pull request's head 85fcb2fa9e77. Switch to the head",
     "a checkout at the head":
       "This checkout's HEAD is this pull request's head. Browse the checkout",
+    "on its way, its last refresh failed":
+      "Fetching the pull request…The last refresh failed: gh could not reach api.github.com",
   };
-  /** What each variant's note says where it is not the record's fetch. */
+  /** What each variant's note says where it is not the record's fetch, null where none. */
   const NOTE = {
+    "on its way, its last refresh failed": null,
     "held by a rate limit": /^GitHub rate limit · next check at /,
     "on its way": /^(Fetching the pull request…|This pull request has not been fetched yet\.)$/,
     "no GitHub repository": /^This server serves no GitHub repository\.$/,
@@ -1487,12 +1521,16 @@ async function headerShape(page) {
         meta,
         `${name} ${tab}: the note is on the author's row`,
       );
-      assert.ok(note.hidden !== true, `${name} ${tab}: the note says something`);
-      assert.match(
-        noteText,
-        NOTE[name] ?? /^Fetched .+ via GitHub CLI$/,
-        `${name} ${tab}: the note`,
-      );
+      if (NOTE[name] === null) {
+        assert.equal(note.hidden, true, `${name} ${tab}: no note`);
+      } else {
+        assert.ok(note.hidden !== true, `${name} ${tab}: the note says something`);
+        assert.match(
+          noteText,
+          NOTE[name] ?? /^Fetched .+ via GitHub CLI$/,
+          `${name} ${tab}: the note`,
+        );
+      }
       // The status line is there exactly while it has something to say, and says it.
       assert.equal(
         status.hidden === true ? null : status.textContent,
@@ -2630,11 +2668,38 @@ async function run() {
   await settle();
   assert.deepEqual(posts, [comparisonAsk], "polling does not retry a refused acquisition");
   assert.match(checkoutBody.textContent, /Changes could not be fetched/);
+  // The refusal is said in the Changes body, where its Retry is, not on the header's status
+  // line, so the header has the same rows on every tab (B5 of review B on #506).
   assert.match(
-    checkoutContainer.querySelector(".github-pull-message")?.textContent ?? "",
+    checkoutBody.textContent,
     /server busy/,
     "the refusal's reason outlasts the read that cleared its error",
   );
+  assert.equal(checkoutContainer.querySelector(".github-pull-message"), null);
+  const shownRows = () =>
+    checkoutContainer
+      .querySelector(".github-pull-header")
+      .children.filter((node) => node.hidden !== true)
+      .map((node) => (node.tag === "h1" ? "title" : [...node.classes][0]))
+      .join(" ");
+  const refusedRows = {};
+  for (const [tab, at] of [
+    ["files", "/pull/10/files"],
+    ["", "/pull/10"],
+    ["checks", "/pull/10/checks"],
+    ["files", "/pull/10/files"],
+  ]) {
+    window.location.pathname = at;
+    checkoutHandle.setTab(tab);
+    await settle();
+    refusedRows[tab || "conversation"] = shownRows();
+  }
+  assert.equal(
+    new Set(Object.values(refusedRows)).size,
+    1,
+    `a refused comparison leaves the header's rows the same on every tab: ${JSON.stringify(refusedRows)}`,
+  );
+  assert.match(checkoutBody.textContent, /server busy/, "the body says it again back on Changes");
   assert.equal(checkoutBody.querySelector(".spinner"), null);
   const retryChanges = checkoutBody.querySelector(".github-pull-retry-changes");
   assert.equal(retryChanges?.textContent, "Retry changes");
@@ -2802,6 +2867,17 @@ async function run() {
       "Fetched at an unknown time via GitHub CLI",
     ].map((note) => [note, page.widestNote(note)]),
   );
+  // A rate limit's hold says when it lifts in the reader's short form: a time of day when it
+  // lifts today, a short date and time when not (B3 of review B on #506). In en-US and UTC
+  // here, so the golden is the same on every machine.
+  const nine = Date.UTC(2026, 8, 17, 9, 0);
+  const holdLifts = Object.fromEntries(
+    [
+      ["today", Date.UTC(2026, 8, 17, 14, 5)],
+      ["tomorrow", Date.UTC(2026, 8, 18, 0, 30)],
+      ["next year", Date.UTC(2027, 0, 2, 8, 0)],
+    ].map(([when, lift]) => [when, page.holdLiftText(lift, nine, "en-US", "UTC")]),
+  );
   const headerSummarySteps = await headerSummary(page);
   const coldHoldSteps = await coldHold(page);
   const tabKeySteps = await tabKeys(page);
@@ -2829,6 +2905,7 @@ async function run() {
     headerAges: true,
     headerShape: true,
     widestNotes,
+    holdLifts,
     headerSummary: headerSummarySteps,
     coldHold: coldHoldSteps,
     tabKeys: tabKeySteps,

@@ -381,6 +381,20 @@ Wherever it shows, the login and the sentence keep their natural widths.
 Shrunk together with the sentence, the note had cut it 0.38 px at 560 px, dropping whole
 letters to its ellipsis.
 
+Recorded on 2026-11-18, after review B on #506, measured in Chrome 152 at 980 to 320 px
+with the `current` record and one stack’s chip.
+A rate limit’s hold in the page’s own short form, “GitHub rate limit · next check at
+12/31/98, 4:00 PM”, 288 px, is whole at 980 and 760 px and cut short with its tooltip at
+560 px; from 420 px down it keeps its floor, 118 px of text, and the sentence gives way,
+to 102 of its 153 px at 420 and 6 at 320. A hold that lifts today, “… next check at 9:23
+PM”, 230 px, does the same.
+Before, the whole timestamp, 320 px, left the line from 640 px down.
+With ages of a record’s length, “Opened 12d ago · updated 5h ago”, 195 px, or 291 px
+with “merged 3d ago”, View on GitHub and Browse code show whole down to 420 px, where
+the ages have 45 px; at 360 and 320 px the ages are gone and the links are cut, 93% and
+73% of them shown. Before, cut at the row’s end, Browse code was cut from 560 px with
+every age whole.
+
 ## Pull Request Stacks and the Timeline
 
 Recorded on 2026-11-15, when the files-grouping and pull-stacks stack landed.

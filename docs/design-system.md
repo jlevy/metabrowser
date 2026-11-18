@@ -1799,19 +1799,25 @@ first, whole, and then the sentence is cut short at its end, the action first an
 the author, never moved or wrapped; the branches have the line under it to themselves,
 one line in every state, their names cut short rather than wrapping it; the row of ages
 begins with the state’s badge, as wide as the widest state, then “Opened”, the ages,
-View on GitHub, and Browse code, one line cut short at its end, and ends in Refresh’s
-slot; a pull request with labels has a row of them, one line at a label’s height, and
-one with none has no labels row and no gap for it; and a cold page keeps every row,
-empty, at its height.
+View on GitHub, and Browse code, one line whose ages are cut short at their end, the
+links after them whole, and ends in Refresh’s slot; a pull request with labels has a row
+of them, one line at a label’s height, and one with none has no labels row and no gap
+for it; and a cold page keeps every row, empty, at its height.
 The freshness note is muted, after a muted dot, at the sentence’s size, stepping back by
 its ink: one time, the record’s own fetch, “jlevy wants to merge 1 commit · Fetched just
 now via GitHub CLI”, never a second time for a check that found nothing changed, since
 that makes what is shown no newer.
-A rate limit’s hold is said in its place, “GitHub rate limit · next check at 14:05”, in
-the failure’s ink: it begins and lifts by itself and asks nothing of the reader, so it
-adds no line. Before a record is shown the note is the page’s word on it, “Fetching the
-pull request…”, so the record landing changes no line; a failure to fetch it takes that
-word to the status line beside it.
+A rate limit’s hold is said in its place, “GitHub rate limit · next check at 2:05 PM”,
+in the failure’s ink: it begins and lifts by itself and asks nothing of the reader, so
+it adds no line.
+It names a time of day, in the reader’s short form, when the limit lifts
+today, and a short date and time otherwise, “12/31/26, 4:00 PM”. Unlike an age, it never
+leaves the line: where it cannot be whole it is cut short with its whole text as a
+tooltip, down to a floor that keeps “GitHub rate limit” whole, and below that the
+sentence gives way, so the page always says why nothing refreshes.
+Before a record is shown the note is the page’s word on it, “Fetching the pull
+request…”, so the record landing changes no line; a failure to fetch it takes that word
+to the status line beside it.
 The note’s slot is as wide as its widest age, so the age ticking changes its width not
 at all. Beside the sentence the note is whole or not there: where it cannot be whole, it
 leaves the line, dot and all, so the author and the sentence keep their natural widths
@@ -1820,11 +1826,16 @@ Alone on the row, before a record, it is cut short with its whole text as a tool
 Refresh or Fetch ends the row of ages, at its right end, its slot held hidden when there
 is nothing to refresh, so its coming moves nothing; the ages are cut short before it,
 and it never is. It follows View on GitHub and Browse code, so it takes the number after
-theirs and, as it comes or is held, renumbers neither
-([Numbered Controls](keyboard-shortcuts.md#numbered-controls)). The status row is the
-next metadata line, as tall as the row of ages, there only while it has something to
-say: a failure and its remedy, a message, and the offers at its end, its text and then
-its offers’ sentences cut short, never their controls.
+theirs and renumbers neither
+([Numbered Controls](keyboard-shortcuts.md#numbered-controls)). While a refresh it
+offered runs or is due, or a rate limit holds it, it waits, as the Pulls tab’s Reload
+does: shown and muted, `aria-disabled`, it keeps its slot and its number, so an offer
+numbered after it keeps its own, and a press does nothing.
+The status row is the next metadata line, as tall as the row of ages, there only while
+it has something to say: a failure and its remedy, a message, and the offers at its end,
+its text and then its offers’ sentences cut short, never their controls.
+A comparison’s refusal is said in the Changes body, beside its Retry changes, not on the
+status row, which would then show it on Changes alone and move the tab bar between tabs.
 A pull request that cannot be shown has no author’s row and no row of ages, so its
 message and Refresh’s slot are on the status row.
 Only a failure, which says what to do, wraps the status row.

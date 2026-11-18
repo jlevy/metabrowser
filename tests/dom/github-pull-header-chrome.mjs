@@ -32,12 +32,13 @@
 // The status line is there only while it has something to say, here an offer, and is then
 // a metadata line, as tall as the row of ages above it, one line and one gap more; a rate
 // limit's hold is said in the freshness note's place and adds none (mb-ne91). The note is
-// whole beside the author's sentence or out of view, and the sentence whole while it shows. That is layout, which no browserless DOM can compute: the
-// stylesheet text passed with a state badge whose first flex item was a zero-height sizer,
-// which hung the badge below the line and made the loaded header 5.6 px taller than the
-// empty one. And no record's row may end past the header: an offer kept whole ran 262 px
-// past it in a 360 px pane, and the pane scrolled sideways. The row structure itself is
-// pinned browserless in github-pull-page-mount-behavior.js.
+// whole beside the author's sentence or out of view, and the sentence whole while it shows;
+// a hold is never out of view, cut short instead. That is layout, which no browserless DOM
+// can compute: the stylesheet text passed with a state badge whose first flex item was a
+// zero-height sizer, which hung the badge below the line and made the loaded header 5.6 px
+// taller than the empty one. And no record's row may end past the header: an offer kept
+// whole ran 262 px past it in a 360 px pane, and the pane scrolled sideways. The row
+// structure itself is pinned browserless in github-pull-page-mount-behavior.js.
 //
 // The session also lays out Pulls rows as their stack places arrive, and the file
 // header as a run's status badge changes its label in place (RUN_BADGE below).
@@ -206,6 +207,11 @@ const MEASURE = `async (name, change, tab, width) => {
     body.state = "stale";
     body.last_refresh = change.lastRefresh;
   }
+  // A hold that lifts in half an hour, today on most clocks, which the page says as a time of
+  // day; the other lifts in 2099, which it says as a short date and time.
+  if (change.liftSoon) {
+    body.last_refresh = { ...change.lastRefresh, reset_at: new Date(Date.now() + 30 * 60_000).toISOString() };
+  }
   // A pull request with no labels, which has no labels row (mb-2u08).
   if (change.noLabels) {
     body.record.pull.labels = [];
@@ -250,7 +256,18 @@ const MEASURE = `async (name, change, tab, width) => {
       actorIdentity: mb.actorIdentity,
       titleNodes: mb.titleNodes,
       countPartsNodes: mb.countPartsNodes,
-      formatAge: () => ({ label: "now", className: "age" }),
+      // Ages of the lengths a record's have, one per time in the order the page asks, so no
+      // two read the same and the row of ages is as long as a real one: "now" for all of them
+      // made a 275 px row, whole to 480 px, that never reached the links (B4 of review B on
+      // #506).
+      formatAge: (() => {
+        const labels = ["12d ago", "5h ago", "3d ago"];
+        const given = new Map();
+        return (seconds) => {
+          if (!given.has(seconds)) given.set(seconds, labels[given.size % labels.length]);
+          return { label: given.get(seconds), className: "age" };
+        };
+      })(),
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
       navigation: { href: () => "/view/" },
       sourceKind: () => "filesystem",
@@ -576,8 +593,23 @@ const MEASURE = `async (name, change, tab, width) => {
     login: login ? { width: r2(box(login).width), natural: natural(login) } : null,
     action: action ? { width: r2(box(action).width), natural: natural(action) } : null,
   };
+  // The row of ages: its ages give way first, and View on GitHub and Browse code after them
+  // stay whole (B4 of review B on #506). How much of the links shows, and how wide the ages
+  // are drawn against their own width.
+  const agesText = header.querySelector(".github-pull-opened .github-pull-ages");
+  const agesLinks = header.querySelector(".github-pull-opened .github-pull-ages-links");
+  const agesRow = agesText === null
+    ? null
+    : {
+        linksShown: Math.round(shown(agesLinks) * 1000) / 1000,
+        links: [...agesLinks.querySelectorAll("a, button")].map((node) => node.textContent.trim()),
+        agesWidth: r2(box(agesText).width),
+        agesNatural: r2(agesText.scrollWidth),
+        text: agesText.textContent,
+      };
   const result = {
     edges,
+    agesRow,
     header: Math.round(box(header).height * 100) / 100,
     tabBar: Math.round(box(container.querySelector(".tab-bar")).top - box(header).top),
     rows,
@@ -681,6 +713,7 @@ const RECORDS = [
   ["current", { pinBehind: true }],
   ["on_head", { checkoutAtHead: true }],
   ["current", { lastRefresh: RATE_LIMITED }],
+  ["current", { lastRefresh: RATE_LIMITED, liftSoon: true }],
   ["current", { avatar: true }],
   ["current", { longTitle: true }],
   ["current", { longNames: true }],
@@ -1644,16 +1677,23 @@ async function main() {
             );
             const lead = shape.lead;
             if (change.lastRefresh?.outcome === "rate_limited") {
+              // At every width: where it cannot be whole it is cut short, with its text as a
+              // tooltip, and never leaves the line as an age does; it is said in the page's
+              // own time form, a time of day today and a short date and time otherwise (B3 of
+              // review B on #506). Leaving the line, the page's whole timestamp put it out of
+              // view from 640 px down.
               check(
-                `${where}: a rate limit's hold is said in the note's place, in the failure's ink`,
+                `${where}: a rate limit's hold is said in the note's place, in the failure's ink, in view at every width`,
                 lead !== null &&
                   /^GitHub rate limit · next check at /.test(lead.said) &&
+                  !/:\d\d:\d\d/.test(lead.said) &&
                   lead.held &&
-                  (width < 760 || lead.inView),
+                  lead.inView &&
+                  lead.textWidth >= 60,
                 JSON.stringify(lead),
               );
             }
-            if (lead?.sentence) {
+            if (lead?.sentence && !lead.held) {
               // Beside the sentence the note is whole or out of view, and while it is in view
               // the login and the sentence keep their natural widths (A2 of review A on #506).
               check(
@@ -1669,6 +1709,22 @@ async function main() {
                   `${where}: in a wide pane the note shows whole`,
                   lead.inView && !lead.cut,
                   JSON.stringify(lead),
+                );
+              }
+            }
+            if (shape.agesRow !== null) {
+              // The ages give way first, cut short at their end, and the links after them stay
+              // whole while any of the ages shows (B4 of review B on #506).
+              check(
+                `${where}: the ages give way before View on GitHub and Browse code, which show whole while any age does`,
+                shape.agesRow.linksShown >= 0.99 || shape.agesRow.agesWidth < 1,
+                JSON.stringify(shape.agesRow),
+              );
+              if (width >= 420) {
+                check(
+                  `${where}: View on GitHub and Browse code show whole`,
+                  shape.agesRow.linksShown >= 0.99,
+                  JSON.stringify(shape.agesRow),
                 );
               }
             }

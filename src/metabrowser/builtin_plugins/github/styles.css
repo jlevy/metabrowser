@@ -243,12 +243,27 @@
    quiet text is the muted ink at its line's size, the body's, as every line under the title
    is (`.page-header-line`) and as quiet text is everywhere on the page. */
 .github-pull-opened > .github-pull-quiet {
+  display: flex;
   flex: 0 1 auto;
   min-width: 0;
   height: 1lh;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* The ages give way first, cut short with an ellipsis, and View on GitHub and Browse code
+   after them stay whole: cut at the row's end, with Refresh's slot there, the row drew
+   Browse code "…" from 560 px for an open pull request, and lost it from 580 px for a merged
+   one, with every age whole (Chrome 152). */
+.github-pull-quiet > .github-pull-ages {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.github-pull-quiet > .github-pull-ages-links {
+  flex: none;
+  white-space: pre;
 }
 .github-pull-header a,
 .github-pull-card-head a,
@@ -282,6 +297,14 @@
   font: inherit;
   text-align: start;
   cursor: pointer;
+}
+/* A Refresh that waits for a refresh running, or for a rate limit to lift, stays in its place
+   and keeps its number, muted, and does nothing, as the Pulls tab's waiting Reload does
+   (`.github-pulls-reload[aria-disabled="true"]`). */
+.github-pull-text-action[aria-disabled="true"] {
+  color: var(--muted);
+  text-decoration: none;
+  cursor: default;
 }
 /* A badge's box, type, and centered capitals are `.file-header-badge`; its state is its ink
    and edge. Its height is the line and the two borders, as the base's is the line and pads. */
@@ -540,6 +563,19 @@
 }
 .github-pull-note[hidden] {
   display: none;
+}
+/* A rate limit's hold, said in the note's place, does not leave the line: the lead holds it
+   to one line, the hold takes what the sentence leaves, down to a floor that keeps "GitHub
+   rate limit" whole, and below that the sentence gives way. Cut short, it carries its text as
+   a tooltip. Leaving the line as an age does, a hold of a date and a time with seconds was
+   said nowhere from 640 px down (Chrome 152). */
+.github-pull-meta-lead.github-pull-meta-lead-held {
+  flex-wrap: nowrap;
+}
+.github-pull-meta-lead-held > .github-pull-note {
+  flex: 1 1 0;
+  min-width: 9em;
+  max-width: max-content;
 }
 .github-pull-note-sep {
   flex: none;

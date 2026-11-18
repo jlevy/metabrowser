@@ -309,12 +309,20 @@ async function run() {
     await run.controller.poll();
     await settle();
     assert.equal(run.posts().length, 0, "polling does not retry a refused acquisition");
-    assert.match(run.model.message, /too many pull requests/, "the reason outlasts the read");
+    // The reason is said in the Changes body, where its Retry is, never on the header's
+    // status line, which showed it on Changes alone (B5 of review B on #506).
+    assert.match(
+      run.model.filesUnavailable,
+      /too many pull requests/,
+      "the reason outlasts the read",
+    );
+    assert.equal(run.model.message, null, "the header says nothing of it, on any tab");
     snapshot(run, "the refusal's reason stays after the next read");
     run.state.post = () => recorded.started;
     await run.controller.requestComparison();
     assert.equal(run.posts().length, 1);
     assert.equal(run.model.message, null);
+    assert.doesNotMatch(run.model.filesUnavailable, /too many pull requests/);
     snapshot(run, "Retry changes asks again and clears the reason");
     run.state.get = () =>
       answer(failedAfter("lender_missing", "the checkout cannot supply this comparison"));

@@ -419,7 +419,12 @@ def test_the_status_row_is_one_line_there_while_it_has_something_to_say() -> Non
     assert 'class: "github-pull-text-action github-pull-refresh"' in page
     assert 'class: "github-pull-text-action github-pull-switch"' in page
     assert "btn github-pull-refresh" not in page and "btn github-pull-switch" not in page
-    assert "refresh.hidden = !model.canRefresh;" in page
+    # Shown while offered, and while a refresh it offered waits, disabled, keeping its number
+    # (B2 of review B on #506).
+    assert "refresh.hidden = !(model.canRefresh || waiting);" in page
+    assert 'refresh.setAttribute("aria-disabled", "true");' in page
+    waits = _rule(css, '.github-pull-text-action[aria-disabled="true"]')
+    assert "color: var(--muted);" in waits and "cursor: default;" in waits
     assert "if (model.canRefresh) {" not in page
     # With no row of ages, Refresh is the end's last child, after any offers.
     assert 'h("span", { class: "github-pull-status-end" })' in page

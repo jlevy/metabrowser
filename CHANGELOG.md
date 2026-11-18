@@ -10,9 +10,16 @@ All notable changes to Metabrowser are documented here.
   nothing changed does not make what is shown newer, so the page names the fetch alone.
   Where the line has no room for all of it, the note leaves the line rather than cutting
   the author’s name or sentence short.
-  A rate limit’s hold, “GitHub rate limit · next check at 14:05”, is said in its place.
-  Refresh ends the row of ages, after View on GitHub and Browse code, so those keep the
-  numbers 1 and 2 and Refresh is 3 when it shows.
+  A rate limit’s hold, “GitHub rate limit · next check at 2:05 PM”, is said in its
+  place, a time of day when the limit lifts today and a short date and time otherwise,
+  cut short with its whole text as a tooltip rather than leaving the line.
+  Refresh ends the row of ages, after View on GitHub and Browse code, and takes the
+  number after theirs.
+  While a refresh runs it stays in its place, muted, and keeps its number, so an offer’s
+  number after it does not move.
+  On a narrow pane the ages are cut short before View on GitHub and Browse code.
+  When fetching a pull request’s changes is refused, the reason is said on Changes,
+  beside Retry changes, rather than on the header.
   The age ticking and Refresh appearing move nothing.
   The line under the row of ages is there only while it has something to say: a failure,
   a message, or an offer to switch to the pull request’s head.
