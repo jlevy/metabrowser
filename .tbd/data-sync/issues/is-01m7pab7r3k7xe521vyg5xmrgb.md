@@ -5,7 +5,7 @@ title: "View header: move the size, file count and age (e.g. '379.2 MB · 18,344
 kind: task
 status: in_progress
 priority: 2
-version: 8
+version: 9
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -13,10 +13,11 @@ parent_id: is-01m7ksbn803jhw15qjc6beg7qf
 child_order_hints:
   - is-01m7pdw10jp8vpk7fbw4g994r4
   - is-01m7pjs70jw1s54195e7f84v82
+  - is-01m7pkgzth175ysqyfpp41brk9
 hold: null
 hold_until: null
 created_at: 2026-11-18T03:13:59.554Z
-updated_at: 2026-11-18T05:41:26.161Z
+updated_at: 2026-11-18T05:54:25.232Z
 started_at: 2026-11-18T03:15:32.079Z
 ---
 Owner, 2026-11-18 in chat: 'let's remove the file size on the top right of the upper view bar as well and instead put the file age and file size next to the filename with a small gap, trying to fit in with other design styles we already have, much like the nav bar. these numbers 379.2 MB / 18,344 files / 11m ago should all be next to the folder itself. after these changes the upper right will be empty.' Then the upper right holds a small toggle (separate bead).

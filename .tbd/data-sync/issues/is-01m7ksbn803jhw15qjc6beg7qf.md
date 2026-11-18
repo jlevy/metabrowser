@@ -5,7 +5,7 @@ title: "Coordinate landing the open PRs, Fast CI Phases 1-2, plan currency and 0
 kind: epic
 status: in_progress
 priority: 1
-version: 37
+version: 39
 delegate: claude-code@vm
 labels: []
 dependencies: []
@@ -38,10 +38,11 @@ child_order_hints:
   - is-01m7pfyp9qqhp6cg721a6cqp7r
   - is-01m7pg5xfxged1tw9c86yy0w12
   - is-01m7pk3bscmhvp7jcf22xwp2r3
+  - is-01m7pk99cegx2xz0sc5wwddsdj
 hold: null
 hold_until: null
 created_at: 2026-11-17T03:38:38.720Z
-updated_at: 2026-11-18T05:46:58.731Z
+updated_at: 2026-11-18T05:50:44.441Z
 started_at: 2026-11-17T03:38:54.763Z
 ---
 
@@ -69,3 +70,4 @@ UPDATE: drawn-from-disk chain new heads: #528 b25a0566a1a404d433519df88b29d3534b
 UPDATE: owner wants configs in YAML with a short format string (mf01...), bead mb-3x6y; recents (mb-40k4) must follow it: YAML file + format string.
 UPDATE: #526 new head 48fd4af3ab3d19b5be990f2150c3f58f7acd4707 (base now main; dispositions reposted). #525 merged 5b1d2b055. #529 merged baaf52898. New PRs: #544 help bar (A addressed, ef464f34d), #545/#547 legend stack (review running), #546 recents (owner decisions in; review running), #549 print (review running; golden fix pending), #550 header (merging main), #551 writer race (review running).
 UPDATE 04:44: merged #525 (5b1d2b055), #529 (baaf52898), #528 (1c06d4635). #530 head b18a811b5 / #533 head 8ec461d22 (merged up; dispositions reposted) -> gh stack merge 533 when green. Queue after main green: #526 48fd4af3a, #543 ac2210033, #544 ef464f34d, #530+#533.
+UPDATE 05:50: merged #526 (227853ce7); app restarted on it. #555 closed (owner: leave inks). Reviews published: #546 A, #547 B (approve), #550 A, #552 A, #554 A, #551 B (approve; B1 -> bead). Design: Fable review saved as attic/coord/design-review-open-modes.md; owner answered Q1-Q9 (all recommended; terminology: follow Git); design doc PR in progress (mb-lsx1, branch claude/arch-open-modes). Queue: #551 next (fixes CI race), then #543, #544, #530+#533, #545, #549 (CI rerun), #547, then #506/#546/#550/#552/#554 after fixes.
