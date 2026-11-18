@@ -1,6 +1,7 @@
 ---
 sandbox: true
 path:
+  - ../fixtures/github-status
   - ../../.venv/bin
 env:
   TERM: "dumb"
@@ -9,6 +10,7 @@ env:
   METABROWSER_LOG_LEVEL: "WARNING"
 patterns:
   PYDANTIC_URL: 'https://errors\.pydantic\.dev/\d+\.\d+/v/value_error'
+  FAKE_GH: '[^\s"]+/fixtures/github-status/gh'
 before: >-
   mkdir -p viewroot mdroot pair/alpha pair/beta stack/prnotes pulls/pullkey reserved/reskey override/steal &&
   printf 'mine\n' > viewroot/b.myk &&
@@ -66,6 +68,10 @@ The problem is on stderr.
 $ metab --doctor --plugins-dir pair >/dev/null
 metab --doctor: 1 problem(s):
   • plugin 'beta': view 'more' of kind 'myk' declares key 'm', but view 'main' (plugin 'alpha') already holds it; the view is served without a key
+github: ok: GitHub CLI is signed in to github.com as octo-reader.
+  gh: [FAKE_GH] (version 2.98.0)
+  account: octo-reader (token from keyring)
+  scopes: gist, read:org, repo, workflow
 ? 1
 ```
 
@@ -85,7 +91,23 @@ $ metab --doctor --json --plugins-dir pair 2>/dev/null
   "plugin_count": 13,
   "problems": [
     "plugin 'beta': view 'more' of kind 'myk' declares key 'm', but view 'main' (plugin 'alpha') already holds it; the view is served without a key"
-  ]
+  ],
+  "github": {
+    "host": "github.com",
+    "state": "ok",
+    "message": "GitHub CLI is signed in to github.com as octo-reader.",
+    "fix": null,
+    "gh_path": "[FAKE_GH]",
+    "gh_version": "2.98.0",
+    "account": "octo-reader",
+    "token_source": "keyring",
+    "scopes": [
+      "gist",
+      "read:org",
+      "repo",
+      "workflow"
+    ]
+  }
 }
 ? 1
 ```
@@ -100,7 +122,23 @@ $ metab --doctor --json --plugins-dir stack 2>/dev/null
 {
   "ok": true,
   "plugin_count": 12,
-  "problems": []
+  "problems": [],
+  "github": {
+    "host": "github.com",
+    "state": "ok",
+    "message": "GitHub CLI is signed in to github.com as octo-reader.",
+    "fix": null,
+    "gh_path": "[FAKE_GH]",
+    "gh_version": "2.98.0",
+    "account": "octo-reader",
+    "token_source": "keyring",
+    "scopes": [
+      "gist",
+      "read:org",
+      "repo",
+      "workflow"
+    ]
+  }
 }
 ? 0
 ```
@@ -117,7 +155,23 @@ $ metab --doctor --json --plugins-dir pulls 2>/dev/null
   "plugin_count": 11,
   "problems": [
     "[CWD]/pulls/pullkey/manifest.toml: 1 validation error for PluginManifest\nview.0.key\n  Value error, key 'P' is reserved for the shell's Pulls tab [type=value_error, input_value='P', input_type=str]\n    For further information visit [PYDANTIC_URL]"
-  ]
+  ],
+  "github": {
+    "host": "github.com",
+    "state": "ok",
+    "message": "GitHub CLI is signed in to github.com as octo-reader.",
+    "fix": null,
+    "gh_path": "[FAKE_GH]",
+    "gh_version": "2.98.0",
+    "account": "octo-reader",
+    "token_source": "keyring",
+    "scopes": [
+      "gist",
+      "read:org",
+      "repo",
+      "workflow"
+    ]
+  }
 }
 ? 1
 ```
@@ -133,7 +187,23 @@ $ metab --doctor --json --plugins-dir reserved 2>/dev/null
   "plugin_count": 11,
   "problems": [
     "[CWD]/reserved/reskey/manifest.toml: 1 validation error for PluginManifest\nview.0.key\n  Value error, key 'T' is reserved for the shell's Quick Search [type=value_error, input_value='T', input_type=str]\n    For further information visit [PYDANTIC_URL]"
-  ]
+  ],
+  "github": {
+    "host": "github.com",
+    "state": "ok",
+    "message": "GitHub CLI is signed in to github.com as octo-reader.",
+    "fix": null,
+    "gh_path": "[FAKE_GH]",
+    "gh_version": "2.98.0",
+    "account": "octo-reader",
+    "token_source": "keyring",
+    "scopes": [
+      "gist",
+      "read:org",
+      "repo",
+      "workflow"
+    ]
+  }
 }
 ? 1
 ```
@@ -162,6 +232,10 @@ The problem names the built-in `markdown` plugin, whose Source lost the key, and
 $ metab --doctor --plugins-dir override >/dev/null
 metab --doctor: 1 problem(s):
   • plugin 'markdown': view 'source' of kind 'markdown' declares key 's', but view 'rendered' (plugin 'steal') already holds it; the view is served without a key
+github: ok: GitHub CLI is signed in to github.com as octo-reader.
+  gh: [FAKE_GH] (version 2.98.0)
+  account: octo-reader (token from keyring)
+  scopes: gist, read:org, repo, workflow
 ? 1
 ```
 

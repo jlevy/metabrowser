@@ -1,5 +1,6 @@
 ---
 path:
+  - ../fixtures/github-status
   - ../../.venv/bin
 env:
   TERM: "dumb"
@@ -7,6 +8,7 @@ env:
   METABROWSER_PLUGINS_DIRS: ""
 patterns:
   BUILTIN: '\S+/builtin_plugins'
+  FAKE_GH: '[^\s"]+/fixtures/github-status/gh'
 ---
 # Golden tests: plugin modes
 
@@ -19,12 +21,12 @@ stable; the absolute checkout prefix of each plugin’s `static_root` is elided 
 ```console
 $ metab --plugins
 NAME           SOURCE   KINDS       VIEWS  HOOKS
--------------  -------  ----------  -----  -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-------------  -------  ----------  -----  ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 agent-log      builtin  agent-log   3      charts
 binary         builtin  -           1      chunk
 diff           builtin  diff        1      document,children,comparison
 folder         builtin  -           2      -
-github         builtin  -           2      pull,pull-refresh,pull-cores-prepare,pull-comparison,pull-image,pull-rendered-diff,pull-timeline,pull-markdown,pulls,pulls-refresh,stacks,stacks-refresh,stack-change,labels,labels-refresh,pull-files,pull-files-summary,pull-files-refresh,pulls-prefetch,cache-clear
+github         builtin  -           2      pull,pull-refresh,pull-cores-prepare,pull-comparison,pull-image,pull-rendered-diff,pull-timeline,pull-markdown,pulls,pulls-refresh,stacks,stacks-refresh,stack-change,labels,labels-refresh,pull-files,pull-files-summary,pull-files-refresh,pulls-prefetch,cache-clear,status
 html           builtin  html        2      -
 image          builtin  -           1      -
 markdown       builtin  markdown    2      -
@@ -143,7 +145,8 @@ $ metab --plugins --json
         "pull-files-summary",
         "pull-files-refresh",
         "pulls-prefetch",
-        "cache-clear"
+        "cache-clear",
+        "status"
       ],
       "disabled_data_hooks": []
     },
@@ -387,6 +390,10 @@ recorded on its own: the answer is on stdout, and stderr is empty.
 ```console
 $ metab --doctor 2>/dev/null
 metab --doctor: 11 plugin(s) OK
+github: ok: GitHub CLI is signed in to github.com as octo-reader.
+  gh: [FAKE_GH] (version 2.98.0)
+  account: octo-reader (token from keyring)
+  scopes: gist, read:org, repo, workflow
 ? 0
 ```
 
@@ -404,7 +411,23 @@ $ metab --doctor --json 2>/dev/null
 {
   "ok": true,
   "plugin_count": 11,
-  "problems": []
+  "problems": [],
+  "github": {
+    "host": "github.com",
+    "state": "ok",
+    "message": "GitHub CLI is signed in to github.com as octo-reader.",
+    "fix": null,
+    "gh_path": "[FAKE_GH]",
+    "gh_version": "2.98.0",
+    "account": "octo-reader",
+    "token_source": "keyring",
+    "scopes": [
+      "gist",
+      "read:org",
+      "repo",
+      "workflow"
+    ]
+  }
 }
 ? 0
 ```
