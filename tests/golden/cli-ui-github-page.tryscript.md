@@ -16,9 +16,10 @@ The input is `tests/fixtures/github-page-shell.json`: the repository context the
 writes into each page’s shell, from the functions that decide the Pulls tab,
 `discover_repository_context` for a checkout and `repository_context_for` for a mirror,
 recorded by `tests/test_github_page_session.py` for checkouts on github.com over HTTPS
-on a branch origin has, over SSH detached, and served from a subfolder on a branch
-origin lacks; origins on GitLab and on a GitHub Enterprise host; a repository with no
-remote; a plain folder; and mirrors of a github.com repository and of a `file://` one.
+on `main` and on `feature/x`, branches origin has, over SSH detached, and served from a
+subfolder on a `feature/x` origin lacks; origins on GitLab and on a GitHub Enterprise
+host; a repository with no remote; a plain folder; and mirrors of a github.com
+repository and of a `file://` one.
 
 This browserless session loads the production `static/github-page.js` into a page of
 fakes for each context and commits a view header for each page a folder or a pin can be
@@ -26,8 +27,9 @@ on, as `app.js` does: the served root, a folder, a file, and names with a space,
 character outside ASCII, parentheses, a literal percent, and a byte that is not UTF-8.
 It records the toggle as a reader meets it, whether each page drew it in the Metabrowser
 view, and the GitHub link for each page: a folder’s tree or a file’s blob at the branch
-the page is on, or at its commit where it is on none, under the served root’s place in
-the repository.
+the page is on, or at its commit where it is on none or origin had none of its name at
+the last fetch, under the served root’s place in the repository.
+The link’s tooltip writes a commit short, and says when origin had no such branch.
 
 ```console
 $ node tests/dom/github-page-session.js
@@ -69,6 +71,42 @@ $ node tests/dom/github-page-session.js
     }
   },
   {
+    "context": "github-feature-pushed",
+    "toggle": {
+      "label": "View",
+      "role": "group",
+      "options": [
+        {
+          "element": "span",
+          "class": "view-header-toggle-option view-header-toggle-metabrowser",
+          "current": "page",
+          "label": "Metabrowser view, shown",
+          "tip": "Metabrowser view, shown"
+        },
+        {
+          "element": "a",
+          "class": "view-header-toggle-option view-header-toggle-github",
+          "current": null,
+          "label": "View on GitHub",
+          "tip": "View on GitHub: github.com/octo/demo/tree/feature/x",
+          "href": "https://github.com/octo/demo/tree/feature/x",
+          "target": "_blank",
+          "rel": "noopener noreferrer"
+        }
+      ]
+    },
+    "pagesShowingMetabrowser": 6,
+    "pages": 6,
+    "urls": {
+      "(root)": "https://github.com/octo/demo/tree/feature/x",
+      "docs": "https://github.com/octo/demo/tree/feature/x/docs",
+      "docs/guide.md": "https://github.com/octo/demo/blob/feature/x/docs/guide.md",
+      "docs/a b/雪 (1).md": "https://github.com/octo/demo/blob/feature/x/docs/a%20b/%E9%9B%AA%20%281%29.md",
+      "50%25-off.md": "https://github.com/octo/demo/blob/feature/x/50%25-off.md",
+      "raw/%FF.bin": "https://github.com/octo/demo/blob/feature/x/raw/%FF.bin"
+    }
+  },
+  {
     "context": "github-ssh-detached",
     "toggle": {
       "label": "View",
@@ -86,7 +124,7 @@ $ node tests/dom/github-page-session.js
           "class": "view-header-toggle-option view-header-toggle-github",
           "current": null,
           "label": "View on GitHub",
-          "tip": "View on GitHub: github.com/octo/demo/tree/0123456789abcdef0123456789abcdef01234567",
+          "tip": "View on GitHub: github.com/octo/demo/tree/0123456789ab",
           "href": "https://github.com/octo/demo/tree/0123456789abcdef0123456789abcdef01234567",
           "target": "_blank",
           "rel": "noopener noreferrer"
@@ -122,7 +160,7 @@ $ node tests/dom/github-page-session.js
           "class": "view-header-toggle-option view-header-toggle-github",
           "current": null,
           "label": "View on GitHub",
-          "tip": "View on GitHub: github.com/octo/demo/tree/0123456789abcdef0123456789abcdef01234567/docs. feature/x is not pushed, so this commit may not be on github.com either",
+          "tip": "View on GitHub: github.com/octo/demo/tree/0123456789ab/docs. origin had no feature/x at your last fetch, so this commit may not be on github.com either",
           "href": "https://github.com/octo/demo/tree/0123456789abcdef0123456789abcdef01234567/docs",
           "target": "_blank",
           "rel": "noopener noreferrer"

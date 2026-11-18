@@ -20,6 +20,9 @@
 (() => {
   const SITE = "https://github.com/";
   const UNRESERVED = /^[A-Za-z0-9._~-]$/;
+  // A commit in the tooltip's text, as the ref selector writes one: in full, the 40
+  // characters do not wrap in the tooltip's width and hid the item's path.
+  const SHORT_COMMIT = 12;
 
   /** @param {ArrayLike<number>} bytes */
   function escapeBytes(bytes) {
@@ -64,28 +67,23 @@
   }
 
   /**
-   * The ref a page's link names, and what the link's tooltip says of it. A view that names
-   * its own ref, as a revision's would, supplies it (`viewRef`). Otherwise the branch the
-   * page is on, when `origin` has it (`branch_on_origin`, which the server reads from the
-   * checkout's `refs/remotes/origin`; a mirror's branch is the origin's). Otherwise the
-   * page's commit, which a branch not pushed may not have put on github.com either.
+   * The ref a page's link names, and what the link's tooltip says of it: the branch the
+   * page is on, when `origin` had it at the checkout's last fetch (`branch_on_origin`,
+   * which the server reads from the checkout's `refs/remotes/origin`; a mirror's branch is
+   * the origin's). Otherwise the page's commit, which github.com may not have either.
    *
    * @param {NonNullable<NonNullable<Window["metabrowser"]>["repository"]>} context
    * @param {boolean} onOrigin
-   * @param {string} [viewRef]
    * @returns {{ref: string, note: string}}
    */
-  function pageRef(context, onOrigin, viewRef) {
-    if (viewRef) {
-      return { ref: viewRef, note: "" };
-    }
+  function pageRef(context, onOrigin) {
     if (context.branch && onOrigin) {
       return { ref: context.branch, note: "" };
     }
     return {
       ref: context.revision,
       note: context.branch
-        ? `${context.branch} is not pushed, so this commit may not be on github.com either`
+        ? `origin had no ${context.branch} at your last fetch, so this commit may not be on github.com either`
         : "",
     };
   }
@@ -116,13 +114,14 @@
 
   /**
    * The toggle: the Metabrowser mark, the current view, then the GitHub mark, a link to
-   * `url`. A group of two, each with its name for a screen reader and its tooltip; `note`
-   * adds what the tooltip says of the link's ref.
+   * `url`. A group of two, each with its name for a screen reader and its tooltip, which
+   * writes the address as `shown` and adds `note`, what it says of the link's ref.
    * @param {Document} doc
    * @param {string} url
    * @param {string} [note]
+   * @param {string} [shown]
    */
-  function toggle(doc, url, note = "") {
+  function toggle(doc, url, note = "", shown = url) {
     const group = doc.createElement("span");
     group.className = "view-header-toggle";
     group.setAttribute("role", "group");
@@ -139,7 +138,7 @@
     there.target = "_blank";
     there.rel = "noopener noreferrer";
     there.setAttribute("aria-label", "View on GitHub");
-    there.dataset.tipText = `View on GitHub: ${url.replace("https://", "")}${note ? `. ${note}` : ""}`;
+    there.dataset.tipText = `View on GitHub: ${shown.replace("https://", "")}${note ? `. ${note}` : ""}`;
     for (const option of [here, there]) {
       const mark = doc.createElement("span");
       mark.className = "view-header-toggle-mark";
@@ -152,8 +151,7 @@
 
   /**
    * End the committed view header's heading row with the toggle, once. The header names
-   * its item (`data-path`), and a view that names its own ref its ref (`data-ref`); a page
-   * with no repository on github.com gets nothing.
+   * its item (`data-path`); a page with no repository on github.com gets nothing.
    * @param {Document} doc
    */
   function sync(doc) {
@@ -169,16 +167,23 @@
     }
     // `branch_on_origin` rides in the context the server wrote, beside what the SDK keeps.
     const onOrigin = window.METABROWSER_REPOSITORY_CONTEXT?.branch_on_origin === true;
-    const { ref, note } = pageRef(context, onOrigin, header.dataset.ref);
-    const url = pageUrl(context, header.dataset.path ?? "", {
+    const { ref, note } = pageRef(context, onOrigin);
+    const path = header.dataset.path ?? "";
+    const item = {
       folder: header.classList.contains("folder-header"),
       sourceKind: sdk?.sourceKind() ?? "filesystem",
       ref,
-    });
+    };
+    const url = pageUrl(context, path, item);
     if (url === null) {
       return null;
     }
-    const control = toggle(doc, url, note);
+    // The tooltip writes a commit short; the link keeps it whole.
+    const shown =
+      ref === context.revision
+        ? pageUrl(context, path, { ...item, ref: ref.slice(0, SHORT_COMMIT) })
+        : url;
+    const control = toggle(doc, url, note, shown ?? url);
     end.append(control);
     return control;
   }

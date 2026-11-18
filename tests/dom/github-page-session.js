@@ -230,6 +230,7 @@ for (const [name, context] of Object.entries(recorded)) {
 // The links, as written: at the branch origin has, or at the commit where origin has no
 // branch of the page's, which the tooltip says.
 const linkOf = (name, item) => transcript.find((entry) => entry.context === name).urls[item];
+const tipOf = (name) => transcript.find((entry) => entry.context === name).toggle.options[1].tip;
 check(
   "a pushed branch links at the branch",
   linkOf("github-https", "(root)") === "https://github.com/octo/demo/tree/main" &&
@@ -237,15 +238,25 @@ check(
       "https://github.com/octo/demo/blob/main/docs/guide.md",
 );
 check(
+  "a pushed branch with a slash in its name links at it, a segment for each part",
+  linkOf("github-feature-pushed", "docs/guide.md") ===
+    "https://github.com/octo/demo/blob/feature/x/docs/guide.md",
+);
+check(
   "an unpushed branch links at the commit, under the served subfolder",
   linkOf("github-subfolder-unpushed", "docs") ===
     "https://github.com/octo/demo/tree/0123456789abcdef0123456789abcdef01234567/docs/docs",
 );
+// The tooltip says what the last fetch saw, and writes the commit short so the item's
+// path is in it; the link keeps the whole commit.
 check(
-  "an unpushed branch says so",
-  / is not pushed, /.test(
-    transcript.find((entry) => entry.context === "github-subfolder-unpushed").toggle.options[1].tip,
-  ),
+  "an unpushed branch says origin had none at the last fetch, with the commit short",
+  tipOf("github-subfolder-unpushed") ===
+    "View on GitHub: github.com/octo/demo/tree/0123456789ab/docs. origin had no feature/x at your last fetch, so this commit may not be on github.com either",
+);
+check(
+  "a detached checkout's tooltip writes its commit short",
+  tipOf("github-ssh-detached") === "View on GitHub: github.com/octo/demo/tree/0123456789ab",
 );
 check(
   "a mirror's branch is the origin's",

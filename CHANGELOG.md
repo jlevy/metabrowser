@@ -8,7 +8,7 @@ All notable changes to Metabrowser are documented here.
   folder’s header ends in a small toggle of two marks: Metabrowser’s, gray, the view the
   page is in, and GitHub’s, a link to the same item’s page on github.com: at the branch
   the page is on when `origin` has it, or else at its commit, with a tooltip that says
-  the branch is not pushed.
+  `origin` had no such branch at your last fetch.
   A narrow pane shows the GitHub mark alone.
   A browser opens it in a new tab, since github.com cannot be framed, and the macOS app
   in the default browser.

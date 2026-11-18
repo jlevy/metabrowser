@@ -4016,7 +4016,6 @@ declare global {
       pageRef(
         context: MetabrowserRepositoryContext,
         onOrigin: boolean,
-        viewRef?: string,
       ): { ref: string; note: string };
       pageUrl(
         context: MetabrowserRepositoryContext | null,
@@ -4024,7 +4023,7 @@ declare global {
         item: { folder: boolean; sourceKind: string; ref: string },
       ): string | null;
       sync(doc: Document): HTMLElement | null;
-      toggle(doc: Document, url: string, note?: string): HTMLElement;
+      toggle(doc: Document, url: string, note?: string, shown?: string): HTMLElement;
     }>;
     /** static/mirror-heading.js, which only a served mirror's page carries. */
     MetabrowserMirrorHeading?: Readonly<{

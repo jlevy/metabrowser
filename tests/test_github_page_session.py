@@ -12,7 +12,8 @@ remote and takes only github.com, and ``repository_context_for`` for a served mi
 which asks the installed providers, the GitHub provider through the GitHub URL reducer's
 grammar (``parse_repository_url``). This records those functions' answers for checkouts
 whose origin is github.com over HTTPS and over SSH, served whole and from a subfolder, on
-a branch and detached; for origins on GitLab and on a GitHub Enterprise host; for a
+``main`` and on ``feature/x`` where origin has the branch, on ``feature/x`` where it does not,
+and detached; for origins on GitLab and on a GitHub Enterprise host; for a
 repository with no remote; for a plain folder; and for mirrors of a github.com
 repository and of a ``file://`` one. ``tests/fixtures/github-page-shell.json`` holds the
 record, which ``tests/dom/github-page-session.js`` replays and
@@ -42,6 +43,12 @@ _REVISION = "0123456789abcdef0123456789abcdef01234567"
 # served from; and whether origin has its branch (`refs/remotes/origin/<branch>`).
 _CHECKOUTS: dict[str, tuple[str | None, str, str, bool]] = {
     "github-https": ("https://github.com/octo/demo.git", "ref: refs/heads/main", "", True),
+    "github-feature-pushed": (
+        "https://github.com/octo/demo.git",
+        "ref: refs/heads/feature/x",
+        "",
+        True,
+    ),
     "github-ssh-detached": ("git@github.com:octo/demo.git", _REVISION, "", False),
     "github-subfolder-unpushed": (
         "https://github.com/octo/demo",
@@ -70,10 +77,11 @@ def _checkout(
     git = root / ".git"
     (git / "refs" / "heads" / "feature").mkdir(parents=True)
     if on_origin:
-        (git / "refs" / "remotes" / "origin").mkdir(parents=True)
-        (git / "refs" / "remotes" / "origin" / "main").write_text(
-            f"{_REVISION}\n", encoding="utf-8"
-        )
+        (git / "refs" / "remotes" / "origin" / "feature").mkdir(parents=True)
+        for branch in ("main", "feature/x"):
+            (git / "refs" / "remotes" / "origin" / branch).write_text(
+                f"{_REVISION}\n", encoding="utf-8"
+            )
     config = "[core]\n\trepositoryformatversion = 0\n"
     if origin is not None:
         config += f'[remote "origin"]\n\turl = {origin}\n'
@@ -142,6 +150,7 @@ def test_the_session_shows_the_toggle_only_for_a_repository_on_github() -> None:
     assert shown == {name for name, context in recorded.items() if context is not None}
     assert shown == {
         "github-https",
+        "github-feature-pushed",
         "github-ssh-detached",
         "github-subfolder-unpushed",
         "mirror-github",

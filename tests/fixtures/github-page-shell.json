@@ -8,6 +8,15 @@
     "revision": "0123456789abcdef0123456789abcdef01234567",
     "served_prefix": ""
   },
+  "github-feature-pushed": {
+    "branch": "feature/x",
+    "branch_on_origin": true,
+    "host": "github.com",
+    "name": "demo",
+    "owner": "octo",
+    "revision": "0123456789abcdef0123456789abcdef01234567",
+    "served_prefix": ""
+  },
   "github-ssh-detached": {
     "branch": null,
     "branch_on_origin": false,

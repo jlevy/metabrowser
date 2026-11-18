@@ -121,8 +121,9 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
     marks, the gray Metabrowser mark pressed and the GitHub mark.
     Click the GitHub mark: the default browser opens `README.md` on github.com at the
     branch, and the app’s window still shows Metabrowser’s view.
-    On a branch that is not pushed, the GitHub mark’s tooltip says so, and the link
-    opens the commit. A folder with no GitHub remote shows no toggle.
+    On a branch that `origin` did not have at your last fetch, the GitHub mark’s tooltip
+    says so, and the link opens the commit.
+    A folder with no GitHub remote shows no toggle.
 
 ## Print and Drops
 
