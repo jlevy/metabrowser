@@ -5,7 +5,7 @@ title: "Coordinate landing the open PRs, Fast CI Phases 1-2, plan currency and 0
 kind: epic
 status: in_progress
 priority: 1
-version: 23
+version: 27
 delegate: claude-code@vm
 labels: []
 dependencies: []
@@ -29,10 +29,11 @@ child_order_hints:
   - is-01m7p8e0d30md4n29d9q7r5taw
   - is-01m7p8hjk6jd7ckmr0fnjmpqca
   - is-01m7p8sr3qvsj1e11zadq5vt0d
+  - is-01m7p9mbrvcda53samf39e6xq0
 hold: null
 hold_until: null
 created_at: 2026-11-17T03:38:38.720Z
-updated_at: 2026-11-18T03:00:09.583Z
+updated_at: 2026-11-18T03:01:41.004Z
 started_at: 2026-11-17T03:38:54.763Z
 ---
 
@@ -55,3 +56,6 @@ MERGE QUEUE (each after main's newest ci.yml run is green, per AGENTS.md; never 
 OTHER LANES: Local build review owns #527 #539 #540 #541 #542 and Open URL (mb-m4mg).
 OWNER DECISIONS 2026-11-18: recents file in config dir (~/.config/metabrowser/recent-targets.json); no route for recents yet (CLI only). Help bar narrow: drop items from end. Legend hover: all visible bars, darker/wider, eased, gentle shimmer (own tokens, akin to progress), also on the legend entry and its color; treemap gets same legend+behavior. Mode indicator icons: mirror = GitHub mark (+cloud if clean), folder = folder icon (mb-wup3).
 OWNER TODO: add the ci-ok ruleset (mb-m4ct); quit and reopen the app to load the rebuilt server.
+UPDATE: #536 head is now d59be9d2845c8fba0fbcdbc4d4cda6e04d063461 (golden regenerated, dispositions marker moved); #532 unchanged at 5e740dc9e.
+UPDATE: drawn-from-disk chain new heads: #528 b25a0566a1a404d433519df88b29d3534bb8840d, #530 5b6d509ec2cced11210f4ea982a246494535ad84, #533 a4fbad00fa9a1b7d03f827531058bae0b5e0c26f (merges only; reviews unchanged; dispositions updated). Local build review recorded the six recents binding points on mb-m4mg/mb-87j0 and will drop #539's Open Recent exclusion.
+UPDATE: owner wants configs in YAML with a short format string (mf01...), bead mb-3x6y; recents (mb-40k4) must follow it: YAML file + format string.
