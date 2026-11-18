@@ -68,13 +68,17 @@ It links each document below and the contributor standards in `docs/`.
 - [View on branch](specs/active/plan-2026-11-17-view-on-branch.md): one control on a
   pull request’s Changes that opens a changed file at the pull request’s head in the
   main UI, replacing the standalone revision page; approved 2026-11-17
-- [Object data model, views, and view state](specs/active/plan-2026-11-14-object-data-model-and-views.md):
+- [Object data model and views](specs/active/plan-2026-11-14-object-data-model-and-views.md):
   a draft for one modeled object per file, folder, commit, and pull request, drawn in
-  several view shapes, and a view state an agent can read and ask to change; its key
-  decisions are open
+  several view shapes; the parent of the five plans below, with some of its key
+  decisions taken and the rest under the owner’s review
+- [View model and view state](specs/active/plan-2026-11-18-view-model-and-view-state.md):
+  a view state each viewer publishes, by reference to those objects, that an agent can
+  read and ask to change with a `show` intent; a draft
 - [Implementation map for objects, views, and view state](specs/active/plan-2026-11-18-object-model-implementation-map.md):
-  the object model plan as stacks of pull requests, with safe groundwork first and a
-  checkout’s uncommitted changes as the first object type; a draft
+  the object model, view model, and Recent tab plans as stacks of pull requests, with
+  safe groundwork first and a checkout’s uncommitted changes as the first object type; a
+  draft
 - [Plugin authoring for objects, views, and view state](specs/active/plan-2026-11-18-plugin-authoring-objects-views.md):
   what a plugin’s manifest, JavaScript, and Python declare for object types, views,
   collections, and view state parts; a draft

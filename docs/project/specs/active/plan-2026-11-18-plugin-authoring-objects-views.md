@@ -4,17 +4,24 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Draft. A companion to
-[Object Data Model, Views, and View State](plan-2026-11-14-object-data-model-and-views.md),
-called the parent plan below.
-Every decision in both documents is open, and nothing here is built.
-It is written against the parent plan’s recommendations, at `main` `a1100bca6`, and says
-where a choice depends on one.
+**Status:** Draft, and nothing here is built.
+A companion to
+[Object Data Model and Views](plan-2026-11-14-object-data-model-and-views.md), called
+the parent plan below, and to
+[View Model and View State](plan-2026-11-18-view-model-and-view-state.md), the view
+model plan, which holds the view state and its Phase 4. Every decision here, PS-1 to
+PS-7, is open, at its recommendation.
+Of the decisions this document rests on, the owner took the parent plan’s Decisions 1 to
+8, 10, 12, 19, 20, and 22 and the view model plan’s VM-8 on 2026-11-18; the parent
+plan’s Decisions 9, 11, 13 to 18, 21, and 23 are accepted at their recommendations and
+under the owner’s review; and the other VM decisions are open.
+Written against `main` at `a1100bca6`, and it says where a choice depends on a decision
+that is not taken.
 
 ## Overview
 
-The parent plan gives each thing Metabrowser shows one object model, several views of
-it, and a view state an agent can read and set.
+The parent plan gives each thing Metabrowser shows one object model and several views of
+it, and the view model plan gives each viewer a view state an agent can read and set.
 This document is that design as a plugin author meets it: what `manifest.toml` declares,
 what `index.js` registers, what the plugin’s Python ships, and which tests hold the
 three together.
@@ -97,16 +104,23 @@ does, and `metab --doctor` names both.
 | `params` | list of strings | The query parameters that select a list; `after` is the cursor | It names `after` |
 | `parent` | string | The type a collection sits on; its reference then carries `parent`, that object’s reference | The type is undeclared |
 
-**`[[collection_source]]`** joins a core mixed collection, Recent Changes first.
+**`[[collection_source]]`** joins a core mixed collection.
+The first is `recent`, the Recent tab’s list, and
+[The Recent Tab](plan-2026-11-18-recent-tab-updates-and-events.md#updates-and-events)
+defines what a source answers: changes, not objects.
 
 | Key | Type | Meaning | Refused at load when |
 | --- | --- | --- | --- |
 | `collection` | string, required | The core collection joined | It admits no sources |
-| `type` | string, required | The type this source answers | This plugin does not own it |
-| `route` | string, required | A GET data hook answering that type’s newest objects before a cursor, from memory or cache alone | This plugin has no such `[[data_hook]]` |
+| `type` | string, required | The type of the subjects this source’s changes name | This plugin does not own it |
+| `route` | string, required | A GET data hook answering this source’s changes in time order, each `{subject, at, kind}`, from memory or cache alone | This plugin has no such `[[data_hook]]` |
+
+A source also declares each `kind` it answers as clumping or standalone.
+The key for that is not designed yet ([Open Questions](#open-questions)).
 
 **`[[view.part]]`**, nested under a `[[view]]`, declares a part of that page which a
-view state reports and `show` may set: an entry of the parent plan’s `pane.parts` facet.
+view state reports and `show` may set: an entry of the view model plan’s `pane.parts`
+facet ([The View State](plan-2026-11-18-view-model-and-view-state.md#the-view-state)).
 
 | Key | Type | Meaning | Refused at load when |
 | --- | --- | --- | --- |
@@ -499,13 +513,14 @@ A plugin’s own contract carries its own version.
 
 ### Migrating the Built-In Plugins
 
-The phases are the parent plan’s. Core types are declared by `objects/registry.py`, not
-a manifest, and the shell registers their sources through its internal seam.
+Phases 1 to 3 are the parent plan’s, and Phase 4 is the view model plan’s. Core types
+are declared by `objects/registry.py`, not a manifest, and the shell registers their
+sources through its internal seam.
 
 | Phase | `github` | `folder` | `diff` |
 | --- | --- | --- | --- |
-| 1 | `[[object_type]]` for the pull request, with `changes` among its `facets`; `[[collection]]` `pulls`; a `wide-row` view; `registerCollection` from the Pulls controller, and a `load` over the `pull-files-summary` lane. Under Decision 22 D the blocks wait for Phase 2, the registrations do not, and the check of one against the other starts with the blocks | Nothing | Nothing |
-| 2 | A `card`; the comment types, each with a `[[collection]]` whose `parent` is the pull request; `[[collection_source]]` routes for Recent Changes | `wide-row` views of the core `file` and `folder` types; the Files and Recent Changes tabs, each a `[[view]]` that mounts a list | Nothing |
+| 1 | `[[object_type]]` for the pull request, with `changes` among its `facets`; `[[collection]]` `pulls`; a `wide-row` view; `registerCollection` from the Pulls controller, and a `load` over the `pull-files-summary` lane. By the parent plan’s Decision 22 D the blocks wait for Phase 2, the registrations do not, and the check of one against the other starts with the blocks | Nothing | Nothing |
+| 2 | A `card`; a `[[collection_source]]` for the Recent tab, in that plan’s R3; the comment types once a comment is listed outside its pull request, each with a `[[collection]]` whose `parent` is the pull request | `wide-row` views of the core `file` and `folder` types; the Files tab, a `[[view]]` that mounts a list | Nothing |
 | 3 | A `nav-row` view as the Pulls panel moves to the list host; `pull` becomes the type’s `route` | A `nav-row` view of `file` and `folder` in place of the tree’s two builders | If its rows converge: a `changed-file` type, its `nav-row` view, and a `[[collection]]` |
 | 4 | `[[view.part]]` `tab`, with the page’s three tabs as its `values`, and the page’s `describe` | Parts for Overview and Treemap, where a control is worth setting | `[[view.part]]` `layout`, with `values`, and `diff-summary`, with their `describe` |
 
@@ -516,7 +531,7 @@ None is resolved.
 
 ### Decision PS-1: Where Structure Is Declared
 
-**Needed for:** Phase 1; Phase 2 under Decision 22 D.
+**Needed for:** Phase 2, where the parent plan’s Decision 22 D puts the manifest blocks.
 
 - **A. The manifest declares every structure,** facets and parts included, and
   JavaScript supplies functions only.
@@ -544,8 +559,8 @@ None is resolved.
 
 - **A. A data-hook route.** `--api` reaches it, a golden pins it, and #380’s worker
   hooks cover it with no new call.
-- **B. A sidekick callable,** as the parent plan sketches: a second Python registration
-  surface, which that plan’s Decision 15 declines for a dispatcher.
+- **B. A sidekick callable:** a second Python registration surface, which that plan’s
+  Decision 15 declines for a dispatcher.
 
 **Recommendation: A.**
 
@@ -589,7 +604,7 @@ An agent session’s address is its file’s, and one address parses to one type
 
 ### Decision PS-7: One Validation Path
 
-**Needed for:** Phase 1; Phase 2 under Decision 22 D.
+**Needed for:** Phase 2, where the parent plan’s Decision 22 D puts the manifest blocks.
 
 - **A. The packaged schema validates every plugin’s type,** and `model` serves the drift
   check alone.
@@ -610,7 +625,7 @@ projection’s tests.
   Does a plugin type declare whether the served root, the served revision, or a
   repository scopes it?
 - **Parts of an embedded view.** The pull request page mounts the diff view, and the
-  parent plan’s example reports the diff’s `layout` under that page.
+  view model plan’s example reports the diff’s `layout` under that page.
   Does the host page declare an embedded view’s parts, or inherit them?
 - **Sections.** A section has a `describe` of its own in the parent plan.
   Whether and where it is declared waits for the stack headings in Phase 3.
@@ -618,9 +633,16 @@ projection’s tests.
   binding test and the describe session need Node.
 - **A container’s children.** A container kind could declare them as a `[[collection]]`
   whose `parent` is the file, which would answer the parent plan’s question.
+- **A source’s kinds.** The Recent tab plan has each source declare its kinds as
+  clumping or standalone.
+  Which `[[collection_source]]` key carries them waits for that plan’s R3.
 
 ## References
 
+- [Object Data Model and Views](plan-2026-11-14-object-data-model-and-views.md), the
+  parent plan;
+  [View Model and View State](plan-2026-11-18-view-model-and-view-state.md); and
+  [The Recent Tab](plan-2026-11-18-recent-tab-updates-and-events.md)
 - [Plugin Authoring](../../../plugins.md),
   [Plugin System](../../architecture/arch-plugin-system.md), and
   [AGENTS.md](../../../../AGENTS.md#cli-and-functional-ui-parity)

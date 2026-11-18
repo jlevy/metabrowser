@@ -5,28 +5,33 @@
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
 **Status:** Draft. It maps
-[Object Data Model, Views, and View State](plan-2026-11-14-object-data-model-and-views.md)
-onto stacks of pull requests, in the order the owner asked for on 2026-11-18: safe
-groundwork first, a checkout’s uncommitted changes as the first object type, then the
-larger surfaces. Where a decision is open the map follows the parent plan’s
-recommendation and marks each place another choice would change it **(if …)**.
+[Object Data Model and Views](plan-2026-11-14-object-data-model-and-views.md), the
+parent plan below, and its companions
+[View Model and View State](plan-2026-11-18-view-model-and-view-state.md) and
+[The Recent Tab](plan-2026-11-18-recent-tab-updates-and-events.md), onto stacks of pull
+requests. The order is the one the owner asked for on 2026-11-18: safe groundwork first,
+a checkout’s uncommitted changes as the first object type, then the larger surfaces.
+[Decisions This Map Assumes](#decisions-this-map-assumes) gives the standing of each
+decision it rests on: the parent plan’s Decisions 1 to 8, 10, 12, 19, 20, and 22 and the
+view model plan’s VM-8 are taken, and the rest are accepted under review or open.
+Where a decision is not taken the map follows its recommendation and marks each place
+another choice would change it **(if …)**.
 
 ## Decisions This Map Assumes
 
-| Standing | Decisions |
-| --- | --- |
-| Taken 2026-11-18 | 1 and 31: SoftSchema contracts for objects and UI state. 5: `pull-request` everywhere, with `--present`’s kind and `SelectionKind` renamed with the macOS app in one commit, `repository` and `tree` to `folder`, `blob` to `file`. 8: UTC strings at second precision. 2, 3, 4, 6, 9, 10, 11, 13 to 18, 21, 23: the recommendations. 19: a main tab named Recent, designed by a companion plan, with the uncommitted changes as an object |
-| Open, mapped at the recommendation | 7 A, 12 C, 20 A, 22 D (the contract half after several types exist; which type comes first is [Orderings](#orderings)’ question), 24 A, 25 B, 26 C, 27 A, 28 A, 29 B, 30 A, 32 A, 33 A |
+Numbered decisions are the parent plan’s, and VM decisions the view model plan’s.
 
-- **(if Decision 22 A)** C2 and C3 move ahead of P6 and T1.3 gains its contract at once,
-  so the contract tables arrive with the first type.
-- **(if Decision 12 A or B)** T0.8 shares the header by its classes, T1.5 and P6 restate
-  it, and X1 redoes it.
+| Standing, as of 2026-11-18 | Decisions |
+| --- | --- |
+| Taken by the owner on 2026-11-18 | 1 and VM-8: SoftSchema contracts for objects and UI state. 2 A, 3 A, 4 A, 6 A, 7 A, and 10 A. 5: `pull-request` everywhere, with `--present`’s kind and `SelectionKind` renamed with the macOS app in one commit, `repository` and `tree` to `folder`, `blob` to `file`, and a separate field that keeps a repository’s root apart from a named tree. 8: UTC strings at second precision. 12: the host frame, with the header through an SDK frame that mb-7t5s builds. 19 C: a main tab named Recent, designed in the Recent tab plan, with option B’s address kept as `/recent`. 20: no SDK bump for an addition, and #380’s versioning rule if #380 is accepted. 22 D: the contract half after several types exist; which type comes first is [Orderings](#orderings)’ question |
+| Accepted at the recommendation, under the owner’s review | 9, 11, 13 to 18, 21, and 23, each at A |
+| Open, mapped at the recommendation | VM-1 A, VM-2 B, VM-3 C, VM-5 A (VM-4 is folded into it), VM-6 B, VM-7 A, VM-9 A, and VM-10 A; the Recent tab plan’s RT-1 to RT-7; the plugin authoring plan’s PS-1 to PS-7; the agent interface plan’s AI-1 to AI-6 |
+
 - **(if #380 is accepted)** C3 is a patch bump with an `sdk-changes.toml` entry.
-- **(if Decision 33 B)** V4 has no applier and V5 keeps `confirmed: false`; **(if C)**
-  the V stack waits for P5.
-- **(if Decision 28 B)** V3’s `control` capability defaults to off; **(if 24 C)** V4 has
-  no publisher.
+- **(if Decision VM-10 B)** V4 has no applier; **(if C)** the V stack waits for P5.
+- **(if Decision VM-5 B)** V3’s `control` setting defaults to off; **(if VM-1 C)** V4
+  has no publisher.
+- **(if RT-3 B)** T1.5 keeps the git plan’s `/status/<scope>/<entry-id>` address.
 
 ## The Working Tree Today
 
@@ -53,11 +58,13 @@ Paths are under `src/metabrowser/` unless they start with `docs/`, `tests/`,
 - **A chooser row.** Since #559 a checkout’s ref chooser offers “Working tree” as the
   served revision (`source_routes.py:261`); it shows files, not changes.
 
-What the object adds to that design: a type and an identity (the served checkout, one
-per server); a summary carrying the shared change-totals sub-object; its entries as
-`changed-file` references naming their parent; one manifest of every entry, hydrated per
-file, for a whole-tree page; and an `href` and `parse`, so `--show`, `--present`, and a
-view state name it.
+What the object adds to that design, as the Recent tab plan’s
+[Working-Tree Changes](plan-2026-11-18-recent-tab-updates-and-events.md#working-tree-changes)
+defines it: a type, `working-tree-changes`, and one identity for each served root, the
+`id` `working-tree`; a summary carrying the shared change-totals sub-object; its entries
+as `changed-file` references naming it as their parent; one manifest of every entry,
+hydrated per file, for a whole-tree page; and an `href` and `parse`, so `--show`,
+`--present`, and a view state name it.
 
 ## Orderings
 
@@ -87,7 +94,7 @@ Names and shared definitions, with no behavior change except T0.8’s requested 
 | T0.2 `feat(objects): one definition each for a reference, a collection reference, an actor, change totals, and a time` | New `objects/`, Pydantic models not yet registered: `Reference{type, id, parent?}`, the collection reference `{name, params, parent?}`, shape names, `Actor`, `ChangeTotals` with nullable counts, `statuses`, and `short`, the UTC-second time; projections from `ChangeSums`, `FilesSummaryWire`, `GitCommitStats`, and diff `Totals`; `static/types.d.ts`. No wire change | Every producer projects losslessly; importing `objects` loads no schema library | M |
 | T0.3 `feat(cli): --show names the object an address selects` | `href` and `parse` per type with a page, over `view_routes.py` and `cli/selection_href.py:16`; an `object:` line | `cli-show.tryscript.md`; Python and JavaScript codecs agree over `navigation.route-identity` | S |
 | T0.4 `refactor(github): derive a pull request’s four states once` | One helper for `github/pull_catalog.py:640`, `github/pulls.py:1239`, `cli/show_cli.py:248`; one table `displayState` is tested against | Goldens unchanged | S |
-| T0.5 `refactor(git): the log answers rows and next_after, as other collections do` | `git/wire.py:207-208`; `cursor` to `after`; `static/git-panel.js`; a test of Decision 3’s keys across list routes. Times stay epoch seconds until C1 | Goldens differ only in key names | M |
+| T0.5 `refactor(git): the log answers rows and next_after, as other collections do` | `git/wire.py:207-208`; `cursor` to `after`; `static/git-panel.js`; the golden normalizer’s cursor paths (`normalize.py:39`), which must still mask the log’s session token and leave a pull list’s `next_after`; a test of Decision 3’s keys across list routes. Times stay epoch seconds until C1 | Goldens differ only in key names | M |
 | T0.6 `refactor(github): the change-line lane lives with the pulls controller` | `createRowLines` moves from the panel’s mount (`github/pulls-panel.js:5028`) into `createPullsController`, still wanting nothing while hidden (`:4541-4547`) | `github.pulls-row-lines` byte for byte; Pulls-tab pairs | S |
 | T0.7 `refactor(devtools): check each contract registry against its own document` | `devtools/check_artifact_contracts.py` from one pair (`:10`, `:19`) to a list | Fails on drift in either position | S |
 | T0.8 mb-7t5s `feat(shell): pull requests and commits on the view header, through an SDK frame` | A frame in #550’s on-demand `view-header` bundle; the pull request and commit pages onto it; the bead’s notes A2, A6, A11 | `test_git_commit_summary_is_one_component`; header pairs; the bead’s Chrome rhythm measurement | L |
@@ -98,24 +105,30 @@ Names and shared definitions, with no behavior change except T0.8’s requested 
 | --- | --- | --- | --- |
 | T1.1 mb-r5gn `bench(git): a dirty-tree corpus and the status measurement gate` | Corpus, benchmark, record with committed protocol; the git plan’s three open decisions | The constants T1.2 and T1.4 use | M |
 | T1.2 mb-u4mf, mb-y06t `feat(git): read the working tree’s status as GET /api/git/status` | `git/status.py`, the Git 2.36 gate, generations, `git/wire.py` types | `--api` goldens of every dirty state; the index untouched | L |
-| T1.3 `feat(objects): a checkout’s uncommitted changes as an object` | The type (named by the companion plan), keyed by the checkout; summary `head`, counts by scope, `changes`, `updated_at`; entries as `changed-file` references; added to T0.3’s table; absent on a pin, a mirror, a plain folder | Projection over every T1.2 golden | M |
+| T1.3 `feat(objects): a checkout’s uncommitted changes as an object` | The type `working-tree-changes`, with the one `id` `working-tree` for a served root, to the Recent tab plan’s definition: summary `head`, `generation`, `clean`, `truncated`, and `counts`; the `changes` facet; `updated_at`; entries as `changed-file` references naming it as `parent`; its object route; added to T0.3’s table; absent on a pin, a mirror, a plain folder | Projection over every T1.2 golden | M |
 | T1.4 mb-u4mf `feat(diff): the working tree in File Diff Format, whole and per entry` | `diff/adapters/working_tree.py`; one manifest hydrated per file; the `working-tree` hook; `metab --diff` accepts the working tree | Schema and apply oracle; `--diff` goldens; T1.1’s constants | L |
-| T1.5 `feat(git): a page for the working tree’s changes` | Its address in the URL grammar and the map; the page under T0.8’s frame, drawn by the diff plugin’s multi-file view and Diff summary | Browserless mount session; first paint against a commit page of the same change set | L |
+| T1.5 `feat(git): a page for the working tree’s changes` | Its address, `/status` and `/status/<path>` under the Recent tab plan’s RT-3 A, in the URL grammar and the map; the page under T0.8’s frame, drawn by the diff plugin’s multi-file view and Diff summary | Browserless mount session; first paint against a commit page of the same change set | L |
 | T1.6 mb-vibn `feat(git): Changes above History in the Commits tab, kept live` | The git plan’s Phase 2, with groups drawn by the shared `changed-files-tree` (**if the owner agrees**) rather than a fifth hand-built row collection | The git plan’s acceptance; History’s first page not later | L |
 
 ### Stack V: The View Slice
 
-The parent plan’s Phase 4 first step: what each tab shows, and `show` with an object or
-an address. It needs T0.1 to T0.3 and T0.7, and runs beside Tier 1.
+The first step of
+[Phase 4](plan-2026-11-18-view-model-and-view-state.md#phase-4-the-view-model) in the
+view model plan: what each tab shows, and `show` with an object or an address.
+It needs T0.1 to T0.3 and T0.7, and runs beside Tier 1. “Slice” below means a step of
+delivery; a surface’s part of a view state is a facet.
 
 | PR | Changes | Proves | Size |
 | --- | --- | --- | --- |
 | V1 `bench(ui): what a view-state publish and a pinned page’s stream cost in Chrome and WebKit` | A record from a prototype kept on the measurement branch | Requests per settled change; connections with three tabs; `MAX_VIEWERS`, `MAX_VIEW_STATE_BYTES`, the debounce | M |
-| V2 `feat(ui): ViewState, Intent, and Outcome as the metabrowser.ui contracts` | `ui/` with T0.2’s reference; `data/ui-format/`; the family registry; T0.7’s second pair; `arch-view-model.md` | Drift, corpus, round trip, source and wheel | M |
-| V3 `feat(ui): a viewer registry, GET /api/ui/views, and POST /api/ui/intents` | In-memory registry with V1’s caps; origin proof; `control` (`capabilities.py:69`); the stream’s `ui` scope on every subject (`events_route.py:773`) | `--api` goldens for every refusal; serving loads no schema library | M |
-| V4 `feat(shell): each tab publishes what it shows and applies show` | Deferred `static/ui-state.js`: slices, publisher, `openAddress`, applier, notice, `sessionStorage` viewer | `tests/dom/ui-view-state-session.js`; the notice in headless Chrome | L |
-| V5 `feat(cli): --api --server, artifacts from --format yaml, and a confirmed --present` | `cli/api_cli.py` as a client; a `softschema:` header; `cli/present.py` sends `show` where it knows a server | `ui.viewer-order`, `ui.present-confirmation` against a harness server | M |
-| V6 `test(ui): --show and the page agree, and the parity check counts slices` | Agreement test; a `devtools/check_parity.py` rule | Both fail on a planted mismatch | S |
+| V2 `feat(ui): ViewState and Intent as the metabrowser.ui contracts` | `ui/` with T0.2’s reference; the two contracts, with the outcome left as the intents route’s internal envelope; `data/ui-format/`; the family registry; T0.7’s second pair; `arch-view-model.md` | Drift, corpus, round trip, source and wheel | M |
+| V3 `feat(ui): a viewer registry, /api/ui/viewers, and POST /api/ui/intents` | In-memory registry with V1’s caps; `GET` and `POST /api/ui/viewers`; origin proof; the `control` setting, held in `ui/` outside `Capabilities`, with `--ui-control`; the event stream’s `?viewer=<id>`, served for every subject, with `ui` events alone where the subject has no `watcher` capability (`events_route.py:773`) | `--api` goldens for every refusal a server gives without a page; serving loads no schema library | M |
+| V4 `feat(shell): each tab publishes what it shows and applies show` | Deferred `static/ui-state.js`: the summary’s `describe` functions, publisher, `openAddress`, applier, notice, `sessionStorage` viewer | `tests/dom/ui-view-state-session.js`; the notice in headless Chrome | L |
+| V5 `feat(cli): --api --server, and artifacts from --format yaml` | `cli/api_cli.py` as a client; a `softschema:` header. `--present` does not change: every change to it waits on the live-server registry, mb-5xi4 | `ui.viewer-order` against a harness server | M |
+| V6 `test(ui): --show and the page agree, and the parity check counts facets` | Agreement test; a `devtools/check_parity.py` coverage rule over facets | Both fail on a planted mismatch | S |
+
+A later V slice, after mb-5xi4, adds `--live` and `--present`’s `show`, its confirmed
+report, and the `ui.present-confirmation` row.
 
 ### Stack P: The Pull Requests Page
 
@@ -146,8 +159,12 @@ together); C3
 `feat(folder): a Files view of a folder’s children` (M; key `I`; #520’s retry state if
 landed); C5 `feat(shell): a commit’s card and a pull request’s card` (M).
 
-**R, the Recent tab,** is the companion plan’s. It needs T1.3, P3, P5, C2, and C5, and
-C3 for a plugin’s source; each source lands on its own measurement.
+**R, the Recent tab,** is the Recent tab plan’s, in its four phases.
+R1, the recent slice, needs the shared definitions (T0.2, T0.3), the store (P3), and the
+list host (P5). R2, working-tree changes, needs Tier 1 from T1.2 to T1.5. R3, the GitHub
+tier, needs C3 for a plugin’s source.
+R4, which includes `/recent` as a page of cards, needs C5. Each source lands on its own
+measurement.
 
 **X, convergence,** lands item by item behind pairs against the code each replaces, and
 any item may be declined: X1, the pull request page reads the object; X2, Pulls rows as
@@ -162,23 +179,26 @@ T0.1 ─► T0.2 ─► T0.3 ────────┴─► T1.3 ─► T1.4 
           │       └─► V1 … V6                     ▲
           └─► P1 … P6 ◄─────────────────────┐     │
 #550, #552 ─► T0.8 mb-7t5s ─────────────────┴─────┘
-P3 ─► C1 ─► C2 (after P6, T1.3) ─► C3 · C1 ─► C4, C5 ─► R ─► X1 … X5
+P3 ─► C1 ─► C2 (after P6, T1.3) ─► C3 ─► R3 · C1 ─► C4, C5 ─► R4
+T0.3, P3, P5 ─► R1 · T1.5 ─► R2
 ```
 
-Within those lines, V2 also needs T0.7, P2 needs T0.4, and P4 needs T0.6. Outside work:
-T0.5 waits for #577, C1 for #507, C4 for #520, and C3 for #380. T0.1 to T0.7 and T1.1
-run in parallel, and T1.2 follows T1.1 while T0.2 and T0.3 land; V and P share only Tier
-0 with Tier 1 and run beside it; P3 can start beside P2, and P5 beside P4.
+Within those lines, V2 also needs T0.7, P2 needs T0.4, and P4 needs T0.6. X1 to X5
+follow the stacks named for each under [Beads to Create](#beads-to-create).
+Outside work: T0.5 waits for #577, C1 for #507, C4 for #520, and C3 for #380. T0.1 to
+T0.7 and T1.1 run in parallel, and T1.2 follows T1.1 while T0.2 and T0.3 land; V and P
+share only Tier 0 with Tier 1 and run beside it; P3 can start beside P2, and P5 beside
+P4.
 
 ## External Dependencies
 
 | Work | Status, 2026-11-18 | Bears on |
 | --- | --- | --- |
-| #550, #552 | Open, not drafts, `ci-ok` passing. The startup-script hold is resolved: the header’s builders moved to an on-demand `view-header` bundle | T0.8, then T1.5 and P6 |
+| #550, #552 | Merged on 2026-11-18. The header’s builders are in an on-demand `view-header` bundle | T0.8, then T1.5 and P6 |
 | mb-7t5s | Open, not started; #506, which it waited on, merged | Is T0.8 |
 | #380 | Open draft, awaiting the owner’s decisions | C3 |
-| mb-qzny, mb-5xi4 | Open; mb-qzny blocks mb-5xi4 and mb-1zyp | `--live` and app confirmation after V5; forged publishes |
-| mb-1zyp, mb-54r1, mb-idri | Open, each blocked (mb-qzny; mb-1zyp; mb-5xi4, mb-1zyp, mb-56nq) | Should carry V2’s `Intent` and `Outcome`, not a separate `navigate` |
+| mb-qzny, mb-5xi4 | Open; mb-qzny blocks mb-5xi4 and mb-1zyp | `--live` and every change to `--present`, in a V slice after V6; forged publishes |
+| mb-1zyp, mb-54r1, mb-idri | Open, each blocked (mb-qzny; mb-1zyp; mb-5xi4, mb-1zyp, mb-56nq) | Should carry V2’s `Intent` and the intents route’s outcome, not a separate `navigate` |
 | mb-5lgp | Open, P3, blocked by mb-idri | A later V slice |
 | #498, #501–#503, #507, #508, #518–#520 | Open drafts (the fdu stack) | C1, C4, Recent’s changed-files source |
 | #577 | Open; changes the Git routes and the Commits tab | T0.5 waits |
@@ -237,8 +257,8 @@ T1.4’s whole-tree half is the new T1.4b.
 | V2 | `metabrowser.ui` contracts | feature | P2 | T0.2, T0.7 |
 | V3 | Viewer registry and `/api/ui` routes | feature | P2 | V1, V2 |
 | V4 | Tabs publish view states and apply `show` | feature | P2 | V3, T0.3 |
-| V5 | `--api --server`, YAML artifacts, confirmed `--present` | feature | P2 | V4, T0.1 |
-| V6 | Agreement test and slice coverage rule | task | P2 | V4 |
+| V5 | `--api --server` and YAML artifacts | feature | P2 | V4 |
+| V6 | Agreement test and facet coverage rule | task | P2 | V4 |
 | P1 | `/pulls` scenario and control round | task | P2 | — |
 | P2 | Pulls rows carry the pull request object | task | P2 | P1, T0.2, T0.4 |
 | P3 | Object store in `sdk-views` | feature | P2 | T0.2 |
@@ -256,7 +276,7 @@ T1.4’s whole-tree half is the new T1.4b.
 | X4 | Commit row and summary as views | task | P3 | C1 |
 | X5 | One view for Files tree rows | task | P3 | C1 |
 
-Recent’s beads come from the companion plan.
+Recent’s beads come from the Recent tab plan.
 
 ## Risks and the Order That Limits Rework
 
@@ -267,8 +287,10 @@ Recent’s beads come from the companion plan.
    It raises the app’s floor while app pull requests #565, #566, #568, #571, and #575
    are open; land it between their merges.
 3. **The git plan predates the model.** Its flat rows, keys, and
-   `/status/<scope>/<entry-id>` address are settled with the companion plan before T1.5,
-   so the page and its Recent entry share one address.
+   `/status/<scope>/<entry-id>` address are settled with the Recent tab plan before
+   T1.5, so the page and its Recent entry share one address.
+   That plan’s open RT-3 recommends `/status` and `/status/<path>`, which changes the
+   git plan’s address.
 4. **The gate may say no.** If mb-r5gn cannot bound untracked status, Tier 1 returns to
    design while V and P continue.
 5. **A second `navigate`.** mb-1zyp and mb-54r1 would build a page-following path beside
@@ -276,7 +298,9 @@ Recent’s beads come from the companion plan.
 6. **The inventory contract under two hands.** Recent’s changed-files cursor is a
    provider requirement while #507 and #508 rewrite that contract.
 7. **Two Recents.** The tab’s name collides with the Files tab’s Recent view and Open
-   Recent, as Decision 19 warned; the companion plan renames one.
+   Recent, as Decision 19 warned.
+   The Recent tab plan’s open RT-6 recommends keeping the Files filter and retiring its
+   name.
 
 ## Done for Each Stack
 
@@ -294,8 +318,8 @@ Recent’s beads come from the companion plan.
   a CHANGELOG entry.
 - **C:** the contract and declarations tables, each with its check; Plugin Authoring; a
   CHANGELOG note for the manifest blocks.
-- **R and X:** the companion plan’s criteria; each X item landed or recorded as
-  declined. Then the parent plan and this map move to `specs/done`.
+- **R and X:** the Recent tab plan’s criteria; each X item landed or recorded as
+  declined. Then the parent plan, its companions, and this map move to `specs/done`.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

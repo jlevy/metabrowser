@@ -5,19 +5,25 @@
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
 **Status:** Draft. A design direction for review: every item under
-[Key Decisions](#key-decisions) is open, and nothing here is built.
+[Key Decisions](#key-decisions), AI-1 to AI-6, is open, and nothing here is built.
 It is written against
-[Object Data Model, Views, and View State](plan-2026-11-14-object-data-model-and-views.md),
-“the parent plan” below, as revised on 2026-11-18. The owner has taken the parent’s
-Decisions 1, 5, 8, and 31; the rest are open, so each choice here that rests on an open
-one names it. Written against `main` at `a1100bca6`.
+[View Model and View State](plan-2026-11-18-view-model-and-view-state.md), “the parent
+plan” below, and that plan’s own parent,
+[Object Data Model and Views](plan-2026-11-14-object-data-model-and-views.md), “the
+object model plan”. Of the decisions it rests on, the owner took the parent’s VM-8 and
+the object model plan’s Decisions 1 to 8, 10, 12, 19, 20, and 22 on 2026-11-18. The
+object model plan’s Decisions 9, 11, 13 to 18, 21, and 23 are accepted at their
+recommendations and under the owner’s review.
+The parent’s other VM decisions are open, so each choice here that rests on one names
+it. Written against `main` at `a1100bca6`.
 
 ## Overview
 
-The parent plan gives each object a contract and each viewer a **view state**, and lets
-an agent send a `show` **intent**. This document says how an agent uses them end to end:
-the command for each task, the YAML that comes back, how the agent finds a running
-server, and what bounds misuse.
+The object model plan gives each object a contract.
+The parent plan gives each viewer a **view state**, and lets an agent send a `show`
+**intent**. This document says how an agent uses them end to end: the command for each
+task, the YAML that comes back, how the agent finds a running server, and what bounds
+misuse.
 
 It adds one rule: an agent has one vocabulary.
 Every read is a registered route, every record is a contract’s, and every change is an
@@ -38,7 +44,8 @@ file or a pull request.
 
 ## Non-Goals
 
-- New contracts. `ViewState`, `Intent`, and the object contracts are the parent’s.
+- New contracts. `ViewState` and `Intent` are the parent’s, and the object contracts the
+  object model plan’s.
 - Telling one agent from another: host mode’s credential authenticates the user, not the
   agent (`docs/project/specs/active/plan-2026-11-10-native-macos-app.md:410`).
 
@@ -158,8 +165,8 @@ view_state:              # attention, served, and nav as above
 
 The answer is the intents route’s envelope, which the parent keeps internal, so it
 prints with no header.
-The parent’s example sends no `viewer`; the sessions here always send one
-([Open Questions](#open-questions)).
+The parent lets an intent name its `viewer` or go to `rows[0]`, and its example names
+none; the sessions here always send one ([Open Questions](#open-questions)).
 
 | To show | `show` carries |
 | --- | --- |
@@ -205,8 +212,8 @@ generation: "…"
 
 The list is read in the agent’s own process, from the cache the server reads.
 The view state gives `object.id`, and the row with that `id` is the reader’s. The rows
-are shown as the parent’s object slice makes them; until then the match is against a
-row’s integer `number`.
+are shown as the object model plan’s object slice makes them; until then the match is
+against a row’s integer `number`.
 
 **Follow what the reader does.**
 
@@ -246,11 +253,12 @@ process (`docs/project/research/research-2026-11-10-native-app-server-topology.m
 ### Output Forms
 
 - **A record prints as an artifact, and an envelope as plain YAML,** as the parent’s
-  [Reading](plan-2026-11-14-object-data-model-and-views.md#reading) section sets out:
-  the form `serialize_artifact` writes (`plugin_loader/artifact_contracts.py:479`) for
-  one contract record, and today’s `--format yaml` for a list and for an intent’s
-  answer. The command must know which routes answer a record of which contract; the
-  family’s registry is the place to say so, and the parent does not yet.
+  [Reading](plan-2026-11-18-view-model-and-view-state.md#reading) section sets out: the
+  form `serialize_artifact` writes (`plugin_loader/artifact_contracts.py:479`) for one
+  contract record, and today’s `--format yaml` for a list and for an intent’s answer.
+  The command must know which routes answer a record of which contract; the family’s
+  registry is the place to say so, which the parent keeps as an
+  [open question](plan-2026-11-18-view-model-and-view-state.md#open-questions).
 - **An artifact is read as one.** `--data` sends a file’s bytes today
   (`cli/api_cli.py:186`). A file that opens with a `softschema:` header is instead
   validated against the contract it names and sent as JSON.
@@ -276,14 +284,14 @@ not looking at.
 - A file’s route sends content, up to `_TEXT_PREVIEW_CHUNK_BYTES` by default
   (`server.py:3529`), so a recipe passes `limit` there too (`:3536`).
 - A pull request’s route answers the whole record; `--show /pull/<n>` sums it up, and
-  the parent’s facets are the bounded read once that route conforms.
+  the object model plan’s facets are the bounded read once that route conforms.
 
 ### Trust
 
 The case is an agent steered by text it read, such as a pull request’s body that says to
 open something. The parent’s
-[Writing](plan-2026-11-14-object-data-model-and-views.md#writing) section and its
-[Decision 28](plan-2026-11-14-object-data-model-and-views.md#decision-28-consent-and-trust)
+[Writing](plan-2026-11-18-view-model-and-view-state.md#writing) section and its
+[Decision VM-5](plan-2026-11-18-view-model-and-view-state.md#decision-vm-5-consent-and-trust)
 bound an intent: it names only an object or a parsed address of the served root, it
 admits no root, it runs no file’s scripts, it is announced, Back undoes it, and
 `--ui-control` sets it to `offer` or `off`.
@@ -416,8 +424,8 @@ viewer, and the intent’s verb is `show`.
 
 ### With the View Slice
 
-It needs the parent’s Decisions 24 to 33 and no bead, and it serves a caller that knows
-the server’s address.
+It needs the parent’s Decisions VM-1 to VM-10 and no bead, and it serves a caller that
+knows the server’s address.
 
 - [ ] `--server URL` as a client mode of `--api`: it imports no server, takes a loopback
   origin, follows no redirect, and prints the answer as served.
@@ -476,19 +484,23 @@ pull-request recipes to `tests/golden/cli-skill-recipes.tryscript.md`, and
   agent ask each server the registry lists?
 - **An intent’s `viewer`.** A generation belongs to one viewer, and an intent that names
   none goes to `rows[0]`, so `if_generation` alone can be compared with another viewer’s
-  count. Should `if_generation` require `viewer`?
+  count. Should `if_generation` require `viewer`? The parent, which owns `Intent`, keeps
+  the same [question](plan-2026-11-18-view-model-and-view-state.md#open-questions).
 - **A repository URL’s server.** It implies `--untrusted` (`cli/git_pin_cli.py:117`),
   where the parent’s default is `offer`. Does a show on the server a pull request URL
   opens wait on the reader by default?
+  The parent keeps this one too, since its Decision VM-5 sets that default.
 - **The adapter before the front door.** It needs the client mode and not `mb-idri`.
   Should the bead’s dependency loosen?
 
 ## References
 
-- [Object Data Model, Views, and View State](plan-2026-11-14-object-data-model-and-views.md):
-  [the view model](plan-2026-11-14-object-data-model-and-views.md#the-view-model), its
-  [Phase 4](plan-2026-11-14-object-data-model-and-views.md#phase-4-the-view-model), and
-  Decisions 24 to 33
+- [View Model and View State](plan-2026-11-18-view-model-and-view-state.md): its
+  [design](plan-2026-11-18-view-model-and-view-state.md#design), its
+  [Phase 4](plan-2026-11-18-view-model-and-view-state.md#phase-4-the-view-model), and
+  Decisions VM-1 to VM-10
+- [Object Data Model and Views](plan-2026-11-14-object-data-model-and-views.md), for the
+  objects, references, and collections a view state names
 - [Native macOS App](plan-2026-11-10-native-macos-app.md#phase-3-host-mode-the-registry-and-the-agent-front-door),
   Phase 3, and
   [the app and server topology research](../../research/research-2026-11-10-native-app-server-topology.md)

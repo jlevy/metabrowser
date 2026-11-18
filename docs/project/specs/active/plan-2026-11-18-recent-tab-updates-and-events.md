@@ -5,13 +5,15 @@
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
 **Status:** Draft. Nothing here is built.
-The owner’s decisions are under [Settled](#settled), and every item under
-[Key Decisions](#key-decisions) is open.
-Written against `main` at `a1100bca6`. This plan takes the Recent Changes surface over
-from
-[Object Data Model, Views, and View State](plan-2026-11-14-object-data-model-and-views.md),
-the parent plan below; [What This Plan Takes Over](#what-this-plan-takes-over) lists the
-parts.
+A companion to
+[Object Data Model and Views](plan-2026-11-14-object-data-model-and-views.md), the
+parent plan below, whose Decision 19 this plan answers and whose mixed list it designs;
+[What This Plan Takes Over](#what-this-plan-takes-over) lists the parts.
+The owner took the parent plan’s Decisions 1 to 8, 10, 12, 19, 20, and 22 on 2026-11-18,
+and its Decisions 9, 11, 13 to 18, 21, and 23 are accepted at their recommendations and
+under the owner’s review; [Settled](#settled) says which of them this plan rests on.
+Every item under [Key Decisions](#key-decisions), RT-1 to RT-7, is open, at its
+recommendation. Written against `main` at `a1100bca6`.
 
 ## Overview
 
@@ -36,25 +38,35 @@ change totals, and a diff.
 
 ## Settled
 
-The owner decided these, and this plan does not reopen them:
+The owner decided these on 2026-11-18, and this plan does not reopen them:
 
-- **Recent is a main navigation tab,** which answers the parent plan’s Decision 19 as
-  its option C.
+- **Recent is a main navigation tab,** which answers the parent plan’s
+  [Decision 19](plan-2026-11-14-object-data-model-and-views.md#decision-19-where-recent-changes-lives)
+  as its option C. Option B’s address survives as `/recent`.
 - **It is one surface with three tiers,** keyed on what the served root is.
-- **Mixed lists are composed on the server,** the parent plan’s Decision 18 A.
 - **The parent plan’s forms apply:** SoftSchema contracts, `pull-request` as that type’s
   one spelling, and UTC strings at second precision.
 
+One more is accepted at its recommendation and under the owner’s review, so this plan
+designs on it without treating it as final:
+
+- **Mixed lists are composed on the server,** the parent plan’s
+  [Decision 18](plan-2026-11-14-object-data-model-and-views.md#decision-18-composing-a-mixed-list)
+  A.
+
 ## What This Plan Takes Over
 
-| In the parent plan | Becomes |
+The parent plan keeps the general rules, and this plan owns what is particular to the
+Recent tab.
+
+| In the parent plan | Here |
 | --- | --- |
-| The Overview’s “Recent Changes page” | The Recent tab. The page of cards survives as `/recent`, the tab’s list address, in R4 |
-| [Mixed Lists](plan-2026-11-14-object-data-model-and-views.md#mixed-lists): the Recent Changes paragraphs and the source table | [Tiers and Sources](#tiers-and-sources) and [Clumping](#clumping). The parent keeps the rule that a collection may hold several types |
-| Decision 18 | Settled as A; the tiers here replace its “first version covers” sentence |
-| Decision 19 | Settled as C. Option B’s address survives as `/recent`; option A is dropped, and folder scope is an [open question](#open-questions) |
-| Phase 2’s Recent Changes items: the sources, `GET /api/recent-changes`, `[[collection_source]]`, the page, and `R` as a folder view’s key; the open question on source costs | [Phases R1 to R4](#implementation-plan) and [Open Questions](#open-questions). `R` is the tab’s letter |
-| Phase 2’s cards and comment types | Not forced by this surface: cards serve the `/recent` page in R4, and an update counts comments without listing them |
+| Its Overview’s third motivating surface | The Recent tab. A page of cards survives as `/recent`, the tab’s list address, in R4 |
+| [Mixed Lists](plan-2026-11-14-object-data-model-and-views.md#mixed-lists): a collection may hold several types, in one total order, paged by a cursor | The sources, what each can answer today, and their coverage ([Tiers and Sources](#tiers-and-sources)); how changes form rows ([Clumping](#clumping)) |
+| Decision 18, composing a mixed list on the server | Which sources the first version covers, and each one’s cost |
+| Decision 19, decided as C | The tab’s design. Option A is dropped, and folder scope is an [open question](#open-questions) |
+| Phase 2, the core types and the folder page | The Recent phases, [R1 to R4](#implementation-plan): the sources, the routes, `[[collection_source]]`, and the page. `R` is the tab’s letter, so no folder view takes it |
+| Phase 2’s cards, and the comment types of its Extension Path | Not forced by this surface: cards serve the `/recent` page in R4, and an update counts comments without listing them |
 
 The rest of the parent plan is used as it stands.
 
@@ -104,8 +116,9 @@ A tier is the set of sources that apply, so each tier is the one before plus sou
 - **The tab is about the root, not the view.** The `commits` source walks the history’s
   `all` scope, every branch and tag (`resolve_history_scope`, `git/history.py:317`). The
   default scope of a revision is its own ancestors alone (`git/history.py:303`).
-- **Core registers four sources, and the GitHub plugin its own,** through the parent
-  plan’s `[[collection_source]]` block.
+- **Core registers four sources, and the GitHub plugin its own,** through the
+  `[[collection_source]]` block that the plugin authoring plan specifies
+  ([Manifest Blocks](plan-2026-11-18-plugin-authoring-objects-views.md#manifest-blocks)).
 - **Coverage is said.** The answer names every registered source with a state: `ready`,
   `pending`, `stale`, `failed`, or `unsupported` for one that applies to the root and
   not to the view, and with `covers_since`, the time before which it lists nothing.
@@ -113,7 +126,7 @@ A tier is the set of sources that apply, so each tier is the one before plus sou
   there: “File changes before 09:14 are not listed.”
   An empty tab names the sources it asked.
 
-No source answers a time-ordered cursor today, as the parent plan found.
+No source answers a time-ordered cursor today.
 Each has a first read that needs little, and a cost to measure before it pages.
 Two costs are recorded: the browser’s for a full `/api/recent` answer
 (`settings.py:196`) and a first log page’s (`git/ref_state.py:5`).
@@ -335,9 +348,11 @@ rows:
   These are where a reference to each type leads.
 - **The CLI.** `--api` reaches them, and no mode is added: `--recent` is the recent
   targets’ (`cli/main.py:659`).
-- **View state.** `nav.tab` is `recent`, `nav.current` is the row’s reference, an
-  `update` or an `event`, and `nav.list` names `{name: recent, params: {}}`. `object`
-  stays what the address selects: the commit or the pull request.
+- **View state.** In the view model plan’s
+  [view state](plan-2026-11-18-view-model-and-view-state.md#the-view-state), `nav.tab`
+  is `recent`, `nav.current` is the row’s reference, an `update` or an `event`, and
+  `nav.list` names `{name: recent, params: {}}`. `object` stays what the address
+  selects: the commit or the pull request.
 - **Intents.** `show` with an `update` or an `event` opens its `href` with Recent in
   front and that row current.
   `show` with the subject itself is unchanged, and reveals it in its own tab.
@@ -466,8 +481,9 @@ from R2.**
 
 **Needed for:** R1, before anything else.
 
-- **A. The recent slice: tier 1 and commits, on the list host,** after the parent plan’s
-  object slice. The tab is the host’s first navigation panel and its first mixed list.
+- **A. The recent slice: tier 1 and commits, on the list host,** after the store and the
+  list host of the parent plan’s object slice.
+  The tab is the host’s first navigation panel and its first mixed list.
 - **B. A panel built by hand, before the list host.** Sooner, and one more
   implementation of row mechanics for the parent plan’s Phase 3 to replace.
 - **C. Wait for the status plan,** and ship tier 2 whole.
@@ -536,7 +552,11 @@ first read; the tab’s `nav.list` facet; `/compare/` for a pushed range.
 
 ## References
 
-- [Object Data Model, Views, and View State](plan-2026-11-14-object-data-model-and-views.md),
+- [Object Data Model and Views](plan-2026-11-14-object-data-model-and-views.md), the
+  parent plan;
+  [View Model and View State](plan-2026-11-18-view-model-and-view-state.md);
+  [Plugin Authoring for Objects, Views, and View State](plan-2026-11-18-plugin-authoring-objects-views.md);
+  the [implementation map](plan-2026-11-18-object-model-implementation-map.md);
   [Git Status and Working-Tree Diffs](plan-2026-08-26-git-status-and-working-tree-diffs.md),
   and the [nav filter plan](../done/plan-2026-08-09-nav-filter-controls.md)
 - [Open Modes](../../architecture/arch-open-modes.md),
