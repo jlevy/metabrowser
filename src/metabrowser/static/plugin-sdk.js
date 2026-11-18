@@ -1346,13 +1346,15 @@
   // Wire KPress's TOC for a freshly mounted document and return its disposer.
   // KPress's toc.js owns the behavior; the host's only jobs are to mark a scroll
   // element [data-kpress-viewport] (the preview pane) and call this on mount /
-  // dispose on unmount. Returns null if toc.js has not loaded yet.
-  function kpressInitToc(container) {
+  // dispose on unmount. Returns null if toc.js has not loaded yet. *config* is
+  // KPress's own per-binding configuration, such as the toggle's `visible` policy
+  // the Markdown plugin supplies (builtin_plugins/markdown/toc-toggle.js).
+  function kpressInitToc(container, config) {
     if (typeof _kpressInitTocFn !== "function" || !container) {
       return null;
     }
     try {
-      return _kpressInitTocFn(container);
+      return _kpressInitTocFn(container, config);
     } catch (err) {
       if (global.console?.warn) {
         global.console.warn("metabrowser: kpress toc init failed", err);

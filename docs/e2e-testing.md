@@ -359,6 +359,8 @@ Strict mode is off on a developer machine, which can add these:
   reads the face documents and chrome prose are drawn in under each reading font and
   font set; `tests/test_raw_profile_cache_chrome.py`, which follows a `/raw` answer
   Chrome kept under the trusted profile after the folder is served `--untrusted`;
+  `tests/test_overview_readme_toc_chrome.py`, which measures a folder Overview’s README
+  table of contents against the same README opened as a file;
   `tests/test_diff_markdown_fold_chrome.py`, which measures a rendered Markdown diff’s
   fold of unchanged blocks closed, open, and under the pointer, and its quote and code
   against a document’s in the light and the dark theme;
