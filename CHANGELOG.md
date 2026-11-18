@@ -4,6 +4,8 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+New entries live in [`changelog.d/`](changelog.d/README.md) until a release adds them.
+
 - On a checkout of a repository on github.com, or a mirror of one, a file’s or a
   folder’s header ends in a small toggle of two marks: Metabrowser’s, gray, the view the
   page is in, and GitHub’s, a link to the same item’s page on github.com: at the branch
