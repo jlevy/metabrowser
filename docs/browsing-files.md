@@ -127,8 +127,10 @@ Plugins add views for other formats ([plugin authoring](plugins.md)).
 The Document view renders Markdown with KPress: headings with a table of contents,
 tables, footnotes, highlighted code, math, images, and YAML frontmatter, which shows as
 a closed **Frontmatter** disclosure.
-The Print button at the end of the file’s header prints the document without the rest of
-the page.
+When the window is wide enough to show the document as a card, a print button at the
+card’s top right prints the document without the rest of the page, and the README on a
+folder’s Overview has the same button.
+Command-P, or Control-P outside macOS, prints whichever view is shown, at any width.
 
 Links resolve the way GitHub resolves them:
 

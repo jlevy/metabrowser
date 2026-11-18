@@ -106,6 +106,12 @@ In the macOS app it is View > Reload Page, which also restarts a folder whose se
 failed. The app’s other keys are the ones its menus show, which
 [the app guide](macos-app.md) describes.
 
+Command-P (Control-P elsewhere) prints the view shown, as the browser’s Print, and in
+the macOS app it is File > Print.
+A rendered Markdown document, opened as a file or as the README on a folder’s Overview,
+also has a print button at its top right when the window is wide enough to show the
+document as a card, and it prints the same way.
+
 ## For Plugin Authors
 
 A plugin’s view tabs and controls take keys under the same rules.
