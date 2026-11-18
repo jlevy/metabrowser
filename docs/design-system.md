@@ -426,16 +426,19 @@ segment. In a view header narrower than the container query on `.view-header` in
 already is, is left out and the GitHub mark kept, so the title keeps the row.
 Every page opens in the Metabrowser view, and a page opened next opens in it too.
 github.com refuses to be shown in a frame, so a browser cannot show the GitHub view in
-the page: its mark opens the page in a new tab, as View on GitHub does, and the macOS
-app hands it to the default browser.
-Each mark has its name for a screen reader and its tooltip, and the GitHub mark is a
-link in the tab order.
-The toggle appears exactly where the Pulls tab does: on a checkout whose `origin` is on
-github.com and on a mirror of a repository there, from the repository context the server
-writes into the page (`static/github-page.js`, which the server writes inline into those
-pages only). A plain folder, a checkout whose `origin` is on another host or that has
-none, and a mirror of a repository elsewhere have no toggle and no slot held for one:
-nothing in the row is placed by it.
+the page: its mark opens the page in a new tab, as View on GitHub does.
+The link is marked `data-view-toggle="github"`, and the macOS app shows a plain click on
+it in the window’s own GitHub view, under a native bar that draws this toggle again with
+GitHub pressed
+([The GitHub View](project/architecture/arch-macos-app.md#the-github-view)). Each mark
+has its name for a screen reader and its tooltip, and the GitHub mark is a link in the
+tab order. The toggle appears exactly where the Pulls tab does: on a checkout whose
+`origin` is on github.com and on a mirror of a repository there, from the repository
+context the server writes into the page (`static/github-page.js`, which the server
+writes inline into those pages only).
+A plain folder, a checkout whose `origin` is on another host or that has none, and a
+mirror of a repository elsewhere have no toggle and no slot held for one: nothing in the
+row is placed by it.
 The folder-or-mirror indicator is a separate mark, not a third segment of the toggle;
 where it goes is not decided yet.
 

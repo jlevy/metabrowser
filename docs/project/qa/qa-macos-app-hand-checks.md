@@ -145,8 +145,9 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
 11. **The GitHub toggle.** Open a checkout of a repository on github.com whose branch is
     pushed, such as this repository, and open `README.md`. The view header ends in two
     marks, the gray Metabrowser mark pressed and the GitHub mark.
-    Click the GitHub mark: the default browser opens `README.md` on github.com at the
-    branch, and the app’s window still shows Metabrowser’s view.
+    Click the GitHub mark: the window shows `README.md` on github.com at the branch, in
+    its GitHub view ([The GitHub View](#the-github-view) checks it further), and a
+    Command-click on the mark opens the page in the default browser instead.
     On a branch that `origin` did not have at your last fetch, the GitHub mark’s tooltip
     says so, and the link opens the commit.
     A folder with no GitHub remote shows no toggle.
@@ -298,6 +299,58 @@ What the panel decides is unit-tested in `OpenURLPanelTests`, and against the re
     `$REPO/blob/main/README`, then U+3164 HANGUL FILLER pasted from a character viewer,
     then `.md`, shows a reason that names U+3164 and `%E3%85%A4` under the field, and no
     window opens.
+
+## The GitHub View
+
+With the development build open on a checkout of this repository on a pushed branch,
+`README.md` shown, and `APP_ID` and `REPO` set as in [GitHub Links](#github-links).
+Start signed out: choose Metabrowser > Clear GitHub Data… and Clear.
+
+1. **To GitHub and back.** Scroll `README.md` halfway, then click the view header’s
+   GitHub mark. The window shows `README.md` on github.com below one thin bar, with no
+   background heavier than the window’s; at its right the toggle, GitHub pressed, sits
+   where the page’s toggle sat, and at its left a gray line names
+   `github.com/jlevy/metabrowser/blob/BRANCH/README.md`. Click the bar’s Metabrowser
+   mark: the page is back at once, at the same scroll position, and the server log shows
+   no new request for it.
+   Option-Command-G shows the github.com page again as it was, and again shows the page.
+2. **The GitHub view keeps its place.** In the GitHub view, follow a link to `docs/` on
+   github.com, switch to Metabrowser with Option-Command-G and back: the GitHub view is
+   still at `docs/`, and View > Back returns to `README.md` there.
+   Then, in the Metabrowser view, open `CHANGELOG.md` and click the GitHub mark: the
+   GitHub view shows `CHANGELOG.md`, and Back goes to the github.com page before it.
+3. **The menus.** In the GitHub view, View reads Show Metabrowser View; Command-R
+   reloads the github.com page, Command-F finds on it, Command-+ zooms it, and
+   Shift-Command-O opens it in the default browser.
+   In the Metabrowser view the item reads Show GitHub View.
+   In a folder with no GitHub remote, Option-Command-G beeps and nothing changes.
+4. **Links from the GitHub view.** On github.com, a link in the README to another site
+   opens in the default browser, and the GitHub view stays where it was.
+   Command-click on a github.com link opens it in the default browser.
+   A file’s Raw button shows the raw file in the view, on raw.githubusercontent.com.
+5. **Only the toggle.** With the window showing its GitHub view,
+   `open -b "$APP_ID" "$REPO/blob/main/README.md"` brings the window forward in the
+   Metabrowser view, at that page.
+   A github.com link in a Markdown page, which is not the toggle, opens in the default
+   browser.
+6. **Sign in once.** In a GitHub view, sign in to github.com with a password and the
+   two-factor code. Open a second folder of a repository on github.com as a tab, and a
+   third in a window of its own (Settings > Open folders in), and choose GitHub in each:
+   both are signed in. Quit Metabrowser, open it again, open `README.md`, and choose
+   GitHub: still signed in.
+   The default browser’s own sign-in did not change.
+   Note whether a passkey or a security key is offered and works, and what an
+   organization’s single sign-on does; neither is checked yet.
+7. **Clear GitHub Data.** Metabrowser > Clear GitHub Data… asks first, with Cancel the
+   default: Return keeps the sign-in.
+   Clear reloads every GitHub view, signed out, in every window.
+   Metabrowser’s own settings, such as its theme, are unchanged, and so is
+   `gh auth status`.
+8. **The Metabrowser view first.** Quit while a window shows its GitHub view, and open
+   the app again: the window comes back in the Metabrowser view.
+   With six repository tabs in one window, show the GitHub view in the first, then
+   select each of the others: once the first gives up its page (Files, Tabs, Recents,
+   and Restore check 4), selecting it shows the Metabrowser view, reloaded.
 
 ## Print and Drops
 

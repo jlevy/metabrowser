@@ -220,7 +220,10 @@ for (const [name, context] of Object.entries(recorded)) {
       there.element === "a" && there.current === null,
     );
     // The macOS app shows its GitHub view for this link alone (GitHubViewRequests.swift).
-    check(`${name} ${each.path}: the GitHub link is marked as the toggle`, there.viewToggle === "github");
+    check(
+      `${name} ${each.path}: the GitHub link is marked as the toggle`,
+      there.viewToggle === "github",
+    );
   }
   transcript.push({
     context: name,
