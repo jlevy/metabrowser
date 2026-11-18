@@ -146,9 +146,10 @@ _MAX_ANSWER_FRAME: Final = 256 * 1024 * 1024
 # about 2 s under heavier load); it is given far longer before it counts as failed.
 _START_TIMEOUT_S = 30.0
 # A projection answers within its budgets in well under a second: the slowest Markdown
-# input measured inside every budget took 222-268 ms, and the slowest structured shapes
-# are recorded beside the budgets in ``structured_projection.py``. A child that has not
-# answered after this is stopped.
+# input measured inside every budget took 222-268 ms, front matter adds at most what
+# ``markdown_projection._FRONTMATTER_MAX_NODES`` records, and the slowest structured
+# shapes, recorded beside the budgets in ``structured_projection.py``, take about as long
+# as the slowest Markdown input. A child that has not answered after this is stopped.
 _PROJECTION_TIMEOUT_S = 10.0
 # The longest one untrusted document's render may run in the child before the child is
 # stopped and the document refused. Measured 2026-11-17 on an Apple M1 Pro
@@ -534,8 +535,12 @@ def _warm() -> None:
     """Import and exercise both jobs once, as the child's first work."""
 
     from metabrowser.diff.markdown_projection import warm_markdown_projection
+    from metabrowser.diff.structured_projection import warm_structured_projection
 
     warm_markdown_projection()
+    # The YAML loader and json5 cost the first file that reads them 26-29 ms otherwise
+    # (mb-8274 review C9).
+    warm_structured_projection()
     _render(
         _encode_render(
             InertRender(
@@ -840,6 +845,22 @@ class ProjectionWorker:
 
         if self._starting is not None:
             await asyncio.shield(self._starting)
+        return self.ready
+
+    async def settle(self) -> bool:
+        """Wait for a start in progress, at most as long as an inert render waits for one
+        (:data:`_START_WAIT_S`); whether the child is now ready.
+
+        A request no reader waits on, a page's prefetch, waits here, so its projection
+        runs in the child under :data:`_PROJECTION_TIMEOUT_S` rather than in a thread that
+        nothing stops (mb-8274 review C2: the first screen's four files were answered from
+        threads by 150-207 ms, and the child was ready at 312-488 ms).
+        """
+
+        if self._starting is not None:
+            with contextlib.suppress(TimeoutError):
+                async with asyncio.timeout(_START_WAIT_S):
+                    await asyncio.shield(self._starting)
         return self.ready
 
     def _bind(self, loop: asyncio.AbstractEventLoop) -> _ChildLock:

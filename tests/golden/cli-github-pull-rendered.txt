@@ -247,7 +247,7 @@ status: 200
   "verified_by": "fetch",
   "head_moved": false,
   "checks_pending": false,
-  "record_revision": "907a9fba2555b389dadb489232fb9d883139751d8b6121181a54bad474a376f4",
+  "record_revision": "c0dc60698ee7cbe343bc9cc630a2f97feeb22130eda57bd1f5e448aac5c1e05e",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -256,9 +256,9 @@ status: 200
     "reset_at": null,
     "at": "2026-09-17T12:00:00Z"
   },
-  "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=3f5fe3712ddc6f790885dda70c87ee4838ee1bc9&base_policy=merge_base&build=<BUILD>&store=<STORE>",
-  "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=3f5fe3712ddc6f790885dda70c87ee4838ee1bc9&store=<STORE>",
-  "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=3f5fe3712ddc6f790885dda70c87ee4838ee1bc9&store=<STORE>",
+  "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&base_policy=merge_base&build=<BUILD>&store=<STORE>",
+  "image_route": "/api/plugin/github/pull-image?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>",
+  "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>",
   "record": {
     "schema_version": 2,
     "projection_version": 2,
@@ -267,12 +267,12 @@ status: 200
     "fetched_at": "2026-09-17T12:00:00Z",
     "reader": "gh:octo-reader",
     "etags": {
-      "repos/octo/demo/pulls/7": "W/\"13c0a949509184bce44362201f47540fbf4181b24a38fe5fb1ce6e566830eae3\"",
+      "repos/octo/demo/pulls/7": "W/\"ac5748e8c12100da9b0dee4f0402d6bceef2981ea1500b3ed499fca777e0105d\"",
       "repos/octo/demo/issues/7/comments?per_page=100&page=1": "W/\"129ba5d41c7ad9dc46b0ecc3d92124b83747ed95e5ff5422603eb05b99399608\"",
       "repos/octo/demo/pulls/7/reviews?per_page=100&page=1": "W/\"553dbffc68c21141af1083cb13e8be39e4138e90d4011da721d679e7853c5e9d\"",
       "repos/octo/demo/pulls/7/comments?per_page=100&page=1": "W/\"b4ca741eae91bcff3445421bd4f16ee7b2ae05d25fa979346f04a378ee3bd6cc\"",
-      "repos/octo/demo/commits/3f5fe3712ddc6f790885dda70c87ee4838ee1bc9/check-runs?per_page=100&page=1": "W/\"c08bbf2711f464b926b03d63d0934449f73b83fa5288f1bfabc6bf48efabdbde\"",
-      "repos/octo/demo/commits/3f5fe3712ddc6f790885dda70c87ee4838ee1bc9/status?per_page=100&page=1": "W/\"7d188292812f79d991dfaf98488af1adc4801e50f3fcfd52ff88bc09a96ba296\""
+      "repos/octo/demo/commits/cb2e4e60f719120be29fa824b982dbe353fcc5c9/check-runs?per_page=100&page=1": "W/\"b247185d54abafe771a6f55f38f05d412c62ba3ca54a03847a4164c78ef5775e\"",
+      "repos/octo/demo/commits/cb2e4e60f719120be29fa824b982dbe353fcc5c9/status?per_page=100&page=1": "W/\"7107c137f6be055fe7bfbcb61218bc43651416eaba25e53d06c44b3b1ba7e92a\""
     },
     "pull": {
       "number": 7,
@@ -302,12 +302,12 @@ status: 200
       "closed_at": null,
       "base": {
         "ref": "topic",
-        "sha": "07b55f07793d9ed4e9f3e130c4414d979137bc53",
+        "sha": "682a9d4dd9f8e3e1862309efe389980fff0d2a2c",
         "repository": "octo/demo"
       },
       "head": {
         "ref": "count-to-two",
-        "sha": "3f5fe3712ddc6f790885dda70c87ee4838ee1bc9",
+        "sha": "cb2e4e60f719120be29fa824b982dbe353fcc5c9",
         "repository": "forker/demo"
       },
       "html_url": "<PATH>/pull/7"
@@ -395,9 +395,9 @@ status: 200
       "statuses": []
     },
     "comparison": {
-      "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
-      "head": "3f5fe3712ddc6f790885dda70c87ee4838ee1bc9",
-      "base_commit": "c691256511d05858850bc7684ae062fea0d41132",
+      "base": "97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5",
+      "head": "cb2e4e60f719120be29fa824b982dbe353fcc5c9",
+      "base_commit": "682a9d4dd9f8e3e1862309efe389980fff0d2a2c",
       "base_from": "base_branch"
     },
     "truncated": {
@@ -421,16 +421,16 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
 gh auth status
 gh api repos/octo/demo/pulls/7 (If-None-Match)
-gh api repos/octo/demo/commits/3f5fe3712ddc6f790885dda70c87ee4838ee1bc9/check-runs?per_page=100&page=1
-gh api repos/octo/demo/commits/3f5fe3712ddc6f790885dda70c87ee4838ee1bc9/status?per_page=100&page=1
+gh api repos/octo/demo/commits/cb2e4e60f719120be29fa824b982dbe353fcc5c9/check-runs?per_page=100&page=1
+gh api repos/octo/demo/commits/cb2e4e60f719120be29fa824b982dbe353fcc5c9/status?per_page=100&page=1
 gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
 gh auth status
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=3f5fe3712ddc6f790885dda70c87ee4838ee1bc9&store=<STORE>&file=f6'
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>&file=f10'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=3f5fe3712ddc6f790885dda70c87ee4838ee1bc9&store=<STORE>&file=f6
+api: /api/plugin/github/pull-rendered-diff?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>&file=f10
 status: 200
 {
   "version": "markdown-diff-v1",
@@ -578,13 +578,13 @@ status: 200
 }
 --- stderr ---
 selection: pull_request
-pin: 3f5fe3712ddc6f790885dda70c87ee4838ee1bc9 (pull request 7 head)
+pin: cb2e4e60f719120be29fa824b982dbe353fcc5c9 (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=3f5fe3712ddc6f790885dda70c87ee4838ee1bc9&store=<STORE>&file=f7'
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>&file=f11'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=3f5fe3712ddc6f790885dda70c87ee4838ee1bc9&store=<STORE>&file=f7
+api: /api/plugin/github/pull-rendered-diff?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>&file=f11
 status: 200
 {
   "version": "markdown-diff-v1",
@@ -726,13 +726,13 @@ status: 200
 }
 --- stderr ---
 selection: pull_request
-pin: 3f5fe3712ddc6f790885dda70c87ee4838ee1bc9 (pull request 7 head)
+pin: cb2e4e60f719120be29fa824b982dbe353fcc5c9 (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=3f5fe3712ddc6f790885dda70c87ee4838ee1bc9&store=<STORE>&file=f1'
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>&file=f1'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=3f5fe3712ddc6f790885dda70c87ee4838ee1bc9&store=<STORE>&file=f1
+api: /api/plugin/github/pull-rendered-diff?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>&file=f1
 status: 200
 {
   "version": "markdown-diff-v1",
@@ -742,13 +742,13 @@ status: 200
 }
 --- stderr ---
 selection: pull_request
-pin: 3f5fe3712ddc6f790885dda70c87ee4838ee1bc9 (pull request 7 head)
+pin: cb2e4e60f719120be29fa824b982dbe353fcc5c9 (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=3f5fe3712ddc6f790885dda70c87ee4838ee1bc9&store=<STORE>&file=f5'
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>&file=f9'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=3f5fe3712ddc6f790885dda70c87ee4838ee1bc9&store=<STORE>&file=f5
+api: /api/plugin/github/pull-rendered-diff?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>&file=f9
 status: 200
 {
   "version": "markdown-diff-v1",
@@ -758,13 +758,13 @@ status: 200
 }
 --- stderr ---
 selection: pull_request
-pin: 3f5fe3712ddc6f790885dda70c87ee4838ee1bc9 (pull request 7 head)
+pin: cb2e4e60f719120be29fa824b982dbe353fcc5c9 (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=3f5fe3712ddc6f790885dda70c87ee4838ee1bc9&store=<STORE>&file=f8'
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>&file=f12'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=3f5fe3712ddc6f790885dda70c87ee4838ee1bc9&store=<STORE>&file=f8
+api: /api/plugin/github/pull-rendered-diff?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>&file=f12
 status: 200
 {
   "version": "markdown-diff-v1",
@@ -921,13 +921,13 @@ status: 200
 }
 --- stderr ---
 selection: pull_request
-pin: 3f5fe3712ddc6f790885dda70c87ee4838ee1bc9 (pull request 7 head)
+pin: cb2e4e60f719120be29fa824b982dbe353fcc5c9 (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=3f5fe3712ddc6f790885dda70c87ee4838ee1bc9&store=<STORE>&file=f3'
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>&file=f3'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=3f5fe3712ddc6f790885dda70c87ee4838ee1bc9&store=<STORE>&file=f3
+api: /api/plugin/github/pull-rendered-diff?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>&file=f3
 status: 200
 {
   "version": "structured-diff-v1",
@@ -935,31 +935,64 @@ status: 200
   "format": "yaml",
   "root": [
     {
-      "change": "added",
-      "value": {
-        "name": "demo",
-        "services": {
-          "web": {
-            "ports": [
-              80,
-              443
-            ]
-          }
+      "change": "modified",
+      "type": "map",
+      "entries": [
+        {
+          "change": "context",
+          "value": "demo",
+          "key": "name"
+        },
+        {
+          "change": "modified",
+          "type": "map",
+          "entries": [
+            {
+              "change": "modified",
+              "type": "map",
+              "entries": [
+                {
+                  "change": "modified",
+                  "type": "list",
+                  "entries": [
+                    {
+                      "change": "context",
+                      "value": 80
+                    },
+                    {
+                      "change": "added",
+                      "value": 443
+                    }
+                  ],
+                  "key": "ports"
+                }
+              ],
+              "key": "web"
+            },
+            {
+              "change": "removed",
+              "value": {
+                "image": "pg"
+              },
+              "key": "db"
+            }
+          ],
+          "key": "services"
         }
-      }
+      ]
     }
   ],
   "source_only": false
 }
 --- stderr ---
 selection: pull_request
-pin: 3f5fe3712ddc6f790885dda70c87ee4838ee1bc9 (pull request 7 head)
+pin: cb2e4e60f719120be29fa824b982dbe353fcc5c9 (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=3f5fe3712ddc6f790885dda70c87ee4838ee1bc9&store=<STORE>&file=f2'
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>&file=f2'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=3f5fe3712ddc6f790885dda70c87ee4838ee1bc9&store=<STORE>&file=f2
+api: /api/plugin/github/pull-rendered-diff?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>&file=f2
 status: 200
 {
   "version": "structured-diff-v1",
@@ -967,24 +1000,99 @@ status: 200
   "format": "json",
   "root": [
     {
-      "change": "added",
-      "value": {
-        "name": "demo",
-        "debug": false
-      }
+      "change": "modified",
+      "type": "map",
+      "entries": [
+        {
+          "change": "context",
+          "value": "demo",
+          "key": "name"
+        },
+        {
+          "change": "removed",
+          "value": true,
+          "key": "debug"
+        },
+        {
+          "change": "added",
+          "value": false,
+          "key": "debug"
+        },
+        {
+          "change": "removed",
+          "value": 1,
+          "key": "level"
+        }
+      ]
     }
   ],
   "source_only": false
 }
 --- stderr ---
 selection: pull_request
-pin: 3f5fe3712ddc6f790885dda70c87ee4838ee1bc9 (pull request 7 head)
+pin: cb2e4e60f719120be29fa824b982dbe353fcc5c9 (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=3f5fe3712ddc6f790885dda70c87ee4838ee1bc9&store=<STORE>&file=f4'
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>&file=f5'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=3f5fe3712ddc6f790885dda70c87ee4838ee1bc9&store=<STORE>&file=f4
+api: /api/plugin/github/pull-rendered-diff?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>&file=f5
+status: 200
+{
+  "version": "structured-diff-v1",
+  "status": "ready",
+  "format": "yaml",
+  "root": [
+    {
+      "change": "context",
+      "value": {
+        "retries": 3
+      }
+    }
+  ],
+  "source_only": true
+}
+--- stderr ---
+selection: pull_request
+pin: cb2e4e60f719120be29fa824b982dbe353fcc5c9 (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- gh ---
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>&file=f8'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-rendered-diff?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>&file=f8
+status: 200
+{
+  "version": "structured-diff-v1",
+  "status": "too_large",
+  "root": [],
+  "source_only": false
+}
+--- stderr ---
+selection: pull_request
+pin: cb2e4e60f719120be29fa824b982dbe353fcc5c9 (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- gh ---
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>&file=f6'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-rendered-diff?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>&file=f6
+status: 200
+{
+  "version": "structured-diff-v1",
+  "status": "too_large",
+  "root": [],
+  "source_only": false
+}
+--- stderr ---
+selection: pull_request
+pin: cb2e4e60f719120be29fa824b982dbe353fcc5c9 (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- gh ---
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>&file=f4'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-rendered-diff?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>&file=f4
 status: 200
 {
   "version": "structured-diff-v1",
@@ -994,13 +1102,13 @@ status: 200
 }
 --- stderr ---
 selection: pull_request
-pin: 3f5fe3712ddc6f790885dda70c87ee4838ee1bc9 (pull request 7 head)
+pin: cb2e4e60f719120be29fa824b982dbe353fcc5c9 (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=3f5fe3712ddc6f790885dda70c87ee4838ee1bc9&store=<STORE>&file=f9'
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>&file=f13'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=3f5fe3712ddc6f790885dda70c87ee4838ee1bc9&store=<STORE>&file=f9
+api: /api/plugin/github/pull-rendered-diff?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>&file=f13
 status: 200
 {
   "version": "markdown-diff-v1",
@@ -1010,13 +1118,13 @@ status: 200
 }
 --- stderr ---
 selection: pull_request
-pin: 3f5fe3712ddc6f790885dda70c87ee4838ee1bc9 (pull request 7 head)
+pin: cb2e4e60f719120be29fa824b982dbe353fcc5c9 (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=3f5fe3712ddc6f790885dda70c87ee4838ee1bc9&store=<STORE>&file=absent'
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>&file=absent'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=3f5fe3712ddc6f790885dda70c87ee4838ee1bc9&store=<STORE>&file=absent
+api: /api/plugin/github/pull-rendered-diff?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>&file=absent
 status: 200
 {
   "version": "markdown-diff-v1",
@@ -1026,34 +1134,34 @@ status: 200
 }
 --- stderr ---
 selection: pull_request
-pin: 3f5fe3712ddc6f790885dda70c87ee4838ee1bc9 (pull request 7 head)
+pin: cb2e4e60f719120be29fa824b982dbe353fcc5c9 (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=3f5fe3712ddc6f790885dda70c87ee4838ee1bc9&store=<STORE>'
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>'
 exit: 1
 --- stdout ---
-api: /api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=3f5fe3712ddc6f790885dda70c87ee4838ee1bc9&store=<STORE>
+api: /api/plugin/github/pull-rendered-diff?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>
 status: 400
 {
   "code": "invalid_rendered_diff"
 }
 --- stderr ---
 selection: pull_request
-pin: 3f5fe3712ddc6f790885dda70c87ee4838ee1bc9 (pull request 7 head)
+pin: cb2e4e60f719120be29fa824b982dbe353fcc5c9 (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-Error: /api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=3f5fe3712ddc6f790885dda70c87ee4838ee1bc9&store=<STORE> returned HTTP 400
+Error: /api/plugin/github/pull-rendered-diff?number=7&left=97d93c1dd3d53a97ae3e8f76b93e3c4e86b076b5&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE> returned HTTP 400
 --- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=0000000000000000000000000000000000000000&right=3f5fe3712ddc6f790885dda70c87ee4838ee1bc9&store=<STORE>&file=f6'
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=0000000000000000000000000000000000000000&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>&file=f10'
 exit: 1
 --- stdout ---
-api: /api/plugin/github/pull-rendered-diff?number=7&left=0000000000000000000000000000000000000000&right=3f5fe3712ddc6f790885dda70c87ee4838ee1bc9&store=<STORE>&file=f6
+api: /api/plugin/github/pull-rendered-diff?number=7&left=0000000000000000000000000000000000000000&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>&file=f10
 status: 410
 {
   "code": "snapshot_expired"
 }
 --- stderr ---
 selection: pull_request
-pin: 3f5fe3712ddc6f790885dda70c87ee4838ee1bc9 (pull request 7 head)
+pin: cb2e4e60f719120be29fa824b982dbe353fcc5c9 (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-Error: /api/plugin/github/pull-rendered-diff?number=7&left=0000000000000000000000000000000000000000&right=3f5fe3712ddc6f790885dda70c87ee4838ee1bc9&store=<STORE>&file=f6 returned HTTP 410
+Error: /api/plugin/github/pull-rendered-diff?number=7&left=0000000000000000000000000000000000000000&right=cb2e4e60f719120be29fa824b982dbe353fcc5c9&store=<STORE>&file=f10 returned HTTP 410
 --- gh ---

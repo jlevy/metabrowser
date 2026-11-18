@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
@@ -215,21 +216,11 @@ async function main() {
   // reads them (`_rendered_format` in github/pull_rendered_diff.py): an extension in any
   // case, one format on both sides, files only, and a dotfile's name is no extension.
   const side = (name) => ({ entry_type: "file", path: name });
-  const formats = [
-    ...["md", "markdown", "mdown", "mkd", "MD", "Markdown", "MDOWN", "MKD"].map((ext) => [
-      `docs/a.${ext}`,
-      "markdown",
-    ]),
-    ...["yaml", "yml", "YAML", "Yml"].map((ext) => [`deploy/a.${ext}`, "yaml"]),
-    ...["json", "JSON", "Json"].map((ext) => [`data/a.${ext}`, "json"]),
-    ["a.tar.json", "json"],
-    [".json", null],
-    ["config/.yml", null],
-    [".md", null],
-    ["notes.txt", null],
-    ["a.json.bak", null],
-    ["Makefile", null],
-  ];
+  // One table for both: tests/test_rendered_formats.py reads it for the server's route.
+  const table = JSON.parse(
+    fs.readFileSync(path.join(process.argv[2], "tests/fixtures/rendered-formats.json"), "utf8"),
+  );
+  const formats = table.names;
   for (const [name, format] of formats) {
     assert.equal(
       renderedFormat({ availability: "ready", old: null, new: side(name) }),
@@ -242,13 +233,7 @@ async function main() {
       `${name}, deferred`,
     );
   }
-  for (const [old, now, format] of [
-    ["a.md", "b.markdown", "markdown"],
-    ["a.yml", "a.YAML", "yaml"],
-    ["a.md", "a.yaml", null],
-    ["a.yaml", "a.json", null],
-    ["a.json", "a.txt", null],
-  ]) {
+  for (const [old, now, format] of table.renames) {
     assert.equal(
       renderedFormat({ availability: "ready", old: side(old), new: side(now) }),
       format,

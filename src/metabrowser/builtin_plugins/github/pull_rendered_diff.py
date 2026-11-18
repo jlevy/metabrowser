@@ -6,10 +6,11 @@ Markdown shows (``GET github/pull-image``). A Markdown file answers ``markdown-d
 (:mod:`metabrowser.diff.markdown_projection`), and a YAML or JSON file
 ``structured-diff-v1`` (:mod:`metabrowser.diff.structured_projection`), the formats the
 file view draws from data rather than as text. Anything else answers the Markdown
-format's refusal, and the route itself refuses with its own code. A page's
-request sent before the reader asks names ``prefetch=1``, which also starts the projection
-process, so the first screen of Changes is computed while the reader is still on
-Conversation.
+format's refusal, and the route itself refuses with its own code; a YAML or JSON file
+the route refuses answers its own format's refusal. A page's request sent before the
+reader asks names ``prefetch=1``, which also starts the projection process and waits for
+it, so the first screen of Changes is computed in that process while the reader is still
+on Conversation.
 """
 
 from __future__ import annotations
@@ -17,12 +18,13 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import json
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 
 from metabrowser.builtin_plugins.github.pull_route import PullRequestError, requested_number
 from metabrowser.builtin_plugins.github.pull_snapshot import Snapshot, admitted_snapshot
@@ -44,9 +46,10 @@ from metabrowser.diff.markdown_projection import (
 )
 from metabrowser.diff.markdown_projection_worker import ProjectionWorker, shared_worker
 from metabrowser.diff.structured_projection import (
-    STRUCTURED_DIFF_MAX_BYTES,
     Format,
+    structured_byte_budget,
     structured_format,
+    unavailable_structured_diff,
 )
 from metabrowser.git.process import GitError, GitLocation, RepositoryStoreTarget
 from metabrowser.git.tree_source import (
@@ -54,6 +57,7 @@ from metabrowser.git.tree_source import (
     GitPath,
     GitPathError,
     blob_logical_ext,
+    held_store_readers,
     read_store_blob,
 )
 from metabrowser.git.wire import is_full_revision
@@ -65,11 +69,17 @@ if TYPE_CHECKING:
 type Status = Literal["unsupported", "too_large"]
 _NO_STORE = {"cache-control": "no-store"}
 _MARKDOWN = frozenset({".md", ".markdown", ".mdown", ".mkd"})
-# Rendered blocks the route sends at most. The 434 real pairs of this repository's
-# history answer with at most 45,677 bytes of HTML, and the most a pair inside every
-# projection budget was found to make is 110,840 bytes: 255 links into the snapshot,
-# each address about 400 bytes.
+# Rendered blocks and front matter text the route sends at most. The 434 real pairs of
+# this repository's history answer with at most 45,677 bytes of HTML, and the most a pair
+# inside every projection budget was found to make is 110,840 bytes: 255 links into the
+# snapshot, each address about 400 bytes. Front matter counts too: a 30 KB `!!binary`
+# value is 40 KB of base64 text (mb-8274 review B9).
 _MAX_HTML_BYTES = 256 * 1024
+# The encoded answers the route keeps, in bytes. A Markdown answer is at most about
+# _MAX_HTML_BYTES, so 32 of them held about 8 MiB; a tree's answer was kept as Python
+# objects, which a 120 KB list of 39,999 empty mappings made 2.9 MB (mb-8274 review B7).
+# Kept encoded, an answer weighs what is sent: real answers are at most 120 KiB.
+_MAX_KEPT_BYTES = 8 * 1024 * 1024
 # The Markdown files one `git diff` hydrates when a reader reaches the first of them: the
 # Source view's own run is a different request, so this route reads its patches itself.
 # For this repository one file took 15.7 ± 1.9 ms and sixteen 20.0 ± 1.6 ms (hyperfine,
@@ -88,13 +98,25 @@ _KEPT_LINES = 20_000
 _MAX_WAITING = 4
 
 
-def _fallback(status: Status = "unsupported") -> dict[str, Any]:
+def _fallback(status: Status = "unsupported", rendered: _Rendered = "markdown") -> dict[str, Any]:
+    """The route's refusal, in the format the file would have answered (review A10)."""
+
+    if rendered != "markdown":
+        return dict(unavailable_structured_diff(status))
     return {
         "version": MARKDOWN_DIFF_VERSION,
         "status": status,
         "blocks": [],
         "source_only": False,
     }
+
+
+def _encoded(answer: dict[str, Any]) -> bytes:
+    """*answer* as ``JSONResponse`` renders it, encoded once and kept so."""
+
+    return json.dumps(
+        answer, ensure_ascii=False, allow_nan=False, indent=None, separators=(",", ":")
+    ).encode("utf-8")
 
 
 class _Busy(Exception):
@@ -265,12 +287,16 @@ async def _project(
         assert oid is not None
         return await read_store_blob(target, oid, max_blob_bytes=budget)
 
-    budget = MARKDOWN_DIFF_MAX_BYTES if rendered == "markdown" else STRUCTURED_DIFF_MAX_BYTES
+    budget = MARKDOWN_DIFF_MAX_BYTES if rendered == "markdown" else structured_byte_budget(rendered)
     try:
-        old = await blob(change.old, budget)
-        new = await blob(change.new, budget - len(old or b""))
+        # One cat-file process for both sides where nothing else holds the store's: with
+        # none held, the two reads took p50 5.6-6.5 ms a file, most of a JSON file's
+        # time, and 0.5-0.7 ms held (mb-8274 review C5).
+        async with held_store_readers(target):
+            old = await blob(change.old, budget)
+            new = await blob(change.new, budget - len(old or b""))
     except GitBlobTooLargeError:
-        return _fallback("too_large")
+        return _fallback("too_large", rendered)
     if rendered != "markdown":
         # The tree compares parsed values, so it reads no patch, and shows no images.
         return dict(
@@ -297,7 +323,14 @@ async def _project(
         old=old, new=new, patch=patch, namespace=namespace
     )
     projection = bind_markdown_diff(prepared, rewrite)
-    if sum(len(block["html"].encode()) for block in projection["blocks"]) > _MAX_HTML_BYTES:
+    shown = sum(len(block["html"].encode()) for block in projection["blocks"])
+    frontmatter = projection.get("frontmatter")
+    if frontmatter is not None:
+        shown += sum(
+            len(entry["key"].encode()) + len(entry["text"].encode())
+            for entry in frontmatter["entries"]
+        )
+    if shown > _MAX_HTML_BYTES:
         return _fallback("too_large")
     return {
         **projection,
@@ -309,7 +342,7 @@ async def _project(
     }
 
 
-async def pull_rendered_diff_handler(request: Request) -> JSONResponse:
+async def pull_rendered_diff_handler(request: Request) -> Response:
     params = request.query_params
     try:
         number = requested_number(params)
@@ -334,21 +367,29 @@ async def pull_rendered_diff_handler(request: Request) -> JSONResponse:
 
     state = request.app.state
     if params.get("prefetch") == "1":
-        projection_worker(state).start()
+        worker = projection_worker(state)
+        worker.start()
+        # No reader waits on a prefetch, so it waits for the child, where a projection
+        # runs under its deadline (mb-8274 review C2); a reader's own request does not.
+        await worker.settle()
     cache = getattr(state, "pull_rendered_diff_cache", None)
     if cache is None:
-        cache = state.pull_rendered_diff_cache = LoadingCache(max_values=32)
-    cache = cast("LoadingCache[tuple[str, ...], dict[str, Any]]", cache)
+        cache = state.pull_rendered_diff_cache = LoadingCache[tuple[str, ...], bytes](
+            max_values=32, max_weight=_MAX_KEPT_BYTES, weigh=len
+        )
+    cache = cast("LoadingCache[tuple[str, ...], bytes]", cache)
     slot = getattr(state, "pull_rendered_diff_slot", None)
     if slot is None:
         slot = state.pull_rendered_diff_slot = _Slot()
     slot = cast("_Slot", slot)
     key = (published.store_id, snapshot.store, str(number), base, head, file_id)
     namespace = "diff-" + hashlib.sha256("\0".join(key).encode()).hexdigest()[:20]
+
+    async def load() -> bytes:
+        return _encoded(await _project(published, snapshot, file_id, namespace, state))
+
     try:
-        answer = await cache.get(
-            key, lambda: slot.run(lambda: _project(published, snapshot, file_id, namespace, state))
-        )
+        body = await cache.get(key, lambda: slot.run(load))
     except _Busy:
         return JSONResponse({"code": "rendered_diff_busy"}, status_code=429, headers=_NO_STORE)
     except (DiffSourceError, GitError):
@@ -356,5 +397,5 @@ async def pull_rendered_diff_handler(request: Request) -> JSONResponse:
             {"code": "rendered_objects_unavailable"}, status_code=409, headers=_NO_STORE
         )
     except GitPathError:
-        answer = _fallback()
-    return JSONResponse(answer, headers=_NO_STORE)
+        body = _encoded(_fallback())
+    return Response(body, media_type="application/json", headers=_NO_STORE)

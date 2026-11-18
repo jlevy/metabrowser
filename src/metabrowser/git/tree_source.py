@@ -897,6 +897,21 @@ async def recycle_store_readers(target: RepositoryStoreTarget) -> None:
         await pool.recycle()
 
 
+@asynccontextmanager
+async def held_store_readers(target: RepositoryStoreTarget) -> AsyncGenerator[None]:
+    """Hold *target*'s cat-file pool for the block, so several reads share its process.
+
+    Where nothing else holds the pool, as on a server of a working tree, each
+    :func:`read_store_blob` otherwise starts a ``git cat-file`` and closes it.
+    """
+
+    pool = _retain_pool(target)
+    try:
+        yield
+    finally:
+        await _release_pool(pool)
+
+
 async def read_store_blob(
     target: RepositoryStoreTarget,
     oid: str,
