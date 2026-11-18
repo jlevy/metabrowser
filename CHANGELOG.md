@@ -4,13 +4,40 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
-- The rule under the Files totals and under the Pulls count and connection lines now
-  runs the navigation pane’s full width, as the rules under the tabs and the toolbars
-  do. It stopped 11 px short of the pane’s right edge, where the tree’s scrollbar has its
-  space. These lines now stand under their tab’s toolbar rather than at the top of the
-  list, so they stay in view while the tree or the list scrolls, as the Commits tally
-  does. A line that comes or goes while the list is scrolled, such as the note that a
-  recency window may be out of date, now moves the rows by its height.
+New entries live in [`changelog.d/`](changelog.d/README.md) until a release adds them.
+
+- An agent log event’s chevron and a code block’s copy button draw the app’s one chevron
+  and copy icon. The chevron was larger and thinner than every other one, and the copy
+  button an older shape than the app’s other copy buttons.
+  For plugin authors, `mb.icons` no longer has `chevron`, `step`, `process`, `dep`, or
+  `alert`, so each now returns `""`; a disclosure chevron is `mb.icons.toggle`. The type
+  registry schema’s `icon` (`file-type-registry.schema.json`) now permits only the
+  shapes the recommended registry gives a category or a format, so a registry that gives
+  one any of those five, or `folder`, `fileSymlink`, `gear`, `sun`, `moon`, `print`,
+  `serif`, `sans`, or `toggle`, fails validation.
+  `PLUGIN_SDK_VERSION` remains `0.7`. See the
+  [Icon Catalog](docs/design-system-icons.md).
+
+- Choosing a branch or tag in the branch and tag chooser no longer flashes **Reload** on
+  the page you are leaving.
+  That page went on asking the server for data during the switch, and a refresh of its
+  Files totals that fell due then was refused, as a request from a page left behind is,
+  which the page took for a switch made in another tab.
+  It now holds its requests while the switch is under way.
+
+- The macOS app shows a first clone’s progress in the window of the repository being
+  opened: how far the clone has got, how fast, and for how long, as `metab` reports it
+  in Terminal, then that it is reading the pull request the link names.
+  A repository that could not be cloned because of GitHub says which problem it is: the
+  repository was not found or your account cannot read it, which is also how a
+  signed-out GitHub CLI shows until the app checks the sign-in itself; it was not found
+  and GitHub CLI was not found either; the connection failed; or GitHub is limiting
+  requests or answered with an error.
+  The window shows `metab`’s message and the `gh` commands that fix the problem, each
+  with Copy, a Copy Message button that copies all of it, and Retry.
+  The app tries a repository that was not found again when you switch back to it, so a
+  sign-in in Terminal clears the failure; other failures wait for Retry.
+  See [the app’s guide](docs/macos-app.md#opening-github-links).
 
 - A link to one file of a pull request’s **Changes** on GitHub, such as
   `https://github.com/o/r/pull/7/changes#diff-<hash>R12` or its older `/files` spelling,
