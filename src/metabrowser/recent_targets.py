@@ -6,19 +6,28 @@ and whatever comes later. A shell draws the list and never decides what is in it
 ``docs/project/architecture/arch-recent-targets.md`` is the design; this module holds
 the format, the bounds, and the reason beside each.
 
-**The entry.** A :class:`RecentTarget` is a root and the mode it was opened in:
+**The entry.** A :class:`RecentTarget` is a root, the mode it was opened in, when, and
+optionally where in the root the open pointed. The words are the open-modes design's
+(jlevy/metabrowser#558).
 
-- ``folder``: an attached folder, by its absolute path with symbolic links resolved
-  (:func:`folder_root`). ``metab FILE`` serves the file's folder, so that folder is the
-  root.
-- ``mirror``: a pinned revision of a repository in the cache, by the source's
-  credential-free address as the root grammar normalizes it (``GitSource.normalized``),
-  which for a GitHub URL is ``https://github.com/<owner>/<repo>`` whatever the URL
-  selected inside it.
+- ``mode`` is how the root was opened, ``folder`` or ``mirror``. It is fixed while the
+  root is open and is the ``kind`` that ``GET /api/identity`` reports
+  (:mod:`metabrowser.root_identity`). ``folder`` is either folder mode, a plain folder or
+  a repository folder, which records write as one value; ``mirror`` is a repository
+  opened by its address and read from Metabrowser's own copy of it.
+- ``root`` is a folder's open root, the folder a serve of the path named serves
+  (``resolve_local_open`` in ``cli/common.py``), by its absolute path with symbolic
+  links resolved (:func:`recorded_path`); or a mirror's credential-free address as the
+  root grammar normalizes it (``GitSource.normalized``), which for a GitHub URL is
+  ``https://github.com/<owner>/<repo>`` whatever the URL selected inside it.
+- ``target``, optional, is where the open pointed when that is not the root itself: the
+  file or folder named inside a folder's root. A mirror's is to be its web URL, which
+  this release does not write yet. It is not part of the key.
 
-``mode`` is ``kind`` in ``GET /api/identity`` (:mod:`metabrowser.root_identity`), and
 ``mode`` with ``root`` is the key of the macOS app's session for the root, so one entry
-is one window. A root never comes from an argument as typed, so no credential is stored.
+is one window. No entry records a view, what a server shows at a given moment: a recent
+folder reopens on its working tree, and a mirror on its default branch. A root never
+comes from an argument as typed, so no credential is stored.
 
 **The file.** ``recent-targets.yml``: YAML, as ``config.yml`` and ``layout.yml`` are, so a
 person can read it, with a ``format`` string and the ``targets``, most recently opened
@@ -26,14 +35,14 @@ first, one entry per root. The format string follows the application home's conv
 (``cache/layout.py``): a short self-describing string, here ``mf`` and a number, an
 append-only :data:`FORMAT_HISTORY`, a :data:`MIGRATIONS` step from each format to the
 next, and a refusal of a format newer than this release reads. One change is
-compatible, and keeps the string: a new field on an entry. A reader that does not know a
-field keeps it, on every entry it carries along, and drops it only from the entry it
+compatible, and keeps the string: a new field on an entry. A reader that does not know
+a field keeps it, on every entry it carries along, and drops it only from the entry it
 records again, whose open the field no longer describes. Anything else new raises the
 number: a mode, a key beside ``format`` and ``targets``, or a rule relaxed. A file with
 a mode or a key this release does not know is taken for a newer release's whatever its
-number, and left alone, so a release that forgot to raise it costs no list. The file is read
-with PyYAML's base loader, which makes every scalar a string and builds no object, and
-not with the schema library the cache's records use, which a folder's server never
+number, and left alone, so a release that forgot to raise it costs no list. The file is
+read with PyYAML's base loader, which makes every scalar a string and builds no object,
+and not with the schema library the cache's records use, which a folder's server never
 loads (``tests/test_plugin_public_api.py``). The list names the user's folders, so it is
 read and written only through :mod:`metabrowser.home`'s owner-only helpers.
 
@@ -125,16 +134,17 @@ _HEADER: Final = (
 # never longer than one a Mac user can already ask for, and five times macOS's default
 # of 10, the cap that made folders go missing from the app's menu (mb-40k4).
 MAX_RECENT_TARGETS: Final = 50
-# The longest root recorded, in UTF-8 bytes: Linux's PATH_MAX, four times macOS's. No
-# folder a server can open has a longer path, and a normalized address is far shorter.
+# The longest root or target recorded, in UTF-8 bytes: Linux's PATH_MAX, four times
+# macOS's. No folder a server can open has a longer path, and a normalized address is far
+# shorter.
 MAX_ROOT_BYTES: Final = 4096
-# The largest file read. A root holds no control or line-breaking character, and YAML at
-# most doubles what
-# is left to escape (a quote, or a character it writes as ``\xNN``), so 50 roots of 4,096
-# bytes stay under this, and :func:`_serialize` drops the oldest entries of a list that
-# would still exceed it and reads back what it wrote, so no writer publishes a file a
-# reader refuses. Measured 2026-11-18 on an Apple-silicon Mac at load average 16, 200
-# timed calls each, with libyaml: a list of 50 ordinary roots was 5.3 KiB and
+# The largest file read. A root and a target hold no control or line-breaking character,
+# and YAML at most doubles what is left to escape (a quote, or a character it writes as
+# ``\xNN``), so 50 entries of a 4,096-byte root and no target stay under this. A list
+# whose targets are as long, and mostly characters YAML escapes, can exceed it, and
+# :func:`_serialize` drops the oldest entries of such a list and reads back what it
+# wrote, so no writer publishes a file a reader refuses. Measured 2026-11-18 on an
+# Apple-silicon Mac at load average 16, 200 timed calls each, with libyaml: a list of 50 ordinary roots was 5.3 KiB and
 # :func:`read` took a median 0.88 ms (p95 0.93 ms); a list of 50 roots of 4,096 quote
 # characters was 203 KiB and took a median 11.9 ms (p95 12.2 ms). PyYAML's own parser,
 # its fallback without libyaml, parsed the two files in 5 ms and 57 ms.
@@ -158,6 +168,8 @@ MODES: Final[tuple[TargetMode, ...]] = ("folder", "mirror")
 # The canonical RFC 3339 UTC spelling the cache's records use (``cache/records.py``).
 _TIMESTAMP: Final = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
 _ENTRY_KEYS: Final = frozenset({"mode", "root", "opened_at"})
+# The fields an entry may hold beside those, which this release knows and checks.
+_OPTIONAL_KEYS: Final = frozenset({"target"})
 # What a mode is spelled like. A mode this release does not know is a newer release's;
 # anything else in a mode's place is damage.
 _MODE_NAME: Final = re.compile(r"[a-z][a-z0-9_-]{0,31}")
@@ -172,11 +184,14 @@ _LINE_BREAKING: Final = frozenset({"Cc", "Zl", "Zp"})
 
 @dataclass(frozen=True, slots=True)
 class RecentTarget:
-    """One root the user opened, the mode it was opened in, and when."""
+    """One root the user opened, the mode it was opened in, when, and where it pointed."""
 
     mode: TargetMode
     root: str
     opened_at: str
+    target: str | None = None
+    """Where in the root the open pointed, when not at the root itself: for a folder,
+    the file or folder named inside it. Not part of :attr:`key`, and never a view."""
     extra: Mapping[str, Any] = field(default_factory=dict[str, Any])
     """The fields of the entry this release does not know, as the file spelled them: a
     later release's, kept so that rewriting the list does not lose them."""
@@ -187,15 +202,27 @@ class RecentTarget:
 
         return (self.mode, self.root)
 
-    def as_json(self) -> dict[str, str]:
-        """What a listing says of the entry: the fields this release knows."""
+    def as_json(self) -> dict[str, str | None]:
+        """What a listing says of the entry: the fields this release knows, ``target``
+        ``null`` when the open pointed at the root."""
 
-        return {"mode": self.mode, "root": self.root, "opened_at": self.opened_at}
+        return {
+            "mode": self.mode,
+            "root": self.root,
+            "opened_at": self.opened_at,
+            "target": self.target,
+        }
 
     def as_stored(self) -> dict[str, Any]:
-        """The entry as the file holds it: the known fields, then any it carries along."""
+        """The entry as the file holds it: the known fields, then any it carries along.
 
-        return {**self.as_json(), **self.extra}
+        ``target`` is written only when there is one.
+        """
+
+        known: dict[str, Any] = {"mode": self.mode, "root": self.root, "opened_at": self.opened_at}
+        if self.target is not None:
+            known["target"] = self.target
+        return {**known, **self.extra}
 
 
 @dataclass(frozen=True, slots=True)
@@ -244,11 +271,12 @@ class _Damaged(Exception):
 # ── Roots ──────────────────────────────────────────────────────────
 
 
-def folder_root(path: Path) -> str:
-    """The root a served folder is recorded under: resolved, as the file system spells it.
+def recorded_path(path: Path) -> str:
+    """How a local path is recorded: resolved, as the file system spells it.
 
-    *path* is the folder a server serves. Symbolic links are resolved, as ``run_serve``
-    resolves them. On macOS the spelling is ``realpath(3)``'s own, called through
+    *path* is the folder a server serves, or the file or folder inside it that the page
+    opens at. Symbolic links are resolved, as ``run_serve`` resolves them. On macOS the
+    spelling is ``realpath(3)``'s own, called through
     ``ctypes``, because the macOS app names a folder's session by that function
     (``FileChecks.canonicalPath``) and the two must agree for an entry to find its window:
     on a volume that ignores case, ``~/Src/Repo`` and ``~/src/repo`` are one folder, which
@@ -277,25 +305,51 @@ def folder_root(path: Path) -> str:
         libc.free(spelled)
 
 
+def _checked_text(what: str, text: str) -> str | None:
+    """Why *text* cannot be an entry's *what*, a root or a target, by the rules both keep."""
+
+    if not text:
+        return f"the {what} is empty"
+    try:
+        size = len(text.encode("utf-8"))
+    except UnicodeEncodeError:
+        return f"the {what} is not valid UTF-8"
+    if size > MAX_ROOT_BYTES:
+        return f"the {what} is longer than {MAX_ROOT_BYTES} bytes"
+    if any(unicodedata.category(ch) in _LINE_BREAKING for ch in text):
+        return f"the {what} holds a control character or a line separator"
+    return None
+
+
 def _checked_root(mode: str, root: str) -> str | None:
     """Why *root* cannot be an entry of *mode*, or ``None`` when it can."""
 
     if mode not in MODES:
         return f"{mode!r} is not a mode; the modes are folder and mirror"
-    if not root:
-        return "the root is empty"
-    try:
-        size = len(root.encode("utf-8"))
-    except UnicodeEncodeError:
-        return "the root is not valid UTF-8"
-    if size > MAX_ROOT_BYTES:
-        return f"the root is longer than {MAX_ROOT_BYTES} bytes"
-    if any(unicodedata.category(ch) in _LINE_BREAKING for ch in root):
-        return "the root holds a control character or a line separator"
+    if (reason := _checked_text("root", root)) is not None:
+        return reason
     if mode == "folder" and not root.startswith("/"):
         return "a folder's root is an absolute path"
     if mode == "mirror" and (root.startswith("/") or any(ch.isspace() for ch in root)):
         return "a mirror's root is a repository address"
+    return None
+
+
+def _checked_target(mode: str, root: str, target: str) -> str | None:
+    """Why *target* cannot be where an open of *root* pointed, or ``None`` when it can.
+
+    A target is inside its root: a folder's is a path under it, and a mirror's an
+    address under the repository's, so a target never names anything the root does not.
+    """
+
+    if (reason := _checked_text("target", target)) is not None:
+        return reason
+    if target == root:
+        return "the target is the root"
+    if not target.startswith(root.rstrip("/") + "/"):
+        return "the target is not inside the root"
+    if mode == "mirror" and any(ch.isspace() for ch in target):
+        return "a mirror's target is an address"
     return None
 
 
@@ -369,11 +423,18 @@ def _parse(payload: bytes) -> tuple[RecentTarget, ...]:
             raise _Damaged(f"entry {position} cannot be a target: {reason}")
         if not isinstance(opened_at, str) or _TIMESTAMP.fullmatch(opened_at) is None:
             raise _Damaged(f"entry {position} has no time it was opened")
+        target = values.get("target")
+        if target is not None:
+            if not isinstance(target, str):
+                raise _Damaged(f"entry {position} has a target that is not text")
+            if (reason := _checked_target(mode, root, target)) is not None:
+                raise _Damaged(f"entry {position} cannot have that target: {reason}")
         if (mode, root) in seen:
             raise _Damaged(f"entry {position} repeats an earlier one")
         seen.add((mode, root))
-        extra = {name: value for name, value in values.items() if name not in _ENTRY_KEYS}
-        targets.append(RecentTarget(cast(TargetMode, mode), root, opened_at, extra))
+        known = _ENTRY_KEYS | _OPTIONAL_KEYS
+        extra = {name: value for name, value in values.items() if name not in known}
+        targets.append(RecentTarget(cast(TargetMode, mode), root, opened_at, target, extra))
     return tuple(targets)
 
 
@@ -560,29 +621,42 @@ def now() -> str:
 
 
 def record(
-    mode: TargetMode, root: str, *, directory: Path | None = None, opened_at: str | None = None
+    mode: TargetMode,
+    root: str,
+    *,
+    target: str | None = None,
+    directory: Path | None = None,
+    opened_at: str | None = None,
 ) -> RecentTarget:
     """Put *root*, opened in *mode*, at the front of the list; return its entry.
 
-    An entry the list already holds for the root moves to the front with the new time,
-    and the oldest entry past :data:`MAX_RECENT_TARGETS` falls off. *root* is a folder's
-    :func:`folder_root` or a source's normalized address; one the list cannot hold raises
-    :class:`UnrecordableRootError`, and a list that cannot be written raises
-    :class:`RecentTargetsError`.
+    An entry the list already holds for the root moves to the front with the new time
+    and this open's *target*, and the oldest entry past :data:`MAX_RECENT_TARGETS` falls
+    off. *root* is a folder's :func:`recorded_path` or a source's normalized address, and
+    *target* where in it the open pointed. A *target* that is the root, or that the list
+    cannot hold, is recorded as none: where an open pointed is never worth losing the
+    open. A root the list cannot hold raises :class:`UnrecordableRootError`, and a list
+    that cannot be written raises :class:`RecentTargetsError`.
     """
 
     if (reason := _checked_root(mode, root)) is not None:
         raise UnrecordableRootError(reason)
+    if target == root:
+        target = None
+    if target is not None and (reason := _checked_target(mode, root, target)) is not None:
+        # The reason, never the target: this line reaches a log.
+        log.info("where this open pointed is not recorded: %s", reason)
+        target = None
     if opened_at is not None and _TIMESTAMP.fullmatch(opened_at) is None:
         raise UnrecordableRootError("the time opened is not a UTC time to the second")
-    target = RecentTarget(mode, root, now() if opened_at is None else opened_at)
+    entry = RecentTarget(mode, root, now() if opened_at is None else opened_at, target)
 
     def to_front(before: tuple[RecentTarget, ...]) -> tuple[RecentTarget, ...]:
-        others = (entry for entry in before if entry.key != target.key)
-        return (target, *others)[:MAX_RECENT_TARGETS]
+        others = (other for other in before if other.key != entry.key)
+        return (entry, *others)[:MAX_RECENT_TARGETS]
 
     _change(directory, to_front)
-    return target
+    return entry
 
 
 def forget(roots: frozenset[tuple[str, str]], *, directory: Path | None = None) -> int:
@@ -605,8 +679,8 @@ def clear(*, directory: Path | None = None) -> int:
     return len(_change(directory, lambda before: () if before else None))
 
 
-def record_quietly(mode: TargetMode, root: str) -> None:
-    """Record a root a server is about to serve, and never raise.
+def record_quietly(mode: TargetMode, root: str, *, target: str | None = None) -> None:
+    """Record a root a server is about to serve, and where it opens, and never raise.
 
     A failure is logged once as a warning that says what to do, without the root or a
     path, and the server starts regardless. With :data:`RECORD_ENV` off, nothing is
@@ -617,7 +691,7 @@ def record_quietly(mode: TargetMode, root: str) -> None:
         log.debug("not recording a recent target: %s is off", RECORD_ENV)
         return
     try:
-        record(mode, root)
+        record(mode, root, target=target)
     except UnrecordableRootError as error:
         log.info("this root is not recorded as a recent target: %s", error)
     except RecentTargetsError as error:
@@ -650,12 +724,12 @@ __all__ = [
     "TargetMode",
     "UnrecordableRootError",
     "clear",
-    "folder_root",
     "forget",
     "format_number",
     "now",
     "read",
     "record",
+    "recorded_path",
     "recording_enabled",
     "record_quietly",
 ]

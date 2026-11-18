@@ -3,11 +3,12 @@
 **Status:** Built (`mb-40k4`): the store (`src/metabrowser/recent_targets.py`), its four
 `metab` modes (`cli/recent_cli.py`), the record every serve makes, and the macOS app’s
 File > Open Recent, which lists what `metab --recent --json` answers.
-Planned: the `target` a mirror was opened at (a pull request, a ref, or a commit), a
-route for a switcher in the page, and the open-mode indicator, in the
-[native macOS app plan](../specs/active/plan-2026-11-10-native-macos-app.md#phase-4-recent-targets-the-switcher-and-the-mcp-adapter)
-and the
-[mirror and checkout plan](../specs/active/plan-2026-11-02-pr-review-mirror-and-checkout.md#open-modes).
+Planned: the `target` a mirror was opened at (its web URL, which waits for
+`ProviderUrlReducer.web_url` in jlevy/metabrowser#540), a folder’s root resolved to its
+repository’s (`mb-2wfk`), and a route for a switcher in the page, in the
+[native macOS app plan](../specs/active/plan-2026-11-10-native-macos-app.md#phase-4-recent-targets-the-switcher-and-the-mcp-adapter).
+The modes, roots, and views are the open-modes design’s,
+`docs/project/architecture/arch-open-modes.md` (jlevy/metabrowser#558).
 
 Metabrowser keeps one list of what the user opened lately, and every shell reads it
 through `metab`: the command line, the macOS app, and any later shell.
@@ -26,32 +27,41 @@ Two things with similar names are not this list:
 
 ## Vocabulary
 
+The words are the open-modes design’s (`docs/project/architecture/arch-open-modes.md`).
+
 - **Target:** what `metab TARGET` is given: a folder, a file, or a URL.
 - **Root:** what one server serves, and what one app window or tab group belongs to: a
-  folder, or a repository.
-  `metab FILE` serves the file’s folder, so a file’s root is its folder.
-- **Mode:** how a root is open, which is the kind of
-  [subject](arch-source-sessions-and-pins.md#subjects) its server holds and the `kind`
-  `GET /api/identity` reports.
-  `folder` is an attached folder, the user’s own files as they are now.
-  `mirror` is a pinned revision of Metabrowser’s own cached copy of a repository.
-  [Open Modes](../specs/active/plan-2026-11-02-pr-review-mirror-and-checkout.md#open-modes)
-  says how a target reaches each mode and what differs between them.
+  folder, or a repository’s address.
+  A folder’s root is its **open root**, the folder a serve of the path named serves.
+- **Mode:** how a root was opened, `folder` or `mirror`. It is fixed while the root is
+  open and is the `kind` that `GET /api/identity` reports.
+  `folder` is either folder mode, a plain folder or a repository folder, which records
+  write as one value; `mirror` is a repository opened by its address and read from
+  Metabrowser’s own copy of it.
+- **View:** what a server shows at a given moment, a folder’s working tree or one
+  revision. No entry records it.
 
 ## The Entry
 
-A recent target is a root and the mode it was opened in:
+A recent target is a root, the mode it was opened in, and when, with where the open
+pointed when that was not the root:
 
 | Field | Meaning |
 | --- | --- |
 | `mode` | `folder` or `mirror` |
-| `root` | A folder’s absolute path with symbolic links resolved, or a repository’s credential-free address as the root grammar normalizes it (`GitSource.normalized`) |
+| `root` | A folder’s open root, its absolute path with symbolic links resolved, or a repository’s credential-free address as the root grammar normalizes it (`GitSource.normalized`) |
 | `opened_at` | When it was last opened, in UTC to the second |
+| `target` | Optional, and not part of the key: the file or folder named inside a folder’s root, by its absolute path with symbolic links resolved. A mirror’s is to be its web URL. It is always inside the root |
 
-- **A folder’s root** is the path the server serves (`run_serve`), spelled on macOS as
-  `realpath(3)` spells it (`folder_root` calls that function), so two spellings that
-  differ only in case are one folder, and the root is the very string the app names the
-  folder’s session by (`FileChecks.canonicalPath`).
+- **A folder’s root** is the open root `metab` serves for the path named, which one
+  function decides for both serving and `--recent-add`: `resolve_local_open` in
+  `cli/common.py`. Today that is the folder named, or a file’s folder.
+  The open-modes resolver (`mb-2wfk`) replaces that function’s body to open the
+  enclosing repository’s root, and the list then records that root, with the path named
+  as the `target`.
+- **Its spelling** on macOS is the one `realpath(3)` gives (`recorded_path` calls that
+  function), so two spellings that differ only in case are one folder, and the root is
+  the very string the app names the folder’s session by (`FileChecks.canonicalPath`).
 - **A mirror’s root** for a GitHub URL is exactly `https://github.com/<owner>/<repo>` in
   lower case, whatever the URL selected inside the repository: the root
   `metab URL --present --dry-run --json` reports, and the key of the app’s session for
@@ -65,9 +75,17 @@ A recent target is a root and the mode it was opened in:
 - **A root with a control character or a line separator is not recorded.** A terminal
   acts on the first, and YAML reads the second as a line break, which its two emitters
   write differently. Such a folder serves as any other and stays out of the list.
-- **What a mirror was pinned to is not recorded yet.** An entry reopens its repository
-  at the default branch, and a pull request is one click away on its Pulls tab.
-  Recording the `target` is planned with File > Open URL….
+  A `target` the list cannot hold, by the same rules or because it is not inside its
+  root, is left out, and the root is recorded without it.
+- **No entry records a view.** A recent folder reopens on its working tree, whatever
+  revision its window last showed, and its `target` is a path, never a revision.
+  A mirror reopens its repository at the default branch, and a pull request is one click
+  away on its Pulls tab.
+- **A mirror’s `target` is not written yet.** It is to be the web URL the open named,
+  rebuilt from what the URL grammar read and never the argument as typed, so it carries
+  no credential or query the grammar does not read: `ProviderUrlReducer.web_url`, which
+  jlevy/metabrowser#540 adds.
+  This release reads and keeps one already.
 
 ## The Store
 
@@ -153,7 +171,7 @@ The app writes nothing itself.
 
 | Opened by | Records | How |
 | --- | --- | --- |
-| `metab FOLDER` or `metab FILE` | `folder`, the served folder | `serve_until_interrupted`, just before the `Serving` line |
+| `metab FOLDER` or `metab FILE` | `folder`, the served folder, with a file or `--path` as its `target` | `serve_until_interrupted`, just before the `Serving` line |
 | `metab URL` | `mirror`, the source’s address | The same, once the source is acquired and its pin resolved |
 | The macOS app opening a folder | `folder` | The server the app starts is `metab FOLDER`, so the line above does it |
 | The app showing a folder that is already open, because the user opened it again | `folder` | `metab FOLDER --recent-add`, because no server starts |
@@ -200,15 +218,15 @@ list.
 
 | Mode | Does |
 | --- | --- |
-| `metab --recent` | Lists the entries, most recent first; `--json` prints `{"limit", "targets", "problem"}` |
-| `metab TARGET --recent-add` | Records TARGET as opened, as a serve of it would, without serving |
+| `metab --recent` | Lists the entries, most recent first; `--json` prints `{"limit", "targets", "problem"}`, each target with its `mode`, `root`, `opened_at`, and `target`, `null` when there is none |
+| `metab TARGET --recent-add` | Records TARGET as opened, as a serve of it would, without serving: the same root and `target`, by the same `resolve_local_open` |
 | `metab TARGET --recent-forget` | Removes TARGET’s entry; a folder that no longer exists is matched by its path as given |
 | `metab --recent-clear` | Empties the list |
 
 `tests/golden/cli-recent.tryscript.md` pins all four, the order, one entry per root, a
-damaged file, a newer format, and a configuration directory that is not private.
-`tests/test_recent_targets.py` covers the store itself, the cap and concurrent writers
-included, and that a real serve records before it announces itself.
+file’s `target`, a damaged file, a newer format, and a configuration directory that is
+not private. `tests/test_recent_targets.py` covers the store itself, the cap and
+concurrent writers included, and that a real serve records before it announces itself.
 
 No route serves the list, which the owner confirmed on 2026-11-18. A route would hand
 every page of every served root the names of the user’s other folders and repositories,
@@ -220,9 +238,10 @@ settle first.
 File > Open Recent is drawn from `metab --recent --json` (`RecentTargets` in
 `ShellCore`, `RecentTargetsMenu` in the app):
 
-- The app runs the selected `metab` when it becomes active, when the menu opens, and
-  when the Dock menu is asked for, and a menu shows the last answer at once, then the
-  new one.
+- The app runs the selected `metab` when it becomes active, when the menu opens, when
+  the Dock menu is asked for, and once a server it started for an open has started, so
+  the next Dock menu lists that open.
+  A menu shows the last answer at once, then the new one.
 - Every `metab` the app runs has the modes: setup’s check runs with `--recent`
   (`MetabRequirement.requiredFlags`), so a build from before the list is refused with
   the upgrade it needs, as one from before `--exit-on-eof` is.

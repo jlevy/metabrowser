@@ -442,12 +442,15 @@ metab --recent-clear                # empty the list
 - **What is recorded:** every time `metab` serves, it records what it serves just before
   it prints `Serving`: a folder by its path with symbolic links resolved, or a
   repository by its address.
-  `metab FILE` records the file’s folder, and a GitHub URL records its repository,
-  whichever pull request, branch, or file it named.
+  `metab FILE` records the file’s folder, with the file as the entry’s `target`, where
+  the open pointed, and a GitHub URL records its repository, whichever pull request,
+  branch, or file it named.
   The data modes (`--api`, `--show`, `--walk`, `--diff`, `--check-api`, and
   `--no-serve`) record nothing.
 - **Each entry’s mode:** `folder` for your own files as they are on disk, or `mirror`
-  for Metabrowser’s cached copy of a repository, the two ways a root opens.
+  for Metabrowser’s cached copy of a repository.
+  No entry records which branch or commit was shown, so a folder reopens on its files as
+  they are on disk.
 - **Order and length:** opening something again moves its one entry to the front, and
   the oldest entry falls off a full list.
   `--recent --json` gives the list’s length as `limit`.

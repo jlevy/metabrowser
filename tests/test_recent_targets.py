@@ -10,6 +10,7 @@ temporary directory for every test.
 from __future__ import annotations
 
 import fcntl
+import json
 import logging
 import os
 import stat
@@ -23,7 +24,9 @@ import yaml
 from typer.testing import CliRunner
 
 from metabrowser import recent_targets
+from metabrowser.cli.common import LocalOpen, resolve_local_open
 from metabrowser.cli.main import _app
+from metabrowser.errors import CLIError
 from metabrowser.recent_targets import (
     FORMAT,
     FORMAT_HISTORY,
@@ -37,12 +40,12 @@ from metabrowser.recent_targets import (
     RecentTargetsError,
     UnrecordableRootError,
     clear,
-    folder_root,
     forget,
     format_number,
     read,
     record,
     record_quietly,
+    recorded_path,
     recording_enabled,
 )
 from tests.child_io import read_line
@@ -160,10 +163,10 @@ def test_a_folder_is_one_root_however_it_is_reached(tmp_path: Path, home: Path) 
     link = tmp_path / "link"
     link.symlink_to(real)
 
-    record("folder", folder_root(real), directory=home)
-    record("folder", folder_root(link), directory=home)
+    record("folder", recorded_path(real), directory=home)
+    record("folder", recorded_path(link), directory=home)
 
-    assert _roots(home) == [folder_root(real)]
+    assert _roots(home) == [recorded_path(real)]
 
 
 @pytest.mark.macos_tier
@@ -181,14 +184,14 @@ def test_on_macos_a_folder_is_spelled_as_the_volume_spells_it(tmp_path: Path) ->
     if sys.platform != "darwin" or not other.exists():
         pytest.skip("the file system is case-sensitive, so mixedcase is not MixedCase")
 
-    assert folder_root(other) == folder_root(real)
-    assert folder_root(other).endswith("/MixedCase")
+    assert recorded_path(other) == recorded_path(real)
+    assert recorded_path(other).endswith("/MixedCase")
 
 
 def test_a_folder_that_cannot_be_opened_keeps_its_resolved_path(tmp_path: Path) -> None:
     gone = tmp_path / "gone"
 
-    assert folder_root(gone) == os.path.realpath(gone)
+    assert recorded_path(gone) == os.path.realpath(gone)
 
 
 @pytest.mark.parametrize(
@@ -503,18 +506,21 @@ def test_a_field_this_release_does_not_know_is_kept_until_its_entry_is_opened_ag
         "format: mf01\ntargets:\n"
         "- mode: mirror\n  root: https://github.com/jlevy/tbd\n"
         f"  opened_at: '{_STAMP}'\n  target: https://github.com/jlevy/tbd/pull/12\n"
-        "  checkout:\n    path: /work/tbd\n    remotes: [origin, upstream]\n" + _ENTRY,
+        "  checkout:\n    path: /work/tbd\n    remotes: [origin, upstream]\n"
+        "  later: 'yes'\n" + _ENTRY,
     )
-    later = {
-        "target": "https://github.com/jlevy/tbd/pull/12",
-        "checkout": {"path": "/work/tbd", "remotes": ["origin", "upstream"]},
-    }
+    later = {"checkout": {"path": "/work/tbd", "remotes": ["origin", "upstream"]}, "later": "yes"}
 
     listing = read(home)
     assert listing.problem is None
     assert [target.as_json() for target in listing.targets] == [
-        {"mode": "mirror", "root": "https://github.com/jlevy/tbd", "opened_at": _STAMP},
-        {"mode": "folder", "root": "/work/a", "opened_at": _STAMP},
+        {
+            "mode": "mirror",
+            "root": "https://github.com/jlevy/tbd",
+            "opened_at": _STAMP,
+            "target": "https://github.com/jlevy/tbd/pull/12",
+        },
+        {"mode": "folder", "root": "/work/a", "opened_at": _STAMP, "target": None},
     ]
     assert listing.targets[0].extra == later
 
@@ -525,9 +531,131 @@ def test_a_field_this_release_does_not_know_is_kept_until_its_entry_is_opened_ag
     assert {name: kept[1][name] for name in later} == later
     assert read(home).targets[1].extra == later
 
+    assert kept[1]["target"] == "https://github.com/jlevy/tbd/pull/12"
+
     record("mirror", "https://github.com/jlevy/tbd", directory=home)
     again = read(home).targets[0]
-    assert (again.root, dict(again.extra)) == ("https://github.com/jlevy/tbd", {})
+    assert (again.root, again.target, dict(again.extra)) == (
+        "https://github.com/jlevy/tbd",
+        None,
+        {},
+    )
+
+
+# ── Where an open pointed ──────────────────────────────────────────
+
+
+def test_an_entry_keeps_where_its_open_pointed_and_the_next_open_replaces_it(
+    home: Path,
+) -> None:
+    """``target`` is not part of the key: it is the latest open's, or none."""
+
+    record("folder", "/work/a", target="/work/a/docs/notes.md", directory=home)
+    record("folder", "/work/b", directory=home)
+
+    listing = read(home)
+    assert [(entry.root, entry.target) for entry in listing.targets] == [
+        ("/work/b", None),
+        ("/work/a", "/work/a/docs/notes.md"),
+    ]
+    stored = yaml.safe_load((home / STORE_FILE).read_text(encoding="utf-8"))["targets"]
+    assert "target" not in stored[0], "an entry without a target writes none"
+    assert stored[1]["target"] == "/work/a/docs/notes.md"
+
+    record("folder", "/work/a", directory=home)
+    assert [(entry.root, entry.target) for entry in read(home).targets] == [
+        ("/work/a", None),
+        ("/work/b", None),
+    ]
+    record("folder", "/work/a", target="/work/a", directory=home)
+    assert read(home).targets[0].target is None, "a target that is the root is none"
+
+
+@pytest.mark.parametrize(
+    ("mode", "root", "target", "reason"),
+    [
+        ("folder", "/work/a", "/work/other/notes.md", "not inside the root"),
+        ("folder", "/work/a", "/work/ab", "not inside the root"),
+        ("folder", "/work/a", "docs/notes.md", "not inside the root"),
+        ("folder", "/work/a", "/work/a/line\nbreak", "control character"),
+        ("folder", "/work/a", "/work/a/" + "x" * MAX_ROOT_BYTES, "longer than"),
+        (
+            "mirror",
+            "https://github.com/jlevy/tbd",
+            "https://github.com/jlevy/other/pull/1",
+            "not inside the root",
+        ),
+        ("mirror", "https://github.com/jlevy/tbd", "https://github.com/jlevy/tbd/a b", "address"),
+    ],
+)
+def test_a_target_the_list_cannot_hold_is_dropped_and_is_damage_in_the_file(
+    home: Path, mode: str, root: str, target: str, reason: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The open is still recorded, without where it pointed; a file that holds such a
+    target was not written by this release, so it is damaged."""
+
+    with caplog.at_level(logging.INFO, logger="metabrowser.recent_targets"):
+        entry = record(mode, root, target=target, directory=home)  # pyright: ignore[reportArgumentType]
+    assert (entry.root, entry.target) == (root, None)
+    assert [(listed.root, listed.target) for listed in read(home).targets] == [(root, None)]
+    assert any(reason in message for message in caplog.messages)
+    assert target not in "".join(caplog.messages), "a log line names no target"
+
+    _store(
+        home,
+        f"format: mf01\ntargets:\n- mode: {mode}\n  root: {root}\n"
+        f"  opened_at: '{_STAMP}'\n  target: {json.dumps(target)}\n",
+    )
+    listing = read(home)
+    assert listing.targets == ()
+    assert listing.problem is not None and "cannot have that target" in listing.problem
+
+
+def test_a_root_on_its_own_takes_any_target_under_it(home: Path) -> None:
+    record("folder", "/", target="/work/a.txt", directory=home)
+
+    assert read(home).targets[0].target == "/work/a.txt"
+
+
+def test_recent_add_of_a_file_records_its_folder_and_the_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A file opens its folder, and the entry says the open pointed at the file."""
+
+    monkeypatch.setenv("METABROWSER_CONFIG_DIR", str(tmp_path / "config"))
+    folder = tmp_path / "folder"
+    folder.mkdir()
+    (folder / "notes.md").write_text("notes\n")
+    runner = CliRunner()
+
+    added = runner.invoke(_app, [str(folder / "notes.md"), "--recent-add"])
+
+    assert added.exit_code == 0, added.output
+    [entry] = read().targets
+    assert (entry.mode, entry.root, entry.target) == (
+        "folder",
+        recorded_path(folder),
+        recorded_path(folder / "notes.md"),
+    )
+    listed = runner.invoke(_app, ["--recent", "--json"])
+    assert '"target": ' + json.dumps(recorded_path(folder / "notes.md")) in listed.output
+
+
+def test_the_open_root_of_a_path_is_the_folder_or_a_files_folder(tmp_path: Path) -> None:
+    """The rule a serve and ``--recent-add`` share, until the resolver replaces it."""
+
+    folder = tmp_path / "folder"
+    (folder / "sub").mkdir(parents=True)
+    (folder / "sub" / "a.txt").write_text("a")
+    link = tmp_path / "link"
+    link.symlink_to(folder)
+
+    assert resolve_local_open(link) == LocalOpen(folder.resolve(), None)
+    assert resolve_local_open(link / "sub" / "a.txt") == LocalOpen(
+        (folder / "sub").resolve(), (folder / "sub" / "a.txt").resolve()
+    )
+    with pytest.raises(CLIError, match="is not a directory"):
+        resolve_local_open(tmp_path / "nowhere")
 
 
 @pytest.mark.parametrize("change", ["clear", "forget"])
@@ -593,7 +721,7 @@ def test_a_folder_that_is_gone_is_forgotten_through_a_link_above_it(
     link.symlink_to(real)
     runner = CliRunner()
     assert runner.invoke(_app, [str(link / "project"), "--recent-add"]).exit_code == 0
-    assert [target.root for target in read().targets] == [folder_root(real / "project")]
+    assert [target.root for target in read().targets] == [recorded_path(real / "project")]
     (real / "project").rmdir()
 
     forgotten = runner.invoke(_app, [str(link / "project"), "--recent-forget"])
@@ -764,7 +892,8 @@ def test_a_serve_records_its_folder_before_it_announces_itself(
     """``metab ROOT`` is in the list by the time its ``Serving`` line can be read.
 
     That is what the macOS app relies on: the server it starts for a folder records the
-    folder, and ``metab FILE`` records the file's folder, which is what it serves.
+    folder, and ``metab FILE`` records the file's folder, which is what it serves, with
+    the file as where the open pointed.
     """
 
     config = tmp_path / "config"
@@ -789,8 +918,12 @@ def test_a_serve_records_its_folder_before_it_announces_itself(
     try:
         line = read_line(process)
         assert line.startswith("Serving "), line
-        assert [(target.mode, target.root) for target in read(config).targets] == [
-            ("folder", folder_root(served))
+        assert [(entry.mode, entry.root, entry.target) for entry in read(config).targets] == [
+            (
+                "folder",
+                recorded_path(served),
+                recorded_path(served / "a.txt") if root_is_file else None,
+            )
         ]
         # A server of another folder that is not an open, as one the macOS app restores
         # is not, serves and leaves the list as it was.
@@ -805,7 +938,7 @@ def test_a_serve_records_its_folder_before_it_announces_itself(
         )
         try:
             assert read_line(quiet).startswith("Serving ")
-            assert [target.root for target in read(config).targets] == [folder_root(served)]
+            assert [target.root for target in read(config).targets] == [recorded_path(served)]
         finally:
             _stop(quiet)
     finally:

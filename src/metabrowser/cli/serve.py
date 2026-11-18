@@ -27,6 +27,7 @@ from metabrowser.build_version import build_state
 from metabrowser.cli.common import (
     apply_log_level,
     exit_after_notices,
+    resolve_local_open,
     validate_contained_path,
     write_notice_now_or_never,
 )
@@ -249,20 +250,19 @@ def run_serve(
     # server module configures logging at import time from the env var.
     apply_log_level(log_level)
 
-    # Resolve file-as-ROOT shorthand before server initialization.
-    resolved = root.expanduser().resolve()
-    if resolved.is_file():
+    # The root ROOT opens, decided before server initialization by the one rule that
+    # `--recent-add` also asks, so the list records what is served. A file as ROOT is
+    # shorthand for its folder with `--path` naming the file.
+    opened = resolve_local_open(root)
+    resolved = opened.root
+    if opened.place is not None:
         if path:
             raise typer.BadParameter(
-                f"{resolved} is a file — cannot combine with --path. "
+                f"{opened.place} is a file — cannot combine with --path. "
                 "Use the parent directory as ROOT instead.",
                 param_hint="--path",
             )
-        path = resolved.name
-        resolved = resolved.parent
-
-    if not resolved.is_dir():
-        raise CLIError(f"{resolved} is not a directory")
+        path = opened.place.relative_to(resolved).as_posix()
 
     apply_extra_plugin_dirs(plugins_dir)
 
@@ -290,6 +290,7 @@ def run_serve(
         local_client=local_client,
         attach=attach_root,
         mode="folder",
+        place=selected_path,
     )
 
 
@@ -321,6 +322,7 @@ def serve_until_interrupted(
     no_open: bool,
     attach: Callable[[], None],
     mode: Literal["folder", "mirror"],
+    place: Path | None = None,
     banner: Sequence[str] = (),
     local_client: bool = False,
 ) -> None:
@@ -335,7 +337,9 @@ def serve_until_interrupted(
     answers uncompressed (:mod:`metabrowser.delivery`). *mode* is how *served* is open:
     a ``folder``, or a ``mirror`` of the source *served* names. The root is recorded
     with it as a recent target (:mod:`metabrowser.recent_targets`) just before the
-    ``Serving`` line, so whoever reads that line finds the root already listed.
+    ``Serving`` line, so whoever reads that line finds the root already listed. *place*
+    is the file or folder inside a folder that the page opens at, recorded as the
+    entry's ``target``; a mirror records none yet.
     """
 
     # Server import performs logging setup and plugin discovery. Keep it after
@@ -381,9 +385,14 @@ def serve_until_interrupted(
 
     if recent_targets.recording_enabled():
         # Asked first, so a server told not to record does not resolve its root either.
-        recent_targets.record_quietly(
-            mode, recent_targets.folder_root(Path(served)) if mode == "folder" else served
-        )
+        if mode == "folder":
+            recent_targets.record_quietly(
+                mode,
+                recent_targets.recorded_path(Path(served)),
+                target=None if place is None else recent_targets.recorded_path(place),
+            )
+        else:
+            recent_targets.record_quietly(mode, served)
 
     # A checkout says so here too. This is the line someone reads while
     # deciding which build they are looking at — during a side-by-side

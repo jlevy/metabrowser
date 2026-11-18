@@ -325,7 +325,7 @@ def test_local_browsing_in_process_never_calls_the_application_cache(
     assert _snapshot(tmp_path) == before
     # The serve recorded its folder, and the two data modes recorded nothing.
     assert [(target.mode, target.root) for target in recorded] == [
-        ("folder", recent_targets.folder_root(root))
+        ("folder", recent_targets.recorded_path(root))
     ]
     assert recent_targets.read(config).targets == recorded
     # And it wrote nothing else there: no `config.yml`, and no temporary file left behind.

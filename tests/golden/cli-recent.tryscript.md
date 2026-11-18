@@ -21,8 +21,9 @@ before: >-
 `metab` keeps one list of the folders and repositories opened lately, which the macOS
 app’s File > Open Recent draws from `metab --recent --json`. These transcripts pin what
 is in the list and in what order: the most recently opened first, one entry for each
-root, a file standing for its folder and a URL for its repository, and what a damaged
-file or one from a newer release lists as.
+root, a file standing for its folder, which keeps the file as where the open pointed,
+and a URL for its repository, and what a damaged file or one from a newer release lists
+as.
 `tests/test_recent_targets.py` covers the store itself: the cap, writers at once, and
 that a real serve records its root.
 
@@ -58,8 +59,10 @@ $ ls -d config 2>/dev/null | wc -l | tr -d ' '
 
 ## Test: a folder, a file, and a URL are recorded as their roots
 
-A file stands for the folder that serving it would serve, and a pull request’s URL for
-its repository, lower-cased as the URL grammar normalizes it.
+A file stands for the folder that serving it would serve, and its entry keeps the file
+as its `target`, where the open pointed.
+A pull request’s URL stands for its repository, lower-cased as the URL grammar
+normalizes it.
 
 ```console
 $ METABROWSER_CONFIG_DIR=$PWD/config metab roots/alpha --recent-add
@@ -113,22 +116,26 @@ $ METABROWSER_CONFIG_DIR=$PWD/config metab --recent --json
     {
       "mode": "mirror",
       "root": "https://github.com/jlevy/tbd",
-      "opened_at": "[TIMESTAMP]"
+      "opened_at": "[TIMESTAMP]",
+      "target": null
     },
     {
       "mode": "folder",
       "root": "[ROOTS]/alpha",
-      "opened_at": "[TIMESTAMP]"
+      "opened_at": "[TIMESTAMP]",
+      "target": null
     },
     {
       "mode": "folder",
       "root": "[ROOTS]/gamma/sub",
-      "opened_at": "[TIMESTAMP]"
+      "opened_at": "[TIMESTAMP]",
+      "target": "[ROOTS]/gamma/sub/note.txt"
     },
     {
       "mode": "folder",
       "root": "[ROOTS]/beta",
-      "opened_at": "[TIMESTAMP]"
+      "opened_at": "[TIMESTAMP]",
+      "target": null
     }
   ],
   "problem": null
@@ -153,6 +160,7 @@ targets:
 - mode: folder
   root: [ROOTS]/gamma/sub
   opened_at: '[TIMESTAMP]'
+  target: [ROOTS]/gamma/sub/note.txt
 - mode: folder
   root: [ROOTS]/beta
   opened_at: '[TIMESTAMP]'
@@ -412,7 +420,7 @@ A later release may add a field to an entry under the same format.
 This one lists the entry by what it knows and carries the field through a rewrite.
 
 ```console
-$ printf 'format: mf01\ntargets:\n- mode: mirror\n  root: https://github.com/jlevy/tbd\n  opened_at: 2026-11-18T03:14:15Z\n  target: https://github.com/jlevy/tbd/pull/12\n' > config/recent-targets.yml
+$ printf 'format: mf01\ntargets:\n- mode: mirror\n  root: https://github.com/jlevy/tbd\n  opened_at: 2026-11-18T03:14:15Z\n  target: https://github.com/jlevy/tbd/pull/12\n  later: kept\n' > config/recent-targets.yml
 ? 0
 ```
 
@@ -424,7 +432,8 @@ $ METABROWSER_CONFIG_DIR=$PWD/config metab --recent --json
     {
       "mode": "mirror",
       "root": "https://github.com/jlevy/tbd",
-      "opened_at": "[TIMESTAMP]"
+      "opened_at": "[TIMESTAMP]",
+      "target": "https://github.com/jlevy/tbd/pull/12"
     }
   ],
   "problem": null
@@ -438,8 +447,8 @@ $ METABROWSER_CONFIG_DIR=$PWD/config metab roots/beta --recent-add 2>&1
 ```
 
 ```console
-$ grep -c 'target: https://github.com/jlevy/tbd/pull/12' config/recent-targets.yml
-1
+$ grep -c -e 'target: https://github.com/jlevy/tbd/pull/12' -e 'later: kept' config/recent-targets.yml
+2
 ? 0
 ```
 

@@ -12,8 +12,9 @@ one list :mod:`metabrowser.recent_targets` keeps:
 
 None of them starts a server, imports one, or reads a repository, and none looks at a
 listed folder (``docs/project/architecture/arch-recent-targets.md`` says why). TARGET is
-read as ROOT is: a folder, a file, which stands for its folder, or a URL, which stands
-for its repository whatever it selects inside it.
+read as ROOT is: a path, which stands for the root a serve of it opens
+(``resolve_local_open``), or a URL, which stands for its repository whatever it selects
+inside it.
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from typing import TYPE_CHECKING
 import typer
 
 from metabrowser import recent_targets
+from metabrowser.cli.common import resolve_local_open
 from metabrowser.errors import CLIError
 from metabrowser.invisible_chars import display_segment
 from metabrowser.paths_safe import tilde_path
@@ -59,7 +61,8 @@ def list_recent(*, as_json: bool) -> None:
     """Print the recent targets, most recently opened first.
 
     ``--json`` prints one object: ``limit``, how many the list keeps; ``targets``, each
-    with its ``mode``, ``root``, and ``opened_at``; and ``problem``, ``null`` or the
+    with its ``mode``, ``root``, ``opened_at``, and ``target``, which is ``null`` when the
+    open pointed at the root itself; and ``problem``, ``null`` or the
     sentence that says why a damaged or newer file lists as empty. A problem is part of
     the answer, with exit status 0, so a shell that reads standard output and standard
     error together still finds one object.
@@ -88,17 +91,6 @@ def list_recent(*, as_json: bool) -> None:
         typer.echo(f"{target.mode:<6}  {target.opened_at}  {_shown(target, home)}")
 
 
-def _served_folder(path: Path) -> Path:
-    """The folder a serve of *path* would serve: itself, or a file's folder."""
-
-    resolved = path.expanduser().resolve()
-    if resolved.is_file():
-        resolved = resolved.parent
-    if not resolved.is_dir():
-        raise CLIError(f"{resolved} is not a directory")
-    return resolved
-
-
 def _mirror_root(source: GitSource) -> str:
     if source.transport not in _SERVED_TRANSPORTS:
         raise CLIError(
@@ -119,12 +111,17 @@ def add_recent(target: Path | GitSource) -> None:
         typer.echo(f"Not recorded: {recent_targets.RECORD_ENV} is off.", err=True)
         return
     mode: TargetMode
+    place: str | None = None
     if isinstance(target, Path):
-        mode, root = "folder", recent_targets.folder_root(_served_folder(target))
+        # The root a serve of the path would open, by the rule a serve asks.
+        opened = resolve_local_open(target)
+        mode, root = "folder", recent_targets.recorded_path(opened.root)
+        if opened.place is not None:
+            place = recent_targets.recorded_path(opened.place)
     else:
         mode, root = "mirror", _mirror_root(target)
     try:
-        recent_targets.record(mode, root)
+        recent_targets.record(mode, root, target=place)
     except (RecentTargetsError, recent_targets.UnrecordableRootError) as error:
         raise CLIError(f"not recorded: {error}") from error
 
@@ -132,10 +129,11 @@ def add_recent(target: Path | GitSource) -> None:
 def _folder_spellings(path: Path) -> frozenset[tuple[str, str]]:
     """Every root a folder entry for *path* could be stored under.
 
-    A folder that exists is stored as :func:`~metabrowser.recent_targets.folder_root`
-    spells it. One that is gone cannot be resolved whole, so its entry is matched by the
-    path as given, made absolute, which is how a shell hands back a root it was listed,
-    and by that path with the links above the missing folder resolved.
+    A path that exists stands for the root a serve of it opens, stored as
+    :func:`~metabrowser.recent_targets.recorded_path` spells it. One that is gone cannot
+    be resolved whole, so its entry is matched by the path as given, made absolute, which
+    is how a shell hands back a root it was listed, and by that path with the links above
+    the missing folder resolved.
     """
 
     expanded = path.expanduser()
@@ -143,13 +141,12 @@ def _folder_spellings(path: Path) -> frozenset[tuple[str, str]]:
     # link above it, as anything under /tmp on macOS is, is listed by the link's target.
     spellings = {os.path.abspath(expanded), os.path.realpath(expanded)}
     try:
-        resolved = expanded.resolve(strict=True)
-    except (OSError, RuntimeError):
+        expanded.resolve(strict=True)
+        resolved = resolve_local_open(expanded).root
+    except (OSError, RuntimeError, CLIError):
         return frozenset(("folder", spelling) for spelling in spellings)
-    if resolved.is_file():
-        resolved = resolved.parent
     spellings.add(str(resolved))
-    spellings.add(recent_targets.folder_root(resolved))
+    spellings.add(recent_targets.recorded_path(resolved))
     return frozenset(("folder", spelling) for spelling in spellings)
 
 
