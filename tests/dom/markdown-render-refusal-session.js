@@ -35,6 +35,7 @@ const REFUSALS = {
       code: "render_deadline",
       error: "Rendering took longer than 5 seconds, so it was stopped",
       deadline_ms: 5000,
+      remembered: false,
       path: "slow.md",
     },
   },
@@ -45,6 +46,7 @@ const REFUSALS = {
       code: "renderer_exited",
       error: "The renderer stopped while rendering this document",
       deadline_ms: 5000,
+      remembered: true,
       path: "slow.md",
     },
   },
@@ -55,6 +57,18 @@ const REFUSALS = {
       code: "renderer_unavailable",
       error: "The document renderer could not start",
       deadline_ms: 5000,
+      remembered: false,
+      path: "slow.md",
+    },
+  },
+  renderer_busy: {
+    status: 503,
+    payload: {
+      type: "kpress_render_refused",
+      code: "renderer_busy",
+      error: "The document renderer is busy with other documents",
+      deadline_ms: 5000,
+      remembered: false,
       path: "slow.md",
     },
   },
@@ -279,7 +293,7 @@ async function documentTab(rendered, answer, envelope, complete) {
     `${WINDOW}${"x".repeat(4096 - WINDOW.length)}`,
   );
   session.otherCodes = {};
-  for (const code of ["renderer_exited", "renderer_unavailable"]) {
+  for (const code of ["renderer_exited", "renderer_unavailable", "renderer_busy"]) {
     const result = await documentTab(rendered, REFUSALS[code], FILE_ENVELOPE, SLOW_TEXT);
     session.otherCodes[code] = { markup: result.markup, renderError: result.renderError };
   }

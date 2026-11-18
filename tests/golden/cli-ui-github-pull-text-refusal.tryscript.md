@@ -47,6 +47,7 @@ $ node tests/dom/github-pull-text-refusal-session.js
     "render_deadline": "This text took longer than 5 seconds to render, so it is shown as plain text.",
     "renderer_exited": "The renderer stopped while rendering this text, so it is shown as plain text.",
     "renderer_unavailable": "The renderer could not start, so this text is shown as plain text. Reload to try again.",
+    "renderer_busy": "The renderer is busy with other texts, so this text is shown as plain text. Reload to try again.",
     "render_failed": "This text could not be rendered, so it is shown as plain text.",
     "recorded": "This text took longer than 0.2 seconds to render, so it is shown as plain text.",
     "unknown_part": null,

@@ -2,7 +2,8 @@
 //
 // Under the untrusted profile the server renders a document in its Markdown child, under
 // a deadline (src/metabrowser/diff/markdown_projection_worker.py), and answers one that
-// ran past it, whose renderer stopped, or whose renderer could not start, with a
+// ran past it, whose renderer stopped, whose renderer could not start, or that arrived
+// while the renderer had as many other documents as it takes, with a
 // `kpress_render_refused` envelope and a code. The Document view then shows the file's
 // source in its place, as the Source tab draws it, under a warning notice that says why,
 // rather than a render error: the document is readable, only not rendered. That is the
@@ -71,6 +72,8 @@ export function refusalNote(refusal) {
       return "The renderer stopped while rendering this document, so its source is shown.";
     case "renderer_unavailable":
       return "The document renderer could not start, so this document’s source is shown. Reload to try again.";
+    case "renderer_busy":
+      return "The document renderer is busy with other documents, so this document’s source is shown. Reload to try again.";
     default:
       return "This document could not be rendered, so its source is shown.";
   }

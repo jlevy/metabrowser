@@ -101,6 +101,7 @@ async function main() {
     "render_deadline",
     "renderer_exited",
     "renderer_unavailable",
+    "renderer_busy",
     "render_failed",
   ]) {
     notes[code] = runtime.refusedTextNote(422, { code, deadline_ms: 5000 });

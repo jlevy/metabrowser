@@ -1548,8 +1548,8 @@ export function isEnvelope(value) {
  * its answer says nothing a reader needs: a record the page no longer shows, say, whose
  * text stays plain until the newer record's is asked for. The server renders a text in
  * its Markdown child under a deadline (`pull_markdown.render_part`), and refuses one that
- * runs past it, whose renderer stops, or whose renderer cannot start; KPress can also
- * fail on a text. Each shows the text as plain text, with this line saying why.
+ * runs past it, whose renderer stops, whose renderer cannot start, or that arrives while
+ * the renderer has as many other texts as it takes; KPress can also fail on a text. Each shows the text as plain text, with this line saying why.
  *
  * @param {number} status
  * @param {Record<string, any> | null} body
@@ -1570,6 +1570,8 @@ export function refusedTextNote(status, body) {
       return "The renderer stopped while rendering this text, so it is shown as plain text.";
     case "renderer_unavailable":
       return "The renderer could not start, so this text is shown as plain text. Reload to try again.";
+    case "renderer_busy":
+      return "The renderer is busy with other texts, so this text is shown as plain text. Reload to try again.";
     case "render_failed":
       return "This text could not be rendered, so it is shown as plain text.";
     default:
@@ -3952,6 +3954,14 @@ export function mountPullPage(container, ctx, mb) {
   const texts = new Map();
   /** The text each text element shows, which its Markdown must be of. @type {WeakMap<Element, string>} */
   const textOf = new WeakMap();
+  /**
+   * Why a text shows plain, by part, while that text is the one shown: a text element
+   * rebuilt on the same record is not asked for its Markdown again, so it says why from
+   * here, and a render that arrives later takes the note away.
+   *
+   * @type {Map<string, {text: string, note: string}>}
+   */
+  const refusedNotes = new Map();
   /** The conversation's sections as last painted, by what each shows. @type {Map<string, HTMLElement>} */
   let sections = new Map();
   /**
@@ -4231,11 +4241,15 @@ export function mountPullPage(container, ctx, mb) {
     collecting?.push(element);
     const kept = controller.renderedFor(part, value);
     const inert = insertableNow(kept) ? window.MetabrowserInertHtml : undefined;
-    element.append(
-      kept !== null && inert !== undefined
-        ? kpressHost(inert, kept)
-        : h("div", { class: "github-pull-plain" }, [value]),
-    );
+    if (kept !== null && inert !== undefined) {
+      element.append(kpressHost(inert, kept));
+    } else {
+      element.append(h("div", { class: "github-pull-plain" }, [value]));
+      const refused = refusedNotes.get(part);
+      if (refused?.text === value) {
+        element.append(refusalNotice(refused.note));
+      }
+    }
     if (truncated) {
       element.append(notice("warning", ["This text was cut; the rest is on GitHub."]));
     }
@@ -4309,24 +4323,36 @@ export function mountPullPage(container, ctx, mb) {
   }
 
   /**
-   * Say under a text's plain text why its Markdown will not come, once.
+   * Say under a text's plain text why its Markdown will not come, in one notice.
    *
    * @param {string} part
    * @param {string} text The text the server would not render.
    * @param {string} note
    */
   function refusedText(part, text, note) {
+    refusedNotes.set(part, { text, note });
     const element = texts.get(part);
     const plain =
       element === undefined || textOf.get(element) !== text
         ? null
         : element.querySelector(":scope > .github-pull-plain");
-    if (plain && element?.querySelector(":scope > .github-pull-text-refused") === null) {
-      const said = notice("warning", [note]);
-      said.classList.add("github-pull-text-refused");
-      said.setAttribute("role", "status");
-      plain.after(said);
+    if (plain) {
+      // One notice, saying the latest refusal's reason.
+      element?.querySelector(":scope > .github-pull-text-refused")?.remove();
+      plain.after(refusalNotice(note));
     }
+  }
+
+  /**
+   * The line under a plain text that says why its Markdown will not come.
+   *
+   * @param {string} note
+   */
+  function refusalNotice(note) {
+    const said = notice("warning", [note]);
+    said.classList.add("github-pull-text-refused");
+    said.setAttribute("role", "status");
+    return said;
   }
 
   /**
@@ -4366,6 +4392,11 @@ export function mountPullPage(container, ctx, mb) {
           : element.querySelector(":scope > .github-pull-plain");
       if (plain && inert !== null) {
         plain.replaceWith(kpressHost(inert, rendered));
+        // The text is rendered now, so what said why it was plain goes with the plain text.
+        element?.querySelector(":scope > .github-pull-text-refused")?.remove();
+        if (refusedNotes.get(part)?.text === text) {
+          refusedNotes.delete(part);
+        }
       } else if (inert === null) {
         held?.failed.add(part);
       }
