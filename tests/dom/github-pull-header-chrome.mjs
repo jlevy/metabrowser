@@ -1060,11 +1060,11 @@ const COLD_LANDING = `async (width, labelled, outcome) => {
 }`;
 // Pulls rows built as pulls-panel.js#buildRow and #rowMeta build them, whose order
 // github-pulls-panel-session.js pins: the row's link, the state icon, the title, the age,
-// and the number's line, which the stylesheet lays out as two lines (mb-lkkt, mb-3cbf): the
-// icon, the number's line, where a stack member's place comes before its number (mb-dzsi),
-// and the age; then the title alone, from the text column to the row's end. Under the link
-// is the row's third line, its change line (mb-d0a3), which holds the chevron in the first
-// icon slot, here with no line yet. Each row is a member, a level in under its stack's row.
+// and the number's line, which the stylesheet lays out as two lines (mb-lkkt): the icon in
+// the row's one slot and the title alone, from the text column to the row's end; then the
+// number's line, where a stack member's place comes before its number (mb-dzsi), and the
+// age. Under the link is the row's third line, its change line (mb-d0a3), which holds the
+// chevron in the same slot, under the icon (mb-3vil), here with no line yet. Each row is a member, a level in under its stack's row.
 // The age, the chevron, the icon, and the title are read, from the row's top, before and
 // after each row's place arrives, the title's width with them: the place is on the number's
 // line, which stays one line, so nothing else moves, the link keeps its two lines (`grew`),
@@ -1228,8 +1228,8 @@ const PULLS_ROWS = `async (rows, width) => {
       titleFrom: round(t.left - inset),
       textColumn: round(parseFloat(style.getPropertyValue("--tree-icon-slot")) + parseFloat(style.columnGap)),
       // The icon is on the title's line, centered on it, in the slot on the row's inset; the
-      // chevron is on the change line, under the number's line, at the title's start (mb-d0a3),
-      // and the change line's values one slot and gap past it (mb-3vil).
+      // chevron is on the change line, under the number's line, in the same slot (mb-d0a3), and
+      // the change line's values in the title's column (mb-3vil).
       iconOff: round(middle(icon) - middle(t)),
       iconWithTitle: icon.height > 0 && icon.top >= t.top - 0.5 && icon.bottom <= t.bottom + 0.5 && icon.bottom <= meta.top + 0.5,
       iconFrom: round(icon.left - inset),
@@ -2182,12 +2182,12 @@ async function main() {
           // before, three stacks took a third line at 300 px and one stack at 180 px. The
           // row's third line is its change line (mb-d0a3), under the number's line.
           check(
-            `${where}: the number's line stays one line, the link two, and the row three, its change line under the number's line, its chevron at the title's start`,
+            `${where}: the number's line stays one line, the link two, and the row three, its change line under the number's line and in the title's column`,
             row.oneLine &&
               row.grew === 0 &&
               row.itemGrew === 0 &&
               row.threeLines &&
-              Math.abs(row.lineFrom - 2 * row.textColumn) < 0.5,
+              Math.abs(row.lineFrom - row.textColumn) < 0.5,
             JSON.stringify(row),
           );
           check(
@@ -2197,16 +2197,16 @@ async function main() {
           );
           // The icon leads the title's line, in its slot, since the title came first (2026-11-17);
           // from mb-3cbf it led the number's line. A row in no stack is flush on the inset
-          // (mb-3vil). The chevron is on the change line (mb-d0a3), under the title's start, and
-          // the line one slot and gap past it; on the number's line it led the link.
+          // (mb-3vil). The chevron is on the change line (mb-d0a3), in the same slot, under the
+          // icon, and the line in the title's column; on the number's line it led the link.
           check(
-            `${where}: the icon sits on the title's line, centered on it, on the row's inset, and the chevron on the change line under the title's start`,
+            `${where}: the icon sits on the title's line, centered on it, on the row's inset, and the chevron on the change line under it`,
             row.iconWithTitle &&
               Math.abs(row.iconOff) < 0.5 &&
               Math.abs(row.iconFrom) < 0.5 &&
               row.chevronOnThird &&
-              Math.abs(row.chevronFrom - row.textColumn) < 0.5 &&
-              Math.abs(row.lineFrom - 2 * row.textColumn) < 0.5,
+              Math.abs(row.chevronFrom) < 0.5 &&
+              Math.abs(row.lineFrom - row.textColumn) < 0.5,
             JSON.stringify(row),
           );
           check(

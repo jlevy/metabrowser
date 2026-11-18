@@ -474,7 +474,11 @@ def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None
         == "var(--tree-icon-slot) var(--tree-icon-slot) minmax(0, 1fr) 5ch"
     )
     # The rows' one gap and the text column's offset, which every indent sums (A8 of review A
-    # on #506).
+    # on #506). The change line's inset is the row's, so its chevron is under the state icon.
+    change = _rule(css, ".github-pulls-change")
+    assert "padding: 0 12px 2px calc(10px + var(--github-pulls-indent, 0px));" in change
+    assert "grid-template-columns: var(--tree-icon-slot) minmax(0, 1fr);" in change
+    assert "column-gap: var(--github-pull-row-gap);" in change
     assert "column-gap: var(--github-pull-row-gap);" in _rule(css, ".github-pulls-row")
     assert "  --github-pull-row-gap: 6px;\n" in css
     column = (
@@ -545,8 +549,8 @@ def test_a_pulls_rows_title_comes_first_and_runs_to_the_end() -> None:
     for part, column in (("github-pulls-toggle", 1), ("github-pull-state-icon", 1)):
         rule = _rule(css, f".github-pulls-row > .{part}")
         assert "grid-row: 1;" in rule and f"grid-column: {column};" in rule, part
-    # A pull request's chevron is on its change line, in the text column under the title's
-    # start, and the line's values one slot and gap past it (mb-3vil).
+    # A pull request's chevron is on its change line, in the row's one slot under the state
+    # icon, and the line's values in the text column under the title (mb-3vil).
     assert "grid-column: 1;" in _rule(css, ".github-pulls-change > .github-pulls-toggle")
     assert "grid-column: 2;" in _rule(css, ".github-pulls-change-line")
     second = re.findall(r"(?m)^(\.github-pulls[^{\n]*)\{[^}]*grid-row: 2;", css)

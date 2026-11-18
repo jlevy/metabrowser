@@ -471,6 +471,20 @@ px and the line went at 320 px.
 number’s, the state icon centred on the title’s line, the title from the text column to
 the row’s end, and the number’s line in the title’s column.
 
+Recorded on 2026-11-18, when the title-first rows took one leading slot (mb-3vil, at the
+owner’s word): measured in headless Chrome 152 by
+`tests/dom/github-pulls-stacks-chrome.mjs` at the default 299 px pane, from the pane’s
+left edge, a row in no stack has its state icon and its change line’s chevron at 12 px
+and its title, its number’s line, and its change line’s values at 32 px, the 14 px slot
+and the rows’ 6 px gap past them; a stack’s row has its chevron at 12 px, its Layers
+icon at 32 px, and its label at 52 px; and a stack’s member has its state icon and
+chevron at 32 px, under the Layers icon, and its three lines’ text at 52 px, under the
+label.
+A pull request’s changed files start 16 px, one `--tree-indent`, past its chevron.
+Before, on the title-first rows, a row in no stack had an empty first slot, its state
+icon at 32 px and its title, number’s line, and values at 52 px, with its chevron at 12
+px, 26 px from the values.
+
 ## Grouping Cost
 
 For [Grouping the Files Tree](../../docs/design-system.md#grouping-the-files-tree),

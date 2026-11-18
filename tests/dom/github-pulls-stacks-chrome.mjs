@@ -183,7 +183,7 @@ const LIST = `(() => {
         iconFromInset: round(icon.left - inset),
         linkToggles: row.querySelectorAll(".github-pulls-toggle").length,
         // The change line is under the link, and the item is the two; the chevron is inside it,
-        // under the title's start, and the line one icon slot and gap past it (mb-3vil).
+        // under the state icon, and the line's values under the title (mb-3vil).
         changeUnder: line !== null && line.top >= r.bottom - 0.5 && line.top >= meta.bottom - 0.5,
         threeLines: line !== null && Math.abs(item.getBoundingClientRect().height - r.height - line.height) < 0.5,
         toggleOnChange: toggle !== null && line !== null && toggle.top >= line.top - 0.5 && toggle.bottom <= line.bottom + 0.5,
@@ -212,6 +212,13 @@ const LIST = `(() => {
     flatIcon: left(flat?.querySelector(".github-pull-state-icon")),
     memberTitle: left(member?.querySelector(".github-pulls-title")),
     memberIcon: left(member?.querySelector(".github-pull-state-icon")),
+    // The three lines' text column: the title, the number's line, and the change line's values.
+    memberMeta: left(member?.querySelector(".github-pulls-meta")),
+    memberLine: left(member?.closest("li").querySelector(".github-pulls-change-line")),
+    flatMeta: left(flat?.querySelector(".github-pulls-meta")),
+    flatLine: left(flat?.closest("li").querySelector(".github-pulls-change-line")),
+    slotWidth: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tree-icon-slot")),
+    rowGap: parseFloat(getComputedStyle(flat ?? document.body).columnGap),
     // A member's indent: one icon slot and the rows' column gap (mb-3vil).
     memberIndent:
       parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tree-icon-slot")) +
@@ -629,10 +636,12 @@ try {
     // owner's word: the title is what a reader scans for); before, the number's line came
     // first and the icon led it (mb-3cbf). The icon is in the row's one slot, on its inset, so a
     // row in no stack is flush (mb-3vil). The chevron is on the row's third line, its change
-    // line (mb-d0a3), under the title's start, the line one slot and gap past it: on the
-    // number's line it led the row's link, which a press then both opened and expanded.
+    // line (mb-d0a3), in that slot under the icon, and the line's values in the title's column:
+    // on the number's line it led the row's link, which a press then both opened and expanded.
+    // Under the title's start it put the values a slot and gap past the other two lines' text,
+    // which the owner asked to have start at one x (2026-11-18).
     check(
-      "a pull request's first line is the icon, on the row's inset, and the title alone, from the text column to the row's end, its second its number's line and its age, and its third its change line, the chevron under the title's start and the line one slot and gap past it",
+      "a pull request's first line is the icon, on the row's inset, and the title alone, from the text column to the row's end, its second its number's line and its age, and its third its change line, the chevron under the icon and the line in the title's column",
       [10, 9, 106].every((number) => {
         const row = list.lines[number];
         return (
@@ -649,8 +658,8 @@ try {
           row.changeUnder &&
           row.threeLines &&
           row.toggleOnChange &&
-          Math.abs(row.toggleFromInset - row.textColumn) < 0.5 &&
-          Math.abs(row.lineFromTitle - row.textColumn) < 0.5 &&
+          Math.abs(row.toggleFromInset) < 0.5 &&
+          Math.abs(row.lineFromTitle) < 0.5 &&
           row.height === list.titleRoom.flatRow &&
           row.itemHeight === list.lines[106].itemHeight
         );
@@ -678,9 +687,9 @@ try {
         [slots.pull, slots.stack].every(
           (row) => row !== null && row.toggle === 14 && row.chevron === 12 && row.glyph === 14,
         ) &&
-        // A pull request's chevron is on its change line under its title's start (mb-3vil);
-        // a stack's leads its row.
-        near(slots.pull.toggleFromInset, 14 + slots.pull.gap) &&
+        // A pull request's chevron is on its change line under its state icon (mb-3vil); a
+        // stack's leads its row.
+        near(slots.pull.toggleFromInset, 0) &&
         slots.stack.toggleFromInset === 0 &&
         near(slots.pull.iconFromInset, 0) &&
         near(slots.pull.text, 14 + slots.pull.gap) &&
@@ -691,8 +700,36 @@ try {
     );
     check(
       "a stack's row starts on the list's row inset, where a first-level pull request's does",
-      near(list.stackToggle, list.flatIcon) && near(list.flatToggle, list.flatTitle),
+      near(list.stackToggle, list.flatIcon) && near(list.flatToggle, list.flatIcon),
       `${list.stackToggle} ${list.flatIcon} ${list.flatToggle} ${list.flatTitle}`,
+    );
+    // A row's three lines share two columns (the owner, 2026-11-18): the state icon and the
+    // chevron in the slot, and the title, the number's line, and the change line's values in
+    // the text column, the chevron the rows' one column gap before the values (mb-3vil).
+    check(
+      "a row's three lines start at one x: the icon over the chevron, and the title over the number's line over the change line's values, one column gap after the chevron's slot",
+      [
+        [list.flatIcon, list.flatToggle, list.flatTitle, list.flatMeta, list.flatLine],
+        [list.memberIcon, list.memberToggle, list.memberTitle, list.memberMeta, list.memberLine],
+      ].every(
+        ([icon, toggle, title, meta, line]) =>
+          near(icon, toggle) &&
+          near(title, meta) &&
+          near(title, line) &&
+          near(line - (toggle + list.slotWidth), list.rowGap),
+      ),
+      JSON.stringify({
+        flat: [list.flatIcon, list.flatToggle, list.flatTitle, list.flatMeta, list.flatLine],
+        member: [
+          list.memberIcon,
+          list.memberToggle,
+          list.memberTitle,
+          list.memberMeta,
+          list.memberLine,
+        ],
+        slot: list.slotWidth,
+        gap: list.rowGap,
+      }),
     );
     check(
       "its label starts where its pull requests' titles do, and its Layers icon where their state icons do",
@@ -702,7 +739,7 @@ try {
     check(
       "its pull requests start one tree level in, one icon slot and gap",
       near(list.memberIcon - list.stackToggle, list.memberIndent) &&
-        near(list.memberToggle, list.memberTitle),
+        near(list.memberToggle, list.memberIcon),
       `${list.memberIcon} ${list.stackToggle} ${list.memberIndent} ${list.memberToggle} ${list.memberTitle}`,
     );
     check(
@@ -854,9 +891,9 @@ try {
         files.expanded === "true" &&
         files.lineLevel === "3" &&
         files.level === "4" &&
-        // One tree level under the change line's chevron, which is the title's column, one
-        // icon slot and gap past the row's inset (mb-3vil).
-        files.indent === Math.round(list.treeIndent + list.memberIndent) &&
+        // One tree level under the change line's chevron, which is under the state icon, in the
+        // row's one slot (mb-3vil).
+        files.indent === Math.round(list.treeIndent) &&
         near(files.fromChevron, list.treeIndent) &&
         files.belowChange >= -0.5 &&
         JSON.stringify(files.afterLeft) === JSON.stringify(["false", "line 7"]) &&

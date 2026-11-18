@@ -427,18 +427,20 @@ function threeLines(r) {
     changeUnder:
       r.change.top >= r.row.bottom - TOLERANCE_PX && r.change.top >= r.meta.bottom - TOLERANCE_PX,
     itemIsBoth: near(r.item.height, r.row.height + r.change.height),
-    // The chevron is on the change line, under the title's start, and the line one icon slot
-    // and gap past it (mb-3vil): the line's inset is the row's, one slot and gap in.
+    // The chevron is on the change line, in the row's one slot under the state icon, and the
+    // line's values in the text column under the title and the number's line, one column gap
+    // after the chevron's slot (mb-3vil): the three lines share two columns.
     chevronOnThird:
       within(r.chevron, r.change) &&
       within(r.toggle, r.change) &&
       r.chevron.top >= r.meta.bottom - TOLERANCE_PX,
-    chevronUnderTitle:
+    chevronUnderIcon:
       near(r.toggle.left, r.changeInset) &&
       near(r.toggle.width, r.slot) &&
-      near(r.changeInset, r.inset + r.slot + r.gap) &&
-      near(r.toggle.left, r.title.left),
-    lineAfterChevron: near(r.changeLine.left, r.title.left + r.slot + r.gap),
+      near(r.changeInset, r.inset) &&
+      near(r.toggle.left, r.icon.left),
+    textColumnShared: near(r.changeLine.left, r.title.left) && near(r.meta.left, r.title.left),
+    chevronGap: near(r.changeLine.left - r.toggle.right, r.gap),
   };
   return { ok: Object.values(parts).every(Boolean), parts };
 }

@@ -1005,9 +1005,9 @@
   cursor: default;
 }
 /* The Pulls rows' column gap, and the text column's offset: one icon slot and that gap. A
-   row's title, a change line's values, a stack member's indent, and the changed files under a
-   row each start a whole number of it in (mb-3vil), so the five sums and the rows' gap read
-   the one value. On `:root`, so a changed files tree drawn outside the list has them too, and
+   row's title, its number's line, and its change line's values start one of it in, a stack
+   member's row one more, and the files line under a row's changed files one past their
+   indent (mb-3vil), so those sums and the rows' gap read the one value. On `:root`, so a changed files tree drawn outside the list has them too, and
    named `--github-pull-`, as `--github-pull-file-depth` is: this sheet's `:root` declares
    only its own tokens (tests/test_pull_page_route.py). */
 :root {
@@ -1035,9 +1035,9 @@
    member's place, the number, and the author, "1/4 · #N · jlevy", in the title's column, with
    the age at the row's end. A row in no stack is flush on the list's inset; only a stack's
    members are indented, under their stack's row (mb-3vil). The third line is its change line
-   (`.github-pulls-change`, below), which holds the chevron in the text column, under the
-   title's start, and the line's values one icon slot and gap past it (`--tree-icon-slot`,
-   docs/design-system.md, "Container Rows"). A stack's row keeps two slots, its chevron's and
+   (`.github-pulls-change`, below), which holds the chevron in the same slot, under the state
+   icon, and the line's values in the text column, so the three lines' text starts at one x
+   (`--tree-icon-slot`, docs/design-system.md, "Container Rows"). A stack's row keeps two slots, its chevron's and
    its Layers icon's (`.github-pulls-stack-row`). The row centers its boxes; the title is
    alone on the first line, and on the second the number's line and the age share a baseline
    (docs/design-system.md, "Row Text Shares a Baseline"). The DOM keeps the title the row's
@@ -1204,11 +1204,14 @@
 .github-pulls-row:not(.github-pulls-stack-row) {
   padding-bottom: 0;
 }
-/* The row's third line, its change line (mb-d0a3): the registry's chevron in the text column,
-   under the title's start, one level in from the state icon, then, one column gap on, the pull
-   request's brief change line, to the row's end, "21 A, 7 D, 15 M · +1,234 −567"; so the
-   chevron leads the values it discloses at the title's indent, the line's inset one icon slot
-   and gap past the row's (mb-3vil). It is the row's
+/* The row's third line, its change line (mb-d0a3): the registry's chevron in the row's one
+   slot, under the state icon, then, one column gap on, the pull request's brief change line,
+   in the text column under the title and the number's line, to the row's end, "21 A, 7 D,
+   15 M · +1,234 −567". So the row's three lines share two columns: the state icon and the
+   chevron in the slot, and the title, the number's line, and the values in the text column,
+   the chevron just before the values it discloses (mb-3vil). Under the title's start, the
+   chevron put the values a slot and gap further in than the title's and the number's line's
+   text. It is the row's
    one child in the tree and a target of its own, the one that opens and closes the changed
    files under it, as a folder's row does, so it hovers and takes the focus ring on its own;
    the current row's mark carries onto it, so the pull request open reads as one block. Its
@@ -1220,8 +1223,7 @@
   grid-template-columns: var(--tree-icon-slot) minmax(0, 1fr);
   align-items: center;
   height: var(--github-pulls-change-line);
-  padding: 0 12px 2px
-    calc(10px + var(--github-pulls-indent, 0px) + var(--github-pull-row-text-column));
+  padding: 0 12px 2px calc(10px + var(--github-pulls-indent, 0px));
   border-left: 2px solid transparent;
   column-gap: var(--github-pull-row-gap);
   color: var(--text);
@@ -1342,13 +1344,12 @@
 }
 /* A changed file's and a folder's row are the shell's changed-file rows (static/styles.css,
    `.changed-file-row`), the Diff summary's too. Here is only where a row sits: its depth's
-   indent, one level in from the change line's chevron, which is at the title's start, and
+   indent, one level in from the change line's chevron, which is under the state icon, and
    the room the sticky filters keep. */
 .github-pull-file-row,
 .github-pull-folder-row {
   --changed-file-indent: calc(
     var(--github-pulls-indent, 0px) +
-    var(--github-pull-row-text-column) +
     var(--github-pull-file-depth, 1) *
     var(--tree-indent)
   );
@@ -1372,7 +1373,6 @@
     calc(
       10px +
       var(--github-pulls-indent, 0px) +
-      2 *
       var(--github-pull-row-text-column) +
       var(--tree-indent)
     );
@@ -1391,13 +1391,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  margin: 2px 12px 4px
-    calc(
-      10px +
-      var(--github-pulls-indent, 0px) +
-      var(--github-pull-row-text-column) +
-      var(--tree-indent)
-    );
+  margin: 2px 12px 4px calc(10px + var(--github-pulls-indent, 0px) + var(--tree-indent));
   padding: 4px 8px;
 }
 .github-pulls-foot {
