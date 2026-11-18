@@ -2543,10 +2543,10 @@ html.theme-anim .menu {
   position: relative;
   z-index: var(--z-pane);
 }
-/* No top padding: whatever leads this pane — the tally row, or tree
-   rows directly when a recency window is showing /api/recent results —
-   owns its own spacing below the filter bar's border. Padding here
-   would stack on top of it. */
+/* No top padding: the chrome over the scroller, a toolbar or the metadata band
+   under it (`.nav-metadata-band`), ends in its own rule and spacing, and what
+   leads the scroller under it makes up the rest (the first tree row's margin,
+   below). Padding here would stack on top of it. */
 .tree-content {
   flex: 1;
   overflow-y: auto;
@@ -3835,7 +3835,8 @@ a.tab-btn {
      so the padding and border are inside this figure. */
   min-height: var(--nav-toolbar-height);
   position: relative;
-  z-index: 1;
+  /* Over the metadata band under it (`.nav-metadata-band`). */
+  z-index: 2;
   transition:
     box-shadow var(--transition-fast),
     row-gap var(--transition-fast);
@@ -3894,7 +3895,8 @@ a.tab-btn {
   border-bottom: 1px solid var(--border);
   background: var(--sidebar-bg);
   position: relative;
-  z-index: 1;
+  /* Over the metadata band under it (`.nav-metadata-band`). */
+  z-index: 2;
   transition: box-shadow var(--transition-fast);
 }
 .nav-filter-bar[hidden],
@@ -4039,16 +4041,29 @@ a.tab-btn {
    of the scroller every rule ends at the pane's edge (mb-vgx3,
    tests/dom/nav-metadata-chrome.mjs). The band takes its toolbar's place in the slot's
    order: hidden while another tab's toolbar is in front, and carrying the toolbar's
-   scroll shadow while it is shown (`.scrolled + .nav-metadata-band`). Positioned so
-   that shadow falls over the content under it, and with no z-index, so a menu the
-   toolbar opens stays over the band. */
+   scroll shadow while it is shown (`.scrolled + .nav-metadata-band`). Its z-index puts
+   that shadow over everything the scroller holds, positioned content too, as the
+   toolbar's was; the toolbars sit one above it, so a menu one opens stays over the
+   band. */
 .nav-metadata-band {
   flex-shrink: 0;
   position: relative;
+  z-index: 1;
   background: var(--sidebar-bg);
   transition: box-shadow var(--transition-fast);
 }
 [data-nav-toolbar][hidden] + .nav-metadata-band {
+  display: none;
+}
+/* While the panel under a band says it could not load, the band's lines, about a list
+   it no longer shows, give way to the alert, as they went with it when they were the
+   panel's first rows: failTree, failGroupedTree, and the recency source's error in
+   app.js, and pulls-nav.js's showFailure, each put the alert first in the panel or the
+   scroller. The lines stay in the band, kept current, and show again with the next
+   list, which replaces the alert. */
+.nav-metadata-band:has(~ .tree-content > [role="alert"]),
+#nav-metadata-files:has(~ .tree-content > #tab-files > [role="alert"]),
+#nav-metadata-pulls:has(~ .tree-content > #tab-pulls > [role="alert"]) {
   display: none;
 }
 .nav-filter-bar:has(.filter-drawer[data-open="true"]) {

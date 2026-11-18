@@ -764,8 +764,6 @@
         said.setAttribute("role", "alert");
         said.textContent = "Could not load the pull requests. Refresh the page to try again.";
         container.replaceChildren(said);
-        // And the count and connection lines over it, which would otherwise wait on the list.
-        document.getElementById("nav-metadata-pulls")?.replaceChildren();
       },
     });
     current = nav;

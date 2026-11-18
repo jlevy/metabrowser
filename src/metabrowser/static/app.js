@@ -1128,8 +1128,6 @@ async function loadTree(options = {}) {
           treeEl.innerHTML =
             '<div class="preview-empty" role="alert">Could not load files. Refresh the page to try again.</div>';
         }
-        // The totals over it too, which would otherwise wait on a tree that is not coming.
-        filesMetadataBand()?.replaceChildren();
       }
 
       let resp;
@@ -5109,7 +5107,8 @@ function initNavScrollShadow() {
     // Whichever chrome is bottom-most *and visible* carries it, and the
     // others are cleared so a tab switch cannot leave two shadows armed.
     // The chrome is the pane's own children, so a scroll visits those and not
-    // the document (44 to 510 us a call on 1,871 to 23,232 elements).
+    // the document (44 to 510 us a call on 1,871 to 23,232 elements). A metadata
+    // band under the toolbar takes its shadow while it has lines (styles.css).
     const target = pane.querySelector(":scope > [data-nav-toolbar]:not([hidden])") ?? tabBar;
     for (const chrome of pane.querySelectorAll(":scope > :is([data-nav-toolbar], .nav-tab-bar)")) {
       chrome.classList.toggle("scrolled", chrome === target && scrollContent.scrollTop > 0);

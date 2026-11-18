@@ -248,6 +248,20 @@ try {
     answers.api_failure = failure;
     fs.writeFileSync(SCENARIO, JSON.stringify(answers));
   };
+  // A panel that could not load: its band gives way to the alert, as the lines went with the
+  // panel when they were its first rows, and shows again once the alert is gone (styles.css,
+  // after `.nav-metadata-band`). `fail` puts the alert where the shell's failure does, and
+  // returns how to take it away; each state reads whether the band is shown.
+  const givesWay = (band, fail) =>
+    evaluate(`(() => {
+      const band = document.getElementById(${JSON.stringify(band)});
+      const shown = () => band.childElementCount > 0 && getComputedStyle(band).display !== "none";
+      const before = shown();
+      const restore = (${fail})();
+      const failed = shown();
+      restore();
+      return [before, failed, shown()];
+    })()`);
   const afterSummary = (html) =>
     evaluate(
       `[...document.querySelectorAll("#nav-metadata-files .nav-metadata")].at(-1).insertAdjacentHTML("afterend", ${JSON.stringify(html)})`,
@@ -283,6 +297,45 @@ try {
   await measure("files recent stale");
   await evaluate(
     `document.querySelectorAll(".tree-summary-filtered, .recent-stale-note").forEach((n) => n.remove())`,
+  );
+  // Grouped or recency, the panel's alert (failGroupedTree's own); the tree's, the scroller's.
+  const filesFailed = await givesWay(
+    "nav-metadata-files",
+    `() => {
+      const panel = document.getElementById("tab-files");
+      const kept = [...panel.childNodes];
+      failGroupedTree("nav-metadata-chrome");
+      return () => panel.replaceChildren(...kept);
+    }`,
+  );
+  check(
+    "files: the band gives way to the panel's alert",
+    `${filesFailed}` === "true,false,true",
+    filesFailed,
+  );
+  const treeFailed = await givesWay(
+    "nav-metadata-files",
+    `() => {
+      const alert = document.createElement("div");
+      alert.setAttribute("role", "alert");
+      document.getElementById("tree-content").prepend(alert);
+      return () => alert.remove();
+    }`,
+  );
+  check(
+    "files: the band gives way to the scroller's alert",
+    `${treeFailed}` === "true,false,true",
+    treeFailed,
+  );
+  // The band's shadow is over what the scroller holds, positioned rows too, and the toolbars,
+  // whose menus open over it, are over the band.
+  const stacking = await evaluate(`["nav-metadata-files", "nav-filter-bar", "nav-toolbar-git"].map(
+    (id) => getComputedStyle(document.getElementById(id)).zIndex,
+  )`);
+  check(
+    "the band stacks over the scroller and under the toolbars",
+    `${stacking}` === "1,2,2",
+    stacking,
   );
 
   await click('.nav-tab-bar [data-tab="git"]');
@@ -407,6 +460,22 @@ try {
   );
   await measure("pulls updated");
   await measureRules("pulls updated");
+  // As pulls-nav.js's showFailure puts it, first in the tab's panel.
+  const pullsFailed = await givesWay(
+    "nav-metadata-pulls",
+    `() => {
+      const alert = document.createElement("p");
+      alert.className = "github-pulls-empty";
+      alert.setAttribute("role", "alert");
+      document.getElementById("tab-pulls").prepend(alert);
+      return () => alert.remove();
+    }`,
+  );
+  check(
+    "pulls: the band gives way to the panel's alert",
+    `${pullsFailed}` === "true,false,true",
+    pullsFailed,
+  );
   // In a pane narrower than the count, the count is cut short on its one line.
   await paneWidth(NARROW_PX);
   narrowCount = await evaluate(`(() => {

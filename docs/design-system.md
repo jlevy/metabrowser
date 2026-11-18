@@ -4400,6 +4400,14 @@ in the Commits slot, and 12px muted text with no space above it under the Pulls 
   The scroller reserves its scrollbar’s gutter (`scrollbar-gutter: stable`) and clips
   what it holds at its padding box, so a line inside it ended its rule a gutter short of
   the pane’s edge, 11 px with classic scrollbars, at every pane width.
+  While the panel says it could not load, the band gives way to that alert, as the lines
+  went with it when they were the panel’s; they show again with the next list.
+  The cost, accepted: a line that comes or goes while the reader has scrolled, such as a
+  recency window’s note that its list may be out of date, moves the scroller’s top and
+  the rows with it, by a line’s height.
+  In the scroller, scroll anchoring held the rows still.
+  Holding them from the band takes a script that watches the band’s height on every
+  page, which the move out of the scroller did not add to the shell’s startup scripts.
 - **Spacing.** `--nav-metadata-gap` between a line’s items and between the words of an
   item built of spans, about a word space and a half.
 - **Pending.** A figure still being counted is the pending tally inside the span its

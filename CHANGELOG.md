@@ -9,7 +9,8 @@ All notable changes to Metabrowser are documented here.
   do. It stopped 11 px short of the pane’s right edge, where the tree’s scrollbar has its
   space. These lines now stand under their tab’s toolbar rather than at the top of the
   list, so they stay in view while the tree or the list scrolls, as the Commits tally
-  does.
+  does. A line that comes or goes while the list is scrolled, such as the note that a
+  recency window may be out of date, now moves the rows by its height.
 
 - On a checkout of a repository on github.com, or a mirror of one, a file’s or a
   folder’s header ends in a small toggle of two marks: Metabrowser’s, gray, the view the
