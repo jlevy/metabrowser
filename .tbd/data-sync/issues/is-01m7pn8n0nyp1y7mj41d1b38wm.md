@@ -5,11 +5,11 @@ title: "Open modes: shared local-open resolver (walk-up, --exact-root, root in S
 kind: task
 status: open
 priority: 2
-version: 3
+version: 4
 labels: []
 dependencies: []
 created_at: 2026-11-18T06:24:49.172Z
-updated_at: 2026-11-18T07:11:48.812Z
+updated_at: 2026-11-18T07:24:41.427Z
 ---
 Implement the one resolver arch-open-modes.md (#558) specifies: walk up to the nearest repository root with the owner's Q2(b) guards (not for an ignored path, not up to the home folder, not beyond loopback, serving only), --exact-root opt-out, the resolved root printed in the Serving line. #540's _resolve_local becomes this resolver; #539 and #546 route through it. Goldens and parity rows.
 
@@ -36,3 +36,10 @@ Guide wording to change with the code (replacement text is the design review's, 
 - Code docstrings: root_identity.py (module), cli/main.py (_names_existing_path, the ROOT help), cli/serve.py (run_serve), git/repo.py (module).
 
 2026-11-18, review B on #558 (eaf9a1940) adds to the above: the resolver's Git policy also sets GIT_NO_LAZY_FETCH=1. In a --filter=blob:none --sparse clone, check-ignore -q on a path under a folder outside the sparse checkout fetched that folder's .gitignore blob (packs 2 to 3, Git 2.50.1); with the variable it fetches nothing and exits 1, so an ignore file neither on disk nor in the object store is not consulted and such a path opens the repository's root. The fixture needs a sparse partial-clone case. The first guard also requires a root that can be read.
+
+2026-11-18, from PR #546 (recent targets, mb-40k4), the hook this resolver replaces. #546 does not build the resolver; it records the root metab serves today and routes both callers through one function:
+- `resolve_local_open(path) -> LocalOpen(root, place)` in src/metabrowser/cli/common.py. Today: a folder opens as itself and a file opens its folder, links resolved; `place` is the file named, None when the path is the root. `run_serve` (cli/serve.py) serves `opened.root` and turns `place` into its `--path`; `recent_cli.add_recent` and `_folder_spellings` (--recent-forget) ask the same function. Replace this function's body with the resolver (walk-up and the guards) and serving, `--recent-add`, and the recent list follow with no other change.
+- `place` becomes the path the reader named under a repository root (a folder or a file); `run_serve` then needs `place` as a folder to be a `--path` too (today only a file reaches it, and the combine-with---path error says "is a file").
+- The list records `place` as the entry's optional `target` (recorded_path spelling; must lie inside the root, else it is dropped and the root still recorded), and `root` as the key. The store needs no change for walk-up.
+- `--exact-root` is not on `--recent-add` (its mode takes no options); decide whether it should be when the resolver adds the flag.
+- Goldens to update with the resolver: tests/golden/cli-recent.tryscript.md (a file's root and target), plus those listed above.
