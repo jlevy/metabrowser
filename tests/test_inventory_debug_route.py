@@ -14,8 +14,10 @@ question a second provider exists to be measured against. A renamed key here
 does not fail either tool; it silently blanks a column, and the comparison that
 was supposed to justify the swap reports nothing while looking fine.
 
-So these tests pin the keys and their types, and the identity values for the
-one provider that ships. They deliberately do not pin the timings.
+So these tests pin the keys and their types, and the identity of the provider
+the environment selects (`tests/inventory_harness.py`); the golden
+`cli-api-provider-python.tryscript.md` pins the shipped provider's name. They
+deliberately do not pin the timings.
 """
 
 from __future__ import annotations
@@ -29,7 +31,7 @@ from typing import Any, cast
 import pytest
 
 from metabrowser import server
-from tests.inventory_harness import inventory_harness
+from tests.inventory_harness import inventory_harness, selected_inventory_provider
 
 # The keys each consumer names. Recorded here as data because the point is the
 # contract with those two files, not this test's own idea of a good payload.
@@ -103,10 +105,10 @@ def test_identity_names_the_provider_that_served_the_measurement(
     status, body = _read(tmp_path)
     assert status == 200
     assert [key for key in IDENTITY_KEYS if key not in body] == []
-    # The one shipped provider. A second one changes these two values and
-    # nothing else about the shape, which is what makes the recorded runs
-    # comparable across the swap.
-    assert body["provider"] == "python"
+    # The selected provider. Another one changes this value and nothing else
+    # about the shape, which is what makes the recorded runs comparable across
+    # the swap.
+    assert body["provider"] == selected_inventory_provider().value
     assert body["contract"] == "inventory-provider-v1"
     assert isinstance(body["version"], int)
     assert isinstance(body["complete"], bool)

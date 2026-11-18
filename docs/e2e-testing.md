@@ -145,6 +145,15 @@ times and commit IDs are literal; the placeholders that remain, each with the re
 fixture can pin it, are listed at the top of `tests/golden_harness.py`. For tryscript,
 `devtools/golden_fixup.py` is that list.
 
+The inventory provider is a value of this kind on purpose.
+The goldens, `tests/inventory_harness.py`, and the provider conformance registry all
+serve the provider `METABROWSER_INVENTORY_PROVIDER` selects, so one suite runs against
+each shipped provider.
+A transcript therefore matches the provider’s name as `[PROVIDER]`, and
+`cli-api-provider-<name>.tryscript.md` selects each provider and pins its name, which
+`tests/test_inventory_provider_contract.py::test_each_shipped_provider_has_the_one_golden_that_pins_its_name`
+checks.
+
 A payload that repeats is shown once, and a marker stands where it repeats.
 Each marker is written after comparing, so what stopped repeating is printed.
 

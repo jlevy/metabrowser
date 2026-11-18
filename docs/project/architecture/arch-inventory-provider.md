@@ -62,6 +62,10 @@ Every concurrent `close()` caller joins the same shutdown before returning.
 build ships. An unknown value fails at startup instead of falling back.
 The performance harnesses take the same selection as `--provider`, so a new provider
 needs no second benchmark path.
+The tests read the same variable: `tests/inventory_harness.py`, which the product suites
+open inventory through, and `PROVIDER_FACTORIES` in
+`tests/test_inventory_provider_contract.py` build the selected provider through the
+factory, so setting it runs those suites against that provider.
 
 ## Configuration and Identity
 
@@ -418,8 +422,9 @@ A new provider:
 
 1. adds its entry to `InventoryProvider` and its construction to
    `create_inventory_backend` (`inventory_engine/factory.py`);
-2. joins `PROVIDER_FACTORIES` in `tests/test_inventory_provider_contract.py`, so every
-   case in the registry below runs against it;
+2. passes the registry below with `METABROWSER_INVENTORY_PROVIDER` naming it, which is
+   how `PROVIDER_FACTORIES` in `tests/test_inventory_provider_contract.py` selects it,
+   and the product suites and goldens the same way;
 3. adds an engine document beside
    [Python Inventory Engine](arch-inventory-engine-python.md) with its walker,
    concurrency, observer, retained state, and unit costs; and
@@ -434,8 +439,8 @@ walks with the Python engine whichever provider serves.
 
 This is the adoption gate shared by every provider factory.
 The named check `test_architecture_document_registers_every_provider_conformance_case`
-verifies that every row resolves to a provider-parametrized test in
-`tests/test_inventory_provider_contract.py`.
+verifies, in both directions, that the rows below are exactly the provider-parametrized
+tests in `tests/test_inventory_provider_contract.py`.
 
 | Test |
 | --- |
@@ -448,6 +453,7 @@ verifies that every row resolves to a provider-parametrized test in
 | `test_directory_pages_are_lossless_when_directories_outnumber_file_budget` |
 | `test_filtered_tree_and_recent_share_filter_semantics_before_caps` |
 | `test_grouped_tree_answers_each_group_as_its_filtered_tree` |
+| `test_group_filters_cut_age_bands_at_their_edges_and_keep_symlinks` |
 | `test_catalog_predicate_semantics_are_runtime_independent_and_exact` |
 | `test_catalog_pages_are_lossless_without_suffix_counts` |
 | `test_provider_applies_work_bounds_to_continuation_pages` |

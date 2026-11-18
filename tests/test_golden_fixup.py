@@ -206,6 +206,20 @@ def test_the_fixture_times_are_the_fixtures_own() -> None:
         assert _fixed(f'  "last_fetch_at": "{time}",\n') == f'  "last_fetch_at": "{time}",\n'
 
 
+def test_the_provider_name_is_patterned_only_where_the_transcript_defines_it() -> None:
+    """The per-provider transcripts pin the name the others match as `[PROVIDER]`."""
+
+    body = (
+        '  "provider": "python",\n'
+        '[CLOCK] diagnostic server={"contract":"v1","provider":"python","status":"done"}\n'
+    )
+    patterned = "---\npatterns:\n  PROVIDER: '[a-z][a-z0-9_-]*'\n---\n"
+    assert golden_fixup.fix_text(patterned + body) == patterned + body.replace(
+        "python", "[PROVIDER]"
+    )
+    assert _fixed(body) == body
+
+
 def test_the_frontmatter_is_never_rewritten() -> None:
     frontmatter = "---\nbefore: >-\n  metab /tmp/tryscript-AbC123/root --version   \n---\n"
     assert golden_fixup.fix_text(frontmatter + "body\n") == frontmatter + "body\n"

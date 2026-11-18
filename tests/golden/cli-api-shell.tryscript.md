@@ -10,6 +10,7 @@ env:
 patterns:
   CLOCK: '\d{2}:\d{2}:\d{2}'
   COUNT: '\d+'
+  PROVIDER: '[a-z][a-z0-9_-]*'
 before: >-
   mkdir -p shellroot &&
   mkdir "$(printf 'odd\342\200\256name')" &&
@@ -88,7 +89,7 @@ status: 200
     "indexed_files": 4,
     "max_files": 500000,
     "truncated": false,
-    "provider": "python",
+    "provider": "[PROVIDER]",
     "contract": "inventory-provider-v1"
   },
   "events": {
@@ -293,7 +294,7 @@ status: 200
   "truncated": false,
   "complete": true,
   "active": false,
-  "provider": "python",
+  "provider": "[PROVIDER]",
   "contract": "inventory-provider-v1"
 }
 ? 0
@@ -302,9 +303,11 @@ status: 200
 ## Test: index metadata
 
 `watch_reason` is the same host fact the capabilities transcript elides, so it is elided
-here too.
-`provider` and `contract` are pinned: they name which engine answered, which is
-exactly what a second implementation changes.
+here too. `provider` and `contract` name which engine answered.
+The contract is pinned; the provider is matched as `[PROVIDER]` here and in every
+transcript, so the goldens run against whichever provider
+`METABROWSER_INVENTORY_PROVIDER` selects, and `cli-api-provider-python.tryscript.md`
+pins the shipped provider’s name.
 
 ```console
 $ metab shellroot --api /api/index/meta
@@ -329,7 +332,7 @@ status: 200
       "count": 1
     }
   ],
-  "provider": "python",
+  "provider": "[PROVIDER]",
   "contract": "inventory-provider-v1",
   "watch_mode": "[..]",
   "watch_state": "[..]",
@@ -891,7 +894,7 @@ time of day. Everything else in the line and the envelope is pinned exactly.
 
 ```console
 $ metab shellroot --api /api/diagnostics/pending-tallies --data shellroot/diag.json
-[CLOCK] metabrowser.events_route | pending folder tallies diagnostic id=pending-tally-unknown client={"pending":[],"reason":"golden"} server={"diagnostic_id":"pending-tally-unknown","events":{"bus_started":true,"connections":0,"latest_event_id":0},"inventory":{"contract":"inventory-provider-v1","provider":"python","requested_paths":[],"status":"done","version":[COUNT],"walker_task":"done"}}
+[CLOCK] metabrowser.events_route | pending folder tallies diagnostic id=pending-tally-unknown client={"pending":[],"reason":"golden"} server={"diagnostic_id":"pending-tally-unknown","events":{"bus_started":true,"connections":0,"latest_event_id":0},"inventory":{"contract":"inventory-provider-v1","provider":"[PROVIDER]","requested_paths":[],"status":"done","version":[COUNT],"walker_task":"done"}}
 api: /api/diagnostics/pending-tallies
 status: 200
 {
@@ -899,7 +902,7 @@ status: 200
   "inventory": {
     "status": "done",
     "walker_task": "done",
-    "provider": "python",
+    "provider": "[PROVIDER]",
     "contract": "inventory-provider-v1",
     "version": [COUNT],
     "requested_paths": []
