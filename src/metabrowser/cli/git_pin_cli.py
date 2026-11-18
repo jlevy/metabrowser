@@ -565,6 +565,7 @@ def run_serve_pin(
         no_open=no_open,
         local_client=local_client,
         attach=functools.partial(_serve_selected, selected),
+        mode="mirror",
         banner=(
             f"Revision: {revision}",
             *selection_banner(selected.selection, selected.resolved, pull=selected.pull),

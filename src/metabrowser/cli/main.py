@@ -142,6 +142,10 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
     "plugins": frozenset({"plugins_dir", "as_json"}),
     "plugin": frozenset({"plugins_dir", "as_json"}),
     "doctor": frozenset({"plugins_dir", "as_json"}),
+    "recent": frozenset({"as_json"}),
+    "recent-add": frozenset(),
+    "recent-forget": frozenset(),
+    "recent-clear": frozenset(),
 }
 
 _MODE_LABELS: dict[str, str] = {
@@ -156,6 +160,10 @@ _MODE_LABELS: dict[str, str] = {
     "plugins": "--plugins",
     "plugin": "--plugin",
     "doctor": "--doctor",
+    "recent": "--recent",
+    "recent-add": "--recent-add",
+    "recent-forget": "--recent-forget",
+    "recent-clear": "--recent-clear",
 }
 
 _OPTION_LABELS: dict[str, str] = {
@@ -229,6 +237,10 @@ def _resolve_mode(
     plugins: bool,
     plugin: str | None,
     doctor: bool,
+    recent: bool,
+    recent_add: bool,
+    recent_forget: bool,
+    recent_clear: bool,
 ) -> str:
     """Pick the single mode for this invocation or reject conflicting flags."""
     selected = [
@@ -244,6 +256,10 @@ def _resolve_mode(
             ("--plugins", plugins),
             ("--plugin", plugin is not None),
             ("--doctor", doctor),
+            ("--recent", recent),
+            ("--recent-add", recent_add),
+            ("--recent-forget", recent_forget),
+            ("--recent-clear", recent_clear),
         )
         if on
     ]
@@ -361,6 +377,8 @@ def _classified_root(ctx: typer.Context, root: str | None, mode: str) -> Path | 
             "show": "e.g. `metab . --show README.md`",
             "check-api": "e.g. `metab . --check-api`",
             "no-serve": "e.g. `metab file://repo.git --no-serve`",
+            "recent-add": "e.g. `metab . --recent-add`",
+            "recent-forget": "e.g. `metab . --recent-forget`",
         }
         hint = hints.get(mode, "pass the required root")
         ctx.fail(f"ROOT is required for {_MODE_LABELS[mode]}; {hint}")
@@ -567,6 +585,31 @@ def _metab(
         False,
         "--doctor",
         help="Validate every discovered plugin; exit non-zero on any problem.",
+        rich_help_panel=_PANEL_MODES,
+    ),
+    recent: bool = typer.Option(
+        False,
+        "--recent",
+        help="List the recent targets: the folders and repositories opened lately, "
+        "most recent first. Every serve records its ROOT.",
+        rich_help_panel=_PANEL_MODES,
+    ),
+    recent_add: bool = typer.Option(
+        False,
+        "--recent-add",
+        help="Record ROOT as a recent target, as serving it would, without serving.",
+        rich_help_panel=_PANEL_MODES,
+    ),
+    recent_forget: bool = typer.Option(
+        False,
+        "--recent-forget",
+        help="Remove ROOT from the recent targets.",
+        rich_help_panel=_PANEL_MODES,
+    ),
+    recent_clear: bool = typer.Option(
+        False,
+        "--recent-clear",
+        help="Empty the list of recent targets.",
         rich_help_panel=_PANEL_MODES,
     ),
     # ── Shared options ─────────────────────────────────────────────
@@ -786,7 +829,7 @@ def _metab(
     as_json: bool = typer.Option(
         False,
         "--json",
-        help="Emit structured JSON (plugin modes).",
+        help="Emit structured JSON (plugin modes and --recent).",
         rich_help_panel=_PANEL_PLUGINS,
     ),
     # ── General ────────────────────────────────────────────────────
@@ -811,7 +854,8 @@ def _metab(
     or checked at the commit it selects under the untrusted profile; --no-serve
     only acquires it into the cache. Diagnostics: --check-api, --plugins,
     --plugin, --doctor.
-    Remote serving: --remote.
+    Remote serving: --remote. Recent targets: --recent, --recent-add,
+    --recent-forget, --recent-clear.
     """
     for variable, directory in (
         ("METABROWSER_CACHE_DIR", cache_dir),
@@ -840,6 +884,10 @@ def _metab(
         plugins=plugins,
         plugin=plugin,
         doctor=doctor,
+        recent=recent,
+        recent_add=recent_add,
+        recent_forget=recent_forget,
+        recent_clear=recent_clear,
     )
     explicit = _explicit_params(ctx)
     _check_option_applicability(ctx, mode, explicit)
@@ -1061,6 +1109,21 @@ def _metab(
     elif mode == "plugins":
         _reject_root(ctx, root, mode)
         list_plugins(plugins_dir, as_json=as_json)
+    elif mode in {"recent", "recent-add", "recent-forget", "recent-clear"}:
+        # Imported in its branch, as the other modes' modules are: owner-only storage is
+        # nothing `--version` or a data mode loads.
+        from metabrowser.cli import recent_cli
+
+        if mode == "recent":
+            _reject_root(ctx, root, mode)
+            recent_cli.list_recent(as_json=as_json)
+        elif mode == "recent-clear":
+            _reject_root(ctx, root, mode)
+            recent_cli.clear_recent()
+        elif mode == "recent-add":
+            recent_cli.add_recent(_classified_root(ctx, root, mode))
+        else:
+            recent_cli.forget_recent(_classified_root(ctx, root, mode))
     else:
         _reject_root(ctx, root, mode)
         doctor_plugins(plugins_dir, as_json=as_json)

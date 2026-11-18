@@ -192,6 +192,13 @@ _PROC_SELF_FD: Final = Path("/proc/self/fd")
 # Atomic publication. A temporary file is `.<target>.<16 hex>.tmp` beside its target and
 # holds an exclusive flock for its whole life, so a later writer of the same target can
 # tell a crashed writer's leftover from a live one without guessing from its age.
+# How many times a read opens a file that is republished, by rename, while it is opened.
+# Measured 2026-11-17 on a 4-CPU Linux container with six busy loops beside it: a thread
+# republished one record with write_private_file_atomic in a tight loop, far more often
+# than any Metabrowser writer, while another read it. Of 100,000 reads, 351 needed two
+# opens, 13 three, and 1 four; unloaded, 1 needed three. A writer that never stops is
+# refused after this many.
+MAX_READ_OPENS: Final = 4
 _TEMPORARY_SUFFIX_RE: Final = r"\.[0-9a-f]{16}\.tmp"
 _TEMPORARY_ATTEMPTS: Final = 4
 # No-replace renames: renameat2(RENAME_NOREPLACE) on Linux, renamex_np(RENAME_EXCL) on
@@ -481,6 +488,10 @@ class StorageDirectoryError(ValueError):
     """A cache or configuration setting does not name a usable storage directory."""
 
 
+class PrivateFileTooLargeError(ValueError):
+    """A private file is larger than the bound its reader gave. ``str()`` names no path."""
+
+
 def _without_file_names[**P, R](function: Callable[P, R]) -> Callable[P, R]:
     """Re-raise an ``OSError`` leaving *function* without its file names.
 
@@ -568,6 +579,60 @@ def open_private_file(
     directory, _, name = relative_path.rpartition("/")
     with _verified_directory(home, directory, shared=shared, create=False) as (fd, path):
         return _open_file_entry(fd, name, flags, path / name, shared=shared)
+
+
+def read_private_file_bounded(
+    home: Path,
+    relative_path: str,
+    *,
+    max_bytes: int,
+    shared: SharedEntryPolicy = "repair",
+) -> bytes:
+    """Read the owner-only file *relative_path* below *home*, of at most *max_bytes*.
+
+    A missing file raises :class:`FileNotFoundError` and a larger one
+    :class:`PrivateFileTooLargeError`, judged by its size before a byte is read and again
+    by what was read, since a file can grow. *shared* is passed to
+    :func:`open_private_file`: a caller that must change nothing, such as a read route,
+    passes ``"refuse"`` so a shared file is reported rather than tightened. A file
+    republished by rename while it is opened is opened again, up to
+    :data:`MAX_READ_OPENS` times, so a read sees the old file or the new and never a
+    refusal that only says a writer was at work.
+    """
+
+    fd = _open_for_bounded_read(home, relative_path, shared)
+    try:
+        if os.fstat(fd).st_size > max_bytes:
+            raise PrivateFileTooLargeError("the file is larger than its reader allows")
+        chunks: list[bytes] = []
+        remaining = max_bytes + 1
+        while remaining > 0:
+            chunk = os.read(fd, remaining)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+    finally:
+        os.close(fd)
+    data = b"".join(chunks)
+    if len(data) > max_bytes:
+        raise PrivateFileTooLargeError("the file is larger than its reader allows")
+    return data
+
+
+def _open_for_bounded_read(home: Path, relative_path: str, shared: SharedEntryPolicy) -> int:
+    for opens in range(1, MAX_READ_OPENS + 1):
+        try:
+            return open_private_file(
+                home, relative_path, os.O_RDONLY | os.O_NONBLOCK, shared=shared
+            )
+        except PrivateStorageError as exc:
+            # A writer renamed a newer file into place while this open checked the old
+            # one. Opening again judges the newer one in full, as a read begun a moment
+            # later would have.
+            if not exc.replaced or opens == MAX_READ_OPENS:
+                raise
+    raise AssertionError("unreachable")
 
 
 class PrivateDirectory:
@@ -709,6 +774,18 @@ def validate_storage_separation(cache: Path) -> None:
             "Cache and configuration directories must be separate, non-overlapping paths. "
             "Set METABROWSER_CACHE_DIR and METABROWSER_CONFIG_DIR to distinct directories."
         )
+
+
+def ensure_storage_root(directory: Path) -> None:
+    """Create missing parents, then verify the private application directory."""
+    missing: list[Path] = []
+    parent = directory.parent
+    while not parent.exists():
+        missing.append(parent)
+        parent = parent.parent
+    for ancestor in reversed(missing):
+        ensure_private_directory(ancestor)
+    ensure_private_directory(directory)
 
 
 @_without_file_names

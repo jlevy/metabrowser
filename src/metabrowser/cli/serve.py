@@ -17,7 +17,7 @@ import webbrowser
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from types import FrameType
-from typing import NoReturn, override
+from typing import Literal, NoReturn, override
 
 import typer
 import uvicorn
@@ -289,6 +289,7 @@ def run_serve(
         no_open=no_open,
         local_client=local_client,
         attach=attach_root,
+        mode="folder",
     )
 
 
@@ -319,6 +320,7 @@ def serve_until_interrupted(
     port: int,
     no_open: bool,
     attach: Callable[[], None],
+    mode: Literal["folder", "mirror"],
     banner: Sequence[str] = (),
     local_client: bool = False,
 ) -> None:
@@ -330,7 +332,10 @@ def serve_until_interrupted(
     banner, followed by any *banner* lines. *local_client* says the command line
     started this server as the macOS app does, for a client on this machine; on a
     loopback address, outside a remote session, it then leaves a loopback client's
-    answers uncompressed (:mod:`metabrowser.delivery`).
+    answers uncompressed (:mod:`metabrowser.delivery`). *mode* is how *served* is open:
+    a ``folder``, or a ``mirror`` of the source *served* names. The root is recorded
+    with it as a recent target (:mod:`metabrowser.recent_targets`) just before the
+    ``Serving`` line, so whoever reads that line finds the root already listed.
     """
 
     # Server import performs logging setup and plugin discovery. Keep it after
@@ -367,6 +372,16 @@ def serve_until_interrupted(
     )
     display_host = "127.0.0.1" if host in server._WILDCARD_BIND_HOSTS else host
     url = f"http://{display_host}:{actual_port}{view_href}"
+
+    # Recorded once the root is attached and a port is found, so a root that cannot be
+    # served never enters the list, and before the line a shell waits for. It never
+    # raises, and waits for another writer for at most `recent_targets.LOCK_WAIT_S`.
+    # Imported here, as the server is: owner-only storage is serve mode's alone.
+    from metabrowser import recent_targets
+
+    recent_targets.record_quietly(
+        mode, recent_targets.folder_root(Path(served)) if mode == "folder" else served
+    )
 
     # A checkout says so here too. This is the line someone reads while
     # deciding which build they are looking at — during a side-by-side
