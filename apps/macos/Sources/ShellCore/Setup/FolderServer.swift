@@ -42,6 +42,12 @@ public final class FolderServer {
     public var rootCheck: (() -> Bool)?
     private let accepted: () -> RuntimeSetup?
     private let spec: (RuntimeSetup) -> LaunchSpec
+    /// Whether the next child is the server of something the user just opened, which
+    /// records it among `metab`'s recent targets as it starts. No other launch is an
+    /// open: a restored folder's start, Retry, Restart Server, and the restart an upgrade
+    /// offers each tell their server not to record (`RecentTargets.recordVariable`), so
+    /// the list's order changes only when the user opens something.
+    private var recordsOpen = false
     /// The runtime the newest launch's command was built from, with its number.
     private var launching: (attempt: Int, setup: RuntimeSetup)?
     private var attempts = 0
@@ -71,14 +77,20 @@ public final class FolderServer {
     /// Starts the server unless one is starting, running, or stopping, and returns once
     /// that start is ready or has failed, or did not spawn.
     ///
-    /// - Parameter holding: whether a start that found no runtime waits in `held` for
-    ///   `resume()`; a restore passes false and keeps the root in its own queue.
+    /// - Parameters:
+    ///   - holding: whether a start that found no runtime waits in `held` for `resume()`; a
+    ///     restore passes false and keeps the root in its own queue.
+    ///   - recordsOpen: whether the user just opened this, so that its server records it
+    ///     as a recent target. It holds until a server is ready, through a wait for a
+    ///     runtime and through a child that dies before it records, and a restore passes
+    ///     false.
     @discardableResult
-    public func start(holding: Bool = true) async -> Outcome {
+    public func start(holding: Bool = true, recordsOpen: Bool = false) async -> Outcome {
         switch supervisor.state {
         case .starting, .ready, .stopping: return .launched
         case .stopped, .failed: break
         }
+        if recordsOpen { self.recordsOpen = true }
         guard let setup = accepted() else { return waiting(.start, holding: holding) }
         let outcome = await launch(setup) { await self.supervisor.start(using: $0) }
         return outcome == .waitingForRuntime ? waiting(.start, holding: holding) : outcome
@@ -113,12 +125,24 @@ public final class FolderServer {
             attempts += 1
             let attempt = attempts
             launching = (attempt, setup)
-            await run(spec(setup))
+            await run(command(setup))
             if launching?.attempt == attempt { launching = nil }
+            // A server records before it announces itself, so one that is ready has
+            // recorded the open. One that died first has not, and the launch that follows,
+            // a Retry among them, still carries the open.
+            if case .ready = supervisor.state { recordsOpen = false }
             guard let refused = refusal, refused.attempt == attempt else { return .launched }
             guard refused.outcome == .waitingForRuntime, let now = accepted() else { return refused.outcome }
             setup = now  // replaced while it waited: the command is built again from the new one
         }
+    }
+
+    /// `setup`'s command, told not to record a recent target unless this launch is the
+    /// start of something the user just opened.
+    private func command(_ setup: RuntimeSetup) -> LaunchSpec {
+        var command = spec(setup)
+        if !recordsOpen { command.environment[RecentTargets.recordVariable] = "0" }
+        return command
     }
 
     /// The check the supervisor makes just before a child spawns.

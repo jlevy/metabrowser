@@ -134,9 +134,16 @@ final class FolderWindows {
     // MARK: - The saved session
 
     /// The folder windows now, front window first, each with its tabs in tab-bar order.
+    ///
+    /// A repository's tabs are left out, and so is a window that holds no other: the saved
+    /// session names folders by path (`SavedTab.root`), and its restore admits each path
+    /// again (`RootAdmission`), which a repository's URL is not. A window whose shown tab
+    /// is a repository's is saved, in its place among the windows, showing its first
+    /// folder tab: a tab group is on screen as its shown window, so a group is kept when any
+    /// of its windows is a folder's.
     func snapshot() -> SavedSession {
         var owners: [ObjectIdentifier: (session: FolderSession, controller: BrowserWindowController)] = [:]
-        for session in openSessions() {
+        for session in openSessions() where session.isLocal {
             for controller in session.windows {
                 if let window = controller.window { owners[ObjectIdentifier(window)] = (session, controller) }
             }
@@ -146,8 +153,9 @@ final class FolderWindows {
         let candidates = NSApp.orderedWindows + openSessions().flatMap(\.windows).compactMap(\.window)
         var seen = Set<ObjectIdentifier>()
         var windows: [SavedWindow] = []
-        for window in candidates where owners[ObjectIdentifier(window)] != nil && !seen.contains(ObjectIdentifier(window)) {
+        for window in candidates where !seen.contains(ObjectIdentifier(window)) {
             let group = window.tabGroup?.windows ?? [window]
+            guard group.contains(where: { owners[ObjectIdentifier($0)] != nil }) else { continue }
             group.forEach { seen.insert(ObjectIdentifier($0)) }
             let tabs = group.compactMap { owners[ObjectIdentifier($0)] }
             let shown = window.tabGroup?.selectedWindow ?? window

@@ -21,9 +21,19 @@ public nonisolated enum ServerState: Equatable, Sendable {
 }
 
 public nonisolated struct SupervisorPolicy: Sendable {
-    /// From spawn to a 2xx. A first run after `uv tool install` compiles bytecode and
-    /// has macOS scan seven native extensions, about 2 s in total (see the brief).
+    /// From spawn to a 2xx, or with a `startupLimit`, from the start's last output
+    /// (`StartupDeadline`). A first run after `uv tool install` compiles bytecode and has
+    /// macOS scan seven native extensions, about 2 s in total (see the brief). As a
+    /// silence it allows five missed lines of a clone's progress
+    /// (`MetabAcquisition.progressLineInterval`).
     public var startupTimeout: Duration = .seconds(60)
+    /// Nil for a folder's server, whose start `startupTimeout` bounds from its spawn. For
+    /// a server that may clone before it serves, the most its start may take while it
+    /// keeps writing (`StartupDeadline`).
+    public var startupLimit: Duration?
+    /// How often a start with a `startupLimit` looks for new output: a second is small
+    /// against `startupTimeout`.
+    public var progressInterval: Duration = .seconds(1)
     /// `metab` sets uvicorn's graceful-shutdown timeout to 0, so SIGTERM returns fast.
     public var shutdownGrace: Duration = .seconds(5)
     /// Between readiness probes: short, since the socket listens moments after the
@@ -48,6 +58,24 @@ public nonisolated struct SupervisorPolicy: Sendable {
     public var healthDeadline: Duration = .seconds(5)
 
     public init() {}
+
+    /// A repository's start: `startupTimeout` from its last output, and at most this from
+    /// its spawn. It outlasts `metab`'s worst case for acquiring the repository
+    /// (`MetabAcquisition.reservationWait`) by `startupTimeout`, for what follows the clone:
+    /// opening the pin, reading a pull request (5.5 to 11 s from GitHub, measured
+    /// 2026-11-02 beside `WAIT_QUIET_S` in `src/metabrowser/cli/clone_report.py`), and the
+    /// server's own start. 2,040 s.
+    public static var repositoryStartupLimit: Duration {
+        MetabAcquisition.reservationWait + SupervisorPolicy().startupTimeout
+    }
+
+    /// The policy of a server that serves `root`: a repository's start may run as long as
+    /// it keeps writing, up to `repositoryStartupLimit`.
+    public static func serving(_ root: SessionRoot) -> SupervisorPolicy {
+        var policy = SupervisorPolicy()
+        if !root.isLocal { policy.startupLimit = repositoryStartupLimit }
+        return policy
+    }
 }
 
 /// What a health check found.
@@ -93,6 +121,10 @@ public final class ServerSupervisor {
     /// Called right after a child is created, before it is ready; not when creating it
     /// fails. What a folder records as the runtime its server started from.
     public var onSpawn: (() -> Void)?
+    /// Called with true when a start finds its launch gate held by another server's start
+    /// and waits, and with false once it has the gate: what the windows say meanwhile, since
+    /// another repository's first clone can hold it for minutes.
+    public var onGateWait: ((Bool) -> Void)?
 
     /// What the next launch runs. `restart(using:)` replaces it.
     public private(set) var spec: LaunchSpec
@@ -105,6 +137,11 @@ public final class ServerSupervisor {
     /// The current launch's child. A child leaves this only by being retired.
     private var process: (any ServerProcess)?
     private var generation = 0
+    /// Counts restarts, stops, and shutdowns, so a restart that waited at the gate while
+    /// its server served can tell whether a newer one took its place.
+    private var requests = 0
+    /// How many starts and restarts wait at the gate, which `onGateWait` reports as one.
+    private var gateWaiters = 0
     private var isShutDown = false
     private var terminations: [ObjectIdentifier: Termination] = [:]
     /// The health check in flight, which a check that starts meanwhile joins, and the
@@ -170,18 +207,36 @@ public final class ServerSupervisor {
     /// restart, or a shutdown arrived while the old child was stopping: the newest request
     /// wins, so closing a folder's last window during a restart leaves nothing running.
     ///
+    /// A ready server keeps serving until the restart has the launch gate, rather than
+    /// stopping first and leaving its windows with nothing for as long as another start
+    /// holds the gate, which can be another repository's first clone (review C2 on #539).
+    /// A newer restart, a stop, or a shutdown meanwhile takes its place; the ready server
+    /// failing meanwhile does not.
+    ///
     /// - Parameter newSpec: what to run from now on, such as the command of a runtime
     ///   chosen since the server started; nil runs the same command again.
     public func restart(using newSpec: LaunchSpec? = nil) async {
+        requests += 1
+        let request = requests
+        var holdsGate = false
+        if let gate, case .ready = state {
+            await waitForTurn(at: gate, before: "restarts; the running server serves until then")
+            holdsGate = true
+            guard request == requests, !isShutDown else { return gate.release() }
+        }
         let mine = await halt()
-        guard mine == generation, !isShutDown else { return }
+        guard mine == generation, !isShutDown else {
+            if holdsGate { gate?.release() }
+            return
+        }
         if let newSpec { spec = newSpec }
-        await launchChild()
+        await launchChild(holdingGate: holdsGate)
     }
 
     /// Ends the current child and waits for every termination in flight, including one
     /// a failed start began. Safe in any state and from concurrent callers.
     public func stop() async {
+        requests += 1
         await halt()
     }
 
@@ -190,6 +245,7 @@ public final class ServerSupervisor {
     /// shut down, never just stopped.
     public func shutDown() async {
         isShutDown = true
+        requests += 1
         await halt()
     }
 
@@ -267,7 +323,29 @@ public final class ServerSupervisor {
         return mine
     }
 
-    private func launchChild() async {
+    /// Waits for `gate`, and while another start holds it, says so in the log and through
+    /// `onGateWait`, once for however many of this server's starts wait.
+    private func waitForTurn(at gate: LaunchGate, before what: String) async {
+        let waits = gate.isHeld
+        if waits {
+            gateWaiters += 1
+            if gateWaiters == 1 {
+                event("waiting for another server's start to finish before this one \(what)")
+                onGateWait?(true)
+            }
+        }
+        await gate.acquire()
+        if waits {
+            gateWaiters -= 1
+            if gateWaiters == 0 { onGateWait?(false) }
+        }
+    }
+
+    /// - Parameter holdingGate: whether the caller has the gate already, which this
+    ///   releases as it would its own.
+    private func launchChild(holdingGate: Bool = false) async {
+        var holdsGate = holdingGate
+        defer { if holdsGate { gate?.release() } }
         generation += 1
         let current = generation
         state = .starting
@@ -279,8 +357,10 @@ public final class ServerSupervisor {
         }
         await awaitTerminations()
         guard current == generation, !isShutDown else { return }
-        if let gate { await gate.acquire() }
-        defer { gate?.release() }
+        if let gate, !holdsGate {
+            await waitForTurn(at: gate, before: "starts")
+            holdsGate = true
+        }
         guard current == generation else { return }
         launchWasRefused = false
         if let mayLaunch, !mayLaunch() {
@@ -315,10 +395,12 @@ public final class ServerSupervisor {
         // The announcement, or the child's exit, or the deadline, whichever is first.
         let lines = child.lines
         let launch = self.launch
-        let endpoint = await firstResult(within: policy.startupTimeout, of: [
+        var deadline = StartupDeadline(
+            quiet: policy.startupTimeout, limit: policy.startupLimit, spawned: started, written: child.outputProgress)
+        var waits: [@Sendable () async -> Announcement?] = [
             { @Sendable in
                 for await line in lines {
-                    if let found = launch.endpoint(announcedBy: line) { return found }
+                    if let found = launch.endpoint(announcedBy: line) { return .announced(found) }
                 }
                 return nil
             },
@@ -326,19 +408,33 @@ public final class ServerSupervisor {
                 _ = await child.waitForExit()
                 return nil
             },
-        ])
+        ]
+        if policy.startupLimit != nil {
+            waits.append(Self.watch(child, from: deadline, every: policy.progressInterval, clock: clock))
+        }
+        let announcement = await firstResult(within: deadline.longest, of: waits)
         guard current == generation else { return superseded(child) }
-        guard let endpoint else {
-            let timedOut = started.duration(to: clock.now) >= policy.startupTimeout
-            await abandon(child, timedOut: timedOut, waitingFor: "announce its address")
+        let endpoint: ServerEndpoint
+        switch announcement {
+        case .announced(let announced):
+            endpoint = announced
+        case .expired(let expiry):
+            await abandon(child, timedOut: deadline.summary(expiry, waitingFor: "announce its address"))
+            return
+        case nil:
+            let timedOut = started.duration(to: clock.now) >= deadline.longest
+            await abandon(
+                child,
+                timedOut: timedOut ? deadline.summary(deadline.limit == nil ? .quiet : .limit, waitingFor: "announce its address") : nil)
             return
         }
         event("announced \(endpoint.entryURL.absoluteString)")
 
         // The announcement prints before the socket listens.
         let url = launch.readinessURL(for: endpoint)
-        let deadline = started.advanced(by: policy.startupTimeout)
-        while current == generation, clock.now < deadline, !child.hasExited {
+        deadline.noteOutput(at: clock.now)
+        let ready = deadline.expiry
+        while current == generation, clock.now < ready, !child.hasExited {
             if await probe(url) {
                 guard current == generation, !child.hasExited else { break }
                 let elapsed = Self.milliseconds(started.duration(to: clock.now))
@@ -349,8 +445,32 @@ public final class ServerSupervisor {
             try? await clock.sleep(for: policy.probeInterval)
         }
         guard current == generation else { return superseded(child) }
-        await abandon(
-            child, timedOut: !child.hasExited, waitingFor: "answer \(url.absoluteString) with a 2xx")
+        let what = "answer \(url.absoluteString) with a 2xx"
+        let expiry = deadline.expired(at: clock.now) ?? .quiet
+        await abandon(child, timedOut: child.hasExited ? nil : deadline.summary(expiry, waitingFor: what, announced: true))
+    }
+
+    /// How a start's wait for the announcement ended, when not by the child's exit.
+    private enum Announcement: Sendable {
+        case announced(ServerEndpoint)
+        case expired(StartupDeadline.Expiry)
+    }
+
+    /// Looks at the child's output every `interval` and returns once `initial`'s
+    /// deadline, moved on by each look that finds more output, has passed.
+    private nonisolated static func watch(
+        _ child: any ServerProcess, from initial: StartupDeadline, every interval: Duration, clock: ContinuousClock
+    ) -> @Sendable () async -> Announcement? {
+        { @Sendable in
+            var deadline = initial
+            while !Task.isCancelled {
+                let now = clock.now
+                deadline.observe(written: child.outputProgress, at: now)
+                if let expiry = deadline.expired(at: now) { return .expired(expiry) }
+                try? await clock.sleep(for: min(interval, now.duration(to: deadline.expiry)))  // cancelled: another wait won
+            }
+            return nil
+        }
     }
 
     /// A launch overtaken after it spawned ends its own child, unless whatever overtook
@@ -364,14 +484,17 @@ public final class ServerSupervisor {
     /// Ends a start that never became ready. A child that exited by itself is reported
     /// with its status; one that is still running is stopped. Either way the ending is
     /// a tracked termination, so a stop or quit meanwhile waits for it.
-    private func abandon(_ child: any ServerProcess, timedOut: Bool, waitingFor what: String) async {
+    ///
+    /// - Parameter timeout: the summary of a start its deadline ended, or nil for one that
+    ///   ended early (the child exited, or closed its output).
+    private func abandon(_ child: any ServerProcess, timedOut timeout: String?) async {
         generation += 1  // this exit is expected now; childExited must not report it
         let mine = generation
         if process === child { process = nil }
-        let result = await retire(child, allowingNaturalExitFor: timedOut ? .zero : policy.earlyExitWait).value
+        let result = await retire(child, allowingNaturalExitFor: timeout != nil ? .zero : policy.earlyExitWait).value
         let summary: String
-        if timedOut {
-            summary = "The server did not \(what) within \(policy.startupTimeout)."
+        if let timeout {
+            summary = timeout
         } else if !result.signaled, let status = result.status {
             summary = "The server exited before it was ready (\(ExitStatus(waitStatus: status)))."
         } else {

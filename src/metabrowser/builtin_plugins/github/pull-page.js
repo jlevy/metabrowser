@@ -8,8 +8,8 @@
 // record is pending, slowly otherwise, with If-None-Match so an unchanged answer is a
 // 304), the refresh a stale page asks for and offers and an absent page offers
 // (`POST /api/plugin/github/pull-refresh`), the switch to the pull request's head
-// (`POST /api/source/pin`), the tab, and the Markdown of each text, asked for one part at
-// a time from
+// (`POST /api/source/pin`, through the diff plugin's one switch), the tab, and the Markdown
+// of each text, asked for one part at a time from
 // `GET /api/plugin/github/pull-markdown` and kept only for the record it was rendered
 // from. `mountPullPage` is the browser glue: real fetch, timers, and paint.
 // tests/dom/github-pull-page-session.js runs the same functions from the command line.
@@ -57,6 +57,7 @@ import {
   pullStateIcon,
   withListedState,
 } from "./pull-state.js";
+import { briefLine, createSummaryBrief, PULL_FILES_SUMMARY_ROUTE } from "./pull-summary-brief.js";
 
 // The same intervals as the freshness row (static/source-freshness.js), measured there:
 // one second while a refresh runs makes its end visible promptly, and thirty seconds
@@ -189,7 +190,6 @@ const MARKDOWN_ROUTE = "/api/plugin/github/pull-markdown";
 const TIMELINE_ROUTE = "/api/plugin/github/pull-timeline";
 // Give a transient queue or provider failure one chance to clear while the reader stays.
 export const TIMELINE_RETRY_MS = 1000;
-const PIN_ROUTE = "/api/source/pin";
 export const TABS = Object.freeze(["", "files", "checks"]);
 /** How far a title may overhang its two-line box and still be whole: its descenders. */
 const TITLE_OVERHANG_PX = 4;
@@ -284,13 +284,14 @@ const TRUNCATED = Object.freeze({
  *   preparing_comparison?: true,
  *   last_refresh: {outcome: string, message: string | null, reset_at: string | null, at: string} | null,
  *   comparison_route: string | null,
- *   snapshot_route: string | null,
+ *   image_route: string | null,
  *   rendered_route?: string | null,
  *   record: Record<string, any> | null,
  *   core_preview: {source: string, number: number, reader: string, observed_at: string,
  *     revision: string, pull: Record<string, any>, comparison_state: "pending" | "no_store" | "not_started"} | null,
  *   repository_labels?: RepositoryLabel[],
  *   labels_pending?: boolean,
+ *   no_store?: true,
  * }} PullEnvelope
  */
 
@@ -353,9 +354,10 @@ const TRUNCATED = Object.freeze({
 /**
  * What Browse code is. One server has one pin, and other tabs share it, so opening a pull
  * request moves nothing: a `link` goes to the root of what is served, and a `switch` first
- * serves this pull request's head. `at` is the commit that opens, as a reader sees it.
+ * serves this pull request's head, by its commit and under its ref. `at` is the commit that
+ * opens, as a reader sees it.
  *
- * @typedef {{kind: "link", at: string} | {kind: "switch", ref: string, at: string}} BrowseCode
+ * @typedef {{kind: "link", at: string} | {kind: "switch", ref: string, head: string, at: string}} BrowseCode
  */
 
 /**
@@ -389,8 +391,10 @@ const TRUNCATED = Object.freeze({
  *   checks: {counts: Record<string, number>, items: CheckItem[]} | null,
  *   checkNotes: string[],
  *   notes: string[],
- *   comparison: {left: string, right: string, route?: string, snapshot_route?: string, rendered_route?: string, headMoved: boolean} | null,
+ *   comparison: {left: string, right: string, route?: string, image_route?: string, rendered_route?: string, headMoved: boolean, branch: {ref: string} | null} | null,
  *   comparisonComing: boolean,
+ *   head: string | null,
+ *   baseRef: string | null,
  *   browse: BrowseCode | null,
  *   filesUnavailable: string,
  *   changesPending: boolean,
@@ -421,6 +425,46 @@ export function relativeAge(iso, nowMs) {
   }
   const hours = Math.floor(minutes / 60);
   return hours < 48 ? `${hours} h ago` : `${Math.floor(hours / 24)} d ago`;
+}
+
+/**
+ * A freshness note as wide as its age makes it: its age put at the widest `relativeAge`
+ * says, "59 min ago", so the note's slot is that wide whatever the age reads (mb-ne91). An
+ * age wider still, "at an unknown time", sizes its own note. Exported for
+ * tests/dom/github-pull-page-mount-behavior.js, whose golden records what it gives.
+ *
+ * @param {string} note
+ */
+export function widestNote(note) {
+  const widest = note.replace(/just now|\d+ (?:min|h|d) ago/, "59 min ago");
+  return widest.length >= note.length ? widest : note;
+}
+
+/**
+ * When a rate limit's hold lifts, as the note says it in the freshness note's place: a time
+ * of day in the locale's short form when it lifts today, "2:05 PM", and otherwise a short
+ * date and time, "11/19/26, 2:05 PM" (B3 of review B on #506). The whole timestamp the page
+ * prints elsewhere, "11/18/2026, 2:05:00 PM", left the hold 120 px wider than the age it
+ * replaces, so it left the author's row from 640 px down. *locale* and *timeZone* default to
+ * the reader's; a session passes its own so what it prints does not depend on the machine.
+ *
+ * @param {number} liftMs
+ * @param {number} nowMs
+ * @param {string} [locale]
+ * @param {string} [timeZone]
+ */
+export function holdLiftText(liftMs, nowMs, locale = undefined, timeZone = undefined) {
+  const day = new Intl.DateTimeFormat(locale, {
+    timeZone,
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+  });
+  const today = day.format(liftMs) === day.format(nowMs);
+  return new Intl.DateTimeFormat(
+    locale,
+    today ? { timeZone, timeStyle: "short" } : { timeZone, dateStyle: "short", timeStyle: "short" },
+  ).format(liftMs);
 }
 
 /** @param {unknown} value */
@@ -1203,7 +1247,8 @@ export function rateLimitLifts(envelope) {
  * `comparisonQueued`); *comparisonRefusal* is why the page's last comparison request
  * was refused, kept until it asks again. *refreshDue* is the page's own automatic refresh of
  * a stale record, scheduled or on its way; *online* is false when the browser reports no
- * network, and *formatTime* writes the time a rate limit lifts.
+ * network, and *formatHold* says when a rate limit lifts, `holdLiftText` in the reader's
+ * locale where it is not given.
  *
  * Content already shown is never covered by progress: while a refresh runs or is about to,
  * `revalidating` says so, and the page breathes the age line instead of a spinner. The age is
@@ -1214,13 +1259,21 @@ export function rateLimitLifts(envelope) {
  * when the list saw a later update than the record or preview did.
  *
  * `comparisonComing` is a comparison on its way that the page has none of yet, so the Diff
- * summary's row waits for it (mb-onr2): a core preview whose selected read prepares the
- * comparison with the record (`comparison_state: "pending"`), and a record whose comparison
- * is not in the store and that the page asked the server to prepare, as Conversation's idle
- * work does (`preparing_comparison`) and Changes does while it fetches it. A core with no
- * store, or one no read is running for, has none coming until Changes asks.
+ * summary's row waits for it (mb-onr2), from the page's first paint (mb-30dz): before
+ * anything is read, until a read fails; with no record or core, while the selected read
+ * runs or will be sent, or the page waits for the reader to send it; a core preview while a
+ * read that brings its record runs or will be sent, unless the server said it has no store
+ * to compare in (`comparison_state: "no_store"`); and a record whose comparison is not in
+ * the store and that the page asked the server to prepare, as Conversation's idle work does
+ * (`preparing_comparison`) and Changes does while it fetches it. A pull request that is not
+ * GitHub's, a server or core with no store (`no_store`), and a read that failed with nothing
+ * running have none coming until Changes asks, so the placeholder never outlives its wait.
  *
- * @param {{number: number, tab: string, nowMs: number, error?: string | null, fetching?: boolean, fetchQueued?: boolean, refreshPending?: boolean, refreshDue?: boolean, online?: boolean, formatTime?: (iso: string) => string, ownsChanges?: boolean, comparisonAttempted?: boolean, comparisonRefusal?: string | null, waitForReader?: boolean, checkoutHead?: string | null, listed?: {state: import("./pull-state.js").PullState, updatedAt: string} | null}} page
+ * `head` is the head commit the page knows, the one its Diff summary is drawn for: the
+ * comparison's, else the record's or the core's, and null before either; `baseRef` is the
+ * record's or the core's base branch.
+ *
+ * @param {{number: number, tab: string, nowMs: number, error?: string | null, errorFromComparison?: boolean, fetching?: boolean, fetchQueued?: boolean, refreshPending?: boolean, refreshDue?: boolean, online?: boolean, formatHold?: (liftMs: number, nowMs: number) => string, ownsChanges?: boolean, comparisonAttempted?: boolean, comparisonRefusal?: string | null, waitForReader?: boolean, checkoutHead?: string | null, listed?: {state: import("./pull-state.js").PullState, updatedAt: string} | null}} page
  * @returns {PullModel}
  */
 export function describePull(envelope, page) {
@@ -1248,6 +1301,8 @@ export function describePull(envelope, page) {
     notes: [],
     comparison: null,
     comparisonComing: false,
+    head: null,
+    baseRef: null,
     browse: null,
     filesUnavailable: filesUnavailableText(null),
     changesPending: false,
@@ -1258,6 +1313,11 @@ export function describePull(envelope, page) {
   if (envelope === null) {
     // Nothing read yet: the page shows a skeleton, and an error once a read failed.
     model.status = page.error ? "unavailable" : "loading";
+    // The first read brings the record, or the core whose read prepares its comparison, so
+    // the Diff summary's row waits from the first paint rather than empty until the core.
+    // Until it answers the page cannot know that the server has no store (`no_store`) or
+    // serves no GitHub repository: on such a server the placeholder ends with that answer.
+    model.comparisonComing = !page.error;
     return model;
   }
   model.status = envelope.state;
@@ -1277,7 +1337,7 @@ export function describePull(envelope, page) {
     // lifts by itself and asks nothing of the reader, so it keeps the row to one line.
     model.failureHold = true;
     model.failure = Number.isFinite(heldUntil)
-      ? `GitHub rate limit · next check at ${(page.formatTime ?? String)(new Date(heldUntil).toISOString().replace(".000Z", "Z"))}`
+      ? `GitHub rate limit · next check at ${(page.formatHold ?? holdLiftText)(heldUntil, page.nowMs)}`
       : "GitHub rate limit · next check within a minute";
   } else if (last !== null && last.outcome !== "succeeded" && !envelope.refreshing) {
     model.failure = `The last refresh failed: ${last.message ?? SETUP_FAILURES[last.outcome] ?? last.outcome.replaceAll("_", " ")}`;
@@ -1298,6 +1358,8 @@ export function describePull(envelope, page) {
       knownLabels(envelope.repository_labels),
     );
     model.corePreview = true;
+    model.head = text(preview.pull?.head?.sha) || null;
+    model.baseRef = text(preview.pull?.base?.ref) || null;
     model.contentReady = true;
     model.message = page.error ?? null;
     const age = relativeAge(preview.observed_at, page.nowMs);
@@ -1315,7 +1377,12 @@ export function describePull(envelope, page) {
     model.filesUnavailable = model.changesPending
       ? "Changes are still being prepared."
       : "Changes are unavailable because the full pull request could not be loaded.";
-    model.comparisonComing = envelope.refreshing && preview.comparison_state === "pending";
+    // The record follows the core, and its comparison with it unless the server has no store;
+    // a core read from the cache (`not_started`) has its record coming once a read runs.
+    model.comparisonComing =
+      preview.comparison_state !== "no_store" &&
+      envelope.no_store !== true &&
+      (envelope.refreshing || page.fetching === true || page.fetchQueued === true);
     return model;
   }
   if (record === null) {
@@ -1329,6 +1396,12 @@ export function describePull(envelope, page) {
     // Nothing is shown to refresh: the skeleton or the message is all there is.
     model.revalidating = false;
     model.contentReady = Boolean(page.error) || (!fetching && !page.waitForReader);
+    // The selected read, running, still to be sent, or waiting for the reader, brings the
+    // core and then the record; nothing running after a failure brings neither.
+    model.comparisonComing =
+      envelope.reason !== "not_github" &&
+      envelope.no_store !== true &&
+      (fetching || page.fetchQueued === true || page.waitForReader === true);
     model.canRefresh =
       !fetching &&
       envelope.state === "absent" &&
@@ -1338,7 +1411,11 @@ export function describePull(envelope, page) {
   }
   model.recordRevision = envelope.record_revision;
   model.contentReady = true;
-  model.message = page.error ?? null;
+  // A comparison's refusal is said where its Retry is, in the Changes body (below), not on
+  // the header's status line, which then showed it on Changes alone and moved the tab bar
+  // 27 px between tabs (B5 of review B on #506). Any other error is the header's, on every
+  // tab, a refused Refresh's among them, whatever its words (C3 of review C).
+  model.message = page.error && page.errorFromComparison !== true ? page.error : null;
   // A stale record the page is refreshing by itself offers nothing to press: Refresh is for a
   // failure, Changes, or a stale record whose automatic refresh did not run. A rate limit's
   // hold offers none either: the page names when it asks again and asks then, as the Pulls
@@ -1359,19 +1436,13 @@ export function describePull(envelope, page) {
   // The plain age while a refresh runs or is due: the page breathes it, and says nothing
   // about being out of date. Offline is the one stale state named here, since no refresh
   // can run; a hold or a failure is named by `failure`.
-  // "Checked" is the repository's list of pull requests saying, since the record was read,
-  // that GitHub has not changed it; "Fetched" is the record itself. Each says its own age.
-  const checked =
-    envelope.verified_by === "catalog" &&
-    typeof envelope.verified_at === "string" &&
-    envelope.verified_at > (record.fetched_at ?? "")
-      ? relativeAge(envelope.verified_at, page.nowMs)
-      : null;
-  const fetched = checked === null ? `Fetched ${age}` : `Checked ${checked} · fetched ${age}`;
+  // One time, never two (mb-ne91): the record's own fetch, the earliest that says how fresh
+  // what is shown is. A later check of the repository's list that found nothing changed
+  // (`verified_at`) makes the record no newer, so the line does not say it.
   model.freshness =
     offline && envelope.state === "stale" && !model.revalidating
       ? `Offline · fetched ${age} via GitHub CLI`
-      : `${fetched} via GitHub CLI`;
+      : `Fetched ${age} via GitHub CLI`;
   if (envelope.head_moved === true) {
     // The diff on screen stays until the reader takes the newer one, which a refresh offers.
     model.newCommits = model.revalidating
@@ -1389,6 +1460,8 @@ export function describePull(envelope, page) {
   model.checkNotes = notes(record, true);
   model.notes = notes(record, false);
   const head = text(pull.head?.sha);
+  model.head = head || null;
+  model.baseRef = text(pull.base?.ref) || null;
   const headRef = `refs/pull/${pull.number}/head`;
   if (envelope.pin !== null && head !== "") {
     model.browse = { kind: "link", at: envelope.pin.slice(0, 12) };
@@ -1405,7 +1478,7 @@ export function describePull(envelope, page) {
     } else if (envelope.pin !== head) {
       // Anything else, such as a branch, a tag, or another pull request. Nothing is wrong,
       // so nothing is said: reading a pull request does not need its code served.
-      model.browse = { kind: "switch", ref: headRef, at: head.slice(0, 12) };
+      model.browse = { kind: "switch", ref: headRef, head, at: head.slice(0, 12) };
     }
   }
   if (envelope.pin === null && head !== "" && page.checkoutHead === head) {
@@ -1428,18 +1501,25 @@ export function describePull(envelope, page) {
       model.filesUnavailable = "Fetching changes…";
     } else if (!failed) {
       model.filesUnavailable = CHANGES_NOT_FETCHED;
-    } else {
+    } else if (typeof page.comparisonRefusal === "string") {
       // A later read clears the refusal's error; its reason stays until the page asks again.
-      model.message = page.error ?? page.comparisonRefusal ?? null;
+      model.filesUnavailable = `${model.filesUnavailable} ${page.comparisonRefusal}`;
     }
   }
   const comparison = pullComparison(envelope);
   if (comparison !== null) {
+    // The Diff summary's head: the comparison's, which a record read at a newer head keeps.
+    model.head = comparison.right;
+    const headMoved = model.headOffer !== null;
     model.comparison = {
       ...comparison,
       // The page's code is the served pin; a record read at a newer head says so
       // rather than moving what the reader sees.
-      headMoved: model.headOffer !== null,
+      headMoved,
+      // What View on branch opens: the pull request's head, under its ref, when the diff
+      // shows that head. A diff of another commit has no branch it is on, and a page whose
+      // pin is an earlier head of this pull request offers the newer one first.
+      branch: !headMoved && head !== "" && comparison.right === head ? { ref: headRef } : null,
     };
   }
   model.comparisonComing =
@@ -1455,7 +1535,7 @@ export function describePull(envelope, page) {
  * click (comparison-prefetch.js, `createComparisonWarmer`). Pure.
  *
  * @param {unknown} envelope
- * @returns {{left: string, right: string, route?: string, snapshot_route?: string, rendered_route?: string} | null}
+ * @returns {{left: string, right: string, route?: string, image_route?: string, rendered_route?: string} | null}
  */
 export function pullComparison(envelope) {
   const shaped = /** @type {Record<string, any> | null} */ (
@@ -1469,10 +1549,8 @@ export function pullComparison(envelope) {
     left: comparison.base,
     right: comparison.head,
     ...(typeof shaped?.comparison_route === "string" ? { route: shaped.comparison_route } : {}),
-    // Where View file opens a file of either end without changing the served pin.
-    ...(typeof shaped?.snapshot_route === "string"
-      ? { snapshot_route: shaped.snapshot_route }
-      : {}),
+    // Where rendered Markdown in Changes loads the head's images from.
+    ...(typeof shaped?.image_route === "string" ? { image_route: shaped.image_route } : {}),
     // Where Changes asks for one Markdown file's rendered redline.
     ...(typeof shaped?.rendered_route === "string"
       ? { rendered_route: shaped.rendered_route }
@@ -1539,6 +1617,44 @@ export function isEnvelope(value) {
       : typeof envelope.record_revision === "string" &&
         /^[a-f0-9]{64}$/.test(envelope.record_revision))
   );
+}
+
+// ── Texts the server would not render ─────────────────────────
+
+/**
+ * What a text's notice says when the Markdown route will not render it, or null when
+ * its answer says nothing a reader needs: a record the page no longer shows, say, whose
+ * text stays plain until the newer record's is asked for. The server renders a text in
+ * its Markdown child under a deadline (`pull_markdown.render_part`), and refuses one that
+ * runs past it, whose renderer stops, whose renderer cannot start, or that arrives while
+ * the renderer has as many other texts as it takes; KPress can also fail on a text. Each shows the text as plain text, with this line saying why.
+ *
+ * @param {number} status
+ * @param {Record<string, any> | null} body
+ * @returns {string | null}
+ */
+export function refusedTextNote(status, body) {
+  if (status === 200 || body === null || typeof body.code !== "string") {
+    return null;
+  }
+  switch (body.code) {
+    case "render_deadline": {
+      const seconds = typeof body.deadline_ms === "number" ? body.deadline_ms / 1000 : null;
+      const took =
+        seconds === null ? "too long" : `longer than ${seconds} second${seconds === 1 ? "" : "s"}`;
+      return `This text took ${took} to render, so it is shown as plain text.`;
+    }
+    case "renderer_exited":
+      return "The renderer stopped while rendering this text, so it is shown as plain text.";
+    case "renderer_unavailable":
+      return "The renderer could not start, so this text is shown as plain text. Reload to try again.";
+    case "renderer_busy":
+      return "The renderer is busy with other texts, so this text is shown as plain text. Reload to try again.";
+    case "render_failed":
+      return "This text could not be rendered, so it is shown as plain text.";
+    default:
+      return null;
+  }
 }
 
 // ── Rendered texts, across pages ──────────────────────────────
@@ -1702,16 +1818,17 @@ export function renderedTextsHeld() {
  *   now(): number,
  *   isVisible(): boolean,
  *   isOnline?(): boolean,
- *   formatTime?(iso: string): string,
+ *   formatHold?(liftMs: number, nowMs: number): string,
  *   ownsChanges?(): boolean,
  *   ownsConversation?(): boolean,
  *   scheduleComparison?(callback: () => void): () => void,
  *   render(model: PullModel, identity: import("./pull-stacks.js").StackIdentity | null): void,
  *   renderMarkdown(part: string, rendered: Record<string, any>, text: string): void,
- *   textUnavailable?(part: string, text: string): void,
+ *   textUnavailable?(part: string, text: string, note?: string | null): void,
  *   listed?(source: string | null, number: number): {state: import("./pull-state.js").PullState, updatedAt: string} | null,
  *   timelineStateChanged?(): void,
  *   reload(): void,
+ *   switchPin(selection: {oid: string, under: string, view?: string}, wanted: () => boolean): Promise<{kind: "switched", href: string | null} | {kind: "busy"} | {kind: "abandoned"} | {kind: "refused", message: string}>,
  *   navigate(href: string): void,
  * }} PullDependencies
  */
@@ -1776,6 +1893,10 @@ export function createPullController(deps, options) {
   let askTimer = null;
   /** @type {string | null} */
   let error = null;
+  // Whether `error` is a comparison's refusal, which Changes says beside its Retry, so the
+  // header leaves it out. Told apart by the ask that met it, not by its words: a refused
+  // Refresh says the same words, and the header must say those (C3 of review C on #506).
+  let errorFromComparison = false;
   /** @type {string | null} */
   let painted = null;
   /** The reader's selection in the Pulls tab that opened this page, if one did. */
@@ -1951,12 +2072,13 @@ export function createPullController(deps, options) {
       tab,
       nowMs: deps.now(),
       error,
+      errorFromComparison,
       fetching: fetching || refreshPending,
       fetchQueued: fetchQueued(),
       refreshPending,
       refreshDue: autoAsk !== "none",
       online: online(),
-      ...(deps.formatTime === undefined ? {} : { formatTime: deps.formatTime }),
+      ...(deps.formatHold === undefined ? {} : { formatHold: deps.formatHold }),
       ownsChanges: walkSettling || ownsChanges(),
       comparisonAttempted,
       comparisonRefusal,
@@ -2175,6 +2297,7 @@ export function createPullController(deps, options) {
     } catch {
       catalogScanning = false;
       error = "The server did not answer.";
+      errorFromComparison = false;
     } finally {
       polling = false;
       hasPolled = true;
@@ -2205,14 +2328,17 @@ export function createPullController(deps, options) {
         catalogScanning = / scanning$/u.test(response.verified ?? "");
       }
       error = null;
+      errorFromComparison = false;
     } else if (response.status === 304 || pinChanged(response)) {
       if (response.status === 304) {
         adoptVerified(response.verified);
         catalogScanning = / scanning$/u.test(response.verified ?? "");
       }
       error = null;
+      errorFromComparison = false;
     } else {
       error = `The pull request is unavailable (HTTP ${response.status}).`;
+      errorFromComparison = false;
     }
   }
 
@@ -2394,10 +2520,12 @@ export function createPullController(deps, options) {
         }
         if (!idle) {
           error = null;
+          errorFromComparison = false;
         }
       } else if (ask.retry) {
         const said = body !== null && typeof body.error === "string" ? body.error : null;
         error = `The refresh was refused (${said ?? `HTTP ${response.status}`}).`;
+        errorFromComparison = ask.comparison === true;
         if (ask.comparison) {
           comparisonRefusal = error;
         }
@@ -2405,6 +2533,7 @@ export function createPullController(deps, options) {
     } catch {
       if (ask.retry) {
         error = "The refresh request failed.";
+        errorFromComparison = ask.comparison === true;
         if (ask.comparison) {
           comparisonRefusal = error;
         }
@@ -2560,47 +2689,42 @@ export function createPullController(deps, options) {
     }
   }
 
-  let switching = false;
-
   /**
-   * Serve the pull request's head, and then go on. `POST /api/source/pin` is the freshness
-   * row's own switch; a refusal says why and the page stays as it was.
+   * Serve the pull request's head, by its commit and under its ref, and then go on. The
+   * switch is the page's one switch, which the diff's View on branch shares
+   * (`createPinSwitch` in the diff plugin): one at a time, and a refusal said in its words,
+   * after which the page stays as it was.
    *
-   * @param {string} ref
-   * @param {() => void} then
+   * @param {{head: string, ref: string}} at
+   * @param {string | null} view The `/view/` address the page goes to, or null for none.
+   * @param {(moved: string | null) => void} then Given where the server says *view* is on
+   *   the head, when it says.
    */
-  async function serveHead(ref, then) {
-    if (disposed || switching) {
+  async function serveHead(at, view, then) {
+    if (disposed) {
       return;
     }
-    switching = true;
-    try {
-      const response = await deps.request("POST", PIN_ROUTE, { body: { ref } });
-      if (disposed) {
-        return;
-      }
-      if (response.status === 200) {
-        then();
-        return;
-      }
-      const body = /** @type {{code?: unknown} | null} */ (response.body);
-      const code = body !== null && typeof body.code === "string" ? body.code : "";
-      error = `Could not switch to the head (${code || `HTTP ${response.status}`}).`;
-    } catch {
-      error = "The switch request failed.";
-    } finally {
-      switching = false;
+    const outcome = await deps.switchPin(
+      { oid: at.head, under: at.ref, ...(view === null ? {} : { view }) },
+      () => !disposed,
+    );
+    if (disposed || outcome.kind === "busy" || outcome.kind === "abandoned") {
+      return;
     }
-    if (!disposed) {
-      render();
+    if (outcome.kind === "switched") {
+      then(outcome.href);
+      return;
     }
+    error = outcome.message;
+    errorFromComparison = false;
+    render();
   }
 
   /** The newer head the page offers: served, then reloaded so every view shows it. */
   async function switchToHead() {
     const offer = model().headOffer;
     if (offer !== null) {
-      await serveHead(offer.ref, deps.reload);
+      await serveHead(offer, null, deps.reload);
     }
   }
 
@@ -2614,7 +2738,11 @@ export function createPullController(deps, options) {
   async function browseCode(href) {
     const browse = model().browse;
     if (browse?.kind === "switch") {
-      await serveHead(browse.ref, () => deps.navigate(href));
+      await serveHead(browse, href, (moved) => {
+        // The server's address for the file on the head, or its root when the head has no
+        // such file; the address asked for when it is the same file, which keeps its line.
+        deps.navigate(moved !== null && moved !== href.split(/[?#]/, 1)[0] ? moved : href);
+      });
     }
   }
 
@@ -2674,9 +2802,10 @@ export function createPullController(deps, options) {
             revision !== markdownFor
           ) {
             // A render of a record the page no longer shows, or none at all: the
-            // plain text stays, and a newer record is asked for again.
+            // plain text stays, and a newer record is asked for again. A text the
+            // server would not render says why.
             if (!disposed && text !== null) {
-              deps.textUnavailable?.(part, text);
+              deps.textUnavailable?.(part, text, refusedTextNote(response.status, body));
             }
             return;
           }
@@ -3825,10 +3954,12 @@ export function mountPullPage(container, ctx, mb) {
   const header = h("div", { class: "github-pull-header page-header page-reading-column" });
   const body = h("div", { class: "github-pull-body" });
   // The header's box is decided at first paint: every row is there in every state, at one
-  // line each, so nothing that arrives later, a stack, a label's color, a Refresh, moves the
-  // tab bar or the rows below it. The one row that depends on the record is the labels row:
-  // held while the labels are unknown, and not there for a pull request with none (mb-2u08).
-  // docs/design-system.md, "The Pull Request Page".
+  // line each, so nothing that arrives later, a stack, a label's color, a Refresh, the age
+  // ticking, a rate limit's hold, moves the tab bar or the rows below it. Two rows depend on
+  // what the page has to say. The labels row is held while the labels are unknown, and not
+  // there for a pull request with none (mb-2u08). The status line is there only for a
+  // failure, a message, or an offer, so those, and only those, move the tab bar as they come
+  // and go (mb-ne91). docs/design-system.md, "The Pull Request Page".
   // A hidden chip of no width, which gives a row a chip's height whatever else it holds.
   const strut = () =>
     h(
@@ -3848,8 +3979,34 @@ export function mountPullPage(container, ctx, mb) {
   const labelsRow = h("div", { class: "github-pull-labels" }, [labelList]);
   const stateBadge = h("span", { class: "github-pull-state-slot" });
   const stateDetails = h("span", { class: "github-pull-meta-details" });
+  // The author's sentence ends in a muted note of how fresh what is shown is, one time
+  // (mb-ne91): "jlevy wants to merge 1 commit · Fetched just now via GitHub CLI". A rate
+  // limit's hold is said in its place, since it begins and lifts by itself and asks nothing of
+  // the reader. Before a record is shown the note is the page's word on it, "Fetching the pull
+  // request…", so the sentence landing changes no line. The note and its age are kept across
+  // paints, so the age's breathing while a refresh runs is one animation from start to end
+  // rather than one restarted at each paint. The note's slot is as wide as its widest age
+  // (`freshnessSizer`), so the age ticking from "just now" to "12 min ago" changes its width
+  // not at all. The sentence and the note share the row's lead (`stateLead`), which the note
+  // leaves whole, dot and all, where it cannot be whole beside the sentence, so the sentence
+  // never gives up width to it; alone on the row, before a record, it is cut short with its
+  // text as a tooltip. Refresh is not in the note, which can leave: it ends the row of ages.
+  const freshnessLine = tipWhenCut(
+    h("span", { class: "github-pull-freshness mb-refreshing-muted" }),
+  );
+  const freshnessSizer = h("span", {
+    class: "github-pull-freshness-sizer",
+    "aria-hidden": "true",
+  });
+  const freshnessSlot = h("span", { class: "github-pull-freshness-slot" }, [
+    freshnessLine,
+    freshnessSizer,
+  ]);
+  const freshnessSep = h("span", { class: "github-pull-note-sep", "aria-hidden": "true" }, ["·"]);
+  const freshnessNote = h("span", { class: "github-pull-note" }, [freshnessSep, freshnessSlot]);
+  const stateLead = h("span", { class: "github-pull-meta-lead" }, [stateDetails, freshnessNote]);
   const stateRow = h("div", { class: "github-pull-meta page-header-line" }, [
-    stateDetails,
+    stateLead,
     stackColumn,
   ]);
   // The head and base branches, on a line of their own under the author's sentence: a line
@@ -3880,12 +4037,11 @@ export function mountPullPage(container, ctx, mb) {
     [h("span", { class: "tally-pending", "aria-hidden": "true" })],
   );
   header.append(stateRow);
-  // The status line and its age are kept across paints, so the age's breathing while a
-  // refresh runs is one animation from start to end rather than one restarted at each paint.
-  // It is one of the header's metadata lines, under the row of ages and as tall as it: its
-  // controls are text actions, a line tall (mb-2u08).
-  const freshnessLine = h("span", { class: "github-pull-freshness mb-refreshing-muted" });
-  const status = h("div", { class: "github-pull-status page-header-line" }, [freshnessLine]);
+  // The status line: what the page has to say beyond the note, a failure and its remedy, a
+  // message, and the offers, one of the header's metadata lines, under the row of ages and as
+  // tall as it, there only while it has something to say. Its controls are text actions, a
+  // line tall (mb-2u08).
+  const status = h("div", { class: "github-pull-status page-header-line" });
   /** Commits of the conversation are being read from GitHub for the record shown. */
   let timelineBusy = false;
   let stackIndex = createStackIndex(null);
@@ -3915,6 +4071,14 @@ export function mountPullPage(container, ctx, mb) {
   const texts = new Map();
   /** The text each text element shows, which its Markdown must be of. @type {WeakMap<Element, string>} */
   const textOf = new WeakMap();
+  /**
+   * Why a text shows plain, by part, while that text is the one shown: a text element
+   * rebuilt on the same record is not asked for its Markdown again, so it says why from
+   * here, and a render that arrives later takes the note away.
+   *
+   * @type {Map<string, {text: string, note: string}>}
+   */
+  const refusedNotes = new Map();
   /** The conversation's sections as last painted, by what each shows. @type {Map<string, HTMLElement>} */
   let sections = new Map();
   /**
@@ -3932,9 +4096,9 @@ export function mountPullPage(container, ctx, mb) {
    * - `hidden`, over nothing or the loading blocks: the conversation is painted and laid out
    *   out of sight, and waits for every text that is plain and on its first screen, measured
    *   from the page's own top (`parts`, all it waited for). Its kept renders are already
-   *   final. A text whose Markdown cannot come is `failed` and waits no longer. Over the
-   *   loading page the header waits with it (`header`), so the loading heading and any
-   *   blocks that had shown (`cover`) stay as they are, and header and body change once.
+   *   final. A text whose Markdown cannot come is `failed` and waits no longer. The header
+   *   paints the record at once, so the title shows without waiting; loading blocks that had
+   *   shown stay over the body (`cover`) until it shows, so it never blinks empty.
    * - `delayed`, over a core preview: the preview stays as it is, and the full record paints
    *   once its description's Markdown can be inserted with it (`text`), or `plain` can.
    *
@@ -3945,7 +4109,6 @@ export function mountPullPage(container, ctx, mb) {
    *   parts: Set<string>,
    *   failed: Set<string>,
    *   cover: HTMLElement | null,
-   *   header: boolean,
    *   since: number,
    *   timer: ReturnType<typeof window.setTimeout>,
    * } | null}
@@ -4194,11 +4357,15 @@ export function mountPullPage(container, ctx, mb) {
     collecting?.push(element);
     const kept = controller.renderedFor(part, value);
     const inert = insertableNow(kept) ? window.MetabrowserInertHtml : undefined;
-    element.append(
-      kept !== null && inert !== undefined
-        ? kpressHost(inert, kept)
-        : h("div", { class: "github-pull-plain" }, [value]),
-    );
+    if (kept !== null && inert !== undefined) {
+      element.append(kpressHost(inert, kept));
+    } else {
+      element.append(h("div", { class: "github-pull-plain" }, [value]));
+      const refused = refusedNotes.get(part);
+      if (refused?.text === value) {
+        element.append(refusalNotice(refused.note));
+      }
+    }
     if (truncated) {
       element.append(notice("warning", ["This text was cut; the rest is on GitHub."]));
     }
@@ -4272,6 +4439,39 @@ export function mountPullPage(container, ctx, mb) {
   }
 
   /**
+   * Say under a text's plain text why its Markdown will not come, in one notice.
+   *
+   * @param {string} part
+   * @param {string} text The text the server would not render.
+   * @param {string} note
+   */
+  function refusedText(part, text, note) {
+    refusedNotes.set(part, { text, note });
+    const element = texts.get(part);
+    const plain =
+      element === undefined || textOf.get(element) !== text
+        ? null
+        : element.querySelector(":scope > .github-pull-plain");
+    if (plain) {
+      // One notice, saying the latest refusal's reason.
+      element?.querySelector(":scope > .github-pull-text-refused")?.remove();
+      plain.after(refusalNotice(note));
+    }
+  }
+
+  /**
+   * The line under a plain text that says why its Markdown will not come.
+   *
+   * @param {string} note
+   */
+  function refusalNotice(note) {
+    const said = notice("warning", [note]);
+    said.classList.add("github-pull-text-refused");
+    said.setAttribute("role", "status");
+    return said;
+  }
+
+  /**
    * @param {string} part
    * @param {Record<string, any>} rendered
    * @param {string} text The text it is the render of.
@@ -4308,6 +4508,11 @@ export function mountPullPage(container, ctx, mb) {
           : element.querySelector(":scope > .github-pull-plain");
       if (plain && inert !== null) {
         plain.replaceWith(kpressHost(inert, rendered));
+        // The text is rendered now, so what said why it was plain goes with the plain text.
+        element?.querySelector(":scope > .github-pull-text-refused")?.remove();
+        if (refusedNotes.get(part)?.text === text) {
+          refusedNotes.delete(part);
+        }
       } else if (inert === null) {
         held?.failed.add(part);
       }
@@ -4479,8 +4684,6 @@ export function mountPullPage(container, ctx, mb) {
   });
   /** The links' keys, from `attachTabKeys` once the page can end them. @type {MetabrowserPublicPluginShortcutHandle[]} */
   let tabKeys = [];
-  /** The tab link that had focus when a held header made the column inert. @type {HTMLElement | null} */
-  let focusedTab = null;
   /** The header's numbered links and actions, by what each does; see `numberHeaderControls`.
    * @type {Map<string, {handle: MetabrowserPublicPluginShortcutHandle, run: () => unknown}>} */
   const headerNumbers = new Map();
@@ -4547,9 +4750,7 @@ export function mountPullPage(container, ctx, mb) {
   }
 
   /**
-   * The menu most recently used chooses a stack when a PR has several memberships. A header
-   * held over the loading page shows no stack menu yet, so Control-N and Control-P wait with
-   * it, as the tab keys do (`holdTabColumn`).
+   * The menu most recently used chooses a stack when a PR has several memberships.
    */
   function currentStack() {
     if (
@@ -4557,7 +4758,6 @@ export function mountPullPage(container, ctx, mb) {
       listening.signal.aborted ||
       shown === null ||
       shown.pull === null ||
-      headerWaits() ||
       document.visibilityState !== "visible" ||
       !onPageRoute(window.location.pathname, number, controller.snapshot().tab)
     ) {
@@ -4622,6 +4822,7 @@ export function mountPullPage(container, ctx, mb) {
     // A narrow row gives way in its sentence first: the action is cut short before the
     // author is (styles.css, "One line"). The branches have the line below to themselves.
     const actor = pull.actor;
+    stateDetails.hidden = false;
     placeChildren(stateDetails, [
       ...(actor === null
         ? []
@@ -4653,10 +4854,12 @@ export function mountPullPage(container, ctx, mb) {
    * @param {PullModel | null} model
    */
   function paintRefreshing(model) {
+    // The note breathes only while it says the age, not a rate limit's hold in its place.
     const busy =
       model !== null &&
       model.pull !== null &&
       model.freshness !== null &&
+      model.failureHold !== true &&
       (model.revalidating || (timelineBusy && model.tab === ""));
     freshnessLine.classList.toggle("mb-refreshing", busy);
     // Busy is said of the age being updated, never of the status line's buttons and links.
@@ -4719,8 +4922,6 @@ export function mountPullPage(container, ctx, mb) {
    * @type {boolean | null}
    */
   let coldHeld = null;
-  /** Whether the held cold page is kept unseen past the quiet period (`keepColdUnseen`). */
-  let coldKept = false;
 
   /**
    * A page mounted with no record in hand keeps its header and tab column out of sight for
@@ -4745,33 +4946,9 @@ export function mountPullPage(container, ctx, mb) {
     } else {
       coldHeld = false;
     }
-    coldKept = false;
     for (const part of [header, tabColumn]) {
       part.classList.toggle("github-pull-cold", coldHeld);
-      part.classList.remove("github-pull-cold-held");
     }
-  }
-
-  /**
-   * A record that lands while the cold page is still unseen, and whose header waits with the
-   * conversation's held first paint (`headerWaits`), keeps the cold page unseen past the quiet
-   * period until that paint, at most `DESCRIPTION_HOLD_MS`: the body is out of sight then too,
-   * with no loading blocks over it, since none had shown. Shown at the quiet period's end, the
-   * cold header would change with the body, and an unlabelled pull request's tab bar would
-   * move as it did (`.github-pull-cold-held`).
-   */
-  function keepColdUnseen() {
-    if (
-      coldHeld !== true ||
-      coldKept ||
-      (typeof window.getComputedStyle === "function" &&
-        window.getComputedStyle(header).opacity !== "0")
-    ) {
-      return;
-    }
-    coldKept = true;
-    header.classList.add("github-pull-cold-held");
-    tabColumn.classList.add("github-pull-cold-held");
   }
 
   /** @param {PullModel} model */
@@ -4783,6 +4960,46 @@ export function mountPullPage(container, ctx, mb) {
     /** The situational controls this paint draws, by what each does, for their numbers.
      * @type {Map<string, {element: HTMLElement, run: () => unknown}>} */
     const numbered = new Map();
+    // Refresh, or Fetch before a record, ends the row of ages, its slot held hidden when there
+    // is nothing to refresh: it came and went with the tab, moving the tab bar 8 px. It is a
+    // text action, as Browse code before it is, so its line is a metadata line's height: as a
+    // bordered .btn it was 26 px where the line's text is 18 (mb-2u08). Numbers go in reading
+    // order, so it takes the number after View on GitHub's and Browse code's and renumbers
+    // neither as it comes or goes; on the author's row, before them, it took theirs (review A
+    // on #506). With no row of ages, a pull request that cannot be shown, it ends the status
+    // line.
+    const refreshLabel = model.status === "absent" ? "Fetch" : "Refresh";
+    const refresh = headerPart("refresh", refreshLabel, () => {
+      const button = h(
+        "button",
+        { type: "button", class: "github-pull-text-action github-pull-refresh" },
+        [refreshLabel],
+      );
+      // Held until a paint offers it, so a refresh already running as the page mounts shows no
+      // waiting Refresh that nothing had offered.
+      button.hidden = true;
+      button.addEventListener("click", refreshShown);
+      return button;
+    });
+    // A Refresh that shows waits while a refresh of what is shown runs or is due, or a rate
+    // limit holds it: still shown, marked disabled, it keeps its slot and its number, and a
+    // press does nothing, as its click does (`refreshShown`), as the Pulls tab's Reload waits.
+    // Hidden as it waited, it gave its number to the offer after it, so a second 3 switched the
+    // served pin (B2 of review B on #506). One that was not showing stays hidden, so a refresh
+    // the page runs by itself numbers nothing new.
+    const waiting =
+      !model.canRefresh &&
+      !refresh.hidden &&
+      pull !== null &&
+      (model.revalidating || model.failureHold === true);
+    if (refresh.hidden !== !(model.canRefresh || waiting)) {
+      refresh.hidden = !(model.canRefresh || waiting);
+    }
+    if (waiting) {
+      refresh.setAttribute("aria-disabled", "true");
+    } else {
+      refresh.removeAttribute("aria-disabled");
+    }
     if (pull !== null) {
       // The updated age is left out where it reads the same as the merged or closed age
       // beside it, or else the opened age; its exact time joins the tooltip of the age it
@@ -4844,17 +5061,23 @@ export function mountPullPage(container, ctx, mb) {
             },
           );
           const browse = model.browse === null ? null : browseControl(model.browse);
+          // The ages give way first, cut short at their end, and the links after them stay
+          // whole: cut at the row's end, the row lost Browse code before any age (B4 of
+          // review B on #506).
           const row = h("div", { class: "github-pull-quiet" }, [
-            "Opened ",
-            age(pull.created, repeatsOpened ? also : null),
-            ...(repeatsClosed || repeatsOpened ? [] : [" · updated ", age(pull.updated)]),
-            ...(closedAt === null
-              ? []
-              : [` · ${pull.closedLabel} `, age(closedAt, repeatsClosed ? also : null)]),
-            " · ",
-            onGitHub,
-            browse === null ? null : " · ",
-            browse,
+            h("span", { class: "github-pull-ages" }, [
+              "Opened ",
+              age(pull.created, repeatsOpened ? also : null),
+              ...(repeatsClosed || repeatsOpened ? [] : [" · updated ", age(pull.updated)]),
+              ...(closedAt === null
+                ? []
+                : [` · ${pull.closedLabel} `, age(closedAt, repeatsClosed ? also : null)]),
+            ]),
+            h("span", { class: "github-pull-ages-links" }, [
+              " · ",
+              onGitHub,
+              ...(browse === null ? [] : [" · ", browse]),
+            ]),
           ]);
           return { row, onGitHub, browse };
         },
@@ -4877,12 +5100,13 @@ export function mountPullPage(container, ctx, mb) {
               : () => controller.browseCode(root),
         });
       }
-      placeChildren(openedRow, [stateBadge, opened.row]);
+      placeChildren(openedRow, [stateBadge, opened.row, refresh]);
       children.push(title, paintStateRow(pull), branchesRow, openedRow);
-      // A pull request with no labels has no labels row, and no gap for it: the status line
-      // follows the row of ages as the next metadata line (mb-2u08). Its labels come with its
-      // record or core, so the row is decided with the record's first paint; a label's color
-      // and tooltip, which the repository's set may bring later, change no chip's box.
+      // A pull request with no labels has no labels row, and no gap for it: the next row
+      // shown follows the row of ages as the next metadata line (mb-2u08). Its labels come
+      // with its record or core, so the row is decided with the record's first paint; a
+      // label's color and tooltip, which the repository's set may bring later, change no
+      // chip's box.
       if (pull.labels.length > 0) {
         placeChildren(
           labelList,
@@ -4903,60 +5127,73 @@ export function mountPullPage(container, ctx, mb) {
       // the one paint that changes the header and the body together (mb-2u08).
       if (model.status !== "unavailable") {
         placeChildren(stateBadge, []);
+        // No sentence yet, so the note, the page's word on the record, leads the row alone.
         placeChildren(stateDetails, []);
+        stateDetails.hidden = true;
         placeChildren(branchesRow, []);
         placeChildren(openedRow, [
           stateBadge,
           headerPart("opened placeholder", null, () =>
             h("div", { class: "github-pull-quiet" }, ["\u00a0"]),
           ),
+          refresh,
         ]);
         placeChildren(labelList, []);
         children.push(stateRow, branchesRow, openedRow, labelsRow);
       }
     }
     status.dataset.status = model.status;
-    // A failure is the one text the row lets wrap: it carries its remedy. A rate limit's
-    // hold carries none and lifts by itself, so it stays on the line, cut short with its
-    // whole text in a tooltip: wrapping it moved the tab bar 22 px as it began and lifted.
+    // A failure is the one text the row lets wrap: it carries its remedy.
     status.classList.toggle(
       "github-pull-status-failed",
       model.failure !== null && model.failureHold !== true,
     );
-    freshnessLine.hidden = model.freshness === null;
-    if (freshnessLine.textContent !== (model.freshness ?? "")) {
-      freshnessLine.textContent = model.freshness ?? "";
+    // The author's row ends in the note (mb-ne91): a record's one time, or a rate limit's hold
+    // in its place, which begins and lifts by itself and asks nothing of the reader, so it
+    // changes no row: on the status line it added one, moving the tab bar 27 px as it began
+    // and lifted (A3 of review A on #506). Before a record is shown the note is the page's
+    // word on it, which the status line then does not repeat, unless a failure goes with that
+    // word, which then says it on the status line beside the failure (A10 of that review): on
+    // the author's row it stood three empty rows above its failure. A header with no
+    // author's row, a pull request that cannot be shown, says it on the status line.
+    const noteRow = children.includes(stateRow);
+    const hold = model.failureHold === true ? model.failure : null;
+    const noteText = !noteRow
+      ? null
+      : pull !== null
+        ? (hold ?? model.freshness)
+        : model.failure === null
+          ? model.message
+          : null;
+    const message = noteRow && pull === null && noteText !== null ? null : model.message;
+    const failure = hold !== null && noteText === hold ? null : model.failure;
+    freshnessNote.hidden = noteText === null;
+    // A hold is cut short with its text as a tooltip where it cannot be whole, rather than
+    // leave the line as an age does, so the page always says why nothing refreshes (B3 of
+    // review B on #506).
+    const holdShown = hold !== null && noteText === hold;
+    freshnessLine.classList.toggle("github-pull-freshness-held", holdShown);
+    stateLead.classList.toggle("github-pull-meta-lead-held", holdShown);
+    // The dot joins the note to the author's sentence, so it is there only after one.
+    freshnessSep.hidden = pull === null;
+    if (freshnessLine.textContent !== (noteText ?? "")) {
+      freshnessLine.textContent = noteText ?? "";
+    }
+    const sizer = noteText !== null && noteText === model.freshness ? widestNote(noteText) : "";
+    if (freshnessSizer.textContent !== sizer) {
+      freshnessSizer.textContent = sizer;
     }
     paintRefreshing(model);
-    const message = model.message;
-    const failure = model.failure;
     const failureHelp = model.failureHelp;
-    // Refresh has its slot at the row's end on every tab, held hidden when there is nothing
-    // to refresh: it came and went with the tab, moving the tab bar 8 px. It is a text
-    // action, as Browse code on the row of ages is, so the line is a metadata line's height:
-    // as a bordered .btn it was 26 px where the line's text is 18 (mb-2u08).
-    const refreshLabel = model.status === "absent" ? "Fetch" : "Refresh";
-    const refresh = headerPart("refresh", refreshLabel, () => {
-      const button = h(
-        "button",
-        { type: "button", class: "github-pull-text-action github-pull-refresh" },
-        [refreshLabel],
-      );
-      button.addEventListener("click", refreshShown);
-      return button;
-    });
-    if (refresh.hidden !== !model.canRefresh) {
-      refresh.hidden = !model.canRefresh;
-    }
-    // Offers sit at the row's end with Refresh, so the freshness text changing its width
-    // moves nothing after it: it moved an offer by 100 px.
+    // Offers end the status line, so a message or failure changing its width moves nothing
+    // after it: the freshness text before them once moved an offer by 100 px.
     /** @type {Element[]} */
     const ending = [];
     if (model.headOffer !== null) {
       const text = model.headOffer.text;
       const switchNow = () => void controller.switchToHead();
       const held = headerPart("switch offer", text, () => {
-        // A text action, as Refresh beside it is: following it switches the served pin.
+        // A text action, as Refresh is: following it switches the served pin.
         const button = h(
           "button",
           { type: "button", class: "github-pull-text-action github-pull-switch" },
@@ -4981,16 +5218,19 @@ export function mountPullPage(container, ctx, mb) {
       });
       ending.push(held.offer);
     }
-    // Only a Refresh that shows takes a number: its held slot has nothing to run.
+    // Only a Refresh that shows, offered or waiting, takes a number: its held slot has nothing
+    // to run.
     if (!refresh.hidden) {
       numbered.set("refresh", { element: refresh, run: refreshShown });
     }
     const end = headerPart("status end", null, () =>
       h("span", { class: "github-pull-status-end" }),
     );
-    placeChildren(end, [...ending, refresh]);
-    placeChildren(status, [
-      freshnessLine,
+    // Refresh ends the row of ages wherever there is one (above).
+    const agesRow = children.includes(openedRow);
+    placeChildren(end, agesRow ? ending : [...ending, refresh]);
+    /** @type {Element[]} */
+    const statusText = [
       ...(message === null
         ? []
         : [
@@ -5014,8 +5254,12 @@ export function mountPullPage(container, ctx, mb) {
               ]),
             ),
           ]),
-      end,
-    ]);
+    ];
+    placeChildren(status, [...statusText, end]);
+    // The line is there only while it has something to say, from what this paint put on it:
+    // the note says the rest, and Refresh is on the row of ages. With no row of ages it holds
+    // Refresh and the page's message, so it is there.
+    status.hidden = agesRow && statusText.length === 0 && ending.length === 0;
     children.push(status);
     if (pull !== null || model.status !== "unavailable") {
       children.push(summaryRow);
@@ -5614,6 +5858,71 @@ export function mountPullPage(container, ctx, mb) {
    * read of it starts again (mb-pb35, mb-onr2).
    */
   let summaryFailed = "";
+  /**
+   * The cached changed-files list's brief line, drawn in the Diff summary's row while the
+   * comparison is on its way or read (pull-summary-brief.js, mb-z8ea), and the line drawn,
+   * by the list's generation and the tree's breakdown having loaded. An SDK without the
+   * change line's painters has none.
+   */
+  const summaryBrief =
+    typeof mb.changeLine === "function" &&
+    typeof mb.changeLineNodes === "function" &&
+    typeof mb.countPartsNodes === "function" &&
+    typeof mb.formatInteger === "function"
+      ? createSummaryBrief({
+          async read(asked, signal) {
+            const response = await fetch(`${PULL_FILES_SUMMARY_ROUTE}?numbers=${asked}`, {
+              signal,
+            });
+            return { status: response.status, body: response.ok ? await response.json() : null };
+          },
+          // What the line is painted with, as the summary that replaces it is: the diff
+          // plugin's styles and the changed-files tree, whose breakdown says its letters.
+          async ready() {
+            const [, tree] = await Promise.all([
+              mb.ensureKindAssets("diff"),
+              mb.loadChangedFilesTree(),
+            ]);
+            return tree.statusBreakdown;
+          },
+          changed: () => paintSummaryWait(shown),
+        })
+      : null;
+  let briefShown = { key: "", node: /** @type {HTMLElement | null} */ (null) };
+  // Asked as the page mounts: a page opened from a Pulls row has the row's line in the
+  // document's memory, by the repository its envelope names; any other asks the route once.
+  const readerSource = /** @type {{source?: unknown} | null | undefined} */ (
+    ctx.reader?.initial?.body
+  )?.source;
+  summaryBrief?.want(number, typeof readerSource === "string" ? readerSource : null);
+
+  /**
+   * The brief line for what *model*'s Diff summary is drawn for, or null: on Changes the
+   * mounted diff's comparison, else the record's, or the record's or core's head and base
+   * branch before it has one (`briefMatches`). The node drawn is kept while its list is the
+   * same, so a repaint moves nothing.
+   *
+   * @param {PullModel | null} model
+   */
+  function briefFor(model) {
+    const compared =
+      model?.tab === "files" && diffFor !== null ? diffFor : (model?.comparison ?? null);
+    const summary =
+      summaryBrief?.summary({
+        head: compared?.right ?? model?.head ?? null,
+        base: compared?.left ?? null,
+        baseRef: model?.baseRef ?? null,
+      }) ?? null;
+    if (summary === null || summaryBrief === null) {
+      return null;
+    }
+    const breakdown = summaryBrief.breakdown();
+    const key = `${summary.generation}:${summary.head}:${breakdown === null ? 0 : 1}`;
+    if (briefShown.key !== key || briefShown.node === null) {
+      briefShown = { key, node: briefLine(mb, h, summary, breakdown) };
+    }
+    return briefShown.node;
+  }
   /** The comparison whose first screen's Markdown this page asked for, and how to stop it. */
   let markdownAsked = { key: "", controller: /** @type {AbortController | null} */ (null) };
 
@@ -5675,7 +5984,7 @@ export function mountPullPage(container, ctx, mb) {
    * @param {PullModel | null} model
    */
   function paintSummaryWait(model) {
-    if (summaryShown.handle !== null) {
+    if (summaryShown.handle !== null || listening.signal.aborted) {
       return;
     }
     const awaited = model === null ? null : model.tab === "files" ? diffFor : model.comparison;
@@ -5683,12 +5992,17 @@ export function mountPullPage(container, ctx, mb) {
       awaited === null
         ? model?.comparisonComing === true
         : comparisonKey(awaited) !== summaryFailed;
-    if (waits) {
-      if (summaryRow.firstChild !== summaryPending || summaryRow.childNodes.length !== 1) {
-        summaryRow.replaceChildren(summaryPending);
+    // The cached list's line for the head the page knows takes the placeholder's place, and
+    // stays when the wait ends with no summary; another head's is never shown.
+    const brief = briefFor(model);
+    const holds = brief ?? (waits ? summaryPending : null);
+    if (holds !== null) {
+      if (summaryRow.firstChild !== holds || summaryRow.childNodes.length !== 1) {
+        summaryRow.replaceChildren(holds);
       }
     } else {
       summaryPending.remove();
+      briefShown.node?.remove();
     }
   }
 
@@ -5805,7 +6119,7 @@ export function mountPullPage(container, ctx, mb) {
     }
   }
 
-  /** @param {{left: string, right: string, route?: string, snapshot_route?: string, rendered_route?: string}} comparison */
+  /** @param {{left: string, right: string, route?: string, image_route?: string, rendered_route?: string, branch?: {ref: string} | null}} comparison */
   async function mountDiff(comparison) {
     if (listening.signal.aborted) {
       return;
@@ -5864,12 +6178,14 @@ export function mountPullPage(container, ctx, mb) {
                 right: comparison.right,
                 base_policy: "merge_base",
                 ...(comparison.route === undefined ? {} : { route: comparison.route }),
-                ...(comparison.snapshot_route === undefined
+                ...(comparison.image_route === undefined
                   ? {}
-                  : { snapshot_route: comparison.snapshot_route }),
+                  : { image_route: comparison.image_route }),
                 ...(comparison.rendered_route === undefined
                   ? {}
                   : { rendered_route: comparison.rendered_route }),
+                // A pull request's comparison: what its View on branch opens, if anything.
+                branch: comparison.branch ?? null,
               },
               ...(prefetched === undefined ? {} : { raw: prefetched }),
               // The page draws the Diff summary at its top; the diff draws none (mb-pb35).
@@ -6099,8 +6415,6 @@ export function mountPullPage(container, ctx, mb) {
       // Another tab holds the body now: the conversation paints as it is when it returns.
       releaseFirstPaint("closed");
     }
-    // The conversation's first paint is decided before the header, since a hold over the
-    // loading page keeps the loading heading too: header and body then change once.
     const conversation = model.pull !== null && model.tab !== "files" && model.tab !== "checks";
     const key = conversation ? conversationKey(model) : null;
     const action =
@@ -6111,14 +6425,10 @@ export function mountPullPage(container, ctx, mb) {
             { key, recordRevision: model.recordRevision },
           );
     const hold = action === "repaint" ? holdFirstPaint(model) : null;
-    const headerHeld = headerWaits();
-    holdTabColumn(headerHeld);
-    if (!headerHeld) {
-      paintHeader(model);
-      paintStacks(model);
-    } else {
-      keepColdUnseen();
-    }
+    // The header paints the record at once, held or not: only the body waits for its
+    // Markdown, so the title shows as soon as the record is in hand (exp-099).
+    paintHeader(model);
+    paintStacks(model);
     // Conversation and Checks use the reading column. Changes uses the full pane.
     body.classList.toggle("page-reading-column", model.pull === null || model.tab !== "files");
     if (model.pull === null) {
@@ -6244,7 +6554,6 @@ export function mountPullPage(container, ctx, mb) {
       parts: new Set(),
       failed: new Set(),
       cover: null,
-      header: !delayed && bodyShows === "loading",
       since: Date.now(),
       timer: window.setTimeout(() => releaseFirstPaint("bound"), DESCRIPTION_HOLD_MS),
     };
@@ -6372,44 +6681,6 @@ export function mountPullPage(container, ctx, mb) {
   }
 
   /**
-   * Whether the header waits with a held first paint, still the loading heading: what the
-   * record's header shows, its stack menu among it, is not on screen until the release.
-   */
-  function headerWaits() {
-    return firstPaint?.mode === "hidden" && firstPaint.header;
-  }
-
-  /**
-   * The tab links wait with a held header. The header keeps its tab column from first paint,
-   * so the links stay on screen while the loading heading waits for the conversation
-   * (`firstPaint.header`), but neither a click nor a key acts on them: the column is inert,
-   * which the shortcut registry reads as not live. As it wakes, retargeting the keys badges
-   * the links at once if Shift is held. A link that had focus loses it to the page while
-   * inert, as `paintStacks` keeps the stack's control's, so it gets it back on waking.
-   *
-   * @param {boolean} held
-   */
-  function holdTabColumn(held) {
-    if (held === (tabColumn.getAttribute("inert") !== null)) {
-      return;
-    }
-    if (held) {
-      focusedTab = tabLinks.find(({ link }) => link === document.activeElement)?.link ?? null;
-      tabColumn.setAttribute("inert", "");
-      return;
-    }
-    tabColumn.removeAttribute("inert");
-    tabKeys.forEach((handle, at) => {
-      handle.retarget(tabLinks[at].link);
-    });
-    const restore = focusedTab;
-    focusedTab = null;
-    if (restore?.isConnected) {
-      restore.focus({ preventScroll: true });
-    }
-  }
-
-  /**
    * Show the held conversation now, as it is: its wait was met, its bound passed, or another
    * tab took the body. The span says how long it held and why it ended, so a round can count
    * holds that ran to their bound.
@@ -6427,12 +6698,6 @@ export function mountPullPage(container, ctx, mb) {
     firstPaint = null;
     firstPaintSpent = true;
     if (reveal) {
-      if (held.header && outcome !== "closed" && shown !== null) {
-        // The header waited with the body: both change in this task, once.
-        paintHeader(shown);
-        paintStacks(shown);
-      }
-      holdTabColumn(false);
       body.classList.remove("github-pull-body-holding");
       held.cover?.remove();
     }
@@ -6689,7 +6954,8 @@ export function mountPullPage(container, ctx, mb) {
       now: () => Date.now(),
       isVisible: () => document.visibilityState === "visible",
       isOnline: () => navigator.onLine !== false,
-      formatTime: (iso) => exact(Date.parse(iso)),
+      // A hold's lift time as the reader's clock says it, short (`holdLiftText`).
+      formatHold: (liftMs, nowMs) => holdLiftText(liftMs, nowMs),
       ownsChanges: () => onPageRoute(window.location.pathname, number, "files"),
       ownsConversation: () =>
         active &&
@@ -6713,10 +6979,34 @@ export function mountPullPage(container, ctx, mb) {
         painted(model);
       },
       reload: () => window.location.reload(),
+      // The diff plugin's one switch, which this page's Changes uses too, so a View on
+      // branch and a Browse code never race, and both say a refusal in the same words. The
+      // switch is in a module the diff plugin loads on demand, so the plugin's assets, or
+      // that module, failing to load is said as a failed request, never left unhandled.
+      async switchPin(selection, wanted) {
+        const failed = /** @type {const} */ ({
+          kind: "refused",
+          message: "The switch request failed.",
+        });
+        try {
+          await mb.ensureKindAssets("diff");
+          const view = /** @type {{switchPin?: PullDependencies["switchPin"]} | null} */ (
+            mb.getRegisteredView("diff", "diff")
+          );
+          return typeof view?.switchPin === "function"
+            ? await view.switchPin(selection, wanted)
+            : failed;
+        } catch {
+          return failed;
+        }
+      },
       navigate: (href) => window.location.assign(href),
       renderMarkdown,
       listed: listedState,
-      textUnavailable(part, text) {
+      textUnavailable(part, text, note) {
+        if (note) {
+          refusedText(part, text, note);
+        }
         // A text a held first paint waits for will not come: it shows plain, and waits no longer.
         const held = firstPaint;
         if (held?.mode === "delayed" && part === "body" && held.text === text) {
@@ -6761,8 +7051,7 @@ export function mountPullPage(container, ctx, mb) {
   }
   const stacks = watchStacks((index) => {
     stackIndex = index;
-    // A held header paints its stacks with the rest of it, at the release.
-    if (shown !== null && !listening.signal.aborted && !headerWaits()) {
+    if (shown !== null && !listening.signal.aborted) {
       paintStacks(shown);
     }
   });
@@ -6790,6 +7079,7 @@ export function mountPullPage(container, ctx, mb) {
     filesRefresh = null;
     wantedFile = null;
     listening.abort();
+    summaryBrief?.dispose();
     cancelTimeline();
     body.querySelector(".github-pull-diff-loading")?.remove();
     observer?.disconnect();

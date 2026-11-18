@@ -4,7 +4,8 @@
 #   make test                 run the unit tests, the release scripts' checks, and the
 #                             WebKit gate's build and Node tests
 #   make app                  assemble and sign build/dev/Metabrowser.app
-#   make run FOLDER=path      build the app and open a folder with it
+#   make run FOLDER=path      build the app and open a folder with it; what it opens
+#                             stays out of the recent targets (METABROWSER_RECORD_RECENT=0)
 #   make dmg                  build/Metabrowser-Dev-VERSION-arm64.dmg, checked, not notarized
 #   make release              the official build: build/Metabrowser-VERSION-arm64.dmg,
 #                             Developer ID signed, notarized, and stapled
@@ -65,7 +66,7 @@ app:
 
 run: app
 	set -e; source scripts/common.sh; variant_settings $(dev_variant); \
-	open -a "$(CURDIR)/$$app" $(if $(FOLDER),"$(FOLDER)")
+	open --env METABROWSER_RECORD_RECENT=0 -a "$(CURDIR)/$$app" $(if $(FOLDER),"$(FOLDER)")
 
 dmg:
 	VARIANT=$(dev_variant) NOTARIZE=0 scripts/release.sh

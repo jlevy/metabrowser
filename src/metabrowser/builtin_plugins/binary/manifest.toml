@@ -15,7 +15,7 @@ sdk_version = "0.7"
 #
 # It declares no `printable` / `print_profile`: the view shows a bounded
 # window of a file's bytes, which is not a complete print projection, so
-# the shell's print button stays hidden.
+# Command-P prints the line saying the view is not printable.
 
 [[view]]
 kind = "binary"

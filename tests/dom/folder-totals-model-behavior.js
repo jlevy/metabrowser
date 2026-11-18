@@ -1,16 +1,14 @@
-const fs = require("node:fs");
 const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 
 const SHARE_TOLERANCE = 1e-9;
 
 async function main() {
   const repoRoot = path.resolve(process.argv[2]);
-  const source = fs.readFileSync(
-    path.join(repoRoot, "src/metabrowser/builtin_plugins/folder/folder-totals.js"),
-    "utf8",
-  );
+  // By its file URL, so its own imports (distribution-hover.js) resolve beside it.
   const model = await import(
-    `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`
+    pathToFileURL(path.join(repoRoot, "src/metabrowser/builtin_plugins/folder/folder-totals.js"))
+      .href
   );
   const formatters = {
     formatFileCount: (value) => `${value} files`,

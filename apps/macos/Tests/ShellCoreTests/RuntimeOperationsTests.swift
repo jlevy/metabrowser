@@ -418,13 +418,16 @@ private let folder = URL(filePath: "/tmp/notes", directoryHint: .isDirectory)
         }
 
         /// Runs `request` while the launch gate is held, makes the change once the request
-        /// waits there, then opens the gate.
+        /// waits there, then opens the gate. A start waits there starting; a restart of a
+        /// ready server waits there with the server still serving (review C2 on #539).
         func whileWaitingAtTheGate(
             _ request: @escaping () async -> FolderServer.Outcome, change: () throws -> Void
         ) async throws -> FolderServer.Outcome {
             await gate.acquire()
+            let waits = Recorder<Bool>()
+            server.supervisor.onGateWait = { waits.append($0) }
             let waiting = Task { await request() }
-            #expect(await eventually { server.supervisor.state == .starting })
+            #expect(await eventually { waits.all == [true] })
             try change()
             gate.release()
             return await waiting.value
