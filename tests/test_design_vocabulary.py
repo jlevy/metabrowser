@@ -3014,6 +3014,59 @@ def test_refreshing_text_breathes_on_the_compositor_and_keeps_its_contrast() -> 
         assert rest < lift <= 1, "a muted line lifts toward primary ink, never below its rest"
 
 
+def _oklab(value: str) -> tuple[float, float, float]:
+    lightness, chroma, hue = _oklch_channels(value)
+    return (
+        lightness,
+        chroma * math.cos(math.radians(hue)),
+        chroma * math.sin(math.radians(hue)),
+    )
+
+
+def _oklab_luminance(lightness: float, a: float, b: float) -> float:
+    """WCAG relative luminance of an OKLab color, clipped to sRGB as a browser paints it."""
+
+    chroma = math.hypot(a, b)
+    hue = math.degrees(math.atan2(b, a)) % 360
+    return _relative_luminance(lightness, chroma, hue)
+
+
+def test_a_hovered_legend_entrys_ink_reads_for_every_family() -> None:
+    """A hovered family's legend name keeps 4.5:1 for every registered family, on both pages.
+
+    While the hover marks a File Overview legend entry, its name is drawn in its family's
+    ink: the family's color mixed in OKLab with `--text`, `--mb-distribution-ink-share` of it
+    the family's ("Aggregate Distributions"). A family's own color can read 2.3:1 on the
+    light page, so the share is what makes the name text. Every family the registry declares
+    is checked, at the color the server resolves for each theme, on `--bg`, which the legend
+    sits on. tests/test_overview_legend_hover_chrome.py reads one family's ink as Chrome
+    computes it.
+    """
+
+    from metabrowser.file_type_filters import serialize_distribution_colors
+
+    rules = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "folder/file_type_summary.css"))
+    label = ".file-type-summary-legend-item[data-hovered] .file-type-summary-legend-label"
+    assert " ".join(rules[label]["color"].split()) == (
+        "color-mix( in oklab, var(--mb-distribution-color) var(--mb-distribution-ink-share),"
+        " var(--text) )"
+    )
+    light_block, dark_block = _theme_blocks()
+    share = float(_declared(light_block, "--mb-distribution-ink-share").removesuffix("%")) / 100
+    colors = serialize_distribution_colors()
+    assert colors
+    for theme, block in (("light", light_block), ("dark", dark_block)):
+        text = _oklab(_declared(block, "--text"))
+        ground = _relative_luminance(*_oklch_channels(_declared(block, "--bg")))
+        for family in colors:
+            mixed = [
+                share * own + (1 - share) * ink
+                for own, ink in zip(_oklab(family[theme]), text, strict=True)
+            ]
+            ratio = _ratio(_oklab_luminance(*mixed), ground)
+            assert ratio >= 4.5, f"{family['key']} reads {ratio:.2f}:1 on the {theme} page"
+
+
 def test_only_the_group_by_wait_dims_shown_content_and_never_twice() -> None:
     """The one wait that dims what is shown has its own token, and dims nothing twice.
 
@@ -3361,6 +3414,20 @@ def test_file_status_ink_is_shared_and_legible() -> None:
             # (mb-8iwn).
             for ground in ("--bg", "--sidebar-bg", "--hover-bg", "--viz-surface-raised"):
                 assert _contrast(color, _declared(block, ground)) >= 4.5, (role, ground)
+    # The current row's ground, a translucent tint, under a Pulls row's change line and its
+    # file rows and the Files tree's current row: `--highlight-bg` over the ground it tints.
+    # Over `--sidebar-bg` it is the modified ink's lowest in the light theme, 4.57:1 (A5 of
+    # review A on #506).
+    for theme, tokens in _theme_tokens().items():
+        mix = _MIX_OVER_TRANSPARENT.fullmatch(_resolved(tokens, "--highlight-bg"))
+        assert mix is not None, theme
+        tint = _srgb(_resolved(tokens, mix["token"]))
+        for role in ("added", "deleted", "modified", "renamed"):
+            ink = _srgb_luminance(_srgb(_resolved(tokens, f"--git-status-{role}")))
+            for under in ("--bg", "--sidebar-bg"):
+                ground = _over(tint, _srgb(_resolved(tokens, under)), float(mix["percent"]) / 100)
+                ratio = _ratio(ink, _srgb_luminance(ground))
+                assert ratio >= 4.5, (theme, role, under, round(ratio, 2))
     for relative in (
         "static/git-panel.js",
         "builtin_plugins/diff/diff-view.js",
