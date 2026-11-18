@@ -10,6 +10,7 @@ from metabrowser.constants import LOGS_DIR, STATE_DIR
 from metabrowser.file_type_registry import load_file_type_registry_document
 from metabrowser.inventory_engine.contract import (
     DiscoveryBudget,
+    InventoryBackend,
     InventoryConfig,
     native_inventory_path,
 )
@@ -19,6 +20,7 @@ from metabrowser.inventory_engine.coordinator import (
     InventoryCoordinator,
 )
 from metabrowser.inventory_engine.factory import InventoryProvider, create_inventory_backend
+from metabrowser.inventory_engine.seams import ProviderSeams
 from metabrowser.projections import (
     invalidate_all_projection_caches,
 )
@@ -50,17 +52,30 @@ def inventory_provider_from_environment() -> str:
 
 
 class InventoryRuntime:
-    """Own one coordinator for one application lifespan."""
+    """Own one coordinator for one application lifespan.
+
+    *seams* reach the provider through the sealed factory for tests and measurement
+    harnesses (`inventory_engine/seams.py`). *backend*, when given, is served instead of
+    the one *provider* names: a harness that wraps the selected backend, such as
+    `tests/perturbed_provider.py`, passes it here. The application lifespan passes
+    neither.
+    """
 
     def __init__(
         self,
         *,
         provider: InventoryProvider | str = InventoryProvider.PYTHON,
         config: InventoryConfig | None = None,
+        seams: ProviderSeams | None = None,
+        backend: InventoryBackend | None = None,
     ) -> None:
+        if backend is not None and seams is not None:
+            raise ValueError("give seams to the backend being supplied, not beside it")
         self.config = config if config is not None else default_inventory_config()
         self.coordinator = InventoryCoordinator(
-            backend=create_inventory_backend(provider),
+            backend=backend
+            if backend is not None
+            else create_inventory_backend(provider, seams=seams),
             config=self.config,
         )
         self._root: Path | None = None

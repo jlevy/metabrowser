@@ -60,16 +60,19 @@ from metabrowser.inventory_engine.providers.python_inventory import (
 from metabrowser.inventory_engine.providers.python_inventory import (
     _PythonInventoryStore as PythonInventoryStore,
 )
+from metabrowser.inventory_engine.seams import ProviderSeams
 from tests.loop_gate import held_until
 
 
 async def _open_settled(
     root: Path,
     config: InventoryConfig | None = None,
+    *,
+    seams: ProviderSeams | None = None,
 ) -> PythonInventoryStore:
     handle = cast(
         PythonInventoryStore,
-        await PythonInventoryBackend().open(root, config or InventoryConfig()),
+        await PythonInventoryBackend(seams=seams).open(root, config or InventoryConfig()),
     )
     for _attempt in range(200):
         result = await handle.read(ReadRequest(queries=(DiagnosticsQuery(query_id="state"),)))
@@ -1315,9 +1318,14 @@ def test_evicted_continuation_fails_explicitly(
                         queries=(replace(query, after=page.next_page),), at_version=first.version
                     )
                 )
-            # Evicted to keep the retained rows within their bound, it says that instead.
-            monkeypatch.setattr(python_provider, "_PAGE_MEMO_CAPACITY", 64)
-            monkeypatch.setattr(python_provider, "MAX_ASSEMBLED_ROWS", 3)
+        finally:
+            await handle.close()
+        # Evicted to keep the retained rows within their bound, it says that instead.
+        monkeypatch.setattr(python_provider, "_PAGE_MEMO_CAPACITY", 64)
+        handle = await _open_settled(
+            tmp_path, InventoryConfig(watch_mode="off"), seams=ProviderSeams(max_retained_rows=3)
+        )
+        try:
             first = await handle.read(ReadRequest(queries=(query,)))
             page = first.projection("page")
             assert isinstance(page, CatalogProjection)

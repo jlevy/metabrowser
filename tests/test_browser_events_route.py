@@ -64,6 +64,7 @@ from metabrowser.inventory_engine.contract import (
     RefreshRequest,
 )
 from metabrowser.inventory_engine.coordinator import HostChange
+from metabrowser.inventory_engine.seams import DiscoveryGate, ProviderSeams
 from tests.inventory_harness import inventory_harness
 
 # ── Fake request plumbing ──────────────────────────────────────
@@ -582,24 +583,15 @@ def test_api_index_progress_etag_round_trip(tmp_path: Path) -> None:
     assert status2 == 304
 
 
-def test_api_index_progress_does_not_304_while_active(
-    tmp_path: Path,
-    monkeypatch: Any,
-) -> None:
+def test_api_index_progress_does_not_304_while_active(tmp_path: Path) -> None:
     _build_tree(tmp_path)
 
     async def _run() -> tuple[int, str, str]:
-        import metabrowser.inventory_engine.providers.python_inventory as python_provider
-
-        release = asyncio.Event()
-
-        async def blocked_walk(*_args: object, **_kwargs: object) -> AsyncIterator[object]:
-            await release.wait()
-            if False:
-                yield object()
-
-        monkeypatch.setattr(python_provider, "walk_tree", blocked_walk)
-        async with inventory_harness(tmp_path, settle=False) as harness:
+        # Discovery is held before it lists the root, so it stays active throughout.
+        gate = DiscoveryGate(before="")
+        seams = ProviderSeams(discovery_gate=gate)
+        async with inventory_harness(tmp_path, settle=False, seams=seams) as harness:
+            await gate.wait_reached()
             resp1 = await api_index_progress(cast(Any, _FakeRequest(app=harness.app)))
             etag = resp1.headers.get("etag", "")
             resp2 = await api_index_progress(

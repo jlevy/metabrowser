@@ -2,26 +2,35 @@
 
 The harness serves whichever provider `METABROWSER_INVENTORY_PROVIDER` selects, the
 variable the application lifespan reads, through the sealed factory, so every module
-that opens inventory through it runs against any shipped provider unchanged.
+that opens inventory through it runs against any shipped provider unchanged. A test
+that needs to hold a provider at a known point passes `ProviderSeams`
+(`inventory_engine/seams.py`) rather than patching one provider's internals, and one
+that needs the provider's granularity or identity perturbed passes a *wrap* such as
+`tests/perturbed_provider.py`.
 """
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 
 from metabrowser.events_route import _EventBus
-from metabrowser.inventory_engine.contract import InventoryConfig, LifecyclePhase
-from metabrowser.inventory_engine.factory import InventoryProvider, resolve_inventory_provider
+from metabrowser.inventory_engine.contract import InventoryBackend, InventoryConfig, LifecyclePhase
+from metabrowser.inventory_engine.factory import (
+    InventoryProvider,
+    create_inventory_backend,
+    resolve_inventory_provider,
+)
 from metabrowser.inventory_engine.runtime import (
     InventoryRuntime,
     default_inventory_config,
     inventory_provider_from_environment,
 )
+from metabrowser.inventory_engine.seams import ProviderSeams
 
 
 def selected_inventory_provider() -> InventoryProvider:
@@ -63,12 +72,19 @@ async def inventory_harness(
     *,
     config: InventoryConfig | None = None,
     settle: bool = True,
+    seams: ProviderSeams | None = None,
+    wrap: Callable[[InventoryBackend], InventoryBackend] | None = None,
 ) -> AsyncGenerator[InventoryHarness]:
-    """Open and reliably close an application-shaped inventory plane."""
+    """Open and reliably close an application-shaped inventory plane.
 
+    *seams* reach the selected provider; *wrap*, when given, receives that backend and
+    returns the one the runtime serves.
+    """
+
+    backend = create_inventory_backend(selected_inventory_provider(), seams=seams)
     runtime = InventoryRuntime(
-        provider=selected_inventory_provider(),
         config=config or default_inventory_config(),
+        backend=wrap(backend) if wrap is not None else backend,
     )
     await runtime.open(root)
     if settle:

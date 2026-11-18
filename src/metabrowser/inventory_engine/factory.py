@@ -7,6 +7,7 @@ from typing import assert_never
 
 from metabrowser.inventory_engine.contract import InventoryBackend
 from metabrowser.inventory_engine.providers.python_inventory import PythonInventoryBackend
+from metabrowser.inventory_engine.seams import ProviderSeams
 
 
 class InventoryProvider(StrEnum):
@@ -30,12 +31,18 @@ def resolve_inventory_provider(provider: InventoryProvider | str) -> InventoryPr
 
 def create_inventory_backend(
     provider: InventoryProvider | str = InventoryProvider.PYTHON,
+    *,
+    seams: ProviderSeams | None = None,
 ) -> InventoryBackend:
-    """Construct the selected backend or fail explicitly for an unknown name."""
+    """Construct the selected backend or fail explicitly for an unknown name.
+
+    *seams* are the test and measurement seams in `inventory_engine/seams.py`; the
+    application passes none.
+    """
 
     selected = resolve_inventory_provider(provider)
     if selected is InventoryProvider.PYTHON:
-        return PythonInventoryBackend()
+        return PythonInventoryBackend(seams=seams)
     assert_never(selected)
 
 

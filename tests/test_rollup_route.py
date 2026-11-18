@@ -29,7 +29,6 @@ from metabrowser.inventory_engine.runtime import default_inventory_config
 from metabrowser.settings import ROLLUP_MAX_TOP
 from metabrowser.wire_models import validate_rollup_envelope, validate_rollup_node
 from tests.inventory_harness import InventoryHarness, inventory_harness
-from tests.loop_gate import held_until
 
 # Tests that compare validators across requests hold the inventory version still.
 # A live watcher can move it at any moment -- even a verified refresh of an
@@ -74,6 +73,33 @@ async def _body(harness: InventoryHarness, params: dict[str, str]) -> dict[str, 
 async def _engine_version(harness: InventoryHarness) -> EngineVersion:
     _cursor, version, _state = await harness.runtime.coordinator.checkpoint()
     return version.engine
+
+
+class _RollupReads:
+    """Count, and optionally hold, the rollup reads the host asks its provider for.
+
+    A coordinated read carrying a `RollupQuery` is one rollup pass whichever provider
+    answers it, so counting and holding here measures the route's coalescing without
+    reaching into how a provider aggregates.
+    """
+
+    def __init__(self, harness: InventoryHarness, monkeypatch: Any, *, hold: bool) -> None:
+        self.count = 0
+        self.started = asyncio.Event()
+        self.release = asyncio.Event()
+        if not hold:
+            self.release.set()
+        coordinator = harness.runtime.coordinator
+        real_read = coordinator.read
+
+        async def read(request: ReadRequest, **kwargs: bool) -> CoordinatedRead:
+            if any(isinstance(query, RollupQuery) for query in request.queries):
+                self.count += 1
+                self.started.set()
+                await self.release.wait()
+            return await real_read(request, **kwargs)
+
+        monkeypatch.setattr(coordinator, "read", read)
 
 
 def test_rollup_route_envelope_and_wire_shape(tmp_path: Path) -> None:
@@ -150,6 +176,8 @@ def test_rollup_route_runs_aggregation_off_the_event_loop(
     server._set_root_dir(tmp_path)
 
     async def run() -> list[int]:
+        # Where the Python provider runs its aggregation: a fact about that provider,
+        # so this one case reaches into it.
         import metabrowser.inventory_engine.providers.python_inventory as provider
 
         event_loop_thread = threading.get_ident()
@@ -358,24 +386,14 @@ def test_simultaneous_identical_rollups_compute_once(
     server._set_root_dir(tmp_path)
 
     async def run() -> tuple[int, list[bytes], EngineVersion, EngineVersion]:
-        import metabrowser.inventory_engine.providers.python_inventory as provider
-
-        calls = 0
-        real_build = provider.build_rollup
-
-        def counting_build(*args: Any, **kwargs: Any) -> Any:
-            nonlocal calls
-            calls += 1
-            return real_build(*args, **kwargs)
-
-        monkeypatch.setattr(provider, "build_rollup", counting_build)
         async with inventory_harness(tmp_path, config=_WATCH_OFF) as harness:
+            rollups = _RollupReads(harness, monkeypatch, hold=False)
             before = await _engine_version(harness)
             responses = await asyncio.gather(
                 *(_response(harness, {"path": ""}) for _index in range(6))
             )
             after = await _engine_version(harness)
-            return calls, [bytes(response.body) for response in responses], before, after
+            return rollups.count, [bytes(response.body) for response in responses], before, after
 
     calls, bodies, before, after = asyncio.run(run())
     assert after == before, "the inventory must hold one version for the gather"
@@ -394,24 +412,13 @@ def test_disconnecting_client_does_not_cancel_shared_build(
     server._set_root_dir(tmp_path)
 
     async def run() -> tuple[bytes, bytes]:
-        import metabrowser.inventory_engine.providers.python_inventory as provider
-
-        started = threading.Event()
-        release = threading.Event()
-        real_build = provider.build_rollup
-
-        def gated_build(*args: Any, **kwargs: Any) -> Any:
-            started.set()
-            assert release.wait(timeout=5.0)
-            return real_build(*args, **kwargs)
-
-        monkeypatch.setattr(provider, "build_rollup", gated_build)
         async with inventory_harness(tmp_path) as harness:
+            rollups = _RollupReads(harness, monkeypatch, hold=True)
             leader = asyncio.create_task(_response(harness, {"path": ""}))
-            await held_until(started, 5.0)
+            await asyncio.wait_for(rollups.started.wait(), 5.0)
             shared = next(iter(server._ROLLUP_IN_FLIGHT.values()))
             leader.cancel()
-            release.set()
+            rollups.release.set()
             body = await shared
             later = await _response(harness, {"path": ""})
             return body, bytes(later.body)
@@ -425,27 +432,20 @@ def test_rollup_payload_and_etag_share_one_version(
     tmp_path: Path,
     monkeypatch: Any,
 ) -> None:
-    """A mutation during aggregation cannot pair a stale tag with a new body."""
+    """A mutation during aggregation cannot pair a stale tag with a new body.
+
+    The rollup read is held after the route has pinned it and before the provider
+    answers, and the mutation lands then, as it does when aggregation takes seconds.
+    """
 
     (tmp_path / "a.txt").write_text("a")
     server._set_root_dir(tmp_path)
 
     async def run() -> tuple[str, int, str, int, int]:
-        import metabrowser.inventory_engine.providers.python_inventory as provider
-
-        started = threading.Event()
-        release = threading.Event()
-        real_build = provider.build_rollup
-
-        def gated_build(*args: Any, **kwargs: Any) -> Any:
-            started.set()
-            assert release.wait(timeout=5.0)
-            return real_build(*args, **kwargs)
-
-        monkeypatch.setattr(provider, "build_rollup", gated_build)
         async with inventory_harness(tmp_path, config=_WATCH_OFF) as harness:
+            rollups = _RollupReads(harness, monkeypatch, hold=True)
             first_task = asyncio.create_task(_response(harness, {"path": ""}))
-            await held_until(started, 5.0)
+            await asyncio.wait_for(rollups.started.wait(), 5.0)
             (tmp_path / "b.txt").write_text("b")
             await harness.runtime.coordinator.refresh(
                 RefreshRequest(
@@ -457,7 +457,7 @@ def test_rollup_payload_and_etag_share_one_version(
                     )
                 )
             )
-            release.set()
+            rollups.release.set()
             first = await first_task
             served = await _engine_version(harness)
             first_body = json.loads(bytes(first.body))
@@ -488,7 +488,7 @@ def test_rollup_falls_back_to_a_current_read_when_its_pinned_version_expires(
     tag. When discovery moves on between that check and the pinned read, the
     provider refuses the read, and the route answers with one unpinned read
     under that read's own tag. `test_rollup_payload_and_etag_share_one_version`
-    moves the version during the build instead.
+    moves the version while the pinned read is in flight instead.
     """
     (tmp_path / "a.txt").write_text("a")
     server._set_root_dir(tmp_path)

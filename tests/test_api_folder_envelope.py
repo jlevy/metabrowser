@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
@@ -19,7 +18,7 @@ from unittest.mock import Mock
 import pytest
 
 from metabrowser import server
-from metabrowser.inventory_engine.contract import InventoryEntry
+from metabrowser.inventory_engine.seams import DiscoveryGate, ProviderSeams
 from tests.git_pin_harness import fast_import_store, pinned_client
 from tests.inventory_harness import inventory_harness
 from tests.required_tools import needs_git
@@ -46,9 +45,12 @@ def _api_file(
     path: str,
     *,
     settle: bool = True,
+    seams: ProviderSeams | None = None,
 ) -> tuple[dict[str, Any], Any]:
     async def run() -> tuple[dict[str, Any], Any]:
-        async with inventory_harness(root, settle=settle) as harness:
+        async with inventory_harness(root, settle=settle, seams=seams) as harness:
+            if seams is not None and seams.discovery_gate is not None:
+                await seams.discovery_gate.wait_reached()
             response = await server.api_file(_request(path, app=harness.app))
             return json.loads(bytes(response.body)), response
 
@@ -72,25 +74,12 @@ def test_directory_returns_folder_envelope(tmp_path: Path) -> None:
     assert response.headers["cache-control"] == "no-store"
 
 
-def test_root_directory_envelope_and_pending_state(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async def blocked_walk(
-        *_args: object,
-        **_kwargs: object,
-    ) -> AsyncIterator[InventoryEntry]:
-        if False:
-            yield InventoryEntry.for_observed_dir(path="", parent="", name=tmp_path.name)
-        await asyncio.Event().wait()
-
-    monkeypatch.setattr(
-        "metabrowser.inventory_engine.providers.python_inventory.walk_tree",
-        blocked_walk,
-    )
+def test_root_directory_envelope_and_pending_state(tmp_path: Path) -> None:
     server._set_root_dir(tmp_path)
     (tmp_path / "a.txt").write_text("hello")
-    body, _ = _api_file(tmp_path, "", settle=False)
+    # Discovery is held before it lists the root and never released.
+    seams = ProviderSeams(discovery_gate=DiscoveryGate(before=""))
+    body, _ = _api_file(tmp_path, "", settle=False, seams=seams)
     assert body["kind"] == "folder"
     assert body["path"] == ""
     # No inventory has run: aggregates are pending, never fabricated.
