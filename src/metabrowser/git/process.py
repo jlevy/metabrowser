@@ -36,6 +36,7 @@ import asyncio
 import contextlib
 import errno
 import hashlib
+import itertools
 import logging
 import os
 import re
@@ -97,6 +98,20 @@ GIT_DISABLE_MAILMAP_ARGS: Final[tuple[str, ...]] = (
     "-c",
     "mailmap.file=",
 )
+
+# No read verifies a signature: ``log.showSignature`` makes ``log`` and ``show`` run the
+# program ``gpg.program``, ``gpg.ssh.program``, or ``gpg.x509.program`` names for every
+# signed commit, and print its lines into the output the parsers read, where a signed
+# commit then vanished from the history and its commit view answered not found. The key is
+# read from a repository's local configuration, which no policy isolates, so it is turned
+# off on the command line for every location: a served folder's Commits tab, which runs
+# under the reader's own configuration, and a store target, which can be a checkout's own
+# Git directory. Reproduced 2026-11-18 with Git 2.50.1 (review A1 on #559): the program
+# ran for ``/api/git/log`` and ``/api/git/commit/<oid>`` at both, and not with this.
+GIT_NO_SIGNATURE_ARGS: Final[tuple[str, ...]] = ("-c", "log.showSignature=false")
+# What every ``diff`` and ``show`` takes at a store target; see
+# :attr:`GitLocation.diff_driver_args`.
+GIT_NO_DRIVER_ARGS: Final[tuple[str, ...]] = ("--no-textconv", "--no-ext-diff")
 
 # Acquisition has no measured low-speed stall bound yet.
 # This wall-clock cap is only so a forgotten child cannot live forever; user
@@ -329,7 +344,11 @@ class GitLocation:
 
     @property
     def config_args(self) -> tuple[str, ...]:
-        return GIT_DISABLE_MAILMAP_ARGS if self.target is not None else ()
+        """What precedes every command here: no signature program, and at a store no mailmap."""
+
+        if self.target is not None:
+            return (*GIT_DISABLE_MAILMAP_ARGS, *GIT_NO_SIGNATURE_ARGS)
+        return GIT_NO_SIGNATURE_ARGS
 
     @property
     def diff_driver_args(self) -> tuple[str, ...]:
@@ -347,7 +366,7 @@ class GitLocation:
         folder's own Commits tab keeps honoring its drivers, as before.
         """
 
-        return ("--no-textconv", "--no-ext-diff") if self.target is not None else ()
+        return GIT_NO_DRIVER_ARGS if self.target is not None else ()
 
 
 def as_location(value: Path | GitLocation) -> GitLocation:
@@ -515,6 +534,64 @@ def _default_policy(target: GitCommandTarget | None) -> GitProcessPolicy:
     """
 
     return STORE_READ_POLICY if isinstance(target, RepositoryStoreTarget) else READ_POLICY
+
+
+# Git's options before the command that take their value as the next word.
+_VALUED_GLOBAL_OPTIONS: Final = frozenset(
+    {"-c", "-C", "--git-dir", "--work-tree", "--namespace", "--config-env", "--attr-source"}
+)
+# What makes a ``log`` print a diff, and so read a diff driver.
+_LOG_DIFF_OPTIONS: Final = frozenset(
+    {"-p", "-u", "--patch", "--patch-with-raw", "--patch-with-stat", "--cc", "--stat", "--numstat"}
+)
+
+
+def _subcommand(args: Sequence[str]) -> str | None:
+    """The Git command *args* run: the first word that is no option or an option's value."""
+
+    skip = False
+    for arg in args:
+        if skip:
+            skip = False
+        elif arg in _VALUED_GLOBAL_OPTIONS:
+            skip = True
+        elif not arg.startswith("-"):
+            return arg
+    return None
+
+
+def _require_no_configured_program(target: GitCommandTarget | None, args: Sequence[str]) -> None:
+    """Refuse a store read that could run a program the repository's configuration names.
+
+    A store target's local configuration is in effect under every policy, and it can be a
+    checkout's own. Two things it names would run: a diff driver, on ``diff`` and ``show``
+    and on a ``log`` that prints patches, and a signature program, on ``log`` and
+    ``show``. Each is turned off by options the caller passes
+    (:data:`GIT_NO_DRIVER_ARGS`, :data:`GIT_NO_SIGNATURE_ARGS`), which a new caller can
+    forget; checking here, where every store spawn passes, keeps it true for all of them,
+    as :func:`_require_no_lazy_fetch` does for lazy fetch.
+    """
+
+    if not isinstance(target, RepositoryStoreTarget):
+        return
+    command = _subcommand(args)
+    patches = command in {"diff", "show"} or (
+        command == "log" and any(arg in _LOG_DIFF_OPTIONS for arg in args)
+    )
+    if patches and not all(option in args for option in GIT_NO_DRIVER_ARGS):
+        raise ValueError(
+            f"git {command} at a repository store must pass {' '.join(GIT_NO_DRIVER_ARGS)}"
+        )
+    if command in {"log", "show"} and (
+        "--show-signature" in args
+        or not (
+            "--no-show-signature" in args
+            or any(pair == GIT_NO_SIGNATURE_ARGS for pair in itertools.pairwise(args))
+        )
+    ):
+        raise ValueError(
+            f"git {command} at a repository store must pass {' '.join(GIT_NO_SIGNATURE_ARGS)}"
+        )
 
 
 def _require_no_lazy_fetch(target: GitCommandTarget | None, policy: GitProcessPolicy) -> None:
@@ -1224,6 +1301,7 @@ async def spawn_git_process(
 
     chosen = policy if policy is not None else _default_policy(target)
     _require_no_lazy_fetch(target, chosen)
+    _require_no_configured_program(target, args)
     exe = git_executable()
     if exe is None:
         raise GitUnavailableError("git executable not found on PATH")
@@ -1524,6 +1602,8 @@ __all__ = [
     "BATCH_OBJECT_POLICY",
     "GIT_ACQUISITION_TIMEOUT_S",
     "GIT_DISABLE_MAILMAP_ARGS",
+    "GIT_NO_DRIVER_ARGS",
+    "GIT_NO_SIGNATURE_ARGS",
     "GitCommandError",
     "GitError",
     "GitLocation",
