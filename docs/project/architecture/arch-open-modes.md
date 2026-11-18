@@ -533,7 +533,7 @@ A pull request that builds a part updates its row.
 | A repository folder’s revision views, its chooser, and their command line, with the two revision requirements above | Not built | [#559](https://github.com/jlevy/metabrowser/pull/559), `mb-8ob8` |
 | Pulls and the toggle on a folder’s revision; View on branch and Browse code to the head as a revision | Not built | Follows `mb-8ob8` |
 | Recent targets kept by `metab`, behind File > Open Recent | Not built | [#546](https://github.com/jlevy/metabrowser/pull/546), `mb-40k4` |
-| File > Open URL… | Built, without the offer of a known checkout, which waits for a way to tell that an open folder is a checkout of the URL’s repository | `mb-m4mg`; the offer is `mb-bkk2` |
+| File > Open URL… | Built, without the offer of a known checkout, which waits for a way to tell that an open folder is a checkout of the URL’s repository | [#560](https://github.com/jlevy/metabrowser/pull/560), `mb-m4mg`; the offer is `mb-bkk2` |
 | The GitHub toggle | Not built | [#552](https://github.com/jlevy/metabrowser/pull/552), `mb-zp7y` |
 | The mode indicator | Not built | `mb-wup3` |
 | One mode vocabulary across `IdentityKind`, the recent-targets store, and the app, held by a test; the shared resolution fixture | Not built | `mb-ajxe` |
