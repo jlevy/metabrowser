@@ -5,7 +5,7 @@ title: Detect the app through LaunchServices and deliver by open -b
 kind: feature
 status: in_progress
 priority: 2
-version: 6
+version: 7
 spec_path: docs/project/specs/active/plan-2026-11-17-open-anything-from-cli-and-app.md
 delegate: claude-code@spud10
 labels: []
@@ -16,7 +16,7 @@ parent_id: is-01m7nnxhaqce1g2ewec3wbaf7e
 hold: null
 hold_until: null
 created_at: 2026-11-17T21:17:02.203Z
-updated_at: 2026-11-18T23:03:29.017Z
+updated_at: 2026-11-18T23:38:12.783Z
 started_at: 2026-11-18T21:02:22.182Z
 ---
 Phase 1. ctypes LSCopyApplicationURLsForBundleIdentifier for the release bundle id; dev bundle only when chosen; test seam for goldens. Deliver with open -b <bundle> TARGET; map LaunchServices refusal to blocked. Browser path starts a detached server and opens the page once it answers.
@@ -30,3 +30,5 @@ Phase 1. ctypes LSCopyApplicationURLsForBundleIdentifier for the release bundle 
 
 
 2026-11-18, review A on #582: server_started now waits until the announced address answers GET /api/identity for the target's root, so a server that loses its port to another reports server_failed; Popen with start_new_session replaced posix_spawn(setsid=True), which CI's Linux Python refused. Binding before printing is mb-afxa. Head bafef973e.
+
+2026-11-18, review B on #582: the identity request is a raw-socket HTTP/1.0 GET bounded in total time (SERVER_IDENTITY_REQUEST_S, recomputed before each read) and bytes (IDENTITY_MAX_BYTES, head included); a body nested too deeply for json.loads (RecursionError) is not the target's. Head 4ec4a0bb5.

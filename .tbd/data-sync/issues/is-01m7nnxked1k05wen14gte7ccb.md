@@ -5,7 +5,7 @@ title: "open_in preference: config.yml, METABROWSER_OPEN_IN, --open-in, reported
 kind: feature
 status: in_progress
 priority: 2
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-11-17-open-anything-from-cli-and-app.md
 delegate: claude-code@spud10
 labels: []
@@ -16,7 +16,7 @@ parent_id: is-01m7nnxhaqce1g2ewec3wbaf7e
 hold: null
 hold_until: null
 created_at: 2026-11-17T21:17:01.261Z
-updated_at: 2026-11-18T23:03:26.248Z
+updated_at: 2026-11-18T23:38:12.389Z
 started_at: 2026-11-18T21:02:16.459Z
 ---
 Phase 1. auto (default: app on macOS when detected), app (refuse when missing), browser. Known field in ApplicationConfig. --doctor --json reports value and source.
@@ -27,3 +27,5 @@ Phase 1. auto (default: app on macOS when detected), app (refuse when missing), 
 
 
 2026-11-18, review A on #582: present_browser: false in config.yml (read from the file alone, no flag or variable overrides it) turns browser delivery off, code browser_off, status 4; --doctor reports it. Default unset = allowed, an owner question in the PR. Head bafef973e.
+
+2026-11-18, review B on #582: no option of the command lifts present_browser; --present now refuses --config-dir (a usage error), which had let a command a sandbox rule matches read an empty configuration directory. METABROWSER_CONFIG_DIR, XDG_CONFIG_HOME, and HOME still choose the directory, and one without config.yml allows a browser; the docs, open_in.py, arch-cli.md, the skill, and the changelog fragment changelog.d/mb-gh6l.md say so. The skill adds --open-in app to every rerun outside the sandbox, pinned by test_skill_commands. Head 4ec4a0bb5.
