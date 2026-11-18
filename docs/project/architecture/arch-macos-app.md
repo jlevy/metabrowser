@@ -161,12 +161,18 @@ and the server, which resolves the link against its mirror, announces the right 
   to the session is `RepositoryLinks`, a table of the link, the server’s state, and the
   link it starts on: a start under way runs to its end first, so a first clone is not
   thrown away, and the newest link sent meanwhile waits for it; the link that start
-  already runs on changes nothing, so sending a link twice during its first clone clones
-  once and does not restart; a failed or stopped server starts again at once.
+  already runs on joins it, so sending a link twice during its first clone clones once
+  and does not restart, and the window still loads that start’s entry page, the link’s,
+  whoever began the start (Retry, Restart Server, and an upgrade’s restart run on the
+  same link); a failed or stopped server starts again at once.
   A restart of a ready server waits for the launch gate before it stops anything
   (`ServerSupervisor.restart`), so while another repository’s first clone holds the gate
-  the repository’s other tabs go on with the old server, and the window the link brought
-  forward says it waits instead of showing the old revision.
+  the repository’s other tabs go on with the old server, and the window that asked for
+  the restart says it waits instead of showing the old revision (`RestartWait`): the
+  window a link brought forward, the one File > Restart Server was chosen in, or the
+  front window for an upgrade’s restart.
+  The supervisor reports only its first waiter (`onGateWait`), so a restart asked for
+  while another waits shows its window at once.
   The pin switch View on branch makes (`POST /api/source/pin`) would keep the port and
   the server, but it takes a ref or a commit, which the app does not have for a link
   whose ref holds a `/`.
@@ -201,6 +207,9 @@ and the server, which resolves the link against its mirror, announces the right 
   `LinkQueue.limit` links waiting for a runtime (`RuntimeSelection.setupForOpening`).
   The links that could not be opened are said in one alert once the burst has ended,
   which keeps the first `LinkAlert.shownInBatch` and counts the rest (`LinkProblems`).
+  Its title counts links, not the problems it lists (`LinkAlert.links`): a decline
+  stands for every link it turned away, and a link whose selection the mirror lacked did
+  open, so the title counts it apart, as a link whose selection was not shown.
   One modal shows at a time, a clone question or that alert, and what gathers while one
   is up is said when it closes.
   A link under way counts as something about to show, so the app does not offer the Open

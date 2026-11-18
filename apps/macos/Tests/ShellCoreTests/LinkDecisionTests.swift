@@ -24,11 +24,12 @@ nonisolated private let failed = ServerState.failed(ServerFailure(summary: "The 
     }
 
     /// C3: the link a start already runs on, sent again during that start (a second click
-    /// during a first clone), is not held, so the start's end restarts nothing.
+    /// during a first clone), is not held, so the start's end restarts nothing. D2: it
+    /// joins that start, whoever began it, so its window loads the start's entry page.
     @Test(arguments: [ServerState.starting, ServerState.stopping])
     func theLinkAStartRunsOnStartsNothingMore(_ state: ServerState) {
         var links = RepositoryLinks(target: pullRequest)
-        #expect(links.receive(pullRequest, state: state) == .none)
+        #expect(links.receive(pullRequest, state: state) == .join)
         #expect(links.pending == nil)
         #expect(links.startEnded() == nil)
         #expect(links.target == pullRequest)
@@ -51,17 +52,19 @@ nonisolated private let failed = ServerState.failed(ServerFailure(summary: "The 
     @Test func theStartsOwnLinkCancelsAHeldOne() {
         var links = RepositoryLinks(target: pullRequest)
         #expect(links.receive(mainTree, state: .starting) == .hold)
-        #expect(links.receive(pullRequest, state: .starting) == .none)
+        #expect(links.receive(pullRequest, state: .starting) == .join)
         #expect(links.startEnded() == nil)
         #expect(links.target == pullRequest)
     }
 
     /// C2 and C3: a restart that waits at the launch gate while the ready server serves
-    /// counts as a start on its target: the same link changes nothing, and another
-    /// replaces it.
+    /// counts as a start on its target: the same link joins it, and another replaces it.
+    /// D2: the restart need not be a link's: Retry, Restart Server, and an upgrade's
+    /// restart run on the target too, so the same link joins them as well.
     @Test func aRestartWaitingAtTheGateCountsAsAStart() {
         var links = RepositoryLinks(target: pullRequest)
-        #expect(links.receive(pullRequest, state: ready, restarting: true) == .none)
+        #expect(links.receive(pullRequest, state: ready, restarting: true) == .join)
+        #expect(links.pending == nil)
         #expect(links.receive(mainTree, state: ready, restarting: true) == .restart)
         #expect(links.target == mainTree)
     }
@@ -76,6 +79,74 @@ nonisolated private let failed = ServerState.failed(ServerFailure(summary: "The 
         #expect(links.startEnded() == nil)
         #expect(links.receive(commit, state: .stopped) == .none)
         #expect(links.target == pullRequest)
+    }
+}
+
+/// D1 on #539: which windows say that a restart of the ready server waits at the launch
+/// gate, while the old server serves the others.
+@Suite struct RestartWaitTests {
+    /// Stands in for a window controller: an object, held by whatever still uses it.
+    private final class Window {}
+
+    /// File > Restart Server while another repository's clone holds the gate: the window
+    /// it was chosen in says it waits once the supervisor says the restart waits.
+    @Test func theWindowThatAskedSaysItWaitsOnceTheRestartWaits() {
+        var wait = RestartWait<Window>()
+        let asked = Window()
+        #expect(wait.asked(from: asked, state: ready) == nil)
+        let shown = wait.gateWait(true, state: ready)
+        #expect(shown.count == 1 && shown[0] === asked)
+        #expect(wait.isWaiting)
+    }
+
+    /// The supervisor says only when its first waiter begins to wait, so a restart asked
+    /// for while one waits, a link's or another Restart Server's, shows its window at once,
+    /// whichever window that is.
+    @Test func aRestartAskedWhileAnotherWaitsShowsItsWindowAtOnce() {
+        var wait = RestartWait<Window>()
+        let first = Window(), linked = Window()
+        _ = wait.asked(from: first, state: ready)
+        _ = wait.gateWait(true, state: ready)
+        #expect(wait.asked(from: linked, state: ready) === linked)
+        #expect(wait.asked(from: first, state: ready) === first)
+        _ = wait.gateWait(false, state: ready)
+        #expect(!wait.isWaiting)
+        #expect(wait.asked(from: linked, state: ready) == nil)
+    }
+
+    /// A server that is not ready shows its state in every window, so no window is singled
+    /// out, and one that changes state forgets the windows that asked.
+    @Test(arguments: [ServerState.starting, ServerState.stopping, ServerState.stopped, failed])
+    func aServerThatIsNotReadyShowsItsStateInEveryWindow(_ state: ServerState) {
+        var wait = RestartWait<Window>()
+        let asked = Window()
+        _ = wait.gateWait(true, state: state)
+        #expect(wait.asked(from: asked, state: state) == nil)
+        #expect(wait.gateWait(true, state: ready).isEmpty)
+    }
+
+    @Test func theWindowsThatAskedAreForgottenWhenTheServerChanges() {
+        var wait = RestartWait<Window>()
+        let asked = Window()
+        _ = wait.asked(from: asked, state: ready)
+        wait.serverChanged()
+        #expect(wait.gateWait(true, state: ready).isEmpty)
+        withExtendedLifetime(asked) {}
+    }
+
+    /// A window asks once however often it asks, and a window freed is not kept.
+    @Test func eachWindowIsKeptOnceAndAFreedOneIsNot() {
+        var wait = RestartWait<Window>()
+        let kept = Window()
+        _ = wait.asked(from: kept, state: ready)
+        _ = wait.asked(from: kept, state: ready)
+        do {
+            let closed = Window()
+            _ = wait.asked(from: closed, state: ready)
+        }
+        let shown = wait.gateWait(true, state: ready)
+        #expect(shown.count == 1 && shown[0] === kept)
+        #expect(wait.asked(from: nil, state: ready) == nil)
     }
 }
 
@@ -211,6 +282,42 @@ nonisolated private let failed = ServerState.failed(ServerFailure(summary: "The 
         #expect(alert.message == "Metabrowser did not clone github.com/o/r")
         #expect(alert.detail.hasPrefix("2 more links into github.com/o/r were not opened, since you declined to clone it."))
         #expect(LinkAlert.declined("github.com/o/r", count: 1).detail.hasPrefix("1 more link into github.com/o/r was not opened"))
+        #expect(alert.links == .notOpened(2))
+    }
+
+    /// D3: the title counts links, not the problems it lists. Hand check 16's burst plus an
+    /// issues link: a refusal and a decline of two more links are three links not opened.
+    @Test func theTitleCountsTheLinksADeclineStandsFor() {
+        var problems = LinkProblems()
+        problems.note(one)
+        problems.note(LinkAlert.declined("github.com/o/r", count: 2))
+        #expect(problems.take()?.message == "Metabrowser could not open 3 links")
+    }
+
+    /// D3: a link whose window shows another revision opened, so it is not counted as one
+    /// that did not, and an alert of only those says what they name was not shown.
+    @Test func aLinkThatOpenedElsewhereIsNotALinkThatDidNotOpen() throws {
+        let link = URL(string: "https://github.com/o/r/tree/no-such")!
+        let missing = try #require(
+            LinkAlert.selectionMissing(.notFound(serving: "main"), link: link, repository: "github.com/o/r"))
+        #expect(missing.links == .openedElsewhere)
+
+        var mixed = LinkProblems()
+        mixed.note(one)
+        mixed.note(missing)
+        #expect(mixed.take()?.message == "Metabrowser could not open 1 link, or show what 1 more names")
+
+        var elsewhere = LinkProblems()
+        elsewhere.note(missing)
+        elsewhere.note(missing)
+        #expect(elsewhere.take()?.message == "Metabrowser could not show what 2 links name")
+
+        // Past the problems listed, the links are still counted, and so are those turned away.
+        var many = LinkProblems()
+        for _ in 0..<LinkAlert.shownInBatch { many.note(missing) }
+        many.note(LinkAlert.declined("github.com/o/r", count: 4))
+        many.noteTurnedAway(2, .queueFull)
+        #expect(many.take()?.message == "Metabrowser could not open 6 links, or show what \(LinkAlert.shownInBatch) more name")
     }
 }
 

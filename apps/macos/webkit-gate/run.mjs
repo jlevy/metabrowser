@@ -837,7 +837,20 @@ async function runChecks(driver, servers, corpus, scratch, cleanup) {
     ],
     cleanup,
   );
-  return { print, chrome_print: chromePrinted, drop };
+  // The check presses the document's own print button, which is shown only where the pane
+  // holds KPress's card (builtin_plugins/markdown/markdown.css). In a narrower pane the
+  // driver calls window.print() itself, which would still print and pass unseen, so that
+  // fails the check, with the pane's width the driver recorded.
+  /** @type {string[]} */
+  const failures = [];
+  const called = print?.page_print?.called;
+  if (typeof called !== "string" || !called.startsWith("the Print button")) {
+    failures.push(
+      `the print check did not press the document's print button: ${called} ` +
+        `(pane ${print?.page_print?.pane_rem} rem)`,
+    );
+  }
+  return { print, chrome_print: chromePrinted, drop, failures };
 }
 
 /**
@@ -949,6 +962,12 @@ async function measure(options, caseNames, cleanup) {
     const checks = await runChecks(driver, servers, corpus, scratch, cleanup);
     fs.writeFileSync(path.join(options.out, "checks.json"), `${JSON.stringify(checks, null, 2)}\n`);
     console.log(JSON.stringify(checks, null, 2));
+    for (const failure of checks.failures) {
+      console.error(`webkit-gate: FAILED: ${failure}`);
+    }
+    if (checks.failures.length) {
+      process.exitCode = 1;
+    }
     return;
   }
   const samplesPath = path.join(options.out, "samples.jsonl");

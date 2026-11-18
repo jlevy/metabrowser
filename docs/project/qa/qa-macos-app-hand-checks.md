@@ -209,6 +209,15 @@ LOG="$HOME/Library/Logs/Metabrowser/metabrowser-$(printf %s "$REPO" | shasum -a 
     two of its files in a repository the cache does not hold, and a link into `$REPO`:
     one question appears, `$REPO`’s window comes forward while it waits, and after
     Cancel one alert says that 2 more links into the repository were not opened.
+    With `$REPO/issues/1` added to the burst, the one alert is titled for 3 links.
+17. **Restart Server during another’s clone.** With `$REPO`’s window opened from
+    `$REPO/pull/517` and moved on to one of its files, start a first clone of another
+    repository as in check 7, then choose File > Restart Server in that window: it says
+    it waits for another repository’s start, and `$REPO`’s other tabs keep working.
+    Send `$REPO/pull/517` again: the window still says it waits, and once the clone ends
+    it shows the pull request, not the file.
+    Then, during a third repository’s first clone, choose Restart Server again and send
+    `$REPO/tree/main`: the window the link brought forward says it waits.
 
 ## File > Open URL…
 
@@ -259,9 +268,9 @@ What the panel decides is unit-tested in `OpenURLPanelTests`, and against the re
 view class; this is the same check on the built development app, with a folder holding a
 Markdown file open:
 
-1. **The page’s Print button.** In the Markdown file’s header it calls `window.print()`,
-   which opens the same print panel as File > Print; pressing it again while the panel
-   is open does nothing.
+1. **The page’s Print button.** At the top right of the Markdown document it calls
+   `window.print()`, which opens the same print panel as File > Print; pressing it again
+   while the panel is open does nothing.
 2. **File > Print.** The print panel shows the document alone, without the shell.
 3. **A folder dragged from Finder onto the page** opens in a window of its own.
 4. **A file dragged onto the page** opens at its page, in the open folder that holds it

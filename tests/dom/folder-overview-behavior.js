@@ -196,6 +196,7 @@ global.window = { METABROWSER_SETTINGS: {} };
       markdownMount?.context?.path === "README.md" &&
       markdownMount?.options?.includeToc === undefined &&
       markdownMount?.options?.pagePath === "" &&
+      markdownMount?.options?.printIndicator === true &&
       typeof readmeHandle?.dispose === "function",
     JSON.stringify(markdownMount),
   );
