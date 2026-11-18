@@ -1,9 +1,8 @@
 # Architecture: Recent Targets
 
-**Status:** Designed, and being built on the pull request that adds this document
-(`mb-40k4`): the store (`src/metabrowser/recent_targets.py`), its four `metab` modes
-(`cli/recent_cli.py`), the record every serve makes, and the macOS app’s File > Open
-Recent, which lists what `metab --recent --json` answers.
+**Status:** Built (`mb-40k4`): the store (`src/metabrowser/recent_targets.py`), its four
+`metab` modes (`cli/recent_cli.py`), the record every serve makes, and the macOS app’s
+File > Open Recent, which lists what `metab --recent --json` answers.
 Planned: the `target` a mirror was opened at (a pull request, a ref, or a commit), a
 route for a switcher in the page, and the open-mode indicator, in the
 [native macOS app plan](../specs/active/plan-2026-11-10-native-macos-app.md#phase-4-recent-targets-the-switcher-and-the-mcp-adapter)
@@ -14,11 +13,16 @@ Metabrowser keeps one list of what the user opened lately, and every shell reads
 through `metab`: the command line, the macOS app, and any later shell.
 A shell draws the list and never decides what is in it, so two shells cannot disagree.
 
-This list is not the Recent tab.
-The Recent tab and `/api/recent` list the recently modified files inside one served
-root, from that root’s inventory
-([views, models, and routes](arch-views-models-routes.md)). Recent targets are the roots
-themselves, across every server.
+Two things with similar names are not this list:
+
+- **The Recent tab** and `/api/recent` list the recently modified files inside one
+  served root, from that root’s inventory
+  ([views, models, and routes](arch-views-models-routes.md)). Recent targets are the
+  roots themselves, across every server.
+- **`last_opened_at` in the cache** (`sources/<slug>/state.yml`) is when a cached source
+  was last acquired or reused, by a data mode as much as by a reader, and it goes when
+  the cache is cleared.
+  Recent targets are what a reader opened, in either mode, and outlive the cache.
 
 ## Vocabulary
 
@@ -45,7 +49,8 @@ A recent target is a root and the mode it was opened in:
 | `opened_at` | When it was last opened, in UTC to the second |
 
 - **A folder’s root** is the path the server serves (`run_serve`), spelled on macOS as
-  the file system spells it, so two spellings that differ only in case are one folder.
+  the volume spells it (`folder_root`), so two spellings that differ only in case are
+  one folder, as they are to the app, which names a folder by `realpath(3)`.
 - **A mirror’s root** for a GitHub URL is exactly `https://github.com/<owner>/<repo>` in
   lower case, whatever the URL selected inside the repository: the root
   `metab URL --present --dry-run --json` reports, and the key of the app’s session for
@@ -65,31 +70,39 @@ A recent target is a root and the mode it was opened in:
 `recent_targets.py` holds the format, the bounds, and their reasons beside the
 constants; this section says what they mean.
 
-- **Where.** `recent-targets.json` in the
+- **Where.** `recent-targets.yml` in the
   [configuration directory](arch-repository-cache.md#cache-and-configuration-directories),
   beside `config.yml`, with `recent-targets.lock` next to it.
-  The list is history the user would miss, so it does not belong in the cache, which may
-  be deleted at any time.
+  The owner chose the configuration directory on 2026-11-18. The list is history the
+  user would miss, so it does not belong in the cache, which may be deleted at any time,
+  and the configuration directory is the durable place `metab` already has.
   `--config-dir`, `METABROWSER_CONFIG_DIR`, and `XDG_CONFIG_HOME` move it with the
   configuration.
 - **Private.** The list names the user’s folders and repositories, so it is read and
   written only through `home.py`’s owner-only helpers: a configuration directory another
   account can read or redirect is refused, and the file is published with
   `write_private_file_atomic`.
-- **Format.** One JSON object, `{"version": N, "targets": [...]}`, with the entries
-  above in order. JSON, not the cache’s YAML records, because every serve reads and
-  writes the file as it starts, and a folder’s server loads no schema library.
-  `FORMAT_VERSION` names the format.
+- **YAML.** One mapping with a `format` and the `targets`, in order, so a person can
+  read the file, as they can `config.yml`. It is read with PyYAML’s base loader, which
+  makes every scalar a string and constructs nothing, and not with the schema library
+  the cache’s records use, which a folder’s server never loads.
+  `metab --recent --json` still answers in JSON.
+- **The format string** follows the application home’s convention
+  ([Layout](arch-repository-cache.md#layout), on `layout.yml`): a short string that says
+  what it is, an append-only `FORMAT_HISTORY`, a `MIGRATIONS` step from each format to
+  the next, and a refusal of a format newer than the release reads.
+  Metabrowser’s format strings are `mf` and a number, to tell them from tbd’s `fNN`;
+  this file is the first to use the spelling, and moving `layout.yml` and `config.yml`
+  to it is `mb-3x6y`. The number rises only for a change an older reader would misread,
+  and a compatible change keeps it.
   A file from a newer release is left exactly as it is: this release lists nothing,
   records nothing, and says to upgrade.
-  The format changes by raising the version, with no reader for an older one, as
-  [file formats](../../development.md#standing-compatibility-answers) are handled here.
 - **Order.** Most recently opened first.
   The position in the file is the order; `opened_at` is for display.
 - **One entry per root.** Opening a root again moves its entry to the front.
 - **Bounded.** `MAX_RECENT_TARGETS` caps the list, and the oldest entry falls off.
-  `MAX_ROOT_BYTES` and `MAX_STORE_BYTES` bound one root and the file, and a writer never
-  publishes a file a reader would refuse.
+  `MAX_ROOT_BYTES` and `MAX_STORE_BYTES` bound one root and the file, and a writer reads
+  back what it is about to publish, so it never publishes a file a reader would refuse.
 - **A damaged file is replaced.** A file that is not this format, an entry that breaks
   the rules above, or a file over the bound lists as empty with the reason, and the next
   record writes a fresh list.
@@ -131,16 +144,18 @@ The app writes nothing itself.
 
 | Opened by | Records | How |
 | --- | --- | --- |
-| `metab FOLDER` or `metab FILE` | `folder`, the served folder | `serve_until_interrupted`, after the `Serving` line |
+| `metab FOLDER` or `metab FILE` | `folder`, the served folder | `serve_until_interrupted`, just before the `Serving` line |
 | `metab URL` | `mirror`, the source’s address | The same, once the source is acquired and its pin resolved |
 | The macOS app opening a folder | `folder` | The server the app starts is `metab FOLDER`, so the line above does it |
 | The app showing a folder that is already open | `folder` | `metab FOLDER --recent-add`, because no server starts |
 | The app restoring its last session | `folder`, as each restored server starts | The first line again; a tab that waits for its selection is not recorded until then |
 
+A root is recorded before its server’s `Serving` line, so whoever reads that line finds
+the root already listed.
 `--api`, `--show`, `--walk`, `--diff`, `--check-api`, and `--no-serve` open nothing for
 a reader and record nothing.
-A server that fails before its `Serving` line records nothing, so a mistyped path never
-enters the list.
+A server that fails before that point records nothing, so a mistyped path never enters
+the list.
 
 ## The `metab` Modes
 
@@ -151,23 +166,23 @@ enters the list.
 | `metab TARGET --recent-forget` | Removes TARGET’s entry; a folder that no longer exists is matched by its path as given |
 | `metab --recent-clear` | Empties the list |
 
-`tests/golden/cli-recent.tryscript.md` pins all four, the order, one entry per root, the
-cap, a damaged file, and a newer format.
-`tests/test_recent_targets.py` covers the store, concurrent writers included, and that a
-real serve records.
+`tests/golden/cli-recent.tryscript.md` pins all four, the order, one entry per root, a
+damaged file, a newer format, and a configuration directory that is not private.
+`tests/test_recent_targets.py` covers the store itself, the cap and concurrent writers
+included, and that a real serve records before it announces itself.
 
-No route serves the list yet.
-A route would hand every page of every served root the names of the user’s other folders
-and repositories, over a loopback port that asks for no credential, which the switcher’s
-design has to settle first.
+No route serves the list, which the owner confirmed on 2026-11-18. A route would hand
+every page of every served root the names of the user’s other folders and repositories,
+over a loopback port that asks for no credential, which the switcher’s design has to
+settle first.
 
 ## The macOS App
 
 File > Open Recent is drawn from `metab --recent --json` (`RecentTargets` in
 `ShellCore`, `RecentTargetsMenu` in the app):
 
-- The app runs the selected `metab` when it launches, when it becomes active, and when
-  the menu opens, and the menu shows the last answer at once, then the new one.
+- The app runs the selected `metab` when it becomes active and when the menu opens, and
+  the menu shows the last answer at once, then the new one.
 - It lists every entry it can open: folders, and repositories once the build opens
   links, which its `Info.plist` says with `MetabrowserOpensURLs`.
 - Titles come from the root, as a window is titled before its server answers
@@ -178,8 +193,12 @@ File > Open Recent is drawn from `metab --recent --json` (`RecentTargets` in
   `NSDocumentController`, and macOS keeps that list, in its own order and length, for
   each build of the app.
 
+The app does not pass a storage override to the `metab` it runs, so the list it reads is
+the one its servers write.
 The menu’s contents are `metab`’s, pinned by the golden above; drawing them is AppKit’s,
 which the [parity registry](arch-parity-registry.md) records as `app.open-recent-menu`.
+`RecentTargetsTests` covers how the app reads the answer and chooses its rows, and
+`LiveMetabTests` runs both against a real `metab`.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

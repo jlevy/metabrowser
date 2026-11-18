@@ -10,7 +10,7 @@ What the app adds is what a browser tab cannot give:
 
 - a window per folder, each with its own server, which the app starts and stops;
 - a Dock icon, and folders opened from Finder with Open With or dropped on the icon;
-- native menus, tabs across folders, recent folders, and the last session restored.
+- native menus, tabs across folders, recent items, and the last session restored.
 
 ## Opening Folders and Files
 
@@ -62,12 +62,21 @@ Page, and zoom, which the app remembers; Edit > Find; and Help > Metabrowser
 Documentation and Reveal Logs Folder.
 The mark at the title bar’s trailing end opens the project on GitHub.
 
-## Recent Folders
+## Recent Items
 
-File > Open Recent and the Dock icon’s menu list the folders you opened.
-The list is macOS’s own recent-documents list, so macOS keeps its order, System Settings
-\> Desktop & Dock sets its length, and Clear Menu empties it.
-Opening a file adds the folder it opened in.
+File > Open Recent lists what Metabrowser opened lately, most recent first: the folders
+you opened in the app, in either build of it, and the folders `metab` served in
+Terminal. It is `metab`’s own list of [recent targets](command-line.md#recent-targets),
+so `metab --recent` shows the same entries, and a folder stays in it however many others
+you open, up to the list’s length.
+
+- **A file** adds the folder it opened in.
+- **A folder that is gone** stays listed, since the app never looks at a listed folder
+  until you choose it; choosing it says the folder is gone, and removes it.
+- **Clear Menu** empties the list, for `metab` too.
+- **The Dock icon’s menu** is macOS’s own recent-documents list for this build of the
+  app: only folders the app opened, in the order and at the length macOS keeps, which
+  System Settings > Desktop & Dock sets.
 
 ## The Last Session
 
@@ -169,6 +178,8 @@ The app moves nothing itself.
 - The app does not pass state-location variables (`XDG_CACHE_HOME`,
   `METABROWSER_CACHE_DIR`, and the rest) to its servers, so they always use the default
   cache and configuration locations.
+  A `metab` in Terminal that one of those variables points elsewhere keeps recent
+  targets of its own, which File > Open Recent does not show.
 - There is no updater and no URL scheme, and an agent cannot yet show you a page in the
   app; the
   [native macOS app plan](project/specs/active/plan-2026-11-10-native-macos-app.md) has

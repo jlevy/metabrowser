@@ -81,7 +81,7 @@ Module paths are under `src/metabrowser/` unless they start with `apps/`.
 | Browser shell and SDK | `static/` (`app.js`, `navigation.js`, `main-tabs.js`, `plugin-sdk.js`, `asset-loader.js`) | Own navigation, the tree, tabs, client stores, view mounting and disposal, asset loading, and the `window.metabrowser` SDK | [Browser Shell](project/architecture/arch-browser-shell.md), [Plugins](plugins.md) |
 | Renderers | `builtin_plugins/*/` views; KPress for Markdown | Draw each kind within the bounds of the large-content rules | [the map](project/architecture/arch-views-models-routes.md), [Rendering Large Content](large-content-rendering.md), [Design System](design-system.md) |
 | Recent targets | `recent_targets.py`, `cli/recent_cli.py` | Keep the one list of folders and repositories the user opened lately, which every shell reads through `metab` | [Recent Targets](project/architecture/arch-recent-targets.md) |
-| Native macOS shell | `apps/macos/` | Supervise one `metab` server per folder and show it in an AppKit window with `WKWebView`: windows, tabs, recent folders, and restore | [macOS App](project/architecture/arch-macos-app.md) |
+| Native macOS shell | `apps/macos/` | Supervise one `metab` server per folder and show it in an AppKit window with `WKWebView`: windows, tabs, recent items, and restore | [macOS App](project/architecture/arch-macos-app.md) |
 
 ## Rules That Cross Layers
 

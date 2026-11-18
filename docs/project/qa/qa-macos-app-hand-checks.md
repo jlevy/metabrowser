@@ -72,7 +72,12 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
    `open -a "$APP" /dev/null` shows an alert.
    File > Open… chooses a file too.
 2. **Recents.** After opening `b`, File > Open Recent and the Dock icon’s menu list `b`
-   above `a`; Clear Menu empties both.
+   above `a`, and `metab --recent`, run with the `metab` the app uses, lists the same
+   two. After `metab /tmp/mb-check/c --no-open` in Terminal, stopped with Control-C, and
+   a switch back to the app, File > Open Recent lists `c` first.
+   Opening `a` again, while its window is open, moves it to the top.
+   After `rm -r /tmp/mb-check/c`, choosing `c` shows the alert and removes it.
+   Clear Menu empties both menus and `metab --recent`.
    `defaults read io.github.jlevy.metabrowser.dev` shows no `recentFolders` key.
 3. **Tabs.** With Settings > Open folders in set to Tabs, opening `c` and `d` adds them
    as tabs of the front window; set to Windows, opening `e` gives it a window, and

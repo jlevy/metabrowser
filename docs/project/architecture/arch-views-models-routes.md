@@ -114,8 +114,10 @@ Both are tool-neutral: nothing in a document references Metabrowser.
 The repository cache’s record contracts are an internal format: their installed
 inventory is maintained by `devtools/check_artifact_contracts.py`, described in
 [Repository Cache](arch-repository-cache.md), and this map registers no kind or view for
-them. Everything else travels as an envelope on `/api/*`, versioned with the shell and
-the built-in plugins as one artifact: an internal contract, not a standard.
+them. The list of [recent targets](arch-recent-targets.md), `recent-targets.yml` in the
+configuration directory, is an internal format as well, read only through `metab`.
+Everything else travels as an envelope on `/api/*`, versioned with the shell and the
+built-in plugins as one artifact: an internal contract, not a standard.
 [Where diff documents come from](arch-diff-pipeline.md#where-documents-come-from) maps
 the sources that produce diff documents.
 

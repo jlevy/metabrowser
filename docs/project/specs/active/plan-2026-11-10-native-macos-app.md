@@ -9,8 +9,8 @@ Epic `mb-1apq` tracks every item below as a bead.
 The app is on `main`: the spike and the v1 stack merged on 2026-11-13. The v1 milestone
 (`mb-s4y1`, below) waits on its end-to-end check (`mb-hwxu`); the WebKit gate failed,
 and what follows from that is the owner’s decision (`mb-gvtw`). Of Phase 3, only
-`--exit-on-eof` has shipped (jlevy/metabrowser#366). Of Phase 4, recent targets are in
-progress (`mb-40k4`); the rest of it and Phase 6 have not started.
+`--exit-on-eof` has shipped (jlevy/metabrowser#366). Of Phase 4, recent targets are
+built (`mb-40k4`); the rest of it and Phase 6 have not started.
 
 ## Overview
 
@@ -433,9 +433,9 @@ confirms that root in the app.
 
 #### Recent Targets
 
-**Status:** In progress (`mb-40k4`): designed, and being built on the pull request that
-adds this section. [Recent Targets](../../architecture/arch-recent-targets.md) is the
-design and holds the format; this section records what was decided and why.
+**Status:** Built (`mb-40k4`), except the items unchecked below.
+[Recent Targets](../../architecture/arch-recent-targets.md) is the design and holds the
+format; this section records what was decided and why.
 
 The owner asked, on 2026-11-18:
 
@@ -489,26 +489,38 @@ The owner asked, on 2026-11-18:
    from `MetabrowserOpensURLs` in its `Info.plist`, the key that pull request adds.
    Repository windows still stay out of the saved session, which names folders by path.
 6. **The list lives in the configuration directory**, in a file of its own beside
-   `config.yml`. It is history the user would miss, which rules out the cache, and the
-   configuration directory is the one durable place `metab` already has, with its
-   override, its owner-only checks, and its test isolation.
-   The XDG state directory is the conventional home for such a file and would keep
-   machine-written history out of a directory some people keep in version control; it is
-   the alternative if the owner prefers it, at the cost of a third storage root.
+   `config.yml`: `recent-targets.yml`. The owner decided this on 2026-11-18. It is
+   history the user would miss, which rules out the cache, and the configuration
+   directory is the one durable place `metab` already has, with its override, its
+   owner-only checks, and its test isolation.
+   The alternative weighed was the XDG state directory, the conventional home for such a
+   file, at the cost of a third storage root.
 7. **Nothing looks at a listed folder.** Listing never checks whether a folder still
    exists, because a look can raise a macOS privacy prompt or hang on a dead volume.
    A folder that is gone is forgotten when the reader tries to open it.
 8. **The Dock menu stays macOS’s.** The app still registers folders with
    `NSDocumentController`, so the Dock icon’s menu works as on any Mac app, with macOS’s
    own cap, also when the app is not running.
+9. **The file is YAML with a format string.** The owner asked, on 2026-11-18, for
+   configuration files that a person can read and that carry “a very simple format
+   string … that is self-describing but simple”, updated only “when a new incompatible
+   format arises”. The list is YAML, as `config.yml` is, and its `format` follows the
+   application home’s convention in `cache/layout.py`: an append-only history, a
+   migration from each format to the next, and a refusal of a newer one.
+   Metabrowser’s strings are `mfNN`, to tell them from tbd’s `fNN`, and this file starts
+   at `mf01`. Applying the spelling to `layout.yml` and `config.yml`, which are `f01`,
+   is `mb-3x6y`.
+10. **No route serves the list yet.** The owner decided this on 2026-11-18: only
+    `metab --recent --json` reads it, until the switcher’s design says what a page may
+    learn of the user’s other roots.
 
 **Work:**
 
-- [ ] The store, its bounds, and its concurrency (`recent_targets.py`), with
+- [x] The store, its bounds, and its concurrency (`recent_targets.py`), with
   `metab --recent`, `--recent-add`, `--recent-forget`, and `--recent-clear`, and a
   golden (`mb-40k4`).
-- [ ] Every serve records its root, in both modes (`mb-40k4`).
-- [ ] File > Open Recent lists `metab --recent --json` (`mb-40k4`).
+- [x] Every serve records its root, in both modes (`mb-40k4`).
+- [x] File > Open Recent lists `metab --recent --json` (`mb-40k4`).
 - [ ] Record the `target` a mirror was opened at: the canonical web URL of a pull
   request, a ref, a commit, or a file, from `ProviderUrlReducer.web_url`
   (jlevy/metabrowser#540), so Open Recent reopens a pull request and not only its

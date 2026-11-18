@@ -520,9 +520,9 @@ recent targets do not hold yet.
 #### The Indicator
 
 Planned (`mb-wup3`); not in the pull request that adds recent targets.
-The owner specified the icons, on 2026-11-18: “The mirror indicator should indicate: use
-the GitHub icon, perhaps overlaid with a cloud if we can come up with a good icon like
-that, and the folder mode should use a folder icon.”
+The owner specified the icons on 2026-11-18: the mirror indicator uses the GitHub icon,
+with a cloud over it “if we can come up with a good icon like that”, and folder mode
+uses a folder icon.
 
 - **Data.** The mode is `kind` in `GET /api/identity`, which the shell’s `<title>` and
   the app’s window title already read, so the page and the app cannot disagree and no

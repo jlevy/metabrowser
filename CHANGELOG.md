@@ -4,6 +4,19 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- Metabrowser now keeps a list of recent targets, the folders and repositories opened
+  lately, and the macOS app’s File > Open Recent shows it.
+  Every `metab` that serves records what it serves, so the menu lists folders opened in
+  either build of the app and folders served from Terminal, most recent first, up to the
+  list’s own length. Before, the menu showed macOS’s recent-documents list, which holds
+  ten entries unless System Settings says otherwise, only folders that build of the app
+  had been asked to open, and none served by `metab`. `metab --recent` lists the
+  entries, with `--json` for a script; `--recent-forget` and `--recent-clear` remove
+  them, and `--recent-add` records one without serving it.
+  The list is `recent-targets.yml` in the configuration directory, which serving a
+  folder now creates. The Dock icon’s menu is still macOS’s own list.
+  See [Recent Targets](docs/command-line.md#recent-targets).
+
 - On a folder’s Overview, pointing at a File Overview legend entry, its dot or its
   words, now lifts its family’s segment in the bar above, as pointing at the segment
   does, and shows that family’s file count and byte size beside the entry.

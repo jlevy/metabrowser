@@ -33,6 +33,7 @@ produce is refused rather than ignored.
 | Change set | `--diff SPEC` | `diff_cli.py` |
 | Remote host | `--remote HOST` | `remote.py` |
 | Plugins | `--plugins`, `--plugin NAME`, `--doctor` | `plugins.py` |
+| Recent targets | `--recent`, `--recent-add`, `--recent-forget`, `--recent-clear` | `recent_cli.py`, over [`recent_targets.py`](arch-recent-targets.md) |
 
 `_classified_root` decides whether ROOT is a local path or a Git source.
 An `ssh` source is refused in every mode.

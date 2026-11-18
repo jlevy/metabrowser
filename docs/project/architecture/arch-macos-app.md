@@ -47,6 +47,8 @@ before one exists, windows, menus, the Dock, and file events.
 1. **Open.** File > Open, Open Recent, the Dock menu, a drop, Open With, `open -a`, and
    the restore all reach one `FolderSession` per folder, keyed by its canonical path, so
    a root has one server however many windows and tabs show it.
+   That path is also the folder’s key among the
+   [recent targets](arch-recent-targets.md).
 2. **Spawn.** `ServerSupervisor` runs `CLIServeLaunch`’s command,
    `metab ROOT --no-open --exit-on-eof --host 127.0.0.1 --port N`, from
    `CLIServeLaunch.defaultBasePort`. `SpawnedProcess` starts it with `posix_spawn` in
@@ -140,13 +142,13 @@ shim and no `gh`, and nothing from a Terminal launch’s `UV_*`, `VIRTUAL_ENV`, 
 ### The Version Floor
 
 `MetabRequirement.minimumRelease` in `Sources/ShellCore/Setup/MetabVersion.swift` is the
-oldest `metab` the app runs: the first release with `GET /api/identity` and
-`--exit-on-eof`. A development build of that release counts as it, or no checkout would
-run, so the number alone does not prove the flag, and `RuntimeDiscovery.validate` runs
-`metab --exit-on-eof --version`. A printed version decides by its number; exit status 2
-naming the flag means a build that predates it, which is too old whatever its number;
-anything else rejects the `metab` with the probe’s last line.
-Below the floor, discovery tries the next place.
+oldest `metab` the app runs: the first release with `GET /api/identity`,
+`--exit-on-eof`, and `--recent`. A development build of that release counts as it, or no
+checkout would run, so the number alone does not prove the flag, and
+`RuntimeDiscovery.validate` runs `metab --exit-on-eof --version`. A printed version
+decides by its number; exit status 2 naming the flag means a build that predates it,
+which is too old whatever its number; anything else rejects the `metab` with the probe’s
+last line. Below the floor, discovery tries the next place.
 `MetabRequirement.upgradeCommand` asks uv for a floor rather than a pin, because uv
 keeps the requirement in the tool’s receipt.
 
@@ -220,8 +222,11 @@ Applications.
   its own folder, as `metab FILE` does (`OpenTarget`), at the view route `metab` spells
   (`PageAddress.view`). A page requested while the server is not ready loads once it is
   (`NextPage`).
-- **Recents.** Opening a folder registers it with `NSDocumentController`, and File >
-  Open Recent and the Dock menu list what macOS keeps; the app keeps no list of its own.
+- **Recents.** File > Open Recent lists `metab`’s
+  [recent targets](arch-recent-targets.md#the-macos-app), which every server records as
+  it starts, so the app decides nothing about the list and keeps none of its own.
+  The Dock menu is macOS’s: opening a folder still registers it with
+  `NSDocumentController`.
 
 ### Session Restore
 

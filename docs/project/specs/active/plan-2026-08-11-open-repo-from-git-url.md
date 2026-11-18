@@ -2143,8 +2143,9 @@ vertical slice.
 [recent target](../../architecture/arch-recent-targets.md) with the
 [mode](plan-2026-11-02-pr-review-mirror-and-checkout.md#open-modes) it was opened in,
 and `metab --recent` lists them (`mb-40k4`). A chooser reads that list for recency and
-the catalog for what the cache holds; it does not derive recency from cache records,
-which say when a source was fetched, not when the reader opened it.
+the catalog for what the cache holds.
+The cache’s own `last_opened_at`, in a source’s `state.yml`, is not that list: every
+acquisition sets it, a data mode’s included, and clearing the cache removes it.
 The macOS app’s File > Open URL… (`mb-m4mg`) is the first chooser over it.
 
 - [ ] Add a chooser over the generic catalog with recent, favorite, offline, partial,
