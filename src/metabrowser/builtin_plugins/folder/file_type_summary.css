@@ -272,7 +272,7 @@
   box-shadow: inset calc(-1 * var(--mb-distribution-segment-gap)) 0 0 var(--viz-surface);
 }
 
-/* Hover is drawn on the segment under the pointer and on nothing else.
+/* Hover is drawn on the marks the hovered handle names and on nothing else.
 
    This dimmed every other segment once, which picks one thing out by restyling
    fifty — a far bigger visual event than pointing at something earns, and a
