@@ -51,7 +51,6 @@ file's lock, taken without blocking; if that lock is busy the lock is refused.
 from __future__ import annotations
 
 import asyncio
-import errno
 import functools
 import os
 import re
@@ -67,6 +66,7 @@ from typing import Final, Self
 from metabrowser.cache.identity import is_identity, is_slug, is_store_key, store_key
 from metabrowser.cancellable_thread import run_acquiring_thread, run_cancellable_thread
 from metabrowser.home import (
+    UNSUPPORTED_LOCK_ERRNOS,
     PrivateStorageError,
     PrivateStorageLocation,
     PrivateStorageViolation,
@@ -90,9 +90,6 @@ _IDENTITY_ATTEMPTS: Final = 8
 # within one cap.
 WAIT_RETRY_FIRST_S: Final = 0.005
 WAIT_RETRY_MAX_S: Final = 0.1
-_UNSUPPORTED_LOCK_ERRNOS: Final = frozenset(
-    {errno.ENOLCK, errno.EOPNOTSUPP, errno.ENOTSUP, errno.EINVAL, errno.ENOSYS}
-)
 _LOCK_CHANGED: Final = (
     "its lock file kept being replaced while it was being locked. Make sure nothing else "
     "is modifying the application home, then retry"
@@ -340,7 +337,7 @@ def _flock(fd: int, operation: int, path: Path) -> bool:
     except BlockingIOError:
         return False
     except OSError as error:
-        if error.errno in _UNSUPPORTED_LOCK_ERRNOS:
+        if error.errno in UNSUPPORTED_LOCK_ERRNOS:
             raise _unverifiable(path, _LOCKS_UNSUPPORTED) from error
         raise
     return True
