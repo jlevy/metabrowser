@@ -310,7 +310,7 @@ def test_a_lookup_launch_services_will_not_answer_is_a_lookup_failure() -> None:
         ["/usr/bin/sandbox-exec", "-p", _DENY_LAUNCH_SERVICES, sys.executable, "-c", probe],
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=30,
         check=False,
     )
 

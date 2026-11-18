@@ -126,7 +126,8 @@ def test_a_pull_request_it_cannot_open_serves_the_default_branch_and_says_why(
         ("/checks?check_run_id=987", "/pull/7/checks", "Selection: pull_request checks\n"),
         # The page has no Commits tab, so GitHub's opens the page itself.
         ("/commits", "/pull/7", "Selection: pull_request\n"),
-        (f"/commits/{SECOND_COMMIT[:7]}", "/view/", "Selection: commit\n"),
+        # A commit opens at its page, by the full ID the mirror resolved the short one to.
+        (f"/commits/{SECOND_COMMIT[:7]}", f"/commit/{SECOND_COMMIT}", "Selection: commit\n"),
     ],
 )
 def test_a_pull_request_url_opens_where_it_points(
