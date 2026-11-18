@@ -471,6 +471,10 @@
      Pulls title 44px, its slots two of them; at 14px, 20 and 40, a
      pull request's title 4px wider. It is --icon-glyph, so the two cannot part. */
   --tree-icon-slot: var(--icon-glyph);
+  /* A tree row's gap from its icon slot to its name (.tree-item), which the paging row's
+     inset and a category heading's icon (--category-icon-gap) also take, so a heading's
+     name and its rows' names stay on one column. */
+  --tree-icon-gap: 6px;
   /* The disclosure chevron's glyph (.toggle-chevron), 2px under --icon-glyph. A tree's
      folder and container toggles center it in the slot, half the slot's spare width each
      side, 1px. */
@@ -530,8 +534,8 @@
   --icon-btn-size: 24px;
   /* From a category's icon to its name in the heading (.category-icon): a tree row's
      gap from its file icon to its name, so the mark sits off the word as it does in a
-     row. */
-  --category-icon-gap: 6px;
+     row, and a Group by heading's name lines up with its rows' names. */
+  --category-icon-gap: var(--tree-icon-gap);
   /* A person's avatar box and the gap before the name (`.actor-identity`), on every page
      that names a person: a commit's author, a pull request's, a comment's; a Pulls row's
      is a tenth smaller (`.github-pulls-by`, github/styles.css).
@@ -3091,7 +3095,13 @@ html[data-prose-font="sans"] .kpress-prose h2,
 .tree-item.tree-page-more {
   /* On the names' column: the row's inset, its slot, and its gap. */
   padding: 2px 12px 2px
-    calc(10px + var(--tree-icon-slot) + 6px + (var(--tree-depth, 1) - 1) * var(--tree-indent));
+    calc(
+      10px +
+      var(--tree-icon-slot) +
+      var(--tree-icon-gap) +
+      (var(--tree-depth, 1) - 1) *
+      var(--tree-indent)
+    );
   cursor: pointer;
   -webkit-user-select: var(--toggle-user-select);
   user-select: var(--toggle-user-select);
@@ -3120,7 +3130,7 @@ html[data-prose-font="sans"] .kpress-prose h2,
   cursor: pointer;
   -webkit-user-select: var(--toggle-user-select);
   user-select: var(--toggle-user-select);
-  gap: 6px;
+  gap: var(--tree-icon-gap);
   font-size: var(--nav-font-size);
   transition: background var(--transition-fast);
 }

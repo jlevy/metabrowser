@@ -3867,6 +3867,8 @@ A specific format, a family or an extension, keeps its own icon and its own colo
 - **Icon.** `.category-icon` in `styles.css`: `--icon-glyph` square, in `currentColor`,
   with `--category-icon-gap` between it and the name.
   A heading that starts on a row inset starts there with the icon, and the name follows.
+  In Details the icon stands in its rows’ icon box, so the heading’s icon and name start
+  where its family rows’ do.
 - **Where.** Every heading that names a category: a section of Group by’s By file type
   ([Grouping the Files Tree](#grouping-the-files-tree)), each family section of the type
   chooser ([Groups Or Dropdowns](#groups-or-dropdowns)), and each group of File
@@ -3892,10 +3894,13 @@ beside the categories and not in the registry, whose groups the File Rollup Form
 fingerprints. The browser reads the icon as each group’s `icon` in
 `fileTypes.displayGroups`, and a grouped tree’s answer carries it on each type group
 (`/api/tree?group_by=type`, null for an age group), pinned by
-`tests/golden/cli-api-tree-groups.tryscript.md`; `tests/dom/files-group-by-session.js`,
-`tests/dom/file-overview-session.js`, and `tests/dom/filter-controls-behavior.js` pin
-that each heading leads with it, and `tests/test_files_tab_chrome.py` measures its size,
-ink, and place in Chrome.
+`tests/golden/cli-api-tree-groups.tryscript.md`, and
+`tests/dom/files-group-by-session.js` pins that each section carries it.
+`tests/dom/file-overview-session.js` and `tests/dom/filter-controls-behavior.js` pin
+that a Details heading and a menu heading lead with it.
+In Chrome, `tests/test_files_tab_chrome.py` measures the icon’s size, ink, and place in
+a menu’s headings and a section’s, and in a section’s after a refresh rewrites it, and
+`tests/test_overview_legend_hover_chrome.py` measures it in Details.
 
 Some places name a category without a heading, and keep their own style:
 
