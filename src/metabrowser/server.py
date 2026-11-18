@@ -1359,6 +1359,22 @@ def _mirror_heading_attrs(status: SourceStatus) -> str:
 
 
 @functools.cache
+def _github_page_script() -> str:
+    """`static/github-page.js`, as the shell of a page with a GitHub repository carries it.
+
+    Only a page whose repository context the server found, a checkout whose ``origin`` is
+    on github.com or a mirror the GitHub provider owns, has a GitHub page to toggle to, so
+    the toggle's code is written into that page and is no startup script of a folder's
+    (docs/design-system.md, "View Headers").
+    """
+
+    script = STATIC_DIR.joinpath("github-page.js").read_text(encoding="utf-8")
+    if "</script" in script.lower():
+        raise RuntimeError("github-page.js cannot be safely embedded in the index shell")
+    return script
+
+
+@functools.cache
 def _mirror_heading_script() -> str:
     """`static/mirror-heading.js`, as a served mirror's shell carries it inline.
 
@@ -1953,6 +1969,8 @@ async def index(
         )
         if mirror_attrs:
             repository_context_block += f"<script>{_mirror_heading_script()}</script>"
+    if repository_context is not None:
+        repository_context_block += f"<script>{_github_page_script()}</script>"
     if checkout is not None:
         # A checkout's page says so, and whether it shows the working tree: the ref
         # selector reads it for what it offers, and the pin guard, which the selector's
@@ -2029,6 +2047,19 @@ async def index(
         # first tree is usable. renderFile awaits this bundle and rechecks its
         # ownership claim before preparing or mounting a view.
         "view-composition": [{"src": view_composition_url}],
+        # A file's and a folder's view header: its builders, and the folder line's live
+        # refresh. renderFile draws a header only after loadViewComposition, which fetches
+        # this beside the compositor and the SDK's view helpers, so the first tree never
+        # waits for it. What that costs a view, measured in Chrome on 2026-11-18 against
+        # the builders in app.js, 36 cold loads of a folder and of a file a side in
+        # alternating back-to-back pairs, at load averages of 24 to 33 on 10 cores: the
+        # bundle is 14,102 bytes, 4,514 as a gzip client receives it; its request starts
+        # with the other two and ended no later than both in 48 of 72 loads; and the
+        # header's median time after DOMContentLoaded went from 40 to 41 ms on a folder
+        # and stayed at 58 ms on a file.
+        "view-header": [
+            {"src": _static_asset_url("view-header.js"), "provides": "MetabrowserViewHeader"}
+        ],
         # What a view's renderer calls: the line-number gutter with its `#L` anchors,
         # and the SDK helpers a renderer builds its markup with (the Source surface,
         # the copy wrapper, the partial-content notice, the syntax service). Nothing
@@ -3278,6 +3309,26 @@ class JSONResponse(_StarletteJSONResponse):
 # ``starlette.responses.JSONResponse`` directly is unaffected.
 
 
+def _file_mtime(target: Path) -> float | None:
+    """A served file's modification time in epoch seconds, or ``None`` if it cannot be read.
+
+    The envelope's ``mtime`` is what a file's view header shows as its age, in the unit a
+    folder envelope's ``dir.mtime`` and a tree row's ``mtime`` use.
+    """
+
+    try:
+        return target.stat().st_mtime
+    except OSError:
+        return None
+
+
+def _mtime_field(mtime: float | None) -> dict[str, float]:
+    """``{"mtime": ...}``, or nothing when the time could not be read: never a null,
+    which the browser reads as a value still on its way."""
+
+    return {} if mtime is None else {"mtime": mtime}
+
+
 def _compression_identity_fields(artifact: ArtifactPath) -> dict[str, Any]:
     """Compression fields that do not require reading the decoded stream."""
     if not artifact.is_compressed:
@@ -3502,6 +3553,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
         return _file_unavailable_response(subpath, target)
 
     artifact = ArtifactPath(target)
+    file_mtime = _file_mtime(target)
     ext = artifact.logical_ext
     logical_size: int | None
     try:
@@ -3518,6 +3570,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                 "views": _views_for_kind("binary"),
                 "path": subpath,
                 "size": disk_size,
+                **_mtime_field(file_mtime),
                 **_compression_identity_fields(artifact),
             }
         )
@@ -3543,6 +3596,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                     "views": [],
                     "path": subpath,
                     "size": disk_size,
+                    **_mtime_field(file_mtime),
                     "error": str(exc),
                     **_compression_identity_fields(artifact),
                 }
@@ -3555,6 +3609,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                 "views": _views_for_kind("binary"),
                 "path": subpath,
                 "size": disk_size,
+                **_mtime_field(file_mtime),
                 **_compression_identity_fields(artifact),
             }
         )
@@ -3631,6 +3686,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                     "views": views,
                     "path": subpath,
                     "size": disk_size,
+                    **_mtime_field(file_mtime),
                     "mtime_hash": mtime_hash,
                     **compression_fields,
                     **parsed,
@@ -3656,6 +3712,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                 "views": _views_for_kind("image"),
                 "path": subpath,
                 "size": disk_size,
+                **_mtime_field(file_mtime),
                 "mtime_hash": mtime_hash,
                 **compression_fields,
             },
@@ -3691,6 +3748,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                         "views": _views_for_kind("binary"),
                         "path": subpath,
                         "size": disk_size,
+                        **_mtime_field(file_mtime),
                         **_compression_identity_fields(artifact),
                     }
                 )
@@ -3701,6 +3759,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                     "views": [],
                     "path": subpath,
                     "size": disk_size,
+                    **_mtime_field(file_mtime),
                     "error": str(exc),
                     **compression_fields,
                 }
@@ -3711,6 +3770,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                     "type": "binary",
                     "path": subpath,
                     "size": disk_size,
+                    **_mtime_field(file_mtime),
                     **compression_fields,
                 }
             )
@@ -3721,6 +3781,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                     "type": "text_chunk",
                     "path": subpath,
                     "size": disk_size,
+                    **_mtime_field(file_mtime),
                     "mtime_hash": mtime_hash,
                     "content": content,
                     "content_offset": text_offset,
@@ -3769,6 +3830,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             "path": subpath,
             "ext": ext,
             "size": disk_size,
+            **_mtime_field(file_mtime),
             "mtime_hash": mtime_hash,
             "content": content,
             "content_offset": 0,
@@ -3799,6 +3861,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             "views": _views_for_kind("binary"),
             "path": subpath,
             "size": disk_size,
+            **_mtime_field(file_mtime),
             "mtime_hash": mtime_hash,
             **compression_fields,
         },
