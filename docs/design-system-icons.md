@@ -130,6 +130,7 @@ with its chevron, and a repository and a mirror have no glyph.
 | `pull`, Lucide `git-pull-request` | View bundle | A link to a pull request whose state the page does not know | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; `0.85em` in a rendered document |
 | `issue`, Lucide `circle-dot` | View bundle | A link to a GitHub issue | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; `0.85em` in a rendered document |
 | `github`, Octicons `mark-github-16` | View bundle | GitHub: View on GitHub, and a link to any other GitHub page | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; `0.85em` in a rendered document |
+| `.view-header-toggle-mark`, Octicons `mark-github-16` | CSS mask | View on GitHub: the link segment of a view header’s GitHub toggle, the same drawing as `github` | `static/styles.css` | The link’s, `--text` | `--icon-glyph` |
 | `layers`, Lucide `layers` | Registry | A stack of pull requests: a stack’s row, the page’s stack button, and another stack a member is in | `static/icons.js` | `--muted` on a row, the button’s text ink on the stack button | `--icon-glyph`; the text’s `1em` in a member’s place |
 | `PERSON_GLYPH`, Lucide `circle-user-round` | View bundle | A person with no avatar, in an actor identity’s box | `static/plugin-sdk-views.js` | `--muted` | `--actor-avatar-size`, the avatar it stands in for |
 
@@ -202,6 +203,7 @@ caller never types an arrow or a modifier itself
 | --- | --- | --- | --- | --- | --- |
 | `metabrowser-icon` | App mark | The macOS app’s icon: the MB mark on its squircle | `apps/macos/AppIcon/metabrowser-icon.json` | Its own fills, citrine and amethyst | The `.icns` sizes `scripts/build-icon.sh` writes |
 | `metabrowser-icon-dev` | App mark | A development build’s icon, with a gold rim | `apps/macos/AppIcon/metabrowser-icon-dev.json` | Its own fills | The `.icns` sizes `scripts/build-icon.sh` writes |
+| `.view-header-toggle-metabrowser > .view-header-toggle-mark`, `AppIconMark` | CSS mask | The Metabrowser view the page is in: the pressed segment of a view header’s GitHub toggle, the app’s mark framed to its ink | `static/styles.css` | `--muted` | `--icon-glyph` tall, `--icon-box` wide |
 | `AppIconMark` | App mark | The mark alone, in the app’s title bar | `apps/macos/Sources/ShellCore/App/AppIconMarkGeometry.swift` | `AppIconMark.titleBarFills`, for the title bar’s appearance | The title bar’s height |
 | `metabrowser-icon.png` | App mark | The README’s icon, the release icon at one size | `images/metabrowser-icon.png` | Its own fills | Its pixels |
 
@@ -227,8 +229,9 @@ Each of these breaks a rule above, and is listed so that nobody copies it.
   the glyph; a stack menu’s is the text’s ink in an `--icon-glyph` column.
 - **A branch chip’s copy glyph is smaller than `--icon-glyph`**, by its own rule, which
   the size rule does not list as an exception.
-- **The browser shows no icon of the app’s own.** The page names no favicon, so the
-  browser asks for `/favicon.ico` and draws its default.
+- **The browser’s tab shows no icon of the app’s own.** The page names no favicon, so
+  the browser asks for `/favicon.ico` and draws its default, though a view header’s
+  GitHub toggle draws the app’s mark.
 
 ## The Check
 
