@@ -301,9 +301,19 @@ What the panel decides is unit-tested in `OpenURLPanelTests`, and against the re
 
 ## Switching Folders
 
-With the folders from Files, Tabs, Recents, and Restore, and Settings > Open folders in
-set to Windows, open and close `c` and `d`, so they are recent, then open `a` and `b`,
-each in a window of its own:
+**Not yet run.** These steps were written with the folder-switching change and have not
+yet been run on a Mac.
+
+```shell
+APP="$PWD/apps/macos/build/dev/Metabrowser.app"
+mkdir -p /tmp/mb-check/{a,b,c,d}
+```
+
+Set Settings > Open folders in to Windows and close every window.
+Open `c` and close its window, then `d` and close its window, so both are recent and
+neither is open. Then open `a`, then `b`, each with `open -a "$APP" /tmp/mb-check/NAME`,
+so each has a window of its own.
+Each step starts where the one before it ends.
 
 1. **The title.** Each title reads its folder with a small chevron after it, dim at rest
    and darker under the pointer, where a rounded fill appears behind the title and
@@ -312,35 +322,121 @@ each in a window of its own:
 2. **Click and drag.** A click on `a`’s title opens the chooser under it; a drag from
    the title moves the window and opens nothing; Command-click and right-click open the
    path menu; a double-click on the title bar outside the title still zooms.
+   Pressing and releasing just above or just below the title’s hover surface opens no
+   chooser, and a double-click there does the title bar’s action.
+   Dragging the title of a window that is not key, and of a Metabrowser window behind
+   another app’s window, moves the window; a click there instead brings the window
+   forward and opens the chooser.
 3. **The chooser.** In `a`’s window it lists Open (`a` checked, then `b` subtitled “In
-   another window”), Recent (`d` and `c`, subtitled with their paths), Open Folder…,
-   Open URL…, Switch Folder… (Shift-Command-O), and Close Background Folders, disabled.
-   Each root shows the page’s folder glyph, which File > Open Recent and the Dock menu
-   show too. Holding Option turns each row into “Open … in New Window”.
-4. **A folder another window shows.** Choosing `b` brings `b`’s window forward and
-   changes nothing in `a`’s.
+   another window”), Recent (starting with `d`, then `c`, subtitled with their paths),
+   Open Folder…, Open URL…, Switch Folder… (Shift-Command-O), and Close Background
+   Folders, disabled. Each folder shows the page’s folder glyph, and a GitHub repository
+   among the recent ones the cloud mark; File > Open Recent and the Dock icon’s menu
+   show the same marks on their rows.
+   Holding Option turns each row into “Open … in New Window”.
+   Escape closes it.
+4. **A folder another window shows.** Choosing `b` in `a`’s chooser brings `b`’s window
+   forward and changes nothing in `a`’s.
 5. **A recent folder, in place.** In `a`’s window choose `c`: the same window, at the
    same frame and in the same Space, shows `c`, its server starts, and the log says `a`
    stays open in the background.
 6. **Back, instantly.** Choose `a` from the chooser: its page shows at once, where you
    left it, with no reload and no new server (`pgrep -f -- "--no-open"` counts three).
-7. **Option.** Option-choosing the background folder moves its page into a new window;
-   Option-choosing the window’s own folder opens a second window on it.
-8. **Close Background Folders.** With a folder in the background, it is enabled, and
-   choosing it stops that folder’s server and removes it from Open.
-9. **Close Folder.** File > Close Folder on a window whose folder is the only one open
-   closes the window; with a folder in the background, the window shows it instead.
-10. **Switch Folder….** Shift-Command-O opens the panel over the front window with the
-    folder shown before this one selected; Return shows it, and Shift-Command-O then
-    Return switches back.
-    Typing filters by name or path, Up and Down move the selection, Option-Return opens
-    a new window, Escape or a click elsewhere closes the panel, and Command-Delete on an
-    open folder’s row closes that folder and keeps the panel open.
-11. **VoiceOver.** With VoiceOver on, the title reads as a pop-up button with the
-    folder’s name; VO-Space opens the chooser, and the Actions rotor offers Show Path,
-    which opens the path menu.
-12. **Restore.** Quit with a folder in the background and reopen: it is back in the
-    chooser’s Open section, and its server starts only when a window shows it.
+   `c` is now in the background.
+7. **Option.** Option-choosing `c`, in the background, moves its page into a new window.
+   In `a`’s window, Option-choosing `a` opens a second window on it; Command-W closes
+   that second window, and `a` stays open in its first.
+8. **Close Background Folders.** In `c`’s window choose `d`, so `c` is in the
+   background. The chooser’s Close Background Folders is now enabled, and choosing it
+   stops `c`’s server (`pgrep -fl 'metab /private/tmp/mb-check/c'` lists nothing) and
+   removes `c` from Open.
+9. **Close Folder.** In `d`’s window, with no folder in the background, File > Close
+   Folder closes the window and stops `d`’s server.
+   In `b`’s window choose `c`, so `b` is in the background: File > Close Folder there
+   shows `b` in that window again and stops `c`’s server.
+10. **Close Folder across windows and tabs.** Set Settings > Open folders in to Tabs,
+    Option-choose `a` in `b`’s window, which adds a tab of `a` to it, and select `b`’s
+    tab again, so `a`’s tab is hidden; set the setting back to Windows, and
+    Option-choose `a` in `a`’s window for a second window on it.
+    With no folder in the background, File > Close Folder in `a`’s first window closes
+    both of `a`’s windows and its hidden tab, leaves `b`’s window with only `b`’s tab,
+    and stops `a`’s server.
+    Open `a` again and give it a second window and a hidden tab the same way, then open
+    `c` and choose `d` in its window, so `c` is in the background.
+    File > Close Folder in `a`’s first window now shows `c` in one of the windows that
+    showed `a`, closes the others and the hidden tab, and stops `a`’s server; no window
+    shows `a`. Then close every window but `b`’s, and open `a` again.
+11. **Switch Folder…, there and back.** Click `a`’s window and choose `c` from its
+    chooser, so `a` is in the background.
+    Shift-Command-O opens the panel over the window, centered a little below its title,
+    with an empty field that has the focus.
+    It lists `a` first and selected, then `b` subtitled “In another window”, then the
+    recent folders, and last `c`, checked.
+    Each row shows the page’s folder glyph, the selected row is drawn in the accent
+    color, and the check mark sits at the row’s trailing edge.
+    Return shows `a` in the window at once, as in step 6; Shift-Command-O, then Return,
+    shows `c` again.
+12. **The panel’s keys.** In `c`’s window press Shift-Command-O, then:
+    - Down twice, then Up, selects `b`, the first recent folder, then `b` again; Up on
+      the first row and Down on the last stay put.
+    - Typing `check/d` lists only `d`, selected.
+      Command-Delete clears the field, closes nothing, and lists every row again with
+      the first selected.
+    - Type `check/d` again and press Tab, then Shift-Tab: the field keeps the focus, and
+      Delete still edits it and refilters.
+      Command-Delete clears it.
+    - Command-click the selected row: it stays selected.
+      Click `b`’s row once, then press Return: the panel closes and `b`’s window comes
+      forward.
+    - Click `c`’s window, press Shift-Command-O, then Escape: the panel closes.
+      Shift-Command-O, then Control-O: no window opens; Escape closes the panel.
+      Shift-Command-O, then a click in `b`’s window: the panel closes.
+13. **A new window from the panel.** In `c`’s window press Shift-Command-O, and
+    Option-Return with `a` selected: `a`, which was in the background, moves its page
+    into a new window, as in step 7.
+14. **Closing from the panel.** In `b`’s window press Shift-Command-O. With the field
+    empty and no folder in the background, Command-Delete on the selected first row,
+    `a`, closes `a`’s window and stops its server, and the panel stays open, no longer
+    listing `a` as open.
+    Click `b`’s own row, last and checked, and press Command-Delete: `b`’s window
+    closes, and the panel with it.
+    In `c`’s window choose `d`, so `c` is in the background, and press Shift-Command-O;
+    click `d`’s own row, last and checked, and press Command-Delete: the window shows
+    `c`, `d`’s server stops, and the panel stays, listing `c` checked.
+15. **Folders closed under the panel.** In `c`’s window choose `d`, so `c` is in the
+    background, and press Shift-Command-O. With the panel open, choose File > Close
+    Folder in the menu bar: the window shows `c`, and the panel stays, listing `c`
+    checked and `d` no longer open.
+    File > Close Folder again closes the window, and the panel with it.
+16. **Sheets, full screen, and the screen’s edges.** Open `a`. With File > Print…’s
+    sheet open over its page, View > Switch Folder… and File > Close Folder are
+    disabled, and Shift-Command-O beeps and opens no panel; if a click on the title
+    still opens the chooser, choosing another folder in it beeps and changes nothing.
+    Cancel the sheet, Option-choose `a` for a second window on it, and open the print
+    sheet in that window: File > Close Folder in `a`’s first window beeps and changes
+    nothing. Cancel the sheet and close the second window.
+    With the window in full screen (View > Enter Full Screen), Shift-Command-O opens the
+    panel over it, in its Space.
+    Leave full screen, make the window about 300 points tall, and drag it to the bottom
+    of the screen and partly past its right edge: Shift-Command-O opens the panel wholly
+    on the screen.
+17. **VoiceOver.** With VoiceOver on, the title reads as a pop-up button with the
+    folder’s name; VO-Space and VO-Shift-M on it each open the chooser, and VoiceOver
+    lands in it; the Actions rotor offers Show Path, which opens the path menu.
+    In the Switch Folder panel, VoiceOver reads the selected row as the panel opens and
+    each time Up, Down, or typing moves the selection: its name, its location or “In
+    another window”, and “shown in this window” for this window’s folder.
+18. **Restore.** In `a`’s window choose `b`, so `a` is in the background, then quit and
+    reopen: `a` is back in the chooser’s Open section, and its server starts only when a
+    window shows it (`pgrep -fl 'metab /private/tmp/mb-check/a'` lists nothing until
+    then).
+19. **No window.** In the window choose `c`, so `a` and `b` are both in the background,
+    and close the window, which closes `c`: no window is left.
+    A click on the Dock icon brings `b`, the folder shown last, forward in a window.
+    Close that window, which closes `b`, then quit and reopen: the saved session held
+    only `a`, in the background, and the relaunch brings it forward in a window.
+20. **A repository’s title.** Open a GitHub repository, as in
+    [GitHub Links](#github-links): a Control-click on its window’s title opens nothing.
 
 ## Print and Drops
 

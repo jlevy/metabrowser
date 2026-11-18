@@ -316,9 +316,12 @@ document (`arch-macos-app.md`), and `CHANGELOG.md` for what it changes.
   surface, `FolderChooser`, the menu, Option alternates, and VoiceOver.
 - [x] **The switcher panel** (layer 4, `mb-boub`). View > Switch Folder…, its search,
   its order, and closing a folder from it.
-- [x] **The parity row and the hand checks** (layer 4, `mb-6ccy`). `app.folder-chooser`,
+- [ ] **The parity row and the hand checks** (layer 4, `mb-6ccy`). `app.folder-chooser`,
   and the chooser, hover, and switching steps in
-  `docs/project/qa/qa-macos-app-hand-checks.md`.
+  `docs/project/qa/qa-macos-app-hand-checks.md`. Both are written (2026-11-18); the hand
+  checks have not been run on a Mac, and this stays open until they have.
+  They cover by hand what the Testing Strategy’s app tests, live tests, and screenshot
+  set would, none of which exists yet: `mb-89bu` tracks them.
 
 ## Testing Strategy
 
