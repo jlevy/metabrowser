@@ -28,7 +28,7 @@ from typing import Any
 import pytest
 from httpx2 import ASGITransport, AsyncClient
 
-from metabrowser import jsonl_view, kpress_adapter
+from metabrowser import frontmatter_yaml, jsonl_view, kpress_adapter
 from metabrowser.capabilities import Capabilities, set_capabilities
 from metabrowser.diff.format import validate_document
 from metabrowser.git.content_routes import split_git_container_wire
@@ -50,6 +50,7 @@ from metabrowser.source import MAX_CONTAINER_INNER_DEPTH, attach_subject, reset_
 from metabrowser.wire_models import validate_rollup_node
 from tests.git_pin_harness import fast_import_store
 from tests.required_tools import needs_git
+from tests.test_frontmatter_bounds import NON_JSON_SAFE, alias_bomb
 
 pytestmark = needs_git
 
@@ -588,6 +589,78 @@ def test_git_file_and_kpress_surface_markdown_frontmatter(
             assert broken_render.status_code == 200
             assert seen["frontmatter"] is None
             assert seen["frontmatter_error"]
+
+    asyncio.run(_run())
+
+
+def test_git_pin_answers_a_frontmatter_alias_bomb_as_text_parsed_off_the_loop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pinned page shares the bounded loader (``tests/test_frontmatter_bounds.py``).
+
+    Twelve alias levels are 9**12 values written out. The file, its KPress render, and
+    a request beside them all answer; the parse runs on a worker thread, and the
+    tags JSON has no type for arrive as JSON-safe values.
+    """
+
+    work = tmp_path / "work"
+    store = tmp_path / "store.git"
+    work.mkdir()
+    _git(work, "init", "-q", "-b", "main")
+    (work / "bomb.md").write_text(f"---\n{alias_bomb(12)}---\n\n# Body\n", encoding="utf-8")
+    (work / "odd.md").write_text(f"---\n{NON_JSON_SAFE}---\nbody\n", encoding="utf-8")
+    (work / "plain.md").write_text("---\ntitle: Plain\n---\nbody\n", encoding="utf-8")
+    _git(work, "add", "-A")
+    _git(work, "commit", "-qm", "frontmatter bounds")
+    commit = _git(work, "rev-parse", "HEAD").decode().strip()
+    _git(tmp_path, "clone", "--bare", "--template=", str(work), str(store), env_root=tmp_path)
+
+    parse_threads: list[int] = []
+    real_parse = frontmatter_yaml.from_yaml_string
+
+    def recording_parse(text: str) -> object:
+        parse_threads.append(threading.get_ident())
+        return real_parse(text)
+
+    monkeypatch.setattr(frontmatter_yaml, "from_yaml_string", recording_parse)
+    seen: dict[str, Any] = {}
+    original = kpress_adapter.render_kpress_view
+
+    def _capture(**kwargs: Any) -> Any:
+        seen.update(kwargs)
+        return original(**kwargs)
+
+    monkeypatch.setattr(kpress_adapter, "render_kpress_view", _capture)
+
+    async def _run() -> None:
+        loop_thread = threading.get_ident()
+        async with _pinned_client(store, commit) as (client, _subject):
+            bomb, plain = await asyncio.gather(
+                client.get("/api/file", params={"path": _wire(b"bomb.md")}),
+                client.get("/api/file", params={"path": _wire(b"plain.md")}),
+            )
+            assert bomb.status_code == 200
+            body = bomb.json()
+            assert (body["type"], body["kind"]) == ("text", "markdown")
+            assert body["content"].startswith("---\na: &a [lol")
+            assert "frontmatter" not in body
+            assert "without its YAML aliases" in body["frontmatter_error"]
+            assert plain.json()["frontmatter"] == {"title": "Plain"}
+
+            rendered = await client.get(
+                "/api/kpress/render", params={"path": _wire(b"bomb.md"), "view": "rendered"}
+            )
+            assert rendered.status_code == 200
+            assert "lol" not in rendered.json()["html"]
+            assert seen["frontmatter"] is None
+            assert "without its YAML aliases" in seen["frontmatter_error"]
+
+            odd = (await client.get("/api/file", params={"path": _wire(b"odd.md")})).json()
+            assert "frontmatter_error" not in odd
+            assert odd["frontmatter"]["binary"] == "aGVsbG8="
+            assert odd["frontmatter"]["nan"] == ".nan"
+            assert odd["frontmatter"]["1"] == "int key"
+        assert parse_threads and loop_thread not in parse_threads
 
     asyncio.run(_run())
 

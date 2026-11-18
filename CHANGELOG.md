@@ -4,6 +4,24 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- Security: a Markdown file’s front matter can no longer stall the server.
+  YAML aliases let a few hundred bytes of front matter stand for millions of values: 310
+  bytes of seven alias levels made `/api/file` spend over a second building 39 MB of
+  JSON, answering nothing else meanwhile, and each further level multiplied both by
+  nine. A served GitHub mirror or a folder served with `--untrusted` could carry such a
+  file, and so could a downloaded repository served as a trusted folder.
+  Front matter is now refused when, written out without its aliases, it is larger than
+  `FRONTMATTER_MAX_EXPANDED_SIZE` characters (`frontmatter_yaml.py`), or when an alias
+  sits inside the value it names: the file reads as text, and its header badge and
+  rendered document say why.
+  The parse runs off the server’s event loop on every path, and an uncompressed file’s
+  front matter is read only from its first `FRONTMATTER_MAX_BYTES`, as a compressed
+  file’s and a pinned revision’s already were.
+  Tags JSON has no type for (`!!binary`, `!!set`, `.nan`, a sequence or date as a key,
+  an integer past Python’s digit limit) now answer as JSON values, and nesting too deep
+  to parse answers with its reason; before, some of these showed a served folder’s file
+  as an internal error, and a pinned revision answered them with a server error.
+
 - The Pulls tab’s change lines, each row’s file and line totals, arrive in seconds
   rather than tens of seconds on a cold cache.
   The prefetch now lists the changed files of the open pull requests in view from the

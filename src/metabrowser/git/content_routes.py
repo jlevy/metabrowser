@@ -307,21 +307,16 @@ def _git_blob_content_predicates(
     return json_top, yaml_top, frontmatter, frontmatter_error
 
 
-def _json_safe_git_frontmatter(value: dict[str, Any]) -> dict[str, Any]:
-    from metabrowser.server import _json_safe_frontmatter
-
-    safe = _json_safe_frontmatter(value)
-    return safe if isinstance(safe, dict) else {}
-
-
 def _git_frontmatter_envelope(
     *,
     mapping: dict[str, Any] | None,
     error: str | None,
 ) -> dict[str, Any]:
+    # parse_frontmatter_bytes answers the bounded, JSON-safe copy
+    # (metabrowser.frontmatter_yaml), so the mapping goes on the wire as it is.
     fields: dict[str, Any] = {}
     if mapping is not None:
-        fields["frontmatter"] = _json_safe_git_frontmatter(mapping)
+        fields["frontmatter"] = mapping
     if error is not None:
         fields["frontmatter_error"] = error
     return fields
@@ -1433,7 +1428,9 @@ async def _blob_file_payload(entry: GitTreeEntry, body: bytes, request: Request)
             }
         )
         return payload
-    json_top, yaml_top, frontmatter, frontmatter_error = _git_blob_content_predicates(ext, body)
+    json_top, yaml_top, frontmatter, frontmatter_error = await asyncio.to_thread(
+        _git_blob_content_predicates, ext, body
+    )
     kind = _plugin_kind_for_git_path(
         entry.path,
         json_top_level=json_top,
@@ -1510,8 +1507,8 @@ async def _windowed_blob_file_response(
             },
             status_code=416,
         )
-    json_top, yaml_top, frontmatter, frontmatter_error = _git_blob_content_predicates(
-        ext, head[:_PREDICATE_PREFIX_BYTES]
+    json_top, yaml_top, frontmatter, frontmatter_error = await asyncio.to_thread(
+        _git_blob_content_predicates, ext, head[:_PREDICATE_PREFIX_BYTES]
     )
     kind = _plugin_kind_for_git_path(
         entry.path,
@@ -1719,7 +1716,9 @@ async def git_revision_kpress_render(
     frontmatter_error = None
     if ext == ".md":
         parse_source = source_override.encode() if source_override is not None else body
-        _, _, frontmatter, frontmatter_error = _git_blob_content_predicates(ext, parse_source)
+        _, _, frontmatter, frontmatter_error = await asyncio.to_thread(
+            _git_blob_content_predicates, ext, parse_source
+        )
     envelope = _git_frontmatter_envelope(mapping=frontmatter, error=frontmatter_error)
     try:
         rendered = await asyncio.to_thread(

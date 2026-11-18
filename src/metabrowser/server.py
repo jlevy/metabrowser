@@ -3046,20 +3046,17 @@ async def api_recent(request: Request) -> JSONResponse:
     )
 
 
-def _json_safe_frontmatter(value: Any) -> Any:
-    """Coerce YAML-parsed scalars into JSON-serializable equivalents.
+def _markdown_frontmatter(ctx: FileContext, ext: str) -> tuple[dict[str, Any] | None, str | None]:
+    """A Markdown file's frontmatter and the reason it has none, for a worker thread.
 
-    YAML parses ``date: 2026-05-07`` as ``datetime.date``, which json.dumps
-    rejects — that path used to 500 the /api/file response. ISO-8601 is the
-    standard wire form for dates/times, so emit that instead.
+    ``FileContext.frontmatter`` is already the bounded, JSON-safe copy
+    (:mod:`metabrowser.frontmatter_yaml`); parsing it can still take most of a second
+    at the byte bound, so callers run this off the event loop.
     """
-    if isinstance(value, dict):
-        return {k: _json_safe_frontmatter(v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_json_safe_frontmatter(v) for v in value]
-    if isinstance(value, (_dt.date, _dt.time)):
-        return value.isoformat()
-    return value
+
+    if ext != ".md":
+        return None, None
+    return ctx.frontmatter, ctx.frontmatter_parse_error
 
 
 def _json_default_safe(obj: Any) -> Any:
@@ -3574,23 +3571,25 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
         # for specialized document detection.
         ctx = FileContext(target, ext)
 
-        def _classify_text_views() -> tuple[str, list[dict[str, Any]]]:
-            classified = _classify_with_plugins(target, ext, file_ctx=ctx)
-            return classified, _views_for_kind(classified, target=target)
-
-        with server_timing.phase("read"):
-            kind, views = await asyncio.to_thread(_classify_text_views)
-
         # For .md files, expose parsed frontmatter so plugin renderers can
         # use it directly via ctx.frontmatter without re-parsing client-side.
         # Malformed YAML fences must NOT silently fall through to markdown;
         # surface the parse error on the response so the operator sees it
         # instead of quietly substituting an empty frontmatter object.
-        frontmatter: dict[str, Any] | None = None
-        frontmatter_error: str | None = None
-        if ext == ".md":
-            frontmatter = _json_safe_frontmatter(ctx.frontmatter)
-            frontmatter_error = ctx.frontmatter_parse_error
+        def _classify_text_views() -> tuple[
+            str, list[dict[str, Any]], dict[str, Any] | None, str | None
+        ]:
+            classified = _classify_with_plugins(target, ext, file_ctx=ctx)
+            return (
+                classified,
+                _views_for_kind(classified, target=target),
+                *_markdown_frontmatter(ctx, ext),
+            )
+
+        with server_timing.phase("read"):
+            kind, views, frontmatter, frontmatter_error = await asyncio.to_thread(
+                _classify_text_views
+            )
         result: dict[str, Any] = {
             "type": "text",
             "kind": kind,
@@ -3861,13 +3860,12 @@ async def api_kpress_render(request: Request) -> Response:
         return JSONResponse({"error": str(exc)}, status_code=404)
 
     ctx = FileContext(target, ext)
+
+    def _classify_markdown() -> tuple[str, dict[str, Any] | None, str | None]:
+        return _classify_with_plugins(target, ext, file_ctx=ctx), *_markdown_frontmatter(ctx, ext)
+
     with server_timing.phase("read"):
-        kind = await asyncio.to_thread(_classify_with_plugins, target, ext, file_ctx=ctx)
-    frontmatter: dict[str, Any] | None = None
-    frontmatter_error: str | None = None
-    if ext == ".md":
-        frontmatter = _json_safe_frontmatter(ctx.frontmatter)
-        frontmatter_error = ctx.frontmatter_parse_error
+        kind, frontmatter, frontmatter_error = await asyncio.to_thread(_classify_markdown)
     mtime_hash = file_mtime_hash(target)
 
     try:

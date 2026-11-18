@@ -29,12 +29,17 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 import pathspec
 import yaml
 
 from metabrowser.file_kinds import FileContext
+from metabrowser.frontmatter_yaml import (
+    FRONTMATTER_MAX_BYTES,
+    FrontmatterError,
+    load_frontmatter_yaml,
+)
 from metabrowser.gz_io import ArtifactPath
 from metabrowser.paths_safe import _relativize
 from metabrowser.plugin_loader.manifest import KindMatch, KindRule
@@ -103,17 +108,19 @@ def yaml_mapping_from_bytes(
 
 
 def parse_frontmatter_bytes(
-    data: bytes, byte_limit: int = 256 * 1024
+    data: bytes, byte_limit: int = FRONTMATTER_MAX_BYTES
 ) -> tuple[dict[str, Any] | None, str | None]:
     """Parse YAML frontmatter from Markdown bytes.
 
     Returns ``(mapping, None)`` on success, ``(None, None)`` if the opening
     fence is absent, and ``(None, reason)`` when the fence is present but
-    unparsable. Classification still treats a parse failure as no mapping.
+    unparsable or refused by :func:`metabrowser.frontmatter_yaml.load_frontmatter_yaml`.
+    Classification still treats a parse failure as no mapping. *data* longer than
+    *byte_limit* is a prefix of something longer, so a fence it does not close is
+    reported as not closed within the limit.
     """
 
-    from frontmatter_format import FmFormatError, FmStyle, from_yaml_string
-    from ruamel.yaml.error import YAMLError
+    from frontmatter_format import FmStyle
 
     text = data[:byte_limit].decode("utf-8", errors="replace")
     lines = text.splitlines(keepends=True)
@@ -126,17 +133,24 @@ def parse_frontmatter_bytes(
             if not metadata_text:
                 return None, None
             try:
-                parsed = from_yaml_string(metadata_text)
-            except (FmFormatError, YAMLError, ValueError, TypeError) as exc:
+                parsed = load_frontmatter_yaml(metadata_text)
+            except FrontmatterError as exc:
                 return None, str(exc)
             if not isinstance(parsed, dict):
                 return None, None
-            return parsed, None
+            return cast("dict[str, Any]", parsed), None
         metadata_lines.append(line)
+    if len(data) > byte_limit:
+        return None, (
+            "Front matter not parsed: its closing delimiter is not within the first "
+            f"{byte_limit // 1024} KiB"
+        )
     return None, f"Delimiter `{FmStyle.yaml.end}` for end of frontmatter not found"
 
 
-def frontmatter_from_bytes(data: bytes, byte_limit: int = 256 * 1024) -> dict[str, Any] | None:
+def frontmatter_from_bytes(
+    data: bytes, byte_limit: int = FRONTMATTER_MAX_BYTES
+) -> dict[str, Any] | None:
     """Parse YAML frontmatter from Markdown bytes. None if absent or unparsable."""
 
     mapping, _error = parse_frontmatter_bytes(data, byte_limit)
