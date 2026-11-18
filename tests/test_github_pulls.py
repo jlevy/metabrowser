@@ -828,6 +828,10 @@ def test_the_markdown_route_drops_the_kpress_icon_sprite(
     # conversation must not carry one copy per text, so the route answers none.
     raw: list[str] = []
     render = kpress_adapter.render_kpress_view
+    # The route's stylesheet manifest is one render of an empty document per process,
+    # which whichever test reaches the route first pays. Pay it before the spy counts,
+    # so this test passes alone, or in a shard without the module's earlier tests.
+    kpress_adapter.document_stylesheets()
 
     def spy(**kwargs: Any) -> dict[str, Any]:
         rendered = render(**kwargs)
@@ -1994,11 +1998,15 @@ def test_gh_runs_in_a_group_the_stop_path_can_kill(
 ) -> None:
     """A gh that is still answering when the server stops is killed, and then forgotten."""
 
+    pid_file = tmp_path / "gh-pid"
     started = tmp_path / "gh-started"
     gh = tmp_path / "bin" / "gh"
     gh.parent.mkdir()
+    # Only shell builtins before the exec, so the group never holds a second process. An
+    # external `mv` here was still running when the stop came, and killed as an orphan it
+    # stayed in the group until init reaped it, so the group outlived the stop on CI.
     gh.write_text(
-        f'#!/bin/sh\necho $$ > "{started}.new"\nmv "{started}.new" "{started}"\nexec sleep 50\n',
+        f'#!/bin/sh\necho $$ > "{pid_file}"\n: > "{started}"\nexec sleep 50\n',
         encoding="utf-8",
     )
     gh.chmod(0o755)
@@ -2010,7 +2018,14 @@ def test_gh_runs_in_a_group_the_stop_path_can_kill(
         while not started.exists():
             assert time.monotonic() < deadline, "gh did not start"
             await asyncio.sleep(0.01)
-        pid = int(started.read_text(encoding="utf-8"))
+        pid = int(pid_file.read_text(encoding="utf-8"))
+        # gh can start before its spawn returns and registers the group, and a stop in
+        # that window is stop_process_groups' case, which kill_live_process_groups leaves
+        # alone: stopped then, gh ran on to its own deadline, as it did on 3.14t in CI run
+        # 44032890807. This test is of a gh still answering, so it waits for the group.
+        while pid not in git_process._LIVE_PROCESS_GROUPS:
+            assert time.monotonic() < deadline, "gh's group was never registered"
+            await asyncio.sleep(0.01)
         try:
             # The leader of a group of its own, so the kill cannot reach this process.
             assert os.getpgid(pid) == pid != os.getpgid(0)

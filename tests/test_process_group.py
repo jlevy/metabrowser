@@ -49,6 +49,17 @@ import tests.process_group as pg
 from tests.process_group import owned_profile, run_in_own_group, stop_group
 from tests.required_tools import require_chrome, require_node
 
+# The serial tier (tests/suite_tiers.py): every stop and teardown here is timed against
+# the time its callers reserve, past it by SLACK_S at most, so beside other workers it
+# would time the machine. Its one Chrome test is in the Chrome tier, which is serial too.
+# Beside three busy-looping processes on a 4-processor machine its six timing tests
+# still passed, in 48 s against 49 s alone (2026-11-17), so the slack holds against
+# processor load alone; workers start Node, Git, and ps processes too, which no run has
+# measured beside it.
+pytestmark = pytest.mark.serial(
+    reason="times each stop and teardown to within SLACK_S of its reserved time"
+)
+
 ROOT = Path(__file__).resolve().parents[1]
 PROBE = ROOT / "tests" / "dom" / "chrome-group-probe.mjs"
 # The stand-in for a browser process: it runs until it is killed. Started with
