@@ -28,9 +28,9 @@ def _rule(css: str, selector: str) -> str:
 def test_disclosure_chevron_is_one_glyph_everywhere() -> None:
     icons = (STATIC / "icons.js").read_text(encoding="utf-8")
     styles = (STATIC / "styles.css").read_text(encoding="utf-8")
-    # The registry's leading chevrons (tree rows, tally tree, diff bars);
+    # The registry's one leading chevron (tree rows, tally tree, diff bars, log events);
     # icons.js quotes attributes with double quotes.
-    assert icons.count(f'd="{CHEVRON_PATH}"') >= 2, "registry chevron glyphs changed shape"
+    assert icons.count(f'd="{CHEVRON_PATH}"') == 1, "the registry's chevron forked or changed"
     # The section-disclosure mask draws the same path (single-quoted
     # inside the data URI).
     assert f"d='{CHEVRON_PATH}'" in styles, "section-disclosure mask forked the glyph"
@@ -1894,13 +1894,13 @@ def test_section_headings_and_fold_expanders_are_primitives() -> None:
 _TOGGLE_MARKER = re.compile(
     r"aria-expanded|ariaExpanded|<summary|createElement\(\"summary\"\)|h\(\s*\"summary\""
     r"|ICONS\.toggle|icons\.toggle|MetabrowserIcons\?\.toggle|shellIcon\(\"toggle\"\)"
-    r"|registryIcon\(\"toggle\"\)|icons\.chevron|host\.chevron\(\)|srow-chevron\""
+    r"|registryIcon\(\"toggle\"\)|host\.chevron\(\)|srow-chevron\""
 )
 # A chevron or summary going into markup, each of which `_TOGGLE_GLYPHS` lists.
 _TOGGLE_GLYPH = re.compile(
     r"\$\{ICONS\.toggle\}|ICONS\.toggle \+|icon: ICONS\.toggle|ICONS\.toggle,|"
     r"\$\{menuChevron\}|MetabrowserIcons\?\.toggle \?\?|shellIcon\(\"toggle\"\)|"
-    r"mb\.icons\.chevron|host\.chevron\(\)|\[chevron\(\)\]|^\s*chevron\(\),|srow-chevron\""
+    r"mb\.icons\.toggle \+|host\.chevron\(\)|\[chevron\(\)\]|^\s*chevron\(\),|srow-chevron\""
     r"|<summary|createElement\(\"summary\"\)|h\(\s*\"summary\"",
     re.MULTILINE,
 )
@@ -1979,7 +1979,7 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
             '"chip chip-menu-trigger source-ref-selector-toggle disclosure-toggle"',
         ),
     ),
-    "agent_log/index.js": (("mb.icons.chevron", 'class="log-event-header disclosure-toggle"'),),
+    "agent_log/index.js": (("mb.icons.toggle +", 'class="log-event-header disclosure-toggle"'),),
     "structured/tree.js": (('srow-chevron"', '" srow-container disclosure-toggle"'),),
     "markdown/rendered.js": (
         ("<summary", 'class="section-disclosure-trigger disclosure-toggle">Diagnostics'),

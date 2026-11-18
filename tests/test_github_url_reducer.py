@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import pytest
 
+from metabrowser.builtin_plugins.github.pull_file_anchor import path_digest
 from metabrowser.builtin_plugins.github.urls import GithubUrlReducer, parse_repository_url
 from metabrowser.cache.urls import (
+    FileAnchor,
     GitSource,
     LineSelection,
     RejectedRoot,
@@ -16,6 +18,9 @@ from metabrowser.invisible_chars import DEFAULT_IGNORABLE
 
 CANONICAL = "https://github.com/octo/demo"
 _REDUCERS = (GithubUrlReducer(),)
+# GitHub's anchor for README.md in a pull request's Changes tab: the SHA-256 of the path,
+# in hexadecimal, as `printf README.md | shasum -a 256` prints it.
+README_DIGEST = "b335630551682c19a781afebcf4d07bf978fb1f8ac04c6bf87428ed5106870f5"
 
 
 _REPOSITORY_SPELLINGS = [
@@ -122,6 +127,75 @@ _WEB_URL_SHAPES = [
     ),
     (
         "https://github.com/octo/demo/pull/12/checks?check_run_id=987",
+        RepositorySelection(kind="pull_request", pull_request=12, pull_tab="checks"),
+    ),
+    (
+        f"https://github.com/octo/demo/pull/12/files#diff-{README_DIGEST}",
+        RepositorySelection(
+            kind="pull_request",
+            pull_request=12,
+            pull_tab="files",
+            pull_file=FileAnchor(README_DIGEST),
+        ),
+    ),
+    (
+        f"https://github.com/octo/demo/pull/12/files?w=1#diff-{README_DIGEST.upper()}R12",
+        RepositorySelection(
+            kind="pull_request",
+            pull_request=12,
+            pull_tab="files",
+            pull_file=FileAnchor(README_DIGEST, "R12"),
+        ),
+    ),
+    (
+        f"https://github.com/octo/demo/pull/12/files#diff-{README_DIGEST}L3-R5",
+        RepositorySelection(
+            kind="pull_request",
+            pull_request=12,
+            pull_tab="files",
+            pull_file=FileAnchor(README_DIGEST, "L3-R5"),
+        ),
+    ),
+    # Any other fragment on the Changes tab is dropped, as on a blob: a hash that is not
+    # 64 digits (GitHub's older anchors were 32), a line with no hash, a line 0.
+    (
+        f"https://github.com/octo/demo/pull/12/files#diff-{README_DIGEST[:32]}",
+        RepositorySelection(kind="pull_request", pull_request=12, pull_tab="files"),
+    ),
+    (
+        "https://github.com/octo/demo/pull/12/files#diff-R12",
+        RepositorySelection(kind="pull_request", pull_request=12, pull_tab="files"),
+    ),
+    (
+        f"https://github.com/octo/demo/pull/12/files#diff-{README_DIGEST}R0",
+        RepositorySelection(kind="pull_request", pull_request=12, pull_tab="files"),
+    ),
+    # GitHub's Changes page is `/changes` since 2026-01-22, and `/files` redirects there:
+    # both are the Changes tab, with or without a file anchor.
+    (
+        "https://github.com/octo/demo/pull/12/changes",
+        RepositorySelection(kind="pull_request", pull_request=12, pull_tab="files"),
+    ),
+    (
+        f"https://github.com/octo/demo/pull/12/changes#diff-{README_DIGEST}R12",
+        RepositorySelection(
+            kind="pull_request",
+            pull_request=12,
+            pull_tab="files",
+            pull_file=FileAnchor(README_DIGEST, "R12"),
+        ),
+    ),
+    (
+        f"https://github.com/octo/demo/pull/12/changes#diff-{README_DIGEST[:32]}",
+        RepositorySelection(kind="pull_request", pull_request=12, pull_tab="files"),
+    ),
+    # A file anchor belongs to the Changes tab; on any other tab it is dropped.
+    (
+        f"https://github.com/octo/demo/pull/12#diff-{README_DIGEST}",
+        RepositorySelection(kind="pull_request", pull_request=12),
+    ),
+    (
+        f"https://github.com/octo/demo/pull/12/checks#diff-{README_DIGEST}",
         RepositorySelection(kind="pull_request", pull_request=12, pull_tab="checks"),
     ),
     (
@@ -501,6 +575,15 @@ def test_the_fragment_spelling_round_trips() -> None:
     assert LineSelection(start=10, end=10).fragment() == "L10"
     assert LineSelection(start=10, end=20).fragment() == "L10-L20"
     assert LineSelection(10, 20, start_column=5, end_column=8).fragment() == "L10C5-L20C8"
+
+
+def test_a_file_anchor_is_the_sha_256_of_the_path() -> None:
+    assert path_digest("README.md") == README_DIGEST
+    # Of the path's UTF-8 bytes, as `printf 'docs/\xe9\x9b\xaa notes.md' | shasum -a 256`
+    # prints it.
+    assert path_digest("docs/雪 notes.md") == (
+        "e159c4df2403c1a19ae4e968e84ddb30591b89e008fa54272f1a4ca5fcd265c0"
+    )
 
 
 def test_parse_repository_url_reads_only_canonical_urls() -> None:

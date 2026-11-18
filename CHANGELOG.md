@@ -4,33 +4,55 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
-- A pull request’s Changes now opens a changed YAML or JSON file in **Rendered**, as it
-  opens a Markdown file: the tree the file view draws, with added and removed keys and
-  items in the change gutter, and a changed value as its old row removed and its new row
-  added, wrapped so a long string shows where it changed.
-  Mappings and lists that hold a change are open, as far as a first screen of rows
-  allows, and unchanged ones closed; a long list draws a page at a time behind a “… N
-  more” row that also counts the changes it holds, so a large changed file opens and
-  responds at once. Aliases and merge keys read as the values they name.
-  **Source** shows the exact diff, and the only view of a change to a comment, quoting,
-  or key order, or of a value whose type alone changed, such as a date that became a
-  string; the tree says so above it.
-  A file with a key twice in one mapping opens in Source.
-  A Markdown file’s front matter now shows in **Rendered** as the Document view’s
-  Frontmatter disclosure, open with each changed key marked when it changed; a
-  front-matter change no longer shows only in Source, and front matter that does not
-  load leaves its lines to Source while the body still renders.
-  `GET /api/plugin/github/pull-rendered-diff` answers a YAML or JSON file as
-  `structured-diff-v1`, a refusal of such a file included, and a Markdown answer carries
-  `frontmatter`. See
-  [Reviewing Pull Requests](docs/reviewing-pull-requests.md#rendered-yaml-and-json-in-changes).
+New entries live in [`changelog.d/`](changelog.d/README.md) until a release adds them.
 
-- For plugin authors: `mb.builtins.structured.materializeRows` and `renderRowHtml` key
-  rows by position (`$/3/0`) instead of key text, and `materializeRows` takes options.
-  They, a tree row’s fields and the rows’ `data-path` values are internal to
-  Metabrowser’s views and may change; `renderInlineTree` remains the stable embedding
-  contract. `mb.builtins.structured.expansion` publishes the file view’s first-draw
-  expansion options.
+- An agent log event’s chevron and a code block’s copy button draw the app’s one chevron
+  and copy icon. The chevron was larger and thinner than every other one, and the copy
+  button an older shape than the app’s other copy buttons.
+  For plugin authors, `mb.icons` no longer has `chevron`, `step`, `process`, `dep`, or
+  `alert`, so each now returns `""`; a disclosure chevron is `mb.icons.toggle`. The type
+  registry schema’s `icon` (`file-type-registry.schema.json`) now permits only the
+  shapes the recommended registry gives a category or a format, so a registry that gives
+  one any of those five, or `folder`, `fileSymlink`, `gear`, `sun`, `moon`, `print`,
+  `serif`, `sans`, or `toggle`, fails validation.
+  `PLUGIN_SDK_VERSION` remains `0.7`. See the
+  [Icon Catalog](docs/design-system-icons.md).
+
+- Choosing a branch or tag in the branch and tag chooser no longer flashes **Reload** on
+  the page you are leaving.
+  That page went on asking the server for data during the switch, and a refresh of its
+  Files totals that fell due then was refused, as a request from a page left behind is,
+  which the page took for a switch made in another tab.
+  It now holds its requests while the switch is under way.
+
+- The macOS app shows a first clone’s progress in the window of the repository being
+  opened: how far the clone has got, how fast, and for how long, as `metab` reports it
+  in Terminal, then that it is reading the pull request the link names.
+  A repository that could not be cloned because of GitHub says which problem it is: the
+  repository was not found or your account cannot read it, which is also how a
+  signed-out GitHub CLI shows until the app checks the sign-in itself; it was not found
+  and GitHub CLI was not found either; the connection failed; or GitHub is limiting
+  requests or answered with an error.
+  The window shows `metab`’s message and the `gh` commands that fix the problem, each
+  with Copy, a Copy Message button that copies all of it, and Retry.
+  The app tries a repository that was not found again when you switch back to it, so a
+  sign-in in Terminal clears the failure; other failures wait for Retry.
+  See [the app’s guide](docs/macos-app.md#opening-github-links).
+
+- A link to one file of a pull request’s **Changes** on GitHub, such as
+  `https://github.com/o/r/pull/7/changes#diff-<hash>R12` or its older `/files` spelling,
+  now opens that file, and a `/pull/7/changes` link, which `metab` refused, opens the
+  Changes tab as `/pull/7/files` does.
+  GitHub names the file in the link only as a hash of its path, so `metab` finds which
+  changed file it is in the list of changed files it has cached, or in the pull
+  request’s comparison in the repository it has cloned, without fetching, and the page
+  opens at `/pull/7/files/<path>`. `metab <URL>` says so with `file:` and, for a link to
+  a line, `diff_line:` lines, since the Changes tab opens at the file and not yet at the
+  line. Before, the anchor was ignored and the link opened the whole Changes tab, which
+  is still what it opens, with the reason, when the file is not one the pull request
+  changes, its path has no address on the Changes tab, or the cache cannot yet say.
+  `metab <URL> --present --dry-run` reports no page for such a link, since only the
+  cache can name the file, and hands the app the link with its anchor.
 
 - With the Files tab grouped by age, each section’s name is drawn in the age color its
   files’ ages show: Past hour in the yellow of a file changed minutes ago, then quieter
