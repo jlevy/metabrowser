@@ -137,6 +137,69 @@ struct LiveMetabTests {
         #expect(canBindLoopback(port: port))
         #expect(child.recentOutput().contains("Stopping Metabrowser: stdin closed."))
     }
+
+    /// The app reads `metab`'s own `--present --dry-run --format json` for each kind of
+    /// link and a refusal, as `PresentDryRun.answer` does (review A7 on #539), so the
+    /// fixtures in `PresentPlanTests` cannot drift from what `metab` prints. The dry run
+    /// reads no network, so this runs in CI.
+    @Test(arguments: [
+        ("https://github.com/jlevy/metabrowser", PresentPlan.Kind.repository, "https://github.com/jlevy/metabrowser"),
+        ("https://github.com/JLevy/Metabrowser.git", .repository, "https://github.com/jlevy/metabrowser"),
+        ("https://github.com/jlevy/metabrowser/pull/540/files", .pullRequest, "https://github.com/jlevy/metabrowser/pull/540/files"),
+        ("https://github.com/jlevy/metabrowser/tree/main/docs", .tree, "https://github.com/jlevy/metabrowser/tree/main/docs"),
+        // A ref with a `/`: the page is null, which the app does not need.
+        ("https://github.com/jlevy/metabrowser/blob/claude/app-open-urls/docs/macos-app.md", .file,
+         "https://github.com/jlevy/metabrowser/blob/claude/app-open-urls/docs/macos-app.md"),
+        ("https://github.com/jlevy/metabrowser/commit/dcf2bcfa8", .commit, "https://github.com/jlevy/metabrowser/commit/dcf2bcfa8"),
+        // The token is dropped: the server is started with the handoff.
+        ("https://raw.githubusercontent.com/jlevy/metabrowser/main/README.md?token=SECRET", .file,
+         "https://github.com/jlevy/metabrowser/blob/main/README.md"),
+    ])
+    func metabResolvesEveryKindOfLinkAsTheAppReadsIt(_ link: String, _ kind: PresentPlan.Kind, _ handoff: String) async throws {
+        let answer = try await dryRun(link)
+        #expect(answer == .plan(PresentPlan(
+            kind: kind, repository: URL(string: "https://github.com/jlevy/metabrowser")!, link: URL(string: handoff)!)))
+    }
+
+    @Test(arguments: [
+        ("https://github.com/jlevy/metabrowser/issues/1", "unsupported_github_url"),
+        ("https://github.com/jlevy/metabrowser/pulls", "unsupported_github_url"),
+    ])
+    func metabsRefusalIsReadWhole(_ link: String, _ code: String) async throws {
+        guard case .refused(let refusal) = try await dryRun(link) else {
+            Issue.record("expected a refusal for \(link)")
+            return
+        }
+        #expect(refusal.code == code)
+        #expect(!refusal.message.isEmpty)
+    }
+
+    /// What `metab` answers for a repository its cache has never held, through the route
+    /// the app asks before a link clones (`RepositoryCache`).
+    @Test func theCacheIsAskedThroughMetab() async throws {
+        let path = try #require(liveMetab)
+        let folder = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let setup = RuntimeSetup(
+            runtime: Runtime(executable: path, version: "live", source: .chosen, fingerprint: nil),
+            tools: RuntimeDiscovery.resolveTools(loginPath: nil, isExecutable: FileChecks.isExecutableFile))
+        let absent = URL(string: "https://github.com/metabrowser-live-test/no-such-repository")!
+        let answer = await RepositoryCache.lookUp(
+            absent, folder: folder.path(percentEncoded: false), with: setup, inherited: ProcessInfo.processInfo.environment)
+        #expect(answer == .notCached)
+    }
+
+    private func dryRun(_ link: String) async throws -> PresentAnswer {
+        let path = try #require(liveMetab)
+        let setup = RuntimeSetup(
+            runtime: Runtime(executable: path, version: "live", source: .chosen, fingerprint: nil),
+            tools: RuntimeDiscovery.resolveTools(loginPath: nil, isExecutable: FileChecks.isExecutableFile))
+        let url = try #require(URL(string: link))
+        #expect(GitHubLink.accepts(url))
+        let spec = PresentDryRun.spec(
+            for: url, with: setup, inherited: ProcessInfo.processInfo.environment, home: NSHomeDirectory())
+        return PresentDryRun.answer(await CommandRunner.run(spec, timeout: PresentDryRun.timeout))
+    }
 }
 
 /// Whether `url` answers with a 2xx within `limit`, polled as the supervisor polls it.

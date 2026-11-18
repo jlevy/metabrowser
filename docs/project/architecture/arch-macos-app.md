@@ -9,8 +9,8 @@ in the [native macOS app plan](../specs/active/plan-2026-11-10-native-macos-app.
 The WebKit measurement gate failed on 2026-11-11 (`mb-gvtw`), and its rerun is open
 (`mb-76nv`).
 
-The app finds a command-line install of `metab`, starts one server per folder the user
-opens, and shows each folder in a native window or tab.
+The app finds a command-line install of `metab`, starts one server per folder or GitHub
+repository the user opens, and shows each in a native window or tab.
 Everything a window shows comes from that server: the page talks to it over HTTP and
 server-sent events and never calls into the app, so any shell can replace another.
 The app adds what a browser tab cannot: a Dock icon, folders opened with Open With or
@@ -49,20 +49,28 @@ before one exists, windows, menus, the Dock, and file events.
    a root has one server however many windows and tabs show it.
    [Open Modes](arch-open-modes.md#what-keys-on-the-root) designs that key as the open
    root `metab` resolves, which for a path inside a repository is the repository’s root.
+   A GitHub link reaches one per repository, keyed by its canonical URL
+   ([GitHub Links](#github-links)); `SessionRoot` names both.
 2. **Spawn.** `ServerSupervisor` runs `CLIServeLaunch`’s command,
-   `metab ROOT --no-open --exit-on-eof --host 127.0.0.1 --port N`, from
-   `CLIServeLaunch.defaultBasePort`. `SpawnedProcess` starts it with `posix_spawn` in
-   its own process group, with only the descriptors it names, default signal handling,
-   and the folder as its working directory, so `.env` lookup matches `metab .` in
-   Terminal. Its stderr is the server log itself, so an app that stalls cannot block it
-   on a full pipe; its stdout is a pipe the app reads for the announcement and appends
-   to the log; and its stdin is a pipe the app holds open.
+   `metab ROOT --no-open --exit-on-eof --host 127.0.0.1 --port N`, from its lane’s
+   `LaunchLane.basePort` (`SessionRoot.lane`). `SpawnedProcess` starts it with
+   `posix_spawn` in its own process group, with only the descriptors it names, default
+   signal handling, and the folder as its working directory, so `.env` lookup matches
+   `metab .` in Terminal (a repository’s server runs in the home folder, as `metab URL`
+   in a new Terminal window does).
+   Its stderr is the server log itself, so an app that stalls cannot block it on a full
+   pipe; its stdout is a pipe the app reads for the announcement and appends to the log;
+   and its stdin is a pipe the app holds open.
 3. **Ready.** The server prints `Serving ROOT at URL` before its socket listens, so the
    supervisor parses that line (`CLIServeLaunch.parseServingLine`) and polls the URL for
-   a 2xx (`HTTPReadiness`) within `SupervisorPolicy.startupTimeout`. A root whose path
-   holds a line break is refused, since its name could forge the line.
-   `LaunchGate` lets one server start at a time, because `metab` picks its port by
+   a 2xx (`HTTPReadiness`) before its `StartupDeadline`: for a folder,
+   `SupervisorPolicy.startupTimeout` from the spawn.
+   A root whose path holds a line break is refused, since its name could forge the line.
+   A `LaunchGate` lets one server start at a time, because `metab` picks its port by
    probing and binds it later.
+   The app holds two, one for folders and one for repositories, whose port walks start
+   apart (`CLIServeLaunch.repositoryBasePort`, past every port a folder’s walk reaches),
+   so a first clone holds up no folder.
 4. **Show.** The window’s `WKWebView` uses the persistent default data store
    (`WebConfiguration.make`), since Metabrowser keeps preferences in host-only cookies.
    A status view covers it until the page commits, and only the navigation the window
@@ -105,9 +113,154 @@ readiness parser and URL, and what a window installs before loading
 the supervisor or the windows.
 
 Each folder’s server writes `<folder>-<hash>.log` in `AppIdentity.logsDirectory`, which
-both variants share, with the app’s lifecycle events between its lines (`ServerLog`). A
-launch claims its log before it spawns (`FolderLog`, `ServerLogLease`), so a second
-running copy of the app, or an earlier session still stopping, writes a log of its own.
+both variants share, with the app’s lifecycle events between its lines (`ServerLog`); a
+repository’s is named for the repository, with the hash of its URL. A launch claims its
+log before it spawns (`FolderLog`, `ServerLogLease`), so a second running copy of the
+app, or an earlier session still stopping, writes a log of its own.
+
+### GitHub Links
+
+A link reaches `application(_:open:)` from `open -b`, which is how `metab URL --present`
+sends one; the app does not register for `https`, which browsers own.
+`AppDelegate.requestLink` takes an `https` link on a host of `metab`’s GitHub reducer
+(`GitHubLink`) and reads nothing else of it.
+Links wait in a `LinkQueue` and are resolved one at a time: each runs
+`metab LINK --present --dry-run --format json` (`PresentDryRun`), which clones and
+fetches nothing, and the app acts on the answer (`PresentAnswer`):
+
+| Answer | What the app does |
+| --- | --- |
+| Exit 0 with `kind`, `root`, and `handoff` | Opens `root`’s session on `handoff` |
+| A nonzero exit with a `refusal` | Shows `refusal.message`, which names the fix |
+| Anything else | Shows the reason and the command’s last lines |
+
+The command’s stdout and stderr share one pipe, so the answer is the one JSON object
+among its lines (`JSONAnswer`); two candidates are refused, since a line on stderr could
+otherwise stand in for the answer, and a block from a `{` line to a `}` line that does
+not parse counts as one, so a stray `{` that swallows the real answer leaves nothing a
+later line could stand in for.
+A plan’s `kind` must be one a link resolves to, its `root` a canonical
+`https://github.com/<owner>/<repo>` (`PresentPlan.repositoryURL`), and its `handoff` one
+link into that repository on `github.com` that `GitHubLink` accepts.
+The plan’s `page` is not read: it is null where only the mirror knows where a ref ends,
+and the server, which resolves the link against its mirror, announces the right page.
+
+- **Which session.** The repository’s canonical URL keys its session
+  (`SessionRoot.repository`), never the pin, which a page can switch while the server
+  runs, as [Open Modes](arch-open-modes.md#what-keys-on-the-root) has it.
+  A new session starts `metab HANDOFF`, so `metab` pins what the link selects and reads
+  a pull request it names, and its window loads the entry page the server announces;
+  Retry and Restart Server run the session’s latest link again.
+- **A link into an open repository.** The window may show another branch, commit, or
+  pull request’s head than the link names, and the app cannot tell, since the dry run
+  reports no ref, so it never only navigates: `FolderSession.open(link:)` starts the
+  server again on the link, and the front window loads the new entry page
+  (`NextPage.requestEntry`), as the owner decided on 2026-11-17 and
+  [Open Modes](arch-open-modes.md#the-file-menu) states for Open URL…. What a link does
+  to the session is `RepositoryLinks`, a table of the link, the server’s state, and the
+  link it starts on: a start under way runs to its end first, so a first clone is not
+  thrown away, and the newest link sent meanwhile waits for it; the link that start
+  already runs on joins it, so sending a link twice during its first clone clones once
+  and does not restart, and the window still loads that start’s entry page, the link’s,
+  whoever began the start (Retry, Restart Server, and an upgrade’s restart run on the
+  same link); a failed or stopped server starts again at once.
+  A restart of a ready server waits for the launch gate before it stops anything
+  (`ServerSupervisor.restart`), so while another repository’s first clone holds the gate
+  the repository’s other tabs go on with the old server, and the window that asked for
+  the restart says it waits instead of showing the old revision (`RestartWait`): the
+  window a link brought forward, the one File > Restart Server was chosen in, or the
+  front window for an upgrade’s restart.
+  The supervisor reports only its first waiter (`onGateWait`), so a restart asked for
+  while another waits shows its window at once.
+  The pin switch View on branch makes (`POST /api/source/pin`) would keep the port and
+  the server, but it takes a ref or a commit, which the app does not have for a link
+  whose ref holds a `/`.
+- **A selection the mirror lacks.** `metab` serves a link whose branch, tag, or commit
+  its mirror does not have yet from the default branch, and fetches once; the page goes
+  to the link’s address by itself if the fetch finds it.
+  So the windows can show the default branch for as long as that fetch runs, which the
+  page’s fetch chip says.
+  After each start of a repository’s server the app asks `/api/source/status` while its
+  `selection_state` is `pending` (`LinkSelection`), and says in an alert when the fetch
+  did not find the link’s selection (`not_found`) or could not run (`fetch_failed`),
+  naming the revision the windows show instead.
+- **Asking before a clone.** A link that would start a new session asks first unless
+  `metab`’s cache holds the repository (`RepositoryCache`), which the app learns from
+  `metab FOLDER --api /api/cache/sources --format json`, page by page, run in the app’s
+  support folder; a published source whose `identity.display_url` is the root, with no
+  problems, is one `metab URL` serves from without cloning.
+  An answer it cannot read asks; `tests/test_macos_app_pins.py` holds the keys and the
+  value the app reads to what the route prints.
+  The confirmation names the repository and says that it clones and reads with the
+  user’s `gh` sign-in, as the owner decided on 2026-11-17; Cancel is its default button,
+  so a Return typed into another app as this one comes forward declines.
+  The question waits beside the link queue, not in it (`CloneQuestions`): links behind
+  it, into open repositories among them, go on resolving, and links into the same
+  repository wait for the one answer, which opens the newest of them.
+  A repository found or agreed to is not asked about again while the app runs; one
+  declined is not asked about again until the burst ends, and the links it turned away
+  are counted in the burst’s alert.
+- **A burst.** One `metab` resolves at a time, a link equal to one waiting or being
+  resolved is dropped, and past `LinkQueue.limit` waiting links the rest are counted, as
+  are links past `CloneQuestions.limit` repositories waiting for a question and past
+  `LinkQueue.limit` links waiting for a runtime (`RuntimeSelection.setupForOpening`).
+  The links that could not be opened are said in one alert once the burst has ended,
+  which keeps the first `LinkAlert.shownInBatch` and counts the rest (`LinkProblems`).
+  Its title counts links, not the problems it lists (`LinkAlert.links`): a decline
+  stands for every link it turned away, and a link whose selection the mirror lacked did
+  open, so the title counts it apart, as a link whose selection was not shown.
+  One modal shows at a time, a clone question or that alert, and what gathers while one
+  is up is said when it closes.
+  A link under way counts as something about to show, so the app does not offer the Open
+  panel meanwhile.
+- **The first clone.** A repository’s start is given up on only once its output stops
+  growing for `SupervisorPolicy.startupTimeout`, or at
+  `SupervisorPolicy.repositoryStartupLimit` after its spawn (`StartupDeadline`). Output
+  is `ServerProcess.outputProgress`, which counts the log’s growth, since stderr goes
+  there without passing through the app.
+  `metab` writes a line of a clone’s progress at least every
+  `MetabAcquisition.progressLineInterval` when stderr is not a terminal, and the limit
+  outlasts its own bound on acquiring a source (`MetabAcquisition.reservationWait`);
+  `tests/test_macos_app_pins.py` pins each copied constant to its Python definition in
+  the CI jobs that run on every change.
+  A start waiting on another process’s acquisition of the same source writes one note
+  and then nothing, so it is given up on after `startupTimeout`.
+- **Titles.** Until the server answers `/api/identity`, the window is named for the
+  repository (`FolderIdentity.repository`), a cached mirror.
+  Only a local folder’s window gets a path menu, whatever identity its port answers.
+- **Not restored.** `FolderWindows.snapshot` leaves a repository’s tabs out of the saved
+  session, whose roots are paths that the restore admits again (`RootAdmission`); a tab
+  group whose shown tab is a repository’s is saved showing its first folder tab.
+- **The version floor.** `RuntimeDiscovery.validate` probes `--present` with
+  `--exit-on-eof`, so a `metab` without it is too old at setup
+  ([The Version Floor](#the-version-floor)).
+
+#### The Trust Boundary
+
+A link is untrusted input: any local process can send the app one, and a web page can
+reach a link router that does.
+What stands between a link and an effect:
+
+- **The app’s checks.** `GitHubLink` reads the string it passes, not Foundation’s
+  decoded host: `https://`, a host of the reducer’s, no port but 443, no user or
+  password, and at most `GitHubLink.maximumLength` bytes.
+  The answer must name a canonical repository root, and the server starts on its
+  `handoff`, which `metab` rebuilt from what its reducer kept, so a token or other text
+  a sender put in the link never reaches the server’s arguments or its log.
+  The dry run is given the link as sent, so the process table shows it, query included,
+  for the dry run’s lifetime: about a third of a second, and at most
+  `PresentDryRun.timeout`. The link itself is logged private.
+  Every spawn is an argument array, never a shell, and alerts shorten what they show and
+  leave out a link’s user name, password, query, and fragment.
+- **`metab`’s checks.** Everything in the URL reducer: which pages open, the owner and
+  repository grammar, credentials, ports, encoded delimiters, and dot segments, and the
+  rule that an argument starting with a scheme is never a local path.
+- **Bounds.** The queue’s, the questions’, and the runtime wait’s, and the question
+  before a clone, which is the user’s consent to download a repository and read it with
+  their sign-in.
+
+A finding against this boundary is a security issue
+([SECURITY.md](../../../SECURITY.md)).
 
 ### After a Crash
 
@@ -154,12 +307,13 @@ shim and no `gh`, and nothing from a Terminal launch’s `UV_*`, `VIRTUAL_ENV`, 
 ### The Version Floor
 
 `MetabRequirement.minimumRelease` in `Sources/ShellCore/Setup/MetabVersion.swift` is the
-oldest `metab` the app runs: the first release with `GET /api/identity` and
-`--exit-on-eof`. A development build of that release counts as it, or no checkout would
-run, so the number alone does not prove the flag, and `RuntimeDiscovery.validate` runs
-`metab --exit-on-eof --version`. A printed version decides by its number; exit status 2
-naming the flag means a build that predates it, which is too old whatever its number;
-anything else rejects the `metab` with the probe’s last line.
+oldest `metab` the app runs: the first release with `GET /api/identity`,
+`--exit-on-eof`, and `--present` (`MetabRequirement.requiredFlags`). A development build
+of that release counts as it, or no checkout would run, so the number alone does not
+prove the flags, and `RuntimeDiscovery.validate` runs
+`metab --exit-on-eof --present --version`. A printed version decides by its number; exit
+status 2 naming either flag means a build that predates it, which is too old whatever
+its number; anything else rejects the `metab` with the probe’s last line.
 Below the floor, discovery tries the next place.
 `MetabRequirement.upgradeCommand` asks uv for a floor rather than a pin, because uv
 keeps the requirement in the tool’s receipt.

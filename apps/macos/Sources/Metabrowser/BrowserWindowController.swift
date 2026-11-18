@@ -60,9 +60,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         pages = PageLoads(requested: page)
         isDiscarded = discarded
 
-        let path = (session.root.path(percentEncoded: false) as NSString).abbreviatingWithTildeInPath
         let statusView = NSHostingView(rootView: StatusView(
-            folderName: session.folderName, folderPath: path, status: status,
+            folderName: session.folderName, folderPath: session.location, status: status,
             retry: { [weak session] in session?.retry() },
             revealLogs: { [weak session] in session?.revealLog() },
             showSettings: { (NSApp.delegate as? AppDelegate)?.showSettings(nil) }))
@@ -211,6 +210,22 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         if let endpoint { loadNextPageOnceAnswered(from: endpoint) }
     }
 
+    /// Loads the entry page of the server it attaches to next, rather than the page it shows
+    /// now: a repository's server starting again on a new link announces that link's page.
+    /// A load already waiting, such as a discarded tab's revived as the link brought it
+    /// forward, is superseded, since the old server can go on serving while the restart
+    /// waits at the launch gate (`ServerSupervisor.restart`).
+    func showEntryPage() {
+        pages.cancelAll()
+        pages.requestEntry()
+        isDiscarded = false
+    }
+
+    /// Whether the start waits for another repository's, which can be a first clone.
+    func showWaitingAtGate(_ waiting: Bool) {
+        status.waitsForAnotherStart = waiting
+    }
+
     /// The page to save for the next launch.
     var currentPage: PageAddress? {
         pages.saved(showing: currentServerURL.flatMap(PageAddress.init))
@@ -297,7 +312,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         guard let window else { return }
         window.title = windowTitle
         window.subtitle = title.subtitle
-        window.representedURL = title.hasPathMenu ? session?.root : nil
+        // Only a folder on this Mac has a path menu: a repository's root is a URL, whose path
+        // names no folder here, whatever identity its port answered.
+        window.representedURL = title.hasPathMenu && session?.isLocal == true ? session?.root : nil
         window.tab.title = title.tabTitle
         window.tab.toolTip = title.tabToolTip
         titleAccessory.show(title, representing: window.representedURL)
@@ -335,7 +352,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         case .reloadPage: webView.reload()
         case .loadPage: if let endpoint { loadPageAgain(from: endpoint) }
         case .startServer: Task { await session?.startServer() }
-        case .restartServer: session?.retry()
+        case .restartServer: session?.retry(from: self)
         case .startAsSelected: session?.windowShown(self)
         }
     }
@@ -438,7 +455,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         textFinder.performAction(action)
     }
 
-    @objc func restartServer(_ sender: Any?) { session?.retry() }
+    @objc func restartServer(_ sender: Any?) { session?.retry(from: self) }
     @objc func revealServerLog(_ sender: Any?) { session?.revealLog() }
 
     @objc func openInDefaultBrowser(_ sender: Any?) {
