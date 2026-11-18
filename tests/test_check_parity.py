@@ -150,6 +150,66 @@ def test_an_exempt_row_without_a_reason_is_reported(
     assert any("/api/tree" in problem and "give a reason" in problem for problem in problems)
 
 
+def test_a_blank_line_that_cuts_a_table_in_two_is_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, only_tree: None
+) -> None:
+    # Review A of #527, A19: a merge left a blank line in the functional table, and the
+    # check passed while reading 115 of its 165 aspects.
+    doc = _write_registry(tmp_path, "| `/api/tree` | exempt | — | streaming |")
+    paint = (
+        "| `test.paint` | paint-exempt | `static/styles.css` | `local-only` | — | "
+        "fixture reason; `tests/test_check_parity.py` |"
+    )
+    later = paint.replace("test.paint", "test.later")
+    doc.write_text(
+        doc.read_text(encoding="utf-8").replace(paint, f"{paint}\n\n{later}"), encoding="utf-8"
+    )
+    monkeypatch.setattr(check_parity, "REGISTRY_DOC", doc)
+
+    problems = check_parity.check()
+
+    assert any("test.later" in problem and "outside it" in problem for problem in problems)
+    assert check_parity.stray_table_rows(doc.read_text(encoding="utf-8")) != []
+
+
+def test_a_route_row_outside_its_table_or_listed_twice_is_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, only_tree: None
+) -> None:
+    row = "| `/api/tree` | exempt | — | streaming |"
+    doc = _write_registry(tmp_path, f"{row}\n{row}")
+    doc.write_text(
+        doc.read_text(encoding="utf-8").replace(
+            "## Functional UI parity",
+            "| `/api/stray` | exempt | — | streaming |\n\n## Functional UI parity",
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(check_parity, "REGISTRY_DOC", doc)
+
+    problems = check_parity.check()
+
+    assert any("/api/tree" in problem and "more than once" in problem for problem in problems)
+    assert any("/api/stray" in problem and "outside it" in problem for problem in problems)
+
+
+def test_a_repeated_aspect_is_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, only_tree: None
+) -> None:
+    doc = _write_registry(tmp_path, "| `/api/tree` | exempt | — | streaming |")
+    paint = (
+        "| `test.paint` | paint-exempt | `static/styles.css` | `local-only` | — | "
+        "fixture reason; `tests/test_check_parity.py` |"
+    )
+    doc.write_text(
+        doc.read_text(encoding="utf-8").replace(paint, f"{paint}\n{paint}"), encoding="utf-8"
+    )
+    monkeypatch.setattr(check_parity, "REGISTRY_DOC", doc)
+
+    problems = check_parity.check()
+
+    assert any("test.paint" in problem and "more than once" in problem for problem in problems)
+
+
 def test_an_unknown_status_is_reported(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, only_tree: None
 ) -> None:

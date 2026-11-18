@@ -80,7 +80,16 @@ from metabrowser.capabilities import get_capabilities, raw_sandbox_csp, untruste
 # Cache invalidator: clear_charts_cache is invoked by the root-change
 # handler so chart memos don't stick across served-root swaps.
 from metabrowser.charts import clear_charts_cache
+from metabrowser.client_disconnect import CLIENT_CLOSED, unless_disconnected
 from metabrowser.content_sniff import ContentClass, sniff_artifact
+from metabrowser.diff.markdown_projection_worker import (
+    InertRender,
+    InertRenderRefused,
+    kpress_refusal_payload,
+    shared_worker,
+    start_for_pages,
+    text_identity,
+)
 from metabrowser.dotenv import load_dotenv_chain
 from metabrowser.embedded_resources import embedded_raw_paths
 from metabrowser.encoded_assets import EncodedAssetResponse
@@ -3030,20 +3039,18 @@ async def api_recent(request: Request) -> JSONResponse:
     )
 
 
-def _json_safe_frontmatter(value: Any) -> Any:
-    """Coerce YAML-parsed scalars into JSON-serializable equivalents.
+def _markdown_frontmatter(ctx: FileContext, ext: str) -> tuple[dict[str, Any] | None, str | None]:
+    """A Markdown file's frontmatter and the reason it has none, for a worker thread.
 
-    YAML parses ``date: 2026-05-07`` as ``datetime.date``, which json.dumps
-    rejects — that path used to 500 the /api/file response. ISO-8601 is the
-    standard wire form for dates/times, so emit that instead.
+    ``FileContext.frontmatter`` is already the bounded, JSON-safe copy
+    (:mod:`metabrowser.frontmatter_yaml`); parsing it can still take seconds at the
+    byte bound (``FRONTMATTER_MAX_BYTES`` records how many), so callers run this off
+    the event loop.
     """
-    if isinstance(value, dict):
-        return {k: _json_safe_frontmatter(v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_json_safe_frontmatter(v) for v in value]
-    if isinstance(value, (_dt.date, _dt.time)):
-        return value.isoformat()
-    return value
+
+    if ext != ".md":
+        return None, None
+    return ctx.frontmatter, ctx.frontmatter_parse_error
 
 
 def _json_default_safe(obj: Any) -> Any:
@@ -3558,23 +3565,25 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
         # for specialized document detection.
         ctx = FileContext(target, ext)
 
-        def _classify_text_views() -> tuple[str, list[dict[str, Any]]]:
-            classified = _classify_with_plugins(target, ext, file_ctx=ctx)
-            return classified, _views_for_kind(classified, target=target)
-
-        with server_timing.phase("read"):
-            kind, views = await asyncio.to_thread(_classify_text_views)
-
         # For .md files, expose parsed frontmatter so plugin renderers can
         # use it directly via ctx.frontmatter without re-parsing client-side.
         # Malformed YAML fences must NOT silently fall through to markdown;
         # surface the parse error on the response so the operator sees it
         # instead of quietly substituting an empty frontmatter object.
-        frontmatter: dict[str, Any] | None = None
-        frontmatter_error: str | None = None
-        if ext == ".md":
-            frontmatter = _json_safe_frontmatter(ctx.frontmatter)
-            frontmatter_error = ctx.frontmatter_parse_error
+        def _classify_text_views() -> tuple[
+            str, list[dict[str, Any]], dict[str, Any] | None, str | None
+        ]:
+            classified = _classify_with_plugins(target, ext, file_ctx=ctx)
+            return (
+                classified,
+                _views_for_kind(classified, target=target),
+                *_markdown_frontmatter(ctx, ext),
+            )
+
+        with server_timing.phase("read"):
+            kind, views, frontmatter, frontmatter_error = await asyncio.to_thread(
+                _classify_text_views
+            )
         result: dict[str, Any] = {
             "type": "text",
             "kind": kind,
@@ -3747,6 +3756,7 @@ async def api_kpress_render(request: Request) -> Response:
 
         return await git_revision_kpress_render(
             pin,
+            request=request,
             subpath=subpath,
             view=view,
             profile=profile,
@@ -3845,31 +3855,65 @@ async def api_kpress_render(request: Request) -> Response:
         return JSONResponse({"error": str(exc)}, status_code=404)
 
     ctx = FileContext(target, ext)
+
+    def _classify_markdown() -> tuple[str, dict[str, Any] | None, str | None]:
+        return _classify_with_plugins(target, ext, file_ctx=ctx), *_markdown_frontmatter(ctx, ext)
+
     with server_timing.phase("read"):
-        kind = await asyncio.to_thread(_classify_with_plugins, target, ext, file_ctx=ctx)
-    frontmatter: dict[str, Any] | None = None
-    frontmatter_error: str | None = None
-    if ext == ".md":
-        frontmatter = _json_safe_frontmatter(ctx.frontmatter)
-        frontmatter_error = ctx.frontmatter_parse_error
+        kind, frontmatter, frontmatter_error = await asyncio.to_thread(_classify_markdown)
     mtime_hash = file_mtime_hash(target)
 
     try:
         with server_timing.phase("render"):
-            rendered = await asyncio.to_thread(
-                kpress_adapter.render_kpress_view,
-                source_text=content,
-                source_path=subpath,
-                kind=kind,
-                view=view,
-                ext=ext,
-                mtime_hash=mtime_hash,
-                size=logical_size,
-                frontmatter=frontmatter,
-                frontmatter_error=frontmatter_error,
-                profile=profile,
-                include_toc=include_toc,
-            )
+            if get_capabilities().active_content:
+                rendered = await asyncio.to_thread(
+                    kpress_adapter.render_kpress_view,
+                    source_text=content,
+                    source_path=subpath,
+                    kind=kind,
+                    view=view,
+                    ext=ext,
+                    mtime_hash=mtime_hash,
+                    size=logical_size,
+                    frontmatter=frontmatter,
+                    frontmatter_error=frontmatter_error,
+                    profile=profile,
+                    include_toc=include_toc,
+                )
+            else:
+                # A document the reader does not trust renders inert, in the Markdown
+                # child under its deadline (diff/markdown_projection_worker.py), and is
+                # known by its text, which a folder's file has no other name for. A
+                # client that goes away leaves the render to no one, and an abandoned
+                # render must not hold the child.
+                inert = await unless_disconnected(
+                    request,
+                    shared_worker().render_inert(
+                        InertRender(
+                            source_text=content,
+                            source_path=subpath,
+                            identity=await asyncio.to_thread(text_identity, content),
+                            kind=kind,
+                            view=view,
+                            ext=ext,
+                            mtime_hash=mtime_hash,
+                            size=logical_size,
+                            frontmatter=frontmatter,
+                            frontmatter_error=frontmatter_error,
+                            profile=profile,
+                            include_toc=include_toc,
+                        )
+                    ),
+                )
+                if inert is None:
+                    return Response(status_code=CLIENT_CLOSED)
+                rendered = inert
+    except InertRenderRefused as refused:
+        return JSONResponse(
+            kpress_refusal_payload(refused, subpath),
+            status_code=refused.http_status,
+            headers={"cache-control": "no-cache"},
+        )
     except kpress_adapter.KPressInvalidRequestError as exc:
         return JSONResponse(
             {
@@ -3890,10 +3934,6 @@ async def api_kpress_render(request: Request) -> Response:
             },
             status_code=502,
         )
-    if not get_capabilities().active_content:
-        # A document the reader does not trust renders inert (kpress_adapter.inert_render).
-        with server_timing.phase("render"):
-            rendered = kpress_adapter.inert_render(rendered)
     # The version of each file the document embeds, which the page puts in that file's
     # /raw address, so a replaced image is a new address (_raw_versions). Read on every
     # render, which is never kept: a render names the files as they are when it is asked.
@@ -4981,9 +5021,19 @@ async def _lifespan(app: Starlette) -> AsyncIterator[None]:
         lifespan_refresh(app),
     ):
         try:
+            if not get_capabilities().active_content:
+                # Every document an untrusted session serves renders in the Markdown child,
+                # a served pin's among them, so a served one starts it now rather than at
+                # its first document, which would wait for it; a one-shot command starts
+                # nothing it may not use. Inside the try, so the close below reaps it.
+                start_for_pages()
             yield
         finally:
-            await close_history_sessions()
+            try:
+                # The Markdown child belongs to this loop; a later one starts its own.
+                await shared_worker().aclose()
+            finally:
+                await close_history_sessions()
 
 
 async def _query_work_limit_response(

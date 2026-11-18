@@ -43,12 +43,18 @@ def test_app_shell_tracks_active_printable_view() -> None:
     assert "data-print-profile" in src
     assert "data-render-runtime" in src
     assert 'data-active-view="false"' in src
-    assert "function shellPrintButton()" in src
-    # No id, so a document's `<label for=…>` has nothing to click through.
-    assert 'id="print-view-btn"' not in src
-    assert "function printActiveView()" in src
-    assert "window.print()" in src
     assert "setActivePreviewView(tabId, container)" in src
+    # Printing is the browser's, for Command-P and for the rendered document's print
+    # button alike: the shell draws no print control and holds no print command (mb-07a1).
+    assert "file-header-print" not in src
+    assert "printActiveView" not in src
+    assert "window.print()" not in src
+    printer = (
+        proc_browser.STATIC_DIR.parent / "builtin_plugins" / "markdown" / "print-indicator.js"
+    ).read_text()
+    assert "window.print()" in printer
+    # No id, so a document's `<label for=…>` has nothing to click through.
+    assert 'setAttribute("id"' not in printer
 
 
 def test_icons_include_print_and_theme_controls() -> None:
