@@ -194,7 +194,7 @@ class Built:
     root: Path
     revision: str
     comparison_route: str
-    snapshot_route: str
+    image_route: str
     rendered_route: str
     core_body: str | None
 
@@ -360,7 +360,7 @@ def _build(root: Path, origin: Origin) -> Built:
         root=root,
         revision=envelope["record_revision"],
         comparison_route=envelope["comparison_route"],
-        snapshot_route=envelope["snapshot_route"],
+        image_route=envelope["image_route"],
         rendered_route=envelope["rendered_route"],
         core_body=entry.get("body"),
     )
@@ -430,6 +430,8 @@ class Drawn:
     check: Callable[[Built, Invocation], None]
     # The Git commands a route runs in the local store beyond opening it: computation.
     computes: frozenset[str] = frozenset()
+    # The answer's status: `metab --api` exits 1 on any other than 200.
+    status: int = 200
 
     def args(self, built: Built) -> list[str]:
         query = self.query(built)
@@ -545,10 +547,11 @@ def _changes(_built: Built, result: Invocation) -> None:
     assert tuple(paths) == CHANGED and sorted(comparison["patches"]) == ["f1", "f2"]
 
 
-def _snapshot(_built: Built, result: Invocation) -> None:
-    # The page the View file link opens: the file at the head, as a document.
-    assert "<title>src/app.txt at " in result.stdout, result.stdout[:400]
-    assert "two" in result.stdout.partition("</title>")[2]
+def _image(_built: Built, result: Invocation) -> None:
+    # The fixture's head holds no image, so a text file is the path: the route resolves it
+    # in the head's tree and sizes it, then refuses it as no image it shows.
+    assert "status: 415\n" in result.stdout, result.stdout[-400:]
+    assert '"code": "unsupported_image"' in result.stdout
 
 
 def _rendered(_built: Built, result: Invocation) -> None:
@@ -604,13 +607,14 @@ ELEMENTS: Final[tuple[Drawn, ...]] = (
         _COMPARES,
     ),
     Drawn(
-        "Changed file at the head",
+        "Image in a rendered Markdown file",
         "PR page",
-        "pull-snapshot",
-        lambda built: f"{built.snapshot_route}&side=head&path={_APP}",
-        _snapshot,
-        # The pair is admitted from the record; the file is read from the head's tree.
+        "pull-image",
+        lambda built: f"{built.image_route}&path={_APP}",
+        _image,
+        # The pair is admitted from the record; the path is resolved in the head's tree.
         frozenset({"rev-parse", "cat-file"}),
+        status=415,
     ),
     Drawn(
         "Rendered Markdown redline",
@@ -641,7 +645,8 @@ def test_a_drawn_element_answers_from_disk_with_the_network_refused(
     drawn: Drawn, built: Built, offline: Spawns
 ) -> None:
     ran = run_offline(offline, drawn.args(built))
-    assert ran.result.exit_code == 0, (ran.result.stdout[-2000:], ran.result.stderr[-2000:])
+    expected = 0 if drawn.status == 200 else 1
+    assert ran.result.exit_code == expected, (ran.result.stdout[-2000:], ran.result.stderr[-2000:])
     assert (ran.network, ran.gh, ran.sockets) == ([], [], []), "the route reached for the network"
     assert ran.git == drawn.computes, (drawn.element, sorted(ran.git))
     # A comparison's list of files is the manifest on disk, never Git's raw listing again.

@@ -561,8 +561,8 @@ classified before it lands.
 
 Four routes compute from local data rather than read a stored answer: `pull-comparison`
 takes its manifest from the bank and runs Git only to check that the store answers for
-both commits and their merge base and to print the first files’ hunks; `pull-snapshot`
-reads the file from the head’s tree; `pull-rendered-diff` renders both sides off the
+both commits and their merge base and to print the first files’ hunks; `pull-image`
+reads an image from the head’s tree; `pull-rendered-diff` renders both sides off the
 event loop; and `pull-markdown` renders the record’s text through KPress, which keeps
 the render for the process.
 
