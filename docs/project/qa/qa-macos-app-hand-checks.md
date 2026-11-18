@@ -466,7 +466,8 @@ Each step starts where the one before it ends.
 16. **Sheets, full screen, and the screen’s edges.** Open `a`. With File > Print…’s
     sheet open over its page, View > Switch Folder… and File > Close Folder are
     disabled, and Shift-Command-O beeps and opens no panel; if a click on the title
-    still opens the chooser, choosing another folder in it beeps and changes nothing.
+    still opens the chooser, choosing a recent folder in it beeps and opens that folder
+    in a window of its own, since this window cannot switch while the sheet is open.
     Cancel the sheet, Option-choose `a` for a second window on it, and open the print
     sheet in that window: File > Close Folder in `a`’s first window beeps and changes
     nothing. Cancel the sheet and close the second window.

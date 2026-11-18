@@ -158,4 +158,3 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         }
     }
 }
-

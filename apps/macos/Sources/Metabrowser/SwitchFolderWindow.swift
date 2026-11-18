@@ -123,6 +123,12 @@ final class SwitchFolderWindowController: NSWindowController, NSWindowDelegate, 
             return
         }
         over = window
+        // The window can close by another route while the panel is up, such as File > Close
+        // Folder from the menu bar; `foldersChanged` runs inside its `windowWillClose`, while
+        // it is still visible, so the panel closes here instead of listing stale rows.
+        let center = NotificationCenter.default
+        center.removeObserver(self, name: NSWindow.willCloseNotification, object: nil)
+        center.addObserver(self, selector: #selector(hostWillClose(_:)), name: NSWindow.willCloseNotification, object: host)
         field.stringValue = ""
         switcher = FolderSwitcher(rows: rows(window))
         render()
@@ -130,6 +136,11 @@ final class SwitchFolderWindowController: NSWindowController, NSWindowDelegate, 
             FolderSwitcher.frame(size: Self.size, over: host.frame, visible: host.screen?.visibleFrame), display: false)
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(field)
+    }
+
+    @objc private func hostWillClose(_ notification: Notification) {
+        NotificationCenter.default.removeObserver(self, name: NSWindow.willCloseNotification, object: nil)
+        window?.close()
     }
 
     /// The open folders changed, perhaps by another route than the panel's own
