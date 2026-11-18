@@ -4,21 +4,22 @@ from __future__ import annotations
 
 import ast
 import asyncio
-import functools
 import inspect
 import itertools
 import os
 import re
+import shutil
 from collections.abc import AsyncGenerator, AsyncIterator, Callable
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
 import pytest
 
 from metabrowser.file_type_registry import load_file_type_registry_document
 from metabrowser.inventory_engine.contract import (
     ALLOWED_PHASE_TRANSITIONS,
+    DEFAULT_QUERY_MAX_WORK,
     MAX_ASSEMBLED_ROWS,
     MAX_COMMAND_PATHS,
     MAX_COUNT_CAP,
@@ -68,6 +69,7 @@ from metabrowser.inventory_engine.contract import (
     NavigationQuery,
     ObservationKind,
     PriorityRequest,
+    ProjectionResult,
     QueryKind,
     QueryLimitProjection,
     QueryWorkLimitError,
@@ -94,8 +96,10 @@ from metabrowser.inventory_engine.contract import (
     require_canonical_inventory_path,
 )
 from metabrowser.inventory_engine.factory import InventoryProvider, create_inventory_backend
+from metabrowser.inventory_engine.seams import DiscoveryGate, ProviderSeams
 from metabrowser.wire_models import validate_rollup_result
 from tests.inventory_harness import selected_inventory_provider
+from tests.perturbed_provider import Perturbation, PerturbedBackend
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ARCHITECTURE_DOC = REPO_ROOT / "docs/project/architecture/arch-inventory-provider.md"
@@ -130,12 +134,47 @@ EXPECTED_QUERIES = {
 # The provider `METABROWSER_INVENTORY_PROVIDER` selects, built by the sealed factory, so
 # the registry below runs against any shipped provider by setting that variable.
 SELECTED_PROVIDER = selected_inventory_provider()
+
+
+class ProviderFactory(Protocol):
+    """Build one backend, passing the test seams a case asks for."""
+
+    def __call__(self, *, seams: ProviderSeams | None = None) -> InventoryBackend: ...
+
+
+def _selected_provider(*, seams: ProviderSeams | None = None) -> InventoryBackend:
+    return create_inventory_backend(SELECTED_PROVIDER, seams=seams)
+
+
+def _perturbed_provider(perturbation: Perturbation) -> ProviderFactory:
+    def factory(*, seams: ProviderSeams | None = None) -> InventoryBackend:
+        return PerturbedBackend(_selected_provider(seams=seams), perturbation)
+
+    return factory
+
+
+# The registry also runs against the selected provider behind `tests/perturbed_provider.py`,
+# which changes only what the contract leaves to a provider: its name in diagnostics, and,
+# in the second wrapping, its commit granularity, each data batch preceded by a state-only
+# batch at a version of its own. A case that passes unwrapped and fails wrapped pins the
+# provider's identity or granularity rather than the contract.
 PROVIDER_FACTORIES: tuple[Any, ...] = (
+    pytest.param(_selected_provider, id=SELECTED_PROVIDER.value),
     pytest.param(
-        functools.partial(create_inventory_backend, SELECTED_PROVIDER),
-        id=SELECTED_PROVIDER.value,
+        _perturbed_provider(Perturbation(provider_name="renamed")),
+        id=f"{SELECTED_PROVIDER.value}-renamed",
+    ),
+    pytest.param(
+        _perturbed_provider(Perturbation(provider_name="renamed", split_batches=True)),
+        id=f"{SELECTED_PROVIDER.value}-renamed-split",
     ),
 )
+# Settled and serving: discovery has ended and nothing stopped or failed. Which of the two a
+# provider reports depends on whether it has a live observer.
+_SERVING_PHASES = frozenset({LifecyclePhase.READY, LifecyclePhase.WATCHING})
+# Directory and filtered-tree pages, whose per-page work budget may be soft (D6); every
+# other kind refuses at its work bound.
+_TREE_KINDS = frozenset({QueryKind.DIRECTORY, QueryKind.FILTERED_TREE})
 
 PROVIDER_CONFORMANCE_TESTS = frozenset(
     {
@@ -145,6 +184,8 @@ PROVIDER_CONFORMANCE_TESTS = frozenset(
         "test_provider_derives_registry_identity_from_supplied_content",
         "test_provider_uses_supplied_registry_content_for_classification",
         "test_provider_budget_stop_is_explicit_and_absence_remains_unknown",
+        "test_provider_budget_counts_regular_files_and_stops_when_they_reach_it",
+        "test_provider_counts_the_root_among_indexed_directories",
         "test_directory_pages_are_lossless_when_directories_outnumber_file_budget",
         "test_filtered_tree_and_recent_share_filter_semantics_before_caps",
         "test_grouped_tree_answers_each_group_as_its_filtered_tree",
@@ -157,6 +198,9 @@ PROVIDER_CONFORMANCE_TESTS = frozenset(
         "test_provider_uses_canonical_portable_row_order",
         "test_provider_version_pins_fail_instead_of_moving",
         "test_provider_changes_resume_and_report_history_gaps_as_reset",
+        "test_provider_dirty_paths_name_every_ancestor_whose_aggregates_changed",
+        "test_provider_directory_times_are_their_newest_regular_file",
+        "test_provider_answers_an_unlisted_directory_with_an_empty_final_page",
         "test_provider_allows_only_one_active_change_iterator",
         "test_provider_refresh_verifies_the_filesystem_instead_of_trusting_the_hint",
         "test_provider_close_joins_change_delivery_and_is_idempotent",
@@ -166,7 +210,7 @@ PROVIDER_CONFORMANCE_TESTS = frozenset(
 
 
 async def _open_settled_provider(
-    factory: Callable[[], InventoryBackend],
+    factory: ProviderFactory,
     root: Path,
     *,
     config: InventoryConfig | None = None,
@@ -634,7 +678,7 @@ def test_inventory_scope_fingerprint_is_portable_and_semantic() -> None:
 
 @pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
 def test_provider_derives_registry_identity_from_supplied_content(
-    provider_factory: Callable[[], InventoryBackend],
+    provider_factory: ProviderFactory,
     tmp_path: Path,
 ) -> None:
     registry_document = load_file_type_registry_document()
@@ -677,7 +721,7 @@ def test_provider_derives_registry_identity_from_supplied_content(
 
 @pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
 def test_provider_uses_supplied_registry_content_for_classification(
-    provider_factory: Callable[[], InventoryBackend],
+    provider_factory: ProviderFactory,
     tmp_path: Path,
 ) -> None:
     (tmp_path / "note.md").write_text("# Note\n", encoding="utf-8")
@@ -1092,7 +1136,7 @@ def test_protocols_are_structural_and_provider_neutral() -> None:
 
 @pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
 def test_checkpoint_read_returns_only_a_coherent_constant_work_envelope(
-    provider_factory: Callable[[], InventoryBackend],
+    provider_factory: ProviderFactory,
     tmp_path: Path,
 ) -> None:
     (tmp_path / "file.txt").write_text("content", encoding="utf-8")
@@ -1104,7 +1148,8 @@ def test_checkpoint_read_returns_only_a_coherent_constant_work_envelope(
             assert checkpoint.projections == ()
             assert checkpoint.version.session == checkpoint.cursor.session
             assert checkpoint.version.sequence == checkpoint.cursor.sequence
-            assert checkpoint.state.phase is LifecyclePhase.WATCHING
+            # Any settled serving phase: whether the observer is live is the provider's.
+            assert checkpoint.state.phase in _SERVING_PHASES
             assert checkpoint.work.entries_visited == 0
             assert checkpoint.work.directories_read == 0
             assert checkpoint.work.rows_returned == 0
@@ -1116,7 +1161,7 @@ def test_checkpoint_read_returns_only_a_coherent_constant_work_envelope(
 
 @pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
 def test_paged_time_dependent_reads_reuse_one_as_of(
-    provider_factory: Callable[[], InventoryBackend],
+    provider_factory: ProviderFactory,
     tmp_path: Path,
 ) -> None:
     for index, mtime_ns in enumerate((210_000_000_000, 220_000_000_000, 230_000_000_000)):
@@ -1176,10 +1221,15 @@ def test_paged_time_dependent_reads_reuse_one_as_of(
 
 @pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
 def test_provider_semantic_digest(
-    provider_factory: Callable[[], InventoryBackend],
+    provider_factory: ProviderFactory,
     tmp_path: Path,
 ) -> None:
-    """Every provider must produce the same normalized filesystem semantics."""
+    """Every provider must produce the same normalized filesystem semantics.
+
+    The digest holds filesystem facts, not who answered: the provider's name and whether
+    its observer is live are its own, and the Python provider's are pinned in
+    `tests/test_python_inventory_provider.py`.
+    """
 
     (tmp_path / ".git").mkdir()
     (tmp_path / ".git" / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
@@ -1281,9 +1331,10 @@ def test_provider_semantic_digest(
             rollup_node = cast("dict[str, object]", rollup.payload["node"])
             rollup_children = cast("list[dict[str, object]]", rollup_node["children"])
             navigation_summary = navigation.payload["summary"]
+            assert result.state.phase in _SERVING_PHASES
+            assert diagnostics.payload.provider
             return {
                 "state": (
-                    result.state.phase.value,
                     result.state.coverage.complete,
                     result.state.freshness.value,
                     result.state.source.value,
@@ -1319,17 +1370,14 @@ def test_provider_semantic_digest(
                     (record.path, record.logical_extension, record.size)
                     for record in catalog.records
                 ),
-                "diagnostics": (
-                    diagnostics.payload.provider,
-                    diagnostics.payload.contract,
-                ),
+                "contract": diagnostics.payload.contract,
             }
         finally:
             await handle.close()
 
     actual = asyncio.run(run())
     expected = {
-        "state": ("watching", True, "fresh", "scanned"),
+        "state": (True, "fresh", "scanned"),
         "link": ("bundle-link", "symlink", "", None, False, None, None, None, None, None),
         "directory": (
             ("ignored", "dir", "", None, True, 1, 3, 0, 0, False),
@@ -1372,73 +1420,182 @@ def test_provider_semantic_digest(
             ("tracked/README", "", 6),
             ("tracked/bundle.min.js", ".min.js", 4),
         ),
-        "diagnostics": (SELECTED_PROVIDER.value, "inventory-provider-v1"),
+        "contract": "inventory-provider-v1",
     }
     assert actual == expected, actual
 
 
 @pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
 def test_provider_budget_stop_is_explicit_and_absence_remains_unknown(
-    provider_factory: Callable[[], InventoryBackend],
+    provider_factory: ProviderFactory,
     tmp_path: Path,
 ) -> None:
-    for name in ("a.txt", "b.txt", "c.txt", "d.txt", "z.txt"):
+    """At its budget a provider stops, and what it did not reach stays unknown.
+
+    The phase is `stopped`, coverage is partial for the budget, the state carries a
+    `resource_budget` issue, exactly `max_files` regular files are readable, and every
+    other path answers `unknown`, never `absent`. Which files a stop admits is
+    unspecified (D17), so this reads them back rather than naming them; the Python
+    store's are pinned in `tests/test_python_inventory_provider.py`. Refresh still
+    verifies an admitted file and rejects one discovery never reached.
+    """
+
+    names = ("a.txt", "b.txt", "c.txt", "d.txt", "z.txt")
+    max_files = 2
+    for name in names:
         (tmp_path / name).write_text(name, encoding="utf-8")
 
-    async def run() -> tuple[object, ...]:
+    async def run() -> tuple[
+        IndexState, set[str], int, dict[str, EntryPresence], RefreshReceipt, RefreshReceipt
+    ]:
         handle = await _open_settled_provider(
             provider_factory,
             tmp_path,
-            config=InventoryConfig(budget=DiscoveryBudget(max_files=2)),
+            config=InventoryConfig(budget=DiscoveryBudget(max_files=max_files)),
         )
         try:
             result = await handle.read(
                 ReadRequest(
                     queries=(
-                        EntryQuery(query_id="missing", path="z.txt"),
+                        CatalogQuery(query_id="catalog", max_rows=len(names), include_ignored=True),
                         DiagnosticsQuery(query_id="diagnostics"),
+                        *(EntryQuery(query_id=name, path=name) for name in names),
                     )
                 )
             )
-            projection = cast("EntryProjection", result.projection("missing"))
+            catalog = cast("CatalogProjection", result.projection("catalog"))
             diagnostics = cast("DiagnosticsProjection", result.projection("diagnostics"))
-            (tmp_path / "a.txt").write_text("updated", encoding="utf-8")
+            admitted = {record.path for record in catalog.records}
+            presence = {
+                name: cast("EntryProjection", result.projection(name)).presence for name in names
+            }
+            retained, unreached = min(admitted), min(set(names) - admitted)
+            (tmp_path / retained).write_text("updated", encoding="utf-8")
             retained_receipt = await handle.refresh(
-                RefreshRequest(observations=(RefreshObservation(path="a.txt"),))
+                RefreshRequest(observations=(RefreshObservation(path=retained),))
             )
-            unknown_receipt = await handle.refresh(
-                RefreshRequest(observations=(RefreshObservation(path="z.txt"),))
+            unreached_receipt = await handle.refresh(
+                RefreshRequest(observations=(RefreshObservation(path=unreached),))
             )
             return (
-                result.state.phase.value,
-                result.state.coverage.complete,
-                result.state.coverage.reason.value if result.state.coverage.reason else None,
-                tuple(issue.code.value for issue in result.state.issues),
-                projection.presence.value,
-                diagnostics.payload.watch_state,
-                diagnostics.payload.watch_reason,
-                retained_receipt.accepted_paths,
-                unknown_receipt.rejected_paths,
+                result.state,
+                admitted,
+                diagnostics.payload.files_indexed,
+                presence,
+                retained_receipt,
+                unreached_receipt,
             )
         finally:
             await handle.close()
 
-    assert asyncio.run(run()) == (
-        "stopped",
-        False,
-        "budget",
-        ("resource_budget",),
-        "unknown",
-        "off",
-        "resource_budget",
-        ("a.txt",),
-        ("z.txt",),
+    state, admitted, files_indexed, presence, retained, unreached = asyncio.run(run())
+    assert state.phase is LifecyclePhase.STOPPED
+    assert state.coverage == Coverage(complete=False, reason=CoverageReason.BUDGET)
+    assert IssueCode.RESOURCE_BUDGET in {issue.code for issue in state.issues}
+    assert len(admitted) == files_indexed == max_files
+    assert admitted <= set(names)
+    assert presence == {
+        name: EntryPresence.PRESENT if name in admitted else EntryPresence.UNKNOWN for name in names
+    }
+    assert (retained.accepted_paths, retained.rejected_paths) == ((min(admitted),), ())
+    assert (unreached.accepted_paths, unreached.rejected_paths) == (
+        (),
+        (min(set(names) - admitted),),
     )
 
 
 @pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
+def test_provider_budget_counts_regular_files_and_stops_when_they_reach_it(
+    provider_factory: ProviderFactory,
+    tmp_path: Path,
+) -> None:
+    """Only regular files count against `max_files`, and reaching it is the stop.
+
+    So a tree holding exactly `max_files` regular files reports a budget stop although
+    discovery left nothing out, and the same tree under one more file of budget is
+    complete. Directories and symlinks never count.
+    """
+
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "empty").mkdir()
+    for path in ("a.txt", "sub/b.txt", "sub/c.txt"):
+        (tmp_path / path).write_text(path, encoding="utf-8")
+    try:
+        (tmp_path / "link").symlink_to("a.txt")
+    except OSError as error:  # pragma: no cover - unsupported Windows policy
+        pytest.skip(f"symlinks are unavailable: {error}")
+
+    async def run(max_files: int) -> tuple[IndexState, int, int]:
+        handle = await _open_settled_provider(
+            provider_factory,
+            tmp_path,
+            config=InventoryConfig(budget=DiscoveryBudget(max_files=max_files), watch_mode="off"),
+        )
+        try:
+            result = await handle.read(
+                ReadRequest(
+                    queries=(
+                        DiagnosticsQuery(query_id="diagnostics"),
+                        CatalogQuery(query_id="catalog", max_rows=10, include_ignored=True),
+                    )
+                )
+            )
+            diagnostics = cast("DiagnosticsProjection", result.projection("diagnostics"))
+            catalog = cast("CatalogProjection", result.projection("catalog"))
+            return result.state, diagnostics.payload.files_indexed, len(catalog.records)
+        finally:
+            await handle.close()
+
+    at_budget, at_files, at_rows = asyncio.run(run(3))
+    assert at_budget.phase is LifecyclePhase.STOPPED
+    assert at_budget.coverage == Coverage(complete=False, reason=CoverageReason.BUDGET)
+    assert IssueCode.RESOURCE_BUDGET in {issue.code for issue in at_budget.issues}
+    assert at_files == at_rows == 3
+
+    within, within_files, within_rows = asyncio.run(run(4))
+    assert within.phase in _SERVING_PHASES
+    assert within.coverage == Coverage(complete=True)
+    assert IssueCode.RESOURCE_BUDGET not in {issue.code for issue in within.issues}
+    assert within_files == within_rows == 3
+
+
+@pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
+def test_provider_counts_the_root_among_indexed_directories(
+    provider_factory: ProviderFactory,
+    tmp_path: Path,
+) -> None:
+    """`directories_indexed` counts every directory in scope, the served root included,
+    and `files_indexed` counts regular files only; out-of-scope entries count as neither."""
+
+    for directory in ("a/b", "empty", ".hidden"):
+        (tmp_path / directory).mkdir(parents=True)
+    for path in ("x.txt", "a/y.txt", "a/b/z.txt", ".hidden/secret.txt"):
+        (tmp_path / path).write_text(path, encoding="utf-8")
+    try:
+        (tmp_path / "link").symlink_to("x.txt")
+    except OSError as error:  # pragma: no cover - unsupported Windows policy
+        pytest.skip(f"symlinks are unavailable: {error}")
+
+    async def run() -> tuple[int, int]:
+        handle = await _open_settled_provider(
+            provider_factory, tmp_path, config=InventoryConfig(watch_mode="off")
+        )
+        try:
+            result = await handle.read(
+                ReadRequest(queries=(DiagnosticsQuery(query_id="diagnostics"),))
+            )
+            diagnostics = cast("DiagnosticsProjection", result.projection("diagnostics"))
+            return diagnostics.payload.directories_indexed, diagnostics.payload.files_indexed
+        finally:
+            await handle.close()
+
+    # The root, `a`, `a/b`, and `empty`; `.hidden` is outside the scope.
+    assert asyncio.run(run()) == (4, 3)
+
+
+@pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
 def test_directory_pages_are_lossless_when_directories_outnumber_file_budget(
-    provider_factory: Callable[[], InventoryBackend],
+    provider_factory: ProviderFactory,
     tmp_path: Path,
 ) -> None:
     expected = {f"directory-{index}" for index in range(7)}
@@ -1489,7 +1646,7 @@ def test_directory_pages_are_lossless_when_directories_outnumber_file_budget(
 
 @pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
 def test_filtered_tree_and_recent_share_filter_semantics_before_caps(
-    provider_factory: Callable[[], InventoryBackend],
+    provider_factory: ProviderFactory,
     tmp_path: Path,
 ) -> None:
     """Both projections apply the shared file predicates to the full population."""
@@ -1584,7 +1741,7 @@ def test_filtered_tree_and_recent_share_filter_semantics_before_caps(
 
 @pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
 def test_catalog_predicate_semantics_are_runtime_independent_and_exact(
-    provider_factory: Callable[[], InventoryBackend],
+    provider_factory: ProviderFactory,
     tmp_path: Path,
 ) -> None:
     for name in (".foo", "..foo", "foo.", "plain.foo"):
@@ -1622,7 +1779,7 @@ def test_catalog_predicate_semantics_are_runtime_independent_and_exact(
 
 @pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
 def test_catalog_pages_are_lossless_without_suffix_counts(
-    provider_factory: Callable[[], InventoryBackend],
+    provider_factory: ProviderFactory,
     tmp_path: Path,
 ) -> None:
     expected = {f"file-{index}.txt" for index in range(7)}
@@ -1670,12 +1827,83 @@ def test_catalog_pages_are_lossless_without_suffix_counts(
     assert asyncio.run(run()) == expected
 
 
+type _PageQuery = DirectoryQuery | FilteredTreeQuery | CatalogQuery
+type _Page = DirectoryProjection | FilteredTreeProjection | CatalogProjection
+
+
+def _page_rows(page: _Page) -> tuple[InventoryEntry | CatalogRecord, ...]:
+    return page.records if isinstance(page, CatalogProjection) else page.entries
+
+
+async def _assemble_pages(
+    handle: InventoryHandle,
+    query: _PageQuery,
+    first: _Page,
+    version: EngineVersion,
+    *,
+    max_pages: int,
+) -> list[InventoryEntry | CatalogRecord]:
+    """Every row *first* and its continuations hold at *version*, under *query*'s bound.
+
+    A page the bound refuses must leave its continuation usable, so the same token is
+    retried at the same version with the default bound. A page the bound lets through
+    must make progress and report the work it did: at least the rows it returned and,
+    for any kind but a tree's, whose budget may be soft (D6), at most its bound. The
+    walk must end within *max_pages*.
+    """
+
+    rows: list[InventoryEntry | CatalogRecord] = list(_page_rows(first))
+    after = first.next_page
+    for _page in range(max_pages):
+        if after is None:
+            return rows
+        bounded = replace(query, after=after)
+        result = await handle.read(ReadRequest(queries=(bounded,), at_version=version))
+        page = result.projection(query.query_id)
+        if isinstance(page, QueryLimitProjection):
+            assert (page.query_kind, page.max_work) == (query.kind, query.max_work)
+            assert result.work.rows_returned == 0
+            bounded = replace(query, after=after, max_work=DEFAULT_QUERY_MAX_WORK)
+            result = await handle.read(ReadRequest(queries=(bounded,), at_version=version))
+            page = result.projection(query.query_id)
+            assert not isinstance(page, QueryLimitProjection), "a typed limit consumed its page"
+        assert isinstance(page, (DirectoryProjection, FilteredTreeProjection, CatalogProjection))
+        page_rows = _page_rows(page)
+        assert page_rows or page.next_page is None, "a page made no progress"
+        assert result.work.rows_returned == len(page_rows)
+        assert len(page_rows) <= result.work.rows_visited
+        if query.kind not in _TREE_KINDS:
+            assert result.work.rows_visited <= bounded.max_work, "a page passed its bound"
+        rows.extend(page_rows)
+        after = page.next_page
+    raise AssertionError(f"the pages did not end within {max_pages}")
+
+
+def _page_query(kind: QueryKind, query_id: str, **bounds: Any) -> _PageQuery:
+    if kind is QueryKind.DIRECTORY:
+        return DirectoryQuery(query_id=query_id, max_depth=1, **bounds)
+    if kind is QueryKind.FILTERED_TREE:
+        return FilteredTreeQuery(query_id=query_id, max_depth=1, **bounds)
+    return CatalogQuery(query_id=query_id, **bounds)
+
+
 @pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
 def test_provider_applies_work_bounds_to_continuation_pages(
-    provider_factory: Callable[[], InventoryBackend],
+    provider_factory: ProviderFactory,
     tmp_path: Path,
 ) -> None:
-    for index in range(6):
+    """A continuation page carries its own work bound, and a refusal does not consume it.
+
+    Under a bound too small for the page, a catalog page answers the typed limit and a
+    tree page either does or, under a soft budget (D6, open pending fdu), makes progress.
+    A typed limit leaves the continuation usable, so the same token at the same version
+    succeeds with an adequate bound. However the pages fall, they end and assemble the
+    unpaged answer. The Python store's exact charges are in
+    `tests/test_python_inventory_provider.py`.
+    """
+
+    files = 6
+    for index in range(files):
         (tmp_path / f"file-{index}.txt").write_text(str(index), encoding="utf-8")
 
     async def run() -> None:
@@ -1686,83 +1914,27 @@ def test_provider_applies_work_bounds_to_continuation_pages(
         )
         try:
             for kind in (QueryKind.DIRECTORY, QueryKind.FILTERED_TREE, QueryKind.CATALOG):
-                if kind is QueryKind.DIRECTORY:
-                    first_query = DirectoryQuery(query_id=kind, max_depth=1, max_rows=2)
-                elif kind is QueryKind.FILTERED_TREE:
-                    first_query = FilteredTreeQuery(query_id=kind, max_depth=1, max_rows=2)
-                else:
-                    first_query = CatalogQuery(query_id=kind, max_rows=2)
-                first = await handle.read(ReadRequest(queries=(first_query,)))
-                first_projection = first.projection(kind)
+                first_query = _page_query(kind, kind, max_rows=2)
+                whole_query = _page_query(kind, f"{kind}-whole", max_rows=100)
+                first = await handle.read(ReadRequest(queries=(first_query, whole_query)))
+                first_page = first.projection(kind)
+                whole = first.projection(f"{kind}-whole")
                 assert isinstance(
-                    first_projection,
-                    (DirectoryProjection, FilteredTreeProjection, CatalogProjection),
+                    first_page, (DirectoryProjection, FilteredTreeProjection, CatalogProjection)
                 )
-                after = first_projection.next_page
-                assert after is not None
-
-                if kind is QueryKind.DIRECTORY:
-                    limited_query = DirectoryQuery(
-                        query_id=kind,
-                        max_depth=1,
-                        max_rows=4,
-                        max_work=1,
-                        after=after,
-                    )
-                    retry_query = DirectoryQuery(
-                        query_id=kind,
-                        max_depth=1,
-                        max_rows=4,
-                        max_work=4,
-                        after=after,
-                    )
-                elif kind is QueryKind.FILTERED_TREE:
-                    limited_query = FilteredTreeQuery(
-                        query_id=kind,
-                        max_depth=1,
-                        max_rows=4,
-                        max_work=1,
-                        after=after,
-                    )
-                    retry_query = FilteredTreeQuery(
-                        query_id=kind,
-                        max_depth=1,
-                        max_rows=4,
-                        max_work=4,
-                        after=after,
-                    )
-                else:
-                    limited_query = CatalogQuery(
-                        query_id=kind,
-                        max_rows=4,
-                        max_work=1,
-                        after=after,
-                    )
-                    retry_query = CatalogQuery(
-                        query_id=kind,
-                        max_rows=4,
-                        max_work=4,
-                        after=after,
-                    )
-
-                limited = await handle.read(
-                    ReadRequest(queries=(limited_query,), at_version=first.version)
+                assert isinstance(
+                    whole, (DirectoryProjection, FilteredTreeProjection, CatalogProjection)
                 )
-                assert limited.projection(kind) == QueryLimitProjection(
-                    query_id=kind,
-                    query_kind=kind,
-                    max_work=1,
-                    rows_visited=1,
+                assert whole.next_page is None
+                assert first_page.next_page is not None
+                rows = await _assemble_pages(
+                    handle,
+                    _page_query(kind, kind, max_rows=4, max_work=1),
+                    first_page,
+                    first.version,
+                    max_pages=files + 1,
                 )
-                assert limited.work.rows_visited == 1
-                assert limited.work.rows_returned == 0
-
-                retry = await handle.read(
-                    ReadRequest(queries=(retry_query,), at_version=first.version)
-                )
-                assert not isinstance(retry.projection(kind), QueryLimitProjection)
-                assert retry.work.rows_visited == 4
-                assert retry.work.rows_returned == 4
+                assert rows == list(_page_rows(whole)), kind
         finally:
             await handle.close()
 
@@ -1771,10 +1943,23 @@ def test_provider_applies_work_bounds_to_continuation_pages(
 
 @pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
 def test_provider_returns_typed_query_limits_without_partial_answers(
-    provider_factory: Callable[[], InventoryBackend],
+    provider_factory: ProviderFactory,
     tmp_path: Path,
 ) -> None:
-    for index in range(6):
+    """A query that cannot finish within `max_work` answers the typed limit, never a
+    partial value of its ordinary type.
+
+    Rollup, navigation, recent, and catalog must refuse here, because each needs every
+    one of six files and its bound is two. A directory or filtered tree may instead
+    answer a page that makes progress under a soft budget (D6, open pending fdu), and
+    its pages then assemble the unpaged answer. The read reports the work it did, at
+    least what its refusals charged and at most what its queries could visit. The Python
+    store's hard tree limit and its exact charges are in
+    `tests/test_python_inventory_provider.py`.
+    """
+
+    files = 6
+    for index in range(files):
         (tmp_path / f"file-{index}.txt").write_text(str(index), encoding="utf-8")
 
     async def run() -> None:
@@ -1793,16 +1978,34 @@ def test_provider_returns_typed_query_limits_without_partial_answers(
         )
         try:
             result = await handle.read(ReadRequest(queries=queries))
+            charged = 0
+            returned = 0
             for query in queries:
                 projection = result.projection(query.query_id)
-                assert projection == QueryLimitProjection(
-                    query_id=query.query_id,
-                    query_kind=query.kind,
-                    max_work=2,
-                    rows_visited=2,
+                if isinstance(projection, QueryLimitProjection):
+                    assert (projection.query_kind, projection.max_work) == (query.kind, 2)
+                    charged += projection.rows_visited
+                    continue
+                assert isinstance(query, (DirectoryQuery, FilteredTreeQuery)), (
+                    f"{query.kind} answered past its work bound"
                 )
-            assert result.work.rows_visited == 12
-            assert result.work.rows_returned == 0
+                assert isinstance(projection, (DirectoryProjection, FilteredTreeProjection))
+                returned += len(projection.entries)
+                whole = await handle.read(
+                    ReadRequest(
+                        queries=(replace(query, max_work=DEFAULT_QUERY_MAX_WORK),),
+                        at_version=result.version,
+                    )
+                )
+                whole_page = whole.projection(query.query_id)
+                assert isinstance(whole_page, (DirectoryProjection, FilteredTreeProjection))
+                rows = await _assemble_pages(
+                    handle, query, projection, result.version, max_pages=files + 1
+                )
+                assert rows == list(whole_page.entries), query.kind
+            # Each query visits at most the six files and the root.
+            assert charged <= result.work.rows_visited <= len(queries) * (files + 1)
+            assert result.work.rows_returned == returned
         finally:
             await handle.close()
 
@@ -1811,7 +2014,7 @@ def test_provider_returns_typed_query_limits_without_partial_answers(
 
 @pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
 def test_provider_counts_are_exact_or_proven_lower_bounds(
-    provider_factory: Callable[[], InventoryBackend],
+    provider_factory: ProviderFactory,
     tmp_path: Path,
 ) -> None:
     for index in range(8):
@@ -1868,7 +2071,7 @@ def test_provider_counts_are_exact_or_proven_lower_bounds(
 
 @pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
 def test_provider_uses_canonical_portable_row_order(
-    provider_factory: Callable[[], InventoryBackend],
+    provider_factory: ProviderFactory,
     tmp_path: Path,
 ) -> None:
     for name in ("é-dir", "A-dir"):
@@ -1909,7 +2112,7 @@ def test_provider_uses_canonical_portable_row_order(
 
 @pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
 def test_provider_version_pins_fail_instead_of_moving(
-    provider_factory: Callable[[], InventoryBackend],
+    provider_factory: ProviderFactory,
     tmp_path: Path,
 ) -> None:
     async def run() -> None:
@@ -1935,64 +2138,342 @@ def test_provider_version_pins_fail_instead_of_moving(
     asyncio.run(run())
 
 
+async def _refresh_written(handle: InventoryHandle, root: Path, path: str) -> RefreshReceipt:
+    """Write *path* under *root* and have *handle* verify it."""
+
+    (root / path).write_text(path, encoding="utf-8")
+    receipt = await handle.refresh(RefreshRequest(observations=(RefreshObservation(path=path),)))
+    assert receipt.accepted_paths == (path,)
+    return receipt
+
+
+async def _changes_through(
+    handle: InventoryHandle, *, after: ChangeCursor, through: EngineVersion
+) -> list[ChangeBatch]:
+    """The batches a stream resumed *after* delivers until one reaches *through*, or a reset.
+
+    How many batches one change takes is the provider's own, so a case reads every batch
+    up to the version it is waiting for rather than counting them.
+    """
+
+    stream = cast("AsyncGenerator[ChangeBatch, None]", handle.changes(after=after))
+    batches: list[ChangeBatch] = []
+    try:
+        async with asyncio.timeout(5):
+            async for batch in stream:
+                batches.append(batch)
+                if batch.reset or batch.cursor.sequence >= through.sequence:
+                    return batches
+    finally:
+        await stream.aclose()
+    raise AssertionError(f"the change stream ended before {through}: {batches}")
+
+
+def _undirtied(batches: list[ChangeBatch], paths: set[str]) -> set[str]:
+    """Which of *paths* no batch names dirty; an all-dirty batch names every path."""
+
+    if any(batch.all_dirty for batch in batches):
+        return set()
+    return paths - {path for batch in batches for path in batch.dirty_paths}
+
+
+def _assert_exact_replay(
+    batches: list[ChangeBatch], *, after: ChangeCursor, paths: set[str]
+) -> None:
+    assert not any(batch.reset for batch in batches), batches
+    assert {batch.cursor.session for batch in batches} == {after.session}
+    sequences = [batch.cursor.sequence for batch in batches]
+    assert sequences == sorted(set(sequences)) and sequences[0] > after.sequence, sequences
+    assert not _undirtied(batches, paths), batches
+
+
 @pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
 def test_provider_changes_resume_and_report_history_gaps_as_reset(
-    provider_factory: Callable[[], InventoryBackend],
+    provider_factory: ProviderFactory,
     tmp_path: Path,
 ) -> None:
-    async def run() -> None:
+    """A cursor inside the provider's replay capacity replays every change after it, in
+    order; one outside it gets an explicit reset, never a suffix presented as complete
+    (D8).
+
+    Capacity is the provider's own budget, so how many batches a change takes, and so how
+    many changes a capacity holds, is not pinned: two changes fit the default capacity,
+    and three under a capacity of one either still replay exactly or reset. The Python
+    store's capacity, counted in its own batches, is pinned in
+    `tests/test_python_inventory_provider.py`.
+    """
+
+    inside_root = tmp_path / "inside"
+    outside_root = tmp_path / "outside"
+    inside_root.mkdir()
+    outside_root.mkdir()
+
+    async def inside() -> None:
         handle = await _open_settled_provider(
-            provider_factory,
-            tmp_path,
-            config=InventoryConfig(change_queue_size=1, watch_mode="off"),
+            provider_factory, inside_root, config=InventoryConfig(watch_mode="off")
         )
         try:
-            initial = await handle.read(ReadRequest())
-            (tmp_path / "first.txt").write_text("first", encoding="utf-8")
-            await handle.refresh(
-                RefreshRequest(observations=(RefreshObservation(path="first.txt"),))
-            )
-            first_stream = cast(
-                "AsyncGenerator[ChangeBatch, None]",
-                handle.changes(after=initial.cursor),
-            )
-            first = await asyncio.wait_for(anext(first_stream), timeout=1)
-            assert first.reset is False
-            assert "first.txt" in first.dirty_paths
-            assert first.cursor.session == initial.cursor.session
-            await first_stream.aclose()
+            initial = (await handle.read(ReadRequest())).cursor
+            first = await _refresh_written(handle, inside_root, "first.txt")
+            replayed = await _changes_through(handle, after=initial, through=first.version)
+            _assert_exact_replay(replayed, after=initial, paths={"first.txt"})
 
-            (tmp_path / "second.txt").write_text("second", encoding="utf-8")
-            await handle.refresh(
-                RefreshRequest(observations=(RefreshObservation(path="second.txt"),))
-            )
-            resumed_stream = cast(
-                "AsyncGenerator[ChangeBatch, None]",
-                handle.changes(after=first.cursor),
-            )
-            resumed = await asyncio.wait_for(anext(resumed_stream), timeout=1)
-            assert resumed.reset is False
-            assert "second.txt" in resumed.dirty_paths
-            await resumed_stream.aclose()
+            second = await _refresh_written(handle, inside_root, "second.txt")
+            resumed_after = replayed[-1].cursor
+            resumed = await _changes_through(handle, after=resumed_after, through=second.version)
+            _assert_exact_replay(resumed, after=resumed_after, paths={"second.txt"})
 
-            gap_stream = cast(
-                "AsyncGenerator[ChangeBatch, None]",
-                handle.changes(after=initial.cursor),
-            )
-            gap = await asyncio.wait_for(anext(gap_stream), timeout=1)
-            assert gap.reset is True
-            assert gap.cursor.session == initial.cursor.session
-            assert gap.cursor.sequence >= resumed.cursor.sequence
-            await gap_stream.aclose()
+            again = await _changes_through(handle, after=initial, through=second.version)
+            _assert_exact_replay(again, after=initial, paths={"first.txt", "second.txt"})
         finally:
             await handle.close()
 
-    asyncio.run(run())
+    async def outside() -> None:
+        handle = await _open_settled_provider(
+            provider_factory,
+            outside_root,
+            config=InventoryConfig(change_queue_size=1, watch_mode="off"),
+        )
+        try:
+            initial = (await handle.read(ReadRequest())).cursor
+            names = ("a.txt", "b.txt", "c.txt")
+            receipts = [await _refresh_written(handle, outside_root, name) for name in names]
+            replayed = await _changes_through(handle, after=initial, through=receipts[-1].version)
+            if replayed[-1].reset:
+                gap = replayed[-1]
+                assert gap.cursor.session == initial.session
+                assert gap.cursor.sequence > initial.sequence
+            else:
+                _assert_exact_replay(replayed, after=initial, paths=set(names))
+        finally:
+            await handle.close()
+
+    asyncio.run(inside())
+    asyncio.run(outside())
+
+
+@pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
+def test_provider_dirty_paths_name_every_ancestor_whose_aggregates_changed(
+    provider_factory: ProviderFactory,
+    tmp_path: Path,
+) -> None:
+    """A change dirties its path and every ancestor whose aggregates it moved, the root
+    included, so a consumer that rereads only dirty paths sees current folder totals.
+
+    Batch granularity is not pinned: the batches up to the refresh's version are read
+    together, and an all-dirty batch names every path. What else a dirty path promises,
+    and how a removed subtree is named, is D20, open pending fdu.
+    """
+
+    (tmp_path / "deep" / "a" / "b").mkdir(parents=True)
+    (tmp_path / "deep" / "other").mkdir()
+    (tmp_path / "deep" / "a" / "b" / "old.txt").write_bytes(b"old")
+    (tmp_path / "deep" / "other" / "x.txt").write_bytes(b"x")
+    ancestors = ("deep/a/b", "deep/a", "deep", "")
+
+    async def totals(handle: InventoryHandle, paths: tuple[str, ...]) -> dict[str, object]:
+        result = await handle.read(
+            ReadRequest(queries=tuple(EntryQuery(query_id=f"/{path}", path=path) for path in paths))
+        )
+        answers: dict[str, object] = {}
+        for path in paths:
+            projection = cast("EntryProjection", result.projection(f"/{path}"))
+            entry = projection.entry
+            answers[path] = (
+                projection.presence
+                if entry is None
+                else (entry.total_files, entry.total_size, entry.unignored_files)
+            )
+        return answers
+
+    async def change(handle: InventoryHandle, path: str, *, dirty: set[str]) -> None:
+        cursor = (await handle.read(ReadRequest())).cursor
+        receipt = await handle.refresh(
+            RefreshRequest(observations=(RefreshObservation(path=path),))
+        )
+        assert receipt.accepted_paths == (path,)
+        batches = await _changes_through(handle, after=cursor, through=receipt.version)
+        assert not any(batch.reset for batch in batches), batches
+        assert not _undirtied(batches, dirty), (path, _undirtied(batches, dirty))
+
+    async def run() -> list[dict[str, object]]:
+        handle = await _open_settled_provider(
+            provider_factory, tmp_path, config=InventoryConfig(watch_mode="off")
+        )
+        try:
+            seen = [await totals(handle, ancestors)]
+            (tmp_path / "deep" / "a" / "b" / "new.txt").write_bytes(b"added")
+            await change(handle, "deep/a/b/new.txt", dirty={"deep/a/b/new.txt", *ancestors})
+            seen.append(await totals(handle, ancestors))
+            (tmp_path / "deep" / "a" / "b" / "old.txt").unlink()
+            await change(handle, "deep/a/b/old.txt", dirty={"deep/a/b/old.txt", *ancestors})
+            seen.append(await totals(handle, ancestors))
+            shutil.rmtree(tmp_path / "deep" / "a" / "b")
+            await change(handle, "deep/a/b", dirty=set(ancestors))
+            seen.append(await totals(handle, ancestors))
+            return seen
+        finally:
+            await handle.close()
+
+    discovered, added, removed_file, removed_directory = asyncio.run(run())
+    assert discovered == {
+        "deep/a/b": (1, 3, 1),
+        "deep/a": (1, 3, 1),
+        "deep": (2, 4, 2),
+        "": (2, 4, 2),
+    }
+    assert added == {
+        "deep/a/b": (2, 8, 2),
+        "deep/a": (2, 8, 2),
+        "deep": (3, 9, 3),
+        "": (3, 9, 3),
+    }
+    assert removed_file == {
+        "deep/a/b": (1, 5, 1),
+        "deep/a": (1, 5, 1),
+        "deep": (2, 6, 2),
+        "": (2, 6, 2),
+    }
+    assert removed_directory == {
+        "deep/a/b": EntryPresence.ABSENT,
+        "deep/a": (0, 0, 0),
+        "deep": (1, 1, 1),
+        "": (1, 1, 1),
+    }
+
+
+@pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
+def test_provider_directory_times_are_their_newest_regular_file(
+    provider_factory: ProviderFactory,
+    tmp_path: Path,
+) -> None:
+    """A directory's `mtime_ns` and `newest_mtime_ns` are the newest modification time of
+    any regular file below it, at any depth, and 0 when it holds none.
+
+    Neither a symlink's time nor the directory's own counts, which is why each is set
+    newer than the file here. A live change moves `newest_mtime_ns` up the ancestors.
+    `mtime_ns` is pinned at discovery only, because the Python store keeps a
+    directory's discovered `mtime_ns` through a live change: an expected failure in
+    `tests/test_python_inventory_provider.py`.
+    """
+
+    old_ns, new_ns = 100_000_000_000, 200_000_000_000
+    (tmp_path / "d" / "sub").mkdir(parents=True)
+    (tmp_path / "d" / "empty").mkdir()
+    (tmp_path / "d" / "links").mkdir()
+    old_file = tmp_path / "d" / "sub" / "old.txt"
+    old_file.write_bytes(b"old")
+    os.utime(old_file, ns=(old_ns, old_ns))
+    try:
+        (tmp_path / "d" / "link").symlink_to("sub/old.txt")
+        (tmp_path / "d" / "links" / "link").symlink_to("../sub/old.txt")
+    except OSError as error:  # pragma: no cover - unsupported Windows policy
+        pytest.skip(f"symlinks are unavailable: {error}")
+    for link in (tmp_path / "d" / "link", tmp_path / "d" / "links" / "link"):
+        os.utime(link, ns=(900_000_000_000, 900_000_000_000), follow_symlinks=False)
+    for directory in ("d/sub", "d/empty", "d/links", "d"):
+        os.utime(tmp_path / directory, ns=(800_000_000_000, 800_000_000_000))
+    paths = ("", "d", "d/sub", "d/empty", "d/links")
+
+    async def times(handle: InventoryHandle) -> dict[str, tuple[int, int | None]]:
+        result = await handle.read(
+            ReadRequest(queries=tuple(EntryQuery(query_id=f"/{path}", path=path) for path in paths))
+        )
+        answers: dict[str, tuple[int, int | None]] = {}
+        for path in paths:
+            entry = cast("EntryProjection", result.projection(f"/{path}")).entry
+            assert entry is not None, path
+            answers[path] = (entry.mtime_ns, entry.newest_mtime_ns)
+        return answers
+
+    async def run() -> tuple[dict[str, tuple[int, int | None]], dict[str, tuple[int, int | None]]]:
+        handle = await _open_settled_provider(
+            provider_factory, tmp_path, config=InventoryConfig(watch_mode="off")
+        )
+        try:
+            discovered = await times(handle)
+            new_file = tmp_path / "d" / "sub" / "new.txt"
+            new_file.write_bytes(b"new")
+            os.utime(new_file, ns=(new_ns, new_ns))
+            receipt = await handle.refresh(
+                RefreshRequest(observations=(RefreshObservation(path="d/sub/new.txt"),))
+            )
+            assert receipt.accepted_paths == ("d/sub/new.txt",)
+            return discovered, await times(handle)
+        finally:
+            await handle.close()
+
+    discovered, changed = asyncio.run(run())
+    assert discovered == {
+        "": (old_ns, old_ns),
+        "d": (old_ns, old_ns),
+        "d/sub": (old_ns, old_ns),
+        "d/empty": (0, 0),
+        "d/links": (0, 0),
+    }
+    assert {path: newest for path, (_mtime, newest) in changed.items()} == {
+        "": new_ns,
+        "d": new_ns,
+        "d/sub": new_ns,
+        "d/empty": 0,
+        "d/links": 0,
+    }
+
+
+@pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
+def test_provider_answers_an_unlisted_directory_with_an_empty_final_page(
+    provider_factory: ProviderFactory,
+    tmp_path: Path,
+) -> None:
+    """While discovery has not listed a directory, a directory page for it, or for a path
+    below it, is empty and has no continuation: neither an error nor a page that
+    promises more. `/api/tree` relies on it while discovery runs.
+
+    The discovery gate (`inventory_engine/seams.py`) holds the provider before it lists
+    the directory; once released, the same page lists what the directory holds.
+    """
+
+    (tmp_path / "a" / "held" / "deeper").mkdir(parents=True)
+    (tmp_path / "a" / "held" / "inside.txt").write_text("inside", encoding="utf-8")
+    (tmp_path / "a" / "beside.txt").write_text("beside", encoding="utf-8")
+    pages = (
+        DirectoryQuery(query_id="held", path="a/held", max_depth=2, max_rows=10),
+        DirectoryQuery(query_id="deeper", path="a/held/deeper", max_depth=1, max_rows=10),
+    )
+
+    async def run() -> tuple[IndexState, list[ProjectionResult], tuple[str, ...]]:
+        gate = DiscoveryGate(before="a/held")
+        backend = provider_factory(seams=ProviderSeams(discovery_gate=gate))
+        handle = await backend.open(tmp_path, InventoryConfig(watch_mode="off"))
+        try:
+            await asyncio.wait_for(gate.wait_reached(), 5)
+            held = await handle.read(ReadRequest(queries=pages))
+            unlisted = [held.projection(page.query_id) for page in pages]
+            gate.release()
+            for _attempt in range(500):
+                if (await handle.read(ReadRequest())).state.phase in _SERVING_PHASES:
+                    break
+                await asyncio.sleep(0.005)
+            listed = await handle.read(ReadRequest(queries=pages[:1]))
+            listed_page = cast("DirectoryProjection", listed.projection("held"))
+            return held.state, unlisted, tuple(entry.path for entry in listed_page.entries)
+        finally:
+            gate.release()
+            await handle.close()
+
+    state, unlisted, listed = asyncio.run(run())
+    assert state.phase is LifecyclePhase.DISCOVERING
+    assert not state.coverage.complete
+    assert unlisted == [
+        DirectoryProjection(query_id="held", entries=(), next_page=None),
+        DirectoryProjection(query_id="deeper", entries=(), next_page=None),
+    ]
+    assert listed == ("a/held/deeper", "a/held/inside.txt")
 
 
 @pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
 def test_provider_allows_only_one_active_change_iterator(
-    provider_factory: Callable[[], InventoryBackend],
+    provider_factory: ProviderFactory,
     tmp_path: Path,
 ) -> None:
     async def run() -> None:
@@ -2030,7 +2511,7 @@ def test_provider_allows_only_one_active_change_iterator(
 
 @pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
 def test_provider_refresh_verifies_the_filesystem_instead_of_trusting_the_hint(
-    provider_factory: Callable[[], InventoryBackend],
+    provider_factory: ProviderFactory,
     tmp_path: Path,
 ) -> None:
     async def run() -> None:
@@ -2078,7 +2559,7 @@ def test_provider_refresh_verifies_the_filesystem_instead_of_trusting_the_hint(
 
 @pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
 def test_provider_close_joins_change_delivery_and_is_idempotent(
-    provider_factory: Callable[[], InventoryBackend],
+    provider_factory: ProviderFactory,
     tmp_path: Path,
 ) -> None:
     async def run() -> None:
@@ -2106,7 +2587,7 @@ def test_provider_close_joins_change_delivery_and_is_idempotent(
 
 @pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
 def test_provider_lifecycle_is_monotonic_and_one_handle_keeps_one_session(
-    provider_factory: Callable[[], InventoryBackend],
+    provider_factory: ProviderFactory,
     tmp_path: Path,
 ) -> None:
     for index in range(50):
@@ -2141,7 +2622,7 @@ def test_provider_lifecycle_is_monotonic_and_one_handle_keeps_one_session(
 
 @pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
 def test_group_filters_cut_age_bands_at_their_edges_and_keep_symlinks(
-    provider_factory: Callable[[], InventoryBackend],
+    provider_factory: ProviderFactory,
     tmp_path: Path,
 ) -> None:
     """Group by's filter fields (metabrowser/tree_groups.py): an age band keeps an mtime
@@ -2276,7 +2757,7 @@ def _grouped_tree_fixture(root: Path) -> None:
 
 @pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
 def test_grouped_tree_answers_each_group_as_its_filtered_tree(
-    provider_factory: Callable[[], InventoryBackend],
+    provider_factory: ProviderFactory,
     tmp_path: Path,
 ) -> None:
     """A grouped tree's group is exactly its filtered tree (`GroupedTreeQuery.group_query`):

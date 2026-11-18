@@ -145,7 +145,7 @@ boundary.
 ## The Cap
 
 `DiscoveryBudget.max_files` limits how many regular files a provider discovers;
-directory rows do not count against it.
+directories and symlinks do not count against it.
 The application sets it from `INVENTORY_MAX_FILES` in `settings.py`
 (`default_inventory_config` in `inventory_engine/runtime.py`), and that comment is where
 the value and its reason live.
@@ -159,6 +159,15 @@ When discovery reaches the budget, a provider guarantees:
 - observation stops and the phase becomes `stopped`, because a provider must not claim
   to watch a scope it can no longer expand (see
   [State and Failures](#state-and-failures)).
+
+Reaching the budget is the stop, so a tree holding exactly `max_files` regular files
+reports a budget stop although discovery left nothing out;
+`test_provider_budget_counts_regular_files_and_stops_when_they_reach_it` pins the rule
+as it stands.
+Which files a stop admits is unspecified, because it follows directory read
+order (D17): `test_provider_budget_stop_is_explicit_and_absence_remains_unknown` asserts
+the stop, coverage, issue, and counts, and reads the admitted files back rather than
+naming them.
 
 Browsing a tree larger than the cap, rather than stopping at it, is planned
 ([load-time plan](../specs/active/plan-2026-08-21-load-time-performance.md)).
@@ -231,10 +240,22 @@ contain neither separator; `size_less_than` is an exclusive byte bound.
 Every potentially broad query carries `max_work`. A provider that cannot produce the
 complete bounded projection returns `QueryLimitProjection` with the query kind, bound,
 and deterministic charged work; it never returns a partial value in the ordinary result
-type. Recent and catalog counts stop claiming exactness after `count_cap` and return a
-proven `at_least` lower bound.
+type. Rollup, navigation, recent, and catalog queries refuse at their bound.
+Whether a directory or filtered-tree page’s bound is a ceiling or a budget the page may
+finish spending is D6, open pending fdu, so
+`test_provider_returns_typed_query_limits_without_partial_answers` and
+`test_provider_applies_work_bounds_to_continuation_pages` accept either a typed limit or
+a page that makes progress, and require that pages end, assemble the unpaged answer, and
+report at least the rows they return.
+A typed limit charges at most its bound.
+Recent and catalog counts stop claiming exactness after `count_cap` and return a proven
+`at_least` lower bound.
 Consumers use continuations for completeness and counts for display; neither count kind
 controls paging.
+A directory page for a path discovery has not listed yet, a directory it
+reached but has not enumerated or a path below one, is empty and has no continuation
+(`test_provider_answers_an_unlisted_directory_with_an_empty_final_page`); `/api/tree`
+relies on it while discovery runs.
 
 The algebra has no generic report name, provider command, HTTP status, response header,
 or provider-specific options map.
@@ -263,6 +284,12 @@ distinguishes:
 - `unknown`: current coverage cannot prove either state
 
 Symlinks are visible leaves but do not contribute to regular-file totals.
+A directory’s `mtime_ns` and `newest_mtime_ns` are the newest modification time of any
+regular file below it, and 0 when it holds none: neither a symlink’s time nor the
+directory’s own counts (`test_provider_directory_times_are_their_newest_regular_file`).
+That case pins `mtime_ns` at discovery only, because the Python store keeps a
+directory’s discovered `mtime_ns` through a live change while `newest_mtime_ns` moves;
+an expected failure in `tests/test_python_inventory_provider.py` records the gap.
 The contract does not expose special filesystem objects because the browser wire cannot
 represent them; every provider excludes them rather than reclassifying them as regular
 files. Hidden components outside the exact-name allowlist are pruned from scope.
@@ -330,8 +357,16 @@ Each batch has a resulting version and cursor, state, work counters, and one of:
 
 Batches from one handle retain the opened scope and semantic fingerprints and have
 strictly increasing sequences.
-The coordinator rejects a mixed-identity or nonmonotonic group before it coalesces any
-dirtiness or work. A handle allows one active change iterator.
+A batch may carry state alone, so how many batches one change takes is the provider’s
+own. A cursor inside the provider’s replay capacity, which `change_queue_size` sizes in
+the provider’s own units, replays every batch after it, and one outside it gets a reset
+(D8, `test_provider_changes_resume_and_report_history_gaps_as_reset`). The dirty paths
+of a change include every ancestor whose aggregates it moved, up to the root, so a
+consumer that rereads only dirty paths sees current folder totals
+(`test_provider_dirty_paths_name_every_ancestor_whose_aggregates_changed`); what else a
+dirty path promises is D20. The coordinator rejects a mixed-identity or nonmonotonic
+group before it coalesces any dirtiness or work.
+A handle allows one active change iterator.
 
 The coordinator rereads the affected visible projections, resumes from the read’s
 cursor, and projects results into browser events; see
@@ -385,6 +420,10 @@ meaning in every provider.
 time when available; unavailable CPU time remains `None` rather than becoming zero.
 Diagnostics use the fixed `ProviderDiagnostics` record rather than a provider-defined
 mapping, and `/_debug/inventory` reports it when `METABROWSER_DEBUG` is set.
+Its `directories_indexed` counts every retained directory, the served root included, and
+`files_indexed` regular files only
+(`test_provider_counts_the_root_among_indexed_directories`); its `watch_*` fields are
+the provider’s own words.
 
 The host also records when the served root’s first discovery ended,
 `InventoryCoordinator.discovery()`: the first provider state outside `DISCOVERY_PHASES`
@@ -522,9 +561,9 @@ every open one links the fdu proposal, and that every test it names exists.
 | D3 | A `.gitignore` edit is observed live and reclassifies its subtree as one verified change | Decided | Not yet: the Python watcher drops the hidden name. R7 (layer 4) |
 | D4 | The observer watches exactly the admitted scope, turns overflow into scoped reconciliation, and retries or degrades explicitly when it fails | Decided | Not yet: see [The Watcher](arch-inventory-engine-python.md#the-watcher). R7 (layer 4) |
 | D5 | After an observer failure, including a watch-limit failure at open, a handle reports `ready`, freshness `stale`, and an `observation_gap` issue, because its data is complete as of its version | Open, pending fdu ([jlevy/fdu#215](https://github.com/jlevy/fdu/issues/215)) | [State and Failures](#state-and-failures) states it; the Python provider meets it (`test_python_provider_surfaces_observation_gap`), and no conformance case can fail an observer yet |
-| D6 | A per-page tree work budget is soft: a page spends its budget, stops at a position its continuation can name, reports the work it spent, and returns at least one row or ends the traversal; conformance asserts progress, termination, and conservation, never a ceiling | Open, pending fdu ([jlevy/fdu#215](https://github.com/jlevy/fdu/issues/215)) | Not yet: the typed-limit and continuation-work conformance cases pin the Python provider’s hard limit and its exact charges (R1). R5 (layer 6) |
+| D6 | A per-page tree work budget is soft: a page spends its budget, stops at a position its continuation can name, reports the work it spent, and returns at least one row or ends the traversal; conformance asserts progress, termination, and conservation, never a ceiling | Open, pending fdu ([jlevy/fdu#215](https://github.com/jlevy/fdu/issues/215)) | `test_provider_returns_typed_query_limits_without_partial_answers` and `test_provider_applies_work_bounds_to_continuation_pages` accept a typed limit or a page that makes progress; the Python provider’s hard limit is pinned in `tests/test_python_inventory_provider.py`, and R5 (layer 6) gives it the soft rule |
 | D7 | A filtered or grouped tree is one complete-or-limit read at one version and does not page; a moved version restarts it | Open, pending fdu ([jlevy/fdu#215](https://github.com/jlevy/fdu/issues/215)) | Not yet: both page today. R5 (layer 6) |
-| D8 | Replay capacity is a provider budget: a cursor inside it replays exactly and one outside it gets a reset. A batch is one coherent version and may carry state only; the host publishes a transient `reconciling` freshness and the batches after it as one change, and tests assert convergence rather than envelope counts | Decided | Not yet: the replay conformance case pins one refresh as one batch at capacity 1 (R1). The host rule is R27 (layer 3) |
+| D8 | Replay capacity is a provider budget: a cursor inside it replays exactly and one outside it gets a reset. A batch is one coherent version and may carry state only; the host publishes a transient `reconciling` freshness and the batches after it as one change, and tests assert convergence rather than envelope counts | Decided | `test_provider_changes_resume_and_report_history_gaps_as_reset`, which also runs with split batches. The host rule, and replacing the envelope counts in `tests/test_e2e_filesystem_to_sse.py`, are R27 (layer 3) |
 | D9 | The engine receives classification, not presentation: a File Rollup classification profile names the fields an engine reads, providers derive semantic identity from what they parse, and the host stamps the browser’s registry fingerprint | Intent decided; profile open, pending fdu ([jlevy/fdu#215](https://github.com/jlevy/fdu/issues/215)) | Providers parse the whole registry document today (`test_provider_derives_registry_identity_from_supplied_content`, `test_provider_uses_supplied_registry_content_for_classification`). R9 (layer 5) |
 | D10 | Metabrowser’s total canonical grammar is the identity, `%5C` for a POSIX backslash included | Open, pending fdu ([jlevy/fdu#215](https://github.com/jlevy/fdu/issues/215)) | `canonical_inventory_name` in `contract.py` (`test_the_canonical_path_is_total_and_injective`, `test_an_unescaped_posix_backslash_is_not_an_identity`); fdu’s grammar does not escape the backslash |
 | D11 | Every bound both providers must meet is one contract constant, set from a measurement of both and recorded beside it, and the adapter asserts fdu’s exported bounds against those constants at open | Method decided; values pending measurement | The constants at the top of `contract.py`, set for the Python provider today (`test_configuration_and_command_bounds_are_enforced`). R5 (layer 6), after R20 |
@@ -533,10 +572,10 @@ every open one links the fdu proposal, and that every test it names exists.
 | D14 | A native panic or poisoned root becomes a typed provider failure, and a coordinator supervisor, not the relay, closes the failed handle with a bounded wait, reopens it up to a cap, publishes a host reset, and past the cap leaves the root failed | Decided | Not yet. R26 (layer 3); `tests/perturbed_provider.py` injects the fault. It reproduces the defect: an `Exception` from `changes()` makes the relay publish a host reset and end, but a `BaseException`, as a native panic is, escapes the relay’s `TaskGroup` as a `BaseExceptionGroup` that its `except Exception` misses, so no reset is published, live updates stop silently, and the group is raised again from the coordinator’s close |
 | D15 | The seam has two latency bounds, measured separately and stated in the contract: the uninterruptible native hold and event-loop lag, which also counts preemptible conversion; page sizes follow from both, and `open`, `close`, and root replacement have bounds under the coordinator lock | Decided | Not yet: measured with the adapter, and stated with D11’s constants |
 | D16 | A provider’s settled memory per retained entry has a byte budget, and the fdu process is no larger than Python’s on one corpus, measured at steady state after settle | Decided | Not yet: `devtools/bench_engine.py` (R18) records peak resident memory, not settled memory; R30 re-measures the Python baseline (layer 7) |
-| D17 | Which files a budget stop admits is unspecified; conformance and goldens assert the stop, coverage, issue, and counts, never membership | Decided | Not yet: `test_provider_budget_stop_is_explicit_and_absence_remains_unknown` pins the files the Python provider admits (R1) |
+| D17 | Which files a budget stop admits is unspecified; conformance and goldens assert the stop, coverage, issue, and counts, never membership | Decided | `test_provider_budget_stop_is_explicit_and_absence_remains_unknown`; the files the Python provider admits are pinned in `tests/test_python_inventory_provider.py` |
 | D18 | Only the byte-exact served name is identity: a lookup or refresh spelled differently only in letter case or Unicode normalization answers `absent` or is rejected, and a refresh verifies its spelling against the parent’s listing | Open, pending fdu ([jlevy/fdu#215](https://github.com/jlevy/fdu/issues/215)) | Not yet: macOS cases with the adapter |
 | D19 | Metabrowser pins fdu exactly, changes the pin in one commit with the adapter and its conformance results, and uses only the public `fdu.opened` surface and fdu’s exported bounds | Decided | With the adapter’s packaging (R14) |
-| D20 | A change batch names every path whose row may differ from the version before it, every ancestor whose aggregates changed included; a removed subtree is named by its root in a separate bounded field; what a batch cannot express this way is all-dirty | Open, pending fdu ([jlevy/fdu#215](https://github.com/jlevy/fdu/issues/215)) | The ancestor rule is the Python provider’s, and `tests/test_e2e_filesystem_to_sse.py` relies on it (R2). The removed-subtrees field is R5 (layer 6) |
+| D20 | A change batch names every path whose row may differ from the version before it, every ancestor whose aggregates changed included; a removed subtree is named by its root in a separate bounded field; what a batch cannot express this way is all-dirty | Open, pending fdu ([jlevy/fdu#215](https://github.com/jlevy/fdu/issues/215)) | The ancestor rule: `test_provider_dirty_paths_name_every_ancestor_whose_aggregates_changed`. The removed-subtrees field is R5 (layer 6) |
 | D21 | Native events are never trusted on a remote or unknown filesystem: such a root reports D5’s `ready`, `stale`, and `observation_gap`, with refresh driven by the host until fdu can poll | Open, pending fdu ([jlevy/fdu#215](https://github.com/jlevy/fdu/issues/215)) | The Python provider polls those filesystems instead (`select_watch_mode` in `watch_backends.py`); fdu’s side comes with the adapter |
 | D22 | Aggregates cross the seam as contract-owned values: classification tallies per dimension, ranked children with a remainder, exact-or-capped totals, and recency-window counts, from which the host builds `RollupResult` and navigation rows and stamps registry identity | Open, pending fdu ([jlevy/fdu#215](https://github.com/jlevy/fdu/issues/215)) | Not yet: `RollupProjection` and `NavigationProjection` carry browser wire models. R3 (layer 5) |
 
@@ -547,6 +586,18 @@ The named check `test_architecture_document_registers_every_provider_conformance
 verifies, in both directions, that the rows below are exactly the provider-parametrized
 tests in `tests/test_inventory_provider_contract.py`.
 
+A case asserts semantics and bounds: a filesystem fact, an order, a bound, or a state
+transition, never a provider’s name, a free-form string, a batch granularity, or an
+exact work charge. Each runs against the provider `METABROWSER_INVENTORY_PROVIDER`
+selects and against it behind `tests/perturbed_provider.py`, once renamed and once also
+with every data batch split into a state-only batch and the data at versions of their
+own, so a case that fails only wrapped pins an identity or granularity the contract
+leaves to a provider.
+Where the contract leaves a choice open, such as which files a budget stop admits, the
+unit of replay capacity, work charges, or watch strings, the Python provider’s choice is
+pinned in `tests/test_python_inventory_provider.py`, each case there naming the
+conformance case it complements.
+
 | Test |
 | --- |
 | `test_checkpoint_read_returns_only_a_coherent_constant_work_envelope` |
@@ -555,6 +606,8 @@ tests in `tests/test_inventory_provider_contract.py`.
 | `test_provider_derives_registry_identity_from_supplied_content` |
 | `test_provider_uses_supplied_registry_content_for_classification` |
 | `test_provider_budget_stop_is_explicit_and_absence_remains_unknown` |
+| `test_provider_budget_counts_regular_files_and_stops_when_they_reach_it` |
+| `test_provider_counts_the_root_among_indexed_directories` |
 | `test_directory_pages_are_lossless_when_directories_outnumber_file_budget` |
 | `test_filtered_tree_and_recent_share_filter_semantics_before_caps` |
 | `test_grouped_tree_answers_each_group_as_its_filtered_tree` |
@@ -567,6 +620,9 @@ tests in `tests/test_inventory_provider_contract.py`.
 | `test_provider_uses_canonical_portable_row_order` |
 | `test_provider_version_pins_fail_instead_of_moving` |
 | `test_provider_changes_resume_and_report_history_gaps_as_reset` |
+| `test_provider_dirty_paths_name_every_ancestor_whose_aggregates_changed` |
+| `test_provider_directory_times_are_their_newest_regular_file` |
+| `test_provider_answers_an_unlisted_directory_with_an_empty_final_page` |
 | `test_provider_allows_only_one_active_change_iterator` |
 | `test_provider_refresh_verifies_the_filesystem_instead_of_trusting_the_hint` |
 | `test_provider_close_joins_change_delivery_and_is_idempotent` |
