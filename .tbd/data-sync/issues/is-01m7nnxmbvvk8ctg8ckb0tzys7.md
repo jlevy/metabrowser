@@ -5,7 +5,7 @@ title: Detect the app through LaunchServices and deliver by open -b
 kind: feature
 status: in_progress
 priority: 2
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-11-17-open-anything-from-cli-and-app.md
 delegate: claude-code@spud10
 labels: []
@@ -16,7 +16,7 @@ parent_id: is-01m7nnxhaqce1g2ewec3wbaf7e
 hold: null
 hold_until: null
 created_at: 2026-11-17T21:17:02.203Z
-updated_at: 2026-11-18T22:10:15.308Z
+updated_at: 2026-11-18T23:03:29.017Z
 started_at: 2026-11-18T21:02:22.182Z
 ---
 Phase 1. ctypes LSCopyApplicationURLsForBundleIdentifier for the release bundle id; dev bundle only when chosen; test seam for goldens. Deliver with open -b <bundle> TARGET; map LaunchServices refusal to blocked. Browser path starts a detached server and opens the page once it answers.
@@ -27,3 +27,6 @@ Phase 1. ctypes LSCopyApplicationURLsForBundleIdentifier for the release bundle 
 
 
 2026-11-18: the browser path is built in jlevy/metabrowser#582 (open, not merged). serve_detached in cli/present.py starts the ordinary metab server (SERVER_COMMAND) with os.posix_spawn, in its own session, with output to an owner-only log in the logs directory and no other inherited descriptor. It waits up to server_announce_timeout_s for the Serving line, then reports delivered_to browser with url, pid, log, and the kill command that stops it. Codes: server_started and server_starting (0), server_failed (1). Under auto, the app codes that end in exit 4 fall back to a browser, with the reason in the report's fallback; lookup_failed stays 5. Each delivery starts a new server: reuse waits on mb-5xi4, idle exit on mb-qzny. Close when #582 merges.
+
+
+2026-11-18, review A on #582: server_started now waits until the announced address answers GET /api/identity for the target's root, so a server that loses its port to another reports server_failed; Popen with start_new_session replaced posix_spawn(setsid=True), which CI's Linux Python refused. Binding before printing is mb-afxa. Head bafef973e.
