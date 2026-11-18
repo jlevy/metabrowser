@@ -230,13 +230,18 @@ server_announce_timeout_s: float = 20.0
 SERVER_POLL_S: Final = 0.05
 # The route whose answer says which root a server serves (`root_identity.py`).
 IDENTITY_ROUTE: Final = "/api/identity"
-# The most of an identity answer read. Its five fields are names of at most a path, an
-# origin, and a pin, a few hundred bytes; a longer answer is not an identity.
+# The most of an identity response read, its status line and headers included. Its five
+# fields are names of at most a path, an origin, and a pin, and its headers are a few
+# more lines, so it is a few hundred bytes; a longer response is not an identity.
 IDENTITY_MAX_BYTES: Final = 64 * 1024
-# How long one identity request may take. A started server answers it from memory,
-# reading no store and running no Git (`root_identity.py`), so a request that takes this
-# long is to a server still starting, and the next round asks again.
+# How long one identity request may take in all, from connecting to the last byte read,
+# however slowly the peer sends. A started server answers it from memory, reading no
+# store and running no Git (`root_identity.py`), so a request that takes this long is to
+# a server still starting, and the next round asks again.
 SERVER_IDENTITY_REQUEST_S: Final = 1.0
+# An identity response's status line when the server found the route: HTTP/1.0 or 1.1,
+# status 200, and any reason phrase.
+_IDENTITY_OK: Final = re.compile(rb"HTTP/1\.[01] 200(?: .*)?")
 # The server's last lines kept, to say why it failed; one is reported.
 SERVER_LOG_TAIL_LINES: Final = 5
 # A line of the server's output longer than this is skipped while waiting: the `Serving`
@@ -1086,8 +1091,65 @@ def _is_target_identity(answer: object, target: Presentable) -> bool:
     return kind == "mirror" and name.casefold().startswith((f"{origin}@", f"{origin}#"))
 
 
+def _identity_body(host: str, port: int, deadline: float) -> bytes | None:
+    """The body of a ``200`` answer to ``GET /api/identity`` at *host*:*port*, or None.
+
+    The request ends at the *deadline* on ``time.monotonic()``, however slowly the peer
+    sends: each read waits only for the time left, and at most ``IDENTITY_MAX_BYTES``
+    are read. It asks over HTTP/1.0 with ``Connection: close``, so the response ends
+    where the server closes, and a response the server sends in chunks is not an
+    identity.
+    """
+
+    # Imported here: only a browser delivery asks, and the dry run's imports are counted.
+    import socket
+
+    authority = f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
+    request = (
+        f"GET {IDENTITY_ROUTE} HTTP/1.0\r\nHost: {authority}\r\n"
+        "Accept-Encoding: identity\r\nConnection: close\r\n\r\n"
+    ).encode("ascii")
+    received = bytearray()
+    try:
+        left = deadline - time.monotonic()
+        if left <= 0:
+            return None
+        with socket.create_connection((host, port), timeout=left) as connection:
+            connection.sendall(request)
+            while len(received) <= IDENTITY_MAX_BYTES:
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    return None
+                connection.settimeout(left)
+                chunk = connection.recv(IDENTITY_MAX_BYTES + 1 - len(received))
+                if not chunk:
+                    break
+                received += chunk
+    except OSError:
+        return None
+    if len(received) > IDENTITY_MAX_BYTES:
+        return None
+    head, separator, body = bytes(received).partition(b"\r\n\r\n")
+    status_line, *header_lines = head.split(b"\r\n")
+    if not separator or _IDENTITY_OK.fullmatch(status_line) is None:
+        return None
+    headers: dict[bytes, bytes] = {}
+    for line in header_lines:
+        name, colon, value = line.partition(b":")
+        if not colon:
+            return None
+        headers[name.strip().lower()] = value.strip()
+    if headers.get(b"transfer-encoding", b"identity").lower() != b"identity":
+        return None
+    declared = headers.get(b"content-length")
+    if declared is not None and (not declared.isdigit() or int(declared) != len(body)):
+        return None
+    return body
+
+
 def _answers_as_target(url: str, target: Presentable, timeout_s: float) -> bool:
-    """Whether the server at *url* answers ``GET /api/identity`` as a server of *target*.
+    """Whether the server at *url* answers ``GET /api/identity`` as a server of *target*
+    within *timeout_s* in all.
 
     A server prints where it serves after it finds a free port and before it binds it,
     so two started together can print the same address, and the one that binds second
@@ -1095,32 +1157,24 @@ def _answers_as_target(url: str, target: Presentable, timeout_s: float) -> bool:
     for another root says the address is another server's. Two servers of the same root
     that print the same address are not told apart this way: the one that exits leaves
     the other serving the same target, and binding before printing (``mb-afxa``) would
-    keep them from printing the same address at all.
+    keep them from printing the same address at all. An answer that is not JSON, or is
+    nested too deeply to parse, is not the target's either.
     """
 
-    # Imported here: only a browser delivery asks, and the dry run's imports are counted.
-    import http.client
-    from contextlib import closing
-
+    deadline = time.monotonic() + timeout_s
     parts = urlsplit(url)
-    if parts.hostname is None or parts.port is None:
-        return False
     try:
-        with closing(
-            http.client.HTTPConnection(parts.hostname, parts.port, timeout=timeout_s)
-        ) as connection:
-            connection.request("GET", IDENTITY_ROUTE, headers={"Connection": "close"})
-            with connection.getresponse() as response:
-                if response.status != 200:
-                    return False
-                body = response.read(IDENTITY_MAX_BYTES + 1)
-    except (OSError, http.client.HTTPException):
+        port = parts.port
+    except ValueError:
         return False
-    if len(body) > IDENTITY_MAX_BYTES:
+    if parts.hostname is None or port is None:
+        return False
+    body = _identity_body(parts.hostname, port, deadline)
+    if body is None:
         return False
     try:
         answer: object = json.loads(body)
-    except ValueError:
+    except (ValueError, RecursionError):
         return False
     return _is_target_identity(answer, target)
 

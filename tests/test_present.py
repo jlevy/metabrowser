@@ -11,18 +11,22 @@ edges, the bundle identifier's sources, and the LaunchServices lookup on a Mac.
 
 from __future__ import annotations
 
+import json
 import os
 import plistlib
 import re
 import signal
+import socket
 import struct
 import subprocess
 import sys
 import textwrap
+import threading
 import time
 import unicodedata
 import urllib.request
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from contextlib import suppress
 from pathlib import Path
 from typing import get_args
 
@@ -1125,6 +1129,86 @@ def test_an_identity_answer_names_the_target_or_not(
         answer = {**answer, "full_name": answer["full_name"].replace("<notes>", notes.root)}
     chosen = notes if target == "notes" else _DEMO
     assert present._is_target_identity(answer, chosen) is same
+
+
+def _peer(respond: Callable[[socket.socket, threading.Event], None]) -> tuple[str, threading.Event]:
+    """A loopback peer that reads one request and answers it with *respond*, its address
+    as a server prints it, and an event that tells a slow answer to stop."""
+
+    listener = socket.create_server(("127.0.0.1", 0))
+    stop = threading.Event()
+
+    def serve() -> None:
+        with listener:
+            connection, _address = listener.accept()
+            with connection:
+                connection.recv(4096)
+                # The request may close before a slow answer ends.
+                with suppress(OSError):
+                    respond(connection, stop)
+
+    threading.Thread(target=serve, daemon=True).start()
+    host, port = listener.getsockname()[:2]
+    return f"http://{host}:{port}/view/", stop
+
+
+def _answer(response: bytes) -> Callable[[socket.socket, threading.Event], None]:
+    def respond(connection: socket.socket, _stop: threading.Event) -> None:
+        connection.sendall(response)
+
+    return respond
+
+
+def test_an_identity_request_ends_on_time_however_slowly_the_peer_sends(
+    tmp_path: Path,
+) -> None:
+    """A peer that sends a byte at a time, each sooner than the request's timeout, would
+    keep a per-read timeout waiting for the whole 64 KiB; the request ends at its total
+    time instead, and the address is not the target's."""
+
+    def drip(connection: socket.socket, stop: threading.Event) -> None:
+        connection.sendall(b"HTTP/1.0 200 OK\r\nX-Drip: ")
+        while not stop.wait(0.02):
+            connection.sendall(b"a")
+
+    url, stop = _peer(drip)
+    started = time.monotonic()
+    try:
+        answered = present._answers_as_target(url, _notes(tmp_path)[0], 0.5)
+    finally:
+        stop.set()
+    assert answered is False
+    # The request's 0.5 s and room for a loaded machine; reading the 64 KiB a byte at a
+    # time takes over 20 minutes.
+    assert time.monotonic() - started < 5.0
+
+
+@pytest.mark.parametrize(
+    ("response", "same"),
+    [
+        (b"HTTP/1.1 200 OK\r\nContent-Length: <length>\r\n\r\n<identity>", True),
+        (b"HTTP/1.0 200 OK\r\nContent-Type: application/json\r\n\r\n<identity>", True),
+        (b"HTTP/1.1 404 Not Found\r\n\r\n<identity>", False),
+        (b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n<identity>", False),
+        (b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n<identity>", False),
+        (b"HTTP/1.1 200 OK\r\nnot a header\r\n\r\n<identity>", False),
+        (b"<identity>", False),
+        # Nested deeper than Python's recursion limit: the parser's RecursionError.
+        (b"HTTP/1.0 200 OK\r\n\r\n" + b"[" * 60_000, False),
+        (b"HTTP/1.0 200 OK\r\n\r\n<identity>" + b" " * present.IDENTITY_MAX_BYTES, False),
+    ],
+)
+def test_an_identity_response_answers_as_the_target_or_not(
+    tmp_path: Path, response: bytes, same: bool
+) -> None:
+    """What the request reads: one ``200`` response, read to its close, its declared
+    length if any, at most ``IDENTITY_MAX_BYTES``, and a body that parses as JSON."""
+
+    target = _notes(tmp_path)[0]
+    identity = json.dumps({"kind": "folder", "full_name": target.root}).encode()
+    response = response.replace(b"<length>", str(len(identity)).encode())
+    url, _stop = _peer(_answer(response.replace(b"<identity>", identity)))
+    assert present._answers_as_target(url, target, 5.0) is same
 
 
 @posix_only
