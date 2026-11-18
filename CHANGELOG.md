@@ -4,6 +4,12 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- In a navigation pane too narrow for the Files toolbar’s controls, the Files tree no
+  longer moves down as the page loads.
+  The toolbar wraps to a second line when its controls arrive, and the tree, shown under
+  the one-line placeholder before them, moved 30 px with it at the narrowest pane.
+  The tree now waits for the toolbar, and shows in the frame the toolbar is filled.
+
 - Metabrowser now keeps a list of recent targets, the folders and repositories opened
   lately, and the macOS app’s File > Open Recent shows it.
   Every `metab` that serves records what it serves, so the menu lists folders opened in

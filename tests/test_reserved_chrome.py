@@ -106,6 +106,31 @@ def test_every_tab_fills_one_toolbar_slot_at_one_height() -> None:
     assert ".dataset.navToolbar !== panelId" in activate
 
 
+def test_the_files_tree_holds_its_first_paint_until_its_toolbar_is_filled() -> None:
+    """The shell ships the Files toolbar one line tall around the pending placeholder, and
+    app.js fills it at DOMContentLoaded. In a pane too narrow for its row the filled bar
+    wraps, and the tree under it moved 30 px at the narrowest pane, its rows with it when
+    they were shown first (mb-a5pa, mb-kiqm). So the tree is hidden while the bar holds the
+    placeholder, unless an alert was written into it or the bar is behind another tab's
+    toolbar; tests/test_files_totals_stable_chrome.py measures that no load shifts.
+    """
+
+    css = _css()
+    hold = _rule(
+        css,
+        ".nav-filter-bar:not([hidden]):has(> .tally-pending) ~ .tree-content:not(:has(> "
+        '[role="alert"]))',
+    )
+    assert "visibility: hidden;" in hold
+    # The placeholder the hold waits on is the one the server puts in the bar, and the bar
+    # app.js draws replaces it.
+    server = (REPO_ROOT / "src" / "metabrowser" / "server.py").read_text(encoding="utf-8")
+    assert "pending_tally = '<span class=\"count tally-pending\"></span>'" in server
+    assert 'data-nav-toolbar="files"{filter_bar_behind}>{pending_tally}</div>' in server
+    app = (STATIC / "app.js").read_text(encoding="utf-8")
+    assert "bar.innerHTML = main + drawer;" in _function(app, "renderNavFilterBar")
+
+
 def test_the_shortcut_strip_keeps_one_row_until_it_is_filled() -> None:
     """The strip always holds Help once filled, so before then it holds a row's height."""
 

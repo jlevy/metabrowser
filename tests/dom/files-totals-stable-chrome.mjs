@@ -18,11 +18,11 @@
 // promised is layout, which only a browser computes: from the frame the panel first shows
 // rows to the frame it settles, no box in the navigation (the filter bar, each metadata
 // line, the first rows) moves or changes size, and Chrome records no layout shift without
-// input after that frame. Each load is recorded from the document's start, frame by
-// frame, in both themes; with the server's tally answered at once and held 2 s ("slow");
-// in the default pane and the narrowest; for the folder with ignored files and for the
-// one with none. The folder with the longer tracked count is loaded in the default pane,
-// where its two halves outgrew one line on main's code.
+// input at all. Each load is recorded from the document's start, frame by frame, in both
+// themes; with the server's tally answered at once and held 2 s ("slow"); in the default
+// pane and the narrowest; for the folder with ignored files and for the one with none.
+// The folder with the longer tracked count is loaded in the default pane, where its two
+// halves outgrew one line on main's code.
 //
 // Ten loads take the shell as a server drawn before the walk finished the root would
 // send it, its inlined totals taken out ("unknown"): with ignored files the line holds the
@@ -139,13 +139,13 @@ const PROBE = `(() => {
   const sample = () => {
     const panel = document.getElementById("tab-files");
     const rows = panel ? [...panel.querySelectorAll(".tree-item")].slice(0, 12) : [];
-    // First paint is the first frame with rows under a filled filter bar. In a pane too
-    // narrow for it the bar, which the shell ships one line tall, wraps to two as
-    // filter-controls.js fills it, the toolbar exemption of docs/design-system.md,
-    // "Regions Keep Their Boxes" (H52 would server-render it): measured at 180 px, the
-    // rows sometimes painted a frame before the bar filled and then moved 30 px with it.
-    const filled = document.querySelectorAll("#nav-filter-bar .chip").length > 0;
-    if (panel && rows.length > 0 && filled) {
+    // First paint is the first frame with rows shown, whether or not the filter bar is
+    // filled yet. In a pane too narrow for it the bar, which the shell ships one line
+    // tall, wraps to two as app.js fills it, and rows shown before that moved 30 px with
+    // it (mb-a5pa, mb-kiqm), so the tree is hidden until the bar is filled (styles.css,
+    // the rule after \`.nav-filter-bar\`): a row under that rule is in place, not shown.
+    const shown = rows.length > 0 && getComputedStyle(rows[0]).visibility === "visible";
+    if (panel && shown) {
       const boxes = { bar: box(document.getElementById("nav-filter-bar")) };
       panel.querySelectorAll(".nav-metadata").forEach((line, i) => { boxes["line " + i] = box(line); });
       rows.forEach((row, i) => { boxes["row " + i] = box(row); });
@@ -167,9 +167,6 @@ const PROBE = `(() => {
   requestAnimationFrame(sample);
 })();`;
 
-// Half a frame at 60 Hz: a shift Chrome reports within it of the first frame with rows
-// belongs to that frame, whose rAF time is a moment before its layout.
-const FRAME_MS = 8;
 /** @param {{value: number}[]} shifts */
 const sumShifts = (shifts) =>
   Math.round(shifts.reduce((sum, shift) => sum + shift.value, 0) * 100000) / 100000;
@@ -371,9 +368,11 @@ async function main() {
       );
       const first = page.frames[0] ?? null;
       const last = page.frames.at(-1) ?? null;
-      // The shifts after first paint. One in that frame is the move into it: in the
-      // narrowest pane, the filter bar's wrap as it is filled (above).
-      const counted = page.shifts.filter((s) => first && s.at > first.at + FRAME_MS);
+      // Every shift from the document's start, the move into first paint too: nothing in
+      // the panel moves into it either. No window after first paint could set that move
+      // apart: CI reported the filter bar's wrap at 180 px, when it moved the tree 30 px,
+      // 24, 72, and 111 ms after the rAF of the frame it moved into (mb-kiqm).
+      const counted = page.shifts;
       results.push({
         name,
         theme,
@@ -404,8 +403,6 @@ async function main() {
         moved: movement(page.frames),
         shift: sumShifts(counted),
         counted,
-        before: sumShifts(page.shifts.filter((s) => !first || s.at <= first.at + FRAME_MS)),
-        shifts: page.shifts,
         trail: page.frames.map(
           (frame) =>
             `${frame.at} ${frame.ignoredLine} ${frame.boxes["line 0"]?.join("/")} ${frame.boxes["row 0"]?.join("/")} ${frame.reads}`,

@@ -16,13 +16,15 @@ label during the session (``_AGE_S``), and records each load frame by frame from
 document's start, in both themes, with the tally answered at once and held 2 s, in the
 default pane and the narrowest. This judges it:
 
-- from first paint, the first frame with rows under a filled filter bar, to the settled
-  frame, no box in the navigation (the filter bar, each metadata line, the first twelve
-  rows) moves or changes size, and Chrome records no layout shift without input after
-  that frame. In the narrowest pane the filter bar wraps to two lines as it is filled,
-  which docs/design-system.md, "Regions Keep Their Boxes", exempts as a toolbar in a pane
-  too narrow for it; the rows sometimes paint a frame before that and move 30 px with
-  it (mb-h3hc's audit; the server rendering the bar, H52, would end it);
+- from first paint, the first frame with rows shown, to the settled frame, no box in the
+  navigation (the filter bar, each metadata line, the first twelve rows) moves or changes
+  size, and Chrome records no layout shift without input from the document's start. In
+  the narrowest pane the filter bar wraps to two lines as it is filled, and the tree
+  under it moved 30 px, the rows with it when they were shown first (mb-a5pa), so the
+  tree holds its first paint until the bar is filled (styles.css, the rule after
+  ``.nav-filter-bar``). Every shift counts, the move into first paint too: CI reported
+  that one up to 111 ms after the frame it moved into (mb-kiqm), so no window after first
+  paint can set it apart;
 - the line is its settled self from first paint: the ignored count's line for the folder
   with ignored files, and no ignored line for the folder with none;
 - a shell drawn before the walk finished the root, its inlined totals taken out and the
@@ -190,8 +192,8 @@ def test_nothing_in_the_files_panel_moves_from_first_paint_to_settled(
         ignored = name.startswith("ignored")
         # Nothing moves from first paint to settled.
         assert not _still(result), f"{name}: {_still(result)}: {result['trail']}"
-        # The shifts the sum counts, each with its time and the node that moved, which may
-        # be outside the panel.
+        # Every shift from the document's start, each with its time and the node that
+        # moved, which may be outside the panel.
         shift = f"layout shift {result['shift']}: {result['counted']}"
         assert result["shift"] == 0, f"{name}: {shift}: {result['trail']}"
         # And it is not luck: the line paints its settled shape from the first frame, from

@@ -3796,6 +3796,25 @@ a.tab-btn {
     box-shadow var(--transition-fast),
     row-gap var(--transition-fast);
 }
+/* The tree holds its first paint until the bar has its controls (mb-kiqm). The server
+   ships the bar one line tall around the pending placeholder, and app.js fills it at
+   DOMContentLoaded (initFilterBar); in a pane too narrow for its row the filled bar
+   wraps (`.nav-toolbar-row`), and the tree under it moved down by the lines added.
+   Measured in headless Chrome on 2026-11-18 at the narrowest pane: the bar went from
+   37 to 67 px and the tree moved 30 px in every load, which Chrome scored as a 0.00268
+   layout shift of `#tree-content`, and the rows app.js paints from the shell's inlined
+   tree before DOMContentLoaded were on screen under the one-line bar first in 2 of 8
+   loads, and in 12 of 12 with the CPU slowed 6x. Hidden until then, the tree first
+   shows in the frame the bar fills, under its settled height, and no load shifted;
+   what it costs is that wait, the rows in place but not shown for 10 to 12 ms in 2 of
+   8 loads, and 19 to 78 ms in 11 of 12 with the CPU slowed 6x. A loading spinner past
+   its quiet period still shows, since `.mb-delayed-loading` sets its own visibility.
+   An alert app.js writes into the tree before the bar is filled, on a pinned
+   revision's page missing its path codec, shows at once. Where another tab's toolbar
+   is in front the bar is hidden, and the tree is not held. */
+.nav-filter-bar:not([hidden]):has(> .tally-pending) ~ .tree-content:not(:has(> [role="alert"])) {
+  visibility: hidden;
+}
 /* Widens on the same token as the drawer's own grid track, so the gap
    grows with the reveal rather than snapping open ahead of it. */
 /* The bar is the Files tab's toolbar. The navigation's toolbar slot holds one toolbar
