@@ -4,8 +4,7 @@
 // its addresses carry each segment as `g1-` and unpadded base64url. A pinned revision's
 // page reads and writes that spelling before its first paint, so the server writes this
 // script into a pin's shell, ahead of navigation.js, and leaves it out of a folder's, as
-// it does the pin guard. A pull request's Changes on a folder (beside a checkout) also
-// spells revision-file addresses with it, so the diff plugin imports it on demand there.
+// it does the pin guard.
 //
 // Measured 2026-10-01: in navigation.js this was 885 compressed bytes of a startup
 // script on every folder's page. See

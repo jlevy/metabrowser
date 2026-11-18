@@ -42,8 +42,8 @@ fields do: a control, format, or invisible character, and bytes that are not UTF
 become U+FFFD.
 
 A page changes subject only by loading again: the ref selector, the freshness row's
-offer, a pull-request page's switch to its head, and a diff's View file all navigate or
-reload after ``POST /api/source/pin``. So the server-rendered ``<title>`` is current for
+offer, a pull-request page's switch to its head, and a diff's View file and View on
+branch all navigate or reload after ``POST /api/source/pin``. So the server-rendered ``<title>`` is current for
 the life of a document, and no page fetches this route.
 """
 

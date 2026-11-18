@@ -1,3 +1,14 @@
+import { createDistributionHover } from "./distribution-hover.js";
+
+/** @typedef {import("./distribution-hover.js").DistributionHover} DistributionHover */
+/** @typedef {import("./distribution-hover.js").DistributionHoverTarget} DistributionHoverTarget */
+/**
+ * A segment on screen and its two tooltips: `tooltip`, which names the family, for the
+ * segment itself, and `counts`, its file count and byte size alone, for a legend entry
+ * that shows the name.
+ *
+ * @typedef {{fill: HTMLElement, tooltip: string, counts: string}} DrawnSegment
+ */
 /** @typedef {{state: "pending" | "complete", totalFiles?: number, totalBytes?: number, unignoredFiles?: number, unignoredBytes?: number}} FolderTotals */
 /** @typedef {{files: number, bytes: number, filesText: string, bytesText: string}} FolderTotalsMetricRow */
 /** @typedef {{key: string, label: string, paletteKey: string, files: number, bytes: number, value: number, share: number}} FolderTotalsSegment */
@@ -339,11 +350,32 @@ function totalsRow(label) {
   return { tr, metric };
 }
 
-/** @param {HTMLElement} container @param {FolderTotals} totals @param {MetabrowserPublicSdk} mb @param {"files" | "size"} [initialMetric] */
-export function mountFolderTotalsView(container, totals, mb, initialMetric = "files") {
+/**
+ * @param {HTMLElement} container
+ * @param {FolderTotals} totals
+ * @param {MetabrowserPublicSdk} mb
+ * @param {"files" | "size"} [initialMetric]
+ * @param {DistributionHover | null} [sharedHover] The hover these bars share with a
+ *   legend that names their segments, as File Overview's does. Bars with no legend
+ *   beside them, as the Treemap's, keep one of their own.
+ */
+export function mountFolderTotalsView(
+  container,
+  totals,
+  mb,
+  initialMetric = "files",
+  sharedHover = null,
+) {
   const root = document.createElement("div");
   root.className = "folder-totals";
   container.append(root);
+  const hover = sharedHover ?? createDistributionHover();
+  // The segments on screen, by row and then by key, with each one's tooltip: what the
+  // hover is drawn on. Replaced whole on every draw, as the segments are.
+  /** @type {Map<"all" | "files" | "ignored", Map<string, DrawnSegment>>} */
+  const segmentsDrawn = new Map();
+  /** @type {HTMLElement | null} */
+  let hoveredFill = null;
   /** @type {HTMLTableElement | null} */
   let table = null;
   /** @type {ReturnType<typeof totalsRow> | null} */
@@ -408,6 +440,9 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric = "fi
     const projected =
       currentComposition?.metric === currentMetric ? currentComposition[population] : null;
     const segments = projected?.value === value ? projected.segments : null;
+    /** @type {Map<string, DrawnSegment>} */
+    const drawn = new Map();
+    segmentsDrawn.set(population, drawn);
     if (value === 0) {
       handle.metric.track.replaceChildren();
       return;
@@ -427,15 +462,57 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric = "fi
         palette.paint(fill, segment.paletteKey);
         fill.dataset.segmentKey = segment.key;
         fill.style.width = `${segment.share}%`;
-        const tooltip = `<strong>${mb.escapeHtml(segment.label)}</strong><br>${mb.formatFileCount(
-          segment.files,
-        )} · ${mb.formatSize(segment.bytes)}`;
-        fill.addEventListener("mouseover", () => mb.tooltip.show(tooltip, fill));
-        fill.addEventListener("mouseout", () => mb.tooltip.hide());
+        const counts = `${mb.formatFileCount(segment.files)} · ${mb.formatSize(segment.bytes)}`;
+        drawn.set(segment.key, {
+          fill,
+          tooltip: `<strong>${mb.escapeHtml(segment.label)}</strong><br>${counts}`,
+          counts,
+        });
+        // The segment says where the pointer is, as a legend entry naming it does, and
+        // the hover draws itself (showHover): one path for both.
+        /** @type {DistributionHoverTarget} */
+        const target = Object.freeze({ population, key: segment.key, anchor: fill });
+        fill.addEventListener("mouseenter", () => hover.enter(target));
+        fill.addEventListener("mouseleave", () => hover.leave(target));
         return fill;
       }),
     );
   }
+
+  /**
+   * Draw the hover: lift and grow the segment it names and show its tooltip, anchored on
+   * the handle the pointer is on, the segment or a legend entry naming it. On the segment
+   * the tooltip names the family; on an entry, which shows the name, it gives the file
+   * count and byte size alone (docs/design-system.md, "Restating is not adding"). A hover
+   * whose row has no such segment on screen, as while the bars are still one neutral
+   * fill, draws nothing.
+   *
+   * @param {DistributionHoverTarget | null} target
+   * @param {DistributionHoverTarget | null} [previous]
+   */
+  function showHover(target, previous = null) {
+    if (hoveredFill) {
+      delete hoveredFill.dataset.hovered;
+      hoveredFill = null;
+    }
+    const segment = target && segmentsDrawn.get(target.population)?.get(target.key);
+    if (!target || !segment) {
+      // Only the tooltip the hover showed, anchored on the handle the pointer was on: a
+      // legend entry outside these bars or a segment in them. A hover that showed none
+      // has none to put away.
+      if (previous) {
+        mb.tooltip.hide(previous.anchor);
+      }
+      return;
+    }
+    hoveredFill = segment.fill;
+    hoveredFill.dataset.hovered = "";
+    mb.tooltip.show(
+      target.anchor === segment.fill ? segment.tooltip : segment.counts,
+      target.anchor,
+    );
+  }
+  const unsubscribeHover = hover.subscribe(showHover);
 
   /** @param {FolderTotalsMetricRow} row @param {ReturnType<typeof totalsRow>} handle @param {"all" | "files" | "ignored"} population */
   function updateRow(row, handle, population) {
@@ -450,8 +527,23 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric = "fi
   }
 
   function render() {
+    // A draw replaces the segment the hover was drawn on, so it puts the hover away with
+    // its tooltip. A segment the pointer is on is replaced under it, and the browser
+    // enters the new one. A legend entry outlives the draw and hears nothing, so a hover
+    // held from one is drawn again on the redrawn bars: the folder's sums arrive whenever
+    // a file changes, and pointing at the entry stays pointing at the segment.
+    const held = hover.current();
+    hover.clear();
     // Its own segments' tooltip, and no other surface's (mb-alff).
     mb.tooltip.hide(root);
+    segmentsDrawn.clear();
+    draw();
+    if (held?.anchor.isConnected && !root.contains(held.anchor)) {
+      hover.enter(held);
+    }
+  }
+
+  function draw() {
     const model = buildFolderTotalsModel(currentTotals, mb);
     if (model.state === "pending") {
       table = null;
@@ -523,6 +615,9 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric = "fi
   }
 
   function dispose() {
+    hover.clear();
+    unsubscribeHover();
+    segmentsDrawn.clear();
     mb.tooltip.hide(root);
     root.replaceChildren();
   }

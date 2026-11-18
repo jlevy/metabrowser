@@ -272,8 +272,13 @@
    It also fixes what scaleX could not. A proportional width grew a wide
    segment by fifteen pixels and a three-pixel segment by nothing, so the
    segments hardest to point at were the ones that answered least. Every
-   segment is the same height, so every segment now answers the same. */
-.folder-totals .file-type-summary-fill[data-segment-key]:hover {
+   segment is the same height, so every segment now answers the same.
+
+   An attribute rather than :hover, because the pointer may be on the legend
+   entry that names the segment rather than on the segment itself: both go
+   through one hover, which marks the segment it is drawn on
+   (distribution-hover.js). */
+.folder-totals .file-type-summary-fill[data-hovered] {
   filter: var(--viz-data-mark-hover-filter);
   transform: scaleY(var(--viz-hover-grow));
   z-index: 1;
@@ -329,7 +334,7 @@
 
   /* Without the transition above the grow would be a jump, which is worse than
      no grow. The colour lift still answers the hover. */
-  .folder-totals .file-type-summary-fill[data-segment-key]:hover {
+  .folder-totals .file-type-summary-fill[data-hovered] {
     transform: none;
   }
 }

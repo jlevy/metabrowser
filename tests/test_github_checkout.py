@@ -48,6 +48,7 @@ from tests.github_pull_fixture import (
     page,
 )
 from tests.golden_harness import Invocation, origin_identity, run_metab
+from tests.loop_gate import held_until
 from tests.required_tools import needs_git
 from tests.test_plugin_public_api import (
     _CHILD_TIMEOUT_S,  # pyright: ignore[reportPrivateUsage]
@@ -470,19 +471,18 @@ def test_checkout_comparison_fetch_uses_only_the_overlay(
     assert compared.exit_code == 0, compared.stderr
     assert compared.payload()["manifest"]["files"]
     assert fingerprint(read_only_checkout) == before
-    # A revision file opens from the store beside the checkout and leaves it as it was.
+    # The head's tree is read from the store beside the checkout, which stays as it was: the
+    # image route admits the pair and finds the file, which is no image.
     from metabrowser.git.tree_source import GitPath
 
     revision = _api(
         root,
-        after["snapshot_route"]
-        + "&side=head&mode=download&path="
-        + GitPath.from_display("docs/draft.md").to_wire(),
+        after["image_route"] + "&path=" + GitPath.from_display("docs/draft.md").to_wire(),
         None,
         request,
     )
-    assert revision.exit_code == 0, revision.stderr
-    assert revision.stdout.endswith("# Draft\n\n"), revision.stdout
+    assert revision.exit_code != 0
+    assert '"code": "unsupported_image"' in revision.stdout, revision.stdout
     assert fingerprint(read_only_checkout) == before
 
     # A fresh server adopts the persisted store without acquisition or a timestamp write.
@@ -1028,7 +1028,7 @@ def test_other_pull_read_crossing_attachment_uses_store_for_every_refresh(
         group = checkout_module.checkout_pulls(repository)
         reading = asyncio.create_task(group.companion(7))
         try:
-            assert await asyncio.to_thread(entered.wait, 5)
+            assert await held_until(entered, 5)
             assert (
                 checkout_module.start_pull_refresh(coordinator, repository, 10, comparison=True)
                 == "started"
@@ -1674,11 +1674,15 @@ def test_attaching_a_store_keeps_the_observed_reader_for_reader_scoped_checks(
     theirs = mine.model_copy(update={"reader": f"gh:{ANOTHER_READER}"})
     write_pull_record(held.home, held.slug, theirs, store_id=published.store_id)
     assert cached_comparison_record(published, held.observed_reader, 10) is None
-    # A snapshot of that record's comparison is refused.
+    # An image of that record's comparison is refused: the pair is not admitted.
+    from metabrowser.git.tree_source import GitPath
+
     envelope = session.get("/api/plugin/github/pull?number=10").payload()
     query = envelope["comparison_route"].split("?", 1)[1]
-    snapshot = session.get(f"/api/plugin/github/pull-snapshot?{query}&side=head&path=README.md")
+    readme = GitPath.from_display("README.md").to_wire()
+    snapshot = session.get(f"/api/plugin/github/pull-image?{query}&path={readme}")
     assert snapshot.exit_code != 0, snapshot.stdout
+    assert '"code": "snapshot_expired"' in snapshot.stdout, snapshot.stdout
 
     # Core admission and cached cores refuse another reader's catalog.
     lists = list_entries(pull_origin)
@@ -2173,3 +2177,69 @@ def test_a_reader_s_failure_is_reported_even_when_its_stamp_is_refused(
     companion = asyncio.run(run())
     assert session.stamp(9) == stamp, "the stamp describes no newer observation"
     assert companion.last is not None and companion.last["outcome"] == "network_error"
+
+
+@pytest.mark.usefixtures("fresh_checkout_state")
+def test_the_prefetchs_attach_gives_way_to_a_readers_and_binds_one_store(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    """The prefetch attaches a checkout's store at the store turn as background work: a
+    reader's comparison that starts waiting cancels it and attaches its own, and a later
+    attach finds that store and binds nothing again (:mod:`.pull_prefetch`)."""
+    from metabrowser.builtin_plugins.github import checkout as checkout_module
+    from metabrowser.mirror_refresh import RefreshCoordinator
+    from tests.golden_harness import isolate_cli
+
+    home = isolate_cli(tmp_path, monkeypatch).home
+    checkout = clone_checkout(pull_origin, tmp_path / "checkout")
+    repository = checkout_module._resolve(checkout, home)  # pyright: ignore[reportPrivateUsage]
+    assert repository is not None
+    for name, value in install_fake_gh(tmp_path, files_scenario(pull_origin)).items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr("metabrowser.cache.acquire.remote_url_for", lambda _source: pull_origin.url)
+    acquire = checkout_module._acquire_comparison  # pyright: ignore[reportPrivateUsage]
+
+    async def run() -> None:
+        coordinator = RefreshCoordinator(limit=1)
+        state = checkout_module._checkout_state(repository)  # pyright: ignore[reportPrivateUsage]
+        entered = asyncio.Event()
+        calls = 0
+
+        async def delayed(repository: checkout_module.CheckoutRepository) -> Any:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                # The prefetch's attach waits here until a reader preempts it.
+                entered.set()
+                await asyncio.Event().wait()
+            return await acquire(repository)
+
+        monkeypatch.setattr(checkout_module, "_acquire_comparison", delayed)
+
+        async def prefetch_attach() -> object:
+            me = asyncio.current_task()
+            assert me is not None
+            async with checkout_module.checkout_store_turn(repository, me.cancel):
+                return await checkout_module.attach_store_for_lists(repository)
+
+        background = asyncio.create_task(prefetch_attach())
+        try:
+            await asyncio.wait_for(entered.wait(), 5)
+            assert (
+                checkout_module.start_pull_refresh(coordinator, repository, 10, comparison=True)
+                == "started"
+            )
+            await asyncio.wait((background,), timeout=5)
+            assert background.cancelled()
+            await coordinator.drain(timeout_s=10)
+            bound = state.pulls.published
+            assert state.pulls.git_dir is not None
+            again = asyncio.create_task(prefetch_attach())
+            assert await asyncio.wait_for(again, 5) is bound
+            assert state.pulls.published is bound
+            assert calls == 2
+        finally:
+            background.cancel()
+            await coordinator.aclose()
+
+    asyncio.run(run())

@@ -153,4 +153,11 @@ def test_the_session_plays_the_recorded_inert_render() -> None:
     ]
     assert transcript["entryClicked"]["opened"] == ["user-content-troubleshooting"]
     assert transcript["modifiedClick"]["defaultPrevented"] is False
+    # The narrow toggle waits for the reader to reach a document below other panels.
+    assert {name: step["toggleShown"] for name, step in transcript["belowOtherPanels"].items()} == {
+        "pastThreshold": False,
+        "justAbove": False,
+        "reached": True,
+        "backAbove": False,
+    }
     assert transcript["disposed"]["listeners"] == 0

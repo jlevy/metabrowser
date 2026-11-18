@@ -334,6 +334,23 @@ slower CPU, and 16 to 23 ms with no `requestIdleCallback`, a pull request first 
 on Changes included; and a first visit to a row the pointer rested on for 250 ms, 9 to
 12 ms after the click, where it was 283 to 343 ms.
 
+### A Pulls Row’s Change Line
+
+Recorded on 2026-11-17, when the Pulls tab’s prefetch began listing changed files from
+the store before it reads records (`_prepare_lists` in
+`src/metabrowser/builtin_plugins/github/pull_prefetch.py`, whose docstring has the same
+readings). Measured in headless Chrome 152 on this repository’s own Pulls tab, served
+from its checkout with a fresh cache, 11 open rows in view, at a load average of 11 to
+14; the list of pull requests was drawn 6.4 s after the tab opened in both.
+Before, the lane took turns, a record of 3.6 to 4.7 s and then a list from GitHub of 0.3
+to 2 s, and the rows’ change lines were drawn from 12.3 s to 40.6 s. After, every list
+is the store’s comparison of the row’s head with the mirror’s base branch, with no
+GitHub request: the lines were drawn from 9.4 s to 10.4 s, of which attaching the
+checkout’s store took 2.3 to 2.5 s once, 11 merge bases 0.42 s, and each list 42 to 134
+ms. A batch of heads the store lacks is one Git fetch: 39 of this repository’s pull
+request heads, fetched from GitHub into a store that borrows the checkout’s objects,
+took 0.76 s.
+
 ## The Pull Request Header
 
 For [Layout](../../docs/design-system.md#layout), on the pull request page.

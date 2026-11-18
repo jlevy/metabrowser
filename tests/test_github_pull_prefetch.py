@@ -356,7 +356,7 @@ def test_files_are_listed_within_their_own_cap(
     monkeypatch.setattr(
         pull_files_route,
         "files_refresh_wanted",
-        lambda view, _ask: (view.number != 5, None),
+        lambda view, _ask, _prepared: (view.number != 5, None),
     )
     monkeypatch.setattr(
         "metabrowser.builtin_plugins.github.pull_list.read_files_refresh",
@@ -400,7 +400,9 @@ def _stub_files(host: _Host, monkeypatch: pytest.MonkeyPatch) -> list[int]:
     monkeypatch.setattr(pull_files_route, "files_view", files_view)
     monkeypatch.setattr(pull_files_route, "start_files_refresh", start_files_refresh)
     monkeypatch.setattr(pull_files_route, "files_job_key", lambda _repo, number: f"files/{number}")
-    monkeypatch.setattr(pull_files_route, "files_refresh_wanted", lambda _view, _ask: (True, None))
+    monkeypatch.setattr(
+        pull_files_route, "files_refresh_wanted", lambda _view, _ask, _prepared: (True, None)
+    )
     monkeypatch.setattr(
         "metabrowser.builtin_plugins.github.pull_list.read_files_refresh",
         lambda _home, _slug, _number: SimpleNamespace(outcome="succeeded", at=_stamp(NOW)),

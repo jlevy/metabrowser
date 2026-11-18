@@ -70,10 +70,10 @@ class UnexpectedTime(ValueError):
 FIXUPS: list[tuple[str, str]] = [
     # PR comparison addresses name the editable build and sandbox store, neither pinned.
     (r"(&build=)[0-9a-f]{12}(&store=)[0-9a-f]{16}", r"\1[BUILD]\2[STORE]"),
-    # Its revision-file and rendered-Markdown addresses name the sandbox store after the
+    # Its image and rendered-Markdown addresses name the sandbox store after the
     # endpoints.
     (
-        r"(/api/plugin/github/pull-(?:snapshot|rendered-diff)\?number=\d+"
+        r"(/api/plugin/github/pull-(?:image|rendered-diff)\?number=\d+"
         r"&left=[0-9a-f]{40,64}&right=[0-9a-f]{40,64}&store=)[0-9a-f]{16}",
         r"\1[STORE]",
     ),
