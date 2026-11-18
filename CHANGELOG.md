@@ -17,6 +17,9 @@ All notable changes to Metabrowser are documented here.
   folder now creates. The Dock icon’s menu lists the same items.
   Only an open changes the order: the windows the app restores at launch do not, and
   `METABROWSER_RECORD_RECENT=0` keeps a server, such as a benchmark’s, out of the list.
+  The menu starts empty the first time this build of the app runs: what macOS listed
+  before is not carried over, and the windows it restores are not opens.
+  The app now needs a `metab` with `--recent`, and names the upgrade for one without.
   See [Recent Targets](docs/command-line.md#recent-targets).
 
 - A Pulls row now leads with its title, right after the state icon, on its first line,

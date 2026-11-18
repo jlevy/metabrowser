@@ -514,8 +514,10 @@ The owner asked, on 2026-11-18:
    application home’s convention in `cache/layout.py`: an append-only history, a
    migration from each format to the next, and a refusal of a newer one.
    Metabrowser’s strings are `mfNN`, to tell them from tbd’s `fNN`, and this file starts
-   at `mf01`. Applying the spelling to `layout.yml` and `config.yml`, which are `f01`,
-   is `mb-3x6y`.
+   at `mf01`. A new field on an entry keeps the string, since every reader keeps a field
+   it does not know; a new mode or key raises the number, and a file holding one a
+   reader does not know is left alone as a newer release’s. Applying the spelling to
+   `layout.yml` and `config.yml`, which are `f01`, is `mb-3x6y`.
 10. **No route serves the list yet.** The owner decided this on 2026-11-18: only
     `metab --recent --json` reads it, until the switcher’s design says what a page may
     learn of the user’s other roots.
@@ -532,9 +534,10 @@ The owner asked, on 2026-11-18:
   (jlevy/metabrowser#540), so Open Recent reopens a pull request and not only its
   repository, and Open URL… can offer recent GitHub targets (`mb-m4mg`). The key does
   not change: the newest target replaces the entry’s last one.
-  Until then Open URL… offers the recent entries whose mode is `mirror`.
-- [ ] Record a checkout’s repository with a folder entry, so Open URL… can offer the
-  checkout beside the mirror
+  It is a new field on an entry, which keeps `mf01`: a `metab` from before it carries
+  the field along. Until then Open URL… offers the recent entries whose mode is `mirror`.
+- [ ] Record a checkout’s repository with a folder entry, also a new field that keeps
+  `mf01`, so Open URL… can offer the checkout beside the mirror
   ([Open Modes](plan-2026-11-02-pr-review-mirror-and-checkout.md#how-a-target-reaches-a-mode)).
 - [ ] Restore repository windows with the saved session, which needs a saved tab to name
   a `SessionRoot` rather than a path.

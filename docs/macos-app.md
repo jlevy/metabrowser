@@ -119,8 +119,8 @@ miss `metab`, `git`, or `gh`, and it runs your shell’s startup files in the ap
 which can take seconds.
 
 - **The version:** the app runs `metab` 0.12.1 or later, and checks each candidate by
-  running `metab --exit-on-eof --version`. A build from before `--exit-on-eof` is too
-  old whatever its number says.
+  running `metab --exit-on-eof --recent --version`. A build from before either flag is
+  too old whatever its number says.
 - **Trust:** the app runs a `metab` it found only if no other account can change it.
   A standard Homebrew prefix, writable by the `admin` group, fails that rule; Settings
   names each file it would not run, and why.

@@ -91,7 +91,7 @@ public nonisolated struct DiscoveryReport: Equatable, Sendable {
 /// `--version` executes it; one it refuses is recorded as `.untrusted`, with the reason,
 /// for Settings, the log, and the first-run steps.
 ///
-/// Cheap locations come first, each a file check plus `metab --exit-on-eof --version`
+/// Cheap locations come first, each a file check plus `metab --exit-on-eof --recent --version`
 /// (`validate`): the saved path, `METABROWSER_METAB`, `~/.local/bin`, uv's tool bin
 /// directory, and the Homebrew prefixes. The login shell is consulted only when they do
 /// not answer for `metab`, `git`, or `gh`, because it runs the user's shell startup files

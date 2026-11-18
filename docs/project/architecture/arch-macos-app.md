@@ -145,10 +145,11 @@ shim and no `gh`, and nothing from a Terminal launch’s `UV_*`, `VIRTUAL_ENV`, 
 oldest `metab` the app runs: the first release with `GET /api/identity`,
 `--exit-on-eof`, and `--recent`. A development build of that release counts as it, or no
 checkout would run, so the number alone does not prove the flag, and
-`RuntimeDiscovery.validate` runs `metab --exit-on-eof --version`. A printed version
-decides by its number; exit status 2 naming the flag means a build that predates it,
-which is too old whatever its number; anything else rejects the `metab` with the probe’s
-last line. Below the floor, discovery tries the next place.
+`RuntimeDiscovery.validate` runs `metab --exit-on-eof --recent --version`, with every
+flag in `MetabRequirement.requiredFlags`. A printed version decides by its number; exit
+status 2 naming the flag means a build that predates it, which is too old whatever its
+number; anything else rejects the `metab` with the probe’s last line.
+Below the floor, discovery tries the next place.
 `MetabRequirement.upgradeCommand` asks uv for a floor rather than a pin, because uv
 keeps the requirement in the tool’s receipt.
 

@@ -459,6 +459,8 @@ metab --recent-clear                # empty the list
 - **`METABROWSER_RECORD_RECENT=0`** keeps a `metab` from recording: it serves as usual
   and leaves the list alone, and `--recent-add` records nothing.
   Set it for a server nobody opened to read, such as a benchmark’s or a script’s.
+  `--remote` sets it for the server it starts on the far host, so a remote serve enters
+  no list on either machine.
 
 The list is `recent-targets.yml` in the [configuration directory](#storage-locations),
 readable only by you.

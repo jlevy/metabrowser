@@ -49,8 +49,9 @@ A recent target is a root and the mode it was opened in:
 | `opened_at` | When it was last opened, in UTC to the second |
 
 - **A folder’s root** is the path the server serves (`run_serve`), spelled on macOS as
-  the volume spells it (`folder_root`), so two spellings that differ only in case are
-  one folder, as they are to the app, which names a folder by `realpath(3)`.
+  `realpath(3)` spells it (`folder_root` calls that function), so two spellings that
+  differ only in case are one folder, and the root is the very string the app names the
+  folder’s session by (`FileChecks.canonicalPath`).
 - **A mirror’s root** for a GitHub URL is exactly `https://github.com/<owner>/<repo>` in
   lower case, whatever the URL selected inside the repository: the root
   `metab URL --present --dry-run --json` reports, and the key of the app’s session for
@@ -96,10 +97,15 @@ constants; this section says what they mean.
   the next, and a refusal of a format newer than the release reads.
   Metabrowser’s format strings are `mf` and a number, to tell them from tbd’s `fNN`;
   this file is the first to use the spelling, and moving `layout.yml` and `config.yml`
-  to it is `mb-3x6y`. The number rises only for a change an older reader would misread,
-  and a compatible change keeps it.
-  A file from a newer release is left exactly as it is: this release lists nothing,
-  records nothing, and says to upgrade.
+  to it is `mb-3x6y`. One change is compatible and keeps the string: a new field on an
+  entry. A reader that does not know a field keeps it on every entry it carries through a
+  rewrite, and drops it only from the entry it records again, whose new open the field
+  no longer describes.
+  Anything else new raises the number: a mode, a key beside `format` and `targets`, or a
+  relaxed rule. A file from a newer release is left exactly as it is: this release lists
+  nothing, records nothing, and says to upgrade.
+  So is a well-formed file with a mode or a key this release does not know, whatever
+  format it names, so a release that forgot to raise the number costs no list.
 - **Order.** Most recently opened first.
   The position in the file is the order; `opened_at` is for display.
 - **One entry per root.** Opening a root again moves its entry to the front.
@@ -108,7 +114,7 @@ constants; this section says what they mean.
   back what it is about to publish, so it never publishes a file a reader would refuse.
 - **A damaged file is replaced.** A file that is not this format, an entry that breaks
   the rules above, or a file over the bound lists as empty with the reason, and the next
-  record writes a fresh list.
+  record, forget, or clear writes a fresh list.
   Nothing else depends on the list, so losing it costs only the list.
 
 ### Folders That Are Gone
@@ -151,7 +157,8 @@ The app writes nothing itself.
 | `metab URL` | `mirror`, the source’s address | The same, once the source is acquired and its pin resolved |
 | The macOS app opening a folder | `folder` | The server the app starts is `metab FOLDER`, so the line above does it |
 | The app showing a folder that is already open, because the user opened it again | `folder` | `metab FOLDER --recent-add`, because no server starts |
-| The app restoring its last session, Retry, Restart Server, or an upgrade’s restart | Nothing | None of them is an open, so the app starts each such server with `METABROWSER_RECORD_RECENT=0` (`FolderServer`) |
+| The app restoring its last session, Command-R in a window still waiting, Retry, Restart Server, or an upgrade’s restart | Nothing | None of them is an open, so the app starts each such server with `METABROWSER_RECORD_RECENT=0` (`FolderServer`) |
+| `metab --remote HOST --path DIR` | Nothing, on either host | The near side serves nothing, and the far server is started with `METABROWSER_RECORD_RECENT=0` (`cli/remote.py`): that account did not open the folder to read it there |
 
 A root is recorded before its server’s `Serving` line, so whoever reads that line finds
 the root already listed.
@@ -162,9 +169,10 @@ the list.
 
 **The order changes only when the user opens something**, which the owner decided on
 2026-11-18: Open Folder…, Open URL…, Open Recent, a drop, or `metab` run in Terminal.
-In the app, `FolderServer` lets a server record only on the first start of something the
-user just opened, through a wait for a runtime if there is one, and tells every other
-server it starts not to.
+In the app, `FolderServer` lets a server record only for something the user just opened,
+and tells every other server it starts not to.
+The open is carried until a server is ready, through a wait for a runtime and through a
+server that died before it could record, so a Retry after such a death still records it.
 
 ### Opting Out
 
@@ -172,7 +180,7 @@ server it starts not to.
 recording: its serve records nothing and touches no file, and `--recent-add` records
 nothing and says so.
 Listing, forgetting, and clearing still work.
-It is for a server nobody opened to read, and four things set it:
+It is for a server nobody opened to read, and five things set it:
 
 - the app, for the servers above that are not opens;
 - the test run (`tests/conftest.py`) and the golden that serves, so no test’s folder
@@ -181,8 +189,9 @@ It is for a server nobody opened to read, and four things set it:
   `metab` it runs (`ChildEnvironment.passedThrough`), so a development run records
   nothing at all;
 - the benchmarks: `devtools/bench_serving.py`, `devtools/compare_builds.py`, the
-  performance loop’s harnesses, and the WebKit gate, which also keeps the write out of
-  the startup they time.
+  performance loop’s harnesses, `explorations/tree-summary-storm/run.sh`, and the WebKit
+  gate, which also keeps the write out of the startup they time;
+- `metab --remote`, for the server it starts on the far host.
 
 A `.env` file cannot set it, as it cannot set any name outside `metabrowser.dotenv`’s
 list.
@@ -214,6 +223,9 @@ File > Open Recent is drawn from `metab --recent --json` (`RecentTargets` in
 - The app runs the selected `metab` when it becomes active, when the menu opens, and
   when the Dock menu is asked for, and a menu shows the last answer at once, then the
   new one.
+- Every `metab` the app runs has the modes: setup’s check runs with `--recent`
+  (`MetabRequirement.requiredFlags`), so a build from before the list is refused with
+  the upgrade it needs, as one from before `--exit-on-eof` is.
 - It lists every entry it can open: folders, and repositories once the build opens
   links, which its `Info.plist` says with `MetabrowserOpensURLs`.
 - Titles come from the root, as a window is titled before its server answers

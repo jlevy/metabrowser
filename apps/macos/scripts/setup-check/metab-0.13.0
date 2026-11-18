@@ -2,7 +2,7 @@
 # A stand-in for a metab upgraded to 0.13.0 under a running server, which
 # scripts/check-setup-flows.sh old-metab installs as ~/.local/bin/metab beside
 # metab-checkout, a link to this checkout's metab. Any run that asks for --version gets
-# 0.13.0, as from a real 0.13.0, the app's `metab --exit-on-eof --version` check
+# 0.13.0, as from a real 0.13.0, the app's `metab --exit-on-eof --recent --version` check
 # included; every other run, a server's among them, goes to metab-checkout.
 # SetupCheckStandInTests runs it through the app's check.
 for argument in "$@"; do
