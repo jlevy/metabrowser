@@ -271,6 +271,16 @@ alone, as a CI job can call it:
 | `make test-chrome` | the tests marked `chrome` | one at a time, after the serial tier |
 | `make test-goldens` | `tests/golden/*.tryscript.md` | `devtools/run_goldens.py`, `GOLDEN_JOBS` files at a time |
 
+A run that selects a `chrome` test starts Chrome once and closes it before the first
+test, under a bound of its own, because a CI runner’s first Chrome start is cold and a
+start cut off before it finishes leaves the next one cold too.
+`tests/chrome_starts.py` has the measurements and the bound, `WARM_UP_BOUND_S`. Each
+test’s start then has `START_BOUND_MS` and up to `START_ATTEMPTS` tries
+(`tests/dom/chrome-session.mjs`); a start that fails is logged with the end of Chrome’s
+stderr and made again.
+The run’s terminal summary ends with a `chrome starts:` line: how many starts, the
+slowest, and each that failed, so a run that a retry kept green still shows it.
+
 `PYTEST_WORKERS` defaults to one worker per logical processor, and a shared or loaded
 machine lowers it: `make test PYTEST_WORKERS=2`. `make test-chrome SHARD=2/4` runs the
 second of four parts of a tier, and `SHARD` works with each pytest target.

@@ -1,8 +1,8 @@
 """A run in its own process group leaves nothing running, however it ends.
 
 The Chrome tests (``test_folder_overview_alignment.py``, ``test_transitions_instrument.py``,
-``test_control_chords_chrome.py``, ``test_diff_markdown_fold_chrome.py``,
-``test_files_totals_stable_chrome.py``,
+``test_chrome_starts.py``, ``test_control_chords_chrome.py``,
+``test_diff_markdown_fold_chrome.py``, ``test_files_totals_stable_chrome.py``,
 ``test_git_commit_summary_chrome.py``,
 ``test_github_pull_header_chrome.py``, ``test_github_pull_text_chrome.py``,
 ``test_github_pull_timeline_chrome.py``, ``test_github_pulls_stacks_chrome.py``,
@@ -106,6 +106,7 @@ DEADLINE_S = 5.0
 # How far past its reserved time a teardown may run: a thread switch and a last ``ps``.
 SLACK_S = 0.5
 CHROME_TESTS = (
+    "tests.test_chrome_starts",
     "tests.test_control_chords_chrome",
     "tests.test_diff_markdown_fold_chrome",
     "tests.test_folder_overview_alignment",
