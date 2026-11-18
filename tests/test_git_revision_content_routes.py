@@ -28,7 +28,7 @@ from typing import Any
 import pytest
 from httpx2 import ASGITransport, AsyncClient
 
-from metabrowser import jsonl_view, kpress_adapter
+from metabrowser import frontmatter_yaml, jsonl_view, kpress_adapter
 from metabrowser.capabilities import Capabilities, set_capabilities
 from metabrowser.diff.format import validate_document
 from metabrowser.git.content_routes import split_git_container_wire
@@ -50,6 +50,15 @@ from metabrowser.source import MAX_CONTAINER_INNER_DEPTH, attach_subject, reset_
 from metabrowser.wire_models import validate_rollup_node
 from tests.git_pin_harness import fast_import_store
 from tests.required_tools import needs_git
+from tests.test_frontmatter_bounds import (
+    CONSTRUCTOR_FAILURES,
+    NON_JSON_SAFE,
+    OVER_BUDGET,
+    OVER_BUDGET_SHAPES,
+    SURROGATES,
+    forbid_ruamel_collections,
+    merge_bomb,
+)
 
 pytestmark = needs_git
 
@@ -588,6 +597,113 @@ def test_git_file_and_kpress_surface_markdown_frontmatter(
             assert broken_render.status_code == 200
             assert seen["frontmatter"] is None
             assert seen["frontmatter_error"]
+
+    asyncio.run(_run())
+
+
+BOMBS_ON_A_PIN = ("alias-12", "merge-12", "duplicate-key-12")
+
+
+def test_git_pin_answers_a_frontmatter_alias_bomb_as_text_parsed_off_the_loop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pinned page shares the bounded loader (``tests/test_frontmatter_bounds.py``).
+
+    Twelve levels of aliases, of merge keys, and of aliases under a duplicated key are
+    9**12 values written out, and none is built; no YAML constructor builds a
+    collection on this page at all. The file, its KPress render, and a request beside
+    them all answer; the parse runs on a worker thread, the tags JSON has no type for
+    arrive as JSON-safe values, a scalar or tag the loader does not read is a reason
+    rather than a server error, and a `.yaml` blob's prefix predicate refuses a merge
+    bomb too.
+    """
+
+    work = tmp_path / "work"
+    store = tmp_path / "store.git"
+    work.mkdir()
+    _git(work, "init", "-q", "-b", "main")
+    for shape in BOMBS_ON_A_PIN:
+        (work / f"{shape}.md").write_text(
+            f"---\n{OVER_BUDGET_SHAPES[shape]}---\n\n# Body\n", encoding="utf-8"
+        )
+    (work / "odd.md").write_text(f"---\n{NON_JSON_SAFE}---\nbody\n", encoding="utf-8")
+    (work / "plain.md").write_text("---\ntitle: Plain\n---\nbody\n", encoding="utf-8")
+    for case, (text, _raised) in CONSTRUCTOR_FAILURES.items():
+        (work / f"fails-{case}.md").write_text(f"---\n{text}---\nbody\n", encoding="utf-8")
+    (work / "escaped.md").write_text(f"---\n{SURROGATES}---\nbody\n", encoding="utf-8")
+    (work / "merge.yaml").write_text(merge_bomb(12), encoding="utf-8")
+    _git(work, "add", "-A")
+    _git(work, "commit", "-qm", "frontmatter bounds")
+    commit = _git(work, "rev-parse", "HEAD").decode().strip()
+    _git(tmp_path, "clone", "--bare", "--template=", str(work), str(store), env_root=tmp_path)
+
+    forbid_ruamel_collections(monkeypatch)
+    parse_threads: list[int] = []
+    real_load = frontmatter_yaml._load
+
+    def recording_load(*args: Any, **kwargs: Any) -> object:
+        parse_threads.append(threading.get_ident())
+        return real_load(*args, **kwargs)
+
+    monkeypatch.setattr(frontmatter_yaml, "_load", recording_load)
+    seen: dict[str, Any] = {}
+    original = kpress_adapter.render_kpress_view
+
+    def _capture(**kwargs: Any) -> Any:
+        seen.update(kwargs)
+        return original(**kwargs)
+
+    monkeypatch.setattr(kpress_adapter, "render_kpress_view", _capture)
+
+    async def _run() -> None:
+        loop_thread = threading.get_ident()
+        async with _pinned_client(store, commit) as (client, _subject):
+            for shape in BOMBS_ON_A_PIN:
+                path = _wire(f"{shape}.md".encode())
+                bomb, plain = await asyncio.gather(
+                    client.get("/api/file", params={"path": path}),
+                    client.get("/api/file", params={"path": _wire(b"plain.md")}),
+                )
+                assert bomb.status_code == 200, shape
+                assert len(bomb.content) < 4_096, shape
+                body = bomb.json()
+                assert (body["type"], body["kind"]) == ("text", "markdown")
+                assert body["content"].startswith("---\n" + OVER_BUDGET)
+                assert "frontmatter" not in body
+                assert "without its YAML aliases" in body["frontmatter_error"]
+                assert plain.json()["frontmatter"] == {"title": "Plain"}
+
+                seen.clear()
+                rendered = await client.get(
+                    "/api/kpress/render", params={"path": path, "view": "rendered"}
+                )
+                assert rendered.status_code == 200, shape
+                assert "lol" not in rendered.json()["html"]
+                assert seen["frontmatter"] is None
+                assert "without its YAML aliases" in seen["frontmatter_error"]
+
+            odd = (await client.get("/api/file", params={"path": _wire(b"odd.md")})).json()
+            assert "frontmatter_error" not in odd
+            assert odd["frontmatter"]["binary"] == "aGVsbG8="
+            assert odd["frontmatter"]["nan"] == ".nan"
+            assert odd["frontmatter"]["1"] == "int key"
+
+            for case, (_text, reason) in CONSTRUCTOR_FAILURES.items():
+                path = _wire(f"fails-{case}.md".encode())
+                failed = await client.get("/api/file", params={"path": path})
+                assert failed.status_code == 200, case
+                assert failed.json()["frontmatter_error"].startswith(
+                    f"Error parsing YAML metadata: {reason}"
+                ), case
+
+            escaped = await client.get("/api/file", params={"path": _wire(b"escaped.md")})
+            assert escaped.status_code == 200
+            assert escaped.json()["frontmatter"]["x"] == "\ufffd"
+
+            listing = await client.get("/api/file", params={"path": _wire(b"merge.yaml")})
+            assert listing.status_code == 200
+            assert listing.json()["type"] == "text"
+        assert parse_threads and loop_thread not in parse_threads
 
     asyncio.run(_run())
 
