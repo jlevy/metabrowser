@@ -10,6 +10,11 @@
 // starts within the threshold of the pane's top, so the threshold decides there as in
 // KPress; the README starts further down, so reaching it decides, and its toggle appears
 // as the reader scrolls to its beginning.
+//
+// It is in the plugin's static tree, since every trusted mount hands KPress this policy
+// (rendered.js, transclusion.js), and imports nothing, so it adds no level. Measured
+// 2026-11-17 in headless Chrome 152 on a trusted folder's first Markdown view: a module
+// request of its own, 3,197 bytes decoded and 1.8 KB transferred.
 
 /**
  * How far the pane scrolls before a toggle shows: KPress's `TOC_TOGGLE_SCROLL_THRESHOLD_PX`
@@ -26,7 +31,11 @@ export const TOC_TOGGLE_SCROLL_THRESHOLD_PX = 100;
 /**
  * Whether the narrow toggle of *documentElement*'s table of contents shows in *viewport*:
  * the viewport has scrolled past the threshold, and the document is under its top edge.
- * A document with no layout box, such as one in a collapsed Overview panel, has none.
+ *
+ * *documentElement* is the element the document is mounted in, for both tables of
+ * contents, since that is the box a host collapses. A collapsed Overview panel's body
+ * keeps its width and has no height, so it spans no part of the pane's top and the toggle
+ * stays hidden, although the article clipped inside it keeps its full height.
  *
  * @param {Element} documentElement
  * @param {TocScrollViewport} viewport
@@ -37,9 +46,6 @@ export function tocToggleVisible(documentElement, viewport) {
     return false;
   }
   const rect = documentElement.getBoundingClientRect();
-  if (rect.width === 0 && rect.height === 0) {
-    return false;
-  }
   return rect.top <= viewport.top && rect.bottom > viewport.top;
 }
 

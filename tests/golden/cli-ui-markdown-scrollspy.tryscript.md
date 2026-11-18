@@ -29,6 +29,9 @@ panel, its document 1,000px down the pane: the toggle stays hidden past the thre
 until the reader reaches the README’s beginning, and hides again above it; the entries
 keep fragment-only links, a click opens the heading on the folder’s page, and that
 page’s fragment scrolls the README’s heading into view.
+The folder’s address already names a README heading when the Overview mounts, as a deep
+link does, so the mount’s first delivery of that fragment scrolls it into view
+(`deepLinked`), although the README’s own path is not the page’s.
 
 ```console
 $ node tests/dom/markdown-toc-scrollspy-session.js
@@ -77,7 +80,11 @@ $ node tests/dom/markdown-toc-scrollspy-session.js
       ]
     },
     "fragment": {
+      "deepLinked": [
+        "quick-start"
+      ],
       "scrolledTo": [
+        "quick-start",
         "direction"
       ],
       "pendingFrames": 0
