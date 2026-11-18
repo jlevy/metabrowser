@@ -73,7 +73,6 @@ const LIFTED = [
   "viewHeaderUpHtml",
   "viewHeaderItemsHtml",
   "viewHeaderHtml",
-  "viewHeaderPrintHtml",
   "viewHeaderEyebrowHtml",
   "renderFolderHeader",
   "getLogicalName",
@@ -96,7 +95,7 @@ const TOOLTIP_BLOCK = /\n\/\/ Header hover tooltip[\s\S]*?\n\}\);\n/;
 // What the lifted code calls that does not branch on the subject. The tooltip is the
 // application's one tooltip, which mirror-heading.js reaches as plugins do.
 const COLLABORATORS = `
-var ICONS = { print: "", folder: "" };
+var ICONS = { folder: "" };
 var ICON_COPY = "";
 var activeFiles = new Map();
 // The tree's icon resolver, which reads the file-type taxonomy: the name it was asked

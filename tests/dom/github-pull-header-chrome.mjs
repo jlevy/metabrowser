@@ -1363,8 +1363,8 @@ const PULLS = [
 const PULLS_WIDTHS = [420, 360, 300, 240, 180];
 // The file header of a run's log: renderBadges, RUN_STATUS_SIZERS, and flagRunEndedBadge
 // are app.js's own, read from the served file and run here with the two names they use.
-// The header is the one renderFile draws around them: the path, the badges, the size, and
-// the print button's held slot. A live run ends, and a running one turns live, as app.js
+// The header is the one renderFile draws around them: the path, the badges, and the size.
+// A live run ends, and a running one turns live, as app.js
 // changes them in place (flagRunEndedBadge, and _mirrorActiveFromFsEntry's two lines), and
 // every box of the header is read before and after.
 const RUN_BADGE = `async (live, width) => {
@@ -1401,7 +1401,7 @@ const RUN_BADGE = `async (live, width) => {
     eyebrow: "",
     iconHtml: "",
     title: "session.jsonl",
-    end: '<button class="icon-btn file-header-icon file-header-print" type="button" hidden></button>',
+    end: "",
     line:
       app.renderBadges({ type: "jsonl", kind: "agent-log", path: "logs/session.jsonl", summary: { adapter: "claude", is_done: false } }) +
       app.viewHeaderItemsHtml(['<span class="size file-header-size">1.2 MB</span>']),

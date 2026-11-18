@@ -821,13 +821,17 @@ unsubscribe on disposal.
 view defer hidden work, and a composite renderer calls
 `mb.setViewPrintState(container, state)` when its printability changes.
 
-`mb.builtins.markdown.mountRendered(container, ctx, {signal, pagePath})` mounts a
-Markdown document panel with the ordinary KPress presentation, its table of contents
-included. `pagePath` names the page that shows the document as its own when that is not
-the document’s path, as a folder’s Overview shows its README: the document’s fragment
-links and table-of-contents entries are then places on that page.
-Its handle aborts its request and disposes its table of contents, enhanced-link
-listeners, pending fragment work, and nested Obsidian transclusions.
+`mb.builtins.markdown.mountRendered(container, ctx, {signal, pagePath, printIndicator})`
+mounts a Markdown document panel with the ordinary KPress presentation, its table of
+contents included.
+`pagePath` names the page that shows the document as its own when that
+is not the document’s path, as a folder’s Overview shows its README: the document’s
+fragment links and table-of-contents entries are then places on that page.
+`printIndicator: true` puts a print button in the corner of the document’s card, for a
+view whose print is the document itself; it is off unless the host asks
+([Print](design-system.md#print)). Its handle aborts its request and disposes its table
+of contents, print button, enhanced-link listeners, pending fragment work, and nested
+Obsidian transclusions.
 Transclusions share depth, document, source-byte, cycle, abort, and disposal limits
 across the mounted document, and each embed’s time limit starts when that embed begins
 loading. Do not copy Markdown DOM or table-of-contents behavior into a contribution.

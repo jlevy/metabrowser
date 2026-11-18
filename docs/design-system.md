@@ -362,7 +362,7 @@ a pull request, and a commit.
 ```text
 +--------------------------------------------------------------------+
 | [Up] ~/wrk/project / docs / specs                    mirror in ... |  1 eyebrow, optional
-| [icon] Title, at the page title's size  [copy]    [print] [toggle] |  2 heading row
+| [icon] Title, at the page title's size  [copy]            [toggle] |  2 heading row
 | 33.9 KB · 2h ago                                                   |  3 metadata line(s)
 | DOCUMENT   SOURCE                                                  |  4 tab bar
 +--------------------------------------------------------------------+  the one rule, the tab bar's
@@ -372,7 +372,7 @@ a pull request, and a commit.
 | Row | A file | A folder | A pull request | A commit |
 | --- | --- | --- | --- | --- |
 | 1. Eyebrow | Up, the address of the folder that holds it, and Copy path | Up, and the address of its parent; at the served root, the directory that holds the root | Only where it says something the rows under it do not (planned) | The same (planned) |
-| 2. Heading row | The navigation row’s icon for its type, its name, Print, and the GitHub toggle | The folder icon, its name, Print, and the GitHub toggle | Its state icon, its title, and its number | The commit icon, its subject (planned) |
+| 2. Heading row | The navigation row’s icon for its type, its name, and the GitHub toggle | The folder icon, its name, and the GitHub toggle | Its state icon, its title, and its number | The commit icon, its subject (planned) |
 | 3. Metadata | Its badges, size, and age | Its size, file count, and age | Its author line, branches, and ages ([Page Headers](#page-headers)) | Its author, revision, and age ([Page Headers](#page-headers)) |
 | 4. Tab bar | Its views: Document, Source, and so on | Overview and Treemap | Conversation, Changes, and Checks | None |
 
@@ -408,9 +408,8 @@ file’s is its navigation row’s icon for its type, through the same function,
 request’s is its state icon.
 A file’s or a folder’s name is one line, cut short at its end with the whole name as its
 tooltip ([Tooltips Add Information](#tooltips-add-information)); a pull request’s title
-holds two lines.
-The far end holds the row’s controls: Print, which keeps its slot hidden
-on a view that cannot print, then the GitHub toggle.
+holds two lines. The far end holds the row’s controls: the GitHub toggle.
+The header has no print button ([Print](#print)).
 
 **The GitHub toggle** ends the heading row on a page whose repository is on github.com:
 a joined pair, as a segmented control is, of the Metabrowser mark, the app icon’s
@@ -815,9 +814,9 @@ The overlay’s toggle belongs to its document.
 It fades in once the pane has scrolled past KPress’s threshold and the reader has
 reached the document, whose top is at or above the pane’s, and fades out above the
 document or past its end.
-An opened file starts within the threshold, so the threshold decides, as in KPress; a
-folder Overview’s README starts below File Overview, so the toggle appears as the reader
-scrolls to the README’s beginning.
+An opened file’s document starts below its view header and tab bar, and a folder
+Overview’s README below File Overview, both further down than the threshold, so the
+toggle appears as the reader scrolls to the document’s beginning.
 One rule in `builtin_plugins/markdown/toc-toggle.js` serves KPress’s table of contents
 and an inert render’s.
 
@@ -825,6 +824,52 @@ A document’s fragments are places on the page that shows it.
 On a folder’s Overview, a README entry or a link to one of its headings scrolls the
 Overview and puts the fragment on the folder’s address, as GitHub’s repository page
 does, rather than opening the README as a file.
+
+### Print
+
+Printing is the browser’s, and nothing in the shell stands in front of it.
+Command-P, or Control-P outside macOS, prints the view shown, as Print in the macOS
+app’s File menu does.
+The print stylesheet hides the shell’s chrome and prints the active view when it is
+printable, or a line saying it is not (`static/styles.css`, “Print adapter”). No page
+handler takes either chord ([Browser and App Keys](#browser-and-app-keys)).
+
+The shell’s header has no print button.
+A rendered document whose view prints the document itself carries one, in the upper
+right corner of its card: the Markdown file’s Document view, and the README on a
+folder’s Overview, whose one printable panel is the README. A Markdown mount draws it
+only when its host asks, with `printIndicator: true`, so a source view, a rendered diff,
+and any other host have none, and Command-P is their print.
+It is the `.icon-btn` primitive, bare at rest, named and labelled “Print document”, and
+it calls `window.print()`, the print Command-P runs.
+It is the page’s own control in the document, marked with `mb.ownDelegate`, which the
+tooltip recognizes by the element itself, so it keeps the app’s tooltip there, and a
+document that spells its markup, owner value and all, neither prints nor labels itself.
+It comes last in the card, after the document’s text, so it is last in focus and reading
+order though it is drawn at the top: placed first, it would take the place the card’s
+leading-heading rules give its first heading.
+Command-P is the keyboard route to print, wherever focus is.
+
+The button sits in the card’s padding and covers no text.
+It is centred in a corner square, `--print-indicator-corner` in
+`builtin_plugins/markdown/markdown.css`, no larger than the card band’s block-start
+padding and trailing inset, and it is absolute against the card, so its arrival moves
+nothing. It is shown only on a card KPress draws (`data-kpress-card="on"`), under the
+same container query on the pane as KPress’s card rule; narrower, KPress draws no card
+and pads the text too little to hold it, so it is not shown.
+markdown.css records KPress’s lengths beside the token.
+The narrow table of contents toggle sits in the trailing gutter outside the card
+(`--kpress-toc-toggle-clearance`), and the wide band’s rail beside the card, so neither
+meets it. `tests/test_document_print_chrome.py` measures the placement, the stillness,
+the toggle and the rail, the tooltip, a click, and print output, trusted and
+`--untrusted`, and `tests/dom/markdown-print-indicator-session.js` holds which mounts
+carry the button.
+
+KPress’s `doc-actions` widget, an opt-in cluster pinned to its card’s corner, is where
+the button belongs once KPress can carry it in an embedded document, as an option the
+host turns on.
+Until then `builtin_plugins/markdown/print-indicator.js` draws it, and its
+header says what KPress lacks.
 
 ## Control Families
 
@@ -4423,10 +4468,10 @@ Panel bodies use one of two presentations:
   File Overview uses this presentation without surrounding cards.
 - A **document panel** supplies its normal rendered-document surface.
   README therefore looks exactly like an ordinarily rendered Markdown file, including
-  its metadata, diagnostics, breakpoints, table of contents, and print behavior.
-  Overview adds the shared section heading but does not override the document card.
-  The card keeps its standard border and shadow at regular and wide document bands, then
-  becomes borderless through KPress’s own narrow breakpoint.
+  its metadata, diagnostics, breakpoints, table of contents, print button, and print
+  behavior. Overview adds the shared section heading but does not override the document
+  card. The card keeps its standard border and shadow at regular and wide document bands,
+  then becomes borderless through KPress’s own narrow breakpoint.
 
 “Panel” describes composition and lifecycle, not a requirement to draw the same box
 around unlike content.
@@ -4476,8 +4521,9 @@ atomically when the complete, truncated, or failed generation arrives.
 
 Treemap repeats the fixed **Files** context immediately above the map.
 It does not make that context collapsible and does not duplicate totals or scan state in
-a footer sentence. The print action keeps its slot, hidden, when no mounted contribution
-is printable.
+a footer sentence. Without a README the Overview prints nothing of its own: Command-P
+prints the line saying the view is not printable, and no print button is drawn
+([Print](#print)).
 
 An empty folder is still a completed Overview.
 Files remains visible with the message **No files to summarize.** It renders no empty
@@ -5152,14 +5198,13 @@ have: one toolbar slot at the top of the navigation that every main tab fills wi
 own toolbar at one height while each is one line (the Files filters, the Commits tally,
 the Pulls filters), the Commits tab from the server at a repository’s root, a scrollbar
 gutter on the tree and the preview pane, the shortcut strip’s row, a view tab bar in
-every file, the print button’s and a run badge’s widths, the Pulls tab’s status and
-connection lines and its age column, the Files totals’ ignored line, which a folder with
-nothing ignored does not have ([Navigation Metadata Line](#navigation-metadata-line)),
-and the pull request header’s rows, but for a labels row a pull request with no labels
-does not have ([Layout](#layout)). In a pane too narrow for a toolbar’s controls the
-toolbar wraps instead of cutting them
-([Navigation Toolbars Wrap](#navigation-toolbars-wrap)), and the slot is as tall as the
-lines of the toolbar in front.
+every file, a run badge’s width, the Pulls tab’s status and connection lines and its age
+column, the Files totals’ ignored line, which a folder with nothing ignored does not
+have ([Navigation Metadata Line](#navigation-metadata-line)), and the pull request
+header’s rows, but for a labels row a pull request with no labels does not have
+([Layout](#layout)). In a pane too narrow for a toolbar’s controls the toolbar wraps
+instead of cutting them ([Navigation Toolbars Wrap](#navigation-toolbars-wrap)), and the
+slot is as tall as the lines of the toolbar in front.
 There a tab switch can move the panel under the slot, and the Commits slot gains a line
 when its tally lands, if the tally is wider than the pane; the Treemap’s legend row
 likewise holds one line and takes as many as its entries wrap to
