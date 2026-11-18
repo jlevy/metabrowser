@@ -66,7 +66,15 @@ const LIFTED = [
   "servedRoot",
   "mirrorHeading",
   "ownedControlAttr",
-  "headerAddressHtml",
+  "pathBaseName",
+  "headerEyebrowAddressHtml",
+  "servedRootParent",
+  "viewHeaderName",
+  "viewHeaderUpHtml",
+  "viewHeaderItemsHtml",
+  "viewHeaderHtml",
+  "viewHeaderPrintHtml",
+  "viewHeaderEyebrowHtml",
   "renderFolderHeader",
   "_tipSize",
   "_tipCount",
@@ -79,7 +87,7 @@ const TOOLTIP_BLOCK = /\n\/\/ Header hover tooltip[\s\S]*?\n\}\);\n/;
 // What the lifted code calls that does not branch on the subject. The tooltip is the
 // application's one tooltip, which mirror-heading.js reaches as plugins do.
 const COLLABORATORS = `
-var ICONS = { print: "" };
+var ICONS = { print: "", folder: "" };
 function showTooltip(html, anchor) {
   __shown.push({ html: html, anchor: anchor });
 }
@@ -349,8 +357,10 @@ async function observe(subject) {
   const owner = sandbox.metabrowser.delegateOwnerAttribute();
   assert(/^ data-mb-owner="[0-9a-f]{32}"$/.test(owner), "the page has no owner mark");
   const root = sandbox.renderFolderHeader({ path: "" });
-  const file = sandbox.headerAddressHtml(NESTED[kind], true);
-  assert(file.split(owner).length === 4, "a crumb of the address is not an owned control");
+  // A file's eyebrow, the Up control and its folder's address, and its title under it.
+  const file = sandbox.viewHeaderEyebrowHtml(NESTED[kind]);
+  const fileTitle = sandbox.viewHeaderName(NESTED[kind]);
+  assert(file.split(owner).length === 4, "a control of the eyebrow is not an owned control");
 
   // The pointer enters the navigation heading, before and after the tree has loaded.
   const tipBefore = hover(page, page.heading);
@@ -388,7 +398,7 @@ async function observe(subject) {
     navigationHeading: { html: servedHeading, text: text(servedHeading), commitCopy },
     mainHeading: {
       root: text(root),
-      file: { html: file.replaceAll(owner, " data-mb-owner"), text: text(file) },
+      file: { html: file.replaceAll(owner, " data-mb-owner"), text: text(file), title: fileTitle },
     },
     tooltips: {
       navigationHeading: { served: text(tipBefore), afterTreeLoad: text(tipAfter) },
@@ -414,14 +424,18 @@ async function main() {
   }
 
   // A folder's page is what it was: its path, then the address, and nothing of a mirror.
+  // At the root the eyebrow is the directory that holds the root, and the root's name is
+  // the title; under it the eyebrow is the root and the folders above the item.
   const folderRoot = served.folder.dataset.servedRoot;
+  const cut = folderRoot.lastIndexOf("/");
   assert(
-    folder.mainHeading.root === `\u2191 ${folderRoot} /`,
+    folder.mainHeading.root === `\u2191 ${folderRoot.slice(0, cut)} ${folderRoot.slice(cut + 1)}`,
     `a folder's root reads ${folder.mainHeading.root}`,
   );
   assert(
-    folder.mainHeading.file.text === `${folderRoot} / docs / guide.md`,
-    `a folder's address reads ${folder.mainHeading.file.text}`,
+    folder.mainHeading.file.text === `\u2191 ${folderRoot} / docs` &&
+      folder.mainHeading.file.title === "guide.md",
+    `a folder's eyebrow reads ${folder.mainHeading.file.text}`,
   );
   assert(
     folder.tooltips.navigationHeading.served === `${folderRoot}` &&
@@ -447,10 +461,11 @@ async function main() {
       page.navigationHeading.text === `${name} ${ref} ${pin.slice(0, 12)}`,
       `${page.subject}: the navigation heading reads ${page.navigationHeading.text}`,
     );
-    assert(root === `\u2191 ${name} / ${where}`, `${page.subject}: the root reads ${root}`);
+    // A mirror's root has no directory above it: its eyebrow is the note alone.
+    assert(root === `\u2191 ${where} ${name}`, `${page.subject}: the root reads ${root}`);
     assert(
-      file.text === `${name} / docs / guide.md ${where}`,
-      `${page.subject}: a file's address reads ${file.text}`,
+      file.text === `\u2191 ${name} / docs ${where}` && file.title === "guide.md",
+      `${page.subject}: a file's eyebrow reads ${file.text}`,
     );
     // The address is the name and the path under it: no commit, and no directory.
     const address = file.text.slice(0, file.text.indexOf(where));

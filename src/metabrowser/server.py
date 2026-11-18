@@ -3093,6 +3093,26 @@ class JSONResponse(_StarletteJSONResponse):
 # ``starlette.responses.JSONResponse`` directly is unaffected.
 
 
+def _file_mtime(target: Path) -> float | None:
+    """A served file's modification time in epoch seconds, or ``None`` if it cannot be read.
+
+    The envelope's ``mtime`` is what a file's view header shows as its age, in the unit a
+    folder envelope's ``dir.mtime`` and a tree row's ``mtime`` use.
+    """
+
+    try:
+        return target.stat().st_mtime
+    except OSError:
+        return None
+
+
+def _mtime_field(mtime: float | None) -> dict[str, float]:
+    """``{"mtime": ...}``, or nothing when the time could not be read: never a null,
+    which the browser reads as a value still on its way."""
+
+    return {} if mtime is None else {"mtime": mtime}
+
+
 def _compression_identity_fields(artifact: ArtifactPath) -> dict[str, Any]:
     """Compression fields that do not require reading the decoded stream."""
     if not artifact.is_compressed:
@@ -3317,6 +3337,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
         return _file_unavailable_response(subpath, target)
 
     artifact = ArtifactPath(target)
+    file_mtime = _file_mtime(target)
     ext = artifact.logical_ext
     logical_size: int | None
     try:
@@ -3333,6 +3354,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                 "views": _views_for_kind("binary"),
                 "path": subpath,
                 "size": disk_size,
+                **_mtime_field(file_mtime),
                 **_compression_identity_fields(artifact),
             }
         )
@@ -3358,6 +3380,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                     "views": [],
                     "path": subpath,
                     "size": disk_size,
+                    **_mtime_field(file_mtime),
                     "error": str(exc),
                     **_compression_identity_fields(artifact),
                 }
@@ -3370,6 +3393,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                 "views": _views_for_kind("binary"),
                 "path": subpath,
                 "size": disk_size,
+                **_mtime_field(file_mtime),
                 **_compression_identity_fields(artifact),
             }
         )
@@ -3446,6 +3470,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                     "views": views,
                     "path": subpath,
                     "size": disk_size,
+                    **_mtime_field(file_mtime),
                     "mtime_hash": mtime_hash,
                     **compression_fields,
                     **parsed,
@@ -3471,6 +3496,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                 "views": _views_for_kind("image"),
                 "path": subpath,
                 "size": disk_size,
+                **_mtime_field(file_mtime),
                 "mtime_hash": mtime_hash,
                 **compression_fields,
             },
@@ -3506,6 +3532,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                         "views": _views_for_kind("binary"),
                         "path": subpath,
                         "size": disk_size,
+                        **_mtime_field(file_mtime),
                         **_compression_identity_fields(artifact),
                     }
                 )
@@ -3516,6 +3543,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                     "views": [],
                     "path": subpath,
                     "size": disk_size,
+                    **_mtime_field(file_mtime),
                     "error": str(exc),
                     **compression_fields,
                 }
@@ -3526,6 +3554,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                     "type": "binary",
                     "path": subpath,
                     "size": disk_size,
+                    **_mtime_field(file_mtime),
                     **compression_fields,
                 }
             )
@@ -3536,6 +3565,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                     "type": "text_chunk",
                     "path": subpath,
                     "size": disk_size,
+                    **_mtime_field(file_mtime),
                     "mtime_hash": mtime_hash,
                     "content": content,
                     "content_offset": text_offset,
@@ -3582,6 +3612,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             "path": subpath,
             "ext": ext,
             "size": disk_size,
+            **_mtime_field(file_mtime),
             "mtime_hash": mtime_hash,
             "content": content,
             "content_offset": 0,
@@ -3612,6 +3643,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             "views": _views_for_kind("binary"),
             "path": subpath,
             "size": disk_size,
+            **_mtime_field(file_mtime),
             "mtime_hash": mtime_hash,
             **compression_fields,
         },

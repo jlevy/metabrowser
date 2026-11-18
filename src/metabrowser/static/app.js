@@ -340,49 +340,118 @@ function isOwnedControl(element) {
 }
 
 /**
- * The main view's address: the served root dimmed, the root slash, then one
- * control per component beneath it.
- *
- * The prefix is dim because it is identical on every page — context, not
- * content — and everything from the slash rightward is live. The final
- * component is a control too. On the page you are already looking at it
- * changes nothing, but a run of links with one dead segment in the middle
- * reads as a bug rather than as a rule.
- *
- * A crumb's tooltip is its own name, which the shell shows only while a narrow
- * pane has cut the crumb short (`tipAddsInformation`): the trail itself shows
- * the path, so a crumb repeats none of it (docs/design-system.md, "Tooltips Add
- * Information").
- *
+ * A view header's eyebrow address (docs/design-system.md, "View Headers"): the served
+ * root dimmed, the root slash, and a crumb per folder above the item, whose name is the
+ * title; at the root, the directory that holds it, dimmed. A crumb's tip is its name,
+ * shown only while it is cut short (`tipAddsInformation`).
  * @param {string} path served-root-relative path; "" is the root itself
- * @param {boolean} isFile whether the last component names a file
  */
-function headerAddressHtml(path, isFile) {
+function headerEyebrowAddressHtml(path) {
   var root = servedRoot();
-  // <bdi> isolates the path from the start-truncation direction on the
-  // wrapper; see .file-header-root. It carries no style of its own.
-  var prefix = root ? `<span class="file-header-root"><bdi>${esc(root)}</bdi></span>` : "";
-  var rootCrumb = `<button type="button" class="folder-crumb folder-crumb-root" data-nav-dir=""${ownedControlAttr()} data-tip-text="Served root">/</button>`;
   var segments = path ? path.split("/") : [];
+  // <bdi> isolates the path from .file-header-root's start-truncation direction.
+  /** @param {string} text */
+  var dimmed = (text) =>
+    text ? `<span class="file-header-root"><bdi>${esc(text)}</bdi></span>` : "";
+  if (segments.length === 0) {
+    return dimmed(servedRootParent(root)) + mirrorHeading("note");
+  }
+  var rootCrumb = `<button type="button" class="folder-crumb folder-crumb-root" data-nav-dir=""${ownedControlAttr()} data-tip-text="Served root">/</button>`;
   var crumbs = [];
   var walked = "";
-  for (var i = 0; i < segments.length; i++) {
+  for (var i = 0; i < segments.length - 1; i++) {
     walked = walked ? `${walked}/${segments[i]}` : segments[i];
-    var last = i === segments.length - 1;
-    var attr = last && isFile ? "data-nav-file" : "data-nav-dir";
-    var cls = last ? "folder-crumb folder-crumb-current" : "folder-crumb";
-    // One name, as the crumb's tip and its text, so the two cannot drift apart: the tip
-    // shows only while that text is cut short (`tipAddsInformation`).
     var name = esc(window.MetabrowserNavigationRoute.displayPath(segments[i]));
     crumbs.push(
-      `<button type="button" class="${cls}" ${attr}="${esc(walked)}"${ownedControlAttr()} data-tip-text="${name}">${name}</button>`,
+      `<button type="button" class="folder-crumb" data-nav-dir="${esc(walked)}"${ownedControlAttr()} data-tip-text="${name}">${name}</button>`,
     );
   }
   return (
-    prefix +
+    dimmed(root) +
     rootCrumb +
     crumbs.join('<span class="folder-crumb-sep">/</span>') +
     mirrorHeading("note")
+  );
+}
+
+/** The directory holding the served root, "~/a" for "~/a/b"; none for a mirror's name. */
+function servedRootParent(root) {
+  var trimmed = root.replace(/\/+$/, "");
+  var cut = trimmed.lastIndexOf("/");
+  return cut > 0 ? trimmed.slice(0, cut) : cut === 0 ? "/" : "";
+}
+
+/** A view header's title: the item's name, or the served root's. @param {string} path */
+function viewHeaderName(path) {
+  if (path) {
+    var segments = path.split("/");
+    return window.MetabrowserNavigationRoute.displayPath(segments[segments.length - 1]);
+  }
+  var root = servedRoot();
+  return pathBaseName(root) || root || "/";
+}
+
+/** The eyebrow's Up: the item's folder, or disabled in place at the root. @param {string} path */
+function viewHeaderUpHtml(path) {
+  var segments = path ? path.split("/") : [];
+  var parent = segments.slice(0, -1).join("/");
+  var label = parent
+    ? `${window.MetabrowserNavigationRoute.displayPath(segments[segments.length - 2])}/`
+    : "/";
+  var attrs = path
+    ? `data-tip-text="Open ${esc(label)}" aria-label="Open parent folder ${esc(label)}" data-nav-dir="${esc(parent)}"${ownedControlAttr()}`
+    : 'data-tip-text="No parent folder" aria-label="No parent folder" disabled';
+  return `<button type="button" class="btn parent-nav-btn parent-nav-btn-icon-only folder-up" ${attrs}><span class="parent-nav-arrow" aria-hidden="true">↑</span></button>`;
+}
+
+/**
+ * A metadata line's items, each after a muted dot but the first and one box with it, so
+ * a narrow line drops both whole (`.view-header-line`); an empty item is left out.
+ * @param {string[]} items
+ */
+function viewHeaderItemsHtml(items) {
+  return items
+    .filter(Boolean)
+    .map(
+      (item, index) =>
+        '<span class="view-header-item">' +
+        (index === 0
+          ? ""
+          : '<span class="summary-punctuation view-header-sep" aria-hidden="true">·</span>') +
+        item +
+        "</span>",
+    )
+    .join("");
+}
+
+/**
+ * One view header (docs/design-system.md, "View Headers"): the eyebrow, the heading row
+ * (icon, title, what follows it, the row's end), and the metadata line.
+ * @param {{className?: string, eyebrow: string, iconHtml: string, iconClass?: string,
+ *          iconStyle?: string, title: string, afterTitle?: string, end: string,
+ *          line: string}} parts
+ */
+function viewHeaderHtml(parts) {
+  return (
+    `<div class="file-header view-header${parts.className ? ` ${parts.className}` : ""}" data-kbd-badge-anchor>` +
+    `<div class="view-header-eyebrow">${parts.eyebrow}</div>` +
+    '<div class="view-header-heading">' +
+    `<span class="view-header-icon file-identity-icon${parts.iconClass ? ` ${parts.iconClass}` : ""}"${parts.iconStyle ? ` style="${esc(parts.iconStyle)}"` : ""} aria-hidden="true">${parts.iconHtml}</span>` +
+    `<h1 class="view-header-title page-heading" data-tip-text="${esc(parts.title)}">${esc(parts.title)}</h1>` +
+    (parts.afterTitle || "") +
+    `<span class="view-header-end">${parts.end}</span>` +
+    "</div>" +
+    `<div class="view-header-line page-header-line">${parts.line}</div>` +
+    "</div>"
+  );
+}
+
+/** Print, hidden in its slot on a view that cannot print. */
+function viewHeaderPrintHtml() {
+  return (
+    `<button class="icon-btn file-header-icon file-header-print" type="button"${ownedControlAttr()} data-tip-text="Print view" aria-label="Print view" hidden>` +
+    (ICONS.print || "") +
+    "</button>"
   );
 }
 
@@ -6881,40 +6950,68 @@ function navigateToFolder(path) {
   navigateToPath(path ? `${path}/` : "");
 }
 
-// Folder preview header: up control, clickable breadcrumb, aggregate
-// summary. The shell owns this chrome so every folder view shares it.
-function renderFolderHeader(data) {
-  var path = typeof data.path === "string" ? data.path : "";
-  var segments = path ? path.split("/") : [];
-  var parent = segments.length > 0 ? segments.slice(0, -1).join("/") : null;
-  var parentLabel =
-    parent === null
-      ? ""
-      : parent === ""
-        ? "/"
-        : `${window.MetabrowserNavigationRoute.displayPath(segments[segments.length - 2])}/`;
-  var upButton =
-    parent === null
-      ? '<button type="button" class="btn parent-nav-btn parent-nav-btn-icon-only folder-up" data-tip-text="No parent folder" aria-label="No parent folder" disabled><span class="parent-nav-arrow" aria-hidden="true">↑</span></button>'
-      : `<button type="button" class="btn parent-nav-btn parent-nav-btn-icon-only folder-up" data-tip-text="Open ${esc(parentLabel)}" aria-label="Open parent folder ${esc(parentLabel)}" data-nav-dir="${esc(parent)}"${ownedControlAttr()}><span class="parent-nav-arrow" aria-hidden="true">↑</span></button>`;
-  var dir = data.dir && typeof data.dir === "object" ? data.dir : null;
-  var summary = dir
-    ? `<span class="folder-header-summary">${folderHeaderSummaryHtml(dir)}</span>`
-    : "";
+// A file's or a folder's eyebrow: Up, then the address of the item's folder.
+function viewHeaderEyebrowHtml(path) {
   return (
-    '<div class="file-header folder-header" data-kbd-badge-anchor>' +
-    upButton +
-    `<span class="file-header-path folder-breadcrumb">${headerAddressHtml(path, false)}</span>` +
-    summary +
-    `<button class="icon-btn file-header-icon file-header-print" type="button"${ownedControlAttr()} data-tip-text="Print view" aria-label="Print view" hidden>` +
-    (ICONS.print || "") +
-    "</button>" +
-    "</div>"
+    viewHeaderUpHtml(path) +
+    `<span class="file-header-path folder-breadcrumb">${headerEyebrowAddressHtml(path)}</span>`
   );
 }
 
-// Aggregate strip of the folder header. Split out so the live
-// refresher below can patch it in place when the inventory changes.
+// A folder's view header: eyebrow, folder icon and name, and its aggregate line.
+function renderFolderHeader(data) {
+  var path = typeof data.path === "string" ? data.path : "";
+  var dir = data.dir && typeof data.dir === "object" ? data.dir : null;
+  return viewHeaderHtml({
+    className: "folder-header",
+    eyebrow: viewHeaderEyebrowHtml(path),
+    iconHtml: ICONS.folder || "",
+    iconClass: "view-header-folder-icon",
+    title: viewHeaderName(path),
+    end: viewHeaderPrintHtml(),
+    line: `<span class="folder-header-summary">${dir ? folderHeaderSummaryHtml(dir) : ""}</span>`,
+  });
+}
+
+// A file's view header: eyebrow, the tree row's icon and its name, and its line.
+function renderFileHeader(data) {
+  var path = data.path || "";
+  var name = viewHeaderName(path);
+  // Keyed off the logical name, as a tree row's icon is.
+  var icon = getFileIcon(
+    getLogicalName({ name: name, compressed: data.compressed, compression: data.compression }),
+  );
+  return viewHeaderHtml({
+    eyebrow: viewHeaderEyebrowHtml(path),
+    iconHtml: icon.svg,
+    iconClass: icon.cls,
+    iconStyle: icon.style,
+    title: name,
+    afterTitle:
+      `<button class="icon-btn icon-btn-reveal file-header-copy" type="button" data-mb-copy="text" data-mb-copy-text="${esc(window.MetabrowserNavigationRoute.displayPath(path))}"${ownedControlAttr()} data-mb-copy-label="Copy path" data-tip-text="Copy path" aria-label="Copy path">` +
+      ICON_COPY +
+      "</button>",
+    end: viewHeaderPrintHtml(),
+    line:
+      renderBadges(data) +
+      viewHeaderItemsHtml([sizeHtml(data.size, "file-header-size"), viewHeaderAgeHtml(data.mtime)]),
+  });
+}
+
+/**
+ * A line's age, "11m ago": a skeleton while pending, nothing where there is no time.
+ * @param {number | null | undefined} mtime epoch seconds
+ */
+function viewHeaderAgeHtml(mtime) {
+  if (mtime === undefined) {
+    return "";
+  }
+  var age = formatAge(mtime, { style: "relative" });
+  return age ? `<span class="folder-header-age">${age}</span>` : "";
+}
+
+// Aggregate items of the folder header's line. Split out so the live
+// refresher below can patch them in place when the inventory changes.
 function folderHeaderSummaryHtml(dirInfo) {
   // A still-finalizing directory reports null aggregates; sizeHtml,
   // countHtml, and formatAge(null) all render the tally-pending
@@ -6925,11 +7022,12 @@ function folderHeaderSummaryHtml(dirInfo) {
   if (dirInfo.not_indexed) {
     return "";
   }
-  return (
-    sizeHtml(dirInfo.total_size, "file-header-size") +
-    countHtml(dirInfo.total_files, "folder-header-count") +
-    `<span class="folder-header-age">${formatAge(dirInfo.mtime, { style: "relative" })}</span>`
-  );
+  // The age is last, so its label changing width moves nothing.
+  return viewHeaderItemsHtml([
+    sizeHtml(dirInfo.total_size, "file-header-size"),
+    countHtml(dirInfo.total_files, "folder-header-count"),
+    viewHeaderAgeHtml(dirInfo.mtime),
+  ]);
 }
 
 // ── Folder header live refresh ──────────────────────────────────
@@ -7285,31 +7383,14 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
       cancelPendingFilePreviewStage();
       pendingFilePreviewStageCleanup = cleanupStage;
       try {
-        // Build header — folders get breadcrumb chrome (renderFolderHeader),
-        // files the path/badges/size strip.
+        // The view header: a folder's or a file's, one structure (viewHeaderHtml).
         let html = "";
         if (data.kind === "folder") {
           const folderData = /** @type {Parameters<typeof renderFolderHeader>[0]} */ (data);
           html = renderFolderHeader(folderData);
           window.metabrowser?.folderContext?.seed(data.path, folderData);
-        }
-        if (data.kind !== "folder") {
-          var badges = renderBadges(data);
-          html = '<div class="file-header" data-kbd-badge-anchor>';
-          html +=
-            '<span class="file-header-path folder-breadcrumb">' +
-            headerAddressHtml(data.path, true) +
-            `<button class="icon-btn icon-btn-reveal file-header-copy" type="button" data-mb-copy="text" data-mb-copy-text="${esc(window.MetabrowserNavigationRoute.displayPath(data.path))}"${ownedControlAttr()} data-mb-copy-label="Copy path" data-tip-text="Copy path" aria-label="Copy path">` +
-            ICON_COPY +
-            "</button>" +
-            "</span>";
-          html += badges;
-          html += sizeHtml(data.size, "file-header-size");
-          html +=
-            `<button class="icon-btn file-header-icon file-header-print" type="button"${ownedControlAttr()} data-tip-text="Print view" aria-label="Print view" hidden>` +
-            (ICONS.print || "") +
-            "</button>";
-          html += "</div>";
+        } else {
+          html = renderFileHeader(data);
         }
 
         // Plugins own every (kind, viewId). The shell mounts empty hosts before
@@ -7562,15 +7643,6 @@ function onHeaderNavigationClick(e) {
   var navBtn = /** @type {HTMLElement | null} */ (origin.closest("[data-nav-dir]"));
   if (navBtn && isOwnedControl(navBtn) && !navBtn.hasAttribute("disabled")) {
     navigateToFolder(navBtn.dataset.navDir ?? "");
-    return;
-  }
-  // The address bar's last crumb names a file rather than a directory. It
-  // re-opens what is already open, which is the point: every segment of the
-  // address behaves alike.
-  var fileBtn = /** @type {HTMLElement | null} */ (origin.closest("[data-nav-file]"));
-  if (fileBtn && isOwnedControl(fileBtn) && !fileBtn.hasAttribute("disabled")) {
-    void navigateToPath(fileBtn.dataset.navFile ?? "");
-    return;
   }
 }
 document.addEventListener("click", onHeaderNavigationClick);

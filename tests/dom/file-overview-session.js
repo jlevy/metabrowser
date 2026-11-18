@@ -976,7 +976,15 @@ const rollupError = (status) =>
        function countClass() { return ""; }
        function formatSize(value) { return value + " B"; }
        function formatCount(value) { return value + " files"; }
-       ${["isPendingNumber", "sizeHtml", "countHtml", "formatAge", "folderHeaderSummaryHtml"]
+       ${[
+         "isPendingNumber",
+         "sizeHtml",
+         "countHtml",
+         "formatAge",
+         "viewHeaderAgeHtml",
+         "viewHeaderItemsHtml",
+         "folderHeaderSummaryHtml",
+       ]
          .map(lift)
          .join("\n")}
        folderHeaderSummaryHtml;`,

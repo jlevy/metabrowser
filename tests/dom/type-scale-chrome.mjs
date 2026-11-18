@@ -271,37 +271,37 @@ try {
   );
   phase("files");
 
-  // A file's header and a folder's: the main view's reading text, its path and its
-  // metadata at one size.
+  // A file's view header and a folder's: the title at the page title's size, and the
+  // eyebrow's address and the metadata line at the main view's reading size, the line's
+  // values at the size of the line they are on (docs/design-system.md, "View Headers").
   await evaluate(
     "[...document.querySelectorAll('#tab-files .tree-file')].find((row) => /README/.test(row.textContent)).click()",
   );
   await waitFor(
-    "/README/.test(document.querySelector('.file-header .folder-crumb-current')?.textContent ?? '')",
+    "/README/.test(document.querySelector('.file-header .view-header-title')?.textContent ?? '')",
   );
   const fileHeader = "a file's header";
-  await role(fileHeader, "reading text", ".file-header .folder-crumb-current");
+  await role(fileHeader, "page title", ".file-header .view-header-title");
+  await role(fileHeader, "reading text", ".file-header .folder-crumb-root");
+  await role(fileHeader, "reading text", ".file-header .view-header-line");
   await role(fileHeader, "reading text", ".file-header .file-header-size");
-  await accompanies(
-    fileHeader,
-    ".file-header .file-header-size",
-    ".file-header .folder-crumb-current",
-  );
+  await accompanies(fileHeader, ".file-header .file-header-size", ".file-header .view-header-line");
   await click("#header-home");
   await waitFor("document.querySelector('.file-header .folder-header-count') !== null");
   const folderHeader = "a folder's header";
+  await role(folderHeader, "page title", ".file-header .view-header-title");
   await role(folderHeader, "reading text", ".file-header .folder-header-count");
   await role(folderHeader, "reading text", ".file-header .file-header-size");
   await accompanies(
     folderHeader,
     ".file-header .folder-header-count",
-    ".file-header .folder-crumb-root",
+    ".file-header .view-header-line",
   );
   if (await evaluate("document.querySelector('.folder-header-age [class*=age-]') !== null")) {
     await accompanies(
       folderHeader,
       ".folder-header-age [class*=age-]",
-      ".file-header .folder-crumb-root",
+      ".file-header .view-header-line",
     );
   }
   phase("headers");

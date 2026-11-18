@@ -13,6 +13,12 @@ This guide covers Files.
 
 The Files tab is a tree of the served folder beside the selected file or folder.
 
+The selected file or folder has a header above its views: a quiet line with the Up
+button and the folders that hold it, then its icon and its name, then its size and age,
+and a folder’s file count, “4.7 MB · 138 files · 8m ago”.
+In a narrow pane a long name is cut short, with the whole name in its tooltip, and the
+values that do not fit leave the line from its end, each whole.
+
 - **Rows:** a file row shows its size and age; a folder row shows its file count, total
   size, and newest change, for everything beneath it.
   Age is drawn in a color that runs from the freshest files to the oldest.
@@ -22,7 +28,8 @@ The Files tab is a tree of the served folder beside the selected file or folder.
 - **Addresses:** each file and folder has its own `/view/<path>` address, so the
   browser’s Back, Forward, new tab, and copied links work as they do anywhere.
   A fragment selects a place in a document, such as a heading.
-- **Up:** `U`, or the folder header’s Up button, opens the parent folder.
+- **Up:** `U`, or the header’s Up button, opens the folder that holds the file or
+  folder.
 - **Home:** the folder’s name at the top of the navigation pane, or `0`, shows the
   folder as a fresh load shows it: Files in front, every filter and Group by at its
   default, and every tab back at its first view.
@@ -119,7 +126,8 @@ Plugins add views for other formats ([plugin authoring](plugins.md)).
 The Document view renders Markdown with KPress: headings with a table of contents,
 tables, footnotes, highlighted code, math, images, and YAML frontmatter, which shows as
 a closed **Frontmatter** disclosure.
-The Print button in the file header prints the document without the rest of the page.
+The Print button at the end of the file’s header prints the document without the rest of
+the page.
 
 Links resolve the way GitHub resolves them:
 

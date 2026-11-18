@@ -44,7 +44,15 @@ const LIFTED = [
   "eventTargetElement",
   "ownedControlAttr",
   "isOwnedControl",
-  "headerAddressHtml",
+  "pathBaseName",
+  "headerEyebrowAddressHtml",
+  "servedRootParent",
+  "viewHeaderName",
+  "viewHeaderUpHtml",
+  "viewHeaderItemsHtml",
+  "viewHeaderHtml",
+  "viewHeaderPrintHtml",
+  "viewHeaderEyebrowHtml",
   "renderFolderHeader",
   "tipTextAnchor",
   "onPrintViewClick",
@@ -52,7 +60,7 @@ const LIFTED = [
 ];
 
 const COLLABORATORS = `
-var ICONS = { print: "" };
+var ICONS = { print: "", folder: "" };
 function navigateToFolder(path) {
   __calls.push("folder:" + path);
 }
@@ -182,16 +190,17 @@ function click(element) {
   sandbox.onHeaderNavigationClick({ target: element });
 }
 
-// The page's own controls, as the shell renders them.
-const fileHeader = buttons(sandbox.headerAddressHtml("docs/a%25b.md", true));
+// The page's own controls, as the shell renders them: a file's eyebrow, its Up control and
+// its folder's address, and a folder's whole view header.
+const fileHeader = buttons(sandbox.viewHeaderEyebrowHtml("docs/a%25b.md"));
 const folderHeader = buttons(sandbox.renderFolderHeader({ path: "docs/sub" }));
 const owner = fileHeader[0].getAttribute("data-mb-owner");
 check(
-  "each crumb carries its tip text: the served root's name, and every other crumb's own name, not its path",
+  "each control carries its tip text: Up its folder, the served root's crumb its name, and every other crumb its own name, not its path",
   JSON.stringify(fileHeader.map((element) => element.getAttribute("data-tip-text"))) ===
-    JSON.stringify(["Served root", "docs", "a%b.md"]),
+    JSON.stringify(["Open docs/", "Served root", "docs"]),
 );
-check("the root crumb carries a 32-hex owner mark", /^[0-9a-f]{32}$/.test(owner || ""));
+check("the Up control carries a 32-hex owner mark", /^[0-9a-f]{32}$/.test(owner || ""));
 // A document's `<label for=…>` clicks the element with that id, and the click would
 // carry a real control's stamp, so no stamped control has an id to name.
 check(
@@ -234,7 +243,7 @@ const tooltipFor = (element) => sandbox.tipTextAnchor({ target: element });
 // tests/dom/github-pulls-stacks-chrome.mjs reads in Chrome through this listener.
 check(
   "the tooltip listener takes a shell crumb as its anchor",
-  tooltipFor(fileHeader[1]) === fileHeader[1],
+  tooltipFor(fileHeader[2]) === fileHeader[2],
 );
 check(
   "a document's data-tip-text is not the application's tooltip",
@@ -242,16 +251,15 @@ check(
 );
 
 check(
-  "the page's controls navigate, open the file, and print",
+  "the page's controls navigate and print",
   JSON.stringify(pageCalls) ===
     JSON.stringify([
-      "folder:",
-      "folder:docs",
-      "file:docs/a%25b.md",
       "folder:docs",
       "folder:",
       "folder:docs",
-      "folder:docs/sub",
+      "folder:docs",
+      "folder:",
+      "folder:docs",
       "print",
       "folder:docs",
     ]),

@@ -6,12 +6,13 @@ env:
 ---
 # Golden Test: A Mirror’s Heading
 
-A folder’s page is headed by the folder’s name, and its main heading starts with the
-folder’s path. A page served from a mirror showed the full commit ID in both places, and
-said nowhere that its files came out of the cache.
+A folder’s page is headed by the folder’s name, and its main heading’s eyebrow starts
+with the folder’s path.
+A page served from a mirror showed the full commit ID in both places, and said nowhere
+that its files came out of the cache.
 It is now headed by the repository’s name, as a checkout of it would be called, with the
 ref and the short commit beside it and a control that copies the full commit, and its
-main heading ends with a note that says where the mirror is kept.
+main heading’s eyebrow ends with a note that says where the mirror is kept.
 
 The mirror is a bare Git repository, and each page is read from a Git object at the
 pinned commit, so no folder holds these files.
@@ -33,8 +34,8 @@ own directory.
 
 Each page runs `static/mirror-heading.js` first when its shell carried it, then loads
 the production SDK whole, and runs the shell’s own heading code lifted verbatim from
-`app.js`: the folder header, the file header’s address, and the block that wires the
-navigation heading’s tooltip.
+`app.js`: the folder’s view header, a file’s eyebrow and title, and the block that wires
+the navigation heading’s tooltip.
 No heading is composed here; every string is what that code returned or showed.
 The steps are a page load, which mounts the commit’s copy control on a mirror; the main
 heading at the root folder and at a nested file; the pointer entering the navigation
@@ -45,10 +46,11 @@ on the copy control, through the SDK’s delegated listener.
 
 The session fails unless a folder’s page is unchanged and shows nothing of a mirror, a
 mirror’s address starts with the repository’s name and names neither a commit nor a
-path, each heading holds one note after its last crumb, the three tooltips say what the
-mirror is in a line of their own, the click copies the full commit from an owner-stamped
-control, and the hostile name, origin, and location are escaped wherever they are
-written.
+path, a root’s eyebrow is the directory that holds it (none for a mirror) under its name
+as the title, each heading holds one note after its last crumb, the three tooltips say
+what the mirror is in a line of their own, the click copies the full commit from an
+owner-stamped control, and the hostile name, origin, and location are escaped wherever
+they are written.
 
 ```console
 $ node tests/dom/mirror-heading-session.js
@@ -74,10 +76,11 @@ $ node tests/dom/mirror-heading-session.js
       "commitCopy": null
     },
     "mainHeading": {
-      "root": "↑ ~/wrk/squares /",
+      "root": "↑ ~/wrk squares",
       "file": {
-        "html": "<span class=\"file-header-root\"><bdi>~/wrk/squares</bdi></span><button type=\"button\" class=\"folder-crumb folder-crumb-root\" data-nav-dir=\"\" data-mb-owner data-tip-text=\"Served root\">/</button><button type=\"button\" class=\"folder-crumb\" data-nav-dir=\"docs\" data-mb-owner data-tip-text=\"docs\">docs</button><span class=\"folder-crumb-sep\">/</span><button type=\"button\" class=\"folder-crumb folder-crumb-current\" data-nav-file=\"docs/guide.md\" data-mb-owner data-tip-text=\"guide.md\">guide.md</button>",
-        "text": "~/wrk/squares / docs / guide.md"
+        "html": "<button type=\"button\" class=\"btn parent-nav-btn parent-nav-btn-icon-only folder-up\" data-tip-text=\"Open docs/\" aria-label=\"Open parent folder docs/\" data-nav-dir=\"docs\" data-mb-owner><span class=\"parent-nav-arrow\" aria-hidden=\"true\">↑</span></button><span class=\"file-header-path folder-breadcrumb\"><span class=\"file-header-root\"><bdi>~/wrk/squares</bdi></span><button type=\"button\" class=\"folder-crumb folder-crumb-root\" data-nav-dir=\"\" data-mb-owner data-tip-text=\"Served root\">/</button><button type=\"button\" class=\"folder-crumb\" data-nav-dir=\"docs\" data-mb-owner data-tip-text=\"docs\">docs</button></span>",
+        "text": "↑ ~/wrk/squares / docs",
+        "title": "guide.md"
       }
     },
     "tooltips": {
@@ -124,10 +127,11 @@ $ node tests/dom/mirror-heading-session.js
       }
     },
     "mainHeading": {
-      "root": "↑ squares / mirror in ~/.cache/metabrowser/repository-stores/store-key-1/repository.git",
+      "root": "↑ mirror in ~/.cache/metabrowser/repository-stores/store-key-1/repository.git squares",
       "file": {
-        "html": "<span class=\"file-header-root\"><bdi>squares</bdi></span><button type=\"button\" class=\"folder-crumb folder-crumb-root\" data-nav-dir=\"\" data-mb-owner data-tip-text=\"Served root\">/</button><button type=\"button\" class=\"folder-crumb\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner data-tip-text=\"docs\">docs</button><span class=\"folder-crumb-sep\">/</span><button type=\"button\" class=\"folder-crumb folder-crumb-current\" data-nav-file=\"g1-ZG9jcw/g1-Z3VpZGUubWQ\" data-mb-owner data-tip-text=\"guide.md\">guide.md</button><span class=\"file-header-mirror\"><span class=\"file-header-mirror-text\">mirror in ~/.cache/metabrowser/repository-stores/store-key-1/repository.git</span></span>",
-        "text": "squares / docs / guide.md mirror in ~/.cache/metabrowser/repository-stores/store-key-1/repository.git"
+        "html": "<button type=\"button\" class=\"btn parent-nav-btn parent-nav-btn-icon-only folder-up\" data-tip-text=\"Open docs/\" aria-label=\"Open parent folder docs/\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner><span class=\"parent-nav-arrow\" aria-hidden=\"true\">↑</span></button><span class=\"file-header-path folder-breadcrumb\"><span class=\"file-header-root\"><bdi>squares</bdi></span><button type=\"button\" class=\"folder-crumb folder-crumb-root\" data-nav-dir=\"\" data-mb-owner data-tip-text=\"Served root\">/</button><button type=\"button\" class=\"folder-crumb\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner data-tip-text=\"docs\">docs</button><span class=\"file-header-mirror\"><span class=\"file-header-mirror-text\">mirror in ~/.cache/metabrowser/repository-stores/store-key-1/repository.git</span></span></span>",
+        "text": "↑ squares / docs mirror in ~/.cache/metabrowser/repository-stores/store-key-1/repository.git",
+        "title": "guide.md"
       }
     },
     "tooltips": {
@@ -174,10 +178,11 @@ $ node tests/dom/mirror-heading-session.js
       }
     },
     "mainHeading": {
-      "root": "↑ a<b>&�x / mirror in ~/odd\"<&>home/repository-stores/store-key-2/repository.git",
+      "root": "↑ mirror in ~/odd\"<&>home/repository-stores/store-key-2/repository.git a<b>&�x",
       "file": {
-        "html": "<span class=\"file-header-root\"><bdi>a&lt;b&gt;&amp;�x</bdi></span><button type=\"button\" class=\"folder-crumb folder-crumb-root\" data-nav-dir=\"\" data-mb-owner data-tip-text=\"Served root\">/</button><button type=\"button\" class=\"folder-crumb\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner data-tip-text=\"docs\">docs</button><span class=\"folder-crumb-sep\">/</span><button type=\"button\" class=\"folder-crumb folder-crumb-current\" data-nav-file=\"g1-ZG9jcw/g1-Z3VpZGUubWQ\" data-mb-owner data-tip-text=\"guide.md\">guide.md</button><span class=\"file-header-mirror\"><span class=\"file-header-mirror-text\">mirror in ~/odd&quot;&lt;&amp;&gt;home/repository-stores/store-key-2/repository.git</span></span>",
-        "text": "a<b>&�x / docs / guide.md mirror in ~/odd\"<&>home/repository-stores/store-key-2/repository.git"
+        "html": "<button type=\"button\" class=\"btn parent-nav-btn parent-nav-btn-icon-only folder-up\" data-tip-text=\"Open docs/\" aria-label=\"Open parent folder docs/\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner><span class=\"parent-nav-arrow\" aria-hidden=\"true\">↑</span></button><span class=\"file-header-path folder-breadcrumb\"><span class=\"file-header-root\"><bdi>a&lt;b&gt;&amp;�x</bdi></span><button type=\"button\" class=\"folder-crumb folder-crumb-root\" data-nav-dir=\"\" data-mb-owner data-tip-text=\"Served root\">/</button><button type=\"button\" class=\"folder-crumb\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner data-tip-text=\"docs\">docs</button><span class=\"file-header-mirror\"><span class=\"file-header-mirror-text\">mirror in ~/odd&quot;&lt;&amp;&gt;home/repository-stores/store-key-2/repository.git</span></span></span>",
+        "text": "↑ a<b>&�x / docs mirror in ~/odd\"<&>home/repository-stores/store-key-2/repository.git",
+        "title": "guide.md"
       }
     },
     "tooltips": {

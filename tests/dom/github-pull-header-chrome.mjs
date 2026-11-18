@@ -1282,10 +1282,11 @@ const RUN_BADGE = `async (live, width) => {
   const app = new Function("esc", "activeFiles", code + "\\nreturn { renderBadges, flagRunEndedBadge };")(esc, activeFiles);
   const pane = document.getElementById("preview-pane");
   pane.style.width = width + "px";
+  // A file's view header (renderFileHeader in app.js): the badges lead its metadata line.
   pane.innerHTML =
-    '<div class="file-header" data-kbd-badge-anchor><span class="file-header-path folder-breadcrumb">logs/session.jsonl</span>' +
+    '<div class="file-header view-header" data-kbd-badge-anchor><div class="view-header-heading"><h1 class="view-header-title page-heading">session.jsonl</h1><span class="view-header-end"><button class="icon-btn file-header-icon file-header-print" type="button" hidden></button></span></div><div class="view-header-line page-header-line">' +
     app.renderBadges({ type: "jsonl", kind: "agent-log", path: "logs/session.jsonl", summary: { adapter: "claude", is_done: false } }) +
-    '<span class="size file-header-size">1.2 MB</span><button class="icon-btn file-header-icon file-header-print" type="button" hidden></button></div>';
+    '<span class="view-header-item"><span class="size file-header-size">1.2 MB</span></span></div></div>';
   await document.fonts.ready;
   const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   await frames();

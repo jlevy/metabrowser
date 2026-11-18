@@ -376,25 +376,18 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     keymap?.syncPane();
   }
 
-  /** renderFolderHeader and the file header, as app.js renders them. */
+  /** renderFolderHeader and renderFileHeader, as app.js renders them: one view header. */
   function header(data) {
     const segments = data.path ? data.path.split("/") : [];
-    const crumbs = [
-      element(document, "button", { class: "folder-crumb", "data-nav-dir": "" }, "/"),
-    ];
-    segments.forEach((segment, index) => {
+    // The eyebrow's address: the root, then each folder above the item.
+    const crumbs =
+      segments.length === 0
+        ? []
+        : [element(document, "button", { class: "folder-crumb", "data-nav-dir": "" }, "/")];
+    segments.slice(0, -1).forEach((segment, index) => {
       const walked = segments.slice(0, index + 1).join("/");
-      const last = index === segments.length - 1;
       crumbs.push(
-        element(
-          document,
-          "button",
-          {
-            class: "folder-crumb",
-            [last && data.kind !== "folder" ? "data-nav-file" : "data-nav-dir"]: walked,
-          },
-          segment,
-        ),
+        element(document, "button", { class: "folder-crumb", "data-nav-dir": walked }, segment),
       );
     });
     const breadcrumb = element(
@@ -403,35 +396,43 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
       { class: "file-header-path folder-breadcrumb" },
       ...crumbs,
     );
-    if (data.kind === "folder") {
-      const parent = segments.length > 0 ? segments.slice(0, -1).join("/") : null;
-      const up = element(document, "button", {
-        "aria-label": parent === null ? "No parent folder" : "Open parent folder",
-        class: "btn parent-nav-btn folder-up",
-        "data-nav-dir": parent ?? false,
-        disabled: parent === null,
-      });
-      return element(
-        document,
-        "div",
-        { class: "file-header folder-header", "data-kbd-badge-anchor": true },
-        up,
-        breadcrumb,
+    const parent = segments.length > 0 ? segments.slice(0, -1).join("/") : null;
+    const up = element(document, "button", {
+      "aria-label": parent === null ? "No parent folder" : "Open parent folder",
+      class: "btn parent-nav-btn folder-up",
+      "data-nav-dir": parent ?? false,
+      disabled: parent === null,
+    });
+    const eyebrow = element(document, "div", { class: "view-header-eyebrow" }, up, breadcrumb);
+    const title = element(
+      document,
+      "h1",
+      { class: "view-header-title page-heading" },
+      segments.at(-1) ?? "root",
+    );
+    const heading = element(document, "div", { class: "view-header-heading" }, title);
+    if (data.kind !== "folder") {
+      heading.append(
+        element(document, "button", {
+          "aria-label": "Copy path",
+          class: "icon-btn icon-btn-reveal file-header-copy",
+          "data-mb-copy": "text",
+          "data-mb-copy-text": data.path,
+        }),
       );
     }
-    breadcrumb.append(
-      element(document, "button", {
-        "aria-label": "Copy path",
-        class: "icon-btn icon-btn-reveal file-header-copy",
-        "data-mb-copy": "text",
-        "data-mb-copy-text": data.path,
-      }),
-    );
     return element(
       document,
       "div",
-      { class: "file-header", "data-kbd-badge-anchor": true },
-      breadcrumb,
+      {
+        class:
+          data.kind === "folder"
+            ? "file-header view-header folder-header"
+            : "file-header view-header",
+        "data-kbd-badge-anchor": true,
+      },
+      eyebrow,
+      heading,
     );
   }
 
