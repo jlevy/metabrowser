@@ -1,10 +1,21 @@
-// The rendered Markdown layer of a comparison whose server names a route for it, as a
-// pull request's does. Source stays hydrated by the diff's existing scheduler, so a
+// The Rendered layer of a comparison whose server names a route for it, as a pull
+// request's does: Markdown as rendered blocks, with its front matter as the Document
+// view's Frontmatter disclosure, and YAML and JSON as the structured plugin's tree
+// (diff-structured.js). Source stays hydrated by the diff's existing scheduler, so a
 // refusal or a reader's Source selection has a patch ready. This module names no route:
 // the comparison carries the rendered route and the image route its images load from.
 
+import { isStructuredProjection, mountStructuredDiff } from "./diff-structured.js";
+
 const CONTEXT_BLOCKS = 2;
-const MARKDOWN = /\.(?:md|markdown|mdown|mkd)$/i;
+// The formats a changed file renders as, by its extension, as the server's route admits
+// them (github/pull_rendered_diff.py), each with the name its chooser and progress use.
+/** @type {ReadonlyArray<[RegExp, RenderedFormat, string]>} */
+const FORMATS = [
+  [/\.(?:md|markdown|mdown|mkd)$/i, "markdown", "Markdown"],
+  [/\.ya?ml$/i, "yaml", "YAML"],
+  [/\.json$/i, "json", "JSON"],
+];
 // How far below the viewport a projection is requested: one viewport. A projection
 // answers in 12 ms at the median and 31-33 ms at p90 of server CPU (434 real pairs), plus
 // the round trip, and one `git diff` serves sixteen files. In headless Chrome, the
@@ -24,6 +35,10 @@ const RETRY_MAX_MS = 1600;
 const LOADING_DELAY_MS = 50;
 
 /** @typedef {Parameters<MetabrowserPublicSdk["loadKpressAssets"]>[0]} KpressAssetManifest */
+/** @typedef {"markdown" | "yaml" | "json"} RenderedFormat */
+/** @typedef {import("./diff-structured.js").TreeHelpers} TreeHelpers */
+/** @typedef {{key: string, change: "context" | "removed" | "added", text: string}} FrontmatterEntry */
+/** @typedef {{change: "context" | "modified" | "removed" | "added", entries: FrontmatterEntry[]}} Frontmatter */
 /** @typedef {"rendered" | "source"} Mode */
 /** @typedef {{kind: "context" | "removed" | "added", html: string, source_only?: boolean}} Block */
 /** @typedef {{
@@ -31,46 +46,130 @@ const LOADING_DELAY_MS = 50;
  *   source: HTMLElement, rendered: HTMLElement,
  *   progress: HTMLElement, progressLabel: HTMLElement,
  *   control: HTMLElement,
- *   id: string, mode: Mode, pending: boolean, expanded: boolean, holding: boolean,
+ *   id: string, format: RenderedFormat, mode: Mode, pending: boolean, expanded: boolean,
+ *   holding: boolean, tree: {dispose: () => void} | null,
  *   retryAt: number, retries: number,
  *   folds: Map<string, () => void>,
  *   state: "idle" | "ready" | "unavailable"
  * }} FileView */
 
 /**
- * Keep the feature extensible by admitting file kinds here and leaving source
- * comparisons, rendering and repository reads with their existing owners.
+ * The format a changed file renders as, when both its sides are files of one rendered
+ * format. File kinds are admitted here, and source comparisons, rendering and repository
+ * reads stay with their existing owners.
  * @param {Record<string, unknown>} change
+ * @returns {RenderedFormat | null}
  */
-export function supportsMarkdownChange(change) {
+export function renderedFormat(change) {
   if (change.availability !== "ready" && change.availability !== "deferred") {
+    return null;
+  }
+  /** @type {Set<RenderedFormat | null>} */
+  const formats = new Set();
+  for (const side of [change.old, change.new]) {
+    if (side == null) {
+      continue;
+    }
+    const entry = /** @type {{entry_type?: unknown, path?: unknown}} */ (side);
+    const path = typeof entry.path === "string" ? entry.path : "";
+    formats.add(
+      entry.entry_type === "file"
+        ? (FORMATS.find(([pattern]) => pattern.test(path))?.[1] ?? null)
+        : null,
+    );
+  }
+  const [only] = formats;
+  return formats.size === 1 ? (only ?? null) : null;
+}
+
+/** @param {Record<string, unknown>} change */
+export function supportsRenderedChange(change) {
+  return renderedFormat(change) !== null;
+}
+
+/** @param {RenderedFormat} format */
+function formatName(format) {
+  return FORMATS.find(([, each]) => each === format)?.[2] ?? "";
+}
+
+/** @param {unknown} value @returns {value is Frontmatter} */
+function isFrontmatter(value) {
+  if (value === null || typeof value !== "object") {
     return false;
   }
+  const frontmatter = /** @type {{change?: unknown, entries?: unknown}} */ (value);
   return (
-    [change.old, change.new].some(Boolean) &&
-    [change.old, change.new].every((side) => {
-      if (side == null) {
-        return true;
-      }
-      const entry = /** @type {{entry_type?: unknown, path?: unknown}} */ (side);
-      return (
-        entry.entry_type === "file" && typeof entry.path === "string" && MARKDOWN.test(entry.path)
-      );
-    })
+    ["context", "modified", "removed", "added"].includes(String(frontmatter.change)) &&
+    Array.isArray(frontmatter.entries) &&
+    frontmatter.entries.every(
+      (entry) =>
+        entry !== null &&
+        typeof entry === "object" &&
+        typeof entry.key === "string" &&
+        typeof entry.text === "string" &&
+        ["context", "removed", "added"].includes(entry.change),
+    )
   );
 }
 
-/** @param {unknown} value @returns {value is {version: string, status: string, blocks: Block[], source_only: boolean, assets?: KpressAssetManifest}} */
+/**
+ * Front matter as the Document view's Frontmatter disclosure shows it (KPress's
+ * `kpress-frontmatter`), closed when nothing in it changed, as the Document view's is,
+ * and open with each changed key in the change gutter otherwise. Every key and value is
+ * text, set as text.
+ * @param {Frontmatter} frontmatter
+ * @returns {HTMLElement}
+ */
+export function frontmatterRow(frontmatter) {
+  const whole = frontmatter.change === "added" || frontmatter.change === "removed";
+  const row = document.createElement("div");
+  row.className = `diff-markdown-block diff-markdown-frontmatter diff-markdown-${
+    whole ? frontmatter.change : "context"
+  }`;
+  const details = document.createElement("details");
+  details.className = "kpress-frontmatter";
+  details.open = frontmatter.change !== "context";
+  const summary = document.createElement("summary");
+  summary.textContent = "Frontmatter";
+  const list = document.createElement("dl");
+  for (const entry of frontmatter.entries) {
+    const term = document.createElement("dt");
+    const value = document.createElement("dd");
+    term.textContent = entry.key;
+    value.textContent = entry.text;
+    if (!whole && entry.change !== "context") {
+      const label = document.createElement("span");
+      label.className = "sr-only";
+      label.textContent = entry.change === "added" ? "Added: " : "Removed: ";
+      term.prepend(label);
+      term.className = `diff-frontmatter-${entry.change}`;
+      value.className = `diff-frontmatter-${entry.change}`;
+    }
+    list.append(term, value);
+  }
+  details.append(summary, list);
+  if (whole) {
+    const label = document.createElement("span");
+    label.className = "sr-only";
+    label.textContent = frontmatter.change === "added" ? "Added: " : "Removed: ";
+    row.append(label);
+  }
+  row.append(details);
+  return row;
+}
+
+/** @param {unknown} value @returns {value is {version: string, status: string, blocks: Block[], source_only: boolean, frontmatter?: Frontmatter, assets?: KpressAssetManifest}} */
 function isProjection(value) {
   if (value === null || typeof value !== "object") {
     return false;
   }
   const answer =
-    /** @type {{version?: unknown, status?: unknown, blocks?: unknown, source_only?: unknown}} */ (
+    /** @type {{version?: unknown, status?: unknown, blocks?: unknown, source_only?: unknown, frontmatter?: unknown}} */ (
       value
     );
   return (
     answer.version === "markdown-diff-v1" &&
+    (answer.frontmatter === undefined || isFrontmatter(answer.frontmatter)) &&
     answer.status === "ready" &&
     typeof answer.source_only === "boolean" &&
     Array.isArray(answer.blocks) &&
@@ -124,21 +223,22 @@ export function markdownTargets(imageRoute, linksOpen) {
   };
 }
 
-// The files a projection is asked for before the reader opens Changes: the Markdown files
+// The files a projection is asked for before the reader opens Changes: the rendered files
 // among the ones the first screen shows. The page draws files in manifest order, a file
 // bar and its first rows take about 420 px, and the server hydrates the first 8 files'
-// patches with the comparison, so at most 4 Markdown files of the first 8 are asked for.
-// Each costs one projection in the server's worker process (12 ms at the median, 31-33
-// ms at p90 of the 434 real pairs), sent one at a time after the comparison arrives.
+// patches with the comparison, so at most 4 rendered files of the first 8 are asked for.
+// Each costs one projection in the server's worker process (a Markdown pair 12 ms at the
+// median and 31-33 ms at p90 of 434 real pairs; a YAML pair 14 ms and 40 ms of 168, and a
+// JSON pair under 3 ms at p90), sent one at a time after the comparison arrives.
 const FIRST_SCREEN_FILES = 8;
 const FIRST_SCREEN_MARKDOWN = 4;
 
 /**
- * The IDs of the Markdown files a page asks projections for ahead of Changes.
+ * The IDs of the rendered files a page asks projections for ahead of Changes.
  * @param {unknown[]} files A comparison manifest's files, in their order.
  * @returns {string[]}
  */
-export function firstScreenMarkdown(files) {
+export function firstScreenRendered(files) {
   return files
     .slice(0, FIRST_SCREEN_FILES)
     .filter(
@@ -146,7 +246,7 @@ export function firstScreenMarkdown(files) {
         file !== null &&
         typeof file === "object" &&
         typeof (/** @type {{id?: unknown}} */ (file).id) === "string" &&
-        supportsMarkdownChange(/** @type {Record<string, unknown>} */ (file)),
+        supportsRenderedChange(/** @type {Record<string, unknown>} */ (file)),
     )
     .slice(0, FIRST_SCREEN_MARKDOWN)
     .map((file) => String(/** @type {{id: string}} */ (file).id));
@@ -322,6 +422,7 @@ function stylesOnly(assets) {
  *   load: (fileId: string, signal: AbortSignal) => Promise<unknown>,
  *   controls: NonNullable<MetabrowserPublicSdk["filterControls"]>,
  *   ensureInert: () => Promise<MetabrowserInertHtmlRuntime | undefined>,
+ *   ensureStructured?: () => Promise<TreeHelpers | undefined>,
  *   loadStyles: (assets: KpressAssetManifest) => Promise<void>,
  *   mutate: (change: () => void) => void,
  *   isTarget?: (value: string, image: boolean) => boolean,
@@ -413,7 +514,7 @@ export function createMarkdownViews(deps) {
     file.bar.classList.toggle("diff-file-bar-markdown", chooser);
     file.control.innerHTML = deps.controls.groupHtml({
       key: file.source.id,
-      label: "Markdown diff format",
+      label: `${formatName(file.format)} diff format`,
       layout: "joined",
       options: [
         { label: "Rendered", value: "rendered" },
@@ -444,7 +545,7 @@ export function createMarkdownViews(deps) {
   function drawProgress(file) {
     const showing = file.pending && file.expanded && file.mode === "rendered";
     file.progress.classList.toggle("mb-delayed-loading", showing);
-    file.progressLabel.textContent = showing ? "Rendering Markdown" : "";
+    file.progressLabel.textContent = showing ? `Rendering ${formatName(file.format)}` : "";
   }
 
   /** @param {FileView} file */
@@ -529,6 +630,30 @@ export function createMarkdownViews(deps) {
       if (signal.aborted || disposed) {
         return;
       }
+      if (file.format !== "markdown") {
+        if (!isStructuredProjection(projection)) {
+          fallBack(file, true);
+          return;
+        }
+        const tree = await deps.ensureStructured?.();
+        if (tree === undefined) {
+          throw new Error("The structured tree renderer is unavailable.");
+        }
+        if (signal.aborted || disposed) {
+          return;
+        }
+        settled = true;
+        deps.mutate(() => {
+          file.tree?.dispose();
+          file.tree = mountStructuredDiff(file.rendered, projection.root, tree);
+          file.state = "ready";
+          file.pending = false;
+          file.retries = 0;
+          draw(file);
+        });
+        checkFirstScreen();
+        return;
+      }
       if (!isProjection(projection)) {
         fallBack(file, true);
         return;
@@ -554,6 +679,9 @@ export function createMarkdownViews(deps) {
         return;
       }
       const content = document.createDocumentFragment();
+      if (projection.frontmatter !== undefined) {
+        content.append(frontmatterRow(projection.frontmatter));
+      }
       const scratch = document.implementation.createHTMLDocument("");
       const template = document.createElement("template");
       const folds = appendBlocks(content, projection.blocks, (html) =>
@@ -574,7 +702,7 @@ export function createMarkdownViews(deps) {
         if (/** @type {{status?: unknown}} */ (error)?.status === 429) {
           retryLater(file);
         } else {
-          console.warn("metabrowser diff: rendered Markdown failed; showing Source", error);
+          console.warn("metabrowser diff: a rendered file failed; showing Source", error);
           fallBack(file, false);
         }
       }
@@ -624,15 +752,18 @@ export function createMarkdownViews(deps) {
     /**
      * @param {{
      *   section: HTMLElement, bar: HTMLElement, toggle: HTMLElement, source: HTMLElement,
-     *   id: string
+     *   id: string, format: RenderedFormat
      * }} input The file's section, its bar, the bar's disclosure button, which the
-     *   chooser follows and which takes focus when the chooser goes, and its Source body.
+     *   chooser follows and which takes focus when the chooser goes, its Source body, and
+     *   the format it renders as (`renderedFormat`).
      */
-    add({ section, bar, toggle, source, id }) {
+    add({ section, bar, toggle, source, id, format }) {
       const control = document.createElement("div");
       control.className = "diff-markdown-control";
-      const rendered = document.createElement("article");
-      rendered.className = "kpress kpress-inert diff-markdown";
+      // Markdown is a KPress fragment; a tree is the structured plugin's own surface.
+      const rendered = document.createElement(format === "markdown" ? "article" : "div");
+      rendered.className =
+        format === "markdown" ? "kpress kpress-inert diff-markdown" : "diff-structured";
       rendered.id = `${source.id}-rendered`;
       const progress = document.createElement("span");
       progress.className = "diff-markdown-progress";
@@ -653,6 +784,8 @@ export function createMarkdownViews(deps) {
         progress,
         progressLabel,
         id,
+        format,
+        tree: null,
         control,
         mode: "rendered",
         expanded: true,
@@ -784,6 +917,10 @@ export function createMarkdownViews(deps) {
       }
       unbind?.();
       unbind = undefined;
+      for (const file of files.values()) {
+        file.tree?.dispose();
+        file.tree = null;
+      }
       files.clear();
       controls.clear();
       nearby.clear();

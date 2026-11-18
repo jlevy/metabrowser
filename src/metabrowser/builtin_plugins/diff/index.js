@@ -132,7 +132,7 @@ async function prefetchMarkdown(markdown, payload, signal) {
   if (views === null || !Array.isArray(files)) {
     return;
   }
-  for (const fileId of views.firstScreenMarkdown(files)) {
+  for (const fileId of views.firstScreenRendered(files)) {
     if (signal?.aborted) {
       return;
     }
@@ -506,7 +506,7 @@ mb.registerView("diff", "diff", {
     const rendered =
       markdown !== null &&
       markdownViews !== null &&
-      files.some((file) => markdownViews.supportsMarkdownChange(file));
+      files.some((file) => markdownViews.supportsRenderedChange(file));
     ctx.onDocument?.(result.document);
     // A commit's page and a pull request's keep the Diff summary at their own top
     // (mb-pb35): a commit's asks for it there (`summaryHost`), and a pull request's draws it

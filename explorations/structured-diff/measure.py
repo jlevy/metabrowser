@@ -17,7 +17,7 @@ import statistics
 import subprocess
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from metabrowser.diff.structured_projection import (
@@ -58,9 +58,12 @@ def _pairs(repo: Path) -> list[tuple[str, bytes | None, bytes | None]]:
         seen.add((old, new))
         wanted.append((path, old, new))
     zero = "0" * 40
+
+    def read(oid: str) -> bytes | None:
+        return None if oid == zero else _git(repo, "cat-file", "blob", oid)
+
     out: list[tuple[str, bytes | None, bytes | None]] = []
     for path, old, new in wanted:
-        read = lambda oid: None if oid == zero else _git(repo, "cat-file", "blob", oid)
         out.append((path, read(old), read(new)))
     return out
 
@@ -72,7 +75,7 @@ def _time(old: bytes | None, new: bytes | None, fmt: str) -> tuple[float, str, i
     return elapsed, answer["status"], len(json.dumps(answer))
 
 
-def _pct(values: list[float], q: float) -> float:
+def _pct(values: Sequence[float], q: float) -> float:
     ordered = sorted(values)
     return ordered[min(len(ordered) - 1, int(q * len(ordered)))]
 
@@ -123,19 +126,23 @@ def main() -> None:
     def changed(data: bytes) -> bytes:
         return data.replace(b"value number 7", b"changed value 7", 1)
 
-    from ruamel.yaml import YAML
-    from ruamel.yaml.compat import StringIO
+    import yaml
 
     def yaml_text(value: object) -> bytes:
-        out = StringIO()
-        YAML(typ="safe").dump(value, out)
-        return out.getvalue().encode()
+        return yaml.safe_dump(value, sort_keys=False).encode()
 
-    for label, fmt, encode, sizes in (
+    def jsonc_text(value: object) -> bytes:
+        return b"// c\n" + json.dumps(value, indent=2).encode()
+
+    def json_text(value: object) -> bytes:
+        return json.dumps(value, indent=2).encode()
+
+    cases: list[tuple[str, str, Callable[[object], bytes], tuple[int, int]]] = [
         ("YAML", "yaml", yaml_text, (16, 48)),
-        ("JSONC", "json", lambda v: b"// c\n" + json.dumps(v, indent=2).encode(), (16, 48)),
-        ("JSON", "json", lambda v: json.dumps(v, indent=2).encode(), (48, 128)),
-    ):
+        ("JSONC", "json", jsonc_text, (16, 48)),
+        ("JSON", "json", json_text, (48, 128)),
+    ]
+    for label, fmt, encode, sizes in cases:
         for kib in sizes:
             old = sized(encode, kib)
             new = changed(old)

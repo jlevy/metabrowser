@@ -6,6 +6,8 @@
 //
 // Public surface (assigned to window.__structuredTree):
 //   materializeRows(parsed, expandedPaths) -> Row[]
+//   renderRowHtml(row, indentChars) -> string; a row's optional `change` ("added",
+//     "removed" or "modified") marks it, as a rendered diff draws it (diff-structured.js)
 //   renderInlineTree(container, parsed, opts) -> {dispose}
 //     opts: {maxLines, maxExpandThreshold, indentChars, virtualize}
 //
@@ -198,6 +200,14 @@
       keyHtml = '<span class="tok-punct">- </span>';
     }
 
+    var changeHtml = "";
+    if (row.change === "added" || row.change === "removed" || row.change === "modified") {
+      rowClass += ` srow-change-${row.change}`;
+      if (row.change !== "modified") {
+        changeHtml = `<span class="sr-only">${row.change === "added" ? "Added: " : "Removed: "}</span>`;
+      }
+    }
+
     var bodyHtml = "";
     if (row.kind === "kv" || row.kind === "item") {
       var fv = pv.formatValue(row.value);
@@ -237,6 +247,7 @@
       ">" +
       chevronHtml +
       '<span class="srow-content">' +
+      changeHtml +
       keyHtml +
       bodyHtml +
       "</span>" +
@@ -409,6 +420,7 @@
 
   global.__structuredTree = {
     materializeRows: materializeRows,
+    renderRowHtml: renderRowHtml,
     renderInlineTree: renderInlineTree,
   };
 })(typeof window !== "undefined" ? window : globalThis);

@@ -637,8 +637,59 @@
   text-decoration-color: var(--diff-del-gutter);
 }
 
+/* A changed YAML or JSON file's tree is the file view's (structured/styles.css), at its
+   own height, with each added or removed row in the change gutter Markdown blocks use. */
+.metabrowser-diff-host .diff-structured {
+  padding-block: 4px;
+}
+
+.metabrowser-diff-host .diff-structured.structured-tree,
+.metabrowser-diff-host .diff-structured .tree-viewport-flat {
+  height: auto;
+  overflow: visible;
+}
+
+.metabrowser-diff-host .diff-structured .srow {
+  border-inline-start: var(--diff-change-gutter-width) solid transparent;
+}
+
+.metabrowser-diff-host :is(.diff-structured .srow-change-added, .diff-frontmatter-added) {
+  border-inline-start-color: var(--diff-add-gutter);
+  background: var(--diff-add-row-bg);
+}
+
+.metabrowser-diff-host :is(.diff-structured .srow-change-removed, .diff-frontmatter-removed) {
+  border-inline-start-color: var(--diff-del-gutter);
+  background: var(--diff-del-row-bg);
+}
+
+/* A changed key of front matter: its term carries the gutter, and its value the row's
+   ground, across the disclosure's two columns. */
+.metabrowser-diff-host .diff-markdown-frontmatter dl {
+  column-gap: 0;
+}
+
+/* The disclosure's column gap, as the term's padding, so a changed key's band is one. */
+.metabrowser-diff-host .diff-markdown-frontmatter dt {
+  border-inline-start: var(--diff-change-gutter-width) solid transparent;
+  padding-inline: 4px 0.75rem;
+}
+
+.metabrowser-diff-host .diff-markdown-frontmatter .kpress-frontmatter {
+  margin: 0;
+}
+
 @media (forced-colors: active) {
   .metabrowser-diff-host :is(.diff-markdown-added, .diff-markdown-removed) {
+    border-inline-start-color: CanvasText;
+  }
+  .metabrowser-diff-host
+    :is(
+      .diff-structured .srow-change-added,
+      .diff-structured .srow-change-removed,
+      .diff-frontmatter-added,
+      .diff-frontmatter-removed
+    ) {
     border-inline-start-color: CanvasText;
   }
   .metabrowser-diff-host .diff-markdown-removed del {

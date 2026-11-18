@@ -2,7 +2,7 @@
 
 **Status:** Implemented: the patch-file and Git revision sources, the apply oracle,
 manifest-first hydration on the server and in the page, the comparison caches, and the
-rendered Markdown projection on a pull request’s Changes.
+rendered projections of Markdown, YAML, and JSON on a pull request’s Changes.
 Planned: working-tree and index sources, in the
 [Git status plan](../specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md);
 anchoring a patch file to a repository; and context expansion, in the
@@ -10,7 +10,8 @@ anchoring a patch file to a repository; and context expansion, in the
 
 [File Diff Format v1](file-diff-format/file-diff-format.md) defines what a comparison
 document is. This document covers where documents come from, how much of one is sent and
-drawn at a time, what is kept, and the rendered view of a Markdown change.
+drawn at a time, what is kept, and the rendered view of a Markdown, YAML, or JSON
+change.
 
 ## Three Stages
 
@@ -209,12 +210,21 @@ memory, can be computed again:
 
 A refusal is never kept, since a fetch can answer it.
 
-## Markdown Projection
+## Rendered Projections
 
-A pull request’s Changes shows a changed Markdown file as **Rendered** by default, with
-**Source** for the exact diff.
-`GET /api/plugin/github/pull-rendered-diff` answers one file’s projection, and
-`builtin_plugins/diff/diff-markdown.js` mounts it.
+A pull request’s Changes shows a changed file the file view draws from data rather than
+as text, Markdown, YAML, or JSON, as **Rendered** by default, with **Source** for the
+exact diff. Rendered is the file view’s own rendering with each change marked in one
+change gutter: Markdown’s blocks, with its front matter as the Document view’s
+Frontmatter disclosure, and YAML’s and JSON’s tree.
+`GET /api/plugin/github/pull-rendered-diff` answers one file’s projection, by the format
+of its extension, and `builtin_plugins/diff/diff-markdown.js` mounts it.
+Both projections run in one long-lived child process
+(`diff/markdown_projection_worker.py`), so a projection never holds the server’s GIL;
+the module records the measurement.
+Until the child is ready, projections run in a thread.
+
+### Markdown
 
 `diff/markdown_projection.py` parses each side once with KPress’s own MarkdownIt core,
 so a block’s source range is the map of the token that renders it, and renders every
@@ -233,17 +243,39 @@ Changed words are marked by a bounded word diff.
   whose source changes include one with no visible counterpart.
   A flagged block never folds, and the page draws no note for it: Source is how a reader
   reaches such a change.
-- **Off the server’s interpreter:** projections run in one long-lived child process
-  (`diff/markdown_projection_worker.py`), started on the second projection or on a
-  page’s prefetch, so a projection never holds the server’s GIL; the module records the
-  measurement. Until the child is ready, projections run in a thread.
+- **Front matter:** each side’s front matter is read as the Document view reads it, and
+  its keys are listed as KPress’s Frontmatter disclosure lists them, sorted, each value
+  in the disclosure’s own words.
+  A key whose value changed is removed and added.
+  Front matter that does not load, or that has an alias, leaves the file to Source.
+  Changed front matter lines count as shown when any key changed, since the disclosure
+  cannot say which line a key came from.
 - **Paint:** a file on screen waits for its projection for the app’s loading-state delay
   with Source hidden; past it, Source paints first and Rendered replaces it when it
   arrives. Conversation prefetches the projections of the first screen’s files.
 
-Markdown is the first format.
-Another can supply an equivalent bounded, inert projection once its renderer can map
-changes to source ranges.
+### YAML and JSON
+
+`diff/structured_projection.py` parses both sides as the structured plugin’s tree view
+parses them and merges them into one tree (`structured-diff-v1`): each entry unchanged,
+`added`, `removed`, or `modified`, a mapping or list whose entries differ.
+A changed scalar is its old entry removed and its new one added.
+Mappings align by key and lists by value, a replaced run pairing its items in order.
+`builtin_plugins/diff/diff-structured.js` draws the tree with the structured plugin’s
+own rows (`renderRowHtml` in `structured/tree.js`), opening every modified container and
+leaving unchanged ones closed with the tree view’s preview.
+
+- **Fallback:** a side that does not parse, YAML with an alias, which loading would
+  expand without a bound, or a pair past the byte, node, entry, and alignment budgets
+  beside each constant is refused, and the file shows Source.
+  [The structured diff measurement](../../../explorations/structured-diff/README.md)
+  records them over this repository’s history.
+- **Source only:** the projection reads no patch.
+  A pair whose bytes differ and whose trees do not, as for a comment, quoting, or key
+  order, is `source_only`.
+
+A further format can supply an equivalent bounded, inert projection once its renderer
+can map changes to what it draws.
 
 ## References
 

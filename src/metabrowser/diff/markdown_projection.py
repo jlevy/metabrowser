@@ -572,9 +572,7 @@ def _parse(text: str) -> _Side:
             elif member.type in {"fence", "code_block"}:
                 # `pre` and `code`.
                 elements += 2
-    return _Side(
-        source, offset, tokens, _slices(tokens, 0, len(tokens), 0), elements, frontmatter
-    )
+    return _Side(source, offset, tokens, _slices(tokens, 0, len(tokens), 0), elements, frontmatter)
 
 
 def _render(side: _Side, budget: int) -> tuple[list[_Block], int]:

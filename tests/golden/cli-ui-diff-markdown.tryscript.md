@@ -29,6 +29,9 @@ Neither says so: nothing but the rendered body is drawn beside Source.
 An answer that arrives after the reader chose Source is kept, and choosing Rendered
 again shows it without asking.
 
+Front matter is the Document view’s Frontmatter disclosure, keys sorted as it sorts
+them: open, with each changed key removed and added, when the front matter changed, and
+closed, as the Document view’s is, when it did not.
 Rendered blocks are removed, added, or unchanged, with changed words marked.
 A block whose source changed in a way its render does not show, here an HTML comment, is
 drawn like any other and never folds, and nothing is drawn to say that Source shows
@@ -66,7 +69,7 @@ mark counts down, and its rendered rows.
 $ node tests/dom/diff-markdown-session.js
 {
   "links": {
-    "route": "/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]",
+    "route": "/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef",
     "pages": {
       "pinned at the comparison's head": true,
       "pinned at the merge base": false,
@@ -76,10 +79,10 @@ $ node tests/dom/diff-markdown-session.js
     "opens": {
       "link /view/g1-ZG9jcw/g1-c2V0dXAubWQ": true,
       "link /view/g1-ZG9jcw/g1-c2V0dXAubWQ#user-content-setup": true,
-      "image /api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc": true,
-      "link /api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc": false,
-      "image /api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&side=head&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc": false,
-      "image /api/plugin/github/pull-image?number=7&left=0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]": false,
+      "image /api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc": true,
+      "link /api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc": false,
+      "image /api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef&side=head&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc": false,
+      "image /api/plugin/github/pull-image?number=7&left=0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef": false,
       "link /api/tree?path=docs": false
     }
   },
@@ -147,6 +150,10 @@ $ node tests/dom/diff-markdown-session.js
           "chooser": "*Rendered | Source",
           "shows": "rendered",
           "rows": [
+            "[Frontmatter, open]",
+            "  removed: owner = docs",
+            "  added: owner = platform",
+            "  context: title = Guide",
             "context: <h1 id=\"user-content-9db1f7c43fe35b9a67d97ca0-new-guide-\">Guide </h1>",
             "removed: <p>Read the <span>setup notes</span> first.</p>",
             "added: <p>Read the <a href=\"/view/g1-ZG9jcw/g1-c2V0dXAubWQ\">first setup notes</a> first.</p>",
@@ -154,7 +161,7 @@ $ node tests/dom/diff-markdown-session.js
             "context: <p>Unchanged paragraph 1.</p>",
             "[5 unchanged blocks]",
             "context: <p>Unchanged paragraph 7.</p>",
-            "context: <img loading=\"lazy\" src=\"/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc\" alt=\"Diagram\">",
+            "context: <img loading=\"lazy\" src=\"/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc\" alt=\"Diagram\">",
             "removed: <p>The <del>old</del> closing line.</p>",
             "added: <p>The <ins>new</ins> closing line.</p>"
           ]
@@ -259,6 +266,10 @@ $ node tests/dom/diff-markdown-session.js
           "chooser": "*Rendered | Source",
           "shows": "rendered",
           "rows": [
+            "[Frontmatter, open]",
+            "  removed: owner = docs",
+            "  added: owner = platform",
+            "  context: title = Guide",
             "context: <h1 id=\"user-content-9db1f7c43fe35b9a67d97ca0-new-guide-\">Guide </h1>",
             "removed: <p>Read the <span>setup notes</span> first.</p>",
             "added: <p>Read the <a href=\"/view/g1-ZG9jcw/g1-c2V0dXAubWQ\">first setup notes</a> first.</p>",
@@ -271,7 +282,7 @@ $ node tests/dom/diff-markdown-session.js
             "  context: <p>Unchanged paragraph 5.</p>",
             "  context: <p>Unchanged paragraph 6.</p>",
             "context: <p>Unchanged paragraph 7.</p>",
-            "context: <img loading=\"lazy\" src=\"/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc\" alt=\"Diagram\">",
+            "context: <img loading=\"lazy\" src=\"/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc\" alt=\"Diagram\">",
             "removed: <p>The <del>old</del> closing line.</p>",
             "added: <p>The <ins>new</ins> closing line.</p>"
           ]
@@ -291,6 +302,10 @@ $ node tests/dom/diff-markdown-session.js
           "chooser": "*Rendered | Source",
           "shows": "rendered",
           "rows": [
+            "[Frontmatter, open]",
+            "  removed: owner = docs",
+            "  added: owner = platform",
+            "  context: title = Guide",
             "context: <h1 id=\"user-content-9db1f7c43fe35b9a67d97ca0-new-guide-\">Guide </h1>",
             "removed: <p>Read the <span>setup notes</span> first.</p>",
             "added: <p>Read the <a>first setup notes</a> first.</p>",
@@ -303,7 +318,7 @@ $ node tests/dom/diff-markdown-session.js
             "  context: <p>Unchanged paragraph 5.</p>",
             "  context: <p>Unchanged paragraph 6.</p>",
             "context: <p>Unchanged paragraph 7.</p>",
-            "context: <img loading=\"lazy\" src=\"/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc\" alt=\"Diagram\">",
+            "context: <img loading=\"lazy\" src=\"/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc\" alt=\"Diagram\">",
             "removed: <p>The <del>old</del> closing line.</p>",
             "added: <p>The <ins>new</ins> closing line.</p>"
           ]

@@ -29,27 +29,29 @@ import difflib
 import json
 import math
 from collections.abc import Callable, Iterator, Sequence
+from contextvars import ContextVar
 from typing import Any, Literal, NotRequired, TypedDict
 
 STRUCTURED_DIFF_VERSION = "structured-diff-v1"
 
 # Both sides' bytes together, for a pair that strict JSON parses. Measured with
-# `explorations/structured-diff/measure.py` (Python 3.13, Linux container, 2026-11-18)
-# over this repository's 624 distinct real pairs: the 456 JSON pairs are p50 15 KiB, p90
-# 156 KiB, and 60 are past this bound (lock files and recorded fixtures). The slowest
-# real pair inside it took 16 ms, and a synthetic 102 KiB pair of nested mappings 5 ms.
+# `explorations/structured-diff/measure.py` (Python 3.13, Linux container, 2026-11-18;
+# ranges over four runs, recorded in its README) over this repository's 624 distinct
+# real pairs: the 456 JSON pairs are p50 15 KiB, p90 156 KiB, and 60 are past this bound
+# (lock files and recorded fixtures). The slowest real pair inside it took 7-8 ms, and a
+# synthetic 127 KiB pair of nested mappings 4 ms.
 STRUCTURED_DIFF_MAX_BYTES = 128 * 1024
 # Both sides' bytes together, for a pair ruamel.yaml or json5 parses: both are pure
-# Python, about 5 ms per KiB of dense synthetic YAML and 6 of JSONC, against 0.05 for
+# Python, about 5 ms per KiB of dense synthetic YAML and 6 of JSONC, against 0.03 for
 # strict JSON. Every one of the 168 real YAML pairs fits (p50 5 KiB, p90 18 KiB, largest
-# 38 KiB; 12.6 ms p50, 41 ms p90, 69 ms at most). A synthetic 48 KiB pair took about
-# 240 ms as YAML and 330 ms as JSONC, beside the 222-268 ms of the slowest Markdown
-# projection inside its own budgets.
+# 38 KiB; 13-15 ms p50, 40-42 ms p90, 62-76 ms at most). A synthetic 48 KiB pair took
+# 208-244 ms as YAML and 271-300 ms as JSONC, beside the 222-268 ms of the slowest
+# Markdown projection inside its own budgets.
 SLOW_PARSE_MAX_BYTES = 48 * 1024
 # Values in both sides' trees together, counted as they are composed or converted, so
 # a pair of short scalars cannot outgrow the byte bounds' measurements: 128 KiB of strict
-# JSON holds up to about 65,000 one-digit list items. Two lists of 20,000 (40,002 values)
-# projected in 21-50 ms.
+# JSON holds up to about 65,000 one-digit list items. Two equal lists of 19,999 (40,000
+# values) projected in 14-55 ms, and with one item changed were refused in 18-28 ms.
 _MAX_NODES = 40_000
 # Entries an answer draws: every entry of a modified mapping or list, which the page
 # draws as rows. The real pairs draw p50 17, p90 110, p99 627 and at most 1,250 (a
@@ -253,9 +255,22 @@ def _fingerprint(value: object) -> str:
     return json.dumps(tagged(value), separators=(",", ":"))
 
 
+# The entries the projection in progress has drawn, so a merge stops at the budget rather
+# than after building every entry past it.
+_DRAWN: ContextVar[list[int]] = ContextVar("structured_diff_drawn")
+
+
+def _draw() -> None:
+    drawn = _DRAWN.get()
+    drawn[0] += 1
+    if drawn[0] > _MAX_ENTRIES:
+        raise _OverBudget("structured entries")
+
+
 def _whole(key: str | None, value: object, change: Change) -> StructuredDiffEntry:
     """*value* as one side holds it, whole."""
 
+    _draw()
     entry: StructuredDiffEntry = {"change": change, "value": value}
     if key is not None:
         entry["key"] = key
@@ -275,6 +290,7 @@ def _merge(key: str | None, old: object, new: object) -> Iterator[StructuredDiff
             if kind == "map"
             else _merge_list(old, new)  # pyright: ignore[reportArgumentType]
         )
+        _draw()
         modified: StructuredDiffEntry = {"change": "modified", "type": kind, "entries": entries}
         if key is not None:
             modified["key"] = key
@@ -297,20 +313,22 @@ def _merge_map(old: dict[str, object], new: dict[str, object]) -> list[Structure
     return entries
 
 
-def _opcodes(old: Sequence[str], new: Sequence[str]) -> list[tuple[str, int, int, int, int]]:
-    """`SequenceMatcher`'s opcodes, within the alignment budget.
+def _opcodes[T](
+    old: Sequence[T], new: Sequence[T], key: Callable[[T], object] | None = None
+) -> list[tuple[str, int, int, int, int]]:
+    """`SequenceMatcher`'s opcodes for *old* and *new*, within the alignment budget.
 
-    The common prefix and suffix are equal runs, so only the middle is aligned, and a
-    middle past `_MAX_ALIGNMENT_WORK` is one replaced run.
+    The common prefix and suffix (`_same` items) are equal runs, so only the middle is
+    aligned, by *key* when one is given, and a middle past `_MAX_ALIGNMENT_WORK` is one
+    replaced run.
     """
 
     head = 0
-    while head < min(len(old), len(new)) and old[head] == new[head]:
+    while head < min(len(old), len(new)) and _same(old[head], new[head]):
         head += 1
     tail = 0
-    while (
-        tail < min(len(old), len(new)) - head
-        and old[len(old) - 1 - tail] == new[len(new) - 1 - tail]
+    while tail < min(len(old), len(new)) - head and _same(
+        old[len(old) - 1 - tail], new[len(new) - 1 - tail]
     ):
         tail += 1
     old_stop, new_stop = len(old) - tail, len(new) - tail
@@ -318,9 +336,12 @@ def _opcodes(old: Sequence[str], new: Sequence[str]) -> list[tuple[str, int, int
     if (old_stop - head) * (new_stop - head) > _MAX_ALIGNMENT_WORK:
         middle.append(("replace", head, old_stop, head, new_stop))
     elif old_stop > head or new_stop > head:
-        matcher = difflib.SequenceMatcher(
-            None, old[head:old_stop], new[head:new_stop], autojunk=False
-        )
+        before: Sequence[object] = old[head:old_stop]
+        after: Sequence[object] = new[head:new_stop]
+        if key is not None:
+            before = [key(item) for item in old[head:old_stop]]
+            after = [key(item) for item in new[head:new_stop]]
+        matcher = difflib.SequenceMatcher(None, before, after, autojunk=False)
         middle.extend(
             (tag, i1 + head, i2 + head, j1 + head, j2 + head)
             for tag, i1, i2, j1, j2 in matcher.get_opcodes()
@@ -359,7 +380,7 @@ def _replaced(removed: Sequence[object], added: Sequence[object]) -> list[Struct
 
 
 def _merge_list(old: list[object], new: list[object]) -> list[StructuredDiffEntry]:
-    opcodes = _opcodes([_fingerprint(item) for item in old], [_fingerprint(item) for item in new])
+    opcodes = _opcodes(old, new, _fingerprint)
     entries: list[StructuredDiffEntry] = []
     for tag, old_start, old_stop, new_start, new_stop in opcodes:
         if tag == "equal":
@@ -394,16 +415,11 @@ def _project(old: bytes | None, new: bytes | None, fmt: Format) -> StructuredDif
     counter = _Counter()
     before = _MISSING if old is None else _plain(_parse(old, fmt, pair_bytes), counter)
     after = _MISSING if new is None else _plain(_parse(new, fmt, pair_bytes), counter)
-    root = list(_merge(None, before, after))
-    drawn = 0
-
-    def count(_entry: StructuredDiffEntry, _depth: int) -> None:
-        nonlocal drawn
-        drawn += 1
-
-    walk_entries(root, count)
-    if drawn > _MAX_ENTRIES:
-        raise _OverBudget("structured entries")
+    token = _DRAWN.set([0])
+    try:
+        root = list(_merge(None, before, after))
+    finally:
+        _DRAWN.reset(token)
     return {
         "version": STRUCTURED_DIFF_VERSION,
         "status": "ready",

@@ -29,6 +29,8 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {Pick<MetabrowserPublicSdk["perf"], "measure" | "measureAsync"> | undefined} [perf]
  * @property {MetabrowserPublicSdk["ensureAsset"]} [ensureAsset]
  * @property {MetabrowserPublicSdk["loadKpressAssets"]} [loadKpressAssets]
+ * @property {MetabrowserPublicSdk["ensureKindAssets"]} [ensureKindAssets]
+ * @property {{structured?: MetabrowserStructuredBuiltins}} [builtins]
  * @property {{get: <T>(name: string, fallback: T) => T, set: (name: string, value: unknown) => boolean} | undefined} [prefs]
  * @property {MetabrowserPublicSdk["shortcuts"]} [shortcuts]
  * @property {MetabrowserPublicSdk["formatInteger"]} [formatInteger]
@@ -65,7 +67,7 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {FileViewState[]} files
  * @property {number} generation
  * @property {ReturnType<typeof createHydrationScheduler>} hydration
- * @property {{controller: ReturnType<import("./diff-markdown.js").createMarkdownViews>, supports: typeof import("./diff-markdown.js").supportsMarkdownChange} | null} markdown
+ * @property {{controller: ReturnType<import("./diff-markdown.js").createMarkdownViews>, format: typeof import("./diff-markdown.js").renderedFormat} | null} markdown
  * @property {IntersectionObserver | null} hydrationObserver
  * @property {boolean} awaitingWidth Nothing is drawn until the first report of a width.
  * @property {"unified" | "split"} chosenLayout What the reader chose, whatever fits.
@@ -2902,9 +2904,18 @@ function renderFileSection(change, patch, context, view, draw) {
   // button stays the semantic trigger for focus and keyboard, whose
   // synthesized click bubbles here. Only the copy and View file
   // controls opt out.
-  const markdown = view.markdown?.supports(change)
-    ? view.markdown.controller.add({ section, bar, toggle, source: body, id: String(change.id) })
-    : null;
+  const format = view.markdown?.format(change) ?? null;
+  const markdown =
+    format === null
+      ? null
+      : view.markdown?.controller.add({
+          section,
+          bar,
+          toggle,
+          source: body,
+          id: String(change.id),
+          format,
+        });
   let expanded = true;
   /** @param {boolean} next */
   const setExpanded = (next) => {
@@ -3102,7 +3113,7 @@ export function mountDiffSummary(slot, document_, api, options) {
  *   summaryTotals?: unknown,
  *   viewFile?: import("./diff-view-file.js").ViewFileOpenerFactory | null,
  *   renderMarkdown?: (fileId: string, signal: AbortSignal) => Promise<unknown>,
- *   markdownViews?: Pick<typeof import("./diff-markdown.js"), "createMarkdownViews" | "supportsMarkdownChange">,
+ *   markdownViews?: Pick<typeof import("./diff-markdown.js"), "createMarkdownViews" | "renderedFormat">,
  *   markdownTargets?: (value: string, image: boolean) => boolean,
  *   markdownHoldMs?: number,
  *   changedFiles?: MetabrowserChangedFilesTree | null,
@@ -3180,7 +3191,7 @@ export function mountDiffView(container, document_, api, options = {}) {
     typeof IntersectionObserver === "function"
   ) {
     view.markdown = {
-      supports: options.markdownViews.supportsMarkdownChange,
+      format: options.markdownViews.renderedFormat,
       controller: options.markdownViews.createMarkdownViews({
         load: options.renderMarkdown,
         controls: api.filterControls,
@@ -3189,6 +3200,11 @@ export function mountDiffView(container, document_, api, options = {}) {
         async ensureInert() {
           await api?.ensureAsset?.("inert-html");
           return window.MetabrowserInertHtml;
+        },
+        // The structured plugin draws a YAML or JSON file's tree, as in the file view.
+        async ensureStructured() {
+          await api?.ensureKindAssets?.("structured");
+          return api?.builtins?.structured;
         },
         loadStyles: (assets) => api?.loadKpressAssets?.(assets) ?? Promise.resolve(),
         mutate(change) {

@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import difflib
-from html import escape
 import random
 from collections.abc import Callable, Sequence
+from html import escape
 
 import pytest
 
@@ -232,7 +232,7 @@ def test_frontmatter_stays_out_of_prose_and_keeps_original_git_ranges() -> None:
         "<p>The <strong><del>old</del></strong> content.</p>",
         "<p>The <strong><ins>new</ins></strong> content.</p>",
     ]
-    assert result["frontmatter"] == {
+    assert result.get("frontmatter") == {
         "change": "modified",
         "entries": [
             {"key": "title", "change": "removed", "text": "Old"},
@@ -254,7 +254,7 @@ def test_frontmatter_lists_keys_as_kpress_does_with_each_change_marked() -> None
             "source_only": False,
         }
     ]
-    assert result["frontmatter"] == {
+    assert result.get("frontmatter") == {
         "change": "modified",
         "entries": [
             {"key": "alpha", "change": "added", "text": "yes"},
@@ -289,12 +289,13 @@ def test_frontmatter_text_matches_what_the_document_view_shows() -> None:
             frontmatter=_json_safe_frontmatter(mapping),
         )
     )
-    result = _project(None, source)
+    frontmatter = _project(None, source).get("frontmatter")
+    assert frontmatter is not None
     rows = "".join(
         f"<dt>{entry['key']}</dt><dd>{escape(entry['text'])}</dd>"
-        for entry in result["frontmatter"]["entries"]
+        for entry in frontmatter["entries"]
     )
-    assert result["frontmatter"]["change"] == "added"
+    assert frontmatter["change"] == "added"
     assert f"<dl>{rows}</dl>" in shown
 
 
@@ -302,7 +303,7 @@ def test_unchanged_frontmatter_is_context_and_a_comment_change_is_source_only() 
     old = b"---\ntitle: Same  # one\n---\nBody\n"
     new = b"---\ntitle: Same  # two\n---\nBody\n"
     result = _project(old, new)
-    assert result["frontmatter"] == {
+    assert result.get("frontmatter") == {
         "change": "context",
         "entries": [{"key": "title", "change": "context", "text": "Same"}],
     }

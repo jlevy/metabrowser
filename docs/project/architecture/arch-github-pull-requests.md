@@ -323,12 +323,13 @@ store, so its answer is immutable and a browser asks for it no more.
 as a record whose head moved does, is computed.
 In the page, what was read is kept for the document rather than for one page
 ([The Comparison Keep](#the-comparison-keep)). `GET pull-rendered-diff`
-(`pull_rendered_diff.py`) answers one changed Markdown file as `markdown-diff-v1`,
-computed in a projection worker process, for a pair the record or its snapshot file
-admits (`pull_snapshot.py`). Its images load from `GET pull-image`, which serves an
-image at the head of an admitted pair without changing the pin or the checkout; its
-links to a file of the head are that file’s `/view/` address, the same in every answer,
-which the page keeps only while its pin is the head and leaves as plain text otherwise.
+(`pull_rendered_diff.py`) answers one changed Markdown file as `markdown-diff-v1`, and
+one changed YAML or JSON file as `structured-diff-v1`, each computed in a projection
+worker process, for a pair the record or its snapshot file admits (`pull_snapshot.py`).
+Its images load from `GET pull-image`, which serves an image at the head of an admitted
+pair without changing the pin or the checkout; its links to a file of the head are that
+file’s `/view/` address, the same in every answer, which the page keeps only while its
+pin is the head and leaves as plain text otherwise.
 `pull_snapshot.py`’s docstring lists every outcome code.
 `GET pull-markdown` (`pull_markdown.py`) renders one text of the record through KPress
 in sanitized mode, then reduces it to the inert allowlist of `inert_html.py`; only
@@ -606,7 +607,7 @@ handler’s docstring in `sidekick.py`, or the module it names, holds its contra
 | `pull-cores-prepare` | `POST` | A batch of lightweight cores |
 | `pull-comparison` | `GET` | The record’s comparison, from the store, for Changes and the header’s Diff summary |
 | `pull-image` | `GET` | An image at the comparison’s head, for its rendered Markdown |
-| `pull-rendered-diff` | `GET` | One changed Markdown file, rendered |
+| `pull-rendered-diff` | `GET` | One changed Markdown, YAML, or JSON file, rendered |
 | `pull-timeline` | `POST` | Conversation’s order of commits, comments, and reviews |
 | `pull-markdown` | `GET` | One text of the record, rendered inert |
 | `pulls` | `GET` | A catalog window, or a search with `q` |

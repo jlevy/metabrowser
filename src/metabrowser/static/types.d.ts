@@ -12,7 +12,8 @@ type MetabrowserRenderContext = {
     /** The route that serves an image of the head a rendered Markdown file shows, which a
      *  page completes with a path. */
     image_route?: string;
-    /** The route that renders one changed Markdown file, which a page completes with its ID. */
+    /** The route that renders one changed Markdown, YAML or JSON file, which a page completes
+     *  with its ID. */
     rendered_route?: string;
     /** A pull request's Changes: its head ref when the comparison shows the pull request's
      *  head, which View on branch opens, and null when it shows another commit. */
@@ -1158,11 +1159,30 @@ type MetabrowserPluginData = {
   [key: string]: unknown;
 };
 
+/** A row of the structured tree (structured/tree.js `materializeRows`). */
+type StructuredTreeRow = {
+  path: string;
+  level: number;
+  kind: string;
+  key: string | null;
+  value?: unknown;
+  isArrayIndex: boolean;
+  isArray?: boolean;
+  childCount?: number;
+  expanded?: boolean;
+  /** How a rendered diff marks the row; the file view sets none. */
+  change?: "context" | "modified" | "added" | "removed";
+};
+
 type StructuredBuiltins = {
-  calculateOptimalExpansion: (...args: Array<unknown>) => unknown;
+  calculateOptimalExpansion: (
+    parsed: unknown,
+    options: { maxLines?: number; maxExpandThreshold?: number; indentChars?: number },
+  ) => Set<string>;
   formatValue: (...args: Array<unknown>) => unknown;
   generateStructuredPreview: (...args: Array<unknown>) => unknown;
-  materializeRows: (...args: Array<unknown>) => unknown;
+  materializeRows: (parsed: unknown, expandedPaths: Set<string>) => StructuredTreeRow[];
+  renderRowHtml: (row: StructuredTreeRow, indentChars: number) => string;
   renderInlineTree(
     container: HTMLElement,
     data: unknown,
@@ -1615,13 +1635,14 @@ type MetabrowserSdk = {
 };
 
 type StructuredPreviewGlobal = {
-  calculateOptimalExpansion: (...args: Array<unknown>) => unknown;
+  calculateOptimalExpansion: StructuredBuiltins["calculateOptimalExpansion"];
   formatValue: (...args: Array<unknown>) => unknown;
   generateStructuredPreview: (...args: Array<unknown>) => unknown;
 };
 
 type StructuredTreeGlobal = {
-  materializeRows: (...args: Array<unknown>) => unknown;
+  materializeRows: StructuredBuiltins["materializeRows"];
+  renderRowHtml: StructuredBuiltins["renderRowHtml"];
   renderInlineTree: (
     container: HTMLElement,
     data: unknown,
@@ -3830,6 +3851,8 @@ declare global {
   }>;
 
   type MetabrowserPublicSdk = MetabrowserSdk;
+  type MetabrowserStructuredBuiltins = StructuredBuiltins;
+  type MetabrowserStructuredTreeRow = StructuredTreeRow;
   type MetabrowserPublicViewDescriptor = MetabrowserViewDescriptor;
   type MetabrowserPublicViewSpec = MetabrowserViewSpec;
 

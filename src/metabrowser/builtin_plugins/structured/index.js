@@ -135,6 +135,7 @@
     renderTree: renderTree,
     renderInlineTree: renderInlineTree,
     materializeRows: tree.materializeRows,
+    renderRowHtml: tree.renderRowHtml,
     formatValue: preview.formatValue,
     generateStructuredPreview: preview.generateStructuredPreview,
     calculateOptimalExpansion: preview.calculateOptimalExpansion,

@@ -206,19 +206,19 @@ async function main() {
   const {
     appendBlocks,
     createMarkdownViews,
-    firstScreenMarkdown,
+    firstScreenRendered,
     markdownTargets,
-    supportsMarkdownChange,
+    supportsRenderedChange,
   } = await import(pathToFileURL(path.join(plugin, "diff-markdown.js")));
   const md = { entry_type: "file", path: "docs/readme.MD" };
-  assert.equal(supportsMarkdownChange({ availability: "ready", old: null, new: md }), true);
-  assert.equal(supportsMarkdownChange({ availability: "deferred", old: md, new: null }), true);
+  assert.equal(supportsRenderedChange({ availability: "ready", old: null, new: md }), true);
+  assert.equal(supportsRenderedChange({ availability: "deferred", old: md, new: null }), true);
   assert.equal(
-    supportsMarkdownChange({ availability: "ready", old: md, new: { ...md, path: "README.txt" } }),
+    supportsRenderedChange({ availability: "ready", old: md, new: { ...md, path: "README.txt" } }),
     false,
   );
   assert.equal(
-    supportsMarkdownChange({ availability: "ready", new: { ...md, entry_type: "symlink" } }),
+    supportsRenderedChange({ availability: "ready", new: { ...md, entry_type: "symlink" } }),
     false,
   );
 
@@ -263,7 +263,7 @@ async function main() {
     new: { entry_type: "file", path },
   });
   assert.deepEqual(
-    firstScreenMarkdown([
+    firstScreenRendered([
       entry("1", "a.md"),
       entry("2", "b.py"),
       entry("3", "c.md", "deferred"),
@@ -371,7 +371,7 @@ async function main() {
     section.append(bar, source);
     const toggle = make("button");
     bar.append(...(lead ? [make("span"), toggle] : [toggle]));
-    const state = view.add({ section, bar, toggle, source, id });
+    const state = view.add({ section, bar, toggle, source, id, format: "markdown" });
     assert.equal(section.children.length, 3, "Rendered is all that goes beside Source");
     const [, rendered] = section.children;
     const at = bar.children.indexOf(toggle);
@@ -599,7 +599,14 @@ async function main() {
   section2.append(bar2, source2);
   const toggle2 = make("button");
   bar2.append(toggle2);
-  view2.add({ section: section2, bar: bar2, toggle: toggle2, source: source2, id: "e" });
+  view2.add({
+    section: section2,
+    bar: bar2,
+    toggle: toggle2,
+    source: source2,
+    id: "e",
+    format: "markdown",
+  });
   const [, control2] = bar2.children;
   const [, rendered2] = section2.children;
   view2.observe(root2, null);
@@ -653,7 +660,7 @@ async function main() {
       section.append(bar, source);
       const toggle = make("button");
       bar.append(toggle);
-      view3.add({ section, bar, toggle, source, id });
+      view3.add({ section, bar, toggle, source, id, format: "markdown" });
       return section;
     });
     let settled = false;

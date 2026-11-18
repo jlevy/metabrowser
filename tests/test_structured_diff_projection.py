@@ -43,9 +43,9 @@ def _shape(entries: list[StructuredDiffEntry]) -> list[object]:
     for entry in entries:
         label = f"{entry['change']} {entry.get('key', '-')}"
         if entry["change"] == "modified":
-            shaped.append([label, _shape(entry["entries"])])
+            shaped.append([label, _shape(entry.get("entries", []))])
         else:
-            shaped.append(f"{label} {json.dumps(entry['value'])}")
+            shaped.append(f"{label} {json.dumps(entry.get('value'))}")
     return shaped
 
 

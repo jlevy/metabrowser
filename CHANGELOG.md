@@ -4,6 +4,18 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A pull request’s Changes now opens a changed YAML or JSON file in **Rendered**, as it
+  opens a Markdown file: the tree the file view draws, with added and removed keys and
+  items in the change gutter, and a changed value as its old row removed and its new row
+  added. Mappings and lists that hold a change are open, and unchanged ones closed.
+  **Source** shows the exact diff, and the only view of a change to a comment, quoting,
+  or key order. A Markdown file’s front matter now shows in **Rendered** as the Document
+  view’s Frontmatter disclosure, open with each changed key marked when it changed; a
+  front-matter change no longer shows only in Source.
+  `GET /api/plugin/github/pull-rendered-diff` answers a YAML or JSON file as
+  `structured-diff-v1`, and a Markdown answer carries `frontmatter`. See
+  [Reviewing Pull Requests](docs/reviewing-pull-requests.md#rendered-yaml-and-json-in-changes).
+
 - A Pulls row now leads with its title, right after the state icon, on its first line,
   and puts the stack position, number, author, and age on the second; its author’s
   avatar is a little smaller.

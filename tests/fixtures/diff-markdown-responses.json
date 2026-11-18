@@ -144,7 +144,27 @@
           "source_only": false
         }
       ],
-      "source_only": true
+      "source_only": true,
+      "frontmatter": {
+        "change": "modified",
+        "entries": [
+          {
+            "key": "owner",
+            "change": "removed",
+            "text": "docs"
+          },
+          {
+            "key": "owner",
+            "change": "added",
+            "text": "platform"
+          },
+          {
+            "key": "title",
+            "change": "context",
+            "text": "Guide"
+          }
+        ]
+      }
     },
     "f2": {
       "version": "markdown-diff-v1",

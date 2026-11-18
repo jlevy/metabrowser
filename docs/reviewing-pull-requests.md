@@ -180,6 +180,25 @@ These files open in **Source**:
 Rendered also shows math and Mermaid diagrams as their source text, and does not
 highlight code blocks.
 
+A Markdown file’s front matter shows as the Frontmatter disclosure the file’s Document
+view shows above it.
+It stays closed when the front matter did not change, and opens with each changed key’s
+old value removed and new value added when it did.
+
+### Rendered YAML and JSON in Changes
+
+A changed `.yaml`, `.yml`, or `.json` file opens in **Rendered** as the tree its file
+view draws.
+An added or removed key or item is marked in the change gutter, and a changed
+value shows its old row removed and its new row added.
+Every mapping and list that holds a change is open; an unchanged one is closed with the
+file view’s preview of it, and a click opens it.
+The tree shows what the data says, so a change to a comment, quoting, indentation, or
+the order of a mapping’s keys appears only in **Source**.
+
+YAML that does not parse, YAML with anchors and aliases (`&name` and `*name`), and files
+too large for the rendered view open in **Source**.
+
 ## Find a Pull Request with Quick Search
 
 Press `/` or `T` to open Quick Search, and type `#` to see recent pull requests in every

@@ -413,9 +413,27 @@ function rows(article) {
       for (const row of inner) {
         shown.push(`  ${row_(row)}`);
       }
+    } else if (node.className.includes("diff-markdown-frontmatter")) {
+      shown.push(...frontmatter(node));
     } else {
       shown.push(row_(node));
     }
+  }
+  return shown;
+}
+
+// Front matter is the Document view's Frontmatter disclosure: its summary, whether it is
+// open, and each key with its value and, when it changed, its change.
+function frontmatter(row) {
+  const [details] = row.childNodes.filter((node) => node.className !== "sr-only");
+  assert(details.tagName === "DETAILS" && details.className === "kpress-frontmatter");
+  const [summary, list] = details.childNodes;
+  const shown = [`[${summary.textContent}${details.open ? ", open" : ""}]`];
+  for (let index = 0; index < list.childNodes.length; index += 2) {
+    const [term, value] = list.childNodes.slice(index, index + 2);
+    const change = term.className.replace("diff-frontmatter-", "");
+    const key = term.childNodes.filter((node) => node.className !== "sr-only")[0].textContent;
+    shown.push(`  ${change || "context"}: ${key} = ${value.textContent}`);
   }
   return shown;
 }
@@ -507,8 +525,8 @@ async function main() {
     pathToFileURL(path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/diff-markdown.js")).href
   );
 
-  const supported = recorded.manifest.filter((entry) => markdown.supportsMarkdownChange(entry));
-  const ahead = markdown.firstScreenMarkdown(recorded.manifest);
+  const supported = recorded.manifest.filter((entry) => markdown.supportsRenderedChange(entry));
+  const ahead = markdown.firstScreenRendered(recorded.manifest);
 
   // The plugin mounts the pull request's comparison, as its Changes does, on each page, and
   // hands the diff the rule for which addresses open there.
@@ -619,7 +637,7 @@ async function main() {
     source.id = `diff-file-${entry.id}`;
     section.append(bar, source);
     root.append(section);
-    const state = views.add({ section, bar, toggle, source, id: entry.id });
+    const state = views.add({ section, bar, toggle, source, id: entry.id, format: "markdown" });
     const [, control, progress] = bar.childNodes;
     const [, rendered] = section.childNodes;
     return {
