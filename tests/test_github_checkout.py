@@ -353,7 +353,8 @@ def test_pull_request_text_is_inert_under_both_profiles(
     ``tests/test_inert_html.py``'s. Every text renders through it, every link left is
     http(s), and no other text reaches markup: the record is JSON, which the page paints as
     text. Neither layer reads the profile, so both servers answer the same markup. Mutation
-    check: render without ``harden`` and every text has violations, under both profiles.
+    check: the same texts rendered by KPress alone, without the ``harden`` the server's
+    Markdown child applies, each have violations.
     """
 
     from starlette.testclient import TestClient
@@ -389,9 +390,7 @@ def test_pull_request_text_is_inert_under_both_profiles(
             ]
             assert record["pull"]["head"]["ref"] == '"><svg onload=alert(3)>'
             rendered = by_profile[profile] = _rendered(client)
-            with monkeypatch.context() as broken:
-                broken.setattr(pull_markdown, "harden", lambda html, _base: html)  # pyright: ignore[reportUnknownLambdaType]
-                unhardened = _rendered(client)
+            unhardened = _unhardened(record)
         for part, html in rendered.items():
             assert allowlist_violations(html) == [], (profile, part)
             # Raw markup survives only as text: the corpus's script is escaped, never a tag.
@@ -403,15 +402,42 @@ def test_pull_request_text_is_inert_under_both_profiles(
     assert by_profile["trusted"] == by_profile["untrusted"]
 
 
+_PARTS = ("body", "issue_comment/1", "review/2")
+
+
 def _rendered(client: Any) -> dict[str, str]:
-    parts = ("body", "issue_comment/1", "review/2")
     answers = {
         part: client.get(f"/api/plugin/github/pull-markdown?number=10&part={part}")
-        for part in parts
+        for part in _PARTS
     }
     for part, answer in answers.items():
         assert answer.status_code == 200, (part, answer.text)
     return {part: answer.json()["html"] for part, answer in answers.items()}
+
+
+def _unhardened(record: dict[str, Any]) -> dict[str, str]:
+    """The texts as KPress alone renders them, before the Markdown child's allowlist."""
+
+    from metabrowser import kpress_adapter
+    from metabrowser.builtin_plugins.github.pull_record import PullRecord
+
+    parsed = PullRecord.model_validate(record)
+    return {
+        part: str(
+            kpress_adapter.render_kpress_view(
+                source_text=pull_markdown.part_text(parsed, part) or "",
+                source_path=f"unhardened-{part.replace('/', '-')}.md",
+                kind="markdown",
+                view="document",
+                ext=".md",
+                mtime_hash=f"unhardened-{part}",
+                size=0,
+                include_toc="off",
+                plain_code=True,
+            )["html"]
+        )
+        for part in _PARTS
+    }
 
 
 @pytest.mark.parametrize("read_only_checkout", ["main", "linked"], indirect=True)

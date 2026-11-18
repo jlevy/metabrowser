@@ -693,7 +693,7 @@ The same rules in both scenarios, and one boundary the review sharpened.
   On a mirror it opens the file at the served pin when that is the head, else after
   switching the pin to the head under `refs/pull/<n>/head`. A pin runs under the
   untrusted profile, so its page renders a Markdown file inert, with fenced code as
-  plain text, but nothing bounds how long that render takes until `mb-273l`. On a folder
+  plain text, in the server’s Markdown child under a deadline (`mb-273l`). On a folder
   server, Changes renders the diff over the overlay.
   Beside a checkout whose `HEAD` is the head, View on branch opens the reader’s own
   working tree under the folder’s profile, as Browse the checkout already did: neither

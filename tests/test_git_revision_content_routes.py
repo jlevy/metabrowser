@@ -718,6 +718,10 @@ def test_git_kpress_render_shows_fenced_code_plain_under_the_untrusted_profile(
     as plain text; a lexer can cost far more than its input (review G on #348 timed a
     1.6 KB ``console`` line at 12 s), so the render asks for plain code. A trusting profile
     still highlights.
+
+    Under the untrusted profile the render runs in the server's Markdown child
+    (``diff/markdown_projection_worker.py``), which the patched highlighter here does not
+    reach, so there the HTML is the evidence: no span highlighting would add.
     """
 
     from kpress.format import markdown as kpress_markdown

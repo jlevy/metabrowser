@@ -191,7 +191,7 @@ counts is missing here; the asset routes are not counted.
 | Route | Serves | Contract |
 | --- | --- | --- |
 | `/api/file` | The file or folder envelope: kind, views, and a bounded content window | [Server and Content](arch-server-and-content.md) |
-| `/api/kpress/render`, `/api/kpress/export` | KPress rendering, reduced to inert HTML when active content is off, and export | [Server and Content](arch-server-and-content.md) |
+| `/api/kpress/render`, `/api/kpress/export` | KPress rendering, reduced to inert HTML in the Markdown child under a deadline when active content is off, and export | [Server and Content](arch-server-and-content.md) |
 | `/raw`, `/raw/<path>` | Bounded raw bytes with sandbox headers, and the document the HTML Preview frames | [Server and Content](arch-server-and-content.md) |
 | `/static/<path>`, `/plugin-static/<plugin>/<path>`, `/kpress-static/<path>` | Shell, plugin, and KPress assets at addresses stamped by content (`asset_stamps.py`) | [Server and Content](arch-server-and-content.md) |
 | `/api/routes` | Every route this build serves | [Server and Content](arch-server-and-content.md) |

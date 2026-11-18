@@ -24,6 +24,33 @@ All notable changes to Metabrowser are documented here.
   The app now needs a `metab` with `--recent`, and names the upgrade for one without.
   See [Recent Targets](docs/command-line.md#recent-targets).
 
+- Rendering a Markdown document from an untrusted source can no longer hold the server.
+  Every document rendered under the untrusted profile, a served mirror’s files, a folder
+  served with `--untrusted`, and a pull request’s description and comments, now renders
+  in the server’s Markdown child process under a deadline, instead of on a server thread
+  that could not be stopped: a crafted document could hold the server for many seconds
+  per reload, and reloads stacked.
+  A document’s YAML front matter is still read in the server before it renders, by the
+  bounded loader in `frontmatter_yaml.py`, and the server’s event loop never walks what
+  it read. A render past the deadline stops the child, and the page shows the document’s
+  source with one line saying why; a pull request text shows its plain text with the
+  same kind of line, and the folder Overview’s README panel shows the line and the
+  README’s source instead of a render error.
+  The server remembers the refusal for that document for ten minutes, so reloading it is
+  refused at once. `/api/kpress/render` answers such a document `422` with
+  `"type": "kpress_render_refused"` and the code `render_deadline`, and
+  `/api/plugin/github/pull-markdown` answers `422` with the same code; `remembered` says
+  whether the answer is a refusal kept from an earlier render.
+  One slow document no longer holds every other one: a render whose page went away is
+  stopped, a diff projection never waits behind a document’s render, and past a few
+  documents at once a render is answered `503` `renderer_busy`, and the page says the
+  renderer is busy and to reload.
+  Fenced code in these documents renders as plain text, as the page already showed it.
+  `METABROWSER_INERT_RENDER_DEADLINE_MS` changes the deadline, and must be at least 1. A
+  served mirror and a served `--untrusted` folder start the child as they open, and a
+  served pull request’s page as it is first read, so a first document or comment does
+  not wait for it; a one-shot `--api` command starts it only when it renders.
+
 - The shortcut strip at the foot of the navigation pane now lists Shift first, as Reveal
   keys, ahead of `?` for Help: holding Shift shows each key on the control it reaches.
   The strip stays one row: in a navigation pane too narrow for all of it, it drops Quick
