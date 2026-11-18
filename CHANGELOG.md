@@ -10,6 +10,10 @@ All notable changes to Metabrowser are documented here.
   left behind is, which the page took for a switch made in another tab.
   A page now asks for nothing more once it has asked to switch, until it has gone.
 
+- In the macOS app, Open Recent, the Dock menu and the title’s path menu show folders
+  with the same outline folder symbol as the mirror’s cloud, instead of Finder’s colored
+  folder.
+
 - In a navigation pane too narrow for the Files toolbar’s controls, the Files tree no
   longer moves down as the page loads.
   The toolbar wraps to a second line when its controls arrive, and the tree, shown under
