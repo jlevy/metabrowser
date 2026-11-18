@@ -774,6 +774,31 @@ const SUMMARY_WAIT = `async (width, theme, outcome, change = null) => {
   }));
   const lines = change?.lines ?? [1234, 3423];
   const comparison = { manifest: { totals: { files: kinds.length, additions: lines[0], deletions: lines[1], exact: true }, files } };
+  // For "brief", the cached changed-files list of the same change set, which the page draws
+  // as the brief line in the row while the comparison is read (mb-z8ea).
+  if (outcome === "brief") {
+    const summary = {
+      number: body.number,
+      state: "listed",
+      reason: null,
+      listing: false,
+      listed_from: "comparison",
+      generation: "brief-" + window.__summaryRuns,
+      head: body.record.comparison.head,
+      base: body.record.comparison.base,
+      base_ref: null,
+      files: kinds.length,
+      additions: lines[0],
+      deletions: lines[1],
+      exact: true,
+      // In a pull request's words, which the list is kept in: GitHub's "removed".
+      statuses: statuses.map(([status, count]) => ({ status: status === "deleted" ? "removed" : status, count })),
+    };
+    window.fetch = async (route) =>
+      String(route).startsWith("/api/plugin/github/pull-files-summary?")
+        ? new Response(JSON.stringify({ source: body.source, rows: [summary] }), { status: 200, headers: { "content-type": "application/json" } })
+        : new Response(null, { status: 304 });
+  }
   const view = {
     prefetch: () => read,
     summary: async (slot, ctx) =>
@@ -842,7 +867,7 @@ const SUMMARY_WAIT = `async (width, theme, outcome, change = null) => {
         return () => clearTimeout(id);
       },
       ensureKindAssets: async () => {},
-      loadChangedFilesTree: async () => {},
+      loadChangedFilesTree: async () => window.MetabrowserChangedFilesTree,
       getRegisteredView: () => view,
       decorateExternalLink: mb.decorateExternalLink,
       refChip: mb.refChip,
@@ -852,6 +877,9 @@ const SUMMARY_WAIT = `async (width, theme, outcome, change = null) => {
       actorIdentity: mb.actorIdentity,
       titleNodes: mb.titleNodes,
       countPartsNodes: mb.countPartsNodes,
+      changeLine: mb.changeLine,
+      changeLineNodes: mb.changeLineNodes,
+      formatInteger: mb.formatInteger,
       formatAge: () => ({ label: "now", className: "age" }),
       formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
       navigation: { href: () => "/view/" },
@@ -873,6 +901,12 @@ const SUMMARY_WAIT = `async (width, theme, outcome, change = null) => {
   const round = (value) => Math.round(value * 100) / 100;
   const box = (node) => node.getBoundingClientRect();
   const wrapper = () => row.querySelector(".github-pull-summary-pending");
+  // The text a line shows: without the words only a screen reader is told.
+  const seenText = (node) => {
+    const copy = node.cloneNode(true);
+    for (const hidden of copy.querySelectorAll(".visually-hidden, .diff-summary-chevron")) hidden.remove();
+    return copy.textContent;
+  };
   // Inside the quiet period: the placeholder is in the row and not yet seen.
   const quiet = wrapper() ? getComputedStyle(wrapper()).visibility : null;
   await document.fonts.ready;
@@ -907,6 +941,20 @@ const SUMMARY_WAIT = `async (width, theme, outcome, change = null) => {
     centre: block ? round((box(block).top + box(block).bottom) / 2 - (box(row).top + box(row).bottom) / 2) : null,
     row: round(box(row).height),
     places: places(),
+    brief: (() => {
+      const line = row.querySelector(".github-pull-summary-brief");
+      const words = line?.querySelector(".diff-summary-files");
+      if (!line || !words) return null;
+      const range = document.createRange();
+      range.selectNodeContents(line);
+      return {
+        text: seenText(line),
+        wordsLeft: round(box(words).left - contentLeft),
+        wordsTop: round(box(words).top - box(row).top),
+        textRight: round(range.getBoundingClientRect().right - contentLeft),
+        em: round(parseFloat(getComputedStyle(line).fontSize)),
+      };
+    })(),
   };
   if (outcome === "fails") {
     answer.reject(new Error("refused"));
@@ -932,6 +980,8 @@ const SUMMARY_WAIT = `async (width, theme, outcome, change = null) => {
     toggleLeft: summary ? round(box(summary).left - contentLeft) : null,
     chevronLeft: chevron ? round(box(chevron).left - contentLeft) : null,
     wordsLeft: words ? round(box(words).left - contentLeft) : null,
+    wordsTop: words ? round(box(words).top - box(row).top) : null,
+    text: summary ? seenText(summary) : null,
     width: summary ? round(box(summary).width) : null,
     em: summary ? round(parseFloat(getComputedStyle(summary).fontSize)) : null,
     label: summary ? summary.getAttribute("aria-label") : null,
@@ -960,9 +1010,10 @@ const PENDING_EM = 14.5;
 // The quiet period is set long, so where it ends is the session's to say: it finishes the
 // hold's animation itself before the read for `slow`. For `held` the description's Markdown
 // never answers, so the conversation's first paint stays held while the header lands with
-// its record. Every frame from the mount to the landing is read: whether
-// the header and the tab column show, the cold header or the record's, and where the tab
-// bar is against the same record mounted in hand.
+// its record. Every frame from the mount to the landing is read: whether the header and the
+// tab column show, the cold header or the record's, where the tab bar is against the same
+// record mounted in hand, and what the Diff summary's row holds. Its placeholder's own
+// reveal, the same quiet period's (`.mb-delayed-loading`), ends with it.
 const COLD_LANDING = `async (width, labelled, outcome) => {
   const recorded = window.__recorded ??= await (await fetch("/fixtures.json")).json();
   const page = window.__page ??= await import("/github/pull-page.js");
@@ -1044,13 +1095,20 @@ const COLD_LANDING = `async (width, labelled, outcome) => {
       cold: (header.querySelector("h1")?.textContent ?? "").startsWith("Pull request #"),
       tabBar: tabColumn ? tabBarOf(container) : null,
       live: tabColumn ? [...tabColumn.querySelectorAll(".tab-btn")].map((link) => link.checkVisibility({ visibilityProperty: true }) && !link.closest("[inert]")) : [],
+      // The Diff summary's row: its pending placeholder from first paint (mb-30dz), and
+      // whether its quiet period is over.
+      pending: (() => {
+        const placeholder = header.querySelector(".github-pull-summary > .github-pull-summary-pending");
+        return placeholder === null ? "none" : getComputedStyle(placeholder).visibility;
+      })(),
     };
     seen.push(state);
     return state;
   };
   // The quiet period's end: the hold's animation, run to its end.
   const quietEnds = () => {
-    for (const part of [header, column()]) {
+    const placeholder = header.querySelector(".github-pull-summary-pending");
+    for (const part of [header, column(), placeholder]) {
       for (const animation of part?.getAnimations() ?? []) {
         animation.finish();
       }
@@ -1361,21 +1419,24 @@ const PULLS = [
   },
 ];
 const PULLS_WIDTHS = [420, 360, 300, 240, 180];
-// The file header of a run's log: renderBadges, RUN_STATUS_SIZERS, and flagRunEndedBadge
-// are app.js's own, read from the served file and run here with the two names they use.
-// The header is the one renderFile draws around them: the path, the badges, and the size.
-// A live run ends, and a running one turns live, as app.js
+// The file header of a run's log: renderBadges and its RUN_STATUS_SIZERS are the view
+// header's own (view-header.js), read from the served file and made here with the two
+// helpers they use, and flagRunEndedBadge is app.js's own, read from the served file. The
+// header is the one renderFile draws around them: the path, the badges, and the size. A
+// live run ends, and a running one turns live, as app.js
 // changes them in place (flagRunEndedBadge, and _mirrorActiveFromFsEntry's two lines), and
 // every box of the header is read before and after.
 const RUN_BADGE = `async (live, width) => {
   // Read with XMLHttpRequest: the header's measurements stand in for window.fetch.
-  const source = await new Promise((resolve, reject) => {
-    const request = new XMLHttpRequest();
-    request.open("GET", "/static/app.js");
-    request.onload = () => resolve(request.responseText);
-    request.onerror = reject;
-    request.send();
-  });
+  const served = (file) =>
+    new Promise((resolve, reject) => {
+      const request = new XMLHttpRequest();
+      request.open("GET", "/static/" + file);
+      request.onload = () => resolve(request.responseText);
+      request.onerror = reject;
+      request.send();
+    });
+  const source = await served("app.js");
   const take = (start, end) => {
     const at = source.indexOf(start);
     if (at < 0) {
@@ -1383,20 +1444,35 @@ const RUN_BADGE = `async (live, width) => {
     }
     return source.slice(at, source.indexOf(end, at) + end.length);
   };
-  const code = [
-    take("const RUN_STATUS_SIZERS = ", '.join("");'),
-    take("function renderBadges(data) {", "\\n}\\n"),
-    take("function flagRunEndedBadge() {", "\\n}\\n"),
-    take("function viewHeaderItemsHtml(items) {", "\\n}\\n"),
-    take("function viewHeaderHtml(parts) {", "\\n}\\n"),
-  ].join("\\n");
+  const flagRunEndedBadge = new Function(
+    take("function flagRunEndedBadge() {", "\\n}\\n") + "\\nreturn flagRunEndedBadge;",
+  )();
+  if (!window.MetabrowserViewHeader) {
+    new Function(await served("view-header.js"))();
+  }
   const esc = (text) => String(text).replace(/[&<>"]/g, (c) => "&#" + c.charCodeAt(0) + ";");
   const activeFiles = new Map(live ? [["logs/session.jsonl", {}]] : []);
-  const app = new Function("esc", "activeFiles", code + "\\nreturn { renderBadges, flagRunEndedBadge, viewHeaderItemsHtml, viewHeaderHtml };")(esc, activeFiles);
+  const notDrawnHere = () => {
+    throw new Error("this header draws only its badges and a size");
+  };
+  const builders = window.MetabrowserViewHeader.create({
+    esc,
+    servedRoot: notDrawnHere,
+    pathBaseName: notDrawnHere,
+    ownedControlAttr: notDrawnHere,
+    mirrorHeading: notDrawnHere,
+    getFileIcon: notDrawnHere,
+    getLogicalName: notDrawnHere,
+    sizeHtml: notDrawnHere,
+    countHtml: notDrawnHere,
+    formatAge: notDrawnHere,
+    activeFiles,
+  });
+  const app = { ...builders, flagRunEndedBadge };
   const pane = document.getElementById("preview-pane");
   pane.style.width = width + "px";
-  // A file's view header, through app.js's own builder (renderFileHeader): the badges
-  // lead its metadata line.
+  // A file's view header, through the view header's own builder (renderFileHeader): the
+  // badges lead its metadata line.
   pane.innerHTML = app.viewHeaderHtml({
     eyebrow: "",
     iconHtml: "",
@@ -1580,6 +1656,7 @@ async function main() {
       const offersDrawn = new Set();
       const summaryWaits = [];
       const revisits = [];
+      const briefs = [];
       const widths = PART === "all" ? WIDTHS : (HEADER_PARTS[PART] ?? []);
       for (const width of widths) {
         const seen = {};
@@ -1932,6 +2009,42 @@ async function main() {
                 JSON.stringify(arrived.places) === JSON.stringify(waiting.places),
               JSON.stringify({ waiting, arrived }),
             );
+            // The cached list's brief line in the placeholder's place (mb-z8ea): the summary's
+            // words, where the summary's will be, which replaces it moving nothing.
+            const briefed = await browser.evaluate(
+              `(${SUMMARY_WAIT})(${width}, ${JSON.stringify(theme)}, "brief")`,
+            );
+            const { brief } = briefed.waiting;
+            check(
+              `${where}: while the comparison is read, the row holds the cached list's brief line, saying what the summary will`,
+              brief !== null &&
+                briefed.waiting.shown === null &&
+                brief.text === briefed.arrived.text &&
+                Math.abs(briefed.waiting.row - 24) <= 0.5,
+              JSON.stringify(briefed),
+            );
+            check(
+              `${where}: the summary replaces the brief line with its words in the same place, and nothing in the header or under it moves`,
+              brief !== null &&
+                briefed.arrived.summary &&
+                briefed.arrived.children === 1 &&
+                Math.abs(brief.wordsLeft - briefed.arrived.wordsLeft) <= 0.5 &&
+                Math.abs(brief.wordsTop - briefed.arrived.wordsTop) <= 0.5 &&
+                Math.abs(brief.textRight - briefed.arrived.textRight) <= 0.5 &&
+                Math.abs(briefed.arrived.row - briefed.waiting.row) <= 0.5 &&
+                JSON.stringify(briefed.arrived.places) === JSON.stringify(briefed.waiting.places),
+              JSON.stringify(briefed),
+            );
+            briefs.push({
+              where,
+              brief,
+              summary: [
+                briefed.arrived.wordsLeft,
+                briefed.arrived.wordsTop,
+                briefed.arrived.textRight,
+              ],
+              row: [briefed.waiting.row, briefed.arrived.row],
+            });
             const failed = await browser.evaluate(
               `(${SUMMARY_WAIT})(${width}, ${JSON.stringify(theme)}, "fails")`,
             );
@@ -1964,6 +2077,7 @@ async function main() {
           }
         }
         process.stderr.write(`summary-revisit: ${JSON.stringify(revisits)}\n`);
+        process.stderr.write(`summary-brief: ${JSON.stringify(briefs)}\n`);
         process.stderr.write(
           `summary-wait: ${JSON.stringify(summaryWaits.map(({ where, waiting, arrived }) => ({ where, block: [waiting.left, waiting.width, waiting.height, waiting.centre], row: [waiting.row, arrived.row], tabBar: [waiting.places.tabBar, arrived.places.tabBar], summary: [arrived.chevronLeft, arrived.wordsLeft, arrived.textRight] })))}\n`,
         );
@@ -2019,6 +2133,11 @@ async function main() {
               landings.push({ where, run });
               const { before, shownCold, landed } = run;
               check(
+                `${where}: the cold page's Diff summary row holds the placeholder from first paint, in its quiet period`,
+                before.pending === "hidden",
+                JSON.stringify(before),
+              );
+              check(
                 `${where}: the cold page is held unseen in the quiet period, its tab keys live`,
                 before.cold &&
                   before.header === "0" &&
@@ -2043,6 +2162,11 @@ async function main() {
                 check(
                   `${where}: after the quiet period the cold header shows, rows held`,
                   shownCold.cold && shownCold.header === "1" && shownCold.column === "1",
+                  JSON.stringify(shownCold),
+                );
+                check(
+                  `${where}: the placeholder shows with the cold header, so its row is never seen empty`,
+                  shownCold.pending === "visible",
                   JSON.stringify(shownCold),
                 );
                 check(

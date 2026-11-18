@@ -97,6 +97,25 @@ export function renderKpressError(error, mb) {
 }
 
 /**
+ * Whether *error*, a rejection of `fetchKpressRender`, carries the server's refusal of an
+ * untrusted document's render (`render-refusal.js` reads it), checked before that module
+ * is loaded for it.
+ *
+ * @param {unknown} error
+ */
+function isRefusal(error) {
+  const payload =
+    error && typeof error === "object"
+      ? /** @type {{payload?: unknown}} */ (error).payload
+      : undefined;
+  return (
+    !!payload &&
+    typeof payload === "object" &&
+    /** @type {Record<string, unknown>} */ (payload).type === "kpress_render_refused"
+  );
+}
+
+/**
  * @param {HTMLElement} container
  * @param {{path?: string, raw?: unknown}} ctx
  * @param {MetabrowserPublicSdk} mb
@@ -247,7 +266,32 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
         disposePrintIndicator = mountPrintIndicator(container, mb);
       }
     } catch (error) {
-      if (!disposed && !mb.errors.isAbortError(error)) {
+      if (disposed || mb.errors.isAbortError(error)) {
+        return;
+      }
+      // A render the server refused is a readable document: its source, and why. What
+      // draws it loads only for a refusal, which only an untrusted document's render can
+      // be: 6,729 bytes, 2,548 gzipped (2026-11-17). Any other failure keeps the error box.
+      if (isRefusal(error)) {
+        try {
+          const { mountRefusedSource, renderRefusal } = await import("./render-refusal.js");
+          const refusal = renderRefusal(error);
+          if (refusal !== null) {
+            await mountRefusedSource(container, ctx, refusal, mb, { signal: controller.signal });
+            return;
+          }
+        } catch (sourceError) {
+          if (disposed || mb.errors.isAbortError(sourceError)) {
+            return;
+          }
+          // The refusal's own error box follows; say why its source is not shown instead.
+          console.warn(
+            "metabrowser markdown: the refused document's source could not be read",
+            sourceError,
+          );
+        }
+      }
+      if (!disposed) {
         container.innerHTML = renderKpressError(error, mb);
       }
     }

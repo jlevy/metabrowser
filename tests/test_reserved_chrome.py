@@ -106,6 +106,42 @@ def test_every_tab_fills_one_toolbar_slot_at_one_height() -> None:
     assert ".dataset.navToolbar !== panelId" in activate
 
 
+def test_the_files_tree_holds_its_first_paint_until_its_toolbar_is_filled() -> None:
+    """The shell ships the Files toolbar one line tall around the pending placeholder, and
+    app.js fills it. In a pane too narrow for its row the filled bar wraps, and the tree
+    under it, which the shell paints before any script runs, moved 30 px at the narrowest
+    pane, its rows with it when they were shown first (mb-a5pa, mb-kiqm). So the tree is
+    hidden while the bar holds the placeholder, unless an alert was written into it or the
+    bar is behind another tab's toolbar, and app.js fills the bar just before it draws the
+    tree's first rows, so no row waits. The hold ends at a bound, so a bar that is never
+    filled does not hide the tree for good; its measurement is beside the rule.
+    tests/test_files_totals_stable_chrome.py measures that no load shifts and that the
+    tree shows at the bound when filter-controls.js fails.
+    """
+
+    css = _css()
+    hold = _rule(
+        css,
+        ".nav-filter-bar:not([hidden]):has(> .tally-pending) ~ .tree-content:not(:has(> "
+        '[role="alert"]))',
+    )
+    assert "visibility: hidden;" in hold
+    # The bound: the quiet period's own keyframes show the tree a second in.
+    assert "animation: mb-delayed-loading-reveal 0s linear 1s forwards;" in hold
+    reveal = re.search(r"@keyframes mb-delayed-loading-reveal \{\s*to \{([^}]*)\}", css)
+    assert reveal is not None and "visibility: visible;" in reveal.group(1)
+    # The placeholder the hold waits on is the one the server puts in the bar, and the bar
+    # app.js draws replaces it.
+    server = (REPO_ROOT / "src" / "metabrowser" / "server.py").read_text(encoding="utf-8")
+    assert "pending_tally = '<span class=\"count tally-pending\"></span>'" in server
+    assert 'data-nav-toolbar="files"{filter_bar_behind}>{pending_tally}</div>' in server
+    app = (STATIC / "app.js").read_text(encoding="utf-8")
+    assert "bar.innerHTML = main + drawer;" in _function(app, "renderNavFilterBar")
+    # Filled in the task that draws the first rows, before them, so the rows are never
+    # held and a landed row is scrolled to under the settled bar.
+    assert "\nrenderNavFilterBar();\nrenderInitialTreeRows();\n" in app
+
+
 def test_the_shortcut_strip_keeps_one_row_until_it_is_filled() -> None:
     """The strip always holds Help once filled, so before then it holds a row's height."""
 
@@ -214,14 +250,16 @@ def test_a_runs_status_badge_is_as_wide_as_its_widest_label() -> None:
     """
 
     css = _css()
+    # The view header draws the badge (view-header.js); the live tail in app.js relabels it.
+    header = (STATIC / "view-header.js").read_text(encoding="utf-8")
     app = (STATIC / "app.js").read_text(encoding="utf-8")
-    labels = set(re.findall(r'badge-(?:running|live|completed|failed)">([^<]+)<', app))
+    labels = set(re.findall(r'badge-(?:running|live|completed|failed)">([^<]+)<', header))
     labels |= set(re.findall(r'badge\.textContent = "([^"]+)"', app))
     assert labels == {"Running", "Live", "Done", "Failed", "Run ended"}, labels
-    sizers = re.search(r"const RUN_STATUS_SIZERS = \[([^\]]*)\]", app)
+    sizers = re.search(r"const RUN_STATUS_SIZERS = \[([^\]]*)\]", header)
     assert sizers is not None
     assert set(re.findall(r'"([^"]+)"', sizers.group(1))) == labels
-    render = _function(app, "renderBadges")
+    render = _function(header, "renderBadges")
     assert (
         '<span class="file-header-badge-slot">${statusBadge}${RUN_STATUS_SIZERS}</span>' in render
     )

@@ -327,7 +327,10 @@ Each handler’s docstring in `source_routes.py` holds its contract; the route i
   request’s refresh was answered.
 - **`GET /api/source/refs`** lists the mirror’s branches or tags for the ref selector
   from one `for-each-ref`, filtered and clamped (`REFS_DEFAULT_LIMIT`, `REFS_MAX_LIMIT`,
-  `REFS_MAX_QUERY_CHARS`).
+  `REFS_MAX_QUERY_CHARS`). A folder that is a repository’s root answers it and the pin
+  route for its own checkout;
+  [Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout)
+  says how.
 - **`POST /api/source/pin`** resolves a branch, then a tag, then a commit ID in the
   mirror, never through revision syntax, and serves it under a new generation.
   With the page’s `/view/` address it answers `view_href`, where that page goes on the

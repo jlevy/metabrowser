@@ -217,6 +217,17 @@ the folder was opened with.
 Such a document keeps no stylesheet, class, or `data-*`, which removes both limits
 above.
 
+Such a document is also rendered off the server’s interpreter: `/api/kpress/render`, on
+a folder and a pin alike, renders it in the server’s Markdown child
+(`diff/markdown_projection_worker.py`) under `INERT_RENDER_DEADLINE_MS`, never on a
+server thread, and reduces it to the allowlist there.
+A render the child does not finish is answered `"type": "kpress_render_refused"` with a
+`code`: `render_deadline` and `renderer_exited` (`422`, kept by the document for a
+while, with `remembered` true on an answer from the kept refusal), and
+`renderer_unavailable` and `renderer_busy` (`503`, not kept).
+The Markdown view then shows the document’s source under one line saying why
+(`builtin_plugins/markdown/render-refusal.js`).
+
 The allowlist keeps paragraphs, headings, emphasis, code, quotes, lists, tables,
 details, and links and images inside the served tree.
 It drops every class, `id`, `name`, `data-*`, style, and event attribute, and all SVG,
@@ -368,18 +379,17 @@ It answers `/api/cache/…` with `unsupported_for_subject`, so records that name
 cached sources are never served beside acquired content, and answers the path-shaped
 `/raw/{path}` the same way, because the preview that is that form’s only consumer is
 never offered there.
-Its Markdown renders with fenced code as plain text (`plain_code` in
-`git/content_routes.py`): the inert render drops the classes highlighting writes anyway,
-and a lexer can cost far more than its input’s size (`kpress_adapter._PLAIN_CODE`). The
-profile here is the process’s one capability block, which holds while a process serves
-one kind of view.
-[Open Modes](arch-open-modes.md#a-revision-is-never-trusted) requires a
-revision’s profile to come from the subject a request resolved, once one server can show
-a trusted working tree and untrusted revisions.
-Plain fences do not bound the render itself: it runs in a worker thread with no deadline
-or limit on concurrent renders, so whoever wrote a pinned Markdown file, such as a pull
-request’s author, decides how long the server spends rendering it, until the deadline in
-the projection worker that bead `mb-273l` adds.
+Its Markdown renders with fenced code as plain text (`plain_code`, which the Markdown
+child sets on every inert render in `diff/markdown_projection_worker.py`): the inert
+render drops the classes highlighting writes anyway, and a lexer can cost far more than
+its input’s size (`kpress_adapter._PLAIN_CODE`). The profile here is the process’s one
+capability block, which holds while a process serves one kind of view.
+[Open Modes](arch-open-modes.md#a-revision-is-never-trusted) requires a revision’s
+profile to come from the subject a request resolved, once one server can show a trusted
+working tree and untrusted revisions.
+Plain fences do not bound the render itself; the child’s deadline does
+([Inert Markdown](#inert-markdown)), so whoever wrote a pinned Markdown file, such as a
+pull request’s author, cannot decide how long the server spends rendering it.
 
 ### Borrowed Objects
 

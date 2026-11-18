@@ -32,9 +32,12 @@ user-facing order is in [Storage locations](../../command-line.md#storage-locati
   An environment override must be a nonempty absolute path without `..` components, and
   a relative flag is anchored to the working directory.
 - **No side effects:** resolution creates nothing.
-  Browsing a local folder never resolves, imports, or initializes either root: the
-  server imports only the cache route table at startup (`cache/routes.py`), and each
-  handler imports the rest when it is requested.
+  Browsing a local folder never resolves, imports, or initializes the cache, and reads
+  no `config.yml`: the server imports only the cache route table at startup
+  (`cache/routes.py`), and each handler imports the rest when it is requested.
+  Serving a folder writes one file in the configuration directory, its entry among the
+  [recent targets](arch-recent-targets.md), through `home.py` alone;
+  `test_local_browsing_in_process_never_calls_the_application_cache` holds both.
 - **No overlap:** `validate_storage_separation` refuses roots that overlap, through
   symlinked ancestors included, so deleting the cache cannot remove configuration.
 - **Configuration is the user’s:** `config.yml` is created once by atomic create-only
@@ -245,14 +248,15 @@ sets `GIT_NO_LAZY_FETCH=1`, though a store has no promisor remote; and with
 `GIT_DISABLE_MAILMAP_ARGS`, because a bare store’s default mailmap is `HEAD:.mailmap`.
 Git can report a failed read on stderr and still exit 0, so stderr from a store read
 degrades the result.
-A store’s configuration names no diff driver, and a borrowed checkout’s configuration is
-never read, which is one reason a mirror reads a checkout’s objects only through its own
-store.
-A folder’s server reads its own checkout’s Git directory in place for history, and
-by design for that checkout’s revisions
-([Open Modes](arch-open-modes.md#showing-a-revision-never-writes-the-checkout)). The
-pool of batch readers per store (`MAX_BATCH_READERS_PER_STORE` in `git/tree_source.py`)
-is part of the tree source.
+A store’s configuration names no diff driver, and a checkout that lends its objects to a
+store never has its configuration read, which is one reason a mirror reads a checkout’s
+objects only through its own store.
+A folder’s server is the other case: it reads its own checkout’s Git directory in place,
+for history and for that checkout’s revisions, with the checkout’s local configuration
+in effect, so those reads pass the options that keep a configured program from running
+([Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout)).
+The pool of batch readers per store (`MAX_BATCH_READERS_PER_STORE` in
+`git/tree_source.py`) is part of the tree source.
 
 A complete object read verifies the object ID against the header and bytes in the
 store’s SHA-1 or SHA-256 format, and a mismatch is `object_corrupt`. A windowed read

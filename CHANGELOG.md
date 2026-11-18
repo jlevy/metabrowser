@@ -31,6 +31,168 @@ All notable changes to Metabrowser are documented here.
   changing width moves nothing; in a narrow pane values leave it from the end, each
   whole. See [View Headers](docs/design-system.md#view-headers).
 
+- In a navigation pane too narrow for the Files toolbar’s controls, the Files tree no
+  longer moves down as the page loads.
+  The toolbar wraps to a second line when its controls arrive, and the tree, shown under
+  the one-line placeholder before them, moved 30 px with it at the narrowest pane.
+  The tree now waits for the toolbar, and shows in the frame the toolbar is filled.
+
+- A local checkout has a branch and tag chooser.
+  A folder that is a repository’s root shows the button a repository URL’s page has,
+  under the navigation header, and opens on **Working tree**: your files on disk.
+  Its list has the working tree first, then the checkout’s branches, with the
+  checked-out one marked, its tags, and its remote-tracking branches under **Remotes**.
+  Choosing a branch or tag shows its last commit, read from the repository’s own Git
+  objects: nothing is checked out, fetched, or written, so your working tree, your
+  index, and `HEAD` are untouched.
+  The checked-out branch, chosen there, shows what is committed, and **Working tree**
+  returns to your live files.
+  A branch or tag is read-only and runs under the untrusted profile, as a repository
+  URL’s page does, and the folder’s own profile returns with the working tree.
+  `metab <folder> --ref <name>` opens the folder on a branch, tag, remote-tracking
+  branch, or commit ID from the start, when serving and with `--api`, `--show`, and
+  `--check-api`. `GET /api/source/refs` and `POST /api/source/pin` answer a checkout
+  too, with `kind=remote` and `{"working_tree": true}`. A pinned revision is now never
+  served under a trusting profile, whatever the process was started with: the profile is
+  the subject’s, so a mirror’s page and a checkout’s revision are untrusted by
+  construction and not by a flag.
+  A branch or tag of a checkout is read without running anything the checkout’s Git
+  configuration names, a diff driver (a submodule’s included) or a signature program,
+  and without fetching into a partial clone, where an object the clone lacks is reported
+  as unavailable. That last guarantee needs a Git as recent as cloning does, and a newer
+  one in a partial clone, so with an older Git the list says which release it needs and
+  the working tree is served as before.
+  The Commits tab of a folder no longer runs a signature program: where the repository’s
+  or your own Git configuration sets `log.showSignature`, Git verified each commit it
+  listed, and Metabrowser shows no signature state.
+  See
+  [Branches and Tags of a Local Checkout](docs/browsing-history.md#branches-and-tags-of-a-local-checkout).
+
+- Metabrowser now keeps a list of recent targets, the folders and repositories opened
+  lately, and the macOS app’s File > Open Recent shows it.
+  Every `metab` that serves records what it serves, so the menu lists folders opened in
+  either build of the app and folders served from Terminal, most recent first, up to the
+  list’s own length. Before, the menu showed macOS’s recent-documents list, which holds
+  ten entries unless System Settings says otherwise, only folders that build of the app
+  had been asked to open, and none served by `metab`. `metab --recent` lists the
+  entries, with `--json` for a script; `--recent-forget` and `--recent-clear` remove
+  them, and `--recent-add` records one without serving it.
+  An entry is a folder or a repository, with the file opened as its `target` when
+  `metab FILE` opened a file’s folder.
+  The list is `recent-targets.yml` in the configuration directory, which serving a
+  folder now creates. The Dock icon’s menu lists the same items.
+  Only an open changes the order: the windows the app restores at launch do not, and
+  `METABROWSER_RECORD_RECENT=0` keeps a server, such as a benchmark’s, out of the list.
+  The menu starts empty the first time this build of the app runs: what macOS listed
+  before is not carried over, and the windows it restores are not opens.
+  The app now needs a `metab` with `--recent`, and names the upgrade for one without.
+  See [Recent Targets](docs/command-line.md#recent-targets).
+
+- A pull request’s page shows its changes’ counts at once, “36 files changed · 2 A, 3 D,
+  31 M · +2,076 −224”, from the changed-files list the Pulls tab keeps, while it reads
+  the full Diff summary, which then replaces the line in place.
+  Opened from a Pulls row, the page asks nothing for it; opened at its address, one
+  quick read of the cache.
+  A list of an earlier head or base, after new commits were pushed or the pull request
+  was retargeted, is not shown.
+  The changed-files summary route (`/api/plugin/github/pull-files-summary`) now also
+  says what each list was listed against, its `base` commit or GitHub’s `base_ref`.
+
+- A pull request’s page opened at its address, or from a Pulls row whose record is not
+  cached yet, shows the Diff summary’s gentle loading box from its first paint, after
+  the usual short quiet period, instead of an empty row until GitHub’s first answer
+  arrives, which took a second or more.
+  Once the server first answers, a pull request that is not GitHub’s, one served from a
+  checkout that has no Git store yet, or one whose refresh failed with nothing running
+  shows no box. The pull request route (`/api/plugin/github/pull`) says
+  `"no_store": true` when its server has no Git store to compare in.
+
+- A page that opens at a file deep in a long folder, one the page could not draw with
+  its first rows, now scrolls the file’s row into the Files tab once its folders have
+  opened. Before, the row was scrolled while its folder was still opening, within the
+  folder rather than the tab, and once the folder was open it lay far below the tab,
+  which had stayed at its top: the 906th file of a 1,000-file folder sat 7,433 px down.
+
+- A pull request revealed in the Pulls tab before its stacks are read stays in view
+  under its stack when they arrive while the reader is on another tab, or just after the
+  tab’s button brings the list back.
+  Before, the list came back where the pull request had stood in the flat list, with the
+  pull request regrouped far above it.
+
+- Rendering a Markdown document from an untrusted source can no longer hold the server.
+  Every document rendered under the untrusted profile, a served mirror’s files, a folder
+  served with `--untrusted`, and a pull request’s description and comments, now renders
+  in the server’s Markdown child process under a deadline, instead of on a server thread
+  that could not be stopped: a crafted document could hold the server for many seconds
+  per reload, and reloads stacked.
+  A document’s YAML front matter is still read in the server before it renders, by the
+  bounded loader in `frontmatter_yaml.py`, and the server’s event loop never walks what
+  it read. A render past the deadline stops the child, and the page shows the document’s
+  source with one line saying why; a pull request text shows its plain text with the
+  same kind of line, and the folder Overview’s README panel shows the line and the
+  README’s source instead of a render error.
+  The server remembers the refusal for that document for ten minutes, so reloading it is
+  refused at once. `/api/kpress/render` answers such a document `422` with
+  `"type": "kpress_render_refused"` and the code `render_deadline`, and
+  `/api/plugin/github/pull-markdown` answers `422` with the same code; `remembered` says
+  whether the answer is a refusal kept from an earlier render.
+  One slow document no longer holds every other one: a render whose page went away is
+  stopped, a diff projection never waits behind a document’s render, and past a few
+  documents at once a render is answered `503` `renderer_busy`, and the page says the
+  renderer is busy and to reload.
+  Fenced code in these documents renders as plain text, as the page already showed it.
+  `METABROWSER_INERT_RENDER_DEADLINE_MS` changes the deadline, and must be at least 1. A
+  served mirror and a served `--untrusted` folder start the child as they open, and a
+  served pull request’s page as it is first read, so a first document or comment does
+  not wait for it; a one-shot `--api` command starts it only when it renders.
+
+- The shortcut strip at the foot of the navigation pane now lists Shift first, as Reveal
+  keys, ahead of `?` for Help: holding Shift shows each key on the control it reaches.
+  The strip stays one row: in a navigation pane too narrow for all of it, it drops Quick
+  Search, then Help, and always shows Shift; their keys still work, and Help and holding
+  Shift still list them.
+  See [Keyboard Shortcuts](docs/keyboard-shortcuts.md).
+
+- Security: a Markdown file’s front matter can no longer stall the server.
+  YAML aliases let a few hundred bytes of front matter stand for millions of values: 310
+  bytes of seven alias levels made `/api/file` spend over a second building 39 MB of
+  JSON, answering nothing else meanwhile, and each further level multiplied both by
+  nine. Merge keys (`<<`), merges nested inline, and a duplicated key did the same inside
+  the YAML parser itself, and so did `!!timestamp` on a list, the last two into the
+  error message; flow lists nested hundreds deep cost the parser seconds.
+  A served GitHub mirror or a folder served with `--untrusted` could carry such a file,
+  and so could a downloaded repository served as a trusted folder.
+  Front matter is now measured before it is built, and Metabrowser builds it itself,
+  leaving the YAML parser only its scalars.
+  It is refused when, written out without its aliases, it is larger than
+  `FRONTMATTER_MAX_EXPANDED_SIZE` characters (`frontmatter_yaml.py`), when it or its
+  value through its aliases nests more than `YAML_MAX_DEPTH` levels, when an alias sits
+  inside the value it names, or when it declares a YAML version other than 1.2: the file
+  reads as text, and its header badge and rendered document say why, in at most
+  `YAML_ERROR_MAX_CHARS` characters, naming a line rather than quoting it.
+  The `.yaml` prefix that `yaml_has_key` and `yaml_value_prefix` read goes through the
+  same loader. The parse runs off the server’s event loop on every path, and an
+  uncompressed file’s front matter is read only from its first `FRONTMATTER_MAX_BYTES`,
+  as a compressed file’s and a pinned revision’s already were.
+  Tags JSON has no type for (`!!binary`, `!!set`, `.nan`, a sequence or date as a key,
+  an integer past Python’s digit limit, a lone surrogate from an escape) now answer as
+  JSON values, and every tag or scalar the parser refuses, and nesting too deep to
+  parse, answers with its reason; before, some of these showed a served folder’s file as
+  an internal error, and a pinned revision answered them with a server error.
+  The parser no longer writes a warning to the server’s log for each reused anchor name.
+
+- Plugin authors: `frontmatter_has_key` and `yaml_has_key` now match a key that is not a
+  string by its JSON text, the spelling a renderer already received, so `"1"` matches a
+  YAML `1:` key and `"true"` a `true:` key.
+  Keys are compared by that text, so `1:` and `"1":` in one mapping are a duplicate.
+  `yaml_has_key` and `yaml_value_prefix` now read YAML 1.2, as front matter and the
+  structured viewer do: `on`, `yes`, `no`, and `12:30:45` are strings rather than
+  booleans and numbers, and `0o17` and `1e3` are numbers rather than strings.
+  A `.yaml` prefix no longer matches when it is not UTF-8, declares another YAML version
+  (`%YAML 1.1`), nests past `YAML_MAX_DEPTH`, or holds aliases that write out past
+  `_YAML_PREFIX_MAX_EXPANDED_SIZE`. A key that appears twice in it keeps its last value,
+  as it did before. See [Kind Rules](docs/plugins.md#kind-rules).
+
 - The file and folder headers no longer have a print button.
   A rendered Markdown document has one instead, at the top right of its page: opened as
   a file, and as the README on a folder’s Overview.
@@ -62,8 +224,60 @@ All notable changes to Metabrowser are documented here.
   another app is never sent a file, and a build registered where it was built is refused
   unless `METABROWSER_ALLOW_UNINSTALLED_APP=1`.
 
+- The agent skill hands a folder, a file, or a GitHub URL to the macOS app with
+  `metab --present TARGET --format json`, and acts on the exit status: it tells you what
+  it handed over, and that the app was asked rather than that a window shows it (status
+  0), shows a refusal’s reason (3), serves the page and gives you its address when no
+  app takes it (4) or when `metab` predates `--present` (2), and asks to rerun the
+  command outside its sandbox, or serves instead, when LaunchServices is blocked (5). It
+  writes `--present` first, and runs the command alone, so that one sandbox rule for the
+  prefix `metab --present` matches it.
+  [Working with agents](docs/working-with-agents.md#let-an-agent-reach-the-app-from-a-sandbox)
+  gives that rule for Claude Code (`sandbox.excludedCommands`) and Codex (a prefix
+  rule), and warns that it runs `metab` with your full access: it is safe only for a
+  `metab` the agent cannot write, never a source checkout the agent works in, whose
+  editable install runs code the agent can change.
+  `metab --present --version` checks a build for the flag without presenting anything.
+  `tests/test_skill_commands.py` fails when the skill’s `--present` recipes are not
+  commands `tests/golden/cli-present-delivery.txt` runs against a stand-in app, or when
+  a status its table restates is not the one the code ends that case with.
+
 - `metab COMMIT_URL` opens at the commit’s page, `/commit/<full id>`, instead of the
   tree at that commit.
+
+- The macOS app opens GitHub links: a repository, a pull request, a commit, or a file or
+  folder at a ref, sent with `metab URL --present` or `open -b`. Before, the app took
+  such a link and did nothing.
+  `metab URL --present --dry-run --format json` resolves each link, one at a time, and
+  the app opens the repository’s mirror in its one window, cloning the repository or
+  reusing its cache as `metab URL` does; a link `metab` refuses shows `metab`’s message,
+  and what a burst of links could not open is said in one alert.
+  A link to a repository the cache does not hold asks first, with Cancel as the default,
+  while other links go on opening; one into a repository with a window starts its server
+  again on the link, so the window shows the revision the link names, and the app says
+  when GitHub has nothing the link names.
+  Servers start on the canonical link `metab` hands back, never on the link as sent, so
+  a token in a link reaches no server.
+  A first clone is no longer stopped 60 seconds after its server started: the app waits
+  as long as the clone reports progress, up to `metab`’s own bound on a clone, and
+  folders opened meanwhile start at once.
+  The app now requires a `metab` with `--present`, which setup checks, and its
+  `Info.plist` declares `MetabrowserOpensURLs`, which `--present` reads before it sends
+  anything. A repository’s window does not come back with the last session.
+  See [the app’s guide](docs/macos-app.md#opening-github-links).
+
+- The macOS app’s File menu has Open URL… (Command-L), which opens a full GitHub URL you
+  paste or type, a repository, a pull request, a commit, or a file or folder, as a link
+  sent to the app opens: `metab URL --present --dry-run --format json` checks it, and it
+  opens in the repository’s mirror, never a checkout.
+  A space or a letter outside ASCII in the path is sent encoded, as a browser sends it.
+  A URL it does not open keeps the panel open with the reason under the field: `metab`’s
+  message for a GitHub page it refuses, and the app’s own for a shorthand such as
+  `owner/repo`, which is not taken, or for anything but an `https` URL on GitHub.
+  While the app is still finding or rechecking its `metab`, the panel closes instead,
+  and a URL it does not open is reported in an alert once `metab` is ready.
+  File > Open… is now Open Folder…. See
+  [the app’s guide](docs/macos-app.md#opening-github-links).
 
 - The Treemap tab shows File Overview’s file-type legend under its bars.
   Pointing at an entry highlights every cell of that family, its segments in the bars,

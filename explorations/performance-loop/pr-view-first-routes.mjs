@@ -58,7 +58,12 @@ const server = spawn(
   {
     detached: true,
     stdio: "ignore",
-    env: { ...process.env, METABROWSER_CACHE_DIR: String(a.cache), METABROWSER_CONFIG_DIR: cfg },
+    env: {
+      ...process.env,
+      METABROWSER_CACHE_DIR: String(a.cache),
+      METABROWSER_CONFIG_DIR: cfg,
+      METABROWSER_RECORD_RECENT: "0",
+    },
   },
 );
 const timing = (h) =>

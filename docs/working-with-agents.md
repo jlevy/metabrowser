@@ -1,9 +1,9 @@
 # Working With Agents
 
 A coding agent and you can look at the same things through Metabrowser.
-The agent serves a folder, a file, a commit, or a pull request and hands you the page;
-it reads the same data from the command line, without a browser; and you read its
-session logs as timelines.
+The agent hands you a folder, a file, a commit, or a pull request, in the macOS app or
+in a browser; it reads the same data from the command line, without a browser; and you
+read its session logs as timelines.
 The `metabrowser` agent skill teaches an agent its part.
 
 ## Install the Skill
@@ -25,13 +25,32 @@ The skill is tested against the `metab` of the same commit, not against a releas
 the skill on `main` can name a flag or route that the newest release lacks; it says how
 to run a source checkout’s `metab` until the next release.
 [Release Status](installation.md#release-status) says which `metab` the macOS app needs,
-a separate front end that the skill does not drive yet.
+a separate front end that the skill hands pages with `--present`.
 
 ## Ask an Agent to Show You a Page
 
 Ask in your own words: “open the plan in Metabrowser,” “show me what the last commit
-changed,” or “open pull request 123.” The agent starts a server without opening a
-browser and gives you the address:
+changed,” or “open pull request 123.” On a Mac with the [macOS app](macos-app.md)
+installed, the agent hands a folder, a file, or a GitHub URL to the app; otherwise, and
+for an address the app cannot be handed, it serves the page and gives you its address.
+
+### In the App
+
+```shell
+metab --present . --path docs/plan.md --format json
+metab --present https://github.com/owner/repo/pull/123 --format json
+```
+
+`--present` hands the target to the app, which opens it in a window, and prints a report
+([the command-line guide](command-line.md#handing-a-target-to-the-app---present) has its
+fields and codes). The agent tells you what it handed over, and that the app was asked
+rather than that a window shows it, since the app does not reply yet.
+When no app takes the target, as on another machine or without the app installed, the
+agent serves it instead, as below.
+
+### In a Browser
+
+The agent starts a server without opening a browser and gives you the address:
 
 ```shell
 metab . --no-open
@@ -69,12 +88,60 @@ The page stays live while the agent works: new and changed files appear in the t
 a log being written tails in place ([live updates](browsing-files.md#live-updates)). The
 server runs until the agent stops it or you ask it to.
 
-`metab ROOT --present` hands a folder, a file, or a GitHub URL to the
-[macOS app](macos-app.md#opening-from-a-terminal-or-an-agent) instead, and reports what
-it sent; the app does not yet confirm that a window shows it, and a browser when there
-is no app is planned
-([native macOS app plan](project/specs/active/plan-2026-11-10-native-macos-app.md),
-Phase 3).
+### Let an Agent Reach the App From a Sandbox
+
+`--present` asks LaunchServices for the app and hands it the target with
+`/usr/bin/open`, and an agent’s sandbox can block either step.
+The command then reports `lookup_failed` or `open_failed`, with the status the
+[exit-status table](command-line.md#exit-status) gives a target LaunchServices did not
+take, and the skill has the agent rerun the command outside the sandbox when you allow
+that, or serve the page instead.
+A rule can let the one command prefix, `metab --present`, run outside the sandbox every
+time. The skill writes `--present` first and runs the command alone, with no redirect or
+pipe, so that such a rule matches it and nothing else.
+
+> **A rule runs `metab` with your full access.** Add one only for a `metab` installed
+> outside every folder the agent can write, its code included, such as one that
+> `uv tool install` made: the command in `~/.local/bin`, its code under
+> `~/.local/share/uv/tools`. Never name a source checkout the agent works in.
+> A checkout’s `.venv/bin/metab` is an editable install that runs the checkout’s own
+> `src/`, so an agent that can write the checkout can change that code inside the
+> sandbox and then run it outside, with no prompt under an allow rule.
+> To use a source build, point the rule, and the app’s Settings > Choose metab…, at a
+> separate checkout the agent never works in; the app’s servers run that `metab` too.
+> Otherwise add no rule, and approve each run when the agent asks.
+
+- **Claude Code:** the sandbox is off by default.
+  When it is on, it blocks the Apple Events and Launch Services requests `open` makes,
+  and Claude Code can retry a blocked command outside the sandbox, which its permission
+  mode approves or asks you about each time.
+  An entry in `sandbox.excludedCommands`, in your user or project settings, runs
+  matching commands outside the sandbox, still through the usual permission prompts,
+  which an allow rule such as `Bash(metab --present *)` answers without asking
+  ([Claude Code’s sandboxing guide](https://code.claude.com/docs/en/sandboxing), which
+  warns about an exclusion for a tool the agent can write):
+
+  ```json
+  {"sandbox": {"excludedCommands": ["metab --present *"]}}
+  ```
+
+  The entry matches the text of the call, so a redirect, a pipe, `cd`, or another
+  command in the same call keeps it sandboxed.
+  `sandbox.allowAppleEvents` also lets `open` work, for every sandboxed command, which
+  can then launch any app outside the sandbox with no prompt.
+
+- **Codex:** its default sandbox blocks launching an app.
+  Approve running the command outside the sandbox when Codex asks; allowing the prefix
+  there, or this rule in `~/.codex/rules/default.rules`, runs it outside the sandbox
+  without asking
+  ([Codex rules](https://learn.chatgpt.com/docs/agent-configuration/rules)):
+
+  ```python
+  prefix_rule(pattern = ["metab", "--present"], decision = "allow")
+  ```
+
+Both rules match the command as the agent types it, so a `metab` the agent runs by its
+path, as it runs a separate checkout’s, needs that path in place of `metab`.
 
 ## Reading Agent Logs
 

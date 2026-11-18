@@ -203,6 +203,10 @@ try {
   await role(header, "label", "#preview-pane .tab-bar .tab-btn");
   await accompanies(header, ".github-pull-freshness", ".github-pull-header .github-pull-action");
   await accompanies(header, ".github-pull-opened .github-pull-quiet", ".github-pull-action");
+  // The full record's conversation paints once its description's Markdown arrives, or its
+  // hold's bound passes (DESCRIPTION_HOLD_MS in pull-page.js): its review comments' cards
+  // are drawn then, which can be after the freshness line says Fetched.
+  await waitFor("document.querySelector('.github-pull-card-head .github-pull-file') !== null");
   const conversation = "a pull request's Conversation";
   await role(conversation, "reading text", ".github-pull-card-head");
   await role(conversation, "reading text", ".github-pull-card-head .github-pull-file");

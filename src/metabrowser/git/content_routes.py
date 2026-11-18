@@ -82,8 +82,16 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 
 from metabrowser import kpress_adapter
-from metabrowser.capabilities import get_capabilities
+from metabrowser.capabilities import UNTRUSTED_CAPABILITIES
+from metabrowser.client_disconnect import CLIENT_CLOSED, unless_disconnected
 from metabrowser.content_sniff import SNIFF_PREFIX_BYTES, ContentClass, classify_prefix
+from metabrowser.diff.markdown_projection_worker import (
+    InertRender,
+    InertRenderRefused,
+    kpress_refusal_payload,
+    shared_worker,
+    text_identity,
+)
 from metabrowser.file_extensions import (
     BROWSER_IMAGE_EXTS,
     BROWSER_TEXT_EXTS,
@@ -118,6 +126,7 @@ from metabrowser.inventory_engine.contract import ascii_casefold
 from metabrowser.inventory_rollup import RollupOptions, build_rollup, group_rollup_children
 from metabrowser.invisible_chars import display_segment
 from metabrowser.keymap import live_view_keys
+from metabrowser.plugin_loader.classify import CONTENT_PREDICATE_MAX_BYTES
 from metabrowser.settings import (
     FOLDER_DISCOVERY_MAX_ENTRIES,
     INVENTORY_MAX_FILES,
@@ -307,11 +316,19 @@ def _git_blob_content_predicates(
     return json_top, yaml_top, frontmatter, frontmatter_error
 
 
-def _json_safe_git_frontmatter(value: dict[str, Any]) -> dict[str, Any]:
-    from metabrowser.server import _json_safe_frontmatter
+# The extensions `_git_blob_content_predicates` parses anything for.
+_CONTENT_PREDICATE_EXTS = frozenset({".json", ".yaml", ".yml", ".md"})
 
-    safe = _json_safe_frontmatter(value)
-    return safe if isinstance(safe, dict) else {}
+
+async def _blob_predicates_off_loop(
+    ext: str, body: bytes
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, Any] | None, str | None]:
+    """The predicates on a worker thread, where a parse of a bounded prefix can take
+    seconds; a blob no predicate reads skips the thread."""
+
+    if ext not in _CONTENT_PREDICATE_EXTS:
+        return None, None, None, None
+    return await asyncio.to_thread(_git_blob_content_predicates, ext, body)
 
 
 def _git_frontmatter_envelope(
@@ -319,19 +336,27 @@ def _git_frontmatter_envelope(
     mapping: dict[str, Any] | None,
     error: str | None,
 ) -> dict[str, Any]:
+    # parse_frontmatter_bytes answers the bounded, JSON-safe copy
+    # (metabrowser.frontmatter_yaml), so the mapping goes on the wire as it is.
     fields: dict[str, Any] = {}
     if mapping is not None:
-        fields["frontmatter"] = _json_safe_git_frontmatter(mapping)
+        fields["frontmatter"] = mapping
     if error is not None:
         fields["frontmatter_error"] = error
     return fields
+
+
+# A pinned revision is never trusted, whatever the process's block: every route here was
+# handed the pin its request resolved, so the profile is fixed before anything is awaited
+# (capabilities.capabilities_for).
+_PIN_CAPABILITIES = UNTRUSTED_CAPABILITIES
 
 
 def _views_for_kind(kind: str) -> list[dict[str, Any]]:
     # Plugin kinds such as diff live in manifests, not VIEW_REGISTRY.
     from metabrowser.server import _views_for_kind as merged_views_for_kind
 
-    return merged_views_for_kind(kind)
+    return merged_views_for_kind(kind, active_content=_PIN_CAPABILITIES.active_content)
 
 
 def _passes_min_size(entry: GitTreeEntry, floor: int) -> bool:
@@ -1177,7 +1202,7 @@ async def git_revision_capabilities(subject: GitRevisionSubject) -> JSONResponse
                 "contract": _GIT_INDEX_CONTRACT,
             },
             "events": {"stream": "off", "reason": "git-revision-no-watcher"},
-            "capabilities": get_capabilities().as_wire(),
+            "capabilities": _PIN_CAPABILITIES.as_wire(),
         }
     )
 
@@ -1433,7 +1458,7 @@ async def _blob_file_payload(entry: GitTreeEntry, body: bytes, request: Request)
             }
         )
         return payload
-    json_top, yaml_top, frontmatter, frontmatter_error = _git_blob_content_predicates(ext, body)
+    json_top, yaml_top, frontmatter, frontmatter_error = await _blob_predicates_off_loop(ext, body)
     kind = _plugin_kind_for_git_path(
         entry.path,
         json_top_level=json_top,
@@ -1452,10 +1477,11 @@ async def _blob_file_payload(entry: GitTreeEntry, body: bytes, request: Request)
     return payload
 
 
-# Every content predicate reads a bounded prefix: a JSON mapping is refused past 256 KiB,
-# YAML reads 16 KiB, and frontmatter 256 KiB. One byte past the largest gives each the
-# answer the whole blob would.
-_PREDICATE_PREFIX_BYTES = 256 * 1024 + 1
+# Every content predicate reads a bounded prefix (`CONTENT_PREDICATE_MAX_BYTES`). One
+# byte past the largest gives each the answer the whole blob would: a JSON document past
+# its cap is refused, and a front-matter fence it does not close is reported as not
+# closed within the bound.
+_PREDICATE_PREFIX_BYTES = CONTENT_PREDICATE_MAX_BYTES + 1
 
 
 async def _windowed_blob_file_response(
@@ -1510,7 +1536,7 @@ async def _windowed_blob_file_response(
             },
             status_code=416,
         )
-    json_top, yaml_top, frontmatter, frontmatter_error = _git_blob_content_predicates(
+    json_top, yaml_top, frontmatter, frontmatter_error = await _blob_predicates_off_loop(
         ext, head[:_PREDICATE_PREFIX_BYTES]
     )
     kind = _plugin_kind_for_git_path(
@@ -1651,6 +1677,7 @@ async def git_revision_file(request: Request, subject: GitRevisionSubject) -> JS
 async def git_revision_kpress_render(
     subject: GitRevisionSubject,
     *,
+    request: Request,
     subpath: str,
     view: str,
     profile: str | None,
@@ -1719,29 +1746,47 @@ async def git_revision_kpress_render(
     frontmatter_error = None
     if ext == ".md":
         parse_source = source_override.encode() if source_override is not None else body
-        _, _, frontmatter, frontmatter_error = _git_blob_content_predicates(ext, parse_source)
+        _, _, frontmatter, frontmatter_error = await asyncio.to_thread(
+            _git_blob_content_predicates, ext, parse_source
+        )
     envelope = _git_frontmatter_envelope(mapping=frontmatter, error=frontmatter_error)
-    trusted = get_capabilities().active_content
     try:
-        rendered = await asyncio.to_thread(
-            kpress_adapter.render_kpress_view,
-            source_text=content,
-            # Display text is not a route identity; wiki rewrite must stay on the wire.
-            source_path=entry.path.to_wire(),
-            kind=kind,
-            view=view,
-            ext=ext,
-            mtime_hash=entry.oid,
-            size=logical_size,
-            frontmatter=envelope.get("frontmatter"),
-            frontmatter_error=envelope.get("frontmatter_error"),
-            profile=profile,
-            include_toc=include_toc,
-            # Under the untrusted profile, which a pin always runs under, fenced code is
-            # not highlighted. The inert render below drops every class highlighting
-            # writes, so a fence showed as plain text anyway, and a lexer can cost far
-            # more than its input's size (`kpress_adapter._PLAIN_CODE`).
-            plain_code=not trusted,
+        # A pin is never trusted (_PIN_CAPABILITIES), so its document renders inert, in the
+        # Markdown child under its deadline, and is known by its blob, or by the text a
+        # page sent in its place; display text is not a route identity, so the source path
+        # stays on the wire. A client that goes away leaves the render to no one, and an
+        # abandoned render must not hold the child. The child raises KPress's errors too.
+        rendered = await unless_disconnected(
+            request,
+            shared_worker().render_inert(
+                InertRender(
+                    source_text=content,
+                    source_path=entry.path.to_wire(),
+                    display_path=entry.path.display(),
+                    identity=(
+                        f"blob:{entry.oid}"
+                        if source_override is None
+                        else await asyncio.to_thread(text_identity, source_override)
+                    ),
+                    kind=kind,
+                    view=view,
+                    ext=ext,
+                    mtime_hash=entry.oid,
+                    size=logical_size,
+                    frontmatter=envelope.get("frontmatter"),
+                    frontmatter_error=envelope.get("frontmatter_error"),
+                    profile=profile,
+                    include_toc=include_toc,
+                )
+            ),
+        )
+        if rendered is None:
+            return JSONResponse({}, status_code=CLIENT_CLOSED)
+    except InertRenderRefused as refused:
+        return JSONResponse(
+            kpress_refusal_payload(refused, path.to_wire()),
+            status_code=refused.http_status,
+            headers={"cache-control": "no-cache"},
         )
     except kpress_adapter.KPressInvalidRequestError as exc:
         return JSONResponse(
@@ -1763,8 +1808,6 @@ async def git_revision_kpress_render(
             },
             status_code=502,
         )
-    if not trusted:
-        rendered = kpress_adapter.inert_render(rendered)
     return JSONResponse(rendered, headers={"cache-control": "no-cache"})
 
 

@@ -34,6 +34,9 @@ folder too. A file that arrives while the page is open counts in every one of th
 folder’s “more” rows, and one that sorts last goes last.
 A reveal that cannot show its row leaves no other row selected, and the tree says a file
 is outside the filter only when the filter is what hides it.
+A landing whose folder is still opening scrolls its row once the folder’s travel ends,
+not before, and only while the address still names it and the folder is open, to the row
+drawn in its place if it was drawn again; an endless animation holds no scroll.
 `pulls list` runs the Pulls tab’s controller over the recorded lists and stack snapshot:
 an address naming a pull request in a closed stack opens the stack, the same pull
 request named again moves nothing unless it was opened again, which reveals it and ends
@@ -667,6 +670,197 @@ $ node tests/dom/nav-reveal-session.js
       "selected": [],
       "scrolled": [],
       "note": null
+    },
+    {
+      "step": "a landing in the long folder's fifth page, while the folder opens: selected, not yet scrolled",
+      "path": "long/f0905.txt",
+      "shown": true,
+      "open": [
+        "long"
+      ],
+      "selected": [
+        "long/f0905.txt"
+      ],
+      "scrolled": [],
+      "note": null,
+      "long folder": [
+        "f0000–f0199",
+        "Show 600 more (1400 total)",
+        "f0800–f0999",
+        "Show 400 more (1400 total)"
+      ]
+    },
+    {
+      "step": "its travel ends: the row is scrolled into view",
+      "path": "long/f0905.txt",
+      "open": [
+        "long"
+      ],
+      "selected": [
+        "long/f0905.txt"
+      ],
+      "scrolled": [
+        "long/f0905.txt"
+      ],
+      "note": null,
+      "long folder": [
+        "f0000–f0199",
+        "Show 600 more (1400 total)",
+        "f0800–f0999",
+        "Show 400 more (1400 total)"
+      ]
+    },
+    {
+      "step": "a landing, then another file revealed during its travel: not yet scrolled",
+      "path": "long/f0905.txt",
+      "shown": true,
+      "open": [
+        "long"
+      ],
+      "selected": [
+        "long/f0905.txt"
+      ],
+      "scrolled": [],
+      "note": null,
+      "long folder": [
+        "f0000–f0199",
+        "Show 600 more (1400 total)",
+        "f0800–f0999",
+        "Show 400 more (1400 total)"
+      ]
+    },
+    {
+      "step": "the other file's reveal scrolls at once",
+      "path": "README.md",
+      "shown": true,
+      "open": [
+        "long"
+      ],
+      "selected": [
+        "README.md"
+      ],
+      "scrolled": [
+        "README.md"
+      ],
+      "note": null,
+      "long folder": [
+        "f0000–f0199",
+        "Show 600 more (1400 total)",
+        "f0800–f0999",
+        "Show 400 more (1400 total)"
+      ]
+    },
+    {
+      "step": "the travel ends: the landing no longer stands, so its row is not scrolled",
+      "path": "README.md",
+      "open": [
+        "long"
+      ],
+      "selected": [
+        "README.md"
+      ],
+      "scrolled": [],
+      "note": null,
+      "long folder": [
+        "f0000–f0199",
+        "Show 600 more (1400 total)",
+        "f0800–f0999",
+        "Show 400 more (1400 total)"
+      ]
+    },
+    {
+      "step": "a landing, then its folder closed during the travel: not yet scrolled",
+      "path": "long/f0905.txt",
+      "shown": true,
+      "open": [
+        "long"
+      ],
+      "selected": [
+        "long/f0905.txt"
+      ],
+      "scrolled": [],
+      "note": null,
+      "long folder": [
+        "f0000–f0199",
+        "Show 600 more (1400 total)",
+        "f0800–f0999",
+        "Show 400 more (1400 total)"
+      ]
+    },
+    {
+      "step": "the travel ends: the folder is closed, so its row is not scrolled",
+      "path": "long/f0905.txt",
+      "open": [],
+      "selected": [
+        "long/f0905.txt"
+      ],
+      "scrolled": [],
+      "note": null,
+      "long folder": [
+        "f0000–f0199",
+        "Show 600 more (1400 total)",
+        "f0800–f0999",
+        "Show 400 more (1400 total)"
+      ]
+    },
+    {
+      "step": "a landing, then its row drawn again during the travel: not yet scrolled",
+      "path": "long/f0905.txt",
+      "shown": true,
+      "open": [
+        "long"
+      ],
+      "selected": [
+        "long/f0905.txt"
+      ],
+      "scrolled": [],
+      "note": null,
+      "long folder": [
+        "f0000–f0199",
+        "Show 600 more (1400 total)",
+        "f0800–f0999",
+        "Show 400 more (1400 total)"
+      ]
+    },
+    {
+      "step": "the travel ends: the row drawn in its place is scrolled into view",
+      "path": "long/f0905.txt",
+      "open": [
+        "long"
+      ],
+      "selected": [
+        "long/f0905.txt"
+      ],
+      "scrolled": [
+        "long/f0905.txt"
+      ],
+      "note": null,
+      "long folder": [
+        "f0000–f0199",
+        "Show 600 more (1400 total)",
+        "f0800–f0999",
+        "Show 400 more (1400 total)"
+      ]
+    },
+    {
+      "step": "an endless animation on the folder's body: the reveal scrolls at once",
+      "path": "long/f0905.txt",
+      "open": [
+        "long"
+      ],
+      "selected": [
+        "long/f0905.txt"
+      ],
+      "scrolled": [
+        "long/f0905.txt"
+      ],
+      "note": null,
+      "long folder": [
+        "f0000–f0199",
+        "Show 600 more (1400 total)",
+        "f0800–f0999",
+        "Show 400 more (1400 total)"
+      ]
     }
   ],
   "pulls list": {

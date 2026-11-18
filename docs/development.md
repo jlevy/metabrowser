@@ -228,7 +228,11 @@ Imports go at the top of a module.
 An import inside a function argues for itself, and each kind has a test that holds its
 boundary:
 
-- **The KPress runtime**, in `metabrowser/kpress_adapter.py`.
+- **The KPress runtime**, in `metabrowser/kpress_adapter.py`, and the projection module
+  the Markdown child runs, in `metabrowser/diff/markdown_projection_worker.py`, which
+  the server imports to manage the child.
+  `test_the_server_imports_no_renderer_for_the_child_it_manages` in
+  `tests/test_inert_render_deadline.py` holds both.
 - **A mode’s own module**, imported in that mode’s branch of the command line, so that
   `--version` and `--help` do not build the application.
   `test_version_command_does_not_load_git_source_or_server_modules` in
@@ -376,8 +380,10 @@ client contract. `/api/*` shapes, `window.metabrowser`, `METABROWSER_SETTINGS`, 
 plugin manifest, and the built-in plugin interfaces are therefore internal contracts.
 
 **The macOS app is internal too.** It runs the installed `metab` with the flags in
-`ServerSupervisor` and reads `GET /api/identity`, and Metabrowser keeps no compatibility
-with an older app: change a flag or the route and the app in the same commit, and raise
+`CLIServeLaunch` and `MetabRequirement.requiredFlags`, asks it what a GitHub link opens
+(`PresentDryRun`) and whether its cache holds a repository (`RepositoryCache`), and
+reads `GET /api/identity`. Metabrowser keeps no compatibility with an older app: change
+a flag or the route and the app in the same commit, and raise
 `MetabRequirement.minimumRelease` when the app needs the newer `metab`
 ([the version floor](project/architecture/arch-macos-app.md#the-version-floor)).
 

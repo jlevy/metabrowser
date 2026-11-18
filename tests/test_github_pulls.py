@@ -789,7 +789,7 @@ def test_the_markdown_route_names_a_part_before_it_reads_anything(
     part: str, answer: tuple[int, str]
 ) -> None:
     nothing = PullView(number=7, host=None, pin=None, pin_ref=None, refreshing=False, kept=None)
-    status, body = render_part(nothing, part)
+    status, body = asyncio.run(render_part(nothing, part))
     assert (status, body["code"]) == answer
 
 
@@ -825,25 +825,26 @@ def test_the_markdown_route_drops_the_kpress_icon_sprite(
     from metabrowser import kpress_adapter
 
     # KPress puts its icon sprite (several KB of SVG symbols) in every render. A long
-    # conversation must not carry one copy per text, so the route answers none.
-    raw: list[str] = []
-    render = kpress_adapter.render_kpress_view
-    # The route's stylesheet manifest is one render of an empty document per process,
-    # which whichever test reaches the route first pays. Pay it before the spy counts,
-    # so this test passes alone, or in a shard without the module's earlier tests.
-    kpress_adapter.document_stylesheets()
-
-    def spy(**kwargs: Any) -> dict[str, Any]:
-        rendered = render(**kwargs)
-        raw.append(str(rendered["html"]))
-        return rendered
-
-    monkeypatch.setattr(kpress_adapter, "render_kpress_view", spy)
-    _stand, client = pinned_pull
+    # conversation must not carry one copy per text, so the route answers none. The route
+    # renders in the Markdown child, so KPress's own render of the text is made here.
+    stand, client = pinned_pull
+    record = stand.record(7)
+    assert isinstance(record, PullRecord)
+    raw = kpress_adapter.render_kpress_view(
+        source_text=record.pull.body or "",
+        source_path="pull-7-body.md",
+        kind="markdown",
+        view="document",
+        ext=".md",
+        mtime_hash="sprite",
+        size=0,
+        include_toc="off",
+        plain_code=True,
+    )
+    assert "<symbol" in str(raw["html"])
     html = client.get(
         "/api/plugin/github/pull-markdown", params={"number": 7, "part": "body"}
     ).json()["html"]
-    assert len(raw) == 1 and "<symbol" in raw[0]
     for gone in ("<svg", "<symbol", "<use"):
         assert gone not in html, gone
 
@@ -2689,7 +2690,7 @@ def test_markdown_response_keeps_the_record_it_actually_rendered(
     pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A replacement during rendering cannot pair old text with a newer revision."""
-    from metabrowser import kpress_adapter
+    from metabrowser.diff.markdown_projection_worker import InertRender, ProjectionWorker
 
     stand, client = pinned_pull
     first = _read(client, 7).json()
@@ -2702,18 +2703,22 @@ def test_markdown_response_keeps_the_record_it_actually_rendered(
             )
         }
     )
-    render = kpress_adapter.render_kpress_view
+    render = ProjectionWorker.render_inert
     replaced = False
 
-    def replace_during_render(**kwargs: Any) -> dict[str, Any]:
+    async def replace_during_render(
+        worker: ProjectionWorker, request: InertRender
+    ) -> dict[str, Any]:
         nonlocal replaced
         if not replaced:
             replaced = True
-            assert kwargs["source_text"] == record.pull.body
-            write_pull_record(stand.published.home, stand.published.slug, newer)
-        return render(**kwargs)
+            assert request.source_text == record.pull.body
+            await asyncio.to_thread(
+                write_pull_record, stand.published.home, stand.published.slug, newer
+            )
+        return await render(worker, request)
 
-    monkeypatch.setattr(kpress_adapter, "render_kpress_view", replace_during_render)
+    monkeypatch.setattr(ProjectionWorker, "render_inert", replace_during_render)
     old = client.get(
         "/api/plugin/github/pull-markdown", params={"number": 7, "part": "body"}
     ).json()
@@ -2726,6 +2731,88 @@ def test_markdown_response_keeps_the_record_it_actually_rendered(
     ).json()
     assert fresh["record_revision"] == current["record_revision"]
     assert "A replacement published while rendering." in fresh["html"]
+
+
+# A text past a shortened deadline: the shape the review of mb-273l timed at 23.1 s for 239 KB
+# takes seconds at the text bound, far past 0.2 s.
+_SLOW_TEXT = "[" * 100 + "%" * (60 * 1024)
+REFUSED_TEXT_FIXTURE = (
+    Path(__file__).resolve().parent / "fixtures" / "github-pull-text-refusal.json"
+)
+
+
+def test_a_text_past_the_render_deadline_is_refused_and_refused_again_at_once(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pull request text renders in the Markdown child; one past its deadline is refused.
+
+    The answer is the one ``tests/dom/github-pull-text-refusal-session.js`` gives the page,
+    from ``tests/fixtures/github-pull-text-refusal.json``, which this pins to the route.
+    The refusal is kept by the text, so asking again renders nothing.
+    """
+    from metabrowser.diff import markdown_projection_worker as worker_module
+    from metabrowser.diff.markdown_projection_worker import ProjectionWorker
+
+    monkeypatch.setattr(worker_module, "_RENDER_DEADLINE_S", 0.2)
+    exchanges: list[int] = []
+    exchange = ProjectionWorker._exchange_render  # pyright: ignore[reportPrivateUsage]
+
+    async def counted(
+        self: ProjectionWorker, process: asyncio.subprocess.Process, frame: bytes
+    ) -> object:
+        exchanges.append(process.pid)
+        return await exchange(self, process, frame)
+
+    monkeypatch.setattr(ProjectionWorker, "_exchange_render", counted)
+    stand, client = pinned_pull
+    record = stand.record(7)
+    assert isinstance(record, PullRecord)
+    slow = record.model_copy(update={"pull": record.pull.model_copy(update={"body": _SLOW_TEXT})})
+    write_pull_record(stand.published.home, stand.published.slug, slow)
+    params = {"number": 7, "part": "body"}
+    refused = client.get("/api/plugin/github/pull-markdown", params=params)
+    again = client.get("/api/plugin/github/pull-markdown", params=params)
+    body: dict[str, Any] = refused.json()
+    answer = {"status": refused.status_code, "body": body}
+    assert answer == {
+        "status": 422,
+        "body": {
+            "code": "render_deadline",
+            "error": "Rendering took longer than 0.2 seconds, so it was stopped",
+            "deadline_ms": 200,
+            "remembered": False,
+            "number": 7,
+            "part": "body",
+        },
+    }
+    assert (again.status_code, again.json()) == (422, {**body, "remembered": True})
+    assert len(exchanges) == 1, "the kept refusal renders nothing"
+    assert json.loads(REFUSED_TEXT_FIXTURE.read_text(encoding="utf-8")) == answer
+
+
+def test_a_pull_read_starts_the_markdown_child_its_texts_will_need(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A served page's first read starts the child, so its first text does not wait for a
+    start; a one-shot read, as `--api` makes, starts none (review A of #527, A16)."""
+    from metabrowser.diff import markdown_projection_worker as worker_module
+    from metabrowser.diff.markdown_projection_worker import shared_worker
+
+    _stand, client = pinned_pull
+
+    def starting() -> bool:
+        worker = shared_worker()
+        return worker._process is not None or worker._starting is not None  # pyright: ignore[reportPrivateUsage]
+
+    # A worker no request has used yet: the one these reads reach, which the server's
+    # lifespan stops as it ends.
+    shared_worker.cache_clear()
+    _read(client, 7)
+    one_shot = starting()
+    monkeypatch.setattr(worker_module._SERVING, "pages", True)  # pyright: ignore[reportPrivateUsage]
+    _read(client, 7)
+    assert one_shot is False
+    assert starting() is True
 
 
 def test_an_uncacheable_read_keeps_its_parsed_record_revision(

@@ -49,6 +49,10 @@ def _read_view_composition_js() -> str:
     return proc_browser.STATIC_DIR.joinpath("view-composition.js").read_text()
 
 
+def _read_view_header_js() -> str:
+    return proc_browser.STATIC_DIR.joinpath("view-header.js").read_text()
+
+
 def _read_design_system_md() -> str:
     return proc_browser.STATIC_DIR.parents[2].joinpath("docs/design-system.md").read_text()
 
@@ -258,8 +262,9 @@ def test_omitted_tally_facts_are_not_pending() -> None:
     chip_start = js.index("function treeDirChipHtml(totalFiles, totalSize, options)")
     chip_block = js[chip_start : chip_start + 500]
     assert "totalFiles === undefined && totalSize === undefined" in chip_block
-    header_start = js.index("function renderFolderHeader(data)")
-    header_block = js[header_start : header_start + 1400]
+    header_js = _read_view_header_js()
+    header_start = header_js.index("function renderFolderHeader(data)")
+    header_block = header_js[header_start : header_start + 1400]
     assert "data.dir || {}" not in header_block
     assert 'typeof data.dir === "object"' in header_block
     parse_start = js.index("function parseTipNumber(value)")
@@ -754,9 +759,10 @@ def test_view_header_eyebrow_dims_the_root_and_titles_the_item() -> None:
     reopens the page it is on (docs/design-system.md, "View Headers").
     """
 
-    js = _read_app_js()
+    app = _read_app_js()
+    js = _read_view_header_js()
     fn_start = js.index("function headerEyebrowAddressHtml(path)")
-    fn_block = js[fn_start : js.index("\n}\n", fn_start)]
+    fn_block = js[fn_start : js.index("\n    }\n", fn_start)]
     assert 'class="file-header-root"' in fn_block
     assert 'class="folder-crumb folder-crumb-root" data-nav-dir=""' in fn_block
     # Every crumb is an owner-marked control; the click delegate ignores unmarked
@@ -765,10 +771,12 @@ def test_view_header_eyebrow_dims_the_root_and_titles_the_item() -> None:
     # The crumbs stop at the item's folder: the item is the title, so no crumb is current
     # and none opens a file.
     assert "i < segments.length - 1" in fn_block
-    assert "folder-crumb-current" not in js
-    assert "data-nav-file" not in js
+    assert "folder-crumb-current" not in js + app
+    assert "data-nav-file" not in js + app
 
-    # Both headers build their eyebrow from this one helper, through one builder.
+    # Both headers build their eyebrow from this one helper, through one builder, and
+    # app.js builds none of its own.
+    assert "headerEyebrowAddressHtml(" not in app
     assert js.count("headerEyebrowAddressHtml(") == 2
     assert js.count("viewHeaderEyebrowHtml(path)") == 3
 
@@ -779,7 +787,9 @@ def test_view_header_eyebrow_dims_the_root_and_titles_the_item() -> None:
     # which the shell shows only while the crumb is cut short: the trail already
     # shows the path (mb-8mpo, "Tooltips Add Information"). One name is the tip
     # and the text, so they cannot drift apart (mb-ex5r).
-    assert "var name = esc(window.MetabrowserNavigationRoute.displayPath(segments[i]));" in fn_block
+    assert (
+        "const name = esc(window.MetabrowserNavigationRoute.displayPath(segments[i]));" in fn_block
+    )
     assert 'data-tip-text="${name}">${name}</button>' in fn_block
     assert "displayPath(walked)" not in fn_block
     assert "title=" not in fn_block

@@ -30,6 +30,18 @@ def _function_source(js: str, name: str) -> str:
     return js[start:] if end == -1 else js[start:end]
 
 
+def _read_view_header_js() -> str:
+    return proc_browser.STATIC_DIR.joinpath("view-header.js").read_text()
+
+
+def _builder_source(js: str, name: str) -> str:
+    """One of view-header.js's builders, up to the next builder or the factory's return."""
+
+    start = js.index(f"    function {name}(")
+    ends = [js.find(mark, start + 1) for mark in ("\n    function ", "\n    return Object.freeze")]
+    return js[start : min(end for end in ends if end != -1)]
+
+
 def test_a_view_tab_is_selected_by_one_path_the_click_and_the_key_share() -> None:
     js = _read_app_js()
     select = _function_source(js, "selectPreviewTab")
@@ -189,7 +201,7 @@ def test_the_header_parent_is_read_from_the_committed_pane_and_anchors_its_badge
     parent = keymap[keymap.index("function headerParent()") :]
     parent = parent[: parent.index("\n    }\n")]
     assert '".folder-up[data-nav-dir]:not([disabled])"' in parent
-    header = _function_source(js, "viewHeaderHtml")
+    header = _builder_source(_read_view_header_js(), "viewHeaderHtml")
     assert (
         '`<div class="file-header view-header${parts.className ? ` ${parts.className}` : ""}" data-path="${esc(parts.path)}" data-kbd-badge-anchor>`'
         in header
@@ -229,36 +241,36 @@ def _tags(source: str, token: str) -> list[str]:
 
 
 def test_the_header_markup_carries_the_hooks_the_keymap_reads() -> None:
-    """``headerParent()`` finds Up by class and attribute in markup app.js writes, and the
-    session renders its own copy of that markup, so these pin the producers: if one stops
-    emitting a hook, ``U`` would find nothing and stop working while the session still
+    """``headerParent()`` finds Up by class and attribute in markup view-header.js writes,
+    and the session renders its own copy of that markup, so these pin the producers: if one
+    stops emitting a hook, ``U`` would find nothing and stop working while the session still
     passed."""
 
-    js = _read_app_js()
+    js = _read_view_header_js()
     keymap = proc_browser.STATIC_DIR.joinpath("shell-keymap.js").read_text()
 
     # Up on a file or a folder: `.folder-up[data-nav-dir]:not([disabled])` in the view
     # header's eyebrow, which both headers build.
     for name in ("renderFolderHeader", "renderFileHeader"):
-        render = _function_source(js, name)
+        render = _builder_source(js, name)
         assert re.search(r"eyebrow:\s+viewHeaderEyebrowHtml\(path\)", render), name
-    eyebrow = _function_source(js, "viewHeaderEyebrowHtml")
+    eyebrow = _builder_source(js, "viewHeaderEyebrowHtml")
     assert eyebrow.index("viewHeaderUpHtml(path)") < eyebrow.index(
         '`<span class="file-header-path folder-breadcrumb">${headerEyebrowAddressHtml(path)}</span>`'
     )
-    up = _function_source(js, "viewHeaderUpHtml")
+    up = _builder_source(js, "viewHeaderUpHtml")
     assert len(_tags(up, "folder-up")) == 1, up
     # Below the root, Up names its folder and carries the owner mark; at the root it is
     # disabled and names nothing.
-    enabled = up[up.index("? `data-tip-text") : up.index("\n    : '")]
-    disabled = up[up.index("\n    : '") : up.index(";\n  return")]
+    enabled = up[up.index("? `data-tip-text") : up.index("\n        : '")]
+    disabled = up[up.index("\n        : '") : up.index(";\n      return")]
     assert 'data-nav-dir="${esc(parent)}"' in enabled
     assert "${ownedControlAttr()}" in enabled
     assert " disabled" in disabled and "data-nav-dir" not in disabled
     assert '".folder-up[data-nav-dir]:not([disabled])"' in keymap
 
     # The view header anchors the badge beside its Up control.
-    header = _function_source(js, "viewHeaderHtml")
+    header = _builder_source(js, "viewHeaderHtml")
     assert header.index("data-kbd-badge-anchor") < header.index("parts.eyebrow")
 
 

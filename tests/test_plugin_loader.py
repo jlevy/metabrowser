@@ -22,7 +22,6 @@ from types import ModuleType
 from typing import Any, cast
 
 import pytest
-import yaml as pyyaml
 from pydantic import ValidationError
 
 from metabrowser.file_kinds import FileContext
@@ -983,16 +982,18 @@ def test_yaml_top_level_caches_on_context(tmp_path: Path, monkeypatch) -> None:
     ]
     classifier = build_classifier(rules)
 
+    from metabrowser.plugin_loader import classify as classify_module
+
     call_count = {"n": 0}
-    real_safe_load = pyyaml.safe_load
+    real_load = classify_module.load_bounded_yaml
 
-    def counting_safe_load(stream):
+    def counting_load(text: str, **options: Any) -> object:
         call_count["n"] += 1
-        return real_safe_load(stream)
+        return real_load(text, **options)
 
-    monkeypatch.setattr(pyyaml, "safe_load", counting_safe_load)
+    monkeypatch.setattr(classify_module, "load_bounded_yaml", counting_load)
 
-    # Single FileContext consulted by both rules; assert safe_load fires once.
+    # Single FileContext consulted by both rules; assert the parse runs once.
     ctx = _ctx(f)
     result = classifier(ctx)
     # First rule has lower priority equality and matches first; both rules

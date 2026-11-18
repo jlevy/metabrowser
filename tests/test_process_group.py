@@ -100,6 +100,7 @@ SLACK_S = 0.5
 # bounds.
 CHROME_TESTS = (
     "tests.test_changed_file_rows_chrome",
+    "tests.test_checkout_ref_selector_chrome",
     "tests.test_chrome_starts",
     "tests.test_control_chords_chrome",
     "tests.test_diff_markdown_fold_chrome",
@@ -115,6 +116,7 @@ CHROME_TESTS = (
     "tests.test_github_pulls_row_lines_chrome",
     "tests.test_github_pulls_stack_lines_chrome",
     "tests.test_github_pulls_stacks_chrome",
+    "tests.test_inert_render_refusal_chrome",
     "tests.test_nav_metadata_chrome",
     "tests.test_nav_reveal_chrome",
     "tests.test_overview_legend_hover_chrome",
@@ -122,6 +124,7 @@ CHROME_TESTS = (
     "tests.test_page_header_chrome",
     "tests.test_prose_faces_chrome",
     "tests.test_raw_profile_cache_chrome",
+    "tests.test_shortcut_strip_chrome",
     "tests.test_staged_fonts_chrome",
     "tests.test_title_prefix_chrome",
     "tests.test_transitions_instrument",

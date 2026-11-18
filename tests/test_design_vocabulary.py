@@ -612,6 +612,8 @@ def test_copyable_identifiers_share_the_copy_contract() -> None:
     """Paths and revisions use one explicit-value copy delegate."""
     design = (REPO_ROOT / "docs" / "design-system.md").read_text(encoding="utf-8")
     app = (STATIC / "app.js").read_text(encoding="utf-8")
+    # A file's view header writes its Copy path control (view-header.js).
+    header = (STATIC / "view-header.js").read_text(encoding="utf-8")
     sdk = (STATIC / "plugin-sdk.js").read_text(encoding="utf-8")
     git = (STATIC / "git-panel.js").read_text(encoding="utf-8")
     diff = (REPO_ROOT / "src/metabrowser/builtin_plugins/diff/diff-view.js").read_text(
@@ -622,11 +624,11 @@ def test_copyable_identifiers_share_the_copy_contract() -> None:
     assert "test_copyable_identifiers_share_the_copy_contract" in design
     assert 'target.closest("[data-mb-copy]")' in sdk
     assert 'mode === "text"' in sdk and 'mode === "wrap"' in sdk
-    assert 'data-mb-copy="text"' in app
+    assert 'data-mb-copy="text"' in header
     assert 'setAttribute("data-mb-copy", "text")' in diff
     assert 'data-mb-copy="text"' in git and "commit.id" in git
     assert "git-commit-revision-copy" in git
-    for source in (app, diff, git):
+    for source in (app, header, diff, git):
         assert "data-copy-path" not in source, "a local path-copy contract reappeared"
 
 
@@ -989,9 +991,11 @@ def test_each_context_assigns_its_chip_kind() -> None:
 
     "Which Kind Each Context Gets" in the design system: a history row, a commit's summary,
     and its tooltip draw the wire's kind with the server's trunk and HEAD; a merge's two
-    branches are remote and never trunk or HEAD; the ref selector draws a branch as remote
-    and a tag as a tag, and never trunk, since the mirror's default is not the history's
-    trunk. `tests/test_git_api.py` holds that the detail and the refs listing carry the
+    branches are remote and never trunk or HEAD; the ref selector draws a mirror's branch
+    as remote, a checkout's own as local and its remote-tracking branch as remote, and a
+    tag as a tag, and never trunk or HEAD: the mirror's default is not the history's
+    trunk, and it says "default" and "checked out" in words.
+    `tests/test_git_api.py` holds that the detail and the refs listing carry the
     refs and trunk the history row does.
     """
     doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
@@ -1031,18 +1035,26 @@ def test_each_context_assigns_its_chip_kind() -> None:
         options = calls[0].rsplit("{", 1)[1]
         assert 'kind: "remote"' in options, f"{name}'s branches are remote"
         assert not re.search(r"\b(?:trunk|head):", calls[0]), f"{name} marks trunk or HEAD"
-    # The ref selector: a branch is remote and a tag a tag, on the button and in the list,
-    # and neither is trunk or HEAD; the list says "default" in words.
+    # The ref selector: a tag is a tag, and a branch is remote but for a checkout's own,
+    # which is local, on the button and in the list. Neither is trunk or HEAD; the list
+    # says "default", and "checked out" for a checkout's HEAD, in words.
     selector = (STATIC / "source-ref-selector.js").read_text(encoding="utf-8")
     chips = re.findall(r"metabrowser\.refChip\((.*?)\}\)", selector, re.S)
     assert len(chips) == 2, "the selector draws a chip on its button and on each row"
     for chip in chips:
-        assert re.search(
-            r'kind: (?:model\.selectedRef\.kind|model\.kind === "tag" \? "tag" : "remote"),', chip
-        )
+        assert re.search(r"kind: (?:model\.selectedRef\.kind|row\.chip),", chip)
         assert not re.search(r"\b(?:trunk|head):", chip), "the selector marks trunk or HEAD"
-    assert 'kind: label.kind === "Tag" ? "tag" : "remote",' in selector
-    assert 'badge.textContent = "default";' in selector
+    squeezed = re.sub(r"\s+", " ", selector)
+    # A list's rows, by the list shown, and the button, by what the page shows.
+    assert (
+        'state.kind === "tag" ? "tag" : state.kind === "branch" && checkout ? "local" : "remote";'
+        in squeezed
+    )
+    assert (
+        'label.kind === "Tag" ? "tag" : label.kind === "Branch" && checkout ? "local" : "remote",'
+        in squeezed
+    )
+    assert 'badge.textContent = row.default ? "default" : "checked out";' in selector
     # Trunk has one definition, on the server, and every answer that names a ref uses it.
     log = (REPO_ROOT / "src/metabrowser/git/log.py").read_text(encoding="utf-8")
     assert log.count('is_trunk_ref(ref["name"], ref["kind"])') == 2, "decoration and refs"
@@ -3685,9 +3697,10 @@ def test_key_badges_are_positioned_paint_over_layer_three_markup() -> None:
     assert selected[":where([data-kbd-badge-anchor])"] == {"position": "relative"}
     # The anchor: the view header, a file's and a folder's alike, for Up's button. The
     # commit heading anchored Copy revision's badge, and copying has no key any more.
-    app = (STATIC / "app.js").read_text(encoding="utf-8")
-    assert app.count("data-kbd-badge-anchor") == 1
-    assert '`<div class="file-header view-header${' in app
+    header = (STATIC / "view-header.js").read_text(encoding="utf-8")
+    assert header.count("data-kbd-badge-anchor") == 1
+    assert '`<div class="file-header view-header${' in header
+    assert "data-kbd-badge-anchor" not in (STATIC / "app.js").read_text(encoding="utf-8")
     git_panel = (STATIC / "git-panel.js").read_text(encoding="utf-8")
     assert "data-kbd-badge-anchor" not in git_panel
 

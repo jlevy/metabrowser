@@ -61,7 +61,7 @@ Set `APP` to the development build and make some folders:
 ```shell
 APP="$PWD/apps/macos/build/dev/Metabrowser.app"
 LOGS="$HOME/Library/Logs/Metabrowser"
-mkdir -p /tmp/mb-check/{a/sub,b,c,d,e} "$HOME/Documents/mb-check"
+mkdir -p /tmp/mb-check/{a/sub,b,c,d,e,f,g} "$HOME/Documents/mb-check"
 echo '# notes' > /tmp/mb-check/a/notes.md; echo '# deep' > /tmp/mb-check/a/sub/deep.md
 log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the app log
 ```
@@ -70,9 +70,25 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
    `notes.md`. `open -a "$APP" /tmp/mb-check/a/sub/deep.md` shows `deep.md` in that same
    window, and `pgrep -fl 'metab /private/tmp/mb-check'` still lists one server.
    `open -a "$APP" /dev/null` shows an alert.
-   File > Open… chooses a file too.
+   File > Open Folder… chooses a file too.
 2. **Recents.** After opening `b`, File > Open Recent and the Dock icon’s menu list `b`
-   above `a`; Clear Menu empties both.
+   above `a`, and `metab --recent`, run with the `metab` the app uses, lists the same
+   two. After `metab /tmp/mb-check/c --no-open` in Terminal, stopped with Control-C, and
+   a switch back to the app, File > Open Recent lists `c` first.
+   Opening `a` again, while its window is open, moves it to the top.
+   **One list in the Dock:** drop `f` on the Dock icon, run
+   `open -a "$APP" /tmp/mb-check/g`, which opens it as Finder’s Open With does, and
+   choose `b` with File > Open Folder…. The Dock icon’s menu then lists each folder
+   exactly once, in the order File > Open Recent shows, with nothing but separators
+   between that list and the app’s own items, and choosing `g` in it brings `g`’s window
+   forward. A folder listed twice, or a second group of folders, is macOS’s own
+   recent-documents list beside the app’s, and fails the check: the app clears macOS’s
+   list only once, at launch, and would have to clear it after each open.
+   Close the windows of `f` and `g`, and look at the Dock menu again after the quit and
+   relaunch below. After `rm -r /tmp/mb-check/c`, choosing `c` shows the alert and
+   removes it. Clear Menu empties both menus and `metab --recent`. After a quit and a
+   relaunch that restores `a` and `b`, both menus and `metab --recent` list them in the
+   order they had before the quit.
    `defaults read io.github.jlevy.metabrowser.dev` shows no `recentFolders` key.
 3. **Tabs.** With Settings > Open folders in set to Tabs, opening `c` and `d` adds them
    as tabs of the front window; set to Windows, opening `e` gives it a window, and
@@ -121,11 +137,11 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
     [Open Modes](../architecture/arch-open-modes.md#resolving-a-target-to-a-root) and
     not built. Make `~/Documents/mb-check` a repository holding `sub/notes.md`
     (`git init`, `git add`, and one commit), reset the Documents grant as in step 6, and
-    choose `sub` with File > Open…. Note which folder the window names, how many prompts
-    appear and for which folder, and that the tree lists the repository’s root once
-    access is granted. Repeat with the repository in `~/Desktop` and in `~/Downloads`.
-    How macOS treats a served root above the folder chosen in the open panel is
-    untested.
+    choose `sub` with File > Open Folder…. Note which folder the window names, how many
+    prompts appear and for which folder, and that the tree lists the repository’s root
+    once access is granted.
+    Repeat with the repository in `~/Desktop` and in `~/Downloads`. How macOS treats a
+    served root above the folder chosen in the open panel is untested.
 11. **The GitHub toggle.** Open a checkout of a repository on github.com whose branch is
     pushed, such as this repository, and open `README.md`. The view header ends in two
     marks, the gray Metabrowser mark pressed and the GitHub mark.
@@ -134,6 +150,154 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
     On a branch that `origin` did not have at your last fetch, the GitHub mark’s tooltip
     says so, and the link opens the commit.
     A folder with no GitHub remote shows no toggle.
+
+## GitHub Links
+
+With the development build running a `metab` from this checkout, and `gh` signed in:
+
+```shell
+APP="$PWD/apps/macos/build/dev/Metabrowser.app"
+APP_ID=io.github.jlevy.metabrowser.dev
+REPO=https://github.com/jlevy/metabrowser
+# The repository's log: its name, then 8 hex digits of its URL's SHA-256 (ServerLog).
+LOG="$HOME/Library/Logs/Metabrowser/metabrowser-$(printf %s "$REPO" | shasum -a 256 | cut -c1-8).log"
+```
+
+1. **A pull request.** `open -b "$APP_ID" "$REPO/pull/517"` opens a window at the pull
+   request’s page, titled for the repository until the server answers and then as
+   `metab` names the pull request.
+   If the cache did not hold the repository, a confirmation named
+   `github.com/jlevy/metabrowser` came first.
+   `pgrep -fl -- "metab $REPO/pull/517"` lists one server, on a port from
+   `CLIServeLaunch.repositoryBasePort` up, and `"$LOG"` holds its clone or cache line.
+2. **Another revision of an open repository.** `open -b "$APP_ID" "$REPO/tree/main"`
+   brings that window forward, which says it is starting and then shows `main`’s tree,
+   not the pull request’s head: `pgrep` lists one server, now started on the tree link,
+   and the ref selector names `main`.
+3. **A ref with a `/`.**
+   `open -b "$APP_ID" "$REPO/blob/claude/app-open-urls/docs/macos-app.md"` (any branch
+   whose name holds a `/` that GitHub still has) shows that file on that branch, not a
+   missing page.
+4. **Asked before a clone.** With a small public repository you have never opened, which
+   the cache does not hold, `open -b "$APP_ID" URL` shows one confirmation naming it,
+   whose default button, which Return presses, is Cancel; Cancel opens nothing and
+   starts no `metab` serving it, and sending it again asks again.
+   A repository the cache holds, as in check 2, opens with no question.
+5. **Refusals.** `open -b "$APP_ID" "$REPO/issues/1"` shows `metab`’s message about
+   issues pages; `open -b "$APP_ID" https://example.com/` and
+   `open -b "$APP_ID" "https://user:secret@github.com/jlevy/metabrowser"` show the app’s
+   own, which leaves out `user:secret@`. None opens a window, and
+   `log show --last 2m --predicate "subsystem == '$APP_ID'"` prints none of those links
+   in full.
+6. **A burst.**
+   `open -b "$APP_ID" $(for n in $(seq 1 30); do echo "$REPO/issues/$n"; done)` sends
+   thirty links at once, and one alert says that 30 links could not be opened, and that
+   those past one being resolved and `LinkQueue.limit` waiting were never read, rather
+   than thirty alerts.
+7. **A first clone.** A link to a public repository that is not cached and takes longer
+   than `SupervisorPolicy.startupTimeout` to clone keeps its window starting while the
+   log grows, then opens.
+   While it clones, `open -a "$APP" "$(mktemp -d)"` opens a folder at once, and a link
+   to a second repository opens a window that says it waits for another repository’s
+   start.
+8. **Retry after a quiet start.** Start a clone of the same uncached repository with
+   `metab URL --no-serve` in Terminal, then send its link: after
+   `SupervisorPolicy.startupTimeout` the window says the server wrote nothing; once the
+   Terminal clone ends, Retry opens it from the cache.
+9. **Launched by a link.** Quit the app, then `open -b "$APP_ID" "$REPO"`: the app
+   starts and opens the repository’s window, and no Open panel appears over it.
+10. **No runtime yet.** In Settings, choose a file that is not a `metab`, then send a
+    link: Settings says no `metab` is usable and no window opens; choose this checkout’s
+    `.venv/bin/metab`, and the link opens.
+11. **A `metab` without `--present`.** Choose a `metab` built before `--present`, such
+    as one from a checkout of `main` before #540: Settings calls it too old, “built
+    before --recent”, the newest flag the app needs, before any link is sent.
+12. **Not restored.** Merge a folder window and the repository’s window into one tab
+    group with the repository’s tab shown, quit, and launch: the group comes back in its
+    place among the windows, showing the folder’s tab, without the repository’s.
+13. **The same link twice during a first clone.** Send the link of a repository the
+    cache does not hold, choose Clone and Open, and send the same link again while it
+    clones: no second question, and once the clone ends the window shows the link, and
+    the repository’s log has one `started pid` line since the first.
+14. **A link into an open repository during another’s clone.** With `$REPO`’s window
+    ready, start a first clone of another repository as in check 7, then send
+    `$REPO/pull/517`: `$REPO`’s other tabs keep working, the window the link brought
+    forward says it waits for another repository’s start, and once the clone ends it
+    starts again and shows the pull request.
+15. **A branch the copy lacks.** Push a new branch to a repository you own whose window
+    is open, then send its `tree/BRANCH` link: the window shows the default branch, then
+    the branch once `metab` has fetched it, with no alert.
+    Then send `$REPO/tree/no-such-branch`: the window stays on the default branch, and
+    an alert names the repository and the branch the windows show.
+16. **Cancel with more links waiting.** Send, at once, the links of a pull request and
+    two of its files in a repository the cache does not hold, and a link into `$REPO`:
+    one question appears, `$REPO`’s window comes forward while it waits, and after
+    Cancel one alert says that 2 more links into the repository were not opened.
+    With `$REPO/issues/1` added to the burst, the one alert is titled for 3 links.
+17. **Restart Server during another’s clone.** With `$REPO`’s window opened from
+    `$REPO/pull/517` and moved on to one of its files, start a first clone of another
+    repository as in check 7, then choose File > Restart Server in that window: it says
+    it waits for another repository’s start, and `$REPO`’s other tabs keep working.
+    Send `$REPO/pull/517` again: the window still says it waits, and once the clone ends
+    it shows the pull request, not the file.
+    Then, during a third repository’s first clone, choose Restart Server again and send
+    `$REPO/tree/main`: the window the link brought forward says it waits.
+18. **Recents.** After check 1, File > Open Recent and the Dock icon’s menu list the
+    repository first, and `metab --recent`, run with the `metab` the app uses, lists it
+    as a `mirror` at `$REPO`. Open a folder, then send `$REPO/tree/main` while the
+    repository’s window is open: the repository is listed first again.
+    Choosing it in Open Recent opens it as a link to `$REPO` does: its window comes
+    forward and starts again on the default branch.
+
+## File > Open URL…
+
+With `APP_ID`, `REPO`, and `LOG` set as in [GitHub Links](#github-links), and the same
+build, `metab`, and `gh` sign-in.
+What the panel decides is unit-tested in `OpenURLPanelTests`, and against the real
+`metab` in `LiveMetabTests`; these check what AppKit does with it.
+
+1. **The menu.** The File menu reads Open Folder… (Command-O), Open URL… (Command-L),
+   then Open Recent. Command-L with a folder’s page focused, with a repository’s page
+   focused, and with no window open shows a panel titled Open URL with its field
+   focused; Command-L again brings that panel forward and opens no second one.
+2. **A pull request.** Paste `$REPO/pull/517` and press Return: the panel closes, and
+   the pull request opens as GitHub Links check 1 opens it, in the repository’s mirror:
+   `pgrep -fl -- "metab $REPO/pull/517"` lists one server, and the title’s tooltip says
+   it is a cached mirror.
+   With a checkout of this repository also open as a folder, Open URL… `$REPO/tree/main`
+   brings the mirror’s window forward on `main`, never the checkout’s.
+3. **Each kind.** `$REPO`, `$REPO/tree/main/docs`, `$REPO/blob/main/README.md`, and
+   `$REPO/commit/dcf2bcfa8` each bring the repository’s window forward at that page, as
+   GitHub Links check 2 does.
+4. **The app’s refusals.** `jlevy/metabrowser`, `github.com/jlevy/metabrowser`,
+   `http://github.com/jlevy/metabrowser`,
+   `https://user:secret@github.com/jlevy/metabrowser`,
+   `https://github.com:8443/jlevy/metabrowser`, and
+   `https://gitlab.com/jlevy/metabrowser` each show a reason under the field, with no
+   alert and no window; the panel stays open with the text, editing it clears the
+   reason, and `log show --last 2m --predicate "subsystem == '$APP_ID'"` has no
+   `Open URL…` line for any of them, since no `metab` ran.
+5. **`metab`’s refusals.** `$REPO/issues/1` shows `metab`’s message about issues pages,
+   and `$REPO/pull/0` its message about pull request numbers, under the field, with no
+   alert and no window, and never JSON or a traceback; then editing the text to
+   `$REPO/pull/517` and pressing Return opens it.
+6. **Cancel.** Escape, the Cancel button, the close button, and File > Close Window
+   (Command-W) each close the panel and open nothing, and close no window behind it.
+   The panel comes back empty.
+7. **A repository the cache does not hold.** A small public repository you have never
+   opened: the panel closes, and the confirmation of GitHub Links check 4 appears.
+8. **No runtime yet.** As in GitHub Links check 10, choose a file that is not a `metab`
+   in Settings, then Open URL… `$REPO`: the panel closes and no window opens; choose
+   this checkout’s `.venv/bin/metab`, and the repository opens.
+9. **Editing.** Command-V and Edit > Paste paste into the field, and Command-A selects
+   its text.
+10. **A space in the path.** `$REPO/blob/main/docs/a b.md` closes the panel and brings
+    the repository’s window forward at the `handoff` that
+    `metab "$REPO/blob/main/docs/a b.md" --present --dry-run --format json` prints,
+    `docs/a%20b.md`, which the mirror reports missing.
+    `$REPO/blob/main/README`, then U+3164 HANGUL FILLER pasted from a character viewer,
+    then `.md`, shows a reason that names U+3164 and `%E3%85%A4` under the field, and no
+    window opens.
 
 ## Print and Drops
 

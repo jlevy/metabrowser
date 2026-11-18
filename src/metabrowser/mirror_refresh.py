@@ -208,15 +208,18 @@ class SelectionPendingError(SelectionError):
         self.refresh: StartedOrJoined = refresh
 
 
-type RefKind = Literal["branch", "tag"]
+# ``remote`` is a checkout's remote-tracking branches; a mirror, which holds its origin's
+# branches as its own, has none.
+type RefKind = Literal["branch", "tag", "remote"]
 
 
 @dataclass(frozen=True, slots=True)
 class MirrorRef:
-    """One branch or tag the mirror holds, and the commit it names.
+    """One branch or tag a mirror or a checkout holds, and the commit it names.
 
-    ``name`` is the name the origin knows it by, ``ref`` the store ref a pin request
-    names it with, and ``default`` marks the origin's default branch.
+    ``name`` is the name a reader knows it by, ``ref`` the full ref a pin request names
+    it with, and ``default`` marks the branch that lists first: the origin's default
+    branch in a mirror, the checked-out branch in a checkout.
     """
 
     name: str

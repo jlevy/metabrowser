@@ -376,8 +376,9 @@ a pull request, and a commit.
 | 3. Metadata | Its badges, size, and age | Its size, file count, and age | Its author line, branches, and ages ([Page Headers](#page-headers)) | Its author, revision, and age ([Page Headers](#page-headers)) |
 | 4. Tab bar | Its views: Document, Source, and so on | Overview and Treemap | Conversation, Changes, and Checks | None |
 
-Files and folders draw these rows today (`viewHeaderHtml` in `static/app.js`). A pull
-request’s page and a commit’s draw their title and lines as
+Files and folders draw these rows today (`viewHeaderHtml` in `static/view-header.js`, an
+on-demand bundle the shell fetches beside the view compositor).
+A pull request’s page and a commit’s draw their title and lines as
 [Page Headers](#page-headers) says, and move onto the same rows, icon, and ground next
 (planned). What another kind shares is the class structure, not that builder, which is
 the shell’s own: a `.view-header` block holding `.view-header-eyebrow`,
@@ -937,10 +938,10 @@ state looks like.
 
 | Offers | Primitive | ARIA and keyboard | Used by |
 | --- | --- | --- | --- |
-| One of a few labelled values | `.chip-group[data-select="one"][data-layout="joined"]` | `radiogroup` of `radio` with `aria-checked`; one tab stop, arrow keys select | Split / Unified, Files / Bytes, Branches / Tags |
+| One of a few labelled values | `.chip-group[data-select="one"][data-layout="joined"]` | `radiogroup` of `radio` with `aria-checked`; one tab stop, arrow keys select | Split / Unified, Files / Bytes, Branches / Tags, and for a checkout Branches / Tags / Remotes |
 | Any of a set of labelled values | `.chip-group[data-select="many"]` | `group` of buttons with `aria-pressed`; each a tab stop | An agent log’s event types |
 | One of a few values in a menu, where the glyph is the label | `.menu-chooser` of `.menu-seg` | `group` of `menuitemradio` with `aria-checked`; each a tab stop | Theme and reading font |
-| One of a long list, named by its trigger | `.chip-menu-trigger` over a `.menu` | `aria-haspopup`, `aria-expanded`; the panel’s pattern within | Filter dropdowns, the source ref selector |
+| One of a long list, named by its trigger | `.chip-menu-trigger` over a `.menu` | `aria-haspopup`, `aria-expanded`; the panel’s pattern within | Filter dropdowns, the source ref selector of a mirror and of a checkout |
 | A boolean whose polarity has to be legible | `.filter-check` | A real checkbox | Show ignored |
 | A boolean with no room for a word | `.icon-btn[aria-pressed]` | A button with an accessible action name | The filter drawer |
 
@@ -1143,14 +1144,19 @@ an animated deep reveal moves the rows below it with no input
 ([measured](../explorations/performance-loop/design-rule-measurements.md#disclosure-motion)).
 The reader’s next toggle of that folder travels again.
 Such a reveal is the reader’s own doing, so it then scrolls the new selection into view
-in the same frame. A landing within the inline’s bounds needs no reveal: the server
-inlines the folders of the address’s path, open, and the tree’s first paint selects and
-shows its row, so nothing is fetched, opened, or scrolled after it.
+in the same frame, unless a folder above the row is still travelling, one the reader has
+just opened or a landing’s: then the scroll waits for that travel to end.
+A landing within the inline’s bounds needs no reveal: the server inlines the folders of
+the address’s path, open, and the tree’s first paint selects and shows its row, so
+nothing is fetched, opened, or scrolled after it.
 The bounds are a folder’s whole listing within `_INLINE_INITIAL_TREE_ROWS`, the path’s
 folders within `_INLINE_LANDING_ROWS` rows and `_INLINE_LANDING_DEPTH` folders, all in
 `server.py`, and the inventory’s discovery complete.
 A landing outside them inlines the root alone, and the page reveals its path after the
 first paint with its folders travelling, which still moves the tree with no input.
+Its row is scrolled into view once they are open (`folderTravelAbove` in `app.js`):
+scrolled while they travelled, it was scrolled within the opening folder’s clipped body,
+not the pane, and once the folder was open it lay below the pane.
 
 ### Disclosure Toggles Never Select Text
 
@@ -1485,7 +1491,7 @@ The size each context’s chip gets is in
 
 | Kind or mark | Token | Form | Cue besides hue |
 | --- | --- | --- | --- |
-| Remote branch | `--git-ref-remote`, blue | Plain | In a history the name carries its remote, `origin/topic`; a merge and the ref selector show only remote branches |
+| Remote branch | `--git-ref-remote`, blue | Plain | In a history, and in a checkout’s ref selector, the name carries its remote, `origin/topic`; a merge and a mirror’s ref selector show only remote branches |
 | Local branch | `--git-ref-local`, blue-green | Plain | A name with no remote |
 | Tag | `--git-ref-tag`, amber | Notched left edge, `<v1.0)` | The notch |
 | Trunk | Its kind’s color becomes the ground | Solid | The solid form |
@@ -1509,7 +1515,7 @@ so a definition cannot differ between two places.
 | A commit’s summary | Its detail’s refs, the same parser as the row | As its row | As its row | As its row | In the chip |
 | A commit’s tooltip | The same | As its row | As its row | As its row | None: a tooltip owns no action |
 | A pull request’s header | `mb.mergeRefs`, head → base | Remote: GitHub’s branches, a fork’s as `owner:branch` | Never | Never | In the chip |
-| The ref selector’s button and list | `mb.refChip` in `static/source-ref-selector.js` | Remote for a branch, tag for a tag | Never; the list says “default” beside the default branch | Never | Button beside it; list none |
+| The ref selector’s button and list | `mb.refChip` in `static/source-ref-selector.js` | Tag for a tag. A mirror’s branch is remote. A checkout’s own branch is local and its remote-tracking branch remote | Never; the list says “default” beside a mirror’s default branch | Never; the list says “checked out” beside the branch a checkout’s `HEAD` is on | Button beside it; list none |
 
 The reasons:
 
@@ -1524,6 +1530,10 @@ The reasons:
   a history of many refs.
 - **The ref selector never draws trunk.** Its default branch is the mirror’s default,
   which need not be the branch the history draws solid, so it says “default” in words.
+- **The ref selector never draws `HEAD`.** A checkout’s list says “checked out” beside
+  the branch `HEAD` is on.
+  The mark would say the page is there, and it is not: that branch, chosen, shows its
+  last commit, and the working tree is the row above the list.
 - **`HEAD` belongs to a checkout.** Only refs from Git carry `is_head`, and a pin, a
   mirror’s page, is detached.
 
@@ -1686,14 +1696,29 @@ row’s line from the row’s start, and as wide as a summary of one status, so 
 takes its place and nothing moves
 ([Loading States Are Shapes, Not Sentences](#loading-states-are-shapes-not-sentences)).
 The wait starts when a comparison is on its way, before the page has one: on a pull
-request’s page, a core preview whose read prepares the comparison with the record, or a
-record whose comparison the page asked the server to prepare.
-One placeholder carries the wait from the core through its record to the read, with one
-quiet period and one pulse.
+request’s page, from the first paint of a page whose read will bring one, before its
+first answer and while its own fetch is running, still to be sent, or waiting for the
+reader; a core preview whose read prepares the comparison with the record; or a record
+whose comparison the page asked the server to prepare.
+One placeholder carries the wait from the first paint through the core and its record to
+the read, with one quiet period and one pulse, so the row is never empty while the
+comparison is on its way.
+Where the pull request’s changed-files list is cached, the list a Pulls row’s change
+line sums, the place holds that list’s line instead of the placeholder: “36 files
+changed · 2 A, 3 D, 31 M · +2,076 −224”, the summary’s header’s words with its chevron’s
+slot empty, in the same place, so the summary that replaces it moves no word.
+It is drawn only once the page knows the head, and only for a list of that head and its
+base, the record’s comparison’s base commit or the pull request’s base branch, so a
+pushed or retargeted pull request never shows an earlier list’s counts; the placeholder
+waits instead. It stays when the wait ends with no summary.
+A page opened from a Pulls row draws it from the row’s line with no request, unless the
+Pulls tab marked that line out of date (`builtin_plugins/github/pull-summary-brief.js`).
 The wait is the read in flight: on Changes the mounted diff’s, so a newer comparison the
 record names waits until the reader takes it.
-A core whose read prepares no comparison, or that no read is running for, has nothing on
-its way, and only Changes asks for its comparison.
+A pull request that is not GitHub’s, a server with no store to compare in, a core whose
+read prepares no comparison, and a read that failed with nothing running have nothing on
+their way, and only Changes asks for their comparison; before the server’s first answer
+the page cannot tell, so on such a server the placeholder ends with that answer.
 A read that draws no summary, because it failed or its comparison is not a valid
 document, leaves the place empty until a read of the same comparison starts again: at
 the page’s next paint, such as a switch of tab or a poll that repaints it, or a Retry,
@@ -2050,9 +2075,10 @@ in `builtin_plugins/github/styles.css`, and `tests/test_github_pull_header_chrom
 The header’s last row is the pull request’s [Diff summary](#diff-summary), on every tab,
 so its counts are at the page’s top and not inside Changes.
 The row is held at `--ui-row-height` from first paint, holding the
-[pending placeholder](#diff-summary) while the comparison is read, and the summary’s
-header is one line, its breakdown cut short at its end, so the summary that arrives
-moves nothing; opened, its tree pushes the tabs down, as the reader asked.
+[pending placeholder](#diff-summary) from first paint while the comparison is on its way
+and while it is read, and the summary’s header is one line, its breakdown cut short at
+its end, so the summary that arrives moves nothing; opened, its tree pushes the tabs
+down, as the reader asked.
 How the page reads the comparison the row is drawn from, what the row holds while it
 waits, and what a read that fails leaves there are the [Diff Summary](#diff-summary)’s
 rules.
@@ -2727,6 +2753,9 @@ width.
   top too: stacks that arrive after the list’s first window regroup the list around it,
   as far as the list’s top allows, rather than around the first row in view, which moved
   the revealed row out of view.
+  It stays so across a trip to another tab, as the Pulls tab’s button brings the list
+  back where the reader left it: stacks that arrive while the reader is away, or just
+  after the return, regroup the list around it too.
 - **Read ahead.** An open reads ahead the pull requests a key reaches next as drawn, a
   stack’s row passed over, and the first pull requests drawn.
 - **Change line.** A stack’s row shows the stack’s combined change as its
@@ -3079,6 +3108,26 @@ not fixed. It gives no number a fixed meaning; `0`, Home, is listed under Anywhe
 Help and Quick Search.
 The registry marks the numbers’ command `situational`, so every surface renders them as
 that one run, and no surface special cases them.
+
+The shortcut strip at the navigation column’s foot lists Shift first, as Reveal keys,
+ahead of `?` for Help, because Shift is the one key that shows all the others.
+It is the strip’s one item that is not a command, since no binding may use Shift
+([Canonical Key Names](#canonical-key-names)): Help draws it once, as a reminder with
+the single-key entry point’s keycap, and hides it from assistive technology, as it hides
+the badges and the revealed strip.
+The `nav` surface’s commands follow in their order.
+The strip is always one row, the one the server reserves for it before the shell’s tools
+load: where its items do not all fit, Help hides them from the end (`keepStripOnOneRow`
+in `static/keyboard-help.js`), so Quick Search goes first, then Help, and Shift always
+shows.
+A dropped item leaves the tab order, and its key stays in Help and on the revealed
+strip, which Shift calls up.
+Where Shift shows alone, the strip’s named group is hidden from assistive technology as
+Shift is, rather than announced empty.
+`tests/dom/shortcut-strip-session.js` runs that code browserlessly on injected widths.
+The widths at which each item shows in Chrome are beside `.nav-shortcut-hints[hidden]`
+in `static/styles.css`, and `tests/test_shortcut_strip_chrome.py` holds every pane width
+from the narrowest to the default to the rule.
 
 Holding Shift reveals the keys in place: each live letter’s control and each numbered
 control carries its keycap, and the strip lists the common letters.
@@ -4773,6 +4822,55 @@ A menu renderer supplies menu roles and roving focus; a dialog renderer supplies
 label relationship and modal state; a tooltip renderer never accepts interactive
 children. Visually similar surfaces do not borrow the wrong role merely to share CSS.
 
+### The Ref Selector’s Working Tree Row
+
+The ref selector is one control for a served mirror and a served checkout: a
+`.chip-menu-trigger` under the navigation header that names what is shown, over a
+`.menu` panel with a list chooser, a filter box, and one row for each ref
+(`static/source-ref-selector.js`). A checkout adds three things, and each uses a
+primitive the control already had:
+
+- **The working tree is a row, above the lists, and not in them.** It is a `.menu-item`
+  like a ref’s (`.source-ref-selector-working-tree`), ruled off from the list chooser
+  below it, because it is the one choice that is not a ref: the filter and the list
+  shown do not apply to it, so it stays where it is whichever list is open.
+  Its name is “Working tree”.
+  Where a ref’s row has its commit, this one says what it is in the same muted ink,
+  “Live local files, on topic”, so the two kinds of row read as one column of names and
+  one of what each name is.
+
+- **The served choice is marked one way.** A ref’s row and the working-tree row both
+  carry `aria-current` and the medium weight when they are what the server shows, and
+  exactly one of them does.
+  The checked-out branch is not that row unless it was chosen: it says “checked out” in
+  the `.source-ref-selector-badge` a mirror’s default branch says “default” in.
+
+- **The button says “Working tree” in words,** with no chip, since a chip is a ref.
+  On a revision it is the ref’s chip, as on a mirror, and the navigation heading carries
+  the ref and the short commit beside the folder’s name, so a revision’s page is told
+  from the working tree’s in two places before the list is opened.
+
+- **A page the server has moved on from says so beside the button,** in the text ink
+  with one `.btn`, “Reload” (`.source-ref-selector-stale`): the offer a mirror’s
+  freshness row makes at the foot of the pane.
+  It is the one state in which the selector’s row grows, to a second line in the default
+  pane, and it appears only after another tab has switched the server.
+
+- **The row keeps its box from first paint.** The module arrives after the tree’s first
+  rows, so a checkout’s server draws the row with the button it will have, and the
+  module adopts that button and never swaps it, so focus put on it early stays
+  ([Regions Keep Their Boxes](#regions-keep-their-boxes)). Hidden until the module
+  mounted, the row pushed the filter bar and every tree row down by its own height.
+  `tests/test_checkout_ref_selector_chrome.py` records the row’s height and the first
+  tree row’s place in every frame of the working tree’s page and of a revision’s, and
+  each has one value; `tests/test_files_totals_stable_chrome.py` holds the same for
+  every box of the Files navigation on a folder that holds a `.git`.
+
+What each state shows is pinned by
+`tests/golden/cli-ui-source-ref-selector.tryscript.md`, and
+`tests/test_checkout_ref_selector_chrome.py` measures in headless Chrome that the panel
+stays inside the navigation pane with no row wider than it.
+
 ### Groups in a Menu
 
 **A menu that groups its rows heads each group one way: a `.menu-group` named by its
@@ -5214,10 +5312,14 @@ Heights are in line units, or struts of the controls a row holds, never pixels m
 in one engine, because WebKit’s font metrics differ from Chrome’s. Where a region’s size
 is its data’s and arrives a moment after the rest, as the File Overview’s first rollup
 does, the view holds its first paint for that data, briefly, with the previous view
-still shown.
-The server draws the tab an address lands on in front, a commit’s address on
-Commits, so a landing never shows one tab’s chrome and then swaps it; a toolbar that
-cannot load says so in its slot rather than pulsing.
+still shown. The Files tree holds its first paint until the Files toolbar has its
+controls, so a toolbar that wraps in a narrow pane is at its height before the tree
+shows under it. The toolbar is drawn just before the tree’s first rows, so no row waits
+for it, and the hold ends at a bound, so a toolbar that never loads does not hide the
+tree; the bound and its measurement are beside the rule in `static/styles.css`. The
+server draws the tab an address lands on in front, a commit’s address on Commits, so a
+landing never shows one tab’s chrome and then swaps it; a toolbar that cannot load says
+so in its slot rather than pulsing.
 `tests/test_reserved_chrome.py` pins the rules.
 
 ### Loading Chrome

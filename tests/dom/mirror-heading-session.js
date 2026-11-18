@@ -17,10 +17,11 @@
 //
 // Per subject, a fresh context is a page: mirror-heading.js runs first when the shell
 // carried it, as its inline script does, then the production SDK and its modules load
-// whole. The shell's own heading code is lifted verbatim from app.js, which cannot
-// load without a document: the folder header and the file header's address, and the
-// block that wires the navigation heading's tooltip. Nothing here composes a heading:
-// every string below is what that code returned or showed.
+// whole, the view header's builders (view-header.js) among them. The shell's own helpers
+// are lifted verbatim from app.js, which cannot load without a document, with the block
+// that wires the navigation heading's tooltip, and the builders are made over them as
+// loadViewComposition makes them. Nothing here composes a heading: every string below is
+// what that code returned or showed.
 //
 // The steps, each observed and printed:
 // - the page loads: DOMContentLoaded mounts the commit's copy control on a mirror;
@@ -50,9 +51,10 @@ const PRODUCTION_MODULES = [
   "view-state.js",
   "navigation.js",
   "plugin-sdk.js",
+  "view-header.js",
 ];
 
-// The heading code, lifted verbatim from app.js.
+// The heading code's helpers, lifted verbatim from app.js.
 const LIFTED = [
   "esc",
   "queryHtml",
@@ -61,42 +63,31 @@ const LIFTED = [
   "parseTipNumber",
   "formatCountParts",
   "formatCount",
+  "countClass",
+  "countHtml",
   "formatTimestamp",
   "formatExactSize",
   "servedRoot",
   "mirrorHeading",
   "ownedControlAttr",
   "pathBaseName",
-  "headerEyebrowAddressHtml",
-  "servedRootParent",
-  "viewHeaderName",
-  "viewHeaderUpHtml",
-  "viewHeaderItemsHtml",
-  "viewHeaderHtml",
-  "viewHeaderEyebrowHtml",
-  "renderFolderHeader",
   "getLogicalName",
   "formatSize",
   "sizeHtml",
   "formatAge",
-  "viewHeaderAgeHtml",
-  "renderBadges",
-  "renderFileHeader",
   "_tipSize",
   "_tipCount",
   "treeTooltipNameHtml",
   "folderTooltipHtml",
 ];
 // Constants the lifted code reads, lifted verbatim too.
-const LIFTED_CONSTANTS = ["COMPRESSION_SUFFIX_BY_FORMAT", "RUN_STATUS_SIZERS"];
+const LIFTED_CONSTANTS = ["COMPRESSION_SUFFIX_BY_FORMAT"];
 // The statement that wires the navigation heading's tooltip, from its comment to its end.
 const TOOLTIP_BLOCK = /\n\/\/ Header hover tooltip[\s\S]*?\n\}\);\n/;
 
 // What the lifted code calls that does not branch on the subject. The tooltip is the
 // application's one tooltip, which mirror-heading.js reaches as plugins do.
 const COLLABORATORS = `
-var ICONS = { folder: "" };
-var ICON_COPY = "";
 var activeFiles = new Map();
 // The tree's icon resolver, which reads the file-type taxonomy: the name it was asked
 // for is what the header owes it, the file's logical name.
@@ -110,6 +101,23 @@ function hideTooltip() {
   __shown.push(null);
 }
 window.MetabrowserTooltip = { show: showTooltip, hide: hideTooltip };
+`;
+
+// The view header's builders over the lifted helpers, as loadViewComposition makes them.
+const VIEW_HEADER = `
+var viewHeader = MetabrowserViewHeader.create({
+  esc,
+  servedRoot,
+  pathBaseName,
+  ownedControlAttr,
+  mirrorHeading,
+  getFileIcon,
+  getLogicalName,
+  sizeHtml,
+  countHtml,
+  formatAge,
+  activeFiles,
+});
 `;
 
 // One nested file, by the identity each subject's routes give it.
@@ -331,7 +339,7 @@ function createPage(subject) {
   const tooltipBlock = appSource.match(TOOLTIP_BLOCK);
   assert(tooltipBlock, "the navigation heading's tooltip block was not found in app.js");
   const lifted = [...LIFTED_CONSTANTS.map(liftConstant), ...LIFTED.map(lift)].join("\n");
-  vm.runInContext(`${COLLABORATORS}${lifted}${tooltipBlock[0]}`, sandbox, {
+  vm.runInContext(`${COLLABORATORS}${lifted}${tooltipBlock[0]}${VIEW_HEADER}`, sandbox, {
     filename: "app.js (lifted)",
   });
   page.sandbox = sandbox;
@@ -378,10 +386,10 @@ async function observe(subject) {
   // carries the page's owner mark, which is drawn anew on every load.
   const owner = sandbox.metabrowser.delegateOwnerAttribute();
   assert(/^ data-mb-owner="[0-9a-f]{32}"$/.test(owner), "the page has no owner mark");
-  const root = sandbox.renderFolderHeader({ path: "" });
+  const root = sandbox.viewHeader.renderFolderHeader({ path: "" });
   // A file's eyebrow, the Up control and its folder's address, and its title under it.
-  const file = sandbox.viewHeaderEyebrowHtml(NESTED[kind]);
-  const fileTitle = sandbox.viewHeaderName(NESTED[kind]);
+  const file = sandbox.viewHeader.viewHeaderEyebrowHtml(NESTED[kind]);
+  const fileTitle = sandbox.viewHeader.viewHeaderName(NESTED[kind]);
   assert(file.split(owner).length === 4, "a control of the eyebrow is not an owned control");
   // A file's whole view header, as renderFileHeader writes it from the envelope: a served
   // file has an age from its `mtime`, a pin's file none, a compressed one its badge and
@@ -404,7 +412,9 @@ async function observe(subject) {
         };
   const fileHeaders = Object.fromEntries(
     Object.entries(envelopes).map(([name, envelope]) => {
-      const html = sandbox.renderFileHeader(envelope).replaceAll(owner, " data-mb-owner");
+      const html = sandbox.viewHeader
+        .renderFileHeader(envelope)
+        .replaceAll(owner, " data-mb-owner");
       const line = /<div class="view-header-line page-header-line">(.*)<\/div><\/div>$/.exec(html);
       assert(line, `${name}: the header has no metadata line last`);
       const items = [...line[1].matchAll(/class="(view-header-item|file-header-badge[^"]*)"/g)];

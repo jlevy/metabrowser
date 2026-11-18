@@ -36,6 +36,7 @@ produce is refused rather than ignored.
 | Remote host | `--remote HOST` | `remote.py` |
 | Plugins | `--plugins`, `--plugin NAME`, `--doctor` | `plugins.py` |
 | Hand a target to the macOS app | `--present` | `present.py` |
+| Recent targets | `--recent`, `--recent-add`, `--recent-forget`, `--recent-clear` | `recent_cli.py`, over [`recent_targets.py`](arch-recent-targets.md) |
 
 `_classified_root` decides whether ROOT is a local path or a Git source.
 An `ssh` source is refused in every mode.
