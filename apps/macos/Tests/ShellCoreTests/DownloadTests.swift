@@ -86,6 +86,10 @@ import WebKit
         let download = await start(url, with: downloads, in: webView)
         #expect(await eventually { downloads.replacementsInProgress.count == 1 })
         let staged = try #require(downloads.replacementsInProgress.first)
+        // Cancel once bytes arrive, which is after WebKit reported creating the
+        // destination (`DownloadCoordinator.cancel`). Cancelled earlier, WebKit ended
+        // this process's network process, failing other suites' page loads (mb-1cd0).
+        #expect(await eventually { download.progress.completedUnitCount > 0 })
         await downloads.cancel(download)
 
         #expect(downloads.replacementsInProgress.isEmpty)
