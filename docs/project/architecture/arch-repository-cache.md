@@ -179,6 +179,36 @@ A record republished while a read opens it is refused as replaced, and the read 
 again, judging the new record in full, up to `MAX_READ_OPENS` times, so it reads the old
 record or the new.
 
+### Atomic Writes
+
+`write_private_file_atomic` in `home.py` writes every record and provider file.
+The bytes go to a temporary file beside the target, named by `_TEMPORARY_SUFFIX_RE` and
+created exclusively with mode `PRIVATE_FILE_MODE`, which is flushed, renamed into place,
+and its directory synced.
+Each temporary holds an exclusive `flock` for its whole life, so the next writer of the
+target removes a crashed writer’s leftover, whose lock is free, and leaves a live one.
+A write that fails once its temporary is held removes the temporary while still holding
+it.
+
+A file exists before it can be locked, and a sweep that ran between the two once removed
+a live writer’s new temporary, whose write was then refused as replaced.
+So a writer holds a shared `flock` on the directory, through a description of its own,
+from before it creates its temporary until it has locked it.
+A sweep judges the other temporaries only while it holds that lock exclusively: it tries
+the lock without blocking and leaves the leftovers to a later write if a writer is
+creating one. A sweep holds it only while it opens, tries, and removes the other
+temporaries of its target, which wait on nothing but the warning logged if a swept file
+must be tightened first; it logs its removals after releasing the lock.
+A writer retries the shared lock without blocking up to `_TEMPORARIES_LOCK_WAIT_S`,
+whose comment gives the measured holds, and then goes ahead without it, so a stopped or
+stalled holder costs each write that bound rather than stopping it.
+Both release the lock with `LOCK_UN`, so a child forked meanwhile does not keep it.
+Where the file system cannot lock a directory (`_DIRECTORY_LOCK_UNSUPPORTED_ERRNOS`),
+writers go ahead without it and sweeps skip.
+`tests/test_cache_atomic.py` runs a second writer inside the first writer’s window,
+holds the directory lock against a writer, and contends writers in threads and in
+processes.
+
 ### Provider Records
 
 The files under `sources/<slug>/pulls/` and a store’s `github-pull-manifests/` belong to

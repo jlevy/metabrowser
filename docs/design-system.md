@@ -3661,9 +3661,14 @@ Overview renders the README at the same measure a reader gets opening that file 
 own, with the same Markdown mount and pane gutter, and the panel’s width includes the
 document inset so the card border, section rules, and surface panels share an edge;
 `test_one_document_surface_has_one_set_of_breakpoints` holds this.
-A README with a table of contents takes the whole column, as the opened file does, so
-the card keeps that edge and KPress’s rail sits beyond it;
-`tests/test_overview_readme_toc_chrome.py` measures both against the opened file.
+A README with a table of contents takes the whole column, as the opened file does, and
+KPress’s rail sits beyond the card.
+Below KPress’s wide band, KPress keeps a trailing gutter for the floating toggle, which
+takes the card in from the column’s edge where the pane is too narrow for the card’s
+full measure, so while that README is shown the section rules and surface panels leave
+the same gutter and keep the card’s edge.
+`tests/test_overview_readme_toc_chrome.py` measures the prose and rail against the
+opened file, and the shared edge in each band.
 
 The **File Overview** section begins expanded: one control row with the Files / Bytes
 measure and the `.filter-check` **Show ignored** checkbox, the same as navigation’s,
