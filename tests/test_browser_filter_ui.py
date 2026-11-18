@@ -576,7 +576,12 @@ def test_every_icon_only_control_carries_the_icon_button_primitive() -> None:
 
     assert 'class="icon-btn settings-btn"' in server
     assert 'class="icon-btn icon-btn-reveal file-header-copy"' in app
-    assert 'class="icon-btn file-header-icon file-header-print"' in app
+    # The print button left the header for the rendered document's card (mb-07a1).
+    assert "file-header-print" not in app
+    printer = (
+        proc_browser.STATIC_DIR.parent / "builtin_plugins" / "markdown" / "print-indicator.js"
+    ).read_text(encoding="utf-8")
+    assert '"icon-btn metabrowser-print-indicator"' in printer
     assert 'class="icon-btn icon-btn-reveal icon-btn-overlay content-copy-btn"' in sdk
     assert 'class="icon-btn${cls}"' in controls
 
@@ -585,9 +590,9 @@ def test_every_icon_only_control_carries_the_icon_button_primitive() -> None:
     assert "\n.icon-btn {" in primitive
     for private_class in (
         "settings-btn",
-        "file-header-icon",
         "file-header-copy",
         "content-copy-btn",
+        "metabrowser-print-indicator",
     ):
         assert f"\n.{private_class}," not in primitive
         assert f"\n.{private_class} {{" not in primitive

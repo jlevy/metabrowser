@@ -1,6 +1,7 @@
 import { enhanceRenderedLinks } from "./link-enhancer.js";
 import { acquireMarkdownWorkerClient } from "./markdown-worker-client.js";
 import { placeRendered } from "./place-rendered.js";
+import { mountPrintIndicator } from "./print-indicator.js";
 import { kpressTocConfig } from "./toc-toggle.js";
 import { transclusionKey } from "./transclusion.js";
 
@@ -99,11 +100,13 @@ export function renderKpressError(error, mb) {
  * @param {HTMLElement} container
  * @param {{path?: string, raw?: unknown}} ctx
  * @param {MetabrowserPublicSdk} mb
- * @param {{signal?: AbortSignal, includeToc?: "auto" | "on" | "off", pagePath?: string, workerClient?: import("./markdown-worker-client.js").MarkdownWorkerRunner}} [options]
+ * @param {{signal?: AbortSignal, includeToc?: "auto" | "on" | "off", pagePath?: string, printIndicator?: boolean, workerClient?: import("./markdown-worker-client.js").MarkdownWorkerRunner}} [options]
  *   `pagePath` is the path of the page that shows this document as its own, when that is
  *   not the document's: the folder whose Overview shows its README. Its fragments are the
  *   document's headings, so a table-of-contents entry or a link to one of them moves within
- *   that page (link-enhancer.js).
+ *   that page (link-enhancer.js). `printIndicator: true` puts a print button in the corner
+ *   of the document's card (print-indicator.js), for a host whose view prints the document
+ *   itself; it is off unless the host asks.
  */
 export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
   const controller = new AbortController();
@@ -123,6 +126,8 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
   let disposeToc = null;
   /** @type {(() => void) | null} */
   let disposeLinks = null;
+  /** @type {(() => void) | null} */
+  let disposePrintIndicator = null;
   const dispose = () => {
     if (disposed) {
       return;
@@ -137,6 +142,8 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
     disposeLinks = null;
     disposeToc?.();
     disposeToc = null;
+    disposePrintIndicator?.();
+    disposePrintIndicator = null;
   };
 
   container.classList.add("metabrowser-kpress-host", "metabrowser-markdown-document");
@@ -236,6 +243,9 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
               },
             })
           : mb.kpressInitToc(container, kpressTocConfig(container));
+      if (options.printIndicator === true) {
+        disposePrintIndicator = mountPrintIndicator(container, mb);
+      }
     } catch (error) {
       if (!disposed && !mb.errors.isAbortError(error)) {
         container.innerHTML = renderKpressError(error, mb);

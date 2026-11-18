@@ -24,6 +24,64 @@ All notable changes to Metabrowser are documented here.
   The app now needs a `metab` with `--recent`, and names the upgrade for one without.
   See [Recent Targets](docs/command-line.md#recent-targets).
 
+- The shortcut strip at the foot of the navigation pane now lists Shift first, as Reveal
+  keys, ahead of `?` for Help: holding Shift shows each key on the control it reaches.
+  The strip stays one row: in a navigation pane too narrow for all of it, it drops Quick
+  Search, then Help, and always shows Shift; their keys still work, and Help and holding
+  Shift still list them.
+  See [Keyboard Shortcuts](docs/keyboard-shortcuts.md).
+
+- Security: a Markdown file’s front matter can no longer stall the server.
+  YAML aliases let a few hundred bytes of front matter stand for millions of values: 310
+  bytes of seven alias levels made `/api/file` spend over a second building 39 MB of
+  JSON, answering nothing else meanwhile, and each further level multiplied both by
+  nine. Merge keys (`<<`), merges nested inline, and a duplicated key did the same inside
+  the YAML parser itself, and so did `!!timestamp` on a list, the last two into the
+  error message; flow lists nested hundreds deep cost the parser seconds.
+  A served GitHub mirror or a folder served with `--untrusted` could carry such a file,
+  and so could a downloaded repository served as a trusted folder.
+  Front matter is now measured before it is built, and Metabrowser builds it itself,
+  leaving the YAML parser only its scalars.
+  It is refused when, written out without its aliases, it is larger than
+  `FRONTMATTER_MAX_EXPANDED_SIZE` characters (`frontmatter_yaml.py`), when it or its
+  value through its aliases nests more than `YAML_MAX_DEPTH` levels, when an alias sits
+  inside the value it names, or when it declares a YAML version other than 1.2: the file
+  reads as text, and its header badge and rendered document say why, in at most
+  `YAML_ERROR_MAX_CHARS` characters, naming a line rather than quoting it.
+  The `.yaml` prefix that `yaml_has_key` and `yaml_value_prefix` read goes through the
+  same loader. The parse runs off the server’s event loop on every path, and an
+  uncompressed file’s front matter is read only from its first `FRONTMATTER_MAX_BYTES`,
+  as a compressed file’s and a pinned revision’s already were.
+  Tags JSON has no type for (`!!binary`, `!!set`, `.nan`, a sequence or date as a key,
+  an integer past Python’s digit limit, a lone surrogate from an escape) now answer as
+  JSON values, and every tag or scalar the parser refuses, and nesting too deep to
+  parse, answers with its reason; before, some of these showed a served folder’s file as
+  an internal error, and a pinned revision answered them with a server error.
+  The parser no longer writes a warning to the server’s log for each reused anchor name.
+
+- Plugin authors: `frontmatter_has_key` and `yaml_has_key` now match a key that is not a
+  string by its JSON text, the spelling a renderer already received, so `"1"` matches a
+  YAML `1:` key and `"true"` a `true:` key.
+  Keys are compared by that text, so `1:` and `"1":` in one mapping are a duplicate.
+  `yaml_has_key` and `yaml_value_prefix` now read YAML 1.2, as front matter and the
+  structured viewer do: `on`, `yes`, `no`, and `12:30:45` are strings rather than
+  booleans and numbers, and `0o17` and `1e3` are numbers rather than strings.
+  A `.yaml` prefix no longer matches when it is not UTF-8, declares another YAML version
+  (`%YAML 1.1`), nests past `YAML_MAX_DEPTH`, or holds aliases that write out past
+  `_YAML_PREFIX_MAX_EXPANDED_SIZE`. A key that appears twice in it keeps its last value,
+  as it did before. See [Kind Rules](docs/plugins.md#kind-rules).
+
+- The file and folder headers no longer have a print button.
+  A rendered Markdown document has one instead, at the top right of its page: opened as
+  a file, and as the README on a folder’s Overview.
+  It prints the document, as Command-P does, and is drawn only where the page is wide
+  enough for it to sit beside the text without covering any.
+  Command-P, or Control-P outside macOS, still prints every view, and in the macOS app
+  File > Print does; a source view, which had the header’s button, now prints that way.
+  For plugin authors, the Markdown builtin’s `mountRendered` takes
+  `printIndicator: true` to draw the button, off unless asked; `PLUGIN_SDK_VERSION`
+  remains `0.7`. See [Print](docs/design-system.md#print).
+
 - `metab ROOT --present` hands a folder, a file, or a GitHub URL to the macOS app and
   reports what it sent.
   It finds the app through LaunchServices, the release build first and then the

@@ -149,9 +149,9 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
 view class; this is the same check on the built development app, with a folder holding a
 Markdown file open:
 
-1. **The page’s Print button.** In the Markdown file’s header it calls `window.print()`,
-   which opens the same print panel as File > Print; pressing it again while the panel
-   is open does nothing.
+1. **The page’s Print button.** At the top right of the Markdown document it calls
+   `window.print()`, which opens the same print panel as File > Print; pressing it again
+   while the panel is open does nothing.
 2. **File > Print.** The print panel shows the document alone, without the shell.
 3. **A folder dragged from Finder onto the page** opens in a window of its own.
 4. **A file dragged onto the page** opens at its page, in the open folder that holds it
