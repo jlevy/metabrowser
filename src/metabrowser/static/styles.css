@@ -3805,14 +3805,14 @@ a.tab-btn {
   border-bottom: 1px solid var(--border);
   background: var(--sidebar-bg);
   flex-shrink: 0;
-  /* The server ships this element empty and filter-controls.js fills it, so
-     without a reserved height it stands 13px tall until the chips arrive and
-     then grows to 37 -- pushing the whole tree down on every load and every
-     reload. One line, this element's padding of a toolbar gap above and below
-     it, and its bottom border: the same height a populated bar computes to
-     while its row is one line, so nothing moves when the chips land.
-     `box-sizing` is border-box, so the padding and border are inside this
-     figure. */
+  /* The server ships this element holding only the pending tally, and app.js
+     fills it (renderNavFilterBar). Shipped empty and without a reserved height,
+     it stood 13px tall until the chips arrived and then grew to 37 -- pushing
+     the whole tree down on every load and every reload. One line, this
+     element's padding of a toolbar gap above and below it, and its bottom
+     border: the same height a populated bar computes to while its row is one
+     line, so nothing moves when the chips land. `box-sizing` is border-box,
+     so the padding and border are inside this figure. */
   min-height: var(--nav-toolbar-height);
   position: relative;
   z-index: 1;
@@ -3821,23 +3821,35 @@ a.tab-btn {
     row-gap var(--transition-fast);
 }
 /* The tree holds its first paint until the bar has its controls (mb-kiqm). The server
-   ships the bar one line tall around the pending placeholder, and app.js fills it at
-   DOMContentLoaded (initFilterBar); in a pane too narrow for its row the filled bar
-   wraps (`.nav-toolbar-row`), and the tree under it moved down by the lines added.
-   Measured in headless Chrome on 2026-11-18 at the narrowest pane: the bar went from
-   37 to 67 px and the tree moved 30 px in every load, which Chrome scored as a 0.00268
-   layout shift of `#tree-content`, and the rows app.js paints from the shell's inlined
-   tree before DOMContentLoaded were on screen under the one-line bar first in 2 of 8
-   loads, and in 12 of 12 with the CPU slowed 6x. Hidden until then, the tree first
-   shows in the frame the bar fills, under its settled height, and no load shifted;
-   what it costs is that wait, the rows in place but not shown for 10 to 12 ms in 2 of
-   8 loads, and 19 to 78 ms in 11 of 12 with the CPU slowed 6x. A loading spinner past
-   its quiet period still shows, since `.mb-delayed-loading` sets its own visibility.
-   An alert app.js writes into the tree before the bar is filled, on a pinned
-   revision's page missing its path codec, shows at once. Where another tab's toolbar
-   is in front the bar is hidden, and the tree is not held. */
+   ships the bar one line tall around the pending placeholder, and app.js fills it
+   (renderNavFilterBar) in the task that draws the tree's first rows, just before them;
+   in a pane too narrow for its row the filled bar wraps (`.nav-toolbar-row`). The shell
+   paints `#tree-content` before any script runs, so the fill moved that box down by the
+   lines added, rows or none. Measured in headless Chrome on 2026-11-18 at the narrowest
+   pane: the bar went from 37 to 67 px and the tree moved 30 px, a layout shift of
+   `#tree-content` of 0.00255 to 0.00268, in every load with the bar filled at
+   DOMContentLoaded and in 11 of 12 with it filled before the rows; and rows drawn
+   before the fill were on screen under the one-line bar in 2 of 8 loads, 12 of 12 with
+   the CPU slowed 6x. Hidden until the bar is filled, the tree first shows under its
+   settled height, and no load shifted. Since the bar is filled just before the rows,
+   no row waits: in 48 loads, at full speed and with the CPU slowed 6x, 12x, and 20x,
+   every row was shown in the frame it was drawn.
+
+   The hold is bounded, so a bar that is never filled, as when filter-controls.js does
+   not load or app.js throws first, does not hide the tree for good: at the bound the
+   quiet period's keyframes show it, wrapping bar and all. From the tree's insertion to
+   the bar's fill, 12 loads each with the browser cache off took 21 to 55 ms at full
+   speed, 43 to 146 ms with the CPU slowed 6x, 105 to 316 ms at 12x, and 185 to 746 ms
+   at 20x; the bound is past the slowest. tests/test_files_totals_stable_chrome.py fails
+   filter-controls.js and sees the tree shown at the bound.
+
+   A loading spinner past its quiet period still shows, since `.mb-delayed-loading`
+   sets its own visibility. An alert app.js writes into the tree before the bar is
+   filled, on a pinned revision's page missing its path codec, shows at once. Where
+   another tab's toolbar is in front the bar is hidden, and the tree is not held. */
 .nav-filter-bar:not([hidden]):has(> .tally-pending) ~ .tree-content:not(:has(> [role="alert"])) {
   visibility: hidden;
+  animation: mb-delayed-loading-reveal 0s linear 1s forwards;
 }
 /* Widens on the same token as the drawer's own grid track, so the gap
    grows with the reveal rather than snapping open ahead of it. */

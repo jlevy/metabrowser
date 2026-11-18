@@ -10201,6 +10201,7 @@ if (isGitRevisionSource() && !window.MetabrowserGitPath) {
   }
   throw new Error("metabrowser: git-path.js did not load on a pinned revision's page");
 }
+renderNavFilterBar();
 renderInitialTreeRows();
 
 document.addEventListener("DOMContentLoaded", async () => {

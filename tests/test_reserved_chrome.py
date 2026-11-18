@@ -108,11 +108,15 @@ def test_every_tab_fills_one_toolbar_slot_at_one_height() -> None:
 
 def test_the_files_tree_holds_its_first_paint_until_its_toolbar_is_filled() -> None:
     """The shell ships the Files toolbar one line tall around the pending placeholder, and
-    app.js fills it at DOMContentLoaded. In a pane too narrow for its row the filled bar
-    wraps, and the tree under it moved 30 px at the narrowest pane, its rows with it when
-    they were shown first (mb-a5pa, mb-kiqm). So the tree is hidden while the bar holds the
-    placeholder, unless an alert was written into it or the bar is behind another tab's
-    toolbar; tests/test_files_totals_stable_chrome.py measures that no load shifts.
+    app.js fills it. In a pane too narrow for its row the filled bar wraps, and the tree
+    under it, which the shell paints before any script runs, moved 30 px at the narrowest
+    pane, its rows with it when they were shown first (mb-a5pa, mb-kiqm). So the tree is
+    hidden while the bar holds the placeholder, unless an alert was written into it or the
+    bar is behind another tab's toolbar, and app.js fills the bar just before it draws the
+    tree's first rows, so no row waits. The hold ends at a bound, so a bar that is never
+    filled does not hide the tree for good; its measurement is beside the rule.
+    tests/test_files_totals_stable_chrome.py measures that no load shifts and that the
+    tree shows at the bound when filter-controls.js fails.
     """
 
     css = _css()
@@ -122,6 +126,10 @@ def test_the_files_tree_holds_its_first_paint_until_its_toolbar_is_filled() -> N
         '[role="alert"]))',
     )
     assert "visibility: hidden;" in hold
+    # The bound: the quiet period's own keyframes show the tree a second in.
+    assert "animation: mb-delayed-loading-reveal 0s linear 1s forwards;" in hold
+    reveal = re.search(r"@keyframes mb-delayed-loading-reveal \{\s*to \{([^}]*)\}", css)
+    assert reveal is not None and "visibility: visible;" in reveal.group(1)
     # The placeholder the hold waits on is the one the server puts in the bar, and the bar
     # app.js draws replaces it.
     server = (REPO_ROOT / "src" / "metabrowser" / "server.py").read_text(encoding="utf-8")
@@ -129,6 +137,9 @@ def test_the_files_tree_holds_its_first_paint_until_its_toolbar_is_filled() -> N
     assert 'data-nav-toolbar="files"{filter_bar_behind}>{pending_tally}</div>' in server
     app = (STATIC / "app.js").read_text(encoding="utf-8")
     assert "bar.innerHTML = main + drawer;" in _function(app, "renderNavFilterBar")
+    # Filled in the task that draws the first rows, before them, so the rows are never
+    # held and a landed row is scrolled to under the settled bar.
+    assert "\nrenderNavFilterBar();\nrenderInitialTreeRows();\n" in app
 
 
 def test_the_shortcut_strip_keeps_one_row_until_it_is_filled() -> None:
