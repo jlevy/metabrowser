@@ -992,14 +992,22 @@
    at the row's end; then the title alone, from the text column after the icon's slot, under
    the age to the row's end, cut there. A row in no stack is flush on the list's inset; only a
    stack's members are indented, under their stack's row (mb-3vil). The third line is its
-   change line (`.github-pulls-change`, below), which holds the chevron in the icon's slot,
-   under the state icon and just before the line's values (`--tree-icon-slot`,
-   docs/design-system.md, "Container Rows"). A stack's row keeps two slots, its chevron's and
-   its Layers icon's (`.github-pulls-stack-row`). The row
+   change line (`.github-pulls-change`, below), which holds the chevron in the text column,
+   under the title's start, and the line's values one icon slot and gap past it
+   (`--tree-icon-slot`, docs/design-system.md, "Container Rows"). A stack's row keeps two
+   slots, its chevron's and its Layers icon's (`.github-pulls-stack-row`). The row
    centers its boxes; on the first line the number's line and the age share a baseline
    (docs/design-system.md, "Row Text Shares a Baseline"), and the title is alone on its. The
    DOM keeps the title the row's first text, so its accessible name gives the state, from the
    state icon's label, and then the title, before the number's line. */
+/* The Pulls rows' column gap, and the text column's offset: one icon slot and that gap. A
+   row's title, a change line's values, a stack member's indent, and the changed files under a
+   row each start a whole number of it in (mb-3vil), so the five sums and the rows' gap read
+   the one value. */
+:root {
+  --github-pulls-gap: 6px;
+  --github-pulls-text-column: calc(var(--tree-icon-slot) + var(--github-pulls-gap));
+}
 /* The age has a column of one width, so an age that grows a digit does not move the number's
    line. The longest compact age is four characters ("12mo", 345 to 364 days), and its m is
    wider than a digit; 5ch of the row's type holds it at the row's own size, which the age
@@ -1013,7 +1021,7 @@
   /* A row under a stack's row is a tree level in (`--github-pulls-indent`, below). */
   padding: 2px 12px 2px calc(10px + var(--github-pulls-indent, 0px));
   border-left: 2px solid transparent;
-  column-gap: 6px;
+  column-gap: var(--github-pulls-gap);
   color: var(--text);
   font-size: var(--nav-font-size);
   text-decoration: none;
@@ -1175,9 +1183,9 @@
   grid-template-columns: var(--tree-icon-slot) minmax(0, 1fr);
   align-items: center;
   height: var(--github-pulls-change-line);
-  padding: 0 12px 2px calc(10px + var(--github-pulls-indent, 0px) + var(--tree-icon-slot) + 6px);
+  padding: 0 12px 2px calc(10px + var(--github-pulls-indent, 0px) + var(--github-pulls-text-column));
   border-left: 2px solid transparent;
-  column-gap: 6px;
+  column-gap: var(--github-pulls-gap);
   color: var(--text);
   font-size: var(--nav-font-size);
   cursor: pointer;
@@ -1280,14 +1288,13 @@
 }
 /* A changed file's and a folder's row are the shell's changed-file rows (static/styles.css,
    `.changed-file-row`), the Diff summary's too. Here is only where a row sits: its depth's
-   indent, one level in from the change line's chevron, which is at the title's column, and
+   indent, one level in from the change line's chevron, which is at the title's start, and
    the room the sticky filters keep. */
 .github-pull-file-row,
 .github-pull-folder-row {
   --changed-file-indent: calc(
     var(--github-pulls-indent, 0px) +
-    var(--tree-icon-slot) +
-    6px +
+    var(--github-pulls-text-column) +
     var(--github-pull-file-depth, 1) *
     var(--tree-indent)
   );
@@ -1312,7 +1319,7 @@
       10px +
       var(--github-pulls-indent, 0px) +
       2 *
-      (var(--tree-icon-slot) + 6px) +
+      var(--github-pulls-text-column) +
       var(--tree-indent)
     );
   color: var(--muted);
@@ -1331,7 +1338,12 @@
   align-items: center;
   gap: 6px;
   margin: 2px 12px 4px
-    calc(10px + var(--github-pulls-indent, 0px) + var(--tree-icon-slot) + 6px + var(--tree-indent));
+    calc(
+      10px +
+      var(--github-pulls-indent, 0px) +
+      var(--github-pulls-text-column) +
+      var(--tree-indent)
+    );
   padding: 4px 8px;
 }
 .github-pulls-foot {
@@ -1513,7 +1525,7 @@
    and the rows' column gap, so a member's state icon and chevron sit under the stack's Layers
    icon and its title under the stack's label (mb-3vil). */
 .github-pulls-item[data-level="2"] {
-  --github-pulls-indent: calc(var(--tree-icon-slot) + 6px);
+  --github-pulls-indent: var(--github-pulls-text-column);
 }
 /* A stack's row keeps both leading slots: its chevron's, then its Layers icon's. */
 .github-pulls-row.github-pulls-stack-row {

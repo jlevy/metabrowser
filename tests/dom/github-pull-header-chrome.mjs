@@ -1180,8 +1180,8 @@ const PULLS_ROWS = `async (rows, width) => {
       titleFrom: round(t.left - inset),
       textColumn: round(parseFloat(style.getPropertyValue("--tree-icon-slot")) + parseFloat(style.columnGap)),
       // The icon is on the number's line, centered on it (mb-3cbf), in the slot on the row's
-      // inset; the chevron is on the change line, under the title, in that slot, and the change line's
-      // text column is the title's (mb-d0a3).
+      // inset; the chevron is on the change line, under the title's start (mb-d0a3), and the
+      // change line's values one slot and gap past it (mb-3vil).
       iconOff: round(middle(icon) - middle(meta)),
       iconWithNumber: icon.height > 0 && icon.top >= meta.top - 0.5 && icon.bottom <= meta.bottom + 0.5 && icon.bottom <= t.top + 0.5,
       iconFrom: round(icon.left - inset),
