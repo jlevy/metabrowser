@@ -12,6 +12,23 @@ All notable changes to Metabrowser are documented here.
   (`MANIFEST_LISTING` in `diff/adapters/git.py`); manifests kept before this change are
   listed once more.
 
+- The agent skill’s commands now produce output an agent can parse, and its recipes stop
+  with a nonzero status when `metab` fails.
+  Every `--api` recipe asks for `--format json` and writes the answer to a file that
+  `jq` reads only when `metab` succeeded, so a repository that cannot be read, a pull
+  request with no diff, or a pin that is not the pull request’s head stops the recipe,
+  where a pipe into `jq` printed nothing, `null`, or the default branch’s file.
+  Whether a pull request was read comes from the record’s `state` and
+  `last_refresh.outcome`, not from a line of prose, and a new recipe fetches a pull
+  request beside a checkout, where a read never fetches one.
+  The skill no longer says `--api` refuses `/api/stream`. It now says that a served pin
+  can move, that `--diff-check` can take more than a minute in a large repository, that
+  a server’s address answers a moment after its `Serving` line, and that `--remote` is
+  for the user’s own terminal, and it lists `/pull/<n>/files/<path>`. It says that it is
+  tested against the `metab` of its own commit, so the skill on `main` can need a source
+  checkout’s `metab` until the next release, and `tests/test_skill_commands.py` fails
+  when a flag, route, recipe, or field name in it drifts from that `metab`.
+
 - A Pulls row now leads with its title, right after the state icon, on its first line,
   and puts the stack position, number, author, and age on the second; its author’s
   avatar is a little smaller.
@@ -970,19 +987,19 @@ All notable changes to Metabrowser are documented here.
   text only past that wait.
   The first screen is the new page’s own top, wherever the page it replaces was
   scrolled. A page shown first as a description preview waits for its description alone.
-  A cold link or reload keeps its loading heading, and its loading blocks if they have
-  appeared, where they are until the pull request’s header and conversation show
-  together, so nothing moves and the body is never empty in between.
-  The tab keys, and Control-N and Control-P for the stack, start working when the header
-  shows. A rendered text is kept for the rest of the session, so a revisit, Back,
-  Forward, or a refresh that leaves a text unchanged shows it at once without asking
-  again. When the full record replaces a description preview, the description stays where
-  it is and only the sections below it change; ages in kept cards and commit rows still
-  read as of each paint.
-  Commits that arrive after the conversation has painted are added after everything
-  shown, so nothing you are reading moves; a conversation painted with its commits
-  already known, as when you return to it from another tab, places them among the
-  comments and reviews in GitHub’s order.
+  On a cold link or reload the pull request’s header shows as soon as its record is
+  read, and its loading blocks, if they have appeared, stay where they are until the
+  conversation shows, so the body is never empty in between.
+  The tab keys, and Control-N and Control-P for the stack, work from the paint that
+  shows the record’s header.
+  A rendered text is kept for the rest of the session, so a revisit, Back, Forward, or a
+  refresh that leaves a text unchanged shows it at once without asking again.
+  When the full record replaces a description preview, the description stays where it is
+  and only the sections below it change; ages in kept cards and commit rows still read
+  as of each paint. Commits that arrive after the conversation has painted are added
+  after everything shown, so nothing you are reading moves; a conversation painted with
+  its commits already known, as when you return to it from another tab, places them
+  among the comments and reviews in GitHub’s order.
   The state badge shows the fresher of the cached record and the repository’s list of
   pull requests, so a stale record of a merged pull request no longer shows Open first.
 
