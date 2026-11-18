@@ -885,12 +885,7 @@ function renderFoldControl(group, hiddenRows, renderRow, state, key) {
   control.setAttribute("aria-controls", group.getAttribute("id") || "");
   control.classList.toggle("expanded", expanded);
   const chevron = el("span", "diff-fold-chevron");
-  const svg = shellIcon("toggle");
-  if (svg) {
-    chevron.innerHTML = svg;
-  } else {
-    chevron.textContent = "›";
-  }
+  chevron.innerHTML = shellIcon("toggle");
   const label = el(
     "span",
     "diff-fold-label",
@@ -1076,12 +1071,7 @@ function renderFileBar(change, toggleId, bodyId, view) {
   // The same disclosure glyph the nav tree leads with, rotated by the
   // same expanded/collapsed rules.
   const chevron = el("span", "diff-file-chevron");
-  const chevronSvg = shellIcon("toggle");
-  if (chevronSvg) {
-    chevron.innerHTML = chevronSvg;
-  } else {
-    chevron.textContent = "›";
-  }
+  chevron.innerHTML = shellIcon("toggle");
   toggle.append(chevron);
   const status = el("span", "diff-file-kind file-change-status", letter);
   status.dataset.fileStatus = String(change.kind);
@@ -1583,11 +1573,7 @@ function renderDiffSummary(totals, files, view, model, whole = null) {
   const chevron = el("span", "diff-summary-chevron");
   chevron.setAttribute("aria-hidden", "true");
   const chevronSvg = shellIcon("toggle");
-  if (chevronSvg) {
-    chevron.innerHTML = chevronSvg;
-  } else {
-    chevron.textContent = "›";
-  }
+  chevron.innerHTML = chevronSvg;
   toggle.append(chevron, ...parts);
 
   summaryIds += 1;
