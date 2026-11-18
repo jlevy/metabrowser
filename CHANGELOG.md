@@ -6,8 +6,9 @@ All notable changes to Metabrowser are documented here.
 
 - The shortcut strip at the foot of the navigation pane now lists Shift first, as Reveal
   keys, ahead of `?` for Help: holding Shift shows each key on the control it reaches.
-  In a narrow navigation pane the strip takes a second row rather than drop an item,
-  with Shift on the first.
+  The strip stays one row: in a navigation pane too narrow for all of it, it drops Quick
+  Search, then Help, and always shows Shift; their keys still work, and Help and holding
+  Shift still list them.
   See [Keyboard Shortcuts](docs/keyboard-shortcuts.md).
 
 - On a folder’s Overview, pointing at a File Overview legend entry, its dot or its

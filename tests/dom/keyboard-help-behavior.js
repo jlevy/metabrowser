@@ -331,6 +331,21 @@ check(
     revealHint?.querySelector(".nav-shortcut-label")?.textContent,
   ]) === JSON.stringify(["SPAN", "nav-shortcut-hint", "true", ["Shift"], "Reveal keys"]),
 );
+// The resting strip is one row: its items show from the start as far as their widths and
+// gaps fit, so the last drops first, and the lead shows even where it alone does not fit.
+const fits = sandbox.MetabrowserKeyboardHelp.stripItemsThatFit;
+check(
+  "the strip's fit drops items from the end and never the lead",
+  JSON.stringify(
+    [300, 247.9, 247.8, 155.2, 155.1, 100, 0].map((available) =>
+      fits([105.7, 43.5, 86.7], available, 6),
+    ),
+  ) === JSON.stringify([3, 3, 2, 2, 1, 1, 1]),
+);
+check(
+  "the strip's fit shows a lone lead and an empty strip as they are",
+  fits([105.7], 10, 6) === 1 && fits([], 10, 6) === 0,
+);
 helpButton.dispatchEvent({ type: "click" });
 check("pointer trigger reaches modal", modalOpen && openedTrigger === helpButton);
 check(

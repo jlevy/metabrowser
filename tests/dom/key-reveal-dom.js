@@ -591,6 +591,23 @@ class FakeWindow extends FakeEventTarget {
         return "visible";
       },
       direction: "ltr",
+      // The lengths a session gives an element's inline style, as it gives it a box: this
+      // stand-in lays nothing out, so a length nothing sets is none.
+      get columnGap() {
+        return element.style.getPropertyValue("column-gap");
+      },
+      get paddingLeft() {
+        return element.style.getPropertyValue("padding-left");
+      },
+      get paddingRight() {
+        return element.style.getPropertyValue("padding-right");
+      },
+      get borderLeftWidth() {
+        return element.style.getPropertyValue("border-left-width");
+      },
+      get borderRightWidth() {
+        return element.style.getPropertyValue("border-right-width");
+      },
     };
   }
 

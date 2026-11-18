@@ -29,6 +29,11 @@
   // only while Shift is held, so the cap targets 100% zoom. Safari's rows are not yet
   // measured.
   const REVEAL_STRIP_MAX_ITEMS = 7;
+  // How far past its row the resting strip's items may reach and still all show. Layout
+  // places boxes in a 64th of a pixel and the widths are read in that unit, so their sum
+  // is exact; this only absorbs floating-point error in adding them, as
+  // tests/dom/nav-toolbar-wrap.mjs does for the toolbars.
+  const STRIP_FIT_EPSILON_PX = 0.001;
   /** @typedef {{ariaKeyshortcuts: string, preferred?: HelpBindingPresentation, range?: boolean, spoken: string, visible: readonly string[]}} HelpBindingPresentation */
   /** @typedef {{connect: (element: HTMLElement) => () => void}} HelpControlBinding */
   /**
@@ -279,6 +284,105 @@
   }
 
   /**
+   * How many of a one-row strip's items show, from its start: all of them when their
+   * widths and the gaps between them fit `available`, and otherwise as many as fit, so the
+   * last item drops first. The first item, the lead, always shows.
+   *
+   * @param {readonly number[]} widths
+   * @param {number} available
+   * @param {number} gap
+   * @returns {number}
+   */
+  function stripItemsThatFit(widths, available, gap) {
+    let shown = widths.length;
+    let total = widths.reduce((sum, width) => sum + width, 0) + gap * Math.max(0, shown - 1);
+    while (shown > 1 && total > available + STRIP_FIT_EPSILON_PX) {
+      shown -= 1;
+      total -= widths[shown] + gap;
+    }
+    return shown;
+  }
+
+  /** @param {string | undefined} value */
+  function pixels(value) {
+    return Number.parseFloat(value ?? "") || 0;
+  }
+
+  /**
+   * Keep the resting strip to one row (the owner, 2026-11-18): where its items do not all
+   * fit, it drops them from the end, Quick Search before Help, and never the lead, Shift.
+   * A dropped item is `hidden`, so it leaves the tab order and the accessibility tree,
+   * and its key stays in Help and on the revealed layer. The strip never wraps, so it is
+   * always the one row the server reserves for it before the shell's tools load.
+   *
+   * `fit()` measures every item, shown, after a reconcile. A size change refits: the
+   * strip's own, as the pane is dragged, from the widths measured last, and the lead's, as
+   * a face or the interface font set changes the text, by measuring again. It refits in
+   * the observer's own callback, so no frame shows an item cut off at the pane's edge.
+   * That changes no observed box: the strip's width is the pane's and its height the
+   * lead's row, which a dropped or restored item, one keycap tall, leaves as it is.
+   * Without a ResizeObserver, as in a browserless DOM, it returns null and every item
+   * shows.
+   *
+   * @param {HTMLElement} host
+   * @param {HTMLElement} lead
+   * @returns {{dispose: () => void, fit: (remeasure: boolean) => void} | null}
+   */
+  function keepStripOnOneRow(host, lead) {
+    const found = host.ownerDocument?.defaultView;
+    if (!found || typeof found.ResizeObserver !== "function") {
+      return null;
+    }
+    const view = found;
+    /** @type {Map<Element, number>} */
+    let widths = new Map();
+    /** @param {boolean} remeasure */
+    function fit(remeasure) {
+      const items = /** @type {HTMLElement[]} */ (
+        Array.from(host.children).filter(
+          (child) => !child.classList.contains("nav-shortcut-reveal"),
+        )
+      );
+      if (remeasure || items.some((item) => !widths.has(item))) {
+        for (const item of items) {
+          item.hidden = false;
+        }
+        widths = new Map(items.map((item) => [item, item.getBoundingClientRect().width]));
+      }
+      const style = view.getComputedStyle(host);
+      const available =
+        host.getBoundingClientRect().width -
+        pixels(style.paddingLeft) -
+        pixels(style.paddingRight) -
+        pixels(style.borderLeftWidth) -
+        pixels(style.borderRightWidth);
+      // A strip with no box, in a pane that is not laid out, shows everything until it has.
+      const shown =
+        available > 0
+          ? stripItemsThatFit(
+              items.map((item) => widths.get(item) ?? 0),
+              available,
+              pixels(style.columnGap),
+            )
+          : items.length;
+      items.forEach((item, index) => {
+        if (item.hidden !== index >= shown) {
+          item.hidden = index >= shown;
+        }
+      });
+    }
+    const sizes = new view.ResizeObserver((entries) => {
+      fit(entries.some((entry) => entry.target === lead));
+    });
+    sizes.observe(host);
+    sizes.observe(lead);
+    return Object.freeze({
+      dispose: () => sizes.disconnect(),
+      fit,
+    });
+  }
+
+  /**
    * @param {Document} hostDocument
    * @param {HTMLElement} modalBody
    * @param {(container: HTMLElement, key: string) => HTMLElement} appendKey
@@ -434,6 +538,7 @@
     }
 
     const revealHint = buildRevealHint(hostDocument, options.shortcuts.appendKey);
+    const stripFit = keepStripOnOneRow(options.hintHost, revealHint);
 
     function renderHints() {
       reconcileHintStrip(
@@ -443,6 +548,7 @@
         options.shortcuts.appendBinding,
         { lead: revealHint },
       );
+      stripFit?.fit(true);
       renderRevealLayer();
     }
 
@@ -509,6 +615,7 @@
         revealLayer.remove();
         revealLayer = null;
       }
+      stripFit?.dispose();
       clearHintStrip(options.hintHost);
       revealHint.remove();
       unregisterOpen();
@@ -528,5 +635,6 @@
     create,
     reconcileHintStrip,
     renderHelpGroups,
+    stripItemsThatFit,
   });
 })();

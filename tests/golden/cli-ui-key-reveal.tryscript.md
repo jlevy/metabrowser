@@ -8,8 +8,9 @@ env:
 
 Holding Shift alone outside a text field, past a short threshold, marks the root with
 `data-key-reveal` and puts a keycap badge on every live shortcut target; the strip,
-which at rest lists Shift first, as Reveal keys, ahead of `?` for Help, turns to a
-second layer listing the common keys that are live.
+which at rest is one row that lists Shift first, as Reveal keys, ahead of `?` for Help,
+turns to a second layer listing the common keys that are live.
+`cli-ui-shortcut-strip.tryscript.md` shows that row in a narrowing and a widening pane.
 A key the registry handles keeps the reveal and moves the badges, even when it moves
 focus; any other key, a pointer press, a wheel, the window losing focus, a hidden page,
 or a lost `keyup` ends it.
