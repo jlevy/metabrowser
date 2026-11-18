@@ -81,8 +81,11 @@ uv --config-file uv.toml run --frozen metab ./path/to/directory
 
 - **`metab`:** these guides describe the code on `main`, and the newest release on
   [PyPI](https://pypi.org/project/metabrowser/) can trail it.
-  The Unreleased section of the [changelog](../CHANGELOG.md) lists what `main` has that
-  the release lacks, and `metab --version` names the version you have.
+  The Unreleased section of the [changelog](../CHANGELOG.md), with the entries waiting
+  in [`changelog.d/`](../changelog.d/README.md), lists what `main` has that the release
+  lacks; in a source checkout,
+  `uv --config-file uv.toml run --frozen python -m devtools.changelog show` prints them
+  as one section. `metab --version` names the version you have.
 - **The macOS app:** an alpha preview that you build from source.
   Its release pipeline can build a disk image and a Homebrew cask, but neither is
   published, so there is no signed, notarized download.

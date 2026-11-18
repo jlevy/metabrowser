@@ -150,6 +150,18 @@ def test_generated_skills_and_rendering_fixtures_are_footer_exempt() -> None:
     assert find_documentation_findings(rendering_fixture, "") == []
 
 
+def test_changelog_fragments_are_footer_exempt_but_their_readme_is_not() -> None:
+    """A fragment's bullets land in CHANGELOG.md, whose footer covers them; a footer in
+    the fragment would land there too."""
+
+    fragments = ROOT / "changelog.d"
+
+    assert find_documentation_findings(fragments / "mb-abcd.md", "- A change.\n") == []
+    assert find_documentation_findings(fragments / "README.md", "# Fragments\n") == [
+        "changelog.d/README.md: missing common-doc-guidelines footer"
+    ]
+
+
 @needs_git
 def test_git_ignored_local_residue_is_excluded_but_tracked_files_kept() -> None:
     # Claude Code writes .claude/settings.local.json with absolute home paths;

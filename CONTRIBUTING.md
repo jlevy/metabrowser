@@ -15,7 +15,8 @@ Security reports follow [SECURITY.md](SECURITY.md), not the public issue tracker
 3. Install the prerequisites in [development](docs/development.md): uv and the Node
    version pinned for your version manager.
 4. Run `make install`.
-5. Add or update tests with the implementation.
+5. Add or update tests with the implementation, and write a
+   [changelog fragment](changelog.d/README.md) for a change users can observe.
 6. Run `make format` and `make verify`.
 7. Review the diff and built artifacts for unrelated files or private data.
 8. Open a pull request with the problem, approach, validation, and compatibility notes.
@@ -32,10 +33,10 @@ shell state.
 
 The server, browser shell, and built-in plugins ship as one artifact, so `/api/*`,
 `window.metabrowser`, `METABROWSER_SETTINGS`, and the plugin manifest are internal
-contracts: change one everywhere in one commit, and note the change in `CHANGELOG.md`
-when a user or plugin author can observe it.
-`PLUGIN_SDK_VERSION` is the gate for plugins built outside the repository: bump it on a
-break and update every built-in manifest in the same commit.
+contracts: change one everywhere in one commit, and write a
+[changelog fragment](changelog.d/README.md) when a user or plugin author can observe the
+change. `PLUGIN_SDK_VERSION` is the gate for plugins built outside the repository: bump
+it on a break and update every built-in manifest in the same commit.
 Do not add compatibility layers for these;
 [AGENTS.md](AGENTS.md#compatibility-and-legacy-code) has the rule.
 

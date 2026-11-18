@@ -39,6 +39,9 @@ public nonisolated protocol ServerLaunch: Sendable {
     func readinessURL(for endpoint: ServerEndpoint) -> URL
     /// What each window installs before loading the endpoint.
     func authorization(for endpoint: ServerEndpoint) -> WebAuthorization
+    /// What a start that is not ready yet says it is doing, read from `output`, the newest
+    /// lines it wrote, or nil when they say nothing the window shows.
+    func startProgress(in output: [String]) -> StartProgress?
 }
 
 /// Today's `metab ROOT --no-open` serve mode, with `--exit-on-eof`: the server stops
@@ -104,6 +107,11 @@ public nonisolated struct CLIServeLaunch: ServerLaunch {
     public func readinessURL(for endpoint: ServerEndpoint) -> URL { endpoint.entryURL }
 
     public func authorization(for endpoint: ServerEndpoint) -> WebAuthorization { .none }
+
+    /// The clone report `metab` writes to stderr while it acquires a repository.
+    public func startProgress(in output: [String]) -> StartProgress? {
+        StartProgress.latest(in: output)
+    }
 
     /// Why `root` cannot be served this way, or nil. The announcement is one line of
     /// text that contains the root, so a line break in the path would let the folder's
