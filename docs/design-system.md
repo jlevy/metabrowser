@@ -2853,6 +2853,17 @@ Help and Quick Search.
 The registry marks the numbers’ command `situational`, so every surface renders them as
 that one run, and no surface special cases them.
 
+The shortcut strip at the navigation column’s foot lists Shift first, as Reveal keys,
+ahead of `?` for Help, because Shift is the one key that shows all the others.
+It is the strip’s one item that is not a command, since no binding may use Shift
+([Canonical Key Names](#canonical-key-names)): Help draws it once, as a reminder with
+the single-key entry point’s keycap, and hides it from assistive technology, as it hides
+the badges and the revealed strip.
+The `nav` surface’s commands follow in their order.
+The strip wraps rather than drop an item, so in a narrow pane Shift stays on its first
+line, and there the strip grows a row when it fills; the widths measured are beside
+`.nav-shortcut-hints[hidden]` in `static/styles.css`.
+
 Holding Shift reveals the keys in place: each live letter’s control and each numbered
 control carries its keycap, and the strip lists the common letters.
 The keycaps ease in on the [reveal motion](#reveals) and go at once when Shift is

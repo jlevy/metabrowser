@@ -152,12 +152,14 @@
    * command and makes the controls it owns buttons; the revealed layer, `actions: false`
    * with `bindings: "all"`, is a reminder only, every binding of an item that coalesces
    * several, as Control-N or Control-P, and at most `limit` items.
+   * `lead` is an item the caller built and owns, which the layer keeps first and never
+   * rebuilds or removes, as the resting strip keeps Shift ahead of every command.
    *
    * @param {HTMLElement} host
    * @param {readonly HelpGroupPresentation[]} snapshot
    * @param {(commandId: string, context: Record<string, unknown>) => boolean} invoke
    * @param {(container: HTMLElement, presentation: HelpBindingPresentation) => void} [append]
-   * @param {{actions?: boolean, bindings?: "all" | "preferred", limit?: number}} [stripOptions]
+   * @param {{actions?: boolean, bindings?: "all" | "preferred", lead?: HTMLElement, limit?: number}} [stripOptions]
    */
   function reconcileHintStrip(host, snapshot, invoke, append, stripOptions = {}) {
     const hostDocument = host.ownerDocument;
@@ -243,8 +245,37 @@
       record.element.remove();
       records.delete(key);
     }
-    host.append(...orderedElements);
-    host.hidden = orderedElements.length === 0;
+    const lead = stripOptions.lead ? [stripOptions.lead] : [];
+    host.append(...lead, ...orderedElements);
+    host.hidden = lead.length + orderedElements.length === 0;
+  }
+
+  /**
+   * The resting strip's first item: Shift, which reveals every live key on the control it
+   * reaches. It leads, ahead of `?`, because it is the one key that shows all the others
+   * (the owner, 2026-11-18). It is no command, since no binding may use Shift
+   * (docs/design-system.md, "Canonical Key Names"), so it is a reminder, a span like the
+   * strip's other unactionable hints with its keycap from the single-key entry point, as
+   * Help's closing note draws it. It is hidden from assistive technology, as the badges and
+   * the revealed layer it calls up are: the reveal is paint only, and every key it shows
+   * is announced at rest through `aria-keyshortcuts`. Built once, it costs a reconcile no
+   * keycap.
+   *
+   * @param {Document} hostDocument
+   * @param {(container: HTMLElement, key: string) => HTMLElement} appendKey
+   */
+  function buildRevealHint(hostDocument, appendKey) {
+    const hint = hostDocument.createElement("span");
+    hint.className = "nav-shortcut-hint";
+    hint.setAttribute("aria-hidden", "true");
+    const binding = hostDocument.createElement("span");
+    binding.className = "nav-shortcut-binding";
+    appendKey(binding, "Shift");
+    const label = hostDocument.createElement("span");
+    label.className = "nav-shortcut-label";
+    label.textContent = "Reveal keys";
+    hint.append(binding, label);
+    return hint;
   }
 
   /**
@@ -402,12 +433,15 @@
       );
     }
 
+    const revealHint = buildRevealHint(hostDocument, options.shortcuts.appendKey);
+
     function renderHints() {
       reconcileHintStrip(
         options.hintHost,
         options.shortcuts.snapshot("nav"),
         options.shortcuts.invoke,
         options.shortcuts.appendBinding,
+        { lead: revealHint },
       );
       renderRevealLayer();
     }
@@ -476,6 +510,7 @@
         revealLayer = null;
       }
       clearHintStrip(options.hintHost);
+      revealHint.remove();
       unregisterOpen();
       modal?.dispose();
       modal = null;

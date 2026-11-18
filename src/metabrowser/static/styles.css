@@ -2498,7 +2498,13 @@ html.theme-anim .menu {
 /* The server ships the strip empty and hidden, and keyboard-help.js fills it once
    the shell's tools load; it always has Help then. Until that, it keeps one row's
    height, so the tree above it is the same height before and after: its border,
-   padding, a hint's padding, and a keycap's border and 1.5 lines. */
+   padding, a hint's padding, and a keycap's border and 1.5 lines.
+   Filled, it leads with Shift, Reveal keys, then Help and Quick Search, and wraps
+   rather than drop one, so Shift is the last to leave the first row. In headless
+   Chrome 152 the three take one row (39px) in a pane 273px wide or wider, the
+   default 300px among them, and two (71px) below that, down to the 180px minimum,
+   where Shift has the first row to itself; there the strip grows a row when it
+   fills, under the tree's last rows. Safari's widths are not yet measured. */
 .nav-shortcut-hints[hidden] {
   display: flex;
   visibility: hidden;

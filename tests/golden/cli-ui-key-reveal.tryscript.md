@@ -7,8 +7,9 @@ env:
 # Golden Test: Shift Key Reveal and the Shell Keymap
 
 Holding Shift alone outside a text field, past a short threshold, marks the root with
-`data-key-reveal` and puts a keycap badge on every live shortcut target; the strip turns
-to a second layer listing the common keys that are live.
+`data-key-reveal` and puts a keycap badge on every live shortcut target; the strip,
+which at rest lists Shift first, as Reveal keys, ahead of `?` for Help, turns to a
+second layer listing the common keys that are live.
 A key the registry handles keeps the reveal and moves the badges, even when it moves
 focus; any other key, a pointer press, a wheel, the window losing focus, a hidden page,
 or a lost `keyup` ends it.
@@ -81,7 +82,7 @@ $ node tests/dom/key-reveal-session.js
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"]
     },
@@ -102,7 +103,7 @@ $ node tests/dom/key-reveal-session.js
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "drawerBefore": false,
@@ -136,7 +137,7 @@ $ node tests/dom/key-reveal-session.js
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "next": {
@@ -177,7 +178,7 @@ $ node tests/dom/key-reveal-session.js
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "byNumber": {
@@ -220,7 +221,7 @@ $ node tests/dom/key-reveal-session.js
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "menus": [
@@ -249,7 +250,7 @@ $ node tests/dom/key-reveal-session.js
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "focus": {
@@ -312,7 +313,7 @@ $ node tests/dom/key-reveal-session.js
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "pressed": {
@@ -337,7 +338,7 @@ $ node tests/dom/key-reveal-session.js
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "pressed": {
@@ -363,7 +364,7 @@ $ node tests/dom/key-reveal-session.js
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "focus": {
@@ -393,7 +394,7 @@ $ node tests/dom/key-reveal-session.js
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "pressed": {
@@ -421,7 +422,7 @@ $ node tests/dom/key-reveal-session.js
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "pressed": {
@@ -449,7 +450,7 @@ $ node tests/dom/key-reveal-session.js
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "pressed": {
@@ -476,7 +477,7 @@ $ node tests/dom/key-reveal-session.js
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "cost": {
@@ -503,7 +504,7 @@ $ node tests/dom/key-reveal-session.js
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "pressed": {
@@ -530,7 +531,7 @@ $ node tests/dom/key-reveal-session.js
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"]
     },
@@ -552,7 +553,7 @@ $ node tests/dom/key-reveal-session.js
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "did": ["opened the folder \"\""]
@@ -574,7 +575,7 @@ $ node tests/dom/key-reveal-session.js
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "pressed": {
@@ -599,7 +600,7 @@ $ node tests/dom/key-reveal-session.js
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "did": ["selected the treemap tab"]
@@ -622,7 +623,7 @@ $ node tests/dom/key-reveal-session.js
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "pressed": {
@@ -649,7 +650,7 @@ $ node tests/dom/key-reveal-session.js
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "pressed": {
@@ -677,7 +678,7 @@ $ node tests/dom/key-reveal-session.js
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"]
     },
@@ -699,7 +700,7 @@ $ node tests/dom/key-reveal-session.js
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "v": {
@@ -726,7 +727,7 @@ $ node tests/dom/key-reveal-session.js
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","controls","numbered","navigation","menus","quick-file","help"]
     }
@@ -766,7 +767,7 @@ $ node tests/dom/key-reveal-session.js gestures
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"]
     },
@@ -855,7 +856,7 @@ $ node tests/dom/key-reveal-session.js gestures
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"]
     },
@@ -877,7 +878,7 @@ $ node tests/dom/key-reveal-session.js gestures
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "pressed": {
@@ -896,7 +897,7 @@ $ node tests/dom/key-reveal-session.js gestures
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"]
     },
@@ -918,7 +919,7 @@ $ node tests/dom/key-reveal-session.js gestures
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"]
     },
@@ -940,7 +941,7 @@ $ node tests/dom/key-reveal-session.js gestures
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"]
     },
@@ -993,7 +994,7 @@ $ node tests/dom/key-reveal-session.js gestures
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"]
     },
@@ -1022,7 +1023,7 @@ $ node tests/dom/key-reveal-session.js gestures
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "focusedRow": "docs"
@@ -1139,7 +1140,7 @@ $ node tests/dom/key-reveal-session.js gestures
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"]
     },
@@ -1168,7 +1169,7 @@ $ node tests/dom/key-reveal-session.js gestures
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"]
     },
@@ -1197,7 +1198,7 @@ $ node tests/dom/key-reveal-session.js gestures
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"]
     },
@@ -1215,7 +1216,7 @@ $ node tests/dom/key-reveal-session.js gestures
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "focus": "combobox"
@@ -1253,7 +1254,7 @@ $ node tests/dom/key-reveal-session.js gestures
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "sameAsBefore": true
@@ -1299,7 +1300,7 @@ $ node tests/dom/key-reveal-session.js tabs
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"]
     },
@@ -1406,7 +1407,7 @@ $ node tests/dom/key-reveal-session.js tabs
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"]
     },
@@ -1427,7 +1428,7 @@ $ node tests/dom/key-reveal-session.js tabs
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "did": ["address /view/","the commit row moved down from a1"]
@@ -1447,7 +1448,7 @@ $ node tests/dom/key-reveal-session.js tabs
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "pressed": {
@@ -1473,7 +1474,7 @@ $ node tests/dom/key-reveal-session.js tabs
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "whileDown": {
@@ -1508,7 +1509,7 @@ $ node tests/dom/key-reveal-session.js tabs
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","pull-requests","pull-stack","quick-file","help"],
       "pressed": {
@@ -1536,7 +1537,7 @@ $ node tests/dom/key-reveal-session.js tabs
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","pull-requests","pull-stack","quick-file","help"],
       "tabs": ["Files","Pulls","Commits"]
@@ -1561,7 +1562,7 @@ $ node tests/dom/key-reveal-session.js tabs
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","pull-requests","pull-stack","quick-file","help"],
       "pressed": {
@@ -1590,7 +1591,7 @@ $ node tests/dom/key-reveal-session.js tabs
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","pull-requests","pull-stack","quick-file","help"],
       "pressed": {
@@ -1619,7 +1620,7 @@ $ node tests/dom/key-reveal-session.js tabs
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","pull-requests","pull-stack","quick-file","help"],
       "pressed": {
@@ -1644,7 +1645,7 @@ $ node tests/dom/key-reveal-session.js tabs
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","controls","numbered","navigation","menus","pull-requests","pull-stack","quick-file","help"],
       "focus": "#7",
@@ -1698,7 +1699,7 @@ $ node tests/dom/key-reveal-session.js tabs
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","controls","numbered","navigation","menus","pull-requests","pull-stack","quick-file","help"],
       "pressed": {
@@ -1725,7 +1726,7 @@ $ node tests/dom/key-reveal-session.js tabs
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","controls","numbered","navigation","menus","pull-requests","pull-stack","quick-file","help"],
       "pressed": {
@@ -1752,7 +1753,7 @@ $ node tests/dom/key-reveal-session.js tabs
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","controls","numbered","navigation","menus","pull-requests","pull-stack","quick-file","help"],
       "n": false,
@@ -1781,7 +1782,7 @@ $ node tests/dom/key-reveal-session.js tabs
       "badges": [],
       "strip": {
         "surface": "nav",
-        "items": ["? Help","T Quick Search"]
+        "items": ["Shift Reveal keys","? Help","T Quick Search"]
       },
       "help": ["anywhere","main-tabs","view-tabs","controls","numbered","navigation","menus","quick-file","help"],
       "pressed": {
