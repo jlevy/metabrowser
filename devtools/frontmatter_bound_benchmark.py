@@ -143,6 +143,26 @@ def _integer_keys(size: int, step: int) -> str:
 # innermost scalar are three of YAML_MAX_DEPTH's levels.
 _DEEPEST_FLOW = YAML_MAX_DEPTH - 3
 
+
+def _flow_plateau(depth: int, size: int, run: int = 440) -> str:
+    """Flow sequences that rise to *depth*, hold *run* items there, and fall (review D, D6).
+
+    Every token on the plateau is scanned with *depth* simple keys pending, where a
+    sawtooth pays for its depth only on the way up and down.
+    """
+
+    unit = "[" * depth + "a," * run + "]" * depth + ","
+    return "x: [" + unit * max(1, (size - 6) // len(unit)) + "]\n"
+
+
+def _sequence_key(size: int) -> str:
+    """One key that is a flow list of `1e15` (review D, D6): five bytes of YAML an item,
+    and twenty characters of the key's JSON text."""
+
+    count = (size - len("? []\n") + 1) // len("1e15,")
+    return "? [" + ",".join(["1e15"] * count) + "]\n"
+
+
 ALIAS_FREE_SHAPES: dict[str, Callable[[int], str]] = {
     "one-character strings": lambda size: _flow("a", size),
     "three-letter strings": lambda size: _flow("lol", size),
@@ -163,6 +183,8 @@ ALIAS_FREE_SHAPES: dict[str, Callable[[int], str]] = {
     # Review C, C4: integer keys that share one hash, and a control of distinct hashes.
     "colliding integer keys": lambda size: _integer_keys(size, _HASH_MODULUS),
     "distinct integer keys": lambda size: _integer_keys(size, _HASH_MODULUS + 2),
+    f"flow plateau {_DEEPEST_FLOW} deep": lambda size: _flow_plateau(_DEEPEST_FLOW, size),
+    "a sequence key of 1e15": _sequence_key,
 }
 
 
@@ -315,6 +337,12 @@ def _largest_accepted(build: Callable[[int], str]) -> str:
 _ESCAPES = "\\0" * 1_000
 
 
+def _two_level(leaf: str, width: int, uses: int) -> str:
+    """One anchored *leaf*, a list of *width* aliases of it, and *uses* aliases of that."""
+
+    return f"e: &e {leaf}\na: &a [{','.join(['*e'] * width)}]\nb: [{','.join(['*a'] * uses)}]\n"
+
+
 def near_budget(repeat: int) -> None:
     print("accepted front matter near FRONTMATTER_MAX_EXPANDED_SIZE")
     shapes: dict[str, Callable[[int], str]] = {
@@ -326,6 +354,21 @@ def near_budget(repeat: int) -> None:
         "escapes aliased": lambda n: f'a: &a "{_ESCAPES}"\nb: [{", ".join(["*a"] * n)}]\n',
         f"inline merges {_DEEPEST_FLOW - 1} deep": lambda n: nested_inline_merges(
             _DEEPEST_FLOW - 1, fan2=n
+        ),
+        # Review D, D2: the smallest values the budget counts one for, aliased.
+        "empty mappings aliased": lambda n: _two_level("{}", 1_000, n),
+        "empty lists aliased": lambda n: _two_level("[]", 1_000, n),
+        "one-key mappings of an empty mapping": lambda n: _two_level("{'': {}}", 1_000, n),
+        "a merge of an empty mapping, aliased": lambda n: (
+            f"z: &z {{}}\ne: &e {{<<: *z}}\na: &a [{','.join(['*e'] * 1_000)}]\n"
+            f"b: [{','.join(['*a'] * n)}]\n"
+        ),
+        "one merge key naming 1,000 aliases": lambda n: (
+            f"z: &z {{}}\ne: &e {{<<: [{','.join(['*z'] * 1_000)}]}}\nb: [{','.join(['*e'] * n)}]\n"
+        ),
+        "a set of 300 members, aliased": lambda n: (
+            f"s: &s !!set {{{','.join(f'k{index:03d}' for index in range(300))}}}\n"
+            f"b: [{','.join(['*s'] * n)}]\n"
         ),
     }
     for name, build in shapes.items():

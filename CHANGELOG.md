@@ -16,11 +16,11 @@ All notable changes to Metabrowser are documented here.
   Front matter is now measured before it is built, and Metabrowser builds it itself,
   leaving the YAML parser only its scalars.
   It is refused when, written out without its aliases, it is larger than
-  `FRONTMATTER_MAX_EXPANDED_SIZE` characters (`frontmatter_yaml.py`), when it nests more
-  than `YAML_MAX_DEPTH` levels, when an alias sits inside the value it names, or when it
-  declares a YAML version other than 1.2: the file reads as text, and its header badge
-  and rendered document say why, in at most `YAML_ERROR_MAX_CHARS` characters, naming a
-  line rather than quoting it.
+  `FRONTMATTER_MAX_EXPANDED_SIZE` characters (`frontmatter_yaml.py`), when it or its
+  value through its aliases nests more than `YAML_MAX_DEPTH` levels, when an alias sits
+  inside the value it names, or when it declares a YAML version other than 1.2: the file
+  reads as text, and its header badge and rendered document say why, in at most
+  `YAML_ERROR_MAX_CHARS` characters, naming a line rather than quoting it.
   The `.yaml` prefix that `yaml_has_key` and `yaml_value_prefix` read goes through the
   same loader. The parse runs off the server’s event loop on every path, and an
   uncompressed file’s front matter is read only from its first `FRONTMATTER_MAX_BYTES`,

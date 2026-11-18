@@ -56,21 +56,22 @@ from ruamel.yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 # fence that is never closed costs one bounded read. It predates the expansion bound
 # below; its cost is the parse, which runs on a worker thread.
 #
-# Measured 2026-11-17 on an Apple M1 Pro, macOS 26.5.2, CPython 3.14.7 with the GIL, at a
-# load average of 11 to 16, with `devtools/frontmatter_bound_benchmark.py` (CPU time):
-# - Alias-free front matter at this bound loads in 0.07 s to 4.0 s, depending on its
-#   shape. The dearest are flow sequences nested to YAML_MAX_DEPTH on one line (4.0 s,
-#   15 us a byte), then flat flow lists of one-digit integers and of one-character
-#   strings (2.8 and 2.3 s). The load is linear in the text: 0.54, 1.14, and 2.36 s at
-#   a quarter, a half, and all of the bound for the strings.
+# Measured 2026-11-18 on an Apple M1 Pro, macOS 26.5.2, CPython 3.14.7 with the GIL, at a
+# load average near 10, with `devtools/frontmatter_bound_benchmark.py` (CPU time):
+# - Alias-free front matter at this bound loads in 0.07 s to 5.5 s, depending on its
+#   shape. The dearest is a flow list that rises to YAML_MAX_DEPTH, holds 440 items
+#   there, and falls, repeated on one line (5.5 s, 21 us a byte); then flow sequences
+#   that rise and fall to that depth (4.0 s), and flat flow lists of one-digit integers
+#   and of one-character strings (2.9 and 2.3 s). The load is linear in the text: 0.55,
+#   1.15, and 2.33 s at a quarter, a half, and all of the bound for the strings.
 # - ruamel's scanner walks one pending simple key for each open flow level on every
 #   token, so nesting costs a factor of its depth: 400 levels took 16 s (review C on
-#   #542). YAML_MAX_DEPTH stops that at 1.4 times the flat lists' cost; 16 levels cost
-#   what they do.
-# - Integer keys chosen to share one hash load as fast as distinct ones (0.41 s each),
+#   #542). YAML_MAX_DEPTH stops that at 1.9 times the flat integers' cost; 16 levels cost
+#   what the flat lists do.
+# - Integer keys chosen to share one hash load as fast as distinct ones (0.42 s each),
 #   because keys are compared by their text, whose hash is seeded.
-# - Off the event loop is not off the GIL: while one 2.4 s load ran on a worker thread,
-#   a plain `/api/file` that answers in 0.9 ms alone answered in 178 ms (median of 12).
+# - Off the event loop is not off the GIL: while one 2.3 s load ran on a worker thread,
+#   a plain `/api/file` that answers in 0.7 ms alone answered in 217 ms (median of 12).
 #   The bound is kept, not lowered, because it sets what front matter a file may have;
 #   the largest front matter among the 185 tracked Markdown files of this repository
 #   that have one is 10,138 bytes. Parsing untrusted front matter in a child process
@@ -85,27 +86,34 @@ FRONTMATTER_MAX_BYTES: Final = 256 * 1024
 #   counts twice.
 # - While building: each value and key written out counts one, each string and string
 #   key adds its length in characters, and each number, date, and binary value adds the
-#   length of its JSON text; resolving a merge key costs one more for each entry it
-#   visits, twice (once for which value wins, once for the order of the keys). The
-#   encoded response can be larger than the count: JSON escapes a control character in
-#   six bytes, and UTF-8 takes up to four a character.
+#   length of its JSON text; resolving a merge key costs one more for each mapping it
+#   names and each entry it visits, twice (once for which value wins, once for the
+#   order of the keys). The encoded response can be larger than the count: JSON escapes
+#   a control character in six bytes, and UTF-8 takes up to four a character.
 #
-# Measured 2026-11-17 (machine as above) with `devtools/frontmatter_bound_benchmark.py`:
+# Measured 2026-11-18 (machine as above) with `devtools/frontmatter_bound_benchmark.py`:
 # - Alias-free front matter at FRONTMATTER_MAX_BYTES writes out to at most 1.17 times
-#   its bytes on the node graph, and once built to at most 3.85 times (flow mappings of
-#   the keys `1e15` to `9e15`, and a flow list of `1e15`, each `1000000000000000.0` as
-#   JSON at 3.80). So four times the byte bound refuses no front matter that has no
-#   aliases.
+#   its bytes on the node graph, and once built to at most 3.99995 times: one key that
+#   is a flow list of `1e15`, five bytes of YAML an item and twenty characters of the
+#   key's JSON text, builds to 1,048,563, 13 units inside this budget (review D on #542).
+#   Flow mappings of the keys `1e15` to `9e15` build to 3.85 times, and a flow list of
+#   `1e15` to 3.80. So four times the byte bound refuses no front matter that has no
+#   aliases, with almost no margin; a change to what a key's text or a node costs has to
+#   rerun this.
 # - Refusal on the node graph takes 1 to 2 ms in all, at any depth of aliases, merge
 #   keys, or aliases under a duplicated key (7 to 12 levels of nine), and costs 2 to 6%
 #   more than the compose for the shapes quadratic in their text (one mapping merged
 #   into many, a list used as the key of many mappings).
-# - Accepted front matter near this budget loads in at most 0.17 s (the dearest shape
-#   found merges one mapping of 200 keys into many) and holds at most 4.9 MiB while it
-#   does; 60 levels of inline merges around 330,000 merged entries load in 40 ms and
-#   0.4 MiB. It encodes in about 10 ms to at most 6.3 MB of JSON (a string of NUL
-#   escapes), and renders in KPress in at most 32 ms; all below the load of the text
-#   FRONTMATTER_MAX_BYTES already admits.
+# - Accepted front matter near this budget loads in at most 0.91 s (a mapping that merges
+#   one empty mapping, aliased: 3.7 KB) and holds at most 85.5 MiB while it does (lists
+#   of one-key mappings of an empty mapping, aliased: 4.1 KB), because the budget counts
+#   one for an empty mapping or list, which costs Python about 60 bytes and a
+#   microsecond to build; review D on #542 found these shapes. Empty mappings aliased
+#   take 0.84 s and 72.8 MiB, and one mapping of 200 keys merged into many 0.17 s and
+#   4.9 MiB; 60 levels of inline merges around 330,000 merged entries load in 39 ms and
+#   0.3 MiB. A value encodes in at most 46 ms to at most 6.3 MB of JSON (a string of NUL
+#   escapes), and renders in KPress in at most 96 ms. All of it is linear in the budget,
+#   and below the load of the text FRONTMATTER_MAX_BYTES already admits.
 # - Without the loader's own build, seven levels of nine aliases copied in 1.06 s to
 #   39 MB of JSON, eight levels of nine merges took 5.3 s in ruamel's constructor, 480
 #   levels of inline merges held 2.5 GB, and `!!timestamp` over one long-tagged alias
@@ -114,17 +122,21 @@ FRONTMATTER_MAX_BYTES: Final = 256 * 1024
 #   the byte bound.
 FRONTMATTER_MAX_EXPANDED_SIZE: Final = 4 * FRONTMATTER_MAX_BYTES
 
-# The deepest nesting a document may have, counted as ruamel's composer counts it: the
-# top-level node is one, and each node inside a collection is one more, a scalar
-# included.
+# The deepest nesting a document and its value may have: the top-level node is one, and
+# each node inside a collection is one more, a scalar included. ruamel's composer checks
+# it on the text, where an alias is a leaf, and the builder on the value, through every
+# alias, so a chain of aliases cannot nest the value deeper than the text may be.
 #
-# Measured 2026-11-17 with `devtools/frontmatter_bound_benchmark.py` (machine as above):
+# Measured 2026-11-18 with `devtools/frontmatter_bound_benchmark.py` (machine as above):
 # the deepest of the 185 tracked Markdown files' front matter here nests 6 levels, and
 # the deepest of the 17 tracked YAML files 9, so 64 refuses no real document found. At
-# this bound flow sequences on one line cost 1.4 times a flat list (FRONTMATTER_MAX_BYTES
-# records the times), and 400 levels are refused in 35 ms at the byte bound. It also
-# bounds the builder's recursion, so the nesting refusal no longer depends on how deep
-# the caller's stack already is.
+# this bound flow lists on one line cost up to 1.9 times a flat list
+# (FRONTMATTER_MAX_BYTES records the times), and 400 levels are refused in 34 ms at the
+# byte bound. Because the builder checks it too, an alias chain that nests the value one
+# level past it is refused, its recursion stays within a few hundred frames, and a nesting
+# refusal no longer depends on how deep the caller's stack already is: before, a chain
+# of 300 aliases was accepted from a shallow stack and refused 420 frames deeper, and a
+# chain to Python's recursion limit called a valid scalar invalid (review D on #542).
 YAML_MAX_DEPTH: Final = 64
 
 # The longest reason a refusal carries, in characters. ruamel's syntax messages quote
@@ -157,6 +169,10 @@ class _ExpansionBudgetError(Exception):
 
 class _CycleError(Exception):
     """An alias names a mapping or sequence that contains it."""
+
+
+class _DepthError(Exception):
+    """The value, built through its aliases, nests past YAML_MAX_DEPTH."""
 
 
 class _VersionError(Exception):
@@ -225,7 +241,7 @@ def _load(text: str, budget: int, error: type[BoundedYamlError], *, keep_last: b
         raise error(
             f"{error.subject} not parsed: a YAML alias refers to a value that contains it"
         ) from exc
-    except (MaxDepthExceededError, RecursionError) as exc:
+    except (MaxDepthExceededError, _DepthError, RecursionError) as exc:
         raise error(
             f"{error.subject} not parsed: it nests too deeply (more than {YAML_MAX_DEPTH} levels)"
         ) from exc
@@ -358,6 +374,9 @@ _MERGE: Final = _TAG + "merge"
 _SCALAR_TAGS: Final = frozenset(
     _TAG + name for name in ("null", "bool", "int", "float", "str", "binary", "timestamp")
 )
+# The tags ruamel's resolver gives a plain `=` and `<<`, which the loader reads as text
+# wherever `<<` is not a merge key.
+_TEXT_TAGS: Final = frozenset((_TAG + "value", _MERGE))
 
 _Pair = tuple[Node, Node]
 
@@ -393,6 +412,11 @@ class _Builder:
             raise _ExpansionBudgetError
 
     def value(self, node: Node) -> object:
+        # The composer counts the nesting of the text, where an alias is a leaf; this
+        # counts the value's, through every alias, in the same unit: a node inside n
+        # collections is level n + 1.
+        if len(self._active) >= YAML_MAX_DEPTH:
+            raise _DepthError
         self._spend(1)
         if isinstance(node, ScalarNode):
             converted, size = self._scalar(node)
@@ -466,12 +490,7 @@ class _Builder:
         """
 
         own, sources = _split(node)
-        chosen: dict[str, _Pair] = {}
-        for pair in own:
-            key = self._key(pair[0])
-            if key in chosen and not self._keep_last:
-                raise _NodeError(pair[0], "a key appears twice in one mapping")
-            chosen[key] = pair
+        chosen = self._own_entries(own)
         if not sources:
             return chosen
         # Which value wins: the mapping's own entries, then each merged mapping, depth
@@ -480,13 +499,14 @@ class _Builder:
         pending = list(reversed(sources))
         while pending:
             source = pending.pop()
+            self._spend(1)
             if id(source) in seen:
                 continue
             seen.add(id(source))
             source_own, source_sources = _split(source)
-            for pair in source_own:
-                self._spend(1)
-                chosen.setdefault(self._key(pair[0]), pair)
+            self._spend(len(source_own))
+            for key, pair in self._own_entries(source_own).items():
+                chosen.setdefault(key, pair)
             pending.extend(reversed(source_sources))
         # The order of the keys: where each first appears in ruamel's flattened list,
         # which puts a mapping's merged entries, last named first, before its own.
@@ -500,12 +520,25 @@ class _Builder:
                     self._spend(1)
                     order.setdefault(self._key(pair[0]))
                 continue
+            self._spend(1)
             if id(current) in visited:
                 continue
             visited.add(id(current))
             walk.append((current, True))
             walk.extend((source, False) for source in _split(current)[1])
         return {key: chosen[key] for key in order}
+
+    def _own_entries(self, pairs: list[_Pair]) -> dict[str, _Pair]:
+        """One mapping's own entries by key: a repeated key is refused, or keeps its last
+        value where the caller asked for that, whether or not the mapping is merged."""
+
+        entries: dict[str, _Pair] = {}
+        for pair in pairs:
+            key = self._key(pair[0])
+            if key in entries and not self._keep_last:
+                raise _NodeError(pair[0], "a key appears twice in one mapping")
+            entries[key] = pair
+        return entries
 
     def _key(self, node: Node) -> str:
         """A key's text: a string as it is, any other scalar or a sequence as JSON."""
@@ -534,13 +567,20 @@ class _Builder:
         if known is not None:
             return known
         tag = node.tag
-        if tag not in _SCALAR_TAGS:
+        if tag in _TEXT_TAGS:
+            # A plain `=` or `<<` that is not a merge key reads as its text, as YAML 1.2's
+            # core schema reads it; ruamel's resolver tags them for YAML 1.1's types.
+            built: object = node.value
+        elif tag not in _SCALAR_TAGS:
             raise _NodeError(node, "a scalar has a tag the loader does not read")
-        try:
-            built = self._constructor.construct_object(node)
-        except Exception as exc:
-            # ruamel's messages quote the scalar; this names only its tag.
-            raise _NodeError(node, f"not a valid !!{tag.removeprefix(_TAG)}") from exc
+        else:
+            try:
+                built = self._constructor.construct_object(node)
+            except RecursionError:
+                raise
+            except Exception as exc:
+                # ruamel's messages quote the scalar; this names only its tag.
+                raise _NodeError(node, f"not a valid !!{tag.removeprefix(_TAG)}") from exc
         result = _json_scalar(built)
         self._scalars[id(node)] = result
         return result

@@ -206,16 +206,21 @@ _COLLECTION_TAGS = tuple(
 )
 
 
+class ConstructorUsed(BaseException):
+    """A YAML constructor built a collection. A ``BaseException``, so that the loader,
+    which turns every ``Exception`` into a refusal, cannot hide it (review D, D5)."""
+
+
 def forbid_ruamel_collections(monkeypatch: pytest.MonkeyPatch) -> None:
     """Fail at once if ruamel's constructor builds a collection, or PyYAML builds anything.
 
     The loader builds every mapping, sequence, and merge key itself (review C, C6), so
     none of these may run. Where they would, they stop a document that would otherwise
-    take gigabytes or hours.
+    take gigabytes or hours, and fail the test even where it expects a refusal.
     """
 
     def refuse(*_args: Any, **_kwargs: Any) -> Any:
-        raise AssertionError("a YAML constructor built a collection")
+        raise ConstructorUsed
 
     for cls in (ruamel_constructor.BaseConstructor, ruamel_constructor.SafeConstructor):
         for name in (
@@ -365,6 +370,67 @@ def test_merge_keys_take_ruamels_values_and_order() -> None:
     assert list(parsed["n"].items()) == [("x", "a"), ("y", "a"), ("z", "b"), ("w", "b")]
 
 
+@pytest.mark.parametrize(
+    ("text", "prefix"),
+    [
+        ("m: {<<: {a: 1, a: 2}}\n", {"m": {"a": 2}}),
+        ("m: {<<: {<<: {a: 1, a: 2}, b: 3}}\n", {"m": {"a": 2, "b": 3}}),
+        ("s: &s {a: 1, a: 2}\nm: {<<: *s}\n", {"s": {"a": 2}, "m": {"a": 2}}),
+    ],
+)
+@pytest.mark.usefixtures("no_ruamel_collections")
+def test_a_key_repeated_in_a_merged_mapping_is_read_like_any_other(
+    text: str, prefix: dict[str, object]
+) -> None:
+    """Review D, D3: front matter refuses it, and the YAML prefix keeps the last value,
+    as ruamel does, whether or not the mapping is merged."""
+
+    with pytest.raises(FrontmatterError, match="a key appears twice in one mapping"):
+        load_frontmatter_yaml(text)
+    assert yaml_mapping_from_bytes(text.encode()) == prefix
+
+
+def alias_chain(levels: int) -> str:
+    """Review D, D1: a list of lists, each holding an alias of the one before.
+
+    The composer sees four levels, since an alias is a leaf to it; the value nests
+    *levels* + 3 (the mapping, the outer list, and the scalar).
+    """
+
+    items = ["&a0 [x]"] + [f"&a{index} [*a{index - 1}]" for index in range(1, levels)]
+    return "h:\n" + "".join(f"- {item}\n" for item in items)
+
+
+def _from_deeper_frames(frames: int, text: str) -> object:
+    return _from_deeper_frames(frames - 1, text) if frames else load_frontmatter_yaml(text)
+
+
+@pytest.mark.usefixtures("no_ruamel_collections")
+def test_aliases_cannot_nest_the_value_past_the_depth_bound() -> None:
+    """The builder counts the value's nesting through every alias, in the composer's unit.
+
+    A chain to the bound is accepted and one past it refused, with the nesting reason,
+    however deep the caller's stack already is; before, 300 levels were accepted from a
+    shallow stack and refused from 420 frames deeper.
+    """
+
+    deepest = YAML_MAX_DEPTH - 3
+    parsed = load_frontmatter_yaml(alias_chain(deepest))
+    assert isinstance(parsed, dict)
+    level: object = parsed["h"][-1]
+    nesting = 3
+    while isinstance(level, list):
+        level, nesting = level[0], nesting + 1
+    assert (level, nesting) == ("x", YAML_MAX_DEPTH)
+
+    for levels in (deepest + 1, 100, 480):
+        with pytest.raises(FrontmatterError, match=TOO_DEEP):
+            load_frontmatter_yaml(alias_chain(levels))
+    with pytest.raises(FrontmatterError, match=TOO_DEEP):
+        _from_deeper_frames(420, alias_chain(300))
+    assert _from_deeper_frames(600, alias_chain(deepest)) == parsed
+
+
 @pytest.mark.usefixtures("no_ruamel_collections")
 def test_nesting_is_refused_past_its_bound_before_the_scanner_pays_for_it() -> None:
     """Review C, C3: 400 flow levels on one line cost ruamel's scanner 53 us a byte.
@@ -446,20 +512,23 @@ def _built_size(text: str) -> int:
 
 
 def test_the_densest_alias_free_front_matter_at_the_byte_bound_is_accepted() -> None:
-    """The densest alias-free shape found writes out to 3.8 times its bytes.
+    """The densest alias-free shape found writes out to 3.99995 times its characters.
 
-    Each ``1e15`` is five bytes of a flow list and ``1000000000000000.0`` once built,
-    with one for the node. The expansion bound is four times the byte bound, so front
-    matter with no aliases is not refused by it even at the byte bound.
+    Review D, D6: one key that is a flow list of ``1e15``, five bytes of YAML an item
+    and twenty characters of the key's JSON text (``1000000000000000.0, ``). At the byte
+    bound it builds to 13 units inside the expansion bound, four times the byte bound,
+    so this is the shape a change to a key's text or its charge would break first.
     """
 
-    count = (FRONTMATTER_MAX_BYTES - len("x: []\n")) // len("1e15,")
-    text = "x: [" + ",".join(["1e15"] * count) + "]\n"
-    assert FRONTMATTER_MAX_BYTES - len(text) < len("1e15,")
+    count = (FRONTMATTER_MAX_BYTES - len("? []\n") + 1) // len("1e15,")
+    text = "? [" + ",".join(["1e15"] * count) + "]\n"
+    assert len(text) == FRONTMATTER_MAX_BYTES
 
-    assert load_frontmatter_yaml(text) == {"x": [1e15] * count}
+    parsed = load_frontmatter_yaml(text)
+    assert isinstance(parsed, dict)
+    assert list(parsed.values()) == [None]
     expanded = _built_size(text)
-    assert expanded / len(text) > 3.79
+    assert expanded / len(text) > 3.999
     assert expanded <= FRONTMATTER_MAX_EXPANDED_SIZE
 
 
@@ -488,6 +557,18 @@ def test_tags_json_has_no_type_for_are_answered_as_json_safe_values() -> None:
     assert huge == "0x" + "f" * 4_000
     # What every consumer does with it: the response encoder, and a sorted cache key.
     json.dumps(parsed, allow_nan=False, sort_keys=True)
+
+
+@pytest.mark.usefixtures("no_ruamel_collections")
+def test_a_plain_equals_sign_or_merge_sign_reads_as_text() -> None:
+    """Review D, D4: ruamel's resolver tags a plain `=` and `<<` for YAML 1.1; both read
+    as strings, as YAML 1.2 reads them and ruamel and PyYAML read a `=` key."""
+
+    text = "=: 1\nkind: Table\nops: {=: eq, '<': lt}\nsep: =\nop: <<\n"
+    expected = {"=": 1, "kind": "Table", "ops": {"=": "eq", "<": "lt"}, "sep": "=", "op": "<<"}
+
+    assert load_frontmatter_yaml(text) == expected
+    assert yaml_mapping_from_bytes(text.encode()) == expected
 
 
 def test_keys_are_compared_by_their_json_text() -> None:
