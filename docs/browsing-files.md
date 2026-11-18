@@ -37,7 +37,8 @@ is incomplete. [Keyboard shortcuts](keyboard-shortcuts.md) lists every key.
 Selecting a folder shows two views, **Overview** (`O`) and **Treemap** (`M`).
 
 **Overview** has a **File Overview** section and, when the folder has one, its
-**README** rendered as a document.
+**README** rendered as a document, with the table of contents it has opened as a file;
+an entry scrolls the Overview to its heading.
 File Overview counts what the folder holds:
 
 - **Files, Ignored, and Total:** the folder’s files, the files Git ignores, and both
