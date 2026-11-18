@@ -3,14 +3,18 @@ type: is
 id: is-01m7pdvnf87n53mhhjyrjqj9dw
 title: "macOS app: the view header's GitHub toggle shows github.com for the current item in the window, with a native toggle back to the Metabrowser view"
 kind: feature
-status: open
+status: in_progress
 priority: 2
-version: 3
+version: 4
+delegate: claude-code@spud10
 labels: []
 dependencies: []
 parent_id: is-01m7pac84jxgvafgawtsn1wgn0
+hold: null
+hold_until: null
 created_at: 2026-11-18T04:15:23.623Z
-updated_at: 2026-11-18T22:10:26.684Z
+updated_at: 2026-11-18T22:11:48.625Z
+started_at: 2026-11-18T22:11:48.623Z
 ---
 Owner, 2026-11-18: "In general, pages should open in the Metabrowser view, but you should always be able to switch to the GitHub view, and then it's simply a web view onto that page on github.com." The coordinator reversed the earlier "no in-app GitHub browser" for the macOS app: in the app (WKWebView), switching the view header's GitHub toggle shows github.com for the current item in that window, and the toggle stays reachable to switch back, so it lives in native window chrome or an overlay that survives showing github.com.
 
