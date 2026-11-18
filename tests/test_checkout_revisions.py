@@ -276,12 +276,15 @@ def test_an_address_crosses_between_the_folder_and_a_revision(served: TestClient
     assert (kept.status_code, kept.headers["location"]) == (307, view("README.md"))
     gone = served.get("/view/NOTES.md", follow_redirects=False)
     assert (gone.status_code, gone.headers["location"]) == (307, "/view/")
-    # Back on the working tree, a revision's address goes to the folder's entry, and one
-    # the folder lacks is the folder's to answer as any missing path.
+    # Back on the working tree, a revision's address goes to the folder's entry, or to its
+    # root when the folder has none by those names. A name that only begins as a wire
+    # does is the folder's own missing path, and a file really so named is served.
     assert _pin(served, working_tree=True, view=view("FEATURE.md"))["view_href"] == "/view/"
     crossed = served.get(view("README.md"), follow_redirects=False)
     assert (crossed.status_code, crossed.headers["location"]) == (307, "/view/README.md")
-    assert served.get(view("FEATURE.md"), follow_redirects=False).status_code == 200
+    absent = served.get(view("FEATURE.md"), follow_redirects=False)
+    assert (absent.status_code, absent.headers["location"]) == (307, "/view/")
+    assert served.get("/view/g1-not_a_wire!", follow_redirects=False).status_code == 200
 
 
 def test_a_folder_opens_on_a_named_ref_once(checkout: Path, tmp_path: Path) -> None:

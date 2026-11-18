@@ -229,7 +229,7 @@ def _status_etag(status: SourceStatus) -> str:
 async def api_source_status(request: Request) -> Response:
     """``GET /api/source/status`` — the active subject, its pin, and its freshness."""
 
-    status = source_status(mirror_session(request.app), checkout_revisions(request.app))
+    status = source_status(mirror_session(request.app), checkout_revisions())
     etag = _status_etag(status)
     headers = etag_headers(etag)
     if matches_if_none_match(request, etag):
@@ -412,7 +412,7 @@ def _switchable(request: Request, capability: str) -> MirrorSession | CheckoutRe
     mirror = mirror_session(request.app)
     if mirror is not None and as_git_revision_subject(get_source_session().subject) is not None:
         return mirror
-    checkout = checkout_revisions(request.app)
+    checkout = checkout_revisions()
     if checkout is None:
         raise UnsupportedSourceCapabilityError(capability)
     return checkout
@@ -685,7 +685,7 @@ async def view_on_pin(subject: GitRevisionSubject, identity: str) -> str:
 _WIRE_SEGMENT: Final = "g1-"
 
 
-async def crossed_view_href(app: Any, raw_path: bytes) -> str | None:
+async def crossed_view_href(raw_path: bytes) -> str | None:
     """Where a ``/view/`` address written for the other side of a checkout goes, or ``None``.
 
     A checkout's server shows its working tree or one of its revisions, and the two name
@@ -696,14 +696,15 @@ async def crossed_view_href(app: Any, raw_path: bytes) -> str | None:
 
     - on a revision, a folder's path goes to the same names in the revision when it has
       them, and to the root otherwise, where it would be refused as no address at all;
-    - on the working tree, a revision's wire goes to the same names in the folder, and
-      only when the folder has them: a path that merely looks like a wire is the
-      folder's to answer.
+    - on the working tree, a revision's wire goes to the same names in the folder when
+      it has them, and to the root otherwise. The caller asks only for an address the
+      folder has no entry by, and one that merely begins as a wire does is the folder's
+      own missing path.
 
     ``None`` for any other server, and for an address that needs no translation.
     """
 
-    checkout = checkout_revisions(app)
+    checkout = checkout_revisions()
     if checkout is None:
         return None
     try:
@@ -719,8 +720,14 @@ async def crossed_view_href(app: Any, raw_path: bytes) -> str | None:
     identity = decode_view_logical_path(address.encode("ascii")) or ""
     if not identity.startswith(_WIRE_SEGMENT):
         return None
-    href = await asyncio.to_thread(_folder_view, identity)
-    return href if href != VIEW_ROUTE_PREFIX else None
+    from metabrowser.git.tree_source import GitPathError, split_git_container_wire
+
+    try:
+        split_git_container_wire(identity)
+    except (GitPathError, ValueError):
+        # Not a wire, only a name that begins as one: the folder's own missing path.
+        return None
+    return await asyncio.to_thread(_folder_view, identity)
 
 
 async def api_source_pin(request: Request) -> JSONResponse:

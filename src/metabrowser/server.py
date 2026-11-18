@@ -1509,8 +1509,9 @@ async def index(
     mirror = mirror_session(request.app) if pin is not None else None
     # The served checkout's own refs and revisions: a folder that is a repository's root,
     # on its working tree and on each revision it shows. A mirror and a plain folder
-    # have none.
-    checkout = checkout_revisions(request.app)
+    # have none. Kept for the process, as the session is, so a folder's shell still
+    # reads nothing of the application's state.
+    checkout = checkout_revisions()
     # The tab's title, and a native window's: what the served subject is called, from the
     # model `/api/identity` answers, so the two cannot disagree. A page changes subject
     # only by loading again, so the title written here stays current.
@@ -2316,7 +2317,7 @@ async def view_shell(request: Request) -> Response:
         if decoded is None:
             # A folder's address on a revision of its checkout: a tab, a history entry,
             # or a bookmark from the working tree. It goes where a switch would send it.
-            crossed = await crossed_view_href(request.app, raw_path)
+            crossed = await crossed_view_href(raw_path)
     else:
         decoded = decode_safe_view_path(raw_path)
         # A revision's address on its checkout's working tree, unless the folder has an
@@ -2326,7 +2327,7 @@ async def view_shell(request: Request) -> Response:
             and decoded.startswith("g1-")
             and not await asyncio.to_thread(_view_path_exists, decoded)
         ):
-            crossed = await crossed_view_href(request.app, raw_path)
+            crossed = await crossed_view_href(raw_path)
     if crossed is not None:
         return RedirectResponse(crossed, status_code=307)
     if decoded is None:
@@ -5094,7 +5095,7 @@ async def _lifespan(app: Starlette) -> AsyncIterator[None]:
         lifespan_subject(),
         build_lifespan(app=app, root_provider=_inventory_root_provider),
         lifespan_refresh(app),
-        lifespan_checkout(app),
+        lifespan_checkout(),
     ):
         try:
             yield

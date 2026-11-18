@@ -293,7 +293,7 @@ async def api_identity(request: Request) -> JSONResponse:
     """``GET /api/identity`` -- what this server's subject is called, as a window titles it."""
 
     try:
-        identity = root_identity(mirror_session(request.app), checkout_revisions(request.app))
+        identity = root_identity(mirror_session(request.app), checkout_revisions())
     except UnsupportedSourceCapabilityError as exc:
         return JSONResponse(unsupported_source_payload(exc), status_code=409)
     return JSONResponse(dict(identity))

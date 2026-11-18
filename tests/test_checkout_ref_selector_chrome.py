@@ -157,6 +157,14 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
     assert on_branch["workingTree"]["current"] is False
     assert [row["text"] for row in on_branch["rows"] if row["current"]] == ["feature c7ae2a331f54"]
 
+    # A page that shows what the server serves is never refused: the working tree's page
+    # before its guard arrived, and the revision's through a file and its history. The
+    # server refuses a page's fetch that names no commit while a pin is served, so this
+    # is also that every request of a pin's page does name it.
+    for name in ("workingTreeBrowsing", "revisionRequests", "revisionBrowsing"):
+        assert result[name]["asked"] > 0, name
+        assert result[name]["refused"] == [], f"{name}: refused {result[name]['refused']}"
+
     # Another tab switched the server back: this page is refused, and offers a reload.
     assert (result["switchedOutside"], result["refused"]) == (200, 409)
     assert result["stale"]["stale"] == "The server now shows the working treeReload"

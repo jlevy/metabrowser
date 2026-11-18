@@ -18,7 +18,9 @@
 //      for data, and reads the offer to reload that the selector then makes;
 //   5. reloads, which lands on the working tree through the server's translation of the
 //      revision's address, and chooses the Working tree row from a revision again;
-//   6. goes Back onto the revision's address while the working tree is served.
+//   6. goes Back onto the revision's address while the working tree is served;
+//   7. browses a revision's page, a file and its history, and reads how every data
+//      request of each page was answered: none of a current page's is refused.
 //
 // It times each switch from the click to the new document's first tree rows and to its
 // selector being mounted, and the working tree's page from navigation to its selector.
@@ -106,6 +108,26 @@ chrome.on("Network.responseReceived", ({ type, response }) => {
     });
   }
 });
+
+// Every data request a page made, and how it was answered: a page that shows what the
+// server serves is never refused as a page left behind (`pin_changed`, 409).
+/** @type {Array<{url: string, status: number}>} */
+let dataRequests = [];
+chrome.on("Network.responseReceived", ({ response }) => {
+  const url = new URL(response.url);
+  if (url.pathname.startsWith("/api/")) {
+    dataRequests.push({ url: url.pathname, status: response.status });
+  }
+});
+/** The data requests since the last call, by status, with the addresses of any refused. */
+function takeDataRequests() {
+  const taken = dataRequests;
+  dataRequests = [];
+  return {
+    asked: taken.length,
+    refused: taken.filter((entry) => entry.status === 409).map((entry) => entry.url),
+  };
+}
 
 let shot = 0;
 async function capture(name) {
@@ -235,6 +257,7 @@ try {
 
   // 1. The working tree's page.
   result.workingTreeLoadMs = await load("/view/README.md");
+  takeDataRequests();
   result.workingTree = await chrome.evaluate(PAGE);
   // What the selector's bundle cost this page: the guard and the selector, on demand.
   result.bundle = await chrome.evaluate(`performance.getEntriesByType("resource")
@@ -253,6 +276,7 @@ try {
   await openPanelList("Branches");
 
   // 2. A branch: the revision's page.
+  result.workingTreeBrowsing = takeDataRequests();
   result.toBranch = await switchBy(rowNamed("feature"));
   result.branch = await chrome.evaluate(PAGE);
   await capture("revision");
@@ -261,6 +285,7 @@ try {
   result.branchPanel = await openPanel();
   await capture("revision-panel");
   await closePanel();
+  result.revisionRequests = takeDataRequests();
 
   // 4. Another tab switches the server back; this page is told when it next asks.
   result.switchedOutside = await chrome.evaluate(`fetch("/api/source/pin", {
@@ -306,6 +331,25 @@ try {
   result.served = await chrome.evaluate(
     `fetch("/api/source/status").then((response) => response.json())`,
   );
+
+  // 7. A revision's own page browses as any page does: a file, and its history. None of
+  // its requests is refused, since each names the commit the server serves. Last, since
+  // the Commits tab adds entries to the history that step 6 walks.
+  await openPanel();
+  await switchBy(rowNamed("feature"));
+  takeDataRequests();
+  await chrome.evaluate(
+    `[...document.querySelectorAll("#tree-content .tree-item")]
+      .find((row) => row.textContent.includes("FEATURE.md")).click(); true`,
+  );
+  await chrome.waitFor(`location.pathname !== ${JSON.stringify("/view/g1-UkVBRE1FLm1k")}`);
+  await chrome.waitFor(
+    `(document.querySelector("#preview-pane")?.innerText ?? "").includes("Only on feature")`,
+  );
+  await chrome.evaluate(`document.querySelector('.tab-btn[data-tab="git"]').click(); true`);
+  await chrome.waitFor(`document.querySelectorAll("#tab-git .git-graph-row").length > 0`);
+  result.revisionBrowsing = takeDataRequests();
+
   result.documents = documents;
   console.log(JSON.stringify(result));
 } finally {

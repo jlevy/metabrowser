@@ -58,7 +58,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from metabrowser.content_errors import ContentReadError
 from metabrowser.invisible_chars import display_segment
@@ -68,7 +68,7 @@ from metabrowser.mirror_refresh import (
     SelectionError,
     SelectionRefMovedError,
 )
-from metabrowser.paths_safe import tilde_path
+from metabrowser.paths_safe import register_root_callback, tilde_path
 from metabrowser.repository_context import resolve_common_dir, resolve_git_dir
 from metabrowser.source import (
     SourceSession,
@@ -293,7 +293,29 @@ class _Held:
     revisions: CheckoutRevisions | None
 
 
-def checkout_revisions(app: Any) -> CheckoutRevisions | None:
+# What this process decided for its served root. One per process, as the source session
+# is: a server serves one subject. Forgotten when a root is chosen and when the
+# application stops, so nothing made in one event loop is used in another.
+_held: _Held | None = None
+
+
+def _forget() -> _Held | None:
+    """Drop what was decided for the served root, and return it."""
+
+    global _held
+    held, _held = _held, None
+    return held
+
+
+def _forget_for_a_new_root() -> None:
+    # Choosing a filesystem root is choosing to serve it, and its files.
+    _forget()
+
+
+register_root_callback(_forget_for_a_new_root)
+
+
+def checkout_revisions() -> CheckoutRevisions | None:
     """The served checkout's revisions, or ``None``: a plain folder, a mirror, or its pin.
 
     Decided once for a served root, from whether it holds a ``.git`` entry, which is the
@@ -302,24 +324,24 @@ def checkout_revisions(app: Any) -> CheckoutRevisions | None:
     object answers, so the page of a revision keeps its selector.
     """
 
-    held = getattr(app.state, "source_checkout", None)
+    global _held
+    held = _held
     try:
         subject = get_source_session().subject
     except SubjectNotOpenError:
         return None
     if as_git_revision_subject(subject) is not None:
-        revisions = held.revisions if isinstance(held, _Held) else None
+        revisions = held.revisions if held is not None else None
         return revisions if revisions is not None and revisions.serves(subject) else None
     root = subject.filesystem_root
     if root is None:
         return None
-    if not isinstance(held, _Held) or held.root != root:
+    if held is None or held.root != root:
         try:
             is_checkout = (root / ".git").exists()
         except OSError:
             is_checkout = False
-        held = _Held(root, CheckoutRevisions(root) if is_checkout else None)
-        app.state.source_checkout = held
+        held = _held = _Held(root, CheckoutRevisions(root) if is_checkout else None)
     return held.revisions
 
 
@@ -344,10 +366,10 @@ def open_on_ref(ref: str | None) -> None:
     _open_on = ref
 
 
-async def _open_named_ref(app: Any, ref: str) -> None:
+async def _open_named_ref(ref: str) -> None:
     """Serve *ref* of the served checkout, or fail the startup with a message to print."""
 
-    checkout = checkout_revisions(app)
+    checkout = checkout_revisions()
     if checkout is None:
         raise fail_subject_open(NOT_A_CHECKOUT)
     try:
@@ -363,7 +385,7 @@ async def _open_named_ref(app: Any, ref: str) -> None:
 
 
 @asynccontextmanager
-async def lifespan_checkout(app: Any) -> AsyncGenerator[None]:
+async def lifespan_checkout() -> AsyncGenerator[None]:
     """Own what a server keeps for its checkout, and leave the folder served at exit.
 
     Entered last and so left first: a revision still served at shutdown is detached, and
@@ -374,15 +396,14 @@ async def lifespan_checkout(app: Any) -> AsyncGenerator[None]:
 
     global _open_on
     ref, _open_on = _open_on, None
-    app.state.source_checkout = None
+    _forget()
     try:
         if ref is not None:
-            await _open_named_ref(app, ref)
+            await _open_named_ref(ref)
         yield
     finally:
-        held = getattr(app.state, "source_checkout", None)
-        app.state.source_checkout = None
-        if isinstance(held, _Held) and held.revisions is not None:
+        held = _forget()
+        if held is not None and held.revisions is not None:
             try:
                 await held.revisions.aclose()
             except Exception:
