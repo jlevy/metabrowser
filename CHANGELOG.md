@@ -4,6 +4,20 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- The macOS app opens GitHub links: a repository, a pull request, a commit, or a file or
+  folder at a ref, sent with `metab URL --present` or `open -b`. Before, the app took
+  such a link and did nothing.
+  `metab URL --present --dry-run --json` resolves each link, and the app opens its page
+  in the repository’s window, one per repository, cloning the repository or reusing its
+  cache as `metab URL` does; a link `metab` refuses shows `metab`’s message.
+  A first clone is no longer stopped 60 seconds after its server started: the app waits
+  as long as the clone reports progress, up to `metab`’s own bound on a clone, and
+  folders opened meanwhile start at once.
+  The app’s `Info.plist` now declares `MetabrowserOpensURLs`, which `--present` reads
+  before it sends a link.
+  A repository’s window is not listed in Open Recent and does not come back with the
+  last session. See [the app’s guide](docs/macos-app.md#opening-github-links).
+
 - The Pulls tab’s change lines, each row’s file and line totals, arrive in seconds
   rather than tens of seconds on a cold cache.
   The prefetch now lists the changed files of the open pull requests in view from the

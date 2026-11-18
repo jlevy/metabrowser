@@ -8,7 +8,8 @@ The app is a native shell over `metab`. Everything inside a window is the page `
 serves, the same page a browser shows.
 What the app adds is what a browser tab cannot give:
 
-- a window per folder, each with its own server, which the app starts and stops;
+- a window per folder or GitHub repository, each with its own server, which the app
+  starts and stops;
 - a Dock icon, and folders opened from Finder with Open With or dropped on the icon;
 - native menus, tabs across folders, recent folders, and the last session restored.
 
@@ -35,6 +36,34 @@ Reveal Logs, and Runtime Settings….
 Opening a folder in Desktop, Documents, Downloads, iCloud Drive, or on another volume
 asks once for access, in Metabrowser’s name, because the app starts the server that
 reads it.
+
+## Opening GitHub Links
+
+The app opens the GitHub links `metab URL` opens in a browser: a repository, a pull
+request and its tabs, a commit, and a file or folder at a branch, tag, or commit.
+`metab URL --present` sends one to the app, and so does
+`open -b io.github.jlevy.metabrowser URL` (`io.github.jlevy.metabrowser.dev` for a
+development build). `metab` reads each link first, and the app shows what `metab` makes
+of it.
+
+- **One window per repository:** a link into a repository that has a window brings that
+  window forward at the link’s page, with no second server.
+  Otherwise a new window opens at the page, and its server clones the repository into
+  `metab`’s cache, or uses the clone it has there.
+- **A first clone** of a large repository can take minutes.
+  The window says it is starting meanwhile, and File > Reveal Server Log shows the
+  clone’s progress. The app waits for as long as the clone keeps reporting progress, up
+  to `metab`’s own bound on a clone, and gives up on one that stops; the window then
+  offers Retry. Folders you open meanwhile start at once.
+- **A link `metab` refuses**, such as an issues page, or a private repository while `gh`
+  is not signed in, shows `metab`’s message, which says what to do.
+  A link to another site, or an `http` link, shows the app’s own message.
+- **The page, not the pin:** a window shows its repository at one pin, the branch, tag,
+  or pull request its first link chose, until you switch it on the page.
+  A later link into the same repository opens its page at that pin, so a link to a file
+  on another branch shows the file as the window’s pin has it.
+- **Not kept:** a repository’s window is not listed in Open Recent and does not come
+  back with the last session.
 
 ## Windows and Tabs
 
@@ -169,8 +198,12 @@ The app moves nothing itself.
 - The app does not pass state-location variables (`XDG_CACHE_HOME`,
   `METABROWSER_CACHE_DIR`, and the rest) to its servers, so they always use the default
   cache and configuration locations.
-- There is no updater and no URL scheme, and an agent cannot yet show you a page in the
-  app; the
+- A repository that another `metab`, in Terminal say, is cloning at the same moment does
+  not open until that clone ends: the window’s start is given up on meanwhile, and Retry
+  then opens it from the cache.
+  A repository opened while another repository’s first clone runs starts once that clone
+  ends.
+- There is no updater and no URL scheme of the app’s own; the
   [native macOS app plan](project/specs/active/plan-2026-11-10-native-macos-app.md) has
   what comes next.
 

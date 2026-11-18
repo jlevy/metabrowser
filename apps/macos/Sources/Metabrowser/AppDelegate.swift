@@ -18,6 +18,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settings = RuntimeSettings()
     private lazy var recentFolders = RecentFoldersMenu { [weak self] in self?.request($0) }
     private let launchGate = LaunchGate()
+    /// A repository's servers walk ports apart from a folder's (`SessionRoot.basePort`), so
+    /// they start behind a gate of their own, and a first clone holds up no folder.
+    private let repositoryLaunchGate = LaunchGate()
     private let runtimeModel = RuntimeModel()
     /// The runtime, and the folders waiting for one. `runtimeModel` only mirrors it.
     private lazy var selection = RuntimeSelection(settings: settings, setup: settings.usable())
@@ -46,8 +49,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         return operations
     }()
-    /// Open folders by canonical path (one session, and so one server, per root), plus
-    /// the sessions of closed windows whose servers are still stopping.
+    /// Open folders by canonical path and repositories by canonical URL
+    /// (`SessionRoot.key`: one session, and so one server, per root), plus the sessions of
+    /// closed windows whose servers are still stopping.
     private let sessions = ServerFleet()
     private lazy var folderWindows = FolderWindows(
         store: SessionStore(directory: appIdentity.supportDirectory()),
@@ -61,6 +65,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var signalSources: [any DispatchSourceSignal] = []
     private var showPanelAfterDiscovery = false
     private var isTerminating = false
+    /// Set once a quit has begun stopping the servers, so a link that `metab` resolves
+    /// after that starts none.
+    private var isQuitting = false
     /// The runtime's file, or where `metab` may appear while there is none.
     private var watch: SetupWatch?
     private var watchedRuntime: Runtime?
@@ -110,7 +117,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { true }
 
-    /// Folders dropped on the Dock icon, opened with Open With, or passed to `open -a`.
+    /// Folders dropped on the Dock icon, opened with Open With, or passed to `open -a`, and
+    /// links sent with `open -b`, as `metab LINK --present` sends them.
     func application(_ application: NSApplication, open urls: [URL]) {
         urls.forEach(request)
     }
@@ -132,6 +140,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Stops every server, each with SIGTERM to its group, a bounded wait, then SIGKILL,
     /// before the app exits.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        isQuitting = true
         folderWindows.saveForQuit()
         guard !sessions.isEmpty else { return .terminateNow }
         AppLog.app.info(
@@ -220,11 +229,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Opens `url`: a folder in its own server and window or tab, or a file at its page
     /// inside the open folder that holds it, else inside its own folder (`OpenTarget`). A
-    /// folder already open brings its window forward.
+    /// folder already open brings its window forward. A GitHub link opens as `requestLink`
+    /// says.
     func request(_ url: URL) {
-        guard url.isFileURL else { return }
+        guard url.isFileURL else { return requestLink(url) }
         let path = FileChecks.canonicalPath(url.path(percentEncoded: false))
-        let openRoots = sessions.openServers.compactMap { ($0 as? FolderSession)?.path }
+        let openRoots = folderSessions.filter(\.isLocal).map(\.path)
         guard let target = OpenTarget.resolve(path, kind: OpenTarget.Kind(of: path), openRoots: openRoots) else {
             return refuse(
                 "Metabrowser opens folders and files",
@@ -244,7 +254,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             beginRecheck()
         }
         // A request waiting for a runtime is resolved again when one is found.
-        guard selection.setupForOpening(URL(filePath: path)) != nil, let session = session(for: root) else {
+        guard selection.setupForOpening(URL(filePath: path)) != nil, let session = session(for: .folder(root)) else {
             if !selection.isBusy { showSettings(nil) }
             return
         }
@@ -252,14 +262,93 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { await session.startServer() }
     }
 
+    /// Opens a GitHub link, which `metab` resolves (`PresentDryRun`) to a repository and a
+    /// page: the repository's window, if it has one, shows the page, and otherwise a new
+    /// session starts its server with the link and opens at the page. `metab`'s refusal,
+    /// which names its fix, is shown as it gives it. A link waits for a runtime as a
+    /// folder does. Links are not recent folders, and their windows are not saved.
+    private func requestLink(_ url: URL) {
+        guard GitHubLink.accepts(url) else {
+            return refuse(
+                "Metabrowser opens folders, files, and GitHub links",
+                "\(url.absoluteString) is not a folder, a file, or an https link to GitHub.")
+        }
+        if let current = selection.setup?.runtime, !selection.isUnverified,
+           !current.isCurrent(fingerprint: FileFingerprint.of(current.executable)) {
+            beginRecheck()
+        }
+        guard selection.setupForOpening(url) != nil else {
+            if !selection.isBusy { showSettings(nil) }
+            return
+        }
+        guard let setup = operations.launchableSetup() else {
+            // Refused at this moment and being checked again: the link waits for that check.
+            _ = selection.setupForOpening(url)
+            return
+        }
+        Task { await resolveLink(url, with: setup) }
+    }
+
+    private func resolveLink(_ url: URL, with setup: RuntimeSetup) async {
+        let spec = PresentDryRun.spec(
+            for: url, with: setup, inherited: ProcessInfo.processInfo.environment, home: NSHomeDirectory())
+        let answer = PresentDryRun.answer(await CommandRunner.run(spec, timeout: PresentDryRun.timeout))
+        guard !isQuitting else { return }
+        let link = url.absoluteString
+        switch answer {
+        case .plan(let plan):
+            AppLog.app.info(
+                "\(link, privacy: .public) resolves to \(plan.kind.rawValue, privacy: .public) \(String(describing: plan.root), privacy: .public) at \(plan.page?.reference ?? "its entry page", privacy: .public)")
+            open(plan, link: url)
+        case .refused(let refusal):
+            AppLog.app.info("metab refused \(link, privacy: .public): \(refusal.code, privacy: .public)")
+        case .unsupported:
+            AppLog.app.error("\(setup.runtime.executable, privacy: .public) has no \(PresentDryRun.flag, privacy: .public)")
+        case .unreadable(let reason, _):
+            AppLog.app.error("could not resolve \(link, privacy: .public): metab \(reason, privacy: .public)")
+        }
+        if let alert = answer.alert(link: url, metab: "metab \(setup.runtime.version) at \(setup.runtime.executable)") {
+            refuseLater(alert.message, alert.detail)
+        }
+    }
+
+    /// Shows `plan`'s page in its repository's window, or in a new session started with
+    /// `link`. A link only ever names a repository: a plan with a local root, which
+    /// `metab` gives for a path, is refused.
+    private func open(_ plan: PresentPlan, link: URL) {
+        guard case .repository(let repository) = plan.root else {
+            return refuseLater(
+                "Metabrowser cannot open this link",
+                "metab resolved \(link.absoluteString) to a folder on this Mac; open the folder with File > Open… instead.")
+        }
+        let root = SessionRoot.repository(repository)
+        if let session = sessions[root.key] as? FolderSession {
+            session.showFrontWindow(page: plan.page)
+            return
+        }
+        // A runtime held off while `metab` answered: the link waits, and is resolved again.
+        guard selection.setupForOpening(link) != nil, let session = session(for: root, link: link) else {
+            if !selection.isBusy { showSettings(nil) }
+            return
+        }
+        folderWindows.place(session.makeWindow(page: plan.page))
+        Task { await session.startServer() }
+    }
+
     /// The open session for `root`, or a new one with no window and no server yet; nil
     /// without a runtime or for a folder that cannot be served.
     private func session(for root: URL) -> FolderSession? {
-        let key = root.path(percentEncoded: false)
+        session(for: .folder(root))
+    }
+
+    /// The open session for `root`, or a new one, which starts its server with `link` when
+    /// one is given (`FolderSession.init`).
+    private func session(for root: SessionRoot, link: URL? = nil) -> FolderSession? {
+        let key = root.key
         if let open = sessions[key] as? FolderSession { return open }
-        guard let setup = selection.setup, CLIServeLaunch.unservableReason(root) == nil else { return nil }
+        guard let setup = selection.setup, CLIServeLaunch.unservableReason(root.url) == nil else { return nil }
         let session = FolderSession(
-            root: root, setup: setup, gate: launchGate,
+            root: root, link: link, setup: setup, gate: root.isLocal ? launchGate : repositoryLaunchGate,
             accepted: { [weak self] in self?.operations.launchableSetup() })
         session.onWaitingForRuntime = { [weak self] in
             // A search, recheck, or choice that is running settles it, and opens Settings if it finds nothing.
@@ -299,6 +388,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.messageText = message
         alert.informativeText = detail
         alert.runModal()
+    }
+
+    /// `refuse`, from a task. A modal loop entered from a main-actor job stops every other
+    /// main-actor job, quitting included, until the alert closes (see `offerRestart`), so
+    /// the alert runs from the run loop instead, as the quit for a signal does
+    /// (`installTerminationSignals`).
+    private func refuseLater(_ message: String, _ detail: String) {
+        let main = CFRunLoopGetMain()
+        CFRunLoopPerformBlock(main, CFRunLoopMode.commonModes.rawValue) { [weak self] in
+            MainActor.assumeIsolated { self?.refuse(message, detail) }
+        }
+        CFRunLoopWakeUp(main)
     }
 
     private func openPendingFolders() {

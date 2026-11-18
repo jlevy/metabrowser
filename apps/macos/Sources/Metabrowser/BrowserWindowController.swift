@@ -60,9 +60,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         pages = PageLoads(requested: page)
         isDiscarded = discarded
 
-        let path = (session.root.path(percentEncoded: false) as NSString).abbreviatingWithTildeInPath
         let statusView = NSHostingView(rootView: StatusView(
-            folderName: session.folderName, folderPath: path, status: status,
+            folderName: session.folderName, folderPath: session.location, status: status,
             retry: { [weak session] in session?.retry() },
             revealLogs: { [weak session] in session?.revealLog() },
             showSettings: { (NSApp.delegate as? AppDelegate)?.showSettings(nil) }))

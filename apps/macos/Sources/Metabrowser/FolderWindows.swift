@@ -134,9 +134,14 @@ final class FolderWindows {
     // MARK: - The saved session
 
     /// The folder windows now, front window first, each with its tabs in tab-bar order.
+    ///
+    /// A repository's tabs are left out, and so is a window that holds no other: the saved
+    /// session names folders by path (`SavedTab.root`), and its restore admits each path
+    /// again (`RootAdmission`), which a repository's URL is not. A window whose shown tab
+    /// is a repository's is saved showing its first folder tab.
     func snapshot() -> SavedSession {
         var owners: [ObjectIdentifier: (session: FolderSession, controller: BrowserWindowController)] = [:]
-        for session in openSessions() {
+        for session in openSessions() where session.isLocal {
             for controller in session.windows {
                 if let window = controller.window { owners[ObjectIdentifier(window)] = (session, controller) }
             }

@@ -21,9 +21,19 @@ public nonisolated enum ServerState: Equatable, Sendable {
 }
 
 public nonisolated struct SupervisorPolicy: Sendable {
-    /// From spawn to a 2xx. A first run after `uv tool install` compiles bytecode and
-    /// has macOS scan seven native extensions, about 2 s in total (see the brief).
+    /// From spawn to a 2xx, or with a `startupLimit`, from the start's last output
+    /// (`StartupDeadline`). A first run after `uv tool install` compiles bytecode and has
+    /// macOS scan seven native extensions, about 2 s in total (see the brief). As a
+    /// silence it allows five missed lines of a clone's progress
+    /// (`MetabAcquisition.progressLineInterval`).
     public var startupTimeout: Duration = .seconds(60)
+    /// Nil for a folder's server, whose start `startupTimeout` bounds from its spawn. For
+    /// a server that may clone before it serves, the most its start may take while it
+    /// keeps writing (`StartupDeadline`).
+    public var startupLimit: Duration?
+    /// How often a start with a `startupLimit` looks for new output: a second is small
+    /// against `startupTimeout`.
+    public var progressInterval: Duration = .seconds(1)
     /// `metab` sets uvicorn's graceful-shutdown timeout to 0, so SIGTERM returns fast.
     public var shutdownGrace: Duration = .seconds(5)
     /// Between readiness probes: short, since the socket listens moments after the
@@ -48,6 +58,24 @@ public nonisolated struct SupervisorPolicy: Sendable {
     public var healthDeadline: Duration = .seconds(5)
 
     public init() {}
+
+    /// A repository's start: `startupTimeout` from its last output, and at most this from
+    /// its spawn. It outlasts `metab`'s worst case for acquiring the repository
+    /// (`MetabAcquisition.reservationWait`) by `startupTimeout`, for what follows the clone:
+    /// opening the pin, reading a pull request (5.5 to 11 s from GitHub, measured
+    /// 2026-11-02 beside `WAIT_QUIET_S` in `src/metabrowser/cli/clone_report.py`), and the
+    /// server's own start. 2,040 s.
+    public static var repositoryStartupLimit: Duration {
+        MetabAcquisition.reservationWait + SupervisorPolicy().startupTimeout
+    }
+
+    /// The policy of a server that serves `root`: a repository's start may run as long as
+    /// it keeps writing, up to `repositoryStartupLimit`.
+    public static func serving(_ root: SessionRoot) -> SupervisorPolicy {
+        var policy = SupervisorPolicy()
+        if !root.isLocal { policy.startupLimit = repositoryStartupLimit }
+        return policy
+    }
 }
 
 /// What a health check found.
@@ -315,10 +343,12 @@ public final class ServerSupervisor {
         // The announcement, or the child's exit, or the deadline, whichever is first.
         let lines = child.lines
         let launch = self.launch
-        let endpoint = await firstResult(within: policy.startupTimeout, of: [
+        var deadline = StartupDeadline(
+            quiet: policy.startupTimeout, limit: policy.startupLimit, spawned: started, written: child.outputProgress)
+        var waits: [@Sendable () async -> Announcement?] = [
             { @Sendable in
                 for await line in lines {
-                    if let found = launch.endpoint(announcedBy: line) { return found }
+                    if let found = launch.endpoint(announcedBy: line) { return .announced(found) }
                 }
                 return nil
             },
@@ -326,19 +356,33 @@ public final class ServerSupervisor {
                 _ = await child.waitForExit()
                 return nil
             },
-        ])
+        ]
+        if policy.startupLimit != nil {
+            waits.append(Self.watch(child, from: deadline, every: policy.progressInterval, clock: clock))
+        }
+        let announcement = await firstResult(within: deadline.longest, of: waits)
         guard current == generation else { return superseded(child) }
-        guard let endpoint else {
-            let timedOut = started.duration(to: clock.now) >= policy.startupTimeout
-            await abandon(child, timedOut: timedOut, waitingFor: "announce its address")
+        let endpoint: ServerEndpoint
+        switch announcement {
+        case .announced(let announced):
+            endpoint = announced
+        case .expired(let expiry):
+            await abandon(child, timedOut: deadline.summary(expiry, waitingFor: "announce its address"))
+            return
+        case nil:
+            let timedOut = started.duration(to: clock.now) >= deadline.longest
+            await abandon(
+                child,
+                timedOut: timedOut ? deadline.summary(deadline.limit == nil ? .quiet : .limit, waitingFor: "announce its address") : nil)
             return
         }
         event("announced \(endpoint.entryURL.absoluteString)")
 
         // The announcement prints before the socket listens.
         let url = launch.readinessURL(for: endpoint)
-        let deadline = started.advanced(by: policy.startupTimeout)
-        while current == generation, clock.now < deadline, !child.hasExited {
+        deadline.noteOutput(at: clock.now)
+        let ready = deadline.expiry
+        while current == generation, clock.now < ready, !child.hasExited {
             if await probe(url) {
                 guard current == generation, !child.hasExited else { break }
                 let elapsed = Self.milliseconds(started.duration(to: clock.now))
@@ -349,8 +393,32 @@ public final class ServerSupervisor {
             try? await clock.sleep(for: policy.probeInterval)
         }
         guard current == generation else { return superseded(child) }
-        await abandon(
-            child, timedOut: !child.hasExited, waitingFor: "answer \(url.absoluteString) with a 2xx")
+        let what = "answer \(url.absoluteString) with a 2xx"
+        let expiry = deadline.expired(at: clock.now) ?? .quiet
+        await abandon(child, timedOut: child.hasExited ? nil : deadline.summary(expiry, waitingFor: what, announced: true))
+    }
+
+    /// How a start's wait for the announcement ended, when not by the child's exit.
+    private enum Announcement: Sendable {
+        case announced(ServerEndpoint)
+        case expired(StartupDeadline.Expiry)
+    }
+
+    /// Looks at the child's output every `interval` and returns once `initial`'s
+    /// deadline, moved on by each look that finds more output, has passed.
+    private nonisolated static func watch(
+        _ child: any ServerProcess, from initial: StartupDeadline, every interval: Duration, clock: ContinuousClock
+    ) -> @Sendable () async -> Announcement? {
+        { @Sendable in
+            var deadline = initial
+            while !Task.isCancelled {
+                let now = clock.now
+                deadline.observe(written: child.outputProgress, at: now)
+                if let expiry = deadline.expired(at: now) { return .expired(expiry) }
+                try? await clock.sleep(for: min(interval, now.duration(to: deadline.expiry)))  // cancelled: another wait won
+            }
+            return nil
+        }
     }
 
     /// A launch overtaken after it spawned ends its own child, unless whatever overtook
@@ -364,14 +432,17 @@ public final class ServerSupervisor {
     /// Ends a start that never became ready. A child that exited by itself is reported
     /// with its status; one that is still running is stopped. Either way the ending is
     /// a tracked termination, so a stop or quit meanwhile waits for it.
-    private func abandon(_ child: any ServerProcess, timedOut: Bool, waitingFor what: String) async {
+    ///
+    /// - Parameter timeout: the summary of a start its deadline ended, or nil for one that
+    ///   ended early (the child exited, or closed its output).
+    private func abandon(_ child: any ServerProcess, timedOut timeout: String?) async {
         generation += 1  // this exit is expected now; childExited must not report it
         let mine = generation
         if process === child { process = nil }
-        let result = await retire(child, allowingNaturalExitFor: timedOut ? .zero : policy.earlyExitWait).value
+        let result = await retire(child, allowingNaturalExitFor: timeout != nil ? .zero : policy.earlyExitWait).value
         let summary: String
-        if timedOut {
-            summary = "The server did not \(what) within \(policy.startupTimeout)."
+        if let timeout {
+            summary = timeout
         } else if !result.signaled, let status = result.status {
             summary = "The server exited before it was ready (\(ExitStatus(waitStatus: status)))."
         } else {

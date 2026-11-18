@@ -117,6 +117,35 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
    shows the file in `a`, if open).
    A drag of text or a web link is still the page’s.
 
+## GitHub Links
+
+With the development build running a `metab` that has `--present`, and `gh` signed in:
+
+```shell
+APP="$PWD/apps/macos/build/dev/Metabrowser.app"
+APP_ID=io.github.jlevy.metabrowser.dev
+LOGS="$HOME/Library/Logs/Metabrowser"
+```
+
+1. **A pull request.** `open -b "$APP_ID" https://github.com/jlevy/metabrowser/pull/517`
+   opens a window at the pull request’s page, titled for the repository until the server
+   answers and then as `metab` names the pull request.
+   `pgrep -fl -- 'metab https://github.com/jlevy/metabrowser/pull/517'` lists one
+   server, on a port from `CLIServeLaunch.repositoryBasePort` up, and
+   `"$LOGS"/metabrowser-*.log` holds its clone or cache line.
+2. **The same repository.** `open -b "$APP_ID" https://github.com/jlevy/metabrowser`
+   brings that window forward at the repository’s page, and the `pgrep` still lists one
+   server.
+3. **Refusals.** `open -b "$APP_ID" https://github.com/jlevy/metabrowser/issues/1` shows
+   `metab`’s message about issues pages; `open -b "$APP_ID" https://example.com/` shows
+   the app’s own. Neither opens a window.
+4. **A first clone.** A link to a public repository that is not cached and takes longer
+   than `SupervisorPolicy.startupTimeout` to clone keeps its window starting while the
+   log grows, then opens.
+   While it clones, `open -a "$APP" "$(mktemp -d)"` opens a folder at once.
+5. **Not kept.** File > Open Recent does not list the repository, and after a quit and a
+   launch its window does not come back, while a folder window open beside it does.
+
 ## Print and Drops
 
 `node webkit-gate/run.mjs --checks`, from `apps/macos`, scripts these in the app’s web

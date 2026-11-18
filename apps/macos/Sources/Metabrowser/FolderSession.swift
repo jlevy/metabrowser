@@ -2,7 +2,8 @@ import AppKit
 import ShellCore
 import WebKit
 
-/// One opened folder: one server, and the windows that show it.
+/// One opened folder or GitHub repository (`SessionRoot`): one server, and the windows
+/// that show it.
 ///
 /// The first window opens before the server starts and shows its progress; windows the
 /// page opens (`target=_blank`, Command-click) join it as tabs. When the last window
@@ -10,7 +11,10 @@ import WebKit
 /// A restored folder's windows open before its server starts, which `FolderWindows`
 /// schedules.
 final class FolderSession: ManagedServer {
-    let root: URL
+    /// What the session serves, which keys it.
+    let served: SessionRoot
+    /// The folder's file URL, or the repository's canonical URL.
+    var root: URL { served.url }
     /// The folder's log, which each launch claims before it spawns, so another running
     /// copy of the app serving the folder too writes a log of its own.
     private let log: FolderLog
@@ -46,20 +50,29 @@ final class FolderSession: ManagedServer {
 
     /// `accepted` is the runtime a server may start from at the moment it would start,
     /// which every start, Retry, and Restart Server ask, not `setup`.
-    init(root: URL, setup: RuntimeSetup, gate: LaunchGate, accepted: @escaping () -> RuntimeSetup?) {
-        self.root = root
-        title = WindowTitle(.localFolder(root))
+    ///
+    /// - Parameter link: for a repository, what its server is started with: the link it
+    ///   was opened with, so `metab` pins what the link selects and reads a pull request it
+    ///   names, as `metab LINK` in Terminal does. Nil serves the root itself.
+    init(
+        root served: SessionRoot, link: URL? = nil, setup: RuntimeSetup, gate: LaunchGate,
+        accepted: @escaping () -> RuntimeSetup?
+    ) {
+        self.served = served
+        let root = served.url
+        title = WindowTitle(served.identity())
         windowTitle = title.text
         let log = FolderLog(root: root, directory: appIdentity.logsDirectory())
         self.log = log
-        let launch = CLIServeLaunch()
+        let launch = CLIServeLaunch(basePort: served.basePort)
+        let target = link ?? root
         let spec = { (setup: RuntimeSetup) in
-            launch.spec(serving: root, with: setup, inherited: ProcessInfo.processInfo.environment, logURL: log.url)
+            launch.spec(serving: target, with: setup, inherited: ProcessInfo.processInfo.environment, logURL: log.url)
         }
         // Each launch claims and prepares the log first, so a log that cannot be claimed or
         // kept fails the launch, the window says why, and Retry tries again.
         let supervisor = ServerSupervisor(
-            spec: spec(setup), launch: launch, gate: gate, makeProcess: log.processFactory())
+            spec: spec(setup), launch: launch, policy: .serving(served), gate: gate, makeProcess: log.processFactory())
         server = FolderServer(supervisor: supervisor, accepted: accepted, spec: spec)
         let name = root.lastPathComponent
         supervisor.onEvent = { message in
@@ -74,11 +87,30 @@ final class FolderSession: ManagedServer {
         supervisor.onChange = { [weak self] state in self?.serverChanged(state) }
     }
 
-    var folderName: String { FileManager.default.displayName(atPath: root.path(percentEncoded: false)) }
+    /// The folder's name as Finder shows it, or the repository's.
+    var folderName: String {
+        switch served {
+        case .folder(let url): FileManager.default.displayName(atPath: url.path(percentEncoded: false))
+        case .repository: served.identity().shortName
+        }
+    }
+
+    /// Where the status view says the session is: the folder's path with `~` for home, or
+    /// `github.com/<owner>/<repo>`.
+    var location: String {
+        switch served {
+        case .folder(let url): (url.path(percentEncoded: false) as NSString).abbreviatingWithTildeInPath
+        case .repository: served.identity().fullName
+        }
+    }
+
+    /// Whether the session serves a folder on this Mac. Only a folder is a root that a file
+    /// opens in (`OpenTarget`), a recent folder, or a tab of the saved session.
+    var isLocal: Bool { served.isLocal }
 
     /// The folder's canonical path without a trailing slash, as `OpenTarget` and the saved
-    /// session name it.
-    var path: String { FolderSession.path(of: root) }
+    /// session name it; for a repository, its key, which is no path, so no restore names it.
+    var path: String { isLocal ? FolderSession.path(of: root) : served.key }
 
     static func path(of root: URL) -> String {
         var path = root.path(percentEncoded: false)
@@ -275,7 +307,7 @@ final class FolderSession: ManagedServer {
     }
 
     private func adopt(_ answer: IdentityAnswer) {
-        let next = WindowTitle(answer.identity(or: .localFolder(root)))
+        let next = WindowTitle(answer.identity(or: served.identity()))
         let name = root.lastPathComponent
         let titled = "\(name): titled \"\(next.text)\""
         switch answer {
