@@ -8,7 +8,7 @@ the format, the bounds, and the reason beside each.
 
 **The entry.** A :class:`RecentTarget` is a root, the mode it was opened in, when, and
 optionally where in the root the open pointed. The words are the open-modes design's
-(jlevy/metabrowser#558).
+(``docs/project/architecture/arch-open-modes.md``).
 
 - ``mode`` is how the root was opened, ``folder`` or ``mirror``. It is fixed while the
   root is open and is the ``kind`` that ``GET /api/identity`` reports

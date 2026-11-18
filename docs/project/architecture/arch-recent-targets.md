@@ -7,8 +7,7 @@ Planned: the `target` a mirror was opened at (its web URL, which waits for
 `ProviderUrlReducer.web_url` in jlevy/metabrowser#540), a folder’s root resolved to its
 repository’s (`mb-2wfk`), and a route for a switcher in the page, in the
 [native macOS app plan](../specs/active/plan-2026-11-10-native-macos-app.md#phase-4-recent-targets-the-switcher-and-the-mcp-adapter).
-The modes, roots, and views are the open-modes design’s,
-`docs/project/architecture/arch-open-modes.md` (jlevy/metabrowser#558).
+The modes, roots, and views are those of [Open Modes](arch-open-modes.md).
 
 Metabrowser keeps one list of what the user opened lately, and every shell reads it
 through `metab`: the command line, the macOS app, and any later shell.
@@ -27,7 +26,7 @@ Two things with similar names are not this list:
 
 ## Vocabulary
 
-The words are the open-modes design’s (`docs/project/architecture/arch-open-modes.md`).
+The words are those of [Open Modes](arch-open-modes.md#vocabulary).
 
 - **Target:** what `metab TARGET` is given: a folder, a file, or a URL.
 - **Root:** what one server serves, and what one app window or tab group belongs to: a

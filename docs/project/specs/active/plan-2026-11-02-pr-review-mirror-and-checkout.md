@@ -10,8 +10,8 @@ implemented scope; the
 how the 0.12.0 candidate was qualified.
 Conversions and broader deepening remain future work.
 [Open Modes](#open-modes), added on 2026-11-18, records the owner’s decision on how a
-root is open, which the open-modes design now holds, and plans the indicator
-(`mb-wup3`).
+root is open, which [the open-modes design](../../architecture/arch-open-modes.md) now
+holds, and plans the indicator (`mb-wup3`).
 
 The design was proven by experiments on 2026-11-02 against a 1.2 GB private repository
 and small local replicas, reviewed the same day with the verdict *sound with changes*,
@@ -453,10 +453,10 @@ defines what the comparison’s immutable sides expose.
 ### Open Modes
 
 **Status:** Decided 2026-11-18. The model is the open-modes design,
-`docs/project/architecture/arch-open-modes.md` (jlevy/metabrowser#558), and this section
-does not restate it: the three modes (a plain folder, a repository folder, and a
-mirror), how a path resolves to its open root, what each view can do, and what is never
-written. Recent targets record each root with its mode, `folder` or `mirror`
+[Open Modes](../../architecture/arch-open-modes.md), and this section does not restate
+it: the three modes (a plain folder, a repository folder, and a mirror), how a path
+resolves to its open root, what each view can do, and what is never written.
+Recent targets record each root with its mode, `folder` or `mirror`
 ([Recent Targets](../../architecture/arch-recent-targets.md), `mb-40k4`). The indicator
 is planned (`mb-wup3`).
 

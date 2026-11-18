@@ -70,11 +70,11 @@ def resolve_local_open(path: Path) -> LocalOpen:
 
     Today a folder opens as itself and a file opens the folder that holds it, with
     symbolic links resolved, which is what ``metab PATH`` has always served. The
-    open-modes design (jlevy/metabrowser#558) replaces this with a resolver that opens
-    the enclosing repository's root under its guards (bead ``mb-2wfk``). That change
-    replaces this function's body, and the server and the recent targets list follow
-    it, since neither decides a root itself. A path that is neither a folder nor a file
-    is a :class:`CLIError`.
+    open-modes design (``docs/project/architecture/arch-open-modes.md``) replaces this
+    with a resolver that opens the enclosing repository's root under its guards (bead
+    ``mb-2wfk``). That change replaces this function's body, and the server and the
+    recent targets list follow it, since neither decides a root itself. A path that is
+    neither a folder nor a file is a :class:`CLIError`.
     """
 
     resolved = path.expanduser().resolve()

@@ -470,12 +470,12 @@ The owner asked, on 2026-11-18:
    and a golden, and a second shell or a CLI feature then gets the same list for free.
    The app runs `metab --recent --json` and draws what it answers.
 2. **The store holds recent targets, not only folders.** An entry is a root and the
-   [mode](plan-2026-11-02-pr-review-mirror-and-checkout.md#open-modes) it was opened in,
+   [mode](../../architecture/arch-open-modes.md#the-three-modes) it was opened in,
    `folder` or `mirror`: a folder by its open root, or a repository by its address.
-   The modes, roots, and views are the open-modes design’s,
-   `docs/project/architecture/arch-open-modes.md` (jlevy/metabrowser#558). An entry
-   never records a view, so a recent folder reopens on its working tree, and it may
-   record where the open pointed, its `target`, beside the key.
+   The modes, roots, and views are those of
+   [Open Modes](../../architecture/arch-open-modes.md).
+   An entry never records a view, so a recent folder reopens on its working tree, and it
+   may record where the open pointed, its `target`, beside the key.
    The owner’s File menu, specified on 2026-11-18, needs both (`mb-387v`):
    - **Open Folder…** opens a folder, a checkout of a GitHub repository included.
    - **Open URL…** opens a supported GitHub URL (`mb-m4mg`).
@@ -551,8 +551,9 @@ The owner asked, on 2026-11-18:
   recent GitHub targets (`mb-m4mg`). This release already reads and keeps one
   (`mb-8bds`). Until then Open URL… offers the recent entries whose mode is `mirror`.
 - [ ] Record a checkout’s repository with a folder entry, a new field that keeps `mf01`,
-  so Open URL… can offer the checkout beside the mirror, as the open-modes design’s File
-  Menu says.
+  so Open URL… can offer the checkout beside the mirror, as
+  [the File Menu](../../architecture/arch-open-modes.md#the-file-menu) of the open-modes
+  design says.
 - [ ] The owner’s File menu: rename Open… to Open Folder…, and add Open URL… (`mb-m4mg`,
   after jlevy/metabrowser#539), beside the Open Recent built here (`mb-387v`).
 - [ ] Restore repository windows with the saved session, which needs a saved tab to name
