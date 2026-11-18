@@ -11,9 +11,10 @@ import UniformTypeIdentifiers
 /// so they list the same targets in the same order (`RecentTargets.rows`).
 ///
 /// A menu shows the last answer at once. The app asks again when it becomes active, when
-/// File > Open Recent opens, and when the Dock menu is asked for; an answer that arrives
-/// while Open Recent is open redraws it, and the Dock, which takes a copy of its menu,
-/// shows a newer answer the next time it is opened.
+/// File > Open Recent opens, when the Dock menu is asked for, and once the server it
+/// started for an open has started; an answer that arrives while Open Recent is open
+/// redraws it, and the Dock, which takes a copy of its menu, shows a newer answer the
+/// next time it is opened.
 ///
 /// The app no longer registers folders with `NSDocumentController`: macOS would add its
 /// own recent-documents list to the Dock menu beside this one. What an earlier build
@@ -63,6 +64,13 @@ final class RecentTargetsMenu: NSObject, NSMenuDelegate {
     /// `RecentTargets.refreshInterval`.
     func refresh() {
         if let askedAt, askedAt.duration(to: .now) < RecentTargets.refreshInterval { return }
+        ask()
+    }
+
+    /// Asks `metab` for the list now, whatever the last answer's age: an open the app
+    /// started has a server that recorded it, so the Dock menu, which nothing else
+    /// refreshes until the app is activated or a menu opens, lists it next.
+    func refreshAfterOpen() {
         ask()
     }
 

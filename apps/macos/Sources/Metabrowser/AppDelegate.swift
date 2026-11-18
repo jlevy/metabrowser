@@ -257,7 +257,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         folderWindows.place(session.makeWindow(page: target.page))
-        Task { await session.startServer() }
+        Task {
+            await session.startServer()
+            self.recentFolders.refreshAfterOpen()
+        }
     }
 
     /// The open session for `root`, or a new one with no window and no server yet; nil

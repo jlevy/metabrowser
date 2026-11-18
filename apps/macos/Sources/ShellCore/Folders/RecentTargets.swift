@@ -7,11 +7,14 @@ import Foundation
 /// a restored session all end up in the one list. The app only reads it and draws it,
 /// which is what lets a second shell show the same list.
 public nonisolated struct RecentTarget: Codable, Equatable, Sendable {
-    /// How a root is open: `kind` in `GET /api/identity`.
+    /// How a root was opened, fixed while it is open: `kind` in `GET /api/identity`. No
+    /// entry records a view, what a server shows at a moment, so a recent folder reopens
+    /// on its working tree.
     public enum Mode: String, Codable, Equatable, Sendable {
-        /// A folder on this Mac, as it is on disk now.
+        /// A folder on this Mac, a plain folder or a repository's working tree, which
+        /// records write as one mode.
         case folder
-        /// A pinned revision of `metab`'s own cached copy of a repository.
+        /// A repository opened by its address and read from `metab`'s own cached copy.
         case mirror
     }
 
