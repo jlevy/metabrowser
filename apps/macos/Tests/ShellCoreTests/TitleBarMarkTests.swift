@@ -125,7 +125,7 @@ import Testing
 
     /// A control drags a window that is not key from its first press, as the rest of the
     /// title bar does: the title, which spans much of the title bar, is grabbed there most.
-    @Test func aFirstPressInAWindowThatIsNotKeyDragsAndNeverOpens() {
+    @Test func aFirstPressInAWindowThatIsNotKeyCanDrag() {
         var title = TitleBarPressInteraction()
         title.pressed(at: inside)
         // The window becomes key under the held press, and its tracking area starts
