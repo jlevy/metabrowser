@@ -241,7 +241,7 @@ def test_a_pin_with_no_mirror_is_headed_as_before_and_carries_nothing_of_one(
         "module": False,
         "heading": [
             '<span class="path"><span class="path-base">topic</span></span>'
-            f'<span class="header-revision">{commit[:12]}</span>'
+            f'<span class="header-revision git-commit-sha">{commit[:12]}</span>'
         ],
         "status": [None, None, None],
     }

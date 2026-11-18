@@ -161,10 +161,19 @@ function createPage(page) {
   };
 }
 
-// What the selector would show, one line per row, so a transcript reads as the page does.
-// A checkout's selector adds what a mirror's has none of: the lists it offers, its
-// working-tree row, the checked-out branch's badge, each row's chip, and its offer to
-// reload. A mirror's paint is printed as it always was.
+// When a row's commit was made, as the model holds it. The page shows it as an age, which
+// depends on the clock, so the transcript prints the time itself.
+function committedOf(seconds) {
+  return seconds === null
+    ? "(no date)"
+    : new Date(seconds * 1000).toISOString().replace(".000Z", "Z");
+}
+
+// What the selector would show, one line per row, so a transcript reads as the page does:
+// a row's name, its commit's short ID, and when the commit was made. A checkout's selector
+// adds what a mirror's has none of: the lists it offers, its working-tree row, named by
+// the folder's path, the checked-out branch's badge, each row's chip, and its offer to
+// reload.
 function paintOf(model) {
   if (model === null) {
     return null;
@@ -182,7 +191,7 @@ function paintOf(model) {
     open: true,
     ...(checkout
       ? {
-          workingTree: `Working tree: ${model.workingTree.detail}${model.workingTree.current ? " [current]" : ""}`,
+          workingTree: `Working tree${model.workingTree.location === "" ? "" : `: ${model.workingTree.location}`}${model.workingTree.current ? " [current]" : ""}`,
           lists: model.kinds,
         }
       : {}),
@@ -192,7 +201,7 @@ function paintOf(model) {
     switching: model.switching,
     rows: model.rows.map(
       (row) =>
-        `${row.name} ${row.commit}${row.default ? " [default]" : ""}${row.checkedOut ? " [checked out]" : ""}${row.current ? " [current]" : ""}${checkout ? ` (${row.chip} chip)` : ""}`,
+        `${row.name} ${row.commit} ${committedOf(row.committedAt)}${row.default ? " [default]" : ""}${row.checkedOut ? " [checked out]" : ""}${row.current ? " [current]" : ""}${checkout ? ` (${row.chip} chip)` : ""}`,
     ),
     note: model.note,
     error: model.error,

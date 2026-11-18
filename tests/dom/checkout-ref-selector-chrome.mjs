@@ -8,8 +8,9 @@
 // sits. So this serves a fixture checkout with `metab`, as a reader does, and in one
 // headless Chrome:
 //
-//   1. loads the working tree's page and reads its button, its bundle, and its panel:
-//      the Working tree row, the three lists, the checked-out branch's badge;
+//   1. loads the working tree's page and reads its button, which leads the Files tab's
+//      toolbar, its bundle, and its panel: the Working tree row and the folder it names,
+//      the three lists, each ref's short commit ID and age, the checked-out branch's badge;
 //   2. chooses a branch, and reads the revision's page: the button and heading that name
 //      it, the committed file where the working tree's edit was, a tree with no untracked
 //      file, and the document's policy;
@@ -20,7 +21,8 @@
 //      revision's address, and chooses the Working tree row from a revision again;
 //   6. goes Back onto the revision's address while the working tree is served;
 //   7. browses a revision's page, a file and its history, and reads how every data
-//      request of each page was answered: none of a current page's is refused.
+//      request of each page was answered: none of a current page's is refused. Its
+//      Commits tab is the checkout's, and hides the button with the Files toolbar.
 //
 // It times each switch from the click to the new document's first tree rows and to its
 // selector being mounted, and the working tree's page from navigation to its selector.
@@ -162,6 +164,8 @@ const PAGE = `(() => {
     checkout: window.METABROWSER_SOURCE_CHECKOUT ?? null,
     pin: window.METABROWSER_SOURCE_PIN ?? null,
     button: toggle ? toggle.textContent.trim() : null,
+    // The button leads the Files tab's toolbar, since it chooses only what that tab shows.
+    inFilesToolbar: toggle?.closest('#nav-filter-bar[data-nav-toolbar="files"]') != null,
     heading: heading ? heading.textContent.replace(/\\s+/g, " ").trim() : null,
     guard: typeof window.MetabrowserSourcePinGuard?.guardFetch === "function",
     capabilities: window.METABROWSER_SETTINGS?.CAPABILITIES ?? null,
@@ -180,19 +184,46 @@ const PANEL = `(() => {
   const tree = root.querySelector(".source-ref-selector-working-tree");
   const pane = document.querySelector(".tree-pane").getBoundingClientRect();
   const box = panel.getBoundingClientRect();
-  const row = (button) => ({
-    text: button.innerText.replace(/\\s+/g, " ").trim(),
-    current: button.getAttribute("aria-current") === "true",
-    // The chip is the name's one element, and its class says which kind it is drawn as.
-    chip:
-      button
-        .querySelector(".source-ref-selector-name > span")
-        ?.className.match(/-ref-(local|remote|tag)/)?.[1] ?? null,
-  });
+  // A row's text leaves out its age, which the clock moves; the age is read on its own.
+  const row = (button) => {
+    const age = button.querySelector(".source-ref-selector-age");
+    return {
+      text: [...button.children]
+        .filter((child) => child !== age)
+        .map((child) => child.innerText)
+        .join(" ")
+        .replace(/\\s+/g, " ")
+        .trim(),
+      current: button.getAttribute("aria-current") === "true",
+      // The chip is the name's one element, and its class says which kind it is drawn as.
+      chip:
+        button
+          .querySelector(".source-ref-selector-name > span")
+          ?.className.match(/-ref-(local|remote|tag)/)?.[1] ?? null,
+      // A commit's ID is in the commit-ID face, and its age in a tier, with its date as the
+      // tooltip.
+      commitFace:
+        button
+          .querySelector(".source-ref-selector-commit")
+          ?.classList.contains("git-commit-sha") ?? null,
+      age: age
+        ? {
+            text: age.textContent,
+            tier: /\\bage-/.test(age.className),
+            tip: age.dataset.tipText ?? "",
+          }
+        : null,
+    };
+  };
+  // The folder the Working tree row names, and whether its own name is shown whole.
+  const location = tree.querySelector(".source-ref-selector-location");
+  const base = location?.querySelector(".path-base");
   return {
     open: !panel.hidden,
     focused: document.activeElement === root.querySelector(".source-ref-selector-filter"),
     workingTree: tree.hidden ? null : row(tree),
+    location: location?.textContent ?? null,
+    folderWhole: base ? base.scrollWidth <= base.clientWidth : null,
     lists: [...root.querySelectorAll(".source-ref-selector-kinds button")].map((button) => ({
       label: button.textContent.trim(),
       chosen: button.getAttribute("aria-checked") === "true",
@@ -259,9 +290,9 @@ const rowNamed = (name) =>
   `[...document.querySelectorAll(".source-ref-selector-list button")]
     .find((button) => button.querySelector(".source-ref-selector-name")?.textContent === ${JSON.stringify(name)})`;
 
-// From each document's start: every distinct height of the selector's row and every
-// distinct top of the tree's first row, frame by frame. The row is drawn by the server
-// with its button, so mounting the selector moves nothing below it. The first toggle the
+// From each document's start: every distinct height of the selector and every distinct
+// top of the tree's first row, frame by frame. The selector is drawn by the server with its
+// button, leading the Files toolbar, so mounting it moves nothing below it. The first toggle the
 // parser adds is the server's, kept to ask afterwards whether the module adopted it.
 const TOGGLE = "#source-ref-selector button.source-ref-selector-toggle";
 const LAYOUT_PROBE = `(() => {
@@ -399,6 +430,14 @@ try {
   );
   await chrome.waitFor(`document.querySelectorAll('[class$="graph-row"]').length > 0`);
   result.revisionBrowsing = takeDataRequests();
+  // The Commits tab does not follow the Files tab: its repository is the checkout's, whose
+  // HEAD is the checked-out branch, and the button went with the Files toolbar.
+  result.revisionCommits = await chrome.evaluate(`fetch("/api/git/repo")
+    .then((response) => response.json())
+    .then((body) => ({
+      head: body.head?.ref ?? null,
+      button: document.getElementById("source-ref-selector")?.checkVisibility() ?? null,
+    }))`);
 
   result.documents = documents;
   console.log(JSON.stringify(result));

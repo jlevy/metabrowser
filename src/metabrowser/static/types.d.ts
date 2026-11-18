@@ -3271,6 +3271,10 @@ declare global {
     name: string;
     ref: string;
     commit: string;
+    /** The commit's ID as Git abbreviates it, which the list shows. */
+    short_commit: string;
+    /** When the commit was made, in epoch seconds; null when Git gives no date. */
+    committed_at: number | null;
     default: boolean;
     /** The branch a checkout's `HEAD` is on; false on a mirror. */
     checked_out: boolean;
@@ -3287,8 +3291,15 @@ declare global {
     ref: string | null;
     /** The lists the subject has. */
     kinds: MetabrowserSourceRefKind[];
-    /** A checkout's working tree and the branch checked out; null on a mirror. */
-    working_tree: { current: boolean; head: string | null; head_name: string | null } | null;
+    /** A checkout's working tree: whether it is served, the branch checked out, and the
+     * folder's name and its path with the home directory as `~`. Null on a mirror. */
+    working_tree: {
+      current: boolean;
+      head: string | null;
+      head_name: string | null;
+      name: string;
+      location: string;
+    } | null;
     total: number;
     truncated: boolean;
     refs: MetabrowserSourceRef[];
@@ -3319,6 +3330,8 @@ declare global {
     button: string;
     /** The served pull request's number, "#7", when the page is a pull request's head. */
     pullNumber: string | null;
+    /** The served commit's ID, set in the commit-ID face, when the page is a bare commit's. */
+    commitId: string | null;
     open: boolean;
     kind: MetabrowserSourceRefKind;
     /** The lists offered: a checkout's remote-tracking branches are a third. */
@@ -3326,12 +3339,16 @@ declare global {
     query: string;
     loading: boolean;
     switching: boolean;
-    /** A checkout's working-tree row, and whether it is what the server serves; null on a mirror. */
-    workingTree: { current: boolean; detail: string } | null;
+    /** A checkout's working-tree row: whether it is what the server serves, and the
+     * folder's path, "" until the first listing says it. Null on a mirror. */
+    workingTree: { current: boolean; location: string } | null;
     rows: Array<{
       name: string;
       ref: string;
+      /** The commit's ID as Git abbreviates it. */
       commit: string;
+      /** When the commit was made, in epoch seconds, which the row shows as an age. */
+      committedAt: number | null;
       default: boolean;
       /** The branch a checkout's `HEAD` is on, badged "checked out". */
       checkedOut: boolean;
@@ -3373,7 +3390,8 @@ declare global {
     reload: HTMLButtonElement;
     panel: HTMLElement;
     workingTree: HTMLButtonElement;
-    workingTreeDetail: HTMLElement;
+    workingTreeDirectory: HTMLElement;
+    workingTreeBase: HTMLElement;
     kinds: HTMLElement;
     tabs: Record<MetabrowserSourceRefKind, HTMLButtonElement>;
     filter: HTMLInputElement;

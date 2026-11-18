@@ -105,7 +105,7 @@ $ node tests/dom/mirror-heading-session.js
       "writes": []
     },
     "navigationHeading": {
-      "html": "<span class=\"path\"><span class=\"path-base\">squares</span></span><span class=\"header-revision header-ref\">topic</span><span class=\"header-revision\">42382ea2303b</span>",
+      "html": "<span class=\"path\"><span class=\"path-base\">squares</span></span><span class=\"header-revision header-ref\">topic</span><span class=\"header-revision git-commit-sha\">42382ea2303b</span>",
       "text": "squares topic 42382ea2303b",
       "commitCopy": {
         "attributes": {
@@ -155,7 +155,7 @@ $ node tests/dom/mirror-heading-session.js
       "writes": []
     },
     "navigationHeading": {
-      "html": "<span class=\"path\"><span class=\"path-base\">a&lt;b&gt;&amp;�x</span></span><span class=\"header-revision header-ref\">topic</span><span class=\"header-revision\">42382ea2303b</span>",
+      "html": "<span class=\"path\"><span class=\"path-base\">a&lt;b&gt;&amp;�x</span></span><span class=\"header-revision header-ref\">topic</span><span class=\"header-revision git-commit-sha\">42382ea2303b</span>",
       "text": "a<b>&�x topic 42382ea2303b",
       "commitCopy": {
         "attributes": {

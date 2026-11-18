@@ -322,7 +322,18 @@ def test_a_switch_without_a_view_answers_no_href(served: TestClient) -> None:
 
 def test_a_mirror_pin_shell_has_the_selector_loaded_on_demand(served: TestClient) -> None:
     shell = served.get("/view/").text
-    assert '<div class="source-ref-selector" id="source-ref-selector" hidden></div>' in shell
+    # Its button is drawn in the Files toolbar's row, naming the served ref, so nothing
+    # moves when the module mounts; the module fills the rest.
+    assert (
+        '<div class="nav-filter-bar-main nav-toolbar-row">'
+        '<div class="source-ref-selector" id="source-ref-selector">'
+        '<button type="button" class="chip chip-menu-trigger source-ref-selector-toggle'
+        ' disclosure-toggle" aria-haspopup="dialog" aria-expanded="false"'
+        ' data-tip-text="Switch branch or tag">'
+        '<span class="source-ref-selector-label">topic</span>'
+        '<span class="chip-menu-caret" aria-hidden="true"></span></button></div>'
+        '<span class="count tally-pending"></span></div>'
+    ) in shell
     bundles = shell[shell.index("window.METABROWSER_ASSET_BUNDLES=") :]
     bundles = bundles[: bundles.index("</script>")]
     assert '"source-ref-selector": [{"src": "/static/source-ref-selector.js' in bundles

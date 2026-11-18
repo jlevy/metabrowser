@@ -1589,7 +1589,7 @@ _SMALL_SIZE_ROLES: dict[tuple[str, str], str] = {
     ("styles.css", ".menu-select"): "a menu's control",
     ("styles.css", ".menu-row"): "a menu's line",
     ("styles.css", ".menu-number"): "a menu's control",
-    ("styles.css", ".source-ref-selector"): "a chip and its menu",
+    ("styles.css", ".source-ref-selector-panel"): "a chip's menu",
     ("styles.css", ".chip"): "a chip",
     ("styles.css", ".chip-menu-count"): "a chip menu's count",
     ("styles.css", ".filter-check"): "a filter",

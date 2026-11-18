@@ -19,7 +19,9 @@
       "working_tree": {
         "current": true,
         "head": "refs/heads/topic",
-        "head_name": "topic"
+        "head_name": "topic",
+        "name": "checkout",
+        "location": "/sandbox/checkout"
       },
       "total": 3,
       "truncated": false,
@@ -28,6 +30,8 @@
           "name": "topic",
           "ref": "refs/heads/topic",
           "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+          "short_commit": "42382ea",
+          "committed_at": 1767229200.0,
           "default": false,
           "checked_out": true,
           "current": false
@@ -36,6 +40,8 @@
           "name": "feature",
           "ref": "refs/heads/feature",
           "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+          "short_commit": "c7ae2a3",
+          "committed_at": 1767232800.0,
           "default": false,
           "checked_out": false,
           "current": false
@@ -44,6 +50,8 @@
           "name": "local-work",
           "ref": "refs/heads/local-work",
           "commit": "25e0a2a76ab47a407f3dee083221e6efdcca6283",
+          "short_commit": "25e0a2a",
+          "committed_at": 1769904000.0,
           "default": false,
           "checked_out": false,
           "current": false
@@ -67,7 +75,9 @@
       "working_tree": {
         "current": true,
         "head": "refs/heads/topic",
-        "head_name": "topic"
+        "head_name": "topic",
+        "name": "checkout",
+        "location": "/sandbox/checkout"
       },
       "total": 2,
       "truncated": false,
@@ -76,6 +86,8 @@
           "name": "local-tag",
           "ref": "refs/tags/local-tag",
           "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+          "short_commit": "c7ae2a3",
+          "committed_at": 1767232800.0,
           "default": false,
           "checked_out": false,
           "current": false
@@ -84,6 +96,8 @@
           "name": "v1",
           "ref": "refs/tags/v1",
           "commit": "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e",
+          "short_commit": "fcb9d63",
+          "committed_at": 1767225600.0,
           "default": false,
           "checked_out": false,
           "current": false
@@ -107,7 +121,9 @@
       "working_tree": {
         "current": true,
         "head": "refs/heads/topic",
-        "head_name": "topic"
+        "head_name": "topic",
+        "name": "checkout",
+        "location": "/sandbox/checkout"
       },
       "total": 2,
       "truncated": false,
@@ -116,6 +132,8 @@
           "name": "origin/feature",
           "ref": "refs/remotes/origin/feature",
           "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+          "short_commit": "c7ae2a3",
+          "committed_at": 1767232800.0,
           "default": false,
           "checked_out": false,
           "current": false
@@ -124,6 +142,8 @@
           "name": "origin/topic",
           "ref": "refs/remotes/origin/topic",
           "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+          "short_commit": "42382ea",
+          "committed_at": 1767229200.0,
           "default": false,
           "checked_out": false,
           "current": false
@@ -212,7 +232,9 @@
       "working_tree": {
         "current": false,
         "head": "refs/heads/topic",
-        "head_name": "topic"
+        "head_name": "topic",
+        "name": "checkout",
+        "location": "/sandbox/checkout"
       },
       "total": 3,
       "truncated": false,
@@ -221,6 +243,8 @@
           "name": "topic",
           "ref": "refs/heads/topic",
           "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+          "short_commit": "42382ea",
+          "committed_at": 1767229200.0,
           "default": false,
           "checked_out": true,
           "current": false
@@ -229,6 +253,8 @@
           "name": "feature",
           "ref": "refs/heads/feature",
           "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+          "short_commit": "c7ae2a3",
+          "committed_at": 1767232800.0,
           "default": false,
           "checked_out": false,
           "current": true
@@ -237,6 +263,8 @@
           "name": "local-work",
           "ref": "refs/heads/local-work",
           "commit": "25e0a2a76ab47a407f3dee083221e6efdcca6283",
+          "short_commit": "25e0a2a",
+          "committed_at": 1769904000.0,
           "default": false,
           "checked_out": false,
           "current": false

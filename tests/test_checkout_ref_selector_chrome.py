@@ -11,8 +11,8 @@ Content-Security-Policy, and where the panel sits. ``tests/dom/checkout-ref-sele
 serves ``tests/source_checkout_fixture.py``'s checkout, whose working tree differs from
 every commit, and in one Chrome walks: the working tree's page and its panel, a branch,
 its lists, a switch made outside the page and the reload the selector then offers, a tag,
-the Working tree row, and Back onto a revision's address while the working tree is
-served. This judges it, and then compares every file under the checkout, its ``.git``
+the Working tree row, Back onto a revision's address while the working tree is served,
+and a revision's Commits tab, which is the checkout's. This judges it, and then compares every file under the checkout, its ``.git``
 included, with what it was before the server started.
 
 It also measures, since nothing should be slow here: each switch from the click to the
@@ -36,6 +36,7 @@ from typing import Any
 import pytest
 
 from metabrowser.git.process import acquisition_allowed, detect_git_version
+from metabrowser.paths_safe import tilde_path
 from tests.process_group import GROUP_STOP_S, PROFILE_TEARDOWN_S, run_in_own_group
 from tests.required_tools import needs_git, require_chrome, require_node
 from tests.source_checkout_fixture import build_checkout, snapshot, view
@@ -61,6 +62,9 @@ pytestmark = [
 SWITCH_BOUND_MS = 5000
 WORKING_TREE = ["NOTES.md", "README.md", "STAGED.md", "UNTRACKED.md"]
 FEATURE = "c7ae2a331f546e6a2431ed7093e9e430a9d1269b"
+# Each ref's commit as `git rev-parse --short` prints it in the fixture, whose IDs are
+# literal (tests/source_checkout_fixture.py).
+TOPIC, FEATURE_SHORT, LOCAL_WORK, V1 = "42382ea", "c7ae2a3", "25e0a2a", "fcb9d63"
 TRUSTED = {"active_content": True, "mutations": False}
 UNTRUSTED = {"active_content": False, "mutations": False}
 
@@ -117,14 +121,20 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
     assert tree["capabilities"] == TRUSTED
     # The pin guard came with the selector's bundle, so the page says what it shows.
     assert tree["guard"] is True
+    # The button chooses what the Files tab shows and nothing else, so it is in that tab's
+    # toolbar, not above the tabs.
+    assert tree["inFilesToolbar"] is True
 
     panel = result["workingTreePanel"]
     assert panel["open"] and panel["focused"]
-    assert panel["workingTree"] == {
-        "text": "Working tree Live local files, on topic",
-        "current": True,
-        "chip": None,
-    }
+    # The working tree is named by its folder, the path as the page names the folder, and
+    # has no commit or age; the folder's own name is shown whole in the narrow pane.
+    working_tree = panel["workingTree"]
+    assert working_tree["text"].startswith("Working tree ")
+    assert (working_tree["current"], working_tree["chip"]) == (True, None)
+    assert (working_tree["commitFace"], working_tree["age"]) == (None, None)
+    assert panel["location"] == tilde_path(checkout, Path.home().resolve())
+    assert panel["folderWhole"] is True
     assert [(entry["label"], entry["chosen"]) for entry in panel["lists"]] == [
         ("Branches", True),
         ("Tags", False),
@@ -132,25 +142,30 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
     ]
     # The checked-out branch is badged, lists first, and is not the served row.
     assert _rows(panel) == [
-        "topic checked out 42382ea2303b",
-        "feature c7ae2a331f54",
-        "local-work 25e0a2a76ab4",
+        f"topic checked out {TOPIC}",
+        f"feature {FEATURE_SHORT}",
+        f"local-work {LOCAL_WORK}",
     ]
     assert not any(row["current"] for row in panel["rows"])
     assert {row["chip"] for row in panel["rows"]} == {"local"}
     assert _rows(result["workingTreeRemotes"]) == [
-        "origin/feature c7ae2a331f54",
-        "origin/topic 42382ea2303b",
+        f"origin/feature {FEATURE_SHORT}",
+        f"origin/topic {TOPIC}",
     ]
     assert {row["chip"] for row in result["workingTreeRemotes"]["rows"]} == {"remote"}
     assert sorted(_rows(result["workingTreeTags"])) == [
-        "local-tag c7ae2a331f54",
-        "v1 fcb9d63c3c85",
+        f"local-tag {FEATURE_SHORT}",
+        f"v1 {V1}",
     ]
     for name in ("workingTreePanel", "workingTreeRemotes", "workingTreeTags", "branchPanel"):
         assert result[name]["inside"], f"{name}: the panel leaves the navigation pane"
         assert result[name]["overflowing"] == 0, f"{name}: a row is wider than the panel"
         assert result[name]["error"] == ""
+        # Every ref's short ID is in the commit-ID face, and every ref has an age in a tier,
+        # its date the tooltip. A tag's is its commit's.
+        for row in result[name]["rows"]:
+            assert row["commitFace"] is True, (name, row)
+            assert row["age"]["text"] and row["age"]["tier"] and row["age"]["tip"], (name, row)
 
     # A branch: a revision's page, under the untrusted profile, with no file of the disk's.
     branch = result["branch"]
@@ -164,14 +179,16 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
     assert branch["title"] == tree["title"] == "checkout • Metabrowser"
     on_branch = result["branchPanel"]
     assert on_branch["workingTree"]["current"] is False
-    assert [row["text"] for row in on_branch["rows"] if row["current"]] == ["feature c7ae2a331f54"]
+    assert [row["text"] for row in on_branch["rows"] if row["current"]] == [
+        f"feature {FEATURE_SHORT}"
+    ]
 
-    # The selector's row is drawn by the server with its button, so mounting the selector
-    # moves nothing: one height for the row and one place for the tree's first row, from
-    # each document's start, on the working tree's page and on a revision's.
+    # The selector is drawn by the server with its button, leading the Files toolbar, so
+    # mounting it moves nothing: one height for the selector and one place for the tree's
+    # first row, from each document's start, on the working tree's page and on a revision's.
     for name in ("workingTreeLayout", "branchLayout"):
         layout = result[name]
-        assert len(layout["rowHeights"]) == 1, f"{name}: the row changed height: {layout}"
+        assert len(layout["rowHeights"]) == 1, f"{name}: the selector changed height: {layout}"
         assert len(layout["treeTops"]) == 1, f"{name}: the tree moved: {layout}"
         # The button the parser drew is the one the mounted module uses, so focus put on
         # it before the module arrived is not lost to a swap.
@@ -219,6 +236,11 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
     assert documents, result["documents"]
     for entry in documents:
         assert entry["csp"] is entry["url"].startswith("/view/g1-"), entry
+
+    # The Commits tab does not follow the Files tab: on feature's page, the repository it
+    # reads is the checkout's, whose HEAD is the checked-out topic, and the button went with
+    # the Files toolbar.
+    assert result["revisionCommits"] == {"head": "refs/heads/topic", "button": False}
 
     for name in ("toBranch", "toTag", "toWorkingTree"):
         assert result[name]["rowsMs"] < SWITCH_BOUND_MS, f"{name}: {result[name]}"
