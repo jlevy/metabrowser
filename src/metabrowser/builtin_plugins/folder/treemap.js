@@ -762,12 +762,13 @@ export function registerTreemap(mb, palette, rollupControls) {
       unsubscribeControls();
       unsubscribeTotals();
       unmountControls();
-      // The hover goes with the marks it was drawn on: each part lets go of what it holds
-      // and stops listening, the cells, the legend, and the bars.
+      // The hover goes with the marks it was drawn on. Each part lets go of what it holds
+      // before the cells stop listening, so nothing is left marked: the cells, the legend,
+      // and the bars, whose disposal clears the hover for every part still listening.
       releaseCellHover();
-      unsubscribeCellHover();
       legend.dispose();
       totalsView.dispose();
+      unsubscribeCellHover();
       if (parentControl) {
         parentControl.removeEventListener("click", openParent);
       }

@@ -10,7 +10,7 @@ The Chrome tests (``test_folder_overview_alignment.py``, ``test_transitions_inst
 ``test_overview_readme_toc_chrome.py``, ``test_page_header_chrome.py``,
 ``test_prose_faces_chrome.py``,
 ``test_raw_profile_cache_chrome.py``, ``test_staged_fonts_chrome.py``,
-``test_title_prefix_chrome.py``) run a Node script
+``test_title_prefix_chrome.py``, ``test_treemap_legend_hover_chrome.py``) run a Node script
 that starts Chrome and its helpers. Stopping that script's process group is what stops
 them, so this holds:
 
@@ -126,6 +126,7 @@ CHROME_TESTS = (
     "tests.test_staged_fonts_chrome",
     "tests.test_title_prefix_chrome",
     "tests.test_transitions_instrument",
+    "tests.test_treemap_legend_hover_chrome",
 )
 # Creating the profile and the test's own setup, before its bounds start.
 SETUP_ALLOWANCE_S = 3.0

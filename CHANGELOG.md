@@ -4,6 +4,11 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- The Treemap tab shows File Overview’s file-type legend under its bars.
+  Pointing at an entry highlights every cell of that family, its segments in the bars,
+  and the entry; pointing at a cell or a segment highlights it and its family’s entry.
+  See [Folder Treemap](docs/design-system.md#folder-treemap).
+
 - On a folder’s Overview, pointing at a File Overview legend entry, its dot or its
   words, now highlights every bar of its family on screen: its segment in the Files,
   Ignored, and Total bars, and its row in Details while that is open.

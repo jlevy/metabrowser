@@ -3650,8 +3650,10 @@ file count and byte size alone, since restating the name adds nothing
 ([Tooltips Add Information](#tooltips-add-information)), of the family’s segment in the
 tally row the legend’s shares are of, Total while Show ignored is on and Files while it
 is off. The bars, the legend, and the table share one hover (`distribution-hover.js`):
-the bars draw it on themselves and show the tooltip, and the distribution draws it on
-the legend and on Details, so none keeps a copy of another’s behavior.
+the bars draw it on themselves and show the tooltip, the legend
+(`distribution-legend.js`) on its entries, and the distribution on Details, so none
+keeps a copy of another’s behavior.
+The Treemap shows the same legend on the same hover ([Folder Treemap](#folder-treemap)).
 Other answers no hover and is never marked: it is the families too small to name and the
 files no family claims, each its own segment in its own place, so there is no one mark
 to point at. The bars draw again whenever the folder’s sums arrive, which a changed file
@@ -3712,6 +3714,22 @@ color so labels retain contrast; the Overview’s data bars keep the full-streng
 Hover brightens the composed cell, including its type-derived surface and border, so
 their contrast and hue relationship remain intact.
 There is no separate label hover surface.
+
+Under the tally bars the Treemap shows File Overview’s legend, from the same builder
+(`distribution-legend.js` and `buildFileTypeLegendModel`), on a row one line tall that
+it holds while it has no entries, so the map does not move when they arrive.
+The map’s cells, its bars, and its legend share one hover (`distribution-hover.js`), as
+File Overview’s do ([Aggregate Distributions](#aggregate-distributions)). Pointing at an
+entry marks every cell painted its family’s color, the files of its types and the
+folders it is the dominant type of, its segment in every tally row, and the entry, with
+the entry’s counts tooltip.
+Pointing at a cell or a segment marks it and its family’s entry, and a cell keeps its
+own tooltip. A cell takes the lift and the shimmer, the sheen under its label, and not
+the growth
+([Hover Styles the Thing Under the Pointer](#hover-styles-the-thing-under-the-pointer)).
+A layout replaces the cells: it lets go of a cell’s hover, which the browser enters
+again on the new cell, and draws an entry’s hover again on the new cells.
+`tests/test_treemap_legend_hover_chrome.py` measures it.
 It never changes stacking or display: nested folder containers and their descendant
 rectangles are flattened siblings, so raising a container would cover its children.
 
