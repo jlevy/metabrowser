@@ -5,11 +5,11 @@ title: "Open modes: shared local-open resolver (walk-up, --exact-root, root in S
 kind: task
 status: open
 priority: 2
-version: 2
+version: 3
 labels: []
 dependencies: []
 created_at: 2026-11-18T06:24:49.172Z
-updated_at: 2026-11-18T06:57:10.108Z
+updated_at: 2026-11-18T07:11:48.812Z
 ---
 Implement the one resolver arch-open-modes.md (#558) specifies: walk up to the nearest repository root with the owner's Q2(b) guards (not for an ignored path, not up to the home folder, not beyond loopback, serving only), --exact-root opt-out, the resolved root printed in the Serving line. #540's _resolve_local becomes this resolver; #539 and #546 route through it. Goldens and parity rows.
 
@@ -34,3 +34,5 @@ Guide wording to change with the code (replacement text is the design review's, 
 - docs/macos-app.md, Opening Folders and Files (with #546 and mb-m4mg): the owner's menu, Open Folder…, Open URL…, Open Recent; "A folder or file inside a repository opens the repository at that folder or file; outside one, a folder opens as itself and a file opens its folder." Remove the Known Limitations line #558 added.
 - "Designed, not built" pointers to turn into present tense: arch-git.md (the exact-root gate paragraph), arch-mirror-acquisition-and-refresh.md (Transports and Credentials, first sentence), arch-macos-app.md (Open, Files, Planned), and in arch-open-modes.md the "Not built" note under Resolving a Target to a Root and this bead's row in Implementation Status.
 - Code docstrings: root_identity.py (module), cli/main.py (_names_existing_path, the ROOT help), cli/serve.py (run_serve), git/repo.py (module).
+
+2026-11-18, review B on #558 (eaf9a1940) adds to the above: the resolver's Git policy also sets GIT_NO_LAZY_FETCH=1. In a --filter=blob:none --sparse clone, check-ignore -q on a path under a folder outside the sparse checkout fetched that folder's .gitignore blob (packs 2 to 3, Git 2.50.1); with the variable it fetches nothing and exits 1, so an ignore file neither on disk nor in the object store is not consulted and such a path opens the repository's root. The fixture needs a sparse partial-clone case. The first guard also requires a root that can be read.
