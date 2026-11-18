@@ -297,7 +297,8 @@ final class Driver: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
         exit(0)
     }
 
-    /// The page's Print button, which calls `window.print()`, and the print path it reaches.
+    /// The page's Print button, in the corner of the Markdown document's card, which calls
+    /// `window.print()`, and the print path it reaches.
     ///
     /// The app answers an allowed request with File > Print's path (`pageAskedToPrint`), so
     /// the print starts from the request here too. If no request starts it, the check runs
@@ -308,14 +309,16 @@ final class Driver: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
         let called = try await webView.callAsyncJavaScript(
             """
             const visible = () => {
-              const button = document.querySelector(".file-header-print");
-              return button && !button.hidden && !button.disabled && !button.closest("[hidden]") ? button : null;
+              const button = document.querySelector(
+                '[data-active-view="true"] .metabrowser-print-indicator[data-mb-owner]');
+              return button && getComputedStyle(button).display !== "none" && !button.closest("[hidden]")
+                ? button : null;
             };
             for (let waited = 0; !visible() && waited < 15000; waited += 100) {
               await new Promise((resolve) => setTimeout(resolve, 100));
             }
             const button = visible();
-            if (button) { button.click(); return "the Print button (.file-header-print)"; }
+            if (button) { button.click(); return "the Print button (.metabrowser-print-indicator)"; }
             window.print();
             return "window.print() directly: no Print button appeared";
             """, arguments: [:], in: nil, contentWorld: .page)

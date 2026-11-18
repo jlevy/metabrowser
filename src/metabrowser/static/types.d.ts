@@ -1192,8 +1192,15 @@ type MarkdownBuiltins = {
      * already the reader's way around it; omitted leaves the decision to
      * KPress' own thresholds. `pagePath` is the path of the page that shows the
      * document as its own when that is not the document's, as a folder's Overview
-     * shows its README: the document's fragments are places on that page. */
-    options?: { signal?: AbortSignal; includeToc?: "auto" | "on" | "off"; pagePath?: string },
+     * shows its README: the document's fragments are places on that page.
+     * `printIndicator: true` puts a print button in the corner of the document's
+     * card, for a host whose view prints the document itself; it is off unless asked. */
+    options?: {
+      signal?: AbortSignal;
+      includeToc?: "auto" | "on" | "off";
+      pagePath?: string;
+      printIndicator?: boolean;
+    },
   ) => DisposableHandle;
   renderSource: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
 };

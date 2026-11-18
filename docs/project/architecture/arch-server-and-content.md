@@ -182,9 +182,12 @@ SVG and its `url()` paint servers, classes, `data-*` attributes its own scripts 
 and `id` and `name`. In the application page each of those is a tool for a document the
 reader did not write.
 A trusted folder keeps them, so the application’s document-wide handlers (copy, Load
-more, address crumbs, and print) act only on an element carrying `data-mb-owner` with a
-value drawn when the page loads, which a document written earlier cannot spell, and the
+more, and address crumbs) act only on an element carrying `data-mb-owner` with a value
+drawn when the page loads, which a document written earlier cannot spell, and the
 tooltip ignores a rendered document’s markup.
+The document’s print button is the page’s own control placed in its card, with a
+listener of its own rather than a document-wide one, so a copy of its markup prints
+nothing; its owner mark is what keeps the app’s tooltip on it there.
 Two limits remain:
 
 - The tooltip exclusion covers only a rendered Markdown document

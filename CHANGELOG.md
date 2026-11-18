@@ -4,6 +4,17 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- The file and folder headers no longer have a print button.
+  A rendered Markdown document has one instead, at the top right of its page: opened as
+  a file, and as the README on a folder’s Overview.
+  It prints the document, as Command-P does, and is drawn only where the page is wide
+  enough for it to sit beside the text without covering any.
+  Command-P, or Control-P outside macOS, still prints every view, and in the macOS app
+  File > Print does; a source view, which had the header’s button, now prints that way.
+  For plugin authors, the Markdown builtin’s `mountRendered` takes
+  `printIndicator: true` to draw the button, off unless asked; `PLUGIN_SDK_VERSION`
+  remains `0.7`. See [Print](docs/design-system.md#print).
+
 - On a folder’s Overview, pointing at a File Overview legend entry, its dot or its
   words, now lifts its family’s segment in the bar above, as pointing at the segment
   does, and shows that family’s file count and byte size beside the entry.
