@@ -2138,6 +2138,11 @@ vertical slice.
 
 ### Later: Repository chooser and session switching
 
+[Open Modes](../../architecture/arch-open-modes.md) now holds the model a chooser builds
+on: what a root is, the mode it opens in, and the
+[records that key on it](../../architecture/arch-open-modes.md#what-keys-on-the-root),
+recent targets among them.
+
 - [ ] Add a chooser over the generic catalog with recent, favorite, offline, partial,
   dirty, and refresh states.
 - [ ] Make root selection session-scoped rather than mutating global settings.
