@@ -1,0 +1,557 @@
+# Open Modes
+
+**Status:** Designed and partly built.
+The owner settled the model on 2026-11-18: [Decisions](#decisions) lists each answer,
+and [Not Decided](#not-decided) what is still open.
+Built on `main`: mirror mode, and a folder served as the exact path named, with history
+only when that path is a repository’s root.
+Not built: resolving a path to its repository’s root, a repository folder’s revision
+views, the mode indicator, File > Open URL…, and recent targets kept by `metab`.
+[Implementation Status](#implementation-status) names the pull request or bead for each
+part.
+
+Whatever a reader opens, a folder, a file, or a URL, Metabrowser serves a **root** in
+one of three **modes**: a plain folder, a repository folder, or a mirror.
+The mode says whose files the pages show, the reader’s own as they are on disk or
+Metabrowser’s cached copy of a repository, and so what can change under the reader and
+what the content is trusted to do.
+
+This document holds the model: the words, how a target resolves to a root, what each
+mode and view can do, what is never written, and what must hold for the model to be
+safe. The mechanisms are in the documents it links: how a view is held and switched in
+[Source Sessions and Pins](arch-source-sessions-and-pins.md), how Git is run in
+[Git Reading and History](arch-git.md), and how a mirror is filled in
+[Mirror Acquisition and Refresh](arch-mirror-acquisition-and-refresh.md).
+
+## Vocabulary
+
+- **Target:** what the reader names to open: a folder, a file, or a URL.
+- **Root:** what one server serves, and what one app window or tab group belongs to: a
+  folder, or a repository’s address.
+  It is called the **open root** where it must be told apart from the path the reader
+  named.
+- **Mode:** how a root is open: plain folder, repository folder, or mirror.
+  Nothing done in a page changes it.
+- **Folder mode:** the two folder modes together, which records and `kind` write as one
+  value, `folder`.
+- **View:** what the server shows now: a folder’s working tree, or one revision.
+  A repository folder can change its view while it stays open, and its mode stays.
+- **Working tree:** the files of a folder as they are on disk now, with whatever is
+  modified, untracked, or ignored.
+- **Revision:** one commit’s tree, read from Git objects and named by the branch, tag,
+  pull request, or commit ID it was resolved from.
+  It never changes.
+- **Checkout:** a repository’s working tree together with its Git directory, which is
+  what the root of a repository folder is.
+- **Linked worktree:** a further checkout of one repository, made by `git worktree add`,
+  with its own working tree, `HEAD`, and index, and the repository’s shared branches,
+  tags, and objects. It opens as a repository folder of its own.
+- **Mirror:** a repository opened by its address and read from a
+  [store](arch-repository-cache.md#repository-stores), Metabrowser’s own bare copy of it
+  in the cache, kept current from its origin.
+- **Working directory:** only its operating-system sense, the directory a process runs
+  in.
+
+### Standard Terms
+
+The owner decided on 2026-11-18 that these words follow Git’s, and that “worktree” names
+only a proper Git worktree.
+
+- **The live files are the “working tree”**, the term `git help glossary` defines and
+  `git status` prints.
+  “Working directory” keeps its operating-system meaning.
+- **Prose writes “linked worktree” or “main worktree” in full**, never “worktree” as a
+  short form of “working tree”.
+
+The owner’s first statement of the model called the working tree “the true working
+directory”.
+
+## Resolving a Target to a Root
+
+**Not built.** Today a path opens the folder named, and a file the folder that holds it.
+
+A URL opens a mirror, and its root is the repository’s address, whatever branch, pull
+request, or file the URL selects inside it.
+[The command-line guide](../../command-line.md#what-root-names) says how an argument is
+told apart as a URL or a path.
+
+A path opens a folder, by these steps:
+
+1. Resolve symbolic links.
+   The walk starts from a folder: the folder named, or the folder that holds the file
+   named.
+2. Find the nearest enclosing Git repository by asking Git:
+   `git rev-parse --show-toplevel`. A `.git` entry in an ancestor is only the cheap test
+   of whether to ask.
+3. Open the root Git reports when every [guard](#the-guards) holds.
+4. Otherwise open the folder named, or for a file the folder that holds it.
+5. Show the page at the folder or file the reader named, under whichever root was
+   opened.
+
+A root that is the working-tree root of a repository is a **repository folder**. Any
+other folder root is a **plain folder**: a folder in no repository, or one served
+exactly, below a repository’s root.
+
+### The Guards
+
+The root Git reports is opened only when all of these hold:
+
+| Guard | Why |
+| --- | --- |
+| Git answers with a root that contains the path and can be read | Git’s own checks decide what a repository is, including its refusal of a repository another user owns. A `.git` that Git refuses names no root |
+| That root holds the `.git` entry naming the Git directory Git used: `<root>/.git`, followed if it is a file, is what `git rev-parse --absolute-git-dir` answers | A repository’s own configuration can place its working tree anywhere. With `core.worktree = ../..` in the `.git/config` of an unpacked archive, Git reports the folder above the unpacked archive as the root, and every other guard passes. An ordinary checkout, a nested repository, a linked worktree, and a submodule each hold their own `.git` |
+| The root is not the home folder, unless the reader named the home folder itself. The design adds a volume’s root, which the owner was not asked about | A dotfiles repository at the home folder would turn every open into the home folder: a walk and a watch of all of it, and on macOS a privacy prompt for each protected location. A repository at a volume’s root would do the same to the volume |
+| The repository does not ignore the path the reader named: `git check-ignore -q` exits 1 for it, a file’s own path where a file was named | A repository does not count an ignored path as its own, so its root is not what the reader named. Any other answer opens the path named: exit 0, which is ignored, and a failure such as exit 128. This also stops the usual dotfiles layout, which ignores everything |
+| The server binds loopback only, with no `--host` naming another address | `metab ./docs --host 0.0.0.0` inside a private repository would serve the whole repository to the network |
+| `--exact-root` was not given | The reader asked for the folder named and nothing above it |
+
+A guard that fails opens the path named, as step 4 says, and never an error.
+The `Serving` line and the page name the root that was opened, so a root above the path
+the reader named is never silent.
+`--exact-root` is also how to open one part of a large repository without walking and
+watching the rest.
+
+### Which Commands Resolve
+
+Only serving, `metab TARGET --present`, and the macOS app resolve a path this way.
+Every other mode reads `ROOT` exactly as given, so a script’s answer never depends on
+what encloses its argument.
+
+One resolver in `metab` answers for every caller, and a shell never implements the rule
+a second time.
+
+- **Asking without serving.** `metab TARGET --present --dry-run --format json` answers
+  the open root, whether that root is a repository’s, and the place the reader named,
+  and a golden pins its answers.
+  `--recent-add` records the root the same resolver answers.
+- **The app asks, and then serves exactly.** It starts each server on a root that is
+  already resolved, with `--exact-root`, and that includes the servers a restore starts,
+  so a saved root is never resolved again.
+- **One fixture of resolution cases**, replayed by Python and by the app’s tests, holds
+  the two together.
+
+### Edge Cases
+
+Git’s answers below are Git 2.50.1’s, run in scratch repositories on 2026-11-18. The row
+for another user’s repository used `GIT_TEST_ASSUME_DIFFERENT_OWNER`, Git’s own switch
+for that check, and not a second account.
+
+| Case | What Git answers | What opens |
+| --- | --- | --- |
+| A nested repository, or a submodule | The nearest one; a submodule is its own root | The nearest repository |
+| A linked worktree | The worktree’s own root. Its `HEAD` is its own, and its refs and objects are in the repository’s common directory | The worktree, as a repository folder |
+| A bare repository, or a path inside `.git` | “this operation must be run in a work tree” | A plain folder |
+| A `.git` Git refuses, such as an empty directory by that name, a repository another user owns, or a Git directory the reader cannot read; or a root the reader cannot read | A failure, or for an unreadable root an answer the first guard refuses | A plain folder at the path named |
+| A `.git` whose configuration places its working tree elsewhere (`core.worktree`) | The configured directory, which holds no `.git` naming that Git directory | The path named |
+| A symbolic link into a repository | The physical root | Links are resolved first, then the repository is found |
+| The home folder is a repository | The home folder | The path named |
+| An ignored file in a tracked folder | `check-ignore -q` exits 0 for the file and 1 for its folder | The file’s folder, as a plain folder |
+| A path the repository does not ignore, tracked or not | `check-ignore -q` exits 1 | The repository’s root |
+| A shallow clone | Its root | A repository folder. Revisions work, and history stops at the boundary |
+| A partial clone | Its root | A repository folder. A revision’s missing object is `object_unavailable` and is never fetched |
+| A sparse partial clone, and a path that only an ignore file outside the sparse checkout would ignore | Under the resolver’s policy `check-ignore -q` exits 1 and fetches nothing | The repository’s root |
+| A dirty index, or a detached `HEAD` | Its root | A repository folder. A revision view reads neither the index nor the working tree |
+| No commit yet | Its root | A repository folder with no revision to choose |
+
+## The Three Modes
+
+|  | Plain folder | Repository folder | Mirror |
+| --- | --- | --- | --- |
+| Opened by | A path for which no repository’s root is opened | A path in a Git repository, of any host or none | A URL |
+| Root | The folder | The repository’s working-tree root | The repository’s address |
+| Views | The working tree | The working tree, and revisions | Revisions |
+| Commits, diffs, and the ref chooser | No | Yes | Yes |
+| Pulls and the GitHub toggle | No, with one case [not decided](#not-decided) | When `origin` is on github.com | When the origin is on github.com |
+| Refresh from the origin | None | Never into the checkout | A background fetch into the store |
+| `kind` in `GET /api/identity` | `folder` | `folder` | `mirror` |
+
+- **Repository folder mode needs only Git.** Any repository gets its root opened,
+  Commits, and the chooser.
+  GitHub’s features are a separate layer over a repository on github.com.
+- **A folder and a mirror of one repository are two roots.** A reader picks one by what
+  they open: the path shows their checkout, and the URL shows the mirror, even while the
+  checkout’s window is open.
+- **A mirror has no working tree.** Its store is bare, so there is nothing checked out
+  that could hold a change, and every view of it is a revision.
+- **A repository folder is a mirror and more.** It views every branch and tag the way a
+  mirror does, as a revision, the checked-out branch included, and it also has the true
+  working tree, where the folder-only features live.
+- **The two folder modes are one recorded mode.** `IdentityKind` in `root_identity.py`
+  holds the values records and `kind` use, and one test, tracked as `mb-ajxe`, is to
+  hold every copy of them to it.
+  Whether a folder is a repository’s root is Git’s answer about the folder, asked when
+  it opens and again as [Git Reading and History](arch-git.md) describes.
+
+## Views
+
+**Not built** for a repository folder, which today shows its working tree alone.
+
+A server shows one view at a time: the working tree, or one revision.
+A link that selects a branch, and a branch shown beside the working tree in one server,
+are deferred.
+
+|  | The working tree | A revision |
+| --- | --- | --- |
+| What it is | The files on disk, live | One commit’s tree, read from Git objects, immutable |
+| Found in | A plain folder and a repository folder | A repository folder and a mirror, identical in both |
+| Navigation, the index, size and type rollups | Yes | Yes |
+| Live updates, the Recent tab, activity, and ignore state | Yes | No |
+| Git status and local modifications, when built | In a repository folder | No |
+| Editing, when built | Where `--allow-edits` permits | Never |
+| Commits, diffs, and the ref chooser | In a repository folder | Yes |
+| Trust | The profile the folder was opened with | Untrusted, always |
+
+- **Capabilities follow the view.** `SourceCapabilities` declares them, and a route that
+  needs an absent one answers `unsupported_for_subject`
+  ([Capabilities](arch-source-sessions-and-pins.md#capabilities)).
+- **Trust follows the view.** A revision renders inert, with no highlighted fences and
+  no HTML preview, whatever profile its folder was opened with.
+  The working tree is what the reader checked out and works in; another branch or tag is
+  whatever a fetch brought, which the reader may never have looked at.
+  [Content Trust Model](arch-server-and-content.md#content-trust-model) defines the
+  profiles.
+- **A revision is read from Git objects alone, and nothing is checked out.** A mirror
+  reads its store. In a repository folder, the checkout’s own branches, tags, and commits
+  are read from its Git directory in place, or from Metabrowser’s cache for that
+  directory, and
+  [never write the checkout](#showing-a-revision-never-writes-the-checkout).
+  A pull request’s head is read from the store that
+  [borrows from the checkout](arch-mirror-acquisition-and-refresh.md#the-lending-checkout),
+  as its Changes are, because the head is usually not among the checkout’s objects and
+  nothing is fetched into the checkout.
+- **The checked-out branch, chosen as a ref, is a revision.** It shows the branch’s last
+  commit. The working tree is a separate choice, and it is what a folder opens on.
+- **The page says which view it shows.** The chooser reads “Working tree” or names the
+  ref, and a revision’s name carries `@<ref>`, as a mirror’s does.
+- **A tab names its view.** A page left on one view is refused, not answered from the
+  other, once the server shows another
+  ([the pin guard](arch-source-sessions-and-pins.md#switching-the-pin-and-the-pin-guard)).
+
+### Pull Requests in a Repository Folder
+
+**Not built.** Today a checkout’s pull-request pages are pages of the folder, which
+keeps showing its working tree
+([Beside a Checkout](arch-github-pull-requests.md#beside-a-checkout)).
+
+Pulls and the GitHub toggle stay when a repository folder shows a revision: the
+repository comes from the root, and the branch or commit from the view.
+
+**View on branch** and **Browse code** go to the pull request’s head as a revision view,
+as they do on a mirror.
+Opening the reader’s own working-tree copy of the file is a separate action with its own
+label, since the working tree can differ from the head and renders under the folder’s
+profile.
+
+## What Is Never Written
+
+In no mode does Metabrowser write a user’s Git directory: no index, ref, or object.
+It writes a working tree only when the reader edits a file in it, which no route does
+today.
+
+- It runs no `checkout`, `switch`, `reset`, `stash`, `fetch`, `gc`, or `repack` in a
+  checkout, takes no lock there, and writes nothing under its Git directory.
+- Resolving a path, and showing a revision of a repository folder, only read.
+- A mirror writes only its own store.
+  One that borrows a checkout’s objects reads that checkout’s object files through
+  `objects/info/alternates` and runs no Git in it
+  ([The Lending Checkout](arch-mirror-acquisition-and-refresh.md#the-lending-checkout)).
+- An edit, when editing is built, writes the one file the reader edits, in the
+  working-tree view and under `--allow-edits`.
+
+What Metabrowser writes is in its own directories, the repository cache and the
+configuration directory
+([Cache and Configuration Directories](arch-repository-cache.md#cache-and-configuration-directories)).
+
+Two reads on `main` fall short of this rule, because Git itself writes during them:
+[Known Gaps in the Read-Only Rule](arch-git.md#known-gaps-in-the-read-only-rule).
+
+## Security Requirements
+
+None of the three parts below is built.
+Each requirement states its hole, its rule, and the test that must hold it before its
+part ships.
+
+### Opening a Path Never Widens a Server Unasked
+
+A root above the path the reader named exposes more files, walks and watches more of the
+disk, carries the folder’s trust profile across the whole repository, and runs Git under
+the configuration of a repository the reader did not name directly.
+The resolver adds `check-ignore`, which reads the index, to the Git that already runs in
+a folder below a repository’s root.
+
+- **Git decides, through the process boundary, and its answer is checked.** Discovery is
+  `git rev-parse` run by `git/process.py`, never a walk for a `.git` marker.
+  A planted `.git` is the attack that
+  [Finding the Checkout](../specs/active/plan-2026-11-02-pr-review-mirror-and-checkout.md#finding-the-checkout)
+  records: one under any directory can name any repository as its `origin`.
+- **The root holds its own `.git`.** Asking Git does not close that attack alone,
+  because a planted repository’s `core.worktree` makes Git report a root above it, which
+  contains the path, can be read, and passes Git’s ownership check, since the reader
+  owns what they unpacked.
+  So a root is taken only when `<root>/.git`, followed if it is a file, is the Git
+  directory `git rev-parse --absolute-git-dir` answers.
+  With Git 2.50.1 that keeps an ordinary subfolder, a nested repository, a linked
+  worktree, and a submodule, and refuses the planted case.
+- **The resolver has its own Git policy.** Its commands run with
+  `-c core.fsmonitor=false`, with optional locks off, and with `GIT_NO_LAZY_FETCH=1`, so
+  resolving runs no program the repository’s configuration names, starts no daemon,
+  fetches nothing, and writes nothing under the Git directory.
+  `git check-ignore` reads the index, and Git’s file-system monitor settings apply to
+  that read. With Git 2.50.1 and `core.fsmonitor` naming a program, `check-ignore -q` ran
+  the program, which `rev-parse --show-toplevel` did not; with `core.fsmonitor=true` it
+  started Git’s `fsmonitor--daemon` and created its files under `.git`. Under the policy
+  it ran nothing, changed nothing under `.git`, and gave the same exit code.
+  `check-ignore --no-index` avoids the index too, but it reports a tracked file that
+  matches a pattern as ignored, which contradicts the guard’s reason.
+  `check-ignore` also reads an ignore file from the index when sparse checkout keeps it
+  off disk, and in a partial clone it fetched that file’s blob from the origin; with
+  `GIT_NO_LAZY_FETCH=1` it fetched nothing and exited 1. So an ignore file that is
+  neither on disk nor in the object store is not consulted, and a path only such a file
+  would ignore opens the repository’s root.
+- **Every guard is checked before the root is taken**, and a server bound beyond
+  loopback serves exactly the path named.
+- **The root is always said.** The `Serving` line and the page name the resolved root.
+- **A plain folder’s start gains no Git process.** Resolution asks Git only when an
+  ancestor holds a `.git` entry.
+  Its cost is measured before the resolver ships, on `metab`’s open path and on the
+  app’s, where every file opened asks for its repository’s root, a file an open window
+  already holds included.
+- **What the guards do not close.** A repository that passes them has its configuration
+  honored by the reads its Commits tab makes, as it has whenever its root is opened
+  directly, and its whole working tree is served under the profile the reader gave the
+  path. Opening a path at its repository’s root extends both to a path opened anywhere
+  beneath one, which is one more reason the root is always said.
+  A repository whose configuration places its working tree elsewhere names no root, so a
+  path inside one opens as a plain folder.
+- **Test:** the shared fixture of resolution cases.
+  It holds each guard’s case, each row of [Edge Cases](#edge-cases), the sparse partial
+  clone among them, and a hostile configuration whose `core.fsmonitor` would leave a
+  marker file, and it asserts no marker and an unchanged Git directory across
+  resolution.
+
+### Showing a Revision Never Writes the Checkout
+
+After the chooser lists refs, shows several revisions with their commits and diffs, and
+returns to the working tree, nothing has changed in three places: the working tree, the
+Git directory, and the repository’s common directory
+(`git rev-parse --git-dir --git-common-dir`). The three differ for a linked worktree,
+whose shared refs are in the main repository’s Git directory, and for a submodule, whose
+Git directory is under its superproject’s.
+
+- **The hole.** The store policies that read a revision isolate the reader’s global and
+  system Git configuration, and take attributes from the empty tree.
+  They do not isolate the checkout’s own configuration.
+  A textconv driver selected by `.git/info/attributes` or a local `core.attributesFile`
+  runs during a diff, and with `cachetextconv` Git writes `refs/notes/textconv/<driver>`
+  into the common directory.
+  Reproduced with Git 2.50.1 on 2026-11-18, in a linked worktree too, where the
+  worktree’s own directories stayed unchanged.
+  An in-tree `.gitattributes` selects nothing under those policies, and `ls-tree` and
+  `cat-file` run no driver.
+- **The rule.** A diff of a checkout’s revision passes `--no-textconv --no-ext-diff`,
+  and every read sets `GIT_NO_LAZY_FETCH=1`, so a partial clone’s missing object is
+  `object_unavailable` and is never fetched into the checkout.
+  A mirror’s store names no driver, so the same options change nothing there.
+- **The fallback.** A store with no origin whose `alternates` names the checkout’s
+  objects reads them with no Git process in the checkout, as an
+  [overlay](arch-mirror-acquisition-and-refresh.md#the-lending-checkout) does, and
+  satisfies the requirement by construction.
+- **Test:** `tests/test_checkout_revisions.py`, with a fixture that has a dirty index,
+  uncommitted and untracked files, and a local configuration naming a driver that would
+  leave a marker file, as an ordinary checkout and as a linked worktree.
+  It asserts no marker and the three places unchanged across a revision’s files, its
+  commit pages, and its Commits tab.
+
+### A Revision Is Never Trusted
+
+No response built from a revision carries active content, on any route, whatever profile
+the folder was opened with and whatever view the server holds when the response is
+finished.
+
+- **The hole.** The trust profile is one block per process, and the route that renders a
+  revision’s Markdown reads it after awaiting the blob.
+  One server that holds a trusted working tree and untrusted revisions could switch
+  between the two during that wait and render a revision under the folder’s profile.
+  This is read from the code and was not reproduced.
+  The page’s own inert rebuild and its policy still apply, so the requirement is the
+  server’s half of a rule held twice.
+- **The rule.** The profile comes from the subject the request resolved, never from
+  process state read after a wait: in `git/content_routes.py`, in the page policy
+  `server.py` writes, and in `/raw`. A revision is untrusted by construction.
+- **Test:** with the process’s block trusted, every route asked for a revision answers
+  with no active content.
+  [The pull-request review plan](../specs/active/plan-2026-11-02-pr-review-mirror-and-checkout.md#trust)
+  lists this test as planned.
+
+## What Keys on the Root
+
+Three records name what is open.
+Each keys on the mode and the root, never on the view and never on the path the reader
+named. The first two are not on `main` yet
+([Implementation Status](#implementation-status)).
+
+| Record | Key | Holds |
+| --- | --- | --- |
+| A recent target, in the list `metab` keeps | Its recorded mode and its root | When it was last opened. A folder’s root is its open root, and a mirror’s is its credential-free address |
+| `SessionRoot`, the app’s key for one server and its windows | A folder’s path, or a repository’s URL | Nothing else: a page can switch its view while the server runs, so a key that held the view would stop naming the session |
+| A saved tab, in the app’s `session.json` | Its root | The page the tab showed |
+
+- **No record holds a view.** A recent folder reopens on its working tree, and a mirror
+  on its default branch until recent targets record what a mirror was opened at.
+- **The path the reader named is not a key.** It may be kept beside one, as where to
+  land when the root reopens.
+- **Recent targets are `metab`’s.** The list is kept in the configuration directory and
+  reached through `metab` alone, with no route, so every shell reads one list.
+  The owner also chose its file’s format, which that feature’s own document states.
+- **A restore is not an open.** Restoring a session starts servers and reorders nothing
+  in the recent list.
+- **In the app, a file joins the most specific open folder that contains it, never one
+  above its repository’s root.** With no such folder open, it opens its own root.
+  So a file inside a repository is never shown by the window of a folder that merely
+  encloses the repository.
+
+## The File Menu
+
+**Partly built.** Today the menu has Open…, for folders and files, and an Open Recent
+that lists what macOS keeps.
+
+- **Open Folder…** opens a folder or a file in folder mode, resolved as
+  [above](#resolving-a-target-to-a-root).
+  A drop, Finder’s Open With, and `open -a` do the same.
+- **Open URL…** opens a mirror, always.
+  A folder never stands in, under its own trust profile, for the repository a URL names.
+  When a checkout of that repository is known, the dialog offers two more choices:
+  **borrow from the checkout**, which opens the mirror with `--checkout` and downloads
+  none of the objects the checkout already has, and **open the checkout instead**, which
+  opens that folder. A checkout is known when an open folder window is one; recent
+  folders join when an entry records its repository.
+  If the mirror already has a window, the window switches to the branch or pull request
+  the URL selects, and it never shows another revision silently.
+- **Open Recent** lists the recent targets `metab` keeps, repositories opened by URL
+  among them, and reopens each in the mode it records.
+
+## The Indicator and the GitHub Toggle
+
+**Not built.** These are two controls, and neither stands in for the other.
+
+**The mode indicator** shows how the root is open.
+
+- **Where:** with the root’s name, in the page’s navigation heading and in the app’s
+  window title.
+- **A mirror:** the GitHub mark with a small cloud over it.
+  If that pair does not read at the size it is drawn, the cloud alone.
+  The GitHub mark alone would repeat the toggle’s glyph.
+- **A mirror of a repository that is not on github.com:** the cloud alone, since it has
+  no mark to show.
+- **A folder:** a folder icon.
+- **What it reads:** `kind` in `GET /api/identity`, the route the app’s window title
+  already reads, so the page and the app cannot disagree.
+- **It shows the mode and not the view.** A repository folder keeps the folder icon
+  while it shows a revision.
+  The chooser beside the name and the `@<ref>` in the name say which view is shown.
+
+**A recommendation, for the owner to confirm:** a plain folder and a repository folder
+show the same folder icon.
+The indicator answers one question, whether the root is the reader’s own folder or
+Metabrowser’s cached copy, and both folder modes give one answer.
+A repository folder already looks different where it matters: it has the ref chooser
+under its name and the Commits tab, and a plain folder has neither.
+A third glyph, such as a folder with a branch badge, would carry the legibility risk the
+cloud over the GitHub mark has, and the heading would need Git’s answer before its first
+paint, where one icon for each `kind` needs none.
+
+**The GitHub toggle** is a separate control and appears only for a repository on
+github.com, in a repository folder and in a mirror.
+It stays on a revision view, and its link names the ref or commit being viewed.
+
+## Decisions
+
+The owner’s, given in chat.
+The table says what the owner decided, and the section linked states the rule once, with
+the design that carries it out.
+
+| Decision | Date | Stated in |
+| --- | --- | --- |
+| Three modes: a plain folder, a repository folder, and a mirror | 2026-11-18 | [The Three Modes](#the-three-modes) |
+| Terms follow Git’s, and “worktree” names only a proper Git worktree | 2026-11-18 | [Standard Terms](#standard-terms) |
+| A path opens its nearest enclosing repository; in no repository, a folder opens as itself and a file opens its folder | 2026-11-18 | [Resolving a Target to a Root](#resolving-a-target-to-a-root) |
+| Walk-up is guarded: not for an ignored path, not up to the home folder, not when bound beyond loopback, and `--exact-root` opts out | 2026-11-18 | [The Guards](#the-guards) |
+| Only serving, `--present`, and the app resolve; the data modes keep the exact path | 2026-11-18 | [Which Commands Resolve](#which-commands-resolve) |
+| Mirror mode never has working-copy changes; a repository folder views every other branch as a mirror would and also has the true working tree | 2026-11-18 | [The Three Modes](#the-three-modes), [Views](#views) |
+| Repository folder mode is for any Git repository; Pulls and the GitHub toggle are for github.com only | 2026-11-18 | [The Three Modes](#the-three-modes) |
+| One view for each server for now; links that select a branch are deferred under `mb-itzy` | 2026-11-18 | [Views](#views) |
+| A revision renders inert | 2026-11-09, confirmed 2026-11-18 | [Views](#views) |
+| Pulls and the GitHub toggle stay on a revision view, and the toggle links to the ref or commit viewed | 2026-11-18 | [Pull Requests in a Repository Folder](#pull-requests-in-a-repository-folder) |
+| View on branch and Browse code go to the pull request’s head as a revision view; the working-tree copy is a separate, labelled action | 2026-11-18 | [Pull Requests in a Repository Folder](#pull-requests-in-a-repository-folder) |
+| Open URL… opens the mirror, always, offers a known checkout, and never silently shows another revision | 2026-11-18 | [The File Menu](#the-file-menu) |
+| The indicator sits with the root’s name; the cloud alone is the fallback; folder mode uses a folder icon | 2026-11-18 | [The Indicator and the GitHub Toggle](#the-indicator-and-the-github-toggle) |
+| The GitHub toggle is a separate control, for github.com repositories only | 2026-11-18 | [The Indicator and the GitHub Toggle](#the-indicator-and-the-github-toggle) |
+| A file joins the most specific open folder that contains it, never one above its repository’s root | 2026-11-18 | [What Keys on the Root](#what-keys-on-the-root) |
+| Recent targets: keyed as `SessionRoot` is, kept in the configuration directory, reached through `metab` only; a restore is not an open | 2026-11-18 | [What Keys on the Root](#what-keys-on-the-root) |
+
+The request this design answers is bead `mb-itzy`, recorded on 2026-11-07: Files should
+make both a live working tree and read-only cached branch snapshots accessible.
+Its rules are older: on 2026-09-16 the repository-sources design made a user’s checkout
+the authority for its own files, barred Metabrowser from fetching into, switching, or
+writing it, and made every view of a branch, tag, or commit an immutable revision
+(commit `1a5188eec`).
+
+### Not Decided
+
+Each of these waits for the owner.
+
+- **Whether a plain folder and a repository folder look different.** The recommendation
+  [above](#the-indicator-and-the-github-toggle) is one folder icon for both.
+- **Pulls on a folder served exactly, below a repository’s root.** Such a folder has
+  Pulls today when its repository’s `origin` is on github.com.
+  The model’s plain folder has every Git feature off.
+- **Whether a `--remote` server resolves its path.** `--remote HOST` starts `metab` on
+  the host for the directory `--path` names and tunnels it to localhost, so that server
+  binds loopback and the loopback guard says nothing about it.
+  The reader cannot see what encloses a path on another host, and the far server runs
+  under that host’s own trust defaults.
+  Until this is answered the design keeps a `--remote` server on the path named.
+- **Walk-up and trust.** The trust profile belongs to the root, so a root above the path
+  named carries the reader’s profile across the whole repository.
+  A reader who passes `--untrusted` has said the content may be hostile, and opening the
+  repository above it runs Git under that repository’s configuration.
+  The question is whether `--untrusted` is a guard, so that such an open serves the path
+  named.
+
+## Implementation Status
+
+A pull request that builds a part updates its row.
+
+| Part | State | Where |
+| --- | --- | --- |
+| Mirror mode: stores, pinned revisions, refresh, and the ref chooser | Built | [Source Sessions and Pins](arch-source-sessions-and-pins.md), [Mirror Acquisition and Refresh](arch-mirror-acquisition-and-refresh.md) |
+| A folder served as the path named, and a file’s folder | Built; resolution replaces it | `run_serve` in `cli/serve.py`; the app’s `OpenTarget` |
+| History only at a repository’s root | Built; stays as the gate for a folder served exactly | [The Exact-Root Gate](arch-git.md#discovery-and-the-exact-root-gate) |
+| The resolver: a path to its repository’s root, the guards, `--exact-root`, and the root in the `Serving` line | Not built | `mb-2wfk` |
+| `metab TARGET --present`, whose dry run answers a resolution | Not built | [#540](https://github.com/jlevy/metabrowser/pull/540), `mb-d9tu` |
+| GitHub links opened in the app, and `SessionRoot` | Not built | [#539](https://github.com/jlevy/metabrowser/pull/539), `mb-87j0` |
+| A repository folder’s revision views, its chooser, and their command line, with the two revision requirements above | Not built | [#559](https://github.com/jlevy/metabrowser/pull/559), `mb-8ob8` |
+| Pulls and the toggle on a folder’s revision; View on branch and Browse code to the head as a revision | Not built | Follows `mb-8ob8` |
+| Recent targets kept by `metab`, behind File > Open Recent | Not built | [#546](https://github.com/jlevy/metabrowser/pull/546), `mb-40k4` |
+| File > Open URL… | Not built | `mb-m4mg` |
+| The GitHub toggle | Not built | [#552](https://github.com/jlevy/metabrowser/pull/552), `mb-zp7y` |
+| The mode indicator | Not built | `mb-wup3` |
+| One mode vocabulary across `IdentityKind`, the recent-targets store, and the app, held by a test; the shared resolution fixture | Not built | `mb-ajxe` |
+| The two [known gaps in the read-only rule](arch-git.md#known-gaps-in-the-read-only-rule) on a served checkout | Open | `mb-z849` |
+| Links that select a branch, and a branch beside the working tree in one server | Deferred | `mb-itzy` |
+
+## References
+
+- [Source Sessions and Pins](arch-source-sessions-and-pins.md)
+- [Git Reading and History](arch-git.md)
+- [Mirror Acquisition and Refresh](arch-mirror-acquisition-and-refresh.md)
+- [Repository Cache](arch-repository-cache.md)
+- [Server and Content](arch-server-and-content.md)
+- [GitHub Pull Requests](arch-github-pull-requests.md)
+- [macOS App](arch-macos-app.md)
+- [The pull-request review plan](../specs/active/plan-2026-11-02-pr-review-mirror-and-checkout.md)
+- [The View on branch plan](../specs/active/plan-2026-11-17-view-on-branch.md)
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->

@@ -201,8 +201,12 @@ With active content off, Markdown reaches the page only as an allowlist of plain
 applied twice: on the server by `inert_html.py`, and in the page by
 `static/inert-html.js`, which parses the HTML into an inert `<template>` and inserts
 only nodes rebuilt from the allowlist.
-Active content is off for every served mirror, where a fork’s author controls the head’s
-Markdown, for a folder served untrusted, and for every pull-request comment.
+Active content is off for every revision view, which today is every served mirror, where
+a fork’s author controls the head’s Markdown; for a folder’s working tree served
+untrusted; and for every pull-request comment.
+Trust follows the view: by [Open Modes](arch-open-modes.md#a-revision-is-never-trusted)’
+design, a revision of a repository folder’s own checkout is untrusted whatever profile
+the folder was opened with.
 Such a document keeps no stylesheet, class, or `data-*`, which removes both limits
 above.
 
@@ -359,7 +363,12 @@ cached sources are never served beside acquired content, and answers the path-sh
 never offered there.
 Its Markdown renders with fenced code as plain text (`plain_code` in
 `git/content_routes.py`): the inert render drops the classes highlighting writes anyway,
-and a lexer can cost far more than its input’s size (`kpress_adapter._PLAIN_CODE`).
+and a lexer can cost far more than its input’s size (`kpress_adapter._PLAIN_CODE`). The
+profile here is the process’s one capability block, which holds while a process serves
+one kind of view.
+[Open Modes](arch-open-modes.md#a-revision-is-never-trusted) requires a
+revision’s profile to come from the subject a request resolved, once one server can show
+a trusted working tree and untrusted revisions.
 Plain fences do not bound the render itself: it runs in a worker thread with no deadline
 or limit on concurrent renders, so whoever wrote a pinned Markdown file, such as a pull
 request’s author, decides how long the server spends rendering it, until the deadline in

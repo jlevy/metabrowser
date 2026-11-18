@@ -503,6 +503,16 @@
   --mb-distribution-track: var(--viz-surface-sunken);
   --mb-distribution-track-height: 8px;
   --mb-distribution-segment-gap: 1px;
+  /* A hovered family's ink: the name of its legend entry while the hover marks it
+     is the family's color mixed in OKLab with --text, this much the family's. The
+     text ink sits past every family's color from the page, so the mix deepens it on
+     the light page and lifts it on the dark one, the way the marks' lift runs, and
+     keeps 4.5:1 on --bg: computed for every registered family, the lowest is 5.27:1
+     (TypeScript) in light and 8.01:1 (Markdown) in dark, where the family's own
+     color would read 2.31:1 and 4.93:1. 70% fell to 4.24:1 in light.
+     tests/test_design_vocabulary.py holds the 4.5:1 for every family; see
+     "Aggregate Distributions" in docs/design-system.md. */
+  --mb-distribution-ink-share: 60%;
 
   /* Icons — one glyph size for every icon in the chrome, whether it is a
      button (gear, printer, copy), a file-type mark in a row, or a menu
@@ -970,9 +980,16 @@
   --viz-hover-duration: 120ms;
   --viz-hover-ease: ease;
   --viz-hover-filter: brightness(0.94);
-  --viz-data-mark-hover-filter: brightness(0.78) saturate(1.3);
-  /* How a hovered data mark grows, and the curve it grows on.
-  
+  /* The lift, a step stronger since 2026-11-18 at the owner's ask ("a little
+     darker"): brightness 0.78 and saturate 1.3 before. Measured in headless
+     Chrome 152 on File Overview's Total row, five families at 1280 by 900 (a
+     2 by 2 pixel sample at each segment's centre): the hovered colour moves
+     0.086 to 0.160 from rest in OKLab, where the old step moved 0.052 to
+     0.114, and every lifted segment reads darker against the page, the
+     yellow TypeScript at 4.27:1 where it read 3.56:1. */
+  --viz-data-mark-hover-filter: brightness(0.7) saturate(1.35);
+  /* How a hovered data mark grows, and how it moves.
+
      Motion rather than an outline, which is what this replaces twice over — a
      translucent ring, then an opaque grey one. A ring is a mark drawn ON the
      data: it covers the colour it is meant to point at, it competes with the
@@ -980,19 +997,6 @@
      is a quarter of the height. Growth is the mark answering instead. Nothing
      is covered, and the eye is already good at spotting the one thing that
      moved.
-
-     The curve is what makes it read as an answer. It overshoots past the
-     target and settles back, so the mark goes wider than it ends up and comes
-     back — which at this duration is a flick rather than a resize. A plain
-     ease over the same distance reads as the layout being sluggish.
-
-     The overshoot is worth more than the growth, and it has to be big enough
-     to see. The stock ease-out-back (y1 1.56) peaks only 0.5% past its target,
-     which on a 257px segment is 1.3px of bounce against 13px of growth — the
-     move lands but the spring does not. At y1 2.2 the peak is 2% past, so the
-     same segment overshoots by 5px and a mid-sized one by 2px. Measured, not
-     guessed: evaluate the bezier rather than adjusting it by eye, because the
-     part being tuned lasts about a tenth of a second.
 
      Grow the axis that carries NO data. On a horizontal bar the width is the
      value, so it is the one dimension that must not move — growing it states a
@@ -1006,12 +1010,58 @@
      not reflow under the pointer, and centred so the mark grows either side of
      the baseline the eye follows along the row.
 
-     The factor is large because the axis is small: an eight-pixel bar at 1.5
-     is twelve, and the overshoot carries it past thirteen before it settles. A
-     few percent would be a fraction of a pixel. */
-  --viz-hover-grow: 1.5;
-  --viz-hover-grow-duration: 170ms;
-  --viz-hover-grow-ease: cubic-bezier(0.34, 2.2, 0.64, 1);
+     The factor is large because the axis is small: an eight-pixel bar at 2 is
+     sixteen, a band twice the track (1.5, twelve, before 2026-11-18, when the
+     owner asked for "a wider band"). A legend entry grows its family's segment
+     in every tally row at once, so the band is bounded by its neighbours.
+     Measured in headless Chrome 152 at 1280 by 900 with File Overview's
+     Python entry hovered, every row marked: 11 px between the Files and
+     Ignored rows' grown segments, 12 px between Ignored and Total, 5.5 px from
+     Total's to the legend's box, and 15 px from a Details row's to the next
+     row's track. 2.25 left 4.5 px to the legend. That no layout box moves
+     under the hover is tests/test_overview_legend_hover_chrome.py's to hold.
+
+     It moves on the viz layout scale, a size shift, eased in and out on a
+     plain ease and run back the same way on leave. It overshot once, a
+     170 ms spring past its target that read as a flick; the owner asked for
+     it smoother (2026-11-18). The lift moves on the same tokens, so the mark
+     answers as one motion. */
+  --viz-hover-grow: 2;
+  --viz-hover-grow-duration: var(--viz-layout-duration);
+  --viz-hover-grow-ease: var(--viz-layout-ease);
+  /* The hover shimmer: while a data mark is hovered, a sheen of
+     --viz-hover-shimmer-sheen over its colour breathes in to
+     --viz-hover-shimmer-strength and settles, once a period, after the growth
+     (@keyframes viz-hover-shimmer, beside the progress pulse's). It is a
+     sibling of the progress blocks' pulse (tally-pending-pulse), one opacity
+     keyframe on the compositor, and is meant not to read as one: the progress
+     pulse fades a whole block between 0.45 and 0.85 every 1.6 s, without
+     pause, which says "waiting"; this lightens a mark by a sheen of at most
+     0.15 (0.1 on the dark page, where the lifted marks are already light),
+     rises over 30% of a 3.6 s period, settles by 70%, and rests, so it reads
+     as a glint on something that is there.
+
+     Measured in headless Chrome 152 (2026-11-18), the five families of File
+     Overview's Total row: at its peak the sheen moves a lifted segment 0.025
+     to 0.056 in OKLab on the light page and 0.034 to 0.053 on the dark one,
+     against 0.086 to 0.160 for the lift, so the mark stays its family's
+     colour and stays at least 0.052 from its rest; a dark-page family whose
+     lift already reaches sRGB's ceiling (JSON, TypeScript) does not visibly
+     shimmer. The sheen is a pseudo-element's opacity: for 2.5 s of a held
+     hover, with Details open or closed, no style, layout, pre-paint, or paint
+     ran on the main thread and no animation failed to composite, while the
+     compositor drew 174 frames (one run each, on a 10-core Mac at a load
+     average near 20). Entering the hover cost 20 style
+     recalculations (3.6 ms) and 43 paints (5.1 ms) over 600 ms, the tooltip's
+     appearance included; a legend entry's name easing to its family's ink is
+     the one transition not composited (color), and added 1.4 ms of style and
+     2.2 ms of paint over its 180 ms. Marks the hover enters together shimmer
+     in step; one marked later, a Details row opened under a held hover or a
+     segment redrawn under it, starts its own cycle. With
+     prefers-reduced-motion: reduce there is no shimmer. */
+  --viz-hover-shimmer-period: 3.6s;
+  --viz-hover-shimmer-strength: 0.15;
+  --viz-hover-shimmer-sheen: oklch(100% 0 89.9);
   --viz-hover-transition:
     filter var(--viz-hover-duration) var(--viz-hover-ease),
     background-color var(--viz-hover-duration) var(--viz-hover-ease),
@@ -1032,7 +1082,9 @@
      visual density already fills the viewport (an opacity-only fade
      can read as a flicker on modern fast-refresh displays). See
      @keyframes viz-fade-in in viz.css. */
-  --viz-layout-transition: 180ms ease;
+  --viz-layout-duration: 180ms;
+  --viz-layout-ease: ease;
+  --viz-layout-transition: var(--viz-layout-duration) var(--viz-layout-ease);
   --viz-fade-duration: 240ms;
   --viz-fade-ease: ease;
 
@@ -1259,10 +1311,16 @@
 
   /* File change letters. Renamed is a blue of its own rather than a ref
      color: the letter sits beside added's green, and the ref colors below
-     answer a different question. */
+     answer a different question.
+     Modified is a yellow that reads as yellow, dark only as far as text
+     needs (mb-easi): at 50% and 0.1 chroma it read olive, so it is as
+     light as 4.5:1 allows, at about the most chroma sRGB holds there:
+     4.76:1 on --hover-bg, and 4.57:1 on its lowest ground, the current
+     row's --highlight-bg over --sidebar-bg, under a Pulls row's change line
+     and its files; hue 84 in both themes. */
   --git-status-added: oklch(48% 0.09 149.18);
   --git-status-deleted: oklch(50% 0.12 27.2);
-  --git-status-modified: oklch(50% 0.1 85);
+  --git-status-modified: oklch(52.5% 0.107 84);
   --git-status-renamed: oklch(50% 0.1 259.52);
 
   /* Ref chips. Each is text on the chip ground below, so all three sit
@@ -1349,8 +1407,17 @@
      the light tokens. */
   --kbd-badge-border: oklch(66% 0.12 98.1);
   /* Lift rather than deepen: the dark categorical palette is already light
-     against a near-black page (see the light-theme note beside this token). */
-  --viz-data-mark-hover-filter: brightness(1.22) saturate(1.2);
+     against a near-black page (see the light-theme note beside this token). A
+     step stronger since 2026-11-18, as the light lift is (brightness 1.22 and
+     saturate 1.2 before): the five Total-row families move 0.068 to 0.158 from
+     rest in OKLab, where they moved 0.048 to 0.151, measured as the light
+     token says. JSON and TypeScript reached sRGB's ceiling at the old step, so
+     they move least. */
+  --viz-data-mark-hover-filter: brightness(1.3) saturate(1.25);
+  /* A lighter sheen than the light page's, since the lifted marks are already
+     light here: at 0.15 it moved Markdown and YAML 0.078 and 0.064 in OKLab,
+     against 0.053 and 0.042 at 0.1 (see the light token). */
+  --viz-hover-shimmer-strength: 0.1;
 
   --viz-text: var(--text);
   --viz-text-muted: oklch(74.1% 0.019 256.7);
@@ -1418,7 +1485,9 @@
      7.06:1. */
   --git-status-added: oklch(78% 0.09 149.18);
   --git-status-deleted: oklch(78% 0.12 27.2);
-  --git-status-modified: oklch(78% 0.1 85);
+  /* A clear yellow, not khaki (mb-easi): 0.1 chroma here read as tan;
+     0.16 is near what sRGB holds at this lightness, 6.32:1 on --hover-bg. */
+  --git-status-modified: oklch(79% 0.16 84);
   --git-status-renamed: oklch(74% 0.1 259.52);
   --git-ref-remote: oklch(0.74 0.1 259.52);
   --git-ref-local: oklch(0.74 0.1 205);
@@ -6101,6 +6170,22 @@ pre.code-block.metabrowser-source-lines > code {
   }
   100% {
     opacity: 0.45;
+  }
+}
+/* The hover shimmer, a sibling of the progress pulse above and not the same:
+   a sheen rather than the block, at most --viz-hover-shimmer-strength rather
+   than a swing of 0.4, rising over 30% of a period more than twice as long
+   and settling by 70%, then resting, where the progress pulse never rests.
+   Opacity only, so the compositor runs it. The values, their measurements,
+   and why it should not read as loading are beside the tokens. */
+@keyframes viz-hover-shimmer {
+  0%,
+  70%,
+  100% {
+    opacity: 0;
+  }
+  30% {
+    opacity: var(--viz-hover-shimmer-strength);
   }
 }
 
