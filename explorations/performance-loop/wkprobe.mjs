@@ -378,7 +378,12 @@ async function startServer({ metab, corpus, home, port, logPath, exitOnEof }) {
           cwd: home,
           detached: true,
           stdio: [exitOnEof ? "pipe" : "ignore", fd, fd],
-          env: { ...process.env, METABROWSER_CACHE_DIR: cache, METABROWSER_CONFIG_DIR: config },
+          env: {
+            ...process.env,
+            METABROWSER_CACHE_DIR: cache,
+            METABROWSER_CONFIG_DIR: config,
+            METABROWSER_RECORD_RECENT: "0",
+          },
         },
       ),
     );

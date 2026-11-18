@@ -31,6 +31,7 @@ import metabrowser.builtin_plugins.structured as structured_sidekick
 import metabrowser.builtin_plugins.structured.parser as structured_parser
 from metabrowser import kpress_adapter, paths_safe
 from metabrowser.diff.adapters.patch_file import MAX_PATCH_BYTES
+from metabrowser.diff.markdown_projection_worker import InertRender, ProjectionWorker
 from metabrowser.git.tree_source import GitPath
 from metabrowser.paths_safe import _set_root_dir
 from metabrowser.server import app
@@ -402,15 +403,27 @@ def test_a_patch_under_a_compound_name_is_a_container_on_both(tmp_path: Path) ->
 def test_kpress_renders_a_compound_markdown_name_as_markdown_on_both(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    seen: list[dict[str, Any]] = []
+    """Both renders are asked for the same kind, extension, and front matter.
+
+    A trusted folder renders in the server (``kpress_adapter.render_kpress_view``). A pin
+    always runs under the untrusted profile (``capabilities.capabilities_for``), so its
+    document renders in the Markdown child, which gets an ``InertRender``.
+    """
+
+    seen: list[tuple[str, str, Any]] = []
     original = kpress_adapter.render_kpress_view
 
     def _capture(**kwargs: Any) -> Any:
-        seen.append(kwargs)
+        seen.append((kwargs["kind"], kwargs["ext"], kwargs["frontmatter"]))
         return original(**kwargs)
 
+    inert = ProjectionWorker.render_inert
+
+    async def _capture_inert(worker: ProjectionWorker, request: InertRender) -> dict[str, Any]:
+        seen.append((request.kind, request.ext, request.frontmatter))
+        return await inert(worker, request)
+
     monkeypatch.setattr(kpress_adapter, "render_kpress_view", _capture)
+    monkeypatch.setattr(ProjectionWorker, "render_inert", _capture_inert)
     _both(tmp_path, "/api/kpress/render", "plan.runbook.md", view="rendered")
-    assert [(call["kind"], call["ext"], call["frontmatter"]) for call in seen] == [
-        ("markdown", ".md", {"title": "Plan"})
-    ] * 2
+    assert seen == [("markdown", ".md", {"title": "Plan"})] * 2

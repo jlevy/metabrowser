@@ -67,6 +67,19 @@ public nonisolated struct FolderIdentity: Codable, Equatable, Sendable {
             shortName: name, fullName: fullName, kind: .folder, kindLabel: "Local folder", title: title(for: name))
     }
 
+    /// A repository's identity from its canonical URL alone, named as `metab` names a
+    /// cached mirror without its pin: the repository's name, and `github.com/<owner>/<repo>`.
+    /// A window shows it while the server clones and starts, and the server's own, which
+    /// adds the pin, once it is ready.
+    public static func repository(_ url: URL) -> FolderIdentity {
+        var path = url.path(percentEncoded: false)
+        while path.count > 1, path.hasSuffix("/") { path.removeLast() }
+        let name = (path as NSString).lastPathComponent
+        let fullName = (url.host(percentEncoded: false) ?? "") + path
+        return FolderIdentity(
+            shortName: name, fullName: fullName, kind: .mirror, kindLabel: "Cached mirror", title: title(for: name))
+    }
+
     /// `path` with the home folder written `~`, as `metab` writes it.
     public static func abbreviatingHome(_ path: String, home: String) -> String {
         var home = home
@@ -105,8 +118,9 @@ public nonisolated enum IdentityClient {
     /// Sends a request and returns the status and body.
     public typealias Transport = @Sendable (URLRequest) async throws -> (status: Int, body: Data)
 
-    public static func request(origin: URL, authorization: WebAuthorization) -> URLRequest {
-        var request = URLRequest(url: origin.appending(path: path))
+    /// A JSON request for `route` (`path`, unless another route of the server's is asked).
+    public static func request(origin: URL, authorization: WebAuthorization, route: String = path) -> URLRequest {
+        var request = URLRequest(url: origin.appending(path: route))
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if case .cookie(let name, let value) = authorization {
             request.setValue("\(name)=\(value)", forHTTPHeaderField: "Cookie")

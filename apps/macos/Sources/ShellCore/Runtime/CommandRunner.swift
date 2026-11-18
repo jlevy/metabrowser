@@ -65,6 +65,9 @@ public nonisolated enum CommandRunner {
 
     /// Waits for `child` within `timeout`, killing its group at the deadline; a child
     /// that survives SIGKILL (uninterruptible I/O) is given up on after `killWait`.
+    /// Cancelling the calling task kills the group at once in the same way, since every
+    /// wait here then returns nil, and the result reads as timed out: what File > Open
+    /// URL… relies on to stop a dry run whose answer it no longer awaits.
     static func finish(
         _ child: any ServerProcess, timeout: Duration, killWait: Duration = CommandRunner.killWait
     ) async -> CommandResult {

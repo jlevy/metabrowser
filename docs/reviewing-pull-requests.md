@@ -138,10 +138,24 @@ The page has three tabs:
 | A repository or pull-request URL | **Browse code** opens the pinned code, first switching the pin to this pull request’s head when another commit is served. When the head has moved since, **Switch to the head** offers the new one. |
 | A checkout or a folder in one | Files and Commits keep showing your checkout, which may differ from the pull request, so there is no **Browse code**. When the checkout’s `HEAD` is the pull request’s head, the page says so and offers **Browse the checkout**. |
 
-Each changed file offers **View file** at the head and **View at base** at the merge
-base.
-A side the page does not show opens on its own revision page, at that exact commit,
-and never moves the server’s pin.
+In **Changes**, a changed file offers **View on branch**, which opens the file at the
+pull request’s head in the main view, with the file tree, tabs, and ref selector around
+it, as **Browse code** opens the whole tree.
+Where it opens follows the table above:
+
+- Opened with a repository or pull-request URL, it first switches the pin to the head
+  when another commit is served, as Browse code does.
+  The pin is the server’s, so every tab moves with it, and a tab whose pin another tab
+  switched turns its links into the switch back.
+- Beside a checkout, or a folder in one, it opens your working-tree copy of the file,
+  only while the checkout’s `HEAD` is the pull request’s head and only for a file inside
+  the served folder. That copy includes any changes you have not committed.
+
+A deleted file, a symbolic link, and a submodule have no View on branch, and no file
+does while Changes shows an earlier head than the pull request’s, which no branch holds
+any more. If the pull request moves on after the page was drawn, View on branch and
+Browse code switch nothing and say that the head has moved; reload to see the newer
+changes.
 
 ### Rendered Markdown in Changes
 
@@ -181,14 +195,17 @@ entries.
 ## Staying Current
 
 The page says when GitHub CLI fetched what it shows, as in
-`Fetched 3 min ago via GitHub CLI`. While the Pulls tab or a pull request’s page is
-visible, Metabrowser rescans the repository’s list of pull requests, so new pull
-requests, state changes, and edits arrive by themselves.
+`Fetched 3 min ago via GitHub CLI`, at the end of the author’s line; Refresh ends the
+row of ages under it.
+While the Pulls tab or a pull request’s page is visible, Metabrowser rescans the
+repository’s list of pull requests, so new pull requests, state changes, and edits
+arrive by themselves.
 A record counts as current for 60 seconds after its fetch, the freshness window, and for
 as long after that as the list says GitHub has not changed the pull request; the page
-then reads `Checked just now · fetched 3 h ago via GitHub CLI`. The list does not track
-checks, statuses, or mergeability, so an open pull request’s page reads those again on
-their own once a window.
+still reads `Fetched 3 h ago via GitHub CLI`, one time and never two, since a check that
+found nothing changed makes what is shown no newer.
+The list does not track checks, statuses, or mergeability, so an open pull request’s
+page reads those again on their own once a window.
 
 A visible page refreshes a record that has gone stale, and the Pulls tab also fetches,
 behind you, the pull requests you are likely to open next, within hourly limits and
@@ -321,6 +338,9 @@ the page.
 
 A pull request’s text and diff are untrusted and inert, beside a checkout too: nothing
 in them runs, and they cannot make the page load anything from another site.
+A description or comment that takes longer than a few seconds to render stays plain
+text, under one line saying so; the same line says when the renderer is busy with other
+texts or could not start, and reloading the page then tries again.
 A repository URL is served under the untrusted profile.
 Files of a local folder keep that folder’s
 [content-trust](command-line.md#content-trust) settings; reviewing a pull request does
@@ -334,6 +354,12 @@ not change them.
   GitHub**.
 - **Only github.com.** A pull-request URL on another host is read as a Git address and
   fails.
+- **The pull request’s code beside a checkout that is elsewhere.** Files and Commits
+  there show your checkout, which is the pull request’s code only while its `HEAD` is
+  the pull request’s head.
+  Opening the head whatever is checked out, as a read-only revision view in the same
+  window, is planned in
+  [Open Modes](project/architecture/arch-open-modes.md#pull-requests-in-a-repository-folder).
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

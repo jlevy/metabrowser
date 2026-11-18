@@ -32,9 +32,12 @@ user-facing order is in [Storage locations](../../command-line.md#storage-locati
   An environment override must be a nonempty absolute path without `..` components, and
   a relative flag is anchored to the working directory.
 - **No side effects:** resolution creates nothing.
-  Browsing a local folder never resolves, imports, or initializes either root: the
-  server imports only the cache route table at startup (`cache/routes.py`), and each
-  handler imports the rest when it is requested.
+  Browsing a local folder never resolves, imports, or initializes the cache, and reads
+  no `config.yml`: the server imports only the cache route table at startup
+  (`cache/routes.py`), and each handler imports the rest when it is requested.
+  Serving a folder writes one file in the configuration directory, its entry among the
+  [recent targets](arch-recent-targets.md), through `home.py` alone;
+  `test_local_browsing_in_process_never_calls_the_application_cache` holds both.
 - **No overlap:** `validate_storage_separation` refuses roots that overlap, through
   symlinked ancestors included, so deleting the cache cannot remove configuration.
 - **Configuration is the user’s:** `config.yml` is created once by atomic create-only
@@ -179,10 +182,41 @@ A record republished while a read opens it is refused as replaced, and the read 
 again, judging the new record in full, up to `MAX_READ_OPENS` times, so it reads the old
 record or the new.
 
+### Atomic Writes
+
+`write_private_file_atomic` in `home.py` writes every record and provider file.
+The bytes go to a temporary file beside the target, named by `_TEMPORARY_SUFFIX_RE` and
+created exclusively with mode `PRIVATE_FILE_MODE`, which is flushed, renamed into place,
+and its directory synced.
+Each temporary holds an exclusive `flock` for its whole life, so the next writer of the
+target removes a crashed writer’s leftover, whose lock is free, and leaves a live one.
+A write that fails once its temporary is held removes the temporary while still holding
+it.
+
+A file exists before it can be locked, and a sweep that ran between the two once removed
+a live writer’s new temporary, whose write was then refused as replaced.
+So a writer holds a shared `flock` on the directory, through a description of its own,
+from before it creates its temporary until it has locked it.
+A sweep judges the other temporaries only while it holds that lock exclusively: it tries
+the lock without blocking and leaves the leftovers to a later write if a writer is
+creating one. A sweep holds it only while it opens, tries, and removes the other
+temporaries of its target, which wait on nothing but the warning logged if a swept file
+must be tightened first; it logs its removals after releasing the lock.
+A writer retries the shared lock without blocking up to `_TEMPORARIES_LOCK_WAIT_S`,
+whose comment gives the measured holds, and then goes ahead without it, so a stopped or
+stalled holder costs each write that bound rather than stopping it.
+Both release the lock with `LOCK_UN`, so a child forked meanwhile does not keep it.
+Where the file system cannot lock a directory (`_DIRECTORY_LOCK_UNSUPPORTED_ERRNOS`),
+writers go ahead without it and sweeps skip.
+`tests/test_cache_atomic.py` runs a second writer inside the first writer’s window,
+holds the directory lock against a writer, and contends writers in threads and in
+processes.
+
 ### Provider Records
 
-The files under `sources/<slug>/pulls/` and a store’s `github-pull-manifests/` belong to
-the GitHub plugin and are not SoftSchema contracts.
+The files under `sources/<slug>/pulls/`, a store’s `github-pull-manifests/`, and its
+`github-pull-manifest-<slot>.epoch` files belong to the GitHub plugin and are not
+SoftSchema contracts.
 Nothing in the cache enumerates them, so the layout, probe, sweep, and `/api/cache/`
 projections leave them alone.
 [GitHub Pull Requests](arch-github-pull-requests.md#files-beside-a-source) lists them
@@ -214,8 +248,13 @@ sets `GIT_NO_LAZY_FETCH=1`, though a store has no promisor remote; and with
 `GIT_DISABLE_MAILMAP_ARGS`, because a bare store’s default mailmap is `HEAD:.mailmap`.
 Git can report a failed read on stderr and still exit 0, so stderr from a store read
 degrades the result.
-A store’s configuration names no diff driver, and a borrowed checkout’s configuration is
-never read, which is one reason a checkout’s objects are read only through a store.
+A store’s configuration names no diff driver, and a checkout that lends its objects to a
+store never has its configuration read, which is one reason a mirror reads a checkout’s
+objects only through its own store.
+A folder’s server is the other case: it reads its own checkout’s Git directory in place,
+for history and for that checkout’s revisions, with the checkout’s local configuration
+in effect, so those reads pass the options that keep a configured program from running
+([Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout)).
 The pool of batch readers per store (`MAX_BATCH_READERS_PER_STORE` in
 `git/tree_source.py`) is part of the tree source.
 

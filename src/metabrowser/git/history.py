@@ -632,6 +632,9 @@ class HistorySession:
         session._spool_path = Path(session._temporary_directory.name) / "pages.bin"
         args = (
             "log",
+            # At a store target, what every log there says (GitLocation.diff_driver_args);
+            # the walk prints no diff, so they change nothing it reads.
+            *session.location.diff_driver_args,
             "-z",
             f"--format={LOG_FORMAT}",
             "--decorate=full",

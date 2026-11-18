@@ -1,7 +1,7 @@
 # Feature: Repository Library and Open from a Git URL
 
 **Date:** 2026-08-11 (rewritten 2026-08-26; refreshed 2026-09-22; status updated
-2026-11-14)
+2026-11-14; recent targets addendum 2026-11-18)
 
 **Author:** Joshua Levy (with LLM assistance)
 
@@ -2137,6 +2137,21 @@ vertical slice.
   blobless stores; `gc --prune=now`, `repack -a -d`, and `prune --expire=now` keep them.
 
 ### Later: Repository chooser and session switching
+
+[Open Modes](../../architecture/arch-open-modes.md) now holds the model a chooser builds
+on: what a root is, the mode it opens in, and the
+[records that key on it](../../architecture/arch-open-modes.md#what-keys-on-the-root),
+recent targets among them.
+
+**Addendum (2026-11-18):** “recent” below is now a store of its own.
+`metab` records every root it serves, a repository opened from a URL among them, as a
+[recent target](../../architecture/arch-recent-targets.md) with the
+[mode](../../architecture/arch-open-modes.md#the-three-modes) it was opened in, and
+`metab --recent` lists them (`mb-40k4`). A chooser reads that list for recency and the
+catalog for what the cache holds.
+The cache’s own `last_opened_at`, in a source’s `state.yml`, is not that list: every
+acquisition sets it, a data mode’s included, and clearing the cache removes it.
+The macOS app’s File > Open URL… (`mb-m4mg`) is the first chooser over it.
 
 - [ ] Add a chooser over the generic catalog with recent, favorite, offline, partial,
   dirty, and refresh states.

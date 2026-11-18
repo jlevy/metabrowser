@@ -419,6 +419,11 @@ status: 200
   "limit": 100,
   "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
   "ref": "refs/remotes/origin/topic",
+  "kinds": [
+    "branch",
+    "tag"
+  ],
+  "working_tree": null,
   "total": 2,
   "truncated": false,
   "refs": [
@@ -427,6 +432,7 @@ status: 200
       "ref": "refs/remotes/origin/topic",
       "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
       "default": true,
+      "checked_out": false,
       "current": true
     },
     {
@@ -434,6 +440,7 @@ status: 200
       "ref": "refs/remotes/origin/feature",
       "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
       "default": false,
+      "checked_out": false,
       "current": false
     }
   ]
@@ -453,6 +460,11 @@ status: 200
   "limit": 100,
   "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
   "ref": "refs/remotes/origin/topic",
+  "kinds": [
+    "branch",
+    "tag"
+  ],
+  "working_tree": null,
   "total": 1,
   "truncated": false,
   "refs": [
@@ -461,6 +473,7 @@ status: 200
       "ref": "refs/tags/v1",
       "commit": "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e",
       "default": false,
+      "checked_out": false,
       "current": false
     }
   ]
@@ -482,6 +495,11 @@ status: 200
   "limit": 1,
   "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
   "ref": "refs/remotes/origin/topic",
+  "kinds": [
+    "branch",
+    "tag"
+  ],
+  "working_tree": null,
   "total": 2,
   "truncated": true,
   "refs": [
@@ -490,6 +508,7 @@ status: 200
       "ref": "refs/remotes/origin/topic",
       "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
       "default": true,
+      "checked_out": false,
       "current": true
     }
   ]

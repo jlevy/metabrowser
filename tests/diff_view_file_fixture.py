@@ -12,9 +12,14 @@ Run as a module, it builds below one directory:
   ``first``, as it is for a pull request whose base branch moved on after the fork.
   ``changes.patch`` is a patch file in the tree, whose diff names no commit.
 - ``home``: an application home that acquired ``file://<directory>/origin.git``, with
-  its last fetch recorded at ``tests/source_mirror_fixture.py``'s fixed time.
+  its last fetch recorded at ``tests/source_mirror_fixture.py``'s fixed time. Its store
+  holds pull request 7's head, ``refs/pull/7/head``, at ``second``, as a mirror that
+  fetched that pull request does.
 - ``pin-parent.json``: the body View file posts to open the renamed file's old path at
   ``first``.
+- ``pin-on-branch.json``: the body View on branch posts for ``README.md`` on pull request
+  7's Changes: ``second`` under ``refs/pull/7/head``. ``pin-head-moved.json`` is the same
+  from a page drawn when the head was ``first``, which the ref is no longer at.
 
 The acquisition floor is patched for that one call, as ``tests/source_mirror_fixture.py``
 explains; the transcript's commands only open the cached store.
@@ -46,6 +51,7 @@ from tests.source_mirror_fixture import (
 LATIN1_NAME: Final = b"latin1-\xe9.txt"
 OLD_NAME: Final = "src/old_name.py"
 NEW_NAME: Final = "src/new_name.py"
+PULL_REF: Final = "refs/pull/7/head"
 
 _PYTHON: Final = b"def old():\n    return 1\n\n\ndef keep():\n    return 2\n"
 _PATCH: Final = (
@@ -120,14 +126,39 @@ def view(display: str | bytes) -> str:
     return "/view/" + path.to_wire()
 
 
+def hold_pull_head(directory: Path, origin: Path) -> None:
+    """Write :data:`PULL_REF` at ``second`` into the home's one store."""
+
+    (store,) = (directory / "home" / "repository-stores").iterdir()
+    subprocess.run(
+        [
+            "git",
+            "--git-dir",
+            str(store / "repository.git"),
+            "update-ref",
+            PULL_REF,
+            commits(origin)["second"],
+        ],
+        check=True,
+        env=_git_env(directory),
+    )
+
+
 def write_bodies(directory: Path, origin: Path) -> None:
-    body = {"oid": commits(origin)["first"], "view": view(OLD_NAME)}
-    (directory / "pin-parent.json").write_text(json.dumps(body) + "\n", encoding="utf-8")
+    ids = commits(origin)
+    bodies = {
+        "pin-parent.json": {"oid": ids["first"], "view": view(OLD_NAME)},
+        "pin-on-branch.json": {"oid": ids["second"], "under": PULL_REF, "view": view("README.md")},
+        "pin-head-moved.json": {"oid": ids["first"], "under": PULL_REF, "view": view("README.md")},
+    }
+    for name, body in bodies.items():
+        (directory / name).write_text(json.dumps(body) + "\n", encoding="utf-8")
 
 
 def build_all(directory: Path) -> None:
     origin = build_origin(directory)
     build_home(directory, origin)
+    hold_pull_head(directory, origin)
     write_bodies(directory, origin)
 
 
@@ -142,9 +173,11 @@ __all__ = [
     "LATIN1_NAME",
     "NEW_NAME",
     "OLD_NAME",
+    "PULL_REF",
     "build_all",
     "build_origin",
     "commits",
+    "hold_pull_head",
     "view",
     "write_bodies",
 ]

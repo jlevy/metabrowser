@@ -4,6 +4,8 @@ import SwiftUI
 /// What a folder window shows in place of the page (`WindowPhase`).
 @Observable final class WindowStatus {
     var phase: WindowPhase = .starting
+    /// While starting: the start waits for another repository's, behind their launch gate.
+    var waitsForAnotherStart = false
 }
 
 struct StatusView: View {
@@ -19,7 +21,7 @@ struct StatusView: View {
             Color(nsColor: .windowBackgroundColor)
             switch status.phase {
             case .starting:
-                StartingView(folderName: folderName, folderPath: folderPath)
+                StartingView(folderName: folderName, folderPath: folderPath, waits: status.waitsForAnotherStart)
             case .failed(let failure):
                 FailureView(
                     folderName: folderName, failure: failure, retry: retry, revealLogs: revealLogs,
@@ -48,11 +50,16 @@ struct StatusView: View {
 private struct StartingView: View {
     let folderName: String
     let folderPath: String
+    let waits: Bool
 
     var body: some View {
         VStack(spacing: 12) {
             DelayedSpinner()
             Text("Starting Metabrowser for \(folderName)…").font(.headline)
+            if waits {
+                Text("It starts once another repository has finished starting, which a first clone can take minutes to do.")
+                    .multilineTextAlignment(.center)
+            }
             Text(folderPath).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
         }
         .padding(32)
