@@ -1261,8 +1261,10 @@
      answer a different question.
      Modified is a yellow that reads as yellow, dark only as far as text
      needs (mb-easi): at 50% and 0.1 chroma it read olive, so it is as
-     light as 4.5:1 allows, at about the most chroma sRGB holds there,
-     4.76:1 on --hover-bg, its lowest ground; hue 84 in both themes. */
+     light as 4.5:1 allows, at about the most chroma sRGB holds there:
+     4.76:1 on --hover-bg, and 4.57:1 on its lowest ground, the current
+     row's --highlight-bg over --sidebar-bg, under a Pulls row's change line
+     and its files; hue 84 in both themes. */
   --git-status-added: oklch(48% 0.09 149.18);
   --git-status-deleted: oklch(50% 0.12 27.2);
   --git-status-modified: oklch(52.5% 0.107 84);
