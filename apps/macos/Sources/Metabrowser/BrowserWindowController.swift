@@ -16,6 +16,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     private let pageHost = NSView()
     private let titleAccessory = TitleAccessoryController()
     private let markAccessory = TitleBarMarkController()
+    /// Every open folder window's controller, which nothing else holds: a page refers to
+    /// its window weakly, and AppKit holds the window, not its controller. Each stays here
+    /// from its creation until its window closes.
+    private static var open: [ObjectIdentifier: BrowserWindowController] = [:]
     /// The window placed last, which the next one steps down and right from, while it
     /// is open (`NewWindowFrame`, `LastPlacedWindow`).
     private static var lastPlaced = LastPlacedWindow<NSWindow>()
@@ -39,6 +43,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         Self.place(window)
         super.init(window: window)
         window.delegate = self
+        Self.open[ObjectIdentifier(self)] = self
         host(page)
     }
 
@@ -99,6 +104,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         if let window { Self.lastPlaced.close(window) }
         page.host = nil
         page.close()
+        Self.open[ObjectIdentifier(self)] = nil
     }
 
     // MARK: - Menu actions
