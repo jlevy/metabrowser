@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 import zlib
 from dataclasses import replace
 from pathlib import Path
@@ -12,7 +13,7 @@ from typing import Any
 import pytest
 from starlette.testclient import TestClient
 
-from metabrowser import server
+from metabrowser import http_caching, server
 from metabrowser.builtin_plugins.diff import sidekick as diff
 from metabrowser.builtin_plugins.diff.comparison_cache import ComparisonCache
 from metabrowser.builtin_plugins.github import pull_manifest
@@ -32,6 +33,25 @@ from tests.test_github_pulls import stand as stand
 
 def _fresh(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(diff, "_COMPARISONS", ComparisonCache())
+
+
+def _key(stand: _Stand, comparison: Comparison) -> tuple[str, ...]:
+    location = GitLocation.revision(
+        RepositoryStoreTarget(stand.published.git_dir, stand.published.object_format),
+        comparison.head,
+    )
+    intent = {"left": comparison.base, "right": comparison.head, "base_policy": "merge_base"}
+    key = diff.comparison_cache_key(location, intent, store_tag(stand.published.git_dir))
+    assert key is not None
+    return key
+
+
+def _epoch_file(stand: _Stand, number: int) -> Path:
+    record = stand.record(number)
+    assert isinstance(record, PullRecord) and record.comparison is not None
+    return stand.published.home / pull_manifest._epoch_path(
+        stand.published, _key(stand, record.comparison)
+    )
 
 
 def test_comparison_without_a_github_repository_is_not_github(tmp_path: Path) -> None:
@@ -183,7 +203,7 @@ def test_a_damaged_manifest_is_recomputed_once_and_healed(
     assert path.read_bytes() == original
 
 
-def test_attributes_builds_and_slot_collisions_are_cache_misses(
+def test_attributes_listings_and_replacements_are_cache_misses_and_builds_are_not(
     pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     stand, client = pinned_pull
@@ -199,8 +219,18 @@ def test_attributes_builds_and_slot_collisions_are_cache_misses(
 
     monkeypatch.setattr(GitDiffSource, "manifest", counted)
     _fresh(monkeypatch)
-    monkeypatch.setattr(pull_manifest, "BUILD_TAG", "another-build")
+    # Another build reads the manifest this one kept: its identity names no build (mb-g8oe).
+    tag = http_caching.BUILD_TAG
+    for module in list(sys.modules.values()):
+        if getattr(module, "BUILD_TAG", None) == tag:
+            monkeypatch.setattr(module, "BUILD_TAG", "another-build")
     route = client.get("/api/plugin/github/pull?number=7").json()["comparison_route"]
+    assert "build=another-build" in route
+    assert client.get(route).status_code == 200
+    assert calls == 0
+    # Another listing does not.
+    monkeypatch.setattr(pull_manifest, "MANIFEST_LISTING", "another-listing")
+    _fresh(monkeypatch)
     assert client.get(route).status_code == 200
     assert calls == 1
     (stand.published.git_dir / "info").mkdir(exist_ok=True)
@@ -211,10 +241,10 @@ def test_attributes_builds_and_slot_collisions_are_cache_misses(
     assert changed.status_code == 200 and new_route != route
     assert calls == 2
     assert all(change["binary"] for change in changed.json()["manifest"]["files"])
-    # One fixed slot forces a collision, which is only an eviction, never a wrong hit.
-    monkeypatch.setattr(pull_manifest, "MANIFEST_SLOTS", 1)
-    for build in ("one", "two", "one"):
-        monkeypatch.setattr(pull_manifest, "BUILD_TAG", build)
+    # A pull request keeps one manifest: another identity replaces it, which is only an
+    # eviction, never a wrong hit.
+    for listing in ("one", "two", "one"):
+        monkeypatch.setattr(pull_manifest, "MANIFEST_LISTING", listing)
         _fresh(monkeypatch)
         assert client.get(new_route).status_code == 200
     assert calls == 5
@@ -284,10 +314,10 @@ def test_sha256_endpoints_round_trip_through_the_manifest_bank(
 
     async def run() -> None:
         await pull_manifest.prepare_pull_manifest(published, record)
-        kept = pull_manifest._read(published, key)
+        kept = pull_manifest._read(published, record.number, key)
         assert kept is not None
         adopted = await pull_manifest.load_pull_manifest(
-            published, GitDiffSource(location), intent, key
+            published, record.number, GitDiffSource(location), intent, key
         )
         assert adopted == kept
         assert (adopted.resolved.left.id, adopted.resolved.right.id) == (base, head)
@@ -368,7 +398,7 @@ def test_corrupt_manifest_is_discarded_before_backing_repair_and_restart(
         else:
             assert "could not be discarded" not in refused.json()["message"]
         if bank_mode != 0o700 and not deny_parent:
-            epoch = directory.parent / f"github-pull-manifest-{slot.stem}.epoch"
+            epoch = _epoch_file(stand, 7)
             assert len(epoch.read_bytes()) == 64
         # Restore genuine backing data, then discard process-local failure/cache state.
         if saved is None:
@@ -432,7 +462,7 @@ def test_manifest_computation_cannot_relabel_itself_after_invalidation(
         if calls == 1:
             directory.chmod(bank_mode)
             try:
-                pull_manifest.invalidate_pull_manifest(stand.published, pair)
+                pull_manifest.invalidate_pull_manifest(stand.published, 7, pair)
             finally:
                 directory.chmod(0o700)
         return answer
@@ -459,9 +489,7 @@ def test_unusable_epoch_bypasses_persistence_without_changing_private_paths(
     stand, client = pinned_pull
     route = client.get("/api/plugin/github/pull?number=7").json()["comparison_route"]
     expected = client.get(route).json()
-    directory = stand.published.home / pull_manifest._directory(stand.published)
-    slot = next(directory.glob("*.json"))
-    path = directory.parent / f"github-pull-manifest-{slot.stem}.epoch"
+    path = _epoch_file(stand, 7)
     victim = stand.tmp_path / "untouched"
     victim.write_bytes(b"private witness")
     path.unlink()
@@ -491,7 +519,7 @@ def test_unusable_epoch_bypasses_persistence_without_changing_private_paths(
         assert len(path.read_bytes()) == 64
 
 
-def test_invalidation_preserves_other_slots_and_their_disk_hits(
+def test_invalidation_preserves_other_pull_requests_and_their_disk_hits(
     pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     stand, client = pinned_pull
@@ -499,26 +527,15 @@ def test_invalidation_preserves_other_slots_and_their_disk_hits(
     other = stand.refresh(8)
     assert isinstance(first, PullRecord) and first.comparison is not None
     assert isinstance(other, PullRecord) and other.comparison is not None
-
-    def key_for(comparison: Comparison) -> tuple[str, ...]:
-        location = GitLocation.revision(
-            RepositoryStoreTarget(stand.published.git_dir, stand.published.object_format),
-            comparison.head,
-        )
-        intent = {"left": comparison.base, "right": comparison.head, "base_policy": "merge_base"}
-        key = diff.comparison_cache_key(location, intent, store_tag(stand.published.git_dir))
-        assert key is not None
-        return key
-
-    first_key, other_key = key_for(first.comparison), key_for(other.comparison)
-    # Slot collisions are legitimate evictions. Choose a namespace in which these two
-    # actual comparisons do not collide, so this test exercises isolation instead.
-    for namespace in range(32):
-        monkeypatch.setattr(pull_manifest, "BUILD_TAG", f"slot-isolation-{namespace}")
-        if pull_manifest._slot(first_key) != pull_manifest._slot(other_key):
+    first_key, other_key = _key(stand, first.comparison), _key(stand, other.comparison)
+    # Epoch collisions are legitimate spurious invalidations. Choose a namespace in which
+    # these two comparisons' epochs differ, so this test exercises isolation instead.
+    for namespace in range(64):
+        monkeypatch.setattr(pull_manifest, "MANIFEST_LISTING", f"epoch-isolation-{namespace}")
+        if pull_manifest._epoch_slot(first_key) != pull_manifest._epoch_slot(other_key):
             break
     else:
-        raise AssertionError("could not separate the fixture comparison slots")
+        raise AssertionError("could not separate the fixture comparisons' epochs")
     route = client.get("/api/plugin/github/pull?number=7").json()["comparison_route"]
     _fresh(monkeypatch)
     expected = client.get(route).json()
@@ -526,16 +543,78 @@ def test_invalidation_preserves_other_slots_and_their_disk_hits(
     epoch = stand.published.home / pull_manifest._epoch_path(stand.published, first_key)
     old = epoch.read_bytes()
     pull_manifest.invalidate_pull_manifest(
-        stand.published, (other.comparison.base, other.comparison.head)
+        stand.published, other.number, (other.comparison.base, other.comparison.head)
     )
     assert epoch.read_bytes() == old
     _fresh(monkeypatch)
 
     async def forbidden(_source: GitDiffSource, _resolved: ResolvedComparison) -> Any:
-        raise AssertionError("another slot's invalidation discarded this healthy disk hit")
+        raise AssertionError("another pull request's invalidation discarded this disk hit")
 
     monkeypatch.setattr(GitDiffSource, "manifest", forbidden)
     assert client.get(route).json() == expected
+
+
+def test_invalidating_a_comparison_reaches_every_pull_request_that_keeps_it(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review of #533: a pull request reopened from the same branch keeps the same pair.
+
+    Both keep a manifest listed while an object was forged. Reading 7 finds the object
+    corrupt and invalidates the comparison; once the object is repaired, 12 lists it
+    again rather than replaying the forged statistics.
+    """
+    from metabrowser.git.object_failures import observed_object_failures
+    from metabrowser.git.process import repository_store_target
+
+    stand, client = pinned_pull
+    route = client.get("/api/plugin/github/pull?number=7").json()["comparison_route"]
+    expected = client.get(route).json()
+    record = stand.record(7)
+    assert isinstance(record, PullRecord) and record.comparison is not None
+    twin = record.model_copy(update={"number": 12})
+    store = stand.published.git_dir
+    oid = git(store, "rev-parse", f"{record.comparison.head}:src/app.txt").decode().strip()
+    loose = store / "objects" / oid[:2] / oid[2:]
+    loose.parent.mkdir(exist_ok=True)
+    saved = loose.read_bytes() if loose.exists() else None
+    borrowed = stand.tmp_path / "empty-borrowed-objects"
+    borrowed.mkdir()
+    (store / "objects/info/alternates").write_text(str(borrowed) + "\n")
+    forged = b"forged line\n" * 23
+    loose.unlink(missing_ok=True)
+    loose.write_bytes(zlib.compress(b"blob " + str(len(forged)).encode() + b"\0" + forged))
+    directory = stand.published.home / pull_manifest._directory(stand.published)
+    for path in directory.glob("*.json"):
+        path.unlink()
+    asyncio.run(pull_manifest.prepare_pull_manifest(stand.published, record))
+    asyncio.run(pull_manifest.prepare_pull_manifest(stand.published, twin))
+    assert sorted(path.name for path in directory.glob("*.json")) == [
+        "pull-12.json",
+        "pull-7.json",
+    ]
+    _fresh(monkeypatch)
+    refused = client.get(route)
+    assert refused.status_code == 409 and refused.json()["error"] == "object_corrupt"
+    if saved is None:
+        loose.unlink()
+    else:
+        loose.write_bytes(saved)
+    observed_object_failures.forget_store(repository_store_target(git_dir=store))
+    _fresh(monkeypatch)
+    comparison = record.comparison
+    answer = asyncio.run(
+        pull_manifest.shared_pull_manifest(
+            stand.published, 12, comparison.base, comparison.head, retain_memory=False
+        )
+    )
+    genuine = [
+        (change["id"], change.get("additions"), change.get("deletions"))
+        for change in expected["manifest"]["files"]
+    ]
+    assert [
+        (change.id, change.additions, change.deletions) for change in answer.manifest.files
+    ] == genuine, "12 replayed the forged statistics"
 
 
 def test_preparation_and_a_reader_share_one_manifest_computation(
@@ -569,7 +648,9 @@ def test_preparation_and_a_reader_share_one_manifest_computation(
         )
         await asyncio.sleep(0)
         reading = asyncio.create_task(
-            pull_manifest.shared_pull_manifest(stand.published, comparison.base, comparison.head)
+            pull_manifest.shared_pull_manifest(
+                stand.published, record.number, comparison.base, comparison.head
+            )
         )
         return await asyncio.gather(preparing, reading)
 
