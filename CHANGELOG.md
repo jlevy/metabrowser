@@ -11,6 +11,20 @@ All notable changes to Metabrowser are documented here.
   which the page took for a switch made in another tab.
   It now holds its requests while the switch is under way.
 
+- The macOS app shows a first clone’s progress in the window of the repository being
+  opened: how far the clone has got, how fast, and for how long, as `metab` reports it
+  in Terminal, then that it is reading the pull request the link names.
+  A repository that could not be cloned because of GitHub says which problem it is: the
+  repository was not found or your account cannot read it, which is also how a
+  signed-out GitHub CLI shows until the app checks the sign-in itself; it was not found
+  and GitHub CLI was not found either; the connection failed; or GitHub is limiting
+  requests or answered with an error.
+  The window shows `metab`’s message and the `gh` commands that fix the problem, each
+  with Copy, a Copy Message button that copies all of it, and Retry.
+  The app tries a repository that was not found again when you switch back to it, so a
+  sign-in in Terminal clears the failure; other failures wait for Retry.
+  See [the app’s guide](docs/macos-app.md#opening-github-links).
+
 - A link to one file of a pull request’s **Changes** on GitHub, such as
   `https://github.com/o/r/pull/7/changes#diff-<hash>R12` or its older `/files` spelling,
   now opens that file, and a `/pull/7/changes` link, which `metab` refused, opens the
