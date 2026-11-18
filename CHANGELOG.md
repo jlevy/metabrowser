@@ -4,6 +4,11 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- The Treemap tab shows File Overview’s file-type legend under its bars.
+  Pointing at an entry highlights every cell of that family, its segments in the bars,
+  and the entry; pointing at a cell or a segment highlights it and its family’s entry.
+  See [Folder Treemap](docs/design-system.md#folder-treemap).
+
 - Each pull request keeps its own comparison manifest beside the store, so a
   repository’s Diff summaries no longer replace each other’s. The bank held sixteen
   direct-mapped slots, where 19 open pull requests kept about 11 manifests, and each of
@@ -91,11 +96,24 @@ All notable changes to Metabrowser are documented here.
   ellipsis.
 
 - On a folder’s Overview, pointing at a File Overview legend entry, its dot or its
-  words, now lifts its family’s segment in the bar above, as pointing at the segment
-  does, and shows that family’s file count and byte size beside the entry.
-  The segment’s own tooltip, beside the segment, also names the family.
+  words, now highlights every bar of its family on screen: its segment in the Files,
+  Ignored, and Total bars, and its row in Details while that is open.
+  It shows that family’s file count and byte size beside the entry.
+  Pointing at a segment highlights that segment, and its tooltip, beside the segment,
+  also names the family.
+  Either way the family’s legend entry answers too: its dot highlights and its name
+  takes the family’s color.
   The hover holds while the folder’s totals update under the pointer.
   See [Aggregate Distributions](docs/design-system.md#aggregate-distributions).
+
+- A hovered bar segment, File Overview’s or the Treemap’s tally bars’, is a step darker
+  on the light page and lighter on the dark one, twice the bar’s thickness rather than
+  one and a half, and eases in and out rather than springing past its size.
+  While it is hovered it shimmers gently, slower and fainter than a loading block’s
+  pulse. A hovered Treemap cell lifts by the same stronger step.
+  With reduced motion set, the highlight appears at once, without the easing or the
+  shimmer. See
+  [Hover Styles the Thing Under the Pointer](docs/design-system.md#hover-styles-the-thing-under-the-pointer).
 
 - The Pulls tab’s change lines, each row’s file and line totals, arrive in seconds
   rather than tens of seconds on a cold cache.
