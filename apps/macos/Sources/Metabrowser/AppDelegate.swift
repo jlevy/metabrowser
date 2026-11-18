@@ -16,7 +16,8 @@ nonisolated enum AppLog {
 /// App lifecycle: the runtime, the folder sessions, the menus, and quitting.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settings = RuntimeSettings()
-    private lazy var recentFolders = RecentFoldersMenu { [weak self] in self?.request($0) }
+    private lazy var recentFolders = RecentTargetsMenu(
+        setup: { [weak self] in self?.operations.launchableSetup() }, open: { [weak self] in self?.request($0) })
     private let launchGate = LaunchGate()
     private let runtimeModel = RuntimeModel()
     /// The runtime, and the folders waiting for one. `runtimeModel` only mirrors it.
@@ -106,6 +107,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Coming back from Terminal, where an install or upgrade most likely ran.
     func applicationDidBecomeActive(_ notification: Notification) {
         lookForRuntimeChanges()
+        // And where `metab` may have served a folder, which File > Open Recent then lists.
+        recentFolders.refresh()
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { true }
@@ -234,7 +237,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let reason = CLIServeLaunch.unservableReason(root) {
             return refuse("Metabrowser cannot open this folder", "\(root.lastPathComponent) cannot be served: \(reason).")
         }
-        RecentFoldersMenu.noteOpened(root)
+        recentFolders.noteOpened(root, isOpen: sessions[root.path(percentEncoded: false)] != nil)
         if let session = sessions[root.path(percentEncoded: false)] as? FolderSession {
             session.showFrontWindow(page: target.page)
             return
