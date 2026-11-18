@@ -58,8 +58,8 @@ final class FolderChooserMenu: NSObject {
         }
         menu.addItem(.separator())
         // Nil-targeted, so they reach the app delegate as the File menu's do.
-        menu.addItem(Self.command("Open Folder…", #selector(AppDelegate.openFolder(_:)), "o"))
-        menu.addItem(Self.command("Open URL…", #selector(AppDelegate.showOpenURL(_:)), "l"))
+        menu.addItem(MainMenu.item("Open Folder…", #selector(AppDelegate.openFolder(_:)), "o"))
+        menu.addItem(MainMenu.item("Open URL…", #selector(AppDelegate.showOpenURL(_:)), "l"))
         menu.addItem(.separator())
         let close = NSMenuItem(
             title: "Close Background Folders", action: #selector(closeBackground(_:)), keyEquivalent: "")
@@ -74,10 +74,8 @@ final class FolderChooserMenu: NSObject {
         let item = NSMenuItem(title: row.title, action: #selector(chose(_:)), keyEquivalent: "")
         item.subtitle = row.subtitle
         item.state = row.isChecked ? .on : .off
-        let alternate = NSMenuItem(
-            title: "Open \(row.title) in New Window", action: #selector(choseNewWindow(_:)), keyEquivalent: "")
+        let alternate = MainMenu.item("Open \(row.title) in New Window", #selector(choseNewWindow(_:)), "", .option)
         alternate.subtitle = row.subtitle
-        alternate.keyEquivalentModifierMask = .option
         alternate.isAlternate = true
         for each in [item, alternate] {
             each.target = self
@@ -85,12 +83,6 @@ final class FolderChooserMenu: NSObject {
             each.representedObject = Carried(row.target, window: window)
             menu.addItem(each)
         }
-    }
-
-    private static func command(_ title: String, _ action: Selector, _ key: String) -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
-        item.target = nil
-        return item
     }
 
     @objc private func chose(_ sender: NSMenuItem) { carryOut(sender, newWindow: false) }
