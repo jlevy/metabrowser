@@ -117,10 +117,9 @@
   .folder-overview-host {
     --folder-overview-column-inset: 1.5rem;
     --folder-overview-text-inset: var(--file-tab-padding-x);
-    --folder-overview-card-width: min(
-      100%,
-      calc(var(--doc-measure) + 2 * var(--folder-overview-column-inset))
-    );
+    /* The card's full measure, declared once for both caps below. */
+    --folder-overview-measure: calc(var(--doc-measure) + 2 * var(--folder-overview-column-inset));
+    --folder-overview-card-width: min(100%, var(--folder-overview-measure));
   }
 
   .folder-overview-panel-surface > .folder-overview-panel-heading,
@@ -157,7 +156,8 @@
      and the gutter together (markdown.css). So while the README has a table of contents
      there, every panel's cap leaves the same gutter, and the section rules and surface
      bodies end where the card does. The README's own heading is one of them; its body
-     keeps the whole column above. */
+     keeps the whole column, by the `width: 100%` rule for a README with a table of
+     contents. */
   @container kpress-doc (max-width: 74.99rem) {
     .folder-overview-host:has(
         .folder-overview-panel-document
@@ -168,7 +168,7 @@
       ) {
       --folder-overview-card-width: min(
         calc(100% - var(--kpress-toc-toggle-clearance)),
-        calc(var(--doc-measure) + 2 * var(--folder-overview-column-inset))
+        var(--folder-overview-measure)
       );
     }
   }
