@@ -249,9 +249,9 @@ def render_kpress_view(
     """Render a Metabrowser file through KPress.
 
     ``include_toc="off"`` suppresses the table of contents for a document
-    embedded inside Metabrowser's own navigation; see the README panel in the
-    folder Overview. ``plain_code`` shows fenced code escaped rather than
-    highlighted (see :data:`_PLAIN_CODE`). ``asset_url_prefix`` defaults to
+    embedded where it is not the page's own, such as the Markdown of a pull
+    request's record and snapshot (``builtin_plugins/github``). ``plain_code``
+    shows fenced code escaped rather than highlighted (see :data:`_PLAIN_CODE`). ``asset_url_prefix`` defaults to
     :func:`kpress_asset_url_prefix`; KPress keeps renders by it, so a render made
     under an older stamp never answers for the current one.
     """

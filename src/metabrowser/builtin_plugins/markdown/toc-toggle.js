@@ -10,6 +10,11 @@
 // starts within the threshold of the pane's top, so the threshold decides there as in
 // KPress; the README starts further down, so reaching it decides, and its toggle appears
 // as the reader scrolls to its beginning.
+//
+// It is in the plugin's static tree, since every trusted mount hands KPress this policy
+// (rendered.js, transclusion.js), and imports nothing, so it adds no level. Measured
+// 2026-11-17 in headless Chrome 152 on a trusted folder's first Markdown view: a module
+// request of its own, 3,197 bytes decoded and 1.8 KB transferred.
 
 /**
  * How far the pane scrolls before a toggle shows: KPress's `TOC_TOGGLE_SCROLL_THRESHOLD_PX`
