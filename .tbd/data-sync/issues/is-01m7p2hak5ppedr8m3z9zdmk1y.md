@@ -3,9 +3,9 @@ type: is
 id: is-01m7p2hak5ppedr8m3z9zdmk1y
 title: "Address review A on #517: Overview README TOC follow-up"
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 2
+version: 3
 delegate: claude-code@spud10.local
 labels:
   - toc
@@ -14,7 +14,11 @@ dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-18T00:57:30.468Z
-updated_at: 2026-11-18T00:57:34.594Z
+updated_at: 2026-11-18T01:15:08.322Z
 started_at: 2026-11-18T00:57:34.593Z
+closed_at: 2026-11-18T01:15:08.321Z
+close_reason: "Done in jlevy/metabrowser#543 (claude/overview-toc-review-a), not yet merged: A2, A3, A4, A5, A6 comments, A8 fixed; A1 deferred to mb-hpoq, A6 removal to mb-2nqa, A9 to mb-4el3; A7 declined with reason."
+resolution: null
+duplicate_of: null
 ---
 Follow-up PR to main for review A on jlevy/metabrowser#517, merged as dcf2bcfa8 before the review was published: A1 Chrome in-app step (deferred to its bead), A2 shared edge below 75 rem, A3-A6 fixes, A8 dated loading note.
