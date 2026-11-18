@@ -9,6 +9,8 @@ implemented scope; the
 [release-preparation record](../../qa/qa-2026-11-07-v012-release-preparation.md) records
 how the 0.12.0 candidate was qualified.
 Conversions and broader deepening remain future work.
+[Open Modes](#open-modes), added on 2026-11-18, names the two ways a root is open,
+folder and mirror, and plans the indicator that shows which (`mb-wup3`).
 
 The design was proven by experiments on 2026-11-02 against a 1.2 GB private repository
 and small local replicas, reviewed the same day with the verdict *sound with changes*,
@@ -443,6 +445,128 @@ that finishes after a newer one.
 The
 [rendered file design](plan-2026-08-17-general-diff-rendering.md#rendered-diffs-and-revision-file-links)
 defines what the comparison’s immutable sides expose.
+
+### Open Modes
+
+**Status:** Decided 2026-11-18. The two modes are what the code already serves; this
+section names them and says what a reader is told.
+Each recent target records its mode
+([Recent Targets](../../architecture/arch-recent-targets.md), `mb-40k4`). The indicator
+below is planned (`mb-wup3`).
+
+The owner asked, on 2026-11-18:
+
+> “we should have clarity on the mode that something is opened in, either folder mode
+> (an existing checkout) or a mirror mode (metabrowser’s own cached copy).
+> In both cases, Metabrowser may maintain a cached copy, but some behaviors are
+> different. If we want to know that the actual files are changed, having two modes would
+> be best. And we could indicate with a small indicator which it is.”
+
+A root is open in exactly one of two modes, and the mode is the kind of subject its
+server holds ([Subjects](../../architecture/arch-source-sessions-and-pins.md#subjects)),
+which `GET /api/identity` already reports as `kind`:
+
+- **Folder mode** (`folder`, an attached folder): the reader’s own files as they are on
+  disk now. A checkout of a repository is a folder like any other, with its uncommitted,
+  untracked, and ignored files.
+- **Mirror mode** (`mirror`, a pinned revision): one commit of Metabrowser’s own cached
+  copy of a repository, the mirror this plan and the
+  [thin-mirror plan](../done/plan-2026-09-23-v012-thin-mirror.md) define.
+  Nothing is checked out, and nothing the reader edits is shown.
+
+These are not the [storage modes](#storage-modes) below.
+`full` and `overlay` say how a mirror’s store is filled; a mirror is in mirror mode
+either way, and `--checkout` changes only where its objects come from.
+Metabrowser may keep a cached copy in both open modes: a mirror is one, and a checkout
+in folder mode gets a store, borrowing from that checkout, when one of its pull
+requests’ comparisons is prepared.
+
+#### How a Target Reaches a Mode
+
+The target decides, by the rule for ROOT (`_names_existing_path` in `cli/main.py`), and
+nothing switches it afterwards:
+
+| The reader opens | Mode | Why |
+| --- | --- | --- |
+| A folder or a file: `metab PATH`, File > Open Folder…, a drop, Open With | Folder | A path that exists is that path. A checkout of a GitHub repository opens here, with its Pulls tab |
+| A URL: `metab URL`, File > Open URL…, a link handed to the app | Mirror | An argument that starts with `scheme://` is a source, whatever is on disk, so a folder never stands in, under the local trust profile, for the repository a URL names |
+| A URL with `--checkout PATH`, or one whose store remembers a lender | Mirror | The store borrows the checkout’s objects; the pages are still a pinned commit of the origin |
+| A recent target | The mode it records | An entry is a root and its mode, so File > Open Recent reopens a folder as a folder and a repository as a mirror |
+
+**A GitHub repository that is also checked out locally** is therefore two roots, and the
+reader picks one by what they open: Open Folder… on the checkout shows the working tree,
+and Open URL… on its GitHub address shows the mirror, even while the checkout’s window
+is open. Open URL… never opens a checkout in the URL’s place.
+It may offer one: when a recent folder is a checkout whose remote is the URL’s
+repository, the dialog can list “Open the checkout at `<path>`” beside the URL, and the
+reader chooses.
+That offer needs the checkout’s repository recorded with its entry, which
+recent targets do not hold yet.
+
+#### What Differs
+
+|  | Folder mode | Mirror mode |
+| --- | --- | --- |
+| What is shown | The working tree as it is on disk | One commit’s tree, the pin |
+| What “changed” means | The files changed on disk: the watcher updates the tree, the Recent tab and activity follow, and Git status and working-tree diffs compare against `HEAD` | The origin moved: the freshness row offers the newer commit after a refresh. Nothing changes under a pin |
+| Refresh | None needed; the tree is live | `POST /api/source/refresh` fetches into the store, and the reader accepts the newer commit |
+| Changing what is shown | Never by Metabrowser, which does not fetch into, switch, or write a checkout; the reader’s own `git` does | The ref selector, the freshness offer, a pull request’s switch to its head, and View on branch, all through `POST /api/source/pin` |
+| View on branch, from a diff | A link to the working-tree file when the checkout’s `HEAD` is the diff’s head, and none otherwise | A link when the pin is the commit, and otherwise a switch of the pin |
+| Capabilities | Every capability (`FILESYSTEM_CAPABILITIES`) | Navigation and an index only (`GIT_REVISION_CAPABILITIES`): no Recent tab, activity, event stream, or editing |
+| Trust | The local profile, or `--untrusted` | The untrusted profile, always; `--allow-edits` is refused |
+| Pull requests | The Pulls tab lists the checkout’s repository, and a pull request’s page is a view of the folder: no pin, and the working tree is not the pull request’s code | A pull-request URL pins its head, and Browse code reads that commit |
+| Named | The folder’s name and path | The repository’s name, with its origin and pin: `github.com/owner/repo@main` or `#123` |
+
+#### The Indicator
+
+Planned (`mb-wup3`); not in the pull request that adds recent targets.
+The owner specified the icons, on 2026-11-18: “The mirror indicator should indicate: use
+the GitHub icon, perhaps overlaid with a cloud if we can come up with a good icon like
+that, and the folder mode should use a folder icon.”
+
+- **Data.** The mode is `kind` in `GET /api/identity`, which the shell’s `<title>` and
+  the app’s window title already read, so the page and the app cannot disagree and no
+  route is added. The server writes it into the navigation heading with the root’s name
+  (`data-served-root` on `.header-path`), so the indicator is in the first paint.
+- **In the page.** One icon in the navigation heading, before the root’s name, inside
+  the heading’s link so the two read as one name.
+  It takes the icon slot the tree’s rows use (`--icon-glyph`) and the heading’s ink
+  (`--header-text`), and a recent target’s row, where a switcher lists them, uses the
+  same two icons.
+- **In the app.** The same icon before the folder’s name in the title-bar accessory
+  (`TitleAccessoryController`), dimmed with the title when the window is not main, and
+  as the image of each File > Open Recent item.
+- **Folder mode** is the folder icon the tree already draws: `folder` in
+  `static/icons.js`, Lucide’s.
+- **Mirror mode** is the GitHub mark with a small cloud badge.
+  The mark is the one the page already ships for GitHub links
+  (`destinationGlyphs.github` in `static/plugin-sdk-views.js`, Primer Octicons’
+  `mark-github-16`), moved into the icon registry so core can draw it.
+  The cloud is Lucide’s `cloud`, added to `static/icons.js` by the registry’s own
+  process; no icon library is added.
+  The composite is the mark at the slot’s size with the cloud at its lower trailing
+  corner, about half the slot wide, filled in the heading’s ink and separated from the
+  mark by a one-pixel ring in the header’s ground color, so it reads as a badge on the
+  mark and not as part of it.
+- **Fallback.** If the badge does not read at the slot’s size, in either theme or at the
+  app’s title size, mirror mode is the GitHub mark alone and its tooltip begins
+  “Mirror”. Decide it from a screenshot of each at the real size, light and dark.
+- **A mirror that is not GitHub’s**, such as a `file://` source, has no mark to show, so
+  it shows the cloud alone.
+- **Words.** The modes are named “Folder” and “Mirror”.
+  The icon is not decoration: it carries `aria-label` “Folder” or “Mirror”, and its
+  tooltip is the mode’s name and then what the heading’s tooltip already says, the
+  folder’s path, or `Mirror of <origin> at <commit>, stored in <location>`.
+  `KIND_LABELS` in `root_identity.py` holds the longer “Local folder” and “Cached
+  mirror” the app’s title tooltip uses, and stays.
+- **Contrast.** Both icons are drawn in `currentColor` from a text token, so they meet
+  the contrast the heading’s text meets in both themes; the badge’s ring is the ground
+  token, never a literal.
+  A real-browser check measures the icon’s ink against the header’s ground in light and
+  dark, as the title-bar mark’s fills were measured.
+- **Parity.** Which icon shows is data, already pinned for both kinds by the goldens of
+  `/api/identity` behind `shell.window-title`; how it is drawn is a `paint-exempt` row
+  with a Chrome check.
 
 ### Storage Modes
 
