@@ -90,6 +90,18 @@ def require_chrome() -> str:
 
     global _chrome_asked
     _chrome_asked = True
+    found = find_chrome()
+    if found is None:
+        pytest.skip("Chrome is not installed")
+    return found
+
+
+def find_chrome() -> str | None:
+    """The Chrome ``require_chrome`` returns, or ``None``, without asking for it.
+
+    The run's warm-up (``tests/chrome_starts.py``) looks here, outside any test.
+    """
+
     named = os.environ.get("CHROME_BIN")
     if named:
         return named
@@ -99,7 +111,7 @@ def require_chrome() -> str:
         found = shutil.which(name)
         if found is not None:
             return found
-    pytest.skip("Chrome is not installed")
+    return None
 
 
 def take_chrome_request() -> bool:

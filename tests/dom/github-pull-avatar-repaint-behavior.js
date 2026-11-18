@@ -4,7 +4,8 @@
 // The production pull page mounts on the recorded record of pull request 7, its author
 // and commenters given avatars, and goes through what repaints its header and its
 // conversation: each tab and back, a poll that finds a refresh of the same record running,
-// and the next, which changes only the status line's age. Then polls whose record changes
+// and the next, which finds the repository's list checked it, which changes nothing shown: the
+// freshness note says the fetch alone (mb-ne91). Then polls whose record changes
 // one input of the header each: its labels, its head branch, its author's avatar, and its
 // state, merged by another actor. Every image the page creates is recorded as it is created.
 //
@@ -314,8 +315,9 @@ async function run() {
     step({ files: "Changes", checks: "Checks", "": "Conversation again" }[tab]);
   }
   // A poll finds a refresh of the same record running, and the next finds the repository's
-  // list has checked it since: the header repaints for each, its status line's age changing
-  // in the second, and the record is as it was.
+  // list has checked it since: the header repaints for each, the second's check changing
+  // nothing it shows, since the freshness note says the fetch alone (mb-ne91), and the record
+  // is as it was.
   await poll({ ...body, refreshing: true });
   step("a poll finds a refresh running");
   await poll({
