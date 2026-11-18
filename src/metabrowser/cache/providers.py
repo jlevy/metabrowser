@@ -1,13 +1,13 @@
 """The built-in repository providers and the few places core asks them anything.
 
 Core code names no provider and never branches on one. It asks the providers listed
-here, through :class:`RepositoryProvider`, for seven things: URL reducers for the root
-argument, extra Git configuration for a remote URL (a credential helper), a check to run
-before a first clone, the ``repository_context`` of a mirrored source, the commit a
-pull-request URL pins, the changed file a pull-request URL's anchor names, and the pull
-requests a server keeps fresh beside the mirror. The
-list is fixed, as the built-in browser plugin directories are; there is no public
-registration surface for the alpha.
+here, through :class:`RepositoryProvider`, for: URL reducers for the root argument, extra
+Git configuration for a remote URL (a credential helper), what to say when a source was
+not found or needs credentials (``credential_hint``), a check to run before a first
+clone, the ``repository_context`` of a mirrored source, the commit a pull-request URL
+pins, the changed file a pull-request URL's anchor names, and the pull requests a server
+keeps fresh beside the mirror. The list is fixed, as the built-in browser plugin
+directories are; there is no public registration surface for the alpha.
 """
 
 from __future__ import annotations

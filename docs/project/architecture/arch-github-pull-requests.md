@@ -28,19 +28,20 @@ what a reader does with them is in
 ## The Provider Boundary
 
 Core names no provider.
-It asks the providers `cache/providers.py` lists, through `RepositoryProvider`, for
-eight things: URL reducers, Git configuration for a remote (the credential helper), what
-to say when a source was not found or needs credentials (`credential_hint`), a check
-before a first clone, a mirror’s `repository_context`, the commit a pull-request URL
-pins, the changed file a Changes tab URL’s anchor names (`pull_request_file`), and the
-set of pull requests a server keeps fresh.
-`GithubProvider` in `provider.py` answers all eight.
+It asks the providers `cache/providers.py` lists, through `RepositoryProvider`, for: URL
+reducers, Git configuration for a remote (the credential helper), what to say when a
+source was not found or needs credentials (`credential_hint`), a check before a first
+clone, a mirror’s `repository_context`, the commit a pull-request URL pins, the changed
+file a Changes tab URL’s anchor names (`pull_request_file`), and the set of pull
+requests a server keeps fresh.
+`GithubProvider` in `provider.py` answers each.
 The URL reducer in `urls.py` claims github.com and raw.githubusercontent.com; its
 docstring tabulates every URL shape it accepts and what each selects.
-GitHub’s `#diff-<hash>` anchor is the SHA-256 of a changed file’s path, so
-`pull_file_anchor.py` names the file from the cached list of changed files and then the
-record’s comparison, offline, and the URL opens at `/pull/<n>/files/<path>`, or at the
-Changes tab with the reason when neither names one.
+GitHub’s `#diff-<hash>` anchor, on a `/pull/<n>/files` or `/pull/<n>/changes` URL, is
+the SHA-256 of a changed file’s path, so `pull_file_anchor.py` names the file from the
+cached list of changed files and then the record’s comparison, offline, and the URL
+opens at `/pull/<n>/files/<path>`, or at the Changes tab with the reason when neither
+names one or the Changes tab has no address for its path.
 
 `gh.py` is the only way the plugin reaches GitHub.
 `gh` owns authentication, and Metabrowser never reads, stores, or logs a token.
