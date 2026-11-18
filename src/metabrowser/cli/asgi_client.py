@@ -120,7 +120,16 @@ class InProcessClient:
                 f"{self._label} application did not start within {LIFESPAN_TIMEOUT_S:g}s"
             ) from exc
         if message["type"] != "lifespan.startup.complete":
-            detail = message.get("message", "application startup failed")
+            # What was asked to be served could not be: its own message, which names no
+            # path, in place of the traceback an application's failed startup carries.
+            from metabrowser.source import subject_open_failure
+
+            failure = subject_open_failure()
+            detail = (
+                str(failure)
+                if failure is not None
+                else message.get("message", "application startup failed")
+            )
             # Draining the task re-raises whatever the app raised. That
             # traceback is the symptom; the failure message is the cause, so
             # report the cause and attach the exception to it.

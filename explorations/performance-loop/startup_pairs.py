@@ -376,6 +376,9 @@ def _environment(home: Path) -> dict[str, str]:
     return {
         **_without_bytecode_writes(),
         "METABROWSER_CACHE_DIR": str(home),
+        # A measured serve is not an open: it records no recent target, so a build that
+        # records is not charged the write against one that does not.
+        "METABROWSER_RECORD_RECENT": "0",
         "PYTHONHASHSEED": "0",
     }
 

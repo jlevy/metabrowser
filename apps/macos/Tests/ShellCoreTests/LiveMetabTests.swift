@@ -8,6 +8,17 @@ import Testing
 ///     METABROWSER_SHELL_TEST_METAB=$PWD/../../.venv/bin/metab swift test --filter LiveMetab
 nonisolated private let liveMetab = ProcessInfo.processInfo.environment["METABROWSER_SHELL_TEST_METAB"]
 
+/// A server's environment as the app builds it, with a configuration directory of the
+/// test's own. Every serve records its root as a recent target, and a test's folder must
+/// not enter the list of whoever runs the suite, as it would through the default
+/// directory the app's servers use. The directory is one `metab` makes inside
+/// `configuration`, private to the user, which a temporary directory is not.
+nonisolated private func liveEnvironment(configuration: URL, toolDirectories: [String] = []) -> [String: String] {
+    let directory = configuration.appending(path: "metabrowser").path(percentEncoded: false)
+    return ChildEnvironment.build(inherited: ProcessInfo.processInfo.environment, toolDirectories: toolDirectories)
+        .merging(["METABROWSER_CONFIG_DIR": directory, RecentTargets.recordVariable: "1"]) { _, test in test }
+}
+
 /// Serialized: `metab` picks its port by probing and binds it later, so two servers
 /// started at once can announce the same port, which the app's `LaunchGate` prevents.
 @Suite(.serialized, .enabled(if: liveMetab != nil, "set METABROWSER_SHELL_TEST_METAB to a metab executable"))
@@ -27,14 +38,15 @@ struct LiveMetabTests {
         let root = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
         try "# Hello\n".write(to: root.appending(path: "README.md"), atomically: true, encoding: .utf8)
+        let configuration = try temporaryDirectory("configuration")
+        defer { try? FileManager.default.removeItem(at: configuration) }
         let log = root.appending(path: "server.log")
         let launch = CLIServeLaunch()
         let tools = RuntimeDiscovery.resolveTools(loginPath: nil, isExecutable: FileChecks.isExecutableFile)
         let subject = ServerSupervisor(
             spec: LaunchSpec(
                 executable: path, arguments: launch.arguments(serving: root),
-                environment: ChildEnvironment.build(
-                    inherited: ProcessInfo.processInfo.environment, toolDirectories: tools.directories),
+                environment: liveEnvironment(configuration: configuration, toolDirectories: tools.directories),
                 workingDirectory: root.path, logURL: log),
             launch: launch)
         await subject.start()
@@ -62,6 +74,100 @@ struct LiveMetabTests {
         #expect(try String(contentsOf: log, encoding: .utf8).contains("Serving "))
     }
 
+    /// File > Open Recent end to end: the server the app starts for a folder records it,
+    /// `metab --recent --json` answers what `RecentTargets` reads, the folder is the row,
+    /// under the path the app keys its session by, and forgetting and clearing empty it.
+    @Test func theServerTheAppStartsIsWhatOpenRecentLists() async throws {
+        let path = try #require(liveMetab)
+        let root = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let other = try temporaryDirectory("other")
+        defer { try? FileManager.default.removeItem(at: other) }
+        let configuration = try temporaryDirectory("configuration")
+        defer { try? FileManager.default.removeItem(at: configuration) }
+        let environment = liveEnvironment(configuration: configuration)
+        func metab(_ arguments: [String]) async -> CommandResult {
+            await CommandRunner.run(
+                LaunchSpec(executable: path, arguments: arguments, environment: environment),
+                timeout: RecentTargets.timeout)
+        }
+        func listed() async -> [RecentTarget] {
+            guard case .listing(let listing) = RecentTargets.answer(await metab(RecentTargets.listArguments)) else {
+                Issue.record("metab --recent --json was not read")
+                return []
+            }
+            #expect(listing.problem == nil)
+            return listing.targets
+        }
+
+        #expect(await listed().isEmpty)
+        // Served by a spelling that differs only in case, where the volume takes one, as
+        // this job's does: the list must hold the folder as the volume spells it, which is
+        // how the app names its session (`FileChecks.canonicalPath`). The Python test of
+        // this is in the macOS tier, which CI does not run.
+        let shouted = root.deletingLastPathComponent().appending(
+            path: root.lastPathComponent.uppercased(), directoryHint: .isDirectory)
+        let served = FileManager.default.fileExists(atPath: shouted.path(percentEncoded: false)) ? shouted : root
+        let launch = CLIServeLaunch()
+        let subject = ServerSupervisor(
+            spec: LaunchSpec(
+                executable: path, arguments: launch.arguments(serving: served), environment: environment,
+                workingDirectory: root.path),
+            launch: launch)
+        await subject.start()
+        try await stoppingAfterward(subject) {
+            guard case .ready = subject.state else {
+                Issue.record("expected ready, got \(subject.state)")
+                return
+            }
+            // Recorded before the Serving line, so a ready server is already listed.
+            let targets = await listed()
+            #expect(targets.map(\.mode) == [.folder])
+            #expect(targets.map(\.root) == [FileChecks.canonicalPath(root.path(percentEncoded: false))])
+        }
+
+        // A server that is not an open, as a restored folder's is, records nothing: started
+        // with the opt-out, it serves and leaves the list as it was.
+        var restored = environment
+        restored[RecentTargets.recordVariable] = "0"
+        let quiet = ServerSupervisor(
+            spec: LaunchSpec(
+                executable: path, arguments: launch.arguments(serving: other), environment: restored,
+                workingDirectory: other.path),
+            launch: launch)
+        await quiet.start()
+        try await stoppingAfterward(quiet) {
+            guard case .ready = quiet.state else {
+                Issue.record("expected ready, got \(quiet.state)")
+                return
+            }
+            #expect(await listed().map(\.root) == [FileChecks.canonicalPath(root.path(percentEncoded: false))])
+        }
+        let unrecorded = await CommandRunner.run(
+            LaunchSpec(
+                executable: path, arguments: RecentTargets.addArguments(other.path(percentEncoded: false)),
+                environment: restored),
+            timeout: RecentTargets.timeout)
+        #expect(unrecorded.succeeded)
+        #expect(await listed().count == 1)
+
+        // An open that starts no server is recorded by the app's own call, and goes first.
+        #expect(await metab(RecentTargets.addArguments(other.path(percentEncoded: false))).succeeded)
+        let both = await listed()
+        try #require(both.count == 2)
+        #expect(both.map(\.root) == [other, root].map { FileChecks.canonicalPath($0.path(percentEncoded: false)) })
+        let rows = RecentTargets.items(both, opensURLs: false)
+        #expect(rows.map(\.title) == [other.lastPathComponent, root.lastPathComponent])
+        #expect(rows.map(\.url) == [other, root].map { URL(filePath: FileChecks.canonicalPath($0.path(percentEncoded: false)), directoryHint: .isDirectory) })
+
+        // A folder that is gone is forgotten by the path it was listed under.
+        try FileManager.default.removeItem(at: other)
+        #expect(await metab(RecentTargets.forgetArguments(both[0].root)).succeeded)
+        #expect(await listed().map(\.root) == [both[1].root])
+        #expect(await metab(RecentTargets.clearArguments).succeeded)
+        #expect(await listed().isEmpty)
+    }
+
     /// The page the app opens for a file is the view route `metab ROOT --path FILE`
     /// announces for it, spelled the same, and the server serves it.
     @Test func aFilesPageIsTheRouteMetabAnnounces() async throws {
@@ -72,11 +178,13 @@ struct LiveMetabTests {
         let file = root.appending(path: relative)
         try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
         try "# Hello\n".write(to: file, atomically: true, encoding: .utf8)
+        let configuration = try temporaryDirectory("configuration")
+        defer { try? FileManager.default.removeItem(at: configuration) }
         let launch = CLIServeLaunch()
         let subject = ServerSupervisor(
             spec: LaunchSpec(
                 executable: path, arguments: launch.arguments(serving: root) + ["--path", relative],
-                environment: ChildEnvironment.build(inherited: ProcessInfo.processInfo.environment, toolDirectories: []),
+                environment: liveEnvironment(configuration: configuration),
                 workingDirectory: root.path),
             launch: launch)
         await subject.start()
@@ -105,10 +213,12 @@ struct LiveMetabTests {
         let path = try #require(liveMetab)
         let root = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
+        let configuration = try temporaryDirectory("configuration")
+        defer { try? FileManager.default.removeItem(at: configuration) }
         let launch = CLIServeLaunch()
         let child = try SpawnedProcess(LaunchSpec(
             executable: path, arguments: launch.arguments(serving: root),
-            environment: ChildEnvironment.build(inherited: ProcessInfo.processInfo.environment, toolDirectories: []),
+            environment: liveEnvironment(configuration: configuration),
             workingDirectory: root.path))
         defer {
             child.signalGroup(SIGKILL)  // only if the test failed with it running
@@ -136,6 +246,149 @@ struct LiveMetabTests {
         #expect(await HTTPReadiness.probe(readiness) == false)
         #expect(canBindLoopback(port: port))
         #expect(child.recentOutput().contains("Stopping Metabrowser: stdin closed."))
+    }
+
+    /// The app reads `metab`'s own `--present --dry-run --format json` for each kind of
+    /// link and a refusal, as `PresentDryRun.answer` does (review A7 on #539), so the
+    /// fixtures in `PresentPlanTests` cannot drift from what `metab` prints. The dry run
+    /// reads no network, so this runs in CI.
+    @Test(arguments: [
+        ("https://github.com/jlevy/metabrowser", PresentPlan.Kind.repository, "https://github.com/jlevy/metabrowser"),
+        ("https://github.com/JLevy/Metabrowser.git", .repository, "https://github.com/jlevy/metabrowser"),
+        ("https://github.com/jlevy/metabrowser/pull/540/files", .pullRequest, "https://github.com/jlevy/metabrowser/pull/540/files"),
+        ("https://github.com/jlevy/metabrowser/tree/main/docs", .tree, "https://github.com/jlevy/metabrowser/tree/main/docs"),
+        // A ref with a `/`: the page is null, which the app does not need.
+        ("https://github.com/jlevy/metabrowser/blob/claude/app-open-urls/docs/macos-app.md", .file,
+         "https://github.com/jlevy/metabrowser/blob/claude/app-open-urls/docs/macos-app.md"),
+        ("https://github.com/jlevy/metabrowser/commit/dcf2bcfa8", .commit, "https://github.com/jlevy/metabrowser/commit/dcf2bcfa8"),
+        // The token is dropped: the server is started with the handoff.
+        ("https://raw.githubusercontent.com/jlevy/metabrowser/main/README.md?token=SECRET", .file,
+         "https://github.com/jlevy/metabrowser/blob/main/README.md"),
+    ])
+    func metabResolvesEveryKindOfLinkAsTheAppReadsIt(_ link: String, _ kind: PresentPlan.Kind, _ handoff: String) async throws {
+        let answer = try await dryRun(link)
+        #expect(answer == .plan(PresentPlan(
+            kind: kind, repository: URL(string: "https://github.com/jlevy/metabrowser")!, link: URL(string: handoff)!)))
+    }
+
+    @Test(arguments: [
+        ("https://github.com/jlevy/metabrowser/issues/1", "unsupported_github_url"),
+        ("https://github.com/jlevy/metabrowser/pulls", "unsupported_github_url"),
+    ])
+    func metabsRefusalIsReadWhole(_ link: String, _ code: String) async throws {
+        guard case .refused(let refusal) = try await dryRun(link) else {
+            Issue.record("expected a refusal for \(link)")
+            return
+        }
+        #expect(refusal.code == code)
+        #expect(!refusal.message.isEmpty)
+    }
+
+    /// What `metab` answers for a repository its cache has never held, through the route
+    /// the app asks before a link clones (`RepositoryCache`).
+    @Test func theCacheIsAskedThroughMetab() async throws {
+        let path = try #require(liveMetab)
+        let folder = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let setup = RuntimeSetup(
+            runtime: Runtime(executable: path, version: "live", source: .chosen, fingerprint: nil),
+            tools: RuntimeDiscovery.resolveTools(loginPath: nil, isExecutable: FileChecks.isExecutableFile))
+        let absent = URL(string: "https://github.com/metabrowser-live-test/no-such-repository")!
+        let answer = await RepositoryCache.lookUp(
+            absent, folder: folder.path(percentEncoded: false), with: setup, inherited: ProcessInfo.processInfo.environment)
+        #expect(answer == .notCached)
+    }
+
+    /// File > Open URL… asks the command a link sent to the app is resolved with: a
+    /// supported URL closes the panel on `metab`'s plan, and one `metab` refuses keeps the
+    /// panel open with `metab`'s own message.
+    @Test(arguments: [
+        ("https://github.com/jlevy/metabrowser/pull/540", true),
+        ("https://github.com/jlevy/metabrowser/blob/main/docs/macos-app.md", true),
+        ("https://github.com/jlevy/metabrowser/issues/1", false),
+        ("https://github.com/jlevy/metabrowser/pull/0", false),
+    ])
+    func theOpenURLPanelSaysWhatMetabAnswers(_ text: String, _ opens: Bool) async throws {
+        var panel = OpenURLPanel()
+        panel.edit(text)
+        let opened = panel.open()
+        let link = try #require(opened)
+        let answer = try await dryRun(link.absoluteString)
+        let plan = panel.answered(answer, for: link, metab: "metab")
+        if opens {
+            #expect(plan?.link.absoluteString == text)
+            #expect(panel.phase == .closed)
+        } else {
+            guard case .refused(let refusal) = answer else {
+                Issue.record("expected a refusal for \(text), got \(answer)")
+                return
+            }
+            #expect(plan == nil)
+            #expect(panel.message == refusal.message)
+            #expect(panel.phase == .editing)
+        }
+    }
+
+    /// The panel opens what `metab URL` opens as typed: the link the panel sends, its path
+    /// encoded as a browser sends it, gets the plan `metab` gives the raw text, and text
+    /// the panel refuses for a character `metab` refuses too (`OpenURLEntry.encoded`).
+    @Test(arguments: [
+        "https://github.com/octo/demo/blob/main/a b.md",
+        "https://github.com/octo/demo/blob/main/café.md",
+        "https://github.com/octo/demo/blob/main/❤️.md",
+        #"https://github.com/octo/demo/blob/main/a"b{c}|d^e`f<g>[1].md"#,
+        "https://github.com/octo/demo/tree/main/docs dir",
+        "https://github.com/octo/demo/blob/main/a b.md#L1",
+        "https://github.com/octo/demo/blob/main/README\u{3164}.md",
+        "https://github.com/octo/demo/blob/main/a\u{200B}b.md",
+        "https://github.com/octo/demo/blob/main/README\u{FE0F}.md",
+        "https://github.com/octo/demo/blob/main/a\\b.md",
+        "https://github.com/octo/demo/blob/main/100%.md",
+    ])
+    func thePanelSendsWhatMetabOpensAsTyped(_ text: String) async throws {
+        let typed = try await dryRun(rawText: text)
+        switch OpenURLEntry.link(text) {
+        case .success(let link):
+            guard case .plan = typed else {
+                Issue.record("the panel sends \(link) for \(text), which metab answers with \(typed)")
+                return
+            }
+            #expect(try await dryRun(link.absoluteString) == typed)
+        case .failure(let problem):
+            guard case .refused = typed else {
+                Issue.record("the panel refuses \(text) (\(problem)), which metab answers with \(typed)")
+                return
+            }
+        }
+    }
+
+    private func dryRun(_ link: String) async throws -> PresentAnswer {
+        let url = try #require(URL(string: link))
+        #expect(GitHubLink.accepts(url))
+        return try await dryRun(PresentDryRun.spec(
+            for: url, with: liveSetup(), inherited: ProcessInfo.processInfo.environment, home: NSHomeDirectory()))
+    }
+
+    /// `metab TEXT --present --dry-run --format json`, with `TEXT` as typed, which no
+    /// `URL` holds.
+    private func dryRun(rawText text: String) async throws -> PresentAnswer {
+        let placeholder = try #require(URL(string: "https://github.com/octo/demo"))
+        var spec = PresentDryRun.spec(
+            for: placeholder, with: try liveSetup(), inherited: ProcessInfo.processInfo.environment,
+            home: NSHomeDirectory())
+        spec.arguments[0] = text
+        return try await dryRun(spec)
+    }
+
+    private func dryRun(_ spec: LaunchSpec) async throws -> PresentAnswer {
+        PresentDryRun.answer(await CommandRunner.run(spec, timeout: PresentDryRun.timeout))
+    }
+
+    private func liveSetup() throws -> RuntimeSetup {
+        let path = try #require(liveMetab)
+        return RuntimeSetup(
+            runtime: Runtime(executable: path, version: "live", source: .chosen, fingerprint: nil),
+            tools: RuntimeDiscovery.resolveTools(loginPath: nil, isExecutable: FileChecks.isExecutableFile))
     }
 }
 

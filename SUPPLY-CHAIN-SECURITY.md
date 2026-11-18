@@ -256,6 +256,52 @@ release and the newest patched one.
 matrix to agree, and requires the matrix to include both floors from the version-gates
 fixture. Moving a floor therefore means pinning and reviewing the new release here.
 
+## CI Workflows
+
+`ci.yml` and `nightly.yml` give every job `contents: read`, and two jobs one permission
+more, reviewed on November 17, 2026:
+
+| Workflow | Job | Permission | What it reads |
+| --- | --- | --- | --- |
+| `ci.yml` | `plan` | `actions: read` | One page of `ci.yml`’s push runs on `main`, and the earlier attempt of a rerun, to learn whether `main` is red (`devtools/ci_plan.sh`) |
+| `nightly.yml` | `time-limits` | `actions: read` | `ci.yml`’s push runs on `main` and their jobs, for `make ci-report` |
+
+- **Reach.** `actions: read` reads this repository’s workflow runs, jobs, logs, and
+  artifacts, and writes nothing.
+  The repository is public, so it reads nothing an anonymous reader cannot; it is
+  declared so that the token’s scope is stated, not inherited.
+  No job may write issues, pull requests, or contents.
+- **Triggers.** `ci.yml` runs on a push to `main` and on `pull_request`, never on
+  `pull_request_target` or `workflow_run`. A pull request’s run therefore gets a
+  read-only token, and its workflow and the `devtools/ci_plan.sh` and
+  `devtools/ci_verdict.sh` it runs come from the pull request’s own merge commit, so a
+  change to the gate is reviewed as a change.
+  `nightly.yml` runs on a schedule and by hand.
+- **Untrusted input.** A branch name or a pull request’s title or body reaches a step
+  only through `env:`, quoted in the shell; no `run:` line or step input interpolates
+  the event. The `plan` job refuses a run id or head from the API that is not one, and
+  counts that answer as red, like a failed read.
+- **Nightly report.** The `time-limits` job installs its locked environment in a step
+  without the token, so the step that holds the token runs only `ci-report`.
+- **Actions.** No new action: the jobs use the pinned checkout, uv, Node, and cache
+  actions already reviewed, and the runner image’s own `gh` and `jq`. Every checkout
+  sets `persist-credentials: false`.
+
+`devtools/check_ci.py`, in `make lint-check`, fails:
+
+- in any workflow, a job whose permissions are not declared, at its own level or the
+  workflow’s, or that grants any `write` but `publish.yml`’s `id-token`;
+- in `ci.yml` and `nightly.yml`, a job given a permission this table does not name;
+- a `pull_request_target` or `workflow_run` trigger, and a checkout that keeps its
+  credentials;
+- an expression in a `run:` line, or in a step’s `with:` other than a commit or a
+  release tag, that reads the event, the head branch, or the whole `github` context, in
+  any spelling or case: `github.event.`, `github['event']`, `toJSON(github)`,
+  `GitHub.Head_Ref`, or inside `format()`, with the expression ended where the runner
+  ends it, so a `}}` in a quoted string hides nothing;
+- an expression in a `run:` line that reads `env`, which the shell reads as `"$NAME"`
+  instead.
+
 ## Apple Developer ID Intermediate (November 17, 2026)
 
 `apps/macos/packaging/DeveloperIDG2CA.cer` is Apple’s “Developer ID - G2” intermediate
@@ -358,6 +404,54 @@ Its one dependency, `undici-types` 7.24.6 from
 [nodejs/undici](https://github.com/nodejs/undici) (MIT, declarations only, published
 March 25, 2026), is the only other new lock record.
 Neither is loaded at run time; only TypeScript reads them.
+
+### pytest-xdist Review (November 17, 2026)
+
+`pytest-xdist` is a new development dependency, and `execnet`, its one requirement that
+the lock did not hold, comes with it.
+`make test-parallel` and `make test-admitted-git` run their tests under it, one worker
+per logical processor and each test file on one worker (`--dist loadfile`), so a CI test
+leg uses its runner’s four processors where pytest alone used one.
+pytest has no way to run tests side by side without a plugin, and the owner approved
+this one on 2026-11-16.
+
+| Package | Release | Published | Source | License | Wheel SHA-256 | sdist SHA-256 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `pytest-xdist` | 3.8.0 | 2025-07-01 | [pytest-dev/pytest-xdist](https://github.com/pytest-dev/pytest-xdist) | MIT | `202ca578…d10f0b88` | `7e578125…d8d3a9f1` |
+| `execnet` | 2.1.2 | 2025-11-12 | [pytest-dev/execnet](https://github.com/pytest-dev/execnet) | MIT | `67fba928…79e296ec` | `63d83bfd…3e0befcd` |
+
+- **Cool-off.** Each is the newest release of its package, and each was published more
+  than a year before this selection, so neither needs an exception.
+- **Artifacts.** The four digests above were read from PyPI and match `uv.lock`, and the
+  artifacts downloaded for this review hash to them.
+  Both wheels are pure Python, `py3-none-any`, and hold no `.pth` file, console script,
+  or compiled module, so installing them runs no code.
+  The sdists build with setuptools and hatchling; uv installs the wheels.
+  PyPI holds a Trusted Publishing attestation for each of the four files, naming the
+  `deploy.yml` workflow and `deploy` environment of `pytest-dev/pytest-xdist` and
+  `pytest-dev/execnet`.
+- **Import.** The xdist wheel registers two `pytest11` entry points, `xdist.plugin` and
+  `xdist.looponfail`, so every pytest run in this environment imports them and gains
+  their options, the serial and Chrome tiers’ runs too.
+  `xdist.looponfail` imports `execnet` at module level, so every run imports that as
+  well. The imports open no socket and start no process; without `-n` or `--dist` nothing
+  starts.
+- **Runtime.** With `-n`, xdist starts each worker through execnet’s `popen` gateway: a
+  new `sys.executable` that reads execnet’s bootstrap from a pipe and sends its reports
+  back over the same pipes.
+  execnet’s `ssh`, `socket`, and `rsync` gateways open network connections, and nothing
+  here asks for them. execnet also ships scripts under `execnet/script/`, and
+  `socketserver.py` among them listens on a TCP port and runs what a client sends.
+  Three of them act only when run as a program; `shell.py` and `quitserver.py` connect
+  to the address their command line names when imported.
+  Nothing runs or imports them: the wheel gives them no console script, and the one
+  import, of `socketserver`, is in the `socket` gateway’s start.
+  `-n auto` counts physical cores through psutil, which this project already installs,
+  so `PYTEST_WORKERS` in the `Makefile` asks for `logical` instead and says why.
+- **Lock delta.** The two packages, and `pytest-xdist` among the `dev` group’s
+  requirements, and nothing else; pytest, xdist’s other requirement, is already locked.
+- **Reach.** Development only: neither is a runtime requirement, in the wheel, or used
+  by the publish workflow.
 
 ### Automated Checks
 

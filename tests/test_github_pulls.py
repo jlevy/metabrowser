@@ -789,7 +789,7 @@ def test_the_markdown_route_names_a_part_before_it_reads_anything(
     part: str, answer: tuple[int, str]
 ) -> None:
     nothing = PullView(number=7, host=None, pin=None, pin_ref=None, refreshing=False, kept=None)
-    status, body = render_part(nothing, part)
+    status, body = asyncio.run(render_part(nothing, part))
     assert (status, body["code"]) == answer
 
 
@@ -825,21 +825,26 @@ def test_the_markdown_route_drops_the_kpress_icon_sprite(
     from metabrowser import kpress_adapter
 
     # KPress puts its icon sprite (several KB of SVG symbols) in every render. A long
-    # conversation must not carry one copy per text, so the route answers none.
-    raw: list[str] = []
-    render = kpress_adapter.render_kpress_view
-
-    def spy(**kwargs: Any) -> dict[str, Any]:
-        rendered = render(**kwargs)
-        raw.append(str(rendered["html"]))
-        return rendered
-
-    monkeypatch.setattr(kpress_adapter, "render_kpress_view", spy)
-    _stand, client = pinned_pull
+    # conversation must not carry one copy per text, so the route answers none. The route
+    # renders in the Markdown child, so KPress's own render of the text is made here.
+    stand, client = pinned_pull
+    record = stand.record(7)
+    assert isinstance(record, PullRecord)
+    raw = kpress_adapter.render_kpress_view(
+        source_text=record.pull.body or "",
+        source_path="pull-7-body.md",
+        kind="markdown",
+        view="document",
+        ext=".md",
+        mtime_hash="sprite",
+        size=0,
+        include_toc="off",
+        plain_code=True,
+    )
+    assert "<symbol" in str(raw["html"])
     html = client.get(
         "/api/plugin/github/pull-markdown", params={"number": 7, "part": "body"}
     ).json()["html"]
-    assert len(raw) == 1 and "<symbol" in raw[0]
     for gone in ("<svg", "<symbol", "<use"):
         assert gone not in html, gone
 
@@ -1337,6 +1342,96 @@ def test_a_commit_is_pinned_under_the_head_of_any_pull_request_it_is_the_tip_of(
     assert kept.ref == "refs/pull/9/head"
     # A commit no head has is served under no ref, as before.
     assert asyncio.run(resolve_pin(target, oid=stand.origin["topic"])).ref is None
+
+
+def test_a_switch_by_commit_is_served_under_the_ref_it_names(
+    pinned_pull: tuple[_Stand, TestClient],
+) -> None:
+    """View on branch switches by commit ID and names its pull request's head ref, so of two
+    pull requests that share a head the page's own is the one served. A ref the commit is
+    not the tip of is refused, as is a name no pin could be under."""
+
+    stand, client = pinned_pull
+    merged = stand.origin["merged_head"]
+    stand.refresh(8)
+    subprocess.run(
+        [
+            "git",
+            "--git-dir",
+            str(stand.published.git_dir),
+            "update-ref",
+            "refs/pull/12/head",
+            merged,
+        ],
+        check=True,
+    )
+
+    def switch(body: dict[str, str]) -> Any:
+        return client.post("/api/source/pin", json=body, headers=_JSON)
+
+    newest = switch({"oid": merged})
+    assert newest.status_code == 200, newest.text
+    assert newest.json()["status"]["ref"] == "refs/pull/12/head"
+    named = switch({"oid": merged, "under": "refs/pull/8/head", "view": "/view/"})
+    assert named.status_code == 200, named.text
+    assert (named.json()["changed"], named.json()["status"]["ref"]) == (True, "refs/pull/8/head")
+    assert named.json()["view_href"] == "/view/"
+    # The pull request's ref is elsewhere: the commit is the tip of pull request 7's head,
+    # which the server would otherwise serve it under, and nothing is switched.
+    elsewhere = switch({"oid": stand.origin["fork_head"], "under": "refs/pull/8/head"})
+    assert (elsewhere.status_code, elsewhere.json()["code"]) == (409, "ref_moved")
+    served = client.get("/api/source/status").json()
+    assert (served["pin"], served["ref"]) == (merged, "refs/pull/8/head")
+    for body in (
+        {"ref": "refs/pull/8/head", "under": "refs/pull/8/head"},
+        {"oid": merged, "under": "refs/pull/8/merge"},
+        {"oid": merged, "under": "refs/heads/topic"},
+        {"oid": merged, "under": 8},
+    ):
+        refused = client.post("/api/source/pin", json=body, headers=_JSON)
+        assert refused.status_code == 400, (body, refused.text)
+        assert refused.json()["code"] == "invalid_selection"
+
+
+def test_a_switch_under_a_pull_requests_head_that_moved_on_switches_nothing(
+    pinned_pull: tuple[_Stand, TestClient],
+) -> None:
+    """Review M1 on #511: a Changes diff drawn for an earlier head keeps View on branch.
+
+    Its switch, and Browse code on a page whose record is as old, names that earlier head
+    under ``refs/pull/7/head``, which is now at the newer one. Served under no ref, the
+    page would land on a bare commit under a tooltip that called it this pull request's
+    head; the route refuses with ``ref_moved``, says why in words, and the pin stays.
+    """
+
+    stand, client = pinned_pull
+    earlier, head = stand.origin["fork_earlier"], stand.origin["fork_head"]
+    away = client.post("/api/source/pin", json={"oid": stand.origin["topic"]}, headers=_JSON)
+    assert away.status_code == 200, away.text
+    before = client.get("/api/source/status").json()
+
+    refused = client.post(
+        "/api/source/pin",
+        json={"oid": earlier, "under": "refs/pull/7/head", "view": "/view/"},
+        headers=_JSON,
+    )
+    assert refused.status_code == 409, refused.text
+    assert refused.json() == {
+        "error": "refs/pull/7/head is no longer at that commit",
+        "code": "ref_moved",
+    }
+    after = client.get("/api/source/status").json()
+    assert (after["generation"], after["pin"], after["ref"]) == (
+        before["generation"],
+        stand.origin["topic"],
+        before["ref"],
+    )
+    # The head the ref is at now is the pull request's, and is served under it.
+    current = client.post(
+        "/api/source/pin", json={"oid": head, "under": "refs/pull/7/head"}, headers=_JSON
+    )
+    assert current.status_code == 200, current.text
+    assert current.json()["status"]["ref"] == "refs/pull/7/head"
 
 
 def test_the_refresh_route_starts_or_joins_one_job(
@@ -1904,11 +1999,15 @@ def test_gh_runs_in_a_group_the_stop_path_can_kill(
 ) -> None:
     """A gh that is still answering when the server stops is killed, and then forgotten."""
 
+    pid_file = tmp_path / "gh-pid"
     started = tmp_path / "gh-started"
     gh = tmp_path / "bin" / "gh"
     gh.parent.mkdir()
+    # Only shell builtins before the exec, so the group never holds a second process. An
+    # external `mv` here was still running when the stop came, and killed as an orphan it
+    # stayed in the group until init reaped it, so the group outlived the stop on CI.
     gh.write_text(
-        f'#!/bin/sh\necho $$ > "{started}.new"\nmv "{started}.new" "{started}"\nexec sleep 50\n',
+        f'#!/bin/sh\necho $$ > "{pid_file}"\n: > "{started}"\nexec sleep 50\n',
         encoding="utf-8",
     )
     gh.chmod(0o755)
@@ -1920,7 +2019,14 @@ def test_gh_runs_in_a_group_the_stop_path_can_kill(
         while not started.exists():
             assert time.monotonic() < deadline, "gh did not start"
             await asyncio.sleep(0.01)
-        pid = int(started.read_text(encoding="utf-8"))
+        pid = int(pid_file.read_text(encoding="utf-8"))
+        # gh can start before its spawn returns and registers the group, and a stop in
+        # that window is stop_process_groups' case, which kill_live_process_groups leaves
+        # alone: stopped then, gh ran on to its own deadline, as it did on 3.14t in CI run
+        # 44032890807. This test is of a gh still answering, so it waits for the group.
+        while pid not in git_process._LIVE_PROCESS_GROUPS:
+            assert time.monotonic() < deadline, "gh's group was never registered"
+            await asyncio.sleep(0.01)
         try:
             # The leader of a group of its own, so the kill cannot reach this process.
             assert os.getpgid(pid) == pid != os.getpgid(0)
@@ -2584,7 +2690,7 @@ def test_markdown_response_keeps_the_record_it_actually_rendered(
     pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A replacement during rendering cannot pair old text with a newer revision."""
-    from metabrowser import kpress_adapter
+    from metabrowser.diff.markdown_projection_worker import InertRender, ProjectionWorker
 
     stand, client = pinned_pull
     first = _read(client, 7).json()
@@ -2597,18 +2703,22 @@ def test_markdown_response_keeps_the_record_it_actually_rendered(
             )
         }
     )
-    render = kpress_adapter.render_kpress_view
+    render = ProjectionWorker.render_inert
     replaced = False
 
-    def replace_during_render(**kwargs: Any) -> dict[str, Any]:
+    async def replace_during_render(
+        worker: ProjectionWorker, request: InertRender
+    ) -> dict[str, Any]:
         nonlocal replaced
         if not replaced:
             replaced = True
-            assert kwargs["source_text"] == record.pull.body
-            write_pull_record(stand.published.home, stand.published.slug, newer)
-        return render(**kwargs)
+            assert request.source_text == record.pull.body
+            await asyncio.to_thread(
+                write_pull_record, stand.published.home, stand.published.slug, newer
+            )
+        return await render(worker, request)
 
-    monkeypatch.setattr(kpress_adapter, "render_kpress_view", replace_during_render)
+    monkeypatch.setattr(ProjectionWorker, "render_inert", replace_during_render)
     old = client.get(
         "/api/plugin/github/pull-markdown", params={"number": 7, "part": "body"}
     ).json()
@@ -2621,6 +2731,88 @@ def test_markdown_response_keeps_the_record_it_actually_rendered(
     ).json()
     assert fresh["record_revision"] == current["record_revision"]
     assert "A replacement published while rendering." in fresh["html"]
+
+
+# A text past a shortened deadline: the shape the review of mb-273l timed at 23.1 s for 239 KB
+# takes seconds at the text bound, far past 0.2 s.
+_SLOW_TEXT = "[" * 100 + "%" * (60 * 1024)
+REFUSED_TEXT_FIXTURE = (
+    Path(__file__).resolve().parent / "fixtures" / "github-pull-text-refusal.json"
+)
+
+
+def test_a_text_past_the_render_deadline_is_refused_and_refused_again_at_once(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pull request text renders in the Markdown child; one past its deadline is refused.
+
+    The answer is the one ``tests/dom/github-pull-text-refusal-session.js`` gives the page,
+    from ``tests/fixtures/github-pull-text-refusal.json``, which this pins to the route.
+    The refusal is kept by the text, so asking again renders nothing.
+    """
+    from metabrowser.diff import markdown_projection_worker as worker_module
+    from metabrowser.diff.markdown_projection_worker import ProjectionWorker
+
+    monkeypatch.setattr(worker_module, "_RENDER_DEADLINE_S", 0.2)
+    exchanges: list[int] = []
+    exchange = ProjectionWorker._exchange_render  # pyright: ignore[reportPrivateUsage]
+
+    async def counted(
+        self: ProjectionWorker, process: asyncio.subprocess.Process, frame: bytes
+    ) -> object:
+        exchanges.append(process.pid)
+        return await exchange(self, process, frame)
+
+    monkeypatch.setattr(ProjectionWorker, "_exchange_render", counted)
+    stand, client = pinned_pull
+    record = stand.record(7)
+    assert isinstance(record, PullRecord)
+    slow = record.model_copy(update={"pull": record.pull.model_copy(update={"body": _SLOW_TEXT})})
+    write_pull_record(stand.published.home, stand.published.slug, slow)
+    params = {"number": 7, "part": "body"}
+    refused = client.get("/api/plugin/github/pull-markdown", params=params)
+    again = client.get("/api/plugin/github/pull-markdown", params=params)
+    body: dict[str, Any] = refused.json()
+    answer = {"status": refused.status_code, "body": body}
+    assert answer == {
+        "status": 422,
+        "body": {
+            "code": "render_deadline",
+            "error": "Rendering took longer than 0.2 seconds, so it was stopped",
+            "deadline_ms": 200,
+            "remembered": False,
+            "number": 7,
+            "part": "body",
+        },
+    }
+    assert (again.status_code, again.json()) == (422, {**body, "remembered": True})
+    assert len(exchanges) == 1, "the kept refusal renders nothing"
+    assert json.loads(REFUSED_TEXT_FIXTURE.read_text(encoding="utf-8")) == answer
+
+
+def test_a_pull_read_starts_the_markdown_child_its_texts_will_need(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A served page's first read starts the child, so its first text does not wait for a
+    start; a one-shot read, as `--api` makes, starts none (review A of #527, A16)."""
+    from metabrowser.diff import markdown_projection_worker as worker_module
+    from metabrowser.diff.markdown_projection_worker import shared_worker
+
+    _stand, client = pinned_pull
+
+    def starting() -> bool:
+        worker = shared_worker()
+        return worker._process is not None or worker._starting is not None  # pyright: ignore[reportPrivateUsage]
+
+    # A worker no request has used yet: the one these reads reach, which the server's
+    # lifespan stops as it ends.
+    shared_worker.cache_clear()
+    _read(client, 7)
+    one_shot = starting()
+    monkeypatch.setattr(worker_module._SERVING, "pages", True)  # pyright: ignore[reportPrivateUsage]
+    _read(client, 7)
+    assert one_shot is False
+    assert starting() is True
 
 
 def test_an_uncacheable_read_keeps_its_parsed_record_revision(

@@ -28,6 +28,11 @@
     <key>NSAllowsLocalNetworking</key>   <true/>
   </dict>
 
+  <!-- metab reads this in its present mode before it sends anything with open -b: a build
+       without it drops links (AppDelegate.requestLink). Both variants carry it, and
+       tests/test_macos_app_pins.py checks that it is set. -->
+  <key>MetabrowserOpensURLs</key>      <true/>
+
   <!-- Folders dropped on the Dock icon or opened with Open With. Declaring them also lets
        NSDocumentController list them as recents. open -a passes files too, undeclared. -->
   <key>CFBundleDocumentTypes</key>

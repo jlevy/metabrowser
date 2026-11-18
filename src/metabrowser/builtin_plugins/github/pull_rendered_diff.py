@@ -1,8 +1,8 @@
 """``GET github/pull-rendered-diff``: one changed Markdown file of an admitted comparison.
 
 The envelope's ``rendered_route`` names the comparison; a page appends ``file``, the
-manifest ID of the file. The pair passes the same admission check as
-``GET github/pull-snapshot``, and the answer is ``markdown-diff-v1``
+manifest ID of the file. The pair passes the same admission check as the images its
+Markdown shows (``GET github/pull-image``), and the answer is ``markdown-diff-v1``
 (:mod:`metabrowser.diff.markdown_projection`) or a refusal with its own code. A page's
 request sent before the reader asks names ``prefetch=1``, which also starts the projection
 process, so the first screen of Changes is computed while the reader is still on
@@ -39,7 +39,7 @@ from metabrowser.diff.markdown_projection import (
     MARKDOWN_DIFF_VERSION,
     bind_markdown_diff,
 )
-from metabrowser.diff.markdown_projection_worker import ProjectionWorker
+from metabrowser.diff.markdown_projection_worker import ProjectionWorker, shared_worker
 from metabrowser.git.process import GitError, GitLocation, RepositoryStoreTarget
 from metabrowser.git.tree_source import (
     GitBlobTooLargeError,
@@ -123,12 +123,11 @@ class _Slot:
 
 
 def projection_worker(state: Any) -> ProjectionWorker:
-    """The server's projection worker, which a test may replace before a request."""
+    """The server's Markdown child, which renders its untrusted documents too, or the
+    worker a test put in its place before a request."""
 
     worker = getattr(state, "pull_rendered_diff_worker", None)
-    if worker is None:
-        worker = state.pull_rendered_diff_worker = ProjectionWorker()
-    return cast("ProjectionWorker", worker)
+    return shared_worker() if worker is None else cast("ProjectionWorker", worker)
 
 
 def _path(side: EntrySide) -> GitPath:
@@ -224,7 +223,9 @@ async def _project(
 
     target = RepositoryStoreTarget(published.git_dir, published.object_format)
     source = GitDiffSource(GitLocation.revision(target, snapshot.head))
-    comparison = await shared_pull_manifest(published, snapshot.base, snapshot.head)
+    comparison = await shared_pull_manifest(
+        published, snapshot.number, snapshot.base, snapshot.head
+    )
     resolved, manifest = comparison.resolved, comparison.manifest
     if resolved.left.id != snapshot.base or resolved.right.id != snapshot.head:
         return _fallback()
@@ -293,7 +294,7 @@ async def pull_rendered_diff_handler(request: Request) -> JSONResponse:
         or len(file_id) > 128
     ):
         return JSONResponse({"code": "invalid_rendered_diff"}, status_code=400, headers=_NO_STORE)
-    snapshot = Snapshot(number, base, head, params.get("store", ""), "head")
+    snapshot = Snapshot(number, base, head, params.get("store", ""))
     published, admission = await admitted_snapshot(request, snapshot)
     if admission == "unknown":
         return JSONResponse({"code": "snapshot_unavailable"}, status_code=409, headers=_NO_STORE)

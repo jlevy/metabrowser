@@ -248,12 +248,12 @@ def render_kpress_view(
 ) -> dict[str, Any]:
     """Render a Metabrowser file through KPress.
 
-    ``include_toc="off"`` suppresses the table of contents for a document
-    embedded inside Metabrowser's own navigation; see the README panel in the
-    folder Overview. ``plain_code`` shows fenced code escaped rather than
+    ``include_toc="off"`` suppresses the table of contents for a document embedded where it
+    is not the page's own, such as the Markdown of a pull request's record and snapshot
+    (``builtin_plugins/github``). ``plain_code`` shows fenced code escaped rather than
     highlighted (see :data:`_PLAIN_CODE`). ``asset_url_prefix`` defaults to
-    :func:`kpress_asset_url_prefix`; KPress keeps renders by it, so a render made
-    under an older stamp never answers for the current one.
+    :func:`kpress_asset_url_prefix`; KPress keeps renders by it, so a render made under an
+    older stamp never answers for the current one.
     """
 
     runtime = _runtime()
@@ -479,8 +479,8 @@ def inert_render(
     the headings' ``user-content-`` anchors, for the page to draw its own from them.
 
     *rewrite_local* is passed to :func:`~metabrowser.inert_html.harden_document`: a page
-    that shows a document from outside the served tree, such as a pull request's revision
-    file, gives it to write each reference inside the document as an address there.
+    that shows a document from outside the served tree, such as a pull request's rendered
+    Markdown, gives it to write each reference inside the document as an address there.
     """
 
     from metabrowser.inert_html import harden_document
