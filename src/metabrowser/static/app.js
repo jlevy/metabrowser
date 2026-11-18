@@ -9721,9 +9721,14 @@ async function revealWithin(
   setSelectedPath(path);
   var travel = scroll ? folderTravelAbove(target) : null;
   if (travel !== null) {
+    // Once the folders above have opened, if the reveal stands and its folder is open.
     const revealed = target;
-    const shown = () => (revealed.isConnected ? revealed : scope.querySelector(selector));
-    scrollIntoViewOnceOpen(travel, shown, isCurrent);
+    void travel.then(() => {
+      var row = revealed.isConnected ? revealed : scope.querySelector(selector);
+      if (row && isCurrent() && !row.closest(".tree-children-collapsed")) {
+        row.scrollIntoView({ block: "nearest" });
+      }
+    });
   } else if (scroll) {
     target.scrollIntoView({ block: "nearest" });
   }
@@ -9732,28 +9737,7 @@ async function revealWithin(
 }
 
 /**
- * Scroll *find*'s row into view once *travel* ends, if its reveal stands and its folder is
- * open. The reveal does not wait: its file loads meanwhile.
- *
- * @param {Promise<unknown>} travel
- * @param {() => Element | null} find
- * @param {() => boolean} isCurrent
- */
-function scrollIntoViewOnceOpen(travel, find, isCurrent) {
-  void travel.then(() => {
-    var row = find();
-    if (row && isCurrent() && !row.closest(".tree-children-collapsed")) {
-      row.scrollIntoView({ block: "nearest" });
-    }
-  });
-}
-
-/**
- * The end of the travel of every folder above *row* still opening, or null. An opening
- * folder's body clips its rows and can scroll: a row scrolled into view then was scrolled
- * within it, not the pane, and lay far below the pane once it opened (mb-551m). An endless
- * animation is not waited on: it would hold the scroll for good.
- *
+ * The end of every finite opening of a folder above *row*, or null (mb-551m).
  * @param {Element} row
  * @returns {Promise<unknown> | null}
  */

@@ -570,7 +570,6 @@ async function filesStory() {
       "mountTreePageHolding",
       "setFolderExpanded",
       "revealWithin",
-      "scrollIntoViewOnceOpen",
       "folderTravelAbove",
       "revealInTree",
       "revealFileRow",
@@ -818,7 +817,7 @@ async function filesStory() {
   // A landing whose folders travel as they open (revealInTree with `instant: false`, as the
   // end of app.js's DOMContentLoaded calls it) scrolls its row once their travel ends, and
   // then only if the address still names it, its folder is still open, and the tree holds
-  // a row for it, the one revealed or one drawn in its place (scrollIntoViewOnceOpen). The
+  // a row for it, the one revealed or one drawn in its place (revealWithin). The
   // long folder's body travels, with one animation whose `finished` the story resolves
   // after *during*.
   filter.state = { ...filter.state, types: null };
