@@ -34,14 +34,13 @@ from typing import TYPE_CHECKING, Any, Final
 
 from starlette.responses import JSONResponse, Response
 
-from metabrowser.diff.markdown_projection_worker import shared_worker
+from metabrowser.client_disconnect import CLIENT_CLOSED, unless_disconnected
+from metabrowser.diff.markdown_projection_worker import start_for_pages
 from metabrowser.http_caching import matches_if_none_match
 from metabrowser.source import get_source_session
 from metabrowser.source_routes import PIN_HEADER, pin_changed_response
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
-
     from starlette.requests import Request
 
     from metabrowser.builtin_plugins.github.pull_cores import CoreRequest
@@ -71,9 +70,6 @@ _TOO_MANY: Final = {
     "error": "too many pull requests are being fetched; try again when one has finished",
     "code": "too_many",
 }
-# What a batch whose client disconnected answers, which no client reads: nginx's "client
-# closed request", so the slow-request log tells an abandoned batch from an answered one.
-_CLIENT_CLOSED: Final = 499
 
 
 async def _resolve(request: Request) -> None:
@@ -195,8 +191,9 @@ async def pull_handler(request: Request) -> Response:
         # preview, so that wait is not spent on the child's start. A warm read is a page
         # about to open. Measured in tests/test_type_scale_chrome.py's page, 2026-11-17: a
         # cold child put the full record's paint 170 to 200 ms after its read, the hold's
-        # whole bound, where an in-thread render had met it.
-        shared_worker().start(renders=True)
+        # whole bound, where an in-thread render had met it. Only a served page follows a
+        # read: a one-shot `--api` read of this route starts nothing.
+        start_for_pages()
     preview = envelope["core_preview"]
     # Prepared and adopted observations carry catalog admission. A captured live preview
     # may already have settled while the worker was building its first envelope.
@@ -244,7 +241,7 @@ async def pull_handler(request: Request) -> Response:
     return JSONResponse(dict(envelope), headers=headers)
 
 
-async def pull_markdown_handler(request: Request) -> JSONResponse:
+async def pull_markdown_handler(request: Request) -> Response:
     """``GET /api/plugin/github/pull-markdown?number=<n>&part=<part>`` — see :mod:`.pull_markdown`."""
 
     from metabrowser.builtin_plugins.github.pull_markdown import render_part
@@ -261,7 +258,14 @@ async def pull_markdown_handler(request: Request) -> JSONResponse:
         return _invalid_request(str(exc))
     await _resolve(request)
     view = pull_view(pull_host(request.app), get_source_session().subject, number)
-    status_code, body = await render_part(view, request.query_params.get("part", ""))
+    # A page that goes away, or scrolls past a text, leaves the render to no one, and an
+    # abandoned render must not hold the Markdown child.
+    answer = await unless_disconnected(
+        request, render_part(view, request.query_params.get("part", ""))
+    )
+    if answer is None:
+        return Response(status_code=CLIENT_CLOSED, headers=_NO_STORE)
+    status_code, body = answer
     return JSONResponse(body, status_code=status_code, headers=_NO_STORE)
 
 
@@ -475,35 +479,6 @@ def _invalid_request(message: str, status_code: int = 400) -> JSONResponse:
     return JSONResponse({"error": message, "code": "invalid_request"}, status_code=status_code)
 
 
-async def _unless_disconnected[ResultT](
-    request: Request, work: Coroutine[Any, Any, ResultT]
-) -> ResultT | None:
-    """*work*'s result, or ``None`` when the client disconnected first and *work* was cancelled.
-
-    Read the body before calling this: it waits on the request's next message, which
-    after the body is the disconnect. Cancellation lands at *work*'s next ``await``, so a
-    blocking call already in a worker thread runs to its end, and nothing after it does.
-    """
-
-    async def disconnected() -> None:
-        while (await request.receive())["type"] != "http.disconnect":
-            pass
-
-    doing = asyncio.ensure_future(work)
-    disconnect = asyncio.ensure_future(disconnected())
-    try:
-        await asyncio.wait((doing, disconnect), return_when=asyncio.FIRST_COMPLETED)
-    finally:
-        disconnect.cancel()
-        if not doing.done():
-            doing.cancel()
-        # Let both unwind before the response: cancelled work ends its own processes.
-        await asyncio.wait((doing, disconnect))
-    if doing.cancelled():
-        return None
-    return doing.result()
-
-
 async def pull_timeline_handler(request: Request) -> JSONResponse:
     """Read the selected PR's independently cached Conversation projection."""
 
@@ -532,7 +507,7 @@ async def pull_timeline_handler(request: Request) -> JSONResponse:
         gate = getattr(request.app.state, "github_pull_timeline_gate", None)
         if gate is None:
             gate = request.app.state.github_pull_timeline_gate = asyncio.Lock()
-        read = await _unless_disconnected(request, read_timeline(host.pulls, ask, gate))
+        read = await unless_disconnected(request, read_timeline(host.pulls, ask, gate))
         if read is not None:
             answer = read
     if (refusal := pin_changed_response(request.headers.get(PIN_HEADER))) is not None:
@@ -559,10 +534,10 @@ async def pull_cores_prepare_handler(request: Request) -> Response:
         return _invalid_request(str(exc))
     if not ask.numbers:
         return await _core_window_answer(request, ask)
-    answer = await _unless_disconnected(request, _core_window_answer(request, ask))
+    answer = await unless_disconnected(request, _core_window_answer(request, ask))
     if answer is None:
         # Nobody reads it; the status names an abandoned batch in the slow-request log.
-        return Response(status_code=_CLIENT_CLOSED, headers=_NO_STORE)
+        return Response(status_code=CLIENT_CLOSED, headers=_NO_STORE)
     return answer
 
 

@@ -1,8 +1,9 @@
 """Run Markdown off the server's interpreter, in one long-lived child process.
 
-The child does two jobs. It projects Markdown diffs, and it renders every Markdown
-document an untrusted author wrote: a pinned mirror's files, a folder served with
-``--untrusted``, and a pull request's texts (:meth:`ProjectionWorker.render_inert`).
+The child does two jobs. It projects Markdown diffs, and it renders the Markdown
+documents an untrusted author wrote that a page asks the server for: a pinned mirror's
+files, a folder served with ``--untrusted``, and a pull request's texts
+(:meth:`ProjectionWorker.render_inert`).
 
 **Projections.** A projection is pure Python. In a thread it holds the GIL, and every
 other request on the server waits up to the interpreter's switch interval at each of its
@@ -30,9 +31,43 @@ thread: until the child is ready it waits for it, at most :data:`_START_WAIT_S`,
 refused when it is not. It renders fenced code plain (``plain_code`` in
 :mod:`metabrowser.kpress_adapter`), since the inert page drops every class the
 highlighting would add, and reduces the HTML to the inert allowlist
-(:mod:`metabrowser.inert_html`) in the child too. A served pin starts the child as it
-attaches (``cli/git_pin_cli.py``), and a pull request's page at its first read of the pull
-route, so a first document or text does not wait for the start.
+(:mod:`metabrowser.inert_html`) in the child too. A served pin, a served ``--untrusted``
+folder, and a served pull request's page start the child before their first document
+(:func:`start_for_pages`), so it does not wait for the start; a one-shot command does
+not, since it would not use the child it paid for.
+
+**One child for both jobs.** One hostile text must not stall every other render and
+projection on the server, so the child is shared under these rules:
+
+- One exchange runs at a time, under a lock that belongs to the worker on its event loop
+  rather than to one child, so no stop or replacement lets two exchanges share a pipe.
+  Projections go first: one that finds an inert render holding the child projects in a
+  thread, and one that finds a projection there waits ahead of every queued render. So an
+  untrusted document never holds a Changes tab for longer than one projection, and never
+  ends a projection's exchange by its deadline.
+- Identical requests in flight share one render. When the last request waiting for it
+  goes, the render is cancelled, and a child rendering it is stopped with no verdict
+  kept: an abandoned render never holds the queue. The routes stop waiting when their
+  client disconnects (:mod:`metabrowser.client_disconnect`), as a page that navigates
+  away or a transclusion past its own deadline does.
+- At most :data:`_MAX_RENDERS` distinct renders are in flight, the one in the child among
+  them. Past that a render is refused ``renderer_busy`` (``503``), which is not kept.
+- A refusal is kept only for what the child did with the document: it ran past the
+  deadline, counted from when the child had the whole request, with one more look at the
+  pipe when the server's own loop ran the deadline late; or the child exited on it twice.
+  A child already dead when the request reached it, or killed from outside, is not the
+  document's doing: the render runs once more on a fresh child. A kept refusal lapses
+  after :data:`_VERDICT_TTL_S`, so a moment of heavy load does not hide a document for
+  the server's life.
+- Three starts in a row that do not become ready stop the worker trying for
+  :data:`_START_COOL_OFF_S`, after which it tries again. The first failure of each run of
+  them is logged at warning, and so is each refusal a render makes.
+- The child leads its own process group, so a terminal's suspend of the server's group
+  does not stop it; on Python 3.14.7 and later on macOS, asyncio's child watcher reaps a
+  child stopped in the server's group with a blocking wait on the event loop, which then
+  never wakes. It still ends with the server: when its input closes, when the server it
+  started from is gone (it looks every :data:`_PARENT_POLL_S`, mid-render too), or when
+  the server stops at once on Ctrl-C (:func:`stop_children`).
 
 The child costs memory while it runs: 56-66 MB resident once it is ready and 63-70 MB
 after all 434 of this repository's real Markdown pairs (macOS ``ps`` RSS, two runs each
@@ -41,8 +76,8 @@ the next render or projection starts it again.
 
 The child is this module run with ``python -m``, so it never imports the server's main
 module, and it speaks length-prefixed JSON over its standard input and output: plain
-data each way, nothing executable. One request runs at a time. A child that overruns or
-exits is stopped and started again on demand.
+data each way, nothing executable. A child that overruns or exits is stopped, and
+another starts at once when a render killed it, or on demand otherwise.
 
 This module is imported by the server, so the projection module, which imports KPress
 and Pygments, is imported where a projection runs rather than here: the server's start
@@ -54,14 +89,17 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
+import dataclasses
 import hashlib
 import json
+import logging
 import os
 import signal
 import sys
 import threading
-from collections import OrderedDict
-from collections.abc import Callable, Sequence
+import time
+from collections import OrderedDict, deque
+from collections.abc import AsyncGenerator, Callable, Sequence
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
@@ -73,6 +111,8 @@ from metabrowser.diff.format import FilePatch
 if TYPE_CHECKING:
     from metabrowser.diff.markdown_projection import MarkdownDiffProjection, PreparedMarkdownDiff
 
+LOG = logging.getLogger(__name__)
+
 # A request frame larger than this is a protocol fault. A projection is at most 48 KiB
 # of blobs and their patch; a render is the route's text, at most
 # ``settings.TEXT_PREVIEW_REQUEST_MAX_BYTES`` (16 MiB) of UTF-8, base64-encoded to a
@@ -80,10 +120,11 @@ if TYPE_CHECKING:
 _MAX_REQUEST_FRAME: Final = 64 * 1024 * 1024
 # An answer frame larger than this is a protocol fault. A projection answers at most a
 # few hundred KiB of HTML. A render's answer is bounded by what the child writes before
-# the deadline, and is mostly KPress's record of the raw HTML it removed
-# (``sanitizer_diagnostics``): measured 2026-11-17 (load average 10 to 21), 256 KiB of
-# an unknown tag answered 10.8 MB in 1.2 s, 41 times its source, and the largest of this
-# repository's Markdown files 2.1 MB. The bound is several deadlines of that.
+# the deadline. KPress's record of the raw HTML it removed (``sanitizer_diagnostics``)
+# was most of it, 41 times its source for 256 KiB of an unknown tag (10.8 MB, measured
+# 2026-11-17 at a load average of 10 to 21), and an inert render no longer carries it;
+# the largest of this repository's Markdown files answered 2.1 MB. The bound is several
+# deadlines of the diagnostics.
 _MAX_ANSWER_FRAME: Final = 256 * 1024 * 1024
 # The child was ready 0.57 s after it started at load average 4 (review C of #349 saw
 # about 2 s under heavier load); it is given far longer before it counts as failed.
@@ -102,26 +143,68 @@ _PROJECTION_TIMEOUT_S = 10.0
 # 0.02 to 0.03 s; the other 28 took 0.04 to 0.23 s in all. Through the child, frames
 # included, report.md answered in 1.26 to 1.75 s over five renders at a load average of
 # 16 to 17. Five seconds is about three times that, room for a heavier load; a document
-# over it is shown as source. METABROWSER_INERT_RENDER_DEADLINE_MS replaces it, as the
-# other budgets in docs/command-line.md are replaced.
+# over it is shown as source. What that refuses of honest documents (review C of #527,
+# load average 10, deadline lifted): this repository's documents concatenated rendered
+# 1 MiB in 0.83 s, 2 MiB in 1.88 s, and 4 MiB in 4.03 s, so ordinary prose reaches the
+# deadline near 4 to 5 MiB, and text as table-heavy as report.md near 1.2 MB.
+# METABROWSER_INERT_RENDER_DEADLINE_MS replaces it, as the other budgets in
+# docs/command-line.md are replaced, and must be a positive number of milliseconds.
 INERT_RENDER_DEADLINE_MS: Final = 5_000
-_RENDER_DEADLINE_S = (
-    int(os.environ.get("METABROWSER_INERT_RENDER_DEADLINE_MS", str(INERT_RENDER_DEADLINE_MS)))
-    / 1000
-)
+
+
+def _deadline_from_environment() -> float:
+    raw = os.environ.get("METABROWSER_INERT_RENDER_DEADLINE_MS", str(INERT_RENDER_DEADLINE_MS))
+    milliseconds = int(raw)
+    if milliseconds < 1:
+        # Zero or less would refuse every document at once, and keep each refusal.
+        raise ValueError(
+            "METABROWSER_INERT_RENDER_DEADLINE_MS must be a positive number of milliseconds,"
+            f" not {raw!r}"
+        )
+    return milliseconds / 1000
+
+
+_RENDER_DEADLINE_S = _deadline_from_environment()
 # How long an inert render waits for the child to start: as long as a render may run,
 # whatever the environment sets the deadline to. A start, both jobs warmed, took 1.36 s
 # at load average 16 (2026-11-17; the projection alone 0.23 to 0.57 s at load average 4
 # in #349); past this the render is refused as unavailable, and that refusal is not kept.
 _START_WAIT_S = INERT_RENDER_DEADLINE_MS / 1000
-# Starts in a row that did not become ready before the worker stops trying: projections
-# stay in their thread, and inert renders are refused as unavailable, until a stop (a new
-# event loop, or a server's end) counts again.
+# Starts in a row that did not become ready before the worker stops trying for
+# _START_COOL_OFF_S: projections stay in their thread, and inert renders are refused as
+# unavailable, until the cool-off passes, a start succeeds, or a stop counts again.
 _MAX_STARTS = 3
+# How long the worker waits after the start limit before it tries again. A start that
+# cannot spawn fails in under a millisecond, and one whose child dies importing costs its
+# import (0.2 to 0.3 s), so a broken installation costs at most three of either per
+# cool-off while reloads continue; what makes a start fail and then pass (a full process
+# table, an interpreter replaced mid-upgrade) passes in seconds, so the notice's "Reload
+# to try again" holds a few seconds later.
+_START_COOL_OFF_S = 10.0
+# Distinct inert renders in flight at once, the one in the child among them; past it a
+# render is refused renderer_busy, not kept. A page reaches the server over at most six
+# connections (HTTP/1.1, which the server speaks, and Chrome's and WebKit's six per
+# host), one of them the events stream, so one page's renders are never more than five at
+# once: a document's transclusions, which each ask at once, and a pull request page's two
+# texts at a time (MARKDOWN_CONCURRENCY in pull-page.js) fit, with room for a second
+# page's first renders. A render admitted behind a full queue of hostile documents waits
+# at most seven deadlines and their restarts, about 37 s at the default; past that the
+# reader's reload is the better retry, as pull_rendered_diff's _Slot reasons for diffs.
+_MAX_RENDERS: Final = 8
+# A deadline that fired more than this late was held up by the server's own event loop
+# (the repository budgets 50 ms for an unrelated request's delay), so the child's whole
+# answer may already be in the pipe, unread. It gets one more look, of at most
+# _ANSWER_GRACE_S, before the render counts as past its deadline: reading a 21.6 MB
+# answer from the pipe took 42 to 57 ms (review C of #527).
+_LATE_S = 0.05
+_ANSWER_GRACE_S = 0.25
 # A child no projection or render has used for this long is stopped; the next one starts
 # it again. A start took 0.23-0.24 s to ready (review E of #349), against 56-63 MB kept
 # resident for as long as the server runs.
 _IDLE_S = 600.0
+# While an exchange holds the child past the idle limit, the idle stop looks again this
+# often rather than at every turn of the event loop.
+_IDLE_RECHECK_S = 1.0
 # How long a closing server waits for the children it stopped to exit, so none is reaped
 # after its event loop has closed: asyncio then logs, on standard error, that the loop
 # handling that pid is closed, which a one-shot `--api` command printed on Python 3.14
@@ -129,24 +212,41 @@ _IDLE_S = 600.0
 _REAP_S = 2.0
 # Refusals kept, by document. Each one cost a deadline of the child's time, so a server
 # reaches this only after hours of refused renders; it bounds what a flood of distinct
-# documents can make the server keep, at about 100 bytes a key.
+# documents can make the server keep, at about 280 bytes a verdict (its key, its
+# identity string, and its OrderedDict entry, measured with tracemalloc by review C of
+# #527): 280 KiB at the bound, after which the least recently asked is forgotten.
 _MAX_VERDICTS: Final = 1024
+# How long a kept refusal stands. A hostile document then costs one deadline of the
+# child's time each ten minutes (5 s in 600 s, under 1% of it), and a document refused at
+# a moment of heavy load renders again ten minutes later, the child's own idle period.
+_VERDICT_TTL_S = 600.0
+# How often the child looks whether the server that started it is still there, so it
+# ends with the server even while it renders a document that would take minutes.
+_PARENT_POLL_S = 1.0
 
-type RefusalCode = Literal["render_deadline", "renderer_exited", "renderer_unavailable"]
+type RefusalCode = Literal[
+    "render_deadline", "renderer_exited", "renderer_unavailable", "renderer_busy"
+]
 
 _REFUSALS: Final[dict[RefusalCode, tuple[int, str]]] = {
     "render_deadline": (422, "Rendering took longer than {deadline}, so it was stopped"),
     "renderer_exited": (422, "The renderer stopped while rendering this document"),
     "renderer_unavailable": (503, "The document renderer could not start"),
+    "renderer_busy": (503, "The document renderer is busy with other documents"),
 }
 
 
 class InertRenderRefused(Exception):
-    """An untrusted document's render was refused, and *code* says why."""
+    """An untrusted document's render was refused, and *code* says why.
 
-    def __init__(self, code: RefusalCode) -> None:
+    *remembered* says the answer is a refusal kept from an earlier render, given without
+    rendering the document again.
+    """
+
+    def __init__(self, code: RefusalCode, *, remembered: bool = False) -> None:
         super().__init__(code)
         self.code: RefusalCode = code
+        self.remembered = remembered
 
     @property
     def http_status(self) -> int:
@@ -154,14 +254,9 @@ class InertRenderRefused(Exception):
 
         return _REFUSALS[self.code][0]
 
-    @property
-    def remembered(self) -> bool:
-        """Whether the document is refused again at once: everything but an unavailable child."""
-
-        return self.code != "renderer_unavailable"
-
     def payload(self) -> dict[str, Any]:
-        """What a route answers: the code, a sentence for ``--api``, and the deadline."""
+        """What a route answers: the code, a sentence for ``--api``, the deadline, and
+        whether the refusal was kept from an earlier render."""
 
         seconds = _RENDER_DEADLINE_S
         deadline = f"{seconds:g} second" + ("" if seconds == 1 else "s")
@@ -169,6 +264,7 @@ class InertRenderRefused(Exception):
             "code": self.code,
             "error": _REFUSALS[self.code][1].format(deadline=deadline),
             "deadline_ms": round(seconds * 1000),
+            "remembered": self.remembered,
         }
 
 
@@ -206,7 +302,12 @@ class InertRender:
 
     @property
     def verdict_key(self) -> tuple[str, ...]:
-        return (self.identity, self.kind, self.ext, "text" if self.link_base else "document")
+        return (
+            self.identity,
+            self.kind,
+            self.ext,
+            "document" if self.link_base is None else "text",
+        )
 
     @property
     def flight_key(self) -> tuple[object, ...]:
@@ -229,6 +330,33 @@ def text_identity(text: str) -> str:
     """The identity of a document with no blob: a hash of its text. Blocking for a large text."""
 
     return "sha256:" + hashlib.sha256(text.encode("utf-8", "surrogatepass")).hexdigest()
+
+
+def _plain_value(value: object) -> object:
+    """*value* as JSON can carry it, shown as an in-process render shows it.
+
+    KPress shows front matter as ``str(key)`` and ``str(value)``, sorted by ``str(key)``
+    (``kpress/format/render.py``), so a key becomes ``str(key)`` and a value JSON has no
+    type for (``!!binary`` bytes, a ``!!set``, a tuple) becomes ``str(value)``: the same
+    words as an in-process render of the mapping, which the trusted path makes.
+    """
+
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, dict):
+        mapping = cast("dict[object, object]", value)
+        return {str(key): _plain_value(item) for key, item in mapping.items()}
+    if isinstance(value, list):
+        return [_plain_value(item) for item in cast("list[object]", value)]
+    return str(value)
+
+
+def _with_plain_frontmatter(request: InertRender) -> InertRender:
+    if request.frontmatter is None:
+        return request
+    return dataclasses.replace(
+        request, frontmatter=cast("dict[str, Any]", _plain_value(request.frontmatter))
+    )
 
 
 def _gil_enabled() -> bool:
@@ -336,7 +464,12 @@ def _render(request: dict[str, Any]) -> dict[str, Any]:
     link_base = request["link_base"]
     if isinstance(link_base, str):
         return {"rendered": {"html": harden(str(rendered["html"]), link_base)}}
-    return {"rendered": kpress_adapter.inert_render(rendered)}
+    inert = kpress_adapter.inert_render(rendered)
+    # What KPress's sanitizer removed is for `--api` and debugging of a trusted render
+    # (kpress_adapter._separate_sanitizer_diagnostics); no page reads it, and for raw HTML
+    # it was most of the answer (see _MAX_ANSWER_FRAME), so it does not cross.
+    inert.pop("sanitizer_diagnostics", None)
+    return {"rendered": inert}
 
 
 def _answer(request: dict[str, Any]) -> dict[str, Any]:
@@ -397,7 +530,14 @@ async def _read(stream: asyncio.StreamReader) -> dict[str, Any]:
 _CHILDREN: set[int] = set()
 
 
-def _stop_children() -> None:
+def stop_children() -> None:
+    """Kill every Markdown child this process started, at once.
+
+    For a command that ends without unwinding, such as a server stopped by Ctrl-C
+    (``cli/serve.py``): a child leads its own process group, so the terminal's signal does
+    not reach it. It needs nothing from the event loop, so a signal handler may call it.
+    """
+
     for pid in list(_CHILDREN):
         with contextlib.suppress(OSError):
             os.kill(pid, signal.SIGKILL)
@@ -409,7 +549,122 @@ _register = cast(
     "Callable[[Callable[[], None]], None] | None", getattr(threading, "_register_atexit", None)
 )
 if _register is not None:
-    _register(_stop_children)
+    _register(stop_children)
+
+
+@dataclass(slots=True)
+class _Serving:
+    pages: bool = False
+
+
+# Whether this process serves pages, as ``metab`` serving a folder or a pin does, rather
+# than answering one command: only a served page asks for documents soon enough after its
+# first read to repay starting the child ahead of them (:func:`serve_pages`).
+_SERVING: Final = _Serving()
+
+
+def serve_pages() -> None:
+    """Say this process serves pages: ``cli/serve.py`` calls it before the server starts."""
+
+    _SERVING.pages = True
+
+
+def start_for_pages() -> None:
+    """Start the child ahead of the documents a page will ask for, on this event loop,
+    when this process serves pages; a one-shot command never pays for it."""
+
+    if _SERVING.pages:
+        shared_worker().start(renders=True)
+
+
+type _HolderKind = Literal["projection", "render"]
+
+
+class _ChildLock:
+    """The child's one exchange at a time, with waiting projections served before waiting
+    renders. It belongs to the worker on one event loop, not to one child."""
+
+    def __init__(self) -> None:
+        self.holder: _HolderKind | None = None
+        self._waiting: dict[_HolderKind, deque[asyncio.Future[None]]] = {
+            "projection": deque(),
+            "render": deque(),
+        }
+
+    def locked(self) -> bool:
+        return self.holder is not None
+
+    @property
+    def rendering(self) -> bool:
+        """Whether an inert render holds the child, which it may for its whole deadline."""
+
+        return self.holder == "render"
+
+    @contextlib.asynccontextmanager
+    async def hold(self, kind: _HolderKind) -> AsyncGenerator[None]:
+        await self._acquire(kind)
+        try:
+            yield
+        finally:
+            self._release()
+
+    async def _acquire(self, kind: _HolderKind) -> None:
+        if self.holder is None:
+            self.holder = kind
+            return
+        future = asyncio.get_running_loop().create_future()
+        queue = self._waiting[kind]
+        queue.append(future)
+        try:
+            await future
+        except asyncio.CancelledError:
+            if future.done() and not future.cancelled():
+                # Handed the child just as this was cancelled: hand it on.
+                self._release()
+            else:
+                with contextlib.suppress(ValueError):
+                    queue.remove(future)
+            raise
+
+    def _release(self) -> None:
+        for kind in ("projection", "render"):
+            queue = self._waiting[kind]
+            while queue:
+                future = queue.popleft()
+                if not future.done():
+                    self.holder = kind
+                    future.set_result(None)
+                    return
+        self.holder = None
+
+
+@dataclass(frozen=True, slots=True)
+class _Failed:
+    """How a render ended without HTML, as a flight returns it (nothing raises out of a
+    flight, so a render no request waits for any more is never logged as unretrieved)."""
+
+    kind: Literal["refused", "invalid", "render"]
+    code: RefusalCode = "renderer_unavailable"
+    remembered: bool = False
+    message: str = ""
+
+    def error(self) -> Exception:
+        if self.kind == "invalid":
+            return kpress_adapter.KPressInvalidRequestError(self.message)
+        if self.kind == "render":
+            return kpress_adapter.KPressRenderError(self.message)
+        return InertRenderRefused(self.code, remembered=self.remembered)
+
+
+type _Outcome = dict[str, Any] | _Failed
+
+
+@dataclass(slots=True)
+class _Flight:
+    """One render and the requests waiting for it."""
+
+    task: asyncio.Task[_Outcome]
+    waiters: int = 0
 
 
 class ProjectionWorker:
@@ -425,19 +680,24 @@ class ProjectionWorker:
         # included). It starts in the package's own directory, as cache/probe.py's does.
         self._command = tuple(command or (sys.executable, "-I", "-m", __name__))
         self._process: asyncio.subprocess.Process | None = None
+        # The event loop this worker serves. Its child, lock, and flights belong to it.
         self._loop: asyncio.AbstractEventLoop | None = None
-        self._lock: asyncio.Lock | None = None
+        self._lock: _ChildLock | None = None
         self._starting: asyncio.Task[None] | None = None
         self._ready = False
         self._starts = 0
+        self._failed_at = -_START_COOL_OFF_S
+        self._start_warned = False
         self._requests = 0
         self._counted: asyncio.AbstractEventLoop | None = None
         self._used = 0.0
         self._idle_timer: asyncio.TimerHandle | None = None
-        self._verdicts: OrderedDict[tuple[str, ...], RefusalCode] = OrderedDict()
-        self._flights: dict[tuple[object, ...], asyncio.Task[dict[str, Any]]] = {}
-        # Children this loop killed that may not have been reaped yet (:meth:`aclose`).
-        self._dying: set[asyncio.subprocess.Process] = set()
+        # Refusals kept, by document, with when each was kept (time.monotonic).
+        self._verdicts: OrderedDict[tuple[str, ...], tuple[RefusalCode, float]] = OrderedDict()
+        self._flights: dict[tuple[object, ...], _Flight] = {}
+        # Children killed that may not have been reaped yet, with the loop each belongs
+        # to, which alone can wait for it (:meth:`aclose`).
+        self._dying: dict[asyncio.subprocess.Process, asyncio.AbstractEventLoop] = {}
 
     @property
     def ready(self) -> bool:
@@ -452,6 +712,18 @@ class ProjectionWorker:
             await asyncio.shield(self._starting)
         return self.ready
 
+    def _bind(self, loop: asyncio.AbstractEventLoop) -> _ChildLock:
+        """This worker on *loop*: a child's pipes and its reaping belong to the loop that
+        started it, so another loop stops it and begins again."""
+
+        if self._loop is not loop or self._lock is None:
+            if self._loop is not None:
+                self.stop()
+                self._dying = {}
+            self._loop, self._lock = loop, _ChildLock()
+            self._flights = {}
+        return self._lock
+
     def start(self, *, renders: bool = False) -> None:
         """Start the child on this event loop if it is not running; it does not wait.
 
@@ -460,20 +732,14 @@ class ProjectionWorker:
         """
 
         loop = asyncio.get_running_loop()
-        if self._loop is not None and self._loop is not loop:
-            # A child's pipes belong to the loop that started it, and so does its reaping.
-            self.stop()
-            self._dying.clear()
-        if (
-            (not self._processes and not renders)
-            or self._starting is not None
-            or self._starts >= _MAX_STARTS
-        ):
+        self._bind(loop)
+        if (not self._processes and not renders) or self._starting is not None:
             return
+        if self._starts >= _MAX_STARTS:
+            if time.monotonic() - self._failed_at < _START_COOL_OFF_S:
+                return
+            self._starts = 0
         self._starts += 1
-        if self._loop is not loop or self._lock is None:
-            self._loop, self._lock = loop, asyncio.Lock()
-            self._flights = {}
         self._starting = loop.create_task(self._launch())
 
     async def _launch(self) -> None:
@@ -484,25 +750,55 @@ class ProjectionWorker:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL,
                 cwd=Path(__file__).resolve().parent,
+                # Its own group: see "One child for both jobs" above.
+                process_group=0,
             )
-        except OSError:
-            # The next projection may try again, up to the start limit.
+        except OSError as exc:
+            # The next request may try again, up to the start limit.
             self._starting = None
+            self._start_failed(f"it could not be spawned: {exc}")
             return
         self._process = process
         _CHILDREN.add(process.pid)
         assert process.stdout is not None
+        failure: str | None = None
         try:
             ready = await asyncio.wait_for(_read(process.stdout), _START_TIMEOUT_S)
-        except (TimeoutError, ConnectionError, asyncio.IncompleteReadError, ValueError):
-            self._kill(process)
+        except TimeoutError:
+            failure = f"it was not ready after {_START_TIMEOUT_S:g} s"
+        except (ConnectionError, asyncio.IncompleteReadError, ValueError):
+            failure = "it exited before it was ready"
+        else:
+            if ready.get("ready") is not True:
+                failure = "its first answer was not the ready frame"
+        if self._process is not process:
+            # Stopped from here while it started: that start did not fail.
             return
-        if ready.get("ready") is True and self._process is process:
-            self._ready = True
-            self._starts = 0
-            # Counted from the start, not the first answer: a page's prefetch starts the
-            # child, and its answers may all come from the thread or the route's cache.
-            self._touch()
+        if failure is not None:
+            self._kill(process)
+            self._start_failed(failure)
+            return
+        self._ready = True
+        self._starts = 0
+        self._start_warned = False
+        # Counted from the start, not the first answer: a page's prefetch starts the
+        # child, and its answers may all come from the thread or the route's cache.
+        self._touch()
+
+    def _start_failed(self, cause: str) -> None:
+        self._failed_at = time.monotonic()
+        limit = self._starts >= _MAX_STARTS
+        if not self._start_warned:
+            self._start_warned = True
+            LOG.warning("The Markdown child did not start: %s", cause)
+        else:
+            LOG.debug("The Markdown child did not start again: %s", cause)
+        if limit:
+            LOG.warning(
+                "The Markdown child failed %d starts in a row; it is tried again in %g s",
+                _MAX_STARTS,
+                _START_COOL_OFF_S,
+            )
 
     def _touch(self) -> None:
         """Note a start or a request, and stop the child once _IDLE_S passes without one."""
@@ -518,8 +814,11 @@ class ProjectionWorker:
         if loop is None or self._process is None:
             return
         waited = loop.time() - self._used
-        if waited < _IDLE_S or (self._lock is not None and self._lock.locked()):
-            self._idle_timer = loop.call_later(max(_IDLE_S - waited, 0.0), self._idle)
+        if self._lock is not None and self._lock.locked():
+            self._idle_timer = loop.call_later(max(_IDLE_S - waited, _IDLE_RECHECK_S), self._idle)
+            return
+        if waited < _IDLE_S:
+            self._idle_timer = loop.call_later(_IDLE_S - waited, self._idle)
             return
         self.stop()
 
@@ -530,45 +829,67 @@ class ProjectionWorker:
         if process.returncode is None:
             with contextlib.suppress(ProcessLookupError):
                 process.kill()
-            self._dying = {each for each in self._dying if each.returncode is None}
-            self._dying.add(process)
+            self._dying = {each: at for each, at in self._dying.items() if each.returncode is None}
+            # The loop it was started on, which alone can wait for it, whichever loop kills
+            # it: a close on a later loop stops a child an earlier one started.
+            if self._loop is not None:
+                self._dying[process] = self._loop
+
+    def _replace(self) -> None:
+        """Start another child at once after a render killed one, so the next document does
+        not wait for the start."""
+
+        if self._loop is _running_loop():
+            self.start(renders=True)
 
     def stop(self) -> None:
         """Stop the child; the next start begins a new one, with its starts counted anew.
 
         A start this cuts off did not fail, and a server's lifespan, or a command's, ends
-        with one: so the next loop may start the child again, up to the start limit.
+        with one: so the next loop may start the child again, up to the start limit. The
+        lock and the flights stay: a request waiting for the child gets the next one.
         """
 
         if self._idle_timer is not None:
             self._idle_timer.cancel()
             self._idle_timer = None
+        # Taken first: the kill forgets the start, which must still be cancelled.
+        starting = self._starting
         if self._process is not None:
             self._kill(self._process)
-        if self._starting is not None:
-            self._starting.cancel()
+        if starting is not None:
+            starting.cancel()
         self._process, self._ready, self._starting = None, False, None
-        self._loop = self._lock = None
-        self._flights = {}
         self._starts = 0
 
     async def aclose(self) -> None:
-        """Stop the child, and wait at most :data:`_REAP_S` for every child this loop
-        stopped to exit, so none is reaped after the loop closes. A server's lifespan ends
-        with this."""
+        """End this loop's renders, stop the child, and wait at most :data:`_REAP_S` for
+        every child this loop stopped to exit, so none is reaped after the loop closes and
+        none starts after it. A server's lifespan ends with this."""
 
-        here = self._loop is None or self._loop is _running_loop()
+        loop = _running_loop()
+        if self._loop is loop:
+            flights = [flight.task for flight in self._flights.values()]
+            self._flights = {}
+            for task in flights:
+                task.cancel()
+            if flights:
+                await asyncio.gather(*flights, return_exceptions=True)
         self.stop()
-        dying, self._dying = self._dying, set()
-        waits = [each.wait() for each in dying if each.returncode is None] if here else []
-        if waits:
+        dying = [each for each, at in self._dying.items() if at is loop and each.returncode is None]
+        self._dying = {}
+        if dying:
             with contextlib.suppress(TimeoutError):
                 async with asyncio.timeout(_REAP_S):
-                    await asyncio.gather(*waits)
+                    await asyncio.gather(*(each.wait() for each in dying))
 
     async def prepare(
         self, *, old: bytes | None, new: bytes | None, patch: FilePatch, namespace: str
     ) -> PreparedMarkdownDiff:
+        """*patch*'s projection: in the child when it is ready and free of inert renders,
+        and in a thread otherwise. A failure that is not this input's doing is answered
+        from the thread, so no caller keeps it as the input's answer."""
+
         from metabrowser.diff.markdown_projection import (
             prepare_markdown_diff,
             unavailable_markdown_diff,
@@ -583,90 +904,145 @@ class ProjectionWorker:
         if self._requests >= 2:
             # A one-request command never pays for a child it would not use.
             self.start()
-        process, lock = self._process, self._lock
-        if not self._processes or not self.ready or process is None or lock is None:
-            return await asyncio.to_thread(
-                prepare_markdown_diff, old=old, new=new, patch=patch, namespace=namespace
-            )
+        lock = self._lock if self._loop is loop else None
+        if self._processes and self.ready and lock is not None and not lock.rendering:
+            frame = _frame(_encode(old, new, patch, namespace))
+            async with lock.hold("projection"):
+                for attempt in (1, 2):
+                    if attempt == 1:
+                        process = self._process
+                        if not self.ready or process is None:
+                            # Stopped or replaced while this waited: not this input's doing.
+                            break
+                        if process.returncode is not None:
+                            # Gone while idle, also not this input's doing; the next
+                            # request starts another child.
+                            self._kill(process)
+                            break
+                    else:
+                        process = await self._ready_child()
+                        if process is None:
+                            break
+                    outcome = await self._exchange_projection(process, frame)
+                    if not isinstance(outcome, str):
+                        return outcome
+                    if outcome == "timeout":
+                        self._kill(process)
+                        return unavailable_markdown_diff("too_large")
+                    if self._process is not process:
+                        # Stopped from here, by a new loop or the server's end.
+                        break
+                    self._kill(process)
+                    if outcome == "died" and attempt == 2:
+                        # Twice on two children: the input may be what stops it, so it is
+                        # not run in this process.
+                        return unavailable_markdown_diff("unsupported")
+                    # Gone before the request reached it, or dead on arrival or killed from
+                    # outside as easily as by this input: once more, on a fresh child.
+        return await asyncio.to_thread(
+            prepare_markdown_diff, old=old, new=new, patch=patch, namespace=namespace
+        )
+
+    async def _exchange_projection(
+        self, process: asyncio.subprocess.Process, frame: bytes
+    ) -> PreparedMarkdownDiff | Literal["unreached", "died", "timeout"]:
         assert process.stdin is not None and process.stdout is not None
-        failure: Literal["unsupported", "too_large"] = "unsupported"
-        async with lock:
-            try:
-                if process.returncode is not None:
-                    raise ConnectionError("the child exited while idle")
-                process.stdin.write(_frame(_encode(old, new, patch, namespace)))
-                await process.stdin.drain()
-            except ConnectionError:
-                # Gone before this request reached it: not this input's doing, so the
-                # request runs in a thread and the next one starts a child again.
-                self._kill(process)
-                return await asyncio.to_thread(
-                    prepare_markdown_diff, old=old, new=new, patch=patch, namespace=namespace
-                )
-            except BaseException:
-                # A request cut off part-way leaves the child's input out of step.
-                self._kill(process)
-                raise
-            try:
-                answer = _decode(
-                    await asyncio.wait_for(_read(process.stdout), _PROJECTION_TIMEOUT_S)
-                )
-                self._touch()
-                return answer
-            except TimeoutError:
-                failure = "too_large"
-            except (ConnectionError, asyncio.IncompleteReadError, ValueError, KeyError):
-                # The input may be what stopped it, so it is not retried in this process.
-                pass
-            except BaseException:
-                # A cancelled exchange leaves an answer in the pipe for the next request.
-                self._kill(process)
-                raise
+        self._touch()
+        try:
+            process.stdin.write(frame)
+            await process.stdin.drain()
+        except ConnectionError:
+            return "unreached"
+        except BaseException:
+            # A request cut off part-way leaves the child's input out of step.
             self._kill(process)
-        return unavailable_markdown_diff(failure)
+            raise
+        try:
+            answer = _decode(await asyncio.wait_for(_read(process.stdout), _PROJECTION_TIMEOUT_S))
+        except TimeoutError:
+            return "timeout"
+        except (ConnectionError, asyncio.IncompleteReadError, ValueError, KeyError, TypeError):
+            return "died"
+        except BaseException:
+            # A cancelled exchange leaves an answer in the pipe for the next request.
+            self._kill(process)
+            raise
+        self._touch()
+        return answer
 
     def refusal(self, request: InertRender) -> InertRenderRefused | None:
-        """The kept refusal of *request*'s document, if an earlier render was refused."""
+        """The kept refusal of *request*'s document, if an earlier render was refused
+        within :data:`_VERDICT_TTL_S`."""
 
-        code = self._verdicts.get(request.verdict_key)
-        if code is None:
+        key = request.verdict_key
+        kept = self._verdicts.get(key)
+        if kept is None:
             return None
-        self._verdicts.move_to_end(request.verdict_key)
-        return InertRenderRefused(code)
+        code, kept_at = kept
+        if time.monotonic() - kept_at >= _VERDICT_TTL_S:
+            del self._verdicts[key]
+            return None
+        self._verdicts.move_to_end(key)
+        return InertRenderRefused(code, remembered=True)
 
     async def render_inert(self, request: InertRender) -> dict[str, Any]:
         """*request* rendered and hardened in the child, within the deadline.
 
         Raises :class:`InertRenderRefused` when the render ran past the deadline, the
-        child stopped while rendering it, or the child could not start, and
-        :class:`kpress_adapter.KPressInvalidRequestError` or
-        :class:`kpress_adapter.KPressRenderError` as an in-process render would. A
+        child stopped while rendering it, the child could not start, or too many other
+        documents are being rendered, and :class:`kpress_adapter.KPressInvalidRequestError`
+        or :class:`kpress_adapter.KPressRenderError` as an in-process render would. A
         request identical to one in flight waits for that render rather than queueing
-        another, so reloads of a slow document do not stack.
+        another, so reloads of a slow document do not stack; a render no request waits for
+        any more is cancelled.
         """
 
+        request = _with_plain_frontmatter(request)
         refused = self.refusal(request)
         if refused is not None:
             raise refused
         loop = asyncio.get_running_loop()
-        if self._loop is not loop:
-            self.start(renders=True)
+        self._bind(loop)
+        # Ahead of the lock, so the start overlaps the frame's encoding.
+        self.start(renders=True)
         key = request.flight_key
         flight = self._flights.get(key)
         if flight is None:
-            flight = loop.create_task(self._render_once(request))
+            if sum(not each.task.done() for each in self._flights.values()) >= _MAX_RENDERS:
+                LOG.warning(
+                    "Refused rendering %s: %d other documents are being rendered",
+                    request.source_path,
+                    _MAX_RENDERS,
+                )
+                raise InertRenderRefused("renderer_busy")
+            flight = _Flight(loop.create_task(self._render_flight(request)))
             flights = self._flights
             flights[key] = flight
 
-            def landed(task: asyncio.Task[dict[str, Any]]) -> None:
-                if flights.get(key) is task:
+            def landed(_task: asyncio.Task[_Outcome], flight: _Flight = flight) -> None:
+                if flights.get(key) is flight:
                     del flights[key]
-                if not task.cancelled():
-                    # Retrieved here, so a render no request waits for any more is quiet.
-                    task.exception()
 
-            flight.add_done_callback(landed)
-        return await asyncio.shield(flight)
+            flight.task.add_done_callback(landed)
+        flight.waiters += 1
+        try:
+            outcome = await asyncio.shield(flight.task)
+        except asyncio.CancelledError:
+            current = asyncio.current_task()
+            if flight.task.cancelled() and (current is None or current.cancelling() == 0):
+                # The render was ended from here, by the server's close, not this request.
+                raise InertRenderRefused("renderer_unavailable") from None
+            raise
+        finally:
+            flight.waiters -= 1
+            if flight.waiters == 0 and not flight.task.done():
+                # Nobody waits for this render any more: it must not hold the child.
+                flight.task.cancel()
+                if self._flights.get(key) is flight:
+                    del self._flights[key]
+        if isinstance(outcome, _Failed):
+            raise outcome.error()
+        return outcome
 
     async def _ready_child(self) -> asyncio.subprocess.Process | None:
         """The ready child on this loop, started and waited for when there is none."""
@@ -685,60 +1061,136 @@ class ProjectionWorker:
             ready = False
         return self._process if ready else None
 
-    async def _render_once(self, request: InertRender) -> dict[str, Any]:
+    async def _render_flight(self, request: InertRender) -> _Outcome:
         # The server's asset prefix, so the child names the assets this server serves.
         frame = await asyncio.to_thread(
             lambda: _frame(_encode_render(request, kpress_adapter.kpress_asset_url_prefix()))
         )
-        lock = self._lock
-        if lock is None:
-            # Stopped since the flight began, with its loop: start on this one again.
-            self.start(renders=True)
-            lock = self._lock
-        if lock is None:
-            raise InertRenderRefused("renderer_unavailable")
-        async with lock:
+        lock = self._bind(asyncio.get_running_loop())
+        async with lock.hold("render"):
             # Another request may have refused the same document while this one waited.
             refused = self.refusal(request)
             if refused is not None:
-                raise refused
-            process = await self._ready_child()
-            if process is None:
-                raise InertRenderRefused("renderer_unavailable")
-            assert process.stdin is not None and process.stdout is not None
-            try:
-                async with asyncio.timeout(_RENDER_DEADLINE_S):
-                    process.stdin.write(frame)
-                    await process.stdin.drain()
-                    body = await _read_body(process.stdout, _MAX_ANSWER_FRAME)
-            except TimeoutError:
-                self._kill(process)
-                self._remember(request, "render_deadline")
-                raise InertRenderRefused("render_deadline") from None
-            except (ConnectionError, asyncio.IncompleteReadError) as exc:
+                return _Failed("refused", refused.code, remembered=True)
+            for attempt in (1, 2):
+                process = await self._ready_child()
+                if process is None:
+                    return _Failed("refused", "renderer_unavailable")
+                began = time.monotonic()
+                outcome = await self._exchange_render(process, frame)
+                if isinstance(outcome, bytes):
+                    return await self._accept(process, request, outcome)
+                if outcome == "deadline":
+                    self._kill(process)
+                    return self._refuse(request, "render_deadline", began)
                 if self._process is not process:
                     # Stopped from here, by a new loop or the server's end: not the
                     # document's doing, so nothing is kept.
-                    raise InertRenderRefused("renderer_unavailable") from exc
-                # The input may be what stopped it, so it is not rendered again.
+                    return _Failed("refused", "renderer_unavailable")
                 self._kill(process)
-                self._remember(request, "renderer_exited")
-                raise InertRenderRefused("renderer_exited") from exc
-            except BaseException:
-                # An exchange cut off part-way leaves the child's pipes out of step.
-                self._kill(process)
-                raise
-            self._touch()
-        answer = cast("dict[str, Any]", await asyncio.to_thread(json.loads, body))
-        error = answer.get("error")
-        if error == "invalid":
-            raise kpress_adapter.KPressInvalidRequestError(str(answer.get("message")))
-        if error is not None:
-            raise kpress_adapter.KPressRenderError(str(answer.get("message")))
-        return cast("dict[str, Any]", answer["rendered"])
+                if attempt == 1:
+                    # Dead before the request reached it, or killed from outside, as easily
+                    # as by this document: once more, on a fresh child.
+                    LOG.info(
+                        "The Markdown child stopped on %s; rendering it on a new child",
+                        request.source_path,
+                    )
+                    continue
+                if outcome == "exited":
+                    # Twice on two children: the input may be what stopped it, so it is
+                    # not rendered again.
+                    return self._refuse(request, "renderer_exited", began)
+            return _Failed("refused", "renderer_unavailable")
+
+    async def _exchange_render(
+        self, process: asyncio.subprocess.Process, frame: bytes
+    ) -> bytes | Literal["deadline", "exited", "unreached"]:
+        """One render's exchange: the answer's bytes, or how it ended without them."""
+
+        assert process.stdin is not None and process.stdout is not None
+        loop = asyncio.get_running_loop()
+        self._touch()
+        try:
+            # A child that does not take the whole request within a deadline is not
+            # reading it, whatever the document holds.
+            async with asyncio.timeout(_RENDER_DEADLINE_S):
+                process.stdin.write(frame)
+                await process.stdin.drain()
+        except (TimeoutError, ConnectionError):
+            return "unreached"
+        except BaseException:
+            # An exchange cut off part-way leaves the child's pipes out of step.
+            self._kill(process)
+            raise
+        # The deadline counts from when the child has the request, so a server whose own
+        # loop was slow to write it does not spend the document's time.
+        due = loop.time() + _RENDER_DEADLINE_S
+        reading = asyncio.ensure_future(_read_body(process.stdout, _MAX_ANSWER_FRAME))
+        try:
+            try:
+                async with asyncio.timeout_at(due):
+                    return await asyncio.shield(reading)
+            except TimeoutError:
+                if loop.time() - due <= _LATE_S:
+                    return "deadline"
+                # The loop ran the deadline late, and the answer may be in the pipe.
+                await asyncio.wait({reading}, timeout=_ANSWER_GRACE_S)
+                if not reading.done():
+                    return "deadline"
+                return reading.result()
+        except (ConnectionError, asyncio.IncompleteReadError):
+            return "exited"
+        except BaseException:
+            self._kill(process)
+            raise
+        finally:
+            if not reading.done():
+                reading.cancel()
+
+    async def _accept(
+        self, process: asyncio.subprocess.Process, request: InertRender, body: bytes
+    ) -> _Outcome:
+        """The child's answer, checked before it reaches a page."""
+
+        self._touch()
+        try:
+            answer: object = await asyncio.to_thread(json.loads, body)
+        except ValueError:
+            answer = None
+        if isinstance(answer, dict):
+            answer = cast("dict[str, Any]", answer)
+            error = answer.get("error")
+            if error == "invalid":
+                return _Failed("invalid", message=str(answer.get("message")))
+            if error is not None:
+                return _Failed("render", message=str(answer.get("message")))
+            rendered = answer.get("rendered")
+            if isinstance(rendered, dict):
+                rendered = cast("dict[str, Any]", rendered)
+                if isinstance(rendered.get("html"), str) and (
+                    request.link_base is not None or rendered.get("inert") is True
+                ):
+                    return rendered
+        # An answer of the wrong shape: the child is not trusted with another document.
+        self._kill(process)
+        return self._refuse(request, "renderer_exited", time.monotonic())
+
+    def _refuse(self, request: InertRender, code: RefusalCode, began: float) -> _Failed:
+        """Keep and log a refusal the child earned, and start its replacement."""
+
+        self._remember(request, code)
+        LOG.warning(
+            "Refused rendering %s (%s) after %.2f s: %s",
+            request.source_path,
+            request.identity,
+            time.monotonic() - began,
+            code,
+        )
+        self._replace()
+        return _Failed("refused", code)
 
     def _remember(self, request: InertRender, code: RefusalCode) -> None:
-        self._verdicts[request.verdict_key] = code
+        self._verdicts[request.verdict_key] = (code, time.monotonic())
         self._verdicts.move_to_end(request.verdict_key)
         while len(self._verdicts) > _MAX_VERDICTS:
             self._verdicts.popitem(last=False)
@@ -758,7 +1210,19 @@ def _running_loop() -> asyncio.AbstractEventLoop | None:
         return None
 
 
+def _exit_with_parent(parent: int) -> None:
+    """End this child once the server that started it has gone, even mid-render."""
+
+    while True:
+        time.sleep(_PARENT_POLL_S)
+        if os.getppid() != parent:
+            os._exit(0)
+
+
 def main() -> None:
+    threading.Thread(
+        target=_exit_with_parent, args=(os.getppid(),), name="parent-watch", daemon=True
+    ).start()
     # The protocol owns the original standard output; anything a library prints goes to
     # standard error instead of into a frame.
     sink = os.fdopen(os.dup(1), "wb")

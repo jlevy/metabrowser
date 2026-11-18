@@ -98,6 +98,8 @@ def test_a_pathological_pinned_document_is_refused_at_the_deadline_while_the_ser
                 await asyncio.sleep(0.05)
             refused = await render
             elapsed = loop.time() - began
+            # The killed child's replacement, started at once (review C of #527, C2).
+            child_before_reload = shared_worker()._process  # pyright: ignore[reportPrivateUsage]
             # A reload is refused by the kept verdict, and starts no child to render it.
             again = await client.get(
                 "/api/kpress/render", params={"path": SLOW_WIRE, "view": "document", "toc": "off"}
@@ -111,7 +113,7 @@ def test_a_pathological_pinned_document_is_refused_at_the_deadline_while_the_ser
                 "refused": (refused.status_code, refused.json()),
                 "elapsed": elapsed,
                 "again": (again.status_code, again.json()),
-                "child_after_reload": child_after_reload,
+                "child_after_reload": child_after_reload is child_before_reload,
                 "fine": (fine.status_code, fine.json()),
             }
 
@@ -123,6 +125,7 @@ def test_a_pathological_pinned_document_is_refused_at_the_deadline_while_the_ser
         "code": "render_deadline",
         "error": "Rendering took longer than 5 seconds, so it was stopped",
         "deadline_ms": worker_module.INERT_RENDER_DEADLINE_MS,
+        "remembered": False,
         "path": SLOW_WIRE,
     }
     limit = worker_module._RENDER_DEADLINE_S + worker_module._START_WAIT_S + MARGIN_S  # pyright: ignore[reportPrivateUsage]
@@ -131,8 +134,8 @@ def test_a_pathological_pinned_document_is_refused_at_the_deadline_while_the_ser
     assert all(code == 200 for code, _done in answered)
     # The last may have answered just after the render did; the rest answered while it ran.
     assert sum(1 for _code, done in answered if not done) >= 3, answered
-    assert result["again"] == (422, body)
-    assert result["child_after_reload"] is None
+    assert result["again"] == (422, {**body, "remembered": True})
+    assert result["child_after_reload"] is True, "the reload rendered nothing"
     status, fine = result["fine"]
     assert status == 200 and fine["inert"] is True
     assert '<h1 id="user-content-fine">Fine</h1>' in fine["html"]
@@ -147,6 +150,7 @@ def test_an_untrusted_folder_keeps_the_refusal_by_the_documents_text(
     server._set_root_dir(tmp_path)  # pyright: ignore[reportPrivateUsage]
     with TestClient(server.app) as client:
         first = client.get("/api/kpress/render", params={"path": "slow.md", "view": "document"})
+        child_before_copy = shared_worker()._process  # pyright: ignore[reportPrivateUsage]
         # Another file with the same text is the same document: refused without a render.
         copy = client.get("/api/kpress/render", params={"path": "copy.md", "view": "document"})
         child_after_copy = shared_worker()._process  # pyright: ignore[reportPrivateUsage]
@@ -160,8 +164,9 @@ def test_an_untrusted_folder_keeps_the_refusal_by_the_documents_text(
     assert first.json()["deadline_ms"] == 200
     assert first.json()["error"] == "Rendering took longer than 0.2 seconds, so it was stopped"
     assert copy.status_code == 422
-    assert copy.json() == {**first.json(), "path": "copy.md"}
-    assert child_after_copy is None
+    assert first.json()["remembered"] is False
+    assert copy.json() == {**first.json(), "path": "copy.md", "remembered": True}
+    assert child_after_copy is child_before_copy, "the copy rendered nothing"
     assert sent.status_code == 200
     assert '<h1 id="user-content-sent">Sent</h1>' in sent.json()["html"]
 
@@ -275,6 +280,8 @@ def test_the_child_renders_what_the_in_process_inert_render_would() -> None:
     assert rendered["inert"] is True
     assert rendered["html"] == expected["html"]
     assert rendered["assets"] == expected["assets"]
+    # What the sanitizer removed stays in the child (review C of #527, C3).
+    assert set(expected) - set(rendered) == {"sanitizer_diagnostics"}
     assert allowlist_violations(rendered["html"], images=True) == []
 
 
@@ -359,7 +366,7 @@ def test_a_child_that_cannot_start_is_refused_as_unavailable_and_not_kept(
     refused, kept = asyncio.run(run())
     assert refused.code == "renderer_unavailable"
     assert refused.http_status == 503
-    assert refused.remembered is False
+    assert refused.payload()["remembered"] is False
     assert kept is None, "a reload tries again"
 
 

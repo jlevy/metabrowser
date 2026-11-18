@@ -149,9 +149,13 @@ the child and is refused with a code, which the page answers by showing the docu
 source (`cli-ui-markdown-render-refusal.tryscript.md`). `slow/slow.md` is 100 unpaired
 `[` before 60 KiB of `%`, which KPress takes seconds to render, so a deadline shortened
 to 250 ms through its environment variable refuses it on any machine.
+The server says on standard error which document it refused, by its path and the hash it
+keeps the refusal by, and after how long; `remembered` is false because this answer is
+the render’s own, not a refusal kept from an earlier one.
 
 ```console
 $ METABROWSER_INERT_RENDER_DEADLINE_MS=250 metab slow --untrusted --api '/api/kpress/render?path=slow.md&view=document'
+[..] metabrowser.diff.markdown_projection_worker | Refused rendering slow.md (sha256:6d547e03b6bb237dc4ebdb452e24980c5a74749b35eef82755adf7ab51270c30) after [..] s: render_deadline
 api: /api/kpress/render?path=slow.md&view=document
 status: 422
 {
@@ -159,6 +163,7 @@ status: 422
   "code": "render_deadline",
   "error": "Rendering took longer than 0.25 seconds, so it was stopped",
   "deadline_ms": 250,
+  "remembered": false,
   "path": "slow.md"
 }
 Error: /api/kpress/render?path=slow.md&view=document returned HTTP 422

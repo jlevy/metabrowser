@@ -238,7 +238,9 @@ Changed words are marked by a bounded word diff.
   page’s prefetch, so a projection never holds the server’s GIL; the module records the
   measurement. Until the child is ready, projections run in a thread.
   The same child renders every untrusted Markdown document, under a deadline
-  ([What a Pin Serves](arch-source-sessions-and-pins.md#what-a-pin-serves)).
+  ([What a Pin Serves](arch-source-sessions-and-pins.md#what-a-pin-serves)); a
+  projection that finds such a render holding the child runs in a thread instead, and
+  one waiting for the child goes before every waiting render.
 - **Paint:** a file on screen waits for its projection for the app’s loading-state delay
   with Source hidden; past it, Source paints first and Rendered replaces it when it
   arrives. Conversation prefetches the projections of the first screen’s files.

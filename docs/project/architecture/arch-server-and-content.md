@@ -206,6 +206,17 @@ Markdown, for a folder served untrusted, and for every pull-request comment.
 Such a document keeps no stylesheet, class, or `data-*`, which removes both limits
 above.
 
+Such a document is also rendered off the server’s interpreter: `/api/kpress/render`, on
+a folder and a pin alike, renders it in the server’s Markdown child
+(`diff/markdown_projection_worker.py`) under `INERT_RENDER_DEADLINE_MS`, never on a
+server thread, and reduces it to the allowlist there.
+A render the child does not finish is answered `"type": "kpress_render_refused"` with a
+`code`: `render_deadline` and `renderer_exited` (`422`, kept by the document for a
+while, with `remembered` true on an answer from the kept refusal), and
+`renderer_unavailable` and `renderer_busy` (`503`, not kept).
+The Markdown view then shows the document’s source under one line saying why
+(`builtin_plugins/markdown/render-refusal.js`).
+
 The allowlist keeps paragraphs, headings, emphasis, code, quotes, lists, tables,
 details, and links and images inside the served tree.
 It drops every class, `id`, `name`, `data-*`, style, and event attribute, and all SVG,

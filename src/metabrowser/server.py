@@ -80,12 +80,14 @@ from metabrowser.capabilities import get_capabilities, raw_sandbox_csp, untruste
 # Cache invalidator: clear_charts_cache is invoked by the root-change
 # handler so chart memos don't stick across served-root swaps.
 from metabrowser.charts import clear_charts_cache
+from metabrowser.client_disconnect import CLIENT_CLOSED, unless_disconnected
 from metabrowser.content_sniff import ContentClass, sniff_artifact
 from metabrowser.diff.markdown_projection_worker import (
     InertRender,
     InertRenderRefused,
     kpress_refusal_payload,
     shared_worker,
+    start_for_pages,
     text_identity,
 )
 from metabrowser.dotenv import load_dotenv_chain
@@ -3770,6 +3772,7 @@ async def api_kpress_render(request: Request) -> Response:
 
         return await git_revision_kpress_render(
             pin,
+            request=request,
             subpath=subpath,
             view=view,
             profile=profile,
@@ -3897,23 +3900,31 @@ async def api_kpress_render(request: Request) -> Response:
             else:
                 # A document the reader does not trust renders inert, in the Markdown
                 # child under its deadline (diff/markdown_projection_worker.py), and is
-                # known by its text, which a folder's file has no other name for.
-                rendered = await shared_worker().render_inert(
-                    InertRender(
-                        source_text=content,
-                        source_path=subpath,
-                        identity=await asyncio.to_thread(text_identity, content),
-                        kind=kind,
-                        view=view,
-                        ext=ext,
-                        mtime_hash=mtime_hash,
-                        size=logical_size,
-                        frontmatter=frontmatter,
-                        frontmatter_error=frontmatter_error,
-                        profile=profile,
-                        include_toc=include_toc,
-                    )
+                # known by its text, which a folder's file has no other name for. A
+                # client that goes away leaves the render to no one, and an abandoned
+                # render must not hold the child.
+                inert = await unless_disconnected(
+                    request,
+                    shared_worker().render_inert(
+                        InertRender(
+                            source_text=content,
+                            source_path=subpath,
+                            identity=await asyncio.to_thread(text_identity, content),
+                            kind=kind,
+                            view=view,
+                            ext=ext,
+                            mtime_hash=mtime_hash,
+                            size=logical_size,
+                            frontmatter=frontmatter,
+                            frontmatter_error=frontmatter_error,
+                            profile=profile,
+                            include_toc=include_toc,
+                        )
+                    ),
                 )
+                if inert is None:
+                    return Response(status_code=CLIENT_CLOSED)
+                rendered = inert
     except InertRenderRefused as refused:
         return JSONResponse(
             kpress_refusal_payload(refused, subpath),
@@ -5027,11 +5038,19 @@ async def _lifespan(app: Starlette) -> AsyncIterator[None]:
         lifespan_refresh(app),
     ):
         try:
+            if not get_capabilities().active_content:
+                # Every document an untrusted session serves renders in the Markdown child,
+                # a served pin's among them, so a served one starts it now rather than at
+                # its first document, which would wait for it; a one-shot command starts
+                # nothing it may not use. Inside the try, so the close below reaps it.
+                start_for_pages()
             yield
         finally:
-            # The Markdown child belongs to this loop; a later one starts its own.
-            await shared_worker().aclose()
-            await close_history_sessions()
+            try:
+                # The Markdown child belongs to this loop; a later one starts its own.
+                await shared_worker().aclose()
+            finally:
+                await close_history_sessions()
 
 
 async def _query_work_limit_response(

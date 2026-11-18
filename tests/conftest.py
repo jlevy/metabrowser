@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 from collections.abc import Generator
@@ -62,6 +63,32 @@ def pytest_configure(config: pytest.Config) -> None:
     )
     # The hooks that judge a skip against its tier; see tests/suite_gates.py.
     config.pluginmanager.register(suite_gates)
+
+
+@pytest.fixture(autouse=True)
+def fresh_markdown_child() -> Generator[None]:
+    """Give each test its own process-wide Markdown child worker, and stop it after.
+
+    ``shared_worker()`` keeps its refusals for the process, so without this a test whose
+    document an earlier test had refused would pass without rendering anything (review A
+    of #527, A13), and a worker a test left running would carry its child into the next.
+    A test that runs the serve path in-process marks the process as serving pages, which
+    starts the child ahead of documents; the next test begins as a one-shot command.
+    """
+
+    from metabrowser.diff import markdown_projection_worker as worker_module
+
+    shared = worker_module.shared_worker
+    shared.cache_clear()
+    serving = worker_module._SERVING  # pyright: ignore[reportPrivateUsage]
+    serving.pages = False
+    yield
+    serving.pages = False
+    if shared.cache_info().currsize:
+        # Its event loop may be closed by now; stopping kills the child by its process.
+        with contextlib.suppress(RuntimeError):
+            shared().stop()
+        shared.cache_clear()
 
 
 # ── Tests that must not be silently absent ─────────────────────────────────────

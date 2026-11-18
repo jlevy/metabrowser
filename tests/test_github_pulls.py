@@ -2660,37 +2660,51 @@ def test_a_text_past_the_render_deadline_is_refused_and_refused_again_at_once(
     write_pull_record(stand.published.home, stand.published.slug, slow)
     params = {"number": 7, "part": "body"}
     refused = client.get("/api/plugin/github/pull-markdown", params=params)
+    # The killed child's replacement, which the kept refusal leaves as it is.
+    child_before_again = shared_worker()._process  # pyright: ignore[reportPrivateUsage]
     again = client.get("/api/plugin/github/pull-markdown", params=params)
     child_after_again = shared_worker()._process  # pyright: ignore[reportPrivateUsage]
-    answer = {"status": refused.status_code, "body": refused.json()}
+    body: dict[str, Any] = refused.json()
+    answer = {"status": refused.status_code, "body": body}
     assert answer == {
         "status": 422,
         "body": {
             "code": "render_deadline",
             "error": "Rendering took longer than 0.2 seconds, so it was stopped",
             "deadline_ms": 200,
+            "remembered": False,
             "number": 7,
             "part": "body",
         },
     }
-    assert (again.status_code, again.json()) == (422, answer["body"])
-    assert child_after_again is None, "the kept refusal renders nothing"
+    assert (again.status_code, again.json()) == (422, {**body, "remembered": True})
+    assert child_after_again is child_before_again, "the kept refusal renders nothing"
     assert json.loads(REFUSED_TEXT_FIXTURE.read_text(encoding="utf-8")) == answer
 
 
 def test_a_pull_read_starts_the_markdown_child_its_texts_will_need(
-    pinned_pull: tuple[_Stand, TestClient],
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A page's first read starts the child, so its first text does not wait for a start."""
+    """A served page's first read starts the child, so its first text does not wait for a
+    start; a one-shot read, as `--api` makes, starts none (review A of #527, A16)."""
+    from metabrowser.diff import markdown_projection_worker as worker_module
     from metabrowser.diff.markdown_projection_worker import shared_worker
 
     _stand, client = pinned_pull
-    # A worker no request has used yet: the one this read reaches, which the server's
+
+    def starting() -> bool:
+        worker = shared_worker()
+        return worker._process is not None or worker._starting is not None  # pyright: ignore[reportPrivateUsage]
+
+    # A worker no request has used yet: the one these reads reach, which the server's
     # lifespan stops as it ends.
     shared_worker.cache_clear()
     _read(client, 7)
-    worker = shared_worker()
-    assert worker._process is not None or worker._starting is not None  # pyright: ignore[reportPrivateUsage]
+    one_shot = starting()
+    monkeypatch.setattr(worker_module._SERVING, "pages", True)  # pyright: ignore[reportPrivateUsage]
+    _read(client, 7)
+    assert one_shot is False
+    assert starting() is True
 
 
 def test_an_uncacheable_read_keeps_its_parsed_record_revision(

@@ -14,14 +14,20 @@ All notable changes to Metabrowser are documented here.
   with one line saying why; a pull request text shows its plain text with the same kind
   of line, and the folder Overview’s README panel shows the line and the README’s source
   instead of a render error.
-  The server remembers the refusal for that document, so reloading it is refused at
-  once. `/api/kpress/render` answers such a document `422` with
+  The server remembers the refusal for that document for ten minutes, so reloading it is
+  refused at once. `/api/kpress/render` answers such a document `422` with
   `"type": "kpress_render_refused"` and the code `render_deadline`, and
-  `/api/plugin/github/pull-markdown` answers `422` with the same code.
+  `/api/plugin/github/pull-markdown` answers `422` with the same code; `remembered` says
+  whether the answer is a refusal kept from an earlier render.
+  One slow document no longer holds every other one: a render whose page went away is
+  stopped, a diff projection never waits behind a document’s render, and past a few
+  documents at once a render is answered `503` `renderer_busy`, and the page says the
+  renderer is busy and to reload.
   Fenced code in these documents renders as plain text, as the page already showed it.
-  `METABROWSER_INERT_RENDER_DEADLINE_MS` changes the deadline.
-  A served mirror starts the child as it opens, and a pull request’s page as it is first
-  read, so a first document or comment does not wait for it.
+  `METABROWSER_INERT_RENDER_DEADLINE_MS` changes the deadline, and must be at least 1. A
+  served mirror and a served `--untrusted` folder start the child as they open, and a
+  served pull request’s page as it is first read, so a first document or comment does
+  not wait for it; a one-shot `--api` command starts it only when it renders.
 
 - The Pulls tab’s change lines, each row’s file and line totals, arrive in seconds
   rather than tens of seconds on a cold cache.

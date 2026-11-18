@@ -83,6 +83,7 @@ from starlette.responses import JSONResponse, PlainTextResponse, Response
 
 from metabrowser import kpress_adapter
 from metabrowser.capabilities import get_capabilities
+from metabrowser.client_disconnect import CLIENT_CLOSED, unless_disconnected
 from metabrowser.content_sniff import SNIFF_PREFIX_BYTES, ContentClass, classify_prefix
 from metabrowser.diff.markdown_projection_worker import (
     InertRender,
@@ -1658,6 +1659,7 @@ async def git_revision_file(request: Request, subject: GitRevisionSubject) -> JS
 async def git_revision_kpress_render(
     subject: GitRevisionSubject,
     *,
+    request: Request,
     subpath: str,
     view: str,
     profile: str | None,
@@ -1747,27 +1749,34 @@ async def git_revision_kpress_render(
             )
         else:
             # Inert, in the Markdown child under its deadline, and known by its blob, or
-            # by the text a page sent in its place.
-            rendered = await shared_worker().render_inert(
-                InertRender(
-                    source_text=content,
-                    source_path=entry.path.to_wire(),
-                    identity=(
-                        f"blob:{entry.oid}"
-                        if source_override is None
-                        else await asyncio.to_thread(text_identity, source_override)
-                    ),
-                    kind=kind,
-                    view=view,
-                    ext=ext,
-                    mtime_hash=entry.oid,
-                    size=logical_size,
-                    frontmatter=envelope.get("frontmatter"),
-                    frontmatter_error=envelope.get("frontmatter_error"),
-                    profile=profile,
-                    include_toc=include_toc,
-                )
+            # by the text a page sent in its place. A client that goes away leaves the
+            # render to no one, and an abandoned render must not hold the child.
+            inert = await unless_disconnected(
+                request,
+                shared_worker().render_inert(
+                    InertRender(
+                        source_text=content,
+                        source_path=entry.path.to_wire(),
+                        identity=(
+                            f"blob:{entry.oid}"
+                            if source_override is None
+                            else await asyncio.to_thread(text_identity, source_override)
+                        ),
+                        kind=kind,
+                        view=view,
+                        ext=ext,
+                        mtime_hash=entry.oid,
+                        size=logical_size,
+                        frontmatter=envelope.get("frontmatter"),
+                        frontmatter_error=envelope.get("frontmatter_error"),
+                        profile=profile,
+                        include_toc=include_toc,
+                    )
+                ),
             )
+            if inert is None:
+                return JSONResponse({}, status_code=CLIENT_CLOSED)
+            rendered = inert
     except InertRenderRefused as refused:
         return JSONResponse(
             kpress_refusal_payload(refused, path.to_wire()),

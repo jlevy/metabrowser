@@ -261,10 +261,12 @@ does, run it where it can be stopped and stop it at a measured deadline, rather 
 capping the input’s size.
 Every Markdown document rendered under the untrusted profile renders in the server’s
 Markdown child (`diff/markdown_projection_worker.py`), which is stopped when a render
-runs past its deadline; the refusal is kept by the document, and the page shows the
-document’s source with one line saying why.
-A document of any size up to the render route’s own read bound renders if it finishes in
-time.
+runs past its deadline; the refusal is kept by the document for a while, and the page
+shows the document’s source with one line saying why.
+The child renders one document at a time, so the same module bounds how many distinct
+renders wait for it and stops one whose page went away (“One child for both jobs” in its
+docstring). A document of any size up to the render route’s own read bound renders if it
+finishes in time.
 
 **Fingerprint across chunks.** Every chunked response carries `mtime_hash`; a mismatch
 means the file changed, and the view restarts rather than splicing two versions into a
@@ -322,6 +324,7 @@ this standard. Paths are under `src/metabrowser/`.
 | `KEPT_COMPARISON_CHARS` | `builtin_plugins/github/comparison-prefetch.js` | The document’s memory for the pull-request comparisons its pages read, which outlives every page; the Commits panel keeps its own within `GIT_COMPARISON_CACHE_BYTES` (`settings.py`), so a document holds both |
 | `WINDOW_ROWS`, `DISPLAY_ROWS`, `PULL_ROWS_OVERSCAN` | `builtin_plugins/github/pulls-panel.js` | Pulls rows per cached-page request, read at first, and mounted beyond the viewport |
 | `INERT_RENDER_DEADLINE_MS` | `diff/markdown_projection_worker.py` | One untrusted Markdown document’s render in the server’s Markdown child; past it the child is stopped and the page shows the document’s source |
+| `_MAX_RENDERS` | `diff/markdown_projection_worker.py` | Distinct untrusted Markdown renders in flight at once, the one in the Markdown child among them; past it a render is answered `503` with the code `renderer_busy`, which is not kept |
 | `SUMMARY_ROWS_OVERSCAN` | `builtin_plugins/diff/diff-summary.js` | Diff summary rows mounted on either side of the window’s view of its tree, which has no scroll of its own and no length bound beyond `MAX_MANIFEST_FILES` |
 
 ## References
