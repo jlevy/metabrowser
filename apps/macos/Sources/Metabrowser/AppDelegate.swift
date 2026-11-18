@@ -135,6 +135,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         lookForRuntimeChanges()
         // And where `metab` may have served a folder, which File > Open Recent then lists.
         recentFolders.refresh()
+        // And where a GitHub sign-in may have been fixed: a repository whose start failed on
+        // GitHub starts again, and no other window changes.
+        sessions.openServers.compactMap { $0 as? FolderSession }.forEach { $0.recheckAfterActivation() }
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { true }

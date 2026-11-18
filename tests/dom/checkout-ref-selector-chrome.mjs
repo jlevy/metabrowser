@@ -10,9 +10,10 @@
 //
 //   1. loads the working tree's page and reads its button, its bundle, and its panel:
 //      the Working tree row, the three lists, the checked-out branch's badge;
-//   2. chooses a branch, and reads the revision's page: the button and heading that name
-//      it, the committed file where the working tree's edit was, a tree with no untracked
-//      file, and the document's policy;
+//   2. chooses a branch, while the working tree's page asks for its root's tallies, as its
+//      own refresh of them can, and reads the revision's page: the button and heading that
+//      name it, the committed file where the working tree's edit was, a tree with no
+//      untracked file, and the document's policy;
 //   3. reads each list there, with the served branch marked;
 //   4. switches the server back from outside the page, as another tab would, asks the page
 //      for data, and reads the offer to reload that the selector then makes;
@@ -20,7 +21,8 @@
 //      revision's address, and chooses the Working tree row from a revision again;
 //   6. goes Back onto the revision's address while the working tree is served;
 //   7. browses a revision's page, a file and its history, and reads how every data
-//      request of each page was answered: none of a current page's is refused.
+//      request of each page was answered: none of a current page's is refused, and the
+//      page that switched sent none after it asked.
 //
 // It times each switch from the click to the new document's first tree rows and to its
 // selector being mounted, and the working tree's page from navigation to its selector.
@@ -112,23 +114,110 @@ chrome.on("Network.responseReceived", ({ type, response }) => {
 });
 
 // Every data request a page made, and how it was answered: a page that shows what the
-// server serves is never refused as a page left behind (`pin_changed`, 409).
-/** @type {Array<{url: string, status: number}>} */
-let dataRequests = [];
-chrome.on("Network.responseReceived", ({ response }) => {
-  const url = new URL(response.url);
-  if (url.pathname.startsWith("/api/")) {
-    dataRequests.push({ url: url.pathname, status: response.status });
+// server serves is never refused as a page left behind (`pin_changed`, 409). Each request
+// keeps what says whose it was and when, so a refusal says which page it was: the
+// document that made it, by its loader, and whether that is the one shown now; its method
+// and full address; the commit it named; the first caller outside the fetch wrappers; and
+// when it was sent, in milliseconds from the answer to the last switch.
+/** @type {Map<string, {loader: string, type: string, request: string, pin: string | null, initiator: string | null, at: number}>} */
+const sent = new Map();
+/** @type {Map<string, string>} Each document's address, by its loader. */
+const loaders = new Map();
+/** @type {Array<{requestId: string, status: number}>} */
+let answered = [];
+// The main frame's document now, and when the last switch was asked for and answered,
+// in seconds on the protocol's clock.
+let currentLoader = null;
+let switchAsked = null;
+let switchAnswered = null;
+// Frames of the wrappers every request passes through, which name no caller.
+const WRAPPERS = /\/static\/(perf|source-pin-guard)\.js$/;
+chrome.on("Page.frameNavigated", ({ frame }) => {
+  if (!frame.parentId) {
+    currentLoader = frame.loaderId;
   }
 });
-/** The data requests since the last call, by status, with the addresses of any refused. */
+chrome.on(
+  "Network.requestWillBeSent",
+  ({ requestId, loaderId, request, initiator, timestamp, type }) => {
+    const url = new URL(request.url);
+    if (type === "Document") {
+      loaders.set(loaderId, url.pathname);
+    }
+    if (!url.pathname.startsWith("/api/")) {
+      return;
+    }
+    if (url.pathname === "/api/source/pin") {
+      switchAsked = timestamp;
+    }
+    const frames = [];
+    for (let stack = initiator?.stack; stack; stack = stack.parent) {
+      frames.push(...stack.callFrames);
+    }
+    const caller = frames.find((frame) => !WRAPPERS.test(new URL(frame.url, server.base).pathname));
+    sent.set(requestId, {
+      loader: loaderId,
+      type,
+      request: `${request.method} ${url.pathname}${url.search}`,
+      pin: request.headers["x-metabrowser-pin"] ?? null,
+      initiator: caller
+        ? `${caller.functionName || "(anonymous)"} ${new URL(caller.url, server.base).pathname}:${caller.lineNumber + 1}`
+        : (initiator?.type ?? null),
+      at: timestamp,
+    });
+  },
+);
+chrome.on("Network.responseReceived", ({ requestId, response, timestamp }) => {
+  const url = new URL(response.url);
+  if (url.pathname === "/api/source/pin") {
+    switchAnswered = timestamp;
+  }
+  if (url.pathname.startsWith("/api/")) {
+    answered.push({ requestId, status: response.status });
+  }
+});
+/** @param {number} at */
+const sinceSwitch = (at) =>
+  switchAnswered === null ? null : Math.round((at - switchAnswered) * 1000);
+/** @param {string} requestId What a report says of one request. */
+function described(requestId) {
+  const asked = sent.get(requestId);
+  return {
+    request: asked.request,
+    document: loaders.get(asked.loader) ?? asked.loader,
+    current: asked.loader === currentLoader,
+    pin: asked.pin,
+    initiator: asked.initiator,
+    sentMs: sinceSwitch(asked.at),
+  };
+}
+/** The data requests answered since the last call, and what each refused one was. */
 function takeDataRequests() {
-  const taken = dataRequests;
-  dataRequests = [];
+  const taken = answered;
+  answered = [];
   return {
     asked: taken.length,
-    refused: taken.filter((entry) => entry.status === 409).map((entry) => entry.url),
+    refused: taken
+      .filter((entry) => entry.status === 409)
+      .map((entry) => described(entry.requestId)),
   };
+}
+/**
+ * The page's own data requests that the document *leaving* sent after it asked the server
+ * to switch, at *since*: none, since they wait for the answer and then go with the page.
+ *
+ * @param {string} leaving @param {number} since
+ */
+function leftBehind(leaving, since) {
+  return [...sent.entries()]
+    .filter(
+      ([, asked]) =>
+        asked.loader === leaving &&
+        asked.type === "Fetch" &&
+        asked.at > since &&
+        !asked.request.includes(" /api/source/"),
+    )
+    .map(([requestId]) => described(requestId));
 }
 
 let shot = 0;
@@ -244,11 +333,29 @@ async function closePanel() {
   );
 }
 
-/** Click what *pick* finds in the open panel, and time the document that comes back. */
-async function switchBy(pick) {
+// How often a page asks for its root's tallies while it switches, in milliseconds: often
+// enough that some fall after the server has switched and before the page has gone.
+// Measured 2026-11-18 in headless Chrome 152 on a 10-core Mac at a load average of 90,
+// before the page held them: two a run were refused, sent 2 to 14 ms after the switch's
+// answer, in each of three runs.
+const ASK_EVERY_MS = 10;
+
+/**
+ * Click what *pick* finds in the open panel, and time the document that comes back.
+ *
+ * With *askMeanwhile*, the page asks for its root's tallies every ASK_EVERY_MS from the
+ * click until it goes, as its own refresh of them can: that refresh waits half a second
+ * after the first rows (fetchRootSummary in app.js), and on CI a switch made that long
+ * after the page loaded was refused it (mb-bio7). A page that asked to switch away sends
+ * none of these.
+ */
+async function switchBy(pick, askMeanwhile = false) {
   await chrome.evaluate("window.__left = true; true");
   const clicked = Date.now();
-  await chrome.evaluate(`(${pick}).click(); true`);
+  const asking = askMeanwhile
+    ? `setInterval(() => void fetch("/api/tree?depth=0").catch(() => {}), ${ASK_EVERY_MS});`
+    : "";
+  await chrome.evaluate(`(${pick}).click(); ${asking} true`);
   await chrome.waitFor(`!window.__left && ${ROWS}.length > 0`);
   const rows = Date.now() - clicked;
   await chrome.waitFor(`${MOUNTED}`);
@@ -301,6 +408,8 @@ const result = {};
 try {
   await chrome.send("Page.enable");
   await chrome.send("Network.enable");
+  // So a request's initiator carries its script's stack, and names its caller.
+  await chrome.send("Runtime.enable");
   await chrome.send("Page.addScriptToEvaluateOnNewDocument", { source: LAYOUT_PROBE });
 
   // 1. The working tree's page.
@@ -326,7 +435,9 @@ try {
 
   // 2. A branch: the revision's page.
   result.workingTreeBrowsing = takeDataRequests();
-  result.toBranch = await switchBy(rowNamed("feature"));
+  const leaving = currentLoader;
+  result.toBranch = await switchBy(rowNamed("feature"), true);
+  const switched = switchAsked;
   result.branch = await chrome.evaluate(PAGE);
   result.branchLayout = await chrome.evaluate(LAYOUT);
   await capture("revision");
@@ -336,6 +447,7 @@ try {
   await capture("revision-panel");
   await closePanel();
   result.revisionRequests = takeDataRequests();
+  result.leftBehind = leftBehind(leaving, switched);
 
   // 4. Another tab switches the server back; this page is told when it next asks.
   result.switchedOutside = await chrome.evaluate(`fetch("/api/source/pin", {

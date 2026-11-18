@@ -3415,6 +3415,11 @@ key ([Scopes and Collisions](#scopes-and-collisions)). A reserved letter passed 
 
 ## Icons and Icon Buttons
 
+The [Icon Catalog](design-system-icons.md) lists every icon the product draws, by what
+it stands for, with its meaning, the one place it is defined, its ink, and its size, and
+says how to choose between similar ones; `tests/test_icon_catalog.py` holds it to the
+code.
+
 Icons come from one Lucide-derived set in `static/icons.js`, rendered as inline SVG that
 inherits `currentColor`. An icon never carries its own color.
 A plugin’s own domain marks, which no other surface draws, are Lucide-derived the same

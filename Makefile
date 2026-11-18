@@ -20,6 +20,9 @@ UV_RUN := $(UV) run --frozen
 FLOWMARK_VERSION := 0.3.2
 FLOWMARK_EXCEPTION := 2026-07-16T00:00:00Z
 FLOWMARK := $(UVX) --exclude-newer-package 'flowmark-rs=$(FLOWMARK_EXCEPTION)' flowmark-rs@$(FLOWMARK_VERSION)
+# The lint targets fail a branch that adds an entry to CHANGELOG.md's Unreleased section
+# since its merge base with this ref; entries go in changelog.d/ (devtools/changelog.py).
+CHANGELOG_BASE ?= origin/main
 
 # Some managed agent environments export pnpm-style npm variables that npm 11
 # treats as unknown configuration. Repository policy lives in .npmrc, so prevent
@@ -64,6 +67,7 @@ lint:
 	$(UV_RUN) python -m devtools.check_artifact_contracts
 	$(UV_RUN) python -m devtools.check_parity
 	$(UV_RUN) python -m devtools.check_goldens
+	$(UV_RUN) python -m devtools.changelog check --against $(CHANGELOG_BASE)
 
 format:
 	$(MAKE) format-markdown
@@ -93,6 +97,7 @@ lint-check:
 	$(UV_RUN) python -m devtools.check_artifact_contracts
 	$(UV_RUN) python -m devtools.check_parity
 	$(UV_RUN) python -m devtools.check_goldens
+	$(UV_RUN) python -m devtools.changelog check --against $(CHANGELOG_BASE)
 	$(UV_RUN) python -m devtools.check_startup_scripts
 	$(FLOWMARK) --auto --check .
 
