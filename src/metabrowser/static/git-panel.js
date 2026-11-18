@@ -269,7 +269,7 @@
 
   /** @returns {string} */
   function copyIcon() {
-    return sdk()?.icons?.copy || "⧉";
+    return sdk()?.icons?.copy ?? "";
   }
 
   function perf() {
