@@ -44,8 +44,10 @@ import Testing
     }
 
     /// mb-sugi: validation finds a build whose number meets the minimum too old only for
-    /// rejecting `--exit-on-eof`, so that is what the screens say about it.
+    /// rejecting one of its flags, and a build without any of them predates the newest,
+    /// `--recent`, so that is what the screens say about it.
     @Test func aTooOldBuildThatMeetsTheNumberLacksTheFlag() {
+        #expect(MetabRequirement.requiredFlags == ["--exit-on-eof", "--present", "--recent"])
         #expect(MetabRequirement.flagShortfall("0.12.1.dev38+5f0c2a1 (+38 commits, 5f0c2a1)")
             == "built before --recent")
         #expect(MetabRequirement.flagShortfall("0.13.0") == "built before --recent")

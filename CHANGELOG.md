@@ -144,6 +144,27 @@ All notable changes to Metabrowser are documented here.
 - `metab COMMIT_URL` opens at the commit’s page, `/commit/<full id>`, instead of the
   tree at that commit.
 
+- The macOS app opens GitHub links: a repository, a pull request, a commit, or a file or
+  folder at a ref, sent with `metab URL --present` or `open -b`. Before, the app took
+  such a link and did nothing.
+  `metab URL --present --dry-run --format json` resolves each link, one at a time, and
+  the app opens the repository’s mirror in its one window, cloning the repository or
+  reusing its cache as `metab URL` does; a link `metab` refuses shows `metab`’s message,
+  and what a burst of links could not open is said in one alert.
+  A link to a repository the cache does not hold asks first, with Cancel as the default,
+  while other links go on opening; one into a repository with a window starts its server
+  again on the link, so the window shows the revision the link names, and the app says
+  when GitHub has nothing the link names.
+  Servers start on the canonical link `metab` hands back, never on the link as sent, so
+  a token in a link reaches no server.
+  A first clone is no longer stopped 60 seconds after its server started: the app waits
+  as long as the clone reports progress, up to `metab`’s own bound on a clone, and
+  folders opened meanwhile start at once.
+  The app now requires a `metab` with `--present`, which setup checks, and its
+  `Info.plist` declares `MetabrowserOpensURLs`, which `--present` reads before it sends
+  anything. A repository’s window does not come back with the last session.
+  See [the app’s guide](docs/macos-app.md#opening-github-links).
+
 - The Treemap tab shows File Overview’s file-type legend under its bars.
   Pointing at an entry highlights every cell of that family, its segments in the bars,
   and the entry; pointing at a cell or a segment highlights it and its family’s entry.

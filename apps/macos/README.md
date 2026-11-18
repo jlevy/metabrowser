@@ -4,8 +4,8 @@
 [The installation guide](../../docs/installation.md) says what is released.
 
 This folder is the native macOS app: an AppKit and `WKWebView` shell that finds a
-command-line install of `metab` and runs one server per folder it opens.
-This README is for building, testing, and releasing it.
+command-line install of `metab` and runs one server per folder or GitHub repository it
+opens. This README is for building, testing, and releasing it.
 [Using the app](../../docs/macos-app.md) is the user guide, and
 [the app’s architecture](../../docs/project/architecture/arch-macos-app.md) describes
 how it works.

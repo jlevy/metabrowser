@@ -48,9 +48,9 @@ import Testing
         #expect(guide(uv: bin + "/uv").heading == "Metabrowser needs the metab command-line tool")
     }
 
-    /// mb-sugi: a development build of the minimum from before `--exit-on-eof`, or before
-    /// `--recent`, meets the number, so the steps name the newest flag such a build lacks
-    /// rather than compare the numbers.
+    /// mb-sugi: a development build of the minimum from before `--exit-on-eof`,
+    /// `--present`, or `--recent` meets the number, so the steps name the newest flag such
+    /// a build lacks rather than compare the numbers.
     @Test func aBuildFromBeforeTheServeFlagIsNamedForTheFlag() {
         let version = "0.12.1.dev38+5f0c2a1 (+38 commits, 5f0c2a1)"
         let old = CandidateOutcome(path: bin + "/metab", source: .localBin, result: .tooOld(version: version))

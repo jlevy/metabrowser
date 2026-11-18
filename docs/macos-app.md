@@ -8,7 +8,8 @@ The app is a native shell over `metab`. Everything inside a window is the page `
 serves, the same page a browser shows.
 What the app adds is what a browser tab cannot give:
 
-- a window per folder, each with its own server, which the app starts and stops;
+- a window per folder or GitHub repository, each with its own server, which the app
+  starts and stops;
 - a Dock icon, and folders opened from Finder with Open With or dropped on the icon;
 - native menus, tabs across folders, recent items, and the last session restored.
 
@@ -72,6 +73,57 @@ has the report, its codes, and `--dry-run`, which checks a target without sendin
   `lookup_failed` or `open_failed`, with its own exit status, rather than that no app is
   installed.
 
+## Opening GitHub Links
+
+The app opens the GitHub links `metab URL` opens in a browser: a repository, a pull
+request and its tabs, a commit, and a file or folder at a branch, tag, or commit.
+`metab URL --present` sends one to the app, and so does
+`open -b io.github.jlevy.metabrowser URL` (`io.github.jlevy.metabrowser.dev` for a
+development build). `metab` reads each link first, and the app shows what `metab` makes
+of it.
+
+- **Always the mirror:** a link opens Metabrowser’s own copy of the repository, its
+  mirror in `metab`’s cache, never a checkout of it that you have open
+  ([Open Modes](project/architecture/arch-open-modes.md)).
+- **Asked once before a clone:** a link to a repository the cache does not hold yet asks
+  first, naming the repository: opening it clones the repository into the cache and
+  reads it, and its pull requests, with your `gh` sign-in.
+  Cancel is the default button.
+  Other links go on opening while the question waits, and more links into the same
+  repository wait for your one answer, which opens the newest.
+  After Cancel, links into that repository sent in the same burst are not opened, and
+  the app says how many; a link sent later asks again.
+  A repository the cache holds opens without asking.
+- **One window per repository:** a link into a repository that has a window brings that
+  window forward, on the branch, commit, or pull request the link names and at its page.
+  Its server starts again on the link, which takes a few seconds, its other tabs reload
+  on that revision, and what pages kept in local storage starts fresh, since the server
+  comes back on a new port.
+  A start under way, such as a first clone or a File > Restart Server, finishes first,
+  and sending the same link again meanwhile starts nothing more: the window still comes
+  to the link’s page once that start ends.
+  Without a window, a new one opens, and its server clones the repository, or uses the
+  clone the cache has.
+- **A branch or commit the copy lacks:** a link to a branch, tag, or commit pushed since
+  the copy was last fetched opens the default branch while `metab` fetches it, then goes
+  to the link’s page. If GitHub does not have it either, or the fetch fails, the windows
+  stay on the default branch and the app says so.
+- **A first clone** of a large repository can take minutes.
+  The window says it is starting meanwhile, and File > Reveal Server Log shows the
+  clone’s progress. The app waits for as long as the clone keeps reporting progress, up
+  to `metab`’s own bound on a clone, and gives up on one that stops; the window then
+  offers Retry. Folders you open meanwhile start at once; another repository waits for
+  the clone, and its window says so.
+- **A link `metab` refuses**, such as an issues page, shows `metab`’s message, which
+  says what to do. A private repository that your `gh` sign-in cannot read opens a window
+  whose server fails, with its message and Retry.
+  A link to another site, an `http` link, and a link with a user name, a password, or a
+  port other than 443 show the app’s own message.
+- **Many links at once** are read one at a time, a link sent again while it waits opens
+  once, and what could not be opened is said in one message at the end, never over
+  another message or question.
+- **Not restored:** a repository’s window does not come back with the last session.
+
 ## Windows and Tabs
 
 - **Titles:** each window is titled with its folder’s short name, or its full name while
@@ -101,17 +153,19 @@ The mark at the title bar’s trailing end opens the project on GitHub.
 ## Recent Items
 
 File > Open Recent and the Dock icon’s menu list what you opened lately, most recent
-first: the folders you opened in the app, in either build of it, and the folders `metab`
-served in Terminal. It is `metab`’s own list of
-[recent targets](command-line.md#recent-targets), so `metab --recent` shows the same
-entries, and a folder stays in it however many others you open, up to the list’s length.
+first: the folders and GitHub repositories you opened in the app, in either build of it,
+and those `metab` served in Terminal.
+It is `metab`’s own list of [recent targets](command-line.md#recent-targets), so
+`metab --recent` shows the same entries, and a folder stays in it however many others
+you open, up to the list’s length.
 
 - **A file** adds the folder it opened in.
+- **A GitHub link** adds its repository, which reopens on its default branch.
 - **A folder that is gone** stays listed, since the app never looks at a listed folder
   until you choose it; choosing it says the folder is gone, and removes it.
 - **Clear Menu** empties the list, for `metab` too.
-- **Only an open changes the order:** File > Open…, Open Recent, a drop, Open With, or
-  `metab` in Terminal.
+- **Only an open changes the order:** File > Open…, Open Recent, a drop, Open With, a
+  GitHub link, or `metab` in Terminal.
   The windows the app brings back at launch, and a server it restarts, leave the list as
   it was.
 - **The Dock icon’s menu** lists the same items while the app is running, as the app
@@ -155,8 +209,8 @@ miss `metab`, `git`, or `gh`, and it runs your shell’s startup files in the ap
 which can take seconds.
 
 - **The version:** the app runs `metab` 0.12.1 or later, and checks each candidate by
-  running `metab --exit-on-eof --recent --version`. A build from before either flag is
-  too old whatever its number says.
+  running `metab --exit-on-eof --present --recent --version`. A build from before any of
+  those flags is too old whatever its number says.
 - **Trust:** the app runs a `metab` it found only if no other account can change it.
   A standard Homebrew prefix, writable by the `admin` group, fails that rule; Settings
   names each file it would not run, and why.
@@ -219,11 +273,16 @@ The app moves nothing itself.
   cache and configuration locations.
   A `metab` in Terminal that one of those variables points elsewhere keeps recent
   targets of its own, which File > Open Recent does not show.
+- A repository that another `metab`, in Terminal say, is cloning at the same moment does
+  not open until that clone ends: the window’s start is given up on meanwhile, and Retry
+  then opens it from the cache.
+  A repository opened while another repository’s first clone runs starts once that clone
+  ends, and so do a link into a repository that is already open and File > Restart
+  Server in one of its windows: its other tabs keep working meanwhile, and the window
+  the link brought forward, or the one you chose Restart Server in, says it waits.
 - A folder opens as the folder named, even inside a Git repository, and the File menu
   opens no URL. Opening the repository’s root instead and File > Open URL… are planned
-  in [Open Modes](project/architecture/arch-open-modes.md#the-file-menu), and so is an
-  Open Recent that also lists the repositories `metab` opened by URL, which
-  `metab --recent` already lists.
+  in [Open Modes](project/architecture/arch-open-modes.md#the-file-menu).
 - There is no updater and no URL scheme, and an agent can hand the app a target with
   [`--present`](#opening-from-a-terminal-or-an-agent) but cannot yet learn which window
   shows it or move a page that is already open; the

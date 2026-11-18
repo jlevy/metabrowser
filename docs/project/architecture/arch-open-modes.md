@@ -389,7 +389,6 @@ finished.
 Three records name what is open.
 Each keys on the mode and the root, never on the view and never on the path the reader
 named.
-The second is not on `main` yet ([Implementation Status](#implementation-status)).
 
 | Record | Key | Holds |
 | --- | --- | --- |
@@ -417,8 +416,8 @@ The second is not on `main` yet ([Implementation Status](#implementation-status)
 
 **Partly built.** Today the menu has Open…, for folders and files, and an Open Recent
 that lists the recent targets `metab` keeps
-([Recent Targets](arch-recent-targets.md#the-macos-app)): folders, and a repository
-opened by URL once the app opens links
+([Recent Targets](arch-recent-targets.md#the-macos-app)): folders, and repositories
+opened by URL, a GitHub link sent to the app among them
 ([#539](https://github.com/jlevy/metabrowser/pull/539)).
 
 - **Open Folder…** opens a folder or a file in folder mode, resolved as
@@ -535,7 +534,7 @@ A pull request that builds a part updates its row.
 | History only at a repository’s root | Built; stays as the gate for a folder served exactly | [The Exact-Root Gate](arch-git.md#discovery-and-the-exact-root-gate) |
 | The resolver: a path to its repository’s root, the guards, `--exact-root`, and the root in the `Serving` line | Not built | `mb-2wfk` |
 | `metab TARGET --present`, whose dry run answers a resolution | Partly built: `--present` and its dry run, on the path named; answering a resolution waits on the resolver | [#540](https://github.com/jlevy/metabrowser/pull/540), `mb-d9tu`; `mb-2wfk` |
-| GitHub links opened in the app, and `SessionRoot` | Not built | [#539](https://github.com/jlevy/metabrowser/pull/539), `mb-87j0` |
+| GitHub links opened in the app, and `SessionRoot` | Built | [#539](https://github.com/jlevy/metabrowser/pull/539), `mb-87j0` |
 | A repository folder’s revision views, its chooser, and their command line, with the two revision requirements above | Not built | [#559](https://github.com/jlevy/metabrowser/pull/559), `mb-8ob8` |
 | Pulls and the toggle on a folder’s revision; View on branch and Browse code to the head as a revision | Not built | Follows `mb-8ob8` |
 | Recent targets kept by `metab`, behind File > Open Recent | Built; a mirror’s `target` waits for `ProviderUrlReducer.web_url` (`mb-8bds`), and the resolved root for the resolver | [Recent Targets](arch-recent-targets.md), `mb-40k4` |

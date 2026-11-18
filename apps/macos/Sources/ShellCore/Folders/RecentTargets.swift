@@ -54,20 +54,21 @@ public nonisolated struct RecentTarget: Codable, Equatable, Sendable {
     }
 
     /// What it is called before any server answers, as `FolderIdentity` names a window
-    /// then: a folder by its name and its path with `~`, and a repository by its name and
-    /// its address without the scheme, as `metab` abbreviates an origin.
+    /// then: a folder by its name and its path with `~` (`FolderIdentity.localFolder`), and
+    /// a repository by its name and its address without the scheme, as `metab` abbreviates
+    /// an origin (`FolderIdentity.repository`). A root that is no URL at all, which no row
+    /// shows (`url`), is named by itself.
     public func identity(home: String = FileChecks.canonicalPath(NSHomeDirectory())) -> FolderIdentity {
         switch mode {
         case .folder:
             return .localFolder(URL(filePath: root, directoryHint: .isDirectory), home: home)
         case .mirror:
-            let parts = URL(string: root)
-            let path = (parts?.path(percentEncoded: false) ?? root).split(separator: "/").map(String.init)
-            let name = path.last ?? root
-            let fullName = ([parts?.host() ?? ""] + path).filter { !$0.isEmpty }.joined(separator: "/")
-            return FolderIdentity(
-                shortName: name, fullName: fullName.isEmpty ? root : fullName, kind: .mirror,
-                kindLabel: "Cached mirror", title: FolderIdentity.title(for: name))
+            guard let url = URL(string: root) else {
+                return FolderIdentity(
+                    shortName: root, fullName: root, kind: .mirror, kindLabel: "Cached mirror",
+                    title: FolderIdentity.title(for: root))
+            }
+            return .repository(url)
         }
     }
 }

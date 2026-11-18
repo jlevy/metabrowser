@@ -174,6 +174,8 @@ The app writes nothing itself.
 | `metab URL` | `mirror`, the source’s address | The same, once the source is acquired and its pin resolved |
 | The macOS app opening a folder | `folder` | The server the app starts is `metab FOLDER`, so the line above does it |
 | The app showing a folder that is already open, because the user opened it again | `folder` | `metab FOLDER --recent-add`, because no server starts |
+| The macOS app opening a GitHub link into a repository without a window | `mirror` | The server the app starts is `metab HANDOFF`, the canonical link `metab` handed back, so the `metab URL` line does it |
+| The app sent a GitHub link into a repository that has a window | `mirror` | `metab URL --recent-add` with the repository’s canonical address, because the server it starts again on the link is a restart, which records nothing |
 | The app restoring its last session, Command-R in a window still waiting, Retry, Restart Server, or an upgrade’s restart | Nothing | None of them is an open, so the app starts each such server with `METABROWSER_RECORD_RECENT=0` (`FolderServer`) |
 | `metab --remote HOST --path DIR` | Nothing, on either host | The near side serves nothing, and the far server is started with `METABROWSER_RECORD_RECENT=0` (`cli/remote.py`): that account did not open the folder to read it there |
 
