@@ -674,10 +674,13 @@ each `metab` it might run for the flags it needs
 ([Choosing a metab](macos-app.md#choosing-a-metab)).
 
 In an agent’s sandbox, LaunchServices may not answer, or may refuse what `open` asks,
-and `--present` reports `lookup_failed` or `open_failed`. Run it outside the sandbox:
+and `--present` reports `lookup_failed` or `open_failed`. Run it again outside the
+sandbox with `--open-in app`, as `metab --present ROOT --open-in app`: under `auto`, the
+command outside looks the app up again, and when no app takes the target it starts a
+server there.
 [Working with agents](working-with-agents.md#let-an-agent-reach-the-app-from-a-sandbox)
 has the Claude Code and Codex settings, which match a command by its first words, so
-write it as `metab --present ROOT`, and says when such a setting is safe.
+write `metab --present` first, and says when such a setting is safe.
 Such a setting also lets `--present` start a server outside the sandbox for any path the
 agent names, unless `present_browser` is false
 ([Turning Browser Delivery Off](#turning-browser-delivery-off)).
@@ -736,9 +739,13 @@ config:
 `present_browser: false` in the `config` mapping of `config.yml` keeps `--present` from
 starting a server for a browser: it opens a target in the app or nowhere, whatever
 `open_in` says and wherever it was read.
-No flag or variable turns it back on, so it holds for a command an agent runs outside
-its sandbox through a rule for `metab --present`
+No option of the command turns it back on, and `--present` refuses `--config-dir`, so it
+holds for a command an agent runs outside its sandbox through a rule for
+`metab --present`
 ([Working with agents](working-with-agents.md#let-an-agent-reach-the-app-from-a-sandbox)).
+The configuration directory is still the environment’s to choose
+([Storage Locations](#storage-locations)): `METABROWSER_CONFIG_DIR`, `XDG_CONFIG_HOME`,
+and `HOME` name it, and a directory without `config.yml` allows a browser.
 Unset, or `true`, a browser may be used.
 `--present` reads it only when it would start a server, and a `config.yml` it cannot
 read then is an `Error:` line, so a broken file starts nothing; a target for the app is
@@ -838,11 +845,12 @@ defaults and environment.
 | Cache: mirrors and pull-request records | `~/.cache/metabrowser` | `--cache-dir DIR` | `METABROWSER_CACHE_DIR` |
 | Configuration: `config.yml` | `~/.config/metabrowser` | `--config-dir DIR` | `METABROWSER_CONFIG_DIR` |
 
-A flag takes precedence over its variable.
-Without either, `XDG_CACHE_HOME` and `XDG_CONFIG_HOME` choose the base directories, with
-`/metabrowser` appended.
-A variable must be a nonempty absolute path with no `..`; a flag may be relative to the
-current directory. The two directories may not overlap.
+A flag takes precedence over its variable, and `--present` refuses `--config-dir`
+([Turning Browser Delivery Off](#turning-browser-delivery-off)). Without either,
+`XDG_CACHE_HOME` and `XDG_CONFIG_HOME` choose the base directories, with `/metabrowser`
+appended. A variable must be a nonempty absolute path with no `..`; a flag may be
+relative to the current directory.
+The two directories may not overlap.
 
 Serving a folder creates no cache and no `config.yml`; it creates the configuration
 directory, owner-only, for the one file it writes there, the recent targets.

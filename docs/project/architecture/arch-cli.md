@@ -209,10 +209,13 @@ imports the serve mode’s modules before a mode is chosen.
    different roots apart, and binding before printing (`mb-afxa`) would close the race
    for every reader of the line.
    Before it starts anything, `allow_browser` reads `present_browser` from `config.yml`
-   (`open_in.py` `browser_delivery_allowed`), which no flag or variable overrides, and
-   turns a decision for a browser into `browser_off` when it is false.
-   The server opens the browser itself once its page answers, as serve mode always does.
-   Nothing records the server: the report’s `pid` is how to stop it.
+   (`open_in.py` `browser_delivery_allowed`), and turns a decision for a browser into
+   `browser_off` when it is false.
+   No option of the command overrides it, and `cli/main.py` refuses `--config-dir` with
+   `--present`; the configuration directory is the environment’s
+   (`METABROWSER_CONFIG_DIR`, `XDG_CONFIG_HOME`, `HOME`), and one without `config.yml`
+   allows a browser. The server opens the browser itself once its page answers, as serve
+   mode always does. Nothing records the server: the report’s `pid` is how to stop it.
    Tests start no real server unless they say so: an autouse fixture in
    `tests/conftest.py` points `server_command` at a program that exits 1.
 7. **Report.** A `key: value` report, or with `--format json` one object with the

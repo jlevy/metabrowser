@@ -174,14 +174,22 @@ also lists:
 `metab` from LaunchServices, which is how it reaches the app.
 Do not run `open` on the app yourself instead: `--present` checks that the bundle is the
 installed Metabrowser app before it sends anything.
-Rerun the same command outside the sandbox where your harness lets the user approve
-that, or serve instead.
+Where your harness lets the user approve it, rerun the same command outside the sandbox
+with `--open-in app` added, or serve instead:
+
+```shell
+<invocation> --present <target> --open-in app --format json
+```
+
+Every rerun outside the sandbox carries `--open-in app`, whatever the first report said.
+Without it, the rerun looks the app up again under the user’s preference, and under the
+default `auto`, when no app takes the target, it starts a `metab` server that would run
+outside the sandbox, serve any path, and outlive the session.
+With it, a target no app takes ends with status 4 and starts nothing.
 Never rerun a delivery to a browser outside the sandbox, nor ask the user to approve
 one: a command with `--open-in browser`, or one whose report says
 `"delivered_to": "browser"` or a `server_started`, `server_starting`, or `server_failed`
-code, starts a `metab` server that would run outside the sandbox, serve any path, and
-outlive the session.
-Serve that page yourself inside the sandbox instead ([Serve It](#serve-it)).
+code. Serve those pages yourself inside the sandbox instead ([Serve It](#serve-it)).
 
 A rule can let the command run outside the sandbox every time.
 It is the user’s to add, and it matches the command as typed, so a `metab` run by its
@@ -209,18 +217,20 @@ whatever follows `metab --present`: under `--open-in browser`, or under the defa
 `auto` when no app takes the target, the command starts a `metab` server outside the
 sandbox for any path, which serves it on a loopback address and keeps running after the
 session ends. With any rule, tell the user to set `present_browser: false` in
-`config.yml`, which keeps `--present` to the app whatever the command says
+`config.yml`, which keeps `--present` to the app whatever its options say
 ([Turning Browser Delivery Off](https://github.com/jlevy/metabrowser/blob/main/docs/command-line.md#turning-browser-delivery-off)).
-Suggest a rule only for a `metab` installed outside every folder you can write, its code
-included, such as one `uv tool install` made, which keeps the command in `~/.local/bin`
-and its code under `~/.local/share/uv/tools`. Never suggest one for a `metab` in a
-folder you can write: a source checkout’s `.venv/bin/metab` runs the checkout’s own
-code, so in a checkout you work in, a rule naming it runs code you can change,
-unsandboxed.
-For a source build, the rule, and the app’s Settings > Choose metab…, name a
-separate checkout you never work in.
-Otherwise, rerun with the user’s approval each time, or serve the page.
-The
+`METABROWSER_CONFIG_DIR`, `XDG_CONFIG_HOME`, and `HOME` choose the folder that holds
+`config.yml`, and one without it allows a browser, so never set them for a `--present`
+command. Suggest a rule only for a `metab` installed outside every folder you can write,
+its code included, such as one `uv tool install` made, which keeps the command in
+`~/.local/bin` and its code under `~/.local/share/uv/tools`. Never suggest one for a
+`metab` in a folder you can write: a source checkout’s `.venv/bin/metab` runs the
+checkout’s own code, so in a checkout you work in, a rule naming it runs code you can
+change, unsandboxed.
+For a source build, the rule, and the app’s Settings > Choose metab…, name a separate
+checkout you never work in.
+Otherwise, rerun with `--open-in app` and the user’s approval each time, or serve the
+page. The
 [guide](https://github.com/jlevy/metabrowser/blob/main/docs/working-with-agents.md#let-an-agent-reach-the-app-from-a-sandbox)
 explains each setting.
 

@@ -260,8 +260,14 @@ def test_both_readers_refuse_a_browser_switch_that_is_not_a_boolean(value: str) 
 
 
 @posix_only
-def test_no_flag_or_variable_turns_a_browser_back_on(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The switch is read from config.yml alone, so the command it limits cannot undo it."""
+def test_the_open_in_flag_and_variable_do_not_turn_a_browser_back_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The switch is read from ``config.yml`` alone: ``--open-in`` and its variable choose
+    where a target goes, and do not undo it. Which ``config.yml`` is read is the
+    configuration directory's to say, which ``METABROWSER_CONFIG_DIR``, ``XDG_CONFIG_HOME``,
+    and ``HOME`` choose; ``--present`` refuses ``--config-dir``
+    (``tests/golden/cli-present.tryscript.md``)."""
 
     home = _write(_HEADER + _SETTINGS + "  present_browser: false\n  open_in: browser\n")
     monkeypatch.setenv(OPEN_IN_ENV, "browser")

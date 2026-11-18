@@ -110,7 +110,10 @@ server runs until the agent stops it or you ask it to.
 The command then reports `lookup_failed` or `open_failed`, with the status the
 [exit-status table](command-line.md#exit-status) gives a target LaunchServices did not
 take, and the skill has the agent rerun the command outside the sandbox when you allow
-that, or serve the page instead.
+that, with `--open-in app` added, or serve the page instead.
+Without `--open-in app`, a rerun under the default `auto` looks the app up again, and
+when no app takes the target it starts a `metab` server outside the sandbox; with it,
+the rerun hands the app the target or sends nothing.
 The skill never reruns a delivery to a browser outside the sandbox: it serves that page
 inside the sandbox instead.
 A rule can let the one command prefix, `metab --present`, run outside the sandbox every
@@ -126,10 +129,11 @@ pipe, so that such a rule matches it and nothing else.
 > No `open_in` setting prevents it, since `--open-in` overrides them.
 > **Set `present_browser: false`** in `config.yml`
 > ([Turning Browser Delivery Off](command-line.md#turning-browser-delivery-off)) with
-> any rule: `--present` then hands the app a target or nothing, and no flag or variable
-> undoes it. It holds while the agent cannot also write `config.yml` or choose the
-> configuration directory (`METABROWSER_CONFIG_DIR`, `XDG_CONFIG_HOME`) for that
-> command.
+> any rule: `--present` then hands the app a target or nothing, and no option of the
+> command undoes it. It holds while the agent cannot also write `config.yml` or choose
+> the configuration directory for that command: `METABROWSER_CONFIG_DIR`,
+> `XDG_CONFIG_HOME`, and `HOME` choose it, and a directory without `config.yml` allows a
+> browser.
 > 
 > Add a rule only for a `metab` installed outside every folder the agent can write, its
 > code included, such as one that `uv tool install` made: the command in `~/.local/bin`,
@@ -139,7 +143,8 @@ pipe, so that such a rule matches it and nothing else.
 > sandbox and then run it outside, with no prompt under an allow rule.
 > To use a source build, point the rule, and the app’s Settings > Choose metab…, at a
 > separate checkout the agent never works in; the app’s servers run that `metab` too.
-> Otherwise add no rule, and approve each run when the agent asks.
+> Otherwise add no rule, and approve each run when the agent asks: the skill adds
+> `--open-in app` to each, so a run you approve hands the app a target or sends nothing.
 
 - **Claude Code:** the sandbox is off by default.
   When it is on, it blocks the Apple Events and Launch Services requests `open` makes,

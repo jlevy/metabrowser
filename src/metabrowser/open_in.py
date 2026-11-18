@@ -35,8 +35,11 @@ environment are read first, so either one still chooses while the file is broken
 (:func:`browser_delivery_allowed`) keeps ``--present`` from starting a server for a
 browser, whatever ``open_in`` says. It is read from the file alone, never from a flag or
 the environment, because the command it limits may be one an agent runs outside its
-sandbox through an exemption for the ``metab --present`` prefix, and no flag or variable
-that command carries can turn it back on. It is read before a server would start, so a
+sandbox through an exemption for the ``metab --present`` prefix, whose options are the
+agent's to write; ``--present`` refuses ``--config-dir`` for the same reason. The
+environment still chooses the configuration directory (``METABROWSER_CONFIG_DIR``,
+``XDG_CONFIG_HOME``, ``HOME``; :func:`metabrowser.home.configuration_directory`), and one
+without ``config.yml`` allows a browser. It is read before a server would start, so a
 ``config.yml`` that cannot be read then starts none.
 """
 

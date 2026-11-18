@@ -248,10 +248,13 @@ All notable changes to Metabrowser are documented here.
   the page once it answers and runs until `kill` stops it.
   Its codes are `server_started` and `server_starting` (status 0) and `server_failed`
   (status 1); under `auto` the report’s `fallback` says why no app took the target.
-  `present_browser: false` in `config.yml`, which no flag or variable overrides, turns
-  browser delivery off: `--present` then opens a target in the app or nowhere, with
-  `browser_off` and status 4. Set it with any sandbox rule for `metab --present`, which
-  otherwise lets an agent start a server outside the sandbox for any path.
+  `present_browser: false` in `config.yml` turns browser delivery off: `--present` then
+  opens a target in the app or nowhere, with `browser_off` and status 4. No option of
+  the command overrides it, and `--present` refuses `--config-dir`; the environment
+  still chooses the configuration directory (`METABROWSER_CONFIG_DIR`,
+  `XDG_CONFIG_HOME`, `HOME`), and one without `config.yml` allows a browser.
+  Set it with any sandbox rule for `metab --present`, which otherwise lets an agent
+  start a server outside the sandbox for any path.
   Every `--present` report gains `open_in`, `open_in_source`, `url`, `pid`, `log`, and
   `fallback`, and `--present --dry-run` adds a `decision`: where the target would go and
   why, looking the app up but sending nothing and starting nothing; its status still
