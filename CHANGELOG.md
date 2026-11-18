@@ -4,6 +4,18 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A page that opens at a file deep in a long folder, one the page could not draw with
+  its first rows, now scrolls the file’s row into the Files tab once its folders have
+  opened. Before, the row was scrolled while its folder was still opening, within the
+  folder rather than the tab, and once the folder was open it lay far below the tab,
+  which had stayed at its top: the 906th file of a 1,000-file folder sat 7,433 px down.
+
+- A pull request revealed in the Pulls tab before its stacks are read stays in view
+  under its stack when they arrive while the reader is on another tab, or just after the
+  tab’s button brings the list back.
+  Before, the list came back where the pull request had stood in the flat list, with the
+  pull request regrouped far above it.
+
 - A Pulls row now leads with its title, right after the state icon, on its first line,
   and puts the stack position, number, author, and age on the second; its author’s
   avatar is a little smaller.
