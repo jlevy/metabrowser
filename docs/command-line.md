@@ -471,8 +471,8 @@ $ metab https://github.com/owner/repo/pull/123/files --present --dry-run --forma
   the repository’s mirror can know it, which the app reads as the entry page of the
   server it starts; that server resolves the URL and opens the right address.
   For a GitHub `tree` or `blob` URL, `page` is known when the URL leaves one reading: a
-  branch alone, a branch and a file name, or a ref spelled `HEAD`, `refs/heads/…`, or
-  `refs/tags/…` before the same.
+  branch alone or a branch and a file name, either one after `refs/heads/` or
+  `refs/tags/` too, or `HEAD` and any path.
   Otherwise the branch might hold `/`, and `page` is null.
   A commit’s page is `/commit/<id>` for a full ID and null for an abbreviated one, which
   the commit page refuses; `metab COMMIT_URL` opens at the same page.
@@ -486,8 +486,8 @@ $ metab https://github.com/owner/repo/pull/123/files --present --dry-run --forma
   A path that does not exist is `not_found`, a GitHub page that is not a repository view
   keeps the reason `metab URL` gives it, such as `unsupported_github_url`, and a Git
   source that is not on GitHub is `unsupported_source`.
-  `tests/golden/cli-present.tryscript.md` shows these and the other local refusals,
-  `--path` with a URL among them.
+  `tests/golden/cli-present.tryscript.md` shows these and most others, `--path` with a
+  URL among them.
 
 A file inside a folder the app already has open, and nested inside the reported root,
 opens in that folder’s window instead: the app places a file in the most specific open
