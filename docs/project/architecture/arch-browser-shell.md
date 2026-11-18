@@ -28,7 +28,7 @@ it, may read them, and an installed plugin uses the SDK.
 | Main tabs | `main-tabs.js`, `git-panel.js` with `git-graph.js` and `git-history-window.js`, `pulls-nav.js`, `pull-route.js` |
 | Keyboard and dialogs | `keyboard-shortcuts.js`, `shell-keymap.js`, `plugin-shortcuts.js`, `key-reveal.js`, `keyboard-help.js`, `overlay-layer.js` |
 | Quick Search | `search-controller.js`, `search-palette.js`, `file-fuzzy-match.js` |
-| Pinned revisions and mirrors | `git-path.js`, `source-pin-guard.js`, `source-freshness.js`, `source-ref-selector.js`, `mirror-heading.js` |
+| Pinned revisions, mirrors, and a checkout’s revisions | `git-path.js`, `source-pin-guard.js`, `source-freshness.js`, `source-ref-selector.js`, `mirror-heading.js` |
 | Shared rendering | `formatters.js`, `icons.js`, `charts.js`, `file-type-taxonomy.js`, `inert-html.js`, `source-append.js`, `theme-state.js`, `document-width.js`, `request-error.js`, `contribution-registry.js` |
 
 `types.d.ts` declares the globals and the SDK. `tsconfig.json` type-checks every module
@@ -282,11 +282,13 @@ them; the note beside the budget says why.
 | The plugin shortcut queue | Eager, since a plugin can attach a key before the registry exists | `queueShortcut` in `plugin-sdk.js` | The comment beside it |
 | Line gutter, SDK view helpers, and the syntax service | On demand, beside the view compositor and before any plugin code | `sdk-views` | [exp-037](../../../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
 | Pull-request routes and page host | Eager at a `/pull/` address; on demand otherwise | `PULL_PAGE_STARTUP_SCRIPTS`, `pull-route` | exp-037 |
-| GitPath wire codec | Eager on a pin’s shell; on demand at a pull request’s first diff with View file controls | `PIN_STARTUP_SCRIPTS`, `viewFileOpener` in `builtin_plugins/diff/index.js` | exp-037 |
+| GitPath wire codec | Eager on a pin’s shell, the only page whose addresses spell it | `PIN_STARTUP_SCRIPTS` | exp-037 |
+| The pin guard | Inline on a pin’s shell, before any script can fetch. On demand on the working-tree page of a checkout, with the ref selector that can make its server serve a revision, so a folder’s first paint carries none of it | `_SOURCE_PIN_GUARD_SCRIPT`; `source-ref-selector` in `on_demand_script_bundles` | The comment beside the bundle |
 | Chart.js and its plugins | On demand, at the first chart | `chart` | The comment beside it |
 | The changed-files tree every diff and the Pulls tab draw with | On demand: a diff asks beside its comparison, a pull request’s page warms it with the diff plugin on every tab, for its header’s Diff summary and for Changes, and the Pulls tab asks as it mounts | `changed-files-tree`, reached through `metabrowser.loadChangedFilesTree()` | The comment beside the bundle in `server.py` |
 | The Diff summary’s tree | On demand, at the summary’s first opening, asked for on the header’s hover or focus | `renderDiffSummary` in `builtin_plugins/diff/diff-view.js` | The comment at the head of `builtin_plugins/diff/diff-summary.js` |
 | Inert Markdown render with its table of contents, and the step that places a render | On demand: the first at the first inert render, the second at the first Markdown render | `builtin_plugins/markdown/place-rendered.js` | exp-037 and the comment at its head |
+| A refused Markdown render’s source and notice | On demand, at a Markdown view’s first refused render | `builtin_plugins/markdown/rendered.js` | The comment beside the import |
 | A pull request’s rendered Markdown layer | On demand, beside a comparison that names a rendered route | `markdownLayer` in `builtin_plugins/diff/index.js` | The comment beside it |
 
 Measured on 2026-10-01 as compressed bytes saved, these would move next if the budget

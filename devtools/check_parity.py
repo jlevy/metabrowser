@@ -53,6 +53,15 @@ _INTERACTION_SYMBOL = re.compile(r"[A-Za-z_$][A-Za-z0-9_$]*")
 _INDIRECT_MODES: dict[str, tuple[str, ...]] = {
     "--check-api": ("/api/tree", "/api/recent", "/api/index/progress"),
 }
+# Modes that answer from a model no route serves, mapped to the module that owns it. A
+# data row may name that module as its owner, with `owned-model` as its input, when its
+# command runs the mode: the model is then reached through `metab` and pinned by a golden
+# as a route is, though `--api` cannot issue it. AGENTS.md prefers a route, so a mode
+# enters this table only where a route would be dishonest: `--present` reads ROOT in a
+# client process that must start no server.
+_MODEL_MODES: dict[str, str] = {
+    "--present": "cli/present.py",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -274,6 +283,12 @@ def golden_kinds() -> set[str]:
     return kinds
 
 
+# The registry's two checked tables: the header each starts with and its column count.
+_ROUTE_HEADER = "| Surface | Status |"
+_FUNCTIONAL_HEADER = "| Aspect | Tier |"
+_TABLE_COLUMNS = {_ROUTE_HEADER: 4, _FUNCTIONAL_HEADER: 6}
+
+
 def parity_rows(doc: str) -> list[ParityRow]:
     """Rows of the parity table, which is the one whose header names Surface."""
 
@@ -281,7 +296,7 @@ def parity_rows(doc: str) -> list[ParityRow]:
     in_table = False
     for line in doc.splitlines():
         stripped = line.strip()
-        if stripped.startswith("| Surface | Status |"):
+        if stripped.startswith(_ROUTE_HEADER):
             in_table = True
             continue
         if in_table:
@@ -301,6 +316,37 @@ def parity_rows(doc: str) -> list[ParityRow]:
     return rows
 
 
+def stray_table_rows(doc: str) -> list[str]:
+    """Rows of a checked table found outside it, which the table's parser never reads.
+
+    A table ends at its first line that is not a row, so a blank line inside one, as a
+    merge once left in the functional table, silently drops every row after it from the
+    check (review A of #527, A19). Each such row is named with its line number.
+    """
+
+    problems: list[str] = []
+    header: str | None = None
+    in_table = False
+    for number, line in enumerate(doc.splitlines(), start=1):
+        stripped = line.strip()
+        started = next((each for each in _TABLE_COLUMNS if stripped.startswith(each)), None)
+        if started is not None:
+            header, in_table = started, True
+            continue
+        if not stripped.startswith("|"):
+            in_table = False
+            continue
+        if in_table or header is None:
+            continue
+        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+        if len(cells) == _TABLE_COLUMNS[header] and not set(cells[0]) <= {"-", " "}:
+            problems.append(
+                f"line {number}: a row of the table under {header!r} sits outside it, "
+                f"so the check never reads it: {cells[0]}"
+            )
+    return problems
+
+
 def functional_parity_rows(doc: str) -> list[FunctionalParityRow]:
     """Rows of the checked user-visible functional-aspect table."""
 
@@ -308,7 +354,7 @@ def functional_parity_rows(doc: str) -> list[FunctionalParityRow]:
     in_table = False
     for line in doc.splitlines():
         stripped = line.strip()
-        if stripped.startswith("| Aspect | Tier |"):
+        if stripped.startswith(_FUNCTIONAL_HEADER):
             in_table = True
             continue
         if in_table:
@@ -500,6 +546,8 @@ def _check_functional_parity(doc: str) -> list[str]:
     registered = registered_surfaces()
     route_rows = {row.surface: row for row in parity_rows(doc)}
     session_contracts: dict[str, InteractionSessionContract] = {}
+    # The modules of `_MODEL_MODES` that an `owned-model` data row names.
+    modelled: set[str] = set()
     for row in rows:
         if row.aspect in seen:
             problems.append(f"functional aspect {row.aspect!r} is listed more than once")
@@ -512,10 +560,12 @@ def _check_functional_parity(doc: str) -> list[str]:
         data_inputs = [
             part.strip().strip("`") for part in row.data_inputs.split(",") if part.strip()
         ]
+        model_owned = row.tier == "data" and data_inputs == ["owned-model"]
         if row.tier == "data":
-            if data_inputs != ["owned-route"]:
+            if data_inputs not in (["owned-route"], ["owned-model"]):
                 problems.append(
-                    f"{row.aspect}: data semantics must declare 'owned-route' as their input"
+                    f"{row.aspect}: data semantics must declare 'owned-route' or "
+                    "'owned-model' as their input"
                 )
         elif row.tier == "paint-exempt":
             if data_inputs != ["local-only"]:
@@ -566,6 +616,17 @@ def _check_functional_parity(doc: str) -> list[str]:
         canonical_source_owners: list[tuple[str, str]] = []
         if not owners or row.owner == "—":
             problems.append(f"{row.aspect}: name the production owner")
+        elif model_owned:
+            if len(owners) != 1 or owners[0] not in _MODEL_MODES.values():
+                problems.append(
+                    f"{row.aspect}: an owned model must name exactly one module of "
+                    f"{sorted(_MODEL_MODES.values())}"
+                )
+            else:
+                modelled.add(owners[0])
+                _canonical, problem = _canonical_source_owner(owners[0])
+                if problem is not None:
+                    problems.append(f"{row.aspect}: model owner {owners[0]!r} {problem}")
         elif row.tier == "data" and (len(owners) != 1 or not owners[0].startswith("/")):
             problems.append(
                 f"{row.aspect}: data semantics must name exactly one registered route owner"
@@ -617,7 +678,16 @@ def _check_functional_parity(doc: str) -> list[str]:
         command_parts = _command_parts(row.command)
         if row.tier == "data" and (not command_parts or command_parts[0] != "metab"):
             problems.append(f"{row.aspect}: data semantics must run through metab")
-        if row.tier == "data":
+        if model_owned:
+            modes = [mode for mode, module in _MODEL_MODES.items() if owners == [module]]
+            if any(part == "--api" or part.startswith("--api=") for part in command_parts):
+                problems.append(f"{row.aspect}: a model owned by a mode cannot be shown by --api")
+            if not modes or modes[0] not in command_parts:
+                problems.append(
+                    f"{row.aspect}: data command does not run the mode that owns "
+                    f"{', '.join(owners)!r}"
+                )
+        elif row.tier == "data":
             for owner in (value for value in owners if value.startswith("/")):
                 api_value = _option_value(command_parts, "--api")
                 if api_value is None or not _route_token_matches(api_value, owner):
@@ -712,6 +782,13 @@ def _check_functional_parity(doc: str) -> list[str]:
                     f"{row.aspect}: golden {golden} never runs successful CLI command "
                     f"{row.command!r}"
                 )
+    # As a registered route needs a row, so does a mode's model: its consumers read it as
+    # they read a route's envelope.
+    for mode, module in sorted(_MODEL_MODES.items()):
+        if module not in modelled:
+            problems.append(
+                f"{mode} owns the model in {module!r}, and no 'owned-model' data row covers it"
+            )
     return problems
 
 
@@ -722,7 +799,12 @@ def check() -> list[str]:
     if not rows:
         return ["the parity table is missing from the parity registry"]
 
-    listed = {row.surface for row in rows}
+    problems.extend(stray_table_rows(doc))
+    listed: set[str] = set()
+    for row in rows:
+        if row.surface in listed:
+            problems.append(f"route {row.surface!r} is listed more than once")
+        listed.add(row.surface)
     registered = registered_surfaces()
 
     for surface in sorted(registered - listed):

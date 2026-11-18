@@ -1,8 +1,8 @@
 """Bounded, owner-local admission of PR snapshot pairs across process restarts.
 
 ``sources/<slug>/pulls/<n>.snapshots.json`` keeps the comparison pairs a mirror's records
-named before the current one, so a revision page opened at an earlier base and head
-keeps opening after a refresh moves the record on. Record writes change it, under the
+named before the current one, so a rendered diff, and the images it shows, opened at an
+earlier base and head keep opening after a refresh moves the record on. Record writes change it, under the
 source alias lock, by atomic replacement, and only a store-backed one adds pairs. It holds
 one reader's pairs: any write by another reader starts it over, a checkout's metadata
 write without a store included, whether or not that write has a comparison of its own,

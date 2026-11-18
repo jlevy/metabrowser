@@ -14,11 +14,17 @@ on:
       - "apps/macos/**"
       - "Makefile"
       - ".github/workflows/macos-app.yml"
+      # metab's half of handing the app a target, whose LaunchServices lookup runs here.
+      - "src/metabrowser/cli/present.py"
+      - "tests/test_present.py"
   pull_request:
     paths:
       - "apps/macos/**"
       - "Makefile"
       - ".github/workflows/macos-app.yml"
+      # metab's half of handing the app a target, whose LaunchServices lookup runs here.
+      - "src/metabrowser/cli/present.py"
+      - "tests/test_present.py"
 
 permissions:
   contents: read
@@ -98,6 +104,11 @@ jobs:
       - name: Install the locked environment
         run: make install
 
+      # The ctypes binding to LaunchServices that `metab --present` uses runs only on a Mac,
+      # and the Linux test jobs skip it; a removed symbol or a changed signature fails here.
+      - name: Run metab's LaunchServices lookup tests
+        run: METABROWSER_REQUIRE_MACOS_TIER=1 uv --config-file uv.toml run --frozen pytest -rs -m macos_tier tests/test_present.py
+
       - name: Confirm the live tests' metab runs
         run: '"$METABROWSER_SHELL_TEST_METAB" --version'
 
@@ -132,7 +143,9 @@ jobs:
         run: |
           source scripts/common.sh
           variant_settings release
-          scripts/check-dmg.sh "$dmg"
+          # The rehearsal is built from this checkout, so it must be its version and commit,
+          # as scripts/check-release.sh requires of a release and its tag.
+          EXPECTED_VERSION="$version" EXPECTED_COMMIT="$(git rev-parse HEAD)" scripts/check-dmg.sh "$dmg"
           variant_settings dev
           scripts/check-dmg.sh "$dmg"
           # ditto keeps the bundle's symlinks, modes, and signature, which a plain upload

@@ -70,8 +70,8 @@ Every file is disposable and carries its own schema version.
   together under the same lock, and `pull_catalog.py`’s docstring says when a catalog
   this release cannot use is replaced.
 - **The prepared manifests** beside a store are written atomically without a lock: each
-  key has one of a fixed set of slots, so a collision replaces a slot and costs only a
-  later miss (`pull_manifest.py`).
+  pull request has one, so a comparison of it at another pair replaces it and costs only
+  a later miss (`pull_manifest.py`).
 
 | File | Holds | Module |
 | --- | --- | --- |
@@ -83,7 +83,7 @@ Every file is disposable and carries its own schema version.
 | `<n>.timeline.json` | The Conversation timeline projection | `pull_timeline.py` |
 | `catalog.sqlite3`, `list-<filter>.refresh.json` | The repository catalog, and how its refreshes ended | `pull_catalog.py`, `pull_list.py` |
 | `stacks.json` | The native stack snapshot | `pull_stacks.py` |
-| `repository-stores/<store key>/github-pull-manifests/`, `github-pull-manifest-<slot>.epoch` | Prepared comparison manifests, and each slot’s epoch | `pull_manifest.py` |
+| `repository-stores/<store key>/github-pull-manifests/pull-<n>.json`, `github-pull-manifest-<slot>.epoch` | Each pull request’s prepared comparison manifest, and the epochs, direct-mapped by comparison | `pull_manifest.py` |
 
 `cache/paths.py` spells the source-side names.
 
@@ -125,11 +125,20 @@ the origin’s branches and tags, so a fork’s commits arrive with it:
   fetching the moving base branch; the next refresh compares against the branch again.
 
 Before the record is published, `pull_manifest.py` prepares its comparison manifest in a
-disposable bank beside the store: `MANIFEST_SLOTS` direct-mapped slots, each holding a
-File Diff Format document without patches and the full build, store, endpoint, and
-base-policy identity, so a collision evicts and never answers another comparison.
-A slot’s epoch makes old data miss after detected corruption even when the slot itself
-cannot be rewritten.
+disposable bank beside the store, one manifest for each pull request, so preparing one
+replaces no other’s. Each is a File Diff Format document without patches and the full
+identity: the document’s schema, the listing (`MANIFEST_LISTING` in
+`diff/adapters/git.py`), how the store’s Git is run, the store, both endpoints, and the
+base policy, so a comparison of the pull request at another pair replaces it and never
+answers for it. The bank holds one for each pull request ever prepared, about a third of
+a record each, and clearing the cache leaves it; the measurement is in
+`pull_manifest.py`. The identity names no build, so a manifest outlives an upgrade and
+an edit of the source.
+A change to the listing’s options or to the store read’s isolation moves it, and so does
+raising `MANIFEST_READING`, which a change to how a listing is read must do (a test pins
+it). An epoch, direct-mapped by comparison (`EPOCH_SLOTS`), makes old data miss after
+detected corruption for every pull request that keeps that comparison, even when its
+manifest cannot be rewritten.
 A read-only bank still serves recomputed comparisons.
 
 A mirror’s record write also keeps `<n>.snapshots.json`, the pairs earlier records
@@ -171,11 +180,22 @@ from the record’s head: a pull request opened from the list moves no pin, a co
 inside the pull request pins that commit, and a refresh can find a newer head, which the
 page offers as `latest` rather than switching under a reader.
 **Browse code** is a link to the served root when the pin is the record’s head, and
-otherwise a button that posts the head ref to `/api/source/pin` and then opens the root,
-so what moves the pin is never a link a modified click could open without moving it; a
+otherwise a button that posts the head’s commit to `/api/source/pin`, naming the pull
+request’s `refs/pull/<n>/head` as the ref to serve it under, and then opens the root, so
+what moves the pin is never a link a modified click could open without moving it; a
 checkout has no pin and no Browse code.
-Changes never switches the pin, on a mirror or beside a checkout: its file links open
-the envelope’s `snapshot_route`.
+**View on branch** is Browse code for one file, on each file bar of Changes while the
+diff shows the pull request’s head: a link to the file’s `/view/` address when the pin
+is the head, otherwise a button that serves the head the same way first, and, beside a
+checkout whose `HEAD` is the head, a link to the working-tree file.
+For a checkout, [Open Modes](arch-open-modes.md#pull-requests-in-a-repository-folder)
+designs both controls going to the head as a revision view in the repository folder,
+with the working-tree copy a separate, labelled action; that is not built.
+The page’s one switch (`createPinSwitch` in the diff plugin) serves both, so a refusal
+reads the same from either.
+The pin is server-wide, so a switch from Changes moves every tab’s pin, as Browse code
+always has; how the other tabs learn it is in
+[Source Sessions and Pins](arch-source-sessions-and-pins.md).
 
 ## Freshness Verdicts
 
@@ -258,8 +278,9 @@ core, and the envelope then carries a `core_preview` until the full record lands
 
 `refresh_pull_files` in `pull_files_refresh.py` has two sources for one list:
 
-- **The local comparison:** when the store holds both of the record’s comparison
-  commits, the list is that manifest’s, from `git diff --raw` and `--numstat`, with no
+- **The local comparison:** when the store holds both of a comparison’s commits, the
+  record’s or one the prefetch computed from an open pull request’s head and base
+  branch, the list is that manifest’s, from `git diff --raw` and `--numstat`, with no
   patch and no network.
 - **GitHub’s list:** otherwise, or when the manifest is cut at `MAX_MANIFEST_FILES`
   (`diff/adapters/git.py`) or Git cannot list it, as when the lender has gone or
@@ -278,8 +299,10 @@ The job runs under `<slug>:pull/<n>/files`, takes no turn at the store, and hold
 network slot only for each `gh` request.
 
 `pull_files_route.py` answers from the cache alone; its docstring states the freshness
-rule. A local list is current while the record names its exact comparison; a GitHub list
-while the head and base branch it was read for are the newest known.
+rule. A local list from the record is current while the record names its exact
+comparison; a GitHub list, or a local list from a head and base branch, while the head
+and base branch it was read for are the newest known, and for the local one while the
+pull request is open.
 When source admission refuses the cache, no stamp can be written, so the outcome
 `cache_unwritable` is kept in bounded memory and holds automatic retries without
 contacting GitHub or touching the refused cache; it does not survive a restart.
@@ -311,15 +334,23 @@ store, so its answer is immutable and a browser asks for it no more.
 `tests/test_github_pull_manifests.py` holds both, and that a route naming another head,
 as a record whose head moved does, is computed.
 In the page, what was read is kept for the document rather than for one page
-([The Comparison Keep](#the-comparison-keep)). `GET pull-snapshot` (`pull_snapshot.py`)
-opens a file at the exact displayed base or head without changing the pin or the
-checkout, for a pair the record or its snapshot file admits; its docstring lists every
-outcome code. `GET pull-rendered-diff` (`pull_rendered_diff.py`) answers one changed
-Markdown file as `markdown-diff-v1` after the same admission, computed in a projection
-worker process. `GET pull-markdown` (`pull_markdown.py`) renders one text of the record
-through KPress in sanitized mode, then reduces it to the inert allowlist of
-`inert_html.py`; only KPress’s stylesheet manifest reaches the page, so no text chooses
-what loads. The trust model behind that allowlist is in
+([The Comparison Keep](#the-comparison-keep)). `GET pull-rendered-diff`
+(`pull_rendered_diff.py`) answers one changed Markdown file as `markdown-diff-v1`,
+computed in a projection worker process, for a pair the record or its snapshot file
+admits (`pull_snapshot.py`). Its images load from `GET pull-image`, which serves an
+image at the head of an admitted pair without changing the pin or the checkout; its
+links to a file of the head are that file’s `/view/` address, the same in every answer,
+which the page keeps only while its pin is the head and leaves as plain text otherwise.
+`pull_snapshot.py`’s docstring lists every outcome code.
+`GET pull-markdown` (`pull_markdown.py`) renders one text of the record through KPress
+in sanitized mode, then reduces it to the inert allowlist of `inert_html.py`, both in
+the server’s Markdown child under its deadline, the same child as the projections, which
+a served page’s first `GET pull` starts; a text past the deadline answers `422`
+`render_deadline`, one that arrives while the child has as many renders as it takes
+answers `503` `renderer_busy`, and the page keeps its plain text with a line saying why,
+which it keeps for that text until the text renders.
+Only KPress’s stylesheet manifest reaches the page, so no text chooses what loads.
+The trust model behind that allowlist is in
 [Server and Content](arch-server-and-content.md).
 
 ## Conversation Timeline
@@ -444,12 +475,20 @@ step with `pull_stacks.py` (`repository_snapshot.py`).
 A visible page names what the reader is likely to open next with `POST pulls-prefetch`
 (`pull_prefetch.py`), which replaces the repository’s lane queue; nothing on the server
 starts that work by itself, so a hidden or offline page spends nothing.
-The lane is one coordinator job per served repository that runs one item at a time,
-alternating records and file lists, rereads each from disk before it runs, and stops
-when the governor refuses; the module docstring works out its caps and the GitHub points
-they cost. A background job takes no network slot, waits behind every other job at a
-store turn and is cancelled when one starts waiting, and is joined and promoted by a
-reader’s request for the same pull request.
+The lane is one coordinator job per served repository that runs one item at a time.
+It first makes the queued file lists local where the store can give them: an open pull
+request with no current comparison is listed from the head and base branch the list of
+pull requests names, with every head the store lacks fetched in one Git command
+(`fetch_pull_heads` in `cache/pull_refs.py`), and a served checkout attaches its store
+for that if no reader has yet.
+Those lists cost no GitHub request and go first; the rest alternate records and file
+lists from GitHub.
+The lane rereads each item from disk before it runs and stops when the
+governor refuses; the module docstring works out its caps, the GitHub points they cost,
+and the measurements behind the order.
+A background job takes no network slot, waits behind every other job at a store turn and
+is cancelled when one starts waiting, and is joined and promoted by a reader’s request
+for the same pull request.
 `GET pulls-prefetch` reports the lane, the caps, the governor, and recent outcomes, and
 `pulls-panel.js` chooses what to name and when.
 
@@ -524,6 +563,37 @@ no store.
 What a reader sees for each failure name, and what to do, is in
 [Reviewing Pull Requests](../../reviewing-pull-requests.md).
 
+## Drawn From Disk
+
+Everything a mirror’s pull request page and Pulls tab draw from GitHub’s data is read
+from a file beside the source or the store, so a server started on an existing cache
+answers it before anything asks GitHub, and a page paints it before it starts a refresh.
+`tests/test_github_drawn_from_disk.py` holds the inventory.
+`ELEMENTS` names each drawn element, its route, and the Git commands the route runs in
+the local store, and runs each through `metab --api` over a cache home with `gh`
+failing, the remote unreachable, every Git transport command refused, and every socket
+that would leave the machine refused.
+`JOBS` names every other route, each of which starts or reports work, so a new route is
+classified before it lands.
+`test_a_diff_summary_answers_from_disk_after_the_build_changed` reads a Diff summary
+after the build’s tag changes, as an upgrade or an edit of an editable install’s source
+changes it, and `test_every_pull_requests_diff_summary_answers_from_disk` reads several
+pull requests’ Diff summaries after each was prepared.
+
+Four routes compute from local data rather than read a stored answer: `pull-comparison`
+takes its manifest from the bank and runs Git only to check that the store answers for
+both commits and their merge base and to print the first files’ hunks; `pull-image`
+reads an image from the head’s tree; `pull-rendered-diff` renders both sides off the
+event loop; and `pull-markdown` renders the record’s text through KPress, which keeps
+the render for the process.
+
+What a surface draws that does not answer from disk is in `GAPS`, a strict expected
+failure:
+
+- **Avatars.** Records and the catalog keep the URL; the image comes from GitHub’s
+  avatar host, and only the browser’s HTTP cache keeps it
+  ([Chrome](../../design-system.md#chrome) in the design system).
+
 ## Clearing the Cache
 
 `POST cache-clear` takes an empty object and removes every entry of the source’s `pulls`
@@ -549,7 +619,7 @@ handler’s docstring in `sidekick.py`, or the module it names, holds its contra
 | `pull-refresh` | `POST` | That pull request’s refresh, comparison, repair, or idle preparation |
 | `pull-cores-prepare` | `POST` | A batch of lightweight cores |
 | `pull-comparison` | `GET` | The record’s comparison, from the store, for Changes and the header’s Diff summary |
-| `pull-snapshot` | `GET` | A file at the comparison’s base or head |
+| `pull-image` | `GET` | An image at the comparison’s head, for its rendered Markdown |
 | `pull-rendered-diff` | `GET` | One changed Markdown file, rendered |
 | `pull-timeline` | `POST` | Conversation’s order of commits, comments, and reviews |
 | `pull-markdown` | `GET` | One text of the record, rendered inert |

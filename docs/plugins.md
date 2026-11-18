@@ -186,11 +186,11 @@ Multiple rules may share an ID; they act as alternatives for the same kind.
 | `exts` | A list of alternative logical extensions. |
 | `basename` | Exact filename. |
 | `adapter` | Adapter identified while sniffing a JSONL stream. |
-| `frontmatter_has_key` | Required top-level Markdown frontmatter key. |
+| `frontmatter_has_key` | Required top-level Markdown frontmatter key, as text. |
 | `frontmatter_schema_prefix` | Prefix required in the frontmatter `schema` value. |
 | `json_has_key` | Required top-level JSON object key. |
 | `json_value_prefix` | Prefix required in the selected JSON value. |
-| `yaml_has_key` | Required top-level YAML mapping key. |
+| `yaml_has_key` | Required top-level YAML mapping key, as text. |
 | `yaml_value_prefix` | Prefix required in the selected YAML value. |
 | `folder_marker` | Exact marker filename that also decorates its parent directory. |
 | `path_glob` | Gitignore-style pattern for the served-root-relative path. |
@@ -209,8 +209,28 @@ dependency is never Metabrowser’s.
 Content predicates are bounded: JSON predicates parse only a complete document within
 `_JSON_CLASSIFICATION_MAX_BYTES`, and YAML predicates a prefix of `_YAML_PREFIX_BYTES`,
 both in `src/metabrowser/plugin_loader/classify.py`. An oversized or truncated document
-does not match, so claim large files by `basename`, `ext`, or `path_glob`. On a Git
-revision, `path_glob` rules never match, since a blob has no served-root path.
+does not match, so claim large files by `basename`, `ext`, or `path_glob`.
+
+Front matter and YAML are read by one bounded loader,
+`src/metabrowser/frontmatter_yaml.py`, as YAML 1.2:
+
+- A key that is not a string is matched by its JSON text, the spelling a renderer
+  receives: `frontmatter_has_key = "1"` and `yaml_has_key = "1"` match a YAML `1:` key,
+  `"true"` a `true:` key, and `"on"` an `on:` key.
+  Keys are compared by that text, so `1:` and `"1":` are the same key.
+- Scalars are typed as YAML 1.2 types them: `on`, `yes`, `no`, `12:30:45`, a plain `=`,
+  and a `<<` that is not a merge key are strings, which `yaml_value_prefix` can match,
+  and `0o17` and `1e3` are numbers, which it cannot.
+- A document that declares another version, such as `%YAML 1.1`, is not read.
+- In a YAML prefix a key that appears twice in one mapping, merged into another or not,
+  keeps its last value, as most YAML tools do; in front matter it is an error.
+- Front matter or YAML the loader refuses does not match: YAML aliases that write out
+  past `FRONTMATTER_MAX_EXPANDED_SIZE` in front matter or
+  `_YAML_PREFIX_MAX_EXPANDED_SIZE` in a YAML prefix, nesting past `YAML_MAX_DEPTH`
+  (counted in the value, through its aliases, as well as in the text), or a tag the
+  loader does not read.
+
+On a Git revision, `path_glob` rules never match, since a blob has no served-root path.
 
 ### Views
 
@@ -821,10 +841,17 @@ unsubscribe on disposal.
 view defer hidden work, and a composite renderer calls
 `mb.setViewPrintState(container, state)` when its printability changes.
 
-`mb.builtins.markdown.mountRendered(container, ctx, {signal})` mounts a Markdown
-document panel with the ordinary KPress presentation.
-Its handle aborts its request and disposes its table of contents, enhanced-link
-listeners, pending fragment work, and nested Obsidian transclusions.
+`mb.builtins.markdown.mountRendered(container, ctx, {signal, pagePath, printIndicator})`
+mounts a Markdown document panel with the ordinary KPress presentation, its table of
+contents included.
+`pagePath` names the page that shows the document as its own when that
+is not the document’s path, as a folder’s Overview shows its README: the document’s
+fragment links and table-of-contents entries are then places on that page.
+`printIndicator: true` puts a print button in the corner of the document’s card, for a
+view whose print is the document itself; it is off unless the host asks
+([Print](design-system.md#print)). Its handle aborts its request and disposes its table
+of contents, print button, enhanced-link listeners, pending fragment work, and nested
+Obsidian transclusions.
 Transclusions share depth, document, source-byte, cycle, abort, and disposal limits
 across the mounted document, and each embed’s time limit starts when that embed begins
 loading. Do not copy Markdown DOM or table-of-contents behavior into a contribution.

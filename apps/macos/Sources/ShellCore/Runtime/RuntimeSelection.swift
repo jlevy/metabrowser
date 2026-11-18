@@ -46,8 +46,12 @@ public final class RuntimeSelection {
     public private(set) var isUnverified = false
     /// What the last search that counted looked at.
     public private(set) var tried: [CandidateOutcome] = []
-    /// Folders asked for while there was no runtime, in the order asked.
+    /// Folders, files, and links asked for while there was no runtime, in the order asked.
+    /// At most `LinkQueue.limit` of them are links, which any local process can send.
     public private(set) var waitingFolders: [URL] = []
+    /// Links turned away since `takeDroppedLinks()` last asked, because `LinkQueue.limit`
+    /// links waited for a runtime already.
+    public private(set) var droppedLinks = 0
     private let settings: RuntimeSettings
     private var latest = 0
     private var operation: Operation?
@@ -86,8 +90,20 @@ public final class RuntimeSelection {
     /// for one.
     public func setupForOpening(_ folder: URL) -> RuntimeSetup? {
         if let setup = launchableSetup { return setup }
-        if !waitingFolders.contains(folder) { waitingFolders.append(folder) }
+        guard !waitingFolders.contains(folder) else { return nil }
+        // A link waits here before the link queue bounds it, so it is bounded here too
+        // (review C9 on #539); a folder or file comes from the user.
+        if !folder.isFileURL, waitingFolders.count(where: { !$0.isFileURL }) >= LinkQueue.limit {
+            droppedLinks += 1
+            return nil
+        }
+        waitingFolders.append(folder)
         return nil
+    }
+
+    public func takeDroppedLinks() -> Int {
+        defer { droppedLinks = 0 }
+        return droppedLinks
     }
 
     /// The waiting folders, which the caller now opens, emptying the list.

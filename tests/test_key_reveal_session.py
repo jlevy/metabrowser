@@ -256,6 +256,16 @@ def test_the_session_runs_on_the_recording() -> None:
     # A pin has no By age, so Group by registers N and T only, as app.js does.
     assert [key for key, _action, _description in positional["menus"]] == ["N", "T"]
     assert by_name["Shift held past the threshold reveals"]["rootMarked"] is True
+    # The resting strip lists Shift first, ahead of Help, on every screen (mb-k8am); the
+    # revealed layer, shown while Shift is held, lists only commands.
+    steps = [step for part in parts for step in part["steps"]]
+    resting = [step for step in steps if step["strip"]["surface"] == "nav"]
+    assert resting
+    for step in resting:
+        assert step["strip"]["items"][:2] == ["Shift Reveal keys", "? Help"], step["step"]
+    for step in steps:
+        if step["strip"]["surface"] == "reveal":
+            assert "Shift Reveal keys" not in step["strip"]["items"], step["step"]
     for chord in (
         "a capital typed within the threshold never reveals",
         "? within the threshold opens Help and never reveals",

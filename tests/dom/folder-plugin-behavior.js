@@ -57,7 +57,15 @@ function makeElement() {
       if (selector === ".tm-parent-nav") {
         return el.parentNav;
       }
+      if (selector === ".tm-legend") {
+        el.legend ??= makeElement();
+        return el.legend;
+      }
       return null;
+    },
+    children: [],
+    replaceChildren(...children) {
+      el.children = children;
     },
     querySelectorAll() {
       return [];
@@ -251,7 +259,11 @@ for (const relative of [
   const source = fs.readFileSync(path.join(repoRoot, relative), "utf8");
   vm.runInContext(source, sandbox, { filename: relative });
 }
+// In dependency order, since each runs in the one sandbox with its imports taken out:
+// folder-totals.js and the treemap import the hover they share, and the treemap the legend.
 const moduleSources = [
+  "src/metabrowser/builtin_plugins/folder/distribution-hover.js",
+  "src/metabrowser/builtin_plugins/folder/distribution-legend.js",
   "src/metabrowser/builtin_plugins/folder/folder-totals.js",
   "src/metabrowser/builtin_plugins/folder/treemap-layout.js",
   "src/metabrowser/builtin_plugins/folder/treemap-model.js",
@@ -260,6 +272,7 @@ const moduleSources = [
 for (const relative of moduleSources) {
   const source = fs
     .readFileSync(path.join(repoRoot, relative), "utf8")
+    .replace(/^import\s[^;]*;$/gm, "")
     .replace(/^export\s*\{[^}]*\};$/gm, "")
     .replace(/^export\s+/gm, "");
   vm.runInContext(source, sandbox, { filename: relative });
@@ -281,6 +294,7 @@ vm.runInContext(
      if (!raw || typeof raw !== "object") { throw new TypeError("bad envelope"); }
      return { registry: {revision: 1}, totals: {}, breakdown: raw.file_type_breakdown };
    }
+   function buildFileTypeLegendModel() { return { legend: [], caption: "" }; }
    function buildFolderTotalsComposition(envelope, _fileTypes, metric) {
      return envelope
        ? {metric, all: {segments: []}, files: {segments: []}, ignored: {segments: []}}
@@ -292,6 +306,7 @@ vm.runInContext(
      container.composition = undefined;
      container.compositionPalette = undefined;
      return {
+       dispose() { container.disposed = true; },
        resumeLoading() { container.stoppedLoading = false; },
        stopLoading() { container.stoppedLoading = true; },
        update(next) { container.value = next; },

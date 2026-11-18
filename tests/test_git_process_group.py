@@ -42,6 +42,7 @@ from metabrowser.git.process import (
     spawn_git_process,
 )
 from tests.child_io import read_line
+from tests.loop_gate import held_until
 from tests.required_tools import needs_git, require_git
 
 pytestmark = [
@@ -295,7 +296,7 @@ class _HeldSpawn:
                 # The child ends and is reaped before the spawn returns to its caller.
                 await proc.wait()
                 self.reaped.set()
-            await asyncio.to_thread(self.release.wait, 30)
+            await held_until(self.release, 30)
             return proc
 
         monkeypatch.setattr(asyncio, "create_subprocess_exec", held_spawn)
@@ -377,7 +378,7 @@ def test_a_closed_stdin_kills_a_group_still_starting_and_frees_its_lock(
                 pass_fds=(lock_fd,),
             )
         )
-        await asyncio.to_thread(held.started.wait, 30)
+        await held_until(held.started, 30)
         os.close(lock_fd)  # From here only Git and its helpers hold the lock.
         helper = await asyncio.to_thread(_wait_for_pid, pid_file)
         stopper = threading.Thread(target=stdin_lifeline.stop_for_closed_stdin, daemon=True)
@@ -419,7 +420,7 @@ def test_an_interrupt_while_a_group_is_starting_kills_it_and_exits_at_once(
         task = asyncio.ensure_future(
             run_git(_alias_args(pid_file), cwd=tmp_path, policy=ACQUISITION_POLICY)
         )
-        await asyncio.to_thread(held.started.wait, 30)
+        await held_until(held.started, 30)
         helper = await asyncio.to_thread(_wait_for_pid, pid_file)
         # The handler runs here, on this thread, while the spawn is held.
         signal.raise_signal(signal.SIGINT)
@@ -492,11 +493,11 @@ def test_a_group_reaped_before_its_spawn_returns_is_never_signalled(
         task = asyncio.ensure_future(
             spawn_git_process(["--version"], cwd=tmp_path, policy=ACQUISITION_POLICY)
         )
-        await asyncio.to_thread(held.started.wait, 30)
-        await asyncio.to_thread(held.reaped.wait, 30)
+        await held_until(held.started, 30)
+        await held_until(held.reaped, 30)
         stopper = threading.Thread(target=stdin_lifeline.stop_for_closed_stdin, daemon=True)
         stopper.start()
-        await asyncio.to_thread(held.release.wait, 30)
+        await held_until(held.release, 30)
         proc = await asyncio.wait_for(task, 20)
         await asyncio.to_thread(stopper.join, 20)
         assert not stopper.is_alive(), "the stop never finished"
@@ -664,7 +665,7 @@ def test_a_spawn_that_registers_during_the_first_look_is_still_killed(
 
     async def admitted_then_forked(*args: Any, **kwargs: Any) -> asyncio.subprocess.Process:
         # Counted as under way from here, and forked only once the stop has looked.
-        await asyncio.to_thread(fork.wait, 30)
+        await held_until(fork, 30)
         return await real_spawn(*args, **kwargs)
 
     monkeypatch.setattr(asyncio, "create_subprocess_exec", admitted_then_forked)
@@ -806,7 +807,7 @@ def _held_git_is_killed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> bool
         task = asyncio.ensure_future(
             run_git(_alias_args(pid_file), cwd=tmp_path, policy=ACQUISITION_POLICY)
         )
-        await asyncio.to_thread(held.started.wait, 30)
+        await held_until(held.started, 30)
         process_module.stop_process_groups()
         killed = await asyncio.to_thread(_group_gone_within, held.procs[0].pid)
         if not killed:
@@ -969,7 +970,7 @@ def test_a_stop_knows_apple_git_by_the_tool_its_shim_runs(
         task = asyncio.ensure_future(
             run_git(_alias_args(pid_file), cwd=tmp_path, policy=ACQUISITION_POLICY)
         )
-        await asyncio.to_thread(held.started.wait, 30)
+        await held_until(held.started, 30)
         pid = held.procs[0].pid
         deadline = time.monotonic() + 10
         while process_module.executable(pid) != tool:

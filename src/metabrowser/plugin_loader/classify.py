@@ -29,12 +29,19 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 import pathspec
-import yaml
 
 from metabrowser.file_kinds import FileContext
+from metabrowser.frontmatter_yaml import (
+    FRONTMATTER_MAX_BYTES,
+    BoundedYamlError,
+    FrontmatterError,
+    load_bounded_yaml,
+    load_frontmatter_yaml,
+    unclosed_frontmatter_error,
+)
 from metabrowser.gz_io import ArtifactPath
 from metabrowser.paths_safe import _relativize
 from metabrowser.plugin_loader.manifest import KindMatch, KindRule
@@ -56,6 +63,18 @@ _JSON_CLASSIFICATION_MAX_BYTES = 256 * 1024
 # Foo/0.1`-style fields land in the first dozen lines) while keeping the
 # classifier's per-file cost negligible even on multi-MB YAML files.
 _YAML_PREFIX_BYTES = 16 * 1024
+
+# The prefix's budget written out without its aliases, at the same ratio to its bytes as
+# `FRONTMATTER_MAX_EXPANDED_SIZE` has to `FRONTMATTER_MAX_BYTES` (`frontmatter_yaml.py`,
+# which records why four times refuses no alias-free YAML), so merge keys and aliases in
+# a `.yaml` file cannot turn this prefix into an unbounded build.
+_YAML_PREFIX_MAX_EXPANDED_SIZE = 4 * _YAML_PREFIX_BYTES
+
+# The most bytes any content predicate reads: one past it gives every predicate the
+# answer the whole file would. A Git blob's predicates read a prefix of this length.
+CONTENT_PREDICATE_MAX_BYTES = max(
+    _JSON_CLASSIFICATION_MAX_BYTES, _YAML_PREFIX_BYTES, FRONTMATTER_MAX_BYTES
+)
 
 
 def _json_top_level(
@@ -93,27 +112,43 @@ def json_mapping_from_bytes(
 def yaml_mapping_from_bytes(
     data: bytes, byte_limit: int = _YAML_PREFIX_BYTES
 ) -> dict[str, Any] | None:
-    """Parse a bounded YAML prefix and return its top-level mapping."""
+    """Parse a bounded YAML prefix and return its top-level mapping.
+
+    The prefix goes through the bounded loader front matter uses
+    (:func:`metabrowser.frontmatter_yaml.load_bounded_yaml`), so its keys are the same
+    text: a YAML ``1:`` key matches ``"1"``. A key that appears twice keeps its last
+    value, as most YAML tools do: a classification hint has no reason to refuse it.
+    Returns None for a prefix that is not UTF-8 (one that ends inside a character
+    included), does not parse, is refused by the loader, or is not a mapping.
+    """
 
     try:
-        parsed = yaml.safe_load(data[:byte_limit])
-    except yaml.YAMLError:
+        text = data[:byte_limit].decode("utf-8")
+    except UnicodeDecodeError:
         return None
-    return parsed if isinstance(parsed, dict) else None
+    try:
+        parsed = load_bounded_yaml(
+            text, max_expanded_size=_YAML_PREFIX_MAX_EXPANDED_SIZE, keep_last_duplicate=True
+        )
+    except BoundedYamlError:
+        return None
+    return cast("dict[str, Any]", parsed) if isinstance(parsed, dict) else None
 
 
 def parse_frontmatter_bytes(
-    data: bytes, byte_limit: int = 256 * 1024
+    data: bytes, byte_limit: int = FRONTMATTER_MAX_BYTES
 ) -> tuple[dict[str, Any] | None, str | None]:
     """Parse YAML frontmatter from Markdown bytes.
 
     Returns ``(mapping, None)`` on success, ``(None, None)`` if the opening
     fence is absent, and ``(None, reason)`` when the fence is present but
-    unparsable. Classification still treats a parse failure as no mapping.
+    unparsable or refused by :func:`metabrowser.frontmatter_yaml.load_frontmatter_yaml`.
+    Classification still treats a parse failure as no mapping. *data* longer than
+    *byte_limit* is a prefix of something longer, so a fence it does not close is
+    reported as not closed within the limit.
     """
 
-    from frontmatter_format import FmFormatError, FmStyle, from_yaml_string
-    from ruamel.yaml.error import YAMLError
+    from frontmatter_format import FmStyle
 
     text = data[:byte_limit].decode("utf-8", errors="replace")
     lines = text.splitlines(keepends=True)
@@ -126,17 +161,21 @@ def parse_frontmatter_bytes(
             if not metadata_text:
                 return None, None
             try:
-                parsed = from_yaml_string(metadata_text)
-            except (FmFormatError, YAMLError, ValueError, TypeError) as exc:
+                parsed = load_frontmatter_yaml(metadata_text)
+            except FrontmatterError as exc:
                 return None, str(exc)
             if not isinstance(parsed, dict):
                 return None, None
-            return parsed, None
+            return cast("dict[str, Any]", parsed), None
         metadata_lines.append(line)
+    if len(data) > byte_limit:
+        return None, str(unclosed_frontmatter_error(byte_limit))
     return None, f"Delimiter `{FmStyle.yaml.end}` for end of frontmatter not found"
 
 
-def frontmatter_from_bytes(data: bytes, byte_limit: int = 256 * 1024) -> dict[str, Any] | None:
+def frontmatter_from_bytes(
+    data: bytes, byte_limit: int = FRONTMATTER_MAX_BYTES
+) -> dict[str, Any] | None:
     """Parse YAML frontmatter from Markdown bytes. None if absent or unparsable."""
 
     mapping, _error = parse_frontmatter_bytes(data, byte_limit)
@@ -146,8 +185,8 @@ def frontmatter_from_bytes(data: bytes, byte_limit: int = 256 * 1024) -> dict[st
 def _yaml_top_level(path: Path, byte_limit: int = _YAML_PREFIX_BYTES) -> dict[str, Any] | None:
     """Parse the top of a YAML file and return its top-level mapping.
 
-    Reads at most ``byte_limit`` bytes, then runs PyYAML's safe loader. If the
-    prefix happens to truncate mid-document, PyYAML usually raises; we swallow
+    Reads at most ``byte_limit`` bytes, then runs the bounded loader. If the
+    prefix happens to truncate mid-document, the parse usually fails; we swallow
     the error and return None so the classifier falls through to lower-priority
     rules. Returns None when the file is unreadable, the parse fails, or the
     top-level value is not a mapping.

@@ -90,6 +90,9 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {Set<number>} timers
  * @property {import("./diff-view-file.js").ViewFileOpener | null} viewFile
  * @property {HTMLElement | null} viewFileBusy The control whose switch is on its way.
+ * @property {{change: Record<string, unknown>, controls: HTMLElement[], said: {element: HTMLElement, timer: number}}[]} viewFileBars
+ *   Each bar that has controls, with the change they open, for a repaint when the page
+ *   learns its pin is no longer served.
  * @property {Set<{timer: number, resolve: (active: boolean) => void}>} yielders
  * @property {MetabrowserChangedFilesTree | null} changedFiles The shared tree the Diff
  *   summary is drawn on, or null where it could not be loaded.
@@ -977,7 +980,7 @@ function cancelFoldMaterializations(state) {
 function renderViewFileControl(action, view, notice) {
   const opener = /** @type {NonNullable<MountedDiffState["viewFile"]>} */ (view.viewFile);
   const link = action.mode === "link";
-  const control = el(link ? "a" : "button", `diff-file-view diff-file-view-${action.side}`);
+  const control = el(link ? "a" : "button", "diff-file-view");
   control.textContent = action.label;
   control.setAttribute("data-tip-text", action.detail);
   control.setAttribute("aria-label", `${action.label}: ${action.detail}`);
@@ -1020,6 +1023,31 @@ function renderViewFileControl(action, view, notice) {
     });
   });
   return control;
+}
+
+/**
+ * Paint each bar's controls again from what the opener says now, in place: after the page
+ * learns that the server serves another pin, a link at the commit the page shows is a
+ * switch. A control whose switch is on its way stays as it is.
+ *
+ * @param {MountedDiffState} view
+ */
+function repaintViewFileControls(view) {
+  if (view.viewFile === null || view.disposed) {
+    return;
+  }
+  for (const bar of view.viewFileBars) {
+    const actions = view.viewFile.actions(bar.change, view.resolved);
+    bar.controls = bar.controls.map((control, index) => {
+      const action = actions[index];
+      if (action === undefined || control === view.viewFileBusy) {
+        return control;
+      }
+      const next = renderViewFileControl(action, view, bar.said);
+      control.replaceWith(next);
+      return next;
+    });
+  }
 }
 
 /**
@@ -1091,9 +1119,9 @@ function renderFileBar(change, toggleId, bodyId, view) {
     notice.setAttribute("role", "status");
     notice.hidden = true;
     const said = { element: notice, timer: 0 };
-    for (const action of actions) {
-      bar.append(renderViewFileControl(action, view, said));
-    }
+    const controls = actions.map((action) => renderViewFileControl(action, view, said));
+    bar.append(...controls);
+    view.viewFileBars.push({ change, controls, said });
   }
 
   const side = /** @type {Record<string, unknown> | undefined} */ (change.new ?? change.old);
@@ -3075,7 +3103,7 @@ export function mountDiffSummary(slot, document_, api, options) {
  *   viewFile?: import("./diff-view-file.js").ViewFileOpenerFactory | null,
  *   renderMarkdown?: (fileId: string, signal: AbortSignal) => Promise<unknown>,
  *   markdownViews?: Pick<typeof import("./diff-markdown.js"), "createMarkdownViews" | "supportsMarkdownChange">,
- *   isSnapshotTarget?: (value: string, image: boolean) => boolean,
+ *   markdownTargets?: (value: string, image: boolean) => boolean,
  *   markdownHoldMs?: number,
  *   changedFiles?: MetabrowserChangedFilesTree | null,
  *   openFile?: (path: string) => void
@@ -3139,6 +3167,7 @@ export function mountDiffView(container, document_, api, options = {}) {
     timers: new Set(),
     viewFile: null,
     viewFileBusy: null,
+    viewFileBars: [],
     yielders: new Set(),
     changedFiles: options.changedFiles ?? null,
     openFile: options.openFile ?? null,
@@ -3155,9 +3184,7 @@ export function mountDiffView(container, document_, api, options = {}) {
       controller: options.markdownViews.createMarkdownViews({
         load: options.renderMarkdown,
         controls: api.filterControls,
-        ...(options.isSnapshotTarget === undefined
-          ? {}
-          : { isSnapshotTarget: options.isSnapshotTarget }),
+        ...(options.markdownTargets === undefined ? {} : { isTarget: options.markdownTargets }),
         ...(options.markdownHoldMs === undefined ? {} : { holdMs: options.markdownHoldMs }),
         async ensureInert() {
           await api?.ensureAsset?.("inert-html");
@@ -3178,6 +3205,12 @@ export function mountDiffView(container, document_, api, options = {}) {
       released() {
         view.viewFileBusy?.setAttribute("aria-busy", "false");
         view.viewFileBusy = null;
+      },
+      // Another tab switched the server's pin: a link opens the same path at that pin now,
+      // so each becomes the switch back, and rendered Markdown's links plain text.
+      changed() {
+        repaintViewFileControls(view);
+        view.markdown?.controller.closeHeadLinks();
       },
     });
   }

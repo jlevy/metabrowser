@@ -4,8 +4,8 @@
 [The installation guide](../../docs/installation.md) says what is released.
 
 This folder is the native macOS app: an AppKit and `WKWebView` shell that finds a
-command-line install of `metab` and runs one server per folder it opens.
-This README is for building, testing, and releasing it.
+command-line install of `metab` and runs one server per folder or GitHub repository it
+opens. This README is for building, testing, and releasing it.
 [Using the app](../../docs/macos-app.md) is the user guide, and
 [the app’s architecture](../../docs/project/architecture/arch-macos-app.md) describes
 how it works.
@@ -31,6 +31,8 @@ make macos-run FOLDER="$HOME/notes"  # build the app and open a folder with it
 make macos-dmg                       # build/Metabrowser-Dev-<VERSION>-arm64.dmg, checked
 make macos-release                   # the official build; see Building a Release
 make macos-notarize FILE=path        # notarize and staple one .app or .dmg
+make macos-signing-check             # the signing doctor: can this Mac sign a release? Read-only
+make macos-check-release TAG=macos-vX.Y.Z BUILT=local EXPECTED_TEAM_ID=TEAMID  # check a release as downloaded
 make macos-build                     # debug build only
 make macos-clean                     # remove .build and build
 make macos-webkit-gate               # the WebKit measurement gate; needs Google Chrome
@@ -38,13 +40,17 @@ make macos-webkit-gate               # the WebKit measurement gate; needs Google
 
 `make verify` neither needs nor runs Swift, so Linux CI is unchanged; the app has its
 own [macOS workflow](#continuous-integration).
+What the release scripts decide does not need Apple’s tools, so `make test` checks that
+on Linux as well (see [Testing](#testing)).
 
 `scripts/build-app.sh` builds a release binary, strips it, lays out the bundle, stamps
 the variant’s identity and the version, copies the variant’s icon, and signs.
 It signs ad hoc by default, which runs on this Mac only.
 Set `SIGN_IDENTITY="Developer ID Application: Name (TEAMID)"` to sign with the hardened
 runtime and a secure timestamp.
-Its header documents `BUILD`, `ARCHES`, and `ICON`.
+Any identity it names, of whatever kind, is looked for only in the release keychain,
+`SIGN_KEYCHAIN` (by default `release_keychain` in `scripts/common.sh`). Its header
+documents `BUILD`, `ARCHES`, `ICON`, and `SIGN_KEYCHAIN`.
 
 ### Versions
 
@@ -66,7 +72,7 @@ Both are named Metabrowser:
 | About box | “Development build · VERSION (BUILD) · COMMIT” | “Release · VERSION (BUILD) · COMMIT” |
 | Server logs | `~/Library/Logs/Metabrowser/` | the same folder |
 | App data (the saved session) | `~/Library/Application Support/Metabrowser/` | the same folder |
-| Settings and recent folders | user defaults `io.github.jlevy.metabrowser.dev`, and macOS’s recent documents for that identifier | the same, for `io.github.jlevy.metabrowser` |
+| Settings | user defaults `io.github.jlevy.metabrowser.dev` | the same, for `io.github.jlevy.metabrowser` |
 | URL schemes | each declared scheme with `-dev` (none yet) | as declared |
 | DMG | `build/Metabrowser-Dev-<VERSION>-arm64.dmg` | `build/Metabrowser-<VERSION>-arm64.dmg` |
 
@@ -105,11 +111,12 @@ One name has a cost: both bundles are `Metabrowser.app`, so they cannot both sit
 A development build normally runs from `build/dev/`, and the canary icon in the Dock and
 the About box’s first line tell it from an installed release.
 Both keep their files in folders named for the app, so they write one logs folder and
-restore the same windows, while their settings and recent folders stay apart by bundle
-identifier. Two copies can run at once: each claims a folder’s log before its server
-writes there (`ServerLogLease`), each save of the session replaces the whole file
-(`SessionStore`), and nothing on disk names a server to stop, so no copy can stop
-another’s.
+restore the same windows, and File > Open Recent lists the same folders in both, since
+`metab` keeps that list.
+Their settings stay apart by bundle identifier.
+Two copies can run at once: each claims a folder’s log before its server writes there
+(`ServerLogLease`), each save of the session replaces the whole file (`SessionStore`),
+and nothing on disk names a server to stop, so no copy can stop another’s.
 
 `scripts/build-icon.sh` regenerates both icons from the masters in `AppIcon/`; see
 [AppIcon/README.md](AppIcon/README.md).
@@ -122,7 +129,10 @@ cannot break it unnoticed; runs the Swift suites in three processes, since the W
 suites and the exit stress suite each stall the main actor that every suite shares (the
 Makefile says which); runs `scripts/test-scripts.sh`; and runs the gate’s Node tests
 (`webkit-gate/*.test.mjs`), which need no browser.
-A bare `swift test` runs every suite in one process.
+`scripts/test-scripts.sh` runs `scripts/test-release-logic.sh`, which checks what the
+release scripts decide on stand-ins for Apple’s tools and runs in the repository’s
+`make test` too, and, on a CI runner only, the signing doctor against a throwaway
+keychain. A bare `swift test` runs every suite in one process.
 
 To run the tests against a real server too:
 
@@ -155,7 +165,10 @@ decide, is checked by hand against a built development app with the
   Each variant has its own defaults domain, named by its bundle identifier.
   Deleting `~/Library/Application Support/Metabrowser/session.json` forgets the last
   session, a release’s too, since both variants share it, and File > Open Recent > Clear
-  Menu the recent folders, which macOS keeps for each bundle identifier.
+  Menu the recent targets, which `metab` keeps for both.
+  `make run` starts the app with `METABROWSER_RECORD_RECENT=0`, so what a development
+  run opens stays out of that list; a copy that is already running keeps the setting it
+  started with.
 
 ### The WebKit Gate
 
@@ -179,7 +192,7 @@ its matrix: the toolchain the app is built with, on the oldest macOS it supports
    The step fails unless `LiveMetabTests` ran and passed.
 3. `make macos-app`.
 4. `make macos-dmg` and `make macos-release NOTARIZE=0`, then `scripts/check-dmg.sh` on
-   both images.
+   both images, the rehearsal’s also against this checkout’s version and commit.
 5. The development app, zipped with `ditto`, and the development image, uploaded as
    artifacts kept for the workflow’s `retention-days`. The rehearsal’s image carries the
    published icon on an ad hoc signature, so it is checked and never uploaded.
@@ -199,83 +212,258 @@ make macos-release NOTARIZE=0  # the rehearsal, which checks its image too
 ## Building a Release
 
 A release is one command, `make macos-release`, and it uses only Apple’s tools: `swift`,
-`codesign`, `ditto`, `hdiutil`, `xcrun notarytool`, `xcrun stapler`, and `spctl`.
+`codesign`, `ditto`, `hdiutil`, `xcrun notarytool`, `xcrun stapler`, `spctl`, and
+`syspolicy_check`, with `jq`, which macOS includes from macOS 15, to read the notary
+logs.
+This section is the release runbook: who does what, the owner’s setup, each release
+in order, the checks, and what only a signing session can confirm.
+[The publishing plan](../../docs/project/specs/active/plan-2026-11-16-macos-app-publishing.md)
+says why each step is there.
 
-### Once per Mac
+### Who Does What
 
-For the first release, follow the owner steps in the
-[publishing plan](../../docs/project/specs/active/plan-2026-11-16-macos-app-publishing.md#owner-only-steps)
-instead: they keep the identity and the notary profile in a release keychain that stays
-locked except during a release, and the plan’s release runbook replaces this section.
+Steps marked **(Owner)** use the owner’s Apple account, private keys, or repository
+settings, and only the owner does them.
+An agent never types, stores, or prints a secret.
+It runs the rest: the signing doctor, the checks, the tag, the draft, and the
+publication the owner approved.
+It signs or notarizes only during a release the owner started by unlocking the release
+keychain.
+It never approves a deployment and never calls the pending-deployments endpoint
+(`POST /repos/{owner}/{repo}/actions/runs/{run_id}/pending_deployments`): the owner
+approves `macos-release` deployments only in the web UI.
 
-1. **A Developer ID Application certificate**, with its private key, in the login
-   keychain. It needs the Apple Developer Program, and only the account holder can create
-   one. `security find-identity -v -p codesigning` lists it as
-   `Developer ID Application: Name (TEAMID)`.
+### Owner Setup
 
-2. **Notary credentials in the keychain**, saved once under a profile name, so no secret
-   appears in a command line or an environment:
+Run the signing doctor first, `make macos-signing-check`. It only reads, never unlocks a
+keychain or asks for anything, and each miss it reports names the step below that fixes
+it; run it again after each step.
+O1 to O3 and O5 come before the first release, O4 before the first release CI builds,
+and O6 after the alpha’s first round of feedback.
+The commands name the release keychain as `KEYCHAIN`, the default that
+`release_keychain` in `scripts/common.sh` gives (`SIGN_KEYCHAIN` names another):
 
-   ```shell
-   xcrun notarytool store-credentials metabrowser-notary \
-     --key AuthKey_KEYID.p8 --key-id KEYID --issuer ISSUER_UUID
-   ```
+```shell
+KEYCHAIN=~/Library/Keychains/metabrowser-release.keychain-db
+```
 
-   That is an App Store Connect API key; `--apple-id`, `--team-id`, and an app-specific
-   password work too.
+- **O1. The release keychain (Owner).**
+  1. Install Apple’s Developer ID G2 intermediate into the login keychain, from
+     `apps/macos`, using the copy committed here, which came from Apple PKI
+     ([Supply-Chain Security](../../SUPPLY-CHAIN-SECURITY.md#apple-developer-id-intermediate-november-17-2026)):
+     `security import packaging/DeveloperIDG2CA.cer -k ~/Library/Keychains/login.keychain-db`.
+     codesign builds an identity’s chain only from keychains on the search list.
+  2. Create the release keychain, typing its password at the prompt, never with `-p`:
+     `security create-keychain "$KEYCHAIN"`. It does not add the keychain to the user
+     search list (macOS 26), so add it, keeping the keychains on it: the doctor prints
+     the `security list-keychains -d user -s` command with them.
+     Make it lock on sleep and when idle:
+     `security set-keychain-settings -l -u -t 900 "$KEYCHAIN"`. The doctor requires an
+     idle lock of at most `release_keychain_lock_seconds` (`scripts/signing-lib.sh`).
+  3. Move the Developer ID Application identity into it: export it from the login
+     keychain as a `.p12`, import it with `security import FILE.p12 -k "$KEYCHAIN" -x`,
+     with neither `-A`, `-T`, nor `-f pkcs12` (which would skip `-x`), typing the `.p12`
+     password in the dialog, and delete the identity from the login keychain.
+  4. Keep the `.p12` offline, in storage the owner controls, never in the repository or
+     a synced folder. Imported with `-x`, the key cannot be exported again, so the `.p12`
+     is its only backup, and losing both means a new certificate.
+  5. Optionally, remove `/usr/bin/security` from the private key’s access list in
+     Keychain Access, which takes away the silent use the import gave it.
+  6. Check: the doctor reports the identity valid in the release keychain and absent
+     from the login keychain, the intermediate installed, and the certificate’s expiry.
+     With the keychain unlocked,
+     `security export -k "$KEYCHAIN" -t identities -f pkcs12 -P x -o /dev/null` must
+     fail. Then lock it, as whenever no release is running:
+     `security lock-keychain "$KEYCHAIN"`.
 
-3. **The published icon**, `Resources/AppIcon.icns`, committed.
+- **O2. An App Store Connect API key (Owner)** for notarization, under Users and Access,
+  Integrations, in App Store Connect: a team key with the Developer role, which
+  developers report suffices.
+  Accept any pending developer agreement first.
+  Its `.p8` can be downloaded only once.
+
+- **O3. The notary profile (Owner),** stored in the release keychain and tested, after
+  which the `.p8` is deleted, so the profile is the key’s only copy on the Mac:
+
+  ```shell
+  xcrun notarytool store-credentials metabrowser-notary \
+    --key AuthKey_KEYID.p8 --key-id KEYID --issuer ISSUER_UUID --keychain "$KEYCHAIN"
+  ```
+
+  Check: with the keychain unlocked, `ONLINE=1 make macos-signing-check` gets an answer
+  from `notarytool history`.
+
+- **O4. CI signing, before the first release CI builds (Owner).** A second Developer ID
+  Application certificate, from a signing request made outside the release keychain, and
+  a second team API key, both for CI only, so each can be revoked alone.
+  The `macos-release` environment, with the owner as its required reviewer, self-review
+  allowed, “Allow administrators to bypass configured protection rules” off, and
+  deployments limited to tags matching `macos-v*`. Environment secrets, never repository
+  secrets, for the CI certificate’s base64 `.p12`, its password, its identity name, the
+  CI key’s `.p8` contents, its key ID, and the issuer ID. Then the CI identity, the
+  exported `.p12`, and the downloaded `.p8` are deleted from the Mac.
+  The release workflow that uses them is
+  [planned](../../docs/project/architecture/arch-macos-app.md#planned).
+
+- **O5. Repository settings, before 0.1.0 is published (Owner):** immutable releases on;
+  a tag ruleset that stops `v*` and `macos-v*` tags being moved or deleted; and,
+  optionally, the policy that requires actions pinned to a full-length commit SHA.
+  `make macos-check-release` refuses a published release that is not immutable.
+
+- **O6. The tap and the cask (Owner),** after the alpha’s first round of feedback, not
+  with 0.1.0: a personal tap repository, whose `Casks/` takes each release’s
+  `build/metabrowser-app.rb`.
+
+- **O9. Yearly renewal (Owner).** G2 certificates last one year.
+  The doctor warns `expiry_warn_days` before expiry and fails at `expiry_fail_days`
+  (`scripts/signing-lib.sh`). The Account Holder creates the next Developer ID
+  Application certificate and imports it into the release keychain as in O1, with `-x`
+  and its `.p12` kept offline, then deletes the old identity there: two valid identities
+  with one name make codesign refuse the name.
+  Once CI signs, the next CI certificate replaces O4’s secrets too.
+  Neither is exported from the release keychain.
+
+- **After a leak** of an API key or an identity: revoke the API key in App Store
+  Connect, delete the environment secrets, ask Apple to revoke the affected certificate,
+  the owner’s or CI’s, and the notarization tickets of what it signed
+  ([Notarizing macOS software](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution)),
+  and replace what was revoked (O2 to O4, O9).
 
 ### Each Release
 
-Set the new version, `V`, with `echo "$V" > apps/macos/VERSION` in a reviewed pull
-request, land it on `main`, and record that commit’s full SHA as `RELEASE_COMMIT`. After
-the owner approves it, create the `macos-v$V` tag on GitHub at that SHA as
-[macOS App Releases](../../docs/publishing.md#macos-app-releases) describes, never by
-pushing it from a clone.
-Then build the approved commit:
+In this order. The owner’s approvals, O7, come at steps 1, 3, and 8, and O8 is step 7.
+`V` is the version, `MAJOR.MINOR.PATCH`.
 
-```shell
-V=MAJOR.MINOR.PATCH
-git switch --detach "$RELEASE_COMMIT"
-make macos-release SIGN_IDENTITY="Developer ID Application: Name (TEAMID)" \
-  APPLE_KEYCHAIN_PROFILE=metabrowser-notary
-```
+1. **The commit, O7 (Owner approves).** `echo "$V" > apps/macos/VERSION` in a reviewed
+   pull request, landed on `main`, and that commit’s full SHA recorded as
+   `RELEASE_COMMIT`. The owner approves that exact SHA. Before it, the `metab` release
+   that `MetabRequirement.minimumRelease` names is published and verified on PyPI, and
+   `RELEASE_COMMIT` contains the commit that sets `MetabRequirement.isReleased` to true
+   (`Sources/ShellCore/Setup/MetabVersion.swift`): without it no downloader’s `metab`
+   runs the app, and `make macos-release` refuses the build.
 
-The tag is permanent from then on: a failure that needs a change is released under the
-next version, and a transient one is retried at the same tag
-([Failure Handling](../../docs/publishing.md#failure-handling)).
+2. **The tag.** The agent creates `macos-v$V` on GitHub at `RELEASE_COMMIT`, as
+   [macOS App Releases](../../docs/publishing.md#macos-app-releases) describes, never by
+   pushing it from a clone.
+   The tag is permanent from then on: a failure that needs a change is released under
+   the next version, and a transient one is retried at the same tag
+   ([Failure Handling](../../docs/publishing.md#failure-handling)).
 
-`scripts/release.sh` then runs, stopping at the first failure:
+3. **The go-ahead, O7 (Owner).** At the build Mac, at a checkout of `RELEASE_COMMIT`,
+   the owner unlocks the release keychain, typing its password at the prompt:
 
-1. **Preflight:** the identity is in the keychain, the notary credentials are set, the
-   published icon exists, and `apps/macos` has no uncommitted changes.
-2. **App:** `build-app.sh` builds and signs it with the hardened runtime and a secure
-   timestamp, inside out and never with `--deep`, and refuses any entitlement and any
-   signature whose entitlements `codesign` cannot read.
-3. **App notarization:** `notarize.sh` zips the app with `ditto`, submits it with
-   `notarytool submit --wait`, saves the notary log as
-   `build/release/notary-Metabrowser.app.json` (read it for warnings even after an
-   Accepted verdict), staples the ticket to the app, and runs
-   `spctl --assess --type execute`. A stapled app opens without reaching Apple, also
-   after it is dragged out of the image.
-4. **Image:** `make-dmg.sh` stages the app, an `Applications` link, and the app’s icon
-   as `.VolumeIcon.icns`, creates a read-write image to set the volume’s custom-icon
-   flag, converts it to a compressed UDZO image, signs it, and writes its checksum.
-5. **Image notarization:** the image is submitted, stapled, and assessed with
-   `spctl --assess --type open`, and its checksum is written again, since stapling
-   changes it.
-6. **Check:** `check-dmg.sh` checks the image as a downloader meets it (see
-   [Variants](#variants) for the icon rule).
-7. **Cask:** `build/metabrowser-app.rb`, the cask template in `packaging/` with the
-   version, the checksum, and the image’s architecture filled in: `-arm64.dmg` declares
-   `depends_on arch: :arm64`, `-x86_64.dmg` declares `:x86_64`, and `-universal.dmg`
-   (`ARCHES="arm64 x86_64"`) declares none.
-   The release stops if the cask’s URL would name another image than the one
-   checksummed, or if its `depends_on macos:` admits a macOS older than the app’s
-   `LSMinimumSystemVersion`.
+   ```shell
+   git switch --detach "$RELEASE_COMMIT"
+   security unlock-keychain "$KEYCHAIN"
+   ```
 
-The outputs:
+4. **The build:**
+
+   ```shell
+   make macos-release SIGN_IDENTITY="Developer ID Application: Name (TEAMID)" \
+     APPLE_KEYCHAIN_PROFILE=metabrowser-notary
+   security lock-keychain "$KEYCHAIN"
+   ```
+
+   macOS asks for the key twice, once when `build-app.sh` signs the app and once when
+   `make-dmg.sh` signs the image.
+   The dialog names the key, not the file: answer **Allow**, never **Always Allow**,
+   which would trust codesign with the key for good, and deny a third request.
+   The app’s notarization wait can outlast the keychain’s idle lock; if it does, signing
+   and submitting the image first ask to unlock the keychain again.
+   Lock it when the build ends, whether it passed or not.
+   `scripts/release.sh` stops at the first failure of these steps:
+   1. **Preflight:** the signing doctor, `scripts/check-signing.sh --for-release`, finds
+      a valid identity in the release keychain, the intermediate, and the notary
+      profile, and finds the keychain unlocked; the published icon exists, and
+      `apps/macos` has no uncommitted changes.
+   2. **App:** `build-app.sh` builds and signs it, with the identity from the release
+      keychain alone, the hardened runtime, and a secure timestamp, inside out and never
+      with `--deep`, and refuses any entitlement and any signature whose entitlements
+      `codesign` cannot read.
+   3. **App notarization:** `notarize.sh` runs `syspolicy_check notary-submission` on
+      the app, which stops a rejection before it is submitted, zips the app with
+      `ditto`, submits it with `notarytool submit --wait`, and saves the notary log as
+      `build/release/notary-Metabrowser.app.json`. It reads the log: an issue of
+      severity error fails, each warning is printed with its path, and a
+      `notary record:` line gives the submission ID, the status, and the counts.
+      It staples the ticket to the app and runs `spctl --assess --type execute`. A
+      stapled app opens without reaching Apple, also after it is dragged out of the
+      image.
+   4. **Image:** `make-dmg.sh` stages the app, an `Applications` link, and the app’s
+      icon as `.VolumeIcon.icns`, creates a read-write image to set the volume’s
+      custom-icon flag, converts it to a compressed UDZO image, signs it, and writes its
+      checksum.
+   5. **Image notarization:** the app inside the image is checked again, and the image
+      is submitted, its log read, and it is stapled and assessed with
+      `spctl --assess --type open`, and its checksum is written again, since stapling
+      changes it.
+   6. **Check:** `check-dmg.sh` checks the image as a downloader meets it
+      ([The Checks](#the-checks)).
+   7. **Cask:** `build/metabrowser-app.rb`, the cask template in `packaging/` with the
+      version, the checksum, and the image’s architecture filled in: `-arm64.dmg`
+      declares `depends_on arch: :arm64`, `-x86_64.dmg` declares `:x86_64`, and
+      `-universal.dmg` (`ARCHES="arm64 x86_64"`) declares none.
+      The release stops if the cask’s URL would name another image than the one
+      checksummed, or if its `depends_on macos:` admits a macOS older than the app’s
+      `LSMinimumSystemVersion`.
+
+   It ends by naming the release’s assets, `release_assets` in `scripts/common.sh`.
+   `NOTARY_TIMEOUT` bounds the wait for a verdict; `scripts/notarize.sh` documents it
+   and its default. `make macos-notarize FILE=build/Metabrowser-<VERSION>-arm64.dmg`
+   retries one step, and `make macos-release NOTARIZE=0` rehearses every step without
+   credentials.
+
+5. **The draft.** The agent attaches the image and its checksum to a draft on the tag,
+   not the Latest release, with the notes ([Release Notes](#release-notes)):
+
+   ```shell
+   gh release create "macos-v$V" --draft --verify-tag --latest=false \
+     --title "Metabrowser for macOS $V" --notes-file NOTES.md \
+     "apps/macos/build/Metabrowser-$V-arm64.dmg" \
+     "apps/macos/build/Metabrowser-$V-arm64.dmg.sha256"
+   ```
+
+6. **The download check.** From the checkout of `RELEASE_COMMIT`, whose icons
+   `check-dmg.sh` compares the image’s with, the agent runs the check, and the owner
+   then runs it with `LAUNCH=1` at the Mac, on a VM or a second account if one is at
+   hand:
+
+   ```shell
+   make macos-check-release TAG="macos-v$V" BUILT=local EXPECTED_TEAM_ID=TEAMID
+   make macos-check-release TAG="macos-v$V" BUILT=local EXPECTED_TEAM_ID=TEAMID LAUNCH=1
+   ```
+
+   Each output goes into the approval record.
+   `EXPECTED_TEAM_ID` is required: without an attestation, the Team ID is what ties the
+   image to the owner. `LAUNCH=1` exits nonzero on a miss, and an answer of no is one; it
+   takes `y` or `yes` and `n` or `no`, and asks again on anything else.
+   If a `LAUNCH=1` run is interrupted, the release identity’s defaults, session, and
+   recent documents stay cleared and its backup in `apps/macos/build/launch-check-TIME`
+   is their only copy: the next run, and `make macos-clean`, refuse until
+   `scripts/launch-release.sh --restore build/launch-check-TIME`, run in `apps/macos`,
+   puts them back. Quit Metabrowser first: the restore refuses while any copy runs, since
+   a running copy saves its session over the restored one.
+
+7. **O8, the owner’s download (Owner).** On a Mac or VM that has not run the app, the
+   owner downloads the draft’s image in a browser, opens it, answers Gatekeeper’s
+   prompt, and launches the app once offline.
+
+8. **Approval and publication, O7 (Owner approves).** The owner approves the image’s
+   SHA-256 and the notes.
+   The agent publishes the draft without making it the Latest release, which stays the
+   Python package’s, then checks it again as published:
+
+   ```shell
+   gh release edit "macos-v$V" --draft=false --latest=false
+   make macos-check-release TAG="macos-v$V" BUILT=local EXPECTED_TEAM_ID=TEAMID
+   ```
+
+   The second check also verifies the immutable release’s attestation and that the
+   release is not Latest.
+   In the web UI, untick “Set as the latest release” before publishing.
+
+The build’s outputs:
 
 | File | What it is |
 | --- | --- |
@@ -285,40 +473,125 @@ The outputs:
 | `build/metabrowser-app.rb` | The cask |
 | `build/notary-*.json`, `build/release/notary-*.json` | The notary logs, each beside the file it is for |
 
-`NOTARY_TIMEOUT` bounds the wait for a verdict; `scripts/notarize.sh` documents it and
-its default.
-`make macos-notarize FILE=build/Metabrowser-<VERSION>-arm64.dmg` retries one
-step, and `make macos-release NOTARIZE=0` rehearses every step without credentials.
-
-To publish, attach the image and its checksum to a draft release on the tag:
-
-```shell
-gh release create "macos-v$V" --draft --verify-tag --latest=false \
-  --title "Metabrowser for macOS $V" \
-  "apps/macos/build/Metabrowser-$V-arm64.dmg" \
-  "apps/macos/build/Metabrowser-$V-arm64.dmg.sha256"
-```
-
-Before publishing, the owner opens the draft’s image from a browser download on a Mac
-that has not run the app, and approves the image’s SHA-256 and the notes (O8 and O7 in
-the
-[publishing plan’s owner steps](../../docs/project/specs/active/plan-2026-11-16-macos-app-publishing.md#owner-only-steps)).
-Then publish it without making it the repository’s Latest release, which stays the
-Python package’s:
-
-```shell
-gh release edit "macos-v$V" --draft=false --latest=false
-```
-
-0.1.0 ships without a cask (the plan’s Q5): the tap and the cask follow the alpha’s
-first round of feedback, when a release copies `build/metabrowser-app.rb` to `Casks/` in
-a personal tap. Publishing the release does not publish to PyPI: `publish.yml` runs its
+0.1.0 ships without a cask: the tap and the cask follow the alpha’s first round of
+feedback (O6). Publishing the release does not publish to PyPI: `publish.yml` runs its
 job only for a `v` tag, the Python package’s. No workflow builds, signs, or drafts the
 release yet; that job is
 [planned](../../docs/project/architecture/arch-macos-app.md#planned).
-
 What a downloader of a signed release meets, from Gatekeeper’s first check to the
 privacy prompts, is in [the user guide](../../docs/macos-app.md).
+
+### The Checks
+
+Every check exits nonzero on a miss, so the same script gates a local release, CI, and
+the owner’s acceptance of a download.
+Each script’s header lists what it checks.
+
+| Script | What it checks | Where it runs |
+| --- | --- | --- |
+| `scripts/check-signing.sh` (`make macos-signing-check`) | The release keychain, the identity, its expiry and issuer, the G2 intermediate, Xcode and notarytool, and the notary credentials; read-only | The build Mac, and each release’s preflight; macOS CI against a throwaway keychain |
+| `scripts/notarize.sh` | `syspolicy_check notary-submission` before each submission, and the notary log after it | Each submission |
+| `scripts/check-dmg.sh` | The image and its contents, the icons, the hardened runtime, and for a Developer ID build the secure timestamp, the Team ID, the chain, the stapled tickets, `spctl`, `syspolicy_check distribution`, and `codesign --check-notarization` | Every image built; macOS CI on both its images; the download check |
+| `scripts/check-release.sh` (`make macos-check-release`) | A draft or published release as downloaded: the checksum, GitHub’s digest, the build provenance `BUILT` names, immutable releases on for a draft, and the immutable release and Latest once published, `check-dmg.sh` with `NOTARIZE=1` and `EXPECTED_TEAM_ID`, and that the app is the release variant, the tag’s version, and built from the tag’s commit; it quarantines a download that has none, for `LAUNCH=1` | Step 6 and step 8 of each release |
+| `scripts/launch-release.sh` (`LAUNCH=1`) | The first launch, which must be translocated, the relaunch and a move from Terminal, recorded, and a move in Finder, after which it must not be; the person’s confirmations | At the Mac only, never in CI |
+
+`scripts/test-release-logic.sh` runs what these scripts decide on stand-ins for Apple’s
+tools, in `make test` on Linux and in `make macos-test`.
+
+### The Test Matrix
+
+Before each release is published, on a Mac or VM that has not run the app, or a second
+account, since Gatekeeper caches what it has seen:
+
+- **Fresh:** O8, and the download check with `LAUNCH=1`.
+- **Not moved and moved:** `LAUNCH=1` records the translocated first launch, the
+  relaunch, a move from Terminal, and a move in Finder.
+- **A duplicate:** with a copy in Applications, a second copy opened from elsewhere runs
+  and shows the launch notice; the record says which copy opened.
+- **Another account** than the one that installed the app opens it from Applications.
+- **An upgrade** over the previous release’s copy in Applications, from the second
+  release on: the app opens with its settings and recent folders.
+
+The other macOS releases, standard accounts, and Macs without the Command Line Tools are
+the clean-account matrix of the
+[native app plan](../../docs/project/specs/active/plan-2026-11-10-native-macos-app.md#phase-5-setup-runtime-and-updates),
+which this one does not repeat.
+
+### Release Notes
+
+The notes follow [Release Notes](../../docs/publishing.md#release-notes), from this
+template:
+
+````markdown
+An alpha preview of Metabrowser for macOS, the native app for browsing folders with
+Metabrowser. It runs your own installation of `metab`; [the installation
+guide](https://github.com/jlevy/metabrowser/blob/main/docs/installation.md) says which
+macOS and which `metab` it needs.
+
+## Changes
+
+- One line per user-visible change, compatibility note, or important fix.
+
+## Verify the Download
+
+```shell
+shasum -a 256 -c Metabrowser-X.Y.Z-arm64.dmg.sha256
+gh release verify-asset macos-vX.Y.Z Metabrowser-X.Y.Z-arm64.dmg --repo jlevy/metabrowser
+```
+
+**Full changes:** https://github.com/jlevy/metabrowser/compare/macos-vPREVIOUS...macos-vX.Y.Z
+````
+
+The first release has no previous tag, so its notes link the tag’s tree instead.
+
+### The Approval Record
+
+Each release keeps a record, in its tracking issue, of:
+
+- `RELEASE_COMMIT`, and who approved it and when;
+- the tag’s SHA as `gh api` reported it after creating it;
+- the doctor’s report from the preflight, and both `notary record:` lines;
+- the image’s SHA-256, and who approved it and the notes, and when;
+- the download check’s output on the draft and on the published release, and the launch
+  record `LAUNCH=1` prints;
+- O8’s result: the Mac or VM, its macOS version, and the offline launch;
+- the results of the signing-session checks below.
+
+### Checks Only a Signing Session Can Make
+
+This repository’s tests run on Linux and on macOS CI, which have no Developer ID, no
+notary account, and no person to answer a prompt.
+These are confirmed only at the build Mac, the first time and again when Xcode or macOS
+changes, and each result goes in the approval record:
+
+1. The doctor, run before O1 to O3, reports exactly the missing release keychain, the
+   missing G2 intermediate, and the missing notary profile, and shows no prompt.
+2. With the release keychain locked, the doctor still finds its identity and shows no
+   prompt; whether it can read the lock settings and the profile while locked is noted.
+3. The doctor finds the profile `notarytool store-credentials` saved.
+   It looks for the keychain item notarytool 1.1 uses, which Apple does not document: if
+   it reports the profile absent while `ONLINE=1` succeeds, the item’s name has changed.
+4. O1’s export check fails, so the key cannot be exported.
+5. The release asks for the key exactly twice.
+6. `syspolicy_check notary-submission` passes on the app and on the app in the image.
+7. Both notary logs are fetched and read: two `notary record:` lines, Accepted, with any
+   warnings listed.
+8. `check-dmg.sh` with `NOTARIZE=1` passes on the signed image: the hardened runtime, a
+   secure timestamp, the Team ID, the chain, the tickets, `spctl`,
+   `syspolicy_check distribution`, and `codesign --check-notarization` on the app and on
+   the image, a use of it that Apple DTS gives only for other code.
+9. The download check passes on the draft with `BUILT=local`, and again once published.
+10. `LAUNCH=1`: the first launch is translocated and shows the launch notice; whether
+    the relaunch stays translocated; whether a move from Terminal ends it; and that a
+    move in Finder does.
+11. After `LAUNCH=1` on an account with the release identity’s own state, its defaults,
+    session, and recent documents are as they were.
+    The run does not back up or clear the identity’s WebKit data, caches, or saved
+    window state, or the server logs.
+12. O8 agrees with the download check’s simulated quarantine: a browser download is
+    quarantined, and Gatekeeper asks once.
+    The simulation matters only to `LAUNCH=1`; none of `check-dmg.sh`’s tools judges a
+    file differently for its quarantine.
 
 ### Ad Hoc Builds
 
@@ -343,10 +616,16 @@ Do not hand one out as a release.
 | `VERSION` | The app’s version, set nowhere else |
 | `scripts/build-app.sh`, `scripts/common.sh`, `scripts/test-scripts.sh` | The bundle script, the variants and helpers every script shares, and the tests of those helpers |
 | `scripts/release.sh`, `notarize.sh`, `make-dmg.sh`, `check-dmg.sh` | The release pipeline and its steps |
+| `scripts/check-signing.sh`, `signing-lib.sh`, `keychain-status.swift` | The signing doctor, its checks, and its read-only keychain reader |
+| `scripts/notary-lib.sh` | What `notarize.sh` decides: credentials, the check before a submission, and reading the notary log |
+| `scripts/gatekeeper-lib.sh` | What `check-dmg.sh` reads from a signature and a quarantine attribute |
+| `scripts/check-release.sh`, `check-release-lib.sh`, `launch-release.sh`, `quarantine.swift` | The download check, its decisions, the launch check, and the helper that quarantines a download as a browser does |
+| `scripts/test-release-logic.sh`, `scripts/fixtures/` | The release scripts’ decisions on stand-ins for Apple’s tools, which Linux CI runs too, and their inputs |
 | `scripts/check-setup-flows.sh`, `scripts/setup-check/` | The hand checks of the first-run screens and the launch notice, and their stand-ins |
 | `scripts/measure-web-views.swift` | The measurement behind `TabDiscardPolicy` |
 | `webkit-gate/` | The WebKit measurement gate: `run.mjs`, the in-page `probe.js`, `summary.mjs` for its verdicts, `processes.mjs` and `static-server.mjs`, and `driver/`, the `WebKitDriver` target |
 | `packaging/metabrowser-app.rb.template` | The Homebrew cask, filled in by each release |
+| `packaging/DeveloperIDG2CA.cer` | Apple’s Developer ID G2 intermediate, reviewed in [Supply-Chain Security](../../SUPPLY-CHAIN-SECURITY.md#apple-developer-id-intermediate-november-17-2026) |
 
 `make lint-check` at the repository root lints `webkit-gate/` with Biome and type-checks
 it strictly (`webkit-gate/tsconfig.json`, and `probe.js` under the root

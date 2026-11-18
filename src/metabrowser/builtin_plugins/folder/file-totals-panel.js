@@ -18,7 +18,9 @@ import {
  * @param {{classFor(key: string): string, styleFor(key: string): string, paint(element: HTMLElement, key: string): void}} palette
  * @param {{acquire(path: string): {subscribe(listener: (value: unknown) => void): () => void, release(): void}}} projectionPool
  * @param {FolderRollupControls} rollupControls
- * @param {{signal?: AbortSignal}} options
+ * @param {{signal?: AbortSignal, hover: import("./distribution-hover.js").DistributionHover}} options
+ *   `hover` is the one the bars share with the legend under them, which names their
+ *   segments.
  */
 export function mountFileTotalsPanel(
   container,
@@ -43,6 +45,7 @@ export function mountFileTotalsPanel(
     envelopeTotals,
     mb,
     controlsState.metric,
+    options.hover,
   );
 
   // Totals arrive from two places and neither is reliably first. The

@@ -36,11 +36,13 @@
   outline-offset: 2px;
 }
 
+/* Clipped, for the collapse, without becoming a scroll container: one would hold a
+   README's sticky table of contents in place instead of the pane. */
 .folder-overview-panel-body {
   min-width: 0;
   interpolate-size: allow-keywords;
   height: auto;
-  overflow: hidden;
+  overflow: clip;
   transition:
     height var(--transition-fast),
     visibility var(--transition-fast) allow-discrete;
@@ -115,10 +117,9 @@
   .folder-overview-host {
     --folder-overview-column-inset: 1.5rem;
     --folder-overview-text-inset: var(--file-tab-padding-x);
-    --folder-overview-card-width: min(
-      100%,
-      calc(var(--doc-measure) + 2 * var(--folder-overview-column-inset))
-    );
+    /* The card's full measure, declared once for both caps below. */
+    --folder-overview-measure: calc(var(--doc-measure) + 2 * var(--folder-overview-column-inset));
+    --folder-overview-card-width: min(100%, var(--folder-overview-measure));
   }
 
   .folder-overview-panel-surface > .folder-overview-panel-heading,
@@ -135,9 +136,40 @@
     padding-inline: var(--folder-overview-text-inset);
   }
 
+  /* A README with a table of contents lays it out as an opened file does, so it takes the
+     whole column: KPress caps the card at the column's edges above, sets its rail to their
+     right in the wide band, and below that keeps the trailing gutter its floating toggle
+     needs when the pane is too narrow for the card's full measure. */
+  .folder-overview-panel-document
+  > .folder-overview-panel-body:has(> .kpress-doc > .kpress-doc-layout > .kpress-toc) {
+    width: 100%;
+  }
+
   @container kpress-doc (min-width: 48rem) {
     .folder-overview-host {
       --folder-overview-column-inset: 4rem;
+    }
+  }
+
+  /* Below the wide band that gutter, KPress's toggle clearance, takes the card's trailing
+     edge in from the column's once the column is narrower than the card's full measure
+     and the gutter together (markdown.css). So while the README has a table of contents
+     there, every panel's cap leaves the same gutter, and the section rules and surface
+     bodies end where the card does. The README's own heading is one of them; its body
+     keeps the whole column, by the `width: 100%` rule for a README with a table of
+     contents. */
+  @container kpress-doc (max-width: 74.99rem) {
+    .folder-overview-host:has(
+        .folder-overview-panel-document
+          > .folder-overview-panel-body
+          > .kpress-doc
+          > .kpress-doc-layout
+          > .kpress-toc
+      ) {
+      --folder-overview-card-width: min(
+        calc(100% - var(--kpress-toc-toggle-clearance)),
+        var(--folder-overview-measure)
+      );
     }
   }
 

@@ -28,6 +28,14 @@ anchor in the document is left out and a depth out of range is clamped; and the 
 after scrolling, after a heading loses its layout box (as one inside a closed disclosure
 does, so the section above it stays active) and after a run of them to the last heading
 does, opening the drawer, clicking an entry, and clicking the backdrop.
+The narrow toggle follows the rule in `builtin_plugins/markdown/toc-toggle.js`, as a
+trusted render’s does: in a document that starts the pane, it shows past the threshold;
+in one a folder Overview shows 1,000px down the pane (`belowOtherPanels`), it stays
+hidden past the threshold until the reader reaches the document’s beginning, and hides
+again above it. It measures the element the render is mounted in, as a trusted render’s
+toggle does, so when that README’s panel is collapsed (`collapsedPanel`) and the pane is
+scrolled past it, the toggle hides although the article clipped inside the empty body
+still spans the pane’s top, and shows again once the panel opens.
 Disposal removes every listener.
 
 ```console
@@ -156,6 +164,38 @@ $ node tests/dom/markdown-inert-toc-session.js
     "drawerOpen": false,
     "backdropVisible": false,
     "toggleShown": true
+  },
+  "belowOtherPanels": {
+    "pastThreshold": {
+      "scrollTop": 500,
+      "toggleShown": false
+    },
+    "justAbove": {
+      "scrollTop": 980,
+      "toggleShown": false
+    },
+    "reached": {
+      "scrollTop": 1005,
+      "toggleShown": true
+    },
+    "backAbove": {
+      "scrollTop": 500,
+      "toggleShown": false
+    }
+  },
+  "collapsedPanel": {
+    "collapsed": {
+      "scrollTop": 1600,
+      "mountedHeight": 0,
+      "articleSpansPaneTop": true,
+      "toggleShown": false
+    },
+    "expandedAgain": {
+      "scrollTop": 1600,
+      "mountedHeight": 10000,
+      "articleSpansPaneTop": true,
+      "toggleShown": true
+    }
   },
   "disposed": {
     "listeners": 0

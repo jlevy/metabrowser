@@ -18,11 +18,11 @@
 // promised is layout, which only a browser computes: from the frame the panel first shows
 // rows to the frame it settles, no box in the navigation (the filter bar, each metadata
 // line, the first rows) moves or changes size, and Chrome records no layout shift without
-// input after that frame. Each load is recorded from the document's start, frame by
-// frame, in both themes; with the server's tally answered at once and held 2 s ("slow");
-// in the default pane and the narrowest; for the folder with ignored files and for the
-// one with none. The folder with the longer tracked count is loaded in the default pane,
-// where its two halves outgrew one line on main's code.
+// input at all. Each load is recorded from the document's start, frame by frame, in both
+// themes; with the server's tally answered at once and held 2 s ("slow"); in the default
+// pane and the narrowest; for the folder with ignored files and for the one with none.
+// The folder with the longer tracked count is loaded in the default pane, where its two
+// halves outgrew one line on main's code.
 //
 // Ten loads take the shell as a server drawn before the walk finished the root would
 // send it, its inlined totals taken out ("unknown"): with ignored files the line holds the
@@ -48,6 +48,11 @@
 // Once a load settles, the tracked and ignored lines' tooltips are read as the shell
 // decides them (`tipAddsInformation`): each shows only while its line is cut short.
 //
+// A last load fails filter-controls.js, so the filter bar is never filled and keeps the
+// shell's placeholder: the tree, held while it does, must show at the hold's bound
+// (styles.css, the rule after `.nav-filter-bar`). Its result is `failOpen`, apart from
+// the thirty.
+//
 // Each step writes `phase <name> <ms since start>` to stderr, so a slow run says where.
 import { spawn } from "node:child_process";
 import path from "node:path";
@@ -71,6 +76,7 @@ const ENTRY_AFTER_MS = 1500;
 // The server's first line names the port it took, which a port in use moves.
 const SERVING = /Serving .* at http:\/\/127\.0\.0\.1:(\d+)\/view\//;
 const TALLY = /\/api\/tree\?depth=0(&|$)/;
+const CONTROLS = /\/static\/filter-controls\.js(\?|$)/;
 
 /** Start one server searching from port *at*, resolving once it says where it serves. */
 async function serve(root, at, dir) {
@@ -123,6 +129,13 @@ async function serve(root, at, dir) {
 const PROBE = `(() => {
   window.__frames = [];
   window.__shifts = [];
+  // When the parser inserts the tree, no later than the hold on it starts (styles.css).
+  new MutationObserver((_, observer) => {
+    if (document.getElementById("tree-content")) {
+      window.__treeAt = performance.now();
+      observer.disconnect();
+    }
+  }).observe(document, { childList: true, subtree: true });
   new PerformanceObserver((list) => {
     for (const entry of list.getEntries()) {
       if (!entry.hadRecentInput) {
@@ -139,13 +152,13 @@ const PROBE = `(() => {
   const sample = () => {
     const panel = document.getElementById("tab-files");
     const rows = panel ? [...panel.querySelectorAll(".tree-item")].slice(0, 12) : [];
-    // First paint is the first frame with rows under a filled filter bar. In a pane too
-    // narrow for it the bar, which the shell ships one line tall, wraps to two as
-    // filter-controls.js fills it, the toolbar exemption of docs/design-system.md,
-    // "Regions Keep Their Boxes" (H52 would server-render it): measured at 180 px, the
-    // rows sometimes painted a frame before the bar filled and then moved 30 px with it.
-    const filled = document.querySelectorAll("#nav-filter-bar .chip").length > 0;
-    if (panel && rows.length > 0 && filled) {
+    // First paint is the first frame with rows shown, whether or not the filter bar is
+    // filled yet. In a pane too narrow for it the bar, which the shell ships one line
+    // tall, wraps to two as app.js fills it, and rows shown before that moved 30 px with
+    // it (mb-a5pa, mb-kiqm), so the tree is hidden until the bar is filled (styles.css,
+    // the rule after \`.nav-filter-bar\`): a row under that rule is in place, not shown.
+    const shown = rows.length > 0 && getComputedStyle(rows[0]).visibility === "visible";
+    if (panel && shown) {
       const boxes = { bar: box(document.getElementById("nav-filter-bar")) };
       panel.querySelectorAll(".nav-metadata").forEach((line, i) => { boxes["line " + i] = box(line); });
       rows.forEach((row, i) => { boxes["row " + i] = box(row); });
@@ -167,9 +180,6 @@ const PROBE = `(() => {
   requestAnimationFrame(sample);
 })();`;
 
-// Half a frame at 60 Hz: a shift Chrome reports within it of the first frame with rows
-// belongs to that frame, whose rAF time is a moment before its layout.
-const FRAME_MS = 8;
 /** @param {{value: number}[]} shifts */
 const sumShifts = (shifts) =>
   Math.round(shifts.reduce((sum, shift) => sum + shift.value, 0) * 100000) / 100000;
@@ -199,6 +209,8 @@ async function main() {
     height: 900,
   });
   const results = [];
+  /** @type {any[]} */
+  const failed = [];
   try {
     phase("chrome");
     await browser.send("Page.enable");
@@ -214,6 +226,8 @@ async function main() {
     /** @type {string[]} */
     let heldStreams = [];
     let streamsReleased = true;
+    // A load whose filter-controls.js fails, so the filter bar is never filled.
+    let failControls = false;
     const releaseStreams = async () => {
       streamsReleased = true;
       for (const requestId of heldStreams.splice(0)) {
@@ -243,6 +257,13 @@ async function main() {
     browser.on("Fetch.requestPaused", async (params) => {
       try {
         const url = params.request.url;
+        if (failControls && CONTROLS.test(url)) {
+          await browser.send("Fetch.failRequest", {
+            requestId: params.requestId,
+            errorReason: "Failed",
+          });
+          return;
+        }
         if (params.responseStatusCode !== undefined && TALLY.test(url)) {
           tallies += 1;
           if (tallies > 1) {
@@ -286,8 +307,19 @@ async function main() {
       }
     });
     let widthScript = null;
-    const load = async ({ server, name, theme, width, slow, strip, early = false }) => {
+    const load = async ({
+      server,
+      name,
+      theme,
+      width,
+      slow,
+      strip,
+      early = false,
+      failing = false,
+      into = results,
+    }) => {
       holdMs = slow ? SLOW_MS : 0;
+      failControls = failing;
       answered = 0;
       provisional = early;
       tallies = 0;
@@ -320,6 +352,9 @@ async function main() {
               ]
             : []),
           ...(provisional ? [{ urlPattern: "*/api/tree*", requestStage: "Response" }] : []),
+          ...(failing
+            ? [{ urlPattern: "*/static/filter-controls.js*", requestStage: "Request" }]
+            : []),
         ],
       });
       await browser.send("Page.navigate", { url: `${server.base}/view/` });
@@ -356,6 +391,8 @@ async function main() {
         `({
           frames: window.__frames,
           shifts: window.__shifts,
+          treeAt: window.__treeAt ?? null,
+          barPending: !!document.querySelector('#nav-filter-bar > .tally-pending'),
           inline: !!window.METABROWSER_INITIAL_TREE?.summary,
           paneWidth: Math.round(document.querySelector('.tree-pane').getBoundingClientRect().width),
           scheme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
@@ -371,7 +408,12 @@ async function main() {
       );
       const first = page.frames[0] ?? null;
       const last = page.frames.at(-1) ?? null;
-      results.push({
+      // Every shift from the document's start, the move into first paint too: nothing in
+      // the panel moves into it either. No window after first paint could set that move
+      // apart: CI reported the filter bar's wrap at 180 px, when it moved the tree 30 px,
+      // 24, 72, and 111 ms after the rAF of the frame it moved into (mb-kiqm).
+      const counted = page.shifts;
+      into.push({
         name,
         theme,
         width,
@@ -383,6 +425,10 @@ async function main() {
         paneWidth: page.paneWidth,
         scheme: page.scheme,
         frames: page.frames.length,
+        // From the tree's insertion to its first frame with rows shown, and whether the
+        // filter bar still held the shell's placeholder when the load settled.
+        shownAfter: first && page.treeAt !== null ? Math.round(first.at - page.treeAt) : null,
+        barPending: page.barPending,
         first: first && {
           reads: first.reads,
           ignoredLine: first.ignoredLine,
@@ -399,11 +445,8 @@ async function main() {
         tip: page.tip,
         trackedTip: page.trackedTip,
         moved: movement(page.frames),
-        // The shifts after first paint. One in that frame is the move into it: in the
-        // narrowest pane, the filter bar's wrap as it is filled (above).
-        shift: sumShifts(page.shifts.filter((s) => first && s.at > first.at + FRAME_MS)),
-        before: sumShifts(page.shifts.filter((s) => !first || s.at <= first.at + FRAME_MS)),
-        shifts: page.shifts,
+        shift: sumShifts(counted),
+        counted,
         trail: page.frames.map(
           (frame) =>
             `${frame.at} ${frame.ignoredLine} ${frame.boxes["line 0"]?.join("/")} ${frame.boxes["row 0"]?.join("/")} ${frame.reads}`,
@@ -464,13 +507,25 @@ async function main() {
         early: true,
       });
     }
+    // The hold's bound: with filter-controls.js failed the bar is never filled, and the
+    // tree, held while the bar holds its placeholder, is shown at the bound (styles.css).
+    await load({
+      server: ignoring,
+      name: "ignored filter controls failed 300px light",
+      theme: "light",
+      width: 300,
+      slow: false,
+      strip: false,
+      failing: true,
+      into: failed,
+    });
   } finally {
     await browser.close();
     await ignoring.stop();
     await wide.stop();
     await clean.stop();
   }
-  process.stdout.write(`${JSON.stringify({ results })}\n`);
+  process.stdout.write(`${JSON.stringify({ results, failOpen: failed[0] ?? null })}\n`);
 }
 
 main().catch((error) => {

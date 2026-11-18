@@ -11,17 +11,20 @@ The count is now a line of its own, the shell inlines the root's totals with its
 rows, and a line drawn without them holds the ignored line with the pending placeholder
 (docs/design-system.md, "Navigation Metadata Line"). ``tests/dom/files-totals-stable-
 chrome.mjs`` serves a folder with ignored files, the same with a longer tracked count,
-and one with nothing ignored, and records each load frame by frame from the document's
-start, in both themes, with the tally answered at once and held 2 s, in the default pane
-and the narrowest. This judges it:
+and one with nothing ignored, each dated days back so that no age on the page changes its
+label during the session (``_AGE_S``), and records each load frame by frame from the
+document's start, in both themes, with the tally answered at once and held 2 s, in the
+default pane and the narrowest. This judges it:
 
-- from first paint, the first frame with rows under a filled filter bar, to the settled
-  frame, no box in the navigation (the filter bar, each metadata line, the first twelve
-  rows) moves or changes size, and Chrome records no layout shift without input after
-  that frame. In the narrowest pane the filter bar wraps to two lines as it is filled,
-  which docs/design-system.md, "Regions Keep Their Boxes", exempts as a toolbar in a pane
-  too narrow for it; the rows sometimes paint a frame before that and move 30 px with
-  it (mb-h3hc's audit; the server rendering the bar, H52, would end it);
+- from first paint, the first frame with rows shown, to the settled frame, no box in the
+  navigation (the filter bar, each metadata line, the first twelve rows) moves or changes
+  size, and Chrome records no layout shift without input from the document's start. In
+  the narrowest pane the filter bar wraps to two lines as it is filled, and the tree
+  under it moved 30 px, the rows with it when they were shown first (mb-a5pa), so the
+  tree holds its first paint until the bar is filled (styles.css, the rule after
+  ``.nav-filter-bar``). Every shift counts, the move into first paint too: CI reported
+  that one up to 111 ms after the frame it moved into (mb-kiqm), so no window after first
+  paint can set it apart;
 - the line is its settled self from first paint: the ignored count's line for the folder
   with ignored files, and no ignored line for the folder with none;
 - a shell drawn before the walk finished the root, its inlined totals taken out and the
@@ -32,7 +35,10 @@ and the narrowest. This judges it:
   nothing ignored yet, does not release it; and for a folder with nothing ignored it
   keeps its box as "No ignored files";
 - the tracked and ignored lines' tooltips, each its line's whole phrase, show only while
-  the line is cut short, and in the narrowest pane the ignored line is.
+  the line is cut short, and in the narrowest pane the ignored line is;
+- the tree's hold is bounded: a load whose ``filter-controls.js`` fails never fills the
+  bar, and the tree is shown at the bound in the hold's rule, which this reads from
+  styles.css, with nothing moved.
 
 The browserless states of the line are pinned by
 ``tests/golden/cli-ui-tree-summary-line.tryscript.md``. Where text sits is computed
@@ -47,8 +53,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import socket
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -58,8 +66,9 @@ from tests.process_group import GROUP_STOP_S, PROFILE_TEARDOWN_S, run_in_own_gro
 from tests.required_tools import require_chrome, require_node
 
 SESSION = Path(__file__).resolve().parent / "dom" / "files-totals-stable-chrome.mjs"
+STYLES = Path(__file__).resolve().parent.parent / "src" / "metabrowser" / "static" / "styles.css"
 _METAB = Path(sys.executable).with_name("metab")
-# Three server starts, one Chrome, and thirty loads, eighteen of them holding the tally
+# Three server starts, one Chrome, and thirty-one loads, eighteen of them holding the tally
 # 2 s and two the event stream 1.5 s (eight more hold it only until first paint, inside
 # their tally's 2 s): the session took 71 s, and the test 98 s, on a 10-core Mac at a
 # load average near 30. A cold Chrome start in CI has taken 28.2 s, and each server's
@@ -69,6 +78,9 @@ LIFECYCLE_S = SESSION_TIMEOUT_S + GROUP_STOP_S + PROFILE_TEARDOWN_S
 pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)
 # Layout rounds to fractions of a pixel; a box off by more than this has moved.
 TOLERANCE_PX = 0.5
+# The tree's insertion is marked a moment before its first style, where the hold's bound
+# starts, and an animation's start is a frame's time: at most a few frames either way.
+BOUND_SLACK_MS = 50
 # The folder with ignored files: "41 files (1.5 MB)" over "+ 2,000 ignored (133.5 MB)".
 # As one line the two wrapped in the narrowest pane, so main's code moved the tree there;
 # the tracked count is short enough to stay one line at 180 px in a wider font set than
@@ -81,6 +93,21 @@ _WIDE_TRACKED_FILES = 1200
 _TRACKED_BYTES = 40_000
 _IGNORED_FILES = 2000
 _IGNORED_BYTES = 70_000
+# How old the served trees are dated. An age is drawn in buckets, and the main view's
+# folder header shows the folder's: written as the test starts, a folder read "just now"
+# for its first minute, then "1m ago", "2m ago" and on. The header refreshes its summary a
+# debounce after the event stream's snapshot (`startFolderHeaderSubscription` in app.js,
+# `ROLLUP_WATCH_DEBOUNCE_MS`), so a load in which a folder's age changed its label redrew
+# it, and where the label's width changed the right-aligned summary moved (mb-j4ts,
+# 2026-11-17). On CI it was the clean folder in "none unknown slow 180px dark", twice:
+# "278 B 41 files just now" became "... 1m ago", the summary's left edge moved 7.9 px, and
+# Chrome scored 1.77e-5. On a Mac it was the folder with ignored files in "ignored unknown
+# slow 180px dark", in 2 of 5 runs, scored 1.2e-4 with the header's root crumb. Three days
+# old, every age reads "3d" from 2.5 to 3.5 days (`AGE_TIERS` in formatters.js rounds),
+# twelve hours either side of a session bounded at SESSION_TIMEOUT_S. So nothing here sees
+# the header's values move when one of them changes width; whether the age should hold a
+# slot against that is mb-v4u6.
+_AGE_S = 3 * 24 * 60 * 60
 
 
 def _sparse(path: Path, size: int) -> None:
@@ -101,6 +128,13 @@ def _ignoring(root: Path, tracked: int) -> Path:
     return root
 
 
+def _dated(root: Path, when: float) -> None:
+    """Give *root* and everything under it the access and modification time *when*."""
+
+    for path in [root, *root.rglob("*")]:
+        os.utime(path, (when, when))
+
+
 def _folders(root: Path) -> tuple[Path, Path, Path]:
     ignoring = _ignoring(root / "ignoring", _TRACKED_FILES)
     wide = _ignoring(root / "wide", _WIDE_TRACKED_FILES)
@@ -110,6 +144,9 @@ def _folders(root: Path) -> tuple[Path, Path, Path]:
     for index in range(40):
         (clean / "src" / f"m{index:02d}.py").write_text(f"x = {index}\n", encoding="utf-8")
     (clean / "README.md").write_text("# Clean\n", encoding="utf-8")
+    when = time.time() - _AGE_S
+    for folder in (ignoring, wide, clean):
+        _dated(folder, when)
     return ignoring, wide, clean
 
 
@@ -125,7 +162,18 @@ def _still(result: dict[str, Any]) -> list[str]:
     return [f"{key} {px} px" for key, px in result["moved"].items() if px > TOLERANCE_PX]
 
 
-def test_nothing_in_the_files_panel_moves_from_first_paint_to_settled(
+def _hold_bound_ms() -> float:
+    """The bound on the tree's hold, read from its rule in styles.css."""
+
+    css = STYLES.read_text(encoding="utf-8")
+    rule = re.search(r'~ \.tree-content:not\(:has\(> \[role="alert"\]\)\) \{([^}]*)\}', css)
+    assert rule is not None, "the tree's hold is not in styles.css"
+    delay = re.search(r"mb-delayed-loading-reveal 0s linear ([\d.]+)(ms|s) forwards", rule.group(1))
+    assert delay is not None, rule.group(1)
+    return float(delay.group(1)) * (1 if delay.group(2) == "ms" else 1000)
+
+
+def test_nothing_in_the_files_panel_moves_from_document_start_to_settled(
     tmp_path: Path, chrome_profile: Path
 ) -> None:
     chrome = require_chrome()
@@ -152,7 +200,8 @@ def test_nothing_in_the_files_panel_moves_from_first_paint_to_settled(
     assert run.returncode == 0, run.stderr or run.stdout
     # Shown with a failure: every load's frames, and each phase's time.
     print(run.stdout, run.stderr)
-    results: list[dict[str, Any]] = json.loads(run.stdout.strip().splitlines()[-1])["results"]
+    output = json.loads(run.stdout.strip().splitlines()[-1])
+    results: list[dict[str, Any]] = output["results"]
     assert len(results) == 30, [result["name"] for result in results]
 
     for result in results:
@@ -163,7 +212,10 @@ def test_nothing_in_the_files_panel_moves_from_first_paint_to_settled(
         ignored = name.startswith("ignored")
         # Nothing moves from first paint to settled.
         assert not _still(result), f"{name}: {_still(result)}: {result['trail']}"
-        assert result["shift"] == 0, f"{name}: layout shift {result['shift']}: {result['trail']}"
+        # Every shift from the document's start, each with its time and the node that
+        # moved, which may be outside the panel.
+        shift = f"layout shift {result['shift']}: {result['counted']}"
+        assert result["shift"] == 0, f"{name}: {shift}: {result['trail']}"
         # And it is not luck: the line paints its settled shape from the first frame, from
         # the root's totals the shell inlined, or holding the ignored line without them,
         # which nothing but the root's totals settles.
@@ -188,3 +240,14 @@ def test_nothing_in_the_files_panel_moves_from_first_paint_to_settled(
         assert tracked is not None and tracked["shows"] is tracked["cut"], f"{name}: {tracked}"
     provisional = [result for result in results if result["provisional"]]
     assert len(provisional) == 2 and all(result["settled"] for result in provisional)
+
+    # The hold is bounded: with filter-controls.js failed, the bar is never filled, and the
+    # tree is shown at the bound, not hidden for good, and nothing moves.
+    failed: dict[str, Any] = output["failOpen"]
+    name = failed["name"]
+    assert failed["settled"], f"{name}: the tree was never shown: {failed['trail']}"
+    assert failed["barPending"], f"{name}: the filter bar was filled: {failed['trail']}"
+    bound = _hold_bound_ms()
+    shown = failed["shownAfter"]
+    assert shown >= bound - BOUND_SLACK_MS, f"{name}: shown {shown} ms in, before {bound:.0f} ms"
+    assert not _still(failed) and failed["shift"] == 0, f"{name}: {failed['counted']}"

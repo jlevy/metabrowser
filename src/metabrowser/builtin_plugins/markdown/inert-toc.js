@@ -13,11 +13,10 @@
 // links. The entry titles are the document's text; they only ever become text nodes.
 
 import { findElementById } from "./dom-traversal.js";
+import { tocToggleVisible } from "./toc-toggle.js";
 
 /** KPress's reading line: the bottom of the top quarter of the scroll viewport. */
 const READING_LINE = 0.25;
-/** How far the reader scrolls before the narrow toggle shows, as in KPress. */
-const TOGGLE_SCROLL_THRESHOLD_PX = 100;
 const ANCHOR_HREF = "#user-content-";
 
 /**
@@ -162,6 +161,9 @@ export function wireInertToc(article, options = {}) {
   const windowTarget = options.windowTarget ?? window;
   const viewport = /** @type {HTMLElement | null} */ (article.closest("[data-kpress-viewport]"));
   const scroller = viewport ?? windowTarget;
+  // The toggle measures the element the render is mounted in, as a trusted render's does
+  // (rendered.js, transclusion.js): `inertArticle` finds the article as its child.
+  const mounted = article.parentElement ?? article;
   const links = Array.from(nav.querySelectorAll("a.toc-link"));
   const targets = links.flatMap((link) => {
     const target = findElementById(article, (link.getAttribute("href") ?? "").slice(1));
@@ -207,7 +209,13 @@ export function wireInertToc(article, options = {}) {
     return windowTarget.innerHeight * READING_LINE;
   };
   const update = () => {
-    toggle.classList.toggle("show-toggle", scrollTop() > TOGGLE_SCROLL_THRESHOLD_PX);
+    toggle.classList.toggle(
+      "show-toggle",
+      tocToggleVisible(mounted, {
+        scrollTop: scrollTop(),
+        top: viewport ? viewport.getBoundingClientRect().top : 0,
+      }),
+    );
     const selected = targetAtReadingLine(
       targets.map(({ target }) => target),
       readingLine(),

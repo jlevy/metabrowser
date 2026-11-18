@@ -16,6 +16,15 @@
 // such as an image in rendered Markdown or `/raw` in a new tab, carry no commit and are
 // not refused.
 //
+// A folder's server serves nothing but its folder, so a folder's page names nothing,
+// with one exception. A folder that is a repository's root can show a committed revision
+// of its checkout in the folder's place (static/source-ref-selector.js), so the page of
+// its working tree names what it shows too, with the word `working-tree` where a pin's
+// page has its commit, and is refused in the same way once a revision is served. That
+// page does not carry this module inline: it arrives with the selector that can make
+// the switch, after the first tree request, so a folder's first paint pays nothing for
+// it (`METABROWSER_SOURCE_CHECKOUT`).
+//
 // Back and forward bring a page back without asking the server for it: from the
 // back/forward cache as it was left, or from the HTTP cache as it was first served.
 // Either can name a commit the server stopped serving after a pin switch, and such a
@@ -40,6 +49,9 @@
 (() => {
   const PIN_HEADER = "x-metabrowser-pin";
   const PIN_CHANGED_HEADER = "x-metabrowser-pin-changed";
+  // What the page of a checkout's working tree names: `WORKING_TREE_PIN` in
+  // source_routes.py. Not hexadecimal, so it is never a commit.
+  const WORKING_TREE_PIN = "working-tree";
 
   /**
    * Whether a request to *url* names the page's commit.
@@ -65,7 +77,7 @@
    * A `fetch` that names *pin* on guarded requests and reports a refusal.
    *
    * @param {typeof fetch} fetchImpl
-   * @param {string} pin The full commit ID the page shows.
+   * @param {string} pin The full commit ID the page shows, or `WORKING_TREE_PIN`.
    * @param {() => string} base The page's current URL, read at each call.
    * @param {(served: string) => void} onPinChanged
    * @returns {typeof fetch}
@@ -94,7 +106,8 @@
    * page shows, or none at all, as after a restart on a folder. An answer that is not a
    * status says nothing.
    *
-   * @param {string} pin The commit the page was rendered for.
+   * @param {string | null} pin The commit the page was rendered for, or null for the
+   *   page of a checkout's working tree, which a status names by a null pin.
    * @param {{pin?: unknown} | null} served
    */
   function servesAnother(pin, served) {
@@ -115,7 +128,8 @@
    * way, a refusal is taken as the answer.
    *
    * @param {{status(): Promise<{pin?: unknown} | null>, reload(): void}} deps
-   * @param {string} pin The commit the page was rendered for.
+   * @param {string | null} pin The commit the page was rendered for; null for the page
+   *   of a checkout's working tree.
    */
   function createHistoryGuard(deps, pin) {
     let asking = false;
@@ -160,17 +174,34 @@
     });
   }
 
+  /**
+   * What this page shows, as the guard names it: its commit, null for the working tree
+   * of a checkout, or `undefined` for a page with nothing to guard. Pure.
+   *
+   * @param {{pin?: unknown} | null | undefined} page `METABROWSER_SOURCE_PIN`.
+   * @param {{working_tree?: unknown} | null | undefined} checkout `METABROWSER_SOURCE_CHECKOUT`.
+   * @returns {string | null | undefined}
+   */
+  function shownPin(page, checkout) {
+    if (page && typeof page.pin === "string") {
+      return page.pin;
+    }
+    return checkout && checkout.working_tree === true ? null : undefined;
+  }
+
   window.MetabrowserSourcePinGuard = Object.freeze({
     PIN_CHANGED_HEADER,
     PIN_HEADER,
+    WORKING_TREE_PIN,
     createHistoryGuard,
     guardFetch,
     guardedRequest,
     servesAnother,
+    shownPin,
   });
 
-  const page = window.METABROWSER_SOURCE_PIN;
-  if (page && typeof page.pin === "string" && typeof window.fetch === "function") {
+  const shown = shownPin(window.METABROWSER_SOURCE_PIN, window.METABROWSER_SOURCE_CHECKOUT);
+  if (shown !== undefined && typeof window.fetch === "function") {
     const plainFetch = window.fetch.bind(window);
     const history = createHistoryGuard(
       {
@@ -180,11 +211,11 @@
         },
         reload: () => window.location.reload(),
       },
-      page.pin,
+      shown,
     );
     window.fetch = guardFetch(
       plainFetch,
-      page.pin,
+      shown ?? WORKING_TREE_PIN,
       () => window.location.href,
       (served) => {
         history.refused();

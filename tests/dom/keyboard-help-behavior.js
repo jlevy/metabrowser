@@ -312,6 +312,40 @@ check(
   helpButton?.getAttribute("data-modal-control") === "true",
 );
 check("punctuation shortcut has no guessed ARIA", !helpButton.hasAttribute("aria-keyshortcuts"));
+// Shift leads the strip, ahead of Help: the one key that shows all the others. It is no
+// command, so it is a reminder, hidden from assistive technology as the reveal it calls
+// up is, its keycap the single-key entry point's.
+const revealHint = hintHost.children[0];
+check(
+  "Shift leads the strip, ahead of Help",
+  hintHost.children.length === 2 && hintHost.children[1] === helpButton,
+  JSON.stringify(hintHost.children.map((child) => child.textContent || child.className)),
+);
+check(
+  "the Shift lead is a hidden reminder: a Shift keycap and Reveal keys",
+  JSON.stringify([
+    revealHint?.tagName,
+    revealHint?.className,
+    revealHint?.getAttribute("aria-hidden"),
+    revealHint?.querySelectorAll("kbd").map((keycap) => keycap.textContent),
+    revealHint?.querySelector(".nav-shortcut-label")?.textContent,
+  ]) === JSON.stringify(["SPAN", "nav-shortcut-hint", "true", ["Shift"], "Reveal keys"]),
+);
+// The resting strip is one row: its items show from the start as far as their widths and
+// gaps fit, so the last drops first, and the lead shows even where it alone does not fit.
+const fits = sandbox.MetabrowserKeyboardHelp.stripItemsThatFit;
+check(
+  "the strip's fit drops items from the end and never the lead",
+  JSON.stringify(
+    [300, 247.9, 247.8, 155.2, 155.1, 100, 0].map((available) =>
+      fits([105.7, 43.5, 86.7], available, 6),
+    ),
+  ) === JSON.stringify([3, 3, 2, 2, 1, 1, 1]),
+);
+check(
+  "the strip's fit shows a lone lead and an empty strip as they are",
+  fits([105.7], 10, 6) === 1 && fits([], 10, 6) === 0,
+);
 helpButton.dispatchEvent({ type: "click" });
 check("pointer trigger reaches modal", modalOpen && openedTrigger === helpButton);
 check(
@@ -408,9 +442,10 @@ shortcuts.batch(() => {
 });
 check(
   "a batch reconciles the strip once",
-  stripReconciles === stripBeforeBatch + 1 && hintHost.children.length === 2,
+  stripReconciles === stripBeforeBatch + 1 && hintHost.children.length === 3,
   JSON.stringify({ added: stripReconciles - stripBeforeBatch }),
 );
+check("a reconcile keeps the Shift lead's node first", hintHost.children[0] === revealHint);
 check("a batch while Help is closed does not render it", helpRenders === 1);
 
 shortcuts.register({
@@ -429,13 +464,16 @@ shortcuts.register({
 });
 check(
   "inactive tree hint is absent",
-  hintHost.querySelectorAll("button").length === 2 && hintHost.children.length === 2,
+  hintHost.querySelectorAll("button").length === 2 && hintHost.children.length === 3,
 );
 const deactivateTree = shortcuts.activateScope("tree");
-check("active tree hint appears", hintHost.children.length === 3);
-check("scope reconciliation keeps Help trigger", hintHost.children[0] === originalHelpButton);
+check("active tree hint appears", hintHost.children.length === 4);
+check(
+  "scope reconciliation keeps the Shift lead and the Help trigger",
+  hintHost.children[0] === revealHint && hintHost.children[1] === originalHelpButton,
+);
 deactivateTree();
-check("tree hint disappears", hintHost.children.length === 2);
+check("tree hint disappears", hintHost.children.length === 3);
 check(
   "scope changes reconcile the strip and leave closed Help alone",
   helpRenders === 1 && JSON.stringify(headings()) === JSON.stringify(["Anywhere", "Help"]),
@@ -556,8 +594,9 @@ check(
   ),
 );
 check(
-  "the resting strip keeps its buttons while revealed",
-  hintHost.querySelectorAll("button").length === restingButtons.length &&
+  "the resting strip keeps its Shift lead and its buttons while revealed",
+  hintHost.children[0] === revealHint &&
+    hintHost.querySelectorAll("button").length === restingButtons.length &&
     hintHost.querySelectorAll("button").every((button, index) => button === restingButtons[index]),
 );
 shortcuts.setRevealed(false);

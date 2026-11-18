@@ -139,6 +139,39 @@ import Testing
         #expect(started.duration(to: clock.now) < .seconds(15))
     }
 
+    /// Cancelling the task that runs a command kills it at once, long before its deadline:
+    /// how File > Open URL… stops a dry run it no longer awaits. The bound is the one above.
+    @Test func cancellingTheTaskKillsTheCommand() async throws {
+        let folder = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let pidFile = folder.appending(path: "pid").path(percentEncoded: false)
+        let clock = ContinuousClock()
+        let started = clock.now
+        let run = Task {
+            await CommandRunner.run(
+                LaunchSpec(executable: "/bin/sh", arguments: ["-c", #"echo $$ > "$1"; exec sleep 30"#, "sh", pidFile]),
+                timeout: .seconds(60))
+        }
+        // The command has started once it has written its pid.
+        var leader: pid_t?
+        let wrote = await eventually {
+            leader = (try? String(contentsOfFile: pidFile, encoding: .utf8))
+                .flatMap { pid_t($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            return leader != nil
+        }
+        #expect(wrote)
+        run.cancel()
+        let result = await run.value
+        #expect(started.duration(to: clock.now) < .seconds(15))
+        #expect(result.status == nil)
+        #expect(result.timedOut)
+        if let leader {
+            let gone = await eventually { !processExists(leader) }
+            #expect(gone)
+            if !gone { kill(leader, SIGKILL) }
+        }
+    }
+
     @Test func backgroundJobDoesNotHoldTheResultOrSurvive() async {
         let clock = ContinuousClock()
         let started = clock.now

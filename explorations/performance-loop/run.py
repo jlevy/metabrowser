@@ -1153,6 +1153,8 @@ def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: 
         environment = os.environ.copy()
         environment["METABROWSER_INVENTORY_PROVIDER"] = args.provider
         environment["METABROWSER_DEBUG"] = "1"
+        # A measured server is not an open: it records no recent target.
+        environment["METABROWSER_RECORD_RECENT"] = "0"
         process = subprocess.Popen(
             [str(build.executable), str(root), "--no-open", "--port", str(port)],
             # An immutable external build must not import or discover files

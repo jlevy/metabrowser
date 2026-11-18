@@ -93,12 +93,12 @@ $ node tests/dom/github-pulls-prefetch-behavior.js
   "firstRead": [
     "GET /api/plugin/github/pull?number=7"
   ],
-  "checked": "Checked just now · fetched 3 h ago via GitHub CLI",
+  "checked": "Fetched 3 h ago via GitHub CLI",
   "lapsedRead": [
     "POST /api/plugin/github/pulls-refresh",
     "GET /api/plugin/github/pull?number=7"
   ],
-  "checkedAfter304": "Checked just now · fetched 3 h ago via GitHub CLI",
+  "checkedAfter304": "Fetched 3 h ago via GitHub CLI",
   "withinWindow": [
     "GET /api/plugin/github/pull?number=7"
   ],

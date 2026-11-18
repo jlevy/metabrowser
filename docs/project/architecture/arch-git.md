@@ -6,7 +6,9 @@ commit detail, for a served folder and for a pinned revision.
 Planned: working-tree status and diffs, in the
 [Git status plan](../specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md).
 
-Metabrowser reads Git and never writes a repository it serves.
+Metabrowser reads Git and never writes a repository it serves;
+[Known Gaps in the Read-Only Rule](#known-gaps-in-the-read-only-rule) names the two
+reads where Git itself does.
 This document covers how it starts Git, what the Commits panel asks of it, and how the
 answers stay bounded.
 [Source Sessions and Pins](arch-source-sessions-and-pins.md) covers what a session
@@ -50,8 +52,38 @@ or a trusted store target, never both.
 Each spawn runs under a named `GitProcessPolicy`: `READ_POLICY` for a served folder,
 `STORE_READ_POLICY` and `BATCH_OBJECT_POLICY` for a Metabrowser-owned store, and
 `ACQUISITION_POLICY` for fetching.
-A store target that names no policy gets the store policy, and a store spawn whose
-policy would allow lazy fetch is refused.
+A revision a folder’s server shows of its own checkout is read as a store is: its target
+is the checkout’s Git directory, with no worktree, under the two store policies
+([Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout)).
+Every `diff` and `show` at a store target also says `--no-textconv --no-ext-diff`
+(`GitLocation.diff_driver_args`), since those policies leave a repository’s local
+configuration in effect and a checkout’s can name a driver.
+Every command run at a `GitLocation`, a served folder’s included, sets
+`log.showSignature=false` (`GIT_NO_SIGNATURE_ARGS` in `GitLocation.config_args`): with
+that setting on in a repository’s configuration, `log` and `show` verify signatures by
+running the program `gpg.program`, `gpg.ssh.program`, or `gpg.x509.program` names, and
+no page shows a signature’s state.
+Every command at a store target also sets `diff.submodule=short`
+(`GIT_NO_SUBMODULE_DIFF_ARGS`): with `diff`, a patch diffs each changed submodule in a
+child Git in the submodule’s own Git directory, which runs that directory’s drivers
+whatever the parent passes.
+A store target’s `GitLocation` also sets `format.pretty=medium`
+(`GIT_NO_CONFIGURED_FORMAT_ARGS`), since that setting can hold `%G?`, which verifies a
+signature for a `show` or `log` without a format of its own, and `core.fsmonitor=false`
+with `core.hooksPath` at the null device (`GIT_NO_HOOK_ARGS`), since a read of an index
+path runs the one and a ref written runs a hook.
+A store target that names no policy gets the store policy, and a store spawn is refused
+when its policy would allow lazy fetch, or when its arguments have a shape that would
+start a program the repository’s configuration names (`_require_no_configured_program`):
+a `diff`, `show`, or `log` without the driver options after its command and the
+signature, submodule, and format settings before it; another value for one of those
+settings or the hook settings; `--show-signature`, `--textconv`, `--ext-diff`,
+`--alternate-refs`, a signature in a format or a sort, or a format given by name; a
+`cat-file` or `hash-object` filter, an editor, or a `rev-list` content search; and,
+under the read policies, any command outside `_STORE_READ_COMMANDS` and a `symbolic-ref`
+or `config` that writes.
+The guard reads arguments only: it does not see what a batch reads from its input, or an
+index path, which only a read through a `GitLocation` is protected for.
 
 | Invariant | Mechanism | What it prevents |
 | --- | --- | --- |
@@ -86,6 +118,30 @@ separators are bytes, so each parser decodes at its own granularity.
 `.git/index` to persist its stat cache, and with optional locks off it does not.
 The cost is that the stat cache never persists, so a feature that polls Git pays a cost
 that does not amortize.
+
+### Known Gaps in the Read-Only Rule
+
+`READ_POLICY`, which a served folder’s own Git reads run under, keeps the reader’s and
+the checkout’s Git configuration and sets no lazy-fetch guard.
+Git therefore writes into the checkout’s Git directory in two cases:
+
+- **A partial clone.** A read that needs a blob the clone lacks makes Git fetch it from
+  the promisor remote and store a new pack.
+  Commit detail’s `git show --numstat` is such a read.
+  The store policies set `GIT_NO_LAZY_FETCH=1`, under which the same read fails and
+  fetches nothing.
+- **A cached textconv driver.** Where the checkout’s configuration names a textconv
+  driver with `cachetextconv`, a comparison that runs the driver makes Git write
+  `refs/notes/textconv/<driver>`.
+
+Both were reproduced on 2026-11-18 with Git 2.50.1, through `/api/git/commit/<rev>` on a
+`--filter=blob:none` clone and through `/api/plugin/diff/comparison` on a checkout with
+such a driver. No test holds either yet (`mb-z849`). A third case is closed for every
+location: a signature program named by the checkout’s configuration, which
+`log.showSignature` would run from the Commits tab, is never started, and
+`tests/test_checkout_revisions.py` holds that for a folder’s own history as for a
+revision’s. [Open Modes](arch-open-modes.md#what-is-never-written) states the rule they
+fall short of, and requires that a revision of a checkout never reach either.
 
 ### The One Other Git Process
 
@@ -125,6 +181,11 @@ root. A served folder is Git-capable only when the two are equal.
 History spans the whole repository, so serving a subdirectory as a Git root would let
 the Commits panel describe files outside the tree the user chose to browse; widening the
 gate is a containment change.
+
+[Open Modes](arch-open-modes.md#resolving-a-target-to-a-root) designs opening a path
+inside a repository at the repository’s root.
+The gate then stays as it is, and refuses only a folder served exactly, below a
+repository’s root.
 
 Discovery answers a negative reason, such as `not_repo_root`, and never raises to a
 route. Linked worktrees qualify because Git reports each worktree’s own root.
@@ -342,6 +403,7 @@ code does not import provider code.
 
 ## References
 
+- [Open Modes](arch-open-modes.md)
 - [Source Sessions and Pins](arch-source-sessions-and-pins.md)
 - [Diff Pipeline](arch-diff-pipeline.md)
 - [Views, models, and routes](arch-views-models-routes.md)
