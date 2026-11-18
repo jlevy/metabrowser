@@ -22,7 +22,10 @@ the Python one included, so a host fix can be tested without fdu:
 Each opened handle also carries a fault seam, so relay recovery can be tested:
 :meth:`PerturbedHandle.fail_next_read` and :meth:`PerturbedHandle.fail_changes` raise
 a chosen exception, a `BaseException` that is not an `Exception` included, from the
-next read or from the change iterator, waking it if it is waiting.
+next read or from the change iterator, waking it if it is waiting, and
+:meth:`PerturbedHandle.delay_close` makes its close take a while, as a poisoned native
+root's join can. The backend's :meth:`PerturbedBackend.fail_opens` makes its next opens
+raise, so a reopen can fail.
 
 The wrapper changes nothing else: projections, receipts, and states are the wrapped
 provider's own, and every perturbation is off by default.
@@ -79,8 +82,16 @@ class PerturbedBackend:
         self._inner = inner
         self._perturbation = perturbation
         self.handles: list[PerturbedHandle] = []
+        self._open_faults: list[BaseException] = []
+
+    def fail_opens(self, *errors: BaseException) -> None:
+        """Make the next ``len(errors)`` opens raise these errors, in order."""
+
+        self._open_faults.extend(errors)
 
     async def open(self, root: Path, config: InventoryConfig) -> PerturbedHandle:
+        if self._open_faults:
+            raise self._open_faults.pop(0)
         capacity = self._perturbation.replay_capacity
         if capacity is not None and capacity < config.change_queue_size:
             config = replace(config, change_queue_size=capacity)
@@ -98,6 +109,13 @@ class PerturbedHandle:
         self._read_fault: BaseException | None = None
         self._changes_fault: BaseException | None = None
         self._changes_fault_armed = asyncio.Event()
+        self._close_delay_s = 0.0
+        self.closed = False
+
+    def delay_close(self, seconds: float) -> None:
+        """Make :meth:`close` wait *seconds* before it closes the wrapped handle."""
+
+        self._close_delay_s = seconds
 
     def fail_next_read(self, error: BaseException) -> None:
         """Make the next :meth:`read` raise *error* instead of reading."""
@@ -136,7 +154,10 @@ class PerturbedHandle:
         await self._inner.prioritize(request)
 
     async def close(self) -> None:
+        if self._close_delay_s:
+            await asyncio.sleep(self._close_delay_s)
         await self._inner.close()
+        self.closed = True
 
     async def _changes(self, *, after: ChangeCursor | None) -> AsyncGenerator[ChangeBatch]:
         inner_after = (
