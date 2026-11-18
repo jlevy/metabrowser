@@ -184,14 +184,24 @@ def test_only_a_bar_of_two_views_carries_their_keys(tmp_path: Path) -> None:
     assert re.findall(r'data-view-key="(\w)"', two) == ["d", "s"]
 
 
-def test_the_print_button_keeps_its_slot() -> None:
-    """Toggling `hidden` on it moved the header's size label 32 px on a view switch."""
+def test_print_takes_no_slot_in_the_header_or_the_document() -> None:
+    """The print button left the header, and in the document's card it reserves nothing.
 
-    rule = _rule(_css(), ".file-header-print[hidden]")
-    assert "visibility: hidden;" in rule
-    assert "display: inline-flex;" in rule
+    In the header it came and went with the view, so it kept a hidden slot: toggling
+    `hidden` alone had moved the size label 32 px on a view switch. It is now in the
+    rendered document's card (mb-07a1), absolute in the card's padding, so it has no slot
+    to keep; tests/dom/document-print-chrome.mjs measures that nothing moves.
+    """
+
     app = (STATIC / "app.js").read_text(encoding="utf-8")
-    assert "btn.hidden = !printable;" in _function(app, "updatePrintButton")
+    assert "file-header-print" not in app
+    assert "updatePrintButton" not in app
+    assert ".file-header-print" not in _css()
+    markdown = (STATIC.parent / "builtin_plugins" / "markdown" / "markdown.css").read_text(
+        encoding="utf-8"
+    )
+    rule = _rule(markdown, "  .metabrowser-markdown-document .metabrowser-print-indicator")
+    assert "position: absolute;" in rule
 
 
 def test_a_runs_status_badge_is_as_wide_as_its_widest_label() -> None:

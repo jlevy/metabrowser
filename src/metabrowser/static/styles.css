@@ -4406,18 +4406,6 @@ a.tab-btn {
 .file-header > .folder-header-summary:not(:has(.tally-pending)) {
   align-self: baseline;
 }
-/* .file-header-icon (the print action) has no block of its own: it is
-   entirely the .icon-btn primitive. It sits beside the copy icon and,
-   across the header, the settings gear, so it must not grow chrome
-   that those do not have. */
-/* A view that cannot print keeps the button's slot, so switching views never
-   moves the header's size label beside it. Hidden, it is out of the tab order
-   and the accessibility tree all the same. */
-.file-header-print[hidden] {
-  display: inline-flex;
-  visibility: hidden;
-}
-
 /* A badge is one word or two on one line, and centers its capitals, not
    the font's line box. Centered by its line box, 12px Source Sans 3
    left 3.14px above its capitals and 5px below its baseline in a 16px
@@ -6284,7 +6272,6 @@ pre.code-block.metabrowser-source-lines > code {
   .file-header,
   .tab-bar,
   .content-copy-btn,
-  .file-header-print,
   .settings-toggle,
   .custom-tooltip,
   /* Covers Quick File too: its overlay is a .modal-overlay. */
