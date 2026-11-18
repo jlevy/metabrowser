@@ -775,10 +775,23 @@ _WRITER = textwrap.dedent(
     from metabrowser import recent_targets
 
     home, writer, count = Path(sys.argv[1]), sys.argv[2], int(sys.argv[3])
+    recent_targets.LOCK_WAIT_S = float(sys.argv[4])
     for index in range(count):
         recent_targets.record("folder", f"/work/writer-{writer}/root-{index}", directory=home)
     """
 )
+# How long the writers below wait for the lock, and how long the test waits for each.
+# This test is about what the lock excludes; how long a writer may wait is
+# test_a_writer_gives_up_on_a_lock_held_too_long_and_a_server_starts_anyway's. Its burst
+# is not servers starting at once: each writer here takes the lock five times running,
+# and the one that has just released it takes it again before a waiter's next try (in 28
+# to 32 of the 39 handoffs of each of 8 bursts on 2026-11-18, at load average 250), so
+# the writer served last waits behind nearly every other writer's records, where a
+# server waits behind one record for each server starting with it. That wait passed
+# LOCK_WAIT_S on a loaded free-threaded CI runner (run 44386715486). A writer still gives
+# up before the test stops waiting for it, so a lock never released fails as its error.
+_WRITERS_LOCK_WAIT_S = 30.0
+_WRITERS_TIMEOUT_S = 50
 
 
 def test_writers_at_once_lose_no_entry(home: Path) -> None:
@@ -790,16 +803,17 @@ def test_writers_at_once_lose_no_entry(home: Path) -> None:
 
     writers, each = 8, 5
     assert writers * each <= MAX_RECENT_TARGETS
+    wait = f"{_WRITERS_LOCK_WAIT_S:g}"
     children = [
         subprocess.Popen(
-            [sys.executable, "-c", _WRITER, str(home), str(writer), str(each)],
+            [sys.executable, "-c", _WRITER, str(home), str(writer), str(each), wait],
             stderr=subprocess.PIPE,
             text=True,
         )
         for writer in range(writers)
     ]
     for child in children:
-        _, errors = child.communicate(timeout=50)
+        _, errors = child.communicate(timeout=_WRITERS_TIMEOUT_S)
         assert child.returncode == 0, errors
 
     roots = _roots(home)
