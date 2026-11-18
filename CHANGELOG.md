@@ -11,6 +11,17 @@ All notable changes to Metabrowser are documented here.
   list, so they stay in view while the tree or the list scrolls, as the Commits tally
   does.
 
+- On a checkout of a repository on github.com, or a mirror of one, a file’s or a
+  folder’s header ends in a small toggle of two marks: Metabrowser’s, gray, the view the
+  page is in, and GitHub’s, a link to the same item’s page on github.com: at the branch
+  the page is on when `origin` has it, or else at its commit, with a tooltip that says
+  `origin` had no such branch at your last fetch.
+  A narrow pane shows the GitHub mark alone.
+  A browser opens it in a new tab, since github.com cannot be framed, and the macOS app
+  in the default browser.
+  A plain folder, or a checkout whose origin is elsewhere, has no toggle.
+  See [View Headers](docs/design-system.md#view-headers).
+
 - A file’s and a folder’s header is now a view header of three rows on the main view’s
   ground: a quiet line with the Up button and the folders that hold the item, then the
   item’s icon and its name at the page title’s size, then its badges, size, file count,
