@@ -80,18 +80,10 @@
             "copy",
             "doc",
             "file",
-            "fileSymlink",
             "fileText",
-            "gear",
             "grid",
             "list",
             "monitor",
-            "moon",
-            "print",
-            "sans",
-            "serif",
-            "sun",
-            "toggle",
             null
           ],
           "description": "This family's own shape, or null to take the group's."
@@ -132,18 +124,10 @@
             "copy",
             "doc",
             "file",
-            "fileSymlink",
             "fileText",
-            "gear",
             "grid",
             "list",
-            "monitor",
-            "moon",
-            "print",
-            "sans",
-            "serif",
-            "sun",
-            "toggle"
+            "monitor"
           ],
           "description": "Shape every family in this group takes unless it declares its own."
         }

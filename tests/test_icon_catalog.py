@@ -15,7 +15,7 @@ the keyboard table to the keys the app binds:
 - two rows naming one upstream glyph draw it the same, and a row's upstream id is the one
   its definition's comment names;
 - the type registry's shapes are cataloged and named for the categories and formats that
-  take them, and its schema permits no shape the registry lacks;
+  take them, and its schema permits exactly those shapes;
 - each token a row's ink or size names is declared by a shipped stylesheet.
 
 Each failure names the icon, so the fix is to catalog it, or to draw what the catalog
@@ -459,11 +459,18 @@ def test_every_sf_symbol_the_app_draws_is_a_row() -> None:
 
 
 def test_the_type_registrys_shapes_are_cataloged_for_what_takes_them() -> None:
-    """A category's or a format's shape is a registry row naming that category or format."""
+    """A category's or a format's shape is a registry row naming that category or format.
+
+    A file type may look like another file type and like nothing else, so the schema
+    permits a group or a family exactly the shapes the type registry gives its categories
+    and formats: never a control's glyph, a folder's, or a link's.
+    """
     meanings = {row.icon: row.meaning for row in _rows("Registry")}
     registry = tomllib.loads(TYPE_REGISTRY.read_text(encoding="utf-8"))
+    shapes: set[str] = set()
     for entry in [*registry["group"], *registry["family"]]:
         if "icon" in entry:
+            shapes.add(entry["icon"])
             assert entry["icon"] in meanings, entry["id"]
             assert entry["label"] in meanings[entry["icon"]], (
                 f"`{entry['icon']}`'s row does not name {entry['label']}, which takes it"
@@ -471,8 +478,10 @@ def test_the_type_registrys_shapes_are_cataloged_for_what_takes_them() -> None:
     schema = json.loads(TYPE_SCHEMA.read_text(encoding="utf-8"))
     for definition in ("family", "group"):
         permitted = schema["$defs"][definition]["properties"]["icon"]["enum"]
-        stale = sorted(name for name in permitted if name is not None and name not in meanings)
-        assert stale == [], f"the schema lets a {definition} take a shape the registry lacks"
+        named = sorted(name for name in permitted if name is not None)
+        assert named == sorted(shapes), (
+            f"the schema lets a {definition} take exactly the shapes file types take"
+        )
 
 
 def test_every_token_a_row_names_is_declared() -> None:

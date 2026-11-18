@@ -263,7 +263,7 @@ Source, Meaning, Defined in, Ink, Size”, and holds them to the code:
 - two rows naming one upstream glyph draw it the same, and a row’s Lucide id is the one
   its definition’s comment names;
 - a registry row names each category and family that takes its shape, and the type
-  registry’s schema permits no shape the registry lacks;
+  registry’s schema permits exactly the shapes its categories and families take;
 - every token a row’s ink or size names is declared by a shipped stylesheet.
 
 <!-- This document follows common-doc-guidelines.md.
