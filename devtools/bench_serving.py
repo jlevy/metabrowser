@@ -570,6 +570,9 @@ class Server:
             environment = os.environ.copy()
             environment["METABROWSER_INVENTORY_PROVIDER"] = self._provider
             environment["METABROWSER_DEBUG"] = "1"
+            # A benchmark's server is not an open: it stays out of the recent targets,
+            # and the record stays out of the startup it times.
+            environment["METABROWSER_RECORD_RECENT"] = "0"
             # Fast scans report completion at DEBUG. Waiting for an INFO-only
             # transcript otherwise turns a finished small scan into a 600s timeout.
             environment["METABROWSER_LOG_LEVEL"] = "DEBUG"

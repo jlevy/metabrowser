@@ -23,12 +23,13 @@ status: 202
     "refreshing": true,
     "last_refresh": null,
     "comparison_route": null,
-    "snapshot_route": null,
+    "image_route": null,
     "rendered_route": null,
     "record": null,
     "core_preview": null,
     "repository_labels": [],
-    "labels_pending": false
+    "labels_pending": false,
+    "no_store": true
   },
   "status_route": "/api/plugin/github/pull?number=10"
 }
@@ -56,7 +57,7 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "comparison_route": null,
-  "snapshot_route": null,
+  "image_route": null,
   "rendered_route": null,
   "record": {
     "schema_version": 2,
@@ -128,7 +129,8 @@ status: 200
   },
   "core_preview": null,
   "repository_labels": [],
-  "labels_pending": false
+  "labels_pending": false,
+  "no_store": true
 }
 --- stderr ---
 --- body ---
@@ -171,7 +173,7 @@ status: 200
       "at": "2026-09-17T12:00:00Z"
     },
     "comparison_route": null,
-    "snapshot_route": null,
+    "image_route": null,
     "rendered_route": null,
     "record": {
       "schema_version": 2,
@@ -243,7 +245,8 @@ status: 200
     },
     "core_preview": null,
     "repository_labels": [],
-    "labels_pending": false
+    "labels_pending": false,
+    "no_store": true
   },
   "status_route": "/api/plugin/github/pull?number=10"
 }
@@ -276,12 +279,13 @@ status: 202
     "refreshing": true,
     "last_refresh": null,
     "comparison_route": null,
-    "snapshot_route": null,
+    "image_route": null,
     "rendered_route": null,
     "record": null,
     "core_preview": null,
     "repository_labels": [],
-    "labels_pending": false
+    "labels_pending": false,
+    "no_store": true
   },
   "status_route": "/api/plugin/github/pull?number=9"
 }
@@ -309,7 +313,7 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "comparison_route": null,
-  "snapshot_route": null,
+  "image_route": null,
   "rendered_route": null,
   "record": {
     "schema_version": 2,
@@ -411,7 +415,8 @@ status: 200
   },
   "core_preview": null,
   "repository_labels": [],
-  "labels_pending": false
+  "labels_pending": false,
+  "no_store": true
 }
 --- stderr ---
 --- body ---
@@ -454,7 +459,7 @@ status: 202
       "at": "2026-09-17T12:00:00Z"
     },
     "comparison_route": null,
-    "snapshot_route": null,
+    "image_route": null,
     "rendered_route": null,
     "record": {
       "schema_version": 2,
@@ -526,7 +531,8 @@ status: 202
     },
     "core_preview": null,
     "repository_labels": [],
-    "labels_pending": false
+    "labels_pending": false,
+    "no_store": true
   },
   "status_route": "/api/plugin/github/pull?number=10"
 }
@@ -554,7 +560,7 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "comparison_route": "/api/plugin/github/pull-comparison?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&base_policy=merge_base&build=<BUILD>&store=<STORE_TAG>",
-  "snapshot_route": "/api/plugin/github/pull-snapshot?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE_TAG>",
+  "image_route": "/api/plugin/github/pull-image?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE_TAG>",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE_TAG>",
   "record": {
     "schema_version": 2,
@@ -665,7 +671,7 @@ status: 200
       "at": "2026-09-17T12:00:00Z"
     },
     "comparison_route": null,
-    "snapshot_route": null,
+    "image_route": null,
     "rendered_route": null,
     "record": {
       "schema_version": 2,
@@ -804,7 +810,7 @@ status: 202
       "at": "2026-09-17T12:00:00Z"
     },
     "comparison_route": null,
-    "snapshot_route": null,
+    "image_route": null,
     "rendered_route": null,
     "record": {
       "schema_version": 2,
@@ -935,7 +941,7 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "comparison_route": "/api/plugin/github/pull-comparison?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&base_policy=merge_base&build=<BUILD>&store=<STORE_TAG>",
-  "snapshot_route": "/api/plugin/github/pull-snapshot?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE_TAG>",
+  "image_route": "/api/plugin/github/pull-image?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE_TAG>",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE_TAG>",
   "record": {
     "schema_version": 2,
@@ -1075,7 +1081,7 @@ status: 200
       "at": "2026-09-17T12:00:00Z"
     },
     "comparison_route": "/api/plugin/github/pull-comparison?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&base_policy=merge_base&build=<BUILD>&store=<STORE_TAG>",
-    "snapshot_route": "/api/plugin/github/pull-snapshot?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE_TAG>",
+    "image_route": "/api/plugin/github/pull-image?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE_TAG>",
     "rendered_route": "/api/plugin/github/pull-rendered-diff?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE_TAG>",
     "record": {
       "schema_version": 2,
@@ -1218,7 +1224,7 @@ status: 202
       "at": "2026-09-17T12:00:00Z"
     },
     "comparison_route": "/api/plugin/github/pull-comparison?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&base_policy=merge_base&build=<BUILD>&store=<STORE_TAG>",
-    "snapshot_route": "/api/plugin/github/pull-snapshot?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE_TAG>",
+    "image_route": "/api/plugin/github/pull-image?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE_TAG>",
     "rendered_route": "/api/plugin/github/pull-rendered-diff?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE_TAG>",
     "record": {
       "schema_version": 2,
@@ -1351,7 +1357,7 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "comparison_route": "/api/plugin/github/pull-comparison?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&base_policy=merge_base&build=<BUILD>&store=<STORE_TAG>",
-  "snapshot_route": "/api/plugin/github/pull-snapshot?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE_TAG>",
+  "image_route": "/api/plugin/github/pull-image?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE_TAG>",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE_TAG>",
   "record": {
     "schema_version": 2,

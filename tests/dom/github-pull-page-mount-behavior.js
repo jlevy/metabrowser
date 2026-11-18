@@ -179,6 +179,39 @@ class Element {
   addEventListener(name, callback) {
     this.events.set(name, callback);
   }
+  // Where *other* is from this node, as a document orders them (Node.compareDocumentPosition):
+  // the shortcut registry numbers controls in that order, so the header's numbers here are the
+  // ones a page gives them, as tests/dom/key-reveal-dom.js orders its nodes. Nodes of two
+  // trees are disconnected.
+  compareDocumentPosition(other) {
+    const path = (node) => {
+      const nodes = [];
+      for (let at = node; at; at = at.parentNode) {
+        nodes.unshift(at);
+      }
+      return nodes;
+    };
+    const here = path(this);
+    const there = path(other);
+    if (this === other) {
+      return 0;
+    }
+    if (here[0] !== there[0]) {
+      return 1;
+    }
+    let at = 0;
+    while (at < here.length && at < there.length && here[at] === there[at]) {
+      at += 1;
+    }
+    if (at === here.length) {
+      return 16 | 4;
+    }
+    if (at === there.length) {
+      return 8 | 2;
+    }
+    const siblings = here[at - 1].children;
+    return siblings.indexOf(there[at]) > siblings.indexOf(here[at]) ? 4 : 2;
+  }
 }
 const perfEntries = [];
 const perf = {
@@ -552,10 +585,163 @@ async function markdownOwnership() {
   }
 }
 
+// A refused text on the mounted page (review A of #527, A6, A8, and review D's D8): the
+// production `refusedText` puts one notice directly after the text's plain text, a second
+// refusal adds none, a text element rebuilt for the same text says it again, and a render
+// that arrives later takes the notice away with the plain text. Returns what each step
+// shows, as words.
+async function textRefusal() {
+  const page = await importPage(
+    `${pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js")).href}?text-refusal`,
+  );
+  const timers = new Map();
+  globalThis.document = {
+    visibilityState: "visible",
+    addEventListener() {},
+    removeEventListener() {},
+    createElement: (tag) => new Element(tag),
+    importNode: () => new Element("svg"),
+  };
+  globalThis.window = {
+    location: { pathname: "/pull/7" },
+    setTimeout(callback, delay) {
+      const id = Symbol();
+      timers.set(id, { callback, delay });
+      return id;
+    },
+    clearTimeout: (id) => timers.delete(id),
+  };
+  const inert = {
+    sanitizeHtml: (html) => html,
+    kpressProse(html) {
+      const node = document.createElement("p");
+      node.textContent = html;
+      return node;
+    },
+  };
+  const record = (revision, text) => {
+    const answer = structuredClone(recorded.current);
+    answer.body.record_revision = revision.repeat(64);
+    answer.body.record.pull.body = text;
+    answer.body.record.issue_comments = [];
+    answer.body.record.reviews = [];
+    answer.body.record.review_comments = [];
+    answer.body.record.comparison = null;
+    answer.body.record.unavailable.comparison = "no_store";
+    return answer;
+  };
+  const first = record("a", "plain A");
+  let current = first;
+  const refusal = (code, status) => ({
+    status,
+    body: {
+      code,
+      error: "refused",
+      deadline_ms: 5000,
+      remembered: false,
+      number: 7,
+      part: "body",
+    },
+  });
+  // What the description's Markdown answers next.
+  let markdown = refusal("render_deadline", 422);
+  globalThis.fetch = async (route) => {
+    const response = (status, body) => ({
+      status,
+      headers: { get: () => null },
+      json: async () => body,
+    });
+    if (route.startsWith("/api/plugin/github/pull-markdown")) {
+      return markdown === "waits"
+        ? new Promise(() => {})
+        : response(markdown.status, markdown.body);
+    }
+    return route.startsWith("/api/plugin/github/pull?")
+      ? response(200, current.body)
+      : { status: 304, headers: { get: () => null } };
+  };
+  const container = new Element("main");
+  const handle = page.mountPullPage(
+    container,
+    { number: 7, tab: "", reader: { initial: first, fetchAfterMs: 0 } },
+    {
+      perf,
+      ensureAsset: async () => {
+        window.MetabrowserInertHtml = inert;
+      },
+      loadKpressAssets: () => Promise.resolve(),
+      ...require("./sdk-ref-fixture.js").refHelpers(document),
+      formatAge: () => ({ label: "now", className: "age" }),
+      formatTimestamp: () => "now",
+      navigation: { href: () => "/view/", async open() {} },
+      sourceKind: () => "git_revision",
+      icons: { toggle: "" },
+    },
+  );
+  const poll = async () => {
+    const ready = [...timers.values()];
+    timers.clear();
+    for (const timer of ready) {
+      timer.callback();
+    }
+    await settle();
+  };
+  const body = () =>
+    [...container.descendants()].find((node) => node.getAttribute("data-part") === "body");
+  const steps = [];
+  let previous = null;
+  const look = (label) => {
+    const element = body();
+    const kids = element.children.filter((node) => typeof node !== "string");
+    const plain = kids.findIndex((node) => node.classes.has("github-pull-plain"));
+    const notices = kids.filter((node) => node.classes.has("github-pull-text-refused"));
+    const shows = plain >= 0 ? "plain" : `rendered ${element.textContent}`;
+    const notice =
+      notices.length === 0
+        ? "no notice"
+        : `${notices.length} notice${notices.length === 1 ? "" : "s"}` +
+          (plain >= 0 && kids[plain + 1] === notices[0] ? " right after it" : " elsewhere") +
+          (notices[0].getAttribute("role") === "status" ? ", a status" : "") +
+          `: ${notices[0].textContent}`;
+    const same = previous === null ? "" : previous === element ? ", same element" : ", new element";
+    previous = element;
+    steps.push(`${label}: ${shows}, ${notice}${same}`);
+  };
+  await settle();
+  // The first paint's bounded hold, if a refusal did not already end it.
+  await poll();
+  look("refused past the deadline");
+  // A record in another state paints the description anew, and its Markdown has not
+  // answered yet: the rebuilt text says why it is plain from what the page kept.
+  current = record("b", "plain A");
+  current.body.record.pull.state = "closed";
+  markdown = "waits";
+  await poll();
+  look("rebuilt for another state, its Markdown not yet answered");
+  current = record("c", "plain A");
+  markdown = refusal("renderer_unavailable", 503);
+  await poll();
+  look("a newer record, the same text refused again as unavailable");
+  current = record("d", "plain A");
+  markdown = {
+    status: 200,
+    body: {
+      fetched_at: current.body.fetched_at,
+      record_revision: current.body.record_revision,
+      html: "rendered A",
+      assets: {},
+    },
+  };
+  await poll();
+  look("a newer record whose Markdown renders");
+  handle.dispose();
+  return steps;
+}
+
 // Mount the page on a recorded answer, read nothing more from the server, and return what
 // it painted. `ageLabel` plays the age primitive's label for a time, so a test chooses
 // which ages read the same.
-async function mountOn(page, body, tab, ageLabel) {
+async function mountOn(page, body, tab, ageLabel, more = {}) {
   globalThis.document = {
     visibilityState: "visible",
     addEventListener() {},
@@ -589,10 +775,87 @@ async function mountOn(page, body, tab, ageLabel) {
       },
       sourceKind: () => "filesystem",
       icons: { toggle: "" },
+      ...more,
     },
   );
   await settle();
   return { container, handle };
+}
+
+// Browse code switches the pin through the diff plugin's view, whose switch is in a module
+// the plugin loads on demand (builtin_plugins/diff/index.js awaits its import). The
+// plugin's assets failing to load, or that module failing to, as when the server is
+// restarting, is said as a failed request is, and never left as a rejection nothing
+// handles, which would end this process (A3 of review A on #511).
+async function switchUnavailable(page) {
+  const said = [];
+  for (const failure of ["the diff plugin's assets", "the switch module"]) {
+    globalThis.document = {
+      visibilityState: "visible",
+      addEventListener() {},
+      removeEventListener() {},
+      createElement: (tag) => new Element(tag),
+      importNode: () => new Element("svg"),
+    };
+    globalThis.window = {
+      location: { pathname: "/pull/7" },
+      setTimeout: () => Symbol(),
+      clearTimeout() {},
+    };
+    const asked = [];
+    globalThis.fetch = async (route, init = {}) => {
+      if (init.method === "POST") {
+        asked.push(`POST ${route.split("?")[0]}`);
+      }
+      return { status: 304, headers: { get: () => null } };
+    };
+    const container = new Element("main");
+    const handle = page.mountPullPage(
+      container,
+      {
+        number: 7,
+        tab: "",
+        reader: { initial: { etag: null, body: recorded.current.body }, fetchAfterMs: 60_000 },
+      },
+      {
+        perf,
+        ensureAsset: async () => {},
+        whenIdle: require("./sdk-idle-fixture.js").whenIdle,
+        ensureKindAssets: async () => {
+          if (failure === "the diff plugin's assets") {
+            throw new Error("asset failed");
+          }
+        },
+        // As index.js's switchPin rejects when `import("./diff-view-file.js")` does.
+        getRegisteredView: () => ({
+          switchPin: async () => {
+            throw new TypeError("Failed to fetch dynamically imported module");
+          },
+        }),
+        ...require("./sdk-ref-fixture.js").refHelpers(document),
+        formatAge: () => ({ label: "now", className: "age" }),
+        formatTimestamp: () => "now",
+        navigation: { href: () => "/view/" },
+        sourceKind: () => "git_revision",
+        icons: { toggle: "" },
+      },
+    );
+    await settle();
+    const browse = [...container.descendants()].find(
+      (node) => node.tag === "button" && node.textContent === "Browse code",
+    );
+    assert.ok(browse, "Browse code is the switch: the page's pin is not the head");
+    browse.events.get("click")({ preventDefault() {} });
+    await settle();
+    const live = [...container.descendants()].find(
+      (node) => node.getAttribute("aria-live") === "polite",
+    );
+    said.push(
+      `${failure} not loading: ${live.textContent}; asked ${asked.join(", ") || "nothing"}`,
+    );
+    handle.dispose();
+  }
+  return said;
 }
 
 // The page's tabs answer to C, G, and E through the SDK's shortcut surface, and its header's
@@ -711,6 +974,22 @@ async function tabKeys(page) {
   const registry = shell.MetabrowserKeyboardShortcuts.create({ document: globalThis.document });
   const detachRegistry = facade.attachShortcutRegistry(registry);
   const opened = [];
+  // The diff plugin's view, whose pin switch the page's Browse code shares: the production
+  // switch (diff-view-file.js), posting as builtin_plugins/diff/index.js posts.
+  const { createPinSwitch } = await import(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/diff/diff-view-file.js")).href
+  );
+  const pinSwitch = createPinSwitch({
+    async post(selection) {
+      const response = await fetch("/api/source/pin", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(selection),
+      });
+      return { status: response.status, body: null };
+    },
+    onRestored: () => () => {},
+  });
   /** Mount #7 into a new container in the page; `reader` is the Pulls tab's, if any. */
   const mountPage = (reader) => {
     const target = new LiveElement("main");
@@ -730,6 +1009,7 @@ async function tabKeys(page) {
         ensureAsset: async () => {},
         whenIdle: require("./sdk-idle-fixture.js").whenIdle,
         ensureKindAssets: async () => {},
+        getRegisteredView: () => ({ switchPin: pinSwitch.switchTo }),
         ...require("./sdk-ref-fixture.js").refHelpers(globalThis.document),
         formatAge: () => ({ label: "now", className: "age" }),
         formatTimestamp: () => "now",
@@ -895,6 +1175,36 @@ async function tabKeys(page) {
   steps.push(`numbered after a refresh with no pin: ${numbered()}`);
   steps.push(await numberResult("2"));
   steps.push(await numberResult("3"));
+  // Served code behind the pull request's head offers to switch to it, on the status line,
+  // after the row of ages: its number follows Refresh's. While the refresh 3 asks for runs,
+  // Refresh waits, shown and disabled, and keeps 3, so the offer keeps 4, and a second 3
+  // asks nothing (B2 of review B on #506): hidden as it waited, it gave 3 to the offer.
+  const behind = structuredClone(recorded.current.body);
+  behind.pin = "1".repeat(40);
+  behind.pin_ref = "refs/pull/7/head";
+  answer = behind;
+  steps.push(await numberResult("2"));
+  steps.push(`numbered with the code behind the head: ${numbered()}`);
+  answer = { ...structuredClone(behind), refreshing: true };
+  steps.push(await numberResult("3"));
+  steps.push(`numbered while that refresh runs: ${numbered()}`);
+  steps.push(await numberResult("3"));
+  // The refresh ends. On Changes Refresh is offered again, and the offer keeps 4; on
+  // Conversation nothing is left to refresh, so Refresh is not shown, and the offer takes 3
+  // (C2 of review C on #506, accepted: a Refresh waits only while its refresh runs).
+  answer = behind;
+  for (const callback of [...timers.values()]) {
+    callback();
+  }
+  timers.clear();
+  await settle();
+  steps.push(`numbered once the refresh ends: ${numbered()}`);
+  arrive("");
+  await settle();
+  steps.push(`numbered on Conversation once the refresh ends: ${numbered()}`);
+  arrive("files");
+  await settle();
+  steps.push(await numberResult("4"));
   // H is the Commits tab's, so Checks is E.
   steps.push(result("h", { shiftKey: true }));
   steps.push(result("e", { shiftKey: true }));
@@ -916,8 +1226,7 @@ async function tabKeys(page) {
   // A page whose first read fails has nothing to show, and takes the column out; the read
   // that answers puts the same links back, keys and all. The reader has gone to Changes
   // meanwhile, so the record lands with no held first paint, and paintHeader's own retarget
-  // of the returning links is what badges them at once while Shift is held. A conversation's
-  // held header wakes its column instead (github-pull-first-paint-behavior.js).
+  // of the returning links is what badges them at once while Shift is held.
   failing = true;
   ({ container, handle } = mountPage(undefined));
   await settle();
@@ -1127,8 +1436,13 @@ async function headerAges(page) {
     const line = container
       .querySelector(".github-pull-opened")
       .children.find((node) => node.classes?.has("github-pull-quiet"));
-    const ages = line.children.filter((node) => node.classes?.has("github-pull-age"));
-    const link = line.children.find((node) => node.tag === "a");
+    // The ages, cut short before the links after them (B4 of review B on #506).
+    const [agesText, links] = line.children;
+    assert.ok(
+      agesText.classes.has("github-pull-ages") && links.classes.has("github-pull-ages-links"),
+    );
+    const ages = agesText.children.filter((node) => node.classes?.has("github-pull-age"));
+    const link = links.children.find((node) => node.tag === "a");
     assert.ok(link.classes.has("github-pull-external-action"), "View on GitHub is quiet");
     assert.equal(link.children[0].getAttribute("data-external-kind"), "github");
     handle.dispose();
@@ -1172,18 +1486,21 @@ async function headerAges(page) {
 
 // The header's box is decided at first paint: the same rows, in the same order, whatever
 // the pull request carries and whichever tab shows, and while its record is on its way,
-// but for the labels row, which a pull request with no labels does not have (mb-2u08). It
-// is held while the record is on its way, since the record may bring labels. Each row's
-// height is its stylesheet's (tests/test_reserved_chrome.py); here, that every row it has
-// is there. A stack's chip has its slot at the author's row's end (mb-cf0l), held by a
-// strut until one arrives, which holds that row at a chip's height; and Refresh has its
-// slot at the status row's end on every tab. tests/dom/github-pull-header-chrome.mjs
+// but for two. The labels row is not there for a pull request with no labels (mb-2u08); it
+// is held while the record is on its way, since the record may bring labels. The status
+// line is there only for a failure, a message, or an offer, and a rate limit's hold is
+// said in the freshness note's place, so it adds none (mb-ne91). Each row's height is its
+// stylesheet's (tests/test_reserved_chrome.py); here, that every row it shows is there, a
+// hidden row left out. A stack's chip has its slot at the author's row's end (mb-cf0l),
+// held by a strut until one arrives, which holds that row at a chip's height; and Refresh
+// has its slot at the row of ages' end on every tab. tests/dom/github-pull-header-chrome.mjs
 // measures that a late chip moves nothing.
 async function headerShape(page) {
   const rows = (container) =>
     container
       .querySelector(".github-pull-header")
-      .children.map((node) =>
+      .children.filter((node) => node.hidden !== true)
+      .map((node) =>
         node.tag === "h1"
           ? "title"
           : [...node.classes].find((name) => name.startsWith("github-pull-")).slice(12),
@@ -1223,26 +1540,81 @@ async function headerShape(page) {
     merged: recorded.merged.body,
     stale: recorded.stale.body,
     "on its way": recorded.absent.body,
+    // Something to say: the last refresh failed, the code served is behind the pull
+    // request's head, or the checkout is at it. A rate limit's hold, and a server with no
+    // GitHub repository, are said in the note's place.
+    failed: recorded.failed.body,
+    "held by a rate limit": (() => {
+      const body = structuredClone(recorded.current.body);
+      body.state = "stale";
+      body.last_refresh = {
+        outcome: "rate_limited",
+        message: null,
+        reset_at: "2099-01-01T00:00:00Z",
+        at: "2026-09-17T12:30:00Z",
+      };
+      return body;
+    })(),
+    "behind the head": recorded.behind_head.body,
+    "a checkout at the head": (() => {
+      const body = structuredClone(recorded.on_head.body);
+      body.pin = null;
+      body.pin_ref = null;
+      return body;
+    })(),
+    "no GitHub repository": recorded.not_github.body,
+    // No record, and its last refresh failed: the page's word goes to the status line beside
+    // the failure, and the note is not there (A10 of review A, B6 of review B on #506).
+    "on its way, its last refresh failed": {
+      ...structuredClone(recorded.absent.body),
+      last_refresh: {
+        outcome: "network_error",
+        message: "gh could not reach api.github.com",
+        reset_at: null,
+        at: "2026-09-17T12:30:00Z",
+      },
+    },
   };
-  // The variants whose record names no labels.
-  const NO_LABELS = new Set(["no labels, a title of three lines", "merged"]);
+  /** What each variant's status line says, on every tab, or null where it is not there. */
+  const STATUS = {
+    failed: "The last refresh failed: gh could not reach api.github.com",
+    "behind the head":
+      "This page's code is f7c5a9918657, not the pull request's head 85fcb2fa9e77. Switch to the head",
+    "a checkout at the head":
+      "This checkout's HEAD is this pull request's head. Browse the checkout",
+    "on its way, its last refresh failed":
+      "Fetching the pull request…The last refresh failed: gh could not reach api.github.com",
+  };
+  /** What each variant's note says where it is not the record's fetch, null where none. */
+  const NOTE = {
+    "on its way, its last refresh failed": null,
+    "held by a rate limit": /^GitHub rate limit · next check at /,
+    "on its way": /^(Fetching the pull request…|This pull request has not been fetched yet\.)$/,
+    "no GitHub repository": /^This server serves no GitHub repository\.$/,
+  };
+  const more = {
+    "a checkout at the head": {
+      repository: { revision: variants["a checkout at the head"].record.pull.head.sha },
+    },
+  };
   for (const [name, body] of Object.entries(variants)) {
+    const labelled = body.record === null || body.record.pull.labels.length > 0;
     for (const tab of ["", "files", "checks"]) {
-      const { container, handle } = await mountOn(page, body, tab, age);
+      const { container, handle } = await mountOn(page, body, tab, age, more[name]);
       const header = container.querySelector(".github-pull-header");
       const meta = container.querySelector(".github-pull-meta");
       const labels = container.querySelector(".github-pull-labels");
       const stacks = container.querySelector(".github-pull-stacks");
       const status = container.querySelector(".github-pull-status");
       const end = status.children.at(-1);
-      const refresh = end.children.at(-1);
+      const refresh = container.querySelector(".github-pull-refresh");
       assert.ok(end.classes.has("github-pull-status-end"), `${name} ${tab}: offers end the row`);
       assert.equal(
         meta.children.at(-1),
         stacks,
         `${name} ${tab}: the stack slot ends the author's row`,
       );
-      if (NO_LABELS.has(name)) {
+      if (!labelled) {
         assert.equal(labels, null, `${name} ${tab}: no labels, no labels row`);
       } else {
         assert.equal(labels.children.length, 1, `${name} ${tab}: the labels row is its labels`);
@@ -1303,9 +1675,34 @@ async function headerShape(page) {
         stacks.children.length > 0 && !stacks.hidden,
         `${name} ${tab}: the stack slot is held while no stack is known`,
       );
-      assert.ok(
-        refresh.classes.has("github-pull-refresh"),
-        `${name} ${tab}: Refresh's slot ends the status row`,
+      // Refresh's slot ends the row of ages, after View on GitHub and Browse code, whatever
+      // the record's state (A1 of review A on #506).
+      const opened = container.querySelector(".github-pull-opened");
+      assert.equal(opened.children.at(-1), refresh, `${name} ${tab}: Refresh ends the row of ages`);
+      // The note ends the author's row's lead: the record's one time, or what is said in its
+      // place (mb-ne91).
+      const note = container.querySelector(".github-pull-note");
+      const noteText = container.querySelector(".github-pull-freshness").textContent;
+      assert.equal(
+        note.parentNode.parentNode,
+        meta,
+        `${name} ${tab}: the note is on the author's row`,
+      );
+      if (NOTE[name] === null) {
+        assert.equal(note.hidden, true, `${name} ${tab}: no note`);
+      } else {
+        assert.ok(note.hidden !== true, `${name} ${tab}: the note says something`);
+        assert.match(
+          noteText,
+          NOTE[name] ?? /^Fetched .+ via GitHub CLI$/,
+          `${name} ${tab}: the note`,
+        );
+      }
+      // The status line is there exactly while it has something to say, and says it.
+      assert.equal(
+        status.hidden === true ? null : status.textContent,
+        STATUS[name] ?? null,
+        `${name} ${tab}: the status line`,
       );
       // A text action, a line tall, so the status line is a metadata line (mb-2u08).
       assert.ok(
@@ -1320,9 +1717,12 @@ async function headerShape(page) {
       shapes[`${name} ${tab || "conversation"}`] = rows(container).join(" ");
       assert.equal(
         rows(container).join(" "),
-        NO_LABELS.has(name)
-          ? "title meta branches opened status summary"
-          : "title meta branches opened labels status summary",
+        [
+          "title meta branches opened",
+          ...(labelled ? ["labels"] : []),
+          ...(name in STATUS ? ["status"] : []),
+          "summary",
+        ].join(" "),
         `${name} ${tab}: the header's rows`,
       );
       handle.dispose();
@@ -1331,6 +1731,8 @@ async function headerShape(page) {
   assert.deepEqual(
     new Set(Object.values(shapes)),
     new Set([
+      "title meta branches opened labels summary",
+      "title meta branches opened summary",
       "title meta branches opened labels status summary",
       "title meta branches opened status summary",
     ]),
@@ -1407,6 +1809,20 @@ async function mountScripted(page, tab, options = {}) {
     if (options.markdown === "waits" && route.startsWith("/api/plugin/github/pull-markdown")) {
       return new Promise(() => {});
     }
+    if (route.startsWith("/api/plugin/github/pull-files-summary?")) {
+      // The cached list's sums, which *brief* names, for the brief line (mb-z8ea).
+      steps.briefReads.push(route);
+      const rows = options.brief === undefined ? [] : [options.brief];
+      if (options.briefGate !== undefined) {
+        await options.briefGate;
+      }
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        json: async () => ({ source: recorded.current.body.source, rows }),
+      };
+    }
     const body = route.startsWith("/api/plugin/github/pull?") ? (polled ?? served) : null;
     if (body === polled) {
       polled = null;
@@ -1428,6 +1844,7 @@ async function mountScripted(page, tab, options = {}) {
     jumps: [],
     openFile: null,
     markdown: [],
+    briefReads: [],
   };
   const diffDoes =
     typeof options.diff === "function" ? options.diff : () => options.diff ?? "reads";
@@ -1526,6 +1943,38 @@ async function mountScripted(page, tab, options = {}) {
       navigation: { href: () => "/view/", async open() {} },
       sourceKind: () => "filesystem",
       icons: { toggle: "" },
+      // With *brief*, the change line's painters, as text, and the tree's breakdown, so the
+      // page draws the cached list's brief line (mb-z8ea).
+      ...(options.brief === undefined && options.briefPainters !== true
+        ? {}
+        : {
+            formatInteger: (value) => value.toLocaleString("en-US"),
+            countPartsNodes: (parts) =>
+              parts.map((part) =>
+                typeof part === "string"
+                  ? part
+                  : part.separator === undefined
+                    ? part.number
+                    : ` ${part.separator} `,
+              ),
+            changeLine: (input) => ({
+              text: `${input.statuses.map(({ count, letter }) => `${count} ${letter}`).join(", ")} · +${input.additions} −${input.deletions}`,
+              label: "",
+            }),
+            changeLineNodes: (line) => [line.text],
+            loadChangedFilesTree: async () => ({
+              statusBreakdown: (statuses) => {
+                const counts = new Map();
+                for (const status of statuses) {
+                  counts.set(status, (counts.get(status) ?? 0) + 1);
+                }
+                return [...counts].map(([status, count]) => ({
+                  count,
+                  letter: status[0].toUpperCase(),
+                }));
+              },
+            }),
+          }),
     },
   );
   await settle();
@@ -1567,9 +2016,10 @@ async function mountScripted(page, tab, options = {}) {
 // comparison is read for it too; and the page's disposal disposes it. The summary's own
 // header and tree are the diff plugin's, pinned in tests/dom/diff-summary-session.js.
 // The header's Diff summary row (mb-pb35), and what it holds while it waits (mb-onr2): the
-// shell's pending placeholder while a comparison is on its way, from a core preview whose
-// selected read prepares it, or a record whose comparison the page asked to prepare, through
-// the read of the comparison the record names, on Changes the mounted diff's; the summary
+// shell's pending placeholder while a comparison is on its way, from the first paint of a
+// page whose read will bring one (mb-30dz), a core preview whose selected read prepares it,
+// or a record whose comparison the page asked to prepare, through the read of the
+// comparison the record names, on Changes the mounted diff's; the summary
 // in its place once read; and nothing once a read draws none, until a read of the same
 // comparison starts again, so a placeholder never outlives its wait and every wait has one.
 // Each state the row passes through is told, in order, for the golden.
@@ -1795,6 +2245,76 @@ async function headerSummary(page) {
   tell("the record on its way", loading.row());
   loading.handle.dispose();
 
+  // A direct link's cold page waits from its first paint (mb-30dz): before its first answer,
+  // through the absence its own fetch fills, the core, and the record, in one placeholder, so
+  // the row is never empty while the comparison is on its way and has one quiet period.
+  const coldCore = (state, refreshing) => ({
+    ...structuredClone(recorded.current.body),
+    state: refreshing ? "pending" : "absent",
+    reason: refreshing ? null : "not_cached",
+    refreshing,
+    record: null,
+    record_revision: null,
+    fetched_at: null,
+    core_preview: {
+      source: recorded.current.body.source,
+      number: 7,
+      reader: recorded.current.body.record.reader,
+      observed_at: recorded.current.body.record.fetched_at,
+      revision: "a".repeat(64),
+      pull: structuredClone(recorded.current.body.record.pull),
+      comparison_state: state,
+    },
+  });
+  const cold = await mount("", { cold: true });
+  tell("a direct link's page before its first answer", cold.row());
+  const coldWait = cold.row().children[0];
+  await cold.poll(recorded.absent.body);
+  tell("its first answer: not cached, its own fetch to be sent", cold.row());
+  await cold.poll(coldCore("pending", true));
+  tell("its fetch's core preview", cold.row());
+  cold.serve(recorded.current.body);
+  await cold.idle();
+  tell("its record lands, the comparison not yet read", cold.row());
+  assert.equal(cold.row().children[0], coldWait, "one placeholder from the first paint on");
+  await cold.idle();
+  await cold.idle();
+  assert.deepEqual(cold.steps.summaries, ["the comparison read"]);
+  tell("the comparison read", cold.row());
+  cold.handle.dispose();
+  // What no read will bring has no wait: a pull request that is not GitHub's, a server with
+  // no store to compare in, as a checkout is until Changes asks for one, and a refresh that
+  // failed with nothing running.
+  const failedRefresh = {
+    outcome: "network",
+    message: "GitHub could not be reached.",
+    reset_at: null,
+    at: recorded.current.body.record.fetched_at,
+  };
+  for (const [said, body] of [
+    [
+      "a direct link's first answer: not GitHub's",
+      { ...structuredClone(recorded.absent.body), reason: "not_github" },
+    ],
+    [
+      "a direct link's first answer: a server with no store, its own fetch to be sent",
+      { ...structuredClone(recorded.absent.body), no_store: true },
+    ],
+    [
+      "a direct link's first answer: its refresh failed, nothing running",
+      { ...structuredClone(recorded.absent.body), last_refresh: failedRefresh },
+    ],
+    [
+      "a direct link's first answer: a core, its refresh failed, nothing running",
+      { ...coldCore("not_started", false), last_refresh: failedRefresh },
+    ],
+  ]) {
+    const answered = await mount("", { cold: true });
+    await answered.poll(body);
+    tell(said, answered.row());
+    answered.handle.dispose();
+  }
+
   const none = structuredClone(recorded.current.body);
   delete none.record.comparison;
   const nameless = await mount("", { body: none });
@@ -1805,8 +2325,10 @@ async function headerSummary(page) {
 
   // A core preview, the description the selected refresh's core read staged while it reads
   // the record (served_pull.py): "pending" when that read prepares the comparison too, as a
-  // server with a store does; "no_store" when it does not, and "not_started" for a prepared
-  // core no read is running for, both of which only Changes asks for.
+  // server with a store does; "no_store" when it does not, which only Changes asks for; and
+  // "not_started" for a prepared core no read is running for. A reader's absent record has
+  // the page's own fetch still to send, which brings the record and its comparison
+  // (mb-30dz); a refresh that failed with nothing running is told above.
   const full = recorded.current.body;
   const core = (state, refreshing) => ({
     ...structuredClone(full),
@@ -1845,8 +2367,8 @@ async function headerSummary(page) {
   preparing.handle.dispose();
   for (const [said, body] of [
     ["a core preview whose read prepares no comparison", core("no_store", true)],
-    ["a prepared core no read is running for", core("not_started", false)],
-    ["a core preview whose read prepared nothing and ended", core("pending", false)],
+    ["a prepared core, the page's own fetch still to be sent", core("not_started", false)],
+    ["a core whose read ended, the page's own fetch still to be sent", core("pending", false)],
   ]) {
     const cored = await mount("", { body });
     tell(said, cored.row());
@@ -1921,24 +2443,186 @@ async function headerSummary(page) {
   return told;
 }
 
+// The cached changed-files list's brief line in the Diff summary's row (mb-z8ea): drawn while
+// the comparison is on its way or read, for the head the page knows or any while it knows
+// none, from the document's memory of the Pulls rows' lines with no request, else one read
+// at mount; the Diff summary replaces it in one step; it stays when a read draws no
+// summary; and another head's line is never shown, the placeholder holding the row instead.
+async function summaryBrief(page) {
+  const rowLines = await import(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/row-lines.js")).href
+  );
+  const full = recorded.current.body;
+  const head = full.record.comparison.head;
+  const base = full.record.comparison.base;
+  const baseRef = full.record.pull.base.ref;
+  // A list as the route answers it: GitHub's, read for a head and a base branch, or the
+  // local comparison's, of a head and a base commit.
+  const listed = (listedHead, from = { listed_from: "github", base: null, base_ref: baseRef }) => ({
+    number: 7,
+    state: "listed",
+    reason: null,
+    listing: false,
+    generation: `g-${listedHead.slice(0, 4)}`,
+    head: listedHead,
+    files: 3,
+    additions: 12,
+    deletions: 4,
+    exact: true,
+    statuses: [
+      { status: "added", count: 1 },
+      { status: "modified", count: 2 },
+    ],
+    ...from,
+  });
+  const compared = (listedBase) => ({
+    listed_from: "comparison",
+    base: listedBase,
+    base_ref: null,
+  });
+  const told = [];
+  const holds = (row) => {
+    const [only] = row.children;
+    if (row.children.length === 0) {
+      return "nothing";
+    }
+    if (only.classes.has("github-pull-summary-brief")) {
+      assert.equal(only.getAttribute("role"), "status", "still a wait to a screen reader");
+      assert.match(only.getAttribute("aria-label"), /; loading the summary of changes$/);
+      return `the brief line "${only.textContent}"`;
+    }
+    if (only.classes.has("github-pull-summary-pending")) {
+      return "the pending placeholder";
+    }
+    return only.classes.has("diff-summary") ? "the summary" : "other";
+  };
+  const tell = (step, mounted) =>
+    told.push(`${step}: ${holds(mounted.row())}; ${mounted.steps.briefReads.length} reads`);
+  const core = structuredClone(full);
+  Object.assign(core, {
+    state: "pending",
+    reason: null,
+    refreshing: true,
+    record: null,
+    record_revision: null,
+    fetched_at: null,
+    core_preview: {
+      source: full.source,
+      number: 7,
+      reader: full.record.reader,
+      observed_at: full.record.fetched_at,
+      revision: "a".repeat(64),
+      pull: structuredClone(full.record.pull),
+      comparison_state: "pending",
+    },
+  });
+
+  const cold = await mountScripted(page, "", { cold: true, brief: listed(head) });
+  tell("a direct link's page before its first answer, its head unknown", cold);
+  await cold.poll(core);
+  tell("its core preview, of the list's head and base branch", cold);
+  const line = cold.row().children[0];
+  cold.serve(full);
+  await cold.idle();
+  tell("its record lands, the comparison not yet read", cold);
+  assert.equal(cold.row().children[0], line, "one line, kept across paints");
+  await cold.idle();
+  await cold.idle();
+  tell("the comparison read", cold);
+  cold.handle.dispose();
+
+  const older = await mountScripted(page, "", { cold: true, brief: listed("9".repeat(40)) });
+  tell("a direct link's page, the list of an older head", older);
+  await older.poll(core);
+  tell("its core preview, of a newer head", older);
+  older.handle.dispose();
+
+  const retargeted = await mountScripted(page, "", {
+    brief: listed(head, { listed_from: "github", base: null, base_ref: "an-earlier-base" }),
+  });
+  tell("a record whose list was read for another base branch", retargeted);
+  retargeted.handle.dispose();
+
+  const local = await mountScripted(page, "", { cold: true, brief: listed(head, compared(base)) });
+  await local.poll(core);
+  tell("a core preview, the local comparison's list, whose base the core cannot say", local);
+  local.serve(full);
+  await local.idle();
+  tell("its record lands, naming the same comparison", local);
+  local.handle.dispose();
+
+  const rebased = await mountScripted(page, "", { brief: listed(head, compared("8".repeat(40))) });
+  tell("a record whose comparison has another base than the local list's", rebased);
+  rebased.handle.dispose();
+
+  const failing = await mountScripted(page, "", { brief: listed(head), read: "fails" });
+  tell("a record of the list's head, its comparison not yet read", failing);
+  await failing.idle();
+  tell("the comparison's read fails", failing);
+  failing.handle.dispose();
+
+  const absent = await mountScripted(page, "", {
+    brief: { ...listed(head), state: "absent", reason: "not_cached", files: null },
+  });
+  tell("no list cached", absent);
+  absent.handle.dispose();
+
+  // A page opened from a Pulls row: the row's line is in the document's memory.
+  const remember = (due) =>
+    rowLines.documentRowLines.set(rowLines.rowLineKey(full.source, 7), {
+      head,
+      generation: "g-row",
+      summary: {
+        ...listed(head),
+        generation: "g-row",
+        files: 1,
+        statuses: [{ status: "modified", count: 1 }],
+      },
+      due,
+      listing: false,
+      failedAt: null,
+      at: 0,
+    });
+  remember(false);
+  const fromRow = await mountScripted(page, "", { briefPainters: true });
+  tell("opened from a Pulls row that drew its line", fromRow);
+  fromRow.handle.dispose();
+  remember(true);
+  const dueRow = await mountScripted(page, "", { brief: listed(head) });
+  tell("opened from a Pulls row whose line the lane marked out of date, read again", dueRow);
+  dueRow.handle.dispose();
+  rowLines.documentRowLines.clear();
+
+  // A page that goes before its read answers draws nothing more (B3 of review on #536).
+  let release = () => {};
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const gone = await mountScripted(page, "", { brief: listed(head), briefGate: gate });
+  await gone.idle();
+  await gone.idle();
+  assert.equal(holds(gone.row()), "the summary");
+  gone.handle.dispose();
+  release();
+  await settle();
+  tell("a page that went before its read answered, its summary drawn", gone);
+  return told;
+}
+
 // A page mounted with no record in hand holds its cold header and tab column for the shell's
-// quiet period (`github-pull-cold`), and the first header that has a record lifts the hold. A
-// record that lands while the header waits for the conversation's held first paint keeps
-// them unseen until that paint (`github-pull-cold-held`). A page with its record in hand
-// holds nothing. tests/dom/github-pull-header-chrome.mjs (`cold-landing`) measures what
-// each looks like and that a landing in the quiet period moves nothing; here, which the
-// page carries in each state, told in order for the golden.
+// quiet period (`github-pull-cold`), and the first header that has a record lifts the hold,
+// also while the conversation's first paint still waits for its Markdown: the header does
+// not wait for the body (exp-099). A page with its record in hand holds nothing.
+// tests/dom/github-pull-header-chrome.mjs (`cold-landing`) measures what each looks like
+// and that a landing in the quiet period moves nothing; here, which the page carries in
+// each state, told in order for the golden.
 async function coldHold(page) {
   const told = [];
   const tell = (step, container) => {
     const header = container.querySelector(".github-pull-header");
     const column = container.querySelector(".tab-bar")?.parentNode ?? null;
     const of = (node) =>
-      node === null
-        ? "out"
-        : ["github-pull-cold", "github-pull-cold-held"]
-            .filter((name) => node.classes.has(name))
-            .join(" ") || "shown";
+      node === null ? "out" : node.classes.has("github-pull-cold") ? "github-pull-cold" : "shown";
     told.push(`${step}: header ${of(header)}, tab column ${of(column)}`);
   };
   const conversation = await mountScripted(page, "", { cold: true, markdown: "waits" });
@@ -1947,18 +2631,13 @@ async function coldHold(page) {
   conversation.idle();
   await settle();
   assert.equal(
-    conversation.container.querySelector(".github-pull-title").textContent,
-    "Pull request #7",
-    "the header waits with the conversation's first paint",
-  );
-  tell("its record lands, the header waiting for the conversation", conversation.container);
-  conversation.idle();
-  await settle();
-  assert.equal(
     conversation.container.querySelector(".github-pull-title").children[1].textContent,
     "Count to two in the app",
-    "the conversation's first paint draws the record's header",
+    "the header paints its record while the conversation's first paint waits",
   );
+  tell("its record lands, the conversation waiting for its Markdown", conversation.container);
+  conversation.idle();
+  await settle();
   tell("the conversation's first paint, at its bound", conversation.container);
   conversation.handle.dispose();
   const changes = await mountScripted(page, "files", { cold: true });
@@ -2110,10 +2789,15 @@ async function run() {
       title.parentNode.children.indexOf(meta),
       title.parentNode.children.indexOf(title) + 1,
     );
-    // The author's row is the details, then the stack's slot at its end (mb-cf0l), which holds
-    // a strut while no stack is known: a late chip lands in the row's empty end.
-    const [details, stackSlot] = meta.children;
+    // The author's row is its lead, the details then the freshness note (mb-ne91), then the
+    // stack's slot at its end (mb-cf0l), which holds a strut while no stack is known: a late
+    // chip lands in the row's empty end.
+    const [lead, stackSlot] = meta.children;
+    assert.ok(lead.classes.has("github-pull-meta-lead"));
+    const [details, note] = lead.children;
     assert.ok(details.classes.has("github-pull-meta-details"));
+    assert.ok(note.classes.has("github-pull-note"));
+    assert.equal(lead.children.length, 2);
     assert.ok(stackSlot.classes.has("github-pull-stacks"));
     assert.ok(stackSlot.children[0].classes.has("github-pull-stack-strut"));
     assert.equal(meta.children.length, 2);
@@ -2123,9 +2807,13 @@ async function run() {
       title.parentNode.children.indexOf(opened),
       title.parentNode.children.indexOf(meta) + 2,
     );
-    const [stateBadgeSlot, ages] = opened.children;
+    const [stateBadgeSlot, ages, refreshSlot] = opened.children;
     assert.ok(stateBadgeSlot.classes.has("github-pull-state-slot"));
     assert.ok(ages.classes.has("github-pull-quiet") && ages.textContent.startsWith("Opened "));
+    // Refresh's slot ends the row of ages, after View on GitHub and Browse code (A1 of review A
+    // on #506).
+    assert.ok(refreshSlot.classes.has("github-pull-refresh"));
+    assert.equal(opened.children.length, 3);
     const stateBadge = stateBadgeSlot.children[0];
     assert.equal(meta.children.at(-1), container.querySelector(".github-pull-stacks"));
     assert.equal(stateBadge.getAttribute("data-state"), "open");
@@ -2424,11 +3112,38 @@ async function run() {
   await settle();
   assert.deepEqual(posts, [comparisonAsk], "polling does not retry a refused acquisition");
   assert.match(checkoutBody.textContent, /Changes could not be fetched/);
+  // The refusal is said in the Changes body, where its Retry is, not on the header's status
+  // line, so the header has the same rows on every tab (B5 of review B on #506).
   assert.match(
-    checkoutContainer.querySelector(".github-pull-message")?.textContent ?? "",
+    checkoutBody.textContent,
     /server busy/,
     "the refusal's reason outlasts the read that cleared its error",
   );
+  assert.equal(checkoutContainer.querySelector(".github-pull-message"), null);
+  const shownRows = () =>
+    checkoutContainer
+      .querySelector(".github-pull-header")
+      .children.filter((node) => node.hidden !== true)
+      .map((node) => (node.tag === "h1" ? "title" : [...node.classes][0]))
+      .join(" ");
+  const refusedRows = {};
+  for (const [tab, at] of [
+    ["files", "/pull/10/files"],
+    ["", "/pull/10"],
+    ["checks", "/pull/10/checks"],
+    ["files", "/pull/10/files"],
+  ]) {
+    window.location.pathname = at;
+    checkoutHandle.setTab(tab);
+    await settle();
+    refusedRows[tab || "conversation"] = shownRows();
+  }
+  assert.equal(
+    new Set(Object.values(refusedRows)).size,
+    1,
+    `a refused comparison leaves the header's rows the same on every tab: ${JSON.stringify(refusedRows)}`,
+  );
+  assert.match(checkoutBody.textContent, /server busy/, "the body says it again back on Changes");
   assert.equal(checkoutBody.querySelector(".spinner"), null);
   const retryChanges = checkoutBody.querySelector(".github-pull-retry-changes");
   assert.equal(retryChanges?.textContent, "Retry changes");
@@ -2584,9 +3299,35 @@ async function run() {
   await checkRows(page);
   await headerAges(page);
   await headerShape(page);
+  // The freshness note's slot is as wide as its widest age: each age the page says is put at
+  // "59 min ago", the widest `relativeAge` says, for the hidden copy that sizes the slot, and
+  // a note wider still, as an unknown age is, sizes its own (mb-ne91).
+  const widestNotes = Object.fromEntries(
+    [
+      "Fetched just now via GitHub CLI",
+      "Fetched 3 h ago via GitHub CLI",
+      "Offline · fetched 12 d ago via GitHub CLI",
+      "Description fetched 7 min ago via GitHub CLI",
+      "Fetched at an unknown time via GitHub CLI",
+    ].map((note) => [note, page.widestNote(note)]),
+  );
+  // A rate limit's hold says when it lifts in the reader's short form: a time of day when it
+  // lifts today, a short date and time when not (B3 of review B on #506). In en-US and UTC
+  // here, so the golden is the same on every machine.
+  const nine = Date.UTC(2026, 8, 17, 9, 0);
+  const holdLifts = Object.fromEntries(
+    [
+      ["today", Date.UTC(2026, 8, 17, 14, 5)],
+      ["tomorrow", Date.UTC(2026, 8, 18, 0, 30)],
+      ["next year", Date.UTC(2027, 0, 2, 8, 0)],
+    ].map(([when, lift]) => [when, page.holdLiftText(lift, nine, "en-US", "UTC")]),
+  );
   const headerSummarySteps = await headerSummary(page);
+  const summaryBriefSteps = await summaryBrief(page);
   const coldHoldSteps = await coldHold(page);
   const tabKeySteps = await tabKeys(page);
+  const textRefusalSteps = await textRefusal();
+  const switchUnavailableSteps = await switchUnavailable(page);
   for (const label of [
     "githubPull:decode",
     "githubPull:render",
@@ -2609,9 +3350,14 @@ async function run() {
     checkRows: true,
     headerAges: true,
     headerShape: true,
+    widestNotes,
+    holdLifts,
     headerSummary: headerSummarySteps,
+    summaryBrief: summaryBriefSteps,
     coldHold: coldHoldSteps,
     tabKeys: tabKeySteps,
+    textRefusal: textRefusalSteps,
+    switchUnavailable: switchUnavailableSteps,
   };
 }
 module.exports = { Element, recorded, root, settle, perf };

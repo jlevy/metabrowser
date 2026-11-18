@@ -964,7 +964,7 @@ def test_rows_likely_to_be_expanded_have_their_files_listed_behind_the_reader() 
     assert facts["admissionAnswered"] == {"askedAfterMs": 3000, "first": 104}
 
 
-def test_background_freshness_asks_only_while_visible_and_says_how_old_each_part_is() -> None:
+def test_background_freshness_asks_only_while_visible_and_names_one_fetch_age() -> None:
     """The prefetch policy and the page's catalog ask; the transcript shows the rest."""
 
     facts = run_session("github-pulls-prefetch-behavior.js")
@@ -982,7 +982,8 @@ def test_background_freshness_asks_only_while_visible_and_says_how_old_each_part
         "GET /api/plugin/github/pull?number=7",
     ]
     assert facts["withinWindow"] == ["GET /api/plugin/github/pull?number=7"]
-    assert facts["checked"].startswith("Checked ") and " · fetched 3 h ago" in facts["checked"]
+    # One time, never two (mb-ne91): a record the catalog checked since still says its fetch.
+    assert facts["checked"] == "Fetched 3 h ago via GitHub CLI"
     assert facts["pendingChecks"][-1] == "POST /api/plugin/github/pull-refresh"
     assert facts["pendingFreshness"].startswith("Fetched ")
     assert facts["headMoved"] == "New commits were pushed; updating."

@@ -1,0 +1,60 @@
+exp-101 protocol: a held page's header painted at once (H121, bead mb-g5wf)
+Registered 2026-11-17, before the first timed run.
+
+Question. exp-099 found that a pull request page opened from a warm cache keeps its
+header, title included, out of sight with the held conversation until every text on its
+first screen has its Markdown (since cf117163a): on #487 the title came 212 to 258 ms
+after the record's arrival, against 24 to 30 ms on v0.12.0. exp-100 showed that asking
+for the Markdown at once does not shorten that wait. The owner decided for painting the
+header at once. Does the title then show about as soon after the record as on v0.12.0,
+with the conversation no later than before?
+
+Builds (wheels built from `git archive <commit>` by pr-view-wheel.sh, hatchling from the
+locked `build` group):
+  control    metab 0.12.1.dev1621+c6aa0208   main at #513, c6aa02085763a23f7c96cda422cbb3e290518a19
+  candidate  metab 0.12.1.dev1626+51e06a4f3  51e06a4f307cb03900c7f29782d8f764b7f4c3e2
+             (claude/pr-header-first: control plus the pr-view benchmark, the exp-099
+             and exp-100 records, and the header painted at once)
+No measured code changes on the candidate branch after this registration without an
+amendment here.
+
+Environment. As exp-100: one virtual environment from the checkout's
+`uv export --frozen --no-dev --no-emit-project` constraints; each run installs only the
+build's wheel and the KPress it pins (kpress==0.3.8 for both), --no-deps
+--compile-bytecode --reinstall-package metabrowser, then `uv pip check` and an exact
+`metab --version` check. Subject: the same clean linked worktree of this repository at
+4eb299fd1 as exp-099 ($CHECKOUT), served as a folder against live jlevy/metabrowser.
+Headless Chrome 152, fresh profile per server, 1400x813 viewport, visibilityState
+visible. Apple M1 Pro, 10 cores.
+
+Series. `pr-view-pairs.sh 5 pr control <wheel> candidate <wheel>`: five rounds of
+pr-fresh (/pull/470, empty cache, then #514's store preparation), pr-store (/pull/487),
+pr-warm (/pull/487, all cached, fresh server) with pr-warm-reload (same server and
+browser), each step run for both builds back to back, the leading build alternating by
+round (odd rounds control first); each run records its round. Scripts: pr-view.mjs
+sha256 e082f6a38d36852741e177e2b9343e32ce38522fb3cfa17640f39a2a24ed04ce,
+pr-view-pairs.sh 43f1d0a9c3cb16152632ffbce4481efaf2110d52648419d22e782559119c80ed,
+pr-view-wheel.sh 7f0df22e222263315b88b568db3ce4a85ef03a43e397fbf9a5dae18041aa08cf.
+
+Analysis. pr-view-stats.mjs sha256
+c1cd633f46d171af005929ebebb26fb1eb25e2ff27fe5e00df89c25cdf78e446, `--control control
+--candidate candidate`, default tolerance 1.3, pairs by round. No run is excluded; a run
+that timed out or failed keeps its row and is reported.
+
+Decision rule (rough cut, 1.3x, because other sessions keep the load high):
+  Deciding: pr-warm title_after_pull (the title's first frame minus the first GET pull's
+  response end). Accepted when the candidate/control pair ratio is under 1/1.3 in at
+  least 3 of 5 pairs and the candidate median is lower; rejected when it is under 1/1.3
+  in at most 1 pair; otherwise unresolved. Reported against the target: the candidate
+  median beside v0.12.0's 24 to 30 ms (exp-099).
+  Also expected lower, reported: pr-warm and pr-warm-reload title.
+  Guards (each fails when beyond 1.3x in 3 or more of 5 pairs): pr-warm and
+  pr-warm-reload description_final and complete; pr-fresh and pr-store title and
+  description_final; pr-warm pull_ms.
+
+Budget. Stop before a round when GitHub's core budget is under 1500 or the disk under
+2 GB (the driver's defaults).
+
+Limits declared in advance. One pull request with four first-screen texts. Headless
+Chrome: the layout question (does anything below the header move when it paints before
+the body) is covered by tests/dom/github-pull-header-chrome.mjs, not by this series.

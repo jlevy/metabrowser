@@ -82,6 +82,8 @@ function harness(page, { tab, get, post, owns = () => true, reader = null }) {
       },
       now: () => state.now,
       isVisible: () => state.visible,
+      // A hold's lift in en-US and UTC, so the golden is the same on every machine.
+      formatHold: (liftMs, nowMs) => page.holdLiftText(liftMs, nowMs, "en-US", "UTC"),
       ownsChanges: () => owns(),
       render(next) {
         state.model = next;
@@ -309,12 +311,20 @@ async function run() {
     await run.controller.poll();
     await settle();
     assert.equal(run.posts().length, 0, "polling does not retry a refused acquisition");
-    assert.match(run.model.message, /too many pull requests/, "the reason outlasts the read");
+    // The reason is said in the Changes body, where its Retry is, never on the header's
+    // status line, which showed it on Changes alone (B5 of review B on #506).
+    assert.match(
+      run.model.filesUnavailable,
+      /too many pull requests/,
+      "the reason outlasts the read",
+    );
+    assert.equal(run.model.message, null, "the header says nothing of it, on any tab");
     snapshot(run, "the refusal's reason stays after the next read");
     run.state.post = () => recorded.started;
     await run.controller.requestComparison();
     assert.equal(run.posts().length, 1);
     assert.equal(run.model.message, null);
+    assert.doesNotMatch(run.model.filesUnavailable, /too many pull requests/);
     snapshot(run, "Retry changes asks again and clears the reason");
     run.state.get = () =>
       answer(failedAfter("lender_missing", "the checkout cannot supply this comparison"));
@@ -323,6 +333,29 @@ async function run() {
     assert.equal(run.model.message, null, "the earlier refusal is not this attempt's reason");
     assert.match(run.model.failure, /cannot supply this comparison/);
     snapshot(run, "a retry that fails shows its own outcome, not the earlier refusal");
+    run.controller.dispose();
+  }
+
+  // A comparison's refusal is said on Changes and not on the header; a refused Refresh is the
+  // header's, even in the same words. The ask that met the refusal tells them apart, not the
+  // words, which the server's bound on jobs gives whichever ask met it (C3 of review C on #506).
+  {
+    const failing = () => answer(failedAfter("network_error", "gh could not reach api.github.com"));
+    const run = harness(page, { tab: "files", get: failing, post: () => tooMany(full) });
+    await run.controller.start();
+    await settle();
+    assert.equal(run.posts().length, 1);
+    assert.match(run.model.filesUnavailable, /too many pull requests/);
+    assert.equal(run.model.message, null);
+    snapshot(run, "a refused comparison beside a failed refresh is said on Changes");
+    run.controller.setTab("");
+    await settle();
+    assert.equal(run.model.canRefresh, true, "the failure offers Refresh on Conversation");
+    await run.controller.requestRefresh();
+    await settle();
+    assert.equal(run.posts().length, 1);
+    assert.match(run.model.message, /too many pull requests/, "the refused Refresh is said");
+    snapshot(run, "a refused Refresh in the same words is said on the header");
     run.controller.dispose();
   }
 

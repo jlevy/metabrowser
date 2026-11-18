@@ -14,7 +14,7 @@ Install uv at the version `required-version` in `uv.toml` names, using the
 Install the Node release `.nvmrc` and `.node-version` pin, with an npm in the range
 `engines` in `package.json` gives, and select it with `fnm use`, `nvm use`, or
 `mise install`; `npm ci` refuses an older Node with an `EBADENGINE` error.
-The tests also need Git on `PATH`, and stop when Node or Git is missing
+The tests also need Git and jq on `PATH`, and stop when Node, Git, or jq is missing
 ([Running Tests](e2e-testing.md#running-tests)). Then clone the repository and run:
 
 ```shell
@@ -45,8 +45,14 @@ make format
 # Check lint and formatting without changing files.
 make lint-check
 
-# Run the default test tier.
+# Run the default test tier: the parallel, serial, and Chrome tiers, then the goldens.
 make test
+
+# Run one of those four, or the parallel tier on fewer workers.
+make test-parallel PYTEST_WORKERS=2
+make test-serial
+make test-chrome SHARD=1/4
+make test-goldens
 
 # Run every gate before a pull request or release.
 make verify
@@ -67,17 +73,18 @@ uv --config-file uv.toml run --frozen metab ./tests/manual-fixtures --check-api
 uv --config-file uv.toml run --frozen metab ./tests/manual-fixtures --no-open
 ```
 
-[End-to-End Testing](e2e-testing.md) covers the test layers, the outer tiers
-(`make test-admitted-git`, `make test-macos`, and `make test-live-github`), the skips
-each tier allows, and `make test-report`. `tests/golden/cli-check-api.tryscript.md` pins
+[End-to-End Testing](e2e-testing.md) covers the test layers, the four parts of
+`make test` and the markers that choose them, the outer tiers (`make test-admitted-git`,
+`make test-macos`, and `make test-live-github`), the skips each tier allows, and
+`make test-report` and `make ci-report`. `tests/golden/cli-check-api.tryscript.md` pins
 a normalized transcript of the `--check-api` sequence against a small fixture.
 
 The quality, test, audit, and build targets install both locked environments first, and
 Make keeps the stages ordered under parallel jobs.
 `make lint` applies the ordinary auto-fixes and then runs the repository’s own checks
-(public hygiene, file-type colors, tooltips, supply chain, artifact contracts, parity,
-and goldens); `make lint-check` runs the same checks without changing files, plus the
-startup-script budget and a Flowmark check.
+(public hygiene, file-type colors, tooltips, supply chain, CI workflow coverage,
+artifact contracts, parity, and goldens); `make lint-check` runs the same checks without
+changing files, plus the startup-script budget and a Flowmark check.
 
 ### The Verify Gate
 
@@ -221,7 +228,11 @@ Imports go at the top of a module.
 An import inside a function argues for itself, and each kind has a test that holds its
 boundary:
 
-- **The KPress runtime**, in `metabrowser/kpress_adapter.py`.
+- **The KPress runtime**, in `metabrowser/kpress_adapter.py`, and the projection module
+  the Markdown child runs, in `metabrowser/diff/markdown_projection_worker.py`, which
+  the server imports to manage the child.
+  `test_the_server_imports_no_renderer_for_the_child_it_manages` in
+  `tests/test_inert_render_deadline.py` holds both.
 - **A mode’s own module**, imported in that mode’s branch of the command line, so that
   `--version` and `--help` do not build the application.
   `test_version_command_does_not_load_git_source_or_server_modules` in
@@ -329,10 +340,11 @@ The check makes those tiers executable.
 For an interaction row it runs the session under V8 coverage and credits an owner only
 when the session executed that production file and one named function in it, so a
 transitive import, a stdout claim, or a relabeled snippet is not evidence.
-The **Data inputs** column states provenance: a data row declares `owned-route`, a
-paint-exempt row `local-only`, and an interaction row names registered, parity-covered
-routes, `local-only`, or `transport-exempt:/api/events` for the event stream whose
-snapshot its data routes already own.
+The **Data inputs** column states provenance: a data row declares `owned-route`, or
+`owned-model` for the model of a mode no route can honestly serve, such as `--present`,
+which must start no server; a paint-exempt row `local-only`, and an interaction row
+names registered, parity-covered routes, `local-only`, or `transport-exempt:/api/events`
+for the event stream whose snapshot its data routes already own.
 The check cannot infer an undeclared behavior from source code, so review requires a row
 whenever a change adds or alters an observable contract.
 
@@ -368,8 +380,10 @@ client contract. `/api/*` shapes, `window.metabrowser`, `METABROWSER_SETTINGS`, 
 plugin manifest, and the built-in plugin interfaces are therefore internal contracts.
 
 **The macOS app is internal too.** It runs the installed `metab` with the flags in
-`ServerSupervisor` and reads `GET /api/identity`, and Metabrowser keeps no compatibility
-with an older app: change a flag or the route and the app in the same commit, and raise
+`CLIServeLaunch` and `MetabRequirement.requiredFlags`, asks it what a GitHub link opens
+(`PresentDryRun`) and whether its cache holds a repository (`RepositoryCache`), and
+reads `GET /api/identity`. Metabrowser keeps no compatibility with an older app: change
+a flag or the route and the app in the same commit, and raise
 `MetabRequirement.minimumRelease` when the app needs the newer `metab`
 ([the version floor](project/architecture/arch-macos-app.md#the-version-floor)).
 
@@ -403,7 +417,7 @@ These are this repository’s answers to the template in
 | --- | --- | --- |
 | Internal code | DO NOT MAINTAIN | One repository, one artifact |
 | Library APIs | DO NOT MAINTAIN | `window.metabrowser` ships with the shell that uses it |
-| Server APIs and the CLI | DO NOT MAINTAIN | `/api/*` and the flags are consumed only by the shell and the macOS app, both built from this repository; the app’s version floor refuses a `metab` too old for it |
+| Server APIs and the CLI | DO NOT MAINTAIN | `/api/*` and the flags are consumed only by the shell, the macOS app, and the agent skill, all built from this repository; the app’s version floor refuses a `metab` too old for it, and the skill is tested against the `metab` of its own commit and says so |
 | Plugin and extension APIs | UPGRADE + GATE | `PLUGIN_SDK_VERSION` refuses a mismatch at load |
 | File formats | VERSION + FAIL FAST | Exported packets carry an identity; one reader |
 | Persisted client state | DO NOT MAINTAIN | No released version wrote a key needing migration |

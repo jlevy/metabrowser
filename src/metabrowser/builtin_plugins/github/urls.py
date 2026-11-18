@@ -53,6 +53,7 @@ import string
 import unicodedata
 from dataclasses import dataclass, replace
 from typing import Final
+from urllib.parse import quote_from_bytes
 
 from metabrowser.cache.urls import (
     LineSelection,
@@ -555,6 +556,41 @@ class GithubUrlReducer:
             return _reduce_claimed(value, claimed)
         except _Refuse as refused:
             return ReducerRejection(refused.reason, refused.detail)
+
+    def web_url(self, clone_url: str, selection: RepositorySelection) -> str | None:
+        """The github.com URL that :meth:`reduce` reduces to *clone_url* and *selection*.
+
+        Each path segment is percent-encoded, which :meth:`reduce` decodes back to the
+        same bytes, and a raw or SSH spelling becomes the github.com page of the same
+        selection. ``tests/test_github_url_reducer.py`` reduces the URL this builds for
+        every accepted shape and compares the selections.
+        """
+
+        if parse_repository_url(clone_url) is None:
+            return None
+        match selection.kind:
+            case "repository":
+                return clone_url
+            case "tree":
+                return f"{clone_url}/tree/{_encoded_path(selection.ref_and_path)}"
+            case "blob":
+                url = f"{clone_url}/blob/{_encoded_path(selection.ref_and_path)}"
+                if selection.plain:
+                    url += "?plain=1"
+                if selection.lines is not None:
+                    url += "#" + selection.lines.fragment()
+                return url
+            case "commit":
+                if selection.pull_request is not None:
+                    return f"{clone_url}/pull/{selection.pull_request}/commits/{selection.commit}"
+                return f"{clone_url}/commit/{selection.commit}"
+            case "pull_request":
+                tab = f"/{selection.pull_tab}" if selection.pull_tab else ""
+                return f"{clone_url}/pull/{selection.pull_request}{tab}"
+
+
+def _encoded_path(segments: tuple[bytes, ...]) -> str:
+    return "/".join(quote_from_bytes(segment, safe="") for segment in segments)
 
 
 def parse_repository_url(url: str) -> tuple[str, str] | None:

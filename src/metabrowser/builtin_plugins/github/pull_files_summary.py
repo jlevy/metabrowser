@@ -105,6 +105,11 @@ class FilesSummaryWire(TypedDict):
     listed_from: str | None
     generation: str | None
     head: str | None
+    # What the list was listed against: a local comparison's base commit, or the base branch
+    # GitHub's list was read for. A pull request page draws a list's line only for the base
+    # and head it shows (pull-summary-brief.js).
+    base: str | None
+    base_ref: str | None
     files: int | None
     additions: int | None
     deletions: int | None
@@ -127,6 +132,8 @@ class _Sums:
     listed_from: str | None = None
     generation: str | None = None
     head: str | None = None
+    base: str | None = None
+    base_ref: str | None = None
     files: int | None = None
     additions: int | None = None
     deletions: int | None = None
@@ -170,6 +177,8 @@ def _sum(listed: PullFileList) -> _Sums:
             listed_from=listed.listed_from,
             generation=listed.generation,
             head=listed.head,
+            base=listed.base,
+            base_ref=listed.base_ref,
         )
 
     if not listed.complete:
@@ -183,6 +192,8 @@ def _sum(listed: PullFileList) -> _Sums:
         listed_from=listed.listed_from,
         generation=listed.generation,
         head=listed.head,
+        base=listed.base,
+        base_ref=listed.base_ref,
         files=sums.files,
         additions=sums.additions,
         deletions=sums.deletions,
@@ -265,6 +276,8 @@ def _wire(number: int, found: _Sums | SummaryAbsence, listing: bool) -> FilesSum
             listed_from=None if held is None else held.listed_from,
             generation=None if held is None else held.generation,
             head=None if held is None else held.head,
+            base=None if held is None else held.base,
+            base_ref=None if held is None else held.base_ref,
             files=None,
             additions=None,
             deletions=None,
@@ -279,6 +292,8 @@ def _wire(number: int, found: _Sums | SummaryAbsence, listing: bool) -> FilesSum
         listed_from=found.listed_from,
         generation=found.generation,
         head=found.head,
+        base=found.base,
+        base_ref=found.base_ref,
         files=found.files,
         additions=found.additions,
         deletions=found.deletions,

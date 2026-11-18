@@ -451,12 +451,13 @@ async function run() {
   assert.equal(pendingReveal.length, 1, "revealed after the quiet period");
   assert.equal(pendingReveal[0].getAttribute("role"), "status");
   assert.equal(pendingReveal[0].getAttribute("aria-label"), "Loading comments and reviews");
-  // The header keeps the description's plain age, breathing while its details are fetched.
-  const statusLine = container.querySelector(".github-pull-status");
+  // The header keeps the description's plain age, breathing while its details are fetched,
+  // in the note that ends the author's row (mb-ne91).
+  const statusLine = container.querySelector(".github-pull-note");
   const age = statusLine.querySelector(".github-pull-freshness");
   assert.match(age.textContent, /^Description fetched .+ via GitHub CLI$/);
   assert.ok(age.classes.has("mb-refreshing") && age.classes.has("mb-refreshing-muted"));
-  // Busy is the age's, never the status line's, whose buttons and links stay usable.
+  // Busy is the age's, never the note's or the header's, whose controls stay usable.
   assert.equal(age.getAttribute("aria-busy"), "true");
   assert.equal(statusLine.getAttribute("aria-busy"), null);
   function land(tab) {
@@ -524,6 +525,64 @@ async function run() {
     page.describePull({ ...preview, core_preview: preparedCore }, filesPage).filesUnavailable,
     "Changes are still being prepared.",
     "an adopted description does not make the active comparison look unrequested",
+  );
+  // The Diff summary's row waits from the first paint for a comparison a read will bring
+  // (mb-30dz), and for nothing no read brings, so its placeholder never outlives the wait.
+  const home = { number: 7, tab: "", nowMs: Date.now() };
+  const absentNoCore = { ...idleCore, core_preview: null };
+  const pendingCore = {
+    ...preview,
+    core_preview: { ...preview.core_preview, comparison_state: "pending" },
+  };
+  const comingFor = (envelope, extra = {}) =>
+    page.describePull(envelope, { ...home, ...extra }).comparisonComing;
+  assert.deepEqual(
+    [
+      ["nothing read yet", comingFor(null)],
+      ["the first read failed", comingFor(null, { error: "Not found" })],
+      ["no record, the fetch on its way", comingFor(absentNoCore, { fetching: true })],
+      ["no record, the fetch still to send", comingFor(absentNoCore, { fetchQueued: true })],
+      [
+        "no record, the reader's fetch to wait for",
+        comingFor(absentNoCore, { waitForReader: true }),
+      ],
+      ["no record, nothing running", comingFor(absentNoCore)],
+      ["not GitHub's", comingFor({ ...absentNoCore, reason: "not_github" }, { fetching: true })],
+      [
+        "a server with no store, the fetch on its way",
+        comingFor({ ...absentNoCore, no_store: true }, { fetching: true }),
+      ],
+      [
+        "a poll that failed while the fetch runs",
+        comingFor(absentNoCore, { fetching: true, error: "The server did not answer." }),
+      ],
+      ["a core, its read running", comingFor(pendingCore)],
+      ["a core, its read running, no store", comingFor(preview)],
+      ["a prepared core, the fetch still to send", comingFor(idleCore, { fetchQueued: true })],
+      ["a prepared core, a refresh running", comingFor({ ...idleCore, refreshing: true })],
+      [
+        "a core, its read running, a server with no store",
+        comingFor({ ...pendingCore, no_store: true }),
+      ],
+      ["a prepared core, nothing running", comingFor(failedCore)],
+    ],
+    [
+      ["nothing read yet", true],
+      ["the first read failed", false],
+      ["no record, the fetch on its way", true],
+      ["no record, the fetch still to send", true],
+      ["no record, the reader's fetch to wait for", true],
+      ["no record, nothing running", false],
+      ["not GitHub's", false],
+      ["a server with no store, the fetch on its way", false],
+      ["a poll that failed while the fetch runs", true],
+      ["a core, its read running", true],
+      ["a core, its read running, no store", false],
+      ["a prepared core, the fetch still to send", true],
+      ["a prepared core, a refresh running", true],
+      ["a core, its read running, a server with no store", false],
+      ["a prepared core, nothing running", false],
+    ],
   );
   const fullWins = page.describePull(
     { ...full, core_preview: preview.core_preview },
