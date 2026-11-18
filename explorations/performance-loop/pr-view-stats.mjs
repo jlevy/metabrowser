@@ -53,6 +53,14 @@ function metrics(r) {
     }
     const pull = first(r, (p) => /^\/api\/plugin\/github\/pull\?number=\d+$/.test(p));
     out.pull_ms = pull?.ms ?? null;
+    // From the record's arrival (the first GET pull's response end): to the title, which a
+    // held first paint keeps out of sight while it waits for the first screen's Markdown;
+    // and to the end of the last Markdown answer the page asked for, with their count.
+    const markdown = (r.api ?? []).filter((a) => a.path.includes("/pull-markdown?"));
+    out.title_after_pull = pull && typeof m.title === "number" ? m.title - pull.end : null;
+    out.markdown_after_pull =
+      pull && markdown.length ? Math.max(...markdown.map((a) => a.end)) - pull.end : null;
+    out.markdown_requests = markdown.length;
     out.pull_srv = pull?.timing?.srv ?? null;
     const refresh = first(r, route("pull-refresh"));
     out.pull_refresh_srv = refresh?.timing?.srv ?? null;
