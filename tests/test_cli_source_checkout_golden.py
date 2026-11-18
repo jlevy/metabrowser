@@ -34,6 +34,7 @@ from pathlib import Path
 
 import pytest
 
+from metabrowser.source import reset_source_session
 from tests.golden_harness import (
     block,
     check_golden,
@@ -133,7 +134,8 @@ _SECTIONS: tuple[tuple[str, tuple[tuple[tuple[str, ...], int], ...]], ...] = (
     ),
     (
         "--ref takes a tag, a remote-tracking branch, and a commit ID. A window of a revision "
-        "is still called by its folder, and its full name adds what is shown.",
+        "is still called by its folder, and its full name adds what is shown. The two "
+        "identities run with HOME at the sandbox, so the folder is named from ~.",
         (
             (("checkout", "--ref", "v1", "--api", "/api/identity"), 0),
             (("checkout", "--ref", "origin/feature", "--api", "/api/identity"), 0),
@@ -166,6 +168,16 @@ _SECTIONS: tuple[tuple[str, tuple[tuple[tuple[str, ...], int], ...]], ...] = (
 )
 
 
+# The commands run with ``HOME`` at the sandbox, as a reader's checkout under their home
+# directory is: a revision's full name then starts ``~/``.
+_AT_HOME: frozenset[tuple[str, ...]] = frozenset(
+    {
+        ("checkout", "--ref", "v1", "--api", "/api/identity"),
+        ("checkout", "--ref", "origin/feature", "--api", "/api/identity"),
+    }
+)
+
+
 def test_golden_a_checkouts_refs_revisions_and_working_tree(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -182,7 +194,13 @@ def test_golden_a_checkouts_refs_revisions_and_working_tree(
     for words, commands in _SECTIONS:
         parts.append(f"== {words}\n")
         for arguments, status in commands:
-            ran = run_metab([argument.replace("<ROOT>", str(root)) for argument in arguments])
+            # Each command is its own start of the application, as a process of its own
+            # was: nothing served or counted by the one before it carries over.
+            reset_source_session()
+            with monkeypatch.context() as scoped:
+                if arguments in _AT_HOME:
+                    scoped.setenv("HOME", str(root))
+                ran = run_metab([argument.replace("<ROOT>", str(root)) for argument in arguments])
             assert ran.exit_code == status, (arguments, ran.stdout, ran.stderr)
             parts.append(ran.block(" ".join(quoted(argument) for argument in arguments)))
     parts.append(

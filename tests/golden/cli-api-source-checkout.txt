@@ -184,7 +184,7 @@ status: 200
   "changed": true,
   "status": {
     "subject": "git_revision",
-    "generation": 6,
+    "generation": 2,
     "pin": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
     "ref": "refs/heads/feature",
     "ref_name": "feature",
@@ -219,7 +219,7 @@ status: 200
   "changed": true,
   "status": {
     "subject": "git_revision",
-    "generation": 9,
+    "generation": 2,
     "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
     "ref": "refs/heads/topic",
     "ref_name": "topic",
@@ -254,7 +254,7 @@ status: 200
   "changed": true,
   "status": {
     "subject": "git_revision",
-    "generation": 12,
+    "generation": 2,
     "pin": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
     "ref": "refs/remotes/origin/feature",
     "ref_name": "origin/feature",
@@ -286,7 +286,7 @@ status: 200
   "changed": true,
   "status": {
     "subject": "git_revision",
-    "generation": 15,
+    "generation": 2,
     "pin": "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e",
     "ref": "refs/tags/v1",
     "ref_name": "v1",
@@ -320,7 +320,7 @@ status: 200
   "changed": false,
   "status": {
     "subject": "attached_filesystem",
-    "generation": 17,
+    "generation": 1,
     "pin": null,
     "ref": null,
     "ref_name": null,
@@ -390,7 +390,7 @@ api: /api/source/status
 status: 200
 {
   "subject": "git_revision",
-  "generation": 22,
+  "generation": 2,
   "pin": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
   "ref": "refs/heads/feature",
   "ref_name": "feature",
@@ -448,7 +448,7 @@ views: rendered (default, key V), source (key S)
 model: text envelope; size=17 content_bytes=17 content_truncated=False
 --- stderr ---
 
-== --ref takes a tag, a remote-tracking branch, and a commit ID. A window of a revision is still called by its folder, and its full name adds what is shown.
+== --ref takes a tag, a remote-tracking branch, and a commit ID. A window of a revision is still called by its folder, and its full name adds what is shown. The two identities run with HOME at the sandbox, so the folder is named from ~.
 
 # metab checkout --ref v1 --api /api/identity
 exit: 0
@@ -457,7 +457,7 @@ api: /api/identity
 status: 200
 {
   "short_name": "checkout",
-  "full_name": "<ROOT>/checkout@v1",
+  "full_name": "~/checkout@v1",
   "kind": "folder",
   "kind_label": "Local folder",
   "title": "checkout • Metabrowser"
@@ -471,7 +471,7 @@ api: /api/identity
 status: 200
 {
   "short_name": "checkout",
-  "full_name": "<ROOT>/checkout@origin/feature",
+  "full_name": "~/checkout@origin/feature",
   "kind": "folder",
   "kind_label": "Local folder",
   "title": "checkout • Metabrowser"
