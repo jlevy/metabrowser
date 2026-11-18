@@ -789,6 +789,19 @@ Try 'metab --help' for help.
 ? 2
 ```
 
+A sandbox rule for `metab --present` matches whatever follows it, so no option may
+choose the `config.yml` whose `present_browser` the command obeys.
+
+```console
+$ metab notes --present --dry-run --open-in browser --config-dir notes 2>&1
+Usage: metab [OPTIONS] [ROOT_ARG]
+Try 'metab --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ --config-dir not valid with --present, so no option lifts present_browser    │
+╰──────────────────────────────────────────────────────────────────────────────╯
+? 2
+```
+
 ```console
 $ metab notes --present --dry-run --open-in sometimes 2>&1
 Usage: metab [OPTIONS] [ROOT_ARG]

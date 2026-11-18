@@ -1210,6 +1210,11 @@ def _metab(
     elif mode == "present":
         if open_in == "browser" and "app_bundle_id" in explicit:
             ctx.fail("--app-bundle-id not valid with --open-in browser, which looks for no app")
+        # A sandbox rule for `metab --present` matches whatever follows it, so an option
+        # that chose another configuration directory would let the command it limits lift
+        # `present_browser: false` (`open_in.py` `browser_delivery_allowed`).
+        if "config_dir" in explicit:
+            ctx.fail("--config-dir not valid with --present, so no option lifts present_browser")
         if root is None:
             _root_required(ctx, mode)
         from metabrowser.cli.present import run_present
