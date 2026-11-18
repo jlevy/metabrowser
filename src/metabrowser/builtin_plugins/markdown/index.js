@@ -13,5 +13,8 @@ const mountRendered = (container, ctx, options = {}) =>
 const renderSource = (container, ctx) => renderMarkdownSource(container, ctx, mb);
 
 mb.builtins.markdown = { mountRendered, renderSource };
-mb.registerView("markdown", "rendered", { render: mountRendered });
+// The file's Document view prints the document, so its card carries the print button.
+mb.registerView("markdown", "rendered", {
+  render: (container, ctx) => mountRendered(container, ctx, { printIndicator: true }),
+});
 mb.registerView("markdown", "source", { render: renderSource });

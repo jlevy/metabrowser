@@ -103,3 +103,48 @@
     }
   }
 }
+
+/* A document's print button (print-indicator.js), in the upper right corner of KPress's
+   card, where a host turns it on. It is the .icon-btn primitive, bare at rest.
+
+   It sits in the card's padding and covers no text. In the card band the card pads its
+   top by 2.5rem (KPress components.css, `padding-block: 2.5rem 3rem`) and its trailing
+   side by --kpress-column-inset, 2.5rem beside the rail and 4rem without, so a 2.5rem
+   corner square is padding on both sides, and the button is centred in it. Absolute
+   against the card, which `position: relative` makes its containing block without moving
+   any box in it, the button moves nothing when it arrives.
+
+   Only where the card is drawn: on a card KPress stamps `data-kpress-card="on"` (a
+   trusted render, and the inert render's article, inert-render.js), in a pane 48rem or
+   wider, the selector and boundary of KPress's own card rule, which queries the same
+   container. Narrower, KPress pads the column 1rem and 0.75rem, which a 24px button
+   cannot fit in without covering the first line, and the reader prints with Command-P.
+
+   The narrow table of contents toggle sits in the pane's trailing gutter, outside the
+   card (`--kpress-toc-toggle-clearance` above), and the wide band's rail beside it, so
+   neither meets this corner. tests/dom/document-print-chrome.mjs measures all of it. */
+.metabrowser-markdown-document .metabrowser-print-indicator {
+  display: none;
+}
+
+@media screen {
+  .metabrowser-markdown-document
+    > .kpress-doc
+    > .kpress-doc-layout
+    > .kpress-long-text:has(> .metabrowser-print-indicator) {
+    position: relative;
+  }
+
+  .metabrowser-markdown-document .metabrowser-print-indicator {
+    --print-indicator-corner: 2.5rem;
+    position: absolute;
+    inset-block-start: calc((var(--print-indicator-corner) - var(--icon-btn-size)) / 2);
+    inset-inline-end: calc((var(--print-indicator-corner) - var(--icon-btn-size)) / 2);
+  }
+
+  @container kpress-doc (min-width: 48rem) {
+    .metabrowser-markdown-document > .kpress[data-kpress-card="on"] .metabrowser-print-indicator {
+      display: inline-flex;
+    }
+  }
+}
