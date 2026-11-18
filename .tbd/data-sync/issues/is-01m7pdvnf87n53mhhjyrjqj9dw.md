@@ -5,12 +5,12 @@ title: "macOS app: the view header's GitHub toggle shows github.com for the curr
 kind: feature
 status: open
 priority: 2
-version: 2
+version: 3
 labels: []
 dependencies: []
 parent_id: is-01m7pac84jxgvafgawtsn1wgn0
 created_at: 2026-11-18T04:15:23.623Z
-updated_at: 2026-11-18T05:54:24.702Z
+updated_at: 2026-11-18T22:10:26.684Z
 ---
 Owner, 2026-11-18: "In general, pages should open in the Metabrowser view, but you should always be able to switch to the GitHub view, and then it's simply a web view onto that page on github.com." The coordinator reversed the earlier "no in-app GitHub browser" for the macOS app: in the app (WKWebView), switching the view header's GitHub toggle shows github.com for the current item in that window, and the toggle stays reachable to switch back, so it lives in native window chrome or an overlay that survives showing github.com.
 
@@ -21,3 +21,4 @@ To decide: navigate the window's web view to github.com versus a second WKWebVie
 ## Notes
 
 2026-11-18, review A on #552, A9: the macOS title bar's trailing Metabrowser mark is a link that opens the project on GitHub (TitleBarMarkLayout.swift, docs/macos-app.md), while the view header's gray Metabrowser mark just under it is the inert current view, beside a GitHub mark that opens the item's page. Decide here, with the native toggle, what the title-bar mark becomes. Also from the review's design note: the toggle's link carries nothing that tells the app's NavigationPolicy it is the toggle rather than any github.com link, and after #539 a github.com link handed to the app resolves to the Metabrowser view, the inverse direction; write that rule down here. docs/project/qa/qa-macos-app-hand-checks.md item 10 checks today's behavior (the default browser opens the item's page).
+Owner, 2026-11-18 (later): the GitHub button should replace the current view with an actual web view on github. We need a way to make sure we maintain persisted cookie state across different tabs, so that once you log into GitHub it stays active. -> One persistent WKWebsiteDataStore shared by every GitHub view in every window and tab, surviving relaunch.
