@@ -9,6 +9,8 @@ implemented scope; the
 [release-preparation record](../../qa/qa-2026-11-07-v012-release-preparation.md) records
 how the 0.12.0 candidate was qualified.
 Conversions and broader deepening remain future work.
+[Open Modes](#open-modes), added on 2026-11-18, states the rule both modes follow and
+gives a checkout the mirror’s branch and tag chooser (`mb-8ob8`).
 
 The design was proven by experiments on 2026-11-02 against a 1.2 GB private repository
 and small local replicas, reviewed the same day with the verdict *sound with changes*,
@@ -443,6 +445,238 @@ that finishes after a newer one.
 The
 [rendered file design](plan-2026-08-17-general-diff-rendering.md#rendered-diffs-and-revision-file-links)
 defines what the comparison’s immutable sides expose.
+
+### Open Modes
+
+**Status:** The rule and the checkout’s ref chooser were decided on 2026-11-18, and the
+chooser is being built on this branch (`mb-8ob8`); the design below precedes the code.
+The names of the two modes, how a target reaches one, and the indicator that shows which
+are in the recent-targets work ([#546](https://github.com/jlevy/metabrowser/pull/546),
+`mb-40k4` and `mb-wup3`), which adds its own subsections here.
+
+A root is open in one of two modes, decided by what the reader opened:
+
+- **Mirror mode:** a URL. The pages are one commit of Metabrowser’s own cached copy of
+  the repository, a bare store with nothing checked out.
+- **Folder mode:** a path.
+  The pages are the reader’s own files as they are on disk now, and a checkout of a
+  repository is a folder like any other.
+
+#### One Base, Two Modes
+
+The owner set the rule on 2026-11-18:
+
+> “In general, when running in mirror mode, the working copy should never have changes.
+> When running in file or folder mode, we would want to be able to view all the other
+> branches as if it’s in mirror mode, but it would be all within the git directory or
+> within our own cache for that directory.”
+
+and then the model it follows from:
+
+> “when we’re browsing main or a main branch (whether it’s the mirrored main branch or
+> the actual local file), a local folder is like a mirror in all cases, or it can be, as
+> the most simple version.
+> It also has the true working directory, as we may wish to have additional features
+> like local modified files and so on only activate for folder mode.”
+
+So mirror-mode behavior is the common base, and folder mode is a superset of it:
+
+- **A committed revision is shown one way.** Any branch or tag, the checked-out branch
+  included, is a pinned revision: one commit, read from Git objects, immutable, with the
+  capabilities and the trust profile of a pin.
+  A mirror reads it from its store.
+  A checkout reads it from its own `.git`, or from Metabrowser’s cache for that
+  directory ([Where a Revision Is Read From](#where-a-revision-is-read-from)). The
+  pages, routes, and addresses are the same in both.
+- **Folder mode also has the working tree,** which is a separate choice and not a ref:
+  the files on disk, with whatever is modified, untracked, or ignored.
+  It is what a folder opens on, as it always has.
+  The checked-out branch, picked as a ref, shows its last commit, not the working tree.
+- **Folder-only features belong to the working-tree view and to nothing else.** Today
+  those are the capabilities a pin lacks (`FILESYSTEM_CAPABILITIES` against
+  `GIT_REVISION_CAPABILITIES` in `source.py` and `git/tree_source.py`): live updates
+  from the watcher and the event stream, the Recent tab and the Modified filter, Group
+  by age, ignored files and their toggle, active-file badges, and editing where
+  `--allow-edits` permits it; and with them the local trust profile, and the checkout’s
+  Pulls tab ([what this does not do yet](#what-this-does-not-do-yet)). Working-tree
+  status and diffs, when the
+  [Git status plan](plan-2026-08-26-git-status-and-working-tree-diffs.md) lands, join
+  that list.
+- **Mirror mode never leaves a change in what it serves from.** A store is created with
+  `git init --bare`, so it has no working copy, index, or checked-out branch to change,
+  and the only commands that write one are acquisition’s and a refresh’s: `init`,
+  `config`, `fetch`, and `update-ref`, each addressed to the store (`cache/acquire.py`,
+  `cache/origin.py`, `cache/pull_refs.py`, `cache/update.py`, `cache/lender.py`). A
+  mirror that borrows from a checkout reads that checkout’s object files through
+  `alternates` and runs no Git in it ([Trust](#trust)).
+- **Folder mode never writes the checkout.** Showing a revision reads Git objects and
+  refs. It never runs `git checkout`, `switch`, `reset`, `stash`, or `fetch` there, and
+  never writes the working tree, the index, `HEAD`, a ref, or an object.
+  `tests/test_checkout_revisions.py` holds this: after listing refs, showing several
+  revisions, and returning to the working tree, every file under the checkout, its
+  `.git` included, is byte for byte what it was, with a dirty index and uncommitted and
+  untracked files in the fixture.
+
+#### Revisions of a Checkout
+
+The owner asked, on 2026-11-18, looking at a local checkout: “Why do I still not see a
+branch chooser anymore?”
+The chooser of [#236](https://github.com/jlevy/metabrowser/pull/236) was drawn only for
+a pin served from a mirror, so a checkout had none.
+Asked what choosing a branch should do there, the owner chose to view it read-only.
+
+**The chooser.** A folder whose root is a repository’s root shows the mirror’s chooser,
+the one module `static/source-ref-selector.js`, with two additions the listing tells it
+about:
+
+- A **Working tree** row above the refs, marked as the live local files and naming the
+  branch that is checked out.
+  It is the entry in front when the folder opens, since the working tree is what a
+  folder has always opened on.
+- A third list, **Remotes**, beside Branches and Tags.
+  A checkout’s branches are its local ones (`refs/heads/`), its tags are `refs/tags/`,
+  and its remote-tracking branches (`refs/remotes/`, named `origin/main`) are the third
+  list. A mirror holds only its origin’s branches and tags and keeps two lists.
+
+The button reads “Working tree” on the working tree and names the ref on a revision, as
+a mirror’s does, so the page says which one it shows; the heading of a revision’s page
+carries the ref and the short commit, as a mirror’s heading does.
+The chooser appears exactly where the Commits tab does, behind the
+[exact-root gate](../../architecture/arch-git.md#discovery-and-the-exact-root-gate): a
+subdirectory of a checkout has neither, because a revision’s tree is the whole
+repository’s and would show files outside the folder the reader chose.
+A checkout Git itself refuses to read, such as one owned by another user, has neither.
+
+**Listing.** `GET /api/source/refs` is the mirror’s route.
+For a checkout it runs the same one `for-each-ref` over the checkout’s Git directory and
+answers the same envelope, with `kind=remote` as a third kind, `kinds` naming the lists
+the subject has, and `working_tree`, which is null on a mirror and otherwise says
+whether the working tree is served and which branch is checked out.
+A row carries `checked_out` for the branch `HEAD` is on, which lists first, as the
+default branch does on a mirror.
+A symbolic ref such as `origin/HEAD` is not listed: it names another row.
+
+**Showing a revision.** `POST /api/source/pin` is the mirror’s route too.
+A selection is resolved in the checkout’s refs by the one resolver (`cache/resolve.py`):
+a branch, then a tag, then a remote-tracking branch, then a commit ID, never revision
+syntax. The server then serves a `GitRevisionSubject` over the checkout’s Git directory
+in place of the folder, under a new session generation, exactly as a mirror’s pin switch
+replaces one pin with another.
+Every content route answers it as it answers any pin: `GitPath` identities, the blob
+index, and the bounded batch readers, with no host path in any request.
+The folder’s inventory and watcher keep running underneath, so returning is immediate.
+
+**Returning to the working tree.** The same route with `{"working_tree": true}` detaches
+the revision and serves the folder again.
+Choosing the Working tree row sends it.
+A branch, including the checked-out one, never does: it is a ref, and shows its commit.
+
+**Where the page goes.** A switch names the page’s `/view/` address, as on a mirror, and
+the answer’s `view_href` is the same file or folder on the other side when it exists
+there and the root otherwise.
+A folder’s address is an inventory path and a revision’s is a `GitPath` wire, so the
+route translates between the two; a name that is not valid in the other space goes to
+the root.
+
+**What the URL and the pin record.** Nothing is recorded outside the process.
+The pin is the server’s, in memory, as a mirror’s is: it is server-wide, so every tab
+moves with it, and a restarted `metab <folder>` serves the working tree again.
+A `/view/` address names no revision in either mode, which is the standing limit of
+[Source Sessions and Pins](../../architecture/arch-source-sessions-and-pins.md#switching-the-pin-and-the-pin-guard),
+so a revision’s address reopened after a restart is read as a path of the folder.
+`GET /api/source/status` reports the served commit and ref, and `checkout`, the
+checkout’s path, on a folder that can show revisions and on each of its revisions.
+`GET /api/identity` keeps `kind: folder` on a revision, since the mode is how the root
+was opened, and its `full_name` adds `@<ref>`, as a mirror’s does.
+
+**A tab left behind.** A pin’s page names its commit on every data request and is
+refused once another is served (`pin_changed`). A folder’s page named nothing, which was
+safe while a folder’s server could serve nothing else.
+A checkout’s working-tree page now names the working tree the same way, and a revision’s
+page names its commit, so a tab left on either is refused, not answered from the other,
+when the server switches.
+The chooser then offers a reload, since a checkout’s page has no freshness row to offer
+it.
+
+**Trust.** The plan’s [trust rules](#trust) apply, with one statement added for a
+checkout’s own revisions:
+
+- **A revision of a checkout runs under the untrusted profile,** as every pin does,
+  whatever profile the folder was opened with, and the folder’s own profile returns with
+  the working tree. The working tree is what the reader checked out and works in.
+  Another branch or tag in `.git` is whatever a fetch brought, which the reader may
+  never have looked at, so it gets the profile a mirror’s content gets: inert Markdown,
+  no active content, and no editing.
+- **The checkout’s own Git configuration applies to these reads, as it does to its
+  Commits tab,** because the reader named that checkout as the root to serve
+  ([a lender is trusted as a served folder is](#trust)). This is the folder server
+  reading its own checkout, not a mirror borrowing one: a mirror’s pages are an
+  origin’s, and the rule that a mirror never reads a checkout’s configuration or runs
+  Git in it is unchanged.
+- **A revision’s reads are narrower than the Commits tab’s.** They run under the store
+  policies (`STORE_READ_POLICY` and `BATCH_OBJECT_POLICY` in `git/process.py`): no user
+  or system configuration or attributes, attributes from the empty tree so no commit’s
+  `.gitattributes` applies, no optional locks, standard input closed, and
+  `GIT_NO_LAZY_FETCH=1`, so a partial clone’s missing object is `object_unavailable` and
+  is never fetched into the reader’s `.git`.
+- **Paths.** A revision is addressed by `GitPath`, never by a host path, and the working
+  tree by the folder’s safe-path containment, as before.
+  No request carries the Git directory’s path; the server resolves it from the served
+  root with the bounded readers `repository_context.py` already uses.
+
+##### Where a Revision Is Read From
+
+The owner’s rule allows two places: the checkout’s Git directory, or Metabrowser’s own
+cache for that directory.
+
+- **The checkout’s `.git`, read in place, is the rule.** It needs no copy and no
+  acquisition, it holds every local branch, tag, and remote-tracking branch as the
+  reader’s own Git shows them, and nothing can drift from it.
+  This is what is implemented.
+- **Metabrowser’s cache is for what `.git` cannot give.** Derived data already lives
+  there or in memory, never in the checkout: the blob index, kept comparisons, and the
+  store a checkout’s pull-request comparisons borrow into.
+  Objects join it in two cases, both planned and neither implemented here:
+  - *Objects the checkout names and does not hold:* a partial clone, a shallow clone’s
+    history past its boundary, or a damaged store.
+    Reading in place answers `object_unavailable`. The remedy is the overlay store this
+    plan already defines, which borrows the checkout’s objects and fetches the rest from
+    the origin into Metabrowser’s cache, never into the checkout.
+  - *A Git directory the server should not run Git against:* one Git refuses for its
+    ownership, or one in a format the installed Git cannot read.
+    Today such a checkout has no chooser.
+    Borrowing its object files into a store, as a mirror’s `--checkout` does, would read
+    it without running Git in it.
+
+The trust and path rules above hold either way: the pages are a pin’s under the
+untrusted profile, and the choice changes only which directory `--git-dir` names.
+
+##### The Indicator, Recent Targets, and One Module
+
+- **The open-mode indicator** (`mb-wup3`, planned) shows the mode, and the mode does not
+  change when a revision is shown: a checkout stays in folder mode and keeps the folder
+  icon. What says a revision is shown is the chooser beside it, which reads “Working
+  tree” or names the ref, and the revision’s heading; the indicator’s tooltip can add it
+  from `/api/source/status`, which this work fills.
+- **Recent targets** ([#546](https://github.com/jlevy/metabrowser/pull/546)) record a
+  root and its mode. A revision is neither, so choosing one records nothing, and a recent
+  folder reopens on its working tree.
+- **One chooser.** The mirror and the checkout share `static/source-ref-selector.js`:
+  one state machine, one `describe`, one painter.
+  The listing says what differs, and the page says whether it is a checkout’s
+  (`METABROWSER_SOURCE_CHECKOUT`).
+
+##### What This Does Not Do Yet
+
+- **Pulls on a revision.** A checkout’s Pulls tab and pull-request pages are views of
+  the folder, and its routes find the checkout through the folder’s root, so they are
+  offered on the working tree only.
+  A mirror’s revision has them; a checkout’s should, once its pull routes accept a
+  pinned checkout and its View on branch knows the pin route’s checkout refs.
+- **Opening a checkout on a ref from the command line.** `metab <folder>` opens the
+  working tree. Each `--api` command is its own process, so a switch lasts for that
+  command, as the mirror’s transcripts say.
+- **Reading through the cache**, the two cases above.
 
 ### Storage Modes
 
