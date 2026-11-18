@@ -291,25 +291,25 @@ registry lands, `mb-9lf4` moves the open rows’ membership to it.
 
 ## Implementation Plan
 
-One phase, as one stack of four pull requests.
+One phase, as one stack of four pull requests, layers 1 to 4 below.
 Each pull request updates the user guide (`docs/macos-app.md`), the architecture
 document (`arch-macos-app.md`), and `CHANGELOG.md` for what it changes.
 
 ### Phase 1: Switch Folders in a Window
 
-- [ ] **Separate the page from the window** (PR 1, `mb-ty8k`). `FolderPage` takes the
+- [ ] **Separate the page from the window** (layer 1, `mb-ty8k`). `FolderPage` takes the
   web view and per-page state from `BrowserWindowController`; a window shows one page.
   No behavior changes, which the existing app tests hold.
-- [ ] **Open folders and switching in place** (PR 2, `mb-e9y4`). `OpenFolders` in
+- [ ] **Open folders and switching in place** (layer 2, `mb-e9y4`). `OpenFolders` in
   `ShellCore`; switching a window’s page; background folders; File > Close Folder; the
   discard policy over pages; background folders in the saved session and its restore.
-- [ ] **Shared marks** (PR 3, `mb-u08r`). `RootMark`, the glyphs as template images, the
-  drift test, and Open Recent and the Dock menu drawing them.
-- [ ] **The title chooser** (PR 3, `mb-4yfy`). The button with its chevron and hover
+- [ ] **Shared marks** (layer 3, `mb-u08r`). `RootMark`, the glyphs as template images,
+  the drift test, and Open Recent and the Dock menu drawing them.
+- [ ] **The title chooser** (layer 3, `mb-4yfy`). The button with its chevron and hover
   surface, `FolderChooser`, the menu, Option alternates, and VoiceOver.
-- [ ] **The switcher panel** (PR 4, `mb-boub`). View > Switch Folder…, its search, its
-  order, and closing a folder from it.
-- [ ] **The parity row and the hand checks** (PR 4, `mb-6ccy`). `app.folder-chooser`,
+- [ ] **The switcher panel** (layer 4, `mb-boub`). View > Switch Folder…, its search,
+  its order, and closing a folder from it.
+- [ ] **The parity row and the hand checks** (layer 4, `mb-6ccy`). `app.folder-chooser`,
   and the chooser, hover, and switching steps in
   `docs/project/qa/qa-macos-app-hand-checks.md`.
 
