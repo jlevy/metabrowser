@@ -30,6 +30,9 @@ What the app adds is what a browser tab cannot give:
 
 Each folder has one server.
 Closing a folder’s last window stops it, so reopening the folder starts a new one.
+**File > Close Folder** closes the folder the front window shows in every window that
+shows it; each of those windows shows the folder open in the background that you looked
+at last, or closes if there is none.
 If a server stops answering or fails to start, the window says so and offers Retry,
 Reveal Logs, and Runtime Settings….
 

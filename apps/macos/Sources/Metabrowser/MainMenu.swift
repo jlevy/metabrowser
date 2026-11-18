@@ -36,6 +36,7 @@ enum MainMenu {
             recentHolder,
             .separator(),
             item("Close Window", #selector(NSWindow.performClose(_:)), "w"),
+            item("Close Folder", #selector(BrowserWindowController.closeFolder(_:))),
             .separator(),
             item("Restart Server", #selector(FolderPage.restartServer(_:)), "r", [.command, .option]),
             item("Open in Default Browser", #selector(FolderPage.openInDefaultBrowser(_:))),

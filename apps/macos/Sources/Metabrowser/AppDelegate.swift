@@ -609,7 +609,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.folderWindows.windowShown(controller, of: folder)
         }
         session.onLayoutChange = { [weak self] in self?.folderWindows.scheduleSave() }
+        session.onPlaceWindow = { [weak self] in self?.folderWindows.place($0) }
         sessions.insert(session, for: key)
+        folderWindows.folderOpened(session)
         retitleWindows()
         return session
     }
@@ -629,6 +631,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for (session, title) in zip(open, WindowTitle.windowTitles(open.map(\.title))) {
             session.windowTitle = title
         }
+    }
+
+    /// File > Close Folder, for the folder the key window shows.
+    func closeFolder(_ session: FolderSession) {
+        AppLog.app.info("closing \(session.folderName, privacy: .public) in every window")
+        folderWindows.closeFolder(session)
     }
 
     private func restoreLastSession() {

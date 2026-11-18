@@ -4,6 +4,13 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- The macOS app has **File > Close Folder**, which closes the folder the front window
+  shows in every window that shows it.
+  Each of those windows shows the folder open in the background that you looked at last,
+  or closes if there is none, and the folder’s server stops.
+  A folder open in the background is saved with the session and reopens in the
+  background, starting its server only when a window shows it.
+
 - In a navigation pane too narrow for the Files toolbar’s controls, the Files tree no
   longer moves down as the page loads.
   The toolbar wraps to a second line when its controls arrive, and the tree, shown under

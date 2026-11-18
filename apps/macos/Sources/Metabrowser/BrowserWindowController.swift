@@ -73,6 +73,20 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         if let session = page.session { showTitle(session.title, windowTitle: session.windowTitle) }
     }
 
+    /// Shows `newPage` in place of the page the window shows now, which is left with no
+    /// window: the caller decides whether it stays open in the background or closes
+    /// (`FolderWindows.switchWindow`). The window itself stays: its frame, Space, full
+    /// screen, and place among its tabs.
+    func show(_ newPage: FolderPage) {
+        guard newPage !== page else { return }
+        let old = page
+        old.view.removeFromSuperview()
+        old.host = nil
+        page = newPage
+        host(newPage)
+        window?.makeFirstResponder(newPage.webView)
+    }
+
     /// Names the window for everything that reads its title, and draws the visible one.
     /// `windowTitle` is `window.title`: the folder's short name, or its full name while
     /// another open folder shares the short name (`WindowTitle.windowTitles`). The page's
@@ -108,6 +122,13 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     }
 
     // MARK: - Menu actions
+
+    /// File > Close Folder: closes the folder this window shows, in every window, and
+    /// shows another open folder in its place (`FolderWindows.closeFolder`).
+    @objc func closeFolder(_ sender: Any?) {
+        guard let session = page.session else { return }
+        (NSApp.delegate as? AppDelegate)?.closeFolder(session)
+    }
 
     /// The page's menu actions (Back, Reload, Find, Print, Zoom, and the rest) are the
     /// page's: nil-targeted items reach the window and its controller, which hand them to

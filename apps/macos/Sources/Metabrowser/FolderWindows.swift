@@ -2,12 +2,14 @@ import AppKit
 import ShellCore
 
 /// The folder windows as a whole: where a newly opened folder's window goes, which
-/// background tabs keep their pages, and the session saved for the next launch and
-/// restored from it.
+/// folder a window switches to and what becomes of the one it leaves, which background
+/// pages keep their web views, and the session saved for the next launch and restored
+/// from it.
 ///
-/// The decisions are `ShellCore`'s (`FolderPlacement`, `TabDiscardPolicy`,
-/// `RestoreQueue`, `RestoreRun`, `SavedSession`), where they are tested; this class reads
-/// the windows and tabs from AppKit and applies them.
+/// The decisions are `ShellCore`'s (`FolderPlacement`, `OpenFolders`,
+/// `SwitchedAwayPage`, `TabDiscardPolicy`, `RestoreQueue`, `RestoreRun`,
+/// `SavedSession`), where they are tested; this class reads the windows, tabs, and pages
+/// from AppKit and applies them.
 final class FolderWindows {
     /// How long a change waits before the session is saved, so a burst of changes, such
     /// as a restore or a run of clicks, writes the file once.
@@ -19,8 +21,11 @@ final class FolderWindows {
     private let home = FileChecks.canonicalPath(NSHomeDirectory())
     private let openSessions: () -> [FolderSession]
     private let sessionForPath: (String) -> FolderSession?
-    /// When each window was last shown, on `shownCount`.
+    /// When each page was last shown, on `shownCount`.
     private var lastShown: [ObjectIdentifier: UInt64] = [:]
+    /// The open folders, by session key, in the order they opened and by when each was
+    /// last shown.
+    private(set) var openFolders = OpenFolders()
     private var shownCount: UInt64 = 0
     /// The restore's server starts, while it has roots to start.
     private var restoreRun: RestoreRun?
@@ -59,7 +64,8 @@ final class FolderWindows {
         }
         // Shown now even if the app is not active and the window does not become key, as
         // when a folder arrives from `open -a` while another app is in front.
-        noteShown(controller)
+        noteShown(controller.page)
+        if let session = controller.page.session { openFolders.show(session.path) }
         discardBackgroundPages()
     }
 
@@ -89,7 +95,8 @@ final class FolderWindows {
     /// its server starts if a restore was holding it, and background tabs past the limit
     /// give up their pages.
     func windowShown(_ controller: BrowserWindowController, of session: FolderSession) {
-        noteShown(controller)
+        noteShown(controller.page)
+        openFolders.show(session.path)
         // A selection starts the folder as the user's choice. A restored start already
         // waiting at the launch gate gets a check that its path still names its folder
         // instead, so one that now leads elsewhere moves its tabs first (`RestoreRun.select`).
@@ -99,29 +106,92 @@ final class FolderWindows {
         scheduleSave()
     }
 
-    private func noteShown(_ controller: BrowserWindowController) {
+    private func noteShown(_ page: FolderPage) {
         shownCount += 1
-        lastShown[ObjectIdentifier(controller)] = shownCount
+        lastShown[ObjectIdentifier(page)] = shownCount
     }
 
-    /// Every tab of `session` has closed.
+    /// A session was made for a folder the user opened, or a restore reopened.
+    func folderOpened(_ session: FolderSession) {
+        openFolders.open(session.path)
+    }
+
+    /// Every page of `session` has closed.
     func folderClosed(_ session: FolderSession) {
         restoreRun?.folderClosed(session.path)
+        openFolders.close(session.path)
+        scheduleSave()
     }
 
+    /// Pages no window shows, of folders in the background, and the background tabs past
+    /// the policy's limit give up their web views, least recently shown first.
     private func discardBackgroundPages() {
-        let controllers = openSessions().flatMap(\.windows)
-        let ids = Set(controllers.map(ObjectIdentifier.init))
+        let pages = openSessions().flatMap(\.pages)
+        let ids = Set(pages.map(ObjectIdentifier.init))
         lastShown = lastShown.filter { ids.contains($0.key) }
-        let tabs = controllers.map { controller in
+        let activity = pages.map { page in
             TabActivity(
-                id: ObjectIdentifier(controller), isBackground: Self.isBackgroundTab(controller.window),
-                isLive: !controller.page.isDiscarded, lastShown: lastShown[ObjectIdentifier(controller)] ?? 0)
+                id: ObjectIdentifier(page), isBackground: Self.isInBackground(page), isLive: !page.isDiscarded,
+                lastShown: lastShown[ObjectIdentifier(page)] ?? 0)
         }
-        let discards = Set(discardPolicy.discards(tabs))
-        for controller in controllers where discards.contains(ObjectIdentifier(controller)) {
-            AppLog.app.info("discarding the page of background tab \(controller.window?.title ?? "", privacy: .public)")
-            controller.page.discardPage()
+        let discards = Set(discardPolicy.discards(activity))
+        for page in pages where discards.contains(ObjectIdentifier(page)) {
+            let name = page.session?.folderName ?? ""
+            AppLog.app.info("discarding the background page of \(name, privacy: .public)")
+            page.discardPage()
+        }
+    }
+
+    /// A page no window is showing: a background tab, or a folder's page in the background.
+    private static func isInBackground(_ page: FolderPage) -> Bool {
+        guard let window = page.host?.window else { return true }
+        return isBackgroundTab(window)
+    }
+
+    // MARK: - Switching and closing folders
+
+    /// Shows `session` in `controller`'s window in place of the folder it shows: the
+    /// folder's page in the background if it has one, else a new page of it. The page the
+    /// window leaves stays open in the background, or closes if its folder has another
+    /// page (`SwitchedAwayPage`).
+    func switchWindow(_ controller: BrowserWindowController, to session: FolderSession) {
+        let old = controller.page
+        guard old.session !== session else { return }
+        let page = session.backgroundPage ?? session.makePage()
+        controller.show(page)
+        if let left = old.session {
+            switch SwitchedAwayPage.fate(otherPages: left.pages.count - 1) {
+            case .keepInBackground:
+                AppLog.app.info("\(left.folderName, privacy: .public) stays open in the background")
+            case .close:
+                old.close()
+            }
+        }
+        page.shown()  // which counts it as shown, revives it, and starts a restored folder
+        discardBackgroundPages()
+        scheduleSave()
+    }
+
+    /// File > Close Folder: every window showing `session` switches to the background
+    /// folder shown most recently, or closes if there is none, and the folder's pages
+    /// close, which stops its server.
+    func closeFolder(_ session: FolderSession) {
+        for controller in session.windows {
+            let background = Set(openSessions().filter(\.isInBackground).map(\.path))
+            if let next = openFolders.replacement(closing: session.path, background: background),
+               let replacement = sessionForPath(next) {
+                switchWindow(controller, to: replacement)
+            } else {
+                controller.window?.close()
+            }
+        }
+        session.pages.forEach { $0.close() }
+    }
+
+    /// Closes every folder open in the background.
+    func closeBackgroundFolders() {
+        for session in openSessions() where session.isInBackground {
+            session.pages.forEach { $0.close() }
         }
     }
 
@@ -133,7 +203,8 @@ final class FolderWindows {
 
     // MARK: - The saved session
 
-    /// The folder windows now, front window first, each with its tabs in tab-bar order.
+    /// The folder windows now, front window first, each with its tabs in tab-bar order,
+    /// then the folders open in the background, in the order they opened.
     ///
     /// A repository's tabs are left out, and so is a window that holds no other: the saved
     /// session names folders by path (`SavedTab.root`), and its restore admits each path
@@ -164,7 +235,13 @@ final class FolderWindows {
                 selected: tabs.firstIndex { $0.controller.window === shown } ?? 0,
                 frame: shown.frameDescriptor))
         }
-        return SavedSession(windows: windows)
+        let background = openFolders.inOrderOpened.compactMap { path -> SavedTab? in
+            guard let session = sessionForPath(path), session.isLocal, session.isInBackground,
+                  let page = session.pages.first
+            else { return nil }
+            return SavedTab(root: session.path, page: page.currentPage)
+        }
+        return SavedSession(windows: windows, background: background)
     }
 
     func scheduleSave() {
@@ -235,6 +312,11 @@ final class FolderWindows {
             AppLog.app.info(
                 "not restoring \(limited.tabCount - session.tabCount) tab(s) whose folders are gone or whose saved paths are not canonical")
         }
+        // Sessions first, front window first, so the folders open in the order the windows
+        // stand in (`OpenFolders`); the windows are then built back to front.
+        for tab in session.windows.flatMap(\.tabs) {
+            _ = makeSession(URL(filePath: tab.root, directoryHint: .isDirectory))
+        }
         var front: BrowserWindowController?
         // Back to front, so that each window ordered in lands in front of the ones behind it.
         for (index, savedWindow) in session.windows.enumerated().reversed() {
@@ -262,6 +344,16 @@ final class FolderWindows {
             if let window = shownTab.window { first.tabGroup?.selectedWindow = window }
             if index == 0 { front = shownTab }
         }
+        // Folders in the background reopen with a page each and no window; each starts
+        // when a window first shows it (`RestoreQueue`).
+        for tab in session.background {
+            guard let folder = makeSession(URL(filePath: tab.root, directoryHint: .isDirectory)) else {
+                AppLog.app.error("not restoring \(tab.root, privacy: .public) in the background: it cannot be served")
+                continue
+            }
+            _ = folder.makePage(page: tab.page, discarded: true)
+            folderOpened(folder)
+        }
         let queue = RestoreQueue(session, isProtected: admitted.deferred.contains)
         for path in queue.deferred {
             sessionForPath(path)?.pages.forEach { $0.showWaitingForSelection() }
@@ -273,7 +365,7 @@ final class FolderWindows {
         run.onEvent = { [weak self] in self?.restoreChanged($0) }
         restoreRun = run
         AppLog.app.info(
-            "restoring \(session.windows.count) window(s): \(queue.pending.count) server(s) to start, \(queue.deferred.count) waiting for their tabs")
+            "restoring \(session.windows.count) window(s) and \(session.background.count) folder(s) in the background: \(queue.pending.count) server(s) to start, \(queue.deferred.count) waiting to be shown")
         front?.window?.makeKeyAndOrderFront(nil)
         startRestoredServers()
     }
@@ -340,7 +432,7 @@ final class FolderWindows {
             // own, the tab shows the folder's own page, the server's entry page.
             replacement.page.show(page ?? .view(of: ""))
         }
-        lastShown[ObjectIdentifier(replacement)] = lastShown[ObjectIdentifier(old)]
+        lastShown[ObjectIdentifier(replacement.page)] = lastShown[ObjectIdentifier(old.page)]
         if wasKey { window.makeKeyAndOrderFront(nil) }
         oldWindow.close()
     }

@@ -25,6 +25,11 @@ final class FolderSession: ManagedServer {
     private(set) var pages: [FolderPage] = []
     /// The windows showing the folder's pages.
     var windows: [BrowserWindowController] { pages.compactMap(\.host) }
+    /// Whether the folder is open in the background: it has a page, and no window shows
+    /// any of its pages (`OpenFolders`).
+    var isInBackground: Bool { !pages.isEmpty && pages.allSatisfy { $0.host == nil } }
+    /// The folder's page in the background, which a window switching to the folder shows.
+    var backgroundPage: FolderPage? { pages.first { $0.host == nil } }
     private var endpoint: ServerEndpoint?
     private var failure: ServerFailure?
     /// What every window of the folder calls itself: from the folder's path until the
@@ -60,6 +65,9 @@ final class FolderSession: ManagedServer {
     var onLayoutChange: (() -> Void)?
     /// A start or restart is waiting for a runtime the app accepts.
     var onWaitingForRuntime: (() -> Void)?
+    /// A page of the folder's needs a window of its own, placed as a newly opened folder's
+    /// is: a folder in the background was opened again, or a link brought it forward.
+    var onPlaceWindow: ((BrowserWindowController) -> Void)?
     /// A restart or a resumed start of a restored background folder was refused by its
     /// root check: it now waits for one of its tabs to be selected (`FolderWindows`).
     var onRootRefused: ((FolderSession) -> Void)?
@@ -258,7 +266,18 @@ final class FolderSession: ManagedServer {
         } else {
             Task { _ = await checkHealth() }
         }
-        front?.host?.window?.makeKeyAndOrderFront(nil)
+        bringForward(front)
+    }
+
+    /// Brings forward the window showing `page`, or places it in a window of its own if
+    /// none does, as for a folder in the background.
+    private func bringForward(_ page: FolderPage?) {
+        guard let page else { return }
+        if let window = page.host?.window {
+            window.makeKeyAndOrderFront(nil)
+        } else {
+            onPlaceWindow?(BrowserWindowController(page: page))
+        }
     }
 
     /// The page a link or a reopen brings forward: the first one a window on screen shows.
@@ -278,7 +297,7 @@ final class FolderSession: ManagedServer {
     /// that start already runs on starts nothing more, and the window loads that start's
     /// entry page, whoever began it (`RepositoryLinks`).
     func open(link: URL) {
-        frontPage?.host?.window?.makeKeyAndOrderFront(nil)
+        bringForward(frontPage)
         let name = root.lastPathComponent
         switch target.links.receive(link, state: supervisor.state, restarting: restartsInFlight > 0) {
         case .restart:

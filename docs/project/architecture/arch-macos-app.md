@@ -418,6 +418,17 @@ Applications.
   A window (`BrowserWindowController`) holds only the window and its chrome, and shows
   one page at a time; the menus’ page actions reach the page it shows through the window
   controller (`supplementalTarget(forAction:sender:)`).
+- **Open folders.** A folder is open while its session has a page, and **in the
+  background** while its one page has no window, because a window switched away from it.
+  `OpenFolders` keeps the order folders opened in and when each was last shown.
+  A window switches to a folder by showing its background page, or a new page of it, in
+  place of the page it showed (`FolderWindows.switchWindow`); the window stays the same
+  `NSWindow`. The page left behind stays in the background, or closes if its folder has
+  another page (`SwitchedAwayPage`), so a folder has at most one background page.
+  File > Close Folder switches each window showing the folder to the background folder
+  shown most recently (`OpenFolders.replacement`), or closes it, then closes the
+  folder’s pages. A folder in the background that is opened again, from Finder,
+  `open -a`, or a link, gets a window of its own, placed as a new folder’s is.
 - **Title.** The folder’s short name, from `GET /api/identity` once the server is ready
   and from the path until then (`FolderIdentity.localFolder`). `window.title` is the
   short name too, or the full name while two open folders share a short name
@@ -444,7 +455,7 @@ Applications.
   tab dragging combine any folders.
   `FolderPlacement` puts a new folder in a tab, a window, or as System Settings prefers.
 - **Background tabs.** Each window’s shown tab keeps its page, and so do the most
-  recently shown background tabs up to
+  recently shown background pages, of tabs and of folders in the background, up to
   [`TabDiscardPolicy`](../../../apps/macos/Sources/ShellCore/Web/TabDiscardPolicy.swift)’s
   limit, whose comment holds its measurement.
   Every other background tab gives up its web view, which ends its WebContent process,
@@ -464,9 +475,9 @@ Applications.
 ### Session Restore
 
 `SessionStore` saves the folder windows, front first, with each window’s tabs, shown
-tab, and frame and each tab’s folder and page, to `session.json` in
-`AppIdentity.supportDirectory`, `FolderWindows.saveDelay` after a change and at quit
-before the servers stop.
+tab, and frame and each tab’s folder and page, then the folders open in the background
+with their pages, to `session.json` in `AppIdentity.supportDirectory`,
+`FolderWindows.saveDelay` after a change and at quit before the servers stop.
 Each save renames a private temporary file over the old one, so a launch after a crash
 finds a whole session, and two copies saving at once leave the last one’s.
 
@@ -475,6 +486,8 @@ rebuilds at most
 [`RestoreBudget.standard`](../../../apps/macos/Sources/ShellCore/Folders/SavedSession.swift),
 whose comment holds its measurement.
 Only each window’s shown tab loads its page.
+A folder in the background reopens with its page and no window, and its server waits, as
+a protected folder’s does, until a window shows it.
 Servers start one at a time, each after the one before is ready or has failed: the front
 tab’s first, then the tabs the other windows show, then the rest (`RestoreQueue`,
 `RestoreRun`). A tab selected meanwhile starts next.
