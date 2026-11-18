@@ -6,7 +6,7 @@ their states; ``tests/golden/cli-ui-diff-markdown.tryscript.md`` pins its transc
 that the answers are the server's and not projections a test wrote by hand, they come
 from ``tests/fixtures/diff-markdown-responses.json``: what
 :func:`metabrowser.diff.markdown_projection.project_markdown_diff` answers for these
-documents, bound to a pull request's snapshot route as ``GET github/pull-rendered-diff``
+documents, bound to a pull request's head as ``GET github/pull-rendered-diff``
 binds them, and Python's HTML parse of every block, from which the session builds the
 template the page parses a block into. The route itself, admission and refusals
 included, is pinned by ``tests/golden/cli-github-pull-rendered.txt``. The first test
@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from metabrowser.builtin_plugins.github.pull_route import snapshot_route
+from metabrowser.builtin_plugins.github.pull_route import image_route, rendered_route
 from metabrowser.builtin_plugins.github.pull_snapshot import Snapshot
 from metabrowser.diff.markdown_projection import project_markdown_diff
 from metabrowser.git.tree_source import GitPath
@@ -27,7 +27,7 @@ from tests.golden_harness import check_recording, read_recording, run_session
 from tests.test_markdown_diff_projection import _patch  # pyright: ignore[reportPrivateUsage]
 
 _RECORDING = "diff-markdown-responses.json"
-_SNAPSHOT = Snapshot(7, "a" * 40, "b" * 40, "0123456789abcdef", "head")
+_SNAPSHOT = Snapshot(7, "a" * 40, "b" * 40, "0123456789abcdef")
 
 _GUIDE_OLD = (
     b"# Guide\n\nRead the [setup notes](setup.md) first.\n\n"
@@ -77,7 +77,12 @@ def _recording() -> dict[str, Any]:
         for block in answer["blocks"]
     }
     return {
-        "snapshot_route": snapshot_route(
+        "image_route": image_route(
+            _SNAPSHOT.number, _SNAPSHOT.base, _SNAPSHOT.head, store=_SNAPSHOT.store
+        ),
+        # The route the page asks a file's projection on, which the session mounts the
+        # plugin with, so the plugin hands the diff its rule for which addresses open.
+        "rendered_route": rendered_route(
             _SNAPSHOT.number, _SNAPSHOT.base, _SNAPSHOT.head, store=_SNAPSHOT.store
         ),
         "manifest": [
@@ -101,7 +106,16 @@ def test_recording_matches_the_production_projection() -> None:
 
 def test_session_replays_the_recording() -> None:
     transcript = run_session("diff-markdown-session.js")
-    assert transcript["links"]["route"] == read_recording(_RECORDING)["snapshot_route"]
+    assert transcript["links"]["route"] == read_recording(_RECORDING)["image_route"]
+    # The plugin's rule (`headLinksOpen` in builtin_plugins/diff/index.js): a link to a file
+    # of the head opens only on a page that shows the head, until it hears another pin is
+    # served (A2 of review A on #511).
+    assert transcript["links"]["pages"] == {
+        "pinned at the comparison's head": True,
+        "pinned at the merge base": False,
+        "beside a checkout at the head, which has no pin": False,
+        "pinned at the comparison's head, after another tab changed the pin": False,
+    }
     steps = {step["step"]: step for step in transcript["steps"]}
     first = steps["an answer within the loading delay paints Rendered first"]["files"]
     assert first["f1 docs/guide.md"]["shows"] == "rendered"

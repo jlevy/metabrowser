@@ -14,7 +14,7 @@ Install uv at the version `required-version` in `uv.toml` names, using the
 Install the Node release `.nvmrc` and `.node-version` pin, with an npm in the range
 `engines` in `package.json` gives, and select it with `fnm use`, `nvm use`, or
 `mise install`; `npm ci` refuses an older Node with an `EBADENGINE` error.
-The tests also need Git and `jq` on `PATH`, and stop when Node, Git, or `jq` is missing
+The tests also need Git and jq on `PATH`, and stop when Node, Git, or jq is missing
 ([Running Tests](e2e-testing.md#running-tests)). Then clone the repository and run:
 
 ```shell
@@ -45,8 +45,14 @@ make format
 # Check lint and formatting without changing files.
 make lint-check
 
-# Run the default test tier.
+# Run the default test tier: the parallel, serial, and Chrome tiers, then the goldens.
 make test
+
+# Run one of those four, or the parallel tier on fewer workers.
+make test-parallel PYTEST_WORKERS=2
+make test-serial
+make test-chrome SHARD=1/4
+make test-goldens
 
 # Run every gate before a pull request or release.
 make verify
@@ -67,17 +73,18 @@ uv --config-file uv.toml run --frozen metab ./tests/manual-fixtures --check-api
 uv --config-file uv.toml run --frozen metab ./tests/manual-fixtures --no-open
 ```
 
-[End-to-End Testing](e2e-testing.md) covers the test layers, the outer tiers
-(`make test-admitted-git`, `make test-macos`, and `make test-live-github`), the skips
-each tier allows, and `make test-report`. `tests/golden/cli-check-api.tryscript.md` pins
+[End-to-End Testing](e2e-testing.md) covers the test layers, the four parts of
+`make test` and the markers that choose them, the outer tiers (`make test-admitted-git`,
+`make test-macos`, and `make test-live-github`), the skips each tier allows, and
+`make test-report` and `make ci-report`. `tests/golden/cli-check-api.tryscript.md` pins
 a normalized transcript of the `--check-api` sequence against a small fixture.
 
 The quality, test, audit, and build targets install both locked environments first, and
 Make keeps the stages ordered under parallel jobs.
 `make lint` applies the ordinary auto-fixes and then runs the repository’s own checks
-(public hygiene, file-type colors, tooltips, supply chain, artifact contracts, parity,
-and goldens); `make lint-check` runs the same checks without changing files, plus the
-startup-script budget and a Flowmark check.
+(public hygiene, file-type colors, tooltips, supply chain, CI workflow coverage,
+artifact contracts, parity, and goldens); `make lint-check` runs the same checks without
+changing files, plus the startup-script budget and a Flowmark check.
 
 ### The Verify Gate
 

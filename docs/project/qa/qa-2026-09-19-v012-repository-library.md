@@ -97,8 +97,9 @@ repository and a pull request of your own.
    a tag the repository already has.
    **Pass:** the page reloads on the chosen ref, on the same file when that revision has
    it.
-5. **View file from a diff.** The last paragraph of 5.11, on the pull request from step
-   3\. **Pass:** each side opens the file at the commit its tooltip names.
+5. **View on branch from a diff.** The last paragraph of 5.11, on the pull request from
+   step 3. **Pass:** each file opens at the pull request’s head its tooltip names, with
+   the ref selector naming the pull request.
 6. **Offline reopen.** Stop the servers, turn the network off, and run the commands of
    steps 1 and 3 again.
    **Pass:** the same `Revision:` and the same pages.
@@ -1402,9 +1403,9 @@ Skip this phase when Phase 2.4 refused below-floor Git, and record the skip.
 It covers the rows of the
 [alpha manual matrix](../specs/done/plan-2026-09-22-v012-alpha-testing.md) that a
 `file://` pin can run without GitHub: M03 (links, reload, and history within one
-revision, and in 5.11 a changed file at either side of a diff), M05 (reopen with the
-origin gone), and M06 (hostile content with a populated cache), plus refresh and pin
-switching (5.6), and the part of M04 one server can show: switching branches within one
+revision, and in 5.11 the file a change makes, from a diff), M05 (reopen with the origin
+gone), and M06 (hostile content with a populated cache), plus refresh and pin switching
+(5.6), and the part of M04 one server can show: switching branches within one
 repository.
 Section 5.11 also covers M08b on the stand-in pull request of 5.7. Stop every
 server you start with Ctrl-C.
@@ -2064,7 +2065,7 @@ the selector opens, and no request leaves `127.0.0.1`.
 marked; a switch keeps an address the new revision lacks, or drops one it has; the page
 changes before a ref is chosen; a request fetches from the origin.
 
-### 5.11 View file from a diff (M03b and M08b; no network)
+### 5.11 View file and View on branch from a diff (M03b and M08b; no network)
 
 Build the mirror of `tests/diff_view_file_fixture.py`, whose commit IDs are the same on
 every machine, and serve it:
@@ -2079,14 +2080,14 @@ uv --config-file uv.toml run --frozen metab "file://${QA_VF}/origin.git" --no-op
 pins.
 Open `http://127.0.0.1:8476/view/`, select the **Commits** tab, and click `second`.
 
-1. The diff shows seven files, and each file bar ends with the sides the change has:
-   `README.md` and `latin1-�.txt` (a name that is not UTF-8) have **View at parent** and
-   **View file**; `added.txt` has only **View file**; `gone.txt` has only **View at
-   parent**; and `src/old_name.py → src/new_name.py` has both.
-   `link`, a symbolic link, and `vendor/lib`, a submodule, have neither: only a regular
-   file’s side opens. Hovering **View file** says
-   `Open README.md at 6ac4c8b5eb94, the commit this page shows`; hovering **View at
-   parent** says `Switch to a5232ab93056 and open README.md`.
+1. The diff shows seven files, and each file bar offers at most one **View file**, for
+   the side the commit makes: `README.md`, `latin1-�.txt` (a name that is not UTF-8),
+   `added.txt`, and `src/old_name.py → src/new_name.py`, whose control opens the new
+   path. `gone.txt`, which the commit deletes, has none, and neither do `link`, a
+   symbolic link, and `vendor/lib`, a submodule: only a regular file’s side opens.
+   No bar offers the parent’s side.
+   Hovering **View file** on `README.md` says
+   `Open README.md at 6ac4c8b5eb94, the commit this page shows`.
 
 2. Click **View file** on `README.md`. The address becomes `/view/g1-UkVBRE1FLm1k`, the
    document reads `First line, changed.`, and the file header starts with the
@@ -2095,22 +2096,25 @@ Open `http://127.0.0.1:8476/view/`, select the **Commits** tab, and click `secon
    Open the same **View file** in a new tab (Cmd-click or Ctrl-click, or copy the link’s
    address into one): the same file at the same commit.
 
-3. Click **View at parent** on `src/old_name.py → src/new_name.py`. The page reloads at
-   `/view/g1-c3Jj/g1-b2xkX25hbWUucHk`, the navigation heading reads
+3. Back to the diff, and click `first` in the **Commits** tab.
+   A commit with no parent offers **View file** on each regular file, and each is the
+   switch, since the page shows `second`: hovering one on `src/old_name.py` says
+   `Switch to a5232ab93056 and open src/old_name.py`. Click it.
+   The page reloads at `/view/g1-c3Jj/g1-b2xkX25hbWUucHk`, the navigation heading reads
    `origin a5232ab93056` and the button under it names `a5232ab93056`, the file is
    `src/old_name.py`, and the tree lists `gone.txt` and no `added.txt`.
 
-4. Back. The commit’s diff opens again, now on the parent’s page, after one reload the
-   page does itself: the heading reads `origin a5232ab93056`, the tree lists the
-   parent’s files, and nothing says `Could not load files`. Every **View at parent** is
-   the link and every **View file** the switch, whose tooltip says
-   `Switch to 6ac4c8b5eb94 and open …`. Click **View file** on `latin1-�.txt`: the page
-   reloads on `6ac4c8b5eb94`, the file reads `a Latin-1 name, edited`, and the button
-   under the heading reads `Branch: trunk` again, not `Commit: …`.
+4. Back, twice, to `second`’s diff.
+   Each landing reloads once by itself and opens on the parent’s page: the heading reads
+   `origin a5232ab93056`, the tree lists the parent’s files, and nothing says
+   `Could not load files`. On `second`’s diff every **View file** is now the switch,
+   whose tooltip says `Switch to 6ac4c8b5eb94 and open …`. Click **View file** on
+   `latin1-�.txt`: the page reloads on `6ac4c8b5eb94`, the file reads
+   `a Latin-1 name, edited`, and the button under the heading reads `Branch: trunk`
+   again, not `Commit: …`.
 
-5. Click `first` in the **Commits** tab instead: a commit with no parent has only **View
-   file** on each bar. Open `changes.patch` from the **Files** tab: a patch file’s bars
-   have no View file control, because its two sides are not commits.
+5. Open `changes.patch` from the **Files** tab: a patch file’s bars have no View file
+   control, because its two sides are not commits.
 
 6. Back with nothing switched keeps the page.
    Open the commit’s diff again, scroll it, click **View file** on `README.md`, and go
@@ -2126,40 +2130,64 @@ Open `http://127.0.0.1:8476/view/`, select the **Commits** tab, and click `secon
    both landings in Chrome.
 
 Then the pull request.
-Serve the stand-in of 5.7 (`--serve 7 8475`) and open
-`http://127.0.0.1:8475/pull/7/files`.
+Serve the stand-in of 5.7 (`--serve 7 8475`), which pins pull request 7’s head,
+`85fcb2fa9e77`, under its ref, and open `http://127.0.0.1:8475/pull/7/files`.
 
-7. `docs/new.md`, which the pull request adds, has only **View file**. `src/app.txt` has
-   **View at base**, whose tooltip names `f92fd713acd5`, the merge base rather than the
-   base branch’s tip, and **View file**; both are links.
-8. Click **View file** on `src/app.txt`: the file opens in the app from the served head
-   and reads `one` and `two`. Back returns to Changes.
-9. Click **View at base** on `src/app.txt`: a revision page opens at
-   `/api/plugin/github/pull-snapshot?…&side=base…` with the heading `src/app.txt`, the
-   commit `f92fd713acd5…`, and the file reading `one` only, in the reader’s theme.
-   In DevTools, `<html>` carries `data-theme`, `data-prose-font`, and a
-   `--doc-max-chars` matching the settings menu’s width, and the console is empty.
-   Its **Pull request #7 Changes** link returns to Changes, where the status line still
-   names the head and nothing offers **Switch to the head**.
+7. `docs/new.md`, which the pull request adds, and `src/app.txt` each offer one **View
+   on branch**, a link, and nothing opens the merge base.
+   Hovering it on `src/app.txt` says
+   `Open src/app.txt at 85fcb2fa9e77, the commit this page shows`.
 
-**Pass:** every step as described; no step sends `POST /api/source/pin`, and the served
-pin stays the head throughout; no console errors; no request leaves `127.0.0.1`.
+8. Click **View on branch** on `src/app.txt`. The file opens in the main view at
+   `/view/g1-c3Jj/g1-YXBwLnR4dA` and reads `one` and `two`, with the file tree and tabs
+   around it, and the button under the heading reads `Pull request: #7`. Back returns to
+   Changes.
 
-**Fail:** a bar offers a side the change does not have, or the new path at the old side;
-a link opens the file at another commit than its tooltip names; **View file** folds the
-file instead of opening it; Back after a switch shows `Could not load files` or a page
-naming the commit served before the switch, or reloads more than once; Back with nothing
-switched loads the page again or loses its scroll position; the way back to a branch’s
-tip or a pull request’s head leaves the selector on `Commit: …`; a control on a symbolic
-link, a submodule, a patch file, or in a served folder’s commit diff; a pull request’s
-control switches the pin, or its revision page shows another commit than it names.
+9. Open the button under the navigation header, which reads `Pull request: #7`, choose
+   the branch `topic`, and open `http://127.0.0.1:8475/pull/7/files` again.
+   Each **View on branch** is now the switch: hovering it on `src/app.txt` says
+   `Switch to 85fcb2fa9e77, this pull request's head, and open src/app.txt`. Click it.
+   The page loads `/view/g1-c3Jj/g1-YXBwLnR4dA` on the head, the file reads `one` and
+   `two`, and the button reads `Pull request: #7`, not `Commit: …`.
 
-A folder served from an ordinary Git checkout shows the same diffs with no View file
-control: it has no file at a commit to open, only the working tree’s.
+10. A head that moved after the page was drawn.
+    Choose `topic` again and open `/pull/7/files`. Within a minute, before the page
+    refreshes its record, move the pull request’s ref in the store to its earlier head
+    from a second terminal, as a force push would:
+
+    ```shell
+    QA_HOME="${QA_PR}/home"
+    STORE="$(echo "${QA_HOME}"/repository-stores/*/repository.git)"
+    HEAD7="$(git --git-dir "$STORE" rev-parse refs/pull/7/head)"
+    git --git-dir "$STORE" update-ref refs/pull/7/head "$HEAD7^"
+    ```
+
+    Click **View on branch** on `src/app.txt`: nothing switches, the bar says
+    `This pull request's head has moved; reload to see the newer changes.`, and the
+    button under the heading still reads `Branch: topic`. **Browse code** says the same.
+    Put the ref back with `git --git-dir "$STORE" update-ref refs/pull/7/head "$HEAD7"`.
+
+**Pass:** every step as described; each switch sends one `POST /api/source/pin`, and the
+refused one changes nothing; no console errors; no request leaves `127.0.0.1`.
+
+**Fail:** a bar offers the old side, or a control on a deleted file, a symbolic link, a
+submodule, a patch file, or in a served folder’s commit diff; a renamed file opens at
+its old path; a link opens the file at another commit than its tooltip names; **View
+file** or **View on branch** folds the file instead of opening it; Back after a switch
+shows `Could not load files` or a page naming the commit served before the switch, or
+reloads more than once; Back with nothing switched loads the page again or loses its
+scroll position; the way back to a branch’s tip or a pull request’s head leaves the
+selector on `Commit: …`; a refused switch moves the pin or opens a bare commit; any
+control opens a page of its own without the tree, tabs, and ref selector.
+
+A folder served from an ordinary Git checkout shows the same commit diffs with no View
+file control: it has no file at a commit to open, only the working tree’s. Beside a
+checkout whose `HEAD` is the pull request’s head, View on branch opens the working-tree
+file instead; `tests/golden/cli-ui-diff-view-file.tryscript.md` covers it.
 
 With the network, repeat steps 7 to 9 on the real pull request of 5.7, or on
-`cli/cli#14128`, whose `internal/config/stub.go → internal/config/test.go` opens the old
-path at the base and the new one at the head.
+`cli/cli#14128`, whose `internal/config/stub.go → internal/config/test.go` opens at its
+new path on the head.
 
 ## Phase 6: HTML Trust on the Selected Commit
 

@@ -10,8 +10,10 @@ import pytest
 
 from devtools import suite_report
 from devtools.check_goldens import recipe
+from devtools.run_goldens import PREFIX
 from devtools.suite_report import REPO_ROOT, Size
 from tests.required_tools import require_git
+from tests.suite_timing import TITLE
 
 _GROUPED = b'''SOURCE = """
 def test_at_the_start_of_a_line_in_a_string():
@@ -131,7 +133,7 @@ def test_a_ci_log_gives_each_file_the_time_between_its_progress_lines() -> None:
     run = suite_report.parse_log(LOG)
 
     assert (run.job, run.other_jobs) == ("test (3.13)", ["lint"])
-    assert run.summary == "5 passed, 4 skipped in 4.40s"
+    assert run.summaries == ["5 passed, 4 skipped in 4.40s"]
     assert run.files == {
         "tests/test_cache_grouped.py": 0.5,
         "tests/test_git_floor.py": 3.5,
@@ -157,9 +159,77 @@ def test_a_pytest_output_without_timestamps_gives_the_summary_and_no_times() -> 
     run = suite_report.parse_log(plain)
 
     assert (run.job, run.files, run.goldens) == ("", {}, {})
-    assert run.summary == "5 passed, 4 skipped in 4.40s"
+    assert run.summaries == ["5 passed, 4 skipped in 4.40s"]
     assert run.skips.total() == 4
-    assert "No timestamps in this log" in suite_report.render_run(run, top=1)
+    assert "No time per file in this log" in suite_report.render_run(run, top=1)
+
+
+# A job that runs a session under pytest-xdist, whose progress lines name no file, then a
+# session in one process, then the goldens several at a time: each session lists its files'
+# times, and each golden has its own line.
+_LISTED = "\n".join(
+    [
+        f"{_STAMP}06.0Z 3 workers [3 items]",
+        f"{_STAMP}07.0Z ...                                              [100%]",
+        f"{_STAMP}07.1Z ===== {TITLE.format(shown='all', files=2, seconds=5.25)} =====",
+        f"{_STAMP}07.1Z 4.00s tests/test_cache_grouped.py",
+        f"{_STAMP}07.1Z 1.25s tests/test_git_floor.py",
+        f"{_STAMP}07.2Z ===== 3 passed in 2.10s =====",
+        f"{_STAMP}08.0Z collected 2 items",
+        f"{_STAMP}09.0Z tests/test_cache_plain.py ..                       [100%]",
+        f"{_STAMP}09.1Z ===== {TITLE.format(shown='slowest 1', files=1, seconds=0.5)} =====",
+        f"{_STAMP}09.1Z 0.50s tests/test_cache_plain.py",
+        f"{_STAMP}09.2Z ===== 2 passed in 0.60s =====",
+        f"{_STAMP}20.0Z ^[[32mPASS^[[39m /work/metabrowser/tests/golden/cli.tryscript.md",
+        f"{_STAMP}20.0Z {PREFIX} PASS 3.2 s tests/golden/cli.tryscript.md",
+        f"{_STAMP}20.5Z {PREFIX} FAIL 9.0 s tests/golden/other.tryscript.md",
+        f"{_STAMP}21.0Z {PREFIX} 2 files and 4 commands in 9.1 s, 4 at a time (12.2 s of files)",
+    ]
+)
+
+
+def test_a_log_reads_the_times_each_session_and_golden_listed() -> None:
+    run = suite_report.parse_log(_LISTED)
+
+    assert run.job == "test (3.13)"
+    assert run.summaries == ["3 passed in 2.10s", "2 passed in 0.60s"]
+    # The listed times, not the gaps between the second session's progress lines.
+    assert run.files == {
+        "tests/test_cache_grouped.py": 4.0,
+        "tests/test_git_floor.py": 1.25,
+        "tests/test_cache_plain.py": 0.5,
+    }
+    assert run.listed == [(2, 5.25), (1, 0.5)]
+    assert run.goldens == {
+        "tests/golden/cli.tryscript.md": 3.2,
+        "tests/golden/other.tryscript.md": 9.0,
+    }
+    report = suite_report.render_run(run, top=1)
+    assert "pytest: 3 passed in 2.10s\npytest: 2 passed in 0.60s" in report
+    assert "3 test files, 5.8 s of test time, as 2 session(s) listed them" in report
+    assert "| tests/test_cache_grouped.py | 4.0 |" in report
+    assert "2 tryscript goldens, 12.2 s of files" in report
+
+
+def test_a_real_session_lists_its_files_as_the_report_reads_them(tmp_path: Path) -> None:
+    """``tests/suite_timing.py`` prints the section that ``parse_log`` reads."""
+
+    modules = ["tests/test_run_goldens.py", "tests/test_suite_tiers.py"]
+    session = [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-p", "no:sugar"]
+    completed = subprocess.run(
+        [*session, f"--basetemp={tmp_path}", "--file-durations=0", "-k", "refused", *modules],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=50,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    run = suite_report.parse_log(completed.stdout)
+    assert sorted(run.files) == modules
+    assert [files for files, _ in run.listed] == [2]
+    assert len(run.summaries) == 1 and " passed, " in run.summaries[0]
 
 
 def _head() -> str:
