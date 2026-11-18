@@ -77,7 +77,8 @@ shape otherwise. The shape is the broad type and the family’s hue is the subty
 ([File Types](design-system.md#file-types)). These shapes are drawn by
 `.file-identity-icon`, in `--muted` or in the family’s color from its
 `.file-identity-color` class, at `--icon-glyph` in an `--icon-box`, or in a tree row’s
-`--tree-icon-slot`.
+`--tree-icon-slot`, and at `1em` of the page’s title beside a file’s name in its view
+header ([View Headers](design-system.md#view-headers)).
 
 | Icon | Source | Meaning | Defined in | Ink | Size |
 | --- | --- | --- | --- | --- | --- |
@@ -109,12 +110,14 @@ takes `file`.
 | --- | --- | --- | --- | --- | --- |
 | `file`, Lucide `file` | Registry | A file no type family claims, the Other category, and what `fileTypeIcon` returns with no registry | `static/icons.js` | `--muted` | `--icon-glyph` |
 | `fileSymlink`, Lucide `file-symlink` | Registry | A symbolic link in the Files tree | `static/icons.js` | `--muted` | `--icon-glyph` |
+| `folder`, Lucide `folder` | Registry | A folder, beside its name in its view header | `static/icons.js` | `--muted` | `1em` of the page’s title |
 | `folder` | SF Symbol | A folder in the app’s Open Recent, Dock, and title path menus | `apps/macos/Sources/Metabrowser/RecentTargetsMenu.swift` | The menu’s, as a template image | The menu font’s point size |
 | `cloud` | SF Symbol | A mirror, a repository served from its URL, in Open Recent and the Dock menu | `apps/macos/Sources/Metabrowser/RecentTargetsMenu.swift` | The menu’s, as a template image | The menu font’s point size |
 
 The app’s folder and cloud are outlines drawn as one set, rather than Finder’s colored
 folder beside a line-drawn cloud.
-In the browser a folder, a repository, and a mirror have no glyph.
+In the browser a folder’s glyph is drawn only in its view header; a folder’s row leads
+with its chevron, and a repository and a mirror have no glyph.
 
 ## Git and GitHub Objects
 
@@ -169,7 +172,7 @@ An ignored entry has no mark: its whole row, icon included, is dimmed to
 | `moon`, Lucide `moon` | Registry | The dark theme | `static/icons.js` | `--muted`, `--link` when chosen | One step over `--icon-glyph`, as `monitor` |
 | `serif`, bespoke | Registry | The serif reading font: an “A” in the generic serif family | `static/icons.js` | `--muted`, `--link` when chosen | One step over `--icon-glyph`, as `monitor` |
 | `sans`, bespoke | Registry | The sans reading font: an “A” in the generic sans-serif family | `static/icons.js` | `--muted`, `--link` when chosen | One step over `--icon-glyph`, as `monitor` |
-| `↑` | Text | The parent folder, in the parent navigation button | `static/app.js`, `builtin_plugins/folder/treemap.js` | `--muted` | `--ui-small-font-size` |
+| `↑` | Text | The parent folder, in the parent navigation button | `static/view-header.js`, `builtin_plugins/folder/treemap.js` | `--muted` | `--ui-small-font-size` |
 | `✓` | Text | A chosen value in a filter chip’s menu, and the current member in a stack’s menu | `static/filter-controls.js`, `builtin_plugins/github/pull-page.js` | `--link` in a chip menu, the text’s in a stack menu | The text’s, in a fixed column |
 | `→` | Text | From one to the other: a rename, a mode or type change, and a merge’s source and target | `builtin_plugins/diff/diff-model.js`, `static/git-panel.js`, `static/plugin-sdk-views.js` | The text’s | The text’s |
 | `→` | Text | An agent log’s tool call, going out, in an event’s kind | `builtin_plugins/agent_log/index.js` | The kind badge’s | The text’s |
