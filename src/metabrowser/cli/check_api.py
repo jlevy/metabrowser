@@ -170,8 +170,12 @@ def run_api_check(
     untrusted: bool = False,
     no_active_content: bool = False,
     allow_edits: bool = False,
+    revision: bool = False,
 ) -> None:
-    """Run the browser's navigation request sequence without a browser."""
+    """Run the browser's navigation request sequence without a browser.
+
+    *revision* says the folder opens on a branch or tag of its checkout (``--ref``).
+    """
 
     load_dotenv_chain()
     from metabrowser.capabilities import apply_capabilities
@@ -191,23 +195,34 @@ def run_api_check(
     from metabrowser import server
 
     server._set_root_dir(resolved)
-    asyncio.run(arun_api_check_active(label=str(root), index_timeout_s=index_timeout_s))
+    asyncio.run(
+        arun_api_check_active(
+            label=str(root),
+            index_timeout_s=index_timeout_s,
+            # A folder opened on a ref is a revision by the time the scenario asks: the
+            # application's startup makes the switch, after this line.
+            recency=False if revision else None,
+        )
+    )
 
 
 async def arun_api_check_active(
-    *, label: str, index_timeout_s: float = INDEX_READY_TIMEOUT_S
+    *, label: str, index_timeout_s: float = INDEX_READY_TIMEOUT_S, recency: bool | None = None
 ) -> None:
     """Run the scenario against the subject already attached, and report it.
 
     A subject without recency answers the live filter with its typed refusal,
     which is what the browser relies on to hide that filter; anything else there
-    fails the check.
+    fails the check. *recency* says what the scenario's subject has when it is not the
+    one attached now: a folder opened on a ref becomes a revision as the application
+    starts.
     """
 
     from metabrowser import server
     from metabrowser.source import source_capabilities
 
-    recency = source_capabilities().recency
+    if recency is None:
+        recency = source_capabilities().recency
     (
         initial,
         live,

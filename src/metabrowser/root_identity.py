@@ -30,6 +30,12 @@ Each subject the source session can hold (:mod:`metabrowser.source`) is named th
   view, like a checkout's, and keeps the pin's name.
 - **An overlay mirror** (``--checkout``), which borrows objects from a checkout, is a
   mirror of its origin like any other and is named by that origin, not by the checkout.
+- **A revision of a checkout**, which a folder's server shows of its own repository
+  (:mod:`metabrowser.checkout_revisions`), is still that folder: ``kind`` stays ``folder``,
+  since the mode is how the root was opened, and ``short_name`` is the folder's name.
+  ``full_name`` is the folder's path and then what is shown, as a mirror's is its origin
+  and then its pin: ``~/src/tbd@topic``, with a remote-tracking branch as ``@origin/topic``
+  and a commit with no ref as its first 12 hex digits.
 - **A pin with no mirror** has no origin to take a name from, and is named as the
   navigation heading names it: by its ref's short name, or by its short commit when it
   has no ref. Every CLI mode serves a pin with its mirror, so only an in-process caller
@@ -42,8 +48,8 @@ fields do: a control, format, or invisible character, and bytes that are not UTF
 become U+FFFD.
 
 A page changes subject only by loading again: the ref selector, the freshness row's
-offer, a pull-request page's switch to its head, and a diff's View file all navigate or
-reload after ``POST /api/source/pin``. So the server-rendered ``<title>`` is current for
+offer, a pull-request page's switch to its head, and a diff's View file and View on
+branch all navigate or reload after ``POST /api/source/pin``. So the server-rendered ``<title>`` is current for
 the life of a document, and no page fetches this route.
 """
 
@@ -59,6 +65,11 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
+from metabrowser.checkout_revisions import (
+    CheckoutRevisions,
+    checkout_ref_name,
+    checkout_revisions,
+)
 from metabrowser.invisible_chars import display_segment
 from metabrowser.mirror_refresh import (
     MirrorDisplay,
@@ -242,15 +253,32 @@ def mirror_identity(
     return _identity(display.name, f"{origin}@{pinned}", "mirror")
 
 
-def root_identity(mirror: MirrorSession | None) -> RootIdentity:
+def checkout_revision_identity(
+    root: Path, *, ref: str | None, commit: str, home: Path | None
+) -> RootIdentity:
+    """What a revision of the checkout at *root* is called: the folder, and what is shown."""
+
+    folder = folder_identity(root, home=home)
+    shown = checkout_ref_name(ref) or commit[:SHORT_COMMIT_CHARS]
+    return _identity(folder["short_name"], f"{folder['full_name']}@{shown}", "folder")
+
+
+def root_identity(
+    mirror: MirrorSession | None, checkout: CheckoutRevisions | None = None
+) -> RootIdentity:
     """What the active session's subject is called. Runs no Git and reads no store.
 
-    *mirror* is the served mirror's session, which names a pin's repository and origin.
+    *mirror* is the served mirror's session, which names a pin's repository and origin,
+    and *checkout* the served checkout's revisions, which name a revision of it.
     A subject that is neither a pin nor a folder raises
     :class:`~metabrowser.source.UnsupportedSourceCapabilityError`; none exists today.
     """
 
     pin = as_git_revision_subject(get_source_session().subject)
+    if pin is not None and checkout is not None and checkout.serves(pin):
+        return checkout_revision_identity(
+            checkout.root, ref=pin.ref, commit=pin.commit_oid, home=user_home()
+        )
     if pin is not None:
         return mirror_identity(
             display=mirror.mirror.display if mirror is not None else None,
@@ -265,7 +293,7 @@ async def api_identity(request: Request) -> JSONResponse:
     """``GET /api/identity`` -- what this server's subject is called, as a window titles it."""
 
     try:
-        identity = root_identity(mirror_session(request.app))
+        identity = root_identity(mirror_session(request.app), checkout_revisions())
     except UnsupportedSourceCapabilityError as exc:
         return JSONResponse(unsupported_source_payload(exc), status_code=409)
     return JSONResponse(dict(identity))
@@ -284,6 +312,7 @@ __all__ = [
     "RootIdentity",
     "abbreviate_origin",
     "api_identity",
+    "checkout_revision_identity",
     "folder_identity",
     "mirror_identity",
     "root_identity",

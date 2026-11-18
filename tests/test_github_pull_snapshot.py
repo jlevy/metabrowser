@@ -1,16 +1,12 @@
-"""Exercise the exact revision viewer through the served PR and private cache."""
+"""A pull request's revision pairs: which open, the images their rendered Markdown shows,
+and the rendered diff that admits them the same way."""
 
 from __future__ import annotations
 
-import base64
 import errno
-import hashlib
-import json
 import logging
-import re
 import subprocess
 from collections import OrderedDict
-from html import escape, unescape
 from pathlib import Path
 from typing import Any
 
@@ -27,14 +23,12 @@ from metabrowser.builtin_plugins.github.pull_snapshot import (
     Admission,
     Snapshot,
     _admission,  # pyright: ignore[reportPrivateUsage]
-    _render_markdown,  # pyright: ignore[reportPrivateUsage]
 )
 from metabrowser.builtin_plugins.github.pull_snapshot_cache import read_snapshot_bindings
 from metabrowser.cache.paths import source_pull_snapshots
 from metabrowser.git.tree_source import GitPath, GitTreeSource
 from tests.git_pin_harness import git_env
 from tests.github_pull_fixture import Origin
-from tests.required_tools import needs_node
 from tests.test_github_pulls import (
     _answering_head,  # pyright: ignore[reportPrivateUsage]
     _move_pull_head,  # pyright: ignore[reportPrivateUsage]
@@ -43,193 +37,8 @@ from tests.test_github_pulls import (
 from tests.test_github_pulls import pinned_pull as pinned_pull
 from tests.test_github_pulls import stand as stand
 
-
-def test_revision_file_link_survives_a_record_without_a_comparison(
-    pinned_pull: tuple[_Stand, TestClient],
-) -> None:
-    stand, client = pinned_pull
-    envelope = client.get("/api/plugin/github/pull", params={"number": 7}).json()
-    address = envelope["snapshot_route"]
-    query = address.split("?", 1)[1]
-    path = GitPath.from_display("src/app.txt").to_wire()
-    stand.calls()
-    head = client.get(f"{address}&side=head&path={path}")
-    base = client.get(f"{address}&side=base&path={path}")
-    assert head.status_code == base.status_code == 200, (head.text, base.text)
-    assert head.text != base.text
-    assert envelope["pin"] in head.text
-    assert "default-src 'none'" in head.headers["content-security-policy"]
-    assert head.headers["cache-control"] == "no-store"
-    latest = stand.refresh(7)
-    assert latest.comparison is not None
-    (stand.published.home / source_pull_snapshots(stand.published.slug, 7)).unlink()
-    write_pull_record(
-        stand.published.home,
-        stand.published.slug,
-        latest.model_copy(update={"comparison": None}),
-        store_id=stand.published.store_id,
-    )
-    stand.calls()
-    assert client.get(f"{address}&side=head&path={path}").text == head.text
-    assert (
-        client.get("/api/plugin/github/pull", params={"number": 7}).json()["pin"] == envelope["pin"]
-    )
-    refused = client.get(
-        "/api/plugin/github/pull-snapshot",
-        params={
-            "number": 7,
-            "left": "0" * 40,
-            "right": envelope["pin"],
-            "store": query.split("store=", 1)[1].split("&", 1)[0],
-            "side": "head",
-            "path": path,
-        },
-        headers={"accept": "application/json"},
-    )
-    assert refused.status_code == 410
-    assert refused.json()["code"] == "snapshot_expired"
-    assert stand.calls() == []
-
-
-def test_document_references_are_inert_and_use_the_same_snapshot() -> None:
-    snapshot = Snapshot(7, "a" * 40, "b" * 40, "test", "head")
-    path = GitPath.from_display("docs/readme.md")
-    html = _render_markdown(
-        b"# Topic\n\n[Topic](#topic) [Guide](../guide.md) ![Image](../assets/image.png)\n\n"
-        b"<script>alert(1)</script>\n\n[Local API](/api/file) [Outside](https://example.org)",
-        path,
-        "c" * 40,
-        snapshot,
-    )
-    assert 'id="user-content-topic"' in html
-    assert 'href="#user-content-topic"' in html
-    assert GitPath.from_display("guide.md").to_wire() in html
-    assert "mode=image" in html
-    assert 'href="/api/file"' not in html
-    assert "<script" not in html
-    assert 'href="https://example.org"' in html
-
-
-def test_rendered_markdown_uses_the_admitted_comparison_and_exact_hunks(
-    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from metabrowser.builtin_plugins.github import pull_rendered_diff
-    from metabrowser.diff.adapters.base import DiffSourceError
-    from metabrowser.git.process import GitError
-
-    stand, client = pinned_pull
-    stand.refresh(8)
-    envelope = client.get("/api/plugin/github/pull", params={"number": 8}).json()
-    route = envelope["comparison_route"]
-    source = client.get(route).json()
-    file = next(
-        change for change in source["manifest"]["files"] if change["new"]["path"] == "docs/guide.md"
-    )
-    stand.calls()
-    assert envelope["rendered_route"].startswith("/api/plugin/github/pull-rendered-diff?number=8&")
-    address = f"{envelope['rendered_route']}&file={file['id']}"
-
-    async def missing_object(*_args: object) -> None:
-        raise DiffSourceError("unresolved revision") from GitError("object unavailable")
-
-    with monkeypatch.context() as patch:
-        patch.setattr(pull_rendered_diff, "_project", missing_object)
-        temporary = client.get(address)
-    assert temporary.status_code == 409
-    assert temporary.json()["code"] == "rendered_objects_unavailable"
-
-    rendered = client.get(address)
-    assert rendered.status_code == 200, rendered.text
-    answer = rendered.json()
-    assert answer["status"] == "ready", answer
-    assert answer["version"] == "markdown-diff-v1"
-    assert any(block["kind"] == "added" and "More." in block["html"] for block in answer["blocks"])
-    assert answer["assets"]["assets"]
-    assert stand.calls() == []
-
-
-def test_snapshot_images_and_binary_files_keep_their_type(
-    pinned_pull: tuple[_Stand, TestClient],
-) -> None:
-    stand, client = pinned_pull
-    record = stand.refresh(7)
-    assert record.comparison is not None
-    store = stand.published.git_dir
-
-    def git(*args: str, data: bytes = b"") -> str:
-        result = subprocess.run(
-            ["git", "--git-dir", str(store), *args],
-            env=git_env(stand.tmp_path),
-            input=data,
-            capture_output=True,
-            check=True,
-        )
-        return result.stdout.decode().strip()
-
-    image = b"\x89PNG\r\n\x1a\nfixture"
-    binary = b"\0\xffbytes"
-    png_oid = git("hash-object", "-w", "--stdin", data=image)
-    binary_oid = git("hash-object", "-w", "--stdin", data=binary)
-    tree = git(
-        "mktree",
-        data=f"100644 blob {png_oid}\timage.png\n100644 blob {binary_oid}\tpayload.bin\n".encode(),
-    )
-    head = git(
-        "-c",
-        "user.name=Fixture",
-        "-c",
-        "user.email=fixture@example.com",
-        "commit-tree",
-        tree,
-        "-p",
-        record.comparison.head,
-        data=b"Snapshot images\n",
-    )
-    write_pull_record(
-        stand.published.home,
-        stand.published.slug,
-        record.model_copy(
-            update={"comparison": record.comparison.model_copy(update={"head": head})}
-        ),
-    )
-    address = client.get("/api/plugin/github/pull?number=7").json()["snapshot_route"]
-    address += "&side=head&path="
-    picture = address + GitPath.from_display("image.png").to_wire()
-    source = address + GitPath.from_display("payload.bin").to_wire()
-    preview = client.get(picture)
-    assert preview.status_code == 200 and "<img src=" in preview.text
-    asset = client.get(picture + "&mode=image")
-    assert asset.headers["content-type"] == "image/png" and asset.content == image
-    assert "Binary file." in client.get(source).text
-    download = client.get(source + "&mode=download")
-    assert download.headers["content-disposition"] == (
-        "attachment; filename=\"payload.bin\"; filename*=UTF-8''payload.bin"
-    )
-    assert download.content == binary
-    outside = client.get(
-        source + "&mode=source&offset=100000000", headers={"accept": "application/json"}
-    )
-    assert outside.status_code == 416
-
-
-def test_revision_source_offset_is_bounded_below_eof(
-    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _, client = pinned_pull
-    route = client.get("/api/plugin/github/pull?number=7").json()["snapshot_route"]
-    path = GitPath.from_display("src/app.txt").to_wire()
-    address = f"{route}&side=head&mode=source&path={path}"
-    monkeypatch.setattr(GitTreeSource, "max_blob_bytes", property(lambda _source: 4))
-    preview = client.get(address)
-    assert preview.status_code == 200 and "Next bytes" not in preview.text
-    # The file is 8 bytes; the page says where its preview stops.
-    assert "<pre><code>one\n</code></pre>" in preview.text
-    assert "This preview ends at 4 of 8 bytes" in preview.text
-    refused = client.get(address + "&offset=5", headers={"accept": "application/json"})
-    assert refused.status_code == 416 and refused.json()["code"] == "invalid_offset"
-
-
-# ── History, admission, and every page over HTTP ───────────────
+_PNG = b"\x89PNG\r\n\x1a\nfixture"
+_JSON_ONLY = {"accept": "application/json"}
 
 
 def _git(stand: _Stand, *args: str, data: bytes = b"") -> str:
@@ -273,8 +82,20 @@ def _with_head(record: PullRecord, head: str, reader: str | None = None) -> Pull
     return record.model_copy(update=update)
 
 
+def _wire(name: str) -> str:
+    return GitPath.from_display(name).to_wire()
+
+
+def _image_route(client: TestClient, number: int = 7) -> str:
+    return client.get("/api/plugin/github/pull", params={"number": number}).json()["image_route"]
+
+
+def _image(route: str, name: str) -> str:
+    return f"{route}&path={_wire(name)}"
+
+
 def _at_head(stand: _Stand, client: TestClient, head: str) -> str:
-    """Publish pull request 7 at *head* as a mirror does; its snapshot route's head side."""
+    """Publish pull request 7 at *head* as a mirror does; its image route."""
     record = read_pull_record(stand.published.home, stand.published.slug, 7)
     assert isinstance(record, PullRecord)
     write_pull_record(
@@ -283,12 +104,17 @@ def _at_head(stand: _Stand, client: TestClient, head: str) -> str:
         _with_head(record, head),
         store_id=stand.published.store_id,
     )
-    route = client.get("/api/plugin/github/pull?number=7").json()["snapshot_route"]
-    return f"{route}&side=head&path="
+    return _image_route(client)
 
 
-def _wire(name: str) -> str:
-    return GitPath.from_display(name).to_wire()
+def _code(client: TestClient, address: str) -> str:
+    """What the image route answers *address* with: ``image``, or its refusal's code.
+
+    A text file of an admitted pair is ``unsupported_image``: the pair opened, and its
+    head's tree was read.
+    """
+    answer = client.get(address, headers=_JSON_ONLY)
+    return "image" if answer.status_code == 200 else str(answer.json()["code"])
 
 
 def _pairs(stand: _Stand) -> list[tuple[str, str, str]]:
@@ -298,7 +124,122 @@ def _pairs(stand: _Stand) -> list[tuple[str, str, str]]:
 
 
 def _admits(stand: _Stand, base: str, head: str) -> Admission:
-    return _admission(stand.published, Snapshot(7, base, head, "unused", "head"), None)
+    return _admission(stand.published, Snapshot(7, base, head, "unused"), None)
+
+
+def test_an_image_link_survives_a_record_without_a_comparison(
+    pinned_pull: tuple[_Stand, TestClient],
+) -> None:
+    stand, client = pinned_pull
+    envelope = client.get("/api/plugin/github/pull", params={"number": 7}).json()
+    route = envelope["image_route"]
+    assert route.startswith("/api/plugin/github/pull-image?number=7&")
+    assert "snapshot_route" not in envelope
+    address = _image(route, "src/app.txt")
+    stand.calls()
+    answer = client.get(address)
+    assert answer.status_code == 415, answer.text
+    assert answer.json()["code"] == "unsupported_image"
+    assert answer.headers["content-security-policy"] == "default-src 'none'; frame-ancestors 'none'"
+    assert answer.headers["cache-control"] == "no-store"
+    latest = stand.refresh(7)
+    assert latest.comparison is not None
+    (stand.published.home / source_pull_snapshots(stand.published.slug, 7)).unlink()
+    write_pull_record(
+        stand.published.home,
+        stand.published.slug,
+        latest.model_copy(update={"comparison": None}),
+        store_id=stand.published.store_id,
+    )
+    stand.calls()
+    assert _code(client, address) == "unsupported_image"
+    assert (
+        client.get("/api/plugin/github/pull", params={"number": 7}).json()["pin"] == envelope["pin"]
+    )
+    store = route.split("store=", 1)[1].split("&", 1)[0]
+    refused = client.get(
+        "/api/plugin/github/pull-image",
+        params={
+            "number": 7,
+            "left": "0" * 40,
+            "right": envelope["pin"],
+            "store": store,
+            "path": _wire("src/app.txt"),
+        },
+    )
+    assert refused.status_code == 410
+    assert refused.json()["code"] == "snapshot_expired"
+    assert stand.calls() == []
+
+
+def test_references_stay_in_the_heads_tree() -> None:
+    """A rendered file's image is on the image route; its link is the head's ``/view/``
+    address, which the page keeps only while it shows the head; nothing leaves the tree."""
+
+    snapshot = Snapshot(7, "a" * 40, "b" * 40, "test")
+    source = GitPath.from_display("docs/readme.md")
+    route = "/api/plugin/github/pull-image?number=7&left=" + "a" * 40 + "&right=" + "b" * 40
+    assert snapshot.reference(source, "../assets/image.png", True) == (
+        f"{route}&store=test&path={_wire('assets/image.png').replace('/', '%2F')}"
+    )
+    assert snapshot.reference(source, "../guide.md", False) == "/view/" + _wire("guide.md")
+    assert snapshot.reference(source, "notes.md#Setup Steps", False) == (
+        "/view/" + _wire("docs/notes.md") + "#user-content-Setup%20Steps"
+    )
+    assert snapshot.reference(source, "#topic", False) == "#topic"
+    assert snapshot.reference(source, "?plain=1", False) == "/view/" + _wire("docs/readme.md")
+    for href, image in (
+        ("../../outside.md", False),
+        ("../", False),
+        ("diagram.svg", True),
+        ("https://example.org/x.png", True),
+        ("//example.org/x", False),
+    ):
+        assert snapshot.reference(source, href, image) is None, href
+
+
+def test_an_image_keeps_its_type_and_nothing_else_is_served(
+    pinned_pull: tuple[_Stand, TestClient],
+) -> None:
+    stand, client = pinned_pull
+    record = stand.refresh(7)
+    assert record.comparison is not None
+    png = _blob(stand, _PNG)
+    svg = _blob(stand, b"<svg xmlns='http://www.w3.org/2000/svg'/>")
+    binary = _blob(stand, b"\0\xffbytes")
+    head = _commit(
+        stand,
+        record.comparison.head,
+        [
+            ("100644", "blob", png, "image.png"),
+            ("100644", "blob", svg, "diagram.svg"),
+            ("100644", "blob", binary, "payload.bin"),
+        ],
+    )
+    route = _at_head(stand, client, head)
+    asset = client.get(_image(route, "image.png"))
+    assert asset.headers["content-type"] == "image/png" and asset.content == _PNG
+    assert asset.headers["x-content-type-options"] == "nosniff"
+    assert asset.headers["referrer-policy"] == "no-referrer"
+    for name in ("diagram.svg", "payload.bin"):
+        assert _code(client, _image(route, name)) == "unsupported_image", name
+    for address in (
+        route + "&path=",
+        # A segment that names the parent, `..`, in its wire form.
+        route + "&path=" + _wire("a") + "/g1-Li4",
+        route.replace("number=7", "number=x") + "&path=" + _wire("image.png"),
+        route.replace(f"right={head}", "right=HEAD") + "&path=" + _wire("image.png"),
+    ):
+        refused = client.get(address)
+        assert refused.status_code == 400, address
+        assert refused.json() == {
+            "code": "invalid_image",
+            "message": "This image address is invalid.",
+        }
+        assert refused.headers["cache-control"] == "no-store"
+
+
+# ── History and admission ───────────────────────────────────────
 
 
 def test_a_new_head_keeps_the_old_link_until_sixteen_newer_pairs(
@@ -308,9 +249,8 @@ def test_a_new_head_keeps_the_old_link_until_sixteen_newer_pairs(
     home, slug, store = stand.published.home, stand.published.slug, stand.published.store_id
     first = stand.refresh(7)
     assert first.comparison is not None
-    old = client.get("/api/plugin/github/pull?number=7").json()["snapshot_route"]
-    old += "&side=head&path=" + _wire("src/app.txt")
-    assert client.get(old).status_code == 200
+    old = _image(_image_route(client), "src/app.txt")
+    assert _code(client, old) == "unsupported_image"
     # The pull request's head moves on GitHub and a refresh reads it.
     earlier = stand.origin["fork_earlier"]
     _move_pull_head(stand, earlier)
@@ -318,22 +258,20 @@ def test_a_new_head_keeps_the_old_link_until_sixteen_newer_pairs(
     moved = stand.refresh(7)
     assert moved.comparison is not None and moved.comparison.head == earlier
     stand.calls()
-    new = client.get("/api/plugin/github/pull?number=7").json()["snapshot_route"]
-    new += "&side=head&path=" + _wire("src/app.txt")
+    new = _image(_image_route(client), "src/app.txt")
     assert new != old
-    assert client.get(old).status_code == client.get(new).status_code == 200
-    assert client.get(old).text != client.get(new).text
+    assert _code(client, old) == _code(client, new) == "unsupported_image"
     # Fifteen more pairs fill the history with the old one as its oldest of sixteen.
     for index in range(1, 15):
         write_pull_record(home, slug, _with_head(moved, f"{index:040x}"), store_id=store)
-    assert len(_pairs(stand)) == 16 and client.get(old).status_code == 200
+    assert len(_pairs(stand)) == 16 and _code(client, old) == "unsupported_image"
     write_pull_record(home, slug, _with_head(moved, f"{15:040x}"), store_id=store)
-    expired = client.get(old, headers={"accept": "application/json"})
+    expired = client.get(old)
     assert expired.status_code == 410 and expired.json()["code"] == "snapshot_expired"
-    assert client.get(new).status_code == 200
+    assert _code(client, new) == "unsupported_image"
     # Another store's token never opens the pair.
     other = new.replace("store=", "store=0000000000000000&ignored=")
-    assert client.get(other, headers={"accept": "application/json"}).status_code == 410
+    assert client.get(other).status_code == 410
     assert stand.calls() == []
 
 
@@ -450,160 +388,23 @@ def test_undecided_admission_and_lost_objects_answer_what_the_reader_can_do(
     stand, client = pinned_pull
     home, slug, store = stand.published.home, stand.published.slug, stand.published.store_id
     record = stand.refresh(7)
-    route = client.get("/api/plugin/github/pull?number=7").json()["snapshot_route"]
-    address = f"{route}&side=head&path={_wire('src/app.txt')}"
-    json_only = {"accept": "application/json"}
+    address = _image(_image_route(client), "src/app.txt")
     with monkeypatch.context() as patch:
         patch.setattr(pull_snapshot, "_ADMITTED", OrderedDict())
         patch.setattr(pull_snapshot, "read_pull_record", lambda *_a, **_k: "unreadable")
-        unknown = client.get(address, headers=json_only)
+        unknown = client.get(address)
     assert unknown.status_code == 409 and unknown.json()["code"] == "snapshot_unavailable"
-    assert client.get(address).status_code == 200
+    assert "Reload the page" in unknown.json()["message"]
+    assert unknown.headers["cache-control"] == "no-store"
+    assert _code(client, address) == "unsupported_image"
     # A commit the store does not have: the current pair may come back, a retained one not.
-    lost = _at_head(stand, client, "1" * 40) + _wire("src/app.txt")
-    missing = client.get(lost, headers=json_only)
+    lost = _image(_at_head(stand, client, "1" * 40), "src/app.txt")
+    missing = client.get(lost)
     assert missing.status_code == 409 and missing.json()["code"] == "snapshot_objects_unavailable"
     write_pull_record(home, slug, record, store_id=store)
-    gone = client.get(lost, headers=json_only)
+    gone = client.get(lost)
     assert gone.status_code == 410 and gone.json()["code"] == "snapshot_objects_expired"
-    assert client.get(address).status_code == 200
-
-
-def test_every_response_carries_the_page_policy(
-    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Review B2: one exit adds the policy to each status and mode the route answers."""
-    stand, client = pinned_pull
-    record = stand.refresh(7)
-    assert record.comparison is not None
-    png = _blob(stand, b"\x89PNG\r\n\x1a\nfixture")
-    text = _blob(stand, b"# Notes\n\nPlain.\n")
-    binary = _blob(stand, b"\0\xffbytes")
-    head = _commit(
-        stand,
-        record.comparison.head,
-        [
-            ("100644", "blob", png, "image.png"),
-            ("100644", "blob", text, "notes.md"),
-            ("100644", "blob", binary, "payload.bin"),
-        ],
-    )
-    at = _at_head(stand, client, head)
-    expired = at.replace("store=", "store=0000000000000000&ignored=")
-    cases = {
-        200: [at + _wire("notes.md"), at + _wire("notes.md") + "&mode=source"],
-        400: [at.replace("side=head", "side=middle") + _wire("notes.md")],
-        404: [at + _wire("absent.md")],
-        410: [expired + _wire("notes.md")],
-        415: [at + _wire("notes.md") + "&mode=image"],
-        416: [at + _wire("notes.md") + "&mode=source&offset=999"],
-    }
-    cases[200] += [at + _wire("image.png") + mode for mode in ("", "&mode=image")]
-    cases[200] += [at + _wire("payload.bin") + mode for mode in ("", "&mode=download")]
-    for status, addresses in cases.items():
-        for address in addresses:
-            for accept in ("text/html", "application/json"):
-                response = client.get(address, headers={"accept": accept})
-                assert response.status_code == status, (address, response.text)
-                headers = response.headers
-                assert headers["content-security-policy"].startswith(
-                    "default-src 'none'; script-src 'sha256-"
-                ), address
-                assert headers["x-content-type-options"] == "nosniff"
-                assert headers["cache-control"] == "no-store"
-                assert headers["referrer-policy"] == "no-referrer"
-    page = client.get(at + _wire("notes.md"))
-    scripts = re.findall(r"<script>(.*?)</script>", page.text, re.DOTALL)
-    hashes = [
-        "'sha256-" + base64.b64encode(hashlib.sha256(script.encode()).digest()).decode() + "'"
-        for script in scripts
-    ]
-    assert len(scripts) == 3 and all(
-        value in page.headers["content-security-policy"] for value in hashes
-    )
-    # The reader's theme, type, and width scripts are the shell's own, after the default
-    # the width script reads.
-    assert scripts[0].startswith("window.METABROWSER_SETTINGS=")
-    assert "MetabrowserDocumentWidth" in scripts[1] and "metabrowser.themeMode" in scripts[2]
-    with monkeypatch.context() as patch:
-        patch.setattr(GitTreeSource, "max_blob_bytes", property(lambda _source: 4))
-        too_large = client.get(at + _wire("payload.bin") + "&mode=download")
-    assert too_large.status_code == 413
-    assert too_large.headers["content-security-policy"].startswith("default-src 'none'")
-    with monkeypatch.context() as patch:
-        patch.setattr(pull_snapshot, "_ADMITTED", OrderedDict())
-        patch.setattr(pull_snapshot, "read_pull_record", lambda *_a, **_k: "unreadable")
-        undecided = client.get(at + _wire("notes.md"))
-    assert undecided.status_code == 409 and "Reload the page" in undecided.text
-    assert undecided.headers["content-security-policy"].startswith("default-src 'none'")
-
-
-def test_a_markdown_document_keeps_its_references_in_its_tree(
-    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Review A11 and A7, over HTTP: navigation, stylesheets, images, and links."""
-    stand, client = pinned_pull
-    record = stand.refresh(7)
-    assert record.comparison is not None
-    png = _blob(stand, b"\x89PNG\r\n\x1a\nfixture")
-    svg = _blob(stand, b"<svg xmlns='http://www.w3.org/2000/svg'/>")
-    readme = _blob(
-        stand,
-        b"# Readme\n\nSee [the notes](notes.txt), [the folder](src/), and"
-        b" [a section](#readme).\n\n![logo](logo.png) ![again](logo.png)"
-        b" ![diagram](diagram.svg)\n",
-    )
-    notes = _blob(stand, b"notes\n")
-    head = _commit(
-        stand,
-        record.comparison.head,
-        [
-            ("100644", "blob", readme, "README.md"),
-            ("100644", "blob", png, "logo.png"),
-            ("100644", "blob", svg, "diagram.svg"),
-            ("100644", "blob", notes, "notes.txt"),
-        ],
-    )
-    at = _at_head(stand, client, head)
-    monkeypatch.setattr(pull_snapshot, "_DOCUMENT_IMAGES", 1)
-    page = client.get(at + _wire("README.md"))
-    assert page.status_code == 200, page.text
-    html = page.text
-    nav = html.split('<nav aria-label="Revision file">', 1)[1].split("</nav>", 1)[0]
-    assert ">Document</a>" in nav and 'aria-current="page">Document' in nav
-    assert "mode=source" in nav and "Pull request #7 Changes" in nav
-    stylesheets = re.findall(r'<link rel="stylesheet" href="([^"]+)"', html)
-    assert stylesheets[:2] == ["/static/styles.css", "/plugin-static/github/pull-snapshot.css"]
-    assert stylesheets[2:] and all(href.startswith("/kpress-static/") for href in stylesheets[2:])
-    content = html.split('<article class="pull-snapshot-content">', 1)[1]
-    logo = escape(
-        Snapshot(7, record.comparison.base, head, "", "head")
-        .href(GitPath.from_display("logo.png"), "image")
-        .split("&side=", 1)[1]
-    )
-    # The first image stays an image; the second, past the cap, is a link to its page.
-    assert content.count("<img ") == 1 and logo in content
-    assert re.search(
-        r'<a href="[^"]*path=' + _wire("logo.png") + r'&amp;mode=document">again</a>', content
-    )
-    # An SVG is a document, so it is a link to its own page, not a picture.
-    assert re.search(
-        r'<a href="[^"]*path=' + _wire("diagram.svg") + r'&amp;mode=document">diagram</a>', content
-    )
-    assert "mode=document" in content and _wire("notes.txt") in content
-    # A folder's link keeps its text and names nothing this route could open.
-    assert "<a>the folder</a>" in content
-    assert 'href="#user-content-readme"' in content
-    source = client.get(at + _wire("README.md") + "&mode=source").text
-    assert 'aria-current="page">Source' in source and "![logo](logo.png)" in source
-    # A document whose render work is over the bound opens as its Source; the page kept
-    # from the render above is dropped first.
-    from weakref import WeakKeyDictionary
-
-    monkeypatch.setattr(pull_snapshot, "_DOCUMENT_WORK_MS", 0.001)
-    monkeypatch.setattr(pull_snapshot, "_DOCUMENTS", WeakKeyDictionary())
-    over = client.get(at + _wire("README.md")).text
-    assert "<pre><code># Readme" in over and ">Document</a>" not in over
+    assert _code(client, address) == "unsupported_image"
 
 
 def test_folders_links_and_submodules_say_what_they_are(
@@ -620,73 +421,37 @@ def test_folders_links_and_submodules_say_what_they_are(
         record.comparison.head,
         [
             ("040000", "tree", folder, "folder"),
-            ("120000", "blob", target, "link"),
+            ("120000", "blob", target, "link.png"),
             ("160000", "commit", record.comparison.head, "module"),
         ],
     )
-    at = _at_head(stand, client, head)
+    route = _at_head(stand, client, head)
     said = {}
-    for name in ("folder", "link", "module", "absent"):
-        answer = client.get(at + _wire(name), headers={"accept": "application/json"})
+    for name in ("folder", "link.png", "module", "absent.png"):
+        answer = client.get(_image(route, name))
         assert answer.status_code == 404
         said[name] = (answer.json()["code"], answer.json()["message"])
     assert said == {
         "folder": ("not_a_file", "This path is a folder at this revision."),
-        "link": (
+        "link.png": (
             "not_a_file",
-            "This path is a symbolic link, which revision files do not follow at this revision.",
+            "This path is a symbolic link, which images do not follow at this revision.",
         ),
         "module": ("not_a_file", "This path is a submodule at this revision."),
-        "absent": ("file_not_found", "This file is absent at this revision."),
+        "absent.png": ("file_not_found", "This file is absent at this revision."),
     }
 
 
-def test_source_windows_end_on_characters_and_say_where_a_preview_stops(
+def test_an_image_past_the_blob_bound_is_not_served(
     pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Review A13 (R4, R5), at the real window size, and C6 (R6)."""
     stand, client = pinned_pull
     record = stand.refresh(7)
     assert record.comparison is not None
-    window = pull_snapshot._SOURCE_BYTES  # pyright: ignore[reportPrivateUsage]
-    accented = _blob(stand, b"a" * (window - 1) + "é".encode() + b"b" * 10)
-    lines = _blob(stand, b"".join(b"line %04d\n" % index for index in range(20)))
-    binary = _blob(stand, b"\0\xff" * 40000)
-    head = _commit(
-        stand,
-        record.comparison.head,
-        [
-            ("100644", "blob", accented, "accented.txt"),
-            ("100644", "blob", lines, "lines.txt"),
-            ("100644", "blob", binary, "payload.bin"),
-            ("100644", "blob", binary, "résumé.bin"),
-        ],
-    )
-    at = _at_head(stand, client, head) + _wire("accented.txt") + "&mode=source"
-
-    def body(page: str) -> str:
-        return unescape(page.split("<pre><code>", 1)[1].split("</code></pre>", 1)[0])
-
-    first = client.get(at).text
-    assert body(first) == "a" * (window - 1)
-    assert f"offset={window - 1}" in first
-    second = client.get(f"{at}&offset={window - 1}").text
-    assert body(second) == "é" + "b" * 10 and "Next bytes" not in second
-    # An address inside a character opens at the character's first byte.
-    assert body(client.get(f"{at}&offset={window}").text) == "é" + "b" * 10
-    # A window that is not the file's last ends after a line.
-    monkeypatch.setattr(pull_snapshot, "_SOURCE_BYTES", 25)
-    lined = client.get(_at_head(stand, client, head) + _wire("lines.txt") + "&mode=source").text
-    assert body(lined) == "line 0000\nline 0001\n" and "offset=20" in lined
-    # What a file is follows from its first bytes, at every offset.
-    binary_at = _at_head(stand, client, head) + _wire("payload.bin") + "&mode=source"
-    assert "Binary file." in client.get(binary_at).text
-    assert "Binary file." in client.get(binary_at + "&offset=2").text
-    # A download is saved under the file's name.
-    download = client.get(_at_head(stand, client, head) + _wire("résumé.bin") + "&mode=download")
-    assert download.headers["content-disposition"] == (
-        "attachment; filename=\"r_sum_.bin\"; filename*=UTF-8''r%C3%A9sum%C3%A9.bin"
-    )
+    head = _commit(stand, record.comparison.head, [("100644", "blob", _blob(stand, _PNG), "a.png")])
+    address = _image(_at_head(stand, client, head), "a.png")
+    monkeypatch.setattr(GitTreeSource, "max_blob_bytes", property(lambda _source: 4))
+    assert _code(client, address) == "unsupported_image"
 
 
 def test_a_pages_images_repeat_no_record_read_or_revision_resolution(
@@ -696,9 +461,9 @@ def test_a_pages_images_repeat_no_record_read_or_revision_resolution(
     stand, client = pinned_pull
     record = stand.refresh(7)
     assert record.comparison is not None
-    png = _blob(stand, b"\x89PNG\r\n\x1a\nfixture")
+    png = _blob(stand, _PNG)
     head = _commit(stand, record.comparison.head, [("100644", "blob", png, "logo.png")])
-    image = _at_head(stand, client, head) + _wire("logo.png") + "&mode=image"
+    image = _image(_at_head(stand, client, head), "logo.png")
     reads, opens = [], []
     read, open_revision = pull_snapshot.read_pull_record, pull_snapshot.open_revision
 
@@ -714,321 +479,49 @@ def test_a_pages_images_repeat_no_record_read_or_revision_resolution(
     monkeypatch.setattr(pull_snapshot, "open_revision", counted_open)
     for _ in range(8):
         answer = client.get(image)
-        assert answer.status_code == 200 and answer.content.startswith(b"\x89PNG")
+        assert answer.status_code == 200 and answer.content == _PNG
     assert (len(reads), len(opens)) == (1, 1)
 
 
-# ── Bounded Markdown documents ───────────────────────────────────
-
-_CAP = pull_snapshot._DOCUMENT_BYTES  # pyright: ignore[reportPrivateUsage]
+# ── The rendered diff, which admits its pair the same way ────────
 
 
-def _work(body: bytes) -> float:
-    return pull_snapshot._document_work_ms(body)  # pyright: ignore[reportPrivateUsage]
-
-
-def _repeat(unit: bytes, head: bytes = b"") -> bytes:
-    return (head + unit * (_CAP // len(unit) + 1))[:_CAP]
-
-
-@pytest.mark.parametrize(
-    "separator", [b"\n\x0b\n", b"\n\x0c\n", b"\n\n", b"\n \t\n"], ids=["vt", "ff", "blank", "ws"]
-)
-def test_the_render_bound_counts_the_whole_document(separator: bytes) -> None:
-    """Review C1 on #348: no line, blank or not, resets the count.
-
-    The old per-block rule reset on any line ``bytes.strip`` emptied, which ``\\x0b`` and
-    ``\\x0c`` lines are, though CommonMark keeps them inside the paragraph.
-    """
-    body = separator.join([b"[" * 200] * 40) + b"x"
-    assert _work(body) > pull_snapshot._DOCUMENT_WORK_MS  # pyright: ignore[reportPrivateUsage]
-
-
-@pytest.mark.parametrize(
-    "body",
-    [
-        _repeat(b"["),
-        _repeat(b"$a$ "),
-        _repeat(b"|a|b|\n", b"|a|b|\n|-|-|\n"),
-        _repeat(b"- [ ] a\n"),
-        _repeat(b"# h\n"),
-        _repeat(b"- a\n"),
-        _repeat(b"*a"),
-        _repeat(b"$a$"),
-        (b"[" * 16384 + b"$a$" * _CAP)[:_CAP],
-        _repeat(b"a\n\n"),
-        _repeat(b"a\\\n"),
-        (b"$a$ " * 2200 + b"a\n\n" * _CAP)[:_CAP],
-        _repeat(b"> - [ ] a\n"),
-        _repeat(b"- - [ ] a\n"),
-    ],
-    ids=[
-        "brackets",
-        "math",
-        "table",
-        "tasks",
-        "headings",
-        "list",
-        "emphasis",
-        "math-run",
-        "brackets-then-math",
-        "paragraphs",
-        "backslash-breaks",
-        "math-then-paragraphs",
-        "quoted-tasks",
-        "nested-tasks",
-    ],
-)
-def test_each_measured_costly_shape_at_the_cap_opens_as_source(body: bytes) -> None:
-    """Reviews A4, F1, and F2: what took 0.5 to 6.4 s at 64 KiB is refused before it renders."""
-    assert len(body) == _CAP
-    assert _work(body) > pull_snapshot._DOCUMENT_WORK_MS  # pyright: ignore[reportPrivateUsage]
-    path = GitPath.from_display("README.md")
-    snapshot = Snapshot(7, "a" * 40, "b" * 40, "s", "head")
-    assert pull_snapshot._render_document(body, path, "c" * 40, snapshot) is None  # pyright: ignore[reportPrivateUsage]
-
-
-@pytest.mark.parametrize(
-    "body",
-    [b"- [ ] a\r" * 1025, b"-\n  [ ] a\n" * 1025, b"> - > - [ ] a\n" * 1025],
-    ids=["cr-tasks", "blank-first-tasks", "quote-in-list-tasks"],
-)
-def test_task_items_past_the_count_open_as_source_however_written(body: bytes) -> None:
-    """Review F2: a task is one behind any container, on its own line, or after a `\\r`."""
-    assert _work(body) > pull_snapshot._DOCUMENT_WORK_MS  # pyright: ignore[reportPrivateUsage]
-    path = GitPath.from_display("README.md")
-    snapshot = Snapshot(7, "a" * 40, "b" * 40, "s", "head")
-    assert pull_snapshot._render_document(body, path, "c" * 40, snapshot) is None  # pyright: ignore[reportPrivateUsage]
-
-
-def _fence(language: bytes, code: bytes) -> bytes:
-    return b"```" + language + b"\n" + code + b"\n```\n"
-
-
-@pytest.mark.parametrize(
-    "body",
-    [
-        _fence(b"console", b"(x)(a)" + b"b" * 800 + b"@" * 800),
-        _fence(b"console", b"[a@]" * 1000),
-        _fence(b"devicetree", b"aaaaaaa," * 6058),
-        _fence(b"systemd", b"aaaaaaa," * 6058),
-        _fence(b"registry", b"aaaaaaa," * 6058),
-        _fence(b"make", (b"a" * 63 + b",") * 1020),
-        _fence(b"ruby", b"a " * 12700),
-        b"> ```ruby\n" + (b"> " + b"a," * 32 + b"\n") * 300,
-    ],
-    ids=[
-        "console-prompt-after-venv",
-        "console-prompt-brackets",
-        "devicetree",
-        "systemd",
-        "registry",
-        "make",
-        "spaced-ruby",
-        "quoted-ruby",
-    ],
-)
-def test_fenced_code_renders_plain_whatever_language_it_names(
-    body: bytes, monkeypatch: pytest.MonkeyPatch
+def test_rendered_markdown_uses_the_admitted_comparison_and_exact_hunks(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Review G1 to G3: an author's fence never reaches a lexer on this page.
+    from metabrowser.builtin_plugins.github import pull_rendered_diff
+    from metabrowser.diff.adapters.base import DiffSourceError
+    from metabrowser.git.process import GitError
 
-    Each took 12 to 79 s to highlight within the earlier estimate, and some held the
-    interpreter throughout, for classes the inert page then dropped. Shown as escaped plain
-    code, each is admitted by the text's own charges and renders like any text.
-    """
-    from kpress.format import markdown as kpress_markdown
+    stand, client = pinned_pull
+    stand.refresh(8)
+    envelope = client.get("/api/plugin/github/pull", params={"number": 8}).json()
+    route = envelope["comparison_route"]
+    source = client.get(route).json()
+    file = next(
+        change for change in source["manifest"]["files"] if change["new"]["path"] == "docs/guide.md"
+    )
+    stand.calls()
+    assert envelope["rendered_route"].startswith("/api/plugin/github/pull-rendered-diff?number=8&")
+    address = f"{envelope['rendered_route']}&file={file['id']}"
 
-    def refuse(*_args: object, **_kwargs: object) -> str:
-        raise AssertionError("the revision page highlighted an author's fence")
+    async def missing_object(*_args: object) -> None:
+        raise DiffSourceError("unresolved revision") from GitError("object unavailable")
 
-    monkeypatch.setattr(kpress_markdown, "highlight", refuse)
-    assert _work(body) <= pull_snapshot._DOCUMENT_WORK_MS  # pyright: ignore[reportPrivateUsage]
-    path = GitPath.from_display("README.md")
-    snapshot = Snapshot(7, "a" * 40, "b" * 40, "s", "head")
-    page = pull_snapshot._render_document(body, path, "c" * 40, snapshot)  # pyright: ignore[reportPrivateUsage]
-    assert page is not None and '<pre class="kpress-code">' in page
-    # Highlighted code came through the inert render as a classless span a token.
-    assert "<span" not in page.split('<pre class="kpress-code">', 1)[1]
+    with monkeypatch.context() as patch:
+        patch.setattr(pull_rendered_diff, "_project", missing_object)
+        temporary = client.get(address)
+    assert temporary.status_code == 409
+    assert temporary.json()["code"] == "rendered_objects_unavailable"
 
-
-def test_ordinary_documents_are_within_the_render_bound() -> None:
-    from pathlib import Path
-
-    root = Path(__file__).resolve().parent.parent
-    prose = b"Ordinary prose line with words, `code`, and a [link](a.md).\n" * 2000
-    for body in (
-        prose[:_CAP],
-        (root / "README.md").read_bytes()[:_CAP],
-        (root / "CHANGELOG.md").read_bytes()[:_CAP],
-        (root / "docs" / "reviewing-pull-requests.md").read_bytes()[:_CAP],
-        # Console transcripts, which render in 43 to 73 ms; review F3 found them refused.
-        (root / "tests" / "golden" / "cli-ui-github-pull-page.tryscript.md").read_bytes()[:_CAP],
-        (root / "tests" / "golden" / "cli-api-cache.tryscript.md").read_bytes()[:_CAP],
-    ):
-        assert _work(body) <= pull_snapshot._DOCUMENT_WORK_MS  # pyright: ignore[reportPrivateUsage]
-
-
-def test_overlapping_documents_share_one_render_and_wait_for_the_slot(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Review B5 on #348: a busy render no longer turns a document into its Source.
-
-    One full-file render runs at a time; a request for the same document joins it, and one
-    for another waits for it. Each estimate runs in the worker thread with its render
-    (review D4), and a kept page is served without reading its blob again (review F5).
-    """
-    import asyncio
-    import threading
-    from collections.abc import Awaitable, Callable
-
-    reads: list[bytes] = []
-
-    def reader(body: bytes) -> Callable[[], Awaitable[bytes]]:
-        async def read() -> bytes:
-            reads.append(body)
-            return body
-
-        return read
-
-    renders: list[str] = []
-    estimated_off_loop: list[bool] = []
-    running = 0
-    most = 0
-    real_work = pull_snapshot._document_work_ms  # pyright: ignore[reportPrivateUsage]
-
-    def work(body: bytes) -> float:
-        estimated_off_loop.append(threading.current_thread() is not threading.main_thread())
-        return real_work(body)
-
-    def render(body: bytes, _path: GitPath, oid: str, _snapshot: Snapshot) -> str:
-        nonlocal running, most
-        running += 1
-        most = max(most, running)
-        renders.append(oid)
-        threading.Event().wait(0.05)
-        running -= 1
-        return f"<p>{body.decode()}</p>"
-
-    monkeypatch.setattr(pull_snapshot, "_document_work_ms", work)
-    monkeypatch.setattr(pull_snapshot, "_render_markdown", render)
-    snapshot = Snapshot(7, "a" * 40, "b" * 40, "s", "head")
-    path = GitPath.from_display("README.md")
-
-    async def run() -> list[str | None]:
-        return list(
-            await asyncio.gather(
-                pull_snapshot._document(snapshot, path, "1" * 40, reader(b"one")),  # pyright: ignore[reportPrivateUsage]
-                pull_snapshot._document(snapshot, path, "1" * 40, reader(b"one")),  # pyright: ignore[reportPrivateUsage]
-                pull_snapshot._document(snapshot, path, "2" * 40, reader(b"two")),  # pyright: ignore[reportPrivateUsage]
-            )
-        )
-
-    async def run_and_reload() -> tuple[list[str | None], str | None]:
-        first = await run()
-        return first, await pull_snapshot._document(snapshot, path, "1" * 40, reader(b"one"))  # pyright: ignore[reportPrivateUsage]
-
-    pages, reloaded = asyncio.run(run_and_reload())
-    assert pages == ["<p>one</p>", "<p>one</p>", "<p>two</p>"] and reloaded == "<p>one</p>"
-    # The reload is the kept page: the hardening after KPress's own cache does not run again.
-    assert sorted(renders) == ["1" * 40, "2" * 40] and most == 1
-    assert sorted(reads) == [b"one", b"one", b"two"]
-    assert estimated_off_loop and all(estimated_off_loop)
-
-
-_PREFERENCES_RUNNER = r"""
-const fs = require("node:fs");
-const vm = require("node:vm");
-const { scripts, cookie, dark } = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
-const attributes = {};
-const style = {};
-const documentElement = {
-  setAttribute: (name, value) => { attributes[name] = String(value); },
-  style: { setProperty: (name, value) => { style[name] = String(value); } },
-};
-const sandbox = { document: { cookie, documentElement }, matchMedia: () => ({ matches: dark }) };
-sandbox.window = sandbox;
-vm.createContext(sandbox);
-for (const script of scripts) {
-  vm.runInContext(script, sandbox);
-}
-process.stdout.write(JSON.stringify({ attributes, style }));
-"""
-
-
-@needs_node
-def test_the_revision_page_scripts_apply_the_readers_preferences(
-    pinned_pull: tuple[_Stand, TestClient], tmp_path: Path
-) -> None:
-    """Review D1: the page's scripts run in order, without the shell, and set every hook."""
-    _, client = pinned_pull
-    route = client.get("/api/plugin/github/pull?number=7").json()["snapshot_route"]
-    page = client.get(f"{route}&side=head&path={_wire('docs/new.md')}")
-    assert page.status_code == 200, page.text
-    scripts = re.findall(r"<script>(.*?)</script>", page.text, re.DOTALL)
-    # The Markdown sits in the frame whose classes carry the measure and reading font.
-    assert '<div class="metabrowser-kpress-host"><article class="kpress kpress-doc' in page.text
-    assert '<div class="kpress-prose kpress-long-text">' in page.text
-    runner = tmp_path / "preferences.js"
-    runner.write_text(_PREFERENCES_RUNNER, encoding="utf-8")
-    cases = {
-        "defaults": ("", False),
-        "system dark": ("", True),
-        "chosen": (
-            "metabrowser.themeMode=dark; metabrowser.proseFont=sans; "
-            "metabrowser.interfaceFont=system; metabrowser.docMaxChars=80",
-            False,
-        ),
-    }
-    seen = {}
-    for name, (cookie, dark) in cases.items():
-        given = tmp_path / f"{name}.json"
-        given.write_text(json.dumps({"scripts": scripts, "cookie": cookie, "dark": dark}))
-        result = subprocess.run(
-            ["node", str(runner), str(given)], capture_output=True, text=True, timeout=30
-        )
-        assert result.returncode == 0, result.stderr
-        seen[name] = json.loads(result.stdout)
-    assert seen["defaults"]["attributes"] == {
-        "data-theme-mode": "system",
-        "data-theme": "light",
-        "data-kpress-resolved-theme": "light",
-        "data-prose-font": "serif",
-        "data-app-font": "clean",
-    }
-    assert seen["defaults"]["style"] == {"--doc-max-chars": "102"}
-    assert seen["system dark"]["attributes"]["data-theme"] == "dark"
-    assert seen["chosen"]["attributes"] == {
-        "data-theme-mode": "dark",
-        "data-theme": "dark",
-        "data-kpress-resolved-theme": "dark",
-        "data-prose-font": "sans",
-        "data-app-font": "system",
-    }
-    assert seen["chosen"]["style"] == {"--doc-max-chars": "80"}
-
-
-def test_the_disclosure_chevron_loads_from_this_origin(
-    pinned_pull: tuple[_Stand, TestClient],
-) -> None:
-    """Review E1: the page's styles draw a summary's chevron with nothing its policy refuses.
-
-    KPress and the shell spell the chevron as a ``data:`` mask; this page's stylesheet puts
-    the same glyph, served from this origin, on both rules that draw it.
-    """
-    _, client = pinned_pull
-    css = client.get("/plugin-static/github/pull-snapshot.css").text
-    assert (
-        ".pull-snapshot-content .kpress summary::before,\n"
-        ".pull-snapshot-content .metabrowser-kpress-host .kpress details > summary::after {\n"
-        '  mask-image: url("disclosure-chevron.svg");'
-    ) in css
-    chevron = client.get("/plugin-static/github/disclosure-chevron.svg")
-    assert chevron.status_code == 200
-    assert chevron.headers["content-type"] == "image/svg+xml"
-    assert '<path d="m9 18 6-6-6-6"/>' in chevron.text
-    shell = (Path(__file__).parents[1] / "src/metabrowser/static/styles.css").read_text()
-    assert "m9 18 6-6-6-6" in shell, "the shell still draws the same glyph"
+    rendered = client.get(address)
+    assert rendered.status_code == 200, rendered.text
+    answer = rendered.json()
+    assert answer["status"] == "ready", answer
+    assert answer["version"] == "markdown-diff-v1"
+    assert any(block["kind"] == "added" and "More." in block["html"] for block in answer["blocks"])
+    assert answer["assets"]["assets"]
+    assert stand.calls() == []
 
 
 def test_rendered_markdown_in_a_checkout_reads_the_head_blob_not_the_working_tree(
@@ -1181,8 +674,8 @@ def test_a_request_ahead_of_changes_starts_the_projection_process(
     starts: list[str] = []
 
     class Recording(ProjectionWorker):
-        def start(self) -> None:
-            starts.append("start")
+        def start(self, *, renders: bool = False) -> None:
+            starts.append("renders" if renders else "start")
 
     stand, client = pinned_pull
     stand.refresh(8)

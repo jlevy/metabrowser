@@ -1,14 +1,17 @@
-"""Gate for tests that need Node or Git on ``PATH``.
+"""Gate for tests that need Node, Git, or jq on ``PATH``.
 
-Both are prerequisites of this repository (``docs/development.md``). The first test
+All three are prerequisites of this repository (``docs/development.md``). The first test
 that needs one and finds it missing stops the session with one message. It used to
 skip, and a run without Node then passed having checked none of the browser contracts
 under ``tests/dom``.
 
+jq is how the CI workflow's ``plan`` and ``ci-ok`` jobs read JSON
+(``devtools/ci_plan.sh`` and ``devtools/ci_verdict.sh``), and their tests run them.
+
 Stopping, rather than failing each test, says it once instead of once per test, and a
 run that selects no test needing the tool is not affected at all.
 
-A developer who really has no Node, or no Git, names the tool in
+A developer who really has no Node, Git, or jq names the tool in
 ``METABROWSER_ALLOW_MISSING_TOOLS`` (comma-separated). The tests that need it then
 skip, and ``pytest -rs`` lists them. CI and ``make test`` never set it.
 
@@ -24,7 +27,7 @@ import shutil
 import pytest
 
 ALLOW_MISSING_TOOLS_ENV = "METABROWSER_ALLOW_MISSING_TOOLS"
-TOOLS = ("git", "node")
+TOOLS = ("git", "jq", "node")
 
 
 def _require(tool: str) -> str:
@@ -43,7 +46,8 @@ def _require(tool: str) -> str:
     if unknown := sorted(named - set(TOOLS)):
         message += (
             f" {ALLOW_MISSING_TOOLS_ENV}={value!r} names {', '.join(unknown)}, which this "
-            f"gate does not know; the names it takes are {' and '.join(TOOLS)}."
+            f"gate does not know; the names it takes are {', '.join(TOOLS[:-1])}, and "
+            f"{TOOLS[-1]}."
         )
     pytest.exit(message, returncode=1)
 
@@ -60,8 +64,16 @@ def require_git() -> str:
     return _require("git")
 
 
+def require_jq() -> str:
+    """Return the path of ``jq``; without one, stop the run, or skip where allowed."""
+
+    return _require("jq")
+
+
 MAC_CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 CHROME_NAMES = ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser")
+
+_chrome_asked = False
 
 
 def require_chrome() -> str:
@@ -70,6 +82,24 @@ def require_chrome() -> str:
     Chrome is not a prerequisite of the repository, so its absence skips, with the reason
     ``docs/e2e-testing.md`` lists; strict mode turns that skip into a failure in CI, whose
     runners have Chrome. ``CHROME_BIN`` names one explicitly.
+
+    Every test that drives Chrome comes through here, so this is where the request is
+    noted: ``tests/suite_gates.py`` fails one that is not in the Chrome tier, which would
+    otherwise run beside other workers.
+    """
+
+    global _chrome_asked
+    _chrome_asked = True
+    found = find_chrome()
+    if found is None:
+        pytest.skip("Chrome is not installed")
+    return found
+
+
+def find_chrome() -> str | None:
+    """The Chrome ``require_chrome`` returns, or ``None``, without asking for it.
+
+    The run's warm-up (``tests/chrome_starts.py``) looks here, outside any test.
     """
 
     named = os.environ.get("CHROME_BIN")
@@ -81,7 +111,15 @@ def require_chrome() -> str:
         found = shutil.which(name)
         if found is not None:
             return found
-    pytest.skip("Chrome is not installed")
+    return None
+
+
+def take_chrome_request() -> bool:
+    """Whether a test asked for Chrome since the last call; asking again resets it."""
+
+    global _chrome_asked
+    asked, _chrome_asked = _chrome_asked, False
+    return asked
 
 
 # For a whole module or a parametrized case, where no test body is at hand to call the
