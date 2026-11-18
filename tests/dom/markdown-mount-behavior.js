@@ -157,11 +157,24 @@ class FakeWorker {
   const placeRenderedUrl = `data:text/javascript;base64,${Buffer.from(placeRenderedSource).toString("base64")}`;
   globalThis.__markdownInertTocs = [];
   globalThis.__markdownInertTocDisposals = [];
+  // The production refusal module, which imports the Source view by file URL.
+  const refusalUrl = pathToFileURL(
+    path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/render-refusal.js"),
+  ).href;
   const importableSource = source
     .replace('"./link-enhancer.js"', JSON.stringify(enhancerUrl))
+    .replace('"./render-refusal.js"', JSON.stringify(refusalUrl))
     .replace('"./markdown-worker-client.js"', JSON.stringify(workerClientUrl))
     .replace('"./place-rendered.js"', JSON.stringify(placeRenderedUrl))
     .replace('"./transclusion.js"', JSON.stringify(transclusionUrl))
+    .replace(
+      '"./print-indicator.js"',
+      JSON.stringify(
+        pathToFileURL(
+          path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/print-indicator.js"),
+        ).href,
+      ),
+    )
     .replace(
       '"./toc-toggle.js"',
       JSON.stringify(

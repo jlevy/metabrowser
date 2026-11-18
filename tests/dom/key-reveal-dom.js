@@ -437,8 +437,17 @@ class FakeElement extends FakeNode {
     return [];
   }
 
+  /** The box a session gave this element, or none, as layout gives an element that is not
+   * rendered: `hidden`, or `display: none` inline, or under such an ancestor. */
   getBoundingClientRect() {
-    const rect = this.rect ?? { left: 0, top: 0, width: 0, height: 0 };
+    let rendered = true;
+    for (let node = this; node instanceof FakeElement; node = node.parentNode) {
+      if (node.hidden || node.style.display === "none") {
+        rendered = false;
+        break;
+      }
+    }
+    const rect = (rendered && this.rect) || { left: 0, top: 0, width: 0, height: 0 };
     return {
       ...rect,
       right: rect.left + rect.width,
@@ -591,6 +600,23 @@ class FakeWindow extends FakeEventTarget {
         return "visible";
       },
       direction: "ltr",
+      // The lengths a session gives an element's inline style, as it gives it a box: this
+      // stand-in lays nothing out, so a length nothing sets is none.
+      get columnGap() {
+        return element.style.getPropertyValue("column-gap");
+      },
+      get paddingLeft() {
+        return element.style.getPropertyValue("padding-left");
+      },
+      get paddingRight() {
+        return element.style.getPropertyValue("padding-right");
+      },
+      get borderLeftWidth() {
+        return element.style.getPropertyValue("border-left-width");
+      },
+      get borderRightWidth() {
+        return element.style.getPropertyValue("border-right-width");
+      },
     };
   }
 

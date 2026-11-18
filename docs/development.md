@@ -228,7 +228,11 @@ Imports go at the top of a module.
 An import inside a function argues for itself, and each kind has a test that holds its
 boundary:
 
-- **The KPress runtime**, in `metabrowser/kpress_adapter.py`.
+- **The KPress runtime**, in `metabrowser/kpress_adapter.py`, and the projection module
+  the Markdown child runs, in `metabrowser/diff/markdown_projection_worker.py`, which
+  the server imports to manage the child.
+  `test_the_server_imports_no_renderer_for_the_child_it_manages` in
+  `tests/test_inert_render_deadline.py` holds both.
 - **A mode’s own module**, imported in that mode’s branch of the command line, so that
   `--version` and `--help` do not build the application.
   `test_version_command_does_not_load_git_source_or_server_modules` in
@@ -336,10 +340,11 @@ The check makes those tiers executable.
 For an interaction row it runs the session under V8 coverage and credits an owner only
 when the session executed that production file and one named function in it, so a
 transitive import, a stdout claim, or a relabeled snippet is not evidence.
-The **Data inputs** column states provenance: a data row declares `owned-route`, a
-paint-exempt row `local-only`, and an interaction row names registered, parity-covered
-routes, `local-only`, or `transport-exempt:/api/events` for the event stream whose
-snapshot its data routes already own.
+The **Data inputs** column states provenance: a data row declares `owned-route`, or
+`owned-model` for the model of a mode no route can honestly serve, such as `--present`,
+which must start no server; a paint-exempt row `local-only`, and an interaction row
+names registered, parity-covered routes, `local-only`, or `transport-exempt:/api/events`
+for the event stream whose snapshot its data routes already own.
 The check cannot infer an undeclared behavior from source code, so review requires a row
 whenever a change adds or alters an observable contract.
 
