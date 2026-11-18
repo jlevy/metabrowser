@@ -69,6 +69,7 @@ export function mountFileTypeSummary(
     metricClasses,
     mb.fileTypeIcon,
     options.hover,
+    (name) => mb.icons.withClass?.(name, "category-icon") ?? "",
   );
 
   function render() {
