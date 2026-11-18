@@ -32,10 +32,11 @@ export function createReadmePanel(mb) {
       return markdown.mountRendered(
         container,
         { ...context, kind: "markdown", path: value.path },
-        // The README is this page's document, so it keeps its table of contents as
-        // when it is opened as a file, and its fragments are places on the folder's
-        // page: an entry scrolls the Overview rather than opening the file.
-        { signal: options.signal, pagePath: context.path },
+        // The README is this page's document, so it keeps its table of contents and
+        // its print button as when it is opened as a file, and its fragments are
+        // places on the folder's page: an entry scrolls the Overview rather than
+        // opening the file. The Overview prints its printable panels, the README.
+        { signal: options.signal, pagePath: context.path, printIndicator: true },
       );
     },
   });
