@@ -128,8 +128,10 @@ The button follows the folder you opened: it is there when that folder is a repo
 root, as the Commits tab is.
 
 Showing a branch or tag needs a Git as recent as cloning does
-([installation](installation.md#git-and-github-setup)). With an older one the list says
-which release it needs, and the working tree and its Commits tab work as before.
+([installation](installation.md#git-and-github-setup)), and in a partial clone, one made
+with `git clone --filter`, a newer one still.
+With an older one the list says which release it needs, and the working tree and its
+Commits tab work as before.
 
 ## Diffs from a Terminal
 

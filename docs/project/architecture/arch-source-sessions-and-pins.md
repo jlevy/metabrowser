@@ -299,6 +299,11 @@ Which modes exist, what each shows, and why is [Open Modes](arch-open-modes.md).
   An older Git answers 409 `unsupported_git` with the release needed
   (`CheckoutGitUnsupportedError`), the panel shows those words, `--ref` fails the start
   with them, and the working tree is served as before.
+  A partial clone, one whose configuration names a promisor remote, needs a Git from
+  `PARTIAL_CLONE_GIT_MINIMUM` on: before it the variable refuses the fetch and then ends
+  the process at the first missing object, so a revision could not even list its tree.
+  An admitted Git older than that is refused for a partial clone in the same way, and
+  asks nothing more of an ordinary checkout.
 - **Listing.** `GET /api/source/refs` answers the mirror’s envelope from one
   `for-each-ref` over the checkout’s Git directory, the common one of a linked worktree.
   `RefNamespaces` in `cache/resolve.py` says where each kind is kept: a mirror’s

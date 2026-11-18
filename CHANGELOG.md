@@ -26,8 +26,9 @@ All notable changes to Metabrowser are documented here.
   A branch or tag of a checkout is read without running anything the checkout’s Git
   configuration names, a diff driver or a signature program, and without fetching into a
   partial clone, where an object the clone lacks is reported as unavailable.
-  That last guarantee needs a Git as recent as cloning does, so with an older Git the
-  list says which release it needs and the working tree is served as before.
+  That last guarantee needs a Git as recent as cloning does, and a newer one in a
+  partial clone, so with an older Git the list says which release it needs and the
+  working tree is served as before.
   The Commits tab of a folder no longer runs a signature program: where the repository’s
   or your own Git configuration sets `log.showSignature`, Git verified each commit it
   listed, and Metabrowser shows no signature state.

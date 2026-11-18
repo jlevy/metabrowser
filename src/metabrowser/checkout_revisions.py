@@ -39,7 +39,8 @@ revision's read from fetching into the reader's ``.git``; only an admitted Git i
 to read it. A mirror's store has no promisor remote, so for it the variable is defense in
 depth; a checkout has no such second line. On an older Git the chooser refuses with
 :class:`CheckoutGitUnsupportedError`, which names the release needed, and the folder's
-working tree is served as before.
+working tree is served as before. A partial clone needs more than the floor: see
+:data:`PARTIAL_CLONE_GIT_MINIMUM`.
 
 **Trust.** A revision's pages run under the untrusted profile whatever the folder was
 opened with, as every pin's do: the profile is the subject's that a request resolved
@@ -69,15 +70,20 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from metabrowser.content_errors import ContentReadError
 from metabrowser.git.process import (
+    ACQUISITION_NEWEST_PATCHED,
+    ACQUISITION_PATCHED_TRACKS,
+    STORE_READ_POLICY,
+    GitCommandError,
     GitError,
     GitLocation,
     UnsupportedGitVersionError,
     failure_detail,
     require_acquisition_git,
+    run_git,
     run_git_at,
 )
 from metabrowser.invisible_chars import display_segment
@@ -151,33 +157,90 @@ def checkout_ref_name(ref: str | None) -> str | None:
     return ref
 
 
+# The first release whose ``GIT_NO_LAZY_FETCH`` also has a partial clone's missing object
+# read as missing. From 2.45.0 Git turns ``fetch_if_missing`` off at setup when the
+# variable is set (environment.c; setup.c later). An admitted 2.43.7 or 2.44.4 has only
+# the security releases' backport, which refuses the fetch (promisor-remote.c) and then
+# ends the process: "could not fetch <oid> from promisor remote". So there a revision of a
+# blobless clone could not list its tree: nothing was fetched, and the tree route failed
+# untyped, "truncated cat-file header", in CI's admitted-git (2.43.7) job on 2026-11-18
+# (#559). Read from Git's source at v2.43.7, v2.44.4, v2.45.0, v2.45.4, and v2.50.1.
+PARTIAL_CLONE_GIT_MINIMUM: Final = (2, 45, 0)
+
+
+def _partial_clone_version_label() -> str:
+    """The admitted releases that read a partial clone's missing object as missing."""
+
+    track = ".".join(str(part) for part in PARTIAL_CLONE_GIT_MINIMUM[:2])
+    first = ".".join(str(part) for part in ACQUISITION_PATCHED_TRACKS[track])
+    newest = ".".join(str(part) for part in ACQUISITION_NEWEST_PATCHED)
+    return f"{first} or a patched release at least {newest} on a newer track"
+
+
 class CheckoutGitUnsupportedError(ContentReadError):
     """The host's Git is not one a checkout's revisions are read with.
 
     The message names the release needed and no path, so a route and ``--ref`` say it as
-    it is.
+    it is. *partial_clone* is the stricter need of a checkout that names a promisor
+    remote (:data:`PARTIAL_CLONE_GIT_MINIMUM`).
     """
 
     code = "unsupported_git"
     http_status = 409
 
-    def __init__(self, detected: str | None, required: str) -> None:
+    def __init__(self, detected: str | None, required: str, *, partial_clone: bool = False) -> None:
         found = "no git is on PATH" if detected is None else f"this is {detected or 'unknown'}"
         super().__init__(
-            f"showing a branch or tag of a checkout needs Git {required}, which is known "
-            f"never to fetch into it; {found}"
+            f"showing a branch or tag of a partial clone needs Git {required}, which reads "
+            f"an object the clone lacks as missing and never fetches it; {found}"
+            if partial_clone
+            else f"showing a branch or tag of a checkout needs Git {required}, which is "
+            f"known never to fetch into it; {found}"
         )
         self.detected = detected
         self.required = required
 
 
-def _admitted_git() -> None:
-    """Raise :class:`CheckoutGitUnsupportedError` unless the floor admits the host's Git."""
+def _admitted_git() -> tuple[int, int, int]:
+    """The host's Git version; :class:`CheckoutGitUnsupportedError` unless the floor admits it."""
 
     try:
-        require_acquisition_git()
+        return require_acquisition_git()
     except UnsupportedGitVersionError as exc:
         raise CheckoutGitUnsupportedError(exc.detected, exc.required) from None
+
+
+async def _names_a_promisor(target: RepositoryStoreTarget) -> bool:
+    """Whether the repository's own configuration makes it a partial clone.
+
+    What Git lazily fetches from: ``extensions.partialClone`` or a ``remote.<name>.promisor``
+    that is true. Read under the store policy, as the revision's reads are, so the reader's
+    own configuration counts for neither.
+    """
+
+    try:
+        raw = await run_git(
+            [
+                "config",
+                "--null",
+                "--get-regexp",
+                r"^(extensions\.partialclone|remote\..*\.promisor)$",
+            ],
+            target=target,
+            policy=STORE_READ_POLICY,
+        )
+    except GitCommandError as exc:
+        if exc.returncode == 1:
+            # No such key: an ordinary repository.
+            return False
+        raise
+    for entry in raw.split(b"\0"):
+        key, _, value = entry.partition(b"\n")
+        if key == b"extensions.partialclone" and value:
+            return True
+        if key.endswith(b".promisor") and value.lower() in {b"", b"true", b"yes", b"on", b"1"}:
+            return True
+    return False
 
 
 async def _common_git_directory(root: Path) -> Path | None:
@@ -216,8 +279,8 @@ class CheckoutRevisions:
         # Whether the checkout's history stops at a shallow boundary, read when a revision
         # is served so that the status route still reads nothing.
         self.shallow = False
-        # Whether the host's Git was found admitted; asked again until it is.
-        self._git_admitted = False
+        # The host's Git version once the floor admitted it; asked again until it does.
+        self._git_version: tuple[int, int, int] | None = None
 
     def serves(self, subject: object) -> bool:
         """Whether *subject* is the revision this checkout attached."""
@@ -229,15 +292,17 @@ class CheckoutRevisions:
 
         Raises :class:`UnsupportedSourceCapabilityError` when Git does not accept the
         served root as a repository's root, so the routes answer what a plain folder does,
-        and :class:`CheckoutGitUnsupportedError` when the host's Git is below the floor.
+        and :class:`CheckoutGitUnsupportedError` when the host's Git is below the floor, or
+        below :data:`PARTIAL_CLONE_GIT_MINIMUM` for a partial clone.
         """
 
         from metabrowser.git.process import repository_store_target
         from metabrowser.git.repo import repo_info
 
-        if not self._git_admitted:
-            await asyncio.to_thread(_admitted_git)
-            self._git_admitted = True
+        version = self._git_version
+        if version is None:
+            version = await asyncio.to_thread(_admitted_git)
+            self._git_version = version
         context, _info = await repo_info(self.root)
         if context is None:
             raise UnsupportedSourceCapabilityError("refs")
@@ -245,6 +310,13 @@ class CheckoutRevisions:
         if git_dir is None:
             raise UnsupportedSourceCapabilityError("refs")
         target = await asyncio.to_thread(repository_store_target, git_dir=git_dir)
+        # Asked only of a Git that needs asking, so a newer one runs nothing more.
+        if version < PARTIAL_CLONE_GIT_MINIMUM and await _names_a_promisor(target):
+            raise CheckoutGitUnsupportedError(
+                "git version " + ".".join(str(part) for part in version),
+                _partial_clone_version_label(),
+                partial_clone=True,
+            )
         return target, context.head
 
     async def list_refs(self, kind: RefKind) -> tuple[str | None, tuple[MirrorRef, ...]]:
@@ -479,6 +551,7 @@ async def lifespan_checkout() -> AsyncGenerator[None]:
 
 __all__ = [
     "NOT_A_CHECKOUT",
+    "PARTIAL_CLONE_GIT_MINIMUM",
     "CheckoutDisplay",
     "CheckoutGitUnsupportedError",
     "CheckoutRevisions",

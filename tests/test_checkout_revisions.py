@@ -37,11 +37,16 @@ from metabrowser.capabilities import (
     apply_capabilities,
     get_capabilities,
 )
-from metabrowser.checkout_revisions import NOT_A_CHECKOUT, open_on_ref
+from metabrowser.checkout_revisions import (
+    NOT_A_CHECKOUT,
+    PARTIAL_CLONE_GIT_MINIMUM,
+    open_on_ref,
+)
 from metabrowser.git.process import (
     GIT_NO_DRIVER_ARGS,
     GIT_NO_SIGNATURE_ARGS,
     UnsupportedGitVersionError,
+    detect_git_version,
     repository_store_target,
     run_git,
 )
@@ -928,14 +933,26 @@ def test_a_partial_clone_answers_object_unavailable_and_fetches_nothing(tmp_path
     A file, a commit's view, and its diff each answer a typed ``object_unavailable``;
     the tree and the history, which need no blob, answer. No pack arrives and the clone,
     its ``.git`` included, is what it was: ``GIT_NO_LAZY_FETCH`` on a Git the floor
-    admits, which is why this module is in the admitted-git list.
+    admits, which is why this module is in the admitted-git list. On an admitted Git
+    before :data:`PARTIAL_CLONE_GIT_MINIMUM`, the CI job's 2.43.7, that variable refuses
+    the fetch and ends the process, so the revision is refused by name instead, and
+    nothing arrives either.
     """
 
     clone = build_partial_clone(tmp_path.resolve())
     packs = sorted(path.name for path in (clone / ".git" / "objects" / "pack").iterdir())
     before = snapshot(clone)
     server._set_root_dir(clone)
+    version, _raw = detect_git_version()
+    assert version is not None
     with TestClient(server.app, raise_server_exceptions=False) as client:
+        if version < PARTIAL_CLONE_GIT_MINIMUM:
+            refused = client.post("/api/source/pin", json={"ref": "origin/feature"}, headers=_JSON)
+            assert (refused.status_code, refused.json()["code"]) == (409, "unsupported_git")
+            assert "partial clone" in refused.json()["error"]
+            assert client.get("/api/source/status").json()["subject"] == "attached_filesystem"
+            _the_clone_is_unchanged(clone, packs, before)
+            return
         assert _pin(client, ref="origin/feature")["status"]["pin"] == FEATURE
         assert _tree(client) == ["FEATURE.md", "README.md"]
         assert client.get("/api/git/log", params={"limit": "5"}).status_code == 200
@@ -955,8 +972,52 @@ def test_a_partial_clone_answers_object_unavailable_and_fetches_nothing(tmp_path
             assert (diff.status_code, diff.json()["error"]) == (409, "object_unavailable"), address
             assert "nothing is fetched into it" in diff.json()["message"]
         _pin(client, working_tree=True)
+    _the_clone_is_unchanged(clone, packs, before)
+
+
+def _the_clone_is_unchanged(clone: Path, packs: list[str], before: dict[str, Any]) -> None:
     assert sorted(path.name for path in (clone / ".git" / "objects" / "pack").iterdir()) == packs
     assert _differing(before, snapshot(clone)) == []
+
+
+def test_a_partial_clone_on_a_git_that_ends_at_a_missing_object_is_refused_by_name(
+    checkout: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Before 2.45, ``GIT_NO_LAZY_FETCH`` refuses the fetch and ends the process.
+
+    So an admitted 2.43.7 or 2.44.4 is refused for a partial clone with the release it
+    needs, before anything is listed or served, and still serves an ordinary checkout.
+    Held on any Git by naming 2.43.7 as the host's.
+    """
+
+    monkeypatch.setattr(
+        "metabrowser.checkout_revisions.require_acquisition_git", lambda: (2, 43, 7)
+    )
+    clone = build_partial_clone(tmp_path.resolve())
+    before = snapshot(clone)
+    said = (
+        "showing a branch or tag of a partial clone needs Git 2.45.4 or a patched release "
+        "at least 2.50.1 on a newer track, which reads an object the clone lacks as "
+        "missing and never fetches it; this is git version 2.43.7"
+    )
+    server._set_root_dir(clone)
+    with TestClient(server.app) as client:
+        for refused in (
+            client.get("/api/source/refs"),
+            client.post("/api/source/pin", json={"ref": "origin/feature"}, headers=_JSON),
+        ):
+            assert (refused.status_code, refused.json()) == (
+                409,
+                {"error": said, "code": "unsupported_git"},
+            )
+        assert client.get("/api/source/status").json()["subject"] == "attached_filesystem"
+    assert _differing(before, snapshot(clone)) == []
+    # The same Git reads a checkout that names no promisor remote.
+    server._set_root_dir(checkout)
+    with TestClient(server.app) as client:
+        assert _pin(client, ref="feature")["status"]["pin"] == FEATURE
+        assert _tree(client) == ["FEATURE.md", "README.md"]
+        _pin(client, working_tree=True)
 
 
 # ── Which Git, which directory, and which folders ────────────
@@ -1044,11 +1105,23 @@ def test_a_git_entry_that_is_no_repository_has_its_row_removed_by_the_page(
 
 
 def test_a_repository_git_refuses_for_its_owner_is_not_read(
-    checkout: Path, monkeypatch: pytest.MonkeyPatch
+    checkout: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Git's ownership check decides, and ``--git-dir`` is never used to step around it."""
+    """Git's ownership check decides, and ``--git-dir`` is never used to step around it.
+
+    The served folder's Git reads no configuration from outside the test: GitHub's Ubuntu
+    runner images put ``safe.directory = *`` in ``/etc/gitconfig``, under which Git
+    accepts every repository whatever its owner, as ``tests/test_git_repo_identity.py``
+    notes too.
+    """
 
     before = snapshot(checkout)
+    empty = tmp_path / "gitconfig-empty"
+    empty.write_text("", encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(empty))
+    for name in ("GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT"):
+        monkeypatch.delenv(name, raising=False)
     # What Git's own tests set to have every repository belong to someone else.
     monkeypatch.setenv("GIT_TEST_ASSUME_DIFFERENT_OWNER", "1")
     server._set_root_dir(checkout)

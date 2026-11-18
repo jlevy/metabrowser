@@ -358,6 +358,8 @@ Git directory is under its superproject’s.
   That variable is all that keeps a partial clone from fetching, so a checkout’s
   revisions are read only with a Git the acquisition floor admits, and an older one is
   refused by name while the working tree is still served.
+  A partial clone’s are read only with a Git that also reads a missing object as missing
+  rather than ending (`PARTIAL_CLONE_GIT_MINIMUM` in `checkout_revisions.py`).
 - **The fallback.** A store with no origin whose `alternates` names the checkout’s
   objects reads them with no Git process in the checkout, as an
   [overlay](arch-mirror-acquisition-and-refresh.md#the-lending-checkout) does, and
