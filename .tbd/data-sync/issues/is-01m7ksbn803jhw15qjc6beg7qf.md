@@ -5,7 +5,7 @@ title: "Coordinate landing the open PRs, Fast CI Phases 1-2, plan currency and 0
 kind: epic
 status: in_progress
 priority: 1
-version: 33
+version: 34
 delegate: claude-code@vm
 labels: []
 dependencies: []
@@ -38,7 +38,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-17T03:38:38.720Z
-updated_at: 2026-11-18T04:40:08.878Z
+updated_at: 2026-11-18T04:44:14.424Z
 started_at: 2026-11-17T03:38:54.763Z
 ---
 
@@ -65,3 +65,4 @@ UPDATE: #536 head is now d59be9d2845c8fba0fbcdbc4d4cda6e04d063461 (golden regene
 UPDATE: drawn-from-disk chain new heads: #528 b25a0566a1a404d433519df88b29d3534bb8840d, #530 5b6d509ec2cced11210f4ea982a246494535ad84, #533 a4fbad00fa9a1b7d03f827531058bae0b5e0c26f (merges only; reviews unchanged; dispositions updated). Local build review recorded the six recents binding points on mb-m4mg/mb-87j0 and will drop #539's Open Recent exclusion.
 UPDATE: owner wants configs in YAML with a short format string (mf01...), bead mb-3x6y; recents (mb-40k4) must follow it: YAML file + format string.
 UPDATE: #526 new head 48fd4af3ab3d19b5be990f2150c3f58f7acd4707 (base now main; dispositions reposted). #525 merged 5b1d2b055. #529 merged baaf52898. New PRs: #544 help bar (A addressed, ef464f34d), #545/#547 legend stack (review running), #546 recents (owner decisions in; review running), #549 print (review running; golden fix pending), #550 header (merging main), #551 writer race (review running).
+UPDATE 04:44: merged #525 (5b1d2b055), #529 (baaf52898), #528 (1c06d4635). #530 head b18a811b5 / #533 head 8ec461d22 (merged up; dispositions reposted) -> gh stack merge 533 when green. Queue after main green: #526 48fd4af3a, #543 ac2210033, #544 ef464f34d, #530+#533.
