@@ -218,7 +218,10 @@ function plainClick(target) {
  * the pane. KPress's toc.js runs with the toggle policy the mount supplies, so the narrow
  * toggle stays hidden past KPress's threshold until the reader reaches the README, and the
  * entries keep their fragment-only links: a click opens the heading on the folder's page,
- * and that page's fragment scrolls the README's heading into view.
+ * and that page's fragment scrolls the README's heading into view. The folder's address
+ * names a README heading when the Overview mounts, as a deep link does, so the mount's
+ * first delivery of that fragment scrolls it into view: the page's path, not the README's,
+ * is the one the address must name.
  */
 async function overviewReadmeSession({
   documentTarget,
@@ -298,7 +301,7 @@ async function overviewReadmeSession({
   scope.parentElement = body;
   body.parentElement = pane;
 
-  let current = { path: "" };
+  let current = { path: "", fragment: "quick-start" };
   const opened = [];
   let mountOptions = null;
   const mb = {
@@ -335,6 +338,8 @@ async function overviewReadmeSession({
     .createReadmePanel(mb)
     .mount(body, { path: "", raw: {} }, { path: "README.md" }, {});
   await handle.ready;
+  flush();
+  const deepLinked = [...scrolledTo];
 
   const steps = [];
   const activeId = () => {
@@ -369,7 +374,7 @@ async function overviewReadmeSession({
   handle.dispose();
   return {
     click: { defaultPrevented: click.defaultPrevented, opened },
-    fragment: { scrolledTo, pendingFrames: frames.size },
+    fragment: { deepLinked, scrolledTo, pendingFrames: frames.size },
     hrefs: links.map((link) => link.getAttribute("href")),
     listenersAfterDispose: {
       body: body.totalListenerCount(),
@@ -807,7 +812,8 @@ async function overviewReadmeSession({
     !overview.click.defaultPrevented ||
     JSON.stringify(overview.click.opened) !==
       JSON.stringify([{ path: "", fragment: "direction" }]) ||
-    JSON.stringify(overview.fragment.scrolledTo) !== JSON.stringify(["direction"]) ||
+    JSON.stringify(overview.fragment.deepLinked) !== JSON.stringify(["quick-start"]) ||
+    JSON.stringify(overview.fragment.scrolledTo) !== JSON.stringify(["quick-start", "direction"]) ||
     Object.values(overview.listenersAfterDispose).some((count) => count !== 0) ||
     coalescedFrames !== 1 ||
     !tocMountedWithoutCatalogSnapshot ||

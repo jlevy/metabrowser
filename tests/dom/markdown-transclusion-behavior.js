@@ -357,6 +357,8 @@ and second line ^block-id
   let nestedSource = null;
   let tocInits = 0;
   let tocDisposed = 0;
+  let tocTarget = null;
+  let tocConfig = null;
   const mb = {
     fetchKpressRender: async (_ctx, _view, options) => {
       check(
@@ -369,8 +371,10 @@ and second line ^block-id
       return { html: '<article class="kpress">Rendered</article>' };
     },
     fetchText: async () => note,
-    kpressInitToc: () => {
+    kpressInitToc: (target, config) => {
       tocInits += 1;
+      tocTarget = target;
+      tocConfig = config;
       return () => (tocDisposed += 1);
     },
   };
@@ -396,6 +400,23 @@ and second line ^block-id
   );
   check("nested enhancement uses embedded source", nestedSource === "docs/note.md");
   check("embedded TOC initialized by KPress", tocInits === 1);
+  // KPress gets the toggle policy every Metabrowser table of contents follows
+  // (toc-toggle.js), measured on the embed's own element: shown past the threshold while
+  // the embed spans the pane's top, hidden while the embed starts below it.
+  check("embedded TOC wired on the embed", tocTarget === aside);
+  const pane = { getBoundingClientRect: () => ({ top: 100 }) };
+  let embedTop = 50;
+  aside.closest = (selector) => (selector === "[data-kpress-viewport]" ? pane : null);
+  aside.getBoundingClientRect = () => ({ top: embedTop, bottom: embedTop + 500 });
+  const visible = tocConfig?.visible;
+  check("embedded TOC has the toggle policy", typeof visible === "function", String(visible));
+  if (typeof visible === "function") {
+    const at = (scrollTop) => visible({ scrollTop: () => scrollTop });
+    check("embedded toggle hidden within the threshold", at(100) === false);
+    check("embedded toggle shown once the embed spans the pane's top", at(400) === true);
+    embedTop = 300;
+    check("embedded toggle hidden above the embed", at(400) === false);
+  }
   handle.dispose();
   check("nested enhancement disposed", nestedDisposed === 1);
   check("embedded table of contents disposed", tocDisposed === 1);
