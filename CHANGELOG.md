@@ -22,6 +22,35 @@ All notable changes to Metabrowser are documented here.
   The app now needs a `metab` with `--recent`, and names the upgrade for one without.
   See [Recent Targets](docs/command-line.md#recent-targets).
 
+- Two writes of the same cached file at once no longer fail, rarely, with an entry that
+  “was replaced while it was being checked”.
+  Each write first removes the temporary files a crashed write left beside its target,
+  and it could take another write’s new temporary file for one in the moment between
+  that write creating it and locking it.
+  A pull request’s changed files, refreshed twice at once, could then fail to be cached.
+  Now a write creates and locks its temporary file under a shared lock on the folder,
+  and the removal runs only while it holds that lock exclusively.
+  A write waits for that lock only briefly; if another process keeps it, as a stopped
+  one can, the write goes ahead without it and logs a warning.
+  See [Atomic Writes](docs/project/architecture/arch-repository-cache.md#atomic-writes).
+
+- The agent skill’s commands now produce output an agent can parse, and its recipes stop
+  with a nonzero status when `metab` fails.
+  Every `--api` recipe asks for `--format json` and writes the answer to a file that
+  `jq` reads only when `metab` succeeded, so a repository that cannot be read, a pull
+  request with no diff, or a pin that is not the pull request’s head stops the recipe,
+  where a pipe into `jq` printed nothing, `null`, or the default branch’s file.
+  Whether a pull request was read comes from the record’s `state` and
+  `last_refresh.outcome`, not from a line of prose, and a new recipe fetches a pull
+  request beside a checkout, where a read never fetches one.
+  The skill no longer says `--api` refuses `/api/stream`. It now says that a served pin
+  can move, that `--diff-check` can take more than a minute in a large repository, that
+  a server’s address answers a moment after its `Serving` line, and that `--remote` is
+  for the user’s own terminal, and it lists `/pull/<n>/files/<path>`. It says that it is
+  tested against the `metab` of its own commit, so the skill on `main` can need a source
+  checkout’s `metab` until the next release, and `tests/test_skill_commands.py` fails
+  when a flag, route, recipe, or field name in it drifts from that `metab`.
+
 - A Pulls row now leads with its title, right after the state icon, on its first line,
   and puts the stack position, number, author, and age on the second; its author’s
   avatar is a little smaller.
