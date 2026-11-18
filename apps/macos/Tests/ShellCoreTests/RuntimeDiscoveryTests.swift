@@ -100,7 +100,7 @@ private func loginShellOutput(path: String) -> [String] {
             executable: "/Volumes/Home/.local/bin/metab", version: "0.12.1", source: .localBin))
         #expect(report.setup?.tools == ToolPaths(git: "/opt/homebrew/bin/git", gh: "/opt/homebrew/bin/gh"))
         #expect(!report.consultedLoginShell)
-        #expect(calls.all == ["/Volumes/Home/.local/bin/metab --exit-on-eof --version"])
+        #expect(calls.all == ["/Volumes/Home/.local/bin/metab --exit-on-eof --present --version"])
     }
 
     @Test func brokenAndOlderCandidatesAreRecordedAndSkipped() async {
@@ -112,7 +112,7 @@ private func loginShellOutput(path: String) -> [String] {
         #expect(report.setup?.runtime.executable == "/opt/homebrew/bin/metab")
         // ~/.local/bin is also uv's default tool directory, so it is tried once.
         #expect(report.tried.map(\.result) == [
-            .rejected("--exit-on-eof --version printed: Traceback (most recent call last):"),
+            .rejected("--exit-on-eof --present --version printed: Traceback (most recent call last):"),
             .tooOld(version: "0.12.0"), .valid(version: "0.13.0"),
         ])
     }
@@ -128,7 +128,7 @@ private func loginShellOutput(path: String) -> [String] {
         // One validation of a broken install: its probe fails other than on the flag, so
         // nothing more runs.
         #expect(calls.all.filter { $0.hasSuffix("--version") } == [
-            "/Volumes/Home/.local/bin/metab --exit-on-eof --version",
+            "/Volumes/Home/.local/bin/metab --exit-on-eof --present --version",
         ])
     }
 
@@ -304,7 +304,7 @@ private func loginShellOutput(path: String) -> [String] {
         let calls = Recorder<String>()
         let report = await RuntimeDiscovery.discover(machine.discovery(calls: calls))
         #expect(report.setup?.runtime.executable == "/opt/homebrew/bin/metab")
-        #expect(calls.all.filter { $0.hasSuffix("--version") } == ["/opt/homebrew/bin/metab --exit-on-eof --version"])
+        #expect(calls.all.filter { $0.hasSuffix("--version") } == ["/opt/homebrew/bin/metab --exit-on-eof --present --version"])
         #expect(report.tried.first?.result == .untrusted(
             "/Volumes/Home/.local/bin has an access control list that could not be read (Permission denied)"))
     }
@@ -356,7 +356,7 @@ private func loginShellOutput(path: String) -> [String] {
         let chosen = await RuntimeDiscovery.discover(machine.discovery(calls: calls))
         #expect(chosen.setup?.runtime.source == .chosen)
         #expect(calls.all.filter { $0.hasPrefix("/opt/homebrew/bin/metab ") }
-            == ["/opt/homebrew/bin/metab --exit-on-eof --version"])
+            == ["/opt/homebrew/bin/metab --exit-on-eof --present --version"])
     }
 
     @Test func aFileTheUserChoseIsValidatedAsChosen() async {
@@ -445,7 +445,7 @@ private func loginShellOutput(path: String) -> [String] {
         let printed = current
         let result = await validate(ran: ran) { _ in CommandResult(status: 0, output: [printed]) }
         #expect(result == .valid(version: "0.12.1.dev218+8b0603f7 (+218 commits, 8b0603f78)"))
-        #expect(ran.all.map(\.arguments) == [["--exit-on-eof", "--version"]])
+        #expect(ran.all.map(\.arguments) == [["--exit-on-eof", "--present", "--version"]])
         #expect(ran.all.map(\.environment) == [ChildEnvironment.build(inherited: inherited, toolDirectories: [])])
     }
 
@@ -455,17 +455,32 @@ private func loginShellOutput(path: String) -> [String] {
         #expect(CLIServeLaunch.exitOnEOF == "--exit-on-eof")
     }
 
+    /// A build with `--exit-on-eof` and without `--present`, which a GitHub link needs, is
+    /// too old at setup rather than at its first link (review A6 on #539).
+    @Test func aBuildWithoutPresentIsTooOld() async {
+        let ran = Recorder<LaunchSpec>()
+        let usage = clickUsageError.map { $0.replacingOccurrences(of: "--exit-on-eof", with: "--present     ") }
+        let printed = beforeTheFlag
+        let result = await validate(ran: ran) { arguments in
+            arguments.contains("--present")
+                ? CommandResult(status: 2 << 8, output: usage) : CommandResult(status: 0, output: [printed])
+        }
+        #expect(result == .tooOld(version: "0.12.1.dev38+5f0c2a1 (+38 commits, 5f0c2a1)"))
+        #expect(ran.all.map(\.arguments) == [["--exit-on-eof", "--present", "--version"], ["--version"]])
+        #expect(MetabRequirement.requiredFlags == ["--exit-on-eof", PresentDryRun.flag])
+    }
+
     @Test func aDevelopmentBuildFromBeforeTheFlagIsTooOld() async {
         let ran = Recorder<LaunchSpec>()
         let result = await validate(ran: ran, Self.predatingTheFlag([beforeTheFlag]))
         #expect(result == .tooOld(version: "0.12.1.dev38+5f0c2a1 (+38 commits, 5f0c2a1)"))
-        #expect(ran.all.map(\.arguments) == [["--exit-on-eof", "--version"], ["--version"]])
+        #expect(ran.all.map(\.arguments) == [["--exit-on-eof", "--present", "--version"], ["--version"]])
         // Both runs get the minimal environment a server gets.
         let minimal = ChildEnvironment.build(inherited: inherited, toolDirectories: [])
         #expect(ran.all.map(\.environment) == [minimal, minimal])
         // Its number meets the minimum, so the screens name the flag instead.
         #expect(MetabRequirement.flagShortfall("0.12.1.dev38+5f0c2a1 (+38 commits, 5f0c2a1)")
-            == "built before --exit-on-eof")
+            == "built before --present")
     }
 
     /// 0.12.0, the published release, has no flag either; one that answered the probe
@@ -502,8 +517,8 @@ private func loginShellOutput(path: String) -> [String] {
             "Traceback (most recent call last):", "ImportError: cannot import name 'serve' from 'metabrowser.cli'",
         ]))
         #expect(result == .rejected(
-            "--exit-on-eof --version printed: ImportError: cannot import name 'serve' from 'metabrowser.cli'"))
-        #expect(ran.all.map(\.arguments) == [["--exit-on-eof", "--version"]])
+            "--exit-on-eof --present --version printed: ImportError: cannot import name 'serve' from 'metabrowser.cli'"))
+        #expect(ran.all.map(\.arguments) == [["--exit-on-eof", "--present", "--version"]])
     }
 
     /// D2: exit status 2 for another usage error, the flag named by another status, and a
@@ -511,13 +526,13 @@ private func loginShellOutput(path: String) -> [String] {
     @Test func otherProbeFailuresAreRejectedWithoutASecondRun() async {
         let cases: [(Int32, [String], String)] = [
             (2 << 8, ["Usage: metab [OPTIONS] [ROOT]", "Error: Got unexpected extra argument (x)"],
-             "--exit-on-eof --version printed: Error: Got unexpected extra argument (x)"),
+             "--exit-on-eof --present --version printed: Error: Got unexpected extra argument (x)"),
             (1 << 8, ["RuntimeError: --exit-on-eof needs a pipe"],
-             "--exit-on-eof --version printed: RuntimeError: --exit-on-eof needs a pipe"),
+             "--exit-on-eof --present --version printed: RuntimeError: --exit-on-eof needs a pipe"),
             (SIGSEGV, ["Fatal Python error: Segmentation fault"],
-             "--exit-on-eof --version printed: Fatal Python error: Segmentation fault"),
-            (SIGINT, clickUsageError, "--exit-on-eof --version printed: \(clickUsageError.last ?? "")"),
-            (SIGKILL, [], "--exit-on-eof --version printed: nothing"),
+             "--exit-on-eof --present --version printed: Fatal Python error: Segmentation fault"),
+            (SIGINT, clickUsageError, "--exit-on-eof --present --version printed: \(clickUsageError.last ?? "")"),
+            (SIGKILL, [], "--exit-on-eof --present --version printed: nothing"),
         ]
         for (status, output, reason) in cases {
             let ran = Recorder<LaunchSpec>()
@@ -554,7 +569,7 @@ private func loginShellOutput(path: String) -> [String] {
         let timedOut = Recorder<LaunchSpec>()
         #expect(await validate(ran: timedOut) { _ in CommandResult(status: nil, output: [], timedOut: true) }
             == .rejected("--version did not finish within \(RuntimeDiscovery.versionTimeout)"))
-        #expect(timedOut.all.map(\.arguments) == [["--exit-on-eof", "--version"]])
+        #expect(timedOut.all.map(\.arguments) == [["--exit-on-eof", "--present", "--version"]])
         let unstarted = Recorder<LaunchSpec>()
         #expect(await validate(ran: unstarted) { _ in CommandResult(status: nil, output: [], launchError: "EACCES") }
             == .rejected("could not run: EACCES"))
@@ -571,7 +586,7 @@ private func loginShellOutput(path: String) -> [String] {
             ran: refusedLater, refusal: { _ in refusedLater.count > 0 ? shared : nil },
             Self.predatingTheFlag([beforeTheFlag]))
         #expect(untrusted == .untrusted(shared))
-        #expect(refusedLater.all.map(\.arguments) == [["--exit-on-eof", "--version"]])
+        #expect(refusedLater.all.map(\.arguments) == [["--exit-on-eof", "--present", "--version"]])
 
         let removedLater = Recorder<LaunchSpec>()
         let missing = await validate(
@@ -635,7 +650,8 @@ private func loginShellOutput(path: String) -> [String] {
             .valid(version: "0.12.1.dev218+8b0603f7 (+218 commits, 8b0603f78)"),
         ])
         #expect(calls.all == [
-            local + " --exit-on-eof --version", local + " --version", "/opt/homebrew/bin/metab --exit-on-eof --version",
+            local + " --exit-on-eof --present --version", local + " --version",
+            "/opt/homebrew/bin/metab --exit-on-eof --present --version",
         ])
         // With nothing newer, the first-run screen names the flag rather than the number.
         machine.executables.remove("/opt/homebrew/bin/metab")
@@ -648,7 +664,7 @@ private func loginShellOutput(path: String) -> [String] {
         #expect(guide.steps == [.buildFromCheckout(
             oldPath: local, oldVersion: "0.12.1.dev38+5f0c2a1 (+38 commits, 5f0c2a1)", inNewTerminal: false)])
         #expect(guide.steps.first?.title(home: "/Volumes/Home").contains(
-            "~/.local/bin/metab is metab 0.12.1.dev38+5f0c2a1, built before --exit-on-eof, and") == true)
+            "~/.local/bin/metab is metab 0.12.1.dev38+5f0c2a1, built before --present, and") == true)
     }
 
     /// Validates a script written to a fresh folder through the app's command runner, and
@@ -701,7 +717,7 @@ private func loginShellOutput(path: String) -> [String] {
             echo "\(beforeTheFlag)"
 
             """)
-        #expect(killed == .rejected("--exit-on-eof --version printed: \(clickUsageError.last ?? "")"))
+        #expect(killed == .rejected("--exit-on-eof --present --version printed: \(clickUsageError.last ?? "")"))
         #expect(killedRuns.first?.status.map(ExitStatus.init(waitStatus:)) == .signaled(SIGKILL))
         #expect(killedRuns.count == 1)
     }
@@ -766,7 +782,7 @@ private func loginShellOutput(path: String) -> [String] {
         defer { try? FileManager.default.removeItem(at: directory) }
         let (result, ran, results) = await validate(directory)
         #expect(result == .tooOld(version: "0.12.0"))
-        #expect(ran == [[CLIServeLaunch.exitOnEOF, "--version"], ["--version"]])
+        #expect(ran == [MetabRequirement.requiredFlags + ["--version"], ["--version"]])
         let probe = try #require(results.first)
         #expect(probe.status.map(ExitStatus.init(waitStatus:)) == .exited(2))
         #expect(probe.output == clickUsageError)
@@ -784,7 +800,7 @@ private func loginShellOutput(path: String) -> [String] {
         defer { try? FileManager.default.removeItem(at: directory) }
         let (result, ran, _) = await validate(directory)
         #expect(result == .valid(version: "0.13.0"))
-        #expect(ran == [[CLIServeLaunch.exitOnEOF, "--version"]])
+        #expect(ran == [MetabRequirement.requiredFlags + ["--version"]])
         let server = await serve(directory)
         #expect(server.status.map(ExitStatus.init(waitStatus:)) == .exited(0))
         #expect(server.output == ["metab 0.12.1.dev1"]

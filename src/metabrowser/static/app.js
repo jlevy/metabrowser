@@ -9719,11 +9719,43 @@ async function revealWithin(
     return false;
   }
   setSelectedPath(path);
-  if (scroll) {
+  var travel = scroll ? folderTravelAbove(target) : null;
+  if (travel !== null) {
+    // Once the folders above have opened, if the reveal stands and its folder is open.
+    const revealed = target;
+    void travel.then(() => {
+      var row = revealed.isConnected ? revealed : scope.querySelector(selector);
+      if (row && isCurrent() && !row.closest(".tree-children-collapsed")) {
+        row.scrollIntoView({ block: "nearest" });
+      }
+    });
+  } else if (scroll) {
     target.scrollIntoView({ block: "nearest" });
   }
   synchronizeTreeNow();
   return true;
+}
+
+/**
+ * The end of every finite opening of a folder above *row*, or null (mb-551m).
+ * @param {Element} row
+ * @returns {Promise<unknown> | null}
+ */
+function folderTravelAbove(row) {
+  /** @type {Animation[]} */
+  var travel = [];
+  for (
+    var body = row.parentElement?.closest(".tree-children");
+    body;
+    body = body.parentElement?.closest(".tree-children")
+  ) {
+    travel.push(
+      ...body.getAnimations().filter((a) => a.effect?.getComputedTiming().endTime !== Infinity),
+    );
+  }
+  return travel.length > 0
+    ? Promise.allSettled(travel.map((animation) => animation.finished))
+    : null;
 }
 
 /**
