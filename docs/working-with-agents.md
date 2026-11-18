@@ -95,8 +95,8 @@ server runs until the agent stops it or you ask it to.
 The command then exits with status 5, and its report says `lookup_failed` or
 `open_failed`; the skill has the agent rerun the command outside the sandbox when you
 allow that, or serve the page instead.
-To let it run without asking each time, allow the one command prefix, `metab --present`,
-outside the sandbox.
+To spare a blocked run and its retry each time, let the one command prefix,
+`metab --present`, run outside the sandbox.
 The skill writes `--present` first and runs the command alone, with no redirect or pipe,
 so that such a rule matches it and nothing else.
 
@@ -105,7 +105,8 @@ so that such a rule matches it and nothing else.
   and Claude Code can retry a blocked command outside the sandbox, which its permission
   mode approves or asks you about each time.
   An entry in `sandbox.excludedCommands`, in your user or project settings, runs
-  matching commands outside the sandbox, still through the usual permission prompts
+  matching commands outside the sandbox, still through the usual permission prompts,
+  which an allow rule such as `Bash(metab --present *)` answers
   ([Claude Code’s sandboxing guide](https://code.claude.com/docs/en/sandboxing)):
 
   ```json
