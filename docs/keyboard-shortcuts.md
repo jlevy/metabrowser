@@ -6,6 +6,9 @@ A letter means the same thing wherever it works, `0` goes home, and the numbers 
 `9` reach the controls on the current screen in reading order.
 Press `?` for Help, which lists the keys by what they do, and hold Shift to see each key
 on the control it reaches now.
+The strip at the foot of the navigation pane lists Shift first, as Reveal keys, then
+`?`; in a narrow pane it keeps Shift and drops the others from the end, whose keys still
+work.
 
 ## Letters and Numbers
 
