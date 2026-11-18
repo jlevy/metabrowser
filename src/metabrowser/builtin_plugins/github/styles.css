@@ -242,13 +242,13 @@
   min-width: 0;
   height: 1lh;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 /* The ages give way first, cut short with an ellipsis, and View on GitHub and Browse code
-   after them stay whole: cut at the row's end, with Refresh's slot there, the row drew
-   Browse code "…" from 560 px for an open pull request, and lost it from 580 px for a merged
-   one, with every age whole (Chrome 152). */
+   after them stay whole, down to 420 px with ages of a record's length; below that the ages
+   have no width left and the links are clipped at the row's end. Cut at the row's end, with
+   Refresh's slot there, the row drew Browse code "…" from 560 px for an open pull request,
+   and lost it from 580 px for a merged one, with every age whole (Chrome 152). */
 .github-pull-quiet > .github-pull-ages {
   flex: 0 1 auto;
   min-width: 0;
@@ -1037,9 +1037,10 @@
 /* The Pulls rows' column gap, and the text column's offset: one icon slot and that gap. A
    row's title, its number's line, and its change line's values start one of it in, a stack
    member's row one more, and the files line under a row's changed files one past their
-   indent (mb-3vil), so those sums and the rows' gap read the one value. On `:root`, so a changed files tree drawn outside the list has them too, and
-   named `--github-pull-`, as `--github-pull-file-depth` is: this sheet's `:root` declares
-   only its own tokens (tests/test_pull_page_route.py). */
+   indent (mb-3vil), so those sums and the rows' gap read the one value. On `:root`, so a
+   changed files tree drawn outside the list has them too, and named `--github-pull-`, as
+   `--github-pull-file-depth` is: this sheet's `:root` declares only its own tokens
+   (tests/test_pull_page_route.py). */
 :root {
   --github-pull-row-gap: 6px;
   --github-pull-row-text-column: calc(var(--tree-icon-slot) + var(--github-pull-row-gap));
@@ -1067,12 +1068,12 @@
    members are indented, under their stack's row (mb-3vil). The third line is its change line
    (`.github-pulls-change`, below), which holds the chevron in the same slot, under the state
    icon, and the line's values in the text column, so the three lines' text starts at one x
-   (`--tree-icon-slot`, docs/design-system.md, "Container Rows"). A stack's row keeps two slots, its chevron's and
-   its Layers icon's (`.github-pulls-stack-row`). The row centers its boxes; the title is
-   alone on the first line, and on the second the number's line and the age share a baseline
-   (docs/design-system.md, "Row Text Shares a Baseline"). The DOM keeps the title the row's
-   first text, so its accessible name gives the state, from the state icon's label, and then
-   the title, before the number's line. */
+   (`--tree-icon-slot`, docs/design-system.md, "Container Rows"). A stack's row keeps two
+   slots, its chevron's and its Layers icon's (`.github-pulls-stack-row`). The row centers
+   its boxes; the title is alone on the first line, and on the second the number's line and
+   the age share a baseline (docs/design-system.md, "Row Text Shares a Baseline"). The DOM
+   keeps the title the row's first text, so its accessible name gives the state, from the
+   state icon's label, and then the title, before the number's line. */
 /* The age has a column of one width, so an age that grows a digit does not move the number's
    line. The longest compact age is four characters ("12mo", 345 to 364 days), and its m is
    wider than a digit; 5ch of the row's type holds it at the row's own size, which the age
@@ -1241,12 +1242,12 @@
    chevron in the slot, and the title, the number's line, and the values in the text column,
    the chevron just before the values it discloses (mb-3vil). Under the title's start, the
    chevron put the values a slot and gap further in than the title's and the number's line's
-   text. It is the row's
-   one child in the tree and a target of its own, the one that opens and closes the changed
-   files under it, as a folder's row does, so it hovers and takes the focus ring on its own;
-   the current row's mark carries onto it, so the pull request open reads as one block. Its
-   box is there from the row's first paint, whatever it holds, the line, the shell's pending
-   placeholder, or nothing, so nothing moves when the line arrives. */
+   text. It is the row's one child in the tree and a target of its own, the one that opens
+   and closes the changed files under it, as a folder's row does, so it hovers and takes the
+   focus ring on its own; the current row's mark carries onto it, so the pull request open
+   reads as one block. Its box is there from the row's first paint, whatever it holds, the
+   line, the shell's pending placeholder, or nothing, so nothing moves when the line
+   arrives. */
 .github-pulls-change {
   --github-pulls-change-line: calc(var(--ui-row-height) - 4px);
   display: grid;

@@ -580,6 +580,18 @@ const MEASURE = `async (name, change, tab, width) => {
   const leadShape = lead === null ? null : {
     said: noteText?.textContent ?? null,
     held: noteText?.classList.contains("github-pull-freshness-held") ?? false,
+    // The width "GitHub rate limit" takes in the note's own type: a cut hold keeps at least
+    // that much of its text (C4 of review C on #506).
+    holdFloor: (() => {
+      if (noteText === null) return null;
+      const probe = noteText.cloneNode(false);
+      probe.style.cssText = "position: absolute; visibility: hidden; width: max-content";
+      probe.textContent = "GitHub rate limit";
+      noteText.parentElement.append(probe);
+      const width = box(probe).width;
+      probe.remove();
+      return r2(width);
+    })(),
     inView: inView(note),
     dotInView: sep !== null && inView(sep),
     textWidth: noteText ? r2(box(noteText).width) : null,
@@ -1093,7 +1105,8 @@ const COLD_LANDING = `async (width, labelled, outcome) => {
 // the row's one slot and the title alone, from the text column to the row's end; then the
 // number's line, where a stack member's place comes before its number (mb-dzsi), and the
 // age. Under the link is the row's third line, its change line (mb-d0a3), which holds the
-// chevron in the same slot, under the icon (mb-3vil), here with no line yet. Each row is a member, a level in under its stack's row.
+// chevron in the same slot, under the icon (mb-3vil), here with no line yet. Each row is a
+// member, a level in under its stack's row.
 // The age, the chevron, the icon, and the title are read, from the row's top, before and
 // after each row's place arrives, the title's width with them: the place is on the number's
 // line, which stays one line, so nothing else moves, the link keeps its two lines (`grew`),
@@ -1685,7 +1698,7 @@ async function main() {
                   !/:\d\d:\d\d/.test(lead.said) &&
                   lead.held &&
                   lead.inView &&
-                  lead.textWidth >= 60,
+                  lead.textWidth >= lead.holdFloor - 0.5,
                 JSON.stringify(lead),
               );
             }

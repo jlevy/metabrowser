@@ -1243,7 +1243,8 @@ export function rateLimitLifts(envelope) {
  * `comparisonQueued`); *comparisonRefusal* is why the page's last comparison request
  * was refused, kept until it asks again. *refreshDue* is the page's own automatic refresh of
  * a stale record, scheduled or on its way; *online* is false when the browser reports no
- * network, and *formatTime* writes the time a rate limit lifts.
+ * network, and *formatHold* says when a rate limit lifts, `holdLiftText` in the reader's
+ * locale where it is not given.
  *
  * Content already shown is never covered by progress: while a refresh runs or is about to,
  * `revalidating` says so, and the page breathes the age line instead of a spinner. The age is
@@ -1260,7 +1261,7 @@ export function rateLimitLifts(envelope) {
  * work does (`preparing_comparison`) and Changes does while it fetches it. A core with no
  * store, or one no read is running for, has none coming until Changes asks.
  *
- * @param {{number: number, tab: string, nowMs: number, error?: string | null, fetching?: boolean, fetchQueued?: boolean, refreshPending?: boolean, refreshDue?: boolean, online?: boolean, formatTime?: (iso: string) => string, formatHold?: (liftMs: number, nowMs: number) => string, ownsChanges?: boolean, comparisonAttempted?: boolean, comparisonRefusal?: string | null, waitForReader?: boolean, checkoutHead?: string | null, listed?: {state: import("./pull-state.js").PullState, updatedAt: string} | null}} page
+ * @param {{number: number, tab: string, nowMs: number, error?: string | null, errorFromComparison?: boolean, fetching?: boolean, fetchQueued?: boolean, refreshPending?: boolean, refreshDue?: boolean, online?: boolean, formatHold?: (liftMs: number, nowMs: number) => string, ownsChanges?: boolean, comparisonAttempted?: boolean, comparisonRefusal?: string | null, waitForReader?: boolean, checkoutHead?: string | null, listed?: {state: import("./pull-state.js").PullState, updatedAt: string} | null}} page
  * @returns {PullModel}
  */
 export function describePull(envelope, page) {
@@ -1317,7 +1318,7 @@ export function describePull(envelope, page) {
     // lifts by itself and asks nothing of the reader, so it keeps the row to one line.
     model.failureHold = true;
     model.failure = Number.isFinite(heldUntil)
-      ? `GitHub rate limit · next check at ${page.formatHold?.(heldUntil, page.nowMs) ?? (page.formatTime ?? String)(new Date(heldUntil).toISOString().replace(".000Z", "Z"))}`
+      ? `GitHub rate limit · next check at ${(page.formatHold ?? holdLiftText)(heldUntil, page.nowMs)}`
       : "GitHub rate limit · next check within a minute";
   } else if (last !== null && last.outcome !== "succeeded" && !envelope.refreshing) {
     model.failure = `The last refresh failed: ${last.message ?? SETUP_FAILURES[last.outcome] ?? last.outcome.replaceAll("_", " ")}`;
@@ -1381,8 +1382,8 @@ export function describePull(envelope, page) {
   // A comparison's refusal is said where its Retry is, in the Changes body (below), not on
   // the header's status line, which then showed it on Changes alone and moved the tab bar
   // 27 px between tabs (B5 of review B on #506). Any other error is the header's, on every
-  // tab.
-  model.message = page.error && page.error !== page.comparisonRefusal ? page.error : null;
+  // tab, a refused Refresh's among them, whatever its words (C3 of review C).
+  model.message = page.error && page.errorFromComparison !== true ? page.error : null;
   // A stale record the page is refreshing by itself offers nothing to press: Refresh is for a
   // failure, Changes, or a stale record whose automatic refresh did not run. A rate limit's
   // hold offers none either: the page names when it asks again and asks then, as the Pulls
@@ -1743,7 +1744,6 @@ export function renderedTextsHeld() {
  *   now(): number,
  *   isVisible(): boolean,
  *   isOnline?(): boolean,
- *   formatTime?(iso: string): string,
  *   formatHold?(liftMs: number, nowMs: number): string,
  *   ownsChanges?(): boolean,
  *   ownsConversation?(): boolean,
@@ -1819,6 +1819,10 @@ export function createPullController(deps, options) {
   let askTimer = null;
   /** @type {string | null} */
   let error = null;
+  // Whether `error` is a comparison's refusal, which Changes says beside its Retry, so the
+  // header leaves it out. Told apart by the ask that met it, not by its words: a refused
+  // Refresh says the same words, and the header must say those (C3 of review C on #506).
+  let errorFromComparison = false;
   /** @type {string | null} */
   let painted = null;
   /** The reader's selection in the Pulls tab that opened this page, if one did. */
@@ -1994,12 +1998,12 @@ export function createPullController(deps, options) {
       tab,
       nowMs: deps.now(),
       error,
+      errorFromComparison,
       fetching: fetching || refreshPending,
       fetchQueued: fetchQueued(),
       refreshPending,
       refreshDue: autoAsk !== "none",
       online: online(),
-      ...(deps.formatTime === undefined ? {} : { formatTime: deps.formatTime }),
       ...(deps.formatHold === undefined ? {} : { formatHold: deps.formatHold }),
       ownsChanges: walkSettling || ownsChanges(),
       comparisonAttempted,
@@ -2219,6 +2223,7 @@ export function createPullController(deps, options) {
     } catch {
       catalogScanning = false;
       error = "The server did not answer.";
+      errorFromComparison = false;
     } finally {
       polling = false;
       hasPolled = true;
@@ -2249,14 +2254,17 @@ export function createPullController(deps, options) {
         catalogScanning = / scanning$/u.test(response.verified ?? "");
       }
       error = null;
+      errorFromComparison = false;
     } else if (response.status === 304 || pinChanged(response)) {
       if (response.status === 304) {
         adoptVerified(response.verified);
         catalogScanning = / scanning$/u.test(response.verified ?? "");
       }
       error = null;
+      errorFromComparison = false;
     } else {
       error = `The pull request is unavailable (HTTP ${response.status}).`;
+      errorFromComparison = false;
     }
   }
 
@@ -2438,10 +2446,12 @@ export function createPullController(deps, options) {
         }
         if (!idle) {
           error = null;
+          errorFromComparison = false;
         }
       } else if (ask.retry) {
         const said = body !== null && typeof body.error === "string" ? body.error : null;
         error = `The refresh was refused (${said ?? `HTTP ${response.status}`}).`;
+        errorFromComparison = ask.comparison === true;
         if (ask.comparison) {
           comparisonRefusal = error;
         }
@@ -2449,6 +2459,7 @@ export function createPullController(deps, options) {
     } catch {
       if (ask.retry) {
         error = "The refresh request failed.";
+        errorFromComparison = ask.comparison === true;
         if (ask.comparison) {
           comparisonRefusal = error;
         }
@@ -2631,6 +2642,7 @@ export function createPullController(deps, options) {
       return;
     }
     error = outcome.message;
+    errorFromComparison = false;
     render();
   }
 
@@ -6747,7 +6759,6 @@ export function mountPullPage(container, ctx, mb) {
       now: () => Date.now(),
       isVisible: () => document.visibilityState === "visible",
       isOnline: () => navigator.onLine !== false,
-      formatTime: (iso) => exact(Date.parse(iso)),
       // A hold's lift time as the reader's clock says it, short (`holdLiftText`).
       formatHold: (liftMs, nowMs) => holdLiftText(liftMs, nowMs),
       ownsChanges: () => onPageRoute(window.location.pathname, number, "files"),

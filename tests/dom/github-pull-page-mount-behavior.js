@@ -1036,6 +1036,21 @@ async function tabKeys(page) {
   steps.push(await numberResult("3"));
   steps.push(`numbered while that refresh runs: ${numbered()}`);
   steps.push(await numberResult("3"));
+  // The refresh ends. On Changes Refresh is offered again, and the offer keeps 4; on
+  // Conversation nothing is left to refresh, so Refresh is not shown, and the offer takes 3
+  // (C2 of review C on #506, accepted: a Refresh waits only while its refresh runs).
+  answer = behind;
+  for (const callback of [...timers.values()]) {
+    callback();
+  }
+  timers.clear();
+  await settle();
+  steps.push(`numbered once the refresh ends: ${numbered()}`);
+  arrive("");
+  await settle();
+  steps.push(`numbered on Conversation once the refresh ends: ${numbered()}`);
+  arrive("files");
+  await settle();
   steps.push(await numberResult("4"));
   // H is the Commits tab's, so Checks is E.
   steps.push(result("h", { shiftKey: true }));

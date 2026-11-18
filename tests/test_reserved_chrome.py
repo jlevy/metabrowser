@@ -290,7 +290,12 @@ def test_the_state_row_is_one_line_held_by_a_strut() -> None:
     opened = _rule(css, ".github-pull-opened")
     assert "flex-wrap: nowrap;" in opened and "white-space: nowrap;" in opened
     ages = _rule(css, ".github-pull-opened > .github-pull-quiet")
-    assert "height: 1lh;" in ages and "text-overflow: ellipsis;" in ages
+    assert "height: 1lh;" in ages and "display: flex;" in ages
+    # Its ages give way before its links (B4 of review B on #506); a flex row cuts no text,
+    # so the ellipsis is the ages' own.
+    assert "text-overflow" not in ages
+    assert "text-overflow: ellipsis;" in _rule(css, ".github-pull-quiet > .github-pull-ages")
+    assert "flex: none;" in _rule(css, ".github-pull-quiet > .github-pull-ages-links")
     # Refresh ends it, after View on GitHub and Browse code (A1 of review A on #506).
     assert "placeChildren(openedRow, [stateBadge, opened.row, refresh]);" in page
     assert "margin-inline-start: auto;" in _rule(css, ".github-pull-opened > .github-pull-refresh")

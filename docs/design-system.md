@@ -1800,9 +1800,10 @@ the author, never moved or wrapped; the branches have the line under it to thems
 one line in every state, their names cut short rather than wrapping it; the row of ages
 begins with the state’s badge, as wide as the widest state, then “Opened”, the ages,
 View on GitHub, and Browse code, one line whose ages are cut short at their end, the
-links after them whole, and ends in Refresh’s slot; a pull request with labels has a row
-of them, one line at a label’s height, and one with none has no labels row and no gap
-for it; and a cold page keeps every row, empty, at its height.
+links after them whole down to 420 px, below which they are clipped at the row’s end,
+and ends in Refresh’s slot; a pull request with labels has a row of them, one line at a
+label’s height, and one with none has no labels row and no gap for it; and a cold page
+keeps every row, empty, at its height.
 The freshness note is muted, after a muted dot, at the sentence’s size, stepping back by
 its ink: one time, the record’s own fetch, “jlevy wants to merge 1 commit · Fetched just
 now via GitHub CLI”, never a second time for a check that found nothing changed, since
@@ -1831,6 +1832,8 @@ theirs and renumbers neither
 offered runs or is due, or a rate limit holds it, it waits, as the Pulls tab’s Reload
 does: shown and muted, `aria-disabled`, it keeps its slot and its number, so an offer
 numbered after it keeps its own, and a press does nothing.
+Once the refresh ends, Refresh shows only where it is offered: on Conversation and
+Checks, with nothing left to refresh, it goes, and an offer after it takes its number.
 The status row is the next metadata line, as tall as the row of ages, there only while
 it has something to say: a failure and its remedy, a message, and the offers at its end,
 its text and then its offers’ sentences cut short, never their controls.

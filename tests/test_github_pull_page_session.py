@@ -692,6 +692,13 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "numbered while that refresh runs: "
             "1 View on GitHub, 2 Browse code, 3 Refresh, 4 Switch to the head",
             "3: nothing asked",
+            # Once the refresh ends Refresh is offered again on Changes, and the offer keeps 4;
+            # on Conversation nothing is left to refresh, so Refresh is not shown and the offer
+            # takes 3 (C2 of review C on #506, accepted).
+            "numbered once the refresh ends: "
+            "1 View on GitHub, 2 Browse code, 3 Refresh, 4 Switch to the head",
+            "numbered on Conversation once the refresh ends: "
+            "1 View on GitHub, 2 Browse code, 3 Switch to the head",
             "4: POST /api/source/pin "
             '{"oid":"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a","under":"refs/pull/7/head"}',
             "Shift+H: not handled",
