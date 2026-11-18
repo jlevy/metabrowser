@@ -1370,9 +1370,11 @@ def test_one_document_surface_has_one_set_of_breakpoints() -> None:
     readme = (REPO_ROOT / "src/metabrowser/builtin_plugins/folder/readme-panel.js").read_text(
         encoding="utf-8"
     )
-    assert 'includeToc: "off"' in readme
+    assert "includeToc" not in readme
     doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
     assert "Overview renders the README at the same measure" in doc
+    # A README with a table of contents takes the column, as the opened file does.
+    assert ".kpress-doc-layout > .kpress-toc) {\n    width: 100%;" in folder
 
 
 # ── Tabs, type sizes, toggles, and reading width ───────────────────

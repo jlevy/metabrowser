@@ -1190,8 +1190,10 @@ type MarkdownBuiltins = {
     ctx: MetabrowserRenderContext,
     /** `includeToc: "off"` for a document embedded in host navigation that is
      * already the reader's way around it; omitted leaves the decision to
-     * KPress' own thresholds. */
-    options?: { signal?: AbortSignal; includeToc?: "auto" | "on" | "off" },
+     * KPress' own thresholds. `pagePath` is the path of the page that shows the
+     * document as its own when that is not the document's, as a folder's Overview
+     * shows its README: the document's fragments are places on that page. */
+    options?: { signal?: AbortSignal; includeToc?: "auto" | "on" | "off"; pagePath?: string },
   ) => DisposableHandle;
   renderSource: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
 };
@@ -1561,7 +1563,12 @@ type MetabrowserSdk = {
   ensureKindAssets(kind: string): Promise<void>;
   /** Run *callback* when the page is idle, no later than *timeout* ms; returns its cancel. */
   whenIdle(callback: () => void, options?: { timeout?: number }): () => void;
-  kpressInitToc(container: HTMLElement): (() => void) | null;
+  /** Wire KPress's table of contents in *container*; *config* is KPress's per-binding
+   * configuration, such as the narrow toggle's `visible` policy. */
+  kpressInitToc(
+    container: HTMLElement,
+    config?: { visible?: (context: { scrollTop(): number }) => boolean },
+  ): (() => void) | null;
   langForExtension(ext: string): string;
   langForPath(pathOrName: string, ext?: string): string;
   loadKpressAssets(manifest: KpressAssetManifest): Promise<void>;

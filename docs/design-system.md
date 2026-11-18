@@ -646,7 +646,9 @@ The Folder Overview README shares the same prose edge and maximum measure.
 Its panel headings and bodies follow the document card’s outer edge.
 Their text starts on the active tab’s label rather than at the README’s responsive inner
 inset; see [Folder Overview Is a Panel Stack](#folder-overview-is-a-panel-stack).
-It uses the surrounding folder navigation for context.
+It keeps the table of contents the same file has opened on its own: in the wide band the
+rail sits to the right of the card’s edge, and below it the overlay’s toggle keeps its
+trailing gutter; see [Embedded Document Navigation](#embedded-document-navigation).
 
 ### Embedded Document Themes
 
@@ -676,6 +678,21 @@ At KPress’s wide document band, the docked TOC is a borderless rail with a hid
 scrollable scrollbar.
 The narrow overlay drawer keeps its border and visible scrollbar so it remains distinct
 from the document it covers.
+
+The overlay’s toggle belongs to its document.
+It fades in once the pane has scrolled past KPress’s threshold and the reader has
+reached the document, whose top is at or above the pane’s, and fades out above the
+document or past its end.
+An opened file starts within the threshold, so the threshold decides, as in KPress; a
+folder Overview’s README starts below File Overview, so the toggle appears as the reader
+scrolls to the README’s beginning.
+One rule in `builtin_plugins/markdown/toc-toggle.js` serves KPress’s table of contents
+and an inert render’s.
+
+A document’s fragments are places on the page that shows it.
+On a folder’s Overview, a README entry or a link to one of its headings scrolls the
+Overview and puts the fragment on the folder’s address, as GitHub’s repository page
+does, rather than opening the README as a file.
 
 ## Control Families
 
@@ -3591,6 +3608,9 @@ Overview renders the README at the same measure a reader gets opening that file 
 own, with the same Markdown mount and pane gutter, and the panel’s width includes the
 document inset so the card border, section rules, and surface panels share an edge;
 `test_one_document_surface_has_one_set_of_breakpoints` holds this.
+A README with a table of contents takes the whole column, as the opened file does, so
+the card keeps that edge and KPress’s rail sits beyond it;
+`tests/test_overview_readme_toc_chrome.py` measures both against the opened file.
 
 The **File Overview** section begins expanded: one control row with the Files / Bytes
 measure and the `.filter-check` **Show ignored** checkbox, the same as navigation’s,
@@ -4152,8 +4172,7 @@ Panel bodies use one of two presentations:
   File Overview uses this presentation without surrounding cards.
 - A **document panel** supplies its normal rendered-document surface.
   README therefore looks exactly like an ordinarily rendered Markdown file, including
-  its metadata, diagnostics, breakpoints, and print behavior.
-  The Overview suppresses a nested table of contents.
+  its metadata, diagnostics, breakpoints, table of contents, and print behavior.
   Overview adds the shared section heading but does not override the document card.
   The card keeps its standard border and shadow at regular and wide document bands, then
   becomes borderless through KPress’s own narrow breakpoint.

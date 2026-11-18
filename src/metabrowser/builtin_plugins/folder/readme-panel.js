@@ -32,13 +32,10 @@ export function createReadmePanel(mb) {
       return markdown.mountRendered(
         container,
         { ...context, kind: "markdown", path: value.path },
-        // The Overview is already the reader's way around this folder, and
-        // the panel stack is its own navigation, so a second one inside the
-        // embedded README competes with it rather than helping. Suppressed at
-        // the render rather than hidden with host CSS, which would build the
-        // sidebar layout and then cover it up. Opening the same README as a
-        // file keeps KPress' ordinary thresholds.
-        { signal: options.signal, includeToc: "off" },
+        // The README is this page's document, so it keeps its table of contents as
+        // when it is opened as a file, and its fragments are places on the folder's
+        // page: an entry scrolls the Overview rather than opening the file.
+        { signal: options.signal, pagePath: context.path },
       );
     },
   });
