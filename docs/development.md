@@ -410,7 +410,7 @@ These are this repository’s answers to the template in
 | --- | --- | --- |
 | Internal code | DO NOT MAINTAIN | One repository, one artifact |
 | Library APIs | DO NOT MAINTAIN | `window.metabrowser` ships with the shell that uses it |
-| Server APIs and the CLI | DO NOT MAINTAIN | `/api/*` and the flags are consumed only by the shell and the macOS app, both built from this repository; the app’s version floor refuses a `metab` too old for it |
+| Server APIs and the CLI | DO NOT MAINTAIN | `/api/*` and the flags are consumed only by the shell, the macOS app, and the agent skill, all built from this repository; the app’s version floor refuses a `metab` too old for it, and the skill is tested against the `metab` of its own commit and says so |
 | Plugin and extension APIs | UPGRADE + GATE | `PLUGIN_SDK_VERSION` refuses a mismatch at load |
 | File formats | VERSION + FAIL FAST | Exported packets carry an identity; one reader |
 | Persisted client state | DO NOT MAINTAIN | No released version wrote a key needing migration |
