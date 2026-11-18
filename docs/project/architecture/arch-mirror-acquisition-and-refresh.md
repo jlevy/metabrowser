@@ -20,10 +20,12 @@ a pinned revision serves, and the guard that keeps a page on its commit, are in
 
 ## Transports and Credentials
 
-The CLI serves an argument that names an existing path as that path, unless it starts
-with `scheme://`. Anything else goes to `classify_root_argument` in `cache/urls.py`,
-whose grammar is frozen in `tests/fixtures/repository-cache/url-grammar.json`; a bare
-path is never rewritten into a `file://` source.
+An argument that names an existing path is a local path and never a source, unless it
+starts with `scheme://`; which folder that path opens is in
+[Open Modes](arch-open-modes.md#resolving-a-target-to-a-root).
+Anything else goes to `classify_root_argument` in `cache/urls.py`, whose grammar is
+frozen in `tests/fixtures/repository-cache/url-grammar.json`; a bare path is never
+rewritten into a `file://` source.
 Provider reducers run first (`cache/providers.py`); core names no provider, and the
 GitHub reducer in `builtin_plugins/github/urls.py` turns web, raw, and SSH spellings of
 a github.com repository into its canonical `https://` source plus a selection.
@@ -340,6 +342,9 @@ Each handler’s docstring in `source_routes.py` holds its contract; the route i
 The two POST routes change state or start work, so each takes a JSON body behind the
 application’s same-origin guard, and a link inside a served page cannot reach them.
 A folder, or a pin with no mirror, answers `unsupported_for_subject`.
+[Open Modes](arch-open-modes.md#views) designs `/api/source/refs` and `/api/source/pin`
+for a repository folder, whose listing adds its remote-tracking branches and its working
+tree; a plain folder keeps this refusal, and no folder is ever refreshed.
 `tests/test_source_refresh.py`, `tests/test_mirror_companion.py`, and
 `tests/test_github_serve.py` cover a server; `cli-api-source.tryscript.md` and
 `cli-github-url-waits.txt` pin the routes through the CLI.

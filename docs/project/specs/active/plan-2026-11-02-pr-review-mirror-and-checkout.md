@@ -376,8 +376,11 @@ Markdown redlines), merged on 2026-11-11 (`mb-a9ek`). Manifests share their load
 idle preparation is limited as described below.
 The checkout’s **Files** tab continues to read live files and **Commits** continues to
 read local refs, including unpushed commits.
-In both source modes, PR comparisons and file views at a revision read through the same
-managed Git cache. A URL-backed session already has a managed store.
+In both source modes, PR comparisons and a pull request’s file views read through the
+same managed Git cache.
+A checkout’s own branches and tags are a different case, read from its Git directory in
+place ([Open Modes](../../architecture/arch-open-modes.md#views)). A URL-backed session
+already has a managed store.
 A checkout can reuse a healthy store or attach a lightweight store that borrows its
 eligible local objects and persists any missing remote objects it fetches.
 This does not copy the working tree, move the served pin, or change the borrowing-only
@@ -592,8 +595,8 @@ The rejection was right about the mechanism and wrong about the consequence.
 The consequence is a typed state with a one-second repair, not a lost object, because
 the ref that names the object is the origin’s and the origin keeps it.
 The recommendation is to adopt the overlay for a checkout the reader names or serves,
-keep the full mirror as the default otherwise, read a checkout’s objects only through an
-overlay, and rewrite the three rules as [Docs](#docs) lists.
+keep the full mirror as the default otherwise, have a mirror read a checkout’s objects
+only through an overlay, and rewrite the three rules as [Docs](#docs) lists.
 The cost of not adopting it is the one the user named: 185 s and 1.2 GB duplicated for
 the measured repository, and more for larger ones, every time a reader wants a pull
 request beside a checkout they already have.
@@ -637,11 +640,15 @@ The same rules in both scenarios, and one boundary the review sharpened.
   Beside a checkout whose `HEAD` is the head, View on branch opens the reader’s own
   working tree under the folder’s profile, as Browse the checkout already did: neither
   an immutable revision nor the untrusted profile, and the reader’s files, not the
-  store’s. An overlay is a `RepositoryStoreTarget` like a full store, read under
-  `STORE_READ_POLICY` with `GIT_NO_LAZY_FETCH=1`. **Planned:** a test of this
-  restriction over every entry point to PR content that a trusted folder server reads
-  from a store or an overlay, the trust row of [Parity and Tests](#parity-and-tests); it
-  does not hold the working tree that View on branch opens beside a checkout.
+  store’s. **Decided 2026-11-18, not built:** in folder mode View on branch and Browse
+  code go to the pull request’s head as a revision view of the checkout, under the
+  untrusted profile, and the working-tree copy becomes a separate, labelled action
+  ([Open Modes](../../architecture/arch-open-modes.md#pull-requests-in-folder-mode)). An
+  overlay is a `RepositoryStoreTarget` like a full store, read under `STORE_READ_POLICY`
+  with `GIT_NO_LAZY_FETCH=1`. **Planned:** a test of this restriction over every entry
+  point to PR content that a trusted folder server reads from a store or an overlay, the
+  trust row of [Parity and Tests](#parity-and-tests); it does not hold the working tree
+  that View on branch opens beside a checkout.
   Today `tests/test_checkout_overlay.py` checks only that borrowing cannot change the
   untrusted profile.
 - **The checkout’s configuration is never read.** Reading a borrowed object is a file
@@ -702,6 +709,10 @@ Reuse, not a parallel path:
   clone is not. The plan’s decision 4 and its Files changed case point here.
 - **The page on a checkout** keeps the plan’s behavior: no pin, no Browse code; the
   working tree is not the pull request’s code.
+  The owner changed this on 2026-11-18: in the open-modes design a repository folder can
+  show the head as a revision, so Browse code has a target there
+  ([Open Modes](../../architecture/arch-open-modes.md#pull-requests-in-folder-mode)); it
+  is not built.
 
 ### Conversions
 

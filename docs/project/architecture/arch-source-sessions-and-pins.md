@@ -1,12 +1,16 @@
 # Source Sessions and Pins
 
-**Status:** Implemented: one active subject per server process, either an attached
-folder or a pinned Git revision; the content-source contract and capabilities; `GitPath`
-projection on every content route; switching the pin within one store; and the pin
-guard. A server that serves several subjects at once is not designed: it would need
-subject-qualified addresses on every route.
+**Status:** Implemented: one active subject per server process, either a folder’s
+working tree or a pinned revision of a mirror; the content-source contract and
+capabilities; `GitPath` projection on every content route; switching the pin within one
+store; and the pin guard.
+Designed, not built: a pinned revision of a repository folder’s own checkout, shown in
+place of its working tree ([Open Modes](arch-open-modes.md), `mb-8ob8`). A server that
+serves several subjects at once is not designed: it would need subject-qualified
+addresses on every route.
 
-A session’s **subject** is what it browses.
+A server’s root and [open mode](arch-open-modes.md) are fixed for its life.
+Its **subject** is the view it shows now: a folder’s working tree, or one revision.
 Where the subject’s Git objects come from is the
 [repository cache](arch-repository-cache.md), and how a mirror is fetched and refreshed
 is in [mirror acquisition and refresh](arch-mirror-acquisition-and-refresh.md).
@@ -20,7 +24,10 @@ There are two kinds, `RepositorySubjectKind` in `source.py`:
   files, including uncommitted changes, with the watcher, the filesystem inventory, and
   safe-path containment.
   Metabrowser never fetches into, switches, resets, locks, or writes a checkout or its
-  `.git` directory.
+  `.git` directory. A branch, tag, or commit of a checkout is a revision too, and showing
+  one never switches, fetches into, or writes the checkout.
+  Today a pinned revision is always a store’s; [Open Modes](arch-open-modes.md#views)
+  designs the checkout’s.
 - **A pinned revision** (`git_revision`, `GitRevisionSubject` in `git/tree_source.py`)
   is one commit of a Metabrowser-owned, worktree-free repository store.
   A branch, tag, or pull-request head is resolved once to a full commit ID; the subject
@@ -199,6 +206,10 @@ revisions, so every data request from a pin’s page names its commit:
 - `SourcePinGuard` in `source_routes.py` refuses a request that names another commit
   with 409 `pin_changed` and the served commit in `x-metabrowser-pin-changed`. A request
   that names no commit, from `curl`, `metab --api`, or a folder’s page, is not checked.
+  Once a repository folder can show a revision, its working-tree page names the working
+  tree the same way, so a tab left on either view is refused when the other is served,
+  and only `curl` and `metab --api` name no view
+  ([Open Modes](arch-open-modes.md#views)).
 - The page announces the refusal as a `metabrowser:pin-changed` event, and the freshness
   row offers a reload.
   Nothing changes under a reader who is looking at the page.
@@ -233,6 +244,9 @@ switches nothing, so View on branch and Browse code on that page say the head mo
 instead of opening a bare commit.
 Beside a checkout, which has no pin, View on branch is a link to the working-tree file
 while the checkout’s `HEAD` is the diff’s head.
+[Open Modes](arch-open-modes.md#pull-requests-in-folder-mode) designs what replaces
+that: the pull request’s head as a revision of the checkout, with the working-tree copy
+a separate, labelled action.
 The old side has no control: a parent is a bare commit, and a merge base is on no
 branch. Only a regular file’s side gets a control, since a submodule’s side is another
 repository’s commit and a symbolic link’s would open its target.
@@ -255,6 +269,7 @@ holds the naming rule, the exception, and the test that guards it.
 
 ## References
 
+- [Open Modes](arch-open-modes.md)
 - [Git Reading and History](arch-git.md)
 - [Diff Pipeline](arch-diff-pipeline.md)
 - [Repository cache](arch-repository-cache.md)

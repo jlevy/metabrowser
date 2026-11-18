@@ -176,6 +176,15 @@ cap, estimate, or refusal, and only the plain fences stay.
 The proper fix, rendering in the projection worker under a deadline, is bead `mb-273l`,
 in a separate pull request.
 
+**Addendum, 2026-11-18.** In the [Open Modes](../../architecture/arch-open-modes.md)
+design a repository folder can show the pull request’s head as a revision, so a checkout
+that is not at the head has an in-app target and Q1’s first case no longer applies to
+it. The owner decided that in folder mode View on branch and Browse code go to the head
+as a revision view, and that opening the working-tree copy is a separate, labelled
+action
+([Pull Requests in Folder Mode](../../architecture/arch-open-modes.md#pull-requests-in-folder-mode)).
+That is not built, and the table in [Design](#design) describes what is.
+
 ## References
 
 - Survey and review of `origin/main` at `e442ed10d`, 2026-11-16 and 2026-11-17.

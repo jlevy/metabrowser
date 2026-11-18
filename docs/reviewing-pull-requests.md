@@ -348,6 +348,12 @@ not change them.
   GitHub**.
 - **Only github.com.** A pull-request URL on another host is read as a Git address and
   fails.
+- **The pull request’s code beside a checkout that is elsewhere.** Files and Commits
+  there show your checkout, which is the pull request’s code only while its `HEAD` is
+  the pull request’s head.
+  Opening the head whatever is checked out, as a read-only revision of your checkout, is
+  planned in
+  [Open Modes](project/architecture/arch-open-modes.md#pull-requests-in-folder-mode).
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
