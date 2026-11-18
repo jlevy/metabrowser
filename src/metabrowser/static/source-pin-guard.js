@@ -57,11 +57,17 @@
   // What the page of a checkout's working tree names: `WORKING_TREE_PIN` in
   // source_routes.py. Not hexadecimal, so it is never a commit.
   const WORKING_TREE_PIN = "working-tree";
-  // How long a page that went to another address holds its requests, in case it stays.
-  // Measured 2026-11-18 in headless Chrome 152 at a load average of 90: the new document
-  // made its first request 39 ms after the switch's answer, and on CI the switch took
-  // 168 ms from the click to the new page's rows (tests/dom/checkout-ref-selector-chrome.mjs).
-  const LEAVING_BOUND_MS = 5000;
+  // How long a switch holds the page's requests at most, from the moment it asks. Measured
+  // 2026-11-18 in headless Chrome 152 at a load average of 90, on the three-file checkout of
+  // tests/dom/checkout-ref-selector-chrome.mjs: the pin route answered 105 to 134 ms after
+  // it was asked and the new document made its first request 39 ms after that; on CI the
+  // whole switch, from the click to the new page's rows, took 168 ms. 5 s is about 30 times
+  // the slowest of those, for a loaded machine or a larger checkout. Too short, and a switch
+  // slower than the bound sends the page's requests while it is still here: they are
+  // refused and the page shows the offer to reload on its way out, as before the hold. Too
+  // long, and a page whose pin route does not answer, or whose navigation the reader
+  // stopped, asks the server for nothing that long.
+  const SWITCH_HOLD_MS = 5000;
 
   /**
    * Whether a request to *url* names the page's commit.
@@ -102,7 +108,7 @@
       }
       const wait = waiting();
       if (wait !== null) {
-        await wait;
+        await heldUntil(wait, init?.signal ?? (input instanceof Request ? input.signal : null));
       }
       const headers = new Headers(
         init?.headers ?? (input instanceof Request ? input.headers : undefined),
@@ -118,13 +124,39 @@
   }
 
   /**
+   * *wait*, or a rejection with the signal's reason as soon as *signal* aborts: a request
+   * given up while it is held settles then, as `fetch` would, and is never sent.
+   *
+   * @param {Promise<void>} wait
+   * @param {AbortSignal | null | undefined} signal
+   * @returns {Promise<void>}
+   */
+  function heldUntil(wait, signal) {
+    if (!signal) {
+      return wait;
+    }
+    return new Promise((resolve, reject) => {
+      const abort = () => reject(signal.reason);
+      if (signal.aborted) {
+        abort();
+        return;
+      }
+      signal.addEventListener("abort", abort, { once: true });
+      void wait.then(() => {
+        signal.removeEventListener("abort", abort);
+        resolve();
+      });
+    });
+  }
+
+  /**
    * The wait a page's guarded requests take while it switches what the server serves, which
    * may serve the other subject before the page has gone. `hold(going)` starts it as the
-   * page asks; *going* settles false when the page stays, which ends it, and true when the
-   * page goes, which holds them until it has gone, or for LEAVING_BOUND_MS if the reader
-   * stops it: they are then refused, and the page offers a reload. `release()` ends it for
-   * a page the back/forward cache shows again; `waiting()` is what a request waits for now.
-   * No DOM: the glue below supplies the timer.
+   * page asks; *going* settles false when the page stays, which ends it at once, and true
+   * when the page goes, which keeps it until the page has gone. Whatever *going* does, it
+   * ends SWITCH_HOLD_MS after the ask: a pin route that does not answer, or a navigation the
+   * reader stopped. `release()` ends it for a page the back/forward cache shows again;
+   * `waiting()` is what a request waits for now. No DOM: the glue below supplies the timer.
    *
    * @param {(callback: () => void, ms: number) => void} setTimer
    */
@@ -149,12 +181,19 @@
       });
       const mine = { wait, open };
       held = mine;
+      // Only this hold's own end: a bound of an earlier switch, firing during this one,
+      // finds another hold and leaves it.
       const ends = () => {
         if (held === mine) {
           release();
         }
       };
-      void going.then((gone) => (gone ? setTimer(ends, LEAVING_BOUND_MS) : ends()), ends);
+      setTimer(ends, SWITCH_HOLD_MS);
+      void going.then((gone) => {
+        if (!gone) {
+          ends();
+        }
+      }, ends);
     }
 
     return Object.freeze({ hold, release, waiting: () => held?.wait ?? null });

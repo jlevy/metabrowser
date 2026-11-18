@@ -47,8 +47,11 @@ its commit, a checkout’s working tree the word `working-tree`, and a plain fol
 nothing, since its server can serve nothing else.
 `hold` is what the page’s own data requests do while it switches: the server may serve
 the other subject before the page has gone, so each waits for the answer and is held
-while the page goes; the guard sends them if the switch is refused, if the back/forward
-cache shows the page again, or if the page is still there after its bound.
+while the page goes.
+The guard sends them when the switch is refused or changes nothing, when the selector is
+taken away, when the back/forward cache shows the page again, and at the hold’s bound,
+which runs from the ask; an earlier switch’s bound does not end a later hold, and a
+request given up while it is held settles at once and is not sent.
 
 ```console
 $ node tests/dom/source-ref-selector-session.js
@@ -768,43 +771,91 @@ $ node tests/dom/source-ref-selector-session.js
       {
         "step": "a request made while the switch is asked waits for the answer",
         "sent": [],
-        "timers": []
-      },
-      {
-        "step": "a page that goes holds its requests until it is gone",
-        "sent": [],
-        "timers": [
+        "bounds": [
           5000
         ]
       },
       {
-        "step": "a page still here after the bound sends them, to be refused",
+        "step": "a page that goes holds its requests until it is gone",
+        "sent": [],
+        "bounds": [
+          5000
+        ]
+      },
+      {
+        "step": "a page still there at the bound sends them, to be refused",
         "sent": [
           "/api/tree?depth=0 working-tree",
           "/api/tree?depth=0 working-tree"
         ],
-        "timers": []
+        "bounds": []
+      },
+      {
+        "step": "choosing what the page shows sends them when it is answered",
+        "sent": [
+          "/api/tree?depth=0 working-tree"
+        ],
+        "bounds": [
+          5000
+        ]
       },
       {
         "step": "a switch refused sends them when it is answered",
         "sent": [
           "/api/tree?depth=0 working-tree"
         ],
-        "timers": []
+        "bounds": [
+          5000
+        ]
+      },
+      {
+        "step": "a selector taken away during its switch sends them when it is answered",
+        "sent": [
+          "/api/tree?depth=0 working-tree"
+        ],
+        "bounds": [
+          5000
+        ]
+      },
+      {
+        "step": "a request given up while it is held settles at once",
+        "sent": [],
+        "bounds": [
+          5000
+        ],
+        "settled": "AbortError"
+      },
+      {
+        "step": "and is not sent when the hold ends",
+        "sent": [],
+        "bounds": [
+          5000
+        ]
       },
       {
         "step": "a page the back/forward cache shows again sends them at once",
         "sent": [
           "/api/tree?depth=0 working-tree"
         ],
-        "timers": [
+        "bounds": [
           5000
         ]
       },
       {
-        "step": "and its bound, when it comes, sends nothing more",
+        "step": "the first switch's bound, firing during a second, sends nothing",
         "sent": [],
-        "timers": []
+        "bounds": [
+          5000
+        ]
+      },
+      {
+        "step": "and the second sends them when it is answered",
+        "sent": [
+          "/api/tree?depth=0 working-tree"
+        ],
+        "bounds": [
+          5000
+        ]
       }
     ]
   }

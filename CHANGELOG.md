@@ -4,11 +4,12 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
-- Choosing a branch or tag no longer flashes **Reload** on the page you are leaving.
-  The page went on asking the server for data while the switch was under way, and a
-  refresh of its Files totals that fell due then was refused, as a request from a page
-  left behind is, which the page took for a switch made in another tab.
-  A page now asks for nothing more once it has asked to switch, until it has gone.
+- Choosing a branch or tag in the branch and tag chooser no longer flashes **Reload** on
+  the page you are leaving.
+  That page went on asking the server for data during the switch, and a refresh of its
+  Files totals that fell due then was refused, as a request from a page left behind is,
+  which the page took for a switch made in another tab.
+  It now holds its requests while the switch is under way.
 
 - In the macOS app, Open Recent, the Dock menu and the title’s path menu show folders
   with the same outline folder symbol as the mirror’s cloud, instead of Finder’s colored

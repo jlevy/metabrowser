@@ -548,10 +548,11 @@ async function runCheckout() {
 
 // What the page's own data requests do while it switches (mb-bio7): from the moment the
 // server is asked, it may serve the other subject while the page is still here, and would
-// refuse them. So each waits for the answer, and goes with the page when the page goes;
-// a page still here after the guard's bound, or shown again from the back/forward cache,
-// sends them. The guard's own `fetch` wrapper and hold run here, over a network that logs
-// what reaches it, with the hold's timer kept for the step to fire.
+// refuse them. So each waits: it goes at once when the page stays, and is held while the
+// page goes, or until the guard's bound if the page is still there. The guard's own `fetch`
+// wrapper and hold run here, over a network that logs what reaches it, with each hold's
+// bound kept for a step to fire. A request whose signal is aborted is not sent, as `fetch`
+// would not send it.
 async function runHold(recording, onReadme, options) {
   const pinGuard = loadPinGuard();
   const timers = [];
@@ -559,6 +560,9 @@ async function runHold(recording, onReadme, options) {
   const network = [];
   const guarded = pinGuard.guardFetch(
     async (input, init) => {
+      if (init?.signal?.aborted) {
+        throw init.signal.reason;
+      }
       network.push(`${input} ${new Headers(init?.headers).get(pinGuard.PIN_HEADER)}`);
       return { status: 200, headers: new Headers() };
     },
@@ -568,11 +572,25 @@ async function runHold(recording, onReadme, options) {
     hold.waiting,
   );
   // The page refreshing its root's tallies, as app.js does after its first rows.
-  const ask = () => void guarded("/api/tree?depth=0");
+  const ask = (init) => guarded("/api/tree?depth=0", init);
   const observed = [];
-  const note = async (step) => {
+  // *more* is read once the step has settled.
+  const note = async (step, more = () => ({})) => {
     await settle();
-    observed.push({ step, sent: network.splice(0), timers: timers.map((timer) => timer.ms) });
+    observed.push({
+      step,
+      sent: network.splice(0),
+      bounds: timers.map((timer) => timer.ms),
+      ...more(),
+    });
+  };
+  // The oldest bound still to come, as its timer would fire it.
+  const fireBound = () => timers.shift().callback();
+  // The bounds of holds already ended, which find nothing left to release.
+  const spendBounds = () => {
+    for (const timer of timers.splice(0)) {
+      timer.callback();
+    }
   };
   const switching = () => {
     const page = createPage(onReadme);
@@ -580,35 +598,88 @@ async function runHold(recording, onReadme, options) {
     return { page, selector: selectorRuntime.createSelector(page.deps, options(null)) };
   };
 
+  // A branch: the page goes, and the reader stops its navigation.
   let { page, selector } = switching();
   const toBranch = selector.choose("refs/heads/feature");
-  ask();
+  void ask();
   await note("a request made while the switch is asked waits for the answer");
   await page.answer(recording.switch_branch);
   await toBranch;
-  ask();
+  void ask();
   await note("a page that goes holds its requests until it is gone");
-  timers.shift().callback();
-  await note("a page still here after the bound sends them, to be refused");
+  fireBound();
+  await note("a page still there at the bound sends them, to be refused");
+  selector.dispose();
+
+  // The working tree, which the page already shows: nothing changes.
+  ({ page, selector } = switching());
+  const same = selector.chooseWorkingTree();
+  void ask();
+  await page.answer(recording.switch_working_tree_same);
+  await same;
+  await note("choosing what the page shows sends them when it is answered");
+  spendBounds();
   selector.dispose();
 
   ({ page, selector } = switching());
   const missing = selector.choose("refs/heads/gone");
-  ask();
+  void ask();
   await page.answer(recording.switch_missing);
   await missing;
   await note("a switch refused sends them when it is answered");
+  spendBounds();
   selector.dispose();
 
+  // The page takes its selector away while the switch is asked: it stays where it is.
   ({ page, selector } = switching());
-  const again = selector.choose("refs/heads/feature");
+  const leftAlone = selector.choose("refs/heads/feature");
+  void ask();
+  selector.dispose();
   await page.answer(recording.switch_branch);
-  await again;
-  ask();
+  await leftAlone;
+  await note("a selector taken away during its switch sends them when it is answered");
+  spendBounds();
+
+  // A request given up while it is held, as a newer search or a timeout gives one up.
+  ({ page, selector } = switching());
+  const givenUp = selector.choose("refs/heads/gone");
+  const controller = new AbortController();
+  let settled = "pending";
+  ask({ signal: controller.signal }).then(
+    () => {
+      settled = "answered";
+    },
+    (error) => {
+      settled = error.name;
+    },
+  );
+  controller.abort();
+  await note("a request given up while it is held settles at once", () => ({ settled }));
+  await page.answer(recording.switch_missing);
+  await givenUp;
+  await note("and is not sent when the hold ends");
+  spendBounds();
+  selector.dispose();
+
+  // The back/forward cache shows the page again, and it switches once more before the
+  // first switch's bound has fired.
+  ({ page, selector } = switching());
+  const first = selector.choose("refs/heads/feature");
+  await page.answer(recording.switch_branch);
+  await first;
+  void ask();
   hold.release();
   await note("a page the back/forward cache shows again sends them at once");
-  timers.shift().callback();
-  await note("and its bound, when it comes, sends nothing more");
+  selector.dispose();
+  ({ page, selector } = switching());
+  const second = selector.choose("refs/heads/gone");
+  void ask();
+  fireBound();
+  await note("the first switch's bound, firing during a second, sends nothing");
+  await page.answer(recording.switch_missing);
+  await second;
+  await note("and the second sends them when it is answered");
+  spendBounds();
   selector.dispose();
   return observed;
 }

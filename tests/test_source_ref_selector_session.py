@@ -280,16 +280,26 @@ def test_the_session_runs_a_checkout_on_its_recording() -> None:
         "a mirror's pin": f"{pin}; {refused}",
         "a plain folder": "nothing",
     }
-    # The page's own data requests wait out its switch, and go with the page (mb-bio7).
+    # The page's own data requests wait out its switch, and go with the page (mb-bio7):
+    # at once when the page stays, never early because of an earlier switch's bound, and
+    # a request given up while held settles at once without being sent.
     tallies = "/api/tree?depth=0 working-tree"
-    assert [(step["sent"], step["timers"]) for step in checkout["hold"]] == [
-        ([], []),
-        ([], [5000]),
-        ([tallies, tallies], []),
-        ([tallies], []),
-        ([tallies], [5000]),
-        ([], []),
+    hold = {step["step"]: step for step in checkout["hold"]}
+    assert [step["sent"] for step in checkout["hold"]] == [
+        [],
+        [],
+        [tallies, tallies],
+        [tallies],
+        [tallies],
+        [tallies],
+        [],
+        [],
+        [tallies],
+        [],
+        [tallies],
     ]
+    assert hold["a request made while the switch is asked waits for the answer"]["bounds"] == [5000]
+    assert hold["a request given up while it is held settles at once"]["settled"] == "AbortError"
 
 
 def test_the_session_runs_on_the_recording() -> None:
