@@ -9,8 +9,10 @@ and KPress's faces, and compares each row with the empty record's
 (tests/dom/github-pull-header-chrome.mjs). The
 same session lays out Pulls rows as their stack places arrive, a file header as a run's
 status badge changes its label in place, and the Diff summary's row as its pending
-placeholder gives way to the summary, and checks that nothing moves. It runs in
-parts, one case each, so each part has a bound of its own under the suite's.
+placeholder gives way to the summary, and checks that nothing moves. It also places the
+view header's GitHub toggle in the header's corner and holds it to the corner's tokens and
+the shared toggle's states (mb-70d6). It runs in parts, one case each, so each part has a
+bound of its own under the suite's.
 
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``).
 """
@@ -24,6 +26,7 @@ from pathlib import Path
 import pytest
 
 from metabrowser import kpress_adapter
+from metabrowser.settings import DOC_MAX_CHARS_DEFAULT
 from tests.process_group import GROUP_STOP_S, PROFILE_TEARDOWN_S, run_in_own_group
 from tests.required_tools import require_chrome, require_node
 
@@ -47,6 +50,7 @@ PARTS = (
     "labels",
     "summary-wait",
     "cold-landing",
+    "corner",
 )
 # On a Mac at a load average of 10 to 16, each header part took 5.0 to 6.7 s, the Pulls
 # rows 1.4 to 2.6 s, the offers and the run badge 1.4 to 1.7 s, and the launch 1.3 to
@@ -93,6 +97,8 @@ def test_the_pull_header_keeps_its_box_in_chrome(
             "CHROME_BIN": chrome,
             "CHROME_PROFILES": str(chrome_profile),
             "KPRESS_STATIC": str(_kpress_faces(tmp_path / "kpress")),
+            # The reading width a page has by default, which the corner part sets.
+            "METABROWSER_DOC_MAX_CHARS_DEFAULT": str(DOC_MAX_CHARS_DEFAULT),
         },
     )
     if result.timed_out:

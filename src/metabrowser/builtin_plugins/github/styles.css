@@ -15,6 +15,8 @@
   --github-pull-rhythm: 20px;
   /* The column includes the pane gutter on each side. */
   --page-reading-gutter: var(--content-padding-x);
+  /* The box the header's corner is placed in (below). */
+  position: relative;
   display: flex;
   flex-direction: column;
   padding: 0;
@@ -31,6 +33,22 @@
    from 137.6 to 202.6 px, and the tab bar moved on 26 of 26 switches between PRs. */
 .github-pull-title {
   min-height: 2lh;
+}
+/* The header's corner, the GitHub toggle's (pull-page.js; docs/design-system.md, "View
+   Headers"), is a view header's, `.view-header-end` in static/styles.css, placed in the
+   page rather than in the header: the page is as wide as the main view, so the toggle is at
+   the same inset from its top and right edges as a file's and a folder's, and where it will
+   be once the header is a view header as wide as the view (mb-7t5s). The header is the
+   reading column, which in a wide pane ends left of the toggle; where it does not, the
+   title leaves the toggle its room, less the space beside the column: the page's width,
+   `100cqi` of the main view, which is the query container, less the header's, the title's
+   `100%` and the header's pads. The number moves in with the title's end. */
+.github-pull-header:has(> .view-header-end > .view-header-toggle) > .github-pull-title {
+  padding-inline-end: max(
+    0px,
+    var(--view-header-toggle-room) -
+    (100cqi - 100% - 2 * var(--content-padding-x))
+  );
 }
 /* A page mounted with no record in hand holds its cold header and tab column out of sight
    for the shell's quiet period, and pull-page.js lifts the hold with the first header that

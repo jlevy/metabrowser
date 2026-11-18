@@ -7,8 +7,9 @@
 // place, as the folder header's live refresh does (`folderHeaderSummaryHtml` in view-header.js),
 // and reads every box again. At one pane width in each theme it also puts the pointer on
 // the toggle's GitHub segment and reads its ink and fill. The caller
-// (tests/test_view_header_chrome.py) judges the record. Arguments: the `metab` executable, the served root, a port to start the server's
-// search from, and a state directory for its cache and config.
+// (tests/test_view_header_chrome.py) judges the record. Arguments: the `metab` executable,
+// the served root, a port to start the server's search from, and a state directory for its
+// cache and config.
 //
 // Prints one JSON line, `{"results": [...]}`; each step's time goes to stderr.
 import { spawn } from "node:child_process";

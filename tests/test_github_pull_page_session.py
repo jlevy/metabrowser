@@ -680,6 +680,18 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "its record lands: header shown, tab column shown",
             "mounted with its record in hand: header shown, tab column shown",
         ],
+        # The view header's GitHub toggle in the pull request header's corner, after the title,
+        # its GitHub link the record's own address (mb-70d6): none before the record, kept by
+        # a repaint with the same address, drawn again for another, and none for an address
+        # that is not http(s) or an SDK with no toggle.
+        "githubToggle": [
+            "mounted with no record in hand: no corner; asked for none",
+            'its record lands: the corner after the title "Count to two in the app", its GitHub link https://github.com/octo/demo/pull/7; asked https://github.com/octo/demo/pull/7',
+            'a poll brings a new title and the same address: the corner after the title "Count to three in the app", its GitHub link https://github.com/octo/demo/pull/7, the toggle drawn before; asked https://github.com/octo/demo/pull/7',
+            'a poll brings another address: the corner after the title "Count to three in the app", its GitHub link https://github.com/octo/renamed/pull/7, redrawn; asked https://github.com/octo/demo/pull/7, https://github.com/octo/renamed/pull/7',
+            "a record whose address is not http(s): no corner; asked for none",
+            "an SDK with no toggle: no corner; asked for none",
+        ],
         # C, G, and E run the page's setTab through the shortcut facade, with or without
         # Shift. H is the Commits tab's, so Checks is E. The header keeps the tab column
         # unless its first read fails, so they are live from first paint, as the links

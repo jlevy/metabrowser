@@ -1855,6 +1855,20 @@
   }
 
   /**
+   * The view header's GitHub toggle for a page whose github.com page is *url*, built by the
+   * toggle's one builder, `toggle` in static/github-page.js, which the server writes into a
+   * page with a repository on github.com and into no other (docs/design-system.md, "View
+   * Headers"). Null where it did not, so a view on such a page draws no toggle. The view
+   * places it in its header's corner, a `.view-header-end`.
+   *
+   * @param {string} url
+   * @returns {HTMLElement | null}
+   */
+  function githubToggle(url) {
+    return global.MetabrowserGithubPage?.toggle(document, url) ?? null;
+  }
+
+  /**
    * The tree of a change set's files, which the Pulls tab and a diff's Diff summary both
    * draw: static/changed-files-tree.js, the `changed-files-tree` on-demand bundle. Loaded
    * the first time a plugin asks, and once; a failed load rejects, and the next call tries
@@ -1876,6 +1890,7 @@
     actorIdentity,
     actorIdentityHtml,
     decorateExternalLink,
+    githubToggle,
     loadChangedFilesTree,
     refChipHtml,
     refChip,

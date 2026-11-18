@@ -16,10 +16,10 @@
 // `header-narrow`), the offers the status row draws (`offers`), the Pulls rows (`pulls`),
 // the run badge (`badges`), the label chips' colors in both themes (`labels`), the Diff
 // summary's row while its comparison is read, as it arrives, as it fails, and as the same
-// pull request is opened again in the document (`summary-wait`), and a page mounted with no
-// record in hand as its record lands (`cold-landing`). With no
-// part it runs every one. Each part writes how long
-// each of its steps took to stderr.
+// pull request is opened again in the document (`summary-wait`), a page mounted with no
+// record in hand as its record lands (`cold-landing`), and the view header's GitHub toggle
+// in the header's corner (`corner`). With no part it runs every one. Each part writes how
+// long each of its steps took to stderr.
 //
 // KPRESS_STATIC holds KPress's style-tokens.css and the faces it names, which
 // tests/test_github_pull_header_chrome.py copies out of the installed package, so the
@@ -1157,6 +1157,161 @@ const COLD_LANDING = `async (width, labelled, outcome) => {
     tabBarsShown: [...new Set(seen.filter((state) => Number(state.header) > 0).map((state) => state.tabBar))],
   };
 }`;
+// The view header's GitHub toggle in the pull request header's corner (mb-70d6;
+// docs/design-system.md, "View Headers"), drawn by the SDK's `githubToggle` through
+// github-page.js, as a page whose repository is on github.com has it. Read: where the
+// toggle is in the page, its size, where the title's text and number end, the title's room
+// for it, and the inks and fills of its segments and frame, beside the tokens each should
+// resolve to in this theme, read from a probe painted with them. The reading column is the
+// width the server gives a page by default, *maxChars* characters (`--doc-max-chars`), so
+// a wide pane's column ends short of the toggle. The page stays mounted, in
+// `window.__corner`, so the pointer can be put on the GitHub segment; CORNER_HOVERED reads
+// it there and CORNER_DONE unmounts it.
+const CORNER = `async (width, theme, longTitle, maxChars) => {
+  const recorded = window.__recorded ??= await (await fetch("/fixtures.json")).json();
+  const page = window.__page ??= await import("/github/pull-page.js");
+  if (!window.MetabrowserGithubPage) {
+    await new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "/static/github-page.js";
+      script.onload = resolve;
+      script.onerror = reject;
+      document.head.append(script);
+    });
+  }
+  const body = structuredClone(recorded.current.body);
+  const holder = body.record?.same_as;
+  if (holder !== undefined) {
+    body.record = structuredClone(recorded[holder].body.record);
+  }
+  // A title of two lines and more, cut short at two.
+  if (longTitle) {
+    body.record.pull.title = "Decide every region's box at first paint, so nothing that arrives later moves the tab bar, a stack, a label, or a Refresh";
+  }
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.style.setProperty("--doc-max-chars", String(maxChars));
+  window.fetch = async () => new Response(null, { status: 304 });
+  history.replaceState(null, "", "/pull/" + body.number);
+  const pane = document.getElementById("preview-pane");
+  pane.style.width = width + "px";
+  const container = document.createElement("div");
+  pane.replaceChildren(container);
+  const mb = window.metabrowser;
+  const handle = page.mountPullPage(
+    container,
+    { number: body.number, tab: "", reader: { initial: { etag: null, body }, fetchAfterMs: 60000 } },
+    {
+      perf: { measure: (_label, work) => work(), measureAsync: (_label, work) => work() },
+      ensureAsset: async () => {},
+      whenIdle: mb.whenIdle,
+      ensureKindAssets: async () => {},
+      loadChangedFilesTree: async () => {},
+      getRegisteredView: () => null,
+      decorateExternalLink: mb.decorateExternalLink,
+      refChip: mb.refChip,
+      refChipHtml: mb.refChipHtml,
+      mergeRefs: mb.mergeRefs,
+      mountRefCopies: mb.mountRefCopies,
+      actorIdentity: mb.actorIdentity,
+      titleNodes: mb.titleNodes,
+      countPartsNodes: mb.countPartsNodes,
+      formatAge: () => ({ label: "now", className: "age" }),
+      formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
+      navigation: { href: () => "/view/" },
+      sourceKind: () => "filesystem",
+      icons: { toggle: "" },
+      githubToggle: mb.githubToggle,
+    },
+  );
+  window.__corner = handle;
+  await document.fonts.ready;
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const round = (value) => Math.round(value * 100) / 100;
+  const box = (node) => node.getBoundingClientRect();
+  const header = container.querySelector(".github-pull-header");
+  const corner = header.querySelector(":scope > .view-header-end");
+  const toggle = corner?.querySelector(":scope > .view-header-toggle") ?? null;
+  if (toggle === null) {
+    return { toggle: null };
+  }
+  // A token as the engine resolves it: a length as a probe's width, a color as its ink.
+  const resolved = (property, value) => {
+    const probe = document.createElement("span");
+    probe.style.position = "absolute";
+    probe.style[property] = value;
+    container.append(probe);
+    const out = property === "width" ? round(box(probe).width) : getComputedStyle(probe)[property];
+    probe.remove();
+    return out;
+  };
+  const paint = (node) => {
+    const style = getComputedStyle(node);
+    return { ink: style.color, fill: style.backgroundColor };
+  };
+  const title = header.querySelector(".github-pull-title");
+  const here = toggle.querySelector('[aria-current="page"]');
+  const there = toggle.querySelector("a");
+  const frame = getComputedStyle(toggle);
+  const at = box(container);
+  const placed = box(toggle);
+  const github = box(there);
+  return {
+    toggle: {
+      top: round(placed.top - at.top),
+      end: round(at.right - placed.right),
+      start: round(placed.left),
+      height: round(placed.height),
+      width: round(placed.width),
+    },
+    afterTitle: corner.previousElementSibling === title,
+    href: there.getAttribute("href"),
+    textEnd: round(box(title.querySelector(".github-pull-title-text")).right),
+    numberEnd: round(box(title.querySelector(".github-pull-number")).right),
+    titleRoom: round(Number.parseFloat(getComputedStyle(title).paddingInlineEnd)),
+    column: round(box(header).width),
+    page: round(at.width),
+    paneScrolls: pane.scrollWidth > pane.clientWidth,
+    tokens: {
+      insetTop: resolved("width", "var(--view-header-toggle-inset-top)"),
+      insetEnd: resolved("width", "var(--view-header-toggle-inset-end)"),
+      height: resolved("width", "var(--view-header-toggle-height)"),
+      width: resolved("width", "var(--view-header-toggle-width)"),
+      room: resolved("width", "var(--view-header-toggle-room)"),
+    },
+    states: {
+      here: paint(here),
+      there: paint(there),
+      frame: { border: frame.borderTopColor, ground: frame.backgroundColor, radius: frame.borderTopLeftRadius },
+    },
+    want: {
+      link: resolved("color", "var(--link)"),
+      highlight: resolved("backgroundColor", "var(--highlight-bg)"),
+      muted: resolved("color", "var(--muted)"),
+      text: resolved("color", "var(--text)"),
+      hover: resolved("backgroundColor", "var(--hover-bg)"),
+      border: resolved("borderTopColor", "var(--viz-border)"),
+      surface: resolved("backgroundColor", "var(--viz-surface)"),
+      radius: resolved("borderTopLeftRadius", "var(--radius-pill)"),
+    },
+    github: { x: github.left + github.width / 2, y: github.top + github.height / 2 },
+  };
+}`;
+// The GitHub segment's ink and fill once every transition on it has ended.
+const CORNER_HOVERED = `(async () => {
+  const link = document.querySelector("#preview-pane .github-pull-header .view-header-toggle a");
+  await Promise.all(link.getAnimations().map((motion) => motion.finished));
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const style = getComputedStyle(link);
+  return { ink: style.color, fill: style.backgroundColor, hovered: link.matches(":hover") };
+})()`;
+const CORNER_DONE = `(() => {
+  window.__corner?.dispose();
+  window.__corner = null;
+  delete document.documentElement.dataset.theme;
+  document.documentElement.style.removeProperty("--doc-max-chars");
+  return true;
+})()`;
+
 // Pulls rows built as pulls-panel.js#buildRow and #rowMeta build them, whose order
 // github-pulls-panel-session.js pins: the row's link, the state icon, the title, the age,
 // and the number's line, which the stylesheet lays out as two lines (mb-lkkt): the icon in
@@ -1595,6 +1750,7 @@ const PARTS = [
   "labels",
   "summary-wait",
   "cold-landing",
+  "corner",
 ];
 const PART = (() => {
   const at = process.argv.indexOf("--part");
@@ -2195,6 +2351,117 @@ async function main() {
           `cold-landing: ${JSON.stringify(landings.map(({ where, run }) => ({ where, landsAt: run.landsAt, cold: run.shownCold.tabBar, landed: run.landed.tabBar, coldShown: run.coldShown })))}\n`,
         );
         lap("the cold landings");
+      }
+      // The GitHub toggle in the header's corner (mb-70d6): at a pane where the reading
+      // column ends short of the toggle and two where it reaches it, in both themes, with a
+      // title of one line and one cut short at two. At the middle width the pointer is put
+      // on the GitHub segment, then moved away.
+      if (runs("corner")) {
+        // The server's default reading width, which the caller passes from settings.py.
+        const maxChars = Number(process.env.METABROWSER_DOC_MAX_CHARS_DEFAULT);
+        if (!Number.isFinite(maxChars) || maxChars <= 0) {
+          throw new Error("METABROWSER_DOC_MAX_CHARS_DEFAULT names no reading width");
+        }
+        const tops = new Map();
+        for (const theme of ["light", "dark"]) {
+          for (const width of [980, 560, 360]) {
+            for (const longTitle of [false, true]) {
+              const where = `${width} px, ${theme}, a ${longTitle ? "long" : "short"} title`;
+              const read = await browser.evaluate(
+                `(${CORNER})(${width}, ${JSON.stringify(theme)}, ${longTitle}, ${maxChars})`,
+              );
+              const near = (a, b) => Math.abs(a - b) <= 0.5;
+              check(
+                `${where}: the toggle is drawn in the header's corner, after the title, its GitHub link the pull request's page`,
+                read.toggle !== null &&
+                  read.afterTitle &&
+                  read.href === "https://github.com/octo/demo/pull/7",
+                JSON.stringify(read),
+              );
+              if (read.toggle === null) {
+                await browser.evaluate(CORNER_DONE);
+                continue;
+              }
+              const { toggle, tokens, states, want } = read;
+              check(
+                `${where}: the toggle is at the corner's insets from the page's top and right edges`,
+                near(toggle.top, tokens.insetTop) && near(toggle.end, tokens.insetEnd),
+                JSON.stringify({ toggle, tokens }),
+              );
+              check(
+                `${where}: the toggle is the corner's height and its two segments' width`,
+                near(toggle.height, tokens.height) && near(toggle.width, tokens.width),
+                JSON.stringify({ toggle, tokens }),
+              );
+              const key = `${width} ${theme}`;
+              if (tops.has(key)) {
+                check(
+                  `${where}: the toggle is where it is with a title of one line`,
+                  near(toggle.top, tops.get(key)),
+                  JSON.stringify({ top: toggle.top, short: tops.get(key) }),
+                );
+              } else {
+                tops.set(key, toggle.top);
+              }
+              const clear = toggle.start - (tokens.room - tokens.width);
+              check(
+                `${where}: the title's text and number end the toggle's gap clear of it`,
+                read.textEnd <= clear + 0.5 && read.numberEnd <= clear + 0.5,
+                JSON.stringify({ textEnd: read.textEnd, numberEnd: read.numberEnd, clear }),
+              );
+              check(
+                width === 980
+                  ? `${where}: the reading column ends short of the toggle, so the title keeps its width`
+                  : `${where}: the reading column reaches the toggle, so the title leaves it its room`,
+                width === 980 ? read.titleRoom === 0 : near(read.titleRoom, tokens.room),
+                JSON.stringify({
+                  titleRoom: read.titleRoom,
+                  room: tokens.room,
+                  column: read.column,
+                  page: read.page,
+                }),
+              );
+              check(`${where}: the pane does not scroll sideways`, !read.paneScrolls);
+              check(
+                `${where}: the Metabrowser segment is selected, in the accent on the selected fill`,
+                states.here.ink === want.link && states.here.fill === want.highlight,
+                JSON.stringify({ here: states.here, want }),
+              );
+              check(
+                `${where}: the GitHub segment is at rest, muted with no fill`,
+                states.there.ink === want.muted && states.there.fill === "rgba(0, 0, 0, 0)",
+                JSON.stringify({ there: states.there, want }),
+              );
+              check(
+                `${where}: the toggle has the joined chip group's frame`,
+                states.frame.border === want.border &&
+                  states.frame.ground === want.surface &&
+                  states.frame.radius === want.radius,
+                JSON.stringify({ frame: states.frame, want }),
+              );
+              if (width === 560 && !longTitle) {
+                await browser.send("Input.dispatchMouseEvent", {
+                  type: "mouseMoved",
+                  x: read.github.x,
+                  y: read.github.y,
+                });
+                const hovered = await browser.evaluate(CORNER_HOVERED);
+                check(
+                  `${where}: the GitHub segment under the pointer is in the text ink on the hover fill`,
+                  hovered.hovered && hovered.ink === want.text && hovered.fill === want.hover,
+                  JSON.stringify({ hovered, want }),
+                );
+                await browser.send("Input.dispatchMouseEvent", {
+                  type: "mouseMoved",
+                  x: 1,
+                  y: 899,
+                });
+              }
+              await browser.evaluate(CORNER_DONE);
+            }
+          }
+        }
+        lap("the corner");
       }
       if (runs("labels")) {
         const github = JSON.parse(fs.readFileSync(LABEL_COLORS, "utf8"));

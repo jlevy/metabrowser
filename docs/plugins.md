@@ -470,6 +470,10 @@ Useful helpers include:
   address whose state is unknown; `icon: "github"` and `position: "before"` mark an
   explicit GitHub action.
   Decorate after localization and sanitization;
+- `githubToggle(url)` for the view header’s GitHub toggle, whose GitHub mark links to
+  `url`, the page’s own page on github.com; it is `null` on a page whose repository is
+  not on github.com. Place it in the header’s corner, a `.view-header-end`, as
+  [View Headers](design-system.md#view-headers) says;
 - `refChipHtml(name, options)` and `refChip(name, options)` for the shared Git ref chip,
   where `name` is the copy value, `label` the display, and `kind` is `local`, `remote`,
   or `tag`; pass `trunk` and `head` only from a Git ref’s `is_trunk` and `is_head`, and

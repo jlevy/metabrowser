@@ -5101,7 +5101,25 @@ export function mountPullPage(container, ctx, mb) {
         });
       }
       placeChildren(openedRow, [stateBadge, opened.row, refresh]);
-      children.push(title, paintStateRow(pull), branchesRow, openedRow);
+      // The view header's GitHub toggle in the header's corner, as a file's and a folder's
+      // header has it (docs/design-system.md, "View Headers"), its GitHub mark a link to the
+      // record's own page on github.com. The SDK draws none on a page whose repository is
+      // not on github.com, and a session's SDK may have no toggle at all. The corner follows
+      // the title in the reading order and is placed in the page's upper right
+      // (github/styles.css), so it moves no row.
+      const corner = headerPart("github toggle", pull.htmlUrl, () => {
+        const url = safeLink(pull.htmlUrl, "");
+        const toggle =
+          url !== null && typeof mb.githubToggle === "function" ? mb.githubToggle(url) : null;
+        return toggle === null ? null : h("span", { class: "view-header-end" }, [toggle]);
+      });
+      children.push(
+        title,
+        ...(corner === null ? [] : [corner]),
+        paintStateRow(pull),
+        branchesRow,
+        openedRow,
+      );
       // A pull request with no labels has no labels row, and no gap for it: the next row
       // shown follows the row of ages as the next metadata line (mb-2u08). Its labels come
       // with its record or core, so the row is decided with the record's first paint; a

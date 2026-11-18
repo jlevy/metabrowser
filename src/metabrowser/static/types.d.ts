@@ -1491,6 +1491,12 @@ type MetabrowserSdk = {
     name: string,
     options?: Pick<MetabrowserActorIdentityOptions, "className" | "nameClass">,
   ): string;
+  /** The view header's GitHub toggle (static/github-page.js) for a page whose github.com
+   *  page is `url`: the Metabrowser mark, the view the page is in, and the GitHub mark, a
+   *  link to `url`. Null on a page with no repository on github.com, which carries no
+   *  toggle. A view places it in its header's corner, a `.view-header-end`
+   *  (docs/design-system.md, "View Headers"). */
+  githubToggle(url: string): HTMLElement | null;
   /** View-phase destination mark; a state icon may come only from trusted view metadata. */
   decorateExternalLink<T extends HTMLElement>(
     anchor: T,
@@ -2995,7 +3001,7 @@ declare global {
     iconClass?: string;
     iconStyle?: string;
     title: string;
-    /** The heading row's end: its controls. */
+    /** The header's corner, its controls, which it places in its upper right corner. */
     end: string;
     /** The metadata line's markup. */
     line: string;

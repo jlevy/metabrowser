@@ -1943,6 +1943,9 @@ async function mountScripted(page, tab, options = {}) {
       navigation: { href: () => "/view/", async open() {} },
       sourceKind: () => "filesystem",
       icons: { toggle: "" },
+      // With *githubToggle*, the SDK's view header toggle, which a page whose repository is
+      // on github.com has (plugin-sdk-views.js); without, the SDK of a page with none.
+      ...(options.githubToggle === undefined ? {} : { githubToggle: options.githubToggle }),
       // With *brief*, the change line's painters, as text, and the tree's breakdown, so the
       // page draws the cached list's brief line (mb-z8ea).
       ...(options.brief === undefined && options.briefPainters !== true
@@ -2653,6 +2656,76 @@ async function coldHold(page) {
   return told;
 }
 
+// The view header's GitHub toggle on a pull request's page (mb-70d6): the page asks the
+// SDK's `githubToggle` for it with the record's own address on github.com, `html_url`, and
+// puts it in the header's corner, a `.view-header-end` right after the title, so the reading
+// order is the title and then the toggle. A page with no record in hand asks for none; a
+// poll that repaints the header with the same address keeps the toggle drawn, and one with
+// another address draws it again; an address that is not http(s) gets none; and an SDK with no toggle, the SDK of a
+// page whose repository is not on github.com, gets none. Where the corner is drawn is paint,
+// measured by tests/dom/github-pull-header-chrome.mjs (`corner`). Told in order for the
+// golden.
+async function githubToggleSteps(page) {
+  const told = [];
+  const asked = [];
+  const githubToggle = (url) => {
+    asked.push(url);
+    const toggle = new Element("span");
+    toggle.className = "view-header-toggle";
+    const github = new Element("a");
+    github.setAttribute("href", url);
+    toggle.append(github);
+    return toggle;
+  };
+  let drawn = null;
+  const tell = (step, container) => {
+    const header = container.querySelector(".github-pull-header");
+    const corners = header === null ? [] : header.querySelectorAll(":scope > .view-header-end");
+    const asks = `asked ${asked.length === 0 ? "for none" : asked.join(", ")}`;
+    if (corners.length === 0) {
+      told.push(`${step}: no corner; ${asks}`);
+      return;
+    }
+    assert.equal(corners.length, 1, "the header has one corner");
+    const [corner] = corners;
+    const toggle = corner.querySelector(".view-header-toggle");
+    const before = header.children[header.children.indexOf(corner) - 1];
+    const after = before.classes.has("github-pull-title")
+      ? `the title "${before.children[1].textContent}"`
+      : before.className;
+    const kept = drawn === null ? "" : toggle === drawn ? ", the toggle drawn before" : ", redrawn";
+    drawn = toggle;
+    told.push(
+      `${step}: the corner after ${after}, its GitHub link ` +
+        `${toggle.querySelector("a[href]").getAttribute("href")}${kept}; ${asks}`,
+    );
+  };
+  const cold = await mountScripted(page, "", { cold: true, githubToggle });
+  tell("mounted with no record in hand", cold.container);
+  await cold.poll(recorded.current.body);
+  tell("its record lands", cold.container);
+  const retitled = structuredClone(recorded.current.body);
+  retitled.record.pull.title = "Count to three in the app";
+  await cold.poll(retitled);
+  tell("a poll brings a new title and the same address", cold.container);
+  const moved = structuredClone(retitled);
+  moved.record.pull.html_url = "https://github.com/octo/renamed/pull/7";
+  await cold.poll(moved);
+  tell("a poll brings another address", cold.container);
+  cold.handle.dispose();
+  asked.length = 0;
+  drawn = null;
+  const unsafe = structuredClone(recorded.current.body);
+  unsafe.record.pull.html_url = "javascript:alert(1)";
+  const refused = await mountScripted(page, "", { body: unsafe, githubToggle });
+  tell("a record whose address is not http(s)", refused.container);
+  refused.handle.dispose();
+  const none = await mountScripted(page, "");
+  tell("an SDK with no toggle", none.container);
+  none.handle.dispose();
+  return told;
+}
+
 async function run() {
   const timers = new Map();
   const frames = new Map();
@@ -3325,6 +3398,7 @@ async function run() {
   const headerSummarySteps = await headerSummary(page);
   const summaryBriefSteps = await summaryBrief(page);
   const coldHoldSteps = await coldHold(page);
+  const githubToggleStepsTold = await githubToggleSteps(page);
   const tabKeySteps = await tabKeys(page);
   const textRefusalSteps = await textRefusal();
   const switchUnavailableSteps = await switchUnavailable(page);
@@ -3355,6 +3429,7 @@ async function run() {
     headerSummary: headerSummarySteps,
     summaryBrief: summaryBriefSteps,
     coldHold: coldHoldSteps,
+    githubToggle: githubToggleStepsTold,
     tabKeys: tabKeySteps,
     textRefusal: textRefusalSteps,
     switchUnavailable: switchUnavailableSteps,
