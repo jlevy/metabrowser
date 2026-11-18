@@ -1334,8 +1334,8 @@ async function paintStory(panel, selection = false) {
       "a row": [described(hostile), described(row(hostile))],
       "the row whose page is shown": described(row(shown)),
       "its parts": row(shown).childNodes.map(described),
-      // The stylesheet draws the number's line first and the title under it (mb-lkkt); the
-      // DOM keeps the title the row's first text. This reads the text, not the accessible
+      // The stylesheet draws the title first and the number's line under it (mb-lkkt); the
+      // DOM keeps the title the row's first text too. This reads the text, not the accessible
       // name, which gives the state icon's label first and then the title.
       "its text leads with its title": row(shown)
         .textContent.trim()
