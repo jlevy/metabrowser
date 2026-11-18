@@ -19,6 +19,16 @@ All notable changes to Metabrowser are documented here.
   the Python provider’s log line, so any provider is timed the same way, and the
   benchmark’s cold-scan row is now “cold scan, discovery (ms)”.
 
+- The Pulls tab’s change lines, each row’s file and line totals, arrive in seconds
+  rather than tens of seconds on a cold cache.
+  The prefetch now lists the changed files of the open pull requests in view from the
+  local store, comparing each head with the mirror’s base branch, before it reads any
+  record: the heads the store lacks come in one Git fetch, a served checkout attaches
+  its store for this if no page has yet, and the lists cost no GitHub API requests.
+  Before, each list waited its turn behind a record read of several seconds, and most
+  came from GitHub; on this repository’s own Pulls tab with a fresh cache, the last of
+  11 rows’ lines went from 40.6 s to 10.4 s after the tab opened.
+
 - A cached record read at the moment a refresh rewrites it is no longer taken as
   missing. The storage checks refuse a file that is replaced while they check it; a read
   of a record now opens the rewritten one and checks it again, so it reads the old
@@ -38,6 +48,16 @@ All notable changes to Metabrowser are documented here.
   Now whichever of the two fails first stops the other, and its Git, before the
   comparison answers, so a failed check no longer leaves the listing’s `git diff`
   running either.
+
+- A folder Overview’s README keeps the table of contents it has opened as a file: the
+  rail beside the README in a wide pane, and in a narrower one the toggle that fades in
+  as you scroll to the README’s beginning and out above it, where it had none.
+  Its entries, and links to the README’s own headings, scroll the Overview and put the
+  heading on the folder’s address instead of opening the README as a file.
+  For plugin authors, `metabrowser.kpressInitToc(container, config)` hands KPress its
+  per-binding configuration, and the Markdown builtin’s `mountRendered` takes a
+  `pagePath`; `PLUGIN_SDK_VERSION` remains `0.7`. See
+  [Embedded Document Navigation](docs/design-system.md#embedded-document-navigation).
 
 - The Files panel’s totals no longer move the tree when the count of ignored files
   arrives. The ignored count is a line of its own under the tracked count, “+ 248,189

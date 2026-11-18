@@ -147,15 +147,27 @@ source_commit() {
   fi
 }
 
+# The release keychain: the one keychain that holds the Developer ID identity and the
+# notary profile, and that stays locked except during a release the owner started. It
+# is SIGN_KEYCHAIN, by default the file that the first owner step creates (README.md,
+# Building a Release). Developer ID signing and a keychain profile use only this
+# keychain, so nothing signs with a copy of the identity left in another one.
+release_keychain() {
+  echo "${SIGN_KEYCHAIN:-$HOME/Library/Keychains/metabrowser-release.keychain-db}"
+}
+
 # Signs a bundle or disk image: ad hoc ("-") without a timestamp, or with the given
-# identity, the hardened runtime, and a secure timestamp. Extra arguments go to codesign.
+# identity, of any kind, found only in the release keychain, and a secure timestamp.
+# `codesign --keychain` looks for the identity in that keychain alone and still builds
+# the certificate chain from the user's search list (man codesign). Extra arguments go
+# to codesign.
 sign() {
   local identity="$1" target="$2"
   shift 2
   if [[ "$identity" == "-" ]]; then
     codesign --force --sign - --timestamp=none "$@" "$target"
   else
-    codesign --force --sign "$identity" --timestamp "$@" "$target"
+    codesign --force --sign "$identity" --keychain "$(release_keychain)" --timestamp "$@" "$target"
   fi
 }
 
@@ -219,15 +231,98 @@ write_cask() {
 }
 
 # Whether the target carries a Developer ID Application signature, the only kind the
-# notary service accepts.
+# notary service accepts. The output is read whole: piped into `grep -q`, which stops at
+# the Authority line, codesign's later lines would meet a closed pipe, and under
+# pipefail that SIGPIPE would read as "not signed".
 is_developer_id_signed() {
-  codesign -dvv "$1" 2>&1 | grep -q '^Authority=Developer ID Application:'
+  local details
+  details="$(codesign -dvv "$1" 2>&1)" || return 1
+  [[ $'\n'"$details" == *$'\n'"Authority=Developer ID Application:"* ]]
 }
 
 # Writes NAME.sha256 beside the file, naming the file without its directory, so
 # `shasum -a 256 -c NAME.sha256` works wherever both are downloaded.
 write_checksum() {
   (cd "$(dirname "$1")" && shasum -a 256 "$(basename "$1")" >"$(basename "$1").sha256")
+}
+
+# A new folder for output that a rerun recreates, named for "$1". Both BSD and GNU
+# mktemp take this form, so the scripts' tests run on Linux too.
+scratch_dir() {
+  mktemp -d "${TMPDIR:-/tmp}/$1.XXXXXX"
+}
+
+# The Unix time of a date as openssl prints one ("Sep 17 00:00:00 2031 GMT"), with BSD
+# date on macOS and GNU date elsewhere.
+epoch_of_date() {
+  if [[ "$(uname -s)" == Darwin ]]; then
+    date -u -j -f '%b %d %T %Y %Z' "$1" +%s
+  else
+    date -u -d "$1" +%s
+  fi
+}
+
+# Stops the process "$1" and every process under it. Each is stopped before its
+# children are listed, so it starts no more, and killed after them. A child left running
+# would keep the caller waiting on a `$(…)` capture until it closed its output.
+stop_process_tree() {
+  local child
+  kill -STOP "$1" 2>/dev/null || return 0
+  for child in $(pgrep -P "$1" 2>/dev/null || true); do
+    stop_process_tree "$child"
+  done
+  kill -KILL "$1" 2>/dev/null || true
+}
+
+# Runs "$@" (after the first argument, a number of seconds) and returns its status, or
+# stops it and every process it started, and returns 124, once it has run that long: for
+# a call that could wait on the network, or on a prompt, forever. macOS has no
+# timeout(1).
+bounded() {
+  local seconds="$1" pid tenths=0
+  shift
+  "$@" &
+  pid=$!
+  while kill -0 "$pid" 2>/dev/null; do
+    if ((tenths >= seconds * 10)); then
+      stop_process_tree "$pid"
+      wait "$pid" 2>/dev/null || true
+      echo "stopped after $seconds s: $1" >&2
+      return 124
+    fi
+    command sleep 0.1
+    tenths=$((tenths + 1))
+  done
+  wait "$pid"
+}
+
+# A Unix time as a UTC date ("2026-11-17 09:00:00 UTC"), with BSD or GNU date.
+date_of_epoch() {
+  if [[ "$(uname -s)" == Darwin ]]; then
+    date -u -r "$1" '+%Y-%m-%d %H:%M:%S UTC'
+  else
+    date -u -d "@$1" '+%Y-%m-%d %H:%M:%S UTC'
+  fi
+}
+
+# Whether the metab release the app requires is on PyPI: MetabRequirement.isReleased in
+# Sources/ShellCore/Setup/MetabVersion.swift, which the commit that publishes the floor
+# sets. Until it is, no downloader's installed metab meets the app's floor, so an
+# official release waits for it. Stops when the declaration is no longer the one read.
+metab_floor_released() {
+  local line
+  line="$(grep -E '^ *public static let isReleased = (true|false)$' Sources/ShellCore/Setup/MetabVersion.swift)" ||
+    die "Sources/ShellCore/Setup/MetabVersion.swift no longer declares MetabRequirement.isReleased as scripts/common.sh reads it"
+  [[ "$line" == *true ]]
+}
+
+# The files a release of version "$1" for the architecture label "$2" publishes, one per
+# line: the image and its checksum. scripts/release.sh names them for the owner to
+# attach, and scripts/check-release.sh downloads and checks exactly these.
+release_assets() {
+  local image
+  image="$(basename "$(dmg_path release "$1" "$2")")"
+  printf '%s\n' "$image" "$image.sha256"
 }
 
 # Detaches a mounted image, retrying while Spotlight or Finder still holds it.
