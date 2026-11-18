@@ -109,8 +109,15 @@ def _mirror_root(source: GitSource) -> str:
 
 
 def add_recent(target: Path | GitSource) -> None:
-    """Record *target* as opened now, as a serve of it would."""
+    """Record *target* as opened now, as a serve of it would.
 
+    With ``METABROWSER_RECORD_RECENT`` off it records nothing and says so, with exit
+    status 0, as a serve under it records nothing and still serves.
+    """
+
+    if not recent_targets.recording_enabled():
+        typer.echo(f"Not recorded: {recent_targets.RECORD_ENV} is off.", err=True)
+        return
     mode: TargetMode
     if isinstance(target, Path):
         mode, root = "folder", recent_targets.folder_root(_served_folder(target))

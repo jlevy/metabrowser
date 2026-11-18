@@ -29,6 +29,7 @@ from metabrowser.recent_targets import (
     MAX_RECENT_TARGETS,
     MAX_ROOT_BYTES,
     MIGRATIONS,
+    RECORD_ENV,
     STORE_FILE,
     NewerFormatError,
     RecentTargetsError,
@@ -40,10 +41,18 @@ from metabrowser.recent_targets import (
     read,
     record,
     record_quietly,
+    recording_enabled,
 )
 from tests.child_io import read_line
 
 _STAMP = "2026-11-18T03:14:15Z"
+
+
+@pytest.fixture(autouse=True)
+def _recording(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]
+    """The suite runs with recording off (``tests/conftest.py``); these tests are of it."""
+
+    monkeypatch.setenv(RECORD_ENV, "1")
 
 
 @pytest.fixture
@@ -551,6 +560,36 @@ def test_a_root_a_server_cannot_record_does_not_stop_it(
     assert read().targets == ()
 
 
+# ── Opting out ─────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("value", ["0", "false", "no", "off", "OFF", " 0 "])
+def test_recording_is_off_when_the_variable_says_so(value: str) -> None:
+    assert not recording_enabled({RECORD_ENV: value})
+
+
+@pytest.mark.parametrize("environ", [{}, {RECORD_ENV: "1"}, {RECORD_ENV: ""}, {RECORD_ENV: "yes"}])
+def test_recording_is_on_otherwise(environ: dict[str, str]) -> None:
+    assert recording_enabled(environ)
+
+
+def test_a_server_told_not_to_record_touches_nothing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """With the opt-out, a serve's record reads and writes nothing, the directory included."""
+
+    config = tmp_path / "config"
+    monkeypatch.setenv("METABROWSER_CONFIG_DIR", str(config))
+    monkeypatch.setenv(RECORD_ENV, "0")
+
+    record_quietly("folder", "/work/a")
+
+    assert not config.exists()
+    # The store itself is not what the variable governs: a caller that records, records.
+    record("folder", "/work/b", directory=config)
+    assert _roots(config) == ["/work/b"]
+
+
 # ── A real serve ───────────────────────────────────────────────────
 
 
@@ -590,15 +629,37 @@ def test_a_serve_records_its_folder_before_it_announces_itself(
         assert [(target.mode, target.root) for target in read(config).targets] == [
             ("folder", folder_root(served))
         ]
-    finally:
-        assert process.stdin is not None
-        process.stdin.close()
-        process.stdin = None
+        # A server of another folder that is not an open, as one the macOS app restores
+        # is not, serves and leaves the list as it was.
+        quiet = subprocess.Popen(
+            [str(console_script), str(tmp_path), "--no-open", "--exit-on-eof"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+            env={**os.environ, RECORD_ENV: "0"},
+        )
         try:
-            process.wait(timeout=15)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=5)
-        for stream in (process.stdout, process.stderr):
-            if stream is not None:
-                stream.close()
+            assert read_line(quiet).startswith("Serving ")
+            assert [target.root for target in read(config).targets] == [folder_root(served)]
+        finally:
+            _stop(quiet)
+    finally:
+        _stop(process)
+
+
+def _stop(process: subprocess.Popen[str]) -> None:
+    """Close the server's stdin, which stops it, and wait for it within a bound."""
+
+    assert process.stdin is not None
+    process.stdin.close()
+    process.stdin = None
+    try:
+        process.wait(timeout=15)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5)
+    for stream in (process.stdout, process.stderr):
+        if stream is not None:
+            stream.close()

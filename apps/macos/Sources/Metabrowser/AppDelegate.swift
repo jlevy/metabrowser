@@ -118,6 +118,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         urls.forEach(request)
     }
 
+    /// The Dock icon's menu: the recent targets, as File > Open Recent lists them.
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        recentFolders.dockMenu()
+    }
+
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { true }
 
     /// A launch or reopen with nothing to show offers the Open panel.

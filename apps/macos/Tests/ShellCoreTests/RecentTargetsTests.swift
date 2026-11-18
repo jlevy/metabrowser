@@ -147,6 +147,21 @@ import Testing
         #expect(!RecentTargets.opensURLs(infoDictionary: [:]))
     }
 
+    // MARK: - The two menus
+
+    @Test func theDockMenuHoldsTheSameTargetsAsOpenRecentInTheSameOrder() {
+        let open = RecentTargets.rows(for: .openRecent, count: 3)
+        let dock = RecentTargets.rows(for: .dock, count: 3)
+        #expect(open == [.target(0), .target(1), .target(2), .separator, .clear])
+        #expect(dock == [.target(0), .target(1), .target(2)])
+        #expect(open.filter { if case .target = $0 { true } else { false } } == dock)
+    }
+
+    @Test func withNothingRecentOpenRecentSaysSoAndTheDockMenuAddsNothing() {
+        #expect(RecentTargets.rows(for: .openRecent, count: 0) == [.empty, .separator, .clear])
+        #expect(RecentTargets.rows(for: .dock, count: 0) == [])
+    }
+
     // MARK: - The commands
 
     @Test func theCommandsAreMetabsModes() {
@@ -167,5 +182,23 @@ import Testing
         #expect(spec.environment == ChildEnvironment.build(inherited: inherited, toolDirectories: setup.tools.directories))
         // The servers the app starts get no storage override either, so both use one list.
         #expect(spec.environment["METABROWSER_CONFIG_DIR"] == nil)
+    }
+
+    /// An app started with the opt-out, as `make run` starts a development build, hands
+    /// it to every `metab` it runs, so nothing that run opens is recorded.
+    @Test func anAppStartedNotToRecordTellsEveryMetabItRuns() {
+        #expect(RecentTargets.recordVariable == "METABROWSER_RECORD_RECENT")
+        let setup = RuntimeSetup(
+            runtime: Runtime(executable: "/opt/tools/metab", version: "0.12.1", source: .chosen), tools: ToolPaths())
+        let off = RecentTargets.spec(
+            RecentTargets.addArguments("/Volumes/Home/src/fdu"), with: setup,
+            inherited: [RecentTargets.recordVariable: "0"])
+        #expect(off.environment[RecentTargets.recordVariable] == "0")
+        let server = CLIServeLaunch().spec(
+            serving: URL(filePath: "/Volumes/Home/src/fdu/"), with: setup,
+            inherited: [RecentTargets.recordVariable: "0"], logURL: nil)
+        #expect(server.environment[RecentTargets.recordVariable] == "0")
+        let unset = RecentTargets.spec(RecentTargets.listArguments, with: setup, inherited: [:])
+        #expect(unset.environment[RecentTargets.recordVariable] == nil)
     }
 }

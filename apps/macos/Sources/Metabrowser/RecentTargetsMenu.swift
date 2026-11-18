@@ -2,18 +2,33 @@ import AppKit
 import ShellCore
 import UniformTypeIdentifiers
 
-/// File > Open Recent, drawn from `metab`'s recent targets (`RecentTargets`).
+/// File > Open Recent and the Dock icon's menu, both drawn from `metab`'s recent targets
+/// (`RecentTargets`).
 ///
-/// `metab` keeps the list, so the menu holds what any `metab` served lately, from this
-/// app, from Terminal, or from the other build of the app, up to `metab`'s own cap, and
-/// the app decides nothing about membership or order. The menu shows the last answer at
-/// once and asks again whenever it opens or the app becomes active; an answer that
-/// arrives while the menu is open redraws it.
+/// `metab` keeps the list, so the menus hold what the user opened lately, in this app, in
+/// the other build of it, or with `metab` in Terminal, up to `metab`'s own cap, and the
+/// app decides nothing about membership or order. Both menus are drawn from one answer,
+/// so they list the same targets in the same order (`RecentTargets.rows`).
 ///
-/// The Dock icon's menu is macOS's: the app still registers each folder it opens with
-/// `NSDocumentController`, and macOS keeps that list, with its own order and length, for
-/// each build, and shows it when the app is not running too.
+/// A menu shows the last answer at once. The app asks again when it becomes active, when
+/// File > Open Recent opens, and when the Dock menu is asked for; an answer that arrives
+/// while Open Recent is open redraws it, and the Dock, which takes a copy of its menu,
+/// shows a newer answer the next time it is opened.
+///
+/// The app no longer registers folders with `NSDocumentController`: macOS would add its
+/// own recent-documents list to the Dock menu beside this one. What an earlier build
+/// registered is cleared once, at launch.
 final class RecentTargetsMenu: NSObject, NSMenuDelegate {
+    /// What a menu item opens. An item carries it, not its place in the list: the Dock
+    /// keeps its copy of the menu after the list has changed.
+    private final class Carried: NSObject {
+        let entry: RecentTargets.Item
+
+        init(_ entry: RecentTargets.Item) {
+            self.entry = entry
+        }
+    }
+
     private static let iconSize = NSSize(width: 16, height: 16)
     private let setup: () -> RuntimeSetup?
     private let open: (URL) -> Void
@@ -23,7 +38,7 @@ final class RecentTargetsMenu: NSObject, NSMenuDelegate {
     private var problem: String?
     private var isAsking = false
     private var askedAt: ContinuousClock.Instant?
-    /// The menu to redraw when an answer arrives.
+    /// The Open Recent menu to redraw when an answer arrives.
     private weak var menu: NSMenu?
 
     /// `setup` is the `metab` the app may run now, nil while there is none; `open` is
@@ -31,14 +46,13 @@ final class RecentTargetsMenu: NSObject, NSMenuDelegate {
     init(setup: @escaping () -> RuntimeSetup?, open: @escaping (URL) -> Void) {
         self.setup = setup
         self.open = open
+        super.init()
+        NSDocumentController.shared.clearRecentDocuments(nil)
     }
 
-    /// `root` was asked for. macOS lists it in the Dock menu: a folder qualifies because
-    /// `Info.plist` declares `public.folder` as a document type. `metab` lists it when
-    /// its server starts, so the app tells `metab` itself only for a folder that
-    /// `isOpen` already, which starts none.
+    /// `root` was asked for, by the user. Its server records it as it starts, so the app
+    /// tells `metab` itself only for a folder that `isOpen` already, which starts none.
     func noteOpened(_ root: URL, isOpen: Bool) {
-        NSDocumentController.shared.noteNewRecentDocumentURL(root)
         if isOpen { change(RecentTargets.addArguments(root.path(percentEncoded: false))) }
     }
 
@@ -79,7 +93,7 @@ final class RecentTargetsMenu: NSObject, NSMenuDelegate {
         }
         // An open menu is redrawn only for a list that changed, so its rows do not move
         // under the pointer for an answer that says what it already shows.
-        if let menu, shown.0 != items || shown.1 != problem { draw(menu) }
+        if let menu, shown.0 != items || shown.1 != problem { draw(.openRecent, into: menu) }
     }
 
     /// Runs a command that changes the list, then asks for the list again.
@@ -97,11 +111,11 @@ final class RecentTargetsMenu: NSObject, NSMenuDelegate {
         }
     }
 
-    // MARK: - NSMenuDelegate
+    // MARK: - The two menus
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         self.menu = menu
-        draw(menu)
+        draw(.openRecent, into: menu)
         refresh()
     }
 
@@ -114,26 +128,41 @@ final class RecentTargetsMenu: NSObject, NSMenuDelegate {
         false
     }
 
-    private func draw(_ menu: NSMenu) {
+    /// The Dock icon's menu, or nil with nothing to list. The Dock takes it as it is now,
+    /// so the list is asked for again for the next time.
+    func dockMenu() -> NSMenu? {
+        refresh()
+        guard !items.isEmpty else { return nil }
+        let menu = NSMenu()
+        draw(.dock, into: menu)
+        return menu
+    }
+
+    private func draw(_ kind: RecentTargets.Menu, into menu: NSMenu) {
         menu.removeAllItems()
-        for (index, entry) in items.enumerated() {
-            let item = NSMenuItem(title: entry.title, action: #selector(openRecent(_:)), keyEquivalent: "")
-            item.target = self
-            item.tag = index
-            item.toolTip = entry.toolTip
-            item.image = Self.icon(for: entry.target.mode)
-            item.image?.size = Self.iconSize
-            menu.addItem(item)
+        for row in RecentTargets.rows(for: kind, count: items.count) {
+            switch row {
+            case .target(let index):
+                let entry = items[index]
+                let item = NSMenuItem(title: entry.title, action: #selector(openRecent(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = Carried(entry)
+                item.toolTip = entry.toolTip
+                item.image = Self.icon(for: entry.target.mode)
+                item.image?.size = Self.iconSize
+                menu.addItem(item)
+            case .empty:
+                let none = NSMenuItem(title: "No Recent Items", action: nil, keyEquivalent: "")
+                none.toolTip = problem
+                menu.addItem(none)
+            case .separator:
+                menu.addItem(.separator())
+            case .clear:
+                let clear = NSMenuItem(title: "Clear Menu", action: #selector(clearRecent(_:)), keyEquivalent: "")
+                clear.target = self
+                menu.addItem(clear)
+            }
         }
-        if items.isEmpty {
-            let none = NSMenuItem(title: "No Recent Items", action: nil, keyEquivalent: "")
-            none.toolTip = problem
-            menu.addItem(none)
-        }
-        menu.addItem(.separator())
-        let clear = NSMenuItem(title: "Clear Menu", action: #selector(clearRecent(_:)), keyEquivalent: "")
-        clear.target = self
-        menu.addItem(clear)
     }
 
     /// The generic folder icon, and a cloud for a mirror, neither read from the entry's
@@ -146,17 +175,17 @@ final class RecentTargetsMenu: NSObject, NSMenuDelegate {
     }
 
     @objc private func openRecent(_ sender: NSMenuItem) {
-        guard items.indices.contains(sender.tag) else { return }
-        let entry = items[sender.tag]
+        guard let entry = (sender.representedObject as? Carried)?.entry else { return }
         // Looked at only now that the user chose it. A folder that is gone gets the app's
         // usual message from `open`, and leaves the list.
         let gone = entry.target.mode == .folder && !FileChecks.isDirectory(entry.target.root)
+        // From the Dock's menu the app may be in the background.
+        NSApp.activate()
         open(entry.url)
         if gone { change(RecentTargets.forgetArguments(entry.target.root)) }
     }
 
     @objc private func clearRecent(_ sender: Any?) {
-        NSDocumentController.shared.clearRecentDocuments(sender)
         items = []
         problem = nil
         change(RecentTargets.clearArguments)

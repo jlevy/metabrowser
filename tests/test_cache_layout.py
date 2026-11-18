@@ -257,6 +257,8 @@ def test_local_browsing_in_process_never_calls_the_application_cache(
     config = tmp_path_factory.mktemp("configuration") / "metabrowser"
     monkeypatch.setenv(METABROWSER_CACHE_DIR_ENV, str(chosen))
     monkeypatch.setenv("METABROWSER_CONFIG_DIR", str(config))
+    # The suite runs with recording off; here the record is part of what is checked.
+    monkeypatch.setenv(recent_targets.RECORD_ENV, "1")
     before = _snapshot(tmp_path)
     calls: list[str] = []
 

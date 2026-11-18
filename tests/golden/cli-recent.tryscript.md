@@ -7,6 +7,7 @@ env:
   TZ: "UTC"
   METABROWSER_PLUGINS_DIRS: ""
   METABROWSER_LOG_LEVEL: "WARNING"
+  METABROWSER_RECORD_RECENT: "1"
 patterns:
   TIMESTAMP: '\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z'
   ROOTS: '[^\s"]+/roots'
@@ -241,6 +242,25 @@ Error: invalid ROOT (credentials_in_url): the URL carries credentials
 
 ```console
 $ METABROWSER_CONFIG_DIR=$PWD/config metab --recent
+folder  [TIMESTAMP]  [ROOTS]/alpha
+folder  [TIMESTAMP]  [ROOTS]/gamma/sub
+? 0
+```
+
+## Test: a process told not to record
+
+`METABROWSER_RECORD_RECENT=0` is for a server nobody opened to read, such as a
+benchmark’s or one the macOS app restores: it records nothing, and neither does
+`--recent-add`. The list can still be read and changed.
+
+```console
+$ METABROWSER_RECORD_RECENT=0 METABROWSER_CONFIG_DIR=$PWD/config metab roots/beta --recent-add 2>&1
+Not recorded: METABROWSER_RECORD_RECENT is off.
+? 0
+```
+
+```console
+$ METABROWSER_RECORD_RECENT=0 METABROWSER_CONFIG_DIR=$PWD/config metab --recent
 folder  [TIMESTAMP]  [ROOTS]/alpha
 folder  [TIMESTAMP]  [ROOTS]/gamma/sub
 ? 0

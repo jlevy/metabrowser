@@ -16,7 +16,7 @@ nonisolated private let liveMetab = ProcessInfo.processInfo.environment["METABRO
 nonisolated private func liveEnvironment(configuration: URL, toolDirectories: [String] = []) -> [String: String] {
     let directory = configuration.appending(path: "metabrowser").path(percentEncoded: false)
     return ChildEnvironment.build(inherited: ProcessInfo.processInfo.environment, toolDirectories: toolDirectories)
-        .merging(["METABROWSER_CONFIG_DIR": directory]) { _, test in test }
+        .merging(["METABROWSER_CONFIG_DIR": directory, RecentTargets.recordVariable: "1"]) { _, test in test }
 }
 
 /// Serialized: `metab` picks its port by probing and binds it later, so two servers
@@ -118,6 +118,31 @@ struct LiveMetabTests {
             #expect(targets.map(\.mode) == [.folder])
             #expect(targets.map(\.root) == [FileChecks.canonicalPath(root.path(percentEncoded: false))])
         }
+
+        // A server that is not an open, as a restored folder's is, records nothing: started
+        // with the opt-out, it serves and leaves the list as it was.
+        var restored = environment
+        restored[RecentTargets.recordVariable] = "0"
+        let quiet = ServerSupervisor(
+            spec: LaunchSpec(
+                executable: path, arguments: launch.arguments(serving: other), environment: restored,
+                workingDirectory: other.path),
+            launch: launch)
+        await quiet.start()
+        try await stoppingAfterward(quiet) {
+            guard case .ready = quiet.state else {
+                Issue.record("expected ready, got \(quiet.state)")
+                return
+            }
+            #expect(await listed().map(\.root) == [FileChecks.canonicalPath(root.path(percentEncoded: false))])
+        }
+        let unrecorded = await CommandRunner.run(
+            LaunchSpec(
+                executable: path, arguments: RecentTargets.addArguments(other.path(percentEncoded: false)),
+                environment: restored),
+            timeout: RecentTargets.timeout)
+        #expect(unrecorded.succeeded)
+        #expect(await listed().count == 1)
 
         // An open that starts no server is recorded by the app's own call, and goes first.
         #expect(await metab(RecentTargets.addArguments(other.path(percentEncoded: false))).succeeded)

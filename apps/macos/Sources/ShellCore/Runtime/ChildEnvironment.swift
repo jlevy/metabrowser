@@ -16,6 +16,9 @@ public nonisolated enum ChildEnvironment {
         "TZ", "__CF_USER_TEXT_ENCODING", "SSH_AUTH_SOCK",
         "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY",
         "http_proxy", "https_proxy", "no_proxy", "all_proxy",
+        // An app started with it, as `make run` starts a development build, records no
+        // recent target, and neither does any `metab` it runs.
+        RecentTargets.recordVariable,
     ]
 
     public static func build(inherited: [String: String], toolDirectories: [String]) -> [String: String] {

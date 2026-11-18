@@ -259,6 +259,8 @@ def test_serving_a_source_records_it_as_a_mirror(
     """
 
     _home(tmp_path, monkeypatch)
+    # The suite runs with recording off; here the record is what is checked.
+    monkeypatch.setenv(recent_targets.RECORD_ENV, "1")
     origin = _origin(tmp_path)
 
     refused = _serve(origin.url, "--allow-edits")

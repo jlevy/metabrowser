@@ -85,6 +85,13 @@ except ImportError:  # Windows: the owner-only helpers refuse first, as unverifi
 
 log = logging.getLogger(__name__)
 
+# Set to ``0`` (or ``false``, ``no``, ``off``), this keeps a process from recording
+# anything: a serve does not record its root, and ``--recent-add`` records nothing. It
+# is for a server nobody opened to read: a benchmark's, a test's, a development run of
+# the macOS app, and the servers the app starts when it restores its last session, which
+# is not an open. Listing, forgetting, and clearing are unaffected.
+RECORD_ENV: Final = "METABROWSER_RECORD_RECENT"
+_OFF: Final = frozenset({"0", "false", "no", "off"})
 STORE_FILE: Final = "recent-targets.yml"
 LOCK_FILE: Final = "recent-targets.lock"
 # The format this release writes: ``mf`` for a Metabrowser format, then its number, so
@@ -480,6 +487,13 @@ def _change(directory: Path | None, change: _Change) -> tuple[RecentTarget, ...]
         ) from error
 
 
+def recording_enabled(environ: Mapping[str, str] | None = None) -> bool:
+    """Whether this process records what it opens: true unless :data:`RECORD_ENV` says no."""
+
+    variables = os.environ if environ is None else environ
+    return variables.get(RECORD_ENV, "").strip().lower() not in _OFF
+
+
 def now() -> str:
     """The current time as an entry spells it."""
 
@@ -534,9 +548,13 @@ def record_quietly(mode: TargetMode, root: str) -> None:
     """Record a root a server is about to serve, and never raise.
 
     A failure is logged once as a warning that says what to do, without the root or a
-    path, and the server starts regardless.
+    path, and the server starts regardless. With :data:`RECORD_ENV` off, nothing is
+    recorded and nothing is read or written.
     """
 
+    if not recording_enabled():
+        log.debug("not recording a recent target: %s is off", RECORD_ENV)
+        return
     try:
         record(mode, root)
     except UnrecordableRootError as error:
@@ -557,6 +575,7 @@ __all__ = [
     "MAX_STORE_BYTES",
     "MIGRATIONS",
     "MODES",
+    "RECORD_ENV",
     "STORE_FILE",
     "Listing",
     "NewerFormatError",
@@ -571,5 +590,6 @@ __all__ = [
     "now",
     "read",
     "record",
+    "recording_enabled",
     "record_quietly",
 ]

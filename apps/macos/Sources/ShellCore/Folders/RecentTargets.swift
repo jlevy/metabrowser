@@ -77,6 +77,12 @@ public nonisolated enum RecentTargets {
     /// The `Info.plist` key, a boolean, of a build that opens a link sent to it. `metab
     /// TARGET --present` reads the same key before it sends one.
     public static let opensURLsKey = "MetabrowserOpensURLs"
+    /// The variable that, set to `0`, keeps a `metab` from recording anything
+    /// (`RECORD_ENV` in `recent_targets.py`). The app sets it for every server that is not
+    /// the first start of something the user just opened (`FolderServer`), and passes its
+    /// own on, so a development run started with it records nothing at all
+    /// (`ChildEnvironment.passedThrough`).
+    public static let recordVariable = "METABROWSER_RECORD_RECENT"
     /// How long one of these commands may take. Each reads or rewrites one small file
     /// and starts no server; `metab --version`, which does less, gets the same
     /// (`RuntimeDiscovery.versionTimeout`).
@@ -174,6 +180,37 @@ public nonisolated enum RecentTargets {
         let names = shown.map { WindowTitle($0.0.identity(home: home)) }
         return zip(shown, zip(names, WindowTitle.windowTitles(names))).map { entry, naming in
             Item(target: entry.0, url: entry.1, title: naming.1, toolTip: naming.0.subtitle)
+        }
+    }
+
+    /// One line of a menu drawn from the list.
+    public enum Row: Equatable, Sendable {
+        /// The item at this index.
+        case target(Int)
+        /// "No Recent Items".
+        case empty
+        case separator
+        /// "Clear Menu".
+        case clear
+    }
+
+    /// The two menus the list is drawn in.
+    public enum Menu: Equatable, Sendable {
+        /// File > Open Recent.
+        case openRecent
+        /// The Dock icon's menu, where the Dock puts its own items after these.
+        case dock
+    }
+
+    /// The lines of `menu` for `count` items. Both menus hold every item, in the list's
+    /// order, so the Dock and File > Open Recent never disagree. Open Recent says when
+    /// there are none and ends with Clear Menu; the Dock's holds the items alone, and
+    /// nothing when there are none.
+    public static func rows(for menu: Menu, count: Int) -> [Row] {
+        let targets = (0..<count).map(Row.target)
+        switch menu {
+        case .dock: return targets
+        case .openRecent: return (targets.isEmpty ? [.empty] : targets) + [.separator, .clear]
         }
     }
 
