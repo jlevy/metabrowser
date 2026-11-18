@@ -4,6 +4,12 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- In a navigation pane too narrow for the Files toolbar’s controls, the Files tree no
+  longer moves down as the page loads.
+  The toolbar wraps to a second line when its controls arrive, and the tree, shown under
+  the one-line placeholder before them, moved 30 px with it at the narrowest pane.
+  The tree now waits for the toolbar, and shows in the frame the toolbar is filled.
+
 - A local checkout has a branch and tag chooser.
   A folder that is a repository’s root shows the button a repository URL’s page has,
   under the navigation header, and opens on **Working tree**: your files on disk.

@@ -5183,10 +5183,14 @@ Heights are in line units, or struts of the controls a row holds, never pixels m
 in one engine, because WebKit’s font metrics differ from Chrome’s. Where a region’s size
 is its data’s and arrives a moment after the rest, as the File Overview’s first rollup
 does, the view holds its first paint for that data, briefly, with the previous view
-still shown.
-The server draws the tab an address lands on in front, a commit’s address on
-Commits, so a landing never shows one tab’s chrome and then swaps it; a toolbar that
-cannot load says so in its slot rather than pulsing.
+still shown. The Files tree holds its first paint until the Files toolbar has its
+controls, so a toolbar that wraps in a narrow pane is at its height before the tree
+shows under it. The toolbar is drawn just before the tree’s first rows, so no row waits
+for it, and the hold ends at a bound, so a toolbar that never loads does not hide the
+tree; the bound and its measurement are beside the rule in `static/styles.css`. The
+server draws the tab an address lands on in front, a commit’s address on Commits, so a
+landing never shows one tab’s chrome and then swaps it; a toolbar that cannot load says
+so in its slot rather than pulsing.
 `tests/test_reserved_chrome.py` pins the rules.
 
 ### Loading Chrome
