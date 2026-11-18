@@ -25,16 +25,17 @@
 
 /** @typedef {"all" | "files" | "ignored"} DistributionPopulation */
 /**
- * What the hover marks: `segment`, the one segment the pointer is on; `family`, the
- * family's mark in every bar on screen, as a legend entry naming the family does.
+ * What the hover marks: `self`, the one mark the pointer is on, as a segment is;
+ * `family`, every mark of the family on screen, as a legend entry naming the family
+ * does. Either way the family's legend entry is marked too.
  *
- * @typedef {"segment" | "family"} DistributionHoverMarks
+ * @typedef {"self" | "family"} DistributionHoverMarks
  */
 /**
- * A segment, the handle the pointer is on, and what the hover marks. *population* and
- * *key* name the segment whose tooltip shows: the segment itself, or for a legend entry,
- * its family's segment in the tally row the legend's shares are of. The tooltip is
- * anchored on *anchor*, so it sits by what the reader points at.
+ * A family, the handle the pointer is on, and what the hover marks. *key* names the
+ * family. For a legend entry, *population* names the tally row whose segment of the
+ * family gives the tooltip, the row the legend's shares are of; for a segment, the row
+ * it is in. The tooltip is anchored on *anchor*, so it sits by what the reader points at.
  *
  * @typedef {Readonly<{population: DistributionPopulation, key: string, anchor: Element, marks: DistributionHoverMarks}>} DistributionHoverTarget
  */

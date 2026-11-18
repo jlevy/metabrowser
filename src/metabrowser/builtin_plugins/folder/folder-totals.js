@@ -376,6 +376,10 @@ export function mountFolderTotalsView(
   const segmentsDrawn = new Map();
   /** @type {Array<HTMLElement>} */
   let hoveredFills = [];
+  // What the tooltip this hover showed is anchored on, so a change puts that one away
+  // and no other surface's.
+  /** @type {Element | null} */
+  let tooltipOn = null;
   /** @type {HTMLTableElement | null} */
   let table = null;
   /** @type {ReturnType<typeof totalsRow> | null} */
@@ -476,7 +480,7 @@ export function mountFolderTotalsView(
           population,
           key: segment.key,
           anchor: fill,
-          marks: /** @type {const} */ ("segment"),
+          marks: /** @type {const} */ ("self"),
         });
         fill.addEventListener("mouseenter", () => hover.enter(target));
         fill.addEventListener("mouseleave", () => hover.leave(target));
@@ -496,43 +500,46 @@ export function mountFolderTotalsView(
    * segment it names the family; on an entry, which shows the name, it gives the file
    * count and byte size alone of the family's segment in the row the legend's shares are
    * of (docs/design-system.md, "Restating is not adding"). A row with no such segment on
-   * screen, as while the bars are still one neutral fill, draws nothing of it.
+   * screen, as while the bars are still one neutral fill, draws nothing of it. A handle
+   * that marks itself and is not one of these segments draws nothing here.
    *
    * @param {DistributionHoverTarget | null} target
-   * @param {DistributionHoverTarget | null} [previous]
    */
-  function showHover(target, previous = null) {
+  function showHover(target) {
     for (const fill of hoveredFills) {
       delete fill.dataset.hovered;
     }
     hoveredFills = [];
-    if (target) {
-      const rows =
-        target.marks === "family"
-          ? [...segmentsDrawn.values()]
-          : [segmentsDrawn.get(target.population)];
-      for (const drawn of rows) {
-        const fill = drawn?.get(target.key)?.fill;
+    const named = target && segmentsDrawn.get(target.population)?.get(target.key);
+    /** @type {DrawnSegment | null | undefined} */
+    let segment = null;
+    if (target?.marks === "family") {
+      for (const drawn of segmentsDrawn.values()) {
+        const fill = drawn.get(target.key)?.fill;
         if (fill) {
           fill.dataset.hovered = "";
           hoveredFills.push(fill);
         }
       }
+      segment = named;
+    } else if (named && named.fill === target?.anchor) {
+      named.fill.dataset.hovered = "";
+      hoveredFills.push(named.fill);
+      segment = named;
     }
-    const segment = target && segmentsDrawn.get(target.population)?.get(target.key);
-    if (!target || !segment) {
+    if (target && segment) {
+      mb.tooltip.show(
+        target.anchor === segment.fill ? segment.tooltip : segment.counts,
+        target.anchor,
+      );
+      tooltipOn = target.anchor;
+    } else if (tooltipOn) {
       // Only the tooltip the hover showed, anchored on the handle the pointer was on: a
       // legend entry outside these bars or a segment in them. A hover that showed none
       // has none to put away.
-      if (previous) {
-        mb.tooltip.hide(previous.anchor);
-      }
-      return;
+      mb.tooltip.hide(tooltipOn);
+      tooltipOn = null;
     }
-    mb.tooltip.show(
-      target.anchor === segment.fill ? segment.tooltip : segment.counts,
-      target.anchor,
-    );
   }
   const unsubscribeHover = hover.subscribe(showHover);
 

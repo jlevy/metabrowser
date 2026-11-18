@@ -544,6 +544,17 @@ document.body = new Element("body");
     JSON.stringify(tooltipCalls.map(named)),
   );
   shared.leave(ignoredMarkdown);
+  // A handle that marks itself and is none of these segments, as a Treemap cell would
+  // be, draws nothing in the bars: no mark and no tooltip.
+  tooltipCalls.length = 0;
+  const elsewhere = { population: "files", key: "family:python", anchor: entry, marks: "self" };
+  shared.enter(elsewhere);
+  check(
+    "a hover marking a handle outside the bars draws nothing in them",
+    tooltipCalls.length === 0 && sharedMarked().length === 0,
+    JSON.stringify(tooltipCalls.map(named)),
+  );
+  shared.leave(elsewhere);
 
   // A draw replaces every segment. One the pointer is on is replaced under it, and the
   // browser enters the new one, so the hover it held goes.

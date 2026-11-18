@@ -538,7 +538,7 @@ function familyRow() {
     population: "files",
     key: "family:python",
     anchor: segmentStandIn,
-    marks: "segment",
+    marks: "self",
   };
   legendHover.enter(fromSegment);
   const segmentMarks = marked();
@@ -583,7 +583,7 @@ function familyRow() {
   check(
     "disposal lets go of the hover an entry under the pointer entered, and stops drawing",
     JSON.stringify(hoverCalls) ===
-      JSON.stringify(["family files family:python", "none", "segment files family:python"]) &&
+      JSON.stringify(["family files family:python", "none", "self files family:python"]) &&
       !("hovered" in heldEntry.dataset) &&
       hoverHandle.hovered.length === 0,
     JSON.stringify(hoverCalls),
