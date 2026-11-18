@@ -88,7 +88,8 @@ every chromatic token defined in both themes carries the same hue in each.
 ## File Age
 
 File age is one shared primitive across navigation rows, file headers, recent-filter
-menus, Live badges, and plugin-rendered age labels.
+menus, Live badges, Group by’s age sections
+([Grouping the Files Tree](#grouping-the-files-tree)), and plugin-rendered age labels.
 Each state owns two parallel OKLCH tokens in `static/styles.css`:
 
 - `--file-age-<state>` is an accessible text foreground
@@ -3650,6 +3651,15 @@ it resets them all, Show ignored back on, and keeps the grouping.
   [stack group](#stack-groups-in-the-pulls-tab) is a row that opens and closes, and the
   difference is deliberate: a grouping splits the whole tree into sections, while a
   stack gathers some rows of one list like a folder.
+- **Age inks.** By age, a section’s name takes its band’s [file age](#file-age) ink.
+  Each elapsed band lies inside one age tier, so its name reads in the ink of every file
+  age it holds and of Modified within’s row for that window; Older takes the oldest
+  tier’s, and Live the Live ink, as Live’s row and badge do.
+  Only the ink changes: the heading keeps its size, weight, caps, and tracking, and its
+  tally stays muted, so the name is a band’s name and not an age.
+  The section carries the route’s group id, so the ink is paint, keyed by that id in
+  `static/styles.css`; `tests/test_tree_groups.py` holds the mapping to Modified
+  within’s and to `AGE_TIERS`. File type sections keep the heading’s own ink.
 - **One order.** Every surface that lists the file type groups lists them in one
   presentation order, Documentation first: the type filter’s Groups and sections, Group
   by, and File Overview’s type table and bars.
