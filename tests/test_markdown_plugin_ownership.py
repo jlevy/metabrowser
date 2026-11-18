@@ -144,7 +144,8 @@ def test_embedded_readme_keeps_its_table_of_contents_on_the_folders_page() -> No
     assert "const pagePath = options.pagePath ?? path;" in rendered
     assert "mb.kpressInitToc(container, kpressTocConfig(container))" in rendered
 
-    # A caller that asks for no TOC still reaches the route: renderer -> SDK -> query.
+    # The option still reaches the route, renderer -> SDK -> query, although no built-in
+    # browser caller sets it since the README panel stopped; mb-2nqa tracks removing it.
     assert "includeToc: options.includeToc" in rendered
     sdk = (PLUGIN_DIR.parent.parent / "static" / "plugin-sdk.js").read_text(encoding="utf-8")
     assert 'url.searchParams.set("toc", includeToc)' in sdk
