@@ -116,8 +116,9 @@ plugins load and how to add a file type.
 
 Planned work, each linked to its plan:
 
-- **The Mac app and agents:** a signed, notarized download, and `metab --present`, one
-  front door that shows content in the running app or browser
+- **The Mac app and agents:** a signed, notarized download, and a `metab --present` that
+  the app answers and that falls back to a browser when there is no app; today it hands
+  a target to the app alone
   ([native macOS app plan](docs/project/specs/active/plan-2026-11-10-native-macos-app.md))
 - **Editing:** opt-in editing of trusted local files
   ([trusted-local editing plan](docs/project/specs/active/plan-2026-07-16-trusted-local-file-editing.md))

@@ -422,9 +422,13 @@ def test_server_module_execution_delegates_to_canonical_cli() -> None:
     )
 
     assert result.returncode == 0, result.stderr
-    assert "--plugins" in result.stdout
-    assert "--remote" in result.stdout
-    assert "--walk" in result.stdout
+    # Typer colors its help under GITHUB_ACTIONS or FORCE_COLOR, and styles an option's
+    # first `-` apart from the rest, so the option names are read with the styling removed.
+    shown = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout)
+    assert "--plugins" in shown
+    assert "--remote" in shown
+    assert "--walk" in shown
+    assert "--present" in shown
 
 
 # ── Serve mode ─────────────────────────────────────────────────

@@ -54,6 +54,9 @@ selected. Opening a path inside a Git repository at the repository’s root is p
 | 0 | Success |
 | 1 | A refusal or failure, printed as one `Error:` line on stderr; `--api` when the route answers outside 2xx |
 | 2 | A usage error, such as two modes or an option the mode does not use; a `--diff` that cannot be computed |
+| 3 | `--present`: ROOT cannot be presented, and the refusal says why |
+| 4 | `--present`: no app takes the target, so nothing was sent; the report’s `code` says why |
+| 5 | `--present`: LaunchServices could not be asked or did not take the target, as in a sandbox |
 | 129, 130 | Stopped by a terminal hangup or Ctrl-C |
 | 143 | Stopped by `SIGTERM` while cloning |
 
@@ -70,6 +73,7 @@ selected. Opening a path inside a Git repository at the repository’s root is p
 | `--no-serve` | Clone or reuse a Git source in the cache, and serve nothing |
 | `--remote HOST` | Serve a directory on another machine through an SSH tunnel |
 | `--plugins`, `--plugin NAME`, `--doctor` | List, show, or validate plugins |
+| `--present` | Hand a folder, a file, or a GitHub URL to the [macOS app](macos-app.md) |
 
 The modes read, with two exceptions: a Git source is cloned into the cache by whichever
 mode opens it first, and `--api` writes when the route it names does, as a refresh
@@ -458,6 +462,136 @@ For the underlying data, `--api` is more direct.
 The plugin modes take `--plugins-dir` and `--json`; [plugins](plugins.md) says where
 plugins are discovered.
 
+## Handing a Target to the App: `--present`
+
+```shell
+metab ./notes --present                          # a folder
+metab ./notes/report.md --present                # a file, in the folder metab serves
+metab https://github.com/owner/repo/pull/123 --present
+metab ./notes --present --dry-run --format json  # what would be sent, sending nothing
+```
+
+`--present` hands one folder, file, or GitHub URL to the
+[Metabrowser macOS app](macos-app.md) and reports what it did.
+It reads ROOT as every mode does, and `--path` selects a file or folder inside a local
+ROOT as serve mode reads it, but it clones nothing, fetches nothing, and starts no
+server: the app runs `metab` on what it receives, as it does for a folder opened in
+Finder. Unlike serve mode, `--present` refuses `--path` with a URL (`path_with_url`):
+present the URL of the file or folder itself.
+
+`--dry-run` stops after reading ROOT and prints what would be sent.
+With `--format json` it is one object, which is how the app checks what a user types:
+
+```console
+$ metab https://github.com/owner/repo/pull/123/files --present --dry-run --format json
+{
+  "kind": "pull_request",
+  "root": "https://github.com/owner/repo",
+  "page": "/pull/123/files",
+  "handoff": [
+    "https://github.com/owner/repo/pull/123/files"
+  ],
+  "refusal": null
+}
+```
+
+- **`kind`:** `folder`, `file`, `repository`, `tree`, `commit`, or `pull_request`. A
+  file is a `file` locally and on GitHub, while a folder is a `folder` locally and a
+  `tree` on GitHub; `root` tells the two apart.
+- **`root`:** the absolute folder `metab` would serve, or the repository’s canonical
+  URL, which never names a branch or commit, since the app keys a session by its
+  repository.
+- **`page`:** the address in that root, as a server of it spells one, or null where only
+  the repository’s mirror can know it, which the app reads as the entry page of the
+  server it starts; that server resolves the URL and opens the right address.
+  For a GitHub `tree` or `blob` URL, `page` is known when the URL leaves one reading: a
+  `tree` of one branch, also after `refs/heads/` or `refs/tags/`, or `HEAD` and any
+  path. Otherwise the branch might hold `/`, and `page` is null: a `blob` URL’s
+  `release/v1` may be one branch, which `metab URL` opens at `/view/`, or a branch and a
+  file. A commit’s page is `/commit/<id>` for a full ID and null for an abbreviated one,
+  which the commit page refuses; `metab COMMIT_URL` opens at the same page.
+- **`handoff`:** exactly what `open -b` is given after the bundle identifier: a folder;
+  a file named alone; ROOT and then the file `--path` names in it, so the app opens the
+  root that was named and shows the file there; or a URL’s canonical
+  `https://github.com/` form.
+  It is null for a folder inside ROOT, because the app opens each folder in a window of
+  its own; such a target is reported and not sent.
+- **`refusal`:** null, or a `code` and a one-line `message` that names the fix, with
+  every other field null and the refusal’s [exit status](#exit-status).
+  A path that does not exist is `not_found`, a GitHub page that is not a repository view
+  keeps the reason `metab URL` gives it, such as `unsupported_github_url`, and a Git
+  source that is not on GitHub is `unsupported_source`.
+  `tests/golden/cli-present.tryscript.md` shows these and most others, `--path` with a
+  URL among them.
+
+A file named alone goes where the app places any file it is handed: in the most specific
+folder it has open that holds the file, and otherwise in the folder `root` reports.
+A file named with `--path` opens in ROOT, unless a folder inside ROOT that holds the
+file is open already, which is more specific.
+
+Without `--dry-run`, `--present` asks LaunchServices for the app: the release build,
+then the development build every local build is, or the one `--app-bundle-id ID` or
+`METABROWSER_APP_BUNDLE_ID` names.
+It sends the handoff with `open -b` and prints a report; `--format json` prints it as
+one object whose `target` is the object above:
+
+```json
+{
+  "delivered_to": "app",
+  "bundle_id": "io.github.jlevy.metabrowser",
+  "bundle_path": "/Applications/Metabrowser.app",
+  "target": {"kind": "folder", "root": "/path/to/notes", "page": "/view/", "handoff": ["/path/to/notes"], "refusal": null},
+  "confirmed": false,
+  "code": "not_confirmed",
+  "reason": "LaunchServices took the target; the app does not reply yet, ..."
+}
+```
+
+`delivered_to` is `app` once LaunchServices has taken the target.
+That does not mean a window shows it, and the app cannot answer yet, so `confirmed` is
+always `false`. `bundle_path` is the bundle LaunchServices named for `bundle_id`, or
+null when none was looked up or found.
+Otherwise `delivered_to` is `none`, and `code` is a refusal’s code or one of these;
+nothing was handed over, except that an `open` that did not return in time may still
+deliver what it was given:
+
+| Code | Meaning |
+| --- | --- |
+| `not_confirmed` | Sent: LaunchServices took the target, and nothing confirms a window shows it |
+| `not_macos` | The app runs on macOS only |
+| `app_not_found` | LaunchServices knows no Metabrowser app |
+| `app_not_installed` | The app LaunchServices names is not at an install location below, as a build left where it was built is not |
+| `app_not_marked` | The app is not named Metabrowser or does not declare the marker below, being an older build or another app |
+| `app_cannot_select_folder` | `--path` names a folder inside ROOT, and the app opens each folder in a window of its own; it is refused before LaunchServices is asked |
+| `lookup_failed` | LaunchServices could not be asked, as when a sandbox denies its database |
+| `open_failed` | `open` failed or did not return in time |
+
+`reason` says the same in words.
+`DELIVERY_EXIT_CODES` in `cli/present.py` maps each code to its status, so a caller can
+tell “install or update the app” from “run this where LaunchServices answers” by the
+status alone.
+
+Every handoff, a file’s or a URL’s, first checks the bundle LaunchServices names:
+
+- **Installed:** it is at `/Applications/Metabrowser.app` or
+  `~/Applications/Metabrowser.app`, `~` being the home folder of your account, not
+  `$HOME`. LaunchServices registers a bundle wherever it was opened, a build in a source
+  checkout included, so a bundle anywhere else, or a link at an install location, is
+  refused with `app_not_installed` and a message that names its path; install the
+  Metabrowser app at one of the two, and open it once from there.
+- **Named:** its `Info.plist` names it `Metabrowser`.
+- **Marked:** its `Info.plist` declares `MetabrowserOpensURLs` true, which every build
+  that takes what `--present` sends declares: an older build drops a URL while `open`
+  still succeeds, and an app an override names must not be handed a file it would run.
+
+Each identifier’s bundle is checked in turn, so a stray registration of the release
+identifier does not hide an installed development build, and the first refusal is
+reported only when no identifier’s bundle passes.
+A developer testing a build where it was built sets
+`METABROWSER_ALLOW_UNINSTALLED_APP=1`, which lifts the first check alone.
+`APP_INSTALL_LOCATIONS` and the other constants in `cli/present.py` hold the locations,
+the bundle identifiers, the name, and the marker.
+
 ## Remote Directories
 
 ```shell
@@ -564,6 +698,8 @@ Every variable is read from the process environment, so export it in the shell t
 | `METABROWSER_TEXT_PREVIEW_BYTES`, `METABROWSER_TEXT_PREVIEW_MAX_BYTES`, `METABROWSER_HIGHLIGHT_MAX_BYTES` | Text loading and highlighting budgets, in bytes |
 | `METABROWSER_BINARY_PREVIEW_BYTES`, `METABROWSER_BINARY_PREVIEW_MAX_BYTES`, `METABROWSER_BINARY_PREVIEW_MAX_CHUNK_BYTES` | Byte-view budgets, in bytes |
 | `STRUCTURED_PARSE_MAX_BYTES`, `STRUCTURED_CACHE_SIZE` | JSON and YAML tree-view budgets: the largest file parsed, in bytes, and how many parses are kept |
+| `METABROWSER_APP_BUNDLE_ID` | The app `--present` hands a target to, as `--app-bundle-id`, which overrides it |
+| `METABROWSER_ALLOW_UNINSTALLED_APP` | `1` lets `--present` hand a target to an app outside the install locations, such as a development build |
 | `METABROWSER_METAB` | Read by the [macOS app](macos-app.md), not by `metab`: the `metab` the app runs |
 
 [Rendering large content](large-content-rendering.md) explains the rendering budgets and
