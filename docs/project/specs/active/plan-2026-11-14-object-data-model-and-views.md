@@ -1132,9 +1132,9 @@ as the pull request page does: the address’s `files` and `checks` (`PULL_ROUTE
 | `nav.list` | The front panel as a list slice: `collection`, `shape`, `focused`, `expanded`, `closed_sections`, and `window`, the first and last rows in view | The list host; an adapter per panel until it converges |
 | `pane.list` | The same slice for a page that is a list: `/pulls`, a folder’s Files view | The list host |
 | `pane.parts` | Named parts of a page, each open or closed, or one of a set of values: a table of contents, the Diff summary, the diff layout | The page view, through `mb.ui` |
-| `overlay` | The modal or menu that is open | The overlay controller (`static/overlay-layer.js:399`) |
+| `overlay` | The modal or menu that is open | The overlay controller (`createModal`, `static/overlay-layer.js:177`) |
 | `display` | Theme, reading font, and width | The preference cookies |
-| `commands` | The registered commands available now, by identifier | The shortcut registry (`static/keyboard-shortcuts.js:44`) |
+| `commands` | The registered commands available now, by identifier | The shortcut registry (`create`, `static/keyboard-shortcuts.js:651`) |
 
 - **Bounds.** A view state grows with the rows in view, never with a collection:
   `expanded` and `closed_sections` are capped and say `truncated`, and `window` names
@@ -1303,9 +1303,12 @@ outcome:
 | Slice paths and `describe` functions | An internal registry, held by the parity rule below |
 
 A running server validates a published state and an intent with the contract’s Pydantic
-model alone, so serving loads no schema library and the startup gate holds.
-The browser runs a strict normalizer over the same corpus, and the CLI validates the
+model alone, not through `validate_record`, whose first pass is a JSON Schema validator
+(`plugin_loader/artifact_contracts.py:447`), so serving loads no schema library and the
+startup gate holds (`devtools/check_distribution.py:62`). The full check,
+`validate_record`, runs in the tests, the corpus, and the CLI, which validates the
 artifacts it reads and prints.
+The browser runs a strict normalizer over the same corpus.
 
 #### Parity for the View Model
 
@@ -1315,7 +1318,7 @@ artifacts it reads and prints.
 | `ui.view-state` | Interaction | `tests/dom/ui-view-state-session.js` runs the production slices and publisher through a session and prints the view state after each step |
 | `ui.intent-apply` | Interaction | The same session applies intents: shown, not found, cancelled by input, busy, and stale, with each outcome and the history length |
 | `ui.viewer-order` | Data, owned by `/api/ui/views` | A transcript through `--api --server` against a harness server with stub viewers: order by attention, the default viewer, and the caps |
-| `ui.present-confirmation` | Data, owned by `cli/present.py` | `cli-present-delivery.txt` gains the confirmed and refused reports, against the same harness |
+| `ui.present-confirmation` | Data, owned by `cli/present.py` | `tests/golden/cli-present-delivery.txt` gains the confirmed and refused reports, against the same harness |
 | `ui.intent-notice-paint` | Paint-exempt | Where the notice sits, and that focus stays, in headless Chrome, as `tests/test_nav_reveal_chrome.py` checks a reveal |
 
 Three checks make the parity rule stronger than it is today.
@@ -2140,10 +2143,12 @@ An intent is an artifact another program writes, and a view state is one an agen
 and a shell may save, which are the stage and the durability that objects lacked.
 Objects enter those artifacts by reference, and following a reference should give the
 same form, so the open question about the CLI printing an object as an artifact is
-answered yes. The registry needs no JSON profile: a record in flight is validated by
-`validate_record` (`plugin_loader/artifact_contracts.py:434`), and only printed or saved
-artifacts use `pure-yaml`. Under [Decision 22](#decision-22-the-first-slice) D this
-family brings its own registry, so D still defers the object contracts and nothing else.
+answered yes. The registry needs no JSON profile: a record in flight is validated as a
+record, by its Pydantic model on a running server and by `validate_record`
+(`plugin_loader/artifact_contracts.py:434`) in the tests and the CLI
+([UI Contracts](#ui-contracts)), and only printed or saved artifacts use `pure-yaml`.
+Under [Decision 22](#decision-22-the-first-slice) D this family brings its own registry,
+so D still defers the object contracts and nothing else.
 
 ### Decision 32: How Intents and States Travel
 
@@ -2423,8 +2428,8 @@ onto the list host. Agent control ships under the `control` capability of
   editing is built.
 
 - **A hidden viewer.** A page cannot raise its window
-  (`research-2026-11-10-native-app-server-topology.md:668`). The outcome carries
-  `attention`, and `--present` keeps the app handoff for fronting.
+  (`docs/project/research/research-2026-11-10-native-app-server-topology.md:668`). The
+  outcome carries `attention`, and `--present` keeps the app handoff for fronting.
 
 - **The pull request page’s tabs.** One registered view draws them; registering three
   page views would give `pane.view` one meaning.
