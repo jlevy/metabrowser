@@ -12,8 +12,11 @@
 // remote carry neither the module nor the toggle.
 //
 // github.com refuses to be framed, so a browser cannot show the GitHub view in the page:
-// its mark is a link that opens the page in a new tab, as View on GitHub does, and the
-// macOS app hands it to the default browser (NavigationPolicy.decideNewWindow).
+// its mark is a link that opens the page in a new tab, as View on GitHub does. The link is
+// marked `data-view-toggle="github"`, and the macOS app shows a plain click on it in the
+// window's own GitHub view instead
+// (apps/macos/Sources/ShellCore/Web/GitHubViewRequests.swift); the page knows nothing
+// more of the app.
 //
 // tests/dom/github-page-session.js runs this file on the contexts the server derives.
 
@@ -137,6 +140,8 @@
     there.href = url;
     there.target = "_blank";
     there.rel = "noopener noreferrer";
+    // What the macOS app knows the toggle by: no other link opens its GitHub view.
+    there.dataset.viewToggle = "github";
     there.setAttribute("aria-label", "View on GitHub");
     there.dataset.tipText = `View on GitHub: ${shown.replace("https://", "")}${note ? `. ${note}` : ""}`;
     for (const option of [here, there]) {
