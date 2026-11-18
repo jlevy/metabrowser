@@ -81,7 +81,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var isShowingLinkModal = false
     /// File > Open URL…, made the first time it is chosen and kept: it starts empty each
     /// time it comes on screen.
-    private lazy var openURLWindow = OpenURLWindowController { [weak self] in self?.checkEnteredLink($0) }
+    private lazy var openURLWindow = OpenURLWindowController(
+        onOpen: { [weak self] in self?.checkEnteredLink($0) },
+        onDrop: { [weak self] in self?.stopCheckingEnteredLink($0) })
+    /// The dry run for the link File > Open URL… awaits, and the task that applies its
+    /// answer: at most one, since the panel awaits one answer and stops this one when it
+    /// drops it (`stopCheckingEnteredLink`).
+    private var enteredLinkCheck: (link: URL, task: Task<Void, Never>)?
     /// The runtime's file, or where `metab` may appear while there is none.
     private var watch: SetupWatch?
     private var watchedRuntime: Runtime?
@@ -387,8 +393,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Asks `metab` about a link typed into File > Open URL…, and opens its plan as a
     /// link sent to the app opens (`open(_:with:)`). With no `metab` the app can run now,
-    /// the link goes to the link queue instead, which waits for one as it waits for any
-    /// link (`requestLink`).
+    /// as while it finds or checks one, the link goes to the link queue instead, which
+    /// waits for one as it waits for any link (`requestLink`): the panel closes, and a
+    /// refusal comes as the alert at the end of the burst.
     private func checkEnteredLink(_ link: URL) {
         if let current = selection.setup?.runtime, !selection.isUnverified,
            !current.isCurrent(fingerprint: FileFingerprint.of(current.executable)) {
@@ -398,8 +405,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let waiting = openURLWindow.handOff() { requestLink(waiting) }
             return
         }
-        Task {
+        enteredLinkCheck?.task.cancel()
+        let task = Task {
             let answer = await askMetab(about: link, with: setup)
+            // Dropped by an edit, Cancel, or closing the panel, which cancelled this task
+            // and so killed the dry run (`CommandRunner.finish`): its answer is moot.
+            guard !Task.isCancelled else { return }
+            enteredLinkCheck = nil
             let text = link.absoluteString
             switch answer {
             case .plan(let plan):
@@ -417,6 +429,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await open(plan, with: setup)
             showNextLinkModal()
         }
+        enteredLinkCheck = (link, task)
+    }
+
+    /// The Open URL… panel no longer awaits the answer about `link`: cancelling its task
+    /// kills the dry run's process group at once (`CommandRunner.finish`), so an edit,
+    /// Cancel, or a closed panel leaves no `metab` running for it.
+    private func stopCheckingEnteredLink(_ link: URL) {
+        guard let check = enteredLinkCheck, check.link == link else { return }
+        check.task.cancel()
+        enteredLinkCheck = nil
     }
 
     /// Shows `plan` in its repository's window, or in a new session whose server starts on

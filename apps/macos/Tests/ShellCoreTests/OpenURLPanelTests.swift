@@ -54,25 +54,78 @@ nonisolated private let metab = "metab 0.13.0 at /opt/metab"
         ("https://github.com.evil.example/jlevy/metabrowser", .notGitHub),
         ("https://github.com%2eevil.example/jlevy/metabrowser", .notGitHub),
         ("https://[::1]/jlevy/metabrowser", .notGitHub),
-        ("https://github.com/jlevy/meta browser", .notAURL),
-        ("https://github.com/octo/demo/blob/main/a b.md", .notAURL),
+        ("https://github.com/octo/demo/blob/main/README\u{3164}.md", .character("\u{3164}")),
+        ("https://github.com/octo/demo/blob/main/a\u{200B}b.md", .character("\u{200B}")),
+        ("https://github.com/octo/demo/blob/main/a\u{00A0}b.md", .character("\u{00A0}")),
+        ("https://github.com/octo/demo/blob/main/a\u{202E}b.md", .character("\u{202E}")),
+        ("https://github.com/octo/demo/blob/main/README\u{FE0F}.md", .character("\u{FE0F}")),
+        ("https://github.com/octo/demo/blob/main/\u{2800}.md", .character("\u{2800}")),
+        ("https://github.com/octo/demo/blob/main/a\u{E000}.md", .character("\u{E000}")),
+        ("https://github.com/octo/demo/blob/main/a\tb.md", .character("\t")),
+        ("https://github.com/octo/demo/blob/main/a\nb.md", .character("\n")),
+        ("https://github.com/octo/demo/blob/main/a\u{0085}b.md", .character("\u{0085}")),
+        ("https://github.com/octo/demo/blob/main/a\\b.md", .character("\\")),
+        ("https://github.com/octo/demo/blob/main/100%.md", .percent),
+        ("https://github.com/octo/demo/blob/main/a%zz.md", .percent),
+        ("https://github.com/octo/demo/blob/main/a%2", .percent),
     ])
     func anythingElseIsSaidAndNotSent(_ text: String, _ problem: OpenURLEntry.Problem) {
         #expect(OpenURLEntry.link(text) == .failure(problem))
     }
 
+    /// The path, query, and fragment are sent as a browser sends them, as `metab` reads
+    /// them: a space, an ASCII character a URL cannot hold raw, a second `#`, and a
+    /// character outside ASCII that shows, percent-encoded as UTF-8, and an escape kept.
+    @Test(arguments: [
+        ("https://github.com/octo/demo/blob/main/a b.md", "https://github.com/octo/demo/blob/main/a%20b.md"),
+        ("https://github.com/jlevy/meta browser", "https://github.com/jlevy/meta%20browser"),
+        ("https://github.com/octo/demo/blob/main/a%20b c.md", "https://github.com/octo/demo/blob/main/a%20b%20c.md"),
+        ("https://github.com/octo/demo/blob/main/café.md", "https://github.com/octo/demo/blob/main/caf%C3%A9.md"),
+        ("https://github.com/octo/demo/blob/main/文档.md", "https://github.com/octo/demo/blob/main/%E6%96%87%E6%A1%A3.md"),
+        ("https://github.com/octo/demo/blob/main/❤️.md", "https://github.com/octo/demo/blob/main/%E2%9D%A4%EF%B8%8F.md"),
+        ("https://github.com/octo/demo/blob/main/1️⃣.md", "https://github.com/octo/demo/blob/main/1%EF%B8%8F%E2%83%A3.md"),
+        (#"https://github.com/octo/demo/blob/main/a"b{c}|d^e`f<g>[1].md"#,
+         "https://github.com/octo/demo/blob/main/a%22b%7Bc%7D%7Cd%5Ee%60f%3Cg%3E%5B1%5D.md"),
+        ("https://github.com/octo/demo/blob/main/a.md#L1#x", "https://github.com/octo/demo/blob/main/a.md#L1%23x"),
+        ("https://github.com/octo/demo/blob/main/a b.md?x=é#frag é",
+         "https://github.com/octo/demo/blob/main/a%20b.md?x=%C3%A9#frag%20%C3%A9"),
+    ])
+    func thePathIsSentAsABrowserSendsIt(_ text: String, _ sent: String) throws {
+        let link = try OpenURLEntry.link(text).get()
+        #expect(link.absoluteString == sent)
+        #expect(GitHubLink.accepts(link))
+    }
+
     @Test func aLinkPastTheLimitIsTooLong() {
         let long = "https://github.com/octo/demo/blob/main/" + String(repeating: "a", count: GitHubLink.maximumLength)
         #expect(OpenURLEntry.link(long) == .failure(.tooLong))
+        // Within the limit as typed, but not once each é is sent as %C3%A9.
+        let grown = "https://github.com/octo/demo/blob/main/" + String(repeating: "é", count: GitHubLink.maximumLength / 3)
+        #expect(grown.utf8.count <= GitHubLink.maximumLength)
+        #expect(OpenURLEntry.link(grown) == .failure(.tooLong))
     }
 
     /// Every problem has words of its own, which name no option of the command line.
     @Test func everyProblemSaysSomethingOfItsOwn() {
-        let all: [OpenURLEntry.Problem] = [.empty, .tooLong, .notAFullURL, .notHTTPS, .credentials, .port, .notGitHub, .notAURL]
+        let all: [OpenURLEntry.Problem] = [
+            .empty, .tooLong, .notAFullURL, .notHTTPS, .credentials, .port, .notGitHub,
+            .character("\\"), .character("\t"), .character("\u{3164}"), .percent, .notAURL,
+        ]
         #expect(Set(all.map(\.message)).count == all.count)
         for problem in all {
             #expect(!problem.message.contains("--"))
         }
+    }
+
+    /// A character the panel does not send is named as `metab` names it, with the
+    /// escape to write instead when it is outside ASCII.
+    @Test func aCharacterIsNamedWithItsEscape() {
+        let hidden = OpenURLEntry.Problem.character("\u{3164}").message
+        #expect(hidden.contains("U+3164"))
+        #expect(hidden.contains("%E3%85%A4"))
+        let control = OpenURLEntry.Problem.character("\t").message
+        #expect(control.contains("U+0009"))
+        #expect(!control.contains("%09"))
     }
 }
 
@@ -133,6 +186,9 @@ nonisolated private let metab = "metab 0.13.0 at /opt/metab"
         #expect(opened == nil)
         let opensLate = panel.answered(.plan(plan), for: pullRequest, metab: metab)
         #expect(opensLate == nil)
+        // The panel closing after its plan stops no dry run: the plan's is over.
+        let dropped = panel.cancel()
+        #expect(dropped == nil)
     }
 
     /// `metab`'s refusal is said in its own words, and the panel stays open with the text.
@@ -176,9 +232,16 @@ nonisolated private let metab = "metab 0.13.0 at /opt/metab"
     }
 
     /// An edit while `metab` is asked drops its answer: the text it answered about is gone.
+    /// It returns the link it stopped awaiting, whose dry run the app stops; an edit
+    /// with no answer awaited returns nothing.
     @Test func anEditDropsTheAnswerAwaited() {
         var panel = checking(pullRequest.absoluteString)
-        panel.edit("https://github.com/jlevy/metabrowser/pull/540")
+        #expect(panel.awaited == pullRequest)
+        let dropped = panel.edit("https://github.com/jlevy/metabrowser/pull/540")
+        #expect(dropped == pullRequest)
+        #expect(panel.awaited == nil)
+        let droppedAgain = panel.edit("https://github.com/jlevy/metabrowser/pull/541")
+        #expect(droppedAgain == nil)
         #expect(panel.phase == .editing)
         let opensLate = panel.answered(.plan(plan), for: pullRequest, metab: metab)
         #expect(opensLate == nil)
@@ -186,9 +249,13 @@ nonisolated private let metab = "metab 0.13.0 at /opt/metab"
         #expect(panel.message == nil)
     }
 
+    /// Cancel, or closing the panel, returns the link it stopped awaiting, as an edit does.
     @Test func cancelDropsTheAnswerAwaited() {
         var panel = checking(pullRequest.absoluteString)
-        panel.cancel()
+        let dropped = panel.cancel()
+        #expect(dropped == pullRequest)
+        let droppedAgain = panel.cancel()
+        #expect(droppedAgain == nil)
         let opensLate = panel.answered(.plan(plan), for: pullRequest, metab: metab)
         #expect(opensLate == nil)
         #expect(panel.phase == .closed)

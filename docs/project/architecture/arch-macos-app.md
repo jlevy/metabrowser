@@ -245,25 +245,41 @@ What the panel accepts, says, and does is `OpenURLPanel`, in `ShellCore`; the wi
 only shows its state and passes on edits, Open, and Cancel.
 
 - **The text is checked first.** `OpenURLEntry` hands `metab` only a link `GitHubLink`
-  accepts, the check every link sent to the app passes, read as typed with nothing
-  encoded. `metab TARGET --present --dry-run` reads a target with no scheme as a local
-  path, so a shorthand such as `owner/repo` would name a folder under its working
-  directory: the panel takes none, as the owner decided on 2026-11-18, and asks for the
-  full URL. Its other messages, for a scheme other than `https`, a user name or
-  password, a port, or another host, are the app’s own words about what was typed;
-  `metab` would refuse each of those too.
+  accepts, the check every link sent to the app passes.
+  `metab TARGET --present --dry-run` reads a target with no scheme as a local path, so a
+  shorthand such as `owner/repo` would name a folder under its working directory: the
+  panel takes none, as the owner decided on 2026-11-18, and asks for the full URL. Its
+  other messages, for a scheme other than `https`, a user name or password, a port,
+  another host, and a character it does not send, are the app’s own words about what was
+  typed; `metab` would refuse each of those too.
+- **Sent as a browser sends it.** The scheme and host are checked as typed.
+  The path, query, and fragment are then encoded as a browser sends them, each as UTF-8
+  escapes: a space and a character outside ASCII that shows, as `metab`’s GitHub reducer
+  encodes them (`_browser_encoded`), and an ASCII character a URL cannot hold raw, such
+  as `"` or `{`, which `metab` takes raw and encodes in its handoff.
+  So a file named `Design Notes.md` or `café.md` opens as `metab URL` opens it.
+  A control character, a backslash, a `%` that begins no escape, and a character that
+  may not show, such as U+3164 HANGUL FILLER, are refused, as `metab` refuses them.
+  `LiveMetabTests` gives `metab` both the text as typed and the link the panel sends,
+  and expects one plan.
 - **`metab` decides.** Open runs the dry run `resolveLink` runs (`askMetab`), outside
   the link queue, so that a refusal is said in the panel and not in the alert that ends
-  a burst, and one at a time, since Open waits for the answer.
-  A plan closes the panel and goes to `open(_:with:)`, so from there it is a link sent
-  to the app: the question before a clone, one window per repository, and always the
-  mirror, never a checkout.
+  a burst. A plan closes the panel and goes to `open(_:with:)`, so from there it is a
+  link sent to the app: the question before a clone, one window per repository, and
+  always the mirror, never a checkout.
   A refusal shows `refusal.message`; an answer the app cannot read names the `metab` and
   the reason, never its output, which goes to the app’s log.
   Either way the panel stays open with the text.
-  An edit, Cancel, or closing the panel drops the answer still awaited.
-- **With no `metab` the app can run now,** the panel closes and the link goes to the
-  link queue (`requestLink`), which waits for one as it does for any link.
+- **One dry run at a time.** An edit, Cancel, or closing the panel drops the answer
+  still awaited, and the app cancels the task that awaits it
+  (`stopCheckingEnteredLink`), which kills the dry run’s process group at once
+  (`CommandRunner.finish`). So the panel has at most one `metab` running, and Open,
+  enabled again by the edit, starts the next.
+- **With no `metab` the app can run now,** as while it finds `metab` or checks it again
+  after its file changed, the panel closes and the link goes to the link queue
+  (`requestLink`), which waits for one as it does for any link: the link is checked once
+  `metab` is ready, and a refusal comes as the alert at the end of the burst, not under
+  the field.
 - **Not built.** The offer of a known checkout, “borrow from the checkout” and “open the
   checkout instead”, which [Open Modes](arch-open-modes.md#the-file-menu) designs, waits
   for a way to tell that an open folder is a checkout of the URL’s repository:

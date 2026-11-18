@@ -7,13 +7,21 @@ import Foundation
 /// `owner/repo` or `github.com/owner/repo` would name a folder under its working
 /// directory: the panel takes no shorthand, and says so. Every other problem here is one
 /// `metab` would refuse as well (`insecure_http`, `credentials_in_url`,
-/// `unsupported_source`); the panel says it first, in its own words, since `metab`'s
+/// `unsupported_source`, `control_or_whitespace`, `non_ascii`, `backslash`,
+/// `invalid_percent_encoding`); the panel says it first, in its own words, since `metab`'s
 /// answer for another site is about the command line's `--present`.
+///
+/// The path, query, and fragment are encoded as a browser sends them, so the panel opens
+/// what `metab URL` opens, a file named with a space or a letter outside ASCII among
+/// them: the GitHub reducer, in `src/metabrowser/builtin_plugins/github/urls.py`, takes
+/// the same characters raw (`_common_checks`), encodes them (`_browser_encoded`, and its
+/// handoff for ASCII), and gives either spelling the same plan, which
+/// `LiveMetabTests.thePanelSendsWhatMetabOpensAsTyped` checks.
 public nonisolated enum OpenURLEntry {
     public enum Problem: Error, Equatable, Sendable {
         /// Nothing but white space.
         case empty
-        /// Longer than `GitHubLink.maximumLength`.
+        /// Longer than `GitHubLink.maximumLength`, as typed or once encoded.
         case tooLong
         /// No scheme: a shorthand such as `owner/repo`, or a URL without `https://`.
         case notAFullURL
@@ -25,7 +33,13 @@ public nonisolated enum OpenURLEntry {
         case port
         /// A host other than GitHub's.
         case notGitHub
-        /// Not a URL the app takes in any other way, such as one holding a space.
+        /// A character after the host that no URL holds raw and the panel does not encode:
+        /// a control character, a backslash, or a character outside ASCII that may not
+        /// show as itself (`OpenURLEntry.shows`).
+        case character(Unicode.Scalar)
+        /// A `%` that does not begin an escape such as `%20`.
+        case percent
+        /// Not a URL the app takes in any other way.
         case notAURL
 
         /// What the panel says under the field.
@@ -45,8 +59,16 @@ public nonisolated enum OpenURLEntry {
                 "This URL names a port. Remove it: Metabrowser opens GitHub on its usual port."
             case .notGitHub:
                 "Metabrowser opens only GitHub URLs: a repository, a pull request, a commit, or a file or folder on github.com."
+            case .character("\\"):
+                "This URL has a backslash in it. A URL separates its parts with /."
+            case .character(let scalar) where scalar.properties.generalCategory == .control:
+                "This URL has \(OpenURLEntry.codePoint(scalar)) in it, a control character such as a tab or a line break. Remove it."
+            case .character(let scalar):
+                "This URL has \(OpenURLEntry.codePoint(scalar)) in it, a character that may not show as itself. If it belongs in the URL, write it as \(OpenURLEntry.escaped(scalar))."
+            case .percent:
+                "This URL has a % that does not begin an escape such as %20. Write a % that belongs in the URL as %25."
             case .notAURL:
-                "This is not a URL Metabrowser can open. Check for a space or another character a URL cannot hold."
+                "This is not a URL Metabrowser can open."
             }
         }
     }
@@ -56,8 +78,9 @@ public nonisolated enum OpenURLEntry {
         text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// The link `text` names, if `GitHubLink` accepts it, else why not. The text is read as
-    /// typed: Foundation encodes nothing in it, so the link `metab` is given is the text.
+    /// The link `text` names, if `GitHubLink` accepts it, else why not. The scheme and the
+    /// host are checked as typed; the rest is encoded as a browser sends it
+    /// (`encoded(_:)`), and that encoded text is the link `metab` is given.
     public static func link(_ text: String) -> Result<URL, Problem> {
         let text = trimmed(text)
         if text.isEmpty { return .failure(.empty) }
@@ -73,10 +96,117 @@ public nonisolated enum OpenURLEntry {
             host = authority[..<colon]
         }
         guard GitHubLink.hosts.contains(host.lowercased()) else { return .failure(.notGitHub) }
-        guard let url = URL(string: text, encodingInvalidCharacters: false), GitHubLink.accepts(url) else {
+        let rest: String
+        switch encoded(text[authority.endIndex...]) {
+        case .success(let encoded): rest = encoded
+        case .failure(let problem): return .failure(problem)
+        }
+        let link = String(text[..<authority.endIndex]) + rest
+        if link.utf8.count > GitHubLink.maximumLength { return .failure(.tooLong) }
+        guard let url = URL(string: link, encodingInvalidCharacters: false), GitHubLink.accepts(url) else {
             return .failure(.notAURL)
         }
         return .success(url)
+    }
+
+    /// The path, query, and fragment as a browser sends them, which is how `metab`'s GitHub
+    /// reducer reads them: a space, an ASCII character a URL cannot hold raw, a second
+    /// `#`, and a character outside ASCII that shows as itself, each percent-encoded as
+    /// UTF-8. A valid escape such as `%20` is kept as it is. A control character, a
+    /// backslash, a stray `%`, and a character that may not show are refused, as `metab`
+    /// refuses them.
+    static func encoded(_ rest: Substring) -> Result<String, Problem> {
+        let scalars = Array(rest.unicodeScalars)
+        var result = String.UnicodeScalarView()
+        var inFragment = false
+        for (index, scalar) in scalars.enumerated() {
+            switch scalar {
+            case "%":
+                let escape = scalars.dropFirst(index + 1).prefix(2)
+                guard escape.count == 2, escape.allSatisfy(\.properties.isASCIIHexDigit) else {
+                    return .failure(.percent)
+                }
+                result.append(scalar)
+            case "\\":
+                return .failure(.character(scalar))
+            case "#":
+                // A URL has one fragment; a browser sends a later # as part of it.
+                if inFragment {
+                    result.append(contentsOf: escaped(scalar).unicodeScalars)
+                } else {
+                    inFragment = true
+                    result.append(scalar)
+                }
+            case _ where scalar.properties.generalCategory == .control:
+                return .failure(.character(scalar))
+            case _ where scalar.isASCII:
+                if rawASCIIEncoded.contains(scalar) {
+                    result.append(contentsOf: escaped(scalar).unicodeScalars)
+                } else {
+                    result.append(scalar)
+                }
+            case _ where shows(scalars, at: index):
+                result.append(contentsOf: escaped(scalar).unicodeScalars)
+            default:
+                return .failure(.character(scalar))
+            }
+        }
+        return .success(String(result))
+    }
+
+    /// The printable ASCII characters a URL cannot hold raw (RFC 3986), and which a browser
+    /// and `metab` encode: the space, `"`, `<`, `>`, `[`, `]`, `^`, `` ` ``, `{`, `|`,
+    /// and `}`. The backslash, which `metab` refuses, and `%` and `#`, which have their
+    /// own rules, are not here.
+    private static let rawASCIIEncoded: Set<Unicode.Scalar> = [" ", "\"", "<", ">", "[", "]", "^", "`", "{", "|", "}"]
+
+    /// Whether the character outside ASCII at `index` shows as itself, as `metab`'s
+    /// `hidden_at`, in `src/metabrowser/invisible_chars.py`, decides it: a letter, mark,
+    /// number, punctuation, or symbol, other than a default-ignorable code point, such as
+    /// U+3164 HANGUL FILLER, and U+2800, the blank braille cell. A variation selector shows
+    /// only on a base: after such a character, or as an emoji keycap after a digit, `#`,
+    /// or `*`, with U+20E3 after it. Swift's own Unicode data decides each property, so a
+    /// character newer than the data of one side or the other can be judged apart.
+    static func shows(_ scalars: [Unicode.Scalar], at index: Int) -> Bool {
+        let scalar = scalars[index]
+        guard scalar.properties.isVariationSelector else { return showsAlone(scalar) }
+        guard index > 0 else { return false }
+        let base = scalars[index - 1]
+        if base.isASCII {
+            return "#*0123456789".unicodeScalars.contains(base)
+                && index + 1 < scalars.count && scalars[index + 1] == "\u{20E3}"
+        }
+        return showsAlone(base)
+    }
+
+    private static func showsAlone(_ scalar: Unicode.Scalar) -> Bool {
+        let properties = scalar.properties
+        guard !scalar.isASCII, !properties.isVariationSelector, !properties.isDefaultIgnorableCodePoint,
+              scalar != "\u{2800}"
+        else { return false }
+        switch properties.generalCategory {
+        case .uppercaseLetter, .lowercaseLetter, .titlecaseLetter, .modifierLetter, .otherLetter,
+             .nonspacingMark, .spacingMark, .enclosingMark,
+             .decimalNumber, .letterNumber, .otherNumber,
+             .connectorPunctuation, .dashPunctuation, .openPunctuation, .closePunctuation,
+             .initialPunctuation, .finalPunctuation, .otherPunctuation,
+             .mathSymbol, .currencySymbol, .modifierSymbol, .otherSymbol:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// `scalar` percent-encoded as UTF-8, as a browser sends it: `%C3%A9` for é.
+    static func escaped(_ scalar: Unicode.Scalar) -> String {
+        let digits = Array("0123456789ABCDEF")
+        return String(scalar).utf8.map { "%\(digits[Int($0 >> 4)])\(digits[Int($0 & 0xF)])" }.joined()
+    }
+
+    /// `U+3164`: how `metab`'s refusals name a code point.
+    static func codePoint(_ scalar: Unicode.Scalar) -> String {
+        let hex = String(scalar.value, radix: 16, uppercase: true)
+        return "U+" + String(repeating: "0", count: max(0, 4 - hex.count)) + hex
     }
 
     /// A scheme, as RFC 3986 spells one, and `://`.
@@ -93,7 +223,9 @@ public nonisolated enum OpenURLEntry {
 /// checkout of it, as The File Menu in `docs/project/architecture/arch-open-modes.md`
 /// designs it. A problem with the text, a refusal, or an answer the app cannot read is
 /// said under the field, and the panel stays open so the text can be fixed. An edit
-/// while `metab` is asked drops its answer, and so does Cancel.
+/// while `metab` is asked drops its answer, and so do Cancel and closing the panel:
+/// each returns the link it stopped awaiting, whose dry run the app then stops, so the
+/// panel's dry runs run one at a time.
 public nonisolated struct OpenURLPanel: Equatable, Sendable {
     public enum Phase: Equatable, Sendable {
         /// The field takes text, and Open checks it.
@@ -114,17 +246,24 @@ public nonisolated struct OpenURLPanel: Equatable, Sendable {
     /// Whether Open does anything: some text, and no answer awaited.
     public var canOpen: Bool { phase == .editing && !OpenURLEntry.trimmed(text).isEmpty }
 
-    public var isChecking: Bool {
-        if case .checking = phase { return true }
-        return false
+    public var isChecking: Bool { awaited != nil }
+
+    /// The link `metab` is asked about, whose answer the panel awaits.
+    public var awaited: URL? {
+        if case .checking(let link) = phase { return link }
+        return nil
     }
 
-    /// The field now holds `newText`. Any message goes, and an answer awaited is dropped.
-    public mutating func edit(_ newText: String) {
-        guard phase != .closed, newText != text else { return }
+    /// The field now holds `newText`. Any message goes, and an answer awaited is dropped:
+    /// the link it was for, whose dry run the app stops, or nil if none was awaited.
+    @discardableResult
+    public mutating func edit(_ newText: String) -> URL? {
+        guard phase != .closed, newText != text else { return nil }
+        let dropped = awaited
         text = newText
         message = nil
         phase = .editing
+        return dropped
     }
 
     /// Open was pressed: the link to ask `metab` about, which the panel now awaits, or nil,
@@ -170,7 +309,12 @@ public nonisolated struct OpenURLPanel: Equatable, Sendable {
         return link
     }
 
-    public mutating func cancel() {
+    /// Cancel, or the panel closed: nothing more happens. Returns the link whose answer was
+    /// awaited, whose dry run the app stops, or nil if none was.
+    @discardableResult
+    public mutating func cancel() -> URL? {
+        let dropped = awaited
         phase = .closed
+        return dropped
     }
 }

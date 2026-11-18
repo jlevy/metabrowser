@@ -4,7 +4,9 @@ import ShellCore
 /// File > Open URL…: a panel with one field for a GitHub URL. What it takes, what it says,
 /// and when it closes are `OpenURLPanel`'s; this window shows that state and passes on
 /// the user's edits, Open, and Cancel. The app asks `metab` about a link Open accepted
-/// (`onOpen`), and answers with `answered(_:for:metab:)` or `handOff()`.
+/// (`onOpen`), and answers with `answered(_:for:metab:)` or `handOff()`; an edit, Cancel,
+/// or closing the panel while it awaits that answer tells the app to stop asking
+/// (`onDrop`).
 ///
 /// A panel, so it never becomes the main window: the File and View items aimed at a
 /// folder's window still reach the window behind it.
@@ -18,13 +20,16 @@ final class OpenURLWindowController: NSWindowController, NSWindowDelegate, NSTex
     private let content = NSStackView()
     /// Open accepted the text: the app asks `metab` about the link.
     private let onOpen: (URL) -> Void
+    /// The panel no longer awaits the answer about this link: the app stops its dry run.
+    private let onDrop: (URL) -> Void
 
     /// The panel's width, in points: a pull request's URL shows whole.
     private static let width: CGFloat = 520
     private static let margin: CGFloat = 20
 
-    init(onOpen: @escaping (URL) -> Void) {
+    init(onOpen: @escaping (URL) -> Void, onDrop: @escaping (URL) -> Void) {
         self.onOpen = onOpen
+        self.onDrop = onDrop
         let window = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: Self.width, height: 160),
             styleMask: [.titled, .closable], backing: .buffered, defer: true)
@@ -84,6 +89,7 @@ final class OpenURLWindowController: NSWindowController, NSWindowDelegate, NSTex
     func show() {
         guard let window else { return }
         if !window.isVisible {
+            if let dropped = panel.cancel() { onDrop(dropped) }
             panel = OpenURLPanel()
             field.stringValue = ""
             render()
@@ -140,7 +146,7 @@ final class OpenURLWindowController: NSWindowController, NSWindowDelegate, NSTex
     // MARK: - NSTextFieldDelegate
 
     func controlTextDidChange(_ notification: Notification) {
-        panel.edit(field.stringValue)
+        if let dropped = panel.edit(field.stringValue) { onDrop(dropped) }
         render()
     }
 
@@ -162,7 +168,7 @@ final class OpenURLWindowController: NSWindowController, NSWindowDelegate, NSTex
     // MARK: - NSWindowDelegate
 
     func windowWillClose(_ notification: Notification) {
-        panel.cancel()
+        if let dropped = panel.cancel() { onDrop(dropped) }
         spinner.stopAnimation(nil)
     }
 }

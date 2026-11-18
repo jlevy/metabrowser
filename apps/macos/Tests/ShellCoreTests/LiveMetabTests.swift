@@ -329,16 +329,66 @@ struct LiveMetabTests {
         }
     }
 
+    /// The panel opens what `metab URL` opens as typed: the link the panel sends, its path
+    /// encoded as a browser sends it, gets the plan `metab` gives the raw text, and text
+    /// the panel refuses for a character `metab` refuses too (`OpenURLEntry.encoded`).
+    @Test(arguments: [
+        "https://github.com/octo/demo/blob/main/a b.md",
+        "https://github.com/octo/demo/blob/main/café.md",
+        "https://github.com/octo/demo/blob/main/❤️.md",
+        #"https://github.com/octo/demo/blob/main/a"b{c}|d^e`f<g>[1].md"#,
+        "https://github.com/octo/demo/tree/main/docs dir",
+        "https://github.com/octo/demo/blob/main/a b.md#L1",
+        "https://github.com/octo/demo/blob/main/README\u{3164}.md",
+        "https://github.com/octo/demo/blob/main/a\u{200B}b.md",
+        "https://github.com/octo/demo/blob/main/README\u{FE0F}.md",
+        "https://github.com/octo/demo/blob/main/a\\b.md",
+        "https://github.com/octo/demo/blob/main/100%.md",
+    ])
+    func thePanelSendsWhatMetabOpensAsTyped(_ text: String) async throws {
+        let typed = try await dryRun(rawText: text)
+        switch OpenURLEntry.link(text) {
+        case .success(let link):
+            guard case .plan = typed else {
+                Issue.record("the panel sends \(link) for \(text), which metab answers with \(typed)")
+                return
+            }
+            #expect(try await dryRun(link.absoluteString) == typed)
+        case .failure(let problem):
+            guard case .refused = typed else {
+                Issue.record("the panel refuses \(text) (\(problem)), which metab answers with \(typed)")
+                return
+            }
+        }
+    }
+
     private func dryRun(_ link: String) async throws -> PresentAnswer {
-        let path = try #require(liveMetab)
-        let setup = RuntimeSetup(
-            runtime: Runtime(executable: path, version: "live", source: .chosen, fingerprint: nil),
-            tools: RuntimeDiscovery.resolveTools(loginPath: nil, isExecutable: FileChecks.isExecutableFile))
         let url = try #require(URL(string: link))
         #expect(GitHubLink.accepts(url))
-        let spec = PresentDryRun.spec(
-            for: url, with: setup, inherited: ProcessInfo.processInfo.environment, home: NSHomeDirectory())
-        return PresentDryRun.answer(await CommandRunner.run(spec, timeout: PresentDryRun.timeout))
+        return try await dryRun(PresentDryRun.spec(
+            for: url, with: liveSetup(), inherited: ProcessInfo.processInfo.environment, home: NSHomeDirectory()))
+    }
+
+    /// `metab TEXT --present --dry-run --format json`, with `TEXT` as typed, which no
+    /// `URL` holds.
+    private func dryRun(rawText text: String) async throws -> PresentAnswer {
+        let placeholder = try #require(URL(string: "https://github.com/octo/demo"))
+        var spec = PresentDryRun.spec(
+            for: placeholder, with: try liveSetup(), inherited: ProcessInfo.processInfo.environment,
+            home: NSHomeDirectory())
+        spec.arguments[0] = text
+        return try await dryRun(spec)
+    }
+
+    private func dryRun(_ spec: LaunchSpec) async throws -> PresentAnswer {
+        PresentDryRun.answer(await CommandRunner.run(spec, timeout: PresentDryRun.timeout))
+    }
+
+    private func liveSetup() throws -> RuntimeSetup {
+        let path = try #require(liveMetab)
+        return RuntimeSetup(
+            runtime: Runtime(executable: path, version: "live", source: .chosen, fingerprint: nil),
+            tools: RuntimeDiscovery.resolveTools(loginPath: nil, isExecutable: FileChecks.isExecutableFile))
     }
 }
 

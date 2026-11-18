@@ -283,6 +283,13 @@ What the panel decides is unit-tested in `OpenURLPanelTests`, and against the re
    this checkout’s `.venv/bin/metab`, and the repository opens.
 9. **Editing.** Command-V and Edit > Paste paste into the field, and Command-A selects
    its text.
+10. **A space in the path.** `$REPO/blob/main/docs/a b.md` closes the panel and brings
+    the repository’s window forward at the `handoff` that
+    `metab "$REPO/blob/main/docs/a b.md" --present --dry-run --format json` prints,
+    `docs/a%20b.md`, which the mirror reports missing.
+    `$REPO/blob/main/README`, then U+3164 HANGUL FILLER pasted from a character viewer,
+    then `.md`, shows a reason that names U+3164 and `%E3%85%A4` under the field, and no
+    window opens.
 
 ## Print and Drops
 
