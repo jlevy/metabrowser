@@ -10166,14 +10166,14 @@ function sourceFreshness() {
 }
 
 /**
- * A served mirror's branch and tag selector. The server renders its element only for
- * a pin with a mirror; the module is fetched on demand after the first tree request,
- * and static/source-ref-selector.js owns every decision; this only mounts it.
+ * The branch and tag selector. The server renders its element only where one mounts;
+ * the module is fetched on demand after the first tree request, and
+ * static/source-ref-selector.js owns every decision; this only mounts it.
  */
 async function startSourceRefSelector() {
   var element = document.getElementById("source-ref-selector");
   var assets = window.MetabrowserAssets;
-  if (!isGitRevisionSource() || !element || !assets) {
+  if (!element || !assets) {
     return;
   }
   await Promise.all([assets.ensureAsset("source-ref-selector"), assets.ensureAsset("sdk-views")]);

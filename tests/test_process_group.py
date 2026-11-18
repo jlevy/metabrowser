@@ -100,6 +100,7 @@ SLACK_S = 0.5
 # bounds.
 CHROME_TESTS = (
     "tests.test_changed_file_rows_chrome",
+    "tests.test_checkout_ref_selector_chrome",
     "tests.test_chrome_starts",
     "tests.test_control_chords_chrome",
     "tests.test_diff_markdown_fold_chrome",

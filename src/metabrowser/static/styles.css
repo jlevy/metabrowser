@@ -2706,10 +2706,11 @@ html.theme-anim .menu {
   white-space: nowrap;
 }
 
-/* A served mirror's branch and tag selector: one compact button under the
-   header naming the served ref, and a .menu panel below it listing the
-   mirror's branches or tags with a filter box. Only a pin with a mirror has
-   one. */
+/* The branch and tag selector of a served mirror or checkout: one compact
+   button under the header naming what is served, and a .menu panel below it
+   listing the branches or tags with a filter box. A pin with a mirror has one,
+   and so does a folder that is a repository's root, whose panel begins with its
+   working tree. */
 .source-ref-selector[hidden] {
   display: none;
 }
@@ -2764,7 +2765,8 @@ html.theme-anim .menu {
   overflow-y: auto;
   list-style: none;
 }
-.source-ref-selector-row[aria-current="true"] {
+.source-ref-selector-row[aria-current="true"],
+.source-ref-selector-working-tree[aria-current="true"] {
   font-weight: var(--weight-medium);
 }
 .source-ref-selector-name {
@@ -2791,6 +2793,28 @@ html.theme-anim .menu {
 }
 .source-ref-selector-error {
   color: var(--status-warning-strong);
+}
+/* A checkout's working tree: a row like a ref's, above the lists and ruled off
+   from them, since it is the one choice that is not a ref. What it is stands
+   where a ref's commit does. */
+.source-ref-selector-working-tree {
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--border);
+  border-radius: var(--radius-chrome) var(--radius-chrome) 0 0;
+}
+.source-ref-selector-working-tree[hidden],
+.source-ref-selector-stale[hidden] {
+  display: none;
+}
+/* What a checkout's page says, beside its button, once the server shows
+   something else: the words and the one action, as the freshness row offers
+   a reload on a mirror. */
+.source-ref-selector-stale {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+  color: var(--text);
 }
 
 /* A served mirror's freshness, at the foot of the navigation pane where a

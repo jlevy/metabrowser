@@ -382,10 +382,25 @@ async def read_commit_detail(
     """Read one commit's detail. ``None`` when the revision is unknown."""
     location = context.command_location()
     try:
-        raw = await run_git_at(_show_args(revision), location)
+        # At a store target, no driver the repository's configuration names
+        # (GitLocation.diff_driver_args); the options follow `show`, before the revision.
+        show = _show_args(revision)
+        raw = await run_git_at([show[0], *location.diff_driver_args, *show[1:]], location)
     except GitCommandError as exc:
+        # A commit the repository does not have is not found, as before; Git calls that
+        # one a bad object too, so this is asked first.
         if any(marker in exc.stderr_summary.lower() for marker in _UNKNOWN_REVISION_MARKERS):
             return None
+        if location.target is not None:
+            # A store has the commit and lacks one of its objects: a blobless checkout
+            # whose revision is read in place, or an overlay whose lender lost it. Typed,
+            # as a file's read answers it, and nothing is fetched to fill it.
+            from metabrowser.git.object_failures import missing_object
+            from metabrowser.git.tree_source import GitObjectUnavailableError
+
+            missing = missing_object(exc)
+            if missing is not None:
+                raise GitObjectUnavailableError(missing) from exc
         raise
     detail = parse_commit_detail(raw, context, max_files=max_files)
     if detail is None or detail["commit"]["parent_ids"]:

@@ -37,6 +37,7 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
 from metabrowser import server_timing
+from metabrowser.content_errors import ContentUnavailableError
 from metabrowser.git.detail import read_commit_detail
 from metabrowser.git.history import (
     HISTORY_SESSIONS,
@@ -96,6 +97,14 @@ def _git_failure_response(exc: GitError) -> JSONResponse:
     """
     if isinstance(exc, GitTimeoutError):
         return JSONResponse({"error": "git command timed out"}, status_code=504)
+    if isinstance(exc, ContentUnavailableError):
+        # An object the store names and does not hold, as a pinned file's read answers
+        # it: the ID is Git's own and names no path.
+        oid = getattr(exc, "oid", None)
+        return JSONResponse(
+            {"error": str(exc), "code": exc.code, **({"oid": oid} if oid else {})},
+            status_code=exc.http_status,
+        )
     return JSONResponse({"error": "git command failed"}, status_code=500)
 
 
