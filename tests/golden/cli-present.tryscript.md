@@ -464,6 +464,75 @@ $ metab https://github.com/octo/demo/pull/7/checks --present --dry-run --format 
 ? 0
 ```
 
+GitHub anchors one file of a pull request’s Changes tab as `diff-` and the SHA-256 of
+its path, optionally followed by a line of that file’s diff.
+Only the pull request’s list of changed files, in the cache, says which file the hash
+names, so the `page` is null, and the `handoff` keeps the anchor for the server the app
+starts, which opens at the file it names or at the Changes tab where nothing it has
+cached names one (`cli-github-pull-file-anchor.txt`). Any other fragment there is
+dropped, as it is on a blob.
+
+```console
+$ metab 'https://github.com/octo/demo/pull/7/files#diff-be97662273fac8ac301e8dfa98ba5d8d90d390bfa9419746155382b7ace0a3c2R2' --present --dry-run --format json
+{
+  "kind": "pull_request",
+  "root": "https://github.com/octo/demo",
+  "page": null,
+  "handoff": [
+    "https://github.com/octo/demo/pull/7/files#diff-be97662273fac8ac301e8dfa98ba5d8d90d390bfa9419746155382b7ace0a3c2R2"
+  ],
+  "refusal": null
+}
+? 0
+```
+
+```console
+$ metab 'https://github.com/octo/demo/pull/7/files#diff-be97662273fac8ac' --present --dry-run --format json
+{
+  "kind": "pull_request",
+  "root": "https://github.com/octo/demo",
+  "page": "/pull/7/files",
+  "handoff": [
+    "https://github.com/octo/demo/pull/7/files"
+  ],
+  "refusal": null
+}
+? 0
+```
+
+GitHub’s Changes page is `/pull/<n>/changes` since 2026-01-22, and `/files` its older
+spelling, which GitHub redirects there.
+Both select the Changes tab, with or without a file anchor, and the `handoff` spells the
+URL `/files`, which GitHub answers either way.
+
+```console
+$ metab 'https://github.com/octo/demo/pull/7/changes#diff-be97662273fac8ac301e8dfa98ba5d8d90d390bfa9419746155382b7ace0a3c2R2' --present --dry-run --format json
+{
+  "kind": "pull_request",
+  "root": "https://github.com/octo/demo",
+  "page": null,
+  "handoff": [
+    "https://github.com/octo/demo/pull/7/files#diff-be97662273fac8ac301e8dfa98ba5d8d90d390bfa9419746155382b7ace0a3c2R2"
+  ],
+  "refusal": null
+}
+? 0
+```
+
+```console
+$ metab https://github.com/octo/demo/pull/7/changes --present --dry-run --format json
+{
+  "kind": "pull_request",
+  "root": "https://github.com/octo/demo",
+  "page": "/pull/7/files",
+  "handoff": [
+    "https://github.com/octo/demo/pull/7/files"
+  ],
+  "refusal": null
+}
+? 0
+```
+
 ```console
 $ metab https://github.com/octo/demo/commit/1A2B3C4D --present --dry-run --format json
 {

@@ -33,7 +33,7 @@ from typing import get_args
 import pytest
 import typer
 
-from metabrowser.cache.urls import RepositorySelection
+from metabrowser.cache.urls import FileAnchor, RepositorySelection
 from metabrowser.cli import present
 from metabrowser.cli.exit_codes import (
     PRESENT_BLOCKED_EXIT_CODE,
@@ -643,6 +643,24 @@ def test_a_served_commit_url_opens_at_the_commit_it_resolved_to() -> None:
     assert selection_view_href(tree, (b"docs",), commit=_FULL_ID).startswith("/view/")
 
 
+_DIGEST = "b335630551682c19a781afebcf4d07bf978fb1f8ac04c6bf87428ed5106870f5"
+
+
+def test_a_served_changes_url_opens_at_the_file_its_anchor_resolved_to() -> None:
+    # The file its anchor names, once the provider has resolved it, each segment encoded;
+    # without one, the Changes tab itself. A file belongs to the Changes tab only.
+    anchored = RepositorySelection(
+        kind="pull_request", pull_request=7, pull_tab="files", pull_file=FileAnchor(_DIGEST)
+    )
+    checks = RepositorySelection(kind="pull_request", pull_request=7, pull_tab="checks")
+
+    assert selection_view_href(anchored, (), pull_file="docs/a b.md") == (
+        "/pull/7/files/docs/a%20b.md"
+    )
+    assert selection_view_href(anchored, ()) == "/pull/7/files"
+    assert selection_view_href(checks, (), pull_file="docs/a.md") == "/pull/7/checks"
+
+
 @pytest.mark.parametrize(
     ("url", "page"),
     [
@@ -665,6 +683,10 @@ def test_a_served_commit_url_opens_at_the_commit_it_resolved_to() -> None:
         ("https://github.com/o/r/blob/refs/heads/main/README.md", None),
         ("https://raw.githubusercontent.com/o/r/refs/heads/main/README.md", None),
         ("https://github.com/o/r/commit/0123456", None),
+        # Which file a Changes tab's anchor names is in the pull request's list of
+        # changed files, in the cache; the anchor is a hash of its path.
+        ("https://github.com/o/r/pull/7/files", "/pull/7/files"),
+        (f"https://github.com/o/r/pull/7/files#diff-{_DIGEST}R3", None),
     ],
 )
 def test_a_link_has_a_page_only_where_one_reading_gives_it(url: str, page: str | None) -> None:

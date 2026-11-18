@@ -14,20 +14,27 @@ from metabrowser.view_routes import VIEW_ROUTE_PREFIX, format_commit_href, forma
 
 
 def selection_view_href(
-    selection: RepositorySelection, path: tuple[bytes, ...], *, commit: str | None = None
+    selection: RepositorySelection,
+    path: tuple[bytes, ...],
+    *,
+    commit: str | None = None,
+    pull_file: str = "",
 ) -> str:
     """The address a served URL selection opens at, with *path* its path in the tree.
 
     A file or folder opens at its `/view/` address. A file keeps the URL's `plain=1`
     and line anchor, either of which opens the file's Source view in the browser, where
     the anchor highlights its lines. A pull request opens at its page, `/pull/<n>`, on
-    the tab the URL names, as `/pull/<n>/files` does. A commit opens at its page,
+    the tab the URL names, as `/pull/<n>/files` does, and on the Changes tab at
+    *pull_file*, the changed file its anchor names once the provider has resolved it
+    (`/pull/<n>/files/<path>`); without one, at the tab. A commit opens at its page,
     `/commit/<id>`, given *commit*, the full ID the mirror resolved the URL's to, which is
     what the commit route needs; without it, at the tree.
     """
 
     if selection.kind == "pull_request" and selection.pull_request is not None:
-        return format_pull_href(selection.pull_request, selection.pull_tab)
+        file = pull_file if selection.pull_tab == "files" else ""
+        return format_pull_href(selection.pull_request, selection.pull_tab, file)
     if selection.kind == "commit" and commit is not None:
         return format_commit_href(commit)
     if selection.kind not in {"tree", "blob"} or not path:

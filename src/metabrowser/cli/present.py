@@ -444,7 +444,9 @@ def _source_page(selection: RepositorySelection) -> str | None:
     """The page a served pin of *selection* opens at, or ``None`` if only its mirror knows.
 
     A commit opens at ``/commit/<id>``, which the commit route answers only for a full
-    ID, so an abbreviated one, which the mirror expands, has no page here.
+    ID, so an abbreviated one, which the mirror expands, has no page here. Nor has a
+    Changes tab URL that anchors one file: the anchor is a hash of the file's path, which
+    only the pull request's list of changed files, in the cache, can name.
     """
 
     # Imported for a source only: they load the Git tree source's path encoding and the
@@ -461,6 +463,8 @@ def _source_page(selection: RepositorySelection) -> str | None:
     if selection.kind in {"tree", "blob"}:
         path = _unambiguous_path(selection)
         return None if path is None else selection_view_href(selection, path)
+    if selection.pull_file is not None:
+        return None
     return selection_view_href(selection, ())
 
 

@@ -52,6 +52,12 @@ links describe what was built.
   configuration directory, recorded at serve start, and the app’s Open Recent and Dock
   menu draw it, mirrors included
   ([Recent Targets](../../architecture/arch-recent-targets.md)).
+- **GitHub’s anchor for one file of a pull request** (jlevy/metabrowser#574):
+  `/pull/<n>/files#diff-<hash>` opens at `/pull/<n>/files/<path>`, named offline from
+  the cached list of changed files or the record’s comparison, and at the Changes tab,
+  with the reason, when neither names it.
+  A line in the anchor is reported, not yet scrolled to, and `--present --dry-run`
+  reports no page for such a URL, since only the cache can name the file.
 - **The skill and its docs** (jlevy/metabrowser#562): “Hand the User a Page” uses
   `--present`, falls back to the `--no-open` server, and documents the Claude Code and
   Codex sandbox settings.
@@ -77,13 +83,30 @@ links describe what was built.
     depends on a setting it does not use.
   - Each browser delivery starts a new server; finding a running one waits on the server
     registry (`mb-5xi4`).
+- **Clone progress and GitHub failure states** (jlevy/metabrowser#571): a repository’s
+  start shows the newest line of `metab`’s clone report under “Starting…”, and a start
+  that fails on GitHub shows the reason, `metab`’s message, the `gh` commands each with
+  Copy, Copy Message, and Retry
+  ([GitHub Links](../../architecture/arch-macos-app.md#github-links)). It reads only
+  what `metab` already writes, with no `metab` change, and differs from the design in
+  two ways:
+  - When the app becomes active it runs the failed start again, rather than re-reading
+    the sign-in status, since no route reports it yet, and only for a not-found failure
+    with `gh` found, the one a sign-in in Terminal can fix; network, rate-limit,
+    server-error, and no-`gh` failures wait for Retry.
+  - A clone cannot tell a signed-out `gh` or a missing `repo` scope from a repository
+    that does not exist, so both show as not found, with `gh auth status`,
+    `gh auth login`, and `gh auth refresh --scopes repo` as its steps.
+    Reading the status check instead, and telling those apart, is `mb-1rl3`, after
+    `mb-si2g`.
 
 ### Remaining
 
 - The GitHub status check, its `--doctor` section and route, the check before a first
   clone or pull request read, and token scopes (`mb-si2g`).
-- GitHub’s anchor for one file in a pull request (`mb-j8a1`).
-- Clone progress and GitHub failure states in the app’s status view (`mb-m0ry`).
+- The app reading the GitHub status check: sign-in, scope, and access failures told
+  apart, and a recheck on activation that re-reads the status instead of restarting the
+  start (`mb-1rl3`, after `mb-si2g`).
 - Saved tabs for repository windows (`mb-682q`).
 - Outside this epic, on the same path: the walk-up resolver that `--present` and the app
   will resolve through (`mb-2wfk`), Open URL…’s offer of a known checkout (`mb-bkk2`),
@@ -398,9 +421,9 @@ transport.
 - [ ] GitHub status: the check, its `--doctor` section and route, the check before a
   first clone or pull request read, and token scopes.
   Remaining (`mb-si2g`).
-- [ ] Map `/pull/N/files#diff-<hash>` to `/pull/<n>/files/<path>`, and open a commit URL
-  at `/commit/<sha>`. The commit URL landed in jlevy/metabrowser#540. Remaining: the
-  anchor (`mb-j8a1`).
+- [x] Map `/pull/N/files#diff-<hash>` to `/pull/<n>/files/<path>`, and open a commit URL
+  at `/commit/<sha>`. The commit URL landed in jlevy/metabrowser#540, and the anchor in
+  jlevy/metabrowser#574.
 - [x] App: `RootIdentity` replaces the local-path key everywhere a session, log, title,
   saved tab, or waiting folder uses one.
   Landed in jlevy/metabrowser#539 as `SessionRoot`, keyed by repository without the pin;
@@ -409,9 +432,10 @@ transport.
   URL it refuses. Landed in jlevy/metabrowser#539, for GitHub links.
 - [x] App: File > Open Location… with validation through `--present --dry-run --json`.
   Landed in jlevy/metabrowser#560 as File > Open URL…, for GitHub URLs only.
-- [ ] App: clone progress and GitHub failure states in the status view, with Copy and
+- [x] App: clone progress and GitHub failure states in the status view, with Copy and
   Retry, and recheck on activation.
-  Remaining (`mb-m0ry`).
+  Landed in jlevy/metabrowser#571; the recheck runs the start again, for a not-found
+  failure only, until the status check lets it re-read the sign-in (`mb-1rl3`).
 - [ ] App: saved tabs and a recents section for source roots.
   Recents landed in jlevy/metabrowser#546 as `metab`’s recent targets.
   Remaining: saved tabs (`mb-682q`).

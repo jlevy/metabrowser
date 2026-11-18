@@ -147,7 +147,7 @@
       (visible ? "" : ' style="display: none;"') +
       ">" +
       '<div class="log-event-header disclosure-toggle" role="button" tabindex="0" aria-expanded="false">' +
-      mb.icons.chevron +
+      mb.icons.toggle +
       kindHtml +
       '<span class="log-event-summary" data-tip-text="' +
       mb.escapeHtml(eventSummaryText(evt)) +
