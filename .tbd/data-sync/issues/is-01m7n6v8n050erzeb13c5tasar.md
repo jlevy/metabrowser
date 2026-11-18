@@ -5,7 +5,7 @@ title: Pull request diff summaries load slowly in the Pulls rows and on the PR p
 kind: epic
 status: in_progress
 priority: 1
-version: 15
+version: 17
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -23,10 +23,12 @@ child_order_hints:
   - is-01m7p8a7j90jhgjnz7q2b8fpqe
   - is-01m7p8a87hrbqjk05z0mbm5hrd
   - is-01m7p8ffq7tfjem1x88tt6rqe5
+  - is-01m7p8gh7a2s4aqast5pe3ferp
+  - is-01m7p8ghqfsdt3ya1hxjsbmxx6
 hold: null
 hold_until: null
 created_at: 2026-11-17T16:53:36.020Z
-updated_at: 2026-11-18T02:41:21.638Z
+updated_at: 2026-11-18T02:41:56.462Z
 started_at: 2026-11-17T16:53:42.941Z
 ---
 The owner reported that diff summaries (per-file line totals, the change summary) load slowly in the Pulls nav rows and on the main pull request page. Three children: prefetch and persist summaries as cache files and answer from the last persisted version first; measure the route and git/gh timings and fix the dominant cost; show the existing gentle loading box promptly whenever a summary has not loaded. Design rule: Metabrowser feels effortlessly fast, prefetch by default, never flash a spinner under ~50 ms, never leave an empty gap.
