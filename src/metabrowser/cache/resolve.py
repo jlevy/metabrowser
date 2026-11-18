@@ -94,7 +94,8 @@ class RefNamespaces:
     remote-tracking branches of its own, plus the pull-request heads fetched into it. A
     checkout holds its local branches under ``refs/heads/`` and every remote's under
     ``refs/remotes/``. Tags are ``refs/tags/`` in both. ``where`` is how a refusal names
-    the repository.
+    the repository, ``no_head`` what ``HEAD`` is told when it names no branch, and
+    ``pinnable`` what a full ref outside these namespaces is told.
     """
 
     branch: str
@@ -102,6 +103,8 @@ class RefNamespaces:
     remote: str | None
     pull_heads: bool
     where: str
+    no_head: str
+    pinnable: str
 
     def prefix(self, kind: RefKind) -> str | None:
         """The namespace *kind* lists, or ``None`` when the repository has no such list."""
@@ -111,12 +114,6 @@ class RefNamespaces:
         return self.tag if kind == "tag" else self.remote
 
     @property
-    def kinds(self) -> tuple[RefKind, ...]:
-        """The lists the repository has, in the order a selector offers them."""
-
-        return ("branch", "tag") if self.remote is None else ("branch", "tag", "remote")
-
-    @property
     def prefixes(self) -> tuple[str, ...]:
         """Every namespace a short name is tried in, in precedence order."""
 
@@ -124,7 +121,16 @@ class RefNamespaces:
 
 
 MIRROR_REFS: Final = RefNamespaces(
-    branch=BRANCH_MIRROR_PREFIX, tag=TAG_PREFIX, remote=None, pull_heads=True, where="the mirror"
+    branch=BRANCH_MIRROR_PREFIX,
+    tag=TAG_PREFIX,
+    remote=None,
+    pull_heads=True,
+    where="the mirror",
+    no_head="the mirror has recorded no default branch",
+    pinnable=(
+        "only the origin's branches (refs/remotes/origin/…), tags (refs/tags/…), "
+        "and pull-request heads (refs/pull/<n>/head) can be pinned"
+    ),
 )
 CHECKOUT_REFS: Final = RefNamespaces(
     branch="refs/heads/",
@@ -132,6 +138,11 @@ CHECKOUT_REFS: Final = RefNamespaces(
     remote="refs/remotes/",
     pull_heads=False,
     where="the checkout",
+    no_head="the checkout is on no branch",
+    pinnable=(
+        "only branches (refs/heads/…), tags (refs/tags/…), and remote-tracking "
+        "branches (refs/remotes/…) can be pinned"
+    ),
 )
 type UnresolvedReason = Literal[
     "ref_not_found", "commit_not_found", "commit_ambiguous", "not_a_commit", "invalid_ref"
@@ -624,23 +635,13 @@ async def resolve_pin(
         raise InvalidSelectionError("the ref is empty")
     if ref == "HEAD":
         if default_ref is None:
-            raise SelectionNotFoundError(
-                "the mirror has recorded no default branch"
-                if namespaces.pull_heads
-                else "the checkout is on no branch"
-            )
+            raise SelectionNotFoundError(namespaces.no_head)
         candidates: tuple[str, ...] = (default_ref,)
     elif ref.startswith("refs/"):
         if not ref.startswith(namespaces.prefixes) and not (
             namespaces.pull_heads and _PULL_HEAD.fullmatch(ref)
         ):
-            raise InvalidSelectionError(
-                "only the origin's branches (refs/remotes/origin/…), tags (refs/tags/…), "
-                "and pull-request heads (refs/pull/<n>/head) can be pinned"
-                if namespaces.pull_heads
-                else "only branches (refs/heads/…), tags (refs/tags/…), and remote-tracking "
-                "branches (refs/remotes/…) can be pinned"
-            )
+            raise InvalidSelectionError(namespaces.pinnable)
         candidates = (ref,)
     else:
         candidates = tuple(prefix + ref for prefix in namespaces.prefixes)

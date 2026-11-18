@@ -3294,6 +3294,8 @@ declare global {
     /** What the server came to serve instead of this page: a commit, "" for the working
      * tree, or null while the page is current. A checkout's page only. */
     stale?: string | null;
+    /** The refs route said the folder is no repository's root: the row is removed. */
+    removed?: boolean;
   };
 
   /** What the ref selector shows for one state. */
@@ -3326,6 +3328,8 @@ declare global {
     error: string | null;
     /** What a checkout's page says once the server shows something else; else null. */
     stale: string | null;
+    /** Whether the row is taken away: a folder Git does not take for a repository's root. */
+    removed: boolean;
   };
 
   type MetabrowserSourceRefSelectorDependencies = {

@@ -40,6 +40,7 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
 from metabrowser.checkout_revisions import (
+    CheckoutGitUnsupportedError,
     CheckoutRevisions,
     checkout_ref_name,
     checkout_revisions,
@@ -103,6 +104,11 @@ REFS_MAX_QUERY_CHARS: Final = 256
 # The lists a mirror has, and the ones a checkout has: its remote-tracking branches too.
 _MIRROR_REF_KINDS: Final[tuple[RefKind, ...]] = ("branch", "tag")
 _CHECKOUT_REF_KINDS: Final[tuple[RefKind, ...]] = ("branch", "tag", "remote")
+# What a listing of a kind the subject has no list of is told, by whether a checkout answers.
+_KIND_REFUSAL: Final = {
+    False: '"kind" is "branch" or "tag"',
+    True: '"kind" is "branch", "tag", or "remote"',
+}
 
 
 class SourceStatus(TypedDict):
@@ -354,30 +360,36 @@ async def api_source_refs(request: Request) -> JSONResponse:
     params = request.query_params
     kind = params.get("kind", "branch")
     query = params.get("q", "")
-    if kind not in _CHECKOUT_REF_KINDS:
-        return _error('"kind" is "branch" or "tag"', "invalid_request", 400)
     if len(query) > REFS_MAX_QUERY_CHARS:
         return _error("the filter is too long", "invalid_request", 400)
     try:
         source = _switchable(request, "refs")
     except UnsupportedSourceCapabilityError as exc:
+        # A kind no subject has is refused as before, whatever is served.
+        if kind not in _CHECKOUT_REF_KINDS:
+            return _error(_KIND_REFUSAL[False], "invalid_request", 400)
         return JSONResponse(unsupported_source_payload(exc), status_code=409)
+    of_checkout = isinstance(source, CheckoutRevisions)
+    if kind not in (_CHECKOUT_REF_KINDS if of_checkout else _MIRROR_REF_KINDS):
+        return _error(_KIND_REFUSAL[of_checkout], "invalid_request", 400)
+    kind = cast(RefKind, kind)
     subject = as_git_revision_subject(get_source_session().subject)
     working_tree: WorkingTree | None = None
     try:
         if isinstance(source, CheckoutRevisions):
-            head = await source.head_ref()
+            # One reading of the repository answers both: its HEAD and its refs.
+            head, listed = await source.list_refs(kind)
             working_tree = WorkingTree(
                 current=subject is None, head=head, head_name=checkout_ref_name(head)
             )
-            listed = await source.list_refs(kind)
-        elif kind not in _MIRROR_REF_KINDS:
-            return _error('"kind" is "branch" or "tag"', "invalid_request", 400)
         else:
             listed = await source.mirror.list_refs(kind)
     except UnsupportedSourceCapabilityError as exc:
         # Git does not take the served root for a repository's root.
         return JSONResponse(unsupported_source_payload(exc), status_code=409)
+    except CheckoutGitUnsupportedError as exc:
+        # Its own words: the Git needed, and no path.
+        return _error(str(exc), exc.code, exc.http_status)
     except ContentReadError as exc:
         # Git's text can name the store, so only the code leaves the server.
         log.warning("listing the refs failed: %s", exc)
@@ -538,7 +550,11 @@ def _selection(body: dict[str, Any], *, checkout: bool = False) -> _Selection:
 
     unknown = sorted(set(body) - {"ref", "oid", "under", "view", "working_tree"})
     if unknown:
-        raise _BadRequestError('a pin request names only "ref" or "oid", "under", and "view"')
+        raise _BadRequestError(
+            'a pin request names only "ref", "oid", or "working_tree", with "under" and "view"'
+            if checkout
+            else 'a pin request names only "ref" or "oid", "under", and "view"'
+        )
     ref = body.get("ref")
     oid = body.get("oid")
     under = body.get("under")
@@ -794,6 +810,8 @@ async def api_source_pin(request: Request) -> JSONResponse:
         return _error(str(exc), exc.code, exc.http_status)
     except UnsupportedSourceCapabilityError as exc:
         return JSONResponse(unsupported_source_payload(exc), status_code=409)
+    except CheckoutGitUnsupportedError as exc:
+        return _error(str(exc), exc.code, exc.http_status)
     except ContentReadError as exc:
         # A Git failure while resolving or opening. Its text can name the store, so
         # only the code leaves the server.
@@ -850,20 +868,22 @@ class SourcePinGuard:
     plain folder's page, which send none, are unaffected. The page of a checkout's
     working tree names :data:`WORKING_TREE_PIN`, since its server can serve a revision
     of the checkout instead, and is refused while one is served. The ``/api/source/``
-    routes are
-    exempt: a page learns what is served from the status route and switches through
-    the pin route. The refusal is ``409 pin_changed`` with the served commit, or an
-    empty value when a folder is served, in :data:`PIN_CHANGED_HEADER`, which the page
+    routes are exempt: a page learns what is served from the status route and switches
+    through the pin route. The refusal is ``409 pin_changed`` with the served commit, or
+    an empty value when a folder is served, in :data:`PIN_CHANGED_HEADER`, which the page
     reads without consuming the body.
 
-    One request that names nothing is refused too. A working-tree page takes its guard
-    with the selector's bundle, after its first requests, so for a moment it names
-    nothing, and a revision served from another tab in that moment would answer it.
-    While a pin is served, a page's own ``fetch`` that names no commit cannot be the
-    pin's page, which names its commit from before its first script: it is a page of
-    something else, and is refused as the working tree's is. A browser says which
-    requests those are (``Sec-Fetch-Site: same-origin`` with ``Sec-Fetch-Dest: empty``);
-    ``curl`` and ``metab --api`` send neither and are answered.
+    One request that names nothing is refused too, on a server that can show a working
+    tree. A working-tree page takes its guard with the selector's bundle, after its first
+    requests, so for a moment it names nothing, and a revision served from another tab in
+    that moment would answer it. While a checkout's revision is served, a page's own
+    ``fetch`` that names no commit cannot be that revision's page, which names its commit
+    from before its first script: it is a page of something else, and is refused as the
+    working tree's is. A browser says which requests those are (``Sec-Fetch-Site:
+    same-origin`` with ``Sec-Fetch-Dest: empty``); ``curl`` and ``metab --api`` send
+    neither and are answered. A mirror has no working tree and no such page, so a
+    mirror's server is left as it was: a worker's or a frame's request there, which
+    cannot carry the commit, is answered.
     """
 
     def __init__(self, app: Any) -> None:
@@ -872,8 +892,15 @@ class SourcePinGuard:
     async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
         if scope.get("type") == "http" and _guarded(scope):
             claimed = _header(scope, PIN_HEADER.encode())
-            if claimed is None and _own_page_fetch(scope) and _served_pin():
-                # A page that is not the served pin's: what a working-tree page names.
+            if (
+                claimed is None
+                and _own_page_fetch(scope)
+                and _served_pin()
+                and checkout_revisions() is not None
+            ):
+                # A page that is not the served revision's, on a server that has a
+                # working tree to show: what a working-tree page names. A mirror has no
+                # such page, and its requests are checked only by what they name.
                 claimed = WORKING_TREE_PIN
             response = pin_changed_response(claimed)
             if response is not None:

@@ -28,8 +28,18 @@ does that yet.
 
 **Which checkouts.** The chooser follows the open root: it is offered when the served
 root is a repository's root and Git itself accepts it, by the discovery the Commits tab
-uses (:func:`metabrowser.git.repo.repo_info`). A repository Git refuses for its ownership
-is not read through ``--git-dir`` either.
+uses (:func:`metabrowser.git.repo.repo_info`). The directory read through ``--git-dir`` is
+the one that same Git names (``rev-parse --git-common-dir``), never a second reading of
+the ``.git`` pointer, which can disagree with Git's: so a repository Git refuses for its
+ownership is not read, and no other directory than the one Git accepted is.
+
+**Which Git.** One the acquisition floor admits (:func:`require_acquisition_git`). A
+checkout can be a partial clone, and ``GIT_NO_LAZY_FETCH`` is then all that keeps a
+revision's read from fetching into the reader's ``.git``; only an admitted Git is known
+to read it. A mirror's store has no promisor remote, so for it the variable is defense in
+depth; a checkout has no such second line. On an older Git the chooser refuses with
+:class:`CheckoutGitUnsupportedError`, which names the release needed, and the folder's
+working tree is served as before.
 
 **Trust.** A revision's pages run under the untrusted profile whatever the folder was
 opened with, as every pin's do: the profile is the subject's that a request resolved
@@ -54,6 +64,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -61,6 +72,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from metabrowser.content_errors import ContentReadError
+from metabrowser.git.process import (
+    GitError,
+    GitLocation,
+    UnsupportedGitVersionError,
+    failure_detail,
+    require_acquisition_git,
+    run_git_at,
+)
 from metabrowser.invisible_chars import display_segment
 from metabrowser.mirror_refresh import (
     MirrorRef,
@@ -69,7 +88,6 @@ from metabrowser.mirror_refresh import (
     SelectionRefMovedError,
 )
 from metabrowser.paths_safe import register_root_callback, tilde_path
-from metabrowser.repository_context import resolve_common_dir, resolve_git_dir
 from metabrowser.source import (
     SourceSession,
     SubjectNotOpenError,
@@ -133,13 +151,53 @@ def checkout_ref_name(ref: str | None) -> str | None:
     return ref
 
 
-def _common_git_directory(root: Path) -> Path | None:
-    """The Git directory holding *root*'s objects and refs, or ``None``. Bounded file reads."""
+class CheckoutGitUnsupportedError(ContentReadError):
+    """The host's Git is not one a checkout's revisions are read with.
 
-    git_dir = resolve_git_dir(root)
-    if git_dir is None:
+    The message names the release needed and no path, so a route and ``--ref`` say it as
+    it is.
+    """
+
+    code = "unsupported_git"
+    http_status = 409
+
+    def __init__(self, detected: str | None, required: str) -> None:
+        found = "no git is on PATH" if detected is None else f"this is {detected or 'unknown'}"
+        super().__init__(
+            f"showing a branch or tag of a checkout needs Git {required}, which is known "
+            f"never to fetch into it; {found}"
+        )
+        self.detected = detected
+        self.required = required
+
+
+def _admitted_git() -> None:
+    """Raise :class:`CheckoutGitUnsupportedError` unless the floor admits the host's Git."""
+
+    try:
+        require_acquisition_git()
+    except UnsupportedGitVersionError as exc:
+        raise CheckoutGitUnsupportedError(exc.detected, exc.required) from None
+
+
+async def _common_git_directory(root: Path) -> Path | None:
+    """The Git directory holding *root*'s objects and refs, as Git itself names it.
+
+    Asked of the Git that accepted the root, in the root, so its ownership check and its
+    reading of a ``.git`` pointer are the ones that decide. ``--git-common-dir`` is
+    relative to the working directory unless it is absolute; joining keeps an absolute
+    answer as it is.
+    """
+
+    try:
+        raw = await run_git_at(["rev-parse", "--git-common-dir"], GitLocation.filesystem(root))
+    except GitError as exc:
+        log.debug("no Git directory for the served checkout: %s", failure_detail(exc))
         return None
-    common = resolve_common_dir(git_dir)
+    named = os.fsdecode(raw).rstrip("\n")
+    if not named or "\n" in named:
+        return None
+    common = (root / named).resolve()
     return common if common.is_dir() else None
 
 
@@ -158,6 +216,8 @@ class CheckoutRevisions:
         # Whether the checkout's history stops at a shallow boundary, read when a revision
         # is served so that the status route still reads nothing.
         self.shallow = False
+        # Whether the host's Git was found admitted; asked again until it is.
+        self._git_admitted = False
 
     def serves(self, subject: object) -> bool:
         """Whether *subject* is the revision this checkout attached."""
@@ -168,42 +228,43 @@ class CheckoutRevisions:
         """The checkout's Git directory as a read-only store target, and its ``HEAD``.
 
         Raises :class:`UnsupportedSourceCapabilityError` when Git does not accept the
-        served root as a repository's root, so the routes answer what a plain folder does.
+        served root as a repository's root, so the routes answer what a plain folder does,
+        and :class:`CheckoutGitUnsupportedError` when the host's Git is below the floor.
         """
 
         from metabrowser.git.process import repository_store_target
         from metabrowser.git.repo import repo_info
 
+        if not self._git_admitted:
+            await asyncio.to_thread(_admitted_git)
+            self._git_admitted = True
         context, _info = await repo_info(self.root)
         if context is None:
             raise UnsupportedSourceCapabilityError("refs")
-        git_dir = await asyncio.to_thread(_common_git_directory, self.root)
+        git_dir = await _common_git_directory(self.root)
         if git_dir is None:
             raise UnsupportedSourceCapabilityError("refs")
         target = await asyncio.to_thread(repository_store_target, git_dir=git_dir)
         return target, context.head
 
-    async def head_ref(self) -> str | None:
-        """The full ref ``HEAD`` is on, or ``None`` when it is detached."""
+    async def list_refs(self, kind: RefKind) -> tuple[str | None, tuple[MirrorRef, ...]]:
+        """The ref ``HEAD`` is on, and the checkout's refs of *kind* that name a commit.
 
-        _target, head = await self._repository()
-        return head["ref"]
-
-    async def list_refs(self, kind: RefKind) -> tuple[MirrorRef, ...]:
-        """The checkout's branches, tags, or remote-tracking branches that name a commit.
-
-        Branches list the checked-out one first, marked as ``default`` is on a mirror.
+        Its branches, tags, or remote-tracking branches. Branches list the checked-out one
+        first, marked as ``default`` is on a mirror. ``HEAD``'s ref is ``None`` when it is
+        detached.
         """
 
         from metabrowser.cache.resolve import CHECKOUT_REFS, list_mirror_refs
 
         target, head = await self._repository()
-        return await list_mirror_refs(
+        listed = await list_mirror_refs(
             target,
             kind,
             default_ref=head["ref"] if kind == "branch" else None,
             namespaces=CHECKOUT_REFS,
         )
+        return head["ref"], listed
 
     async def switch_pin(
         self, *, ref: str | None, oid: str | None, under: str | None = None
@@ -318,10 +379,12 @@ register_root_callback(_forget_for_a_new_root)
 def checkout_revisions() -> CheckoutRevisions | None:
     """The served checkout's revisions, or ``None``: a plain folder, a mirror, or its pin.
 
-    Decided once for a served root, from whether it holds a ``.git`` entry, which is the
-    test the page's Commits tab is drawn by; Git's own answer comes with the first
-    request that needs it. While one of the checkout's revisions is served the same
-    object answers, so the page of a revision keeps its selector.
+    Decided from whether the served root holds a ``.git`` entry, which is the test the
+    page's Commits tab is drawn by; Git's own answer comes with the first request that
+    needs it, and a root Git refuses then has its row removed by the page. A "yes" is
+    kept for the root; a "no" is asked again, so a repository made later is found.
+    While one of the checkout's revisions is served the same object answers, so the page
+    of a revision keeps its selector.
     """
 
     global _held
@@ -336,7 +399,9 @@ def checkout_revisions() -> CheckoutRevisions | None:
     root = subject.filesystem_root
     if root is None:
         return None
-    if held is None or held.root != root:
+    if held is None or held.root != root or held.revisions is None:
+        # A "no" is asked again each time, as the Commits tab's test is: a repository made
+        # in a served folder gets its selector at the next page.
         try:
             is_checkout = (root / ".git").exists()
         except OSError:
@@ -378,6 +443,8 @@ async def _open_named_ref(ref: str) -> None:
         raise fail_subject_open(NOT_A_CHECKOUT) from None
     except SelectionError as exc:
         raise fail_subject_open(f"--ref {_shown(ref)}: {exc}") from None
+    except CheckoutGitUnsupportedError as exc:
+        raise fail_subject_open(f"--ref: {exc}") from None
     except ContentReadError as exc:
         # Git's own text can name the checkout's Git directory; only the code is said.
         log.debug("opening the checkout on a ref failed: %s", exc)
@@ -413,6 +480,7 @@ async def lifespan_checkout() -> AsyncGenerator[None]:
 __all__ = [
     "NOT_A_CHECKOUT",
     "CheckoutDisplay",
+    "CheckoutGitUnsupportedError",
     "CheckoutRevisions",
     "checkout_ref_name",
     "checkout_revisions",

@@ -193,6 +193,7 @@
       rows,
       note,
       error: state.error,
+      removed: state.removed === true,
       stale:
         state.stale === null || state.stale === undefined
           ? null
@@ -329,6 +330,7 @@
       let listing = null;
       /** @type {string | null} */
       let error = null;
+      let gone = false;
       try {
         const response = await deps.request(
           "GET",
@@ -336,8 +338,19 @@
           undefined,
           controller.signal,
         );
+        const refusal = /** @type {{code?: unknown, error?: unknown} | null} */ (
+          response.body !== null && typeof response.body === "object" ? response.body : null
+        );
         if (response.status === 200 && isListing(response.body)) {
           listing = response.body;
+        } else if (checkout && refusal?.code === "unsupported_for_subject") {
+          // The server drew the row for a folder holding a `.git`, and Git does not take
+          // that folder for a repository's root: there is nothing to choose among, so
+          // the row goes, as the Commits tab does when discovery says the same.
+          gone = true;
+        } else if (refusal?.code === "unsupported_git" && typeof refusal.error === "string") {
+          // The server's own words: which Git a checkout's revisions are read with.
+          error = refusal.error;
         } else {
           error = `The ${KIND_PLURAL[state.kind]} could not be listed (HTTP ${response.status}).`;
         }
@@ -351,6 +364,10 @@
       state.loading = false;
       state.listing = listing;
       state.error = error;
+      if (gone) {
+        state.open = false;
+        state.removed = true;
+      }
       render();
     }
 
@@ -527,6 +544,8 @@
    * @param {(ref: string) => void} choose
    */
   function paint(parts, model, choose) {
+    // A folder Git does not take for a repository's root has no selector after all.
+    parts.root.hidden = model.removed;
     // Shown while the list is closed too: the page is no longer what the server shows.
     parts.staleText.textContent = model.stale ?? "";
     parts.stale.hidden = model.stale === null;
@@ -646,18 +665,30 @@
    * @returns {MetabrowserSourceRefSelectorParts}
    */
   function build(element, checkout) {
-    const toggle = document.createElement("button");
+    // A checkout's server draws the button with the row, so the row keeps its box from
+    // first paint. That button is adopted, not replaced: focus a reader put on it before
+    // this module arrived stays where it is. A mirror's row arrives empty.
+    const drawn = /** @type {HTMLButtonElement | null} */ (
+      element.querySelector("button.source-ref-selector-toggle")
+    );
+    const toggle = drawn ?? document.createElement("button");
     toggle.type = "button";
-    toggle.className = "chip chip-menu-trigger source-ref-selector-toggle disclosure-toggle";
     toggle.setAttribute("aria-haspopup", "dialog");
     toggle.dataset.tipText = "Switch branch or tag";
-    const label = document.createElement("span");
+    const label =
+      /** @type {HTMLElement | null} */ (toggle.querySelector(".source-ref-selector-label")) ??
+      document.createElement("span");
     label.className = "source-ref-selector-label";
-    const caret = document.createElement("span");
+    const caret =
+      /** @type {HTMLElement | null} */ (toggle.querySelector(".chip-menu-caret")) ??
+      document.createElement("span");
+    toggle.className = "chip chip-menu-trigger source-ref-selector-toggle disclosure-toggle";
     caret.className = "chip-menu-caret";
     caret.setAttribute("aria-hidden", "true");
     caret.innerHTML = window.MetabrowserIcons?.toggle ?? "";
-    toggle.append(label, caret);
+    if (drawn === null) {
+      toggle.append(label, caret);
+    }
     // What a checkout's page says when the server comes to show something else.
     const stale = document.createElement("span");
     stale.className = "source-ref-selector-stale";
@@ -718,7 +749,11 @@
     workingTreeDetail.className = "source-ref-selector-commit";
     workingTree.append(workingTreeName, workingTreeDetail);
     panel.append(workingTree, kinds, filter, list, note, error);
-    element.replaceChildren(toggle, stale, panel);
+    if (drawn === null) {
+      element.replaceChildren(toggle, stale, panel);
+    } else {
+      element.append(stale, panel);
+    }
     element.hidden = false;
     return {
       root: element,

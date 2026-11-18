@@ -10165,10 +10165,8 @@ function sourceFreshness() {
 }
 
 /**
- * The branch and tag selector of a served mirror or a served checkout. The server
- * renders its element only where there is something to switch to: a pin with a mirror,
- * or a folder that is a repository's root, on its working tree and on each revision it
- * shows. The module is fetched on demand after the first tree request, and
+ * The branch and tag selector. The server renders its element only where one mounts;
+ * the module is fetched on demand after the first tree request, and
  * static/source-ref-selector.js owns every decision; this only mounts it.
  */
 async function startSourceRefSelector() {

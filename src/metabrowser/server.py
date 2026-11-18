@@ -1499,8 +1499,13 @@ async def index(
     # tree, so this comes before the first one is written.
     plugin_prefixes, kpress_prefix = await _shell_asset_prefixes()
 
-    pin = as_git_revision_subject(get_source_session().subject)
+    subject = get_source_session().subject
+    pin = as_git_revision_subject(subject)
     git_pin = pin is not None
+    # The folder this page is of, read once with its subject: a folder's server can come
+    # to serve a revision of its checkout while this request awaits, and a second reading
+    # would then find no folder.
+    folder_root = subject.filesystem_root
     # The trust profile of this page is its subject's, decided here before anything is
     # awaited: a pin is never trusted, so a switch of the served subject while this
     # request renders cannot hand a revision's shell the folder's policy.
@@ -1545,7 +1550,7 @@ async def index(
         initial_root = html_escape(_display_root_str(), quote=True)
         mirror_attrs = mirror_class = ""
         repository_context = await asyncio.to_thread(
-            discover_repository_context, session_filesystem_root()
+            discover_repository_context, _shell_folder(folder_root)
         )
     version_line = html_escape(display_version_line("metab", __version__))
     styles_url = _static_asset_url("styles.css")
@@ -1639,8 +1644,9 @@ async def index(
         # below it moves when its module mounts, a moment after the tree's first rows:
         # hidden until then, the row pushed the filter bar and every tree row down by its
         # height (33 px in the default pane, which tests/test_files_totals_stable_chrome.py
-        # caught on a folder holding a `.git`). The module replaces the button with one of
-        # the same box (static/source-ref-selector.js#build).
+        # caught on a folder holding a `.git`). The module adopts this button, so focus a
+        # reader put on it stays (static/source-ref-selector.js#build), and removes the
+        # row when Git says the root is no repository.
         if pin is None:
             shown_ref = "Working tree"
         else:
@@ -1672,7 +1678,7 @@ async def index(
     # discovery removes it in the rare case Git does not agree. It comes after Pulls, in the
     # main tabs' order (static/main-tabs.js, MAIN_TABS).
     commits_tab = git_pin or await asyncio.to_thread(
-        lambda: (session_filesystem_root().resolve() / ".git").exists()
+        lambda: (_shell_folder(folder_root).resolve() / ".git").exists()
     )
     # A commit's address lands on Commits, so it is drawn in front, with its toolbar and its
     # panel's container, and the landing never shows Files and then swaps it. The neutral Git
@@ -2323,6 +2329,14 @@ async def index(
             "X-Frame-Options": "DENY",
         },
     )
+
+
+def _shell_folder(root: Path | None) -> Path:
+    """The folder a shell was rendered for, read with its subject at the request's start."""
+
+    if root is None:
+        raise UnsupportedSourceCapabilityError("filesystem")
+    return root
 
 
 async def view_shell(request: Request) -> Response:
