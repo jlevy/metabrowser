@@ -53,10 +53,13 @@ has the report, its codes, and `--dry-run`, which checks a target without sendin
   registered it: an installed release first, then a development build, which is what
   every build from source is.
   `--app-bundle-id` or `METABROWSER_APP_BUNDLE_ID` names another.
-- **Only a current build:** `--present` sends only to a build that declares it takes
-  what `--present` sends, GitHub URLs included, and refuses an older build, or another
-  app an override names, with `app_not_marked` rather than send what it would drop or
-  run.
+- **Only the installed app:** `--present` sends only to a current build installed in the
+  system’s or your own Applications folder, so install the app there and open it once.
+  A build elsewhere, such as one left where it was built, is refused with
+  `app_not_installed`, and an older build, or another app an override names, with
+  `app_not_marked`, rather than send what it would drop or run.
+  [The command-line guide](command-line.md#handing-a-target-to-the-app---present) lists
+  the checks and the developer setting that lifts the first.
 - **A file in its folder:** a file is handed over after its folder, so the app opens
   that folder and shows the file in it, unless a folder inside it that holds the file is
   open already, where the file then shows.

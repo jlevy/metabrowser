@@ -31,7 +31,15 @@ from metabrowser.cli.exit_codes import (
     PRESENT_REFUSED_EXIT_CODE,
 )
 from metabrowser.cli.hangup import HANGUP_EXIT_STATUS, TERMINATION_EXIT_STATUS
-from metabrowser.cli.present import BUNDLE_ID_ENV, OPENS_URLS_KEY, DeliveryCode, PresentKind
+from metabrowser.cli.present import (
+    ANY_APP_LOCATION_ENV,
+    APP_BUNDLE_NAME,
+    APP_INSTALL_LOCATIONS,
+    BUNDLE_ID_ENV,
+    OPENS_URLS_KEY,
+    DeliveryCode,
+    PresentKind,
+)
 from metabrowser.constants import LOGS_DIR, STATE_DIR
 from metabrowser.dotenv import ALLOWED_KEYS
 from metabrowser.file_extensions import BROWSER_TRACKABLE_EXTS
@@ -243,8 +251,32 @@ def stated_values() -> list[Stated]:
         ),
         Stated(
             "docs/command-line.md",
+            "where --present finds an installed app",
+            r"it is at `([^`]+)` or\s+`([^`]+)`",
+            APP_INSTALL_LOCATIONS,
+        ),
+        Stated(
+            "docs/command-line.md",
+            "the name an installed app's Info.plist gives it",
+            r"its `Info.plist` names it `(\w+)`",
+            (APP_BUNDLE_NAME,),
+        ),
+        Stated(
+            "docs/command-line.md",
+            "the setting that lifts the install-location check",
+            r"(?:^\| `|\bsets\s+`)(METABROWSER_ALLOW_\w+)",
+            (ANY_APP_LOCATION_ENV,),
+        ),
+        Stated(
+            "docs/project/qa/qa-macos-app-hand-checks.md",
+            "the setting the --present hand checks use",
+            r"\b(METABROWSER_ALLOW_\w+)=1",
+            (ANY_APP_LOCATION_ENV,),
+        ),
+        Stated(
+            "docs/command-line.md",
             "the key an app that takes what --present sends declares",
-            r"whose `Info.plist` declares `(\w+)` true",
+            r"`Info.plist`\s+declares\s+`(\w+)`\s+true",
             (OPENS_URLS_KEY,),
         ),
         Stated(

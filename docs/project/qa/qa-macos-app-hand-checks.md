@@ -137,12 +137,19 @@ Markdown file open:
 ([Presenting to the App](../architecture/arch-cli.md#presenting-to-the-app)); its
 goldens use a recording stand-in, so these are the checks that a real app receives what
 the report says. Use a `metab` built from this checkout, with the development build
-registered (opened once) and every other copy quit:
+registered (opened once) and every other copy quit.
+The build stays where `make macos-app` leaves it, so `present` sets
+`METABROWSER_ALLOW_UNINSTALLED_APP=1`, which lifts `--present`’s install-location check
+for a developer; `make macos-run` launches the app with `open -a` and runs no
+`--present`, so it needs no such setting.
 
 ```shell
 APP_ID=io.github.jlevy.metabrowser.dev
 folder="$(mktemp -d)" && mkdir -p "$folder/docs" && echo '# Guide' > "$folder/docs/guide.md"
-present() { /usr/bin/time -p metab "$@" --present --app-bundle-id "$APP_ID" --format json; }
+present() {
+  METABROWSER_ALLOW_UNINSTALLED_APP=1 \
+    /usr/bin/time -p metab "$@" --present --app-bundle-id "$APP_ID" --format json
+}
 ```
 
 1. **A folder.** `present "$folder"` exits 0 with `delivered_to: app` and `bundle_path`
@@ -171,6 +178,9 @@ present() { /usr/bin/time -p metab "$@" --present --app-bundle-id "$APP_ID" --fo
    registered, `present https://github.com/jlevy/metabrowser`: record which copy takes
    the URL and whether a window shows it, since the marker is read from the bundle
    LaunchServices prefers, not from the running copy.
+9. **Not installed.** `metab "$folder" --present --app-bundle-id "$APP_ID"`, without the
+   setting, exits 4 with `app_not_installed`, naming the build’s path under
+   `apps/macos/build/` and the two install locations; nothing opens.
 
 ## Setup Flows
 

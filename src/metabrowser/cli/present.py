@@ -35,10 +35,14 @@ checks what a user typed without parsing a URL itself.
 
 **Delivering.** :func:`deliver` finds the app through LaunchServices, release first,
 then the development build, or the one ``--app-bundle-id`` or :data:`BUNDLE_ID_ENV`
-names, and sends the handoff with ``open -b``. It sends only to a bundle whose
-``Info.plist`` declares :data:`OPENS_URLS_KEY`, the marker of a Metabrowser build that
-takes everything this mode sends: an app without it drops a URL while ``open`` still
-succeeds, and an override naming another app must not receive a file it would run.
+names, and sends the handoff with ``open -b``. Every handoff first passes
+:func:`app_refusal`: the bundle LaunchServices names is installed at one of
+:data:`APP_INSTALL_LOCATIONS`, is named :data:`APP_BUNDLE_NAME`, and declares
+:data:`OPENS_URLS_KEY`, the marker of a Metabrowser build that takes everything this mode
+sends. An app without the marker drops a URL while ``open`` still succeeds, an override
+naming another app must not receive a file it would run, and a bundle registered
+somewhere else, a build in a cloned repository among them, is not the app the user
+installed.
 ``open`` returning 0 means LaunchServices took the handoff, not that a window shows it,
 and the app cannot answer yet, so every report says ``confirmed: false``.
 """
@@ -83,6 +87,23 @@ BUNDLE_ID_ENV: Final = "METABROWSER_APP_BUNDLE_ID"
 # The Info.plist key, a boolean, that a Metabrowser build which opens everything
 # `--present` sends declares true: folders, files, and GitHub URLs.
 OPENS_URLS_KEY: Final = "MetabrowserOpensURLs"
+# The `CFBundleName` `apps/macos/scripts/build-app.sh` writes for both variants (`product`
+# in `common.sh`, which `tests/test_present.py` holds to this).
+APP_BUNDLE_NAME: Final = "Metabrowser"
+# Where an installed app is, and the only places `--present` sends to: the system's and
+# the user's Applications folder, `~` being the user's home. LaunchServices registers a
+# bundle wherever it was opened, a build under `apps/macos/build/` or a copy in a cloned
+# repository included, and names one of them for an identifier, so a target goes only to a
+# bundle it names at one of these paths. A check of the path is cheap and runs on every
+# handoff; it is not a signature (a release's team identifier is not checked yet).
+APP_INSTALL_LOCATIONS: Final = (
+    "/Applications/Metabrowser.app",
+    "~/Applications/Metabrowser.app",
+)
+# Set to exactly `1`, lets `--present` send to a bundle outside APP_INSTALL_LOCATIONS, such
+# as a development build where `make macos-app` leaves it. For a developer testing a build
+# in place; the bundle name and the marker are still required.
+ANY_APP_LOCATION_ENV: Final = "METABROWSER_ALLOW_UNINSTALLED_APP"
 # An app's Info.plist is a few kilobytes; a larger one is not read.
 INFO_PLIST_MAX_BYTES: Final = 1024 * 1024
 # How long `open` may take to hand LaunchServices the target. It returns once
@@ -105,6 +126,7 @@ type DeliveryCode = Literal[
     "not_confirmed",
     "not_macos",
     "app_not_found",
+    "app_not_installed",
     "app_not_marked",
     "app_cannot_select_folder",
     "lookup_failed",
@@ -117,6 +139,7 @@ DELIVERY_EXIT_CODES: Final[dict[DeliveryCode, int]] = {
     "not_confirmed": 0,
     "not_macos": PRESENT_NO_APP_EXIT_CODE,
     "app_not_found": PRESENT_NO_APP_EXIT_CODE,
+    "app_not_installed": PRESENT_NO_APP_EXIT_CODE,
     "app_not_marked": PRESENT_NO_APP_EXIT_CODE,
     "app_cannot_select_folder": PRESENT_NO_APP_EXIT_CODE,
     "lookup_failed": PRESENT_BLOCKED_EXIT_CODE,
@@ -490,36 +513,100 @@ bundle_lookup: Callable[[str], Path | None] | None = (
 open_executable: str = "/usr/bin/open"
 
 
-def declares_marker(bundle: Path) -> bool:
-    """Whether the app at *bundle* declares :data:`OPENS_URLS_KEY` true in its Info.plist.
+def read_info_plist(bundle: Path) -> dict[str, object] | None:
+    """The property list at *bundle*'s ``Contents/Info.plist``, or ``None``.
 
     Reads a regular file only, without waiting on one that is not (a FIFO would block),
-    and at most :data:`INFO_PLIST_MAX_BYTES`; anything it cannot read or parse is no.
+    and at most :data:`INFO_PLIST_MAX_BYTES`; anything it cannot read or parse, or that is
+    not a dictionary, is ``None``.
     """
 
     info = bundle / "Contents" / "Info.plist"
     try:
         descriptor = os.open(info, os.O_RDONLY | os.O_NONBLOCK)
     except OSError:
-        return False
+        return None
     with os.fdopen(descriptor, "rb") as stream:
         try:
             if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
-                return False
+                return None
             data = stream.read(INFO_PLIST_MAX_BYTES + 1)
         except OSError:
-            return False
+            return None
     if len(data) > INFO_PLIST_MAX_BYTES:
-        return False
+        return None
     try:
         plist = plistlib.loads(data)
     except Exception:
         # A malformed property list raises from the XML parser or the binary reader, and
         # what it raises is not one class: ExpatError, IndexError, AttributeError, and
-        # RecursionError are among them. Every one means the same here, no marker, so
-        # nothing is sent.
-        return False
-    return isinstance(plist, dict) and plist.get(OPENS_URLS_KEY) is True
+        # RecursionError are among them. Every one means the same here, no property list,
+        # so nothing is sent.
+        return None
+    if not isinstance(plist, dict):
+        return None
+    return {str(key): value for key, value in plist.items()}
+
+
+def declares_marker(bundle: Path) -> bool:
+    """Whether the app at *bundle* declares :data:`OPENS_URLS_KEY` true in its Info.plist."""
+
+    info = read_info_plist(bundle)
+    return info is not None and info.get(OPENS_URLS_KEY) is True
+
+
+def install_locations() -> tuple[Path, ...]:
+    """:data:`APP_INSTALL_LOCATIONS`, with ``~`` read now."""
+
+    return tuple(Path(location).expanduser() for location in APP_INSTALL_LOCATIONS)
+
+
+def is_installed(bundle: Path) -> bool:
+    """Whether *bundle*, as LaunchServices names it, is one of :func:`install_locations`.
+
+    The path is compared as given, normalized but not resolved, so a link at an install
+    location to a bundle elsewhere is not an install: LaunchServices names where a bundle
+    is.
+    """
+
+    return Path(os.path.normpath(bundle)) in install_locations()
+
+
+def _any_location_allowed() -> bool:
+    return os.environ.get(ANY_APP_LOCATION_ENV) == "1"
+
+
+def app_refusal(bundle: Path) -> tuple[DeliveryCode, str] | None:
+    """Why the app at *bundle* is sent nothing, or ``None`` if it passes the trust check.
+
+    Every handoff, a file's or a URL's, needs all three: the bundle is installed
+    (:func:`is_installed`, unless :data:`ANY_APP_LOCATION_ENV` is ``1``), its Info.plist
+    names it :data:`APP_BUNDLE_NAME`, and it declares :data:`OPENS_URLS_KEY` true.
+    """
+
+    if not _any_location_allowed() and not is_installed(bundle):
+        allowed = " or ".join(APP_INSTALL_LOCATIONS)
+        return (
+            "app_not_installed",
+            f"LaunchServices names the app at {_shown(bundle)}, which is not installed; "
+            f"--present sends only to {allowed}, so move or copy the app there and open it "
+            "once from there",
+        )
+    info = read_info_plist(bundle)
+    name = info.get("CFBundleName") if info is not None else None
+    if name != APP_BUNDLE_NAME:
+        return (
+            "app_not_marked",
+            f"the app at {_shown(bundle)} is not named {APP_BUNDLE_NAME} in its Info.plist, "
+            "so it is not the Metabrowser app; install a current Metabrowser build",
+        )
+    if info is None or info.get(OPENS_URLS_KEY) is not True:
+        return (
+            "app_not_marked",
+            f"the app at {_shown(bundle)} does not declare {OPENS_URLS_KEY}, so it is not a "
+            "Metabrowser build that takes what --present sends; update it to a current build",
+        )
+    return None
 
 
 # ── Delivering ──────────────────────────────────────────────────────
@@ -604,14 +691,8 @@ def deliver(target: Presentable, bundle_ids: Sequence[str]) -> Delivery:
             bundle_id,
             bundle,
         )
-    if not declares_marker(bundle):
-        return _not_sent(
-            "app_not_marked",
-            f"the app at {_shown(bundle)} does not declare {OPENS_URLS_KEY}, so it is not a "
-            "Metabrowser build that takes what --present sends; update it to a current build",
-            bundle_id,
-            bundle,
-        )
+    if (refused := app_refusal(bundle)) is not None:
+        return _not_sent(*refused, bundle_id, bundle)
     failure = _send(bundle_id, target.handoff)
     if failure is not None:
         return _not_sent(
@@ -746,6 +827,9 @@ __all__ = [
     "DEV_BUNDLE_ID",
     "OPENS_URLS_KEY",
     "RELEASE_BUNDLE_ID",
+    "ANY_APP_LOCATION_ENV",
+    "APP_BUNDLE_NAME",
+    "APP_INSTALL_LOCATIONS",
     "AppLookupError",
     "Delivery",
     "DeliveryCode",
@@ -753,10 +837,14 @@ __all__ = [
     "Presentable",
     "Refusal",
     "bundle_lookup",
+    "app_refusal",
     "declares_marker",
     "deliver",
+    "install_locations",
+    "is_installed",
     "open_executable",
     "present_bundle_ids",
+    "read_info_plist",
     "resolve_target",
     "run_present",
 ]

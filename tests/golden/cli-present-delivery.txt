@@ -164,13 +164,66 @@ exit: 4
 io.github.jlevy.metabrowser -> none
 io.github.jlevy.metabrowser.dev -> <ROOT>/Applications/Metabrowser.app
 --- open ---
-# metab https://github.com/octo/demo --present --format json
+# metab notes --present --format json
 exit: 4
 --- stdout ---
 {
   "delivered_to": "none",
   "bundle_id": "io.github.jlevy.metabrowser.dev",
-  "bundle_path": "<ROOT>/Applications/Metabrowser Older.app",
+  "bundle_path": "<ROOT>/apps/macos/build/dev/Metabrowser.app",
+  "target": {
+    "kind": "folder",
+    "root": "<ROOT>/notes",
+    "page": "/view/",
+    "handoff": [
+      "<ROOT>/notes"
+    ],
+    "refusal": null
+  },
+  "confirmed": false,
+  "code": "app_not_installed",
+  "reason": "LaunchServices names the app at <ROOT>/apps/macos/build/dev/Metabrowser.app, which is not installed; --present sends only to /Applications/Metabrowser.app or ~/Applications/Metabrowser.app, so move or copy the app there and open it once from there"
+}
+--- stderr ---
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> <ROOT>/apps/macos/build/dev/Metabrowser.app
+--- open ---
+# metab notes --present
+exit: 4
+--- stdout ---
+--- stderr ---
+Error: not sent to the app: LaunchServices names the app at <ROOT>/apps/macos/build/dev/Metabrowser.app, which is not installed; --present sends only to /Applications/Metabrowser.app or ~/Applications/Metabrowser.app, so move or copy the app there and open it once from there (app_not_installed)
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> <ROOT>/apps/macos/build/dev/Metabrowser.app
+--- open ---
+# METABROWSER_ALLOW_UNINSTALLED_APP=1 metab notes --present
+exit: 0
+--- stdout ---
+delivered_to: app
+bundle_id: io.github.jlevy.metabrowser.dev
+bundle_path: <ROOT>/apps/macos/build/dev/Metabrowser.app
+kind: folder
+root: <ROOT>/notes
+page: /view/
+handoff: <ROOT>/notes
+confirmed: false
+code: not_confirmed
+reason: LaunchServices took the target; the app does not reply yet, so nothing confirms that a window shows it
+--- stderr ---
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> <ROOT>/apps/macos/build/dev/Metabrowser.app
+--- open ---
+open -b io.github.jlevy.metabrowser.dev <ROOT>/notes
+# HOME=<ROOT>/older-home metab https://github.com/octo/demo --present --format json
+exit: 4
+--- stdout ---
+{
+  "delivered_to": "none",
+  "bundle_id": "io.github.jlevy.metabrowser.dev",
+  "bundle_path": "<ROOT>/older-home/Applications/Metabrowser.app",
   "target": {
     "kind": "repository",
     "root": "https://github.com/octo/demo",
@@ -182,21 +235,21 @@ exit: 4
   },
   "confirmed": false,
   "code": "app_not_marked",
-  "reason": "the app at <ROOT>/Applications/Metabrowser Older.app does not declare MetabrowserOpensURLs, so it is not a Metabrowser build that takes what --present sends; update it to a current build"
+  "reason": "the app at <ROOT>/older-home/Applications/Metabrowser.app does not declare MetabrowserOpensURLs, so it is not a Metabrowser build that takes what --present sends; update it to a current build"
 }
 --- stderr ---
 --- launch_services ---
 io.github.jlevy.metabrowser -> none
-io.github.jlevy.metabrowser.dev -> <ROOT>/Applications/Metabrowser Older.app
+io.github.jlevy.metabrowser.dev -> <ROOT>/older-home/Applications/Metabrowser.app
 --- open ---
-# metab notes --present
+# HOME=<ROOT>/older-home metab notes --present
 exit: 4
 --- stdout ---
 --- stderr ---
-Error: not sent to the app: the app at <ROOT>/Applications/Metabrowser Older.app does not declare MetabrowserOpensURLs, so it is not a Metabrowser build that takes what --present sends; update it to a current build (app_not_marked)
+Error: not sent to the app: the app at <ROOT>/older-home/Applications/Metabrowser.app does not declare MetabrowserOpensURLs, so it is not a Metabrowser build that takes what --present sends; update it to a current build (app_not_marked)
 --- launch_services ---
 io.github.jlevy.metabrowser -> none
-io.github.jlevy.metabrowser.dev -> <ROOT>/Applications/Metabrowser Older.app
+io.github.jlevy.metabrowser.dev -> <ROOT>/older-home/Applications/Metabrowser.app
 --- open ---
 # metab notes --present --format json
 exit: 0
@@ -279,7 +332,7 @@ exit: 4
 {
   "delivered_to": "none",
   "bundle_id": "com.apple.Terminal",
-  "bundle_path": "<ROOT>/Applications/Terminal.app",
+  "bundle_path": "<ROOT>/Utilities/Terminal.app",
   "target": {
     "kind": "file",
     "root": "<ROOT>/notes",
@@ -291,12 +344,20 @@ exit: 4
     "refusal": null
   },
   "confirmed": false,
-  "code": "app_not_marked",
-  "reason": "the app at <ROOT>/Applications/Terminal.app does not declare MetabrowserOpensURLs, so it is not a Metabrowser build that takes what --present sends; update it to a current build"
+  "code": "app_not_installed",
+  "reason": "LaunchServices names the app at <ROOT>/Utilities/Terminal.app, which is not installed; --present sends only to /Applications/Metabrowser.app or ~/Applications/Metabrowser.app, so move or copy the app there and open it once from there"
 }
 --- stderr ---
 --- launch_services ---
-com.apple.Terminal -> <ROOT>/Applications/Terminal.app
+com.apple.Terminal -> <ROOT>/Utilities/Terminal.app
+--- open ---
+# HOME=<ROOT>/copy-home metab notes/run-me.command --present --app-bundle-id com.apple.Terminal
+exit: 4
+--- stdout ---
+--- stderr ---
+Error: not sent to the app: the app at <ROOT>/copy-home/Applications/Metabrowser.app is not named Metabrowser in its Info.plist, so it is not the Metabrowser app; install a current Metabrowser build (app_not_marked)
+--- launch_services ---
+com.apple.Terminal -> <ROOT>/copy-home/Applications/Metabrowser.app
 --- open ---
 # metab notes --present --format json
 exit: 4

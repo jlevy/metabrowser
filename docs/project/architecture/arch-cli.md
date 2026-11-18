@@ -164,11 +164,15 @@ imports the serve mode’s modules before a mode is chosen.
    Off macOS the lookup is `None` and nothing is sent.
    A lookup LaunchServices does not answer, as under a sandbox that denies its database,
    raises `AppLookupError` rather than reading as no app.
-3. **Check what the app takes.** Every target needs `OPENS_URLS_KEY` set true in the
-   bundle’s `Info.plist`, read as a bounded regular file: an older app drops a URL while
-   `open` still succeeds, and an app an override names must not be handed a file it
-   would run. A folder inside the root is refused, because the app opens each folder in a
-   window of its own.
+3. **Check what the app takes.** A folder inside the root is refused, because the app
+   opens each folder in a window of its own.
+   Every other handoff passes `app_refusal`: the bundle is at one of
+   `APP_INSTALL_LOCATIONS` (unless `ANY_APP_LOCATION_ENV` is `1`), because
+   LaunchServices registers a bundle wherever it was opened; its `Info.plist`, read as a
+   bounded regular file, names it `APP_BUNDLE_NAME`; and it sets `OPENS_URLS_KEY` true,
+   because an older app drops a URL while `open` still succeeds and an app an override
+   names must not be handed a file it would run.
+   It is a path check, not a signature; a release’s team identifier is not checked.
 4. **Send.** `/usr/bin/open -b <bundle id> <handoff>`, by its absolute path
    (`open_executable`), bounded by `OPEN_TIMEOUT_S`. Exit 0 from `open` means
    LaunchServices took it, so the report says `confirmed: false` until the app can

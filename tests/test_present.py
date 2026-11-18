@@ -30,6 +30,9 @@ from metabrowser.cli.exit_codes import (
     PRESENT_REFUSED_EXIT_CODE,
 )
 from metabrowser.cli.present import (
+    ANY_APP_LOCATION_ENV,
+    APP_BUNDLE_NAME,
+    APP_INSTALL_LOCATIONS,
     BUNDLE_ID_ENV,
     DEFAULT_BUNDLE_IDS,
     DELIVERY_EXIT_CODES,
@@ -40,8 +43,10 @@ from metabrowser.cli.present import (
     AppLookupError,
     Presentable,
     Refusal,
+    app_refusal,
     declares_marker,
     deliver,
+    is_installed,
     present_bundle_ids,
     resolve_target,
 )
@@ -59,6 +64,10 @@ def test_the_bundle_identifiers_are_the_ones_the_app_is_built_with() -> None:
     assert variants == {"release": RELEASE_BUNDLE_ID, "dev": DEV_BUNDLE_ID}
     # Release first: an installed release is the app a user means.
     assert DEFAULT_BUNDLE_IDS == (RELEASE_BUNDLE_ID, DEV_BUNDLE_ID)
+    # Both variants are built as Metabrowser.app, named Metabrowser, which is the name the
+    # trust check expects and the bundle every install location names.
+    assert re.findall(r'^\s*product="([^"]+)"', text, re.MULTILINE) == [APP_BUNDLE_NAME]
+    assert {Path(location).name for location in APP_INSTALL_LOCATIONS} == {f"{APP_BUNDLE_NAME}.app"}
 
 
 def test_every_delivery_code_ends_with_its_own_kind_of_status() -> None:
@@ -234,12 +243,110 @@ def test_a_lookup_that_cannot_ask_launch_services_is_blocked_not_missing(
     assert delivery.exit_code == PRESENT_BLOCKED_EXIT_CODE
 
 
+_CURRENT_INFO: dict[str, object] = {"CFBundleName": APP_BUNDLE_NAME, OPENS_URLS_KEY: True}
+
+
+def _installed(home: Path, info: dict[str, object]) -> Path:
+    """A bundle at ``~/Applications/Metabrowser.app``, *home* being ``~``."""
+
+    return _bundle(home / "Applications", info, f"{APP_BUNDLE_NAME}.app")
+
+
+def _record_open(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    """Point `open` at a stand-in that records its arguments; return the record."""
+
+    log = tmp_path / "open.log"
+    opener = tmp_path / "open-stand-in"
+    opener.write_text(f'#!/bin/sh\necho "$@" >> "{log}"\n')
+    opener.chmod(0o755)
+    monkeypatch.setattr(present, "open_executable", str(opener))
+    return log
+
+
+@pytest.fixture
+def home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    """A home folder of the test's own, so `~/Applications` is one it can write."""
+
+    folder = tmp_path / "home"
+    folder.mkdir()
+    monkeypatch.setenv("HOME", str(folder))
+    monkeypatch.delenv(ANY_APP_LOCATION_ENV, raising=False)
+    return folder
+
+
+def test_only_the_two_install_locations_are_installed(home: Path) -> None:
+    assert is_installed(Path("/Applications/Metabrowser.app"))
+    assert is_installed(home / "Applications" / "Metabrowser.app")
+    assert is_installed(Path("/Applications/Metabrowser.app/"))
+    # A build where `make macos-app` leaves it, another name, another folder, or a path
+    # that only passes through an install location, is not an install.
+    assert not is_installed(Path("/src/metabrowser/apps/macos/build/dev/Metabrowser.app"))
+    assert not is_installed(Path("/Applications/Metabrowser Dev.app"))
+    assert not is_installed(Path("/Applications/Tools/Metabrowser.app"))
+    assert not is_installed(Path("/Applications/Metabrowser.app/Contents/../../Evil.app"))
+    assert not is_installed(home / "Metabrowser.app")
+
+
+@pytest.mark.skipif(os.name != "posix", reason="the open stand-ins are shell scripts")
+def test_a_bundle_elsewhere_is_sent_nothing_unless_a_developer_allows_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, home: Path
+) -> None:
+    build = _bundle(tmp_path / "apps/macos/build/dev", _CURRENT_INFO, "Metabrowser.app")
+    monkeypatch.setattr(present, "bundle_lookup", lambda bundle_id: build)
+    _refuse_to_open(monkeypatch, tmp_path)
+    target = Presentable("folder", "/srv/notes", "/view/", ("/srv/notes",))
+
+    refused = deliver(target, (DEV_BUNDLE_ID,))
+
+    assert (refused.delivered_to, refused.code) == ("none", "app_not_installed")
+    assert refused.exit_code == PRESENT_NO_APP_EXIT_CODE
+    # The message names where the bundle is and where to install it.
+    assert str(build) in refused.message
+    assert all(location in refused.message for location in APP_INSTALL_LOCATIONS)
+    # Only exactly `1` is the developer's word.
+    monkeypatch.setenv(ANY_APP_LOCATION_ENV, "true")
+    assert deliver(target, (DEV_BUNDLE_ID,)).code == "app_not_installed"
+
+    monkeypatch.setenv(ANY_APP_LOCATION_ENV, "1")
+    log = _record_open(monkeypatch, tmp_path)
+    allowed = deliver(target, (DEV_BUNDLE_ID,))
+
+    assert (allowed.delivered_to, allowed.code) == ("app", "not_confirmed")
+    assert log.read_text() == f"-b {DEV_BUNDLE_ID} /srv/notes\n"
+    # The override moves the location only: the marker is still required.
+    unmarked = _bundle(tmp_path / "old-build", {"CFBundleName": APP_BUNDLE_NAME}, "Metabrowser.app")
+    refusal = app_refusal(unmarked)
+    assert refusal is not None and refusal[0] == "app_not_marked"
+
+
+@pytest.mark.parametrize(
+    ("info", "says"),
+    [
+        ({"CFBundleName": APP_BUNDLE_NAME}, OPENS_URLS_KEY),
+        ({"CFBundleName": "Terminal", OPENS_URLS_KEY: True}, f"not named {APP_BUNDLE_NAME}"),
+        ({OPENS_URLS_KEY: True}, f"not named {APP_BUNDLE_NAME}"),
+    ],
+)
+def test_an_installed_bundle_needs_the_name_and_the_marker(
+    home: Path, info: dict[str, object], says: str
+) -> None:
+    refused = app_refusal(_installed(home, info))
+
+    assert refused is not None
+    assert refused[0] == "app_not_marked"
+    assert says in refused[1]
+
+
+def test_an_installed_current_bundle_passes_the_trust_check(home: Path) -> None:
+    assert app_refusal(_installed(home, _CURRENT_INFO)) is None
+
+
 @pytest.mark.skipif(os.name != "posix", reason="the refusing open is a shell script")
-def test_a_bundle_without_the_marker_is_sent_no_file(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+def test_an_app_an_override_names_is_sent_no_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, home: Path
 ) -> None:
     # An override can name any app, such as Terminal, which runs a `.command` file it is
-    # handed, so a file goes only where a URL goes: to a bundle with the marker.
+    # handed, so a file goes only where a URL goes: to the installed Metabrowser app.
     terminal = _bundle(tmp_path, {"CFBundleIdentifier": "com.apple.Terminal"}, "Terminal.app")
     monkeypatch.setattr(present, "bundle_lookup", lambda bundle_id: terminal)
     _refuse_to_open(monkeypatch, tmp_path)
@@ -250,9 +357,14 @@ def test_a_bundle_without_the_marker_is_sent_no_file(
 
     delivery = deliver(target, ("com.apple.Terminal",))
 
-    assert (delivery.delivered_to, delivery.code) == ("none", "app_not_marked")
+    assert (delivery.delivered_to, delivery.code) == ("none", "app_not_installed")
     assert delivery.bundle_path == str(terminal)
     assert delivery.exit_code == PRESENT_NO_APP_EXIT_CODE
+    # Copied to an install location, it is still not the Metabrowser app.
+    monkeypatch.setattr(
+        present, "bundle_lookup", lambda bundle_id: _installed(home, {"CFBundleName": "Terminal"})
+    )
+    assert deliver(target, ("com.apple.Terminal",)).code == "app_not_marked"
 
 
 def test_the_first_app_launch_services_has_is_the_one_used(

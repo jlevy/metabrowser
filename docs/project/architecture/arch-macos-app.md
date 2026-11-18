@@ -91,9 +91,10 @@ for the bundle and sends the paths or URL with `open -b`
 root, in one `application(_:open:)` call, so `AppDelegate.request` opens the root first
 and then places the file with `OpenTarget.resolve` in the most specific open folder,
 which is that root unless a folder inside it holding the file is open.
-It sends only to a bundle whose `Info.plist` sets `MetabrowserOpensURLs` to true, so a
-build that cannot yet open a URL, or another app, receives nothing, and it learns
-nothing back.
+It sends only to a bundle at one of `APP_INSTALL_LOCATIONS` whose `Info.plist` names it
+Metabrowser and sets `MetabrowserOpensURLs` to true, so a build that cannot yet open a
+URL, a build registered where it was built, or another app receives nothing, and it
+learns nothing back.
 
 `ServerLaunch` is the seam for host mode: it owns the arguments, the stdin line, the
 readiness parser and URL, and what a window installs before loading

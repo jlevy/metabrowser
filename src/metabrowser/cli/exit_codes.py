@@ -13,8 +13,9 @@ from __future__ import annotations
 # names why, and nothing was looked up or sent.
 PRESENT_REFUSED_EXIT_CODE = 3
 # `--present` read ROOT, and no app takes it: not macOS, no Metabrowser app registered
-# with LaunchServices, an app that does not declare the marker a current build declares,
-# or a folder inside ROOT, which the app cannot select. Nothing was sent; installing or
+# with LaunchServices, one that is not installed in an Applications folder, one that is
+# not named Metabrowser or does not declare the marker a current build declares, or a
+# folder inside ROOT, which the app cannot select. Nothing was sent; installing or
 # updating the app, or serving the target, is the remedy.
 PRESENT_NO_APP_EXIT_CODE = 4
 # `--present` found the app, or tried to, and LaunchServices could not be asked or did

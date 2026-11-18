@@ -17,8 +17,11 @@ All notable changes to Metabrowser are documented here.
   It exits 3 when ROOT cannot be presented, 4 when no app takes it, and 5 when
   LaunchServices could not be asked or refused it, as in a sandbox; the report names the
   case in `code`, and says `confirmed: false`, because the app does not answer yet.
-  It sends only to an app whose `Info.plist` declares `MetabrowserOpensURLs` true, so an
-  older build is never sent a URL it would drop and another app is never sent a file.
+  It sends only to the installed app: a bundle at `/Applications/Metabrowser.app` or
+  `~/Applications/Metabrowser.app` whose `Info.plist` names it Metabrowser and declares
+  `MetabrowserOpensURLs` true, so an older build is never sent a URL it would drop,
+  another app is never sent a file, and a build registered where it was built is refused
+  unless `METABROWSER_ALLOW_UNINSTALLED_APP=1`.
 
 - `metab COMMIT_URL` opens at the commit’s page, `/commit/<full id>`, instead of the
   tree at that commit.

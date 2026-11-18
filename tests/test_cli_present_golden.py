@@ -4,9 +4,11 @@ Each command runs the production CLI in-process with two substitutions, so the
 transcript is the same on every platform and nothing reaches a real app:
 
 - ``metabrowser.cli.present.bundle_lookup``, the LaunchServices lookup, answers from a
-  table of fixture bundles: one whose ``Info.plist`` declares ``MetabrowserOpensURLs``,
-  one, an older app, that does not, and a Terminal-shaped app, or raises
-  :class:`~metabrowser.cli.present.AppLookupError` as a sandbox makes it; and
+  table of fixture bundles, or raises :class:`~metabrowser.cli.present.AppLookupError` as
+  a sandbox makes it. ``HOME`` is the sandbox, so its ``Applications/Metabrowser.app`` is
+  an install location (``APP_INSTALL_LOCATIONS``): the current app is there, and so, under
+  homes of their own, are an older build without ``MetabrowserOpensURLs`` and a copy of
+  Terminal; a development build and Terminal itself are elsewhere; and
 - ``metabrowser.cli.present.open_executable``, ``/usr/bin/open``, is a stand-in that
   records its arguments and exits 0, or, under ``OPEN_STAND_IN_FAIL=1``, prints a line
   of the shape LaunchServices' failures take and exits 1. An ``open`` planted first on
@@ -31,6 +33,7 @@ import pytest
 
 from metabrowser.cli import present
 from metabrowser.cli.present import (
+    APP_BUNDLE_NAME,
     DEV_BUNDLE_ID,
     OPENS_URLS_KEY,
     RELEASE_BUNDLE_ID,
@@ -73,9 +76,21 @@ class _Sandbox:
         (notes / "README.md").write_text("# Notes\n")
         (notes / "docs" / "guide.md").write_text("# Guide\n")
         (notes / "run-me.command").write_text("echo hi\n")
-        self.current = _app(tmp_path, "Metabrowser.app", {OPENS_URLS_KEY: True})
-        self.older = _app(tmp_path, "Metabrowser Older.app", {})
-        self.terminal = _app(tmp_path, "Terminal.app", {"CFBundleIdentifier": TERMINAL_BUNDLE_ID})
+        # `~/Applications/Metabrowser.app` with HOME at the sandbox, and in two other homes.
+        self.current = _app(tmp_path / "Applications", "Metabrowser.app", {OPENS_URLS_KEY: True})
+        self.older_home = tmp_path / "older-home"
+        self.older = _app(self.older_home / "Applications", "Metabrowser.app", {})
+        self.copy_home = tmp_path / "copy-home"
+        terminal_info: dict[str, object] = {
+            "CFBundleIdentifier": TERMINAL_BUNDLE_ID,
+            "CFBundleName": "Terminal",
+        }
+        _app(self.copy_home / "Applications", "Metabrowser.app", terminal_info)
+        # Where `make macos-app` leaves a development build, and where Terminal is.
+        self.build = _app(
+            tmp_path / "apps/macos/build/dev", "Metabrowser.app", {OPENS_URLS_KEY: True}
+        )
+        self.terminal = _app(tmp_path / "Utilities", "Terminal.app", terminal_info)
         self.opener = _stand_in(tmp_path / "system", "open")
         planted = _stand_in(tmp_path / "planted", "planted")
         self.log = tmp_path / "open.log"
@@ -84,6 +99,8 @@ class _Sandbox:
         monkeypatch.setenv("OPEN_STAND_IN_LOG", str(self.log))
         monkeypatch.delenv("OPEN_STAND_IN_FAIL", raising=False)
         monkeypatch.delenv(present.BUNDLE_ID_ENV, raising=False)
+        monkeypatch.delenv(present.ANY_APP_LOCATION_ENV, raising=False)
+        monkeypatch.setenv("HOME", str(tmp_path))
         monkeypatch.setenv("METABROWSER_PLUGINS_DIRS", "")
         monkeypatch.setenv("TERM", "dumb")
         monkeypatch.chdir(tmp_path)
@@ -108,11 +125,16 @@ class _Sandbox:
         self.looked_up.clear()
         self.log.write_text("")
         self.monkeypatch.setattr(present, "bundle_lookup", self._lookup if self.platform else None)
-        for name, value in (env or {}).items():
-            self.monkeypatch.setenv(name, value)
-        result = run_metab(args)
-        for name in env or {}:
-            self.monkeypatch.delenv(name)
+        before = {name: os.environ.get(name) for name in env or {}}
+        os.environ.update(env or {})
+        try:
+            result = run_metab(args)
+        finally:
+            for name, value in before.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
         opened = self.log.read_text().splitlines()
         lookups = self.looked_up if self.platform else ["no LaunchServices on this platform"]
         prefix = "".join(f"{name}={value} " for name, value in (env or {}).items())
@@ -135,11 +157,13 @@ class _Sandbox:
         return text
 
 
-def _app(root: Path, name: str, info: dict[str, object]) -> Path:
-    bundle = root / "Applications" / name
+def _app(folder: Path, name: str, info: dict[str, object]) -> Path:
+    bundle = folder / name
     (bundle / "Contents").mkdir(parents=True)
     (bundle / "Contents" / "Info.plist").write_bytes(
-        plistlib.dumps({"CFBundleIdentifier": DEV_BUNDLE_ID, **info})
+        plistlib.dumps(
+            {"CFBundleIdentifier": DEV_BUNDLE_ID, "CFBundleName": APP_BUNDLE_NAME, **info}
+        )
     )
     return bundle
 
@@ -172,20 +196,31 @@ def test_golden_present_hands_targets_to_the_app(
     # A folder inside the root is not sent: the app opens every folder as its own window.
     blocks.append(sandbox.run(["notes", "--path", "docs", "--present", *as_json]))
 
-    # An older app without the marker would drop a URL, and is sent nothing.
-    sandbox.apps = {DEV_BUNDLE_ID: sandbox.older}
-    blocks.append(sandbox.run(["https://github.com/octo/demo", "--present", *as_json]))
+    # A development build where `make macos-app` leaves it is not installed, and is sent
+    # nothing unless a developer says so with METABROWSER_ALLOW_UNINSTALLED_APP=1.
+    sandbox.apps = {DEV_BUNDLE_ID: sandbox.build}
+    blocks.append(sandbox.run(["notes", "--present", *as_json]))
     blocks.append(sandbox.run(["notes", "--present"]))
+    blocks.append(sandbox.run(["notes", "--present"], env={present.ANY_APP_LOCATION_ENV: "1"}))
+
+    # An older build without the marker, installed, would drop a URL, and is sent nothing.
+    sandbox.apps = {DEV_BUNDLE_ID: sandbox.older}
+    older_home = {"HOME": str(sandbox.older_home)}
+    blocks.append(
+        sandbox.run(["https://github.com/octo/demo", "--present", *as_json], env=older_home)
+    )
+    blocks.append(sandbox.run(["notes", "--present"], env=older_home))
 
     # The release build wins over the development build when both are registered.
-    sandbox.apps = {RELEASE_BUNDLE_ID: sandbox.current, DEV_BUNDLE_ID: sandbox.older}
+    sandbox.apps = {RELEASE_BUNDLE_ID: sandbox.current, DEV_BUNDLE_ID: sandbox.build}
     blocks.append(sandbox.run(["notes", "--present", *as_json]))
 
-    # The flag, then the environment, names the one app to look for, which must still
-    # carry the marker: an override naming Terminal is not handed a file it would run.
+    # The flag, then the environment, names the one app to look for, which must still be
+    # the installed Metabrowser app: an override naming Terminal is not handed a file it
+    # would run, where Terminal is or copied to an install location.
     sandbox.apps = {
         OTHER_BUNDLE_ID: sandbox.current,
-        DEV_BUNDLE_ID: sandbox.older,
+        DEV_BUNDLE_ID: sandbox.build,
         TERMINAL_BUNDLE_ID: sandbox.terminal,
     }
     blocks.append(sandbox.run(["notes", "--present", "--app-bundle-id", OTHER_BUNDLE_ID, *as_json]))
@@ -199,6 +234,13 @@ def test_golden_present_hands_targets_to_the_app(
         sandbox.run(
             ["notes/run-me.command", "--present", *as_json],
             env={present.BUNDLE_ID_ENV: TERMINAL_BUNDLE_ID},
+        )
+    )
+    sandbox.apps = {TERMINAL_BUNDLE_ID: sandbox.copy_home / "Applications" / "Metabrowser.app"}
+    blocks.append(
+        sandbox.run(
+            ["notes/run-me.command", "--present", "--app-bundle-id", TERMINAL_BUNDLE_ID],
+            env={"HOME": str(sandbox.copy_home)},
         )
     )
 

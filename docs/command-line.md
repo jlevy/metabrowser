@@ -522,7 +522,8 @@ code or one of these:
 | `not_confirmed` | Sent: LaunchServices took the target, and nothing confirms a window shows it |
 | `not_macos` | The app runs on macOS only |
 | `app_not_found` | LaunchServices knows no Metabrowser app |
-| `app_not_marked` | The app found does not declare the marker below, being an older build or not Metabrowser |
+| `app_not_installed` | The app LaunchServices names is not at an install location below, as a build left where it was built is not |
+| `app_not_marked` | The app is not named Metabrowser or does not declare the marker below, being an older build or another app |
 | `app_cannot_select_folder` | `--path` names a folder inside ROOT, and the app opens each folder in a window of its own |
 | `lookup_failed` | LaunchServices could not be asked, as when a sandbox denies its database |
 | `open_failed` | `open` failed or did not return in time |
@@ -530,11 +531,24 @@ code or one of these:
 `reason` says the same in words.
 `DELIVERY_EXIT_CODES` in `cli/present.py` maps each code to its status, so a caller can
 tell “install or update the app” from “run this where LaunchServices answers” by the
-status alone. A target goes only to an app whose `Info.plist` declares
-`MetabrowserOpensURLs` true, which every build that takes what `--present` sends
-declares: an older build drops a URL while `open` still succeeds, and an app named by an
-override must not be handed a file it would run.
-`cli/present.py` holds the bundle identifiers and the marker’s name.
+status alone.
+
+Every handoff, a file’s or a URL’s, first checks the bundle LaunchServices names:
+
+- **Installed:** it is at `/Applications/Metabrowser.app` or
+  `~/Applications/Metabrowser.app`. LaunchServices registers a bundle wherever it was
+  opened, a build in a source checkout included, so a bundle anywhere else is refused
+  with `app_not_installed` and a message that names its path; move or copy the app to
+  one of the two, and open it once from there.
+- **Named:** its `Info.plist` names it `Metabrowser`.
+- **Marked:** its `Info.plist` declares `MetabrowserOpensURLs` true, which every build
+  that takes what `--present` sends declares: an older build drops a URL while `open`
+  still succeeds, and an app an override names must not be handed a file it would run.
+
+A developer testing a build where it was built sets
+`METABROWSER_ALLOW_UNINSTALLED_APP=1`, which lifts the first check alone.
+`APP_INSTALL_LOCATIONS` and the other constants in `cli/present.py` hold the locations,
+the bundle identifiers, the name, and the marker.
 
 ## Remote Directories
 
@@ -643,6 +657,7 @@ Every variable is read from the process environment, so export it in the shell t
 | `METABROWSER_BINARY_PREVIEW_BYTES`, `METABROWSER_BINARY_PREVIEW_MAX_BYTES`, `METABROWSER_BINARY_PREVIEW_MAX_CHUNK_BYTES` | Byte-view budgets, in bytes |
 | `STRUCTURED_PARSE_MAX_BYTES`, `STRUCTURED_CACHE_SIZE` | JSON and YAML tree-view budgets: the largest file parsed, in bytes, and how many parses are kept |
 | `METABROWSER_APP_BUNDLE_ID` | The app `--present` hands a target to, as `--app-bundle-id`, which overrides it |
+| `METABROWSER_ALLOW_UNINSTALLED_APP` | `1` lets `--present` hand a target to an app outside the install locations, such as a development build |
 | `METABROWSER_METAB` | Read by the [macOS app](macos-app.md), not by `metab`: the `metab` the app runs |
 
 [Rendering large content](large-content-rendering.md) explains the rendering budgets and
