@@ -1261,7 +1261,16 @@
      color: the letter sits beside added's green, and the ref colors below
      answer a different question. */
   --git-status-added: oklch(48% 0.09 149.18);
-  --git-status-deleted: oklch(50% 0.12 27.2);
+  /* Deleted is the line totals' red, --status-error's hue, darker, as
+     added is --status-success's green (mb-y7wh). At 0.12 chroma, 59% of
+     what sRGB holds at this lightness and hue, it read as a dull dark
+     maroon that passed for a dark blue, not as red; it holds 93% of it,
+     as the dark theme's does.
+     WCAG contrast 6.62:1 on --bg, 6.33:1 on --sidebar-bg, 6.34:1 on
+     --viz-surface-raised, 5.79:1 on --hover-bg, and on --highlight-bg
+     5.79:1 over --bg, 5.55:1 over --sidebar-bg, and 5.10:1, its lowest,
+     over --hover-bg. */
+  --git-status-deleted: oklch(50% 0.19 27.2);
   --git-status-modified: oklch(50% 0.1 85);
   --git-status-renamed: oklch(50% 0.1 259.52);
 
@@ -1417,6 +1426,11 @@
      WCAG contrast on --git-ref-bg: remote 6.71:1, local 6.99:1, tag
      7.06:1. */
   --git-status-added: oklch(78% 0.09 149.18);
+  /* Deleted holds 93% of the chroma sRGB holds here (mb-y7wh). WCAG
+     contrast 8.52:1 on --bg, 7.45:1 on --sidebar-bg and
+     --viz-surface-raised, 5.89:1 on --hover-bg, and on --highlight-bg
+     7.19:1 over --bg, 6.19:1 over --sidebar-bg, and 4.90:1, its lowest,
+     over --hover-bg. */
   --git-status-deleted: oklch(78% 0.12 27.2);
   --git-status-modified: oklch(78% 0.1 85);
   --git-status-renamed: oklch(74% 0.1 259.52);

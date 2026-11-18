@@ -3373,6 +3373,79 @@ def test_file_status_ink_is_shared_and_legible() -> None:
         )
 
 
+# sRGB's red primary is at this hue in oklch. Within `_RED_HUE_SPAN` degrees of it a hue is
+# red, short of the crimsons and pinks below it and the oranges above it.
+_SRGB_RED_HUE = 29.23
+_RED_HUE_SPAN = 10.0
+# The least share of the chroma sRGB holds at its lightness and hue that the deleted ink
+# keeps in each theme: at 59% it read as a dull maroon that passed for a dark blue (mb-y7wh).
+_DELETED_CHROMA_SHARE = 0.85
+
+
+def _srgb_chroma_limit(lightness: float, hue: float) -> float:
+    """The most chroma sRGB holds at *lightness* (0 to 1) and *hue* in oklch, by bisection."""
+
+    def inside(chroma: float) -> bool:
+        a = chroma * math.cos(math.radians(hue))
+        b = chroma * math.sin(math.radians(hue))
+        long = (lightness + 0.3963377774 * a + 0.2158037573 * b) ** 3
+        medium = (lightness - 0.1055613458 * a - 0.0638541728 * b) ** 3
+        short = (lightness - 0.0894841775 * a - 1.2914855480 * b) ** 3
+        linear = (
+            4.0767416621 * long - 3.3077115913 * medium + 0.2309699292 * short,
+            -1.2684380046 * long + 2.6097574011 * medium - 0.3413193965 * short,
+            -0.0041960863 * long - 0.7034186147 * medium + 1.7076147010 * short,
+        )
+        return all(0.0 <= channel <= 1.0 for channel in linear)
+
+    low, high = 0.0, 0.5
+    for _ in range(40):
+        middle = (low + high) / 2
+        low, high = (middle, high) if inside(middle) else (low, middle)
+    return low
+
+
+def test_deleted_ink_is_a_red_that_reads_red() -> None:
+    """A deleted file's "D" is the line totals' red, at most of the chroma sRGB holds.
+
+    The owner read "5 D" as a dark blue beside the darker green of "10 A" and the darker
+    yellow of "4 M" (mb-y7wh). Its hue was already --status-error's red, and Chrome computed
+    that ink on a pull request's file rows, the Diff summary's rows, and a change line, but
+    at oklch(50% 0.12 27.2) it held 59% of the chroma sRGB holds at its lightness and hue,
+    a dull maroon. So in both themes the ink keeps --status-error's hue, which is red, within
+    `_RED_HUE_SPAN` of sRGB's red primary, and at least `_DELETED_CHROMA_SHARE` of that
+    chroma, inside the gamut; in the light theme it is darker than the line totals' red, as
+    added's green is darker than theirs. And it keeps a text's 4.5:1 on every ground a status
+    is drawn on, the current row's translucent --highlight-bg over each ground among them.
+    """
+
+    for theme, tokens in _theme_tokens().items():
+        ink = _resolved(tokens, "--git-status-deleted")
+        lightness, chroma, hue = _oklch_channels(ink)
+        error_lightness, _, error_hue = _oklch_channels(_resolved(tokens, "--status-error"))
+        assert hue == error_hue, (theme, ink)
+        assert abs(hue - _SRGB_RED_HUE) <= _RED_HUE_SPAN, (theme, ink)
+        share = chroma / _srgb_chroma_limit(lightness, hue)
+        assert _DELETED_CHROMA_SHARE <= share <= 1, (theme, ink, round(share, 2))
+        if theme == "light":
+            assert lightness < error_lightness, ink
+        grounds: dict[str, tuple[float, ...]] = {
+            ground: _srgb(_resolved(tokens, ground))
+            for ground in ("--bg", "--sidebar-bg", "--hover-bg", "--viz-surface-raised")
+        }
+        mix = _MIX_OVER_TRANSPARENT.fullmatch(_resolved(tokens, "--highlight-bg"))
+        assert mix is not None, theme
+        tint = _srgb(_resolved(tokens, mix["token"]))
+        for under in ("--bg", "--sidebar-bg", "--hover-bg"):
+            grounds[f"--highlight-bg over {under}"] = _over(
+                tint, grounds[under], float(mix["percent"]) / 100
+            )
+        luminance = _srgb_luminance(_srgb(ink))
+        for ground, channels in grounds.items():
+            ratio = _ratio(luminance, _srgb_luminance(channels))
+            assert ratio >= 4.5, (theme, ground, round(ratio, 2))
+
+
 def test_diff_text_and_reserved_geometry_use_the_dense_mono_token() -> None:
     css = (REPO_ROOT / BUILTIN_PLUGINS / "diff/styles.css").read_text(encoding="utf-8")
     view = (REPO_ROOT / BUILTIN_PLUGINS / "diff/diff-view.js").read_text(encoding="utf-8")

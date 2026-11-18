@@ -11,6 +11,11 @@ All notable changes to Metabrowser are documented here.
   they are left out whole, and its line totals stay, rather than being cut short with an
   ellipsis.
 
+- The deleted status color, the “D” in “10 A, 5 D, 4 M” and on a deleted file’s row,
+  reads as red in the light theme: a darker red beside the line totals’ red, as added’s
+  darker green sits beside theirs.
+  It was a dull maroon that could pass for a dark blue.
+
 - On a folder’s Overview, pointing at a File Overview legend entry, its dot or its
   words, now lifts its family’s segment in the bar above, as pointing at the segment
   does, and shows that family’s file count and byte size beside the entry.
