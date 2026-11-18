@@ -50,4 +50,6 @@ def test_shell_delegates_act_only_on_controls_the_page_created() -> None:
     transcript = json.loads(result.stdout)
     assert transcript["failures"] == []
     assert transcript["authoredCalls"] == []
-    assert "folder:docs/sub" in transcript["pageCalls"]
+    # The file's eyebrow and the folder's header each have a served-root crumb, and each
+    # acted.
+    assert transcript["pageCalls"].count("folder:") == 2

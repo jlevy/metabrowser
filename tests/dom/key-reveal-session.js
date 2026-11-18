@@ -59,6 +59,44 @@ const SOURCES = new Map(
   MODULES.map((name) => [name, fs.readFileSync(path.join(staticDir, name), "utf8")]),
 );
 const TAB_LABELS = { files: "Files", git: "Commits", pulls: "Pulls" };
+
+// The view header's builders, from the production view-header.js over app.js's own `esc`,
+// lifted verbatim, since app.js cannot load without a document: the header's structure
+// and its Up control are the shell's own, so a change to either reaches the keymap here.
+// The collaborators that do not branch on the structure are stubs.
+const appSource = fs.readFileSync(path.join(staticDir, "app.js"), "utf8");
+const liftApp = (name) => {
+  const match = appSource.match(new RegExp(`\\nfunction ${name}\\([^)]*\\) \\{[\\s\\S]*?\\n\\}`));
+  if (!match) {
+    throw new Error(`${name} not found in app.js`);
+  }
+  return match[0];
+};
+const viewHeader = (() => {
+  const page = {
+    MetabrowserNavigationRoute: { displayPath: (/** @type {string} */ p) => p },
+  };
+  page.window = page;
+  vm.createContext(page);
+  vm.runInContext(fs.readFileSync(path.join(staticDir, "view-header.js"), "utf8"), page);
+  const esc = vm.runInContext(`${liftApp("esc")}\nesc;`, page);
+  const notDrawnHere = () => {
+    throw new Error("this session's headers draw only their structure and Up");
+  };
+  return page.MetabrowserViewHeader.create({
+    esc,
+    servedRoot: notDrawnHere,
+    pathBaseName: notDrawnHere,
+    ownedControlAttr: () => "",
+    mirrorHeading: notDrawnHere,
+    getFileIcon: notDrawnHere,
+    getLogicalName: notDrawnHere,
+    sizeHtml: notDrawnHere,
+    countHtml: notDrawnHere,
+    formatAge: notDrawnHere,
+    activeFiles: new Map(),
+  });
+})();
 const HOLD_MS = 200;
 const REVISION = "0123456789abcdef0123456789abcdef01234567";
 
@@ -376,63 +414,35 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     keymap?.syncPane();
   }
 
-  /** renderFolderHeader and the file header, as app.js renders them. */
+  /** renderFolderHeader and renderFileHeader, through app.js's own builders. */
   function header(data) {
     const segments = data.path ? data.path.split("/") : [];
-    const crumbs = [
-      element(document, "button", { class: "folder-crumb", "data-nav-dir": "" }, "/"),
-    ];
-    segments.forEach((segment, index) => {
-      const walked = segments.slice(0, index + 1).join("/");
-      const last = index === segments.length - 1;
-      crumbs.push(
-        element(
-          document,
-          "button",
-          {
-            class: "folder-crumb",
-            [last && data.kind !== "folder" ? "data-nav-file" : "data-nav-dir"]: walked,
-          },
-          segment,
-        ),
-      );
+    // The eyebrow's address: the root, then each folder above the item.
+    const crumbs =
+      segments.length === 0 ? "" : '<button class="folder-crumb" data-nav-dir="">/</button>';
+    const folders = segments
+      .slice(0, -1)
+      .map(
+        (segment, index) =>
+          `<button class="folder-crumb" data-nav-dir="${segments.slice(0, index + 1).join("/")}">${segment}</button>`,
+      )
+      .join("");
+    const copy =
+      data.kind === "folder"
+        ? ""
+        : `<button class="icon-btn icon-btn-reveal file-header-copy" aria-label="Copy path" data-mb-copy="text" data-mb-copy-text="${data.path}"></button>`;
+    const holder = element(document, "div");
+    holder.innerHTML = viewHeader.viewHeaderHtml({
+      className: data.kind === "folder" ? "folder-header" : "",
+      eyebrow:
+        viewHeader.viewHeaderUpHtml(data.path ?? "") +
+        `<span class="file-header-path folder-breadcrumb">${crumbs}${folders}</span>${copy}`,
+      iconHtml: "",
+      title: segments.at(-1) ?? "root",
+      end: "",
+      line: "",
     });
-    const breadcrumb = element(
-      document,
-      "span",
-      { class: "file-header-path folder-breadcrumb" },
-      ...crumbs,
-    );
-    if (data.kind === "folder") {
-      const parent = segments.length > 0 ? segments.slice(0, -1).join("/") : null;
-      const up = element(document, "button", {
-        "aria-label": parent === null ? "No parent folder" : "Open parent folder",
-        class: "btn parent-nav-btn folder-up",
-        "data-nav-dir": parent ?? false,
-        disabled: parent === null,
-      });
-      return element(
-        document,
-        "div",
-        { class: "file-header folder-header", "data-kbd-badge-anchor": true },
-        up,
-        breadcrumb,
-      );
-    }
-    breadcrumb.append(
-      element(document, "button", {
-        "aria-label": "Copy path",
-        class: "icon-btn icon-btn-reveal file-header-copy",
-        "data-mb-copy": "text",
-        "data-mb-copy-text": data.path,
-      }),
-    );
-    return element(
-      document,
-      "div",
-      { class: "file-header", "data-kbd-badge-anchor": true },
-      breadcrumb,
-    );
+    return holder.firstElementChild;
   }
 
   /**
