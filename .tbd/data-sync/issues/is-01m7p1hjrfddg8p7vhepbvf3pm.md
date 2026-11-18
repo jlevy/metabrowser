@@ -5,12 +5,16 @@ title: "Structured viewer: YAML aliases expand unbounded in /api/plugin/structur
 kind: bug
 status: open
 priority: 1
-version: 1
+version: 2
 labels:
   - security
   - alpha
 dependencies: []
 created_at: 2026-11-18T00:40:10.254Z
-updated_at: 2026-11-18T00:40:10.254Z
+updated_at: 2026-11-18T03:36:37.607Z
 ---
 Found while fixing mb-yqv2 (PR #542): builtin_plugins/structured/parser.py parses whole .yaml files with the safe loader, counts nodes and JSON-encodes the parsed tree, so it expands aliases: a 6-level 267-byte file gives node_count 672,604 (probe: .claude/worktrees/frontmatter-alias-bomb/attic/probe_structured.py). Reuse frontmatter_yaml.py's _Walk with a larger measured budget; refuse with a visible reason.
+
+## Notes
+
+2026-11-18 from PR #542 addressing: reuse frontmatter_yaml.load_bounded_yaml via a short multi-document variant (override get_data so each document is measured on the composed graph before construction, under a shared budget, plus its own byte bound). Reusing _Walk alone does not bound it (review B). The JSON-safe copy changes rendering: non-string keys become their JSON text. The PyYAML fallback can likely go, ruamel being a hard dependency.
