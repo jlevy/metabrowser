@@ -865,7 +865,8 @@ refused when it loads, with a message naming the required version, and `metab --
 reports the same problem first.
 There is no negotiation and no shim for an older surface: update the plugin against the
 release it targets and set `sdk_version` to match.
-A break is recorded in `CHANGELOG.md`;
+A break is recorded in `CHANGELOG.md`, and until its release in
+[`changelog.d/`](../changelog.d/README.md);
 [Compatibility and Legacy Code](development.md#compatibility-and-legacy-code) explains
 the policy.
 
