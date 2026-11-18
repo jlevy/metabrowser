@@ -4,6 +4,17 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- The branch and tag chooser is in the Files tab’s toolbar, before Group by, instead of
+  above the tabs, since it chooses what the Files tab shows and nothing else.
+  A local checkout’s Commits tab shows the checkout’s history whichever branch or tag
+  the Files tab shows; a commit’s page is read as before.
+  Each branch and tag in the chooser’s list shows its commit’s short ID in the commit-ID
+  face and that commit’s age, with the exact time as its tooltip, a tag’s being its
+  commit’s. The working tree row names the folder by its path, with the folder’s own
+  name kept whole, in place of “Live local files”.
+  `GET /api/source/refs` rows gain `short_commit` and `committed_at`, and its
+  `working_tree` gains the folder’s `name` and `location`.
+
 - In a navigation pane too narrow for the Files toolbar’s controls, the Files tree no
   longer moves down as the page loads.
   The toolbar wraps to a second line when its controls arrive, and the tree, shown under
@@ -11,8 +22,8 @@ All notable changes to Metabrowser are documented here.
   The tree now waits for the toolbar, and shows in the frame the toolbar is filled.
 
 - A local checkout has a branch and tag chooser.
-  A folder that is a repository’s root shows the button a repository URL’s page has,
-  under the navigation header, and opens on **Working tree**: your files on disk.
+  A folder that is a repository’s root shows the button a repository URL’s page has, in
+  the Files tab’s toolbar, and opens on **Working tree**: your files on disk.
   Its list has the working tree first, then the checkout’s branches, with the
   checked-out one marked, its tags, and its remote-tracking branches under **Remotes**.
   Choosing a branch or tag shows its last commit, read from the repository’s own Git

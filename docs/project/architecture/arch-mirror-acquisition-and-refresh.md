@@ -366,8 +366,8 @@ in sight:
   A pin with no mirror is headed by its ref and commit.
 - **Title:** `/api/identity` gives the tab and window title, and a `full_name` of the
   origin without its scheme and the pin, which never names the cache.
-- **Commit:** the ref and short commit follow the name, with a control that copies the
-  full commit.
+- **Commit:** the ref and short commit follow the name, the commit in the commit-ID
+  face, with a control that copies the full commit.
 - **Location:** a note after the address names the store’s bare repository, with the
   home directory as `~` when it is under it (`display_directory`). Nothing is checked
   out, so the location is not drawn as the start of the address, and its tooltip says it

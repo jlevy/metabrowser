@@ -126,8 +126,9 @@ a header line’s ([Type Scale](#type-scale)). Dense navigation uses the compact
 (`<1m`, `5m`, `2h`, `3d`, `2w`). Full metadata and conversation cards use the relative
 style: `2h ago`, `just now`, or `in 2h` for a future timestamp.
 Unknown times have no age label.
-The Pulls sidebar, file tree and compact Git history remain condensed navigation; PR
-headers, comments, reviews, full commit summaries and folder headers use relative ages.
+The Pulls sidebar, file tree, compact Git history, and the ref selector’s list remain
+condensed navigation; PR headers, comments, reviews, full commit summaries and folder
+headers use relative ages.
 Call sites choose the presentation style and positioning, never their own suffix,
 abbreviation, color, weight, or size.
 A plugin reaches the same primitive as `metabrowser.formatAge` and puts the exact time
@@ -4188,7 +4189,8 @@ The Files row and the Pulls filters are one primitive, `.nav-toolbar-row` in
   controls do not fit, and never adds space when they do.
 - **Where it breaks.** Between controls, in their order, each line as full as it can be,
   so a control moves down only when it must.
-  The leading controls stay first.
+  The leading controls stay first: on a served mirror or checkout, the
+  [ref selector](#the-ref-selector) leads the Files row, before Group by.
   The trailing group, which takes the line’s end with an auto margin, moves down whole
   and stays right-aligned: Clear and the chevron on Files, Reload on Pulls.
   The Commits tally breaks between its phrases, “12,345 commits”, then “begun 1y ago”,
@@ -4693,22 +4695,43 @@ A menu renderer supplies menu roles and roving focus; a dialog renderer supplies
 label relationship and modal state; a tooltip renderer never accepts interactive
 children. Visually similar surfaces do not borrow the wrong role merely to share CSS.
 
-### The Ref Selector’s Working Tree Row
+### The Ref Selector
 
 The ref selector is one control for a served mirror and a served checkout: a
-`.chip-menu-trigger` under the navigation header that names what is shown, over a
-`.menu` panel with a list chooser, a filter box, and one row for each ref
-(`static/source-ref-selector.js`). A checkout adds three things, and each uses a
-primitive the control already had:
+`.chip-menu-trigger` that names what the Files tab shows, over a `.menu` panel with a
+list chooser, a filter box, and one row for each ref (`static/source-ref-selector.js`).
+
+- **It leads the Files tab’s toolbar,** before Group by, because it chooses what that
+  tab shows and nothing else, and it wraps with the row as any control there does
+  ([Navigation Toolbars Wrap](#navigation-toolbars-wrap)). The Pulls tab does not depend
+  on it, and a checkout’s Commits tab shows the checkout’s history whichever revision
+  Files shows, so neither tab carries it
+  ([Source Sessions and Pins](project/architecture/arch-source-sessions-and-pins.md)).
+  Its list opens under the toolbar and across the pane, not under the button, because a
+  ref’s name, its commit, and the commit’s age need the room.
+
+- **A ref’s row is its name, its commit, and its age.** The name is its
+  [chip](#branch-chips), the commit is Git’s short ID in the commit-ID face
+  (`.git-commit-sha`), muted, and the age is `MetabrowserFormatters.age` in the compact
+  style, in its tier’s ink, with the commit’s time as its tooltip ([Age](#age)). A tag’s
+  age is its commit’s. The ID sits one step below the text beside it, as it does in a
+  history, and since this list is at the small size, the ramp’s last step before the
+  micro marks, it takes the ratio a chip takes to its text.
+  The ages end the rows in one column, so the IDs line up.
+  A pin that names no ref puts “Commit:” and the same face on the button.
+
+A checkout adds three things, and each uses a primitive the control already had:
 
 - **The working tree is a row, above the lists, and not in them.** It is a `.menu-item`
   like a ref’s (`.source-ref-selector-working-tree`), ruled off from the list chooser
   below it, because it is the one choice that is not a ref: the filter and the list
   shown do not apply to it, so it stays where it is whichever list is open.
-  Its name is “Working tree”.
-  Where a ref’s row has its commit, this one says what it is in the same muted ink,
-  “Live local files, on topic”, so the two kinds of row read as one column of names and
-  one of what each name is.
+  Its name is “Working tree”, and where a ref’s row has its commit and age, this one has
+  the folder’s path as the page names the folder, with the home directory as `~`, in the
+  same muted ink, and the folder’s own name in the row’s ink.
+  It has no age, since it is the files on disk now.
+  Where the pane is too narrow, the path before the folder’s name gives way, and the
+  folder’s name stays whole.
 
 - **The served choice is marked one way.** A ref’s row and the working-tree row both
   carry `aria-current` and the medium weight when they are what the server shows, and
@@ -4718,29 +4741,33 @@ primitive the control already had:
 
 - **The button says “Working tree” in words,** with no chip, since a chip is a ref.
   On a revision it is the ref’s chip, as on a mirror, and the navigation heading carries
-  the ref and the short commit beside the folder’s name, so a revision’s page is told
-  from the working tree’s in two places before the list is opened.
+  the ref and the short commit, in the commit-ID face, beside the folder’s name, so a
+  revision’s page is told from the working tree’s in two places before the list is
+  opened.
 
 - **A page the server has moved on from says so beside the button,** in the text ink
   with one `.btn`, “Reload” (`.source-ref-selector-stale`): the offer a mirror’s
   freshness row makes at the foot of the pane.
-  It is the one state in which the selector’s row grows, to a second line in the default
-  pane, and it appears only after another tab has switched the server.
+  It shares the button’s line, and its words shorten before the button does, so Group by
+  moves to the next line in the default pane.
+  It appears only after another tab has switched the server.
 
-- **The row keeps its box from first paint.** The module arrives after the tree’s first
-  rows, so a checkout’s server draws the row with the button it will have, and the
-  module adopts that button and never swaps it, so focus put on it early stays
-  ([Regions Keep Their Boxes](#regions-keep-their-boxes)). Hidden until the module
-  mounted, the row pushed the filter bar and every tree row down by its own height.
-  `tests/test_checkout_ref_selector_chrome.py` records the row’s height and the first
-  tree row’s place in every frame of the working tree’s page and of a revision’s, and
-  each has one value; `tests/test_files_totals_stable_chrome.py` holds the same for
-  every box of the Files navigation on a folder that holds a `.git`.
+- **The selector keeps its box from first paint.** The module arrives after the tree’s
+  first rows, so the server draws the selector in the Files toolbar with the button it
+  will have, and the module adopts that button and never swaps it, so focus put on it
+  early stays ([Regions Keep Their Boxes](#regions-keep-their-boxes)). The toolbar is
+  drawn again whenever a filter or a tally changes, and it carries the selector over
+  rather than drawing it, so an open list keeps what was typed and the control that had
+  focus keeps it. `tests/test_checkout_ref_selector_chrome.py` records the selector’s
+  height and the first tree row’s place in every frame of the working tree’s page and of
+  a revision’s, and each has one value; `tests/test_files_totals_stable_chrome.py` holds
+  the same for every box of the Files navigation on a folder that holds a `.git`.
 
 What each state shows is pinned by
 `tests/golden/cli-ui-source-ref-selector.tryscript.md`, and
 `tests/test_checkout_ref_selector_chrome.py` measures in headless Chrome that the panel
-stays inside the navigation pane with no row wider than it.
+stays inside the navigation pane with no row wider than it, that every ref’s ID is in
+the commit-ID face with an age, and that the folder’s name is whole.
 
 ### Groups in a Menu
 
