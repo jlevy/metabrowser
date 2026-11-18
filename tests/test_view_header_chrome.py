@@ -250,9 +250,11 @@ def test_view_headers_hold_their_rows_ground_and_values_in_chrome(
         glyph = _px(tokens["--icon-glyph"])
         marks = [mark["height"] for mark in page["marks"]]
         assert marks == ([0, glyph] if narrow else [glyph, glyph]), f"{name}: marks {marks}"
-        # The title keeps a floor of the row in the narrowest pane, or all it needs.
-        floor = min(page["titleNeed"], _TITLE_FLOOR_PX)
-        assert page["title"]["width"] >= floor, f"{name}: title {page['title']}"
+        # A title cut short keeps at least a floor of the row; a whole one has all it
+        # needs. A whole title is not measured against its scroll width, which is whole
+        # pixels where its width is fractional: a whole "docs" is 48.94 px and needs 49.
+        if page["titleCut"]:
+            assert page["title"]["width"] >= _TITLE_FLOOR_PX, f"{name}: title {page['title']}"
 
         # Every item is whole on the line or wrapped out of sight, never cut; the first is
         # always shown.

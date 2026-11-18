@@ -117,7 +117,6 @@ const READ = `(() => {
     title: box(title),
     titleText: title ? title.textContent : null,
     titleCut: title ? title.scrollWidth > title.clientWidth + 0.5 : null,
-    titleNeed: title ? title.scrollWidth : null,
     // Whether the shell's own rule would show the title's tooltip, and the heights it
     // reads, which a large font's glyphs can make disagree with the width.
     titleTip: title ? tipAddsInformation(title) : null,
