@@ -1,12 +1,15 @@
-"""``metab ROOT --present``: hand a folder, a file, or a GitHub URL to the macOS app.
+"""``metab ROOT --present``: open a folder, a file, or a GitHub URL in the app or a browser.
 
 This is the command-line half of opening anything in the native app. It is a client
-mode: it reads ROOT as every mode reads it, clones and fetches nothing, starts no server,
-and gives the app what it needs through LaunchServices, which is how macOS opens a
-document in an app (``open -b``). The app does the rest by running ``metab`` on what it
-was given, as it does for a folder opened in Finder. A dry run loads nothing beyond what
-``metab --version`` loads except this module, the property-list reader, and for a link
-the URL grammar, which ``test_present_dry_run_loads_little_beyond_version`` in
+mode: it reads ROOT as every mode reads it, clones and fetches nothing itself, and gives
+the app what it needs through LaunchServices, which is how macOS opens a document in an
+app (``open -b``). The app does the rest by running ``metab`` on what it was given, as
+it does for a folder opened in Finder. Where the app is not used, it starts ``metab
+ROOT`` detached, the serve mode that opens a browser once its page answers, and reports
+the server. The ``open_in`` preference (:mod:`metabrowser.open_in`) chooses between the
+two. A dry run loads nothing beyond what ``metab --version`` loads except this module,
+the preference's reader, the property-list reader, and for a link the URL grammar,
+which ``test_present_dry_run_loads_little_beyond_version`` in
 ``tests/test_plugin_public_api.py`` holds.
 
 **Resolving.** :func:`resolve_target` reads ROOT with the ``--path`` it came with:
@@ -35,18 +38,29 @@ Anything else is a :class:`Refusal` with a stable code and a one-line message th
 names the fix. ``--dry-run`` stops here and prints the target, which is how the app
 checks what a user typed without parsing a URL itself.
 
-**Delivering.** :func:`deliver` finds the app through LaunchServices, release first,
-then the development build, or the one ``--app-bundle-id`` or :data:`BUNDLE_ID_ENV`
-names, and sends the handoff with ``open -b``. Every handoff first passes
-:func:`app_refusal`: the bundle LaunchServices names is installed at one of
-:data:`APP_INSTALL_LOCATIONS`, is named :data:`APP_BUNDLE_NAME`, and declares
-:data:`OPENS_URLS_KEY`, the marker of a Metabrowser build that takes everything this mode
-sends. An app without the marker drops a URL while ``open`` still succeeds, an override
-naming another app must not receive a file it would run, and a bundle registered
-somewhere else, a build in a cloned repository among them, is not the app the user
-installed.
-``open`` returning 0 means LaunchServices took the handoff, not that a window shows it,
-and the app cannot answer yet, so every report says ``confirmed: false``.
+**Deciding.** :func:`decide` reads the ``open_in`` preference and, unless it is
+``browser``, looks for the app with :func:`find_app`: through LaunchServices, release
+first, then the development build, or the one ``--app-bundle-id`` or
+:data:`BUNDLE_ID_ENV` names. Every handoff first passes :func:`app_refusal`: the bundle
+LaunchServices names is installed at one of :data:`APP_INSTALL_LOCATIONS`, is named
+:data:`APP_BUNDLE_NAME`, and declares :data:`OPENS_URLS_KEY`, the marker of a Metabrowser
+build that takes everything this mode sends. An app without the marker drops a URL while
+``open`` still succeeds, an override naming another app must not receive a file it would
+run, and a bundle registered somewhere else, a build in a cloned repository among them,
+is not the app the user installed. ``auto`` goes to a browser when no app takes the
+target, ``app`` goes nowhere then, and either goes nowhere when LaunchServices cannot be
+asked, which in an agent's sandbox is most often the sandbox, whose browser would be
+blocked as well. ``--dry-run`` decides and prints the decision, sending nothing and
+starting no server.
+
+**Delivering.** To the app, the handoff goes with ``open -b``. ``open`` returning 0
+means LaunchServices took it, not that a window shows it, and the app cannot answer yet.
+To a browser, :func:`serve_detached` starts ``metab ROOT`` in a session of its own, with
+its output in a log file, and waits for its ``Serving`` line: that server opens the page
+in a browser once it answers, as ``metab ROOT`` in a terminal does, and keeps serving
+after this command exits, until ``kill`` stops it. The report names its address, its
+process ID, and its log. Nothing confirms a window or a browser shows the target, so every
+report says ``confirmed: false``.
 """
 
 from __future__ import annotations
@@ -57,14 +71,19 @@ import os
 import plistlib
 import re
 import shlex
+import signal
 import stat
 import subprocess
 import sys
+import tempfile
+import time
 import unicodedata
+from collections import deque
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Literal, NoReturn
+from urllib.parse import urlsplit
 
 import typer
 
@@ -75,6 +94,7 @@ from metabrowser.cli.exit_codes import (
 )
 from metabrowser.errors import CLIError
 from metabrowser.invisible_chars import display_segment
+from metabrowser.open_in import OpenInPreference, resolve_open_in
 from metabrowser.view_routes import format_view_href
 
 if TYPE_CHECKING:
@@ -127,8 +147,21 @@ type PresentKind = Literal["folder", "file", "repository", "pull_request", "comm
 """What a target is. A file is ``file`` locally and on GitHub, a folder ``folder``
 locally and ``tree`` on GitHub; ``root`` tells the two apart."""
 
+type AppRefusalCode = Literal[
+    "not_macos",
+    "app_not_found",
+    "app_not_installed",
+    "app_not_marked",
+    "app_cannot_select_folder",
+    "lookup_failed",
+]
+"""Why no app takes a target, which looking for it says before anything is sent."""
+
 type DeliveryCode = Literal[
     "not_confirmed",
+    "server_started",
+    "server_starting",
+    "server_failed",
     "not_macos",
     "app_not_found",
     "app_not_installed",
@@ -137,11 +170,35 @@ type DeliveryCode = Literal[
     "lookup_failed",
     "open_failed",
 ]
-"""What became of a target that resolved: taken by LaunchServices, or why not sent."""
+"""What became of a target that resolved: taken by LaunchServices, served for a browser,
+or why neither."""
 
-# The exit status each delivery code ends the command with (`cli/exit_codes.py`).
+type Destination = Literal["app", "browser", "none"]
+"""Where a target goes: the app, a browser on a server started for it, or nowhere."""
+
+type DecisionCode = Literal[
+    "app_found",
+    "browser_preferred",
+    "browser_fallback",
+    "preference_unreadable",
+    "not_macos",
+    "app_not_found",
+    "app_not_installed",
+    "app_not_marked",
+    "app_cannot_select_folder",
+    "lookup_failed",
+]
+"""Why a dry run decided what it did: the app takes the target, the preference is
+``browser``, no app takes it under ``auto``, the preference could not be read, or the
+app code that sends it nowhere."""
+
+# The exit status each delivery code ends the command with (`cli/exit_codes.py`). A
+# server that exited before it said where it serves is a failure like any other, 1.
 DELIVERY_EXIT_CODES: Final[dict[DeliveryCode, int]] = {
     "not_confirmed": 0,
+    "server_started": 0,
+    "server_starting": 0,
+    "server_failed": 1,
     "not_macos": PRESENT_NO_APP_EXIT_CODE,
     "app_not_found": PRESENT_NO_APP_EXIT_CODE,
     "app_not_installed": PRESENT_NO_APP_EXIT_CODE,
@@ -150,6 +207,30 @@ DELIVERY_EXIT_CODES: Final[dict[DeliveryCode, int]] = {
     "lookup_failed": PRESENT_BLOCKED_EXIT_CODE,
     "open_failed": PRESENT_BLOCKED_EXIT_CODE,
 }
+
+# How long `--present` waits for a server it started to print where it serves, the
+# `Serving <root> at <url>` line. Measured on 2026-11-18 on an Apple silicon Mac under a
+# load average of about 265: a folder's server printed it 1.6 to 2.5 s after it started,
+# five starts in a row. This is about eight times the slowest. A repository's first clone
+# can take minutes, so past this the report says `server_starting`, and the server still
+# opens the page once it answers. A module attribute so tests shorten it.
+server_announce_timeout_s: float = 20.0
+# How often the server's log is read while waiting: the interval `cli/http_readiness.py`
+# polls at before a browser opens.
+SERVER_POLL_S: Final = 0.05
+# The server's last lines kept, to say why it failed; one is reported.
+SERVER_LOG_TAIL_LINES: Final = 5
+# A line of the server's output longer than this is skipped while waiting: the `Serving`
+# line is at most a root of PATH_MAX (4096 on Linux, 1024 on macOS) and a loopback URL
+# naming a path inside it, and a clone's progress is shorter.
+SERVER_LOG_LINE_MAX_BYTES: Final = 16 * 1024
+# The most of the server's output read each round. A clone's progress is a few hundred
+# bytes a second, so this is never reached by a server at work, only by one gone wrong.
+SERVER_LOG_READ_BYTES: Final = 1024 * 1024
+# The name of a detached server's log, in the temporary folder (`server_log_directory`).
+# Rerunning the command writes a new one, which is all a temporary folder may hold
+# (AGENTS.md, Durable Storage); a restart that empties it has stopped the server too.
+SERVER_LOG_PREFIX: Final = "metab-present-"
 
 _SOURCE_KINDS: Final[dict[str, PresentKind]] = {
     "repository": "repository",
@@ -603,7 +684,7 @@ def _any_location_allowed() -> bool:
     return os.environ.get(ANY_APP_LOCATION_ENV) == "1"
 
 
-def app_refusal(bundle: Path, bundle_id: str) -> tuple[DeliveryCode, str] | None:
+def app_refusal(bundle: Path, bundle_id: str) -> tuple[AppRefusalCode, str] | None:
     """Why the app at *bundle*, found for *bundle_id*, is sent nothing, or ``None``.
 
     Every handoff, a file's or a URL's, needs all three: the bundle is installed
@@ -646,6 +727,151 @@ def app_refusal(bundle: Path, bundle_id: str) -> tuple[DeliveryCode, str] | None
     return None
 
 
+# ── Deciding ────────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True, slots=True)
+class AppFinding:
+    """What looking for the app found: the app that takes a target, or why none does."""
+
+    bundle_id: str | None
+    """The identifier whose bundle takes the target, or whose bundle was refused."""
+    bundle_path: str | None
+    """The bundle LaunchServices named for *bundle_id*, whose Info.plist was read."""
+    refusal: tuple[AppRefusalCode, str] | None
+    """Why no app takes the target, or ``None`` when the bundle above does."""
+
+
+def find_app(target: Presentable, bundle_ids: Sequence[str]) -> AppFinding:
+    """The first app of *bundle_ids* that LaunchServices has and trusts, sending nothing.
+
+    A target the app can never take is refused before anything is asked. Each
+    identifier's bundle is checked in turn, so a stray registration of one identifier
+    does not hide an installed build of the next; the first refusal is reported only when
+    no identifier's bundle passes.
+    """
+
+    if target.handoff is None:
+        return AppFinding(
+            None,
+            None,
+            (
+                "app_cannot_select_folder",
+                "the app opens a folder in a window of its own and cannot select one inside "
+                "another; present that folder itself, or ROOT without --path",
+            ),
+        )
+    return look_up_app(bundle_ids)
+
+
+def look_up_app(bundle_ids: Sequence[str]) -> AppFinding:
+    """The first app of *bundle_ids* that LaunchServices has and trusts, for any target
+    with a handoff; :func:`find_app` without the target."""
+
+    lookup = bundle_lookup
+    if lookup is None:
+        return AppFinding(
+            None,
+            None,
+            (
+                "not_macos",
+                "the Metabrowser app runs on macOS only; serve the target with metab ROOT",
+            ),
+        )
+    refused: AppFinding | None = None
+    for bundle_id in bundle_ids:
+        try:
+            bundle = lookup(bundle_id)
+        except AppLookupError as exc:
+            return AppFinding(
+                None, None, ("lookup_failed", f"{exc}; serve the target with metab ROOT instead")
+            )
+        if bundle is None:
+            continue
+        if (refusal := app_refusal(bundle, bundle_id)) is not None:
+            refused = refused or AppFinding(bundle_id, str(bundle), refusal)
+            continue
+        return AppFinding(bundle_id, str(bundle), None)
+    if refused is not None:
+        return refused
+    return AppFinding(
+        None,
+        None,
+        (
+            "app_not_found",
+            f"LaunchServices knows no app {' or '.join(bundle_ids)}; install or build the "
+            "Metabrowser app and open it once, or serve the target with metab ROOT",
+        ),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class Decision:
+    """Where ``--present`` sends a target, and why."""
+
+    preference: OpenInPreference | None
+    """The ``open_in`` in effect, or ``None`` when it could not be read."""
+    delivers_to: Destination
+    code: DecisionCode
+    message: str
+    finding: AppFinding | None
+    """What looking for the app found, or ``None`` when nothing looked."""
+    fallback: tuple[AppRefusalCode, str] | None = None
+    """Under ``auto``, why the app was passed over for a browser."""
+
+    def as_json(self) -> dict[str, object]:
+        return {
+            "delivers_to": self.delivers_to,
+            "open_in": self.preference.value if self.preference else None,
+            "open_in_source": self.preference.source if self.preference else None,
+            "bundle_id": self.finding.bundle_id if self.finding else None,
+            "bundle_path": self.finding.bundle_path if self.finding else None,
+            "code": self.code,
+            "reason": self.message,
+            "fallback": _fallback_json(self.fallback),
+        }
+
+
+_BROWSER_PREFERRED: Final = (
+    "open_in is browser, so --present looks for no app and starts a metab server for the "
+    "target that opens it in a browser"
+)
+_BROWSER_FALLBACK: Final = (
+    "no app takes the target, so under open_in auto --present starts a metab server for it "
+    "that opens it in a browser"
+)
+
+
+def decide(
+    target: Presentable, preference: OpenInPreference, bundle_ids: Sequence[str]
+) -> Decision:
+    """Where *target* goes under *preference*, looking for the app unless it is ``browser``.
+
+    Under ``auto`` a target no app takes goes to a browser, and one LaunchServices could
+    not be asked about goes nowhere: in a sandbox that keeps ``metab`` from
+    LaunchServices, a browser it starts would be kept from the screen as well, and the
+    app may be there.
+    """
+
+    if preference.value == "browser":
+        return Decision(preference, "browser", "browser_preferred", _BROWSER_PREFERRED, None)
+    finding = find_app(target, bundle_ids)
+    if finding.refusal is None:
+        return Decision(
+            preference,
+            "app",
+            "app_found",
+            f"the app at {_shown(finding.bundle_path or '')} takes the target",
+            finding,
+        )
+    code, message = finding.refusal
+    if preference.value == "auto" and DELIVERY_EXIT_CODES[code] == PRESENT_NO_APP_EXIT_CODE:
+        return Decision(
+            preference, "browser", "browser_fallback", _BROWSER_FALLBACK, finding, finding.refusal
+        )
+    return Decision(preference, "none", code, message, finding)
+
+
 # ── Delivering ──────────────────────────────────────────────────────
 
 
@@ -653,12 +879,20 @@ def app_refusal(bundle: Path, bundle_id: str) -> tuple[DeliveryCode, str] | None
 class Delivery:
     """What ``--present`` did with a target: where it went, or why nowhere."""
 
-    delivered_to: Literal["app", "none"]
+    delivered_to: Destination
     bundle_id: str | None
     bundle_path: str | None
     """The bundle LaunchServices named for *bundle_id*, whose Info.plist was read."""
     code: DeliveryCode
     message: str
+    url: str | None = None
+    """The address the server started for a browser printed, once it printed one."""
+    pid: int | None = None
+    """The process ID of the server started for a browser."""
+    log: str | None = None
+    """The file the server started for a browser writes its output to."""
+    fallback: tuple[AppRefusalCode, str] | None = None
+    """Under ``auto``, why the app was passed over for a browser."""
 
     @property
     def exit_code(self) -> int:
@@ -666,9 +900,9 @@ class Delivery:
 
 
 def _not_sent(
-    code: DeliveryCode, message: str, bundle_id: str | None = None, bundle: Path | None = None
+    code: DeliveryCode, message: str, bundle_id: str | None = None, bundle: str | None = None
 ) -> Delivery:
-    return Delivery("none", bundle_id, str(bundle) if bundle else None, code, message)
+    return Delivery("none", bundle_id, bundle, code, message)
 
 
 def _send(bundle_id: str, handoff: Sequence[str]) -> str | None:
@@ -695,61 +929,265 @@ def _send(bundle_id: str, handoff: Sequence[str]) -> str | None:
     return f"open exited with status {result.returncode}{detail}"
 
 
+def send_to_app(target: Presentable, finding: AppFinding) -> Delivery:
+    """Hand *target* to the app *finding* names, which ``open -b`` resolves to that bundle,
+    or report why *finding* names none."""
+
+    if finding.refusal is not None:
+        return _not_sent(*finding.refusal, finding.bundle_id, finding.bundle_path)
+    # `find_app` names an identifier for every app it passes, and passes none for a target
+    # without a handoff.
+    assert finding.bundle_id is not None and target.handoff is not None
+    failure = _send(finding.bundle_id, target.handoff)
+    if failure is not None:
+        return _not_sent(
+            "open_failed",
+            f"{failure}; serve the target with metab ROOT instead",
+            finding.bundle_id,
+            finding.bundle_path,
+        )
+    return Delivery(
+        "app",
+        finding.bundle_id,
+        finding.bundle_path,
+        "not_confirmed",
+        "LaunchServices took the target; the app does not reply yet, so nothing "
+        "confirms that a window shows it",
+    )
+
+
 def deliver(target: Presentable, bundle_ids: Sequence[str]) -> Delivery:
     """Hand *target* to the first app of *bundle_ids* that LaunchServices has and trusts.
 
-    A target the app can never take is refused before anything is asked. Each
-    identifier's bundle is checked in turn, so a stray registration of one identifier
-    does not hide an installed build of the next; the first refusal is reported only when
-    no identifier's bundle passes. Each handoff goes to the identifier whose bundle
-    passed, which ``open -b`` resolves to the bundle LaunchServices named for it.
+    :func:`find_app` then :func:`send_to_app`: the ``app`` preference's delivery.
     """
 
-    if target.handoff is None:
-        return _not_sent(
-            "app_cannot_select_folder",
-            "the app opens a folder in a window of its own and cannot select one inside "
-            "another; present that folder itself, or ROOT without --path",
-        )
-    lookup = bundle_lookup
-    if lookup is None:
-        return _not_sent(
-            "not_macos",
-            "the Metabrowser app runs on macOS only; serve the target with metab ROOT",
-        )
-    refused: Delivery | None = None
-    for bundle_id in bundle_ids:
-        try:
-            bundle = lookup(bundle_id)
-        except AppLookupError as exc:
-            return _not_sent("lookup_failed", f"{exc}; serve the target with metab ROOT instead")
-        if bundle is None:
-            continue
-        if (refusal := app_refusal(bundle, bundle_id)) is not None:
-            refused = refused or _not_sent(*refusal, bundle_id, bundle)
-            continue
-        failure = _send(bundle_id, target.handoff)
-        if failure is not None:
-            return _not_sent(
-                "open_failed",
-                f"{failure}; serve the target with metab ROOT instead",
-                bundle_id,
-                bundle,
-            )
+    return send_to_app(target, find_app(target, bundle_ids))
+
+
+# The command that serves a target for a browser: this interpreter running the `metab`
+# command line, so the server is the build that answered, wherever it is installed and
+# whatever is first on PATH. `-I` keeps the working directory, which is the user's and
+# may be any checkout, off the module path, as `diff/markdown_projection_worker.py` does
+# for its child; `-u` writes each line to the log as it is printed, so the `Serving` line
+# is there to read. A module attribute so tests replace it with a recording stand-in.
+server_command: tuple[str, ...] = (sys.executable, "-I", "-u", "-m", "metabrowser.cli.main")
+
+
+def server_log_directory() -> str:
+    """Where a detached server's log goes: the temporary folder. Tests replace it."""
+
+    return tempfile.gettempdir()
+
+
+def serving_url(line: str) -> str | None:
+    """The address in a ``Serving <root> at <url>`` line, or ``None`` for any other line.
+
+    The line is ``serve_until_interrupted``'s (``cli/serve.py``), optionally followed by
+    ``  [dev build: …]``. The root may hold anything but a line break, `` at `` included,
+    so the address is the token after the last `` at ``, and it must end the line; only
+    plain HTTP to a loopback address with a port is one, as the macOS app's
+    ``CLIServeLaunch.parseServingLine`` reads it.
+    """
+
+    if not line.startswith("Serving "):
+        return None
+    text = line
+    suffix = text.rfind("  [dev build: ")
+    if suffix != -1 and text.endswith("]"):
+        text = text[:suffix]
+    _, at, token = text.rpartition(" at ")
+    if not at or not token.startswith("http://") or any(ch.isspace() for ch in token):
+        return None
+    try:
+        parts = urlsplit(token)
+        port = parts.port
+    except ValueError:
+        return None
+    if parts.hostname not in {"127.0.0.1", "::1"} or port is None or parts.username is not None:
+        return None
+    return token
+
+
+@dataclass(frozen=True, slots=True)
+class _Announcement:
+    """What a detached server said while ``--present`` waited."""
+
+    url: str | None
+    status: int | None
+    """Its exit status, once it exited."""
+    tail: tuple[str, ...]
+
+
+def _exit_status(pid: int) -> int | None:
+    """*pid*'s exit status if it has exited, reaping it; ``None`` while it runs."""
+
+    try:
+        reaped, status = os.waitpid(pid, os.WNOHANG)
+    except ChildProcessError:
+        return None
+    if reaped == 0:
+        return None
+    return os.waitstatus_to_exitcode(status)
+
+
+def _await_announcement(pid: int, log_path: str, timeout_s: float) -> _Announcement:
+    """Read *log_path* until the server says where it serves, exits, or *timeout_s* ends.
+
+    The exit is checked before each read, so the read after an exit sees all it wrote.
+    A line is complete at its newline; a carriage return ends one too, as progress does.
+    """
+
+    deadline = time.monotonic() + timeout_s
+    tail: deque[str] = deque(maxlen=SERVER_LOG_TAIL_LINES)
+    pending = b""
+    skipping = False
+    status: int | None = None
+    with open(log_path, "rb") as log:
+        while True:
+            if status is None:
+                status = _exit_status(pid)
+            # At most this much each round, so a server that writes faster than this reads
+            # still meets the deadline below.
+            budget = SERVER_LOG_READ_BYTES
+            while budget > 0 and (chunk := log.read(min(budget, SERVER_LOG_LINE_MAX_BYTES))):
+                budget -= len(chunk)
+                pending += chunk
+                *lines, pending = re.split(rb"\r\n|\r|\n", pending)
+                for raw in lines:
+                    if skipping:
+                        skipping = False
+                        continue
+                    line = raw.decode("utf-8", errors="replace")
+                    if line.strip():
+                        tail.append(line)
+                    if (url := serving_url(line)) is not None:
+                        return _Announcement(url, status, tuple(tail))
+                if len(pending) > SERVER_LOG_LINE_MAX_BYTES:
+                    pending = b""
+                    skipping = True
+            if status is not None and budget > 0:
+                if pending.strip() and not skipping:
+                    tail.append(pending.decode("utf-8", errors="replace"))
+                return _Announcement(None, status, tuple(tail))
+            if time.monotonic() >= deadline:
+                return _Announcement(None, None, tuple(tail))
+            time.sleep(SERVER_POLL_S)
+
+
+def _serve_arguments(value: str, path: str) -> list[str]:
+    """``metab ROOT``, with ``--path``, as the server is started: options before ``--``,
+    so ROOT is read as ROOT whatever it begins with, and without ``--no-open``."""
+
+    return [*server_command, *(("--path", path) if path else ()), "--", value]
+
+
+def serve_detached(
+    value: str, path: str, *, fallback: tuple[AppRefusalCode, str] | None = None
+) -> Delivery:
+    """Start ``metab ROOT`` for a browser, detached, and report it once it says where.
+
+    The server runs in a session of its own, with stdin at ``/dev/null`` and its output
+    in a log file, so neither this command's exit nor its terminal's hangup reaches it.
+    It is serve mode, which opens the page in a browser once it answers: what a user who
+    ran ``metab ROOT`` would get, in the same working directory and environment.
+    """
+
+    argv = _serve_arguments(value, path)
+    spawn = getattr(os, "posix_spawn", None)
+    if spawn is None:
         return Delivery(
-            "app",
-            bundle_id,
-            str(bundle),
-            "not_confirmed",
-            "LaunchServices took the target; the app does not reply yet, so nothing "
-            "confirms that a window shows it",
+            "none",
+            None,
+            None,
+            "server_failed",
+            "a detached server needs POSIX process control, which this platform lacks; "
+            "serve the target with metab ROOT",
+            fallback=fallback,
         )
-    if refused is not None:
-        return refused
-    return _not_sent(
-        "app_not_found",
-        f"LaunchServices knows no app {' or '.join(bundle_ids)}; install or build the "
-        "Metabrowser app and open it once, or serve the target with metab ROOT",
+    try:
+        descriptor, log_path = tempfile.mkstemp(
+            prefix=SERVER_LOG_PREFIX, suffix=".log", dir=server_log_directory()
+        )
+    except OSError as exc:
+        return Delivery(
+            "none",
+            None,
+            None,
+            "server_failed",
+            f"no log file for the server could be made ({exc.strerror}); serve the target "
+            "with metab ROOT",
+            fallback=fallback,
+        )
+    try:
+        pid = spawn(
+            argv[0],
+            argv,
+            os.environ,
+            file_actions=[
+                (os.POSIX_SPAWN_OPEN, 0, os.devnull, os.O_RDONLY, 0),
+                (os.POSIX_SPAWN_DUP2, descriptor, 1),
+                (os.POSIX_SPAWN_DUP2, descriptor, 2),
+            ],
+            setsid=True,
+            # As `subprocess` restores them for every child: Python ignores SIGPIPE, and an
+            # ignored signal stays ignored across exec.
+            setsigdef=(signal.SIGPIPE, signal.SIGXFSZ),
+        )
+    except (OSError, NotImplementedError) as exc:
+        why = exc.strerror if isinstance(exc, OSError) and exc.strerror else str(exc)
+        return Delivery(
+            "none",
+            None,
+            None,
+            "server_failed",
+            f"the metab server could not start ({why}); serve the target with metab ROOT",
+            log=log_path,
+            fallback=fallback,
+        )
+    finally:
+        os.close(descriptor)
+    heard = _await_announcement(pid, log_path, server_announce_timeout_s)
+    log = _shown(log_path)
+    if heard.status is not None:
+        said = f": {display_segment(heard.tail[-1].encode())}" if heard.tail else ""
+        when = "after it said where it serves" if heard.url else "before it said where it serves"
+        return Delivery(
+            "none",
+            None,
+            None,
+            "server_failed",
+            f"the metab server for the target exited with status {heard.status} {when}"
+            f"{said}; its output is in {log}",
+            log=log_path,
+            fallback=fallback,
+        )
+    if heard.url is None:
+        return Delivery(
+            "browser",
+            None,
+            None,
+            "server_starting",
+            f"a metab server for the target runs detached and has not said where it serves "
+            f"after {server_announce_timeout_s:g} s, as a first clone can take minutes; it "
+            f"opens the page in a browser once it answers. Its output is in {log}; stop it "
+            f"with kill {pid}",
+            pid=pid,
+            log=log_path,
+            fallback=fallback,
+        )
+    return Delivery(
+        "browser",
+        None,
+        None,
+        "server_started",
+        f"a metab server for the target runs detached at {heard.url} and opens it in a "
+        f"browser once the page answers; nothing confirms that a browser shows it. Its "
+        f"output is in {log}; stop it with kill {pid}",
+        url=heard.url,
+        pid=pid,
+        log=log_path,
+        fallback=fallback,
     )
 
 
@@ -773,6 +1211,75 @@ def present_bundle_ids(flag: str | None) -> tuple[str, ...]:
     return DEFAULT_BUNDLE_IDS
 
 
+@dataclass(frozen=True, slots=True)
+class DoctorOpenIn:
+    """``metab --doctor``'s report of the preference and what looking for the app found."""
+
+    section: dict[str, object]
+    """The ``open_in`` object of ``--doctor --json``."""
+    line: str
+    """The line ``--doctor`` prints."""
+    problems: tuple[str, ...]
+    """A preference that cannot be read, or ``app`` with no app to take a target."""
+
+
+def doctor_open_in() -> DoctorOpenIn:
+    """The preference, where it was read, and, unless it is ``browser``, the app found.
+
+    Looks the app up as ``--present`` would for a folder, sending nothing. A preference
+    that cannot be read, or one that is ``app`` where no app takes a target, is a
+    problem; LaunchServices that cannot be asked is not, since only where the command
+    runs decides that.
+    """
+
+    problems: list[str] = []
+    try:
+        preference: OpenInPreference | None = resolve_open_in(None)
+    except CLIError as exc:
+        preference = None
+        problems.append(f"open_in: {exc}")
+    finding: AppFinding | None = None
+    if preference is None or preference.value != "browser":
+        try:
+            bundle_ids = present_bundle_ids(None)
+        except CLIError as exc:
+            problems.append(f"open_in: {exc}")
+        else:
+            finding = look_up_app(bundle_ids)
+    app: dict[str, object] | None = None
+    if finding is not None:
+        app = {
+            "found": finding.refusal is None,
+            "bundle_id": finding.bundle_id,
+            "bundle_path": finding.bundle_path,
+            "code": finding.refusal[0] if finding.refusal else "app_found",
+            "reason": finding.refusal[1] if finding.refusal else "the app takes a target",
+        }
+        if (
+            preference is not None
+            and preference.value == "app"
+            and finding.refusal is not None
+            and DELIVERY_EXIT_CODES[finding.refusal[0]] == PRESENT_NO_APP_EXIT_CODE
+        ):
+            problems.append(
+                f"open_in is app ({preference.source}), and no app takes a target: "
+                f"{finding.refusal[1]}"
+            )
+    section: dict[str, object] = {
+        "value": preference.value if preference else None,
+        "source": preference.source if preference else None,
+        "app": app,
+    }
+    if finding is None:
+        found = "--present looks for no app"
+    elif finding.refusal is None:
+        found = f"the app: {_shown(finding.bundle_path or '')} ({finding.bundle_id})"
+    else:
+        found = f"the app: none ({finding.refusal[0]})"
+    named = f"{preference.value} ({preference.source})" if preference else "unreadable"
+    return DoctorOpenIn(section, f"metab --doctor: open_in {named}; {found}", tuple(problems))
+
+
 # ── Reporting ───────────────────────────────────────────────────────
 
 
@@ -784,26 +1291,44 @@ def _exit(code: int) -> NoReturn:
     raise typer.Exit(code=code)
 
 
+def _fallback_json(fallback: tuple[AppRefusalCode, str] | None) -> dict[str, str] | None:
+    if fallback is None:
+        return None
+    return {"code": fallback[0], "reason": fallback[1]}
+
+
 def _report(
-    delivery: Delivery | None, target: Presentable | Refusal, code: str, reason: str
+    delivery: Delivery | None,
+    target: Presentable | Refusal,
+    code: str,
+    reason: str,
+    preference: OpenInPreference,
 ) -> dict[str, object]:
     return {
         "delivered_to": delivery.delivered_to if delivery else "none",
+        "open_in": preference.value,
+        "open_in_source": preference.source,
         "bundle_id": delivery.bundle_id if delivery else None,
         "bundle_path": delivery.bundle_path if delivery else None,
+        "url": delivery.url if delivery else None,
+        "pid": delivery.pid if delivery else None,
+        "log": delivery.log if delivery else None,
         "target": target.as_json(),
         "confirmed": False,
         "code": code,
         "reason": reason,
+        "fallback": _fallback_json(delivery.fallback if delivery else None),
     }
 
 
-def _refuse(refusal: Refusal, *, as_json: bool, dry_run: bool) -> NoReturn:
+def _refuse(
+    refusal: Refusal, *, as_json: bool, dry_run: bool, preference: OpenInPreference | None
+) -> NoReturn:
     if as_json:
-        if dry_run:
-            _print_json(refusal.as_json())
+        if dry_run or preference is None:
+            _print_json({**refusal.as_json(), "decision": None})
         else:
-            _print_json(_report(None, refusal, refusal.code, refusal.message))
+            _print_json(_report(None, refusal, refusal.code, refusal.message, preference))
     else:
         typer.echo(f"Error: {refusal.message} ({refusal.code})", err=True)
     _exit(PRESENT_REFUSED_EXIT_CODE)
@@ -824,6 +1349,81 @@ def _target_lines(target: Presentable) -> list[str]:
     ]
 
 
+def _preference_line(preference: OpenInPreference | None) -> str:
+    if preference is None:
+        return "open_in: (unreadable)"
+    return f"open_in: {preference.value} ({preference.source})"
+
+
+def _fallback_lines(fallback: tuple[AppRefusalCode, str] | None) -> list[str]:
+    return [] if fallback is None else [f"fallback: {fallback[0]}: {fallback[1]}"]
+
+
+def _settings(
+    open_in: str | None, app_bundle_id: str | None
+) -> tuple[OpenInPreference, tuple[str, ...]]:
+    """The preference and, unless it is ``browser``, the apps to look for.
+
+    Raises :class:`CLIError` for a setting that cannot be read, and
+    :class:`typer.BadParameter` for an ``--app-bundle-id`` that is not an identifier.
+    """
+
+    preference = resolve_open_in(open_in)
+    if preference.value == "browser":
+        if app_bundle_id is not None:
+            # Checked, so a malformed flag is the usage error it is whatever the preference.
+            present_bundle_ids(app_bundle_id)
+        return preference, ()
+    return preference, present_bundle_ids(app_bundle_id)
+
+
+def _print_decision(target: Presentable, decision: Decision, *, as_json: bool) -> None:
+    if as_json:
+        _print_json({**target.as_json(), "decision": decision.as_json()})
+        return
+    lines = [
+        *_target_lines(target),
+        _preference_line(decision.preference),
+        f"delivers_to: {decision.delivers_to}",
+        f"code: {decision.code}",
+        f"reason: {decision.message}",
+        *_fallback_lines(decision.fallback),
+    ]
+    typer.echo("\n".join(lines))
+
+
+def _dry_run(
+    value: str,
+    *,
+    local: bool,
+    path: str,
+    as_json: bool,
+    open_in: str | None,
+    app_bundle_id: str | None,
+) -> None:
+    """Resolve ROOT and decide where it goes, sending nothing and starting nothing.
+
+    Its status says only whether ROOT resolved, so a consumer that checks a target, as
+    the macOS app checks a link, is not failed by a preference it never uses: a setting
+    that cannot be read is the decision's ``preference_unreadable``.
+    """
+
+    settings: tuple[OpenInPreference, tuple[str, ...]] | None = None
+    unreadable: str | None = None
+    try:
+        settings = _settings(open_in, app_bundle_id)
+    except CLIError as exc:
+        unreadable = str(exc)
+    target = resolve_target(value, path, local=local)
+    if isinstance(target, Refusal):
+        _refuse(target, as_json=as_json, dry_run=True, preference=None)
+    if settings is None:
+        decision = Decision(None, "none", "preference_unreadable", unreadable or "unreadable", None)
+    else:
+        decision = decide(target, *settings)
+    _print_decision(target, decision, as_json=as_json)
+
+
 def run_present(
     value: str,
     *,
@@ -832,58 +1432,94 @@ def run_present(
     dry_run: bool,
     as_json: bool,
     app_bundle_id: str | None,
+    open_in: str | None = None,
 ) -> None:
-    """Resolve ROOT and, unless *dry_run*, hand it to the app; exit with what happened."""
+    """Resolve ROOT, decide where it goes, and unless *dry_run* send it there.
 
-    bundle_ids = () if dry_run else present_bundle_ids(app_bundle_id)
+    Exits with what happened: a refusal, no app under ``app``, LaunchServices that could
+    not be asked, or a server that did not start.
+    """
+
+    if dry_run:
+        _dry_run(
+            value,
+            local=local,
+            path=path,
+            as_json=as_json,
+            open_in=open_in,
+            app_bundle_id=app_bundle_id,
+        )
+        return
+    preference, bundle_ids = _settings(open_in, app_bundle_id)
     target = resolve_target(value, path, local=local)
     if isinstance(target, Refusal):
-        _refuse(target, as_json=as_json, dry_run=dry_run)
-    if dry_run:
-        if as_json:
-            _print_json(target.as_json())
-        else:
-            typer.echo("\n".join(_target_lines(target)))
-        return
-    delivery = deliver(target, bundle_ids)
+        _refuse(target, as_json=as_json, dry_run=False, preference=preference)
+    decision = decide(target, preference, bundle_ids)
+    if decision.delivers_to == "browser":
+        delivery = serve_detached(value, path, fallback=decision.fallback)
+    else:
+        # A decision for the app, or for nowhere, follows looking for the app.
+        assert decision.finding is not None
+        delivery = send_to_app(target, decision.finding)
     if as_json:
-        _print_json(_report(delivery, target, delivery.code, delivery.message))
-    elif delivery.delivered_to == "app":
-        lines = [
-            "delivered_to: app",
-            f"bundle_id: {delivery.bundle_id}",
-            f"bundle_path: {_shown(delivery.bundle_path or '')}",
+        _print_json(_report(delivery, target, delivery.code, delivery.message, preference))
+    elif delivery.delivered_to == "none":
+        where = "served" if delivery.code == "server_failed" else "sent to the app"
+        typer.echo(f"Error: not {where}: {delivery.message} ({delivery.code})", err=True)
+    else:
+        lines = [f"delivered_to: {delivery.delivered_to}", _preference_line(preference)]
+        if delivery.delivered_to == "app":
+            lines += [
+                f"bundle_id: {delivery.bundle_id}",
+                f"bundle_path: {_shown(delivery.bundle_path or '')}",
+            ]
+        else:
+            lines += [
+                f"url: {delivery.url or '(not yet)'}",
+                f"pid: {delivery.pid}",
+                f"log: {_shown(delivery.log or '')}",
+            ]
+        lines += [
             *_target_lines(target),
             "confirmed: false",
             f"code: {delivery.code}",
             f"reason: {delivery.message}",
+            *_fallback_lines(delivery.fallback),
         ]
         typer.echo("\n".join(lines))
-    else:
-        typer.echo(f"Error: not sent to the app: {delivery.message} ({delivery.code})", err=True)
     if delivery.exit_code:
         _exit(delivery.exit_code)
 
 
 __all__ = [
+    "ANY_APP_LOCATION_ENV",
+    "APP_BUNDLE_NAME",
+    "APP_INSTALL_LOCATIONS",
     "BUNDLE_ID_ENV",
     "DEFAULT_BUNDLE_IDS",
     "DELIVERY_EXIT_CODES",
     "DEV_BUNDLE_ID",
     "OPENS_URLS_KEY",
     "RELEASE_BUNDLE_ID",
-    "ANY_APP_LOCATION_ENV",
-    "APP_BUNDLE_NAME",
-    "APP_INSTALL_LOCATIONS",
+    "SERVER_LOG_PREFIX",
+    "AppFinding",
     "AppLookupError",
+    "Decision",
+    "DecisionCode",
     "Delivery",
     "DeliveryCode",
+    "Destination",
     "PresentKind",
     "Presentable",
     "Refusal",
-    "bundle_lookup",
     "app_refusal",
+    "bundle_lookup",
+    "decide",
     "deliver",
+    "DoctorOpenIn",
+    "doctor_open_in",
+    "find_app",
+    "look_up_app",
     "install_locations",
     "is_installed",
     "open_executable",
@@ -891,4 +1527,10 @@ __all__ = [
     "read_info_plist",
     "resolve_target",
     "run_present",
+    "send_to_app",
+    "serve_detached",
+    "server_announce_timeout_s",
+    "server_command",
+    "server_log_directory",
+    "serving_url",
 ]

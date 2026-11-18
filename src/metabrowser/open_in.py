@@ -75,7 +75,7 @@ def parse_open_in(value: object) -> OpenInChoice | None:
     """*value* as a choice, or ``None`` when it is not one."""
 
     if isinstance(value, str) and value in OPEN_IN_CHOICES:
-        return cast(OpenInChoice, value)
+        return value
     return None
 
 
@@ -96,7 +96,7 @@ def configured_open_in(directory: Path | None = None) -> OpenInChoice | None:
     # reads the file, and the owner-only helpers are nothing else in `--present` needs.
     import yaml
 
-    from metabrowser.cache.paths import CONFIG_MAX_BYTES, CONFIG_RECORD
+    from metabrowser.config_file import CONFIG_MAX_BYTES, CONFIG_RECORD
     from metabrowser.home import (
         PrivateFileTooLargeError,
         PrivateStorageError,
