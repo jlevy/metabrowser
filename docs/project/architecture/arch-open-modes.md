@@ -528,7 +528,7 @@ A pull request that builds a part updates its row.
 | A folder served as the path named, and a file’s folder | Built; resolution replaces it | `run_serve` in `cli/serve.py`; the app’s `OpenTarget` |
 | History only at a repository’s root | Built; stays as the gate for a folder served exactly | [The Exact-Root Gate](arch-git.md#discovery-and-the-exact-root-gate) |
 | The resolver: a path to its repository’s root, the guards, `--exact-root`, and the root in the `Serving` line | Not built | `mb-2wfk` |
-| `metab TARGET --present`, whose dry run answers a resolution | Not built | [#540](https://github.com/jlevy/metabrowser/pull/540), `mb-d9tu` |
+| `metab TARGET --present`, whose dry run answers a resolution | Partly built: `--present` and its dry run, on the path named; answering a resolution waits on the resolver | [#540](https://github.com/jlevy/metabrowser/pull/540), `mb-d9tu`; `mb-2wfk` |
 | GitHub links opened in the app, and `SessionRoot` | Not built | [#539](https://github.com/jlevy/metabrowser/pull/539), `mb-87j0` |
 | A repository folder’s revision views, its chooser, and their command line, with the two revision requirements above | Not built | [#559](https://github.com/jlevy/metabrowser/pull/559), `mb-8ob8` |
 | Pulls and the toggle on a folder’s revision; View on branch and Browse code to the head as a revision | Not built | Follows `mb-8ob8` |
