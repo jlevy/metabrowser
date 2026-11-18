@@ -13,7 +13,7 @@ from urllib.parse import urljoin
 import pytest
 
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
-from tests import suite_gates, suite_tiers, suite_timing, suite_workers
+from tests import chrome_starts, suite_gates, suite_tiers, suite_timing, suite_workers
 from tests.github_pull_fixture import Origin, build_origin, copy_origin
 from tests.process_group import owned_profile
 from tests.required_tools import require_git, require_node
@@ -114,15 +114,22 @@ def git_on_path() -> str:
 
 
 @pytest.fixture
-def chrome_profile() -> Generator[Path, None, None]:
+def chrome_profile(tmp_path_factory: pytest.TempPathFactory) -> Generator[Path, None, None]:
     """A headless Chrome's profile directory, owned by the test that drives the browser.
 
     It is removed after the test. A process still naming it then escaped the test's
     process group: it is reported, failing the test, and left running; see
-    ``tests/process_group.py``.
+    ``tests/process_group.py``. Each Chrome the test starts through
+    ``tests/dom/chrome-session.mjs`` is noted for the run's summary of starts
+    (``tests/chrome_starts.py``).
     """
 
-    with owned_profile("metab-test-chrome-") as profile:
+    starts = chrome_starts.log_path(tmp_path_factory.getbasetemp())
+    with (
+        owned_profile("metab-test-chrome-") as profile,
+        pytest.MonkeyPatch.context() as patch,
+    ):
+        patch.setenv(chrome_starts.STARTS_ENV, str(starts))
         yield profile
 
 
@@ -177,8 +184,35 @@ def _no_real_gh(  # pyright: ignore[reportUnusedFunction]
         yield
 
 
+@pytest.hookimpl(wrapper=True)
+def pytest_runtestloop(session: pytest.Session) -> Generator[None, object, object]:
+    """Warm Chrome up once before a run with a test that drives it, so the runner's cold
+    first start falls outside every test's bounds, and write how that went to the
+    terminal at once (``tests/chrome_starts.py``).
+
+    A run that collection errors will stop, as pytest's own loop then does, is not
+    warmed: that could cost the warm-up's whole bound before the run stops."""
+
+    option = session.config.option
+    stopping = session.testsfailed and not option.continue_on_collection_errors
+    if (
+        not option.collectonly
+        and not stopping
+        and any(item.get_closest_marker(suite_tiers.CHROME_MARKER) for item in session.items)
+    ):
+        basetemp = session.config._tmp_path_factory.getbasetemp()  # pyright: ignore[reportAttributeAccessIssue]
+        told = chrome_starts.warm_up(basetemp)
+        reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+        if isinstance(reporter, pytest.TerminalReporter):
+            for line in told:
+                reporter.write_line(line)
+            reporter.flush()
+    return (yield)
+
+
 def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
-    """Say which tests would have run gh, so a new one is noticed."""
+    """Say which tests would have run gh, so a new one is noticed, and how the run's
+    Chrome starts went (``tests/chrome_starts.py``)."""
 
     basetemp = terminalreporter.config._tmp_path_factory.getbasetemp()  # pyright: ignore[reportAttributeAccessIssue]
     # pytest also links ``no-real-ghcurrent`` to the numbered directory; read each once.
@@ -193,6 +227,8 @@ def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
             f"gh guard: {len(calls)} gh call(s) reached the failing stand-in, "
             f"from {len(tests)} test(s): " + ", ".join(tests)
         )
+    for line in chrome_starts.summary(basetemp):
+        terminalreporter.write_line(line)
 
 
 @pytest.fixture(autouse=True)
