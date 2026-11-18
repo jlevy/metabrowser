@@ -81,6 +81,9 @@ It links each document below and the contributor standards in `docs/`.
 - [The Recent tab: updates, events, and working-tree changes](specs/active/plan-2026-11-18-recent-tab-updates-and-events.md):
   a main tab of what changed in the served root, by folder, Git, and GitHub tier, with
   changes clumped into updates and notable events on their own rows; a draft
+- [Agent interface for objects and view state](specs/active/plan-2026-11-18-agent-interface.md):
+  how an agent reads what the reader sees and asks a viewer to show a file or a pull
+  request, through `metab` and the agent skill; a draft
 - [Documentation from first principles](specs/active/plan-2026-11-14-documentation-from-first-principles.md):
   one owner per fact, task guides, architecture documents for every layer, a baseline
   scale benchmark, and checks that keep the set linked
