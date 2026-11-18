@@ -571,6 +571,10 @@ left of that bead is the route below and which roots skip Phase 3’s confirmati
 - [ ] Quick folder switcher, listing recent targets with live servers from the registry
   (`mb-9lf4`). The switcher’s membership and order come from `metab`, so it needs no
   shell-only exemption.
+  The app’s native switching (a window that shows any open folder, the title as a
+  chooser, and a switcher panel) is
+  [its own plan](plan-2026-11-18-macos-folder-switching.md), which needs neither the
+  route nor the registry.
 - [ ] An optional MCP stdio adapter over registered routes (`mb-5lgp`).
 
 ### Phase 5: Setup, Runtime, and Updates
