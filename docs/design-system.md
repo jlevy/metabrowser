@@ -415,9 +415,17 @@ on a view that cannot print, then the GitHub toggle.
 **The GitHub toggle** ends the heading row on a page whose repository is on github.com:
 a joined pair, as a segmented control is, of the Metabrowser mark, the app icon’s
 partial M and B in gray on the pressed segment’s fill, and the GitHub mark, a link to
-the same item’s page on github.com, a folder’s tree or a file’s blob at the branch the
-page is on, or at its commit where it is on none.
-Every page opens in the Metabrowser view, and a page opened next opens in it too.
+the same item’s page on github.com, a folder’s tree or a file’s blob.
+The link’s ref is the view’s own where a view names one (`data-ref` on the header);
+otherwise the branch the page is on, when `origin` has it as of the checkout’s last
+fetch (`branch_on_origin` in the repository context, which a mirror’s branch always
+has); otherwise the page’s commit, and the tooltip says the branch is not pushed.
+Hovering the GitHub mark tints it with the accent fill, which never reads as the pressed
+segment.
+In a view header whose rows are under 400 px the Metabrowser segment, which only
+says where the page already is, is left out and the GitHub mark kept, so the title keeps
+the row (the container query in `static/styles.css`). Every page opens in the
+Metabrowser view, and a page opened next opens in it too.
 github.com refuses to be shown in a frame, so a browser cannot show the GitHub view in
 the page: its mark opens the page in a new tab, as View on GitHub does, and the macOS
 app hands it to the default browser.
@@ -429,8 +437,8 @@ writes into the page (`static/github-page.js`, which the server writes inline in
 pages only). A plain folder, a checkout whose `origin` is on another host or that has
 none, and a mirror of a repository elsewhere have no toggle and no slot held for one:
 nothing in the row is placed by it.
-The folder-or-mirror indicator, when it comes (planned), is a separate mark beside the
-toggle, not a third segment of it.
+The folder-or-mirror indicator is a separate mark, not a third segment of the toggle;
+its placement is decided in arch-open-modes.md (pending).
 
 **The metadata lines** sit under the title, at the body size, in muted ink, and each
 value keeps its own primitive: a size its chip, a count its count, an age its freshness

@@ -117,6 +117,7 @@ const READ = `(() => {
     title: box(title),
     titleText: title ? title.textContent : null,
     titleCut: title ? title.scrollWidth > title.clientWidth + 0.5 : null,
+    titleNeed: title ? title.scrollWidth : null,
     end: box(q('.view-header-end')),
     toggle: box(q('.view-header-toggle')),
     toggleCurrent: q('.view-header-toggle [aria-current=page]') ? q('.view-header-toggle [aria-current=page]').className : null,

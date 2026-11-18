@@ -299,6 +299,8 @@ type MetabrowserDocumentWidthRuntime = Readonly<{
 
 type MetabrowserRepositoryContext = Readonly<{
   branch: string | null;
+  /** Whether `origin` has the branch: in the context the server writes, not the SDK's copy. */
+  branch_on_origin?: boolean;
   host: "github.com";
   name: string;
   owner: string;
@@ -2912,7 +2914,7 @@ declare global {
   type MetabrowserViewHeaderParts = {
     /** Extra classes on the header, as `folder-header`. */
     className?: string;
-    /** The item's path identity, which the header carries as `data-path`. */
+    /** The item's path identity, the header's `data-path`, which the GitHub toggle reads. */
     path: string;
     /** The eyebrow's markup; an empty eyebrow is left out of the header's rhythm. */
     eyebrow: string;
@@ -4011,13 +4013,18 @@ declare global {
     METABROWSER_SOURCE_PIN?: MetabrowserSourcePage;
     /** static/github-page.js, which only a page with a repository on github.com carries. */
     MetabrowserGithubPage?: Readonly<{
+      pageRef(
+        context: MetabrowserRepositoryContext,
+        onOrigin: boolean,
+        viewRef?: string,
+      ): { ref: string; note: string };
       pageUrl(
         context: MetabrowserRepositoryContext | null,
         path: string,
-        item: { folder: boolean; sourceKind: string },
+        item: { folder: boolean; sourceKind: string; ref: string },
       ): string | null;
       sync(doc: Document): HTMLElement | null;
-      toggle(doc: Document, url: string): HTMLElement;
+      toggle(doc: Document, url: string, note?: string): HTMLElement;
     }>;
     /** static/mirror-heading.js, which only a served mirror's page carries. */
     MetabrowserMirrorHeading?: Readonly<{

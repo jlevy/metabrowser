@@ -1319,6 +1319,7 @@ def _github_page_script() -> str:
     return script
 
 
+@functools.cache
 def _mirror_heading_script() -> str:
     """`static/mirror-heading.js`, as a served mirror's shell carries it inline.
 

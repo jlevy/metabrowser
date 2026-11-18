@@ -16,9 +16,9 @@ The input is `tests/fixtures/github-page-shell.json`: the repository context the
 writes into each page’s shell, from the functions that decide the Pulls tab,
 `discover_repository_context` for a checkout and `repository_context_for` for a mirror,
 recorded by `tests/test_github_page_session.py` for checkouts on github.com over HTTPS
-and SSH, served whole and from a subfolder, on a branch and detached; origins on GitLab
-and on a GitHub Enterprise host; a repository with no remote; a plain folder; and
-mirrors of a github.com repository and of a `file://` one.
+on a branch origin has, over SSH detached, and served from a subfolder on a branch
+origin lacks; origins on GitLab and on a GitHub Enterprise host; a repository with no
+remote; a plain folder; and mirrors of a github.com repository and of a `file://` one.
 
 This browserless session loads the production `static/github-page.js` into a page of
 fakes for each context and commits a view header for each page a folder or a pin can be
@@ -105,7 +105,7 @@ $ node tests/dom/github-page-session.js
     }
   },
   {
-    "context": "github-subfolder",
+    "context": "github-subfolder-unpushed",
     "toggle": {
       "label": "View",
       "role": "group",
@@ -122,8 +122,8 @@ $ node tests/dom/github-page-session.js
           "class": "view-header-toggle-option view-header-toggle-github",
           "current": null,
           "label": "View on GitHub",
-          "tip": "View on GitHub: github.com/octo/demo/tree/feature/x/docs",
-          "href": "https://github.com/octo/demo/tree/feature/x/docs",
+          "tip": "View on GitHub: github.com/octo/demo/tree/0123456789abcdef0123456789abcdef01234567/docs. feature/x is not pushed, so this commit may not be on github.com either",
+          "href": "https://github.com/octo/demo/tree/0123456789abcdef0123456789abcdef01234567/docs",
           "target": "_blank",
           "rel": "noopener noreferrer"
         }
@@ -132,12 +132,12 @@ $ node tests/dom/github-page-session.js
     "pagesShowingMetabrowser": 6,
     "pages": 6,
     "urls": {
-      "(root)": "https://github.com/octo/demo/tree/feature/x/docs",
-      "docs": "https://github.com/octo/demo/tree/feature/x/docs/docs",
-      "docs/guide.md": "https://github.com/octo/demo/blob/feature/x/docs/docs/guide.md",
-      "docs/a b/雪 (1).md": "https://github.com/octo/demo/blob/feature/x/docs/docs/a%20b/%E9%9B%AA%20%281%29.md",
-      "50%25-off.md": "https://github.com/octo/demo/blob/feature/x/docs/50%25-off.md",
-      "raw/%FF.bin": "https://github.com/octo/demo/blob/feature/x/docs/raw/%FF.bin"
+      "(root)": "https://github.com/octo/demo/tree/0123456789abcdef0123456789abcdef01234567/docs",
+      "docs": "https://github.com/octo/demo/tree/0123456789abcdef0123456789abcdef01234567/docs/docs",
+      "docs/guide.md": "https://github.com/octo/demo/blob/0123456789abcdef0123456789abcdef01234567/docs/docs/guide.md",
+      "docs/a b/雪 (1).md": "https://github.com/octo/demo/blob/0123456789abcdef0123456789abcdef01234567/docs/docs/a%20b/%E9%9B%AA%20%281%29.md",
+      "50%25-off.md": "https://github.com/octo/demo/blob/0123456789abcdef0123456789abcdef01234567/docs/50%25-off.md",
+      "raw/%FF.bin": "https://github.com/octo/demo/blob/0123456789abcdef0123456789abcdef01234567/docs/raw/%FF.bin"
     }
   },
   {
@@ -243,6 +243,7 @@ $ node tests/dom/github-page-session.js
     }
   }
 ]
+? 0
 ```
 
 <!-- This document follows common-doc-guidelines.md.

@@ -1,6 +1,7 @@
 {
   "github-https": {
     "branch": "main",
+    "branch_on_origin": true,
     "host": "github.com",
     "name": "demo",
     "owner": "octo",
@@ -9,14 +10,16 @@
   },
   "github-ssh-detached": {
     "branch": null,
+    "branch_on_origin": false,
     "host": "github.com",
     "name": "demo",
     "owner": "octo",
     "revision": "0123456789abcdef0123456789abcdef01234567",
     "served_prefix": ""
   },
-  "github-subfolder": {
+  "github-subfolder-unpushed": {
     "branch": "feature/x",
+    "branch_on_origin": false,
     "host": "github.com",
     "name": "demo",
     "owner": "octo",
@@ -29,6 +32,7 @@
   "plain-folder": null,
   "mirror-github": {
     "branch": "main",
+    "branch_on_origin": true,
     "host": "github.com",
     "name": "demo",
     "owner": "octo",

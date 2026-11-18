@@ -211,6 +211,16 @@ show it.
   the same `mustache` bundle, so it loads once.
 - **On demand:** fetched the first time something needs it, for code that is large,
   narrowly used, or both: the bundles in `on_demand_script_bundles` in `server.py`.
+- **Inline, page-specific:** written into the shell of the pages that use it and of no
+  other, for small code only those pages need before their first paint:
+  `mirror-heading.js` on a served mirror’s page and `github-page.js`, the view header’s
+  GitHub toggle, on a page with a repository on github.com (`_mirror_heading_script` and
+  `_github_page_script` in `server.py`, each read from disk once).
+  A plain folder pays nothing for either, but a page that has one pays its bytes in its
+  HTML, outside the startup-script gate’s count of requested scripts, so
+  `devtools/check_startup_scripts.py` reports a github.com checkout’s inline bytes
+  beside the budget without gating them.
+  The toggle’s marks are masks in `styles.css`, which every page loads.
 
 Data follows the same rule: a bulk payload one surface reads is on demand.
 A pull request’s page prepares the initial Changes comparison, which its header’s Diff

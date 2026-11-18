@@ -138,6 +138,9 @@ function page(context, sourceKind) {
   sandbox.window = sandbox;
   vm.createContext(sandbox);
   // The SDK's normalized context, as plugin-sdk.js's normalizeRepositoryContext gives it.
+  // The context as the server wrote it, and the SDK's copy of it, as plugin-sdk.js's
+  // normalizeRepositoryContext keeps it: null for any host but github.com.
+  sandbox.METABROWSER_REPOSITORY_CONTEXT = context;
   sandbox.metabrowser = {
     repository: context && context.host === "github.com" ? Object.freeze({ ...context }) : null,
     sourceKind: () => sourceKind,
@@ -192,7 +195,7 @@ const check = (name, ok) => {
 const transcript = [];
 for (const [name, context] of Object.entries(recorded)) {
   const sourceKind = name.startsWith("mirror-") ? "git_revision" : "filesystem";
-  const { sandbox, commit } = page(context, sourceKind);
+  const { commit } = page(context, sourceKind);
   const items = ITEMS[sourceKind];
   const pages = items.map((item) => {
     const toggle = commit(item);
@@ -210,14 +213,6 @@ for (const [name, context] of Object.entries(recorded)) {
       `${name} ${each.path}: GitHub is a link`,
       there.element === "a" && there.current === null,
     );
-    check(
-      `${name} ${each.path}: the link is the item's page`,
-      there.href ===
-        sandbox.MetabrowserGithubPage.pageUrl(sandbox.metabrowser.repository, each.path, {
-          folder: each.folder,
-          sourceKind,
-        }),
-    );
   }
   transcript.push({
     context: name,
@@ -231,6 +226,31 @@ for (const [name, context] of Object.entries(recorded)) {
     ),
   });
 }
+
+// The links, as written: at the branch origin has, or at the commit where origin has no
+// branch of the page's, which the tooltip says.
+const linkOf = (name, item) => transcript.find((entry) => entry.context === name).urls[item];
+check(
+  "a pushed branch links at the branch",
+  linkOf("github-https", "(root)") === "https://github.com/octo/demo/tree/main" &&
+    linkOf("github-https", "docs/guide.md") ===
+      "https://github.com/octo/demo/blob/main/docs/guide.md",
+);
+check(
+  "an unpushed branch links at the commit, under the served subfolder",
+  linkOf("github-subfolder-unpushed", "docs") ===
+    "https://github.com/octo/demo/tree/0123456789abcdef0123456789abcdef01234567/docs/docs",
+);
+check(
+  "an unpushed branch says so",
+  / is not pushed, /.test(
+    transcript.find((entry) => entry.context === "github-subfolder-unpushed").toggle.options[1].tip,
+  ),
+);
+check(
+  "a mirror's branch is the origin's",
+  linkOf("mirror-github", "(root)") === "https://github.com/octo/demo/tree/main",
+);
 
 process.stdout.write(`${JSON.stringify(transcript, null, 2)}\n`);
 if (failures.length) {

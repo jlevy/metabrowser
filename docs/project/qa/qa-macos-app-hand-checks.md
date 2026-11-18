@@ -116,6 +116,13 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
    `a`: it shows `notes.md`. Dragged onto another folder’s window, it opens `a` (or
    shows the file in `a`, if open).
    A drag of text or a web link is still the page’s.
+10. **The GitHub toggle.** Open a checkout of a repository on github.com whose branch is
+    pushed, such as this repository, and open `README.md`. The view header ends in two
+    marks, the gray Metabrowser mark pressed and the GitHub mark.
+    Click the GitHub mark: the default browser opens `README.md` on github.com at the
+    branch, and the app’s window still shows Metabrowser’s view.
+    On a branch that is not pushed, the GitHub mark’s tooltip says so, and the link
+    opens the commit. A folder with no GitHub remote shows no toggle.
 
 ## Print and Drops
 

@@ -20,9 +20,16 @@ In a narrow pane a long name is cut short, with the whole name in its tooltip, a
 values that do not fit leave the line from its end, each whole.
 When the folder is a checkout of a repository on github.com, or a mirror of one, the
 header’s upper right holds two marks: Metabrowser’s, the view you are in, and GitHub’s,
-which opens the same file or folder on github.com, at the branch you are on.
+which opens the same file or folder on github.com.
 A browser opens it in a new tab, since github.com cannot be shown inside the page, and
 the macOS app opens it in your default browser.
+In a narrow pane only the GitHub mark is shown.
+It opens the page at the branch you are on when your last fetch saw that branch on
+`origin`; otherwise it opens your commit, and its tooltip says the branch is not pushed,
+since that commit may not be on github.com either.
+It opens a page whether or not github.com has one: a file Git ignores or has not been
+told about, or a file inside an archive, opens a missing page there.
+The link is set when the page loads, so after switching branches, reload the page.
 
 - **Rows:** a file row shows its size and age; a folder row shows its file count, total
   size, and newest change, for everything beneath it.

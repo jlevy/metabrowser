@@ -427,7 +427,6 @@ function viewHeaderItemsHtml(items) {
 /**
  * One view header (docs/design-system.md, "View Headers"): the eyebrow, which an empty
  * one leaves out, the heading row (icon, title, the row's end), and the metadata line.
- * `path` is the item's, which the GitHub toggle reads (github-page.js).
  * @param {MetabrowserViewHeaderParts} parts
  */
 function viewHeaderHtml(parts) {

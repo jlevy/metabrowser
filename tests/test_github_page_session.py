@@ -28,24 +28,35 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
-from metabrowser import server
+from httpx2 import ASGITransport, AsyncClient
+
+from metabrowser import paths_safe, server
 from metabrowser.cache.providers import repository_context_for
+from metabrowser.paths_safe import _set_root_dir
 from metabrowser.repository_context import discover_repository_context
+from metabrowser.source import AttachedFilesystemSubject, attach_subject, reset_source_session
 from tests.golden_harness import check_recording, read_recording, run_session
-from tests.test_source_kind_session import (
-    _folder_client,  # pyright: ignore[reportPrivateUsage]
-)
 
 _REVISION = "0123456789abcdef0123456789abcdef01234567"
-# Each checkout's origin, or None for a repository with no remote; and how it is served.
-_CHECKOUTS: dict[str, tuple[str | None, str, str]] = {
-    # name: (origin url, HEAD, served subfolder)
-    "github-https": ("https://github.com/octo/demo.git", "ref: refs/heads/main", ""),
-    "github-ssh-detached": ("git@github.com:octo/demo.git", _REVISION, ""),
-    "github-subfolder": ("https://github.com/octo/demo", "ref: refs/heads/feature/x", "docs"),
-    "gitlab": ("https://gitlab.com/octo/demo.git", "ref: refs/heads/main", ""),
-    "github-enterprise": ("https://github.example.com/octo/demo.git", "ref: refs/heads/main", ""),
-    "no-remote": (None, "ref: refs/heads/main", ""),
+# Each checkout's origin, or None for a repository with no remote; its HEAD; where it is
+# served from; and whether origin has its branch (`refs/remotes/origin/<branch>`).
+_CHECKOUTS: dict[str, tuple[str | None, str, str, bool]] = {
+    "github-https": ("https://github.com/octo/demo.git", "ref: refs/heads/main", "", True),
+    "github-ssh-detached": ("git@github.com:octo/demo.git", _REVISION, "", False),
+    "github-subfolder-unpushed": (
+        "https://github.com/octo/demo",
+        "ref: refs/heads/feature/x",
+        "docs",
+        False,
+    ),
+    "gitlab": ("https://gitlab.com/octo/demo.git", "ref: refs/heads/main", "", True),
+    "github-enterprise": (
+        "https://github.example.com/octo/demo.git",
+        "ref: refs/heads/main",
+        "",
+        True,
+    ),
+    "no-remote": (None, "ref: refs/heads/main", "", False),
 }
 _MIRRORS: dict[str, str] = {
     "mirror-github": "https://github.com/octo/demo",
@@ -53,9 +64,16 @@ _MIRRORS: dict[str, str] = {
 }
 
 
-def _checkout(root: Path, origin: str | None, head: str, served: str) -> Path:
+def _checkout(
+    root: Path, origin: str | None, head: str, served: str, on_origin: bool = False
+) -> Path:
     git = root / ".git"
     (git / "refs" / "heads" / "feature").mkdir(parents=True)
+    if on_origin:
+        (git / "refs" / "remotes" / "origin").mkdir(parents=True)
+        (git / "refs" / "remotes" / "origin" / "main").write_text(
+            f"{_REVISION}\n", encoding="utf-8"
+        )
     config = "[core]\n\trepositoryformatversion = 0\n"
     if origin is not None:
         config += f'[remote "origin"]\n\turl = {origin}\n'
@@ -71,9 +89,9 @@ def _checkout(root: Path, origin: str | None, head: str, served: str) -> Path:
 
 def _recorded(tmp_path: Path) -> dict[str, Any]:
     contexts: dict[str, Any] = {}
-    for name, (origin, head, served) in _CHECKOUTS.items():
+    for name, (origin, head, served, on_origin) in _CHECKOUTS.items():
         contexts[name] = discover_repository_context(
-            _checkout(tmp_path / name, origin, head, served)
+            _checkout(tmp_path / name, origin, head, served, on_origin)
         )
     plain = tmp_path / "plain"
     plain.mkdir()
@@ -99,10 +117,19 @@ def test_only_a_page_with_a_github_repository_carries_the_toggle(tmp_path: Path)
     (plain / "README.md").write_text("# Plain\n", encoding="utf-8")
 
     async def shell(root: Path) -> str:
-        async with _folder_client(root) as client:
-            answer = await client.get("/view/")
-            assert answer.status_code == 200, answer.text
-            return answer.text
+        original = paths_safe.ROOT_DIR
+        _set_root_dir(root)
+        attach_subject(AttachedFilesystemSubject(root))
+        try:
+            async with server.app.router.lifespan_context(server.app):
+                transport = ASGITransport(app=server.app, raise_app_exceptions=True)
+                async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+                    answer = await client.get("/view/")
+                    assert answer.status_code == 200, answer.text
+                    return answer.text
+        finally:
+            reset_source_session()
+            _set_root_dir(original)
 
     assert f"<script>{module}</script>" in asyncio.run(shell(github))
     assert "MetabrowserGithubPage" not in asyncio.run(shell(plain))
@@ -113,4 +140,16 @@ def test_the_session_shows_the_toggle_only_for_a_repository_on_github() -> None:
     pages = run_session("github-page-session.js")
     shown = {page["context"] for page in pages if page["toggle"] is not None}
     assert shown == {name for name, context in recorded.items() if context is not None}
-    assert shown == {"github-https", "github-ssh-detached", "github-subfolder", "mirror-github"}
+    assert shown == {
+        "github-https",
+        "github-ssh-detached",
+        "github-subfolder-unpushed",
+        "mirror-github",
+    }
+
+
+def test_both_inline_scripts_are_read_once() -> None:
+    """Each shell render takes the inline module from memory, not from disk."""
+
+    assert hasattr(server._github_page_script, "cache_info")  # pyright: ignore[reportPrivateUsage]
+    assert hasattr(server._mirror_heading_script, "cache_info")  # pyright: ignore[reportPrivateUsage]

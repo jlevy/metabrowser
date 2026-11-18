@@ -64,20 +64,47 @@
   }
 
   /**
-   * The item's page on github.com: a folder's tree or a file's blob at the branch the page
-   * is on, or at its commit where it is on none, under the served root's place in the
-   * repository. Null without a repository on github.com.
+   * The ref a page's link names, and what the link's tooltip says of it. A view that names
+   * its own ref, as a revision's would, supplies it (`viewRef`). Otherwise the branch the
+   * page is on, when `origin` has it (`branch_on_origin`, which the server reads from the
+   * checkout's `refs/remotes/origin`; a mirror's branch is the origin's). Otherwise the
+   * page's commit, which a branch not pushed may not have put on github.com either.
+   *
+   * @param {NonNullable<NonNullable<Window["metabrowser"]>["repository"]>} context
+   * @param {boolean} onOrigin
+   * @param {string} [viewRef]
+   * @returns {{ref: string, note: string}}
+   */
+  function pageRef(context, onOrigin, viewRef) {
+    if (viewRef) {
+      return { ref: viewRef, note: "" };
+    }
+    if (context.branch && onOrigin) {
+      return { ref: context.branch, note: "" };
+    }
+    return {
+      ref: context.revision,
+      note: context.branch
+        ? `${context.branch} is not pushed, so this commit may not be on github.com either`
+        : "",
+    };
+  }
+
+  /**
+   * The item's page on github.com: a folder's tree or a file's blob at `item.ref`, under
+   * the served root's place in the repository. Null without a repository on github.com,
+   * for which the SDK's `repository` is null.
    *
    * @param {NonNullable<Window["metabrowser"]>["repository"]} context the SDK's `repository`
    * @param {string} path the item's path identity; "" is the served root
-   * @param {{folder: boolean, sourceKind: string}} item
+   * @param {{folder: boolean, sourceKind: string, ref: string}} item
    * @returns {string | null}
    */
   function pageUrl(context, path, item) {
-    if (context?.host !== "github.com") {
+    if (!context) {
       return null;
     }
-    const ref = (context.branch || context.revision).split("/").map(escapeText);
+    const ref = item.ref.split("/").map(escapeText);
     const place = context.served_prefix ? context.served_prefix.split("/").map(escapeText) : [];
     const segments = path.replace(/\/+$/, "");
     const below = segments
@@ -89,11 +116,13 @@
 
   /**
    * The toggle: the Metabrowser mark, the current view, then the GitHub mark, a link to
-   * `url`. A group of two, each with its name for a screen reader and its tooltip.
+   * `url`. A group of two, each with its name for a screen reader and its tooltip; `note`
+   * adds what the tooltip says of the link's ref.
    * @param {Document} doc
    * @param {string} url
+   * @param {string} [note]
    */
-  function toggle(doc, url) {
+  function toggle(doc, url, note = "") {
     const group = doc.createElement("span");
     group.className = "view-header-toggle";
     group.setAttribute("role", "group");
@@ -110,7 +139,7 @@
     there.target = "_blank";
     there.rel = "noopener noreferrer";
     there.setAttribute("aria-label", "View on GitHub");
-    there.dataset.tipText = `View on GitHub: ${url.replace("https://", "")}`;
+    there.dataset.tipText = `View on GitHub: ${url.replace("https://", "")}${note ? `. ${note}` : ""}`;
     for (const option of [here, there]) {
       const mark = doc.createElement("span");
       mark.className = "view-header-toggle-mark";
@@ -123,7 +152,8 @@
 
   /**
    * End the committed view header's heading row with the toggle, once. The header names
-   * its item (`data-path`); a page with no repository on github.com gets nothing.
+   * its item (`data-path`), and a view that names its own ref its ref (`data-ref`); a page
+   * with no repository on github.com gets nothing.
    * @param {Document} doc
    */
   function sync(doc) {
@@ -133,14 +163,22 @@
       return null;
     }
     const sdk = window.metabrowser;
-    const url = pageUrl(sdk?.repository ?? null, header.dataset.path ?? "", {
+    const context = sdk?.repository ?? null;
+    if (!context) {
+      return null;
+    }
+    // `branch_on_origin` rides in the context the server wrote, beside what the SDK keeps.
+    const onOrigin = window.METABROWSER_REPOSITORY_CONTEXT?.branch_on_origin === true;
+    const { ref, note } = pageRef(context, onOrigin, header.dataset.ref);
+    const url = pageUrl(context, header.dataset.path ?? "", {
       folder: header.classList.contains("folder-header"),
       sourceKind: sdk?.sourceKind() ?? "filesystem",
+      ref,
     });
     if (url === null) {
       return null;
     }
-    const control = toggle(doc, url);
+    const control = toggle(doc, url, note);
     end.append(control);
     return control;
   }
@@ -160,5 +198,5 @@
     start();
   }
 
-  window.MetabrowserGithubPage = Object.freeze({ pageUrl, sync, toggle });
+  window.MetabrowserGithubPage = Object.freeze({ pageRef, pageUrl, sync, toggle });
 })();

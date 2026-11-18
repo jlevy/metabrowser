@@ -47,7 +47,10 @@ here from the same folder server, whose answer at such an address is the page th
 it serves no GitHub repository) and a pinned revision's page (``git-path.js``, which the
 server names in ``PIN_STARTUP_SCRIPTS``; ``tests/test_serve_pin.py`` holds a real pin's
 shell to that list). The session runs on the pull-request shell too, so a
-script-initiated request there fails the check as well.
+script-initiated request there fails the check as well. A checkout whose ``origin`` is on
+github.com carries the view header's GitHub toggle (``static/github-page.js``) inline, in
+its HTML rather than as a script it requests, so the gate's count never sees it; the
+summary reports those inline bytes beside the budget too, from that checkout's shell.
 
 **The limits** are read from the budget file. There is no second copy here to drift.
 
@@ -60,6 +63,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -162,12 +166,25 @@ def startup_script_paths(html: str) -> list[str]:
     return [path for path in paths if not path.startswith(VENDOR_PREFIX)]
 
 
-def render_shells(*addresses: str) -> list[str]:
+def _github_checkout(folder: Path) -> None:
+    """Make *folder* a checkout whose ``origin`` is on github.com, as the server reads one."""
+
+    git = folder / ".git"
+    (git / "refs" / "heads").mkdir(parents=True)
+    (git / "config").write_text(
+        '[remote "origin"]\n\turl = https://github.com/octo/demo.git\n', encoding="utf-8"
+    )
+    (git / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    (git / "refs" / "heads" / "main").write_text(f"{'0' * 40}\n", encoding="utf-8")
+
+
+def render_shells(*addresses: str, github: bool = False) -> list[str]:
     """The shell a folder's server answers each of *addresses* with.
 
     The folder is an empty one of this function's own, so the answer does not depend on
     what the process happened to be serving, and the request goes through the
-    application's routes and middleware as a browser's does.
+    application's routes and middleware as a browser's does. With *github*, the folder is
+    a checkout whose ``origin`` is on github.com.
     """
 
     from metabrowser import server
@@ -184,8 +201,21 @@ def render_shells(*addresses: str) -> list[str]:
         return shells
 
     with tempfile.TemporaryDirectory(prefix="metabrowser-startup-scripts-") as folder:
+        if github:
+            _github_checkout(Path(folder))
         server._set_root_dir(Path(folder).resolve())  # pyright: ignore[reportPrivateUsage]
         return asyncio.run(answer())
+
+
+_INLINE_SCRIPT = re.compile(r"<script>(.*?)</script>", re.S)
+
+
+def inline_script_bytes(html: str, beside: str) -> int:
+    """The sent bytes of *html*'s inline scripts that *beside*, a folder's shell, lacks."""
+
+    present = set(_INLINE_SCRIPT.findall(beside))
+    added = [body for body in _INLINE_SCRIPT.findall(html) if body not in present]
+    return sent_body_bytes("".join(added).encode("utf-8")) if added else 0
 
 
 def render_folder_shell() -> str:
@@ -405,6 +435,15 @@ def main() -> int:
             f"{sum(script.transfer_bytes for script in others):,} bytes "
             f"({beside_budget(others, limits)}; not gated)"
         )
+    # A github.com checkout's shell carries the GitHub toggle inline, in its HTML.
+    github_html = render_shells(FOLDER_ADDRESS, github=True)[0]
+    inline = inline_script_bytes(github_html, folder_html)
+    spare = limits.transfer_bytes - total - inline
+    print(
+        f"  a github.com checkout adds {inline:,} bytes of inline script (its repository context and github-page.js): "
+        f"{total + inline:,} bytes "
+        f"({f'{spare:,} bytes under' if spare >= 0 else f'{-spare:,} bytes over'}; not gated)"
+    )
     if not found:
         return 0
     print("Startup-script budget exceeded:", file=sys.stderr)
