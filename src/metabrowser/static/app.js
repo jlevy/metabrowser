@@ -9763,11 +9763,10 @@ async function revealWithin(
 }
 
 /**
- * Scroll the row *find* names into view once *travel*, the opening of the folders above it,
- * has ended, if the reveal that asked still stands and the row's folder is still open. The
- * reveal does not wait for it: the file it opens loads meanwhile.
+ * Scroll *find*'s row into view once *travel* ends, if its reveal stands and its folder is
+ * open. The reveal does not wait: its file loads meanwhile.
  *
- * @param {Promise<unknown>} travel From folderTravelAbove.
+ * @param {Promise<unknown>} travel
  * @param {() => Element | null} find
  * @param {() => boolean} isCurrent
  */
@@ -9781,17 +9780,9 @@ function scrollIntoViewOnceOpen(travel, find, isCurrent) {
 }
 
 /**
- * The end of the travel of every folder above *row* that is still opening, or null when
- * none is: a row is scrolled into view only once its folders are open.
- *
- * A folder's body clips its rows while its height travels up from 0 (styles.css,
- * "Disclosure motion"), and a landing's reveal opens its folders that way (the
- * `revealInTree` call that ends the shell's DOMContentLoaded handler). A row scrolled into
- * view before the travel ended was scrolled within that body, which can scroll because it
- * clips, rather than within the pane, whose scroll height did not hold the row yet. Once
- * the folder had opened, its body's own scroll was gone, the pane was still at its top, and
- * the row lay below it: a landing on the 906th file of a 1,000-file folder left its row
- * 7,433 px below the top of a 566 px pane, on every load (headless Chrome 152, 2026-11-18).
+ * The end of the travel of every folder above *row* still opening, or null. An opening
+ * folder's body clips its rows and can scroll: a row scrolled into view then was scrolled
+ * within it, not the pane, and lay far below the pane once it opened (mb-551m).
  *
  * @param {Element} row
  * @returns {Promise<unknown> | null}

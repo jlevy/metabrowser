@@ -21,7 +21,7 @@
 // step moves focus.
 //
 // `files tree` lifts app.js's tree reveal and page mounting verbatim (`revealFileRow`,
-// `revealInTree`, `revealWithin`, `mountTreePageHolding`, `mountTreePageAt`,
+// `revealInTree`, `revealWithin` and its scroll, `mountTreePageHolding`, `mountTreePageAt`,
 // `mountNextTreePage`, `setSelectedPath`, and the outside-filter note), and its insert of
 // a file that arrives while the page is open (`_insertRowSorted` and the "more" rows'
 // totals), over a stand-in tree: closed folders open; in a folder of 1,400 files only the
@@ -488,6 +488,11 @@ async function filesStory() {
   FakeElement.prototype.scrollIntoView = function scrollIntoView() {
     scrolled.push(this.dataset.path);
   };
+  // The stand-in tree has no disclosure travel, so a reveal scrolls at once
+  // (folderTravelAbove); a real one's travel is tests/dom/nav-reveal-chrome.mjs's.
+  FakeElement.prototype.getAnimations ??= function getAnimations() {
+    return [];
+  };
   const context = createContext(document, "/view/", ["tree-expansion.js"]);
   const filter = { state: { recency: "all", types: null, size: "all", showIgnored: true } };
   const TREE_PAGE_SIZE = Number(/\nconst TREE_PAGE_SIZE = (\d+);/.exec(appSource)[1]);
@@ -557,6 +562,8 @@ async function filesStory() {
       "mountTreePageHolding",
       "setFolderExpanded",
       "revealWithin",
+      "scrollIntoViewOnceOpen",
+      "folderTravelAbove",
       "revealInTree",
       "revealFileRow",
       // A file that arrives while the page is open (the live inventory's insert).
