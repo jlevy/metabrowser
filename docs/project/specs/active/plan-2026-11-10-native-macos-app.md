@@ -578,7 +578,8 @@ left of that bead is the route below and which roots skip Phase 3’s confirmati
   The app’s native switching (a window that shows any open folder, the title as a
   chooser, and a switcher panel) is
   [its own plan](plan-2026-11-18-macos-folder-switching.md), which needs neither the
-  route nor the registry.
+  route nor the registry, and takes a shell-only exemption, `app.folder-chooser`, until
+  the registry exists.
 - [ ] An optional MCP stdio adapter over registered routes (`mb-5lgp`).
 
 ### Phase 5: Setup, Runtime, and Updates

@@ -9,8 +9,9 @@ import WebKit
 /// server directly; this class only decides which navigations stay in the page.
 ///
 /// A window shows one page at a time (`BrowserWindowController`), and the page belongs to
-/// its folder's session, not to the window: so a window can show another folder's page
-/// in its place. `host` is the window showing the page, if one is.
+/// its folder's session, not to the window, which only hosts it, so a window can show
+/// another page in its place without becoming another window. `host` is the window
+/// showing the page, if one is.
 final class FolderPage: NSViewController, NSMenuItemValidation {
     static let zoomKey = "pageZoom"
     static let inspectorKey = "WebInspectorEnabled"
@@ -19,8 +20,9 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
     /// gives up its web view (`discardPage`).
     private(set) var webView: DropAwareWebView
     private(set) weak var session: FolderSession?
-    /// The window showing the page, while one is. A window sets it when it shows the page
-    /// and clears it when it shows another (`BrowserWindowController.show`).
+    /// The window showing the page, while one is. Its controller sets it when it hosts the
+    /// page, and clears it when the window closes or shows another page in its place
+    /// (`BrowserWindowController.show`).
     weak var host: BrowserWindowController?
     private var policy = NavigationPolicy()
     private let container: WebContainerView
@@ -32,7 +34,7 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
     /// The page to load next: one asked for (a file opened here, a restored tab's page),
     /// else the one shown before the server restarted or the page gave up its web view;
     /// and the loads waiting to load it, of which only the newest may (`PageLoads`).
-    private var pages: PageLoads
+    private var loads: PageLoads
     /// The folder's server while it is ready.
     private var endpoint: ServerEndpoint?
     /// Whether the page gave up its web view (`TabDiscardPolicy`). It loads again when it
@@ -49,12 +51,12 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
     /// it returns to be built from the configuration WebKit hands it. `page` is the page to
     /// load once the server is ready, and a `discarded` page loads it only when shown.
     init(
-        session: FolderSession, configuration: WKWebViewConfiguration? = nil, page: PageAddress? = nil,
+        session: FolderSession, configuration: WKWebViewConfiguration? = nil, page address: PageAddress? = nil,
         discarded: Bool = false
     ) {
         self.session = session
         webView = Self.makeWebView(configuration ?? WebConfiguration.make(pagePrints: Self.pagePrints))
-        pages = PageLoads(requested: page)
+        loads = PageLoads(requested: address)
         isDiscarded = discarded
 
         let statusView = NSHostingView(rootView: StatusView(
@@ -113,7 +115,7 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
     // MARK: - Server state
 
     func showStarting() {
-        pages.cancelAll()
+        loads.cancelAll()
         rememberPage()
         supersedeLoad()
         endpoint = nil
@@ -122,7 +124,7 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
     }
 
     func showFailure(_ failure: ServerFailure) {
-        pages.cancelAll()
+        loads.cancelAll()
         rememberPage()
         supersedeLoad()
         endpoint = nil
@@ -160,14 +162,14 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
     /// Loads the page this page is to show, on the new origin, or the server's entry
     /// page. A discarded page only remembers the server until it is shown.
     func attach(_ endpoint: ServerEndpoint, authorization: WebAuthorization) {
-        let ticket = pages.begin()  // which supersedes every load still waiting
+        let ticket = loads.begin()  // which supersedes every load still waiting
         policy.origin = endpoint.origin
         self.endpoint = endpoint
         if isDiscarded { status.phase = .reloading }
         Task {
             await install(authorization, for: endpoint)
             guard self.endpoint == endpoint, !isDiscarded else { return }
-            load(pages.take(for: ticket), from: endpoint)
+            load(loads.take(for: ticket), from: endpoint)
         }
     }
 
@@ -177,9 +179,9 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         self.endpoint = endpoint
     }
 
-    /// Shows `page` now if the server is ready and still answers, or once it is ready.
-    func show(_ page: PageAddress) {
-        pages.request(page)
+    /// Shows `address` now if the server is ready and still answers, or once it is ready.
+    func show(_ address: PageAddress) {
+        loads.request(address)
         isDiscarded = false
         if let endpoint { loadNextPageOnceAnswered(from: endpoint) }
     }
@@ -190,8 +192,8 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
     /// forward, is superseded, since the old server can go on serving while the restart
     /// waits at the launch gate (`ServerSupervisor.restart`).
     func showEntryPage() {
-        pages.cancelAll()
-        pages.requestEntry()
+        loads.cancelAll()
+        loads.requestEntry()
         isDiscarded = false
     }
 
@@ -202,14 +204,14 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
 
     /// The page to save for the next launch.
     var currentPage: PageAddress? {
-        pages.saved(showing: currentServerURL.flatMap(PageAddress.init))
+        loads.saved(showing: currentServerURL.flatMap(PageAddress.init))
     }
 
     /// Gives up the page's web view, which ends its WebContent process, and keeps the
     /// page to load again from the folder's server when it is shown.
     func discardPage() {
         guard !isDiscarded else { return }
-        pages.cancelAll()
+        loads.cancelAll()
         rememberPage()
         isDiscarded = true
         reveal.supersede()  // the discarded view is stopped below
@@ -238,19 +240,19 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
     /// every page of the folder says so. Only the newest waiting load loads (`PageLoads`),
     /// so overlapping requests end on the newest page.
     private func loadNextPageOnceAnswered(from endpoint: ServerEndpoint) {
-        let ticket = pages.begin()
+        let ticket = loads.begin()
         Task {
             guard let session, case .healthy = await session.checkHealth(), self.endpoint == endpoint,
                   !isDiscarded
             else { return }
-            load(pages.take(for: ticket), from: endpoint)
+            load(loads.take(for: ticket), from: endpoint)
         }
     }
 
     /// Loads the page a ticket's turn gives, or nothing for a superseded ticket.
     private func load(_ turn: PageLoads.Load, from endpoint: ServerEndpoint) {
-        guard case .page(let page) = turn else { return }
-        load(page.flatMap { $0.url(on: endpoint.origin) } ?? endpoint.entryURL)
+        guard case .page(let address) = turn else { return }
+        load(address.flatMap { $0.url(on: endpoint.origin) } ?? endpoint.entryURL)
     }
 
     func load(_ url: URL) {
@@ -275,23 +277,23 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
     }
 
     private func rememberPage() {
-        if let page = currentServerURL.flatMap(PageAddress.init) { pages.remember(shown: page) }
+        if let address = currentServerURL.flatMap(PageAddress.init) { loads.remember(shown: address) }
     }
 
     // MARK: - Shown and closed
 
-    /// The window showing the page became key, which is how a tab is selected, or the
-    /// window began to show it: a discarded page loads again, and the folder counts it as
-    /// shown.
+    /// The window showing the page became key, which is how a tab is selected, or the window
+    /// began to show it (`FolderWindows.switchWindow`): a discarded page loads again, and
+    /// the folder counts it as shown.
     func shown() {
         revivePage()
         session?.pageShown(self)
     }
 
-    /// The page is gone for good: its window closed, or its folder did. Nothing it started
-    /// may load or call back after this.
+    /// The page is gone for good: its window closed, or its folder did (Close Folder). Nothing it started may load or call
+    /// back after this.
     func close() {
-        pages.cancelAll()
+        loads.cancelAll()
         textFinder.client = nil
         textFinder.findBarContainer = nil
         webView.stopLoading()
@@ -300,7 +302,7 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         session?.pageClosed(self)
     }
 
-    // MARK: - Menu actions (nil-targeted items reach the page through its window)
+    // MARK: - Menu actions (nil-targeted: BrowserWindowController.supplementalTarget says how they arrive)
 
     @objc func navigateBack(_ sender: Any?) { webView.goBack() }
     @objc func navigateForward(_ sender: Any?) { webView.goForward() }

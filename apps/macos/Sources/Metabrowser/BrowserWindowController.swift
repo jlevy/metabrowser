@@ -11,8 +11,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
 
     /// The page the window shows.
     private(set) var page: FolderPage
-    /// Holds the shown page's view, so a page can be put in place of another without the
-    /// window resizing to fit it, as setting a content view controller would.
+    /// Holds the page's view, filling the window. The page is not the window's content view
+    /// controller, since setting one resizes the window to fit its view.
     private let pageHost = NSView()
     private let titleAccessory = TitleAccessoryController()
     private let markAccessory = TitleBarMarkController()
@@ -131,8 +131,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     }
 
     /// The page's menu actions (Back, Reload, Find, Print, Zoom, and the rest) are the
-    /// page's: nil-targeted items reach the window and its controller, which hand them to
-    /// the page the window shows.
+    /// page's. Nil-targeted items reach the page along the responder chain while the focus
+    /// is in it, since the page follows its view there. While the window itself is first
+    /// responder, as before the page first loads, the chain is the window and this
+    /// controller, which hands them to the page here.
     override func supplementalTarget(forAction action: Selector, sender: Any?) -> Any? {
         page.responds(to: action) ? page : super.supplementalTarget(forAction: action, sender: sender)
     }

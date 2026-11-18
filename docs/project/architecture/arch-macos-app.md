@@ -415,8 +415,17 @@ Applications.
   print, and downloads.
   It belongs to the folder’s session, which counts its pages, not its windows, so the
   server stops when the last page closes.
+  The session and the window’s controller hold the page, and the page holds its window
+  weakly. AppKit holds a window’s controller and delegate weakly too (`NSWindow.h`), so
+  each controller keeps itself in `BrowserWindowController.open` from its creation until
+  its window closes. Without that, the controller is released as soon as its window is
+  made: closing the window then closes no page and stops no server, and the saved
+  session finds no windows.
+  The menus’ page actions are nil-targeted, and while the focus is in the page they
+  reach it along the responder chain, in which the page follows its view.
   A window (`BrowserWindowController`) holds only the window and its chrome, and shows
-  one page at a time; the menus’ page actions reach the page it shows through the window
+  one page; while the window itself is first responder, as it is before its page first
+  loads, the menus’ page actions still reach the page it shows through the window
   controller (`supplementalTarget(forAction:sender:)`).
 - **Open folders.** A folder is open from when its session is made until its last page
   closes, and **in the background** while its one page has no window, because a window
