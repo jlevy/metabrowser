@@ -78,6 +78,9 @@ It links each document below and the contributor standards in `docs/`.
 - [Plugin authoring for objects, views, and view state](specs/active/plan-2026-11-18-plugin-authoring-objects-views.md):
   what a plugin’s manifest, JavaScript, and Python declare for object types, views,
   collections, and view state parts; a draft
+- [The Recent tab: updates, events, and working-tree changes](specs/active/plan-2026-11-18-recent-tab-updates-and-events.md):
+  a main tab of what changed in the served root, by folder, Git, and GitHub tier, with
+  changes clumped into updates and notable events on their own rows; a draft
 - [Documentation from first principles](specs/active/plan-2026-11-14-documentation-from-first-principles.md):
   one owner per fact, task guides, architecture documents for every layer, a baseline
   scale benchmark, and checks that keep the set linked
