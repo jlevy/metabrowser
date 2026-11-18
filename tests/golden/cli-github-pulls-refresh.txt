@@ -1105,7 +1105,7 @@ status: 200
   "refreshing": false,
   "last_refresh": null,
   "comparison_route": null,
-  "snapshot_route": null,
+  "image_route": null,
   "rendered_route": null,
   "record": null,
   "core_preview": {
@@ -1186,7 +1186,7 @@ status: 200
   "refreshing": false,
   "last_refresh": null,
   "comparison_route": null,
-  "snapshot_route": null,
+  "image_route": null,
   "rendered_route": null,
   "record": null,
   "core_preview": {

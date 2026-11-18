@@ -75,12 +75,27 @@ from metabrowser.asset_stamps import StampedStaticFiles, StampedTree, split_stam
 from metabrowser.build_version import display_version_line
 from metabrowser.builtin_plugins.html.detect import sniff_full_page_html
 from metabrowser.cache.routes import CACHE_ROUTES
-from metabrowser.capabilities import get_capabilities, raw_sandbox_csp, untrusted_shell_csp
+from metabrowser.capabilities import (
+    capabilities_for,
+    get_capabilities,
+    raw_sandbox_csp,
+    untrusted_shell_csp,
+)
 
 # Cache invalidator: clear_charts_cache is invoked by the root-change
 # handler so chart memos don't stick across served-root swaps.
 from metabrowser.charts import clear_charts_cache
+from metabrowser.checkout_revisions import checkout_revisions, lifespan_checkout
+from metabrowser.client_disconnect import CLIENT_CLOSED, unless_disconnected
 from metabrowser.content_sniff import ContentClass, sniff_artifact
+from metabrowser.diff.markdown_projection_worker import (
+    InertRender,
+    InertRenderRefused,
+    kpress_refusal_payload,
+    shared_worker,
+    start_for_pages,
+    text_identity,
+)
 from metabrowser.dotenv import load_dotenv_chain
 from metabrowser.embedded_resources import embedded_raw_paths
 from metabrowser.encoded_assets import EncodedAssetResponse
@@ -209,6 +224,7 @@ from metabrowser.settings import (
     client_settings_dict,
 )
 from metabrowser.source import (
+    SubjectNotOpenError,
     UnsupportedSourceCapabilityError,
     as_git_revision_subject,
     get_source_session,
@@ -224,6 +240,7 @@ from metabrowser.source_routes import (
     SOURCE_ROUTES,
     SourcePinGuard,
     SourceStatus,
+    crossed_view_href,
     source_status,
 )
 from metabrowser.sse import api_stream
@@ -1033,7 +1050,11 @@ class _RawTrustHeaderMiddleware:
             return
 
         started = False
-        active_content = get_capabilities().active_content
+        # The profile of the subject served as the request arrives: a pin is never
+        # trusted. The handler resolves the subject again and marks the scope when it
+        # answers a pin (`_RAW_PINNED_SCOPE`), so a pin attached in between still gets a
+        # pin's headers; a pin replaced in between keeps the stricter ones it began with.
+        process_active = capabilities_for(pinned_revision=_pin_is_served()).active_content
 
         # ``MutableMapping``, not ``dict``: this wrapper is handed to
         # ``Response.__call__`` below, whose ``Send`` alias is written
@@ -1042,6 +1063,7 @@ class _RawTrustHeaderMiddleware:
             nonlocal started
             if message.get("type") == "http.response.start":
                 started = True
+                active_content = process_active and not scope.get(_RAW_PINNED_SCOPE, False)
                 headers = MutableHeaders(scope=message)
                 # A raster image runs nothing, so it never needs `allow-scripts`, and without it
                 # its policy is the same in both profiles (_PROFILE_INDEPENDENT_MEDIA_TYPES).
@@ -1067,7 +1089,7 @@ class _RawTrustHeaderMiddleware:
                     headers["Content-Type"] = "text/plain; charset=utf-8"
             await send(message)
 
-        if not active_content and _request_header(scope, b"sec-fetch-dest") in _CODE_DESTINATIONS:
+        if not process_active and _request_header(scope, b"sec-fetch-dest") in _CODE_DESTINATIONS:
             # Under the untrusted profile a browsed file is never a script, stylesheet,
             # or worker of any page, the application's included: its own static paths
             # are the only code it runs (capabilities.untrusted_shell_csp).
@@ -1091,6 +1113,23 @@ class _RawTrustHeaderMiddleware:
                     scope, receive, send_sandboxed
                 )
             raise
+
+
+# Set on a ``/raw`` request's scope by the handler when it answers a pinned revision.
+_RAW_PINNED_SCOPE: Final = "metabrowser.raw_pinned_revision"
+
+
+def _pin_is_served() -> bool:
+    """Whether a pinned revision is the served subject now, or is about to be.
+
+    A subject configured and not yet open is a pin's, so it counts: nothing is trusted on
+    its behalf.
+    """
+
+    try:
+        return as_git_revision_subject(get_source_session().subject) is not None
+    except SubjectNotOpenError:
+        return True
 
 
 class _SlowRequestLogMiddleware:
@@ -1279,6 +1318,13 @@ def _mirror_tip(status: SourceStatus) -> str | None:
 
     if status["location"] is None:
         return None
+    if status["origin"] is None:
+        # A revision of the served checkout: the directory is the reader's own folder, and
+        # the page is not the files in it.
+        return (
+            f"Committed revision {status['pin']} of the checkout in {status['location']}, "
+            "read from its Git objects: not the files in that folder now."
+        )
     borrowing = f", borrowing objects from {status['borrows']}" if status["borrows"] else ""
     return (
         f"Mirror of {status['origin']} at {status['pin']}, stored in {status['location']}"
@@ -1300,7 +1346,13 @@ def _mirror_heading_attrs(status: SourceStatus) -> str:
     if tip is None:
         return ""
     location = html_escape(status["location"] or "", quote=True)
-    return f' data-mirror-location="{location}" data-mirror-tip="{html_escape(tip, quote=True)}"'
+    # What the note after the main heading's address says before the location. A mirror
+    # is kept there, which is the words static/mirror-heading.js has; a checkout's
+    # revision is of the folder there, so its page names the words.
+    note = "" if status["origin"] is not None else ' data-mirror-note="committed revision of"'
+    return (
+        f' data-mirror-location="{location}"{note} data-mirror-tip="{html_escape(tip, quote=True)}"'
+    )
 
 
 @functools.cache
@@ -1372,9 +1424,7 @@ _DEFAULT_FONT_SET = _FONT_SETS[0]["value"]
 # preference cookies (see the index shell below, which explains the keys). It reads the
 # reading width from `window.MetabrowserDocumentWidth`, so a page embeds
 # :data:`_DOCUMENT_WIDTH_SCRIPT` before it, and that script reads its default from
-# `window.METABROWSER_SETTINGS`, which the shell writes first. Pages outside the shell that
-# show a reader's content, such as a pull request's revision file, embed all three through
-# :func:`page_preference_scripts`.
+# `window.METABROWSER_SETTINGS`, which the shell writes first.
 _THEME_BOOTSTRAP_SCRIPT = """
   (function () {
     function cookie(name) {
@@ -1412,20 +1462,6 @@ _THEME_BOOTSTRAP_SCRIPT = """
   """.replace("__FONT_VALUES__", _json.dumps([s["value"] for s in _FONT_SETS])).replace(
     "__FONT_DEFAULT__", _DEFAULT_FONT_SET
 )
-
-
-# The one setting the width script needs on a page outside the shell. Static, so a policy
-# can allow it by hash; the shell's own settings block names this build and store too.
-_PAGE_SETTINGS_SCRIPT = (
-    f"window.METABROWSER_SETTINGS={_json.dumps({'DOC_MAX_CHARS_DEFAULT': DOC_MAX_CHARS_DEFAULT})};"
-)
-
-
-def page_preference_scripts() -> tuple[str, ...]:
-    """The inline scripts, in order, that apply the reader's display preferences on a page
-    outside the shell: the width default, the width state machine, and the theme bootstrap."""
-
-    return (_PAGE_SETTINGS_SCRIPT, _DOCUMENT_WIDTH_SCRIPT, _THEME_BOOTSTRAP_SCRIPT)
 
 
 # Prefetched-tier scheduling. The chain waits for the page to be idle so it
@@ -1472,21 +1508,35 @@ async def index(
     # tree, so this comes before the first one is written.
     plugin_prefixes, kpress_prefix = await _shell_asset_prefixes()
 
-    pin = as_git_revision_subject(get_source_session().subject)
+    subject = get_source_session().subject
+    pin = as_git_revision_subject(subject)
     git_pin = pin is not None
+    # The folder this page is of, read once with its subject: a folder's server can come
+    # to serve a revision of its checkout while this request awaits, and a second reading
+    # would then find no folder.
+    folder_root = subject.filesystem_root
+    # The trust profile of this page is its subject's, decided here before anything is
+    # awaited: a pin is never trusted, so a switch of the served subject while this
+    # request renders cannot hand a revision's shell the folder's policy.
+    page_capabilities = capabilities_for(pinned_revision=git_pin)
     # Only a pin has a mirror session; a folder's shell never reads the app's state.
     mirror = mirror_session(request.app) if pin is not None else None
+    # The served checkout's own refs and revisions: a folder that is a repository's root,
+    # on its working tree and on each revision it shows. A mirror and a plain folder
+    # have none. Kept for the process, as the session is, so a folder's shell still
+    # reads nothing of the application's state.
+    checkout = checkout_revisions()
     # The tab's title, and a native window's: what the served subject is called, from the
     # model `/api/identity` answers, so the two cannot disagree. A page changes subject
     # only by loading again, so the title written here stays current.
-    page_title = html_escape(root_identity(mirror)["title"])
+    page_title = html_escape(root_identity(mirror, checkout)["title"])
     if pin is not None:
         # Imported where a pin is served, like every other Git import below: the
         # modules behind a pinned revision are start-up work a folder never uses.
         from metabrowser.git.tree_source import ref_branch_name
 
         pin_oid = pin.commit_oid
-        status = source_status(mirror)
+        status = source_status(mirror, checkout)
         initial_path = _pin_label_html(status)
         # A mirror's served root is the repository's name, as a folder's is its path:
         # what the file header's prefix and this heading's tooltip call the root.
@@ -1509,7 +1559,7 @@ async def index(
         initial_root = html_escape(_display_root_str(), quote=True)
         mirror_attrs = mirror_class = ""
         repository_context = await asyncio.to_thread(
-            discover_repository_context, session_filesystem_root()
+            discover_repository_context, _shell_folder(folder_root)
         )
     version_line = html_escape(display_version_line("metab", __version__))
     styles_url = _static_asset_url("styles.css")
@@ -1573,7 +1623,10 @@ async def index(
     # duplicating constants in the source. A store's token travels beside the build, so
     # an answer a browser keeps is scoped to this store; a folder has none.
     client_settings = {
-        **client_settings_dict(syntax_highlight_max_bytes=_SYNTAX_HIGHLIGHT_MAX_BYTES),
+        **client_settings_dict(
+            syntax_highlight_max_bytes=_SYNTAX_HIGHLIGHT_MAX_BYTES,
+            capabilities=page_capabilities,
+        ),
         "BUILD_TAG": BUILD_TAG,
     }
     if pin is not None:
@@ -1592,13 +1645,37 @@ async def index(
         if git_pin
         else ""
     )
-    # A mirror's branch and tag selector, filled by static/source-ref-selector.js. Only a
-    # pin served from a mirror has other refs to switch to.
-    source_ref_selector_row = (
-        '\n      <div class="source-ref-selector" id="source-ref-selector" hidden></div>'
-        if git_pin and mirror_session(request.app) is not None
-        else ""
-    )
+    # The branch and tag selector, filled by static/source-ref-selector.js: on a pin
+    # served from a mirror, and on a checkout, whose working tree and revisions it
+    # switches between. A plain folder and a pin with no mirror have nothing to switch to.
+    if checkout is not None:
+        # A checkout's row is drawn here with the button it will have, so that nothing
+        # below it moves when its module mounts, a moment after the tree's first rows:
+        # hidden until then, the row pushed the filter bar and every tree row down by its
+        # height (33 px in the default pane, which tests/test_files_totals_stable_chrome.py
+        # caught on a folder holding a `.git`). The module adopts this button, so focus a
+        # reader put on it stays (static/source-ref-selector.js#build), and removes the
+        # row when Git says the root is no repository.
+        if pin is None:
+            shown_ref = "Working tree"
+        else:
+            from metabrowser.checkout_revisions import checkout_ref_name
+
+            shown_ref = checkout_ref_name(pin.ref) or f"Commit: {pin.commit_oid[:12]}"
+        source_ref_selector_row = (
+            '\n      <div class="source-ref-selector" id="source-ref-selector">'
+            '<button type="button" class="chip chip-menu-trigger source-ref-selector-toggle'
+            ' disclosure-toggle" aria-haspopup="dialog" aria-expanded="false"'
+            ' data-tip-text="Switch branch or tag">'
+            f'<span class="source-ref-selector-label">{html_escape(shown_ref)}</span>'
+            '<span class="chip-menu-caret" aria-hidden="true"></span></button></div>'
+        )
+    else:
+        source_ref_selector_row = (
+            '\n      <div class="source-ref-selector" id="source-ref-selector" hidden></div>'
+            if git_pin and mirror is not None
+            else ""
+        )
     # The Pulls tab is decided here, from what the page already knows: a pin whose mirror is a
     # hosted repository, or a checkout, a subdirectory of one too, whose `origin` is on
     # github.com. It costs a plain folder nothing, not even a script in a bundle, and a page
@@ -1610,7 +1687,7 @@ async def index(
     # discovery removes it in the rare case Git does not agree. It comes after Pulls, in the
     # main tabs' order (static/main-tabs.js, MAIN_TABS).
     commits_tab = git_pin or await asyncio.to_thread(
-        lambda: (session_filesystem_root().resolve() / ".git").exists()
+        lambda: (_shell_folder(folder_root).resolve() / ".git").exists()
     )
     # A commit's address lands on Commits, so it is drawn in front, with its toolbar and its
     # panel's container, and the landing never shows Files and then swaps it. The neutral Git
@@ -1837,6 +1914,14 @@ async def index(
         )
         if mirror_attrs:
             repository_context_block += f"<script>{_mirror_heading_script()}</script>"
+    if checkout is not None:
+        # A checkout's page says so, and whether it shows the working tree: the ref
+        # selector reads it for what it offers, and the pin guard, which the selector's
+        # bundle brings to a working-tree page, for what the page's requests name.
+        page_checkout = _json.dumps({"working_tree": pin is None})
+        repository_context_block += (
+            f"<script>window.METABROWSER_SOURCE_CHECKOUT={page_checkout};</script>"
+        )
     # Read preferences from host-only cookies (not localStorage): cookies
     # ignore the port, so the choice is shared across every metabrowser instance
     # on this host (each folder server lands on its own port). Runs before the
@@ -1949,10 +2034,26 @@ async def index(
         # this; a pin starts it after the first tree request settles, and the
         # label it paints is a quiet row the page does not wait for.
         "source-freshness": [{"src": source_freshness_url}],
-        # Only a pin served from a mirror has the selector; it is fetched after the
-        # first tree request settles, like the freshness row, and no request is made
-        # for the refs until a reader opens it.
-        "source-ref-selector": [{"src": source_ref_selector_url}],
+        # Only a pin served from a mirror, or a checkout, has the selector; it is fetched
+        # after the first tree request settles, like the freshness row, and no request is
+        # made for the refs until a reader opens it. A pin's page carries the pin guard
+        # inline. A checkout's working-tree page takes it here, ahead of the selector
+        # that can make the server serve something else, so that a folder's first paint
+        # carries none of it: inline it would be 3,354 compressed bytes on the page of
+        # every checkout, most of which never switch. Measured 2026-11-18 in headless
+        # Chrome 152 from 127.0.0.1, three runs on a 10-core Mac at a load average of
+        # 13 to 16: the guard 3,354 compressed bytes in 8.6 to 10.5 ms and the selector
+        # 9,879 in 7.0 to 9.7 ms, both asked for 124 to 142 ms after the navigation
+        # began, once the first tree rows were in; the selector was mounted 170 to
+        # 181 ms after it (tests/dom/checkout-ref-selector-chrome.mjs prints them).
+        "source-ref-selector": [
+            *(
+                [{"src": _static_asset_url("source-pin-guard.js")}]
+                if checkout is not None and pin is None
+                else []
+            ),
+            {"src": source_ref_selector_url},
+        ],
         "source-append": [{"src": source_append_url}],
         "chart": [
             {"src": _static_asset_url("vendor/chart.umd.min.js"), "provides": "Chart"},
@@ -2223,7 +2324,7 @@ async def index(
   {optional_assets_block}
 </body>
 </html>"""
-    if get_capabilities().active_content:
+    if page_capabilities.active_content:
         return HTMLResponse(html)
     # An untrusted source: the page runs only what this server wrote. Every inline script
     # of the shell carries this response's nonce (capabilities.untrusted_shell_csp).
@@ -2239,21 +2340,52 @@ async def index(
     )
 
 
+def _shell_folder(root: Path | None) -> Path:
+    """The folder a shell was rendered for, read with its subject at the request's start."""
+
+    if root is None:
+        raise UnsupportedSourceCapabilityError("filesystem")
+    return root
+
+
 async def view_shell(request: Request) -> Response:
     """Serve the SPA shell only for one safely encoded canonical view path."""
 
     raw_path = request.scope.get("raw_path")
     if not isinstance(raw_path, bytes):
         return PlainTextResponse("Invalid view path.", status_code=400)
+    crossed: str | None = None
     if as_git_revision_subject(get_source_session().subject) is not None:
         from metabrowser.git.content_routes import decode_git_view_path
 
         decoded = decode_git_view_path(raw_path)
+        if decoded is None:
+            # A folder's address on a revision of its checkout: a tab, a history entry,
+            # or a bookmark from the working tree. It goes where a switch would send it.
+            crossed = await crossed_view_href(raw_path)
     else:
         decoded = decode_safe_view_path(raw_path)
+        # A revision's address on its checkout's working tree, unless the folder has an
+        # entry by that very name.
+        if (
+            decoded is not None
+            and decoded.startswith("g1-")
+            and not await asyncio.to_thread(_view_path_exists, decoded)
+        ):
+            crossed = await crossed_view_href(raw_path)
+    if crossed is not None:
+        return RedirectResponse(crossed, status_code=307)
     if decoded is None:
         return PlainTextResponse("Invalid view path.", status_code=400)
     return await index(request, view_path=decoded)
+
+
+def _view_path_exists(decoded: str) -> bool:
+    target = _safe_path(decoded)
+    try:
+        return target is not None and target.exists()
+    except OSError:
+        return False
 
 
 async def commit_shell(request: Request) -> Response:
@@ -3046,20 +3178,18 @@ async def api_recent(request: Request) -> JSONResponse:
     )
 
 
-def _json_safe_frontmatter(value: Any) -> Any:
-    """Coerce YAML-parsed scalars into JSON-serializable equivalents.
+def _markdown_frontmatter(ctx: FileContext, ext: str) -> tuple[dict[str, Any] | None, str | None]:
+    """A Markdown file's frontmatter and the reason it has none, for a worker thread.
 
-    YAML parses ``date: 2026-05-07`` as ``datetime.date``, which json.dumps
-    rejects — that path used to 500 the /api/file response. ISO-8601 is the
-    standard wire form for dates/times, so emit that instead.
+    ``FileContext.frontmatter`` is already the bounded, JSON-safe copy
+    (:mod:`metabrowser.frontmatter_yaml`); parsing it can still take seconds at the
+    byte bound (``FRONTMATTER_MAX_BYTES`` records how many), so callers run this off
+    the event loop.
     """
-    if isinstance(value, dict):
-        return {k: _json_safe_frontmatter(v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_json_safe_frontmatter(v) for v in value]
-    if isinstance(value, (_dt.date, _dt.time)):
-        return value.isoformat()
-    return value
+
+    if ext != ".md":
+        return None, None
+    return ctx.frontmatter, ctx.frontmatter_parse_error
 
 
 def _json_default_safe(obj: Any) -> Any:
@@ -3574,23 +3704,25 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
         # for specialized document detection.
         ctx = FileContext(target, ext)
 
-        def _classify_text_views() -> tuple[str, list[dict[str, Any]]]:
-            classified = _classify_with_plugins(target, ext, file_ctx=ctx)
-            return classified, _views_for_kind(classified, target=target)
-
-        with server_timing.phase("read"):
-            kind, views = await asyncio.to_thread(_classify_text_views)
-
         # For .md files, expose parsed frontmatter so plugin renderers can
         # use it directly via ctx.frontmatter without re-parsing client-side.
         # Malformed YAML fences must NOT silently fall through to markdown;
         # surface the parse error on the response so the operator sees it
         # instead of quietly substituting an empty frontmatter object.
-        frontmatter: dict[str, Any] | None = None
-        frontmatter_error: str | None = None
-        if ext == ".md":
-            frontmatter = _json_safe_frontmatter(ctx.frontmatter)
-            frontmatter_error = ctx.frontmatter_parse_error
+        def _classify_text_views() -> tuple[
+            str, list[dict[str, Any]], dict[str, Any] | None, str | None
+        ]:
+            classified = _classify_with_plugins(target, ext, file_ctx=ctx)
+            return (
+                classified,
+                _views_for_kind(classified, target=target),
+                *_markdown_frontmatter(ctx, ext),
+            )
+
+        with server_timing.phase("read"):
+            kind, views, frontmatter, frontmatter_error = await asyncio.to_thread(
+                _classify_text_views
+            )
         result: dict[str, Any] = {
             "type": "text",
             "kind": kind,
@@ -3763,6 +3895,7 @@ async def api_kpress_render(request: Request) -> Response:
 
         return await git_revision_kpress_render(
             pin,
+            request=request,
             subpath=subpath,
             view=view,
             profile=profile,
@@ -3861,31 +3994,65 @@ async def api_kpress_render(request: Request) -> Response:
         return JSONResponse({"error": str(exc)}, status_code=404)
 
     ctx = FileContext(target, ext)
+
+    def _classify_markdown() -> tuple[str, dict[str, Any] | None, str | None]:
+        return _classify_with_plugins(target, ext, file_ctx=ctx), *_markdown_frontmatter(ctx, ext)
+
     with server_timing.phase("read"):
-        kind = await asyncio.to_thread(_classify_with_plugins, target, ext, file_ctx=ctx)
-    frontmatter: dict[str, Any] | None = None
-    frontmatter_error: str | None = None
-    if ext == ".md":
-        frontmatter = _json_safe_frontmatter(ctx.frontmatter)
-        frontmatter_error = ctx.frontmatter_parse_error
+        kind, frontmatter, frontmatter_error = await asyncio.to_thread(_classify_markdown)
     mtime_hash = file_mtime_hash(target)
 
     try:
         with server_timing.phase("render"):
-            rendered = await asyncio.to_thread(
-                kpress_adapter.render_kpress_view,
-                source_text=content,
-                source_path=subpath,
-                kind=kind,
-                view=view,
-                ext=ext,
-                mtime_hash=mtime_hash,
-                size=logical_size,
-                frontmatter=frontmatter,
-                frontmatter_error=frontmatter_error,
-                profile=profile,
-                include_toc=include_toc,
-            )
+            if get_capabilities().active_content:
+                rendered = await asyncio.to_thread(
+                    kpress_adapter.render_kpress_view,
+                    source_text=content,
+                    source_path=subpath,
+                    kind=kind,
+                    view=view,
+                    ext=ext,
+                    mtime_hash=mtime_hash,
+                    size=logical_size,
+                    frontmatter=frontmatter,
+                    frontmatter_error=frontmatter_error,
+                    profile=profile,
+                    include_toc=include_toc,
+                )
+            else:
+                # A document the reader does not trust renders inert, in the Markdown
+                # child under its deadline (diff/markdown_projection_worker.py), and is
+                # known by its text, which a folder's file has no other name for. A
+                # client that goes away leaves the render to no one, and an abandoned
+                # render must not hold the child.
+                inert = await unless_disconnected(
+                    request,
+                    shared_worker().render_inert(
+                        InertRender(
+                            source_text=content,
+                            source_path=subpath,
+                            identity=await asyncio.to_thread(text_identity, content),
+                            kind=kind,
+                            view=view,
+                            ext=ext,
+                            mtime_hash=mtime_hash,
+                            size=logical_size,
+                            frontmatter=frontmatter,
+                            frontmatter_error=frontmatter_error,
+                            profile=profile,
+                            include_toc=include_toc,
+                        )
+                    ),
+                )
+                if inert is None:
+                    return Response(status_code=CLIENT_CLOSED)
+                rendered = inert
+    except InertRenderRefused as refused:
+        return JSONResponse(
+            kpress_refusal_payload(refused, subpath),
+            status_code=refused.http_status,
+            headers={"cache-control": "no-cache"},
+        )
     except kpress_adapter.KPressInvalidRequestError as exc:
         return JSONResponse(
             {
@@ -3906,10 +4073,6 @@ async def api_kpress_render(request: Request) -> Response:
             },
             status_code=502,
         )
-    if not get_capabilities().active_content:
-        # A document the reader does not trust renders inert (kpress_adapter.inert_render).
-        with server_timing.phase("render"):
-            rendered = kpress_adapter.inert_render(rendered)
     # The version of each file the document embeds, which the page puts in that file's
     # /raw address, so a replaced image is a new address (_raw_versions). Read on every
     # render, which is never kept: a render names the files as they are when it is asked.
@@ -4363,6 +4526,9 @@ async def raw_file(request: Request) -> Response:
     if pin is not None:
         from metabrowser.git.content_routes import git_revision_raw
 
+        # Said before anything is awaited: this answer is a pin's, whatever was served
+        # when the request arrived and whatever is by the time it is sent.
+        request.scope[_RAW_PINNED_SCOPE] = True
         return await git_revision_raw(request, pin)
     target = _raw_target_from_request(request)
     if target is None or not target.is_file():
@@ -4660,7 +4826,9 @@ def _resolve_container_child(subpath: str) -> JSONResponse | None:
     return None
 
 
-def _views_for_kind(kind: str, *, target: Path | None = None) -> list[dict[str, Any]]:
+def _views_for_kind(
+    kind: str, *, target: Path | None = None, active_content: bool | None = None
+) -> list[dict[str, Any]]:
     """Return the merged view list for a kind: built-in registry + plugin manifests.
 
     :func:`merge_views` owns the merge order and the override rule, and
@@ -4678,16 +4846,22 @@ def _views_for_kind(kind: str, *, target: Path | None = None) -> list[dict[str, 
     merged = merge_views(VIEW_REGISTRY.get(kind, []), _PLUGIN_VIEWS_BY_KIND.get(kind, []))
     out = check_view_keys(kind, merged).views
     if kind == "html":
-        out = _html_kind_views(out, target)
+        out = _html_kind_views(out, target, active_content=active_content)
     elif out and not any(v.get("default") for v in out):
         out[0] = {**out[0], "default": True}
     return live_view_keys(out)
 
 
-def _html_kind_views(views: list[dict[str, Any]], target: Path | None) -> list[dict[str, Any]]:
-    """Apply the html kind's capability gate and default-tab sniff."""
+def _html_kind_views(
+    views: list[dict[str, Any]], target: Path | None, *, active_content: bool | None = None
+) -> list[dict[str, Any]]:
+    """Apply the html kind's capability gate and default-tab sniff.
 
-    if not get_capabilities().active_content:
+    *active_content* is the caller's subject's: a pin's routes pass false, since a pin is
+    never trusted; a folder's leave it to the process's block.
+    """
+
+    if not (get_capabilities().active_content if active_content is None else active_content):
         remaining = [dict(view) for view in views if view["id"] != "preview"]
         if remaining and not any(view.get("default") for view in remaining):
             remaining[0] = {**remaining[0], "default": True}
@@ -4991,15 +5165,28 @@ async def _lifespan(app: Starlette) -> AsyncIterator[None]:
     # A served pin attaches before the inventory opens, which reads the active
     # subject, and closes after it, so nothing still reads its Git processes. The
     # refresh jobs start once the pin is attached and are cancelled before it closes.
+    # What a folder's server keeps for its checkout comes last, so it is left first: a
+    # revision of the checkout still served at shutdown is closed while the rest is up.
     async with (
         lifespan_subject(),
         build_lifespan(app=app, root_provider=_inventory_root_provider),
         lifespan_refresh(app),
+        lifespan_checkout(),
     ):
         try:
+            if not get_capabilities().active_content:
+                # Every document an untrusted session serves renders in the Markdown child,
+                # a served pin's among them, so a served one starts it now rather than at
+                # its first document, which would wait for it; a one-shot command starts
+                # nothing it may not use. Inside the try, so the close below reaps it.
+                start_for_pages()
             yield
         finally:
-            await close_history_sessions()
+            try:
+                # The Markdown child belongs to this loop; a later one starts its own.
+                await shared_worker().aclose()
+            finally:
+                await close_history_sessions()
 
 
 async def _query_work_limit_response(

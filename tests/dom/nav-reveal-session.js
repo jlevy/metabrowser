@@ -21,7 +21,7 @@
 // step moves focus.
 //
 // `files tree` lifts app.js's tree reveal and page mounting verbatim (`revealFileRow`,
-// `revealInTree`, `revealWithin`, `mountTreePageHolding`, `mountTreePageAt`,
+// `revealInTree`, `revealWithin` and its scroll, `mountTreePageHolding`, `mountTreePageAt`,
 // `mountNextTreePage`, `setSelectedPath`, and the outside-filter note), and its insert of
 // a file that arrives while the page is open (`_insertRowSorted` and the "more" rows'
 // totals), over a stand-in tree: closed folders open; in a folder of 1,400 files only the
@@ -29,8 +29,11 @@
 // of their own, which draw in order where they are; one above the reader's row grows up,
 // and one below grows down, with focus on its first row, after a second reveal too; an
 // arrival counts in every "more" row, and one that sorts last goes last; a reveal that
-// cannot show its row still takes the selection from the row that had it; and the note
-// names a file only when the filter is what hides it. The renderer stands in for
+// cannot show its row still takes the selection from the row that had it; the note
+// names a file only when the filter is what hides it; and a landing whose folder is still
+// opening scrolls its row once the folder's travel ends, not before, and only while the
+// address names it and the folder is open, to the row drawn in its place if it was drawn
+// again, while an endless animation holds no scroll. The renderer stands in for
 // renderTreeNodes, deferredTreePageHtml and _buildRowHtml, paging as they do
 // (TREE_PAGE_SIZE rows, then a "more" row), as the folder's lazy load stands in for the
 // server's.
@@ -486,7 +489,17 @@ async function filesStory() {
   };
   const scrolled = [];
   FakeElement.prototype.scrollIntoView = function scrollIntoView() {
-    scrolled.push(this.dataset.path);
+    scrolled.push(
+      this.isConnected ? this.dataset.path : `${this.dataset.path}, a row gone from the tree`,
+    );
+  };
+  // The stand-in tree lays nothing out, so it has no disclosure travel, and a reveal
+  // scrolls at once (folderTravelAbove), until the story gives one folder body the
+  // animations of a travel whose end it says (`travelling`). A real travel is
+  // tests/dom/nav-reveal-chrome.mjs's.
+  let travelling = null;
+  FakeElement.prototype.getAnimations = function getAnimations() {
+    return travelling?.body === this ? travelling.animations : [];
   };
   const context = createContext(document, "/view/", ["tree-expansion.js"]);
   const filter = { state: { recency: "all", types: null, size: "all", showIgnored: true } };
@@ -557,6 +570,7 @@ async function filesStory() {
       "mountTreePageHolding",
       "setFolderExpanded",
       "revealWithin",
+      "folderTravelAbove",
       "revealInTree",
       "revealFileRow",
       // A file that arrives while the page is open (the live inventory's insert).
@@ -799,6 +813,93 @@ async function filesStory() {
     path: context.currentPath,
     ...view(),
   });
+
+  // A landing whose folders travel as they open (revealInTree with `instant: false`, as the
+  // end of app.js's DOMContentLoaded calls it) scrolls its row once their travel ends, and
+  // then only if the address still names it, its folder is still open, and the tree holds
+  // a row for it, the one revealed or one drawn in its place (revealWithin). The
+  // long folder's body travels, with one animation whose `finished` the story resolves
+  // after *during*.
+  filter.state = { ...filter.state, types: null };
+  const landWhileOpening = async (what, filePath, during = async () => {}) => {
+    draw();
+    let end = () => {};
+    const finished = new Promise((resolve) => {
+      end = resolve;
+    });
+    travelling = {
+      body: panel.querySelector('.tree-folder[data-path="long"]').nextElementSibling,
+      animations: [{ finished, effect: { getComputedTiming: () => ({ endTime: 150 }) } }],
+    };
+    context.currentPath = filePath;
+    const shown = await context.revealInTree(filePath, {
+      instant: false,
+      isCurrent: () => context.currentPath === filePath,
+    });
+    steps.push({ step: what, path: filePath, shown, ...view() });
+    assert.deepEqual(
+      steps.at(-1).scrolled,
+      [],
+      "a reveal scrolled before its folder's travel ended",
+    );
+    await during();
+    end();
+    await settle();
+    travelling = null;
+  };
+  /** The step at the end of a landing's travel. */
+  const travelEnds = (what) => steps.push({ step: what, path: context.currentPath, ...view() });
+  await landWhileOpening(
+    "a landing in the long folder's fifth page, while the folder opens: selected, not yet scrolled",
+    longName(905),
+  );
+  travelEnds("its travel ends: the row is scrolled into view");
+  await landWhileOpening(
+    "a landing, then another file revealed during its travel: not yet scrolled",
+    longName(905),
+    () => reveal("the other file's reveal scrolls at once", "README.md"),
+  );
+  travelEnds("the travel ends: the landing no longer stands, so its row is not scrolled");
+  await landWhileOpening(
+    "a landing, then its folder closed during the travel: not yet scrolled",
+    longName(905),
+    async () => {
+      context.setFolderExpanded(panel.querySelector('.tree-folder[data-path="long"]'), false);
+    },
+  );
+  travelEnds("the travel ends: the folder is closed, so its row is not scrolled");
+  await landWhileOpening(
+    "a landing, then its row drawn again during the travel: not yet scrolled",
+    longName(905),
+    async () => {
+      const revealed = panel.querySelector(`.tree-item[data-path="${longName(905)}"]`);
+      const redrawn = fileRow(longName(905));
+      redrawn.className = revealed.className;
+      revealed.parentNode.insertBefore(redrawn, revealed);
+      revealed.remove();
+    },
+  );
+  travelEnds("the travel ends: the row drawn in its place is scrolled into view");
+  // Only a finite animation is waited on: an endless one on a folder's body would hold the
+  // scroll for good.
+  draw();
+  travelling = {
+    body: panel.querySelector('.tree-folder[data-path="long"]').nextElementSibling,
+    animations: [
+      {
+        finished: new Promise(() => {}),
+        effect: { getComputedTiming: () => ({ endTime: Infinity }) },
+      },
+    ],
+  };
+  context.currentPath = longName(905);
+  await context.revealInTree(longName(905), { isCurrent: () => true });
+  steps.push({
+    step: "an endless animation on the folder's body: the reveal scrolls at once",
+    path: context.currentPath,
+    ...view(),
+  });
+  travelling = null;
   return steps;
 }
 

@@ -234,4 +234,130 @@ private func supervisor(
         #expect(slow.state == .ready(endpoint))
         #expect(fast.state == .ready(endpoint))
     }
+
+    /// A start that waits at a held gate says so, and says when it has the gate, so a
+    /// repository's window can say it waits for another's start (review A4 on #539).
+    @Test func aStartWaitingAtTheGateSaysSo() async {
+        let gate = LaunchGate()
+        await gate.acquire()  // another start holds it
+        let child = FakeProcess()
+        child.say(servingLine)
+        let subject = ServerSupervisor(
+            spec: spec, launch: CLIServeLaunch(), policy: fastPolicy(), gate: gate, makeProcess: { _ in child },
+            probe: { _ in true })
+        let waits = Recorder<Bool>()
+        let events = Recorder<String>()
+        subject.onGateWait = { waits.append($0) }
+        subject.onEvent = { events.append($0) }
+        let started = Task { await subject.start() }
+        #expect(await eventually { waits.all == [true] })
+        #expect(events.all.first?.hasPrefix("waiting for another server") == true)
+        gate.release()
+        await started.value
+        #expect(waits.all == [true, false])
+        #expect(subject.state == .ready(endpoint))
+        await subject.stop()
+    }
+
+    /// A ready server, its children, and the gate it starts behind, for the restarts below.
+    private func gatedServer() async -> (ServerSupervisor, LaunchGate, () -> [FakeProcess]) {
+        let gate = LaunchGate()
+        var children: [FakeProcess] = []
+        let subject = ServerSupervisor(
+            spec: spec, launch: CLIServeLaunch(), policy: fastPolicy(), gate: gate,
+            makeProcess: { _ in
+                let child = FakeProcess(pid: pid_t(100 + children.count))
+                child.say(servingLine)
+                children.append(child)
+                return child
+            },
+            probe: { _ in true })
+        await subject.start()
+        return (subject, gate, { children })
+    }
+
+    /// C2 on #539: a restart of a ready server whose gate another start holds, such as
+    /// another repository's first clone, leaves the server serving until it has the gate,
+    /// and only then stops it.
+    @Test func aReadyServerServesUntilItsRestartHasTheGate() async {
+        let (subject, gate, children) = await gatedServer()
+        #expect(subject.state == .ready(endpoint))
+        await gate.acquire()  // another start holds it
+        let waits = Recorder<Bool>()
+        let events = Recorder<String>()
+        subject.onGateWait = { waits.append($0) }
+        subject.onEvent = { events.append($0) }
+        let next = LaunchSpec(executable: "/usr/bin/true")
+        let restarted = Task { await subject.restart(using: next) }
+        #expect(await eventually { waits.all == [true] })
+        #expect(events.all.last?.hasPrefix("waiting for another server's start to finish before this one restarts") == true)
+        try? await Task.sleep(for: .milliseconds(50))
+        #expect(subject.state == .ready(endpoint))
+        #expect(children().count == 1)
+        #expect(children()[0].signals.isEmpty)
+        gate.release()
+        await restarted.value
+        #expect(waits.all == [true, false])
+        #expect(children().count == 2)
+        #expect(children()[0].hasExited)
+        #expect(subject.pid == 101)
+        #expect(subject.spec == next)
+        #expect(subject.state == .ready(endpoint))
+        #expect(!gate.isHeld)
+        await subject.stop()
+    }
+
+    /// A newer restart takes the place of one waiting at the gate, so one child starts, on
+    /// the newest command; a stop meanwhile wins, and starts none.
+    @Test func aNewerRequestReplacesARestartWaitingAtTheGate() async {
+        let (subject, gate, children) = await gatedServer()
+        await gate.acquire()
+        let waits = Recorder<Bool>()
+        subject.onGateWait = { waits.append($0) }
+        let older = LaunchSpec(executable: "/usr/bin/older")
+        let newer = LaunchSpec(executable: "/usr/bin/newer")
+        let first = Task { await subject.restart(using: older) }
+        #expect(await eventually { gate.isHeld && subject.state == .ready(endpoint) })
+        try? await Task.sleep(for: .milliseconds(20))
+        let second = Task { await subject.restart(using: newer) }
+        try? await Task.sleep(for: .milliseconds(20))
+        // D1: the second restart waiting is not said again, so the window that asked for it
+        // is shown waiting when it asks (`RestartWait.asked`).
+        #expect(waits.all == [true])
+        gate.release()
+        await first.value
+        await second.value
+        #expect(waits.all == [true, false])
+        #expect(children().count == 2)
+        #expect(subject.spec == newer)
+        #expect(subject.state == .ready(endpoint))
+        #expect(!gate.isHeld)
+
+        await gate.acquire()
+        let waiting = Task { await subject.restart(using: older) }
+        try? await Task.sleep(for: .milliseconds(20))
+        await subject.stop()
+        #expect(subject.state == .stopped)
+        gate.release()
+        await waiting.value
+        #expect(children().count == 2)
+        #expect(subject.state == .stopped)
+        #expect(!gate.isHeld)
+    }
+
+    /// The ready server failing while its restart waits at the gate does not cancel the
+    /// restart: the link it was asked for still opens.
+    @Test func aCrashWhileARestartWaitsDoesNotCancelIt() async {
+        let (subject, gate, children) = await gatedServer()
+        await gate.acquire()
+        let restarted = Task { await subject.restart() }
+        try? await Task.sleep(for: .milliseconds(20))
+        children()[0].exitOnItsOwn(code: 1)
+        #expect(await eventually { if case .failed = subject.state { true } else { false } })
+        gate.release()
+        await restarted.value
+        #expect(children().count == 2)
+        #expect(subject.state == .ready(endpoint))
+        await subject.stop()
+    }
 }

@@ -1,10 +1,21 @@
-"""A bounded, disposable bank of PR manifests beside a repository store.
+"""A disposable bank of PR manifests beside a repository store, one per pull request.
 
 The record's immutable endpoints are prepared after fetch, before its record is
 published. A fresh server reads the manifest instead of running the costly raw
 listing. Resolution still verifies that this store can answer for both commits.
-Sixteen direct-mapped slots bound disk use without an index, enumeration or an
-LRU lock: a collision replaces a slot and can only cause a later cache miss.
+Each pull request keeps the manifest of the last comparison read for it, with no index,
+enumeration or LRU lock: another comparison of the same pull request replaces it and can
+only cause a later cache miss. So the bank holds one manifest for each pull request ever
+prepared in the store; clearing the cache leaves it, as it leaves the store. Only a
+cached record's comparison is read, so the count is the records', each read is bounded
+by `MAX_MANIFEST_RECORD_BYTES`, and the measurement below sizes the whole.
+
+Measured 2026-11-17 on a reader's cache: 90 manifests in 9 stores, a median of 10.7 KB,
+90th percentile 44 KB, and largest 68 KB, about 500 bytes a changed file; beside them,
+one source's 64 records had a median of 33 KB. So a pull request's manifest adds about a
+third of what its record already keeps. Sixteen direct-mapped slots, before, held 11 of
+19 open pull requests' manifests on average, and each of the rest was listed again
+(about 77 ms) whenever it was opened (mb-g8oe).
 """
 
 from __future__ import annotations
@@ -29,16 +40,22 @@ from metabrowser.builtin_plugins.github.pull_record import MAX_PULL_RECORD_BYTES
 from metabrowser.cache.atomic import RecordError, read_bytes_bounded
 from metabrowser.cache.paths import store_directory
 from metabrowser.diff.adapters.base import DiffSourceError
-from metabrowser.diff.adapters.git import MAX_MANIFEST_FILES, GitDiffSource
-from metabrowser.diff.format import FILE_DIFF_SCHEMA_VERSION, ChangeSetDocument
-from metabrowser.git.process import GitError, GitLocation, RepositoryStoreTarget
+from metabrowser.diff.adapters.git import MANIFEST_LISTING, MAX_MANIFEST_FILES, GitDiffSource
+from metabrowser.diff.format import FILE_DIFF_SCHEMA, FILE_DIFF_SCHEMA_VERSION, ChangeSetDocument
+from metabrowser.git.process import (
+    GIT_COMMON_ARGS,
+    STORE_READ_POLICY,
+    GitError,
+    GitLocation,
+    RepositoryStoreTarget,
+)
 from metabrowser.home import (
     PrivateStorageError,
     ensure_private_directory,
     private_directory_is_writable,
     write_private_file_atomic,
 )
-from metabrowser.http_caching import BUILD_TAG, store_tag
+from metabrowser.http_caching import store_tag
 from metabrowser.loading_cache import LoadingCache
 
 if TYPE_CHECKING:
@@ -46,10 +63,13 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-# The same retained-comparison count as the in-memory manifest cache. Cache admission
-# uses the existing PR-record read bound; a larger result is still served in full.
-MANIFEST_SLOTS: Final = 16
+# Cache admission uses the existing PR-record read bound; a larger result is still served
+# in full.
 MAX_MANIFEST_RECORD_BYTES: Final = MAX_PULL_RECORD_BYTES
+# Epochs, direct-mapped by comparison. An epoch advances only when a comparison is found
+# corrupt, so a collision costs one more listing after that, and these few files at the
+# store's root are the ones v0.12 kept, which hold only random values.
+EPOCH_SLOTS: Final = 16
 _FLIGHTS: WeakKeyDictionary[
     asyncio.AbstractEventLoop, LoadingCache[tuple[str, ...], ResolvedManifest]
 ] = WeakKeyDictionary()
@@ -59,28 +79,54 @@ _FLIGHTS_LOCK = Lock()
 class _ManifestRecord(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    schema_version: Literal[2] = 2
+    schema_version: Literal[3] = 3
     epoch: str = Field(pattern=r"^[0-9a-f]{64}$")
-    identity: tuple[str, ...] = Field(min_length=6, max_length=6)
+    identity: tuple[str, ...] = Field(min_length=8, max_length=8)
     digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     document: ChangeSetDocument
 
 
+# What of a store read's process shapes a listing's output: Git's common options, and the
+# configuration and attributes the store's Git is kept from. A store's own attributes
+# are in its token, in *key*. The bounds and the timeout are not here: they refuse a
+# listing, never change one.
+_STORE_READ: Final = repr(
+    (
+        GIT_COMMON_ARGS,
+        STORE_READ_POLICY.isolate_user_config,
+        sorted((STORE_READ_POLICY.extra_env or {}).items()),
+        STORE_READ_POLICY.attributes_from_empty_tree,
+    )
+)
+
+
 def _identity(key: tuple[str, ...]) -> tuple[str, ...]:
-    return (BUILD_TAG, *key)
+    """What a kept manifest answers for: the document's schema, the listing, how the store
+    is read, and *key*.
+
+    Not the build, so a manifest outlives an upgrade and an edit of the source (mb-g8oe);
+    a change to the schema, to the listing's options, or to the store read's isolation
+    moves it, and so does raising `MANIFEST_READING`.
+    """
+    schema = f"{FILE_DIFF_SCHEMA}.{FILE_DIFF_SCHEMA_VERSION}"
+    return (schema, MANIFEST_LISTING, _STORE_READ, *key)
 
 
 def _directory(published: PublishedSource) -> str:
     return f"{store_directory(published.store_key)}/github-pull-manifests"
 
 
-def _slot(key: tuple[str, ...]) -> int:
+def _epoch_slot(key: tuple[str, ...]) -> int:
     digest = hashlib.sha256("\0".join(_identity(key)).encode()).digest()
-    return int.from_bytes(digest[:8]) % MANIFEST_SLOTS
+    return int.from_bytes(digest[:8]) % EPOCH_SLOTS
 
 
 def _epoch_path(published: PublishedSource, key: tuple[str, ...]) -> str:
-    return f"{store_directory(published.store_key)}/github-pull-manifest-{_slot(key):02d}.epoch"
+    """Beside the bank, not in it, so an epoch moves even when the bank cannot be written;
+    and the comparison's, not the pull request's, so invalidating a comparison reaches
+    every pull request that keeps it."""
+    slot = _epoch_slot(key)
+    return f"{store_directory(published.store_key)}/github-pull-manifest-{slot:02d}.epoch"
 
 
 def _epoch(published: PublishedSource, key: tuple[str, ...]) -> str:
@@ -107,8 +153,9 @@ def _current_epoch(published: PublishedSource, key: tuple[str, ...]) -> str:
         return _epoch(published, key)
 
 
-def _path(published: PublishedSource, key: tuple[str, ...]) -> str:
-    return f"{_directory(published)}/{_slot(key):02d}.json"
+def _path(published: PublishedSource, number: int) -> str:
+    # Named so that no file of the sixteen slots v0.12 kept, `00.json` to `15.json`, is one.
+    return f"{_directory(published)}/pull-{number}.json"
 
 
 def _digest(document: ChangeSetDocument) -> str:
@@ -117,6 +164,7 @@ def _digest(document: ChangeSetDocument) -> str:
 
 def _read(
     published: PublishedSource,
+    number: int,
     key: tuple[str, ...],
     *,
     epoch: str | None = None,
@@ -128,7 +176,7 @@ def _read(
             epoch = _epoch(published, key)
         data = read_bytes_bounded(
             published.home,
-            _path(published, key),
+            _path(published, number),
             max_bytes=MAX_MANIFEST_RECORD_BYTES,
             shared="refuse",
         )
@@ -150,10 +198,14 @@ def _read(
 
 
 def _write(
-    published: PublishedSource, key: tuple[str, ...], answer: ResolvedManifest, epoch: str
+    published: PublishedSource,
+    number: int,
+    key: tuple[str, ...],
+    answer: ResolvedManifest,
+    epoch: str,
 ) -> None:
     document = ChangeSetDocument(
-        schema="file-diff-v1",
+        schema=FILE_DIFF_SCHEMA,
         schema_version=FILE_DIFF_SCHEMA_VERSION,
         resolved=answer.resolved,
         manifest=answer.manifest,
@@ -166,17 +218,21 @@ def _write(
     if len(data) > MAX_MANIFEST_RECORD_BYTES:
         return
     ensure_private_directory(published.home, _directory(published))
-    write_private_file_atomic(published.home, _path(published, key), data)
+    write_private_file_atomic(published.home, _path(published, number), data)
 
 
-def invalidate_pull_manifest(published: PublishedSource, pair: tuple[str, str]) -> None:
-    """Invalidate disposable metadata derived from a detected corrupt comparison.
+def invalidate_pull_manifest(
+    published: PublishedSource, number: int, pair: tuple[str, str]
+) -> None:
+    """Invalidate the manifests of *pair*, a comparison detected corrupt that pull request
+    *number* read.
 
     The private atomic writer publishes an invalid cache marker instead of deleting
     through an unchecked path. A later read recomputes it. Refusals are reported by the
-    caller; a failed invalidation must not be presented as successful repair. An epoch
-    beside the bank invalidates this slot and its older in-flight computations,
-    even when the bank itself cannot be written. Epoch publication must succeed.
+    caller; a failed invalidation must not be presented as successful repair. The
+    comparison's epoch beside the bank invalidates every pull request's manifest of it,
+    and older in-flight computations, even when the bank itself cannot be written. Epoch
+    publication must succeed.
     """
     location = GitLocation.revision(
         RepositoryStoreTarget(published.git_dir, published.object_format), pair[1]
@@ -185,16 +241,16 @@ def invalidate_pull_manifest(published: PublishedSource, pair: tuple[str, str]) 
     key = comparison_cache_key(location, intent, store_tag(published.git_dir))
     assert key is not None
     # Invalidation must not depend on whether the current reader can adopt or even
-    # inspect the slot. Evicting a colliding disposable entry is harmless.
+    # inspect the manifest, whichever comparison it holds: it is disposable.
     slot_error: OSError | PrivateStorageError | None = None
     try:
-        write_private_file_atomic(published.home, _path(published, key), b"{}")
+        write_private_file_atomic(published.home, _path(published, number), b"{}")
     except (OSError, PrivateStorageError) as error:
         slot_error = error
     try:
-        # Advance even when the slot was cleared: a computation already in flight can
+        # Advance even when the manifest was cleared: a computation already in flight can
         # publish afterward. Its captured old epoch must remain a miss. This also
-        # invalidates an untouched slot when only the bank is read-only.
+        # invalidates an untouched manifest when only the bank is read-only.
         write_private_file_atomic(
             published.home, _epoch_path(published, key), secrets.token_hex(32).encode("ascii")
         )
@@ -205,7 +261,11 @@ def invalidate_pull_manifest(published: PublishedSource, pair: tuple[str, str]) 
 
 
 async def load_pull_manifest(
-    published: PublishedSource, source: GitDiffSource, intent: dict[str, Any], key: tuple[str, ...]
+    published: PublishedSource,
+    number: int,
+    source: GitDiffSource,
+    intent: dict[str, Any],
+    key: tuple[str, ...],
 ) -> ResolvedManifest:
     """Reuse one matching manifest, or compute and heal it. Never fetch the network.
 
@@ -222,12 +282,14 @@ async def load_pull_manifest(
         if flights is None:
             flights = _FLIGHTS[loop] = LoadingCache(max_values=0)
     return await flights.get(
-        (*key, epoch or ""), lambda: _load(published, source, intent, key, epoch)
+        (str(number), *key, epoch or ""),
+        lambda: _load(published, number, source, intent, key, epoch),
     )
 
 
 async def _load(
     published: PublishedSource,
+    number: int,
     source: GitDiffSource,
     intent: dict[str, Any],
     key: tuple[str, ...],
@@ -235,7 +297,11 @@ async def _load(
 ) -> ResolvedManifest:
     # Check the store before using a persisted result.
     resolved = await source.resolve(intent)
-    kept = None if epoch is None else await asyncio.to_thread(_read, published, key, epoch=epoch)
+    kept = (
+        None
+        if epoch is None
+        else await asyncio.to_thread(_read, published, number, key, epoch=epoch)
+    )
     if kept is not None and kept.resolved == resolved:
         return kept
     answer = ResolvedManifest(resolved, await source.manifest(resolved))
@@ -243,7 +309,7 @@ async def _load(
         if epoch is not None:
             # Capture before computing, never after: a concurrent invalidation must also
             # invalidate a manifest whose raw listing started before it.
-            await asyncio.to_thread(_write, published, key, answer, epoch)
+            await asyncio.to_thread(_write, published, number, key, answer, epoch)
     except (OSError, PrivateStorageError):
         # Persistence is disposable. A read-only cache still serves the computed answer.
         log.debug("could not retain a pull-request manifest")
@@ -251,7 +317,7 @@ async def _load(
 
 
 async def shared_pull_manifest(
-    published: PublishedSource, base: str, head: str, *, retain_memory: bool = True
+    published: PublishedSource, number: int, base: str, head: str, *, retain_memory: bool = True
 ) -> ResolvedManifest:
     location = GitLocation.revision(
         RepositoryStoreTarget(published.git_dir, published.object_format), head
@@ -261,7 +327,7 @@ async def shared_pull_manifest(
     assert key is not None
 
     async def load() -> ResolvedManifest:
-        return await load_pull_manifest(published, GitDiffSource(location), intent, key)
+        return await load_pull_manifest(published, number, GitDiffSource(location), intent, key)
 
     return await shared_comparison_manifest(key, load) if retain_memory else await load()
 
@@ -272,6 +338,8 @@ async def prepare_pull_manifest(published: PublishedSource, record: PullRecord) 
     if comparison is None:
         return
     try:
-        await shared_pull_manifest(published, comparison.base, comparison.head, retain_memory=False)
+        await shared_pull_manifest(
+            published, record.number, comparison.base, comparison.head, retain_memory=False
+        )
     except (DiffSourceError, GitError):
         log.debug("could not prepare pull-request %s's manifest", record.number)

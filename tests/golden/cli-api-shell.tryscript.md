@@ -621,6 +621,14 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/github/pull-image",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/github/pull-markdown",
       "methods": [
         "GET",
@@ -637,14 +645,6 @@ status: 200
     },
     {
       "path": "/api/plugin/github/pull-rendered-diff",
-      "methods": [
-        "GET",
-        "HEAD"
-      ],
-      "kind": "api"
-    },
-    {
-      "path": "/api/plugin/github/pull-snapshot",
       "methods": [
         "GET",
         "HEAD"

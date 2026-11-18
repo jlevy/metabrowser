@@ -692,15 +692,19 @@ def test_projected_blocks_join_to_kpress_parse_markdown(
 
 
 def _snapshot_violations(html: str) -> list[str]:
+    """What a block keeps that is not an image of the head on its route, a link to a file of
+    the head at its `/view/` address, an anchor of its own, or an outside link."""
+
     from html.parser import HTMLParser
 
     from tests.github_pull_fixture import allowlist_violations
 
-    snapshot = "/api/plugin/github/pull-snapshot?"
+    image = "/api/plugin/github/pull-image?"
+    head = "/view/g1-"
     found = [
         violation
         for violation in allowlist_violations(html, images=True)
-        if not violation.startswith((f"a[href={snapshot}", f"img[src={snapshot}"))
+        if not violation.startswith((f"a[href={head}", f"img[src={image}"))
     ]
 
     class _Check(HTMLParser):
@@ -708,10 +712,10 @@ def _snapshot_violations(html: str) -> list[str]:
             for name, value in attrs:
                 value = value or ""
                 if name == "href" and not value.startswith(
-                    (snapshot, "#user-content-", "https://", "http://")
+                    (head, "#user-content-", "https://", "http://")
                 ):
                     found.append(f"{tag}[href={value}]")
-                if name == "src" and not value.startswith(snapshot):
+                if name == "src" and not value.startswith(image):
                     found.append(f"{tag}[src={value}]")
 
     checker = _Check()
@@ -743,7 +747,7 @@ def test_hostile_markdown_projects_only_allowlisted_snapshot_markup(
     from metabrowser.builtin_plugins.github.pull_snapshot import Snapshot
     from metabrowser.git.tree_source import GitPath
 
-    snapshot = Snapshot(7, "a" * 40, "b" * 40, "0123456789abcdef", "head")
+    snapshot = Snapshot(7, "a" * 40, "b" * 40, "0123456789abcdef")
     source = GitPath((b"docs", b"guide.md"))
     plain = b"# Plain\n\nA paragraph.\n"
     for old, new in ((plain, plain + b"\n" + chunk), (plain + b"\n" + chunk, plain)):

@@ -3,7 +3,7 @@
 What a heading shows, and when, is browserless (``tests/dom/github-pulls-stack-lines-session.js``);
 what only a browser can tell is held here: that nothing moves when the line arrives, that
 the heading stays one line at every pane width from 420 px to the 180 px minimum in both
-themes, its line whole, its statuses cut short, or out of view, and that the line's inks
+themes, its line whole, its totals alone with its statuses never cut short, or out of view, and that the line's inks
 and weights are the component's (``tests/dom/github-pulls-stack-lines-chrome.mjs``).
 ``METABROWSER_STACK_LINES_MEASURED`` names a file for what it measured, and
 ``METABROWSER_STACK_LINES_SHOTS`` a directory for a screenshot of each width and theme.
@@ -29,7 +29,9 @@ from tests.test_github_pull_header_chrome import (
 SESSION = Path(__file__).resolve().parent / "dom" / "github-pulls-stack-lines-chrome.mjs"
 # Sixteen mounts, eight widths in two themes, each a mount, a wait past the quiet period,
 # and an arrival. On a Mac at a load average of 11 to 16 the session took 6 to 9 s after
-# Chrome's start; this is a cold start's bound and that six times over.
+# Chrome's start; this is a cold start's bound and that six times over. The sixteen
+# long-line mounts after them wait for no quiet period: at a load average of 8 to 14 they
+# added 1.6 s (9.3 s in all after Chrome's start), well inside the bound.
 SESSION_TIMEOUT_S = LAUNCH_TIMEOUT_S + 40
 LIFECYCLE_S = SESSION_TIMEOUT_S + GROUP_STOP_S + PROFILE_TEARDOWN_S
 pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)

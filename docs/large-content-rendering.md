@@ -255,6 +255,19 @@ The diff view applies both
 edit-distance work does, count the work and fall back past a budget rather than creating
 an artificially small file-size category.
 
+**Stop what no estimate bounds.** Where the work depends on what a hostile author can
+write and no count over the input bounds it, as KPress’s render of an untrusted document
+does, run it where it can be stopped and stop it at a measured deadline, rather than
+capping the input’s size.
+Every Markdown document rendered under the untrusted profile renders in the server’s
+Markdown child (`diff/markdown_projection_worker.py`), which is stopped when a render
+runs past its deadline; the refusal is kept by the document for a while, and the page
+shows the document’s source with one line saying why.
+The child renders one document at a time, so the same module bounds how many distinct
+renders wait for it and stops one whose page went away (“One child for both jobs” in its
+docstring). A document of any size up to the render route’s own read bound renders if it
+finishes in time.
+
 **Fingerprint across chunks.** Every chunked response carries `mtime_hash`; a mismatch
 means the file changed, and the view restarts rather than splicing two versions into a
 window that never existed on disk.
@@ -298,6 +311,7 @@ this standard. Paths are under `src/metabrowser/`.
 | `TEXT_PREVIEW_CHUNK_BYTES` | `settings.py` | The source view’s first chunk: opening latency |
 | `TEXT_PREVIEW_MAX_CHUNK_BYTES` | `settings.py` | The largest Load more: per-click main-thread time |
 | `TEXT_PREVIEW_REQUEST_MAX_BYTES` | `settings.py` | One text request, and the stream window of a compressed file or Git blob |
+| `FRONTMATTER_MAX_BYTES`, `FRONTMATTER_MAX_EXPANDED_SIZE`, `YAML_MAX_DEPTH` | `frontmatter_yaml.py` | The front-matter text any path parses, its size with every YAML alias written out, and its nesting; past any of them the front matter is refused with the reason, and the file reads as text |
 | `TEXT_NODE_MAX_LENGTH` | `static/source-append.js` | WebKit’s layout of the text one Load more appends |
 | `SYNTAX_HIGHLIGHT_MAX_BYTES` | `settings.py` | Highlight.js main-thread work and token-span DOM |
 | `BINARY_PREVIEW_MAX_BYTES` | `builtin_plugins/binary/sidekick.py` | Browser memory for the bytes the binary view loads |
@@ -310,6 +324,8 @@ this standard. Paths are under `src/metabrowser/`.
 | `MAX_CACHED_MANIFESTS`, `MAX_CACHED_BODY_BYTES` | `builtin_plugins/diff/comparison_cache.py` | Server memory for kept comparisons |
 | `KEPT_COMPARISON_CHARS` | `builtin_plugins/github/comparison-prefetch.js` | The document’s memory for the pull-request comparisons its pages read, which outlives every page; the Commits panel keeps its own within `GIT_COMPARISON_CACHE_BYTES` (`settings.py`), so a document holds both |
 | `WINDOW_ROWS`, `DISPLAY_ROWS`, `PULL_ROWS_OVERSCAN` | `builtin_plugins/github/pulls-panel.js` | Pulls rows per cached-page request, read at first, and mounted beyond the viewport |
+| `INERT_RENDER_DEADLINE_MS` | `diff/markdown_projection_worker.py` | One untrusted Markdown document’s render in the server’s Markdown child; past it the child is stopped and the page shows the document’s source |
+| `_MAX_RENDERS` | `diff/markdown_projection_worker.py` | Distinct untrusted Markdown renders in flight at once, the one in the Markdown child among them; past it a render is answered `503` with the code `renderer_busy`, which is not kept |
 | `SUMMARY_ROWS_OVERSCAN` | `builtin_plugins/diff/diff-summary.js` | Diff summary rows mounted on either side of the window’s view of its tree, which has no scroll of its own and no length bound beyond `MAX_MANIFEST_FILES` |
 
 ## References
