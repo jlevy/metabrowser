@@ -3549,8 +3549,9 @@ its color on both themes, and `category-palette.js` writes both onto the element
 `.mb-distribution-mark` selects between them by theme and `.mb-distribution-other` takes
 the neutral, so a theme change is a selector switch rather than a repaint.
 The remaining tokens are `--mb-distribution-other`, `--mb-distribution-track`,
-`--mb-distribution-track-height`, and `--mb-distribution-segment-gap`. Core owns these
-tokens and utilities; the folder plugin owns File types and Treemap layout selectors.
+`--mb-distribution-track-height`, `--mb-distribution-segment-gap`, and
+`--mb-distribution-ink-share`. Core owns these tokens and utilities; the folder plugin
+owns File types and Treemap layout selectors.
 
 Segments that sit beside one another are separated by a hairline of the page ground,
 `--mb-distribution-segment-gap` wide, in `--viz-surface`, so two families of similar hue
@@ -3631,7 +3632,7 @@ the distribution counts.
 There is one chooser and one checkbox, because both act on the same numbers.
 A segment’s hover tooltip, the shared body-portaled one, gives the family name in bold
 and its file count and byte size, and a tooltip-bearing mark deepens or lifts by
-`--viz-data-mark-hover-filter`, as a Treemap cell does, grows to twice the track, and
+`--viz-data-mark-hover-filter`, as a Treemap cell does, grows by `--viz-hover-grow`, and
 shimmers
 ([Hover Styles the Thing Under the Pointer](#hover-styles-the-thing-under-the-pointer)).
 The hover marks what its handle names.
@@ -4783,12 +4784,13 @@ subscription is also released.
 
 ### Hover Styles the Thing Under the Pointer
 
-A hover is a statement about one element, so it is drawn **on that element** and nowhere
-else. Dimming, fading, or desaturating an item’s neighbours to pick it out is not
-available: it is a larger visual event than the interaction earns, it makes the reader’s
-eye track motion across the whole component rather than the one thing they pointed at,
-and a dimmed neighbour reads as *excluded* or *inactive*, which is a claim the hover is
-not making.
+A hover is a statement about what its handle names, so it is drawn **on what the handle
+names** and nowhere else: a mark under the pointer names itself, and a legend entry
+names the marks of its family.
+Dimming, fading, or desaturating the neighbours to pick them out is not available: it is
+a larger visual event than the interaction earns, it makes the reader’s eye track motion
+across the whole component rather than the one thing they pointed at, and a dimmed
+neighbour reads as *excluded* or *inactive*, which is a claim the hover is not making.
 
 For a segment of a bar, a treemap cell, a chart mark, or any other measure the reader
 can point at:
@@ -4843,8 +4845,8 @@ settles, once a period, on the `--viz-hover-shimmer-*` tokens and the
 It is a sibling of the progress blocks’ pulse (`tally-pending-pulse`), and meant not to
 read as one: the progress pulse fades a whole block, steadily and without a pause, which
 says “waiting”, while the shimmer lightens a mark that is there by a fraction of what
-the lift moved it, rises, settles, and rests, more than twice as slowly, so it reads as
-a glint.
+the lift moved it, rises, settles, and rests, on a longer period
+(`--viz-hover-shimmer-period`), so it reads as a glint.
 At its peak the mark keeps its family’s color and stays clear of its rest color.
 It is a pseudo-element’s opacity, so the compositor runs it with no main-thread work
 while the pointer holds; the values and their measurements are beside the tokens in

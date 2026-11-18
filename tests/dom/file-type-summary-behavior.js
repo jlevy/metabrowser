@@ -447,6 +447,24 @@ function familyRow() {
   // pointer, which never hears it leave, lets go of the hover it entered
   // (docs/design-system.md, "Aggregate Distributions").
   const legendHover = createDistributionHover();
+  // The store the view is given, the real one, counting the listeners it holds: a view
+  // that stops drawing is one that has stopped listening.
+  let viewListeners = 0;
+  const countedHover = {
+    ...legendHover,
+    subscribe(listener) {
+      viewListeners += 1;
+      const unsubscribe = legendHover.subscribe(listener);
+      let subscribed = true;
+      return () => {
+        if (subscribed) {
+          subscribed = false;
+          viewListeners -= 1;
+          unsubscribe();
+        }
+      };
+    },
+  };
   const hoverCalls = [];
   legendHover.subscribe((current) =>
     hoverCalls.push(current ? `${current.marks} ${current.population} ${current.key}` : "none"),
@@ -473,7 +491,7 @@ function familyRow() {
     palette,
     metricClasses,
     fileTypeIcon,
-    legendHover,
+    countedHover,
   );
   const [hoverPython, hoverOther] = hoverHandle.legend.children;
   const pythonClassBefore = hoverPython.className;
@@ -578,15 +596,18 @@ function familyRow() {
   hoverCalls.length = 0;
   hoverHandle.legend.children[0].listeners.mouseenter();
   const heldEntry = hoverHandle.legend.children[0];
+  const listeningBefore = viewListeners;
   view.disposeDistributionView(hoverHandle);
   legendHover.enter(fromSegment);
   check(
-    "disposal lets go of the hover an entry under the pointer entered, and stops drawing",
+    "disposal lets go of the hover an entry under the pointer entered, and stops listening",
     JSON.stringify(hoverCalls) ===
       JSON.stringify(["family files family:python", "none", "self files family:python"]) &&
       !("hovered" in heldEntry.dataset) &&
-      hoverHandle.hovered.length === 0,
-    JSON.stringify(hoverCalls),
+      hoverHandle.hovered.length === 0 &&
+      listeningBefore > 0 &&
+      viewListeners === 0,
+    JSON.stringify({ hoverCalls, listeningBefore, viewListeners }),
   );
   legendHover.leave(fromSegment);
 

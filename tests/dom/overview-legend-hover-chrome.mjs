@@ -317,6 +317,11 @@ try {
   result.detailsEntry = await chrome.evaluate(READ);
   await toggleDetails();
   result.detailsClosedUnderEntry = await chrome.evaluate(READ);
+  // And opened again under the entry the pointer still holds: the row is marked after the
+  // bars and the dot, so its shimmer starts its own cycle.
+  await toggleDetails();
+  result.detailsOpenedUnderEntry = await chrome.evaluate(READ);
+  await toggleDetails();
   await away();
   await chrome.evaluate(`document.documentElement.dataset.theme = "dark"`);
   await move(ENTRY("Python", "label"));

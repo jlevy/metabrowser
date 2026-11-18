@@ -1018,8 +1018,8 @@
      Python entry hovered, every row marked: 11 px between the Files and
      Ignored rows' grown segments, 12 px between Ignored and Total, 5.5 px from
      Total's to the legend's box, and 15 px from a Details row's to the next
-     row's track, with none of 32 layout boxes moved. 2.25 left 4.5 px to the
-     legend.
+     row's track. 2.25 left 4.5 px to the legend. That no layout box moves
+     under the hover is tests/test_overview_legend_hover_chrome.py's to hold.
 
      It moves on the viz layout scale, a size shift, eased in and out on a
      plain ease and run back the same way on leave. It overshot once, a
