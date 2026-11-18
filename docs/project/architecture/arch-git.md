@@ -67,13 +67,23 @@ Every command at a store target also sets `diff.submodule=short`
 (`GIT_NO_SUBMODULE_DIFF_ARGS`): with `diff`, a patch diffs each changed submodule in a
 child Git in the submodule’s own Git directory, which runs that directory’s drivers
 whatever the parent passes.
+A store target’s `GitLocation` also sets `format.pretty=medium`
+(`GIT_NO_CONFIGURED_FORMAT_ARGS`), since that setting can hold `%G?`, which verifies a
+signature for a `show` or `log` without a format of its own, and `core.fsmonitor=false`
+with `core.hooksPath` at the null device (`GIT_NO_HOOK_ARGS`), since a read of an index
+path runs the one and a ref written runs a hook.
 A store target that names no policy gets the store policy, and a store spawn is refused
-when its policy would allow lazy fetch, or when it could run a program the repository’s
-configuration names (`_require_no_configured_program`): a `diff`, `show`, or `log`
-without the driver options after its command and the signature and submodule settings
-before it, a setting or option that turns either back on, a signature in a format, a
-`cat-file` or `hash-object` filter, an editor, a `rev-list` content search, and, under
-the read policies, any command outside `_STORE_READ_COMMANDS`.
+when its policy would allow lazy fetch, or when its arguments have a shape that would
+start a program the repository’s configuration names (`_require_no_configured_program`):
+a `diff`, `show`, or `log` without the driver options after its command and the
+signature, submodule, and format settings before it; another value for one of those
+settings or the hook settings; `--show-signature`, `--textconv`, `--ext-diff`,
+`--alternate-refs`, a signature in a format or a sort, or a format given by name; a
+`cat-file` or `hash-object` filter, an editor, or a `rev-list` content search; and,
+under the read policies, any command outside `_STORE_READ_COMMANDS` and a `symbolic-ref`
+or `config` that writes.
+The guard reads arguments only: it does not see what a batch reads from its input, or an
+index path, which only a read through a `GitLocation` is protected for.
 
 | Invariant | Mechanism | What it prevents |
 | --- | --- | --- |

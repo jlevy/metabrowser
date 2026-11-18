@@ -358,14 +358,18 @@ Which modes exist, what each shows, and why is [Open Modes](arch-open-modes.md).
   `log.showSignature=false` (`GIT_NO_SIGNATURE_ARGS`). A superproject’s
   `diff.submodule=diff` would diff a moved submodule in a child Git with the submodule’s
   own drivers, so every command at a store target sets `diff.submodule=short`
-  (`GIT_NO_SUBMODULE_DIFF_ARGS`). `spawn_git_process` refuses a store read that lacks
-  the options it needs, or that could run a configured program another way
-  (`_require_no_configured_program`), so a later read cannot forget them.
-  `tests/test_checkout_revisions.py` compares every entry under the checkout, `.git`
-  included, with each file’s inode and modification time, across a session of trees,
-  files, history, commit views, and diffs, with an edited, a staged, and an untracked
-  file in the fixture, and with a hostile configuration, a driver and a signature
-  program, planted each of those ways.
+  (`GIT_NO_SUBMODULE_DIFF_ARGS`). It also sets `format.pretty=medium`,
+  `core.fsmonitor=false`, and `core.hooksPath` at the null device, so no format,
+  fsmonitor, or hook the checkout names runs either.
+  `spawn_git_process` refuses a store read that lacks the options it needs, and the
+  argument shapes known to start a configured program
+  (`_require_no_configured_program`), so a later read cannot forget them;
+  [the process boundary](arch-git.md#the-process-boundary) lists the shapes and what the
+  check does not see. `tests/test_checkout_revisions.py` compares every entry under the
+  checkout, `.git` included, with each file’s inode and modification time, across a
+  session of trees, files, history, commit views, and diffs, with an edited, a staged,
+  and an untracked file in the fixture, and with a hostile configuration, a driver and a
+  signature program, planted each of those ways.
   It repeats the session in a linked worktree, in a submodule served as the root, and in
   a superproject whose commit moves its submodule.
   A blobless clone asked for a commit and a comparison whose blobs it lacks answers

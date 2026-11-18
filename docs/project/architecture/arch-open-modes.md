@@ -377,9 +377,9 @@ Git directory is under its superproject’s.
   submodule in a child Git that runs the submodule’s drivers, so every read at a store
   target sets `diff.submodule=short`.
 - **Held where Git starts.** `spawn_git_process` refuses a store read that lacks the
-  options it needs or could run a configured program another way, and under the read
-  policies any command outside those store reads use, so a read added later cannot omit
-  them.
+  options it needs, the argument shapes known to start a configured program, and under
+  the read policies any command outside those store reads use and any write, so a read
+  added later cannot omit them.
 - **Test:** `tests/test_checkout_revisions.py`, with a fixture that has a dirty index,
   uncommitted and untracked files, a signed commit, and a local configuration naming a
   driver and a signature program that would each leave a marker file.

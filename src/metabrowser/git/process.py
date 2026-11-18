@@ -117,6 +117,24 @@ GIT_NO_SIGNATURE_ARGS: Final[tuple[str, ...]] = ("-c", "log.showSignature=false"
 # revision's comparison of a superproject, which ran the submodule's driver and wrote 19
 # entries under ``.git/modules/sub`` (review B1 on #559).
 GIT_NO_SUBMODULE_DIFF_ARGS: Final[tuple[str, ...]] = ("-c", "diff.submodule=short")
+# No ``show`` or ``log`` reads its format from configuration. ``format.pretty`` names the
+# format a ``show`` or ``log`` without one prints, and it can hold ``%G?``, which verifies
+# a signature whatever ``log.showSignature`` says. ``medium`` is Git's default. Every such
+# read passes a format of its own, so this changes nothing it prints. Reproduced
+# 2026-11-18 with Git 2.50.1 (review C1 on #559): ``show -s`` ran ``gpg.program`` at a
+# checkout's Git directory whose ``format.pretty`` was ``%G?``, and not with this.
+GIT_NO_CONFIGURED_FORMAT_ARGS: Final[tuple[str, ...]] = ("-c", "format.pretty=medium")
+# No read starts a program a checkout's configuration names for its index or its refs:
+# ``core.fsmonitor`` runs when a read names an index path (``cat-file -p :<path>``), and a
+# hook in ``core.hooksPath`` runs for a ref written. A store Metabrowser made sets
+# neither. Reproduced with Git 2.50.1 in review C1 on #559, where each ran from a
+# checkout's Git directory.
+GIT_NO_HOOK_ARGS: Final[tuple[str, ...]] = (
+    "-c",
+    "core.fsmonitor=false",
+    "-c",
+    f"core.hooksPath={os.devnull}",
+)
 # What every ``diff``, ``show``, and ``log`` takes at a store target; see
 # :attr:`GitLocation.diff_driver_args`.
 GIT_NO_DRIVER_ARGS: Final[tuple[str, ...]] = ("--no-textconv", "--no-ext-diff")
@@ -353,10 +371,17 @@ class GitLocation:
     @property
     def config_args(self) -> tuple[str, ...]:
         """What precedes every command here: no signature program, and at a store no
-        mailmap and no submodule diffed in a Git of its own."""
+        mailmap, no submodule diffed in a Git of its own, no format from configuration,
+        and no fsmonitor or hook."""
 
         if self.target is not None:
-            return (*GIT_DISABLE_MAILMAP_ARGS, *GIT_NO_SIGNATURE_ARGS, *GIT_NO_SUBMODULE_DIFF_ARGS)
+            return (
+                *GIT_DISABLE_MAILMAP_ARGS,
+                *GIT_NO_SIGNATURE_ARGS,
+                *GIT_NO_SUBMODULE_DIFF_ARGS,
+                *GIT_NO_CONFIGURED_FORMAT_ARGS,
+                *GIT_NO_HOOK_ARGS,
+            )
         return GIT_NO_SIGNATURE_ARGS
 
     @property
@@ -585,9 +610,25 @@ _STORE_READ_COMMANDS: Final = frozenset(
     }
 )
 # The commands that can print a diff or verify a signature. Each passes the driver
-# options after the command, which is where Git reads them, and the signature and
-# submodule settings before it, whatever else it asks for.
+# options after the command, which is where Git reads them, and the signature, submodule,
+# and format settings before it, whatever else it asks for.
 _DIFF_COMMANDS: Final = frozenset({"diff", "show", "log"})
+# The settings a store read may give only the value ``GitLocation.config_args`` gives:
+# another value, a later ``-c``, or a ``--config-env`` would turn a program back on.
+_HELD_SETTINGS: Final = {
+    "log.showsignature": "false",
+    "diff.submodule": "short",
+    "format.pretty": "medium",
+    "core.fsmonitor": "false",
+    "core.hookspath": os.devnull,
+}
+# What a ``config`` that only reads says, and what one that writes says.
+_CONFIG_READS: Final = frozenset(
+    {"--get", "--get-all", "--get-regexp", "--get-urlmatch", "--list", "-l"}
+)
+_CONFIG_WRITES: Final = frozenset(
+    {"--add", "--unset", "--unset-all", "--replace-all", "--rename-section", "--remove-section"}
+)
 
 
 def _command_index(args: Sequence[str]) -> int | None:
@@ -633,19 +674,31 @@ def _configured_program_refusal(args: Sequence[str], policy: GitProcessPolicy) -
     if command in _DIFF_COMMANDS:
         if not all(option in after for option in GIT_NO_DRIVER_ARGS):
             return f"git {command} at a repository store must pass {' '.join(GIT_NO_DRIVER_ARGS)}"
-        for pair in (GIT_NO_SIGNATURE_ARGS, GIT_NO_SUBMODULE_DIFF_ARGS):
+        for pair in (
+            GIT_NO_SIGNATURE_ARGS,
+            GIT_NO_SUBMODULE_DIFF_ARGS,
+            GIT_NO_CONFIGURED_FORMAT_ARGS,
+        ):
             if not _sets(before, pair):
                 return f"git {command} at a repository store must set {' '.join(pair)} first"
-    # Nothing later turns a signature program or a submodule's own diff back on.
-    # A bare ``-c log.showSignature`` sets it true.
+    # Nothing later turns a held setting back. A bare ``-c log.showSignature`` sets it true.
     for setting in before:
         lowered = setting.lower().removeprefix("--config-env=")
         name = lowered.partition("=")[0]
-        if name == "log.showsignature" and lowered != "log.showsignature=false":
-            return f"git {command} at a repository store must not set {setting}"
-        if name == "diff.submodule" and lowered != "diff.submodule=short":
+        if name in _HELD_SETTINGS and lowered != f"{name}={_HELD_SETTINGS[name]}":
             return f"git {command} at a repository store must not set {setting}"
     for at, option in enumerate(after):
+        # The refs an alternate's ``core.alternateRefsCommand`` lists.
+        if option == "--alternate-refs":
+            return f"git {command} at a repository store must not pass --alternate-refs"
+        # Sorting refs by signature verifies each.
+        if option.startswith("--sort"):
+            key = option if "=" in option else (after[at + 1] if at + 1 < len(after) else "")
+            if "signature" in key:
+                return f"git {command} at a repository store must not sort by signature"
+        # A format with no ``%`` is a format's name, which ``pretty.<name>`` can define.
+        if option.startswith(("--format=", "--pretty=")) and "%" not in option:
+            return f"git {command} at a repository store must not name a format: {option}"
         if option == "--show-signature":
             return f"git {command} at a repository store must not pass --show-signature"
         if option.startswith("--submodule") and option != "--submodule=short":
@@ -666,6 +719,19 @@ def _configured_program_refusal(args: Sequence[str], policy: GitProcessPolicy) -
         return "git hash-object at a repository store must pass --no-filters"
     if command == "config" and any(option in {"-e", "--edit"} for option in after):
         return "git config at a repository store must not start an editor"
+    if policy.name != ACQUISITION_POLICY.name:
+        # A read writes no ref: a ref written runs the ``reference-transaction`` hook.
+        operands = [option for option in after if not option.startswith("-")]
+        if command == "symbolic-ref" and (
+            len(operands) > 1 or any(option in {"-d", "--delete", "-m"} for option in after)
+        ):
+            return "git symbolic-ref at a repository store must only read"
+        # A read writes no configuration.
+        if command == "config" and (
+            not any(option in _CONFIG_READS for option in after)
+            or any(option in _CONFIG_WRITES for option in after)
+        ):
+            return "git config at a repository store must only read"
     if command == "rev-list" and any(
         option.startswith(("-S", "-G", "--pickaxe", "--find-object")) for option in after
     ):
@@ -676,16 +742,27 @@ def _configured_program_refusal(args: Sequence[str], policy: GitProcessPolicy) -
 def _require_no_configured_program(
     target: GitCommandTarget | None, args: Sequence[str], policy: GitProcessPolicy
 ) -> None:
-    """Refuse a store read that could run a program the repository's configuration names.
+    """Refuse a store read whose arguments would start a program its configuration names.
 
     A store target's local configuration is in effect under every policy, and it can be a
-    checkout's own. What it names would run from a diff driver, a submodule's own diff, a
-    signature program, a filter, or a command no store read uses. Each is turned off by
-    what the caller passes (:data:`GIT_NO_DRIVER_ARGS`, :data:`GIT_NO_SIGNATURE_ARGS`,
-    :data:`GIT_NO_SUBMODULE_DIFF_ARGS`), which a new caller can forget; checking here,
-    where every store spawn passes, keeps it true for all of them, as
-    :func:`_require_no_lazy_fetch` does for lazy fetch. Under the read policies only the
-    commands of :data:`_STORE_READ_COMMANDS` run at all.
+    checkout's own. The shapes refused here, by :func:`_configured_program_refusal`:
+    - a ``diff``, ``show``, or ``log`` without :data:`GIT_NO_DRIVER_ARGS` after the
+      command, or without :data:`GIT_NO_SIGNATURE_ARGS`, :data:`GIT_NO_SUBMODULE_DIFF_ARGS`,
+      and :data:`GIT_NO_CONFIGURED_FORMAT_ARGS` before it;
+    - another value for a setting :data:`_HELD_SETTINGS` holds;
+    - ``--show-signature``, ``--textconv``, ``--ext-diff``, ``--alternate-refs``, a
+      ``--submodule`` other than ``short``, a signature in a format or a sort, and a format
+      given by name;
+    - a ``cat-file`` filter, a ``hash-object`` without ``--no-filters``, ``config --edit``,
+      and a ``rev-list`` content search;
+    - under the read policies, a command outside :data:`_STORE_READ_COMMANDS`, and a
+      ``symbolic-ref`` or ``config`` that writes.
+
+    It reads arguments, not what a batch reads from its input, and not an index path, for
+    which ``core.fsmonitor`` runs: a read through a :class:`GitLocation` turns that and
+    the hooks off (:data:`GIT_NO_HOOK_ARGS`). Checking here, where every store spawn
+    passes, holds these for a caller that forgets them, as :func:`_require_no_lazy_fetch`
+    does for lazy fetch.
     """
 
     if not isinstance(target, RepositoryStoreTarget):
@@ -1706,6 +1783,8 @@ __all__ = [
     "GIT_NO_DRIVER_ARGS",
     "GIT_NO_SIGNATURE_ARGS",
     "GIT_NO_SUBMODULE_DIFF_ARGS",
+    "GIT_NO_CONFIGURED_FORMAT_ARGS",
+    "GIT_NO_HOOK_ARGS",
     "GitCommandError",
     "GitError",
     "GitLocation",

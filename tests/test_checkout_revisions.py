@@ -43,13 +43,16 @@ from metabrowser.checkout_revisions import (
     open_on_ref,
 )
 from metabrowser.git.process import (
+    GIT_NO_CONFIGURED_FORMAT_ARGS,
     GIT_NO_DRIVER_ARGS,
     GIT_NO_SIGNATURE_ARGS,
     GIT_NO_SUBMODULE_DIFF_ARGS,
+    GitLocation,
     UnsupportedGitVersionError,
     detect_git_version,
     repository_store_target,
     run_git,
+    run_git_at,
 )
 from metabrowser.source import (
     SubjectOpenError,
@@ -1236,7 +1239,7 @@ def test_a_store_read_that_could_run_a_configured_program_is_refused_at_the_spaw
     async def run(*args: str) -> bytes:
         return await run_git(list(args), target=target)
 
-    settings = (*GIT_NO_SIGNATURE_ARGS, *GIT_NO_SUBMODULE_DIFF_ARGS)
+    settings = (*GIT_NO_SIGNATURE_ARGS, *GIT_NO_SUBMODULE_DIFF_ARGS, *GIT_NO_CONFIGURED_FORMAT_ARGS)
     for args, refused in (
         (("show", FEATURE), "--no-textconv --no-ext-diff"),
         (("diff", FIRST, FEATURE), "--no-textconv --no-ext-diff"),
@@ -1248,6 +1251,10 @@ def test_a_store_read_that_could_run_a_configured_program_is_refused_at_the_spaw
         (
             ("-C", ".", *GIT_NO_SIGNATURE_ARGS, "show", *GIT_NO_DRIVER_ARGS, FEATURE),
             "-c diff.submodule=short",
+        ),
+        (
+            (*GIT_NO_SIGNATURE_ARGS, *GIT_NO_SUBMODULE_DIFF_ARGS, "show", *GIT_NO_DRIVER_ARGS),
+            "-c format.pretty=medium",
         ),
         (
             (*settings, "-c", "log.showSignature=true", "log", *GIT_NO_DRIVER_ARGS, FEATURE),
@@ -1312,6 +1319,41 @@ def test_a_store_read_that_could_run_a_configured_program_is_refused_at_the_spaw
             ("for-each-ref", "--format=%(signature:grade)", "refs/heads"),
             "must not verify a signature",
         ),
+        # Review C1 on #559: what configuration can make of an option an allowed command
+        # takes. A setting the location holds, given another value.
+        (
+            (*settings, "-c", "format.pretty=%G?", "show", *GIT_NO_DRIVER_ARGS, "-s", FEATURE),
+            "must not set format.pretty=%G?",
+        ),
+        (("-c", "core.fsmonitor=true", "cat-file", "-t", FEATURE), "core.fsmonitor=true"),
+        (("-c", "core.hooksPath=hooks", "rev-parse", FEATURE), "core.hooksPath=hooks"),
+        # The refs an alternate's core.alternateRefsCommand lists.
+        (
+            (*settings, "log", *GIT_NO_DRIVER_ARGS, "--alternate-refs", FEATURE),
+            "--alternate-refs",
+        ),
+        (("rev-list", "--alternate-refs", FEATURE), "--alternate-refs"),
+        # A signature as a sort key, and a format by name, which pretty.<name> can define.
+        (("for-each-ref", "--sort=signature", "refs/heads"), "must not sort by signature"),
+        (("for-each-ref", "--sort", "-signature:grade"), "must not sort by signature"),
+        (
+            (*settings, "show", *GIT_NO_DRIVER_ARGS, "-s", "--pretty=planted", FEATURE),
+            "must not name a format: --pretty=planted",
+        ),
+        (
+            (*settings, "log", *GIT_NO_DRIVER_ARGS, "--format=oneline", FEATURE),
+            "must not name a format: --format=oneline",
+        ),
+        # A read writes no ref, so no reference-transaction hook runs, and no configuration.
+        (("symbolic-ref", "HEAD", "refs/heads/feature"), "git symbolic-ref at a repository"),
+        (("symbolic-ref", "--delete", "HEAD"), "git symbolic-ref at a repository"),
+        (("symbolic-ref", "-m", "why", "HEAD"), "git symbolic-ref at a repository"),
+        (("config", "core.bare", "true"), "git config at a repository store must only read"),
+        (("config", "--unset", "core.bare"), "git config at a repository store must only read"),
+        (
+            ("config", "--get", "--add", "core.bare", "true"),
+            "git config at a repository store must only read",
+        ),
     ):
         with pytest.raises(ValueError, match=re.escape(refused)):
             asyncio.run(run(*args))
@@ -1326,3 +1368,43 @@ def test_a_store_read_that_could_run_a_configured_program_is_refused_at_the_spaw
     shown = asyncio.run(run(*settings, "show", *GIT_NO_DRIVER_ARGS, "--stat", FEATURE))
     assert FEATURE in shown.decode()
     assert asyncio.run(run("rev-parse", FEATURE)).decode().strip() == FEATURE
+    # The read forms of the commands whose writes are refused.
+    assert (
+        asyncio.run(run("symbolic-ref", "--quiet", "HEAD")).decode().strip() == "refs/heads/topic"
+    )
+    assert asyncio.run(run("config", "--get", "core.bare")).decode().strip() == "false"
+
+
+def test_a_store_location_takes_no_format_fsmonitor_or_hook_from_the_checkout(
+    checkout: Path, tmp_path: Path
+) -> None:
+    """What a location sets for a read that no argument shows (review C1 on #559).
+
+    A ``show`` with no format of its own prints the one ``format.pretty`` names, which
+    can hold ``%G?`` and so verify a signature, and a read of an index path runs
+    ``core.fsmonitor``. A read through a store target's :class:`GitLocation` sets
+    ``format.pretty=medium``, ``core.fsmonitor=false``, and no hooks, so neither runs and
+    nothing is written.
+    """
+
+    signed = signed_branch(checkout)
+    markers = _plant(checkout, tmp_path)
+    git(checkout, "config", "format.pretty", "%G? %H")
+    before = snapshot(checkout)
+    location = GitLocation.revision(repository_store_target(git_dir=checkout / ".git"), signed)
+
+    async def read() -> tuple[bytes, bytes]:
+        shown = await run_git_at(["show", *location.diff_driver_args, "-s", signed], location)
+        indexed = await run_git_at(["cat-file", "-p", ":README.md"], location)
+        return shown, indexed
+
+    shown, indexed = asyncio.run(read())
+    assert shown.decode().startswith(f"commit {signed}\n")
+    assert indexed
+    assert [name for name, marker in markers.items() if marker.exists()] == []
+    assert _differing(before, snapshot(checkout)) == []
+    # The fixture is live: Git asked the same without those settings runs each program.
+    git(checkout, "-c", "log.showSignature=false", "show", "-s", signed)
+    assert markers["signature"].exists()
+    git(checkout, "cat-file", "-p", ":README.md")
+    assert markers["other"].exists()
