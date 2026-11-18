@@ -59,8 +59,8 @@ public nonisolated enum CandidateResult: Equatable, Sendable {
     case valid(version: String)
     case missing
     /// A working `metab` older than `MetabRequirement.minimum`, or, whatever its number,
-    /// one built before `CLIServeLaunch.exitOnEOF`, which it rejects as an unknown option
-    /// (`RuntimeDiscovery.rejectsServeFlag`, `MetabRequirement.flagShortfall`).
+    /// one built before one of `MetabRequirement.requiredFlags`, which it rejects as an
+    /// unknown option (`RuntimeDiscovery.rejectsServeFlag`, `MetabRequirement.flagShortfall`).
     case tooOld(version: String)
     case rejected(String)
     /// Not run: the app found it by itself, and another account can change it, or it could
@@ -173,15 +173,16 @@ public nonisolated enum RuntimeDiscovery {
         return env.home + "/.local/bin"
     }
 
-    /// Runs `metab --exit-on-eof --version` with the same minimal environment a server
-    /// gets, and holds the version to `MetabRequirement`.
+    /// Runs `metab --exit-on-eof --present --version` with the same minimal environment a
+    /// server gets, and holds the version to `MetabRequirement`.
     ///
-    /// The flag is the one every server gets (`CLIServeLaunch.exitOnEOF`), and a version
-    /// number cannot show it: a development build of the minimum from before the flag
-    /// counts as the minimum. Click rejects an unknown option before the eager `--version`
-    /// runs, so such a build exits 2 and names the flag (`rejectsServeFlag`). Only then
-    /// does `--version` run alone, and a version this app reads from it makes the `metab`
-    /// too old whatever its number. Any other failed probe shows nothing about when the
+    /// The flags are `MetabRequirement.requiredFlags`: the one every server gets
+    /// (`CLIServeLaunch.exitOnEOF`), and the one that resolves a GitHub link
+    /// (`PresentDryRun.flag`). A version number cannot show them: a development build of the
+    /// minimum from before a flag counts as the minimum. Click rejects an unknown option
+    /// before the eager `--version` runs, so such a build exits 2 and names the flag
+    /// (`rejectsServeFlag`). Only then does `--version` run alone, and a version this app
+    /// reads from it makes the `metab` too old whatever its number. Any other failed probe shows nothing about when the
     /// build was made, so it is rejected with its own output and nothing more runs; so is
     /// a probe that could not start or did not finish. A current `metab` costs one run.
     ///
@@ -219,13 +220,13 @@ public nonisolated enum RuntimeDiscovery {
             }
             return judge(version, parsed)
         }
-        let probe = await run([CLIServeLaunch.exitOnEOF, "--version"])
+        let probe = await run(MetabRequirement.requiredFlags + ["--version"])
         if let rejection = unfinished(probe) { return rejection }
         if probe.succeeded {
             return reading(probe) { MetabRequirement.accepts($1) ? .valid(version: $0) : .tooOld(version: $0) }
         }
         guard rejectsServeFlag(probe) else {
-            return .rejected("\(CLIServeLaunch.exitOnEOF) --version printed: \(probe.output.last ?? "nothing")")
+            return .rejected("\(probeFlags) --version printed: \(probe.output.last ?? "nothing")")
         }
         if let barred = barred() { return barred }
         let plain = await run(["--version"])
@@ -233,13 +234,16 @@ public nonisolated enum RuntimeDiscovery {
         return reading(plain) { version, _ in .tooOld(version: version) }
     }
 
-    /// Whether `result` is click's rejection of `CLIServeLaunch.exitOnEOF` as an unknown
-    /// option: exit status 2, with the flag named in what it printed. The wording around
-    /// the flag is click's and is not matched. A crash, a signal, or another usage error is
-    /// not one, and shows nothing about when the build was made.
+    /// The flags the probe passes, as a failure names them.
+    static var probeFlags: String { MetabRequirement.requiredFlags.joined(separator: " ") }
+
+    /// Whether `result` is click's rejection of one of `MetabRequirement.requiredFlags` as
+    /// an unknown option: exit status 2, with the flag named in what it printed. The
+    /// wording around the flag is click's and is not matched. A crash, a signal, or another
+    /// usage error is not one, and shows nothing about when the build was made.
     static func rejectsServeFlag(_ result: CommandResult) -> Bool {
         guard let status = result.status, ExitStatus(waitStatus: status) == .exited(2) else { return false }
-        return result.output.contains { $0.contains(CLIServeLaunch.exitOnEOF) }
+        return result.output.contains { line in MetabRequirement.requiredFlags.contains { line.contains($0) } }
     }
 
     /// `metab 0.12.0` → `0.12.0`. A checkout prints a longer description after it.

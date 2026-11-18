@@ -55,11 +55,14 @@ public nonisolated struct CLIServeLaunch: ServerLaunch {
     /// How many ports `metab`'s walk tries, `DEFAULT_PORT_SEARCH_COUNT` in
     /// `src/metabrowser/server_utils.py`.
     public static let portSearchCount = 32
-    /// Where a repository's servers walk from: past every port a folder's walk can reach.
-    /// The two ranges do not meet, so each kind starts behind a `LaunchGate` of its own, and
-    /// a repository's start, which can clone for minutes before it walks, holds up no
-    /// folder's.
-    public static let repositoryBasePort = defaultBasePort + portSearchCount
+    /// Where a repository's servers walk from: a whole walk past every port a folder's walk
+    /// can reach, 8475 to 8506 today. The two ranges do not meet, so each kind starts behind
+    /// a `LaunchGate` of its own (`LaunchLane`), and a repository's start, which can clone
+    /// for minutes before it walks, holds up no folder's. The range just past the folders'
+    /// would begin at 8443, the conventional alternate HTTPS port: `metab` binds loopback
+    /// with `SO_REUSEADDR`, so a service of the user's on `*:8443` would stop answering on
+    /// `127.0.0.1` while a repository's window is open, and the two would share an origin.
+    public static let repositoryBasePort = defaultBasePort + 2 * portSearchCount
     public static let host = "127.0.0.1"
     /// The flag that ends a server when its stdin closes. `RuntimeDiscovery.validate`
     /// passes it with `--version`, so setup refuses a `metab` built before the flag rather

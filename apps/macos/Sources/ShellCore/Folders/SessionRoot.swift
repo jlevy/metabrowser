@@ -4,10 +4,11 @@ import Foundation
 /// on GitHub, which `metab` clones into its cache or finds there.
 ///
 /// A repository is keyed by its canonical URL, `https://github.com/<owner>/<repo>`, as
-/// `metab URL --present --dry-run --json` reports it (`PresentPlan`), never by its pin: a
-/// page can switch the pin while the server runs (View on branch), so a key that held the
-/// pin would stop naming the session. Every link into one repository opens in its one
-/// session, then, and navigates that session's window to the page it names.
+/// `metab URL --present --dry-run --format json` reports it (`PresentPlan`), never by its
+/// pin: a page can switch the pin while the server runs (View on branch), so a key that
+/// held the pin would stop naming the session. Every link into one repository opens in
+/// its one session, then, which starts its server again on a link that its window does
+/// not show (`FolderSession.open(link:)`).
 public nonisolated enum SessionRoot: Hashable, Sendable {
     /// A canonical folder, as `OpenTarget` resolves one.
     case folder(URL)
@@ -43,9 +44,26 @@ public nonisolated enum SessionRoot: Hashable, Sendable {
         }
     }
 
-    /// Where its server's port walk starts: a repository's apart from every folder's, so
-    /// the two kinds start behind launch gates of their own.
+    /// Which servers it starts among: its port walk, and the launch gate it waits at.
+    public var lane: LaunchLane { isLocal ? .folders : .repositories }
+}
+
+/// A kind of server that starts behind a `LaunchGate` of its own, because its port walk
+/// covers ports no other lane's reaches. One value names both, so a session's gate and the
+/// port its walk starts from cannot disagree: the app holds one gate per lane.
+public nonisolated enum LaunchLane: CaseIterable, Hashable, Sendable {
+    case folders
+    /// Repositories, whose start can clone for minutes before it walks.
+    case repositories
+
+    /// Where its servers' port walk starts.
     public var basePort: Int {
-        isLocal ? CLIServeLaunch.defaultBasePort : CLIServeLaunch.repositoryBasePort
+        switch self {
+        case .folders: CLIServeLaunch.defaultBasePort
+        case .repositories: CLIServeLaunch.repositoryBasePort
+        }
     }
+
+    /// Every port its walk can reach.
+    public var ports: Range<Int> { basePort..<(basePort + CLIServeLaunch.portSearchCount) }
 }

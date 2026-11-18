@@ -60,9 +60,12 @@ private let repository = SessionRoot.repository(URL(string: "https://github.com/
         let what = "announce its address"
         #expect(folder.summary(.quiet, waitingFor: what) == "The server did not announce its address within 60.0 seconds.")
         #expect(clone.summary(.quiet, waitingFor: what) == "The server wrote nothing for 60.0 seconds and did not announce its address.")
-        #expect(clone.summary(.limit, waitingFor: what) == "The server did not announce its address within 2040.0 seconds, though it was still writing.")
+        #expect(clone.summary(.limit, waitingFor: what) == "The server did not announce its address within 34 minutes, though it was still writing.")
         #expect(clone.summary(.quiet, waitingFor: "answer it", announced: true) == "The server did not answer it within 60.0 seconds of announcing its address.")
-        #expect(clone.summary(.limit, waitingFor: "answer it", announced: true) == "The server did not answer it within 2040.0 seconds.")
+        #expect(clone.summary(.limit, waitingFor: "answer it", announced: true) == "The server did not answer it within 34 minutes.")
+        // A limit of two minutes or less reads as Duration prints it.
+        #expect(StartupDeadline.spoken(.seconds(120)) == "120.0 seconds")
+        #expect(StartupDeadline.spoken(.seconds(150)) == "3 minutes")
     }
 
     @Test func aRepositoryStartsUnderTheLimitAndAFolderUnderNone() {
@@ -153,7 +156,8 @@ private final class LogWriter: Sendable {
         let clock = ContinuousClock()
         let began = clock.now
         await subject.start()
-        #expect(began.duration(to: clock.now) < .seconds(300))
+        // The quiet period ended it, long before the 600-second limit could.
+        #expect(began.duration(to: clock.now) < .seconds(10))
         #expect(failure(subject)?.summary == "The server wrote nothing for 0.3 seconds and did not announce its address.")
         #expect(child.signals.first == SIGTERM)
     }
@@ -211,48 +215,5 @@ private final class LogWriter: Sendable {
         _ = await child.waitForOutputEnd()
         #expect(child.outputProgress == "out\nerr\n".utf8.count)
         child.release()
-    }
-}
-
-/// The copies of `metab`'s constants the app's bounds are built from, each pinned to its
-/// definition, so a change there fails here and names the copy to change.
-@Suite struct MetabAcquisitionTests {
-    private static let repositoryRoot = URL(filePath: #filePath).deletingLastPathComponent()
-        .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        .deletingLastPathComponent()
-
-    /// What `name` is assigned at the start of a line of `file`: the text after `=`.
-    private func definition(_ name: String, in file: String) throws -> String {
-        let source = try String(contentsOf: Self.repositoryRoot.appending(path: file), encoding: .utf8)
-        let line = try #require(
-            source.split(separator: "\n").first { $0.hasPrefix(name + " ") || $0.hasPrefix(name + ":") },
-            "\(name) is not defined at the start of a line of \(file)")
-        let value = try #require(line.split(separator: "=", maxSplits: 1).last)
-        return value.trimmingCharacters(in: .whitespaces)
-    }
-
-    private func seconds(_ name: String, in file: String) throws -> Duration {
-        .seconds(try #require(Double(try definition(name, in: file)), "\(name) is not a number"))
-    }
-
-    @Test func theAcquisitionBoundsAreMetabs() throws {
-        #expect(try seconds("REMOTE_PROBE_TIMEOUT_S", in: "src/metabrowser/cache/origin.py") == MetabAcquisition.remoteProbe)
-        #expect(try seconds("GIT_ACQUISITION_TIMEOUT_S", in: "src/metabrowser/git/process.py") == MetabAcquisition.fetch)
-        #expect(try seconds("LOG_INTERVAL_S", in: "src/metabrowser/cli/clone_report.py") == MetabAcquisition.progressLineInterval)
-        // MetabAcquisition.reservationWait is this expression: its attempts and its minute.
-        #expect(try definition("RESERVATION_WAIT_S", in: "src/metabrowser/cache/acquire.py")
-            == "\(MetabAcquisition.attempts) * (REMOTE_PROBE_TIMEOUT_S + GIT_ACQUISITION_TIMEOUT_S + \(MetabAcquisition.validation.components.seconds).0)")
-    }
-
-    @Test func thePortWalkIsMetabs() throws {
-        #expect(try definition("DEFAULT_BROWSER_PORT", in: "src/metabrowser/settings.py") == String(CLIServeLaunch.defaultBasePort))
-        #expect(try definition("DEFAULT_PORT_SEARCH_COUNT", in: "src/metabrowser/server_utils.py") == String(CLIServeLaunch.portSearchCount))
-    }
-
-    @Test func theLinkHostsAreTheGitHubReducers() throws {
-        let file = "src/metabrowser/builtin_plugins/github/urls.py"
-        #expect(try definition("_WEB_HOSTS", in: file) == #"frozenset({"github.com", "www.github.com"})"#)
-        #expect(try definition("_RAW_HOST", in: file) == #""raw.githubusercontent.com""#)
-        #expect(GitHubLink.hosts == ["github.com", "www.github.com", "raw.githubusercontent.com"])
     }
 }

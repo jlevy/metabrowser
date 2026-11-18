@@ -18,19 +18,17 @@ private let repository = URL(string: "https://github.com/jlevy/tbd")!
     /// so they share one key and one session.
     @Test func everyLinkIntoARepositoryFindsItsOneSession() throws {
         let answers = [
-            #"{"kind": "pull_request", "root": "https://github.com/jlevy/tbd", "page": "/pull/12", "refusal": null}"#,
-            #"{"kind": "file", "root": "https://github.com/jlevy/tbd", "page": "/view/README.md", "refusal": null}"#,
-            #"{"kind": "tree", "root": "https://github.com/jlevy/tbd", "page": "/view/docs/", "refusal": null}"#,
+            #"{"kind": "pull_request", "root": "https://github.com/jlevy/tbd", "page": "/pull/12", "handoff": ["https://github.com/jlevy/tbd/pull/12"], "refusal": null}"#,
+            #"{"kind": "file", "root": "https://github.com/jlevy/tbd", "page": null, "handoff": ["https://github.com/jlevy/tbd/blob/a/b/README.md"], "refusal": null}"#,
+            #"{"kind": "tree", "root": "https://github.com/jlevy/tbd", "page": "/view/", "handoff": ["https://github.com/jlevy/tbd/tree/main"], "refusal": null}"#,
         ]
         var keys = Set<String>()
         for json in answers {
-            guard case .plan(let plan) = PresentDryRun.answer(CommandResult(status: 0, output: [json])),
-                  case .repository(let url) = plan.root
-            else {
+            guard case .plan(let plan) = PresentDryRun.answer(CommandResult(status: 0, output: [json])) else {
                 Issue.record("expected a repository plan for \(json)")
                 continue
             }
-            keys.insert(SessionRoot.repository(url).key)
+            keys.insert(SessionRoot.repository(plan.repository).key)
         }
         #expect(keys == ["https://github.com/jlevy/tbd"])
     }
@@ -45,21 +43,26 @@ private let repository = URL(string: "https://github.com/jlevy/tbd")!
         #expect(SessionRoot.folder(URL(filePath: "/tmp/notes")).identity(home: "/tmp/account").kind == .folder)
     }
 
+    /// One value gives a session its gate and its port walk (A12), and the lanes' walks
+    /// never meet, nor does the repositories' reach 8443 (B7).
     @Test func aRepositoryWalksPortsNoFolderWalks() {
-        let folders = CLIServeLaunch.defaultBasePort..<(CLIServeLaunch.defaultBasePort + CLIServeLaunch.portSearchCount)
-        let repositories =
-            CLIServeLaunch.repositoryBasePort..<(CLIServeLaunch.repositoryBasePort + CLIServeLaunch.portSearchCount)
-        #expect(!folders.overlaps(repositories))
-        #expect(SessionRoot.folder(URL(filePath: "/tmp/notes")).basePort == CLIServeLaunch.defaultBasePort)
-        #expect(SessionRoot.repository(repository).basePort == CLIServeLaunch.repositoryBasePort)
+        #expect(!LaunchLane.folders.ports.overlaps(LaunchLane.repositories.ports))
+        #expect(LaunchLane.folders.ports == 8411..<8443)
+        #expect(LaunchLane.repositories.ports == 8475..<8507)
+        #expect(!LaunchLane.repositories.ports.contains(8443))
+        #expect(SessionRoot.folder(URL(filePath: "/tmp/notes")).lane == .folders)
+        #expect(SessionRoot.repository(repository).lane == .repositories)
+        #expect(LaunchLane.folders.basePort == CLIServeLaunch.defaultBasePort)
+        #expect(LaunchLane.repositories.basePort == CLIServeLaunch.repositoryBasePort)
     }
 
     @Test func aRepositoryLogNeverSharesAFoldersName() {
         let repositoryLog = ServerLog.fileName(for: repository)
         #expect(repositoryLog.hasPrefix("tbd-"))
         #expect(repositoryLog != ServerLog.fileName(for: URL(filePath: "/jlevy/tbd")))
-        // A folder's log keeps its name.
-        #expect(ServerLog.fileName(for: URL(filePath: "/tmp/notes")) == ServerLog.fileName(for: URL(filePath: "/tmp/notes")))
+        // A folder's log keeps the name it had before repositories had logs: the digest of
+        // its path, pinned by value.
+        #expect(ServerLog.fileName(for: URL(filePath: "/tmp/notes")) == "notes-8fcb83ec.log")
     }
 }
 
@@ -67,11 +70,12 @@ private let repository = URL(string: "https://github.com/jlevy/tbd")!
     private let setup = RuntimeSetup(
         runtime: Runtime(executable: "/opt/metab", version: "0.12.1", source: .localBin), tools: ToolPaths())
 
-    /// The server is started with the link, not the cache's path for it nor the URL's path
-    /// (`/jlevy/tbd/pull/12`, which `root.path` would give), and runs in the home folder.
+    /// The server is started with the link `metab` handed back, not the cache's path for it
+    /// nor the URL's path (`/jlevy/tbd/pull/12`, which `root.path` would give), and runs in
+    /// the home folder.
     @Test func aRepositoryServerIsStartedWithTheLinkInTheHomeFolder() {
         let link = URL(string: "https://github.com/jlevy/tbd/pull/12")!
-        let launch = CLIServeLaunch(basePort: SessionRoot.repository(repository).basePort)
+        let launch = CLIServeLaunch(basePort: SessionRoot.repository(repository).lane.basePort)
         let spec = launch.spec(serving: link, with: setup, inherited: [:], logURL: nil, home: "/tmp/account")
         #expect(spec.arguments == [
             "https://github.com/jlevy/tbd/pull/12", "--no-open", "--exit-on-eof", "--host", "127.0.0.1",

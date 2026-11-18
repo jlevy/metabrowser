@@ -210,6 +210,18 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         if let endpoint { loadNextPageOnceAnswered(from: endpoint) }
     }
 
+    /// Loads the entry page of the server it attaches to next, rather than the page it shows
+    /// now: a repository's server starting again on a new link announces that link's page.
+    func showEntryPage() {
+        pages.requestEntry()
+        isDiscarded = false
+    }
+
+    /// Whether the start waits for another repository's, which can be a first clone.
+    func showWaitingAtGate(_ waiting: Bool) {
+        status.waitsForAnotherStart = waiting
+    }
+
     /// The page to save for the next launch.
     var currentPage: PageAddress? {
         pages.saved(showing: currentServerURL.flatMap(PageAddress.init))
@@ -296,7 +308,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         guard let window else { return }
         window.title = windowTitle
         window.subtitle = title.subtitle
-        window.representedURL = title.hasPathMenu ? session?.root : nil
+        // Only a folder on this Mac has a path menu: a repository's root is a URL, whose path
+        // names no folder here, whatever identity its port answered.
+        window.representedURL = title.hasPathMenu && session?.isLocal == true ? session?.root : nil
         window.tab.title = title.tabTitle
         window.tab.toolTip = title.tabToolTip
         titleAccessory.show(title, representing: window.representedURL)

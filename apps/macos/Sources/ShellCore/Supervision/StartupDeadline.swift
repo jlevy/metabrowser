@@ -81,16 +81,26 @@ public nonisolated struct StartupDeadline: Equatable, Sendable {
         case (.quiet, .some):
             "The server wrote nothing for \(quiet) and did not \(what)."
         case (.limit, .some(let limit)) where announced:
-            "The server did not \(what) within \(limit)."
+            "The server did not \(what) within \(Self.spoken(limit))."
         case (.limit, .some(let limit)):
-            "The server did not \(what) within \(limit), though it was still writing."
+            "The server did not \(what) within \(Self.spoken(limit)), though it was still writing."
         }
+    }
+
+    /// `duration` as the failure says it: whole minutes once it is longer than two of
+    /// them, as a repository's limit is, and otherwise as `Duration` prints itself.
+    static func spoken(_ duration: Duration) -> String {
+        let seconds = duration.components.seconds
+        guard seconds > 120 else { return "\(duration)" }
+        let minutes = Int((Double(seconds) / 60).rounded())
+        return "\(minutes) minutes"
     }
 }
 
 /// The bounds `metab` puts on acquiring a source, which a repository's start must outlast:
 /// a shorter limit would stop a clone that `metab` would have finished. Each is a copy of
-/// the constant named beside it, and `MetabAcquisitionTests` pins it to that definition.
+/// the constant named beside it, and `tests/test_macos_app_pins.py` pins it to that
+/// definition, in the CI job that runs on every change, whichever side moved.
 public nonisolated enum MetabAcquisition {
     /// `REMOTE_PROBE_TIMEOUT_S` in `src/metabrowser/cache/origin.py`: the probe of the
     /// origin before a fetch.

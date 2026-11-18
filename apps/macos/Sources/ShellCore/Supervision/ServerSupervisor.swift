@@ -121,6 +121,10 @@ public final class ServerSupervisor {
     /// Called right after a child is created, before it is ready; not when creating it
     /// fails. What a folder records as the runtime its server started from.
     public var onSpawn: (() -> Void)?
+    /// Called with true when a start finds its launch gate held by another server's start
+    /// and waits, and with false once it has the gate: what the windows say meanwhile, since
+    /// another repository's first clone can hold it for minutes.
+    public var onGateWait: ((Bool) -> Void)?
 
     /// What the next launch runs. `restart(using:)` replaces it.
     public private(set) var spec: LaunchSpec
@@ -307,7 +311,15 @@ public final class ServerSupervisor {
         }
         await awaitTerminations()
         guard current == generation, !isShutDown else { return }
-        if let gate { await gate.acquire() }
+        if let gate {
+            let waits = gate.isHeld
+            if waits {
+                event("waiting for another server's start to finish before this one starts")
+                onGateWait?(true)
+            }
+            await gate.acquire()
+            if waits { onGateWait?(false) }
+        }
         defer { gate?.release() }
         guard current == generation else { return }
         launchWasRefused = false

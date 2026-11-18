@@ -234,4 +234,28 @@ private func supervisor(
         #expect(slow.state == .ready(endpoint))
         #expect(fast.state == .ready(endpoint))
     }
+
+    /// A start that waits at a held gate says so, and says when it has the gate, so a
+    /// repository's window can say it waits for another's start (review A4 on #539).
+    @Test func aStartWaitingAtTheGateSaysSo() async {
+        let gate = LaunchGate()
+        await gate.acquire()  // another start holds it
+        let child = FakeProcess()
+        child.say(servingLine)
+        let subject = ServerSupervisor(
+            spec: spec, launch: CLIServeLaunch(), policy: fastPolicy(), gate: gate, makeProcess: { _ in child },
+            probe: { _ in true })
+        let waits = Recorder<Bool>()
+        let events = Recorder<String>()
+        subject.onGateWait = { waits.append($0) }
+        subject.onEvent = { events.append($0) }
+        let started = Task { await subject.start() }
+        #expect(await eventually { waits.all == [true] })
+        #expect(events.all.first?.hasPrefix("waiting for another server") == true)
+        gate.release()
+        await started.value
+        #expect(waits.all == [true, false])
+        #expect(subject.state == .ready(endpoint))
+        await subject.stop()
+    }
 }
