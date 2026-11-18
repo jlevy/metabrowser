@@ -282,6 +282,7 @@ status: 200
   "path": ".hidden/notes.txt",
   "ext": ".txt",
   "size": 6,
+  "mtime": 1700000000.0,
   "mtime_hash": "notes_txt_6_1700000000000000000_8ahuh1mrwyb73n3ig7yp3gxtec9j4ck",
   "content": "plain\n",
   "content_offset": 0,

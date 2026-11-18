@@ -571,13 +571,15 @@ def test_every_icon_only_control_carries_the_icon_button_primitive() -> None:
 
     server = Path(proc_browser.__file__).read_text()
     app = _read("app.js")
+    header = _read("view-header.js")
     sdk = _read("plugin-sdk-views.js")
     controls = _read("filter-controls.js")
 
     assert 'class="icon-btn settings-btn"' in server
-    assert 'class="icon-btn icon-btn-reveal file-header-copy"' in app
+    assert 'class="icon-btn icon-btn-reveal file-header-copy"' in header
     # The print button left the header for the rendered document's card (mb-07a1).
     assert "file-header-print" not in app
+    assert "file-header-print" not in header
     printer = (
         proc_browser.STATIC_DIR.parent / "builtin_plugins" / "markdown" / "print-indicator.js"
     ).read_text(encoding="utf-8")
@@ -600,17 +602,19 @@ def test_every_icon_only_control_carries_the_icon_button_primitive() -> None:
 
 def test_plain_text_actions_use_the_shared_button_primitive() -> None:
     app = _read("app.js")
+    header = _read("view-header.js")
     css = _read("styles.css")
 
     # The text view's Load more moved out of the file header and into the
     # shared partial-content notice, but it is still the `.btn` primitive.
     sdk = _read("plugin-sdk-views.js")
     assert 'class="btn metabrowser-load-more"' in sdk
-    assert "file-header-action" not in app, (
-        "the header no longer restates partial progress; the notice owns it"
-    )
-    assert 'class="btn parent-nav-btn parent-nav-btn-icon-only folder-up"' in app
-    assert '<span class="parent-nav-arrow" aria-hidden="true">↑</span>' in app
+    for source in (app, header):
+        assert "file-header-action" not in source, (
+            "the header no longer restates partial progress; the notice owns it"
+        )
+    assert 'class="btn parent-nav-btn parent-nav-btn-icon-only folder-up"' in header
+    assert '<span class="parent-nav-arrow" aria-hidden="true">↑</span>' in header
     assert ".btn {" in css
     assert ".btn:focus-visible {" in css
     assert ".parent-nav-btn {" in css
@@ -618,7 +622,7 @@ def test_plain_text_actions_use_the_shared_button_primitive() -> None:
     parent_nav = css[css.index(".parent-nav-btn {") : css.index(".parent-nav-btn-icon-only {")]
     assert "height: var(--icon-btn-size);" in parent_nav
     assert "border-color: var(--viz-border-strong);" in parent_nav
-    assert 'aria-label="Open parent folder ${esc(parentLabel)}"' in app
+    assert 'aria-label="Open parent folder ${esc(label)}"' in header
 
 
 def test_every_core_button_declares_non_submit_behavior() -> None:
@@ -626,7 +630,13 @@ def test_every_core_button_declares_non_submit_behavior() -> None:
     for tag in re.findall(r"<button\b[^>]*>", html):
         assert 'type="button"' in tag
 
-    for name in ("app.js", "filter-controls.js", "plugin-sdk.js", "plugin-sdk-views.js"):
+    for name in (
+        "app.js",
+        "view-header.js",
+        "filter-controls.js",
+        "plugin-sdk.js",
+        "plugin-sdk-views.js",
+    ):
         source = _read(name)
         for match in re.finditer(r"<button\b", source):
             nearby_markup = source[match.start() : match.start() + 320]

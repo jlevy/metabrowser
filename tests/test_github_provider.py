@@ -279,6 +279,7 @@ def test_repository_context_for_a_github_mirror() -> None:
     revision = "a" * 40
     assert repository_context_for(SOURCE.normalized, revision=revision, branch="topic") == {
         "branch": "topic",
+        "branch_on_origin": True,
         "host": "github.com",
         "name": "demo",
         "owner": "octo",
