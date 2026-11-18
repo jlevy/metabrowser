@@ -1,5 +1,6 @@
 """The GitHub repository provider: reducer, ``gh`` credential helper, first-clone checks,
-context, the head a pull-request URL pins, and the pull requests a server serves.
+context, the head a pull-request URL pins, the changed file its anchor names, and the
+pull requests a server serves.
 
 Before a first clone it runs the GitHub status check (:mod:`.gh_status`): a pull-request
 URL that gh cannot read stops there, before anything is cloned, and a repository that
@@ -25,6 +26,7 @@ from metabrowser.builtin_plugins.github.gh_status import (
     github_status,
     kept_github_status,
 )
+from metabrowser.builtin_plugins.github.pull_file_anchor import pull_file_for_anchor
 from metabrowser.builtin_plugins.github.pulls import PullDataError, open_pull_request
 from metabrowser.builtin_plugins.github.served_pull import ServedPulls
 from metabrowser.builtin_plugins.github.urls import (
@@ -40,8 +42,8 @@ from metabrowser.repository_context import RepositoryContext
 
 if TYPE_CHECKING:
     from metabrowser.cache.acquire import PublishedSource
-    from metabrowser.cache.providers import PullRequestFetch, PullRequestPin
-    from metabrowser.cache.urls import GitSource, ProviderUrlReducer
+    from metabrowser.cache.providers import PullRequestFetch, PullRequestFile, PullRequestPin
+    from metabrowser.cache.urls import FileAnchor, GitSource, ProviderUrlReducer
     from metabrowser.mirror_refresh import PullRequestSet
 
 log = logging.getLogger(__name__)
@@ -288,6 +290,13 @@ class GithubProvider:
             raise PullRequestUnavailableError(
                 exc.state, message, blocking=exc.state in SIGN_IN_STATES
             ) from exc
+
+    async def pull_request_file(
+        self, published: PublishedSource, number: int, anchor: FileAnchor
+    ) -> PullRequestFile | None:
+        if parse_repository_url(published.source.normalized) is None:
+            return None
+        return await pull_file_for_anchor(published, number, anchor)
 
     def served_pull_requests(self, published: PublishedSource) -> PullRequestSet | None:
         if parse_repository_url(published.source.normalized) is None:

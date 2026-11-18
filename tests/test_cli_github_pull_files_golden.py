@@ -9,7 +9,8 @@ a fixed clock that a block says when it moves.
 Reading lists from a prebuilt home, with no ``gh`` at all, runs as a subprocess in
 ``tests/golden/cli-github-pull-files.tryscript.md``. This transcript is what that one
 cannot show: a refresh that completes, from GitHub's pages or from the local comparison,
-the requests it made, and a list that is ``current``.
+the requests it made, and a list that is ``current``. ``cli-github-pull-file-anchor.txt``
+is the file a Changes tab URL's ``#diff-<hash>`` names, against those lists.
 """
 
 from __future__ import annotations
@@ -34,6 +35,7 @@ from metabrowser.builtin_plugins.github import (
     pulls,
 )
 from metabrowser.builtin_plugins.github.pull_catalog import read_catalog
+from metabrowser.builtin_plugins.github.pull_file_anchor import path_digest
 from metabrowser.builtin_plugins.github.pull_record import PullRefreshStamp
 from metabrowser.cache.urls import GitSource
 from tests.github_pull_fixture import (
@@ -256,6 +258,73 @@ def test_golden_pull_files_listed_refreshed_and_refused(
     assert str(tmp_path) not in rendered and str(session.home) not in rendered
     assert "file://" not in rendered
     check_golden("cli-github-pull-files-refresh.txt", rendered)
+
+
+def test_golden_a_changes_url_anchor_opens_the_file_it_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    """GitHub's ``#diff-<hash>``, the SHA-256 of a changed file's path, on a Changes URL.
+
+    It resolves against the list the files route answers from, then the record's
+    comparison, and never asks gh; the ``file`` line of each command says what it named.
+    An anchor no list names opens the Changes tab itself, and is not an error.
+    """
+
+    session = _Session(tmp_path, monkeypatch, pull_origin)
+    online = files_scenario(session.origin)
+    changes = f"{CANONICAL}/pull/7/files"
+    app_txt, new_md = path_digest("src/app.txt"), path_digest("docs/new.md")
+    assert app_txt is not None and new_md is not None
+
+    session.say(
+        "No list is cached. Opening the pull request fetches its record, whose comparison "
+        "in the store names the file."
+    )
+    first = session.run(f"{changes}#diff-{app_txt}R2", "--no-serve")
+    assert first.exit_code == 0, first.stderr
+    assert "\nfile: src/app.txt\ndiff_line: R2 (the Changes tab opens at the file, not " in (
+        first.stdout
+    )
+
+    session.say("Once the list is cached, the files route's own list names it, with no Git.")
+    assert session.post({"number": 7}).exit_code == 0
+    listed = session.run(f"{changes}#diff-{new_md}L1-R1", "--api", f"{FILES}?number=7")
+    assert listed.exit_code == 0, listed.stderr
+    assert _paths(listed) == ["docs/new.md", "src/app.txt"]
+    assert "\nfile: docs/new.md\ndiff_line: L1-R1 " in listed.stderr
+
+    session.say(
+        "GitHub's Changes page is `/changes` since 2026-01-22, and `/files` its older "
+        "spelling: both carry the same anchor."
+    )
+    moved = session.run(f"{CANONICAL}/pull/7/changes#diff-{app_txt}R2", "--no-serve")
+    assert moved.exit_code == 0, moved.stderr
+    assert "\ntab: files\nfile: src/app.txt\ndiff_line: R2 " in moved.stdout
+
+    session.say("A file the pull request does not change, and a hash GitHub never writes.")
+    unchanged = session.run(f"{changes}#diff-{path_digest('README.md')}", "--no-serve")
+    assert unchanged.exit_code == 0, unchanged.stderr
+    assert "(file_not_changed); opening the Changes tab\n" in unchanged.stdout
+    dropped = session.run(f"{changes}#diff-{app_txt[:32]}", "--no-serve")
+    assert dropped.exit_code == 0 and "file:" not in dropped.stdout
+
+    session.say(
+        "Offline, a pull request with no record and no list: nothing names the file, and "
+        "the pin is the default branch."
+    )
+    session.answer(
+        _with(online, api_failure={"stderr": "error connecting to api.github.com\n", "exit": 1})
+    )
+    unknown = session.run(f"{CANONICAL}/pull/11/files#diff-{app_txt}", "--no-serve")
+    assert unknown.exit_code == 0, unknown.stderr
+    assert "(files_unknown); opening the Changes tab\n" in unknown.stdout
+
+    rendered = normalize_pull_comparison_scopes(
+        label_home(Labels().apply("".join(session.blocks)), session.home)
+    )
+    assert str(tmp_path) not in rendered and str(session.home) not in rendered
+    assert "file://" not in rendered
+    check_golden("cli-github-pull-file-anchor.txt", rendered)
 
 
 def test_golden_pull_files_failures(

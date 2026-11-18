@@ -220,8 +220,10 @@ metab https://github.com/owner/repo/pull/123
   decides where the ref ends, preferring a branch, then a tag, then a commit ID.
 - **Lines:** a server opens a `#L10-L20` anchor with those lines highlighted.
 - **Selection lines:** `--no-serve` prints what the URL selected (`selection`, `pin`,
-  `path`, `lines`, and `tab`), and `--show` and `--api` print the same lines on stderr.
-- **Ignored:** query parameters other than `?plain=1`.
+  `path`, `lines`, `tab`, and `file`), and `--show` and `--api` print the same lines on
+  stderr.
+- **Ignored:** query parameters other than `?plain=1`, and fragments other than a line
+  anchor and a pull request’s file anchor.
 - **Refused:** `http://` URLs and other github.com pages, with a message that offers the
   repository URL.
 
@@ -240,8 +242,21 @@ GitHub-specific failures, private repositories, and large repositories are in
 This is the reference for the commands; for the workflow in a browser, see
 [reviewing pull requests](reviewing-pull-requests.md).
 A repository URL and a checkout whose `origin` is on github.com both offer the Pulls
-tab. A pull-request URL pins the pull request’s head commit; a `/pull/<n>/files` or
-`/pull/<n>/checks` URL opens that tab, and `/pull/<n>/commits/<id>` pins that commit.
+tab. A pull-request URL pins the pull request’s head commit; a `/pull/<n>/changes`,
+`/pull/<n>/files` (GitHub’s older spelling of Changes), or `/pull/<n>/checks` URL opens
+that tab, and `/pull/<n>/commits/<id>` pins that commit.
+
+A Changes tab URL copied from a file’s header, `/pull/<n>/changes#diff-<hash>` or
+`/pull/<n>/files#diff-<hash>`, opens that file at `/pull/<n>/files/<path>`. GitHub’s
+`<hash>` is the SHA-256 of the file’s path, so `metab` names the file from the pull
+request’s changed files, from the cache and the mirror alone, once the pull request is
+open; the `file` line says which.
+Where nothing cached names it, or the Changes tab has no address for its path, the URL
+opens the Changes tab and the line says why, which is not an error.
+A line in the anchor, such as `R12`, is reported on a `diff_line` line, and the page
+opens at the file, not the line.
+`--present --dry-run` reads no cache, so its `page` for such a URL is null, and its
+`handoff` keeps the anchor for the server the app starts.
 
 ```shell
 URL=https://github.com/owner/repo/pull/123
@@ -529,6 +544,8 @@ $ metab https://github.com/owner/repo/pull/123/files --present --dry-run --forma
   `release/v1` may be one branch, which `metab URL` opens at `/view/`, or a branch and a
   file. A commit’s page is `/commit/<id>` for a full ID and null for an abbreviated one,
   which the commit page refuses; `metab COMMIT_URL` opens at the same page.
+  A Changes tab URL that anchors one file, `#diff-<hash>`, has a null page: only the
+  pull request’s changed files, in the cache, say which file the hash names.
 - **`handoff`:** exactly what `open -b` is given after the bundle identifier: a folder;
   a file named alone; ROOT and then the file `--path` names in it, so the app opens the
   root that was named and shows the file there; or a URL’s canonical
