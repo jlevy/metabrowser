@@ -271,6 +271,12 @@ def stated_values() -> list[Stated]:
             (".".join(app_minimum.groups()),),
         ),
         Stated(
+            "skills/metabrowser/SKILL.md",
+            "the app's minimum metab",
+            r"the app needs `metab` (\d+\.\d+\.\d+) or later",
+            (".".join(app_minimum.groups()),),
+        ),
+        Stated(
             "docs/macos-app.md",
             "the live background tabs",
             r"and so do the (\w+)\s+background tabs shown most recently",
@@ -334,12 +340,13 @@ def test_the_app_guides_say_whether_its_minimum_is_released() -> None:
     released = _swift(
         APP_SOURCES / "Setup" / "MetabVersion.swift", r"static let isReleased = (true|false)"
     ).group(1)
-    guide = (REPO_ROOT / "docs/installation.md").read_text(encoding="utf-8")
-    says_unreleased = "no release on PyPI has it yet" in " ".join(guide.split())
-    assert says_unreleased == (released == "false"), (
-        "MetabRequirement.isReleased changed: update Release Status in docs/installation.md "
-        "and the steps in docs/macos-app.md, then this test"
-    )
+    for name in ("docs/installation.md", "skills/metabrowser/SKILL.md"):
+        guide = (REPO_ROOT / name).read_text(encoding="utf-8")
+        says_unreleased = "no release on PyPI has it yet" in " ".join(guide.split())
+        assert says_unreleased == (released == "false"), (
+            f"MetabRequirement.isReleased changed: update {name}, Release Status in "
+            "docs/installation.md, and the steps in docs/macos-app.md, then this test"
+        )
 
 
 def _reason_codes(guide: str, heading: str) -> list[str]:
