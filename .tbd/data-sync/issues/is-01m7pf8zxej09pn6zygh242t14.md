@@ -1,11 +1,11 @@
 ---
 type: is
 id: is-01m7pf8zxej09pn6zygh242t14
-title: "Checkout branch chooser: in folder mode (an existing checkout) show the same branch and tag chooser as a mirror; picking another ref views it read-only from the checkout's own .git as a pinned revision, without touching the working tree; picking the checkout's branch returns to the live working tree"
+title: "Checkout branch chooser: a folder that is a repository's root shows the mirror's branch and tag chooser; any branch, tag, or remote-tracking branch, the checked-out one included, is viewed read-only as a pinned revision from the checkout's own .git, never written; the Working tree is a separate row and the default; metab PATH --ref NAME opens on a ref"
 kind: feature
 status: in_progress
 priority: 1
-version: 6
+version: 7
 delegate: claude-code@spud10
 labels: []
 dependencies:
@@ -15,7 +15,7 @@ parent_id: is-01m7ksbn803jhw15qjc6beg7qf
 hold: null
 hold_until: null
 created_at: 2026-11-18T04:40:08.878Z
-updated_at: 2026-11-18T06:18:19.167Z
+updated_at: 2026-11-18T06:26:59.151Z
 started_at: 2026-11-18T04:41:02.677Z
 ---
 Owner, 2026-11-18 in chat: 'Why do I still not see a branch chooser anymore? ... I'm looking at a local repo ~/wrk/aisw/tradekb'. The chooser (static/source-ref-selector.js, #236/mb-eezo) renders only for a pin served from a mirror (server.py: git_pin and mirror_session). Owner chose: view the picked ref read-only from the checkout's .git as a pinned revision; never git checkout. Coordinate with Open Modes (mb-wup3, plan-2026-11-02-pr-review-mirror-and-checkout.md) and the pin model (/api/source/pin, #511's View on branch).
