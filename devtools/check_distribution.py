@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 import tarfile
+import tempfile
 import zipfile
 from pathlib import Path
 from textwrap import dedent
@@ -378,7 +379,16 @@ def _smoke_install(wheel: Path) -> None:
         "metab",
         "--doctor",
     ]
-    subprocess.run(doctor_command, cwd=ROOT, env=env, check=True)
+    # `--doctor` counts an `open_in` it cannot read, or `app` where no app takes a target,
+    # as a problem, so the developer's own preference and config.yml would decide this
+    # step. `browser` looks for no app, and an empty configuration directory sets nothing.
+    with tempfile.TemporaryDirectory(prefix="metab-doctor-config-") as configuration:
+        subprocess.run(
+            doctor_command,
+            cwd=ROOT,
+            env={**env, "METABROWSER_OPEN_IN": "browser", "METABROWSER_CONFIG_DIR": configuration},
+            check=True,
+        )
 
     api_check_command = [
         *uv_command,
