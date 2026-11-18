@@ -274,6 +274,12 @@ def golden_kinds() -> set[str]:
     return kinds
 
 
+# The registry's two checked tables: the header each starts with and its column count.
+_ROUTE_HEADER = "| Surface | Status |"
+_FUNCTIONAL_HEADER = "| Aspect | Tier |"
+_TABLE_COLUMNS = {_ROUTE_HEADER: 4, _FUNCTIONAL_HEADER: 6}
+
+
 def parity_rows(doc: str) -> list[ParityRow]:
     """Rows of the parity table, which is the one whose header names Surface."""
 
@@ -281,7 +287,7 @@ def parity_rows(doc: str) -> list[ParityRow]:
     in_table = False
     for line in doc.splitlines():
         stripped = line.strip()
-        if stripped.startswith("| Surface | Status |"):
+        if stripped.startswith(_ROUTE_HEADER):
             in_table = True
             continue
         if in_table:
@@ -301,6 +307,37 @@ def parity_rows(doc: str) -> list[ParityRow]:
     return rows
 
 
+def stray_table_rows(doc: str) -> list[str]:
+    """Rows of a checked table found outside it, which the table's parser never reads.
+
+    A table ends at its first line that is not a row, so a blank line inside one, as a
+    merge once left in the functional table, silently drops every row after it from the
+    check (review A of #527, A19). Each such row is named with its line number.
+    """
+
+    problems: list[str] = []
+    header: str | None = None
+    in_table = False
+    for number, line in enumerate(doc.splitlines(), start=1):
+        stripped = line.strip()
+        started = next((each for each in _TABLE_COLUMNS if stripped.startswith(each)), None)
+        if started is not None:
+            header, in_table = started, True
+            continue
+        if not stripped.startswith("|"):
+            in_table = False
+            continue
+        if in_table or header is None:
+            continue
+        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+        if len(cells) == _TABLE_COLUMNS[header] and not set(cells[0]) <= {"-", " "}:
+            problems.append(
+                f"line {number}: a row of the table under {header!r} sits outside it, "
+                f"so the check never reads it: {cells[0]}"
+            )
+    return problems
+
+
 def functional_parity_rows(doc: str) -> list[FunctionalParityRow]:
     """Rows of the checked user-visible functional-aspect table."""
 
@@ -308,7 +345,7 @@ def functional_parity_rows(doc: str) -> list[FunctionalParityRow]:
     in_table = False
     for line in doc.splitlines():
         stripped = line.strip()
-        if stripped.startswith("| Aspect | Tier |"):
+        if stripped.startswith(_FUNCTIONAL_HEADER):
             in_table = True
             continue
         if in_table:
@@ -722,7 +759,12 @@ def check() -> list[str]:
     if not rows:
         return ["the parity table is missing from the parity registry"]
 
-    listed = {row.surface for row in rows}
+    problems.extend(stray_table_rows(doc))
+    listed: set[str] = set()
+    for row in rows:
+        if row.surface in listed:
+            problems.append(f"route {row.surface!r} is listed more than once")
+        listed.add(row.surface)
     registered = registered_surfaces()
 
     for surface in sorted(registered - listed):
