@@ -298,7 +298,14 @@ function createPage(runtime, options) {
     navigate(href) {
       navigations.push(href);
     },
+    // The page's one pin switch, the diff plugin's own (diff-view-file.js), which in the
+    // browser posts with fetch and here through the scripted pin route.
+    switchPin: (selection, wanted) => pinSwitch.switchTo(selection, wanted),
   };
+  const pinSwitch = runtime.createPinSwitch({
+    post: (selection) => deps.request("POST", "/api/source/pin", { body: selection }),
+    onRestored: () => () => {},
+  });
   const controller = runtime.createPullController(deps, options);
   const isAskDelay = (delayMs) => delayMs === 0 || delayMs === runtime.REFRESH_ASK_MS;
 
@@ -779,7 +786,14 @@ function writesWhileMoving(runtime, betweenMs) {
 }
 
 async function main() {
-  const runtime = await import(pathToFileURL(pagePath).href);
+  const viewFilePath = path.join(
+    repoRoot,
+    "src/metabrowser/builtin_plugins/diff/diff-view-file.js",
+  );
+  const runtime = {
+    ...(await import(pathToFileURL(pagePath).href)),
+    createPinSwitch: (await import(pathToFileURL(viewFilePath).href)).createPinSwitch,
+  };
   const record = recorded.current.body.record;
   const comment = record.issue_comments[0].id;
   const review = record.reviews[1].id;

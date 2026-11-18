@@ -394,9 +394,9 @@ def _baseline_rows() -> list[tuple[str, str, _El]]:
     bar = el(
         "diff-file-bar",
         toggle,
-        # View file controls: boxes at the path's size, which centering puts on its baseline.
-        box("diff-file-view diff-file-view-base"),
-        box("diff-file-view diff-file-view-head"),
+        # The View file or View on branch control: a box at the path's size, which centering
+        # puts on its baseline.
+        box("diff-file-view"),
         box("icon-btn icon-btn-reveal diff-file-copy"),
     )
     el("content-body metabrowser-diff-host", el("diff-file", bar))

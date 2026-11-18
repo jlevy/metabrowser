@@ -138,10 +138,24 @@ The page has three tabs:
 | A repository or pull-request URL | **Browse code** opens the pinned code, first switching the pin to this pull request’s head when another commit is served. When the head has moved since, **Switch to the head** offers the new one. |
 | A checkout or a folder in one | Files and Commits keep showing your checkout, which may differ from the pull request, so there is no **Browse code**. When the checkout’s `HEAD` is the pull request’s head, the page says so and offers **Browse the checkout**. |
 
-Each changed file offers **View file** at the head and **View at base** at the merge
-base.
-A side the page does not show opens on its own revision page, at that exact commit,
-and never moves the server’s pin.
+In **Changes**, a changed file offers **View on branch**, which opens the file at the
+pull request’s head in the main view, with the file tree, tabs, and ref selector around
+it, as **Browse code** opens the whole tree.
+Where it opens follows the table above:
+
+- Opened with a repository or pull-request URL, it first switches the pin to the head
+  when another commit is served, as Browse code does.
+  The pin is the server’s, so every tab moves with it, and a tab whose pin another tab
+  switched turns its links into the switch back.
+- Beside a checkout, or a folder in one, it opens your working-tree copy of the file,
+  only while the checkout’s `HEAD` is the pull request’s head and only for a file inside
+  the served folder. That copy includes any changes you have not committed.
+
+A deleted file, a symbolic link, and a submodule have no View on branch, and no file
+does while Changes shows an earlier head than the pull request’s, which no branch holds
+any more. If the pull request moves on after the page was drawn, View on branch and
+Browse code switch nothing and say that the head has moved; reload to see the newer
+changes.
 
 ### Rendered Markdown in Changes
 

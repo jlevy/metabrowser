@@ -1192,7 +1192,7 @@
   },
   "pull_routes": {
     "comparison": "/api/plugin/github/pull-comparison?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&base_policy=merge_base&store=0123456789abcdef",
-    "snapshot": "/api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=0123456789abcdef"
+    "image": "/api/plugin/github/pull-image?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=0123456789abcdef"
   },
   "patch": {
     "status": 200,
@@ -1322,43 +1322,6 @@
     "pin": "a5232ab93056074aa3dd87c7b3c28ca84081a6a0",
     "ref": null
   },
-  "switch_gone": {
-    "request": {
-      "oid": "a5232ab93056074aa3dd87c7b3c28ca84081a6a0",
-      "view": "/view/g1-Z29uZS50eHQ"
-    },
-    "status": 200,
-    "body": {
-      "changed": false,
-      "status": {
-        "subject": "git_revision",
-        "generation": 2,
-        "pin": "a5232ab93056074aa3dd87c7b3c28ca84081a6a0",
-        "ref": null,
-        "ref_name": null,
-        "name": "origin",
-        "origin": "file:///sandbox/origin.git",
-        "location": "/sandbox/application-home/repository-stores/store-key-1/repository.git",
-        "borrows": null,
-        "shallow": false,
-        "refreshable": true,
-        "latest": null,
-        "ref_on_origin": null,
-        "last_fetch_at": "2026-09-17T12:00:05Z",
-        "last_outcome": {
-          "operation": "acquire",
-          "outcome": "succeeded",
-          "at": "2026-09-17T12:00:05Z"
-        },
-        "refreshing": false,
-        "stale": true,
-        "pull_request": null,
-        "selection_state": null,
-        "selection_href": null
-      },
-      "view_href": "/view/g1-Z29uZS50eHQ"
-    }
-  },
   "switch_head": {
     "request": {
       "oid": "6ac4c8b5eb94eecbdb621d629b31066f050c75f1",
@@ -1396,9 +1359,96 @@
       "view_href": "/view/g1-c3Jj/g1-bmV3X25hbWUucHk"
     }
   },
+  "switch_readme": {
+    "request": {
+      "oid": "6ac4c8b5eb94eecbdb621d629b31066f050c75f1",
+      "view": "/view/g1-UkVBRE1FLm1k"
+    },
+    "status": 200,
+    "body": {
+      "changed": false,
+      "status": {
+        "subject": "git_revision",
+        "generation": 3,
+        "pin": "6ac4c8b5eb94eecbdb621d629b31066f050c75f1",
+        "ref": "refs/remotes/origin/trunk",
+        "ref_name": "trunk",
+        "name": "origin",
+        "origin": "file:///sandbox/origin.git",
+        "location": "/sandbox/application-home/repository-stores/store-key-1/repository.git",
+        "borrows": null,
+        "shallow": false,
+        "refreshable": true,
+        "latest": "6ac4c8b5eb94eecbdb621d629b31066f050c75f1",
+        "ref_on_origin": true,
+        "last_fetch_at": "2026-09-17T12:00:05Z",
+        "last_outcome": {
+          "operation": "acquire",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:05Z"
+        },
+        "refreshing": false,
+        "stale": true,
+        "pull_request": null,
+        "selection_state": null,
+        "selection_href": null
+      },
+      "view_href": "/view/g1-UkVBRE1FLm1k"
+    }
+  },
+  "switch_on_branch": {
+    "request": {
+      "oid": "6ac4c8b5eb94eecbdb621d629b31066f050c75f1",
+      "under": "refs/pull/7/head",
+      "view": "/view/g1-UkVBRE1FLm1k"
+    },
+    "status": 200,
+    "body": {
+      "changed": true,
+      "status": {
+        "subject": "git_revision",
+        "generation": 4,
+        "pin": "6ac4c8b5eb94eecbdb621d629b31066f050c75f1",
+        "ref": "refs/pull/7/head",
+        "ref_name": "refs/pull/7/head",
+        "name": "origin",
+        "origin": "file:///sandbox/origin.git",
+        "location": "/sandbox/application-home/repository-stores/store-key-1/repository.git",
+        "borrows": null,
+        "shallow": false,
+        "refreshable": true,
+        "latest": "6ac4c8b5eb94eecbdb621d629b31066f050c75f1",
+        "ref_on_origin": true,
+        "last_fetch_at": "2026-09-17T12:00:05Z",
+        "last_outcome": {
+          "operation": "acquire",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:05Z"
+        },
+        "refreshing": false,
+        "stale": true,
+        "pull_request": 7,
+        "selection_state": null,
+        "selection_href": null
+      },
+      "view_href": "/view/g1-UkVBRE1FLm1k"
+    }
+  },
+  "switch_head_moved": {
+    "request": {
+      "oid": "6ac4c8b5eb94eecbdb621d629b31066f050c75f1",
+      "under": "refs/pull/7/head",
+      "view": "/view/g1-UkVBRE1FLm1k"
+    },
+    "status": 409,
+    "body": {
+      "error": "refs/pull/7/head is no longer at that commit",
+      "code": "ref_moved"
+    }
+  },
   "other_pending": {
     "request": {
-      "oid": "a5232ab93056074aa3dd87c7b3c28ca84081a6a0",
+      "oid": "6ac4c8b5eb94eecbdb621d629b31066f050c75f1",
       "view": "/view/g1-UkVBRE1FLm1k"
     },
     "status": 202,
@@ -1436,7 +1486,7 @@
   },
   "other_not_found": {
     "request": {
-      "oid": "a5232ab93056074aa3dd87c7b3c28ca84081a6a0",
+      "oid": "6ac4c8b5eb94eecbdb621d629b31066f050c75f1",
       "view": "/view/g1-UkVBRE1FLm1k"
     },
     "status": 404,
@@ -1447,7 +1497,7 @@
   },
   "other_fetch_failed": {
     "request": {
-      "oid": "a5232ab93056074aa3dd87c7b3c28ca84081a6a0",
+      "oid": "6ac4c8b5eb94eecbdb621d629b31066f050c75f1",
       "view": "/view/g1-UkVBRE1FLm1k"
     },
     "status": 502,
@@ -1459,7 +1509,7 @@
   "folder_page": null,
   "folder_refused": {
     "request": {
-      "oid": "a5232ab93056074aa3dd87c7b3c28ca84081a6a0",
+      "oid": "6ac4c8b5eb94eecbdb621d629b31066f050c75f1",
       "view": "/view/g1-UkVBRE1FLm1k"
     },
     "status": 409,

@@ -5,9 +5,9 @@
 // the server would never send. Each runs through the production sanitizeBlock of
 // builtin_plugins/diff/diff-markdown.js and static/inert-html.js, loaded whole: the
 // template the page parses a block into is built from the recorded parse, so the swap of
-// snapshot targets, the shared allowlist and the restore all run as the page runs them.
+// kept targets, the shared allowlist and the restore all run as the page runs them.
 //
-// argv: <repo root> <cases.json>: {route, cases}, the comparison's snapshot route and a
+// argv: <repo root> <cases.json>: {route, cases}, the comparison's image route and a
 // list of {name, html, tree, expect}.
 
 const assert = require("node:assert/strict");
@@ -124,25 +124,26 @@ function serialize(nodes) {
 }
 
 async function main() {
-  const { snapshotTargets, sanitizeBlock } = await import(
+  const { markdownTargets, sanitizeBlock } = await import(
     pathToFileURL(path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/diff-markdown.js")).href
   );
-  const isSnapshotTarget = snapshotTargets(route);
+  // The page shows the comparison's head, so its links to files of the head are kept.
+  const isTarget = markdownTargets(route, () => true);
   let checked = 0;
   for (const { name, html, expect } of cases) {
-    const prose = sanitizeBlock(html, inert, template, scratch, isSnapshotTarget);
+    const prose = sanitizeBlock(html, inert, template, scratch, isTarget);
     assert.equal(prose.className, "kpress-prose", name);
     const shown = serialize(prose.childNodes);
     for (const link of select(prose, "a[href], img[src]")) {
       const image = link.tagName === "IMG";
       const value = link.getAttribute(image ? "src" : "href");
       assert.ok(
-        isSnapshotTarget(value, image) ||
+        isTarget(value, image) ||
           (!image && value.startsWith(`#${inert.ANCHOR_PREFIX}`)) ||
           (!image && /^https?:\/\//i.test(value) && !value.startsWith(ORIGIN)),
         `${name}: kept ${value}`,
       );
-      assert.ok(!value.startsWith("mb-snapshot-target-"), `${name}: a marker was not restored`);
+      assert.ok(!value.startsWith("mb-markdown-target-"), `${name}: a marker was not restored`);
     }
     for (const part of expect.contains ?? []) {
       assert.ok(shown.includes(part), `${name}: ${shown} lacks ${part}`);
