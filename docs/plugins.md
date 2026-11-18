@@ -821,8 +821,11 @@ unsubscribe on disposal.
 view defer hidden work, and a composite renderer calls
 `mb.setViewPrintState(container, state)` when its printability changes.
 
-`mb.builtins.markdown.mountRendered(container, ctx, {signal})` mounts a Markdown
-document panel with the ordinary KPress presentation.
+`mb.builtins.markdown.mountRendered(container, ctx, {signal, pagePath})` mounts a
+Markdown document panel with the ordinary KPress presentation, its table of contents
+included. `pagePath` names the page that shows the document as its own when that is not
+the document’s path, as a folder’s Overview shows its README: the document’s fragment
+links and table-of-contents entries are then places on that page.
 Its handle aborts its request and disposes its table of contents, enhanced-link
 listeners, pending fragment work, and nested Obsidian transclusions.
 Transclusions share depth, document, source-byte, cycle, abort, and disposal limits

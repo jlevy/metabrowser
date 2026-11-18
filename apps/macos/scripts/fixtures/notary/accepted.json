@@ -1,0 +1,17 @@
+{
+    "archiveFilename": "Metabrowser.zip",
+    "issues": null,
+    "jobId": "0B4C3B1E-7A2D-4F55-9E1C-2D6A8F0E5C11",
+    "logFormatVersion": 1,
+    "status": "Accepted",
+    "statusSummary": "Ready for distribution",
+    "ticketContents": [
+        {
+            "arch": "arm64",
+            "cdhash": "0123456789abcdef0123456789abcdef01234567",
+            "digestAlgorithm": "SHA-256",
+            "path": "Metabrowser.zip/Metabrowser.app"
+        }
+    ],
+    "uploadDate": "2026-11-17T09:00:00Z"
+}
