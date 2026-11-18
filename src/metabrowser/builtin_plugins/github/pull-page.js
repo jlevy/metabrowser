@@ -79,17 +79,17 @@ export const MARKDOWN_AHEAD = "100% 0px";
 // its first screen shows, so each is final when it first shows; kept renders wait for
 // nothing. A core preview's first paint waits for its description the same way. Past this
 // the page shows, each text still waiting a placeholder until its Markdown comes, and never
-// its source (`showPending`). A page replacing another keeps that one on screen meanwhile. Measured 2026-11-12 in headless
-// Chrome 152 against a local server on this repository, from the hold's
-// `githubPull:firstPaintHold` span, each pull request clicked from the previous
-// conversation scrolled by 1,500 px, two documents of five, load average 4 to 7: 23 to 155
-// ms (median 34, n 10), the 100 and 155 ms holds being a document's first pull request,
-// which also loads `inert-html` and KPress's stylesheets; every one waited for one text,
-// the description filling the first screen. None reached this bound. A first screen of
-// several texts waits a round trip per `MARKDOWN_CONCURRENCY` texts: three texts at 40 ms
-// an answer held 84 to 86 ms in a scratch page (review D), so a cold document's first page
-// with several texts leaves less room than these figures. The exp-065 pilot also waited for
-// a `cached_only` timeline read, which ran to the bound, so commits no longer hold the paint.
+// its source (`showPending`). A page replacing another keeps that one on screen meanwhile.
+// Measured 2026-11-12 in headless Chrome 152 against a local server on this repository, from
+// the hold's `githubPull:firstPaintHold` span, each pull request clicked from the previous
+// conversation scrolled by 1,500 px, two documents of five, load average 4 to 7: 23 to 155 ms
+// (median 34, n 10), the 100 and 155 ms holds being a document's first pull request, which also
+// loads `inert-html` and KPress's stylesheets; every one waited for one text, the description
+// filling the first screen. None reached this bound. A first screen of several texts waits a
+// round trip per `MARKDOWN_CONCURRENCY` texts: three texts at 40 ms an answer held 84 to 86 ms
+// in a scratch page (review D), so a cold document's first page with several texts leaves less
+// room than these figures. The exp-065 pilot also waited for a `cached_only` timeline read,
+// which ran to the bound, so commits no longer hold the paint.
 export const DESCRIPTION_HOLD_MS = 200;
 // How many plain texts past a held first screen are asked for with it, not waited on: a
 // render shorter than its plain text brings the texts below it up into the screen, and one
