@@ -6,9 +6,10 @@ checks hold the tables to the code in both directions, as ``tests/test_keymap.py
 the keyboard table to the keys the app binds:
 
 - the shell's registry (``static/icons.js``) and every other SVG glyph a browser source
-  defines by name are the catalog's drawn rows, and every registry glyph has a caller;
-- every glyph character a browser source types in markup is a text row, with the files
-  that type it;
+  defines by name are the catalog's drawn rows, every registry glyph has a caller, and no
+  browser source or the server's page draws an SVG it does not define by name;
+- every glyph character a browser source types, written as itself or as an escape, is a
+  text row with the files that type it, except in a comment or a console message;
 - a stylesheet's masked glyph, an SF Symbol the macOS app draws, and the change letters
   the status tables give are rows, and each row's file says so;
 - two rows naming one upstream glyph draw it the same, and a row's upstream id is the one
@@ -23,6 +24,8 @@ already has instead.
 
 from __future__ import annotations
 
+import base64
+import html
 import json
 import re
 import tomllib
@@ -46,22 +49,38 @@ HEADER = ("Icon", "Source", "Meaning", "Defined in", "Ink", "Size")
 DRAWN = ("Registry", "Plugin", "View bundle")
 SOURCES = frozenset({*DRAWN, "CSS mask", "Text", "Letter", "SF Symbol", "App mark"})
 
-# What the registry's callers write: a property of the registry or the SDK's proxy of it,
-# or the name a plugin's helper looks one up by.
+# What the registry's callers write: a property of the registry, by its global's name or the
+# `ICONS` and `ICON_SVG` aliases the shell's scripts give it, or of the SDK's proxy of it,
+# `mb.icons` in a plugin and `metabrowser.icons` or `sdk.icons` in the shell; or the name a
+# plugin's helper looks one up by. Any other object named `icons` is not the registry.
 _REGISTRY_USE = re.compile(
-    r"\b(?:ICONS|ICON_SVG|_iconRegistry|icons|MetabrowserIcons)\??\.([A-Za-z]\w*)\b"
+    r"(?:\b(?:ICONS|ICON_SVG|MetabrowserIcons)|\b(?:mb|metabrowser|sdk|sdk\(\))\??\.icons)"
+    r"\??\.([A-Za-z]\w*)\b"
     r"|\b(?:shellIcon|registryIcon)\(\"(\w+)\"\)"
 )
 # Properties of the registry object that are not glyphs.
-_NOT_GLYPHS = frozenset({"withClass", "js"})
+_NOT_GLYPHS = frozenset({"withClass"})
 # A glyph defined by name: an identifier, then `:` or `=`, an optional line comment, and a
 # string that opens an SVG.
 _SVG_DEFINITION = re.compile(r"\b(\w+)\s*[:=]\s*(?://[^\n]*\n\s*)?[\"'`]<svg\b")
 _UPSTREAM_COMMENT = re.compile(r"//\s*Lucide `([a-z0-9-]+)`")
 # Characters that are marks rather than words: arrows, technical symbols, geometric shapes,
 # miscellaneous symbols, dingbats, more arrows and math marks such as ⧉, the
-# multiplication sign a close button might use, and pictographs.
-_GLYPH = re.compile("[×←-⇿⌀-⏿■-◿☀-➿⤀-⧿⬀-⯿\U0001f300-\U0001faff]")
+# multiplication sign a close button might use, the guillemets a pager or a breadcrumb
+# might use, the vertical and midline ellipses of a "more" menu, and pictographs.
+_GLYPH = re.compile("[«»×‹›←-⇿⋮⋯⌀-⏿■-◿☀-➿⤀-⧿⬀-⯿\U0001f300-\U0001faff]")
+# A character a script writes as an escape: JavaScript's `\u203A` and `\u{1F5C2}`, or an
+# HTML character reference such as `&rsaquo;` or `&#8250;`.
+_SCRIPT_ESCAPE = re.compile(
+    r"\\u\{([0-9a-fA-F]{1,6})\}|\\u([0-9a-fA-F]{4})"
+    r"|(&(?:#[0-9]+|#[xX][0-9a-fA-F]+|[A-Za-z]\w*);)"
+)
+# A character a stylesheet writes as an escape, such as `content: "\203A"`.
+_CSS_ESCAPE = re.compile(r"\\([0-9a-fA-F]{1,6})\s?")
+# A call whose arguments are a message to a developer, not markup a reader sees.
+_CONSOLE_CALL = re.compile(r"\bconsole\.\w+\(")
+# A stylesheet's SVG drawn from a data URI, in either quote or none, as text or base64.
+_SVG_DATA_URI = re.compile(r"""url\(\s*(["']?)data:image/svg\+xml([^,]*),(.*?)\1\s*\)""", re.DOTALL)
 _BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
 _LINE_COMMENT = re.compile(r"(?<![:\\\"'`])//.*$", re.MULTILINE)
 _HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
@@ -152,6 +171,58 @@ def _script_code(path: Path) -> str:
     return _LINE_COMMENT.sub("", _BLOCK_COMMENT.sub("", path.read_text(encoding="utf-8")))
 
 
+def _script_escapes_decoded(code: str) -> str:
+    """*code* with each JavaScript escape and HTML character reference as its character."""
+
+    def character(match: re.Match[str]) -> str:
+        if match[3] is not None:
+            return html.unescape(match[3])
+        return chr(int(match[1] or match[2], 16))
+
+    return _SCRIPT_ESCAPE.sub(character, code)
+
+
+def _css_escapes_decoded(css: str) -> str:
+    """*css* with each CSS escape as its character."""
+    return _CSS_ESCAPE.sub(lambda match: chr(min(int(match[1], 16), 0x10FFFF)), css)
+
+
+def _closing_paren(code: str, start: int) -> int | None:
+    """Where the call whose arguments begin at *start* closes, skipping strings."""
+    depth = 1
+    at = start
+    while at < len(code):
+        char = code[at]
+        if char in "\"'`":
+            at += 1
+            while at < len(code) and code[at] != char:
+                at += 2 if code[at] == "\\" else 1
+        elif char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth == 0:
+                return at
+        at += 1
+    return None
+
+
+def _without_console_messages(code: str) -> str:
+    """*code* without the arguments of its `console.*` calls, which no reader sees."""
+    kept: list[str] = []
+    end = 0
+    for match in _CONSOLE_CALL.finditer(code):
+        if match.start() < end:
+            continue
+        closing = _closing_paren(code, match.end())
+        if closing is None:
+            break
+        kept.append(code[end : match.end()])
+        end = closing
+    kept.append(code[end:])
+    return "".join(kept)
+
+
 def _shell_template() -> str:
     """The page the server writes, `index`'s HTML, without its comments."""
     source = (PACKAGE / "server.py").read_text(encoding="utf-8")
@@ -186,25 +257,39 @@ def _mask_glyphs() -> dict[tuple[str, str], str]:
     found: dict[tuple[str, str], str] = {}
     for path in _stylesheets():
         css = _BLOCK_COMMENT.sub("", path.read_text(encoding="utf-8"))
-        for match in re.finditer(r"url\(\"data:image/svg\+xml,([^\"]+)\"\)", css):
+        for match in _SVG_DATA_URI.finditer(css):
             opened = css.rindex("{", 0, match.start())
             selectors = css[css.rindex("}", 0, opened) + 1 : opened]
             first = selectors.split(",")[0].strip()
-            svg = unquote(match[1])
+            data = match[3]
+            if ";base64" in match[2]:
+                svg = base64.b64decode(unquote(data)).decode("utf-8")
+            else:
+                svg = unquote(data)
             inner = svg[svg.index(">") + 1 : svg.index("</svg>")]
             found[(_relative(path), first)] = _drawing(inner)
     return found
 
 
 def _typed_glyphs() -> dict[str, set[str]]:
-    """Each glyph character a browser source types outside its comments, with its files."""
+    """Each glyph character a browser source types, as itself or as an escape, with its files.
+
+    A comment and a console message are a developer's prose, so their characters are not
+    marks a reader sees.
+    """
     found: dict[str, set[str]] = {}
-    sources = [(_relative(path), _script_code(path)) for path in _browser_scripts()]
+    sources = [
+        (_relative(path), _script_escapes_decoded(_without_console_messages(_script_code(path))))
+        for path in _browser_scripts()
+    ]
     sources += [
-        (_relative(path), _BLOCK_COMMENT.sub("", path.read_text(encoding="utf-8")))
+        (
+            _relative(path),
+            _css_escapes_decoded(_BLOCK_COMMENT.sub("", path.read_text(encoding="utf-8"))),
+        )
         for path in _stylesheets()
     ]
-    sources.append(("server.py", _shell_template()))
+    sources.append(("server.py", _script_escapes_decoded(_shell_template())))
     for name, code in sources:
         for glyph in _GLYPH.findall(code):
             found.setdefault(glyph, set()).add(name)
@@ -279,15 +364,25 @@ def test_every_registry_glyph_has_a_caller_and_every_call_is_a_glyph() -> None:
 
 
 def test_every_named_svg_outside_the_registry_is_a_row() -> None:
-    """A plugin's or a view's own glyph is cataloged where it is defined."""
+    """A plugin's or a view's own glyph is cataloged where it is defined.
+
+    Every SVG a script draws is one of its named definitions, so a second, unnamed drawing
+    in a file that has a named one fails as the first would. The server's page draws none:
+    the shell's glyphs are the registry's, which it loads before its first paint.
+    """
     defined: set[tuple[str, str]] = set()
     for path in _browser_scripts():
-        text = path.read_text(encoding="utf-8")
-        if path == REGISTRY or "<svg" not in _script_code(path):
+        code = _script_code(path)
+        if path == REGISTRY or "<svg" not in code:
             continue
-        names = _svg_definitions(text)
-        assert names, f"{_relative(path)} draws an SVG it does not define by name"
+        names = _svg_definitions(path.read_text(encoding="utf-8"))
+        assert code.count("<svg") == len(_svg_definitions(code)) == len(names), (
+            f"{_relative(path)} draws an SVG it does not define by name"
+        )
         defined |= {(_relative(path), name) for name in names}
+    assert "<svg" not in _shell_template(), (
+        "server.py's page draws an SVG; draw a registry glyph instead"
+    )
     cataloged = {(row.defined_in[0], row.icon) for row in _catalog() if row.source in DRAWN[1:]}
     assert sorted(defined) == sorted(cataloged)
 
@@ -329,7 +424,7 @@ def test_every_typed_glyph_is_a_text_row_with_the_files_that_type_it() -> None:
     cataloged: dict[str, set[str]] = {}
     for row in _rows("Text"):
         cataloged.setdefault(row.icon, set()).update(row.defined_in)
-    assert _typed_glyphs() == cataloged, "a glyph typed in markup and its catalog rows differ"
+    assert _typed_glyphs() == cataloged, "a typed glyph and its catalog rows differ"
 
 
 def test_the_change_letters_are_the_status_tables() -> None:
@@ -351,10 +446,14 @@ def test_the_change_letters_are_the_status_tables() -> None:
 
 
 def test_every_sf_symbol_the_app_draws_is_a_row() -> None:
+    """AppKit's `NSImage(systemSymbolName:)`, and SwiftUI's `systemImage:` and `systemName:`."""
     drawn = {
         (_relative(path), name)
         for path in sorted(MACOS_SOURCES.rglob("*.swift"))
-        for name in re.findall(r'systemSymbolName: "([\w.]+)"', path.read_text("utf-8"))
+        for name in re.findall(
+            r'\b(?:systemSymbolName|systemImage|systemName):\s*"([\w.]+)"',
+            path.read_text("utf-8"),
+        )
     }
     assert sorted(drawn) == sorted((row.defined_in[0], row.icon) for row in _rows("SF Symbol"))
 
@@ -393,3 +492,16 @@ def test_the_check_reads_a_new_row_and_fails_a_missing_one() -> None:
     assert "toggle" not in {row.icon for row in _catalog(text.replace(line + "\n", ""))}
     extra = line.replace("`toggle`", "`unheard`", 1)
     assert "unheard" in {row.icon for row in _catalog(text.replace(line, f"{line}\n{extra}"))}
+
+
+def test_the_check_reads_escapes_and_skips_what_no_reader_sees() -> None:
+    """An escaped glyph or mask is still one; a console message or a local `icons` is not."""
+    escaped = '"\\u2715" "\\u{1F5C2}" "&rsaquo;" "&#8250;"'
+    assert _GLYPH.findall(_script_escapes_decoded(escaped)) == ["✕", "🗂", "›", "›"]
+    assert _GLYPH.findall(_css_escapes_decoded('content: "\\203A";')) == ["›"]
+    logged = 'console.warn("a → b", f(1), `${"⇢"}`); label = "←";'
+    assert _GLYPH.findall(_without_console_messages(logged)) == ["←"]
+    calls = "const icons = []; icons.push(1); mb.icons.toggle; sdk()?.icons?.copy;"
+    assert [match[1] for match in _REGISTRY_USE.finditer(calls)] == ["toggle", "copy"]
+    masks = "url('data:image/svg+xml,%3Csvg%3E%3C/svg%3E') url(data:image/svg+xml;base64,AA==)"
+    assert len(_SVG_DATA_URI.findall(masks)) == 2

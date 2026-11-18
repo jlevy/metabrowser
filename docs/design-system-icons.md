@@ -24,7 +24,7 @@ listed here and drawn nowhere, fails the build.
 | CSS mask | A glyph a stylesheet draws as a mask over a color token | The stylesheet rule that draws it |
 | Text | A character typed in markup, where the mark is typography | Each file that types it |
 | Letter | A file change’s one-letter status | The status tables |
-| SF Symbol | An Apple system symbol in the macOS app’s menus | The Swift code that draws it |
+| SF Symbol | An Apple system symbol the macOS app draws, in a menu or a SwiftUI view | The Swift code that draws it |
 | App mark | The app’s own icon and its mark | `apps/macos/AppIcon/` and the code generated from it |
 
 Drawn glyphs are [Lucide](https://lucide.dev) v1.17.0 (ISC) unless a row says otherwise,
@@ -159,6 +159,13 @@ accessible name carry the meaning without the color.
 An ignored entry has no mark: its whole row, icon included, is dimmed to
 `--dimmed-content-opacity` and keeps its family’s hue.
 
+When the macOS app’s server cannot serve a folder, the app’s failure screen leads its
+heading with Apple’s warning triangle.
+
+| Icon | Source | Meaning | Defined in | Ink | Size |
+| --- | --- | --- | --- | --- | --- |
+| `exclamationmark.triangle.fill` | SF Symbol | The server could not serve the folder: the heading of the app’s failure screen | `apps/macos/Sources/Metabrowser/StatusView.swift` | Its own colors, as a multicolor symbol | The heading’s `.title3` font |
+
 ## UI Chrome and Actions
 
 | Icon | Source | Meaning | Defined in | Ink | Size |
@@ -180,6 +187,8 @@ An ignored entry has no mark: its whole row, icon included, is dimmed to
 | `←` | Text | An agent log’s tool result, coming back, in an event’s kind | `builtin_plugins/agent_log/index.js` | The kind badge’s | The text’s |
 | `→` | Text | The Metabrowser menu title’s link to the project on GitHub, shown on hover | `server.py` | The title’s | The text’s |
 | `⏎` | Text | A line with no newline at its end, in a diff | `builtin_plugins/diff/diff-view.js` | `--muted` | The text’s |
+| `‹` | Text | Opens the hex code the binary view shows for a byte that is not printable ASCII, such as `‹FF›` | `builtin_plugins/binary/byte-format.js` | `--muted`, the code’s | `--mono-block-font-size`, the code block’s |
+| `›` | Text | Closes a byte’s hex code in the binary view | `builtin_plugins/binary/byte-format.js` | `--muted`, the code’s | `--mono-block-font-size`, the code block’s |
 | `☰` | Text | The table of contents toggle in an untrusted document’s render | `builtin_plugins/markdown/inert-toc.js` | KPress’s muted document ink | The text’s |
 | `▸` | Text | Show or hide a structured data tree’s object or array | `builtin_plugins/structured/tree.js` | `--color-syntax-punct` | The text’s |
 
@@ -229,6 +238,9 @@ Each of these breaks a rule above, and is listed so that nobody copies it.
   the glyph; a stack menu’s is the text’s ink in an `--icon-glyph` column.
 - **A branch chip’s copy glyph is smaller than `--icon-glyph`**, by its own rule, which
   the size rule does not list as an exception.
+- **The app’s failure screen draws its warning triangle in color.**
+  `exclamationmark.triangle.fill` renders in Apple’s multicolor yellow, where every
+  other symbol takes its menu’s template ink and every other glyph `currentColor`.
 - **The browser’s tab shows no icon of the app’s own.** The page names no favicon, so
   the browser asks for `/favicon.ico` and draws its default, though a view header’s
   GitHub toggle draws the app’s mark.
@@ -241,11 +253,13 @@ Source, Meaning, Defined in, Ink, Size”, and holds them to the code:
 - the registry’s glyphs are the Registry rows, every one has a caller, and every name a
   caller or the type registry asks for is one of them;
 - every other SVG glyph a browser source defines by name is a Plugin or View bundle row
-  in the file that defines it;
-- every glyph character a browser source or the server’s page types outside a comment is
-  a Text row, with exactly the files that type it;
-- the stylesheets’ masked glyphs, the macOS app’s SF Symbols, and the change letters of
-  both status tables, which must agree, are rows;
+  in the file that defines it, every SVG a browser source draws is one it defines by
+  name, and the server’s page draws none;
+- every glyph character a browser source or the server’s page types, as itself or as an
+  escape, is a Text row with exactly the files that type it, except in a comment or a
+  console message;
+- the stylesheets’ masked glyphs, the SF Symbols the macOS app draws in AppKit or
+  SwiftUI, and the change letters of both status tables, which must agree, are rows;
 - two rows naming one upstream glyph draw it the same, and a row’s Lucide id is the one
   its definition’s comment names;
 - a registry row names each category and family that takes its shape, and the type
