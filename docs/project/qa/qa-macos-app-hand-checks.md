@@ -155,9 +155,10 @@ LOG="$HOME/Library/Logs/Metabrowser/metabrowser-$(printf %s "$REPO" | shasum -a 
    whose name holds a `/` that GitHub still has) shows that file on that branch, not a
    missing page.
 4. **Asked before a clone.** With a small public repository you have never opened, which
-   the cache does not hold, `open -b "$APP_ID" URL` shows one confirmation naming it;
-   Cancel opens nothing and starts no `metab` serving it, and sending it again asks
-   again. A repository the cache holds, as in check 2, opens with no question.
+   the cache does not hold, `open -b "$APP_ID" URL` shows one confirmation naming it,
+   whose default button, which Return presses, is Cancel; Cancel opens nothing and
+   starts no `metab` serving it, and sending it again asks again.
+   A repository the cache holds, as in check 2, opens with no question.
 5. **Refusals.** `open -b "$APP_ID" "$REPO/issues/1"` shows `metab`’s message about
    issues pages; `open -b "$APP_ID" https://example.com/` and
    `open -b "$APP_ID" "https://user:secret@github.com/jlevy/metabrowser"` show the app’s
@@ -166,8 +167,9 @@ LOG="$HOME/Library/Logs/Metabrowser/metabrowser-$(printf %s "$REPO" | shasum -a 
    in full.
 6. **A burst.**
    `open -b "$APP_ID" $(for n in $(seq 1 30); do echo "$REPO/issues/$n"; done)` sends
-   thirty links at once, and one alert says that 30 links could not be opened, 9 of them
-   never read, rather than thirty alerts.
+   thirty links at once, and one alert says that 30 links could not be opened, and that
+   those past one being resolved and `LinkQueue.limit` waiting were never read, rather
+   than thirty alerts.
 7. **A first clone.** A link to a public repository that is not cached and takes longer
    than `SupervisorPolicy.startupTimeout` to clone keeps its window starting while the
    log grows, then opens.
@@ -189,6 +191,24 @@ LOG="$HOME/Library/Logs/Metabrowser/metabrowser-$(printf %s "$REPO" | shasum -a 
 12. **Not restored.** Merge a folder window and the repository’s window into one tab
     group with the repository’s tab shown, quit, and launch: the group comes back in its
     place among the windows, showing the folder’s tab, without the repository’s.
+13. **The same link twice during a first clone.** Send the link of a repository the
+    cache does not hold, choose Clone and Open, and send the same link again while it
+    clones: no second question, and once the clone ends the window shows the link, and
+    the repository’s log has one `started pid` line since the first.
+14. **A link into an open repository during another’s clone.** With `$REPO`’s window
+    ready, start a first clone of another repository as in check 7, then send
+    `$REPO/pull/517`: `$REPO`’s other tabs keep working, the window the link brought
+    forward says it waits for another repository’s start, and once the clone ends it
+    starts again and shows the pull request.
+15. **A branch the copy lacks.** Push a new branch to a repository you own whose window
+    is open, then send its `tree/BRANCH` link: the window shows the default branch, then
+    the branch once `metab` has fetched it, with no alert.
+    Then send `$REPO/tree/no-such-branch`: the window stays on the default branch, and
+    an alert names the repository and the branch the windows show.
+16. **Cancel with more links waiting.** Send, at once, the links of a pull request and
+    two of its files in a repository the cache does not hold, and a link into `$REPO`:
+    one question appears, `$REPO`’s window comes forward while it waits, and after
+    Cancel one alert says that 2 more links into the repository were not opened.
 
 ## Print and Drops
 

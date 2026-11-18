@@ -33,10 +33,12 @@ All notable changes to Metabrowser are documented here.
   the app opens the repository’s mirror in its one window, cloning the repository or
   reusing its cache as `metab URL` does; a link `metab` refuses shows `metab`’s message,
   and what a burst of links could not open is said in one alert.
-  A link to a repository the cache does not hold asks first; one into a repository with
-  a window starts its server again on the link, so the window shows the revision the
-  link names. Servers start on the canonical link `metab` hands back, never on the link
-  as sent, so a token in a link reaches no server.
+  A link to a repository the cache does not hold asks first, with Cancel as the default,
+  while other links go on opening; one into a repository with a window starts its server
+  again on the link, so the window shows the revision the link names, and the app says
+  when GitHub has nothing the link names.
+  Servers start on the canonical link `metab` hands back, never on the link as sent, so
+  a token in a link reaches no server.
   A first clone is no longer stopped 60 seconds after its server started: the app waits
   as long as the clone reports progress, up to `metab`’s own bound on a clone, and
   folders opened meanwhile start at once.

@@ -87,15 +87,25 @@ of it.
 - **Asked once before a clone:** a link to a repository the cache does not hold yet asks
   first, naming the repository: opening it clones the repository into the cache and
   reads it, and its pull requests, with your `gh` sign-in.
+  Cancel is the default button.
+  Other links go on opening while the question waits, and more links into the same
+  repository wait for your one answer, which opens the newest.
+  After Cancel, links into that repository sent in the same burst are not opened, and
+  the app says how many; a link sent later asks again.
   A repository the cache holds opens without asking.
 - **One window per repository:** a link into a repository that has a window brings that
   window forward, on the branch, commit, or pull request the link names and at its page.
-  The window never shows another revision: its server starts again on the link, which
-  takes a few seconds, its other tabs reload on that revision, and what pages kept in
-  local storage starts fresh, since the server comes back on a new port.
-  A start under way, such as a first clone, finishes first.
+  Its server starts again on the link, which takes a few seconds, its other tabs reload
+  on that revision, and what pages kept in local storage starts fresh, since the server
+  comes back on a new port.
+  A start under way, such as a first clone, finishes first, and sending the same link
+  again meanwhile changes nothing.
   Without a window, a new one opens, and its server clones the repository, or uses the
   clone the cache has.
+- **A branch or commit the copy lacks:** a link to a branch, tag, or commit pushed since
+  the copy was last fetched opens the default branch while `metab` fetches it, then goes
+  to the link’s page. If GitHub does not have it either, or the fetch fails, the windows
+  stay on the default branch and the app says so.
 - **A first clone** of a large repository can take minutes.
   The window says it is starting meanwhile, and File > Reveal Server Log shows the
   clone’s progress. The app waits for as long as the clone keeps reporting progress, up
@@ -108,7 +118,8 @@ of it.
   A link to another site, an `http` link, and a link with a user name, a password, or a
   port other than 443 show the app’s own message.
 - **Many links at once** are read one at a time, a link sent again while it waits opens
-  once, and what could not be opened is said in one message at the end.
+  once, and what could not be opened is said in one message at the end, never over
+  another message or question.
 - **Not restored:** a repository’s window does not come back with the last session.
 
 ## Windows and Tabs
@@ -248,7 +259,8 @@ The app moves nothing itself.
   not open until that clone ends: the window’s start is given up on meanwhile, and Retry
   then opens it from the cache.
   A repository opened while another repository’s first clone runs starts once that clone
-  ends.
+  ends, and so does a link into a repository that is already open: its other tabs keep
+  working meanwhile, and the window the link brought forward says it waits.
 - A folder opens as the folder named, even inside a Git repository, and the File menu
   opens no URL. Opening the repository’s root instead, File > Open URL…, and an Open
   Recent that also lists repositories opened by URL are planned in

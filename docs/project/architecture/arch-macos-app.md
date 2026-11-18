@@ -135,7 +135,9 @@ fetches nothing, and the app acts on the answer (`PresentAnswer`):
 
 The command’s stdout and stderr share one pipe, so the answer is the one JSON object
 among its lines (`JSONAnswer`); two candidates are refused, since a line on stderr could
-otherwise stand in for the answer.
+otherwise stand in for the answer, and a block from a `{` line to a `}` line that does
+not parse counts as one, so a stray `{` that swallows the real answer leaves nothing a
+later line could stand in for.
 A plan’s `kind` must be one a link resolves to, its `root` a canonical
 `https://github.com/<owner>/<repo>` (`PresentPlan.repositoryURL`), and its `handoff` one
 link into that repository on `github.com` that `GitHubLink` accepts.
@@ -153,25 +155,54 @@ and the server, which resolves the link against its mirror, announces the right 
   reports no ref, so it never only navigates: `FolderSession.open(link:)` starts the
   server again on the link, and the front window loads the new entry page
   (`NextPage.requestEntry`), as the owner decided on 2026-11-17 and
-  [Open Modes](arch-open-modes.md#the-file-menu) states for Open URL…. A start under way
-  runs to its end first, so a first clone is not thrown away; a failed one is replaced.
+  [Open Modes](arch-open-modes.md#the-file-menu) states for Open URL…. What a link does
+  to the session is `RepositoryLinks`, a table of the link, the server’s state, and the
+  link it starts on: a start under way runs to its end first, so a first clone is not
+  thrown away, and the newest link sent meanwhile waits for it; the link that start
+  already runs on changes nothing, so sending a link twice during its first clone clones
+  once and does not restart; a failed or stopped server starts again at once.
+  A restart of a ready server waits for the launch gate before it stops anything
+  (`ServerSupervisor.restart`), so while another repository’s first clone holds the gate
+  the repository’s other tabs go on with the old server, and the window the link brought
+  forward says it waits instead of showing the old revision.
   The pin switch View on branch makes (`POST /api/source/pin`) would keep the port and
   the server, but it takes a ref or a commit, which the app does not have for a link
   whose ref holds a `/`.
+- **A selection the mirror lacks.** `metab` serves a link whose branch, tag, or commit
+  its mirror does not have yet from the default branch, and fetches once; the page goes
+  to the link’s address by itself if the fetch finds it.
+  So the windows can show the default branch for as long as that fetch runs, which the
+  page’s fetch chip says.
+  After each start of a repository’s server the app asks `/api/source/status` while its
+  `selection_state` is `pending` (`LinkSelection`), and says in an alert when the fetch
+  did not find the link’s selection (`not_found`) or could not run (`fetch_failed`),
+  naming the revision the windows show instead.
 - **Asking before a clone.** A link that would start a new session asks first unless
   `metab`’s cache holds the repository (`RepositoryCache`), which the app learns from
   `metab FOLDER --api /api/cache/sources --format json`, page by page, run in the app’s
   support folder; a published source whose `identity.display_url` is the root, with no
   problems, is one `metab URL` serves from without cloning.
-  An answer it cannot read asks.
+  An answer it cannot read asks; `tests/test_macos_app_pins.py` holds the keys and the
+  value the app reads to what the route prints.
   The confirmation names the repository and says that it clones and reads with the
-  user’s `gh` sign-in, as the owner decided on 2026-11-17. A repository found or agreed
-  to is not asked about again while the app runs.
+  user’s `gh` sign-in, as the owner decided on 2026-11-17; Cancel is its default button,
+  so a Return typed into another app as this one comes forward declines.
+  The question waits beside the link queue, not in it (`CloneQuestions`): links behind
+  it, into open repositories among them, go on resolving, and links into the same
+  repository wait for the one answer, which opens the newest of them.
+  A repository found or agreed to is not asked about again while the app runs; one
+  declined is not asked about again until the burst ends, and the links it turned away
+  are counted in the burst’s alert.
 - **A burst.** One `metab` resolves at a time, a link equal to one waiting or being
-  resolved is dropped, past `LinkQueue.limit` waiting links the rest are counted, and
-  the links that could not be opened are said in one alert once the queue is empty
-  (`LinkAlert.combined`). A link being resolved counts as something about to show, so
-  the app does not offer the Open panel meanwhile.
+  resolved is dropped, and past `LinkQueue.limit` waiting links the rest are counted, as
+  are links past `CloneQuestions.limit` repositories waiting for a question and past
+  `LinkQueue.limit` links waiting for a runtime (`RuntimeSelection.setupForOpening`).
+  The links that could not be opened are said in one alert once the burst has ended,
+  which keeps the first `LinkAlert.shownInBatch` and counts the rest (`LinkProblems`).
+  One modal shows at a time, a clone question or that alert, and what gathers while one
+  is up is said when it closes.
+  A link under way counts as something about to show, so the app does not offer the Open
+  panel meanwhile.
 - **The first clone.** A repository’s start is given up on only once its output stops
   growing for `SupervisorPolicy.startupTimeout`, or at
   `SupervisorPolicy.repositoryStartupLimit` after its spawn (`StartupDeadline`). Output
@@ -205,14 +236,18 @@ What stands between a link and an effect:
   password, and at most `GitHubLink.maximumLength` bytes.
   The answer must name a canonical repository root, and the server starts on its
   `handoff`, which `metab` rebuilt from what its reducer kept, so a token or other text
-  a sender put in the link never reaches the server’s arguments, its log, or the process
-  table. The link itself is logged private.
-  Every spawn is an argument array, never a shell, and alerts shorten what they show.
+  a sender put in the link never reaches the server’s arguments or its log.
+  The dry run is given the link as sent, so the process table shows it, query included,
+  for the dry run’s lifetime: about a third of a second, and at most
+  `PresentDryRun.timeout`. The link itself is logged private.
+  Every spawn is an argument array, never a shell, and alerts shorten what they show and
+  leave out a link’s user name, password, query, and fragment.
 - **`metab`’s checks.** Everything in the URL reducer: which pages open, the owner and
   repository grammar, credentials, ports, encoded delimiters, and dot segments, and the
   rule that an argument starting with a scheme is never a local path.
-- **Bounds.** The queue’s, and the question before a clone, which is the user’s consent
-  to download a repository and read it with their sign-in.
+- **Bounds.** The queue’s, the questions’, and the runtime wait’s, and the question
+  before a clone, which is the user’s consent to download a repository and read it with
+  their sign-in.
 
 A finding against this boundary is a security issue
 ([SECURITY.md](../../../SECURITY.md)).
