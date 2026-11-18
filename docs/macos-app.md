@@ -15,9 +15,9 @@ What the app adds is what a browser tab cannot give:
 
 ## Opening Folders and Files
 
-- **File > Open…** chooses one or more folders or files.
+- **File > Open Folder…** (Command-O) chooses one or more folders or files.
 - **Finder’s Open With and the Dock icon** accept folders.
-  A file opens through File > Open…, a drop on a window, or
+  A file opens through File > Open Folder…, a drop on a window, or
   `open -a Metabrowser path/to/file`.
 - **A file opens in its folder:** in the most specific open folder that contains it, or
   else in its own folder, as `metab FILE` serves the file’s folder.
@@ -77,11 +77,17 @@ has the report, its codes, and `--dry-run`, which checks a target without sendin
 
 The app opens the GitHub links `metab URL` opens in a browser: a repository, a pull
 request and its tabs, a commit, and a file or folder at a branch, tag, or commit.
-`metab URL --present` sends one to the app, and so does
-`open -b io.github.jlevy.metabrowser URL` (`io.github.jlevy.metabrowser.dev` for a
-development build). `metab` reads each link first, and the app shows what `metab` makes
-of it.
+File > Open URL… (Command-L) opens one you paste or type, `metab URL --present` sends
+one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
+(`io.github.jlevy.metabrowser.dev` for a development build).
+`metab` reads each link first, and the app shows what `metab` makes of it.
 
+- **File > Open URL…** takes the full URL, starting with `https://github.com/`; a
+  shorthand such as `owner/repo` is not opened.
+  Open checks the URL with `metab`, and a URL it accepts opens as a sent link does,
+  below. A URL it does not open keeps the panel open with the reason under the field: the
+  app’s own for anything but an `https` URL on GitHub, and `metab`’s for a GitHub page
+  it does not open, such as an issues page.
 - **Always the mirror:** a link opens Metabrowser’s own copy of the repository, its
   mirror in `metab`’s cache, never a checkout of it that you have open
   ([Open Modes](project/architecture/arch-open-modes.md)).
@@ -249,8 +255,8 @@ The app moves nothing itself.
 
 ## Known Limitations
 
-- The tab bar has no new-tab button: a new folder tab comes from File > Open… with
-  Settings set to tabs, or from Merge All Windows.
+- The tab bar has no new-tab button: a new tab comes from File > Open Folder… or Open
+  URL… with Settings set to tabs, or from Merge All Windows.
 - A restarted server comes back on a new port, and local storage is per origin, so what
   a page kept there starts fresh, as with the CLI.
 - The app does not pass state-location variables (`XDG_CACHE_HOME`,
@@ -262,9 +268,10 @@ The app moves nothing itself.
   A repository opened while another repository’s first clone runs starts once that clone
   ends, and so does a link into a repository that is already open: its other tabs keep
   working meanwhile, and the window the link brought forward says it waits.
-- A folder opens as the folder named, even inside a Git repository, and the File menu
-  opens no URL. Opening the repository’s root instead, File > Open URL…, and an Open
-  Recent that also lists repositories opened by URL are planned in
+- A folder opens as the folder named, even inside a Git repository, and File > Open URL…
+  opens the repository’s mirror without offering a checkout of it that you have open.
+  Opening the repository’s root instead, that offer, and an Open Recent that also lists
+  repositories opened by URL are planned in
   [Open Modes](project/architecture/arch-open-modes.md#the-file-menu).
 - There is no updater and no URL scheme, and an agent can hand the app a target with
   [`--present`](#opening-from-a-terminal-or-an-agent) but cannot yet learn which window

@@ -28,7 +28,7 @@ Paths are under `apps/macos/`.
 | `Sources/ShellCore/Supervision/` | Spawning a server, recognizing it as ready, checking its health, and stopping it |
 | `Sources/ShellCore/Runtime/` | Finding `metab`, settling which one runs, and the child environment |
 | `Sources/ShellCore/Setup/` | The version floor, the first-run steps, file watches, the restart offer after an upgrade, and the launch notice |
-| `Sources/ShellCore/Logs/`, `Folders/`, `Web/` | Server logs; folder identity, titles, files opened inside folders, tab placement, and the saved session; the navigation policy, web view configuration, tab discards, reloads, and downloads |
+| `Sources/ShellCore/Logs/`, `Folders/`, `Web/` | Server logs; folder identity, titles, files opened inside folders, GitHub links and File > Open URL…, tab placement, and the saved session; the navigation policy, web view configuration, tab discards, reloads, and downloads |
 | `Sources/ShellCore/App/` | Which build is running (`AppIdentity`), and the title-bar mark |
 | `Sources/ShellViews/` | `DropAwareWebView` and `WebContainerView`, a library of their own so that the WebKit gate’s driver builds the same views |
 | `Sources/Metabrowser/` | The AppKit app: lifecycle, menus, folder sessions, windows, and the SwiftUI status and settings views |
@@ -44,13 +44,14 @@ before one exists, windows, menus, the Dock, and file events.
 
 ## A Server per Folder
 
-1. **Open.** File > Open, Open Recent, the Dock menu, a drop, Open With, `open -a`, and
-   the restore all reach one `FolderSession` per folder, keyed by its canonical path, so
-   a root has one server however many windows and tabs show it.
+1. **Open.** File > Open Folder…, Open Recent, the Dock menu, a drop, Open With,
+   `open -a`, and the restore all reach one `FolderSession` per folder, keyed by its
+   canonical path, so a root has one server however many windows and tabs show it.
    [Open Modes](arch-open-modes.md#what-keys-on-the-root) designs that key as the open
    root `metab` resolves, which for a path inside a repository is the repository’s root.
-   A GitHub link reaches one per repository, keyed by its canonical URL
-   ([GitHub Links](#github-links)); `SessionRoot` names both.
+   A GitHub link, sent to the app or typed into File > Open URL…, reaches one per
+   repository, keyed by its canonical URL ([GitHub Links](#github-links)); `SessionRoot`
+   names both.
 2. **Spawn.** `ServerSupervisor` runs `CLIServeLaunch`’s command,
    `metab ROOT --no-open --exit-on-eof --host 127.0.0.1 --port N`, from its lane’s
    `LaunchLane.basePort` (`SessionRoot.lane`). `SpawnedProcess` starts it with
@@ -225,6 +226,44 @@ and the server, which resolves the link against its mirror, announces the right 
 - **The version floor.** `RuntimeDiscovery.validate` probes `--present` with
   `--exit-on-eof`, so a `metab` without it is too old at setup
   ([The Version Floor](#the-version-floor)).
+
+#### File > Open URL…
+
+File > Open URL…, Command-L, shows `OpenURLWindowController`, a panel with one field.
+What the panel accepts, says, and does is `OpenURLPanel`, in `ShellCore`; the window
+only shows its state and passes on edits, Open, and Cancel.
+
+- **The text is checked first.** `OpenURLEntry` hands `metab` only a link `GitHubLink`
+  accepts, the check every link sent to the app passes, read as typed with nothing
+  encoded. `metab TARGET --present --dry-run` reads a target with no scheme as a local
+  path, so a shorthand such as `owner/repo` would name a folder under its working
+  directory: the panel takes none, as the owner decided on 2026-11-18, and asks for the
+  full URL. Its other messages, for a scheme other than `https`, a user name or
+  password, a port, or another host, are the app’s own words about what was typed;
+  `metab` would refuse each of those too.
+- **`metab` decides.** Open runs the dry run `resolveLink` runs (`askMetab`), outside
+  the link queue, so that a refusal is said in the panel and not in the alert that ends
+  a burst, and one at a time, since Open waits for the answer.
+  A plan closes the panel and goes to `open(_:with:)`, so from there it is a link sent
+  to the app: the question before a clone, one window per repository, and always the
+  mirror, never a checkout.
+  A refusal shows `refusal.message`; an answer the app cannot read names the `metab` and
+  the reason, never its output, which goes to the app’s log.
+  Either way the panel stays open with the text.
+  An edit, Cancel, or closing the panel drops the answer still awaited.
+- **With no `metab` the app can run now,** the panel closes and the link goes to the
+  link queue (`requestLink`), which waits for one as it does for any link.
+- **Not built.** The offer of a known checkout, “borrow from the checkout” and “open the
+  checkout instead”, which [Open Modes](arch-open-modes.md#the-file-menu) designs, waits
+  for a way to tell that an open folder is a checkout of the URL’s repository:
+  `GET /api/identity` and a folder’s dry run name no repository (`mb-bkk2`). Filling the
+  field from the clipboard, which the owner made optional, is not built.
+- **Parity.** What a URL opens is `metab URL --present --dry-run --format json`, the
+  [parity registry](arch-parity-registry.md)’s `app.present-resolution` row, whose
+  golden pins each kind of link and each refusal code; the panel and its menu item are
+  platform behavior, as the app’s other menus are.
+  `LiveMetabTests.theOpenURLPanelSaysWhatMetabAnswers` runs the panel against the real
+  command.
 
 #### The Trust Boundary
 
@@ -494,7 +533,8 @@ reasons in the
 [packaging brief](../research/research-2026-11-08-macos-app-packaging.md)’s Layering
 section and Recommendations.
 [Open Modes](arch-open-modes.md#the-file-menu) designs the File menu’s Open Folder…,
-Open URL…, and Open Recent, and what each opens.
+Open URL…, and Open Recent, and what each opens; Open URL…’s offer of a known checkout
+is `mb-bkk2`.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

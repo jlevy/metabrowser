@@ -189,6 +189,36 @@ struct LiveMetabTests {
         #expect(answer == .notCached)
     }
 
+    /// File > Open URL… asks the command a link sent to the app is resolved with: a
+    /// supported URL closes the panel on `metab`'s plan, and one `metab` refuses keeps the
+    /// panel open with `metab`'s own message.
+    @Test(arguments: [
+        ("https://github.com/jlevy/metabrowser/pull/540", true),
+        ("https://github.com/jlevy/metabrowser/blob/main/docs/macos-app.md", true),
+        ("https://github.com/jlevy/metabrowser/issues/1", false),
+        ("https://github.com/jlevy/metabrowser/pull/0", false),
+    ])
+    func theOpenURLPanelSaysWhatMetabAnswers(_ text: String, _ opens: Bool) async throws {
+        var panel = OpenURLPanel()
+        panel.edit(text)
+        let opened = panel.open()
+        let link = try #require(opened)
+        let answer = try await dryRun(link.absoluteString)
+        let plan = panel.answered(answer, for: link, metab: "metab")
+        if opens {
+            #expect(plan?.link.absoluteString == text)
+            #expect(panel.phase == .closed)
+        } else {
+            guard case .refused(let refusal) = answer else {
+                Issue.record("expected a refusal for \(text), got \(answer)")
+                return
+            }
+            #expect(plan == nil)
+            #expect(panel.message == refusal.message)
+            #expect(panel.phase == .editing)
+        }
+    }
+
     private func dryRun(_ link: String) async throws -> PresentAnswer {
         let path = try #require(liveMetab)
         let setup = RuntimeSetup(
