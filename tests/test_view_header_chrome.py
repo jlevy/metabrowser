@@ -24,6 +24,8 @@ pending skeletons of a walk that has not finished. This judges the record:
   it;
 - the narrow panes: a title too long for its row cut short at its end, and every
   metadata item on the line whole or wrapped out of sight with its dot, never cut;
+- the title's tooltip, its whole name, shown by the shell's own rule on every page
+  exactly while the name is cut short;
 - steadiness: as the values change, no box of the header but the line's own items moves
   or changes size: not the header, the eyebrow, the title's row, the title, the line, or
   the tab bar; and the age, last on its line, moves no other item when its label's width
@@ -171,6 +173,12 @@ def test_view_headers_hold_their_rows_ground_and_values_in_chrome(
             assert not page["titleCut"], f"{name}: the title is cut in a wide pane"
         if result["kind"] == "file" and result["pane"] <= 260:
             assert page["titleCut"], f"{name}: the title overflows its row"
+        # Its tooltip, the whole name, shows exactly while the name is cut short
+        # (`tipAddsInformation`; "Tooltips Add Information"): a whole title's glyphs
+        # overflowing its line box is no cut.
+        assert page["titleTip"] is page["titleCut"], (
+            f"{name}: tooltip {page['titleTip']}, cut {page['titleCut']}, {page['titleHeights']}"
+        )
         assert page["title"]["right"] <= page["end"]["left"] + TOLERANCE_PX, name
         # Up: disabled at the root, a control everywhere else.
         assert page["upDisabled"] is (result["kind"] == "root"), name
