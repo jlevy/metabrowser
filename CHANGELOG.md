@@ -12,6 +12,8 @@ All notable changes to Metabrowser are documented here.
   A pull request’s changed files, refreshed twice at once, could then fail to be cached.
   Now a write creates and locks its temporary file under a shared lock on the folder,
   and the removal runs only while it holds that lock exclusively.
+  A write waits for that lock only briefly; if another process keeps it, as a stopped
+  one can, the write goes ahead without it and logs a warning.
   See [Atomic Writes](docs/project/architecture/arch-repository-cache.md#atomic-writes).
 
 - A Pulls row now leads with its title, right after the state icon, on its first line,

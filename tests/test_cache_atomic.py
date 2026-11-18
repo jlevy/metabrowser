@@ -54,6 +54,10 @@ from metabrowser.home import (
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="owner-only storage is POSIX-only")
 fcntl = pytest.importorskip("fcntl")
+skip_as_root = pytest.mark.skipif(
+    os.name == "posix" and os.geteuid() == 0,
+    reason="root is never denied by modes, so a denial cannot be staged",
+)
 
 STORE_KEY = "c" * 64
 CHILD_TIMEOUT = 50
@@ -196,6 +200,25 @@ def _counted_draws(monkeypatch: pytest.MonkeyPatch) -> list[int]:
     return draws
 
 
+def _directory_lock_is_free(directory: Path) -> bool:
+    """Whether a new descriptor can take *directory*'s lock exclusively right now."""
+
+    fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return False
+    finally:
+        os.close(fd)
+    return True
+
+
+def _open_descriptors() -> int:
+    """How many descriptors this process has open, the one listing them included."""
+
+    return len(os.listdir("/dev/fd"))
+
+
 def _second_write_while_creating(
     monkeypatch: pytest.MonkeyPatch, home: Path, step: str, during: Callable[[], None]
 ) -> list[str]:
@@ -312,10 +335,12 @@ def test_a_copy_of_a_directory_lock_descriptor_does_not_keep_the_lock(
 
     ``flock`` belongs to the open file description, which the child's copy keeps open,
     so closing the parent's descriptor would leave the lock held for as long as the child
-    lives and every sweep would be skipped. Each directory lock is released explicitly.
-    Here every directory descriptor the writer opens is duplicated and kept, as a child
-    would keep it. Mutation check: close the directory lock without ``LOCK_UN`` and the
-    leftover is never removed.
+    lives: a shared one would skip every sweep, and an exclusive one would hold every
+    writer of the directory to the wait's bound. Each directory lock is released
+    explicitly. Here every directory descriptor the writer opens is duplicated and kept,
+    as a child would keep it. Mutation check: close the shared lock without ``LOCK_UN``
+    and the leftover is never removed; close the exclusive one so and the directory stays
+    locked.
     """
 
     real_open = os.open
@@ -335,13 +360,19 @@ def test_a_copy_of_a_directory_lock_descriptor_does_not_keep_the_lock(
 
         assert copies
         assert not leftover.exists()
+        assert _directory_lock_is_free(home)
     finally:
         for fd in copies:
             os.close(fd)
 
 
+@pytest.mark.parametrize(
+    "refusal",
+    sorted(home_module._DIRECTORY_LOCK_UNSUPPORTED_ERRNOS),  # pyright: ignore[reportPrivateUsage]
+    ids=lambda refusal: errno.errorcode[refusal],
+)
 def test_where_a_directory_cannot_be_locked_writers_go_ahead_and_sweeps_skip(
-    home: Path, monkeypatch: pytest.MonkeyPatch
+    home: Path, monkeypatch: pytest.MonkeyPatch, refusal: int
 ) -> None:
     """A file system that locks files but not directories still takes writes.
 
@@ -353,7 +384,7 @@ def test_where_a_directory_cannot_be_locked_writers_go_ahead_and_sweeps_skip(
 
     def flock(fd: int, operation: int) -> None:
         if stat.S_ISDIR(os.fstat(fd).st_mode):
-            raise OSError(errno.ENOTSUP, os.strerror(errno.ENOTSUP))
+            raise OSError(refusal, os.strerror(refusal))
         real_flock(fd, operation)
 
     leftover = _leftover(home)
@@ -388,6 +419,170 @@ def test_an_unexpected_directory_lock_failure_refuses_the_write(
     assert str(home) not in str(refused.value)
     assert not (home / "example.yml").exists()
     assert _temporaries(home) == []
+
+
+def _held_exclusively(directory: Path) -> int:
+    """Hold *directory*'s lock exclusively through a descriptor of the test's own."""
+
+    fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    return fd
+
+
+def test_a_writer_waits_for_a_sweep_that_holds_the_directory_lock(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """While the directory is held exclusively, no temporary is created; then the write ends.
+
+    Mutation check: take the shared lock without retrying, and the write goes ahead at once.
+    """
+
+    monkeypatch.setattr(home_module, "_TEMPORARIES_LOCK_WAIT_S", CHILD_TIMEOUT)
+    holder = _held_exclusively(home)
+    failures: list[BaseException] = []
+
+    def write() -> None:
+        try:
+            write_private_file_atomic(home, "example.yml", b"waited\n")
+        except BaseException as failure:
+            failures.append(failure)
+
+    writer = threading.Thread(target=write)
+    try:
+        writer.start()
+        writer.join(timeout=0.3)
+        assert writer.is_alive()
+        assert _temporaries(home) == []
+        assert not (home / "example.yml").exists()
+    finally:
+        os.close(holder)
+    writer.join(timeout=CHILD_TIMEOUT)
+
+    assert not writer.is_alive()
+    assert failures == []
+    assert (home / "example.yml").read_bytes() == b"waited\n"
+
+
+def test_a_writer_goes_ahead_once_the_wait_for_the_directory_lock_passes_its_bound(
+    home: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A holder that never lets go, such as a stopped sweep, costs a write the bound only.
+
+    Mutation check: refuse when the bound passes, or wait without one, and this fails.
+    """
+
+    monkeypatch.setattr(home_module, "_TEMPORARIES_LOCK_WAIT_S", 0.05)
+    leftover = _leftover(home)
+    holder = _held_exclusively(home)
+    try:
+        with caplog.at_level(logging.WARNING, logger="metabrowser.home"):
+            write_private_file_atomic(home, "example.yml", b"went ahead\n")
+    finally:
+        os.close(holder)
+
+    assert (home / "example.yml").read_bytes() == b"went ahead\n"
+    assert "writing without it" in caplog.text
+    assert str(home) not in caplog.text
+    # Its sweep could not take the lock either, so the leftover waits for the next write.
+    assert leftover.exists()
+
+
+def test_a_sweep_logs_its_removals_only_after_releasing_the_directory_lock(
+    home: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A log handler can block, on a full stderr pipe, and must not hold every writer.
+
+    Mutation check: log inside the exclusive lock, as before, and the handler sees it held.
+    """
+
+    locked_while_logging: list[bool] = []
+
+    class Probe(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            if "Removed a temporary file" in record.getMessage():
+                locked_while_logging.append(not _directory_lock_is_free(home))
+
+    probe = Probe()
+    logger = logging.getLogger("metabrowser.home")
+    logger.addHandler(probe)
+    try:
+        _leftover(home)
+        with caplog.at_level(logging.INFO, logger="metabrowser.home"):
+            write_private_file_atomic(home, "example.yml", b"content\n")
+    finally:
+        logger.removeHandler(probe)
+
+    assert locked_while_logging == [False]
+    assert _temporaries(home) == []
+
+
+@skip_as_root
+@pytest.mark.parametrize("mode", [0o600, 0o400], ids=["0600", "0400"])
+def test_a_directory_without_owner_search_permission_is_refused_as_unverifiable(
+    home: Path, mode: int
+) -> None:
+    """The refusal is a PrivateStorageError, as every other look inside a directory is."""
+
+    ensure_private_directory(home, "records")
+    (home / "records").chmod(mode)
+    try:
+        with pytest.raises(PrivateStorageError) as refused:
+            write_private_file_atomic(home, "records/example.yml", b"x")
+    finally:
+        (home / "records").chmod(0o700)
+
+    assert refused.value.violation is PrivateStorageViolation.UNVERIFIABLE
+    assert str(home) not in str(refused.value)
+    assert os.listdir(home / "records") == []
+
+
+def _failing_once_held(monkeypatch: pytest.MonkeyPatch, step: str) -> None:
+    """Make the next write fail with ``EIO`` at *step*, once its temporary is held."""
+
+    def fail(*_args: object, **_kwargs: object) -> None:
+        raise OSError(errno.EIO, os.strerror(errno.EIO))
+
+    if step == "release":
+        real_flock = fcntl.flock
+
+        def flock(fd: int, operation: int) -> None:
+            if operation == fcntl.LOCK_UN and stat.S_ISDIR(os.fstat(fd).st_mode):
+                fail()
+            real_flock(fd, operation)
+
+        fake = SimpleNamespace(**{**vars(fcntl), "flock": flock})
+        monkeypatch.setattr(home_module, "fcntl", fake)
+    elif step == "sweep":
+        monkeypatch.setattr(home_module, "_remove_stale_temporaries", fail)
+    else:
+        monkeypatch.setattr(home_module, "_write_all", fail)
+
+
+@pytest.mark.parametrize("step", ["release", "sweep", "write"])
+def test_a_write_that_fails_once_its_temporary_is_held_removes_it_and_closes_it(
+    home: Path, monkeypatch: pytest.MonkeyPatch, step: str
+) -> None:
+    """Releasing the shared lock, sweeping, or writing fails, and nothing is left behind.
+
+    A descriptor left open would keep the temporary's lock for as long as the process
+    lives, so no sweep could remove it. Mutation check: close the descriptor in one
+    block per step, as before, and ``release`` leaks it; skip the removal and every step
+    leaves its temporary.
+    """
+
+    # Opens and holds for reuse every directory the failing write goes through.
+    write_private_file_atomic(home, "warm.yml", b"")
+    before = _open_descriptors()
+    _failing_once_held(monkeypatch, step)
+    with pytest.raises(OSError) as refused:
+        write_private_file_atomic(home, "example.yml", b"content\n")
+    monkeypatch.undo()
+
+    assert refused.value.errno == errno.EIO
+    assert _open_descriptors() == before
+    assert _temporaries(home) == []
+    assert not (home / "example.yml").exists()
+    assert _directory_lock_is_free(home)
 
 
 # Measured 2026-11-17 on a 10-CPU Mac at load average 10 to 18, without mb-532r's fix:

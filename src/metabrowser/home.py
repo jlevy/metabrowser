@@ -104,6 +104,7 @@ import stat
 import struct
 import sys
 import threading
+import time
 from collections import OrderedDict
 from collections.abc import Callable, Generator, Mapping
 from dataclasses import dataclass
@@ -198,11 +199,29 @@ _PROC_SELF_FD: Final = Path("/proc/self/fd")
 _TEMPORARY_SUFFIX_RE: Final = r"\.[0-9a-f]{16}\.tmp"
 _TEMPORARY_ATTEMPTS: Final = 4
 # How flock says the file system cannot take a lock at all; cache/locks.py refuses such a
-# home. A directory that cannot be locked cannot be locked exclusively by a sweep either,
-# so there writers create their temporaries without the directory lock and sweeps skip.
+# home.
 UNSUPPORTED_LOCK_ERRNOS: Final = frozenset(
     {errno.ENOLCK, errno.EOPNOTSUPP, errno.ENOTSUP, errno.EINVAL, errno.ENOSYS}
 )
+# How it says a directory cannot be locked, which a file system can refuse alone: Apple's
+# published SMB client source locks only regular files and answers EISDIR (not measured
+# here). A directory that cannot be locked cannot be locked exclusively by a sweep either,
+# so there writers create their temporaries without the directory lock and sweeps skip.
+_DIRECTORY_LOCK_UNSUPPORTED_ERRNOS: Final = UNSUPPORTED_LOCK_ERRNOS | {errno.EISDIR}
+# How long a writer tries for the directory's shared lock while a sweep holds it
+# exclusively, retrying without blocking at intervals that double from the first to the
+# cap. Past the bound it goes ahead without the lock: the sweep holding it listed its
+# candidates before the writer's file existed, and a later sweep can at worst cause the
+# refusal this lock prevents, never an exposure. Measured 2026-11-17 on a 10-CPU Mac with
+# 8 and then 16 processes writing one target, each leaving a crash leftover every fifth
+# write, at load average 25 to 40: of 4,538 exclusive holds the median was 0.17 ms and
+# the longest 38 ms, and of 25,600 writers' waits the longest was 69 ms. The first retry
+# outlasts the median hold several times over, the cap keeps a waiter to 20 attempts a
+# second, and the bound is 14 times the longest wait, so only a stopped or stalled holder
+# reaches it.
+_TEMPORARIES_LOCK_RETRY_FIRST_S: Final = 0.001
+_TEMPORARIES_LOCK_RETRY_MAX_S: Final = 0.05
+_TEMPORARIES_LOCK_WAIT_S: Final = 1.0
 # No-replace renames: renameat2(RENAME_NOREPLACE) on Linux, renamex_np(RENAME_EXCL) on
 # macOS. A file system that does not implement the flag answers with one of these, and
 # publication then relies on its verify-absent check under the owning lock alone.
@@ -759,7 +778,8 @@ def write_private_file_atomic(
     :class:`FileExistsError`, through the platform's no-replace rename where it has one.
     Before writing, leftovers of this target from a writer that crashed are removed:
     their locks are free, while a live writer's is held, or is being taken under the
-    directory's shared lock. The parent directory must already exist.
+    directory's shared lock. A write that fails once its temporary is held removes it
+    while still holding it. The parent directory must already exist.
     """
 
     require_canonical_inventory_path(relative_path, "application-home path", allow_root=False)
@@ -772,16 +792,18 @@ def write_private_file_atomic(
             continue
         path = home / (f"{directory}/{temporary}" if directory else temporary)
         try:
-            _write_all(fd, data)
-            os.fsync(fd)
             try:
+                _write_all(fd, data)
+                os.fsync(fd)
                 if replace:
                     os.replace(path, home / relative_path)
                 else:
                     rename_without_replacing(path, home / relative_path)
             except BaseException:
+                # A sweep can be skipped for a while, so a leftover would outlast it.
                 with contextlib.suppress(OSError):
-                    os.unlink(path)
+                    if _same_inode(fd, path):
+                        os.unlink(path)
                 raise
             _sync_directory(home / directory if directory else home)
             return
@@ -875,35 +897,38 @@ def _hold_new_temporary(home: Path, directory: str, name: str, temporary: str) -
     no sweep judges it unlocked. Leftovers of *name* are then removed through the same
     directory by :func:`_remove_stale_temporaries`. Returns the held descriptor, or
     ``None`` if the name was taken or the file was locked or replaced by something else
-    before it was held.
+    before it was held. If anything fails once the file is held, it is removed while
+    still held, and its descriptor is closed whatever fails.
     """
 
     require_canonical_inventory_path(temporary, "application-home path", allow_root=False)
+    fd: int | None = None
+    held = False
     with (
         _verified_directory(home, directory, shared="repair", create=False) as (parent_fd, parent),
-        _own_description(parent_fd) as directory_fd,
+        _own_description(parent_fd, parent) as directory_fd,
     ):
         path = parent / temporary
-        with _temporaries_lock(directory_fd, parent, exclusive=False):
-            try:
-                fd = _open_file_entry(
-                    parent_fd, temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, path
-                )
-            except FileExistsError:
-                return None
-            try:
-                held = _hold_temporary(fd, path)
-            except BaseException:
-                os.close(fd)
-                raise
-        if not held:
-            os.close(fd)
-            return None
         try:
-            _remove_stale_temporaries(parent_fd, directory_fd, parent, name, temporary)
+            with _temporaries_lock(directory_fd, parent, exclusive=False):
+                try:
+                    fd = _open_file_entry(
+                        parent_fd, temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, path
+                    )
+                except FileExistsError:
+                    return None
+                held = _hold_temporary(fd, path)
+            if held:
+                _remove_stale_temporaries(parent_fd, directory_fd, parent, name, temporary)
         except BaseException:
-            os.close(fd)
+            if fd is not None:
+                if held:
+                    _remove_created_file(parent_fd, temporary, fd)
+                os.close(fd)
             raise
+    if not held:
+        os.close(fd)
+        return None
     return fd
 
 
@@ -925,15 +950,18 @@ def _hold_temporary(fd: int, path: Path) -> bool:
 
 
 @contextlib.contextmanager
-def _own_description(parent_fd: int) -> Generator[int]:
-    """Open the directory *parent_fd* names again, for this caller alone.
+def _own_description(parent_fd: int, path: Path) -> Generator[int]:
+    """Open the directory *parent_fd* names, at *path*, again for this caller alone.
 
     A verified descriptor is shared by every thread in this process, and both a read
     position and a ``flock`` belong to the open file description: two threads locking
-    through one would both be granted the lock.
+    through one would both be granted the lock. A directory without owner search
+    permission is refused as unverifiable, as a look inside it would be.
     """
 
-    fd = os.open(".", os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC, dir_fd=parent_fd)
+    fd = _open_no_follow(
+        parent_fd, ".", os.O_RDONLY | os.O_DIRECTORY, PrivateStorageLocation.ENTRY, path
+    )
     try:
         yield fd
     finally:
@@ -944,12 +972,14 @@ def _own_description(parent_fd: int) -> Generator[int]:
 def _temporaries_lock(directory_fd: int, path: Path, *, exclusive: bool) -> Generator[bool]:
     """Hold the directory's temporaries lock through *directory_fd*; yield whether it is held.
 
-    A writer takes it shared from before it creates its temporary until it has locked it,
-    and may wait for a sweep to finish: a sweep holds it exclusively only while it opens,
-    tries, and removes the other temporaries, none of which waits on anyone. A sweep
-    only tries it, and gets ``False`` while any writer is between creating and locking.
-    Where the file system cannot lock a directory it is ``False`` for both, and the
-    writer goes ahead. It is released with ``LOCK_UN`` rather than by closing the
+    A writer takes it shared from before it creates its temporary until it has locked it.
+    It may wait while a sweep holds the lock exclusively, which a sweep does only while it
+    opens, tries, and removes the other temporaries; nothing there waits on anyone except
+    the warning logged if a swept file must first be tightened. The wait is bounded by
+    :data:`_TEMPORARIES_LOCK_WAIT_S`, after which the writer goes ahead without the lock.
+    A sweep only tries it, and gets ``False`` while any writer is between creating and
+    locking. Where the file system cannot lock a directory it is ``False`` for both, and
+    the writer goes ahead. It is released with ``LOCK_UN`` rather than by closing the
     descriptor, because a child forked meanwhile shares the description and would
     otherwise hold the lock for as long as it lives.
     """
@@ -961,22 +991,55 @@ def _temporaries_lock(directory_fd: int, path: Path, *, exclusive: bool) -> Gene
             path,
             detail=_UNSUPPORTED_PLATFORM,
         )
-    operation = (fcntl.LOCK_EX | fcntl.LOCK_NB) if exclusive else fcntl.LOCK_SH
-    try:
-        fcntl.flock(directory_fd, operation)
-    except BlockingIOError:
-        held = False
-    except OSError as error:
-        if error.errno not in UNSUPPORTED_LOCK_ERRNOS:
-            raise
-        held = False
+    if exclusive:
+        held = _try_directory_lock(directory_fd, fcntl.LOCK_EX) is True
     else:
-        held = True
+        held = _wait_for_shared_directory_lock(directory_fd)
     try:
         yield held
     finally:
         if held:
             fcntl.flock(directory_fd, fcntl.LOCK_UN)
+
+
+def _try_directory_lock(directory_fd: int, operation: int) -> bool | None:
+    """Try *operation* once without blocking; ``None`` if the directory cannot be locked."""
+
+    if fcntl is None:
+        return None
+    try:
+        fcntl.flock(directory_fd, operation | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return False
+    except OSError as error:
+        if error.errno not in _DIRECTORY_LOCK_UNSUPPORTED_ERRNOS:
+            raise
+        return None
+    return True
+
+
+def _wait_for_shared_directory_lock(directory_fd: int) -> bool:
+    """Take the shared temporaries lock, retrying up to :data:`_TEMPORARIES_LOCK_WAIT_S`.
+
+    A thread blocked in ``flock`` cannot be interrupted, and a stopped or stalled sweep
+    would hold every writer of its directory, so the lock is retried without blocking.
+    """
+
+    assert fcntl is not None  # _temporaries_lock refused this platform first.
+    deadline = time.monotonic() + _TEMPORARIES_LOCK_WAIT_S
+    delay = _TEMPORARIES_LOCK_RETRY_FIRST_S
+    while (held := _try_directory_lock(directory_fd, fcntl.LOCK_SH)) is False:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            log.warning(
+                "Another process held a storage folder's lock for temporary files for "
+                "over %.1f s; writing without it",
+                _TEMPORARIES_LOCK_WAIT_S,
+            )
+            return False
+        time.sleep(min(delay, remaining))
+        delay = min(delay * 2, _TEMPORARIES_LOCK_RETRY_MAX_S)
+    return held is True
 
 
 def _remove_stale_temporaries(
@@ -999,36 +1062,44 @@ def _remove_stale_temporaries(
     ]
     if not others:
         return
+    removed = 0
     with _temporaries_lock(directory_fd, parent, exclusive=True) as held:
         if not held:
             return
         for entry in others:
-            _remove_if_unlocked(parent_fd, entry, parent / entry)
+            removed += _remove_if_unlocked(parent_fd, entry, parent / entry)
+    # Logged once the lock is released: a handler can block, on a full stderr pipe.
+    for _ in range(removed):
+        log.info("Removed a temporary file left by an interrupted write")
 
 
-def _remove_if_unlocked(parent_fd: int, name: str, path: Path) -> None:
-    """Unlink the temporary *name* in *parent_fd* if its liveness lock is free."""
+def _remove_if_unlocked(parent_fd: int, name: str, path: Path) -> bool:
+    """Unlink the temporary *name* in *parent_fd* if its liveness lock is free.
+
+    Returns whether it was removed.
+    """
 
     if fcntl is None:
-        return
+        return False
     try:
         fd = _open_file_entry(parent_fd, name, os.O_RDONLY | os.O_NONBLOCK, path)
     except (FileNotFoundError, PrivateStorageError):
-        return
+        return False
     try:
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            return
+            return False
         opened = os.fstat(fd)
         try:
             current = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
         except FileNotFoundError:
-            return
-        if (current.st_dev, current.st_ino) == (opened.st_dev, opened.st_ino):
-            with contextlib.suppress(FileNotFoundError):
-                os.unlink(name, dir_fd=parent_fd)
-            log.info("Removed a temporary file left by an interrupted write")
+            return False
+        if (current.st_dev, current.st_ino) != (opened.st_dev, opened.st_ino):
+            return False
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(name, dir_fd=parent_fd)
+        return True
     finally:
         os.close(fd)
 
@@ -1250,6 +1321,9 @@ def _refuse_shared_home_mode(status: os.stat_result, home: Path) -> None:
 # cache is outside what the child closes at the moment of a fork: opening one and
 # registering it happen inside _HeldDirectories.opening, which a fork from another thread
 # waits out, and dropping one and closing it happen together under the lock a fork takes.
+# The description an atomic write opens of a directory to lock it is not the cache's, and
+# a child can inherit it; its lock is released with LOCK_UN, which no copy outlives (see
+# _temporaries_lock).
 # These rules run in os.register_at_fork hooks, so they cover os.fork and native code
 # that brackets its fork with PyOS_BeforeFork and PyOS_AfterFork_*; a native fork without
 # them bypasses them, and nothing in Metabrowser forks that way.
