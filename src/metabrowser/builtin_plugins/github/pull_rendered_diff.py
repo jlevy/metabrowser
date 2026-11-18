@@ -223,7 +223,9 @@ async def _project(
 
     target = RepositoryStoreTarget(published.git_dir, published.object_format)
     source = GitDiffSource(GitLocation.revision(target, snapshot.head))
-    comparison = await shared_pull_manifest(published, snapshot.base, snapshot.head)
+    comparison = await shared_pull_manifest(
+        published, snapshot.number, snapshot.base, snapshot.head
+    )
     resolved, manifest = comparison.resolved, comparison.manifest
     if resolved.left.id != snapshot.base or resolved.right.id != snapshot.head:
         return _fallback()

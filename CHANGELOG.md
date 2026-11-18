@@ -30,6 +30,101 @@ All notable changes to Metabrowser are documented here.
   served pull request’s page as it is first read, so a first document or comment does
   not wait for it; a one-shot `--api` command starts it only when it renders.
 
+- Security: a Markdown file’s front matter can no longer stall the server.
+  YAML aliases let a few hundred bytes of front matter stand for millions of values: 310
+  bytes of seven alias levels made `/api/file` spend over a second building 39 MB of
+  JSON, answering nothing else meanwhile, and each further level multiplied both by
+  nine. Merge keys (`<<`), merges nested inline, and a duplicated key did the same inside
+  the YAML parser itself, and so did `!!timestamp` on a list, the last two into the
+  error message; flow lists nested hundreds deep cost the parser seconds.
+  A served GitHub mirror or a folder served with `--untrusted` could carry such a file,
+  and so could a downloaded repository served as a trusted folder.
+  Front matter is now measured before it is built, and Metabrowser builds it itself,
+  leaving the YAML parser only its scalars.
+  It is refused when, written out without its aliases, it is larger than
+  `FRONTMATTER_MAX_EXPANDED_SIZE` characters (`frontmatter_yaml.py`), when it or its
+  value through its aliases nests more than `YAML_MAX_DEPTH` levels, when an alias sits
+  inside the value it names, or when it declares a YAML version other than 1.2: the file
+  reads as text, and its header badge and rendered document say why, in at most
+  `YAML_ERROR_MAX_CHARS` characters, naming a line rather than quoting it.
+  The `.yaml` prefix that `yaml_has_key` and `yaml_value_prefix` read goes through the
+  same loader. The parse runs off the server’s event loop on every path, and an
+  uncompressed file’s front matter is read only from its first `FRONTMATTER_MAX_BYTES`,
+  as a compressed file’s and a pinned revision’s already were.
+  Tags JSON has no type for (`!!binary`, `!!set`, `.nan`, a sequence or date as a key,
+  an integer past Python’s digit limit, a lone surrogate from an escape) now answer as
+  JSON values, and every tag or scalar the parser refuses, and nesting too deep to
+  parse, answers with its reason; before, some of these showed a served folder’s file as
+  an internal error, and a pinned revision answered them with a server error.
+  The parser no longer writes a warning to the server’s log for each reused anchor name.
+
+- Plugin authors: `frontmatter_has_key` and `yaml_has_key` now match a key that is not a
+  string by its JSON text, the spelling a renderer already received, so `"1"` matches a
+  YAML `1:` key and `"true"` a `true:` key.
+  Keys are compared by that text, so `1:` and `"1":` in one mapping are a duplicate.
+  `yaml_has_key` and `yaml_value_prefix` now read YAML 1.2, as front matter and the
+  structured viewer do: `on`, `yes`, `no`, and `12:30:45` are strings rather than
+  booleans and numbers, and `0o17` and `1e3` are numbers rather than strings.
+  A `.yaml` prefix no longer matches when it is not UTF-8, declares another YAML version
+  (`%YAML 1.1`), nests past `YAML_MAX_DEPTH`, or holds aliases that write out past
+  `_YAML_PREFIX_MAX_EXPANDED_SIZE`. A key that appears twice in it keeps its last value,
+  as it did before. See [Kind Rules](docs/plugins.md#kind-rules).
+
+- The Treemap tab shows File Overview’s file-type legend under its bars.
+  Pointing at an entry highlights every cell of that family, its segments in the bars,
+  and the entry; pointing at a cell or a segment highlights it and its family’s entry.
+  See [Folder Treemap](docs/design-system.md#folder-treemap).
+
+- Each pull request keeps its own comparison manifest beside the store, so a
+  repository’s Diff summaries no longer replace each other’s. The bank held sixteen
+  direct-mapped slots, where 19 open pull requests kept about 11 manifests, and each of
+  the rest was listed by Git again (about 77 ms) whenever it was opened.
+  Manifests are now `github-pull-manifests/pull-<n>.json`; their epochs are still
+  direct-mapped by comparison, so detecting a corrupt comparison invalidates it for
+  every pull request that keeps it.
+  The sixteen slot files v0.12 kept are no longer read; each is at most one manifest.
+
+- A pull request’s Diff summary and Changes are read from the manifest kept beside the
+  store after an upgrade, and after any edit of the source of an editable install.
+  A kept manifest named the build that wrote it, so each of those listed every
+  comparison with Git again.
+  It now names the diff document’s schema and the listing it was read from
+  (`MANIFEST_LISTING` in `diff/adapters/git.py`); manifests kept before this change are
+  listed once more.
+
+- A pull request’s page says how fresh it is once, at the end of the author’s line, in
+  muted text after a dot: “jlevy wants to merge 1 commit · Fetched just now via GitHub
+  CLI”. It no longer says “Checked just now · fetched 3 h ago”: a check that found
+  nothing changed does not make what is shown newer, so the page names the fetch alone.
+  Where the line has no room for all of it, the note leaves the line rather than cutting
+  the author’s name or sentence short.
+  A rate limit’s hold, “GitHub rate limit · next check at 2:05 PM”, is said in its
+  place, a time of day when the limit lifts today and a short date and time otherwise,
+  cut short with its whole text as a tooltip rather than leaving the line.
+  Refresh ends the row of ages, after View on GitHub and Browse code, and takes the
+  number after theirs.
+  While a refresh runs it stays in its place, muted, and keeps its number, so an offer’s
+  number after it does not move.
+  On a narrow pane the ages are cut short before View on GitHub and Browse code.
+  When fetching a pull request’s changes is refused, the reason is said on Changes,
+  beside Retry changes, rather than on the header.
+  The age ticking and Refresh appearing move nothing.
+  The line under the row of ages is there only while it has something to say: a failure,
+  a message, or an offer to switch to the pull request’s head.
+  See [The Pull Request Page](docs/design-system.md#the-pull-request-page).
+
+- In the Pulls tab, a pull request’s row starts at the list’s left edge, and only the
+  rows of a stack are indented, under their stack’s row: each one’s state icon under the
+  stack’s icon and its title under the stack’s label.
+  A row’s three lines start at one place: the chevron on the third line sits under the
+  state icon, just before the change counts it opens, which line up with the title and
+  the number above them, and the changed files it opens hang one level under it.
+  See [The Pulls Tab](docs/design-system.md#the-pulls-tab).
+
+- The modified status color, the “M” in “2 A, 45 M” wherever a change is summed, reads
+  clearly yellow: dark gold in the light theme, where it read olive, and a brighter
+  yellow in the dark theme, where it read as tan.
+
 - Two writes of the same cached file at once no longer fail, rarely, with an entry that
   “was replaced while it was being checked”.
   Each write first removes the temporary files a crashed write left beside its target,
@@ -67,11 +162,24 @@ All notable changes to Metabrowser are documented here.
   ellipsis.
 
 - On a folder’s Overview, pointing at a File Overview legend entry, its dot or its
-  words, now lifts its family’s segment in the bar above, as pointing at the segment
-  does, and shows that family’s file count and byte size beside the entry.
-  The segment’s own tooltip, beside the segment, also names the family.
+  words, now highlights every bar of its family on screen: its segment in the Files,
+  Ignored, and Total bars, and its row in Details while that is open.
+  It shows that family’s file count and byte size beside the entry.
+  Pointing at a segment highlights that segment, and its tooltip, beside the segment,
+  also names the family.
+  Either way the family’s legend entry answers too: its dot highlights and its name
+  takes the family’s color.
   The hover holds while the folder’s totals update under the pointer.
   See [Aggregate Distributions](docs/design-system.md#aggregate-distributions).
+
+- A hovered bar segment, File Overview’s or the Treemap’s tally bars’, is a step darker
+  on the light page and lighter on the dark one, twice the bar’s thickness rather than
+  one and a half, and eases in and out rather than springing past its size.
+  While it is hovered it shimmers gently, slower and fainter than a loading block’s
+  pulse. A hovered Treemap cell lifts by the same stronger step.
+  With reduced motion set, the highlight appears at once, without the easing or the
+  shimmer. See
+  [Hover Styles the Thing Under the Pointer](docs/design-system.md#hover-styles-the-thing-under-the-pointer).
 
 - The Pulls tab’s change lines, each row’s file and line totals, arrive in seconds
   rather than tens of seconds on a cold cache.

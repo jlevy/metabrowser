@@ -181,9 +181,9 @@ memory, can be computed again:
 - **The repository store** holds Git objects across sessions; see the
   [repository cache](arch-repository-cache.md).
 - **The pull request’s manifest bank** (`builtin_plugins/github/pull_manifest.py`) keeps
-  a prepared manifest beside the store after each fetch, in a fixed number of
-  direct-mapped slots, so a fresh server skips the costly listing.
-  A missing, stale, or corrupt slot is recomputed.
+  a prepared manifest beside the store after each fetch, one for each pull request, so a
+  fresh server skips the costly listing.
+  A missing, stale, or corrupt manifest is recomputed.
 - **The server’s comparison cache** (`builtin_plugins/diff/comparison_cache.py`) keeps a
   store comparison’s resolution and manifest, and each encoded answer, in memory, keyed
   by the commit IDs and every request input the answer reads.

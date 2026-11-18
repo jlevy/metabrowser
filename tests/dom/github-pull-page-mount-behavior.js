@@ -179,6 +179,39 @@ class Element {
   addEventListener(name, callback) {
     this.events.set(name, callback);
   }
+  // Where *other* is from this node, as a document orders them (Node.compareDocumentPosition):
+  // the shortcut registry numbers controls in that order, so the header's numbers here are the
+  // ones a page gives them, as tests/dom/key-reveal-dom.js orders its nodes. Nodes of two
+  // trees are disconnected.
+  compareDocumentPosition(other) {
+    const path = (node) => {
+      const nodes = [];
+      for (let at = node; at; at = at.parentNode) {
+        nodes.unshift(at);
+      }
+      return nodes;
+    };
+    const here = path(this);
+    const there = path(other);
+    if (this === other) {
+      return 0;
+    }
+    if (here[0] !== there[0]) {
+      return 1;
+    }
+    let at = 0;
+    while (at < here.length && at < there.length && here[at] === there[at]) {
+      at += 1;
+    }
+    if (at === here.length) {
+      return 16 | 4;
+    }
+    if (at === there.length) {
+      return 8 | 2;
+    }
+    const siblings = here[at - 1].children;
+    return siblings.indexOf(there[at]) > siblings.indexOf(here[at]) ? 4 : 2;
+  }
 }
 const perfEntries = [];
 const perf = {
@@ -708,7 +741,7 @@ async function textRefusal() {
 // Mount the page on a recorded answer, read nothing more from the server, and return what
 // it painted. `ageLabel` plays the age primitive's label for a time, so a test chooses
 // which ages read the same.
-async function mountOn(page, body, tab, ageLabel) {
+async function mountOn(page, body, tab, ageLabel, more = {}) {
   globalThis.document = {
     visibilityState: "visible",
     addEventListener() {},
@@ -742,6 +775,7 @@ async function mountOn(page, body, tab, ageLabel) {
       },
       sourceKind: () => "filesystem",
       icons: { toggle: "" },
+      ...more,
     },
   );
   await settle();
@@ -1141,6 +1175,36 @@ async function tabKeys(page) {
   steps.push(`numbered after a refresh with no pin: ${numbered()}`);
   steps.push(await numberResult("2"));
   steps.push(await numberResult("3"));
+  // Served code behind the pull request's head offers to switch to it, on the status line,
+  // after the row of ages: its number follows Refresh's. While the refresh 3 asks for runs,
+  // Refresh waits, shown and disabled, and keeps 3, so the offer keeps 4, and a second 3
+  // asks nothing (B2 of review B on #506): hidden as it waited, it gave 3 to the offer.
+  const behind = structuredClone(recorded.current.body);
+  behind.pin = "1".repeat(40);
+  behind.pin_ref = "refs/pull/7/head";
+  answer = behind;
+  steps.push(await numberResult("2"));
+  steps.push(`numbered with the code behind the head: ${numbered()}`);
+  answer = { ...structuredClone(behind), refreshing: true };
+  steps.push(await numberResult("3"));
+  steps.push(`numbered while that refresh runs: ${numbered()}`);
+  steps.push(await numberResult("3"));
+  // The refresh ends. On Changes Refresh is offered again, and the offer keeps 4; on
+  // Conversation nothing is left to refresh, so Refresh is not shown, and the offer takes 3
+  // (C2 of review C on #506, accepted: a Refresh waits only while its refresh runs).
+  answer = behind;
+  for (const callback of [...timers.values()]) {
+    callback();
+  }
+  timers.clear();
+  await settle();
+  steps.push(`numbered once the refresh ends: ${numbered()}`);
+  arrive("");
+  await settle();
+  steps.push(`numbered on Conversation once the refresh ends: ${numbered()}`);
+  arrive("files");
+  await settle();
+  steps.push(await numberResult("4"));
   // H is the Commits tab's, so Checks is E.
   steps.push(result("h", { shiftKey: true }));
   steps.push(result("e", { shiftKey: true }));
@@ -1372,8 +1436,13 @@ async function headerAges(page) {
     const line = container
       .querySelector(".github-pull-opened")
       .children.find((node) => node.classes?.has("github-pull-quiet"));
-    const ages = line.children.filter((node) => node.classes?.has("github-pull-age"));
-    const link = line.children.find((node) => node.tag === "a");
+    // The ages, cut short before the links after them (B4 of review B on #506).
+    const [agesText, links] = line.children;
+    assert.ok(
+      agesText.classes.has("github-pull-ages") && links.classes.has("github-pull-ages-links"),
+    );
+    const ages = agesText.children.filter((node) => node.classes?.has("github-pull-age"));
+    const link = links.children.find((node) => node.tag === "a");
     assert.ok(link.classes.has("github-pull-external-action"), "View on GitHub is quiet");
     assert.equal(link.children[0].getAttribute("data-external-kind"), "github");
     handle.dispose();
@@ -1417,18 +1486,21 @@ async function headerAges(page) {
 
 // The header's box is decided at first paint: the same rows, in the same order, whatever
 // the pull request carries and whichever tab shows, and while its record is on its way,
-// but for the labels row, which a pull request with no labels does not have (mb-2u08). It
-// is held while the record is on its way, since the record may bring labels. Each row's
-// height is its stylesheet's (tests/test_reserved_chrome.py); here, that every row it has
-// is there. A stack's chip has its slot at the author's row's end (mb-cf0l), held by a
-// strut until one arrives, which holds that row at a chip's height; and Refresh has its
-// slot at the status row's end on every tab. tests/dom/github-pull-header-chrome.mjs
+// but for two. The labels row is not there for a pull request with no labels (mb-2u08); it
+// is held while the record is on its way, since the record may bring labels. The status
+// line is there only for a failure, a message, or an offer, and a rate limit's hold is
+// said in the freshness note's place, so it adds none (mb-ne91). Each row's height is its
+// stylesheet's (tests/test_reserved_chrome.py); here, that every row it shows is there, a
+// hidden row left out. A stack's chip has its slot at the author's row's end (mb-cf0l),
+// held by a strut until one arrives, which holds that row at a chip's height; and Refresh
+// has its slot at the row of ages' end on every tab. tests/dom/github-pull-header-chrome.mjs
 // measures that a late chip moves nothing.
 async function headerShape(page) {
   const rows = (container) =>
     container
       .querySelector(".github-pull-header")
-      .children.map((node) =>
+      .children.filter((node) => node.hidden !== true)
+      .map((node) =>
         node.tag === "h1"
           ? "title"
           : [...node.classes].find((name) => name.startsWith("github-pull-")).slice(12),
@@ -1468,26 +1540,81 @@ async function headerShape(page) {
     merged: recorded.merged.body,
     stale: recorded.stale.body,
     "on its way": recorded.absent.body,
+    // Something to say: the last refresh failed, the code served is behind the pull
+    // request's head, or the checkout is at it. A rate limit's hold, and a server with no
+    // GitHub repository, are said in the note's place.
+    failed: recorded.failed.body,
+    "held by a rate limit": (() => {
+      const body = structuredClone(recorded.current.body);
+      body.state = "stale";
+      body.last_refresh = {
+        outcome: "rate_limited",
+        message: null,
+        reset_at: "2099-01-01T00:00:00Z",
+        at: "2026-09-17T12:30:00Z",
+      };
+      return body;
+    })(),
+    "behind the head": recorded.behind_head.body,
+    "a checkout at the head": (() => {
+      const body = structuredClone(recorded.on_head.body);
+      body.pin = null;
+      body.pin_ref = null;
+      return body;
+    })(),
+    "no GitHub repository": recorded.not_github.body,
+    // No record, and its last refresh failed: the page's word goes to the status line beside
+    // the failure, and the note is not there (A10 of review A, B6 of review B on #506).
+    "on its way, its last refresh failed": {
+      ...structuredClone(recorded.absent.body),
+      last_refresh: {
+        outcome: "network_error",
+        message: "gh could not reach api.github.com",
+        reset_at: null,
+        at: "2026-09-17T12:30:00Z",
+      },
+    },
   };
-  // The variants whose record names no labels.
-  const NO_LABELS = new Set(["no labels, a title of three lines", "merged"]);
+  /** What each variant's status line says, on every tab, or null where it is not there. */
+  const STATUS = {
+    failed: "The last refresh failed: gh could not reach api.github.com",
+    "behind the head":
+      "This page's code is f7c5a9918657, not the pull request's head 85fcb2fa9e77. Switch to the head",
+    "a checkout at the head":
+      "This checkout's HEAD is this pull request's head. Browse the checkout",
+    "on its way, its last refresh failed":
+      "Fetching the pull request…The last refresh failed: gh could not reach api.github.com",
+  };
+  /** What each variant's note says where it is not the record's fetch, null where none. */
+  const NOTE = {
+    "on its way, its last refresh failed": null,
+    "held by a rate limit": /^GitHub rate limit · next check at /,
+    "on its way": /^(Fetching the pull request…|This pull request has not been fetched yet\.)$/,
+    "no GitHub repository": /^This server serves no GitHub repository\.$/,
+  };
+  const more = {
+    "a checkout at the head": {
+      repository: { revision: variants["a checkout at the head"].record.pull.head.sha },
+    },
+  };
   for (const [name, body] of Object.entries(variants)) {
+    const labelled = body.record === null || body.record.pull.labels.length > 0;
     for (const tab of ["", "files", "checks"]) {
-      const { container, handle } = await mountOn(page, body, tab, age);
+      const { container, handle } = await mountOn(page, body, tab, age, more[name]);
       const header = container.querySelector(".github-pull-header");
       const meta = container.querySelector(".github-pull-meta");
       const labels = container.querySelector(".github-pull-labels");
       const stacks = container.querySelector(".github-pull-stacks");
       const status = container.querySelector(".github-pull-status");
       const end = status.children.at(-1);
-      const refresh = end.children.at(-1);
+      const refresh = container.querySelector(".github-pull-refresh");
       assert.ok(end.classes.has("github-pull-status-end"), `${name} ${tab}: offers end the row`);
       assert.equal(
         meta.children.at(-1),
         stacks,
         `${name} ${tab}: the stack slot ends the author's row`,
       );
-      if (NO_LABELS.has(name)) {
+      if (!labelled) {
         assert.equal(labels, null, `${name} ${tab}: no labels, no labels row`);
       } else {
         assert.equal(labels.children.length, 1, `${name} ${tab}: the labels row is its labels`);
@@ -1548,9 +1675,34 @@ async function headerShape(page) {
         stacks.children.length > 0 && !stacks.hidden,
         `${name} ${tab}: the stack slot is held while no stack is known`,
       );
-      assert.ok(
-        refresh.classes.has("github-pull-refresh"),
-        `${name} ${tab}: Refresh's slot ends the status row`,
+      // Refresh's slot ends the row of ages, after View on GitHub and Browse code, whatever
+      // the record's state (A1 of review A on #506).
+      const opened = container.querySelector(".github-pull-opened");
+      assert.equal(opened.children.at(-1), refresh, `${name} ${tab}: Refresh ends the row of ages`);
+      // The note ends the author's row's lead: the record's one time, or what is said in its
+      // place (mb-ne91).
+      const note = container.querySelector(".github-pull-note");
+      const noteText = container.querySelector(".github-pull-freshness").textContent;
+      assert.equal(
+        note.parentNode.parentNode,
+        meta,
+        `${name} ${tab}: the note is on the author's row`,
+      );
+      if (NOTE[name] === null) {
+        assert.equal(note.hidden, true, `${name} ${tab}: no note`);
+      } else {
+        assert.ok(note.hidden !== true, `${name} ${tab}: the note says something`);
+        assert.match(
+          noteText,
+          NOTE[name] ?? /^Fetched .+ via GitHub CLI$/,
+          `${name} ${tab}: the note`,
+        );
+      }
+      // The status line is there exactly while it has something to say, and says it.
+      assert.equal(
+        status.hidden === true ? null : status.textContent,
+        STATUS[name] ?? null,
+        `${name} ${tab}: the status line`,
       );
       // A text action, a line tall, so the status line is a metadata line (mb-2u08).
       assert.ok(
@@ -1565,9 +1717,12 @@ async function headerShape(page) {
       shapes[`${name} ${tab || "conversation"}`] = rows(container).join(" ");
       assert.equal(
         rows(container).join(" "),
-        NO_LABELS.has(name)
-          ? "title meta branches opened status summary"
-          : "title meta branches opened labels status summary",
+        [
+          "title meta branches opened",
+          ...(labelled ? ["labels"] : []),
+          ...(name in STATUS ? ["status"] : []),
+          "summary",
+        ].join(" "),
         `${name} ${tab}: the header's rows`,
       );
       handle.dispose();
@@ -1576,6 +1731,8 @@ async function headerShape(page) {
   assert.deepEqual(
     new Set(Object.values(shapes)),
     new Set([
+      "title meta branches opened labels summary",
+      "title meta branches opened summary",
       "title meta branches opened labels status summary",
       "title meta branches opened status summary",
     ]),
@@ -2346,10 +2503,15 @@ async function run() {
       title.parentNode.children.indexOf(meta),
       title.parentNode.children.indexOf(title) + 1,
     );
-    // The author's row is the details, then the stack's slot at its end (mb-cf0l), which holds
-    // a strut while no stack is known: a late chip lands in the row's empty end.
-    const [details, stackSlot] = meta.children;
+    // The author's row is its lead, the details then the freshness note (mb-ne91), then the
+    // stack's slot at its end (mb-cf0l), which holds a strut while no stack is known: a late
+    // chip lands in the row's empty end.
+    const [lead, stackSlot] = meta.children;
+    assert.ok(lead.classes.has("github-pull-meta-lead"));
+    const [details, note] = lead.children;
     assert.ok(details.classes.has("github-pull-meta-details"));
+    assert.ok(note.classes.has("github-pull-note"));
+    assert.equal(lead.children.length, 2);
     assert.ok(stackSlot.classes.has("github-pull-stacks"));
     assert.ok(stackSlot.children[0].classes.has("github-pull-stack-strut"));
     assert.equal(meta.children.length, 2);
@@ -2359,9 +2521,13 @@ async function run() {
       title.parentNode.children.indexOf(opened),
       title.parentNode.children.indexOf(meta) + 2,
     );
-    const [stateBadgeSlot, ages] = opened.children;
+    const [stateBadgeSlot, ages, refreshSlot] = opened.children;
     assert.ok(stateBadgeSlot.classes.has("github-pull-state-slot"));
     assert.ok(ages.classes.has("github-pull-quiet") && ages.textContent.startsWith("Opened "));
+    // Refresh's slot ends the row of ages, after View on GitHub and Browse code (A1 of review A
+    // on #506).
+    assert.ok(refreshSlot.classes.has("github-pull-refresh"));
+    assert.equal(opened.children.length, 3);
     const stateBadge = stateBadgeSlot.children[0];
     assert.equal(meta.children.at(-1), container.querySelector(".github-pull-stacks"));
     assert.equal(stateBadge.getAttribute("data-state"), "open");
@@ -2660,11 +2826,38 @@ async function run() {
   await settle();
   assert.deepEqual(posts, [comparisonAsk], "polling does not retry a refused acquisition");
   assert.match(checkoutBody.textContent, /Changes could not be fetched/);
+  // The refusal is said in the Changes body, where its Retry is, not on the header's status
+  // line, so the header has the same rows on every tab (B5 of review B on #506).
   assert.match(
-    checkoutContainer.querySelector(".github-pull-message")?.textContent ?? "",
+    checkoutBody.textContent,
     /server busy/,
     "the refusal's reason outlasts the read that cleared its error",
   );
+  assert.equal(checkoutContainer.querySelector(".github-pull-message"), null);
+  const shownRows = () =>
+    checkoutContainer
+      .querySelector(".github-pull-header")
+      .children.filter((node) => node.hidden !== true)
+      .map((node) => (node.tag === "h1" ? "title" : [...node.classes][0]))
+      .join(" ");
+  const refusedRows = {};
+  for (const [tab, at] of [
+    ["files", "/pull/10/files"],
+    ["", "/pull/10"],
+    ["checks", "/pull/10/checks"],
+    ["files", "/pull/10/files"],
+  ]) {
+    window.location.pathname = at;
+    checkoutHandle.setTab(tab);
+    await settle();
+    refusedRows[tab || "conversation"] = shownRows();
+  }
+  assert.equal(
+    new Set(Object.values(refusedRows)).size,
+    1,
+    `a refused comparison leaves the header's rows the same on every tab: ${JSON.stringify(refusedRows)}`,
+  );
+  assert.match(checkoutBody.textContent, /server busy/, "the body says it again back on Changes");
   assert.equal(checkoutBody.querySelector(".spinner"), null);
   const retryChanges = checkoutBody.querySelector(".github-pull-retry-changes");
   assert.equal(retryChanges?.textContent, "Retry changes");
@@ -2820,6 +3013,29 @@ async function run() {
   await checkRows(page);
   await headerAges(page);
   await headerShape(page);
+  // The freshness note's slot is as wide as its widest age: each age the page says is put at
+  // "59 min ago", the widest `relativeAge` says, for the hidden copy that sizes the slot, and
+  // a note wider still, as an unknown age is, sizes its own (mb-ne91).
+  const widestNotes = Object.fromEntries(
+    [
+      "Fetched just now via GitHub CLI",
+      "Fetched 3 h ago via GitHub CLI",
+      "Offline · fetched 12 d ago via GitHub CLI",
+      "Description fetched 7 min ago via GitHub CLI",
+      "Fetched at an unknown time via GitHub CLI",
+    ].map((note) => [note, page.widestNote(note)]),
+  );
+  // A rate limit's hold says when it lifts in the reader's short form: a time of day when it
+  // lifts today, a short date and time when not (B3 of review B on #506). In en-US and UTC
+  // here, so the golden is the same on every machine.
+  const nine = Date.UTC(2026, 8, 17, 9, 0);
+  const holdLifts = Object.fromEntries(
+    [
+      ["today", Date.UTC(2026, 8, 17, 14, 5)],
+      ["tomorrow", Date.UTC(2026, 8, 18, 0, 30)],
+      ["next year", Date.UTC(2027, 0, 2, 8, 0)],
+    ].map(([when, lift]) => [when, page.holdLiftText(lift, nine, "en-US", "UTC")]),
+  );
   const headerSummarySteps = await headerSummary(page);
   const coldHoldSteps = await coldHold(page);
   const tabKeySteps = await tabKeys(page);
@@ -2847,6 +3063,8 @@ async function run() {
     checkRows: true,
     headerAges: true,
     headerShape: true,
+    widestNotes,
+    holdLifts,
     headerSummary: headerSummarySteps,
     coldHold: coldHoldSteps,
     tabKeys: tabKeySteps,

@@ -195,14 +195,17 @@ entries.
 ## Staying Current
 
 The page says when GitHub CLI fetched what it shows, as in
-`Fetched 3 min ago via GitHub CLI`. While the Pulls tab or a pull request’s page is
-visible, Metabrowser rescans the repository’s list of pull requests, so new pull
-requests, state changes, and edits arrive by themselves.
+`Fetched 3 min ago via GitHub CLI`, at the end of the author’s line; Refresh ends the
+row of ages under it.
+While the Pulls tab or a pull request’s page is visible, Metabrowser rescans the
+repository’s list of pull requests, so new pull requests, state changes, and edits
+arrive by themselves.
 A record counts as current for 60 seconds after its fetch, the freshness window, and for
 as long after that as the list says GitHub has not changed the pull request; the page
-then reads `Checked just now · fetched 3 h ago via GitHub CLI`. The list does not track
-checks, statuses, or mergeability, so an open pull request’s page reads those again on
-their own once a window.
+still reads `Fetched 3 h ago via GitHub CLI`, one time and never two, since a check that
+found nothing changed makes what is shown no newer.
+The list does not track checks, statuses, or mergeability, so an open pull request’s
+page reads those again on their own once a window.
 
 A visible page refreshes a record that has gone stale, and the Pulls tab also fetches,
 behind you, the pull requests you are likely to open next, within hourly limits and

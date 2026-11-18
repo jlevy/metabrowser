@@ -126,6 +126,7 @@ from metabrowser.inventory_engine.contract import ascii_casefold
 from metabrowser.inventory_rollup import RollupOptions, build_rollup, group_rollup_children
 from metabrowser.invisible_chars import display_segment
 from metabrowser.keymap import live_view_keys
+from metabrowser.plugin_loader.classify import CONTENT_PREDICATE_MAX_BYTES
 from metabrowser.settings import (
     FOLDER_DISCOVERY_MAX_ENTRIES,
     INVENTORY_MAX_FILES,
@@ -315,11 +316,19 @@ def _git_blob_content_predicates(
     return json_top, yaml_top, frontmatter, frontmatter_error
 
 
-def _json_safe_git_frontmatter(value: dict[str, Any]) -> dict[str, Any]:
-    from metabrowser.server import _json_safe_frontmatter
+# The extensions `_git_blob_content_predicates` parses anything for.
+_CONTENT_PREDICATE_EXTS = frozenset({".json", ".yaml", ".yml", ".md"})
 
-    safe = _json_safe_frontmatter(value)
-    return safe if isinstance(safe, dict) else {}
+
+async def _blob_predicates_off_loop(
+    ext: str, body: bytes
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, Any] | None, str | None]:
+    """The predicates on a worker thread, where a parse of a bounded prefix can take
+    seconds; a blob no predicate reads skips the thread."""
+
+    if ext not in _CONTENT_PREDICATE_EXTS:
+        return None, None, None, None
+    return await asyncio.to_thread(_git_blob_content_predicates, ext, body)
 
 
 def _git_frontmatter_envelope(
@@ -327,9 +336,11 @@ def _git_frontmatter_envelope(
     mapping: dict[str, Any] | None,
     error: str | None,
 ) -> dict[str, Any]:
+    # parse_frontmatter_bytes answers the bounded, JSON-safe copy
+    # (metabrowser.frontmatter_yaml), so the mapping goes on the wire as it is.
     fields: dict[str, Any] = {}
     if mapping is not None:
-        fields["frontmatter"] = _json_safe_git_frontmatter(mapping)
+        fields["frontmatter"] = mapping
     if error is not None:
         fields["frontmatter_error"] = error
     return fields
@@ -1441,7 +1452,7 @@ async def _blob_file_payload(entry: GitTreeEntry, body: bytes, request: Request)
             }
         )
         return payload
-    json_top, yaml_top, frontmatter, frontmatter_error = _git_blob_content_predicates(ext, body)
+    json_top, yaml_top, frontmatter, frontmatter_error = await _blob_predicates_off_loop(ext, body)
     kind = _plugin_kind_for_git_path(
         entry.path,
         json_top_level=json_top,
@@ -1460,10 +1471,11 @@ async def _blob_file_payload(entry: GitTreeEntry, body: bytes, request: Request)
     return payload
 
 
-# Every content predicate reads a bounded prefix: a JSON mapping is refused past 256 KiB,
-# YAML reads 16 KiB, and frontmatter 256 KiB. One byte past the largest gives each the
-# answer the whole blob would.
-_PREDICATE_PREFIX_BYTES = 256 * 1024 + 1
+# Every content predicate reads a bounded prefix (`CONTENT_PREDICATE_MAX_BYTES`). One
+# byte past the largest gives each the answer the whole blob would: a JSON document past
+# its cap is refused, and a front-matter fence it does not close is reported as not
+# closed within the bound.
+_PREDICATE_PREFIX_BYTES = CONTENT_PREDICATE_MAX_BYTES + 1
 
 
 async def _windowed_blob_file_response(
@@ -1518,7 +1530,7 @@ async def _windowed_blob_file_response(
             },
             status_code=416,
         )
-    json_top, yaml_top, frontmatter, frontmatter_error = _git_blob_content_predicates(
+    json_top, yaml_top, frontmatter, frontmatter_error = await _blob_predicates_off_loop(
         ext, head[:_PREDICATE_PREFIX_BYTES]
     )
     kind = _plugin_kind_for_git_path(
@@ -1728,7 +1740,9 @@ async def git_revision_kpress_render(
     frontmatter_error = None
     if ext == ".md":
         parse_source = source_override.encode() if source_override is not None else body
-        _, _, frontmatter, frontmatter_error = _git_blob_content_predicates(ext, parse_source)
+        _, _, frontmatter, frontmatter_error = await asyncio.to_thread(
+            _git_blob_content_predicates, ext, parse_source
+        )
     envelope = _git_frontmatter_envelope(mapping=frontmatter, error=frontmatter_error)
     trusted = get_capabilities().active_content
     try:

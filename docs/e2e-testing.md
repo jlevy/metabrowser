@@ -441,12 +441,15 @@ Strict mode is off on a developer machine, which can add these:
   Chrome’s input under a navigator overridden to name a Mac and then Linux, on every
   host, and reads that only the Mac’s binds them;
   `tests/test_overview_legend_hover_chrome.py`, which moves Chrome’s pointer onto a File
-  Overview legend entry and its bar segment and reads the segment’s computed lift and
-  growth and where the tooltip lands; and `tests/test_title_prefix_chrome.py`, which
-  reads a title prefix’s and the rest’s computed weight, face, size, and ink on every
-  title surface. Any other check that calls `require_chrome` in `tests/required_tools.py`
-  skips for the same reason.
-  The CI runners have Chrome, so CI runs them.
+  Overview legend entry and a bar segment and reads which bars and entry are marked,
+  what they compute to, where the tooltip lands, and that nothing moves;
+  `tests/test_treemap_legend_hover_chrome.py`, which moves Chrome’s pointer onto the
+  Treemap’s legend entry and one of its cells and reads which cells, bars, and entry are
+  marked, what they compute to, and that the view does not move; and
+  `tests/test_title_prefix_chrome.py`, which reads a title prefix’s and the rest’s
+  computed weight, face, size, and ink on every title surface.
+  Any other check that calls `require_chrome` in `tests/required_tools.py` skips for the
+  same reason. The CI runners have Chrome, so CI runs them.
   Each runs its Node script in a process group of its own and stops that whole group,
   Chrome included, however the run ends, with the group’s leader kept unreaped until
   then so the group ID cannot pass to another process.
