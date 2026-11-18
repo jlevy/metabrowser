@@ -129,25 +129,29 @@ export function frontmatterRow(frontmatter) {
   const details = document.createElement("details");
   details.className = "kpress-frontmatter";
   details.open = frontmatter.change !== "context";
-  const summary = document.createElement("summary");
-  summary.textContent = "Frontmatter";
+  const heading = document.createElement("summary");
+  heading.className = "disclosure-toggle";
+  heading.textContent = "Frontmatter";
   const list = document.createElement("dl");
   for (const entry of frontmatter.entries) {
     const term = document.createElement("dt");
     const value = document.createElement("dd");
-    term.textContent = entry.key;
     value.textContent = entry.text;
     if (!whole && entry.change !== "context") {
       const label = document.createElement("span");
       label.className = "sr-only";
       label.textContent = entry.change === "added" ? "Added: " : "Removed: ";
-      term.prepend(label);
+      const key = document.createElement("span");
+      key.textContent = entry.key;
+      term.append(label, key);
       term.className = `diff-frontmatter-${entry.change}`;
       value.className = `diff-frontmatter-${entry.change}`;
+    } else {
+      term.textContent = entry.key;
     }
     list.append(term, value);
   }
-  details.append(summary, list);
+  details.append(heading, list);
   if (whole) {
     const label = document.createElement("span");
     label.className = "sr-only";
@@ -762,8 +766,11 @@ export function createMarkdownViews(deps) {
       control.className = "diff-markdown-control";
       // Markdown is a KPress fragment; a tree is the structured plugin's own surface.
       const rendered = document.createElement(format === "markdown" ? "article" : "div");
-      rendered.className =
-        format === "markdown" ? "kpress kpress-inert diff-markdown" : "diff-structured";
+      if (format === "markdown") {
+        rendered.className = "kpress kpress-inert diff-markdown";
+      } else {
+        rendered.className = "diff-structured";
+      }
       rendered.id = `${source.id}-rendered`;
       const progress = document.createElement("span");
       progress.className = "diff-markdown-progress";

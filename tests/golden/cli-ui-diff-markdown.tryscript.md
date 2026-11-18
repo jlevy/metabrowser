@@ -69,7 +69,7 @@ mark counts down, and its rendered rows.
 $ node tests/dom/diff-markdown-session.js
 {
   "links": {
-    "route": "/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef",
+    "route": "/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]",
     "pages": {
       "pinned at the comparison's head": true,
       "pinned at the merge base": false,
@@ -79,10 +79,10 @@ $ node tests/dom/diff-markdown-session.js
     "opens": {
       "link /view/g1-ZG9jcw/g1-c2V0dXAubWQ": true,
       "link /view/g1-ZG9jcw/g1-c2V0dXAubWQ#user-content-setup": true,
-      "image /api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc": true,
-      "link /api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc": false,
-      "image /api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef&side=head&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc": false,
-      "image /api/plugin/github/pull-image?number=7&left=0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef": false,
+      "image /api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc": true,
+      "link /api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc": false,
+      "image /api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&side=head&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc": false,
+      "image /api/plugin/github/pull-image?number=7&left=0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]": false,
       "link /api/tree?path=docs": false
     }
   },
@@ -161,7 +161,7 @@ $ node tests/dom/diff-markdown-session.js
             "context: <p>Unchanged paragraph 1.</p>",
             "[5 unchanged blocks]",
             "context: <p>Unchanged paragraph 7.</p>",
-            "context: <img loading=\"lazy\" src=\"/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc\" alt=\"Diagram\">",
+            "context: <img loading=\"lazy\" src=\"/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc\" alt=\"Diagram\">",
             "removed: <p>The <del>old</del> closing line.</p>",
             "added: <p>The <ins>new</ins> closing line.</p>"
           ]
@@ -282,7 +282,7 @@ $ node tests/dom/diff-markdown-session.js
             "  context: <p>Unchanged paragraph 5.</p>",
             "  context: <p>Unchanged paragraph 6.</p>",
             "context: <p>Unchanged paragraph 7.</p>",
-            "context: <img loading=\"lazy\" src=\"/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc\" alt=\"Diagram\">",
+            "context: <img loading=\"lazy\" src=\"/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc\" alt=\"Diagram\">",
             "removed: <p>The <del>old</del> closing line.</p>",
             "added: <p>The <ins>new</ins> closing line.</p>"
           ]
@@ -318,7 +318,7 @@ $ node tests/dom/diff-markdown-session.js
             "  context: <p>Unchanged paragraph 5.</p>",
             "  context: <p>Unchanged paragraph 6.</p>",
             "context: <p>Unchanged paragraph 7.</p>",
-            "context: <img loading=\"lazy\" src=\"/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc\" alt=\"Diagram\">",
+            "context: <img loading=\"lazy\" src=\"/api/plugin/github/pull-image?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=[STORE]&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc\" alt=\"Diagram\">",
             "removed: <p>The <del>old</del> closing line.</p>",
             "added: <p>The <ins>new</ins> closing line.</p>"
           ]
