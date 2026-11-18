@@ -4,6 +4,12 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- With the Files tab grouped by age, each section’s name is drawn in the age color its
+  files’ ages show: Past hour in the yellow of a file changed minutes ago, then quieter
+  yellow-greens through Past month, Older in the oldest age’s gray, and Live in Live’s
+  orange. Only the color changes, in both themes; the headings keep their size and
+  weight, and grouping by file type is unchanged.
+
 - On a checkout of a repository on github.com, or a mirror of one, a file’s or a
   folder’s header ends in a small toggle of two marks: Metabrowser’s, gray, the view the
   page is in, and GitHub’s, a link to the same item’s page on github.com: at the branch
