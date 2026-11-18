@@ -130,17 +130,23 @@ const listed = fs.existsSync(path.join(standIn, "profiles"))
   ? fs.readFileSync(path.join(standIn, "profiles"), "utf8").split("\n").filter(Boolean)
   : [];
 // The starts that failed: every one, or all but the last when the launch succeeded. A
-// started session's own helpers may still be exiting after its close, so are not looked at.
+// started session's own helpers may still be exiting, and writing to its profile, after
+// its close, so neither is looked at: on a CI runner its profile was there again after the
+// close had removed it. The caller removes the whole directory (tests/process_group.py).
+// Without a session, every profile made, the one a spawn failure never named included.
 const abandoned = result.ok ? listed.slice(0, -1) : listed;
 const processes = execFileSync("ps", ["-A", "-ww", "-o", "pid=,args="], { encoding: "utf8" })
   .split("\n")
   .filter((line) => abandoned.some((profile) => line.includes(profile)));
+const profilesLeft = result.ok
+  ? abandoned.filter((profile) => fs.existsSync(profile)).map((profile) => path.basename(profile))
+  : fs.readdirSync(profiles);
 console.log(
   JSON.stringify({
     ...result,
     starts: listed.length,
     abandoned,
     processesLeft: processes,
-    profilesLeft: fs.readdirSync(profiles),
+    profilesLeft,
   }),
 );
