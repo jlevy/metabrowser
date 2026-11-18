@@ -640,15 +640,15 @@ The same rules in both scenarios, and one boundary the review sharpened.
   Beside a checkout whose `HEAD` is the head, View on branch opens the reader’s own
   working tree under the folder’s profile, as Browse the checkout already did: neither
   an immutable revision nor the untrusted profile, and the reader’s files, not the
-  store’s. **Decided 2026-11-18, not built:** in folder mode View on branch and Browse
-  code go to the pull request’s head as a revision view of the checkout, under the
-  untrusted profile, and the working-tree copy becomes a separate, labelled action
-  ([Open Modes](../../architecture/arch-open-modes.md#pull-requests-in-folder-mode)). An
-  overlay is a `RepositoryStoreTarget` like a full store, read under `STORE_READ_POLICY`
-  with `GIT_NO_LAZY_FETCH=1`. **Planned:** a test of this restriction over every entry
-  point to PR content that a trusted folder server reads from a store or an overlay, the
-  trust row of [Parity and Tests](#parity-and-tests); it does not hold the working tree
-  that View on branch opens beside a checkout.
+  store’s. **Decided 2026-11-18, not built:** in a repository folder View on branch and
+  Browse code go to the pull request’s head as a revision view, under the untrusted
+  profile, and the working-tree copy becomes a separate, labelled action
+  ([Open Modes](../../architecture/arch-open-modes.md#pull-requests-in-a-repository-folder)).
+  An overlay is a `RepositoryStoreTarget` like a full store, read under
+  `STORE_READ_POLICY` with `GIT_NO_LAZY_FETCH=1`. **Planned:** a test of this
+  restriction over every entry point to PR content that a trusted folder server reads
+  from a store or an overlay, the trust row of [Parity and Tests](#parity-and-tests); it
+  does not hold the working tree that View on branch opens beside a checkout.
   Today `tests/test_checkout_overlay.py` checks only that borrowing cannot change the
   untrusted profile.
 - **The checkout’s configuration is never read.** Reading a borrowed object is a file
@@ -711,8 +711,8 @@ Reuse, not a parallel path:
   working tree is not the pull request’s code.
   The owner changed this on 2026-11-18: in the open-modes design a repository folder can
   show the head as a revision, so Browse code has a target there
-  ([Open Modes](../../architecture/arch-open-modes.md#pull-requests-in-folder-mode)); it
-  is not built.
+  ([Open Modes](../../architecture/arch-open-modes.md#pull-requests-in-a-repository-folder));
+  it is not built.
 
 ### Conversions
 

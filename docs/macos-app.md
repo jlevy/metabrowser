@@ -170,8 +170,8 @@ The app moves nothing itself.
   `METABROWSER_CACHE_DIR`, and the rest) to its servers, so they always use the default
   cache and configuration locations.
 - A folder opens as the folder named, even inside a Git repository, and the File menu
-  opens no URL. Opening the repository’s root instead, and File > Open URL… beside Open
-  Folder… and Open Recent, are planned in
+  opens no URL. Opening the repository’s root instead, File > Open URL…, and an Open
+  Recent that also lists repositories opened by URL are planned in
   [Open Modes](project/architecture/arch-open-modes.md#the-file-menu).
 - There is no updater and no URL scheme, and an agent cannot yet show you a page in the
   app; the

@@ -9,8 +9,9 @@ place of its working tree ([Open Modes](arch-open-modes.md), `mb-8ob8`). A serve
 serves several subjects at once is not designed: it would need subject-qualified
 addresses on every route.
 
-A server’s root and [open mode](arch-open-modes.md) are fixed for its life.
-Its **subject** is the view it shows now: a folder’s working tree, or one revision.
+A server’s root, and whether it is a folder or a mirror, are fixed for its life
+([Open Modes](arch-open-modes.md)). Its **subject** is the view it shows now: a folder’s
+working tree, or one revision.
 Where the subject’s Git objects come from is the
 [repository cache](arch-repository-cache.md), and how a mirror is fetched and refreshed
 is in [mirror acquisition and refresh](arch-mirror-acquisition-and-refresh.md).
@@ -244,9 +245,9 @@ switches nothing, so View on branch and Browse code on that page say the head mo
 instead of opening a bare commit.
 Beside a checkout, which has no pin, View on branch is a link to the working-tree file
 while the checkout’s `HEAD` is the diff’s head.
-[Open Modes](arch-open-modes.md#pull-requests-in-folder-mode) designs what replaces
-that: the pull request’s head as a revision of the checkout, with the working-tree copy
-a separate, labelled action.
+[Open Modes](arch-open-modes.md#pull-requests-in-a-repository-folder) designs what
+replaces that: the pull request’s head as a revision view in the repository folder, with
+the working-tree copy a separate, labelled action.
 The old side has no control: a parent is a bare commit, and a merge base is on no
 branch. Only a regular file’s side gets a control, since a submodule’s side is another
 repository’s commit and a symbolic link’s would open its target.

@@ -351,9 +351,9 @@ not change them.
 - **The pull request’s code beside a checkout that is elsewhere.** Files and Commits
   there show your checkout, which is the pull request’s code only while its `HEAD` is
   the pull request’s head.
-  Opening the head whatever is checked out, as a read-only revision of your checkout, is
-  planned in
-  [Open Modes](project/architecture/arch-open-modes.md#pull-requests-in-folder-mode).
+  Opening the head whatever is checked out, as a read-only revision view in the same
+  window, is planned in
+  [Open Modes](project/architecture/arch-open-modes.md#pull-requests-in-a-repository-folder).
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

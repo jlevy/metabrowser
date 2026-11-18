@@ -106,7 +106,7 @@ Git therefore writes into the checkout’s Git directory in two cases:
 
 Both were reproduced on 2026-11-18 with Git 2.50.1, through `/api/git/commit/<rev>` on a
 `--filter=blob:none` clone and through `/api/plugin/diff/comparison` on a checkout with
-such a driver. No test holds either yet.
+such a driver. No test holds either yet (`mb-z849`).
 [Open Modes](arch-open-modes.md#what-is-never-written) states the rule they fall short
 of, and requires that a revision of a checkout never reach either.
 

@@ -21,11 +21,11 @@ a pinned revision serves, and the guard that keeps a page on its commit, are in
 ## Transports and Credentials
 
 An argument that names an existing path is a local path and never a source, unless it
-starts with `scheme://`; which folder that path opens is in
-[Open Modes](arch-open-modes.md#resolving-a-target-to-a-root).
-Anything else goes to `classify_root_argument` in `cache/urls.py`, whose grammar is
-frozen in `tests/fixtures/repository-cache/url-grammar.json`; a bare path is never
-rewritten into a `file://` source.
+starts with `scheme://`; today it opens the folder named, and
+[Open Modes](arch-open-modes.md#resolving-a-target-to-a-root) designs opening its
+repository’s root. Anything else goes to `classify_root_argument` in `cache/urls.py`,
+whose grammar is frozen in `tests/fixtures/repository-cache/url-grammar.json`; a bare
+path is never rewritten into a `file://` source.
 Provider reducers run first (`cache/providers.py`); core names no provider, and the
 GitHub reducer in `builtin_plugins/github/urls.py` turns web, raw, and SSH spellings of
 a github.com repository into its canonical `https://` source plus a selection.
