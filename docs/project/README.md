@@ -72,6 +72,12 @@ It links each document below and the contributor standards in `docs/`.
   a draft for one modeled object per file, folder, commit, and pull request, drawn in
   several view shapes, and a view state an agent can read and ask to change; its key
   decisions are open
+- [Implementation map for objects, views, and view state](specs/active/plan-2026-11-18-object-model-implementation-map.md):
+  the object model plan as stacks of pull requests, with safe groundwork first and a
+  checkout’s uncommitted changes as the first object type; a draft
+- [Plugin authoring for objects, views, and view state](specs/active/plan-2026-11-18-plugin-authoring-objects-views.md):
+  what a plugin’s manifest, JavaScript, and Python declare for object types, views,
+  collections, and view state parts; a draft
 - [Documentation from first principles](specs/active/plan-2026-11-14-documentation-from-first-principles.md):
   one owner per fact, task guides, architecture documents for every layer, a baseline
   scale benchmark, and checks that keep the set linked
