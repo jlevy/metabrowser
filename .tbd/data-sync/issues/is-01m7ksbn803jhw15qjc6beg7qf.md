@@ -5,7 +5,7 @@ title: "Coordinate landing the open PRs, Fast CI Phases 1-2, plan currency and 0
 kind: epic
 status: in_progress
 priority: 1
-version: 30
+version: 32
 delegate: claude-code@vm
 labels: []
 dependencies: []
@@ -33,10 +33,11 @@ child_order_hints:
   - is-01m7p9wxbnv6essbhr1rask8ve
   - is-01m7pab7r3k7xe521vyg5xmrgb
   - is-01m7pac84jxgvafgawtsn1wgn0
+  - is-01m7pevxh1fs23z06attcq9v2g
 hold: null
 hold_until: null
 created_at: 2026-11-17T03:38:38.720Z
-updated_at: 2026-11-18T03:14:32.720Z
+updated_at: 2026-11-18T04:33:00.448Z
 started_at: 2026-11-17T03:38:54.763Z
 ---
 
@@ -62,3 +63,4 @@ OWNER TODO: add the ci-ok ruleset (mb-m4ct); quit and reopen the app to load the
 UPDATE: #536 head is now d59be9d2845c8fba0fbcdbc4d4cda6e04d063461 (golden regenerated, dispositions marker moved); #532 unchanged at 5e740dc9e.
 UPDATE: drawn-from-disk chain new heads: #528 b25a0566a1a404d433519df88b29d3534bb8840d, #530 5b6d509ec2cced11210f4ea982a246494535ad84, #533 a4fbad00fa9a1b7d03f827531058bae0b5e0c26f (merges only; reviews unchanged; dispositions updated). Local build review recorded the six recents binding points on mb-m4mg/mb-87j0 and will drop #539's Open Recent exclusion.
 UPDATE: owner wants configs in YAML with a short format string (mf01...), bead mb-3x6y; recents (mb-40k4) must follow it: YAML file + format string.
+UPDATE: #526 new head 48fd4af3ab3d19b5be990f2150c3f58f7acd4707 (base now main; dispositions reposted). #525 merged 5b1d2b055. #529 merged baaf52898. New PRs: #544 help bar (A addressed, ef464f34d), #545/#547 legend stack (review running), #546 recents (owner decisions in; review running), #549 print (review running; golden fix pending), #550 header (merging main), #551 writer race (review running).
