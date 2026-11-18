@@ -168,6 +168,14 @@ class FakeWorker {
     .replace('"./place-rendered.js"', JSON.stringify(placeRenderedUrl))
     .replace('"./transclusion.js"', JSON.stringify(transclusionUrl))
     .replace(
+      '"./print-indicator.js"',
+      JSON.stringify(
+        pathToFileURL(
+          path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/print-indicator.js"),
+        ).href,
+      ),
+    )
+    .replace(
       '"./toc-toggle.js"',
       JSON.stringify(
         pathToFileURL(path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/toc-toggle.js"))

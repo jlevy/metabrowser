@@ -434,9 +434,12 @@ Strict mode is off on a developer machine, which can add these:
   untrusted document past its render deadline shows in its Document tab and in the
   folder Overview’s README panel; `tests/test_overview_readme_toc_chrome.py`, which
   measures a folder Overview’s README table of contents against the same README opened
-  as a file; `tests/test_diff_markdown_fold_chrome.py`, which measures a rendered
-  Markdown diff’s fold of unchanged blocks closed, open, and under the pointer, and its
-  quote and code against a document’s in the light and the dark theme;
+  as a file; `tests/test_document_print_chrome.py`, which measures a document’s print
+  button in its card’s corner, that nothing moves when it arrives, the table of contents
+  toggle and rail beside it, a click and Command-P, and print output;
+  `tests/test_diff_markdown_fold_chrome.py`, which measures a rendered Markdown diff’s
+  fold of unchanged blocks closed, open, and under the pointer, and its quote and code
+  against a document’s in the light and the dark theme;
   `tests/test_control_chords_chrome.py`, which presses Control-N and Control-P through
   Chrome’s input under a navigator overridden to name a Mac and then Linux, on every
   host, and reads that only the Mac’s binds them;
