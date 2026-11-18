@@ -5,7 +5,7 @@ title: "macOS app: the view header's GitHub toggle shows github.com for the curr
 kind: feature
 status: in_progress
 priority: 2
-version: 4
+version: 5
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -13,7 +13,7 @@ parent_id: is-01m7pac84jxgvafgawtsn1wgn0
 hold: null
 hold_until: null
 created_at: 2026-11-18T04:15:23.623Z
-updated_at: 2026-11-18T22:11:48.625Z
+updated_at: 2026-11-18T22:22:00.870Z
 started_at: 2026-11-18T22:11:48.623Z
 ---
 Owner, 2026-11-18: "In general, pages should open in the Metabrowser view, but you should always be able to switch to the GitHub view, and then it's simply a web view onto that page on github.com." The coordinator reversed the earlier "no in-app GitHub browser" for the macOS app: in the app (WKWebView), switching the view header's GitHub toggle shows github.com for the current item in that window, and the toggle stays reachable to switch back, so it lives in native window chrome or an overlay that survives showing github.com.
@@ -26,3 +26,5 @@ To decide: navigate the window's web view to github.com versus a second WKWebVie
 
 2026-11-18, review A on #552, A9: the macOS title bar's trailing Metabrowser mark is a link that opens the project on GitHub (TitleBarMarkLayout.swift, docs/macos-app.md), while the view header's gray Metabrowser mark just under it is the inert current view, beside a GitHub mark that opens the item's page. Decide here, with the native toggle, what the title-bar mark becomes. Also from the review's design note: the toggle's link carries nothing that tells the app's NavigationPolicy it is the toggle rather than any github.com link, and after #539 a github.com link handed to the app resolves to the Metabrowser view, the inverse direction; write that rule down here. docs/project/qa/qa-macos-app-hand-checks.md item 10 checks today's behavior (the default browser opens the item's page).
 Owner, 2026-11-18 (later): the GitHub button should replace the current view with an actual web view on github. We need a way to make sure we maintain persisted cookie state across different tabs, so that once you log into GitHub it stays active. -> One persistent WKWebsiteDataStore shared by every GitHub view in every window and tab, surviving relaunch.
+Owner, 2026-11-18 (design, relayed by the coordinator): "We may want to think about how to better have that context preserved, e.g. if there can be a small bar at the top to hold the toggle and we put the web view below it." Then: "We want to be able to switch to the GitHub view, but then go back to our original view as needed." and "But not retain too much clutter if we are in the GitHub view, because that's a whole web page." And, reconfirmed as a must-have: "we want to maintain browser state or cookie logins after a user logs in once."
+Design (claude-code@spud10, PR on branch claude/app-github-view): the GitHub view is a second WKWebView below one thin native bar, which holds only the Metabrowser | GitHub toggle at the right (the web header toggle's place and treatment) and a quiet one-line label of the github.com location at the left. The Metabrowser web view stays alive and hidden beside it, so choosing Metabrowser returns to it unchanged; the GitHub view keeps its own page and history across switches. The title bar is unchanged (#575/#578 rework it). The toggle's link carries data-view-toggle="github"; an app user script in its own content world takes a trusted plain click on it and posts the href to a handler the page cannot reach. A github.com link handed to the app (#539) still opens the Metabrowser view; only the toggle opens the GitHub view. One named persistent WKWebsiteDataStore serves every GitHub view in every window and tab and across relaunches; Metabrowser views keep the default store. Metabrowser > Clear GitHub Data… empties it. Not built, a possible later option: following GitHub navigation back into Metabrowser through #539's resolver.
