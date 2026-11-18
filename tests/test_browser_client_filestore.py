@@ -1314,9 +1314,9 @@ def test_the_navigation_path_row_takes_one_height_and_the_view_header_its_rows()
     assert "border-bottom: 1px solid var(--border)" in nav
     assert "min-height: var(--pane-header-row-height)" not in css
     assert "--pane-header-row-height:" in css
-    view = block(".file-header")
+    view = block(".view-header")
     assert "background: var(--bg);" in view
     assert "flex-direction: column;" in view
     assert "border" not in view and "height" not in view
-    bar = block(":is(.preview-pane, .preview-file-stage) > .tab-bar")
+    bar = block(":is(.preview-pane, .preview-file-stage) .tab-bar")
     assert "background: var(--bg);" in bar

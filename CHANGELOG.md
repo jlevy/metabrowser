@@ -13,7 +13,9 @@ All notable changes to Metabrowser are documented here.
   A file now has the Up button a folder has, which `U` presses; the item’s own name is
   the title, so the address no longer ends in a crumb that reopens the page.
   The header and its tabs share the content’s white or dark ground with one rule under
-  the tabs, where the header was a gray band with a rule of its own above the tabs.
+  the tabs, where the header was a gray band with a rule of its own above the tabs; a
+  pull request’s tabs moved onto that ground too.
+  Copy path sits at the end of the quiet line, so the name keeps its row.
   The line holds its height and puts the age last, so a value arriving or an age
   changing width moves nothing; in a narrow pane values leave it from the end, each
   whole. See [View Headers](docs/design-system.md#view-headers).

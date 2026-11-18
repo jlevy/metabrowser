@@ -2908,6 +2908,21 @@ type MetabrowserTreeKeyboardRuntime = Readonly<{
 }>;
 
 declare global {
+  /** The parts of a view header, which app.js's viewHeaderHtml writes in its rows. */
+  type MetabrowserViewHeaderParts = {
+    /** Extra classes on the header, as `folder-header`. */
+    className?: string;
+    /** The eyebrow's markup; an empty eyebrow is left out of the header's rhythm. */
+    eyebrow: string;
+    iconHtml: string;
+    iconClass?: string;
+    iconStyle?: string;
+    title: string;
+    /** The heading row's end: its controls. */
+    end: string;
+    /** The metadata line's markup. */
+    line: string;
+  };
   /** One exact source-text run and its validated Highlight.js classes. */
   interface MetabrowserSyntaxTokenRun {
     classes: string[];

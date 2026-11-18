@@ -76,11 +76,20 @@ const LIFTED = [
   "viewHeaderPrintHtml",
   "viewHeaderEyebrowHtml",
   "renderFolderHeader",
+  "getLogicalName",
+  "formatSize",
+  "sizeHtml",
+  "formatAge",
+  "viewHeaderAgeHtml",
+  "renderBadges",
+  "renderFileHeader",
   "_tipSize",
   "_tipCount",
   "treeTooltipNameHtml",
   "folderTooltipHtml",
 ];
+// Constants the lifted code reads, lifted verbatim too.
+const LIFTED_CONSTANTS = ["COMPRESSION_SUFFIX_BY_FORMAT", "RUN_STATUS_SIZERS"];
 // The statement that wires the navigation heading's tooltip, from its comment to its end.
 const TOOLTIP_BLOCK = /\n\/\/ Header hover tooltip[\s\S]*?\n\}\);\n/;
 
@@ -88,6 +97,13 @@ const TOOLTIP_BLOCK = /\n\/\/ Header hover tooltip[\s\S]*?\n\}\);\n/;
 // application's one tooltip, which mirror-heading.js reaches as plugins do.
 const COLLABORATORS = `
 var ICONS = { print: "", folder: "" };
+var ICON_COPY = "";
+var activeFiles = new Map();
+// The tree's icon resolver, which reads the file-type taxonomy: the name it was asked
+// for is what the header owes it, the file's logical name.
+function getFileIcon(name) {
+  return { svg: "", cls: "icon-for-" + name.replace(/[^A-Za-z0-9.]/g, "_"), style: "" };
+}
 function showTooltip(html, anchor) {
   __shown.push({ html: html, anchor: anchor });
 }
@@ -106,6 +122,12 @@ function assert(condition, message) {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+function liftConstant(name) {
+  const match = appSource.match(new RegExp(`\\nconst ${name} = [\\s\\S]*?;\\n`));
+  assert(match, `${name} not found in app.js`);
+  return match[0].replace("const ", "var ");
 }
 
 function lift(name) {
@@ -309,7 +331,8 @@ function createPage(subject) {
   page.wiring = "app.js";
   const tooltipBlock = appSource.match(TOOLTIP_BLOCK);
   assert(tooltipBlock, "the navigation heading's tooltip block was not found in app.js");
-  vm.runInContext(`${COLLABORATORS}${LIFTED.map(lift).join("\n")}${tooltipBlock[0]}`, sandbox, {
+  const lifted = [...LIFTED_CONSTANTS.map(liftConstant), ...LIFTED.map(lift)].join("\n");
+  vm.runInContext(`${COLLABORATORS}${lifted}${tooltipBlock[0]}`, sandbox, {
     filename: "app.js (lifted)",
   });
   page.sandbox = sandbox;
@@ -361,6 +384,43 @@ async function observe(subject) {
   const file = sandbox.viewHeaderEyebrowHtml(NESTED[kind]);
   const fileTitle = sandbox.viewHeaderName(NESTED[kind]);
   assert(file.split(owner).length === 4, "a control of the eyebrow is not an owned control");
+  // A file's whole view header, as renderFileHeader writes it from the envelope: a served
+  // file has an age from its `mtime`, a pin's file none, a compressed one its badge and
+  // its logical name's icon, and one whose time is pending a skeleton. Three days old, so
+  // the age reads "3d ago" whenever the session runs.
+  const aged = Date.now() / 1000 - 3 * 24 * 60 * 60;
+  const envelopes =
+    kind === "git_revision"
+      ? { "a pin's file": { path: NESTED[kind], size: 140 } }
+      : {
+          "a served file": { path: NESTED[kind], size: 140, mtime: aged },
+          "a compressed file": {
+            path: "logs/run.log.gz",
+            size: 2048,
+            mtime: aged,
+            compressed: true,
+            compression: "gzip",
+          },
+          "a pending time": { path: NESTED[kind], size: 140, mtime: null },
+        };
+  const fileHeaders = Object.fromEntries(
+    Object.entries(envelopes).map(([name, envelope]) => {
+      const html = sandbox.renderFileHeader(envelope).replaceAll(owner, " data-mb-owner");
+      const line = /<div class="view-header-line page-header-line">(.*)<\/div><\/div>$/.exec(html);
+      assert(line, `${name}: the header has no metadata line last`);
+      const items = [...line[1].matchAll(/class="(view-header-item|file-header-badge[^"]*)"/g)];
+      return [
+        name,
+        {
+          icon: /class="view-header-icon file-identity-icon ([^"]*)"/.exec(html)?.[1] ?? null,
+          title: /<h1[^>]*>(.*?)<\/h1>/.exec(html)?.[1] ?? null,
+          line: text(line[1]),
+          lineParts: items.map((item) => item[1]),
+          pending: line[1].includes("tally-pending"),
+        },
+      ];
+    }),
+  );
 
   // The pointer enters the navigation heading, before and after the tree has loaded.
   const tipBefore = hover(page, page.heading);
@@ -399,6 +459,7 @@ async function observe(subject) {
     mainHeading: {
       root: text(root),
       file: { html: file.replaceAll(owner, " data-mb-owner"), text: text(file), title: fileTitle },
+      fileHeaders,
     },
     tooltips: {
       navigationHeading: { served: text(tipBefore), afterTreeLoad: text(tipAfter) },
@@ -450,6 +511,22 @@ async function main() {
     "a folder's page shows something of a mirror",
   );
 
+  // A file's line: badges, then the size, then the age, last; no age without a time, and
+  // a skeleton while the time is pending.
+  const headers = folder.mainHeading.fileHeaders;
+  assert(headers["a served file"].line === "140 B · 3d ago", "a served file's line");
+  assert(
+    headers["a compressed file"].lineParts[0].startsWith("file-header-badge") &&
+      headers["a compressed file"].icon === "icon-for-run.log",
+    "a compressed file's badge leads its line, and its icon is its logical name's",
+  );
+  assert(headers["a pending time"].pending, "a pending time draws no skeleton");
+  for (const page of [mirror, hostile]) {
+    assert(
+      page.mainHeading.fileHeaders["a pin's file"].line === "140 B",
+      "a pin's file has an age",
+    );
+  }
   for (const page of [mirror, hostile]) {
     const { name, origin, location, pin, ref_name: ref } = page.status;
     const where = `mirror in ${location}`;

@@ -371,15 +371,20 @@ a pull request, and a commit.
 
 | Row | A file | A folder | A pull request | A commit |
 | --- | --- | --- | --- | --- |
-| 1. Eyebrow | Up, and the address of the folder that holds it | Up, and the address of its parent; at the served root, the directory that holds the root | Only where it says something the rows under it do not (planned) | The same (planned) |
-| 2. Heading row | The navigation row’s icon for its type, its name, Copy path, and Print | The folder icon, its name, and Print | Its state icon, its title, and its number | The commit icon, its subject (planned) |
+| 1. Eyebrow | Up, the address of the folder that holds it, and Copy path | Up, and the address of its parent; at the served root, the directory that holds the root | Only where it says something the rows under it do not (planned) | The same (planned) |
+| 2. Heading row | The navigation row’s icon for its type, its name, and Print | The folder icon, its name, and Print | Its state icon, its title, and its number | The commit icon, its subject (planned) |
 | 3. Metadata | Its badges, size, and age | Its size, file count, and age | Its author line, branches, and ages ([Page Headers](#page-headers)) | Its author, revision, and age ([Page Headers](#page-headers)) |
 | 4. Tab bar | Its views: Document, Source, and so on | Overview and Treemap | Conversation, Changes, and Checks | None |
 
 Files and folders draw these rows today (`viewHeaderHtml` in `static/app.js`). A pull
 request’s page and a commit’s draw their title and lines as
 [Page Headers](#page-headers) says, and move onto the same rows, icon, and ground next
-(planned).
+(planned). What another kind shares is the class structure, not that builder, which is
+the shell’s own: a `.view-header` block holding `.view-header-eyebrow`,
+`.view-header-heading` (with `.view-header-icon`, `.view-header-title`, and
+`.view-header-end`), and `.view-header-line`, whose rules are the rhythm and the ground
+below. A plugin that draws a header, as the GitHub plugin draws a pull request’s, writes
+those classes.
 
 **The eyebrow** is a quiet line above the title: context, at the body size, its served
 root dimmed and its crumbs links.
@@ -389,12 +394,15 @@ keeps its place disabled at the served root, and the folders above the item, but
 item, which is the title under it.
 A pull request’s or a commit’s has one only when it carries something the rows under it
 do not, such as the repository and branch it belongs to.
-Where a kind has no eyebrow, the heading row starts the header and nothing holds empty
-space for one; where it has one, the eyebrow is its token’s height from first paint, so
-nothing under it moves as it fills in.
+Where a kind has no eyebrow, it writes it empty, and an empty eyebrow is left out: the
+heading row starts the header and nothing holds empty space for one.
+Where it has one, the eyebrow is its token’s height from first paint, so nothing under
+it moves as it fills in.
+A file’s eyebrow ends in Copy path, revealed on hover, so the heading row’s width is the
+title’s.
 
 **The heading row** is the kind’s icon, then the title at `--page-title-font-size`,
-bold, then what follows the title, then the row’s controls at its far end.
+bold, then the row’s controls at its far end.
 The icon is the one the rest of the app draws for the item, at the title’s size: a
 file’s is its navigation row’s icon for its type, through the same function, and a pull
 request’s is its state icon.
@@ -414,6 +422,12 @@ nothing on disk does, “just now” becoming “1m ago”, and last on its line
 nothing when it does.
 The line is one line at its token’s height whatever fills it, so a value arriving, a
 skeleton becoming a number, or an age changing width moves nothing above or below it.
+On the line itself, a value that changes width moves the values after it sideways, as
+“999 B” becoming “1.0 MB” moves the count and the age: only the age, which changes while
+nothing on disk does, is last so that its own change moves nothing.
+A folder’s line follows the inventory as it changes (`startFolderHeaderSubscription` in
+`static/app.js`); a file’s line describes the content the view loaded, its size and age
+when it was read, and a reload refreshes it (planned: following the file’s own change).
 In a pane too narrow for the line, its items leave it from the end, each with its dot,
 whole: an item and the dot before it are one box that does not wrap, and a wrapped item
 falls to a second line the line’s height clips away.
@@ -423,6 +437,9 @@ No value is cut mid-number.
 content’s inset, where a folder’s Overview labels start
 ([Folder Overview Is a Panel Stack](#folder-overview-is-a-panel-stack)), one tab’s
 padding in from the header’s rows.
+Every tab bar in the main view sits on `--bg`, a pull request’s among them; a pull
+request’s spans its reading column rather than the pane, and moves onto the pane’s width
+with the rest of its header (planned).
 
 **Ground and rules.** The header and its tab bar sit on the main view’s ground, `--bg`,
 the ground the content under them has: `--sidebar-bg` is the navigation column’s, and
@@ -433,7 +450,6 @@ A kind with no tab bar ends its header without one (planned for a commit’s pag
 Every ink on the header is one the main view already sets on `--bg`: `--text`,
 `--muted`, `--link`, the size chip’s, and the age inks, whose contrast on every age
 surface, `--bg` among them, `tests/test_file_age_palette.py` holds.
-Each reads at more contrast on `--bg` than it did on `--sidebar-bg`, in both themes.
 
 The rhythm is tokens in `static/styles.css`, `--view-header-*`: the pads above the first
 row and under the last, the gap between rows, and the eyebrow’s and the metadata line’s
