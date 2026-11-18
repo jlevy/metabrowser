@@ -37,11 +37,12 @@ const STARTUP_SCRIPTS = [
 ];
 // What the shell publishes as on-demand bundles and these scenarios reach: the view
 // compositor, the SDK's view helpers with the line anchors applyNavigationTarget
-// reads an address with, and the pull-request page's routes and host.
+// reads an address with, the view header, and the pull-request page's routes and host.
 const ASSET_BUNDLES = {
   mustache: [{ src: "/static/vendor/mustache.min.js", provides: "Mustache" }],
   "view-composition": [{ src: "/static/view-composition.js" }],
   "sdk-views": [{ src: "/static/plugin-sdk-views.js", provides: "MetabrowserSourceLineAnchors" }],
+  "view-header": [{ src: "/static/view-header.js", provides: "MetabrowserViewHeader" }],
   "pull-route": [{ src: "/static/pull-route.js", provides: "MetabrowserPullRoute" }],
   "main-tabs": [{ src: "/static/main-tabs.js", provides: "MetabrowserMainTabs" }],
   "shell-tools": [{ src: "/static/main-tabs.js", provides: "MetabrowserMainTabs" }],
