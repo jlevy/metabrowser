@@ -6,13 +6,19 @@
 
 **Status:** Approved for Phases 1 and 2. The owner answered Q1, Q2, Q3, and Q5 on
 2026-11-16, and answers relayed on 2026-11-17 decide Q6
-([Decisions and Open Questions](#decisions-and-open-questions)); Q4, Q7, Q8, and Q9 are
-open.
-Bead `mb-h8zb` tracks this plan, and each implementation step below is a bead under
-it. Nothing here is implemented: no workflow, Makefile target, dependency, or repository
-setting has changed.
-The first step of each phase replaces that phase’s estimates with measurements; an
-estimate is marked “est.”
+([Decisions and Open Questions](#decisions-and-open-questions)). On 2026-11-17 the owner
+also decided Q4, on review A8 of #504, and extended Q6 to stacked pull requests, on
+review A3; Q7, Q8, and Q9 are open.
+Bead `mb-h8zb` tracks this plan, and each implementation step below is a bead under it.
+Phase 1 is implemented by jlevy/metabrowser#499: the tier targets, the golden runner,
+the reports, and pytest-xdist.
+Phase 2 is implemented by jlevy/metabrowser#504: the split workflow with `ci-ok`, the
+nightly soak, and `devtools/check_ci.py`. No repository setting has changed; the ruleset
+that requires `ci-ok` is the owner’s (Q5). The first step of each phase replaces that
+phase’s estimates with measurements; an estimate is marked “est.”
+Phase 1’s are in [Phase 1 Measurements](#phase-1-measurements): the parallel tier ran
+2.0 to 2.2 times faster on four workers, under the 2.3 the estimates assumed on all four
+interpreters.
 
 ## Overview
 
@@ -163,21 +169,22 @@ For a pull request to `main`:
 | `plan` | 1 | reads whether `main` is red, and decides the Chrome tier’s interpreters and whether `stack-integration` is needed | 0.2 (est.) |
 | `lint` | 1 | `make lint-check audit` | 1.5 (measured) |
 | `distribution` | 1 | `make build` | 0.7 (measured) |
-| `unit` | 4 | `make test-parallel` on 3.12, 3.13, 3.14, and 3.14t | 3.3 to 4.4 on 3.12, 3.1 to 4.0 on 3.13, 3.5 to 4.6 on 3.14, and 3.8 to 5.0 on 3.14t (est.) |
+| `unit` | 8 | `make test-parallel SHARD=I/2` on 3.12, 3.13, 3.14, and 3.14t | 1.9 to 4.7 (measured; proposed as 4 unsharded jobs at 3.1 to 5.0, est.) |
 | `goldens` | 4 | `make test-goldens`, then `make test-serial`, on the same four | 2.5 to 3.2 (est.) |
 | `chrome` | 4 | `make test-chrome SHARD=I/4` on 3.13 | 1.9 to 2.4 (est.) |
 | `admitted-git` | 2 | `make test-admitted-git` on Git 2.43.7 and 2.50.1 | 2.5 to 3.0 (est.) |
 | `ci-ok` | 1 | fails unless every job above succeeded | 0.1 (est.) |
 
-That is 18 jobs and 39 to 49 runner minutes (est.), the sum of the rows, against 9 jobs
-and 84 today.
-The wall clock is the `unit (3.14t)` job’s 4 to 5 minutes (est.). Splitting
-each `unit` job in two with `SHARD=I/2` brings it to about 3 minutes; the phase’s
-measurement decides, by the rule in [Time Limits](#time-limits).
+That is 22 jobs, against 9 today.
+The proposal had 18, with `unit` unsharded at an estimated wall clock of 4 to 5 minutes;
+Phase 1’s measurement split it in two, by the rule in [Time Limits](#time-limits), and
+[Phase 2 Measurements](#phase-2-measurements) has the times.
 
 The estimates divide the measured serial seconds by an assumed 2.5 to 3.2 for four
 workers and add 0.4 to 0.6 minutes of setup and worker start.
-That factor is the plan’s main unmeasured number; Phase 1 measures it first.
+That factor was the plan’s main unmeasured number.
+Phase 1 measured 2.0 to 2.2 ([Phase 1 Measurements](#phase-1-measurements)), so the job
+times above are optimistic.
 
 The serial tier rides in the `goldens` job, after the goldens finish, so it has the
 machine to itself and adds no job.
@@ -187,9 +194,8 @@ one Chrome test was not among the 25 slowest tests, the last of which took 7.0 s
 The Chrome shards’ estimate leaves those seconds out.
 
 A push to `main` runs the same jobs with `chrome` on all four interpreters, 16 jobs in
-place of 4 and 30 in all, and never cancels.
-A pull request to `main` runs the same 30 while `main` is red
-([A Red `main`](#a-red-main)).
+place of 4 and 34 in all, and never cancels.
+A pull request runs the same 34 while `main` is red ([A Red `main`](#a-red-main)).
 
 ### How Coverage Is Kept
 
@@ -242,6 +248,16 @@ It fails unless:
   `git merge-tree` need;
 - no workflow runs on `pull_request_target`.
 
+Review A1 of #504 found edits that passed those rules and still dropped a check: a fixed
+`SHARD`, a matrix `exclude`, a step or job allowed to fail or skipped, a deleted `lint`,
+`distribution`, or `stack-integration` job, a dropped `audit`, and a dropped `push`
+trigger. The check now fails each, and review B2 added every spelling of the event and
+every workflow’s write permissions.
+Review C of #504 added a condition on a step it does not belong to, a `make` option or
+variable, a `ci-ok` step other than `devtools/ci_verdict.sh` on every job’s result, the
+event in another case or past a `}}` in a quoted string, and `env` in a `run:` line.
+Its docstring lists the rules, and `tests/test_check_ci.py` breaks each one.
+
 The tests of `devtools/ci_plan.sh` hold that a push to `main`, and a pull request while
 `main` is red, get all of `PYTHONS`. `devtools/check_supply_chain.py` already holds the
 `admitted-git` matrix to both Git floors.
@@ -255,9 +271,10 @@ regression on the same interpreter would add no new signal.
 Two mechanisms close that for every merge an agent makes (Q6):
 
 - **A red `main` widens the next pull request’s run.** The `plan` job of a pull request
-  to `main` reads `main`’s state from the Actions API, with `actions: read` on that one
-  job. It reads one page of `ci.yml`’s push runs on `main`, newest first, and the first
-  run with a completed attempt gives the state.
+  to `main`, and of any other pull request whose tested merge commit contains `main`’s
+  head, reads `main`’s state from the Actions API, with `actions: read` on that one job.
+  It reads one page of `ci.yml`’s push runs on `main`, newest first, and the first run
+  with a completed attempt gives the state.
   A run whose latest attempt has any status other than `completed` (in progress, queued,
   waiting, requested, or pending) counts by the attempt before it, for a rerun, and is
   passed over, for a first attempt.
@@ -273,52 +290,75 @@ Two mechanisms close that for every merge an agent makes (Q6):
     for a `no` to its summary.
   - While `main` is red, `ci-ok` writes its verdict as one line in a fixed format,
     `main-red run=<id> head=<sha> tested=<yes|no>`, to its log and as a `::notice::`
-    annotation, which `gh run view <run id>` lists.
-    `tested=yes` means this run ran `main`’s whole matrix on a merge commit that
-    contains that head. The tests of `ci_verdict.sh` pin the format.
+    annotation. It is read from the `ci-ok` job’s own log, since any job of the run can
+    print a line like it (review B1 of #504). `tested=yes` means this run ran `main`’s
+    whole matrix on a merge commit that contains that head.
+    The tests of `ci_verdict.sh` pin the format.
   - Not knowing the state costs runner minutes, never coverage.
 
-- **The merging agent merges by `main`’s state.** Phase 2 adds this procedure to the Git
-  section of [Agent Instructions](../../../../AGENTS.md#git):
-  - Merge into `main` only when the latest attempt of the newest `ci.yml` push run on
-    `main` has completed (`gh run list`).
-  - If it is not green, merge only a pull request whose latest `ci-ok` passed with a
-    verdict line that says `tested=yes` and names the head SHA of that `main` run.
-  - A rerun never changes the commit a run tested.
-    To get a qualifying run, update the branch from `main` or push to it.
-  - Rerun a failure that a bead names as a known flake once; give any other failure a
-    bead and a fix or a revert.
-    Never arm auto-merge: agents merge directly, so every merge they make passes these
-    rules.
-
+- **The merging agent merges by `main`’s state.** Phase 2 adds the procedure to the Git
+  section of [Agent Instructions](../../../../AGENTS.md#git), which owns its text: merge
+  only once the latest attempt of `main`’s newest `ci.yml` push run has completed, and
+  while it is not green, only a pull request whose `ci-ok` passed and wrote `tested=yes`
+  with that run’s head.
   Its reason, which the procedure states: `ci-ok` cannot see a pull request whose run
   went green before `main` turned red, or a `main` run that has not completed.
   The head comparison is what makes a verdict current: a verdict names the head that was
   red when its run was planned, and `main` may have moved since.
+  Reviews A and B of #504 added where the line is read, a check by hand when the diff
+  changes the files that write it, the stacked case, and the reasons for the flake and
+  auto-merge rules.
 
-A stacked pull request does not read `main`’s state.
-It merges into its base branch, and it reaches `main` through a run whose base is
-`main`.
+**A stacked pull request reads `main`’s state when the commit it tests contains `main`’s
+head**, the owner’s decision of 2026-11-17 on review A3 of #504. A formal GitHub stack’s
+merge ref merges the head into its base merged with `main`
+([Phase 2 Measurements](#phase-2-measurements)), so each of its layers gets the wide
+matrix and a verdict line, and qualifies as a pull request to `main` does;
+`gh stack merge` lands every layer below its target, so each must.
+A layer of an informal chain, whose merge ref holds the branch below alone, does not
+read it, and qualifies once its branch is updated from `main`. The proposal had no
+stacked pull request read `main`’s state, which left a formal stack no way to merge
+while `main` is red.
 
 ### Stacks
 
 `stack-integration` asks whether the pull request’s head still works once `main` is
-merged in. The `plan` job computes that merge with `git merge-tree --write-tree` and
-compares its tree with the tree of the merge commit the other jobs check out:
+merged in.
+A formal GitHub stack’s merge ref already merges the head into its base merged
+with `main`: run 44038762653 of #504 tested `Merge 6dfc1ae5 into 20686e6c`, itself
+`Merge de96415a into e442ed10`, `main`’s head then.
+So the `plan` job first asks whether the commit the other jobs check out contains
+`main`’s head (`git merge-base --is-ancestor`), and otherwise computes the merge with
+`git merge-tree --write-tree` and compares its tree with that commit’s:
 
+- **Contained:** the other jobs already check the head with `main` and every layer below
+  it. Merging `main` into the head alone would check a subset of that, which never lands,
+  so nothing more runs (review A7 of #504).
 - **Identical:** the other jobs already answer it.
   Nothing more runs, and the `plan` job’s summary names the tree.
-- **Different:** seven jobs run on the head merged with that exact `main` commit, on
-  Python 3.13 as today: `make lint-check`, `make test-parallel`,
+- **Different:** eight jobs run on the head merged with that exact `main` commit, on
+  Python 3.13 as today: `make lint-check`, `make test-parallel` in its two parts,
   `make -k test-goldens test-serial`, and the four Chrome shards.
-  Each is 1.5 to 4 minutes (est.), where the single job takes 19.4 today.
+  Each took 1.2 to 4.3 minutes ([Phase 2 Measurements](#phase-2-measurements)), where
+  the single job takes 19.4 today.
 - **Conflict:** `ci-ok` fails with today’s message, and the other jobs still run.
 
-Today the job gates its steps, not itself, so that it always reports what it decided.
-Here the `plan` job is that report: it always runs, and it writes the event, the base,
-both trees, `main`’s state, and its decisions to the job summary.
-Gating seven jobs by their steps would start seven runners to say that nothing was
-needed. Q4, which is open, asks the owner to accept the change of convention.
+So `different` and `conflict` now come from an informal chain, whose merge ref holds the
+branch below alone, and from a formal stack’s run planned once `main` has moved past the
+commit its merge ref holds, as a full rerun can be, which reads no `main` state and
+writes no verdict line, so a red `main` still refuses its merge (review C7 of #504). A
+formal stack that conflicts with `main` may get no merge ref, and then no `pull_request`
+run at all; `mb-ohsk` checks it.
+
+Before this, the job gated its steps, not itself, so that it always reported what it
+decided.
+Here the `plan` job is that report: it always runs, and it writes the event, the
+base, both trees, `main`’s state, and its decisions to the job summary.
+`ci-ok`, the required check, also says why it accepted a skipped `stack-integration`.
+Gating eight jobs by their steps would start eight runners to say that nothing was
+needed.
+Q4 is decided: the owner accepted the summary, with `ci-ok`’s line, as the record
+on 2026-11-17 (review A8 of #504).
 
 Cancelling superseded runs helps stacks most, since a restack pushes every layer at
 once.
@@ -357,9 +397,10 @@ or make the slow test cheaper.
 The nightly workflow runs it and fails when a job’s 90th percentile passes 80 percent of
 its limit, which is the early warning.
 
-The `unit` jobs start unsharded.
-If any `unit` leg’s 90th percentile in Phase 2’s verification is over 4.5 minutes, each
-is split in two with `SHARD=I/2`.
+The `unit` jobs start split in two with `SHARD=I/2`, since Phase 1 measured the parallel
+tier whole at a median over the 4.5 minutes that splits it, on every interpreter
+([Phase 1 Measurements](#phase-1-measurements)). Each part holds whole files
+(`--shard-by=file`), as a worker does.
 
 ### Path Classes
 
@@ -653,33 +694,155 @@ pull requests. Phase 3 is independent of both.
 ### Phase 1: The Suite on Four Processors
 
 Expected: a `test` leg from 17 to 20 minutes to 10.5 to 13 (est.), with the workflow
-unchanged, since it calls `make test`.
+unchanged, since it calls `make test`. Measured: 14.3 to 15.7 minutes at the median, so
+the estimate was missed ([Phase 1 Measurements](#phase-1-measurements)). The Chrome
+tier, which this phase does not change, is the larger part of each leg, at 351 to 467 s;
+the top of that range came after `main` gained an 85-second Chrome test.
+The parallel tier’s factor, 2.0 to 2.2 against the 2.5 to 3.2 the estimate assumed,
+accounts for the rest.
 
-- [ ] `mb-a1le`: Add the `serial` and `chrome` markers, the `--shard` option, and their
+- [x] `mb-a1le`: Add the `serial` and `chrome` markers, the `--shard` option, and their
   gates. `make test` still runs everything in one process.
-- [ ] `mb-dz35`: Add `pytest-xdist` with its supply-chain review, make the parallel tier
+- [x] `mb-dz35`: Add `pytest-xdist` with its supply-chain review, make the parallel tier
   and `make test-admitted-git` pass under it, and split `make test` into the four
   targets. This step measures the speedup that the plan assumes.
-- [ ] `mb-4ub2`: Add `devtools/run_goldens.py` and run the goldens four files at a time.
-- [ ] `mb-tjdq`: Teach `devtools/suite_report.py` to read a run under xdist and the
+- [x] `mb-4ub2`: Add `devtools/run_goldens.py` and run the goldens four files at a time.
+- [x] `mb-tjdq`: Teach `devtools/suite_report.py` to read a run under xdist and the
   golden runner’s times, and update the testing guide.
-- [ ] `mb-f0z9`: Add `make ci-report`, which prints job medians and 90th percentiles
+- [x] `mb-f0z9`: Add `make ci-report`, which prints job medians and 90th percentiles
   from run data.
+
+#### Phase 1 Measurements
+
+Taken on 2026-11-17 from the green CI runs of jlevy/metabrowser#499: the three attempts
+of run 44026747033 at `d5a05e20`, and runs 44041121764 and 44043995823 at `dbcfd321` and
+`5c9365cc`, each on `main` as it then stood.
+pytest-xdist started four workers on every leg (`PYTEST_WORKERS=logical`).
+
+The parallel tier, in seconds.
+The baseline is the same modules’ time in one process, read by
+`devtools/suite_report.py` from the logs of eight green `main` runs, 43956278180 to
+44007745684, and summed over the modules the tier selects:
+
+| Leg | Under xdist, five runs | Median | In one process on `main`, median of 8 | Factor |
+| --- | --- | ---: | ---: | ---: |
+| 3.12 | 243, 296, 311, 260, 299 | 296 | 590 | 2.0 |
+| 3.13 | 194, 296, 299, 282, 205 | 282 | 611 | 2.2 |
+| 3.14 | 279, 198, 295, 277, 259 | 277 | 604 | 2.2 |
+| 3.14t | 239, 275, 344, 297, 353 | 297 | 663 | 2.2 |
+
+- **The factor is below the 2.3 that [Testing Strategy](#testing-strategy) sets** on
+  every interpreter, so by that row Phase 2 splits the `unit` jobs in two from the
+  start.
+- **The limit is the runner, not the schedule.** The tests’ own times, summed by
+  `--file-durations`, came to 3.4 to 3.6 times each session’s wall clock, so four
+  workers were busy for most of the run.
+  The same tests took 1.1 to 1.9 times as long as their median in one process: they
+  contend for the runner’s processors, with the Git, Node, and `metab` processes they
+  start.
+- **Run-to-run variation is large.** One leg’s runs differed by up to 54 percent, as the
+  serial baseline’s runs differed by up to 46 percent.
+  The 10 runs the Testing Strategy asks for were not taken; five were.
+
+The rest of the `test` leg, in seconds over the same runs: the serial tier 55 to 57; the
+Chrome tier 351 to 386, and 443 to 466 once `main` gained an 85-second Chrome test; and
+the goldens 73 to 131, against 197 to 258 one at a time.
+
+`make ci-report` in minutes, over #499’s runs and the last 25 push runs of `main`:
+
+| Job | #499, median of its successful jobs | `main`, median |
+| --- | ---: | ---: |
+| `test (3.12)` | 14.8 | 20.1 |
+| `test (3.13)` | 14.3 | 21.4 |
+| `test (3.14)` | 14.3 | 20.8 |
+| `test (3.14t)` | 15.7 | 22.2 |
+| `admitted-git (2.43.7)` | 3.2 | 6.4 |
+| `admitted-git (2.50.1)` | 3.5 | 6.6 |
+
+Its three green first attempts reached green a median of 17.1 minutes after their push,
+on 70.3 runner minutes, against `main`’s 22.9 and 99.2. Both `admitted-git` legs passed
+in every green run, each with the 1,388 tests a run in one process collects.
+
+Not every run was green.
+In attempt 2 of run 44033895259, one worker of `test (3.12)` ended, which under xdist is
+what a test that runs out of time does, and the job then hung for 30 minutes until it
+was cancelled.
+No trace named the test, because the timeout’s stack dump is lost with the
+worker’s output. `tests/suite_workers.py` now writes every stack to the log before each
+test’s budget ends, and bead `mb-pc9v` tracks the hang.
 
 ### Phase 2: Split Jobs in the Workflow
 
 Expected: a pull request wall clock of 4 to 5 minutes (est.), or about 3 with the unit
 jobs split in two. The owner approved these workflow changes on 2026-11-16 (Q1).
 
-- [ ] `mb-oz36`: Split `ci.yml` into `unit`, `goldens`, and `chrome` jobs, with the
+- [x] `mb-oz36`: Split `ci.yml` into `unit`, `goldens`, and `chrome` jobs, with the
   serial tier in `goldens` on every interpreter, and the Chrome tier on one interpreter
   for a pull request and on all four for `main` and while `main` is red.
   It also turns `fail-fast` off, cancels superseded pull request runs, and adds time
   limits, `ci-ok`, and the merge procedure in `AGENTS.md`.
-- [ ] `mb-to1c`: Add `devtools/check_ci.py` to `make lint-check`.
-- [ ] `mb-r283`: Run `stack-integration` by tree identity, as split jobs.
-- [ ] `mb-stg2`: Add the nightly workflow: the serial and Chrome tiers five times on
+- [x] `mb-to1c`: Add `devtools/check_ci.py` to `make lint-check`.
+- [x] `mb-r283`: Run `stack-integration` by tree identity, as split jobs.
+- [x] `mb-stg2`: Add the nightly workflow: the serial and Chrome tiers five times on
   `main`, and the time-limit report.
+- [ ] `mb-ohsk`: Verify Phase 2 after the merge: the rows of
+  [Testing Strategy](#testing-strategy) that need a merged workflow, and each new job’s
+  limit again, from more runs than the two that set it.
+
+#### Phase 2 Measurements
+
+Taken on 2026-11-17 from the first CI runs of jlevy/metabrowser#504: 44037230262 at
+`3c1502d1`, and 44038762653 at `6dfc1ae5`, which went green.
+Other pull requests’ runs, on the workflow before this one, held most of the account’s
+runners throughout, so each job’s wait for a runner is given apart from its running
+time.
+
+| Job | Jobs | Running, minutes | Waiting for a runner, minutes |
+| --- | ---: | ---: | ---: |
+| `plan` | 1 | 0.1 | 10.9 |
+| `unit` | 8 | 1.9 to 3.7 | 1.9 to 10.5 |
+| `goldens and serial` | 4 | 2.9 to 4.1 | 9.3 to 10.6 |
+| `chrome` | 4 | 1.9 to 3.9 | 0.8 to 4.8 |
+| `admitted-git` | 2 | 3.6 to 3.9 | 3.2 to 8.9 |
+| `lint` | 1 | 1.5 | 1.6 |
+| `distribution` | 1 | 0.8 | 7.3 |
+| `ci-ok` | 1 | 0.1 | 0.1 |
+
+- **The critical path is 4.2 minutes of running time:** `goldens and serial (3.14t)`,
+  4.1, whose goldens took 143 seconds where the other interpreters’ took 85 to 96, then
+  `ci-ok`. `plan` and the slowest Chrome part come to 4.0, and the slowest `unit` part
+  to 3.7.
+- **Push to verdict was 19.4 minutes**, almost all of it the wait for runners.
+  The run used 56.6 runner minutes, against `main`’s median of 99.5
+  ([Phase 1 Measurements](#phase-1-measurements)).
+- **The unit parts deal whole files** (`--shard-by=file`, `tests/suite_tiers.py`). Dealt
+  by test, run 44037230262 failed every `unit` leg on two tests that rely on an earlier
+  test in their module, `test_cli_git_pin_golden.py` and `test_github_pulls.py`; one leg
+  also hung after an xdist worker went down and was stopped by its limit.
+  By file, the part with the larger files is the slower one: 2.6 to 3.3 minutes of
+  pytest against 1.5 to 2.2.
+- **Every test ran once.** On each interpreter the two `unit` parts held 3,353 and 3,352
+  tests and the serial tier 35, and the Chrome parts held 41 on 3.13: 6,781, the whole
+  collection at that commit.
+- **A formal GitHub stack already tests against `main`.** Once #504 was linked into a
+  stack with #499, GitHub’s merge ref for it merged the head into its base merged with
+  `main`, so the `plan` job found the trees identical and ran no `stack-integration`
+  job. Run 44037230262, made before the stack was linked, tested the head merged into its
+  base alone, found the trees different, and ran all eight; seven passed, and the eighth
+  failed on the two tests above.
+- **A cancelled run still runs its `ci-ok`**, which is `always()`, and the newer run
+  starts only after it: run 44038762653 waited 1.1 minutes so.
+- **The third run, 44041984874 at `e3851c64`, went green in 11.2 minutes** from its
+  push, with waits for a runner of up to 5.3. Its 30 jobs ran 0.1 to 4.7 minutes, the
+  longest `unit (3.14t, 2/2)`; its critical path was that part and `ci-ok`, 4.8 minutes
+  of running time. It ran the eight `stack-integration` jobs, since #499 had moved on
+  past the commit #504 was built on, and they ran 1.2 to 4.2 minutes each.
+- **With runners free, push to verdict was 4.7 minutes.** Run 44043888346, at
+  `e6f77bfb`, waited 0.1 minutes at most for a runner.
+  Its critical path was `plan`, the slowest Chrome part (4.3), and `ci-ok`; the slowest
+  `unit` part took 4.2. It used 57.0 runner minutes.
+  One `unit` leg failed, on a race in `test_cli_github_pull_files_golden.py` that the
+  module shows whole and in order too (`mb-kq72`).
 
 ### Phase 3: Flakes, Slow Tests, and Path Classes
 
@@ -718,7 +881,7 @@ brief’s methodology and, once it exists, `make ci-report`.
 | The verdict line | `ci_verdict.sh`’s tests | While `main` is red, the line has the fixed format, in the log and as a `::notice::`; while it is green, there is no line |
 | A red `main` in CI | The first pull request run after `main` is next red, and a rerun of a run from before | Both have the Chrome tier on all four; the first’s verdict line says `tested=yes` with `main`’s head, and the rerun’s says `tested=no` |
 | Cancellation | Two pushes a minute apart | The first run is cancelled; a `main` run is never cancelled |
-| `stack-integration` | A stack behind `main`, one level with it, and one that conflicts | `needed`, `identical`, and `conflict`, each with its summary |
+| `stack-integration` | A formal stack, an informal chain behind `main`, one level with it, and one that conflicts; and a formal stack planned after `main` moved | `contained`, `needed`, `identical`, and `conflict`, each with its summary; and `needed` with no `main` state read |
 | Nightly soak | One manual run by `workflow_dispatch` | 5 serial-tier jobs and 20 Chrome shard jobs run and report |
 | Flake fixes | The loaded-machine loop that `mb-alff` and `mb-nvo0` used | The failure reproduces before the fix and not in 30 runs after it |
 | The whole plan | The research brief’s tables, taken again 7 days after Phase 2 | The goals above |
@@ -753,9 +916,9 @@ result the state rule gives:
 
 ## Risks
 
-- **The xdist factor is assumed.** No run under xdist was measured; the research brief
-  says why. If it is under 2.3, the `unit` jobs are split in two, which costs four more
-  jobs and no coverage.
+- **The xdist factor is under 2.3.** Phase 1 measured 2.0 to 2.2 on four workers
+  ([Phase 1 Measurements](#phase-1-measurements)), so the `unit` jobs are split in two,
+  which costs four more jobs and no coverage.
 - **Tests that are sensitive to load.** A test that passes alone and fails beside three
   workers is found by the 10-run step, and fixed or marked `serial`, which keeps it on
   every interpreter. Two modules outside the Chrome tier, `test_cli_main.py` and
@@ -804,8 +967,8 @@ result the state rule gives:
 
 ## Decisions and Open Questions
 
-The owner answered four of the questions on 2026-11-16, and the answers relayed on
-2026-11-17 decide a fifth.
+The owner answered four of the questions on 2026-11-16, the answers relayed on
+2026-11-17 decide a fifth, and the owner decided a sixth on 2026-11-17.
 
 Decided:
 
@@ -839,13 +1002,17 @@ Decided:
    completed, and while it is not green, only a pull request whose `ci-ok` verdict says
    it tested that run’s head.
    Agents never arm auto-merge.
-   The `plan` job gets `actions: read`; no job gets `issues: write`.
+   The `plan` job gets `actions: read`; no job gets `issues: write`. On review A3 of
+   #504 the owner extended, on 2026-11-17, the reading of `main`’s state to any pull
+   request whose tested commit contains `main`’s head, a formal stack’s layers among
+   them, with the stacked rule of the merge procedure in
+   [Agent Instructions](../../../../AGENTS.md#git) ([A Red `main`](#a-red-main)).
+6. **`stack-integration`’s record (Q4), 2026-11-17: yes.** The owner accepted the `plan`
+   job’s summary, with the line in which `ci-ok` says why it accepted the skip, as the
+   record of a skipped integration, in place of step gating, on review A8 of #504.
 
 Open, with the plan’s recommendation standing as a proposal:
 
-- **`stack-integration`’s record (Q4).** Is the `plan` job’s summary an acceptable
-  record of a skipped integration, in place of step gating?
-  Phase 2 builds it that way, and its pull request asks again.
 - **Path classes (Q7).** Are the light runs of Phase 3 wanted, for 16 percent of pull
   requests?
 - **A merge queue (Q8)** is not proposed.

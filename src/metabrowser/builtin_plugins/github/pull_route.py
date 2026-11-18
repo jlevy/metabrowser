@@ -15,9 +15,9 @@ reports one of:
 ``refreshing`` says whether the pull request's refresh job is running, and
 ``last_refresh`` how its last one ended. ``pin`` is the commit the server serves and
 ``pin_ref`` the ref it was resolved from; the record's ``pull.head.sha`` and
-``comparison_route`` name the head the record was read at. ``snapshot_route`` opens a file
-of that comparison's base or head without changing the pin; a page completes it with
-``side`` and ``path`` (:func:`snapshot_route`). ``rendered_route`` answers the rendered
+``comparison_route`` name the head the record was read at. ``image_route`` serves an image
+of that comparison's head that its rendered Markdown shows, completed with ``path``
+(:func:`image_route`). ``rendered_route`` answers the rendered
 Markdown redline of one changed file of that comparison; a page completes it with ``file``
 (:func:`rendered_route`). They differ when the pin is
 another pull request or a branch, when the URL selected a commit inside the pull request,
@@ -142,7 +142,7 @@ class PullEnvelope(TypedDict):
     preparing_comparison: NotRequired[Literal[True]]
     last_refresh: PullRefreshOutcome | None
     comparison_route: str | None
-    snapshot_route: str | None
+    image_route: str | None
     rendered_route: str | None
     record: dict[str, Any] | None
     core_preview: PullCorePreview | None
@@ -195,19 +195,19 @@ def _without_store(dumped: dict[str, Any]) -> dict[str, Any]:
     return {**dumped, "comparison": None, "unavailable": unavailable}
 
 
-SNAPSHOT_ROUTE: Final = "/api/plugin/github/pull-snapshot"
+IMAGE_ROUTE: Final = "/api/plugin/github/pull-image"
 RENDERED_ROUTE: Final = "/api/plugin/github/pull-rendered-diff"
 
 
-def snapshot_route(number: int, base: str, head: str, *, store: str) -> str:
-    """The revision-file route of one comparison, the one spelling of its address.
+def image_route(number: int, base: str, head: str, *, store: str) -> str:
+    """The route of the images a comparison's rendered Markdown shows, the one spelling.
 
-    A page appends ``side`` (``base`` or ``head``) and ``path`` (a Git path's wire form)
-    to open one file; the route itself adds ``mode`` and ``offset`` to its own links.
+    The rendered diff appends ``path``, an image's Git path at the head in its wire form
+    (:mod:`.pull_rendered_diff`).
     """
 
     query = urlencode({"number": number, "left": base, "right": head, "store": store})
-    return f"{SNAPSHOT_ROUTE}?{query}"
+    return f"{IMAGE_ROUTE}?{query}"
 
 
 def rendered_route(number: int, base: str, head: str, *, store: str) -> str:
@@ -455,7 +455,7 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
             refreshing=False,
             last_refresh=None,
             comparison_route=None,
-            snapshot_route=None,
+            image_route=None,
             rendered_route=None,
             record=None,
             core_preview=None,
@@ -484,13 +484,13 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
     if not has_store and isinstance(record, PullRecord) and dumped is not None:
         dumped = _without_store(dumped)
         record = record.model_copy(update={"comparison": None})
-    route = snapshots = rendered = None
+    route = images = rendered = None
     if isinstance(record, PullRecord) and served.git_dir is not None:
         store = store_tag(served.git_dir)
         route = comparison_route(record, store=store)
         if record.comparison is not None:
             ends = (record.number, record.comparison.base, record.comparison.head)
-            snapshots = snapshot_route(*ends, store=store)
+            images = image_route(*ends, store=store)
             rendered = rendered_route(*ends, store=store)
     preview = view.core_preview
     if view.core_admission is not None and not view.core_admission.catalog_matches(view.number):
@@ -532,7 +532,7 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
             view.kept.outcome() if view.kept is not None else served.last_refresh(view.number)
         ),
         comparison_route=route,
-        snapshot_route=snapshots,
+        image_route=images,
         rendered_route=rendered,
         record=dumped if isinstance(record, PullRecord) else None,
         core_preview=preview if not isinstance(record, PullRecord) else None,
@@ -906,9 +906,9 @@ def status_route(number: int) -> str:
 
 
 __all__ = [
+    "IMAGE_ROUTE",
     "NUMBER_REQUIRED",
     "PULL_ROUTE",
-    "SNAPSHOT_ROUTE",
     "VERIFIED_HEADER",
     "PullEnvelope",
     "PullHost",
@@ -921,6 +921,7 @@ __all__ = [
     "catalog_scanning",
     "comparison_route",
     "envelope_etag",
+    "image_route",
     "pull_answer",
     "pull_envelope",
     "pull_host",
@@ -931,7 +932,6 @@ __all__ = [
     "refresh_request",
     "rendered_route",
     "requested_number",
-    "snapshot_route",
     "start_refresh",
     "status_route",
     "verified_header",

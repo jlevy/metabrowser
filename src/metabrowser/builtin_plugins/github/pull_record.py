@@ -627,8 +627,8 @@ def write_pull_record(
     expectation, and neither is ``None``.
 
     *store_id* names the store a mirror computed *record*'s comparison in. The pair it
-    replaces and its own pair are kept in the bounded history the revision route admits
-    (:mod:`.pull_snapshot_cache`). Any write keeps only its own reader's pairs there, with
+    replaces and its own pair are kept in the bounded history the rendered diff and its
+    images admit (:mod:`.pull_snapshot_cache`). Any write keeps only its own reader's pairs there, with
     a store or without. A history that cannot be read or saved is left as it was and
     logged, and the record is still published.
 

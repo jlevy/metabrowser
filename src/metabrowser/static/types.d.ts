@@ -9,10 +9,14 @@ type MetabrowserRenderContext = {
     right: string;
     base_policy: "direct" | "merge_base";
     route?: string;
-    /** The route that opens a file at either end, which a page completes with a side and a path. */
-    snapshot_route?: string;
+    /** The route that serves an image of the head a rendered Markdown file shows, which a
+     *  page completes with a path. */
+    image_route?: string;
     /** The route that renders one changed Markdown file, which a page completes with its ID. */
     rendered_route?: string;
+    /** A pull request's Changes: its head ref when the comparison shows the pull request's
+     *  head, which View on branch opens, and null when it shows another commit. */
+    branch?: { ref: string } | null;
   };
   /** The owner of a selected comparison read, while its view is mounting. */
   comparisonSignal?: AbortSignal;
@@ -184,6 +188,20 @@ type MetabrowserViewSpec = {
     slot: HTMLElement,
     ctx: { raw: unknown; openFile: (path: string) => void },
   ) => Promise<{ dispose: () => void } | null>;
+  /**
+   * Switch the served pin through the page's one switch, which the diff view's controls
+   * share, for a page whose own controls switch it too, as a pull request's Browse code
+   * does. The diff view has one; what follows a switch is the caller's.
+   */
+  switchPin?: (
+    selection: { oid: string; under?: string; view?: string },
+    wanted?: () => boolean,
+  ) => Promise<
+    | { kind: "switched"; href: string | null }
+    | { kind: "busy" }
+    | { kind: "abandoned" }
+    | { kind: "refused"; message: string }
+  >;
 };
 
 type MetabrowserViewDescriptor = {
