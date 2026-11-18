@@ -1060,6 +1060,32 @@ def test_a_partial_clone_on_a_git_that_ends_at_a_missing_object_is_refused_by_na
             )
         assert client.get("/api/source/status").json()["subject"] == "attached_filesystem"
     assert _differing(before, snapshot(clone)) == []
+    # The other ways Git makes a remote a promisor (review C2 on #559): a
+    # partialCloneFilter alone, and promisor as an integer other than 0. Zero is false.
+    env = git_env(tmp_path)
+    for unset, setting, refuses in (
+        (("remote.origin.promisor", "extensions.partialclone"), (), True),
+        (("remote.origin.partialclonefilter",), ("remote.origin.promisor", "2"), True),
+        ((), ("remote.origin.promisor", "0"), False),
+    ):
+        for key in unset:
+            subprocess.run(
+                ["git", "-C", str(clone), "config", "--unset-all", key], env=env, check=False
+            )
+        if setting:
+            git(clone, "config", *setting)
+        before = snapshot(clone)
+        server._set_root_dir(clone)
+        with TestClient(server.app) as client:
+            answer = client.get("/api/source/refs")
+        if refuses:
+            assert (answer.status_code, answer.json()) == (
+                409,
+                {"error": said, "code": "unsupported_git"},
+            ), setting
+        else:
+            assert answer.status_code == 200, answer.text
+        assert _differing(before, snapshot(clone)) == []
     # The same Git reads a checkout that names no promisor remote.
     server._set_root_dir(checkout)
     with TestClient(server.app) as client:

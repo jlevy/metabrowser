@@ -210,12 +210,34 @@ def _admitted_git() -> tuple[int, int, int]:
         raise CheckoutGitUnsupportedError(exc.detected, exc.required) from None
 
 
+def _git_true(entry: bytes) -> bool:
+    """A ``config --null --get-regexp`` entry's value, read as ``git_config_bool`` reads it.
+
+    A key with no value is true; ``false``, ``no``, ``off``, and an empty value are false;
+    an integer is true unless it is zero, with Git's ``k``, ``m``, and ``g`` units. A value
+    Git would refuse counts as true, so it refuses the revision rather than serving it.
+    """
+
+    _key, separator, value = entry.partition(b"\n")
+    if not separator:
+        return True
+    word = value.strip().lower()
+    if word in {b"false", b"no", b"off", b""}:
+        return False
+    try:
+        return int(word.rstrip(b"kmg"), 0) != 0
+    except ValueError:
+        return True
+
+
 async def _names_a_promisor(target: RepositoryStoreTarget) -> bool:
     """Whether the repository's own configuration makes it a partial clone.
 
-    What Git lazily fetches from: ``extensions.partialClone`` or a ``remote.<name>.promisor``
-    that is true. Read under the store policy, as the revision's reads are, so the reader's
-    own configuration counts for neither.
+    What makes Git fetch lazily: ``extensions.partialClone``, a ``remote.<name>.promisor``
+    that is true, or a ``remote.<name>.partialCloneFilter`` alone, which makes its remote
+    a promisor too (``promisor_remote_config`` in ``promisor-remote.c``). Read under the
+    store policy, as the revision's reads are, so the reader's own configuration counts
+    for none of them.
     """
 
     try:
@@ -224,7 +246,7 @@ async def _names_a_promisor(target: RepositoryStoreTarget) -> bool:
                 "config",
                 "--null",
                 "--get-regexp",
-                r"^(extensions\.partialclone|remote\..*\.promisor)$",
+                r"^(extensions\.partialclone|remote\..*\.(promisor|partialclonefilter))$",
             ],
             target=target,
             policy=STORE_READ_POLICY,
@@ -235,10 +257,10 @@ async def _names_a_promisor(target: RepositoryStoreTarget) -> bool:
             return False
         raise
     for entry in raw.split(b"\0"):
-        key, _, value = entry.partition(b"\n")
-        if key == b"extensions.partialclone" and value:
+        key = entry.partition(b"\n")[0]
+        if key == b"extensions.partialclone" or key.endswith(b".partialclonefilter"):
             return True
-        if key.endswith(b".promisor") and value.lower() in {b"", b"true", b"yes", b"on", b"1"}:
+        if key.endswith(b".promisor") and _git_true(entry):
             return True
     return False
 
