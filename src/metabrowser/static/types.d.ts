@@ -1192,8 +1192,15 @@ type MarkdownBuiltins = {
      * KPress's own thresholds, and no built-in caller sets it (mb-2nqa tracks its
      * removal). `pagePath` is the path of the page that shows the document as its own
      * when that is not the document's, as a folder's Overview shows its README, with its
-     * table of contents: the document's fragments are places on that page. */
-    options?: { signal?: AbortSignal; includeToc?: "auto" | "on" | "off"; pagePath?: string },
+     * table of contents: the document's fragments are places on that page.
+     * `printIndicator: true` puts a print button in the corner of the document's
+     * card, for a host whose view prints the document itself; it is off unless asked. */
+    options?: {
+      signal?: AbortSignal;
+      includeToc?: "auto" | "on" | "off";
+      pagePath?: string;
+      printIndicator?: boolean;
+    },
   ) => DisposableHandle;
   renderSource: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
 };
@@ -2261,6 +2268,8 @@ type MetabrowserPluginHostRuntime = Readonly<{
   registerLoadMoreAction(name: string, action: () => unknown): void;
   /** Whether page code marked this element as a delegated control; see plugin-sdk.js. */
   isOwnedDelegate(element: Element | null | undefined): boolean;
+  /** Whether `ownDelegate` marked this very element, not a copy of its mark. */
+  ownsElement(element: Element | null | undefined): boolean;
   /** Keys still held from before static/plugin-shortcuts.js loaded; it empties this. */
   shortcutQueue: Set<MetabrowserQueuedShortcut>;
   configureAssets(
@@ -2852,13 +2861,19 @@ type MetabrowserKeyboardHelpRuntime = Readonly<{
     snapshot: ReadonlyArray<MetabrowserShortcutGroupPresentation>,
     invoke: (commandId: string, context: Record<string, unknown>) => boolean,
     append?: (container: HTMLElement, presentation: MetabrowserBindingPresentation) => void,
-    options?: { actions?: boolean; bindings?: "all" | "preferred"; limit?: number },
+    options?: {
+      actions?: boolean;
+      bindings?: "all" | "preferred";
+      lead?: HTMLElement;
+      limit?: number;
+    },
   ): void;
   renderHelpGroups(
     body: HTMLElement,
     snapshot: ReadonlyArray<MetabrowserShortcutGroupPresentation>,
     append?: (container: HTMLElement, presentation: MetabrowserBindingPresentation) => void,
   ): void;
+  stripItemsThatFit(widths: ReadonlyArray<number>, available: number, gap: number): number;
 }>;
 
 type MetabrowserTreeMutationSnapshot = Readonly<{

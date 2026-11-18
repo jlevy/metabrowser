@@ -2554,7 +2554,9 @@ html.theme-anim .menu {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  /* One row, always: keyboard-help.js drops the items that do not fit, from the end,
+     and never the lead, Shift. */
+  flex-wrap: nowrap;
   gap: 6px;
   padding: 6px 12px;
   border-top: 1px solid var(--border);
@@ -2566,13 +2568,26 @@ html.theme-anim .menu {
   position: relative;
 }
 /* The server ships the strip empty and hidden, and keyboard-help.js fills it once
-   the shell's tools load; it always has Help then. Until that, it keeps one row's
+   the shell's tools load; it always has Shift then. Until that, it keeps one row's
    height, so the tree above it is the same height before and after: its border,
-   padding, a hint's padding, and a keycap's border and 1.5 lines. */
+   padding, a hint's padding, and a keycap's border and 1.5 lines.
+   Filled, it leads with Shift, Reveal keys, then Help and Quick Search, on that one
+   row: where they do not all fit, keyboard-help.js (`keepStripOnOneRow`) hides them
+   from the end, so Quick Search goes first, then Help, and Shift always shows. In
+   headless Chrome 152 on macOS, with the default font set, all three show in a pane
+   273px wide or wider, the default 300px among them, Shift and Help from 181px, and
+   Shift alone at the 180px minimum; with the system font set, Shift and Help from
+   198px and all three from 301px, so the default pane drops Quick Search there.
+   tests/test_shortcut_strip_chrome.py holds every width from 180 to 300px in both
+   font sets to the rule. Safari's widths are not yet measured. */
 .nav-shortcut-hints[hidden] {
   display: flex;
   visibility: hidden;
   min-height: calc(1px + 12px + 6px + 2px + 1.5em);
+}
+/* An item the row has no room for. Its own rule below would otherwise keep it drawn. */
+.nav-shortcut-hints > [hidden] {
+  display: none;
 }
 .nav-shortcut-action,
 .nav-shortcut-hint,
@@ -2584,6 +2599,9 @@ html.theme-anim .menu {
 .nav-shortcut-hint {
   gap: 4px;
   padding: 3px 0;
+  /* A label never breaks onto a second line inside its item: the row drops the item
+     instead, and the width measured is the one it is drawn at. */
+  white-space: nowrap;
 }
 /* A shortcut hint carries exactly two boxes: the strip that groups every
    shortcut behind one border, and the keycap that says "this is a key". A
@@ -4406,18 +4424,6 @@ a.tab-btn {
 .file-header > .folder-header-summary:not(:has(.tally-pending)) {
   align-self: baseline;
 }
-/* .file-header-icon (the print action) has no block of its own: it is
-   entirely the .icon-btn primitive. It sits beside the copy icon and,
-   across the header, the settings gear, so it must not grow chrome
-   that those do not have. */
-/* A view that cannot print keeps the button's slot, so switching views never
-   moves the header's size label beside it. Hidden, it is out of the tab order
-   and the accessibility tree all the same. */
-.file-header-print[hidden] {
-  display: inline-flex;
-  visibility: hidden;
-}
-
 /* A badge is one word or two on one line, and centers its capitals, not
    the font's line box. Centered by its line box, 12px Source Sans 3
    left 3.14px above its capitals and 5px below its baseline in a 16px
@@ -6284,7 +6290,6 @@ pre.code-block.metabrowser-source-lines > code {
   .file-header,
   .tab-bar,
   .content-copy-btn,
-  .file-header-print,
   .settings-toggle,
   .custom-tooltip,
   /* Covers Quick File too: its overlay is a .modal-overlay. */

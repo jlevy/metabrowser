@@ -585,6 +585,159 @@ async function markdownOwnership() {
   }
 }
 
+// A refused text on the mounted page (review A of #527, A6, A8, and review D's D8): the
+// production `refusedText` puts one notice directly after the text's plain text, a second
+// refusal adds none, a text element rebuilt for the same text says it again, and a render
+// that arrives later takes the notice away with the plain text. Returns what each step
+// shows, as words.
+async function textRefusal() {
+  const page = await importPage(
+    `${pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js")).href}?text-refusal`,
+  );
+  const timers = new Map();
+  globalThis.document = {
+    visibilityState: "visible",
+    addEventListener() {},
+    removeEventListener() {},
+    createElement: (tag) => new Element(tag),
+    importNode: () => new Element("svg"),
+  };
+  globalThis.window = {
+    location: { pathname: "/pull/7" },
+    setTimeout(callback, delay) {
+      const id = Symbol();
+      timers.set(id, { callback, delay });
+      return id;
+    },
+    clearTimeout: (id) => timers.delete(id),
+  };
+  const inert = {
+    sanitizeHtml: (html) => html,
+    kpressProse(html) {
+      const node = document.createElement("p");
+      node.textContent = html;
+      return node;
+    },
+  };
+  const record = (revision, text) => {
+    const answer = structuredClone(recorded.current);
+    answer.body.record_revision = revision.repeat(64);
+    answer.body.record.pull.body = text;
+    answer.body.record.issue_comments = [];
+    answer.body.record.reviews = [];
+    answer.body.record.review_comments = [];
+    answer.body.record.comparison = null;
+    answer.body.record.unavailable.comparison = "no_store";
+    return answer;
+  };
+  const first = record("a", "plain A");
+  let current = first;
+  const refusal = (code, status) => ({
+    status,
+    body: {
+      code,
+      error: "refused",
+      deadline_ms: 5000,
+      remembered: false,
+      number: 7,
+      part: "body",
+    },
+  });
+  // What the description's Markdown answers next.
+  let markdown = refusal("render_deadline", 422);
+  globalThis.fetch = async (route) => {
+    const response = (status, body) => ({
+      status,
+      headers: { get: () => null },
+      json: async () => body,
+    });
+    if (route.startsWith("/api/plugin/github/pull-markdown")) {
+      return markdown === "waits"
+        ? new Promise(() => {})
+        : response(markdown.status, markdown.body);
+    }
+    return route.startsWith("/api/plugin/github/pull?")
+      ? response(200, current.body)
+      : { status: 304, headers: { get: () => null } };
+  };
+  const container = new Element("main");
+  const handle = page.mountPullPage(
+    container,
+    { number: 7, tab: "", reader: { initial: first, fetchAfterMs: 0 } },
+    {
+      perf,
+      ensureAsset: async () => {
+        window.MetabrowserInertHtml = inert;
+      },
+      loadKpressAssets: () => Promise.resolve(),
+      ...require("./sdk-ref-fixture.js").refHelpers(document),
+      formatAge: () => ({ label: "now", className: "age" }),
+      formatTimestamp: () => "now",
+      navigation: { href: () => "/view/", async open() {} },
+      sourceKind: () => "git_revision",
+      icons: { toggle: "" },
+    },
+  );
+  const poll = async () => {
+    const ready = [...timers.values()];
+    timers.clear();
+    for (const timer of ready) {
+      timer.callback();
+    }
+    await settle();
+  };
+  const body = () =>
+    [...container.descendants()].find((node) => node.getAttribute("data-part") === "body");
+  const steps = [];
+  let previous = null;
+  const look = (label) => {
+    const element = body();
+    const kids = element.children.filter((node) => typeof node !== "string");
+    const plain = kids.findIndex((node) => node.classes.has("github-pull-plain"));
+    const notices = kids.filter((node) => node.classes.has("github-pull-text-refused"));
+    const shows = plain >= 0 ? "plain" : `rendered ${element.textContent}`;
+    const notice =
+      notices.length === 0
+        ? "no notice"
+        : `${notices.length} notice${notices.length === 1 ? "" : "s"}` +
+          (plain >= 0 && kids[plain + 1] === notices[0] ? " right after it" : " elsewhere") +
+          (notices[0].getAttribute("role") === "status" ? ", a status" : "") +
+          `: ${notices[0].textContent}`;
+    const same = previous === null ? "" : previous === element ? ", same element" : ", new element";
+    previous = element;
+    steps.push(`${label}: ${shows}, ${notice}${same}`);
+  };
+  await settle();
+  // The first paint's bounded hold, if a refusal did not already end it.
+  await poll();
+  look("refused past the deadline");
+  // A record in another state paints the description anew, and its Markdown has not
+  // answered yet: the rebuilt text says why it is plain from what the page kept.
+  current = record("b", "plain A");
+  current.body.record.pull.state = "closed";
+  markdown = "waits";
+  await poll();
+  look("rebuilt for another state, its Markdown not yet answered");
+  current = record("c", "plain A");
+  markdown = refusal("renderer_unavailable", 503);
+  await poll();
+  look("a newer record, the same text refused again as unavailable");
+  current = record("d", "plain A");
+  markdown = {
+    status: 200,
+    body: {
+      fetched_at: current.body.fetched_at,
+      record_revision: current.body.record_revision,
+      html: "rendered A",
+      assets: {},
+    },
+  };
+  await poll();
+  look("a newer record whose Markdown renders");
+  handle.dispose();
+  return steps;
+}
+
 // Mount the page on a recorded answer, read nothing more from the server, and return what
 // it painted. `ageLabel` plays the age primitive's label for a time, so a test chooses
 // which ages read the same.
@@ -3173,6 +3326,7 @@ async function run() {
   const summaryBriefSteps = await summaryBrief(page);
   const coldHoldSteps = await coldHold(page);
   const tabKeySteps = await tabKeys(page);
+  const textRefusalSteps = await textRefusal();
   const switchUnavailableSteps = await switchUnavailable(page);
   for (const label of [
     "githubPull:decode",
@@ -3202,6 +3356,7 @@ async function run() {
     summaryBrief: summaryBriefSteps,
     coldHold: coldHoldSteps,
     tabKeys: tabKeySteps,
+    textRefusal: textRefusalSteps,
     switchUnavailable: switchUnavailableSteps,
   };
 }
