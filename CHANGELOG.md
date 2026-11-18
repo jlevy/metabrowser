@@ -11,7 +11,11 @@ All notable changes to Metabrowser are documented here.
   Clicking the title or number opens the pull request without showing its files;
   clicking anywhere on the third line, the one with the chevron, shows or hides them,
   and that line shows its own hover on the chevron.
-  The third line no longer takes focus of its own.
+  The third line no longer takes focus of its own, and screen readers no longer meet it
+  as a button inside the row: the row says whether its files are open, and is described
+  by the third line’s words.
+  Moving onto a pull request, or revealing one, scrolls all three of its lines into
+  view. Every key acts on the pull request with focus, even after a refresh of the list.
 
 - On a checkout of a repository on github.com, or a mirror of one, a file’s or a
   folder’s header ends in a small toggle of two marks: Metabrowser’s, gray, the view the

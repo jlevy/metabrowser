@@ -1040,14 +1040,19 @@ while the pointer is on the toggle’s line the chevron also stands on a `--bord
 in `--text` ink, as an icon button’s glyph does on a plain ground.
 The plate covers the chevron’s slot alone, so the line’s status inks keep the grounds
 their contrast is held on.
-The toggle’s line keeps its accessible name and `aria-expanded`, and `aria-controls`
-names what it opens.
+For assistive technology the toggle is the item’s, as it is for the keyboard.
+Where the line is the item, as a folder’s row is, the line carries `aria-expanded`.
+Where the item is a tree’s item holding the line, as a Pulls item is, its stop carries
+`aria-expanded` and owns what it opens, and the toggle’s line is hidden (`aria-hidden`):
+a tree’s item may own only items and groups, so a button inside it would make the tree
+invalid. The line’s words, hidden too, describe the item’s stop (`aria-describedby`).
 
 `tests/dom/github-pulls-row-lines-session.js` pins the rule for the Pulls item: a press
 on the chevron or the change line flips exactly that item and opens no page, a press on
 any other part changes no expansion, and only Space, Right, and Left change it from the
-keyboard. `tests/dom/github-pulls-row-lines-chrome.mjs` measures the two hovers and the
-real presses in Chrome.
+keyboard, each on the item with focus.
+`tests/dom/github-pulls-row-lines-chrome.mjs` measures the two hovers and the real
+presses in Chrome, and reads the line’s place in Chrome’s accessibility tree.
 
 ### Section Disclosure Headers
 
@@ -2423,8 +2428,8 @@ keyboard stop: its link, the first two lines, and its change line, the third, th
 request’s [brief change line](#brief-change-line), “21 A, 7 D, 15 M · +1,234 −567”, with
 no file total, after the registry’s chevron.
 The item holds the pull request’s changed-files tree, which hangs under it, is owned by
-the row’s link through `aria-owns` and controlled by the change line through
-`aria-controls`, and starts collapsed.
+the row’s link through `aria-owns`, whose `aria-expanded` alone says whether it is open,
+and starts collapsed.
 The change line is the line with the toggle, so clicking anywhere on it, the chevron or
 the line, toggles the tree and opens no page; clicking the title or the number’s line
 opens the page and expands nothing
@@ -2433,7 +2438,9 @@ there, or Space, Right, or Left on the item, keeps the row where it is, under th
 pointer or the focus, even above a row a reveal placed, whose place gives way to it.
 No row expands on its own: not when it opens, not when it is selected, and not on a
 key’s walk, so Up, Down, J, and K walk the pull requests and each row shows the size of
-its change. An address naming a changed file opens its owner’s tree if needed
+its change. A walk or a reveal brings the whole item into view, its three lines and the
+focus ring round them, clear of the sticky filters, not only its link’s two lines.
+An address naming a changed file opens its owner’s tree if needed
 ([Navigation Reveals the Item](#navigation-reveals-the-item)). Moving to another PR
 closes a tree opened only for that address; trees the reader opened stay open.
 
@@ -2456,10 +2463,11 @@ arrives.
 The line stays one line at every pane width: its statuses and their dot give way
 first, whole, never cut short with an ellipsis, so a narrow row shows its totals alone;
 where even its totals have no room the whole line goes.
-The change line’s accessible name says it in words, “Changed files: 21 added, 7 deleted,
-15 modified; 1,234 lines added, 567 deleted”, and only “Changed files” while there is
-none. It is a button that is never focused, so the row’s link, the item’s one stop,
-describes itself by it (`aria-describedby`).
+The change line is the pointer’s alone: never focused, and hidden from assistive
+technology (`aria-hidden`), since a tree’s item may own only items and groups.
+Its words, hidden too, say it, “Changed files: 21 added, 7 deleted, 15 modified; 1,234
+lines added, 567 deleted”, and only “Changed files” while there is none, and the row’s
+link, the item’s one stop, describes itself by them (`aria-describedby`).
 
 A pull request’s title is always bold in normal text ink, wherever it appears: the
 page’s heading, a Pulls row, the page’s stack menu, and a search result.
@@ -2660,7 +2668,7 @@ holds the one helper and the one rule in source.
 | Tab | `.tab-btn` in the nav’s `.tab-bar` | [The Tab Bar](#the-tab-bar) |
 | Row | The item, `.github-pulls-entry`, around the link and its change line: the link’s `min-height: --ui-row-height`; one `--hover-bg` under all three lines, the -2px focus ring round them, and `--highlight-bg` when current, with the 2px `--highlight-bar` down the link’s and the change line’s edge, as on a Files row (`.tree-item`) | [One Row Contract](#one-chevron-one-row-contract) |
 | State icon | The tree’s icon slot, `--tree-icon-slot`, around `--icon-glyph`, on the row’s inset, on the first line before the title | [One Glyph Size](#one-glyph-size) |
-| Change line | The third line, `.github-pulls-change`, one `--ui-row-height` less 4 px: the registry’s chevron in the row’s one slot, under the state icon, then the [brief change line](#brief-change-line) in the text column, under the title and the number’s line, to the row’s end, or the pending placeholder (`.tally-pending` in `.mb-delayed-loading`) while it is read; no ground or stop of its own: under the pointer its chevron stands on a `--border` plate in `--text` ink, the inner target’s hover inside the item’s | The line with the toggle, so a click on it toggles the changed files ([A Click on the Toggle’s Line Toggles](#a-click-on-the-toggles-line-toggles)) |
+| Change line | The third line, `.github-pulls-change`, one `--ui-row-height` less 4 px: the registry’s chevron in the row’s one slot, under the state icon, then the [brief change line](#brief-change-line) in the text column, under the title and the number’s line, to the row’s end, or the pending placeholder (`.tally-pending` in `.mb-delayed-loading`) while it is read; no ground or stop of its own, and hidden from assistive technology, its words describing the link: under the pointer its chevron stands on a `--border` plate in `--text` ink, the inner target’s hover inside the item’s | The line with the toggle, so a click on it toggles the changed files ([A Click on the Toggle’s Line Toggles](#a-click-on-the-toggles-line-toggles)) |
 | Title | `--nav-font-size`, `--weight-bold` in `--text`, set on the title itself; the first line, alone, from the text column to the row’s end, over the age, cut there with an ellipsis, the whole of it on the page it opens | It is the row’s identity, and a pull request’s title is bold wherever it appears, with a conventional-commit prefix regular ([Titles](#titles)) |
 | Updated time | `metabrowser.formatAge`, at the second line’s end, on the number’s baseline; the page gives the exact time | [Age](#age), with no tooltip ([Tooltips Add Information](#tooltips-add-information)) |
 | PR number | `--nav-font-size`, text ink, bold (`--pull-number-weight`) | Shares the title’s primary navigation size, and names the pull request ([Pull Request Numbers](#pull-request-numbers)) |
@@ -3310,6 +3318,8 @@ it passed. The collections differ in the rest:
   focused
   ([A Click on the Toggle’s Line Toggles](#a-click-on-the-toggles-line-toggles)). Up,
   Down, `J`, and `K` walk whole pull requests, past any open files, and expand nothing.
+  Every key acts on the item with focus, even after a poll or a reveal has moved the
+  list’s Tab stop to the open pull request.
   Its changed files are a folder’s children: Right opens them, or, open, goes to the
   first; Left closes them, or, closed, goes to the stack’s row it is under; and Space
   opens or closes them in place, and is consumed, so the list does not scroll from under
