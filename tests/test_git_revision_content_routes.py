@@ -22,6 +22,7 @@ import subprocess
 import threading
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from dataclasses import fields
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +32,7 @@ from httpx2 import ASGITransport, AsyncClient
 from metabrowser import frontmatter_yaml, jsonl_view, kpress_adapter
 from metabrowser.capabilities import Capabilities, set_capabilities
 from metabrowser.diff.format import validate_document
+from metabrowser.diff.markdown_projection_worker import InertRender, ProjectionWorker
 from metabrowser.git.content_routes import split_git_container_wire
 from metabrowser.git.process import repository_store_target
 from metabrowser.git.tree_source import (
@@ -479,18 +481,30 @@ def test_git_tree_matches_logical_extensions_not_name_suffix(tmp_path: Path) -> 
     asyncio.run(_run())
 
 
+def _capture_pin_renders(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    """The fields of the last render a pin asked the Markdown child for.
+
+    A pin always runs under the untrusted profile (``capabilities.capabilities_for``),
+    so its document renders in the child (``InertRender``), never through
+    ``kpress_adapter.render_kpress_view`` in the server.
+    """
+
+    seen: dict[str, Any] = {}
+    original = ProjectionWorker.render_inert
+
+    async def _capture(worker: ProjectionWorker, request: InertRender) -> dict[str, Any]:
+        seen.update({field.name: getattr(request, field.name) for field in fields(request)})
+        return await original(worker, request)
+
+    monkeypatch.setattr(ProjectionWorker, "render_inert", _capture)
+    return seen
+
+
 def test_git_kpress_render_honors_gitpath_without_mtime(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     store, commit = _build_store(tmp_path)
-    seen: dict[str, Any] = {}
-    original = kpress_adapter.render_kpress_view
-
-    def _capture(**kwargs: Any) -> Any:
-        seen.update(kwargs)
-        return original(**kwargs)
-
-    monkeypatch.setattr(kpress_adapter, "render_kpress_view", _capture)
+    seen = _capture_pin_renders(monkeypatch)
 
     async def _run() -> None:
         async with _pinned_client(store, commit) as (client, _subject):
@@ -550,14 +564,7 @@ def test_git_file_and_kpress_surface_markdown_frontmatter(
     _git(work, "commit", "-qm", "frontmatter")
     commit = _git(work, "rev-parse", "HEAD").decode().strip()
     _git(tmp_path, "clone", "--bare", "--template=", str(work), str(store), env_root=tmp_path)
-    seen: dict[str, Any] = {}
-    original = kpress_adapter.render_kpress_view
-
-    def _capture(**kwargs: Any) -> Any:
-        seen.update(kwargs)
-        return original(**kwargs)
-
-    monkeypatch.setattr(kpress_adapter, "render_kpress_view", _capture)
+    seen = _capture_pin_renders(monkeypatch)
 
     async def _run() -> None:
         async with _pinned_client(store, commit) as (client, _subject):
@@ -646,14 +653,7 @@ def test_git_pin_answers_a_frontmatter_alias_bomb_as_text_parsed_off_the_loop(
         return real_load(*args, **kwargs)
 
     monkeypatch.setattr(frontmatter_yaml, "_load", recording_load)
-    seen: dict[str, Any] = {}
-    original = kpress_adapter.render_kpress_view
-
-    def _capture(**kwargs: Any) -> Any:
-        seen.update(kwargs)
-        return original(**kwargs)
-
-    monkeypatch.setattr(kpress_adapter, "render_kpress_view", _capture)
+    seen = _capture_pin_renders(monkeypatch)
 
     async def _run() -> None:
         loop_thread = threading.get_ident()
