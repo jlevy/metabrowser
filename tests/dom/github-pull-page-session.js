@@ -286,6 +286,9 @@ function createPage(runtime, options) {
     },
     now: () => clock.now,
     isVisible: () => visible,
+    // A hold's lift as the page says it, in en-US and UTC so the golden is the same on every
+    // machine (`holdLiftText`).
+    formatHold: (liftMs, nowMs) => runtime.holdLiftText(liftMs, nowMs, "en-US", "UTC"),
     render(model) {
       paints.push(model);
     },
@@ -1038,7 +1041,7 @@ async function main() {
   held.clock.now = refusedAt + 10_000;
   held.server.pull = { status: 200, etag: '"rate limited"', body: limited };
   const holding = await held.step("GitHub's rate limit refused it", async () => held.fire());
-  const named = new Date(refusedAt + 60_000).toISOString().replace(".000Z", "Z");
+  const named = runtime.holdLiftText(refusedAt + 60_000, held.clock.now, "en-US", "UTC");
   assert(
     holding.paint.canRefresh === false &&
       holding.paint.failure === `GitHub rate limit · next check at ${named}`,
