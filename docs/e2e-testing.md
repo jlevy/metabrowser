@@ -300,6 +300,8 @@ Strict mode is off on a developer machine, which can add these:
   reads the face documents and chrome prose are drawn in under each reading font and
   font set; `tests/test_raw_profile_cache_chrome.py`, which follows a `/raw` answer
   Chrome kept under the trusted profile after the folder is served `--untrusted`;
+  `tests/test_overview_readme_toc_chrome.py`, which measures a folder Overview’s README
+  table of contents against the same README opened as a file;
   `tests/test_diff_markdown_fold_chrome.py`, which measures a rendered Markdown diff’s
   fold of unchanged blocks closed, open, and under the pointer, and its quote and code
   against a document’s in the light and the dark theme;
@@ -329,6 +331,16 @@ shorter to do any good: a child process’s `timeout`, or a polling deadline, is
 own `pytest.mark.timeout` with the measurement that forced it written beside it.
 A test in `tests/test_suite_gates.py` fails on a longer bound in a module that has not
 raised its budget.
+
+### Held Steps
+
+A stub held until the test opens a `threading.Event` or `threading.Semaphore` waits on
+its event loop with `held_until` from `tests/loop_gate.py`, never in a worker thread.
+So does a test’s own coroutine that waits for a signal from work in the pool.
+A wait handed to `asyncio.to_thread` keeps a pool thread for the whole hold, and the
+server’s next step can queue behind it until the bound; `tests/loop_gate.py` says how.
+A test in `tests/test_suite_gates.py` fails on a gate’s `wait` or `acquire` passed to
+`asyncio.to_thread` or `run_in_executor`.
 
 ## Measuring the Suite
 
