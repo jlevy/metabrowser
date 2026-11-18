@@ -49,8 +49,11 @@ server names in ``PIN_STARTUP_SCRIPTS``; ``tests/test_serve_pin.py`` holds a rea
 shell to that list). The session runs on the pull-request shell too, so a
 script-initiated request there fails the check as well. A checkout whose ``origin`` is on
 github.com carries the view header's GitHub toggle (``static/github-page.js``) inline, in
-its HTML rather than as a script it requests, so the gate's count never sees it; the
-summary reports those inline bytes beside the budget too, from that checkout's shell.
+its HTML rather than as a script it requests, so the gate's count never sees it. The
+summary reports how much more the application sends for that checkout's shell than for
+a plain folder's beside the budget too: the toggle, the repository context, the Git tabs,
+and the larger bundle manifest they need, all of which a browser receives before it can
+paint.
 
 **The limits** are read from the budget file. There is no second copy here to drift.
 
@@ -63,7 +66,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import re
 import shutil
 import subprocess
 import sys
@@ -207,15 +209,15 @@ def render_shells(*addresses: str, github: bool = False) -> list[str]:
         return asyncio.run(answer())
 
 
-_INLINE_SCRIPT = re.compile(r"<script>(.*?)</script>", re.S)
+def shell_growth_bytes(html: str, beside: str) -> int:
+    """How many more bytes the application sends for the shell *html* than for *beside*.
 
+    Each is the whole page as sent, compressed as the middleware compresses it. The check
+    renders each shell for a temporary folder whose name is random, so between runs the
+    figure can move by a byte or two (measured 2026-11-18: 3,132 to 3,135 in six runs).
+    """
 
-def inline_script_bytes(html: str, beside: str) -> int:
-    """The sent bytes of *html*'s inline scripts that *beside*, a folder's shell, lacks."""
-
-    present = set(_INLINE_SCRIPT.findall(beside))
-    added = [body for body in _INLINE_SCRIPT.findall(html) if body not in present]
-    return sent_body_bytes("".join(added).encode("utf-8")) if added else 0
+    return sent_body_bytes(html.encode("utf-8")) - sent_body_bytes(beside.encode("utf-8"))
 
 
 def render_folder_shell() -> str:
@@ -437,11 +439,11 @@ def main() -> int:
         )
     # A github.com checkout's shell carries the GitHub toggle inline, in its HTML.
     github_html = render_shells(FOLDER_ADDRESS, github=True)[0]
-    inline = inline_script_bytes(github_html, folder_html)
-    spare = limits.transfer_bytes - total - inline
+    growth = shell_growth_bytes(github_html, folder_html)
+    spare = limits.transfer_bytes - total - growth
     print(
-        f"  a github.com checkout adds {inline:,} bytes of inline script (its repository context and github-page.js): "
-        f"{total + inline:,} bytes "
+        f"  a github.com checkout's shell is {growth:,} bytes larger as sent, "
+        f"github-page.js inline among them: {total + growth:,} bytes "
         f"({f'{spare:,} bytes under' if spare >= 0 else f'{-spare:,} bytes over'}; not gated)"
     )
     if not found:

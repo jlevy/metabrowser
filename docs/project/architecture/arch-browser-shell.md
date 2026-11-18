@@ -218,9 +218,9 @@ show it.
   `_github_page_script` in `server.py`, each read from disk once).
   A plain folder pays nothing for either, but a page that has one pays its bytes in its
   HTML, outside the startup-script gate’s count of requested scripts, so
-  `devtools/check_startup_scripts.py` reports a github.com checkout’s inline bytes
-  beside the budget without gating them.
-  The toggle’s marks are masks in `styles.css`, which every page loads.
+  `devtools/check_startup_scripts.py` reports how much more the application sends for a
+  github.com checkout’s shell than for a plain folder’s, beside the budget, without
+  gating it. The toggle’s marks are masks in `styles.css`, which every page loads.
 
 Data follows the same rule: a bulk payload one surface reads is on demand.
 A pull request’s page prepares the initial Changes comparison, which its header’s Diff
