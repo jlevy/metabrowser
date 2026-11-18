@@ -131,8 +131,9 @@ async def pull_file_for_anchor(
         )
     return PullRequestFile(
         None,
-        f"pull request {number}'s changed files are not known here: no list of them is "
-        "cached, and the store cannot list its comparison in full (files_unknown)",
+        f"pull request {number}'s changed files are not known offline: no list of them is "
+        "cached, and no cached record names a comparison the store can list in full "
+        "(files_unknown)",
     )
 
 
