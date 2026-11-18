@@ -322,8 +322,11 @@ const READ = `(() => {
         (line !== null &&
           statuses.getBoundingClientRect().top < line.getBoundingClientRect().bottom - 0.5),
       text: line?.textContent ?? null, nodes: line?.childNodes.length ?? null,
-      name: change?.getAttribute("aria-label") ?? null,
-      expanded: change?.getAttribute("aria-expanded") ?? null,
+      // The change line is the pointer's alone, hidden from assistive technology; its words,
+      // hidden too, describe the row, which alone says whether its files are open.
+      hidden: change?.getAttribute("aria-hidden") ?? null,
+      words: document.getElementById(row.getAttribute("aria-describedby") ?? "")?.textContent ?? null,
+      expanded: row.getAttribute("aria-expanded"),
       files: box(item.querySelector(".github-pull-files")),
     };
   }
@@ -517,6 +520,29 @@ async function main() {
     return true;
   };
   const pause = (ms) => browser.evaluate(`new Promise((resolve) => setTimeout(resolve, ${ms}))`);
+  /** An element's node in Chrome's accessibility tree, as assistive technology reads it. */
+  const axOf = async (selector) => {
+    const { result: handle } = await browser.send("Runtime.evaluate", {
+      expression: `document.querySelector(${JSON.stringify(selector)})`,
+    });
+    if (!handle?.objectId) {
+      return null;
+    }
+    const { nodes } = await browser.send("Accessibility.getPartialAXTree", {
+      objectId: handle.objectId,
+      fetchRelatives: false,
+    });
+    const node = nodes?.[0];
+    return node === undefined
+      ? null
+      : {
+          role: node.role?.value ?? null,
+          name: node.name?.value ?? null,
+          description: node.description?.value ?? null,
+          ignored: node.ignored === true,
+          reasons: node.ignoredReasons?.map((reason) => reason.name) ?? [],
+        };
+  };
   const key = async (name, code, keyCode) => {
     for (const type of ["keyDown", "keyUp"]) {
       await browser.send("Input.dispatchKeyEvent", {
@@ -657,9 +683,9 @@ async function main() {
               JSON.stringify({ nodes: now.nodes, text: now.text }),
             );
             check(
-              `${at}: #${number}'s change line is named for its files alone`,
-              now.name === "Changed files",
-              now.name,
+              `${at}: #${number}'s change line is hidden, and its words describe its row for its files alone`,
+              now.hidden === "true" && now.words === "Changed files",
+              JSON.stringify({ hidden: now.hidden, words: now.words }),
             );
             continue;
           }
@@ -727,9 +753,9 @@ async function main() {
           `${JSON.stringify(now.text)} ${JSON.stringify(inks.text)}`,
         );
         check(
-          `${at}: #106's change line is named in words`,
-          now.name === `Changed files: ${inks.label}`,
-          now.name,
+          `${at}: #106's row is described by its change line's words`,
+          now.hidden === "true" && now.words === `Changed files: ${inks.label}`,
+          JSON.stringify({ hidden: now.hidden, words: now.words }),
         );
         if (measured[at][106] !== "dropped") {
           for (const [part, ink] of Object.entries(inks.reference)) {
@@ -769,7 +795,23 @@ async function main() {
               again.rows[104]?.nodes === 0,
             JSON.stringify(again.rows[106]?.text),
           );
+          // As Chrome computes it for assistive technology: the row is described by its line's
+          // words, hidden as they are, and the line itself is no node of the tree, whose items'
+          // children are only rows and groups.
+          await browser.send("Accessibility.enable");
+          const row106 = await axOf('a.github-pulls-row[data-number="106"]');
+          const line106 = await axOf('.github-pulls-change[data-number="106"]');
+          await browser.send("Accessibility.disable");
+          check(
+            `${at}: #106's row is described by its line's words, and the line is hidden from the tree`,
+            row106?.role === "treeitem" &&
+              row106.description === `Changed files: ${inks.label}` &&
+              line106?.ignored === true &&
+              (line106.reasons ?? []).some((reason) => reason.startsWith("ariaHidden")),
+            JSON.stringify({ row106, line106 }),
+          );
           measured[at].interaction = await interact(at, tokens);
+          measured[at].inView = await walkInView(at);
         }
         lap(`${at}: #106 ${measured[at][106]}, #105 ${measured[at][105]}`);
       }
@@ -899,7 +941,7 @@ async function main() {
       const files = item?.querySelector(".github-pull-files");
       const box = (el) => el ? el.getBoundingClientRect().toJSON() : null;
       return {
-        expanded: change?.getAttribute("aria-expanded") ?? null,
+        expanded: item?.querySelector("a.github-pulls-row")?.getAttribute("aria-expanded") ?? null,
         turned: change?.querySelector(".toggle-chevron") ? getComputedStyle(change.querySelector(".toggle-chevron")).transform : null,
         files: files && files.isConnected && !files.hidden && files.getBoundingClientRect().height > 0 ? box(files) : null,
         change: box(change), opened: [...window.__opened],
@@ -982,9 +1024,9 @@ async function main() {
     ]) {
       await browser.evaluate(`window.__panel.setCurrent(105, null, { again: true }), true`);
       await frames();
-      // Focus arrives on #106 as a reader brings it there, so it is the item the keys act on:
-      // the reveal made #105 the list's stop, and a press on #106 left focus on its row.
-      await browser.evaluate(`document.activeElement?.blur(), ${ROW106}.focus(), true`);
+      // The reveal made #105 the list's Tab stop, and the press on #106 left focus on its row:
+      // the key acts on #106, the item with focus, not on the Tab stop.
+      await browser.evaluate(`${ROW106}.focus(), true`);
       const before = await browser.evaluate(`${CHANGE106}.getBoundingClientRect().top`);
       await browser.evaluate(`window.__panel.${handler}(), true`);
       await pause(250);
@@ -1000,15 +1042,101 @@ async function main() {
       const moved = {
         before,
         after: await browser.evaluate(`${CHANGE106}.getBoundingClientRect().top`),
-        expanded: await browser.evaluate(`${CHANGE106}.getAttribute("aria-expanded")`),
+        expanded: await browser.evaluate(`${ROW106}.getAttribute("aria-expanded")`),
+        focused: await browser.evaluate(`document.activeElement === ${ROW106}`),
       };
       result[key] = moved;
       check(
         `${at}: ${key} on the item ${want === "true" ? "opens" : "closes"} the files and leaves it where it was, over a revealed row`,
-        moved.expanded === want && Math.abs(moved.after - moved.before) <= TOLERANCE_PX,
+        moved.expanded === want &&
+          moved.focused &&
+          Math.abs(moved.after - moved.before) <= TOLERANCE_PX,
         JSON.stringify(moved),
       );
     }
+    return result;
+  }
+
+  /**
+   * A walk and a reveal bring a pull request's whole item into view: its three lines and the
+   * focus ring round them, not only its link's two lines (`itemElement` in pulls-panel.js).
+   */
+  async function walkInView(at) {
+    const result = {};
+    // In the page: the pane's view under its sticky filters, the item just below its fold and
+    // the row before it, and where each is.
+    const place = (numbers) =>
+      browser.evaluate(`(() => {
+        const pane = document.getElementById("pane");
+        const box = pane.getBoundingClientRect();
+        const filters = pane.querySelector(".github-pulls-filters");
+        const view = {
+          top: filters ? Math.max(box.top, filters.getBoundingClientRect().bottom) : box.top,
+          bottom: box.top + pane.clientHeight,
+        };
+        const rows = [...pane.querySelectorAll('.github-pulls-list [role="treeitem"]')];
+        const zoneOf = (row) => row.matches("a.github-pulls-row") ? row.parentElement : row;
+        const numbers = ${JSON.stringify(numbers)} ?? (() => {
+          const below = rows.findIndex((row) => zoneOf(row).getBoundingClientRect().bottom > view.bottom);
+          return below > 0 && rows[below].matches("a.github-pulls-row[data-number]")
+            ? [rows[below - 1].dataset.number ?? rows[below - 1].dataset.stack, rows[below].dataset.number]
+            : null;
+        })();
+        if (numbers === null) return { view, numbers: null };
+        const [above, below] = numbers.map((number) =>
+          pane.querySelector('a.github-pulls-row[data-number="' + number + '"]') ??
+          pane.querySelector('.github-pulls-stack-row[data-stack="' + number + '"]'));
+        const zone = below.parentElement;
+        const where = (el) => el ? { top: el.getBoundingClientRect().top, bottom: el.getBoundingClientRect().bottom } : null;
+        return {
+          view, numbers, above: where(zoneOf(above)), zone: where(zone),
+          change: where(zone.querySelector(":scope > .github-pulls-change")),
+          link: where(below), focused: document.activeElement === below,
+        };
+      })()`);
+    const whole = (seen) =>
+      seen.zone !== null &&
+      seen.change !== null &&
+      seen.zone.top >= seen.view.top - TOLERANCE_PX &&
+      seen.zone.bottom <= seen.view.bottom + TOLERANCE_PX &&
+      seen.change.bottom <= seen.view.bottom + TOLERANCE_PX;
+    await browser.evaluate(`document.getElementById("pane").scrollTop = 0, true`);
+    await frames();
+    result.before = await place(null);
+    check(
+      `${at}: an item lies just below the pane's fold, its change line out of view`,
+      result.before.numbers !== null &&
+        result.before.above.bottom <= result.before.view.bottom + TOLERANCE_PX &&
+        result.before.change.bottom > result.before.view.bottom + TOLERANCE_PX,
+      JSON.stringify(result.before),
+    );
+    if (result.before.numbers === null) {
+      return result;
+    }
+    const [above, below] = result.before.numbers;
+    // Down from the row above the fold, as a reader walks: the handle's `move`, which the
+    // shell's key routes to.
+    await browser.evaluate(
+      `(document.querySelector('a.github-pulls-row[data-number="${above}"]') ?? document.querySelector('.github-pulls-stack-row[data-stack="${above}"]')).focus(), window.__panel.move(1), true`,
+    );
+    await frames();
+    result.down = await place(result.before.numbers);
+    check(
+      `${at}: Down onto the item just below the fold brings all of it into view, its change line too`,
+      result.down.focused && whole(result.down),
+      JSON.stringify({ below, down: result.down }),
+    );
+    // A reveal of that item, the pane's page arriving at it, brings it whole too.
+    await browser.evaluate(`document.getElementById("pane").scrollTop = 0, true`);
+    await frames();
+    await browser.evaluate(`window.__panel.setCurrent(${below}, null, { again: true }), true`);
+    await frames();
+    result.reveal = await place(result.before.numbers);
+    check(
+      `${at}: a reveal of the item just below the fold brings all of it into view`,
+      whole(result.reveal),
+      JSON.stringify({ below, reveal: result.reveal }),
+    );
     return result;
   }
 

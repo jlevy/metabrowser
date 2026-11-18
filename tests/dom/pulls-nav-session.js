@@ -1023,13 +1023,13 @@ function twoTreesPage() {
     });
   const pulls = [3900, 3899, 3898].map(pullRow);
   // Each row's third line, its change line, under it in the item's one zone: the line that
-  // carries the toggle, a button that is no stop of the tree's, so Space on the row is the
-  // keyboard's way to its files.
+  // carries the toggle, the pointer's alone. It is no stop of the tree's and hidden from
+  // assistive technology, so Space on the row is the keyboard's way to its files, and the
+  // row's `aria-expanded` is their one state; the line only turns its chevron.
   const changeLines = [3900, 3899, 3898].map((number) =>
     make("div", {
       class: "github-pulls-change disclosure-toggle collapsed",
-      role: "button",
-      "aria-expanded": "false",
+      "aria-hidden": "true",
       "data-number": String(number),
       "data-tree-id": `#${number}'s change line`,
     }),
@@ -1185,7 +1185,8 @@ function twoTreesPage() {
               const line = changeLines.find((item) => Number(item.dataset.number) === number);
               const expanded = row.getAttribute("aria-expanded") !== "true";
               row.setAttribute("aria-expanded", String(expanded));
-              line.setAttribute("aria-expanded", String(expanded));
+              line.classList.toggle("expanded", expanded);
+              line.classList.toggle("collapsed", !expanded);
               log.push(`${expanded ? "expanded" : "collapsed"} #${number}'s changed files`);
               return true;
             },
@@ -1371,10 +1372,27 @@ async function twoTreesStory() {
     assert.equal(action["focus on"], page.named(firstPull), "Space keeps focus on the row");
   }
   assert.equal(nextPull.getAttribute("aria-expanded"), "false", "Space ignores the tab stop");
-  // The change line is no stop: no key reaches it, so focus never lands on it.
+  // The change line is no stop: no key reaches it, so focus never lands on it. Hidden from
+  // assistive technology, it is not one of the tree's children either.
   assert.ok(
     page.changeLines.every((line) => line.getAttribute("tabindex") === null),
     "the line that carries the toggle is no stop of the tree's",
+  );
+  assert.ok(
+    page.changeLines.every((line) => line.getAttribute("aria-hidden") === "true"),
+    "the line that carries the toggle is hidden from assistive technology",
+  );
+  assert.ok(
+    page.changeLines.every((line) => line.getAttribute("aria-expanded") === null),
+    "the row, not its change line, says whether its files are open",
+  );
+  assert.ok(
+    page.changeLines.every(
+      (line, index) =>
+        line.classList.contains("expanded") ===
+        (page.pulls[index].getAttribute("aria-expanded") === "true"),
+    ),
+    "each change line's chevron turns with its row's state",
   );
   // Grouped by stack, Space on a stack's row opens and closes the stack, by its number, and
   // a held Space does nothing more.

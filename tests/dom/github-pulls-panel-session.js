@@ -1009,7 +1009,9 @@ async function paintStory(panel, selection = false) {
         node.classList?.contains("github-pulls-change"),
       );
     const fileWindow = () => answers.findIndex((request) => request.route.includes("/pull-files?"));
-    const previewDisclosure = change(shown).getAttribute("aria-expanded");
+    // The row says whether its files are open: its change line is hidden from assistive
+    // technology, and only turns its chevron (mb-1z7j).
+    const previewDisclosure = row(shown).getAttribute("aria-expanded");
     if (!selection) {
       assert(previewDisclosure === "false", "a PR preview stays collapsed");
       assert(fileWindow() === -1, "a PR preview reads no changed-file metadata");
@@ -1158,7 +1160,7 @@ async function paintStory(panel, selection = false) {
       await settle();
       observations.leaving = selected(current);
       assert(
-        change(shown).getAttribute("aria-expanded") === "true",
+        row(shown).getAttribute("aria-expanded") === "true",
         "reader-expanded old tree remains open",
       );
       assert(oldAnchor.getAttribute("tabindex") === "0", "leaving keeps the old roving anchor");
@@ -1268,8 +1270,12 @@ async function paintStory(panel, selection = false) {
         JSON.stringify(classesOf(hostile.firstElementChild)) ===
           JSON.stringify(["github-pulls-row", "github-pulls-change"]) &&
         JSON.stringify(classesOf(change(hostile))) ===
-          JSON.stringify(["github-pulls-toggle", "github-pulls-change-line"]),
-      "one zone of three lines: the link, then under it the change line, the chevron and the line",
+          JSON.stringify([
+            "github-pulls-toggle",
+            "github-pulls-change-line",
+            "github-pulls-change-words",
+          ]),
+      "one zone of three lines: the link, then under it the change line, the chevron, the line, and its words, which describe the row",
     );
     assert(
       id.childNodes[0].classList.contains("github-pulls-place") &&
@@ -1345,7 +1351,7 @@ async function paintStory(panel, selection = false) {
       "a PR preview leaves its files expanded": previewDisclosure === "true",
       "Right on its row opens its cached changed files": filesRead,
       "they hang under its three lines as a group": shown.childNodes.map(described),
-      "its row owns them, and its change line controls them": [
+      "its row owns them, and its change line, hidden, only turns its chevron": [
         described(row(shown)),
         described(change(shown)),
       ],
@@ -1460,8 +1466,7 @@ async function paintStory(panel, selection = false) {
     const afterClosingAll = retained();
     assert(afterClosingAll === panel.MAX_HELD_TREES + 1, "closed trees must be bounded on close");
     assert(
-      row(many[0]).getAttribute("aria-owns") === null &&
-        change(many[0]).getAttribute("aria-controls") === null,
+      row(many[0]).getAttribute("aria-owns") === null,
       "the longest-closed tree must go first",
     );
     assert(row(shown).getAttribute("aria-owns") !== null, "the shown page's tree must remain");

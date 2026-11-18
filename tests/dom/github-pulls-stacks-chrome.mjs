@@ -869,7 +869,8 @@ try {
       return {
         focus: active === member ? "#7" : active?.className ?? null,
         expanded: member?.getAttribute("aria-expanded") ?? null,
-        lineExpanded: change?.getAttribute("aria-expanded") ?? null,
+        // The change line, hidden from assistive technology, only turns its chevron.
+        lineTurned: change?.classList.contains("expanded") ?? null,
         level: file.getAttribute("aria-level"),
         rowLevel: member?.getAttribute("aria-level") ?? null,
         indent: Math.round(start(file) - start(member)),
@@ -890,7 +891,7 @@ try {
       "a member's changed files are a tree level under its item, which Right opens with focus kept on its row, and Left closes them, then leaves for its stack",
       files.focus === "#7" &&
         files.expanded === "true" &&
-        files.lineExpanded === "true" &&
+        files.lineTurned === true &&
         files.rowLevel === "2" &&
         files.level === "3" &&
         // One tree level under the change line's chevron, which is under the state icon, in the
@@ -975,11 +976,14 @@ try {
         ]),
       JSON.stringify(walk),
     );
-    // Its change line was never focused, and mirrors its row's state.
+    // Its change line was never focused, is hidden from assistive technology, and turns its
+    // chevron with its row's state.
     check(
-      "a pull request's change line is never focused, and says its row's state",
+      "a pull request's change line is never focused, is hidden, and turns its chevron with its row's state",
       walk.every(([, focus]) => !String(focus).startsWith("line ")) &&
-        (await evaluate(`${LINE}?.getAttribute("aria-expanded") ?? null`)) === "true",
+        (await evaluate(
+          `[${LINE}?.getAttribute("aria-hidden"), ${LINE}?.classList.contains("expanded")].join()`,
+        )) === "true,true",
       JSON.stringify(walk),
     );
     // Closed again, from its row, for what follows.

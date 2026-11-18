@@ -1221,7 +1221,8 @@ const PULLS_ROWS = `async (rows, width) => {
     const toggle = h("span", { class: "github-pulls-toggle", "aria-hidden": "true" }, [chevron]);
     const line = h("span", { class: "github-pulls-change-line" });
     // As pulls-panel.js#buildRow draws a pull request's item, its three lines (mb-1z7j).
-    const change = h("div", { class: "github-pulls-change disclosure-toggle collapsed", role: "button", "aria-expanded": "false" }, [toggle, line]);
+    const words = h("span", { class: "github-pulls-change-words", hidden: "" });
+    const change = h("div", { class: "github-pulls-change disclosure-toggle collapsed", "aria-hidden": "true" }, [toggle, line, words]);
     const item = h("li", { class: "github-pulls-item", role: "none", "data-level": "2" }, [
       h("div", { class: "github-pulls-entry" }, [anchor, change]),
     ]);

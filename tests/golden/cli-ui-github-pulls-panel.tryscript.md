@@ -920,9 +920,9 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "div .github-pulls-entry",
       "div .tree-children.github-pull-files role=\"group\" id=\"github-pull-files-105\" aria-label=\"Changed files of #105: 2 files\""
     ],
-    "its row owns them, and its change line controls them": [
+    "its row owns them, and its change line, hidden, only turns its chevron": [
       "a .github-pulls-row.selected href=\"/pull/105\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"true\" aria-describedby=\"github-pull-change-105\" tabindex=\"0\" aria-current=\"page\" aria-selected=\"true\" aria-posinset=\"2\" aria-setsize=\"102\" aria-owns=\"github-pull-files-105\"",
-      "div .github-pulls-change.disclosure-toggle.expanded id=\"github-pull-change-105\" role=\"button\" aria-expanded=\"true\" aria-label=\"Changed files\" aria-controls=\"github-pull-files-105\""
+      "div .github-pulls-change.disclosure-toggle.expanded aria-hidden=\"true\""
     ],
     "a title written as markup is one text node": [
       {

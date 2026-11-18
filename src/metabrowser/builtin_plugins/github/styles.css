@@ -1108,7 +1108,11 @@
   cursor: pointer;
   -webkit-user-select: var(--toggle-user-select);
   user-select: var(--toggle-user-select);
-  /* The sticky filters do not cover a row brought into view. */
+}
+/* What a walk or a reveal brings into view is the whole item (pulls-panel.js, `itemElement`):
+   a pull request's three lines, or a stack's row. The sticky filters do not cover it. */
+.github-pulls-entry,
+.github-pulls-stack-row {
   scroll-margin-block-start: calc(var(--chip-height) + 12px);
 }
 /* One item, one ground (mb-1z7j): a pull request's three lines, its link and its change line,
@@ -1290,7 +1294,6 @@
   cursor: pointer;
   -webkit-user-select: var(--toggle-user-select);
   user-select: var(--toggle-user-select);
-  scroll-margin-block-start: calc(var(--chip-height) + 12px);
 }
 /* The current item's bar runs down its change line too. */
 .github-pulls-row.selected + .github-pulls-change {

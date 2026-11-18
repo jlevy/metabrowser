@@ -581,7 +581,7 @@ async function paint() {
   // The row's files open from its change line, which an arrow and a route leave closed.
   const changeFor = (number) =>
     items().find((item) => item.dataset.number === String(number))?.firstElementChild.childNodes[1];
-  assert.equal(changeFor(preview.number).getAttribute("aria-expanded"), "false");
+  assert.ok(changeFor(preview.number).classList.contains("collapsed"));
   assert.deepEqual(fileReads, [], "arrow and route selection read no changed-file metadata");
 
   // Which titles breathe ("Refreshing Content" in docs/design-system.md): those of the rows

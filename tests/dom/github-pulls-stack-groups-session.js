@@ -191,8 +191,17 @@ async function mountStory() {
     const changeOf = (row) =>
       row.parentNode.childNodes.find((node) => node.classList?.contains("github-pulls-change")) ??
       null;
-    const change = (number) =>
-      changeOf(drawnRows().find((row) => row.dataset.number === String(number)));
+    const pullRow = (number) => drawnRows().find((row) => row.dataset.number === String(number));
+    /** The line under a row: hidden from assistive technology, its chevron turned or not. */
+    const saidLine = (line, name) =>
+      [
+        name,
+        line.getAttribute("aria-hidden") === "true" ? "hidden" : "exposed",
+        `chevron ${line.classList.contains("expanded") ? "expanded" : "collapsed"}`,
+        document.activeElement === line ? "focused" : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
     /** One element as drawn: its name, role, level, place, expansion, Tab stop, and focus. */
     const said = (row, name) =>
       [
@@ -222,7 +231,7 @@ async function mountStory() {
             ? [said(row, `Stack #${row.dataset.stack}`)]
             : [
                 said(row, `#${row.dataset.number}`),
-                said(changeOf(row), `  #${row.dataset.number}'s change line`),
+                saidLine(changeOf(row), `  #${row.dataset.number}'s change line`),
               ],
         );
     };
@@ -277,9 +286,9 @@ async function mountStory() {
     await step("Right on that pull request opens its files, as on a folder's", () =>
       handle.expand(),
     );
-    const filesOpen = change(8).getAttribute("aria-expanded");
+    const filesOpen = pullRow(8).getAttribute("aria-expanded");
     await step("Left first closes its files, keeping the pull request", () => handle.collapse());
-    const filesClosed = change(8).getAttribute("aria-expanded");
+    const filesClosed = pullRow(8).getAttribute("aria-expanded");
     await step("Left again goes to the stack's row", () => handle.collapse());
     await step("Left on the stack's row closes it", () => handle.collapse());
     // A press on the stack's label, in its heading, as a click lands: the row takes the
@@ -316,10 +325,10 @@ async function mountStory() {
     const homed = steps.at(-1).tree;
     assert.ok(homed[0].startsWith("Stack #286") && homed[0].endsWith("Tab stop"), homed[0]);
     assert.ok(
-      homed.every((row) => !row.includes("change line") || row.includes("expanded false")),
+      homed.every((row) => !row.includes("change line") || row.includes("chevron collapsed")),
       "no pull request's files are open",
     );
-    assert.equal(change(8).getAttribute("aria-expanded"), "false", "#8's files closed");
+    assert.equal(pullRow(8).getAttribute("aria-expanded"), "false", "#8's files closed");
     assert.deepEqual(requests.slice(homeRequests), [], "Home reads nothing");
     handle.dispose();
     return {

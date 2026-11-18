@@ -6,8 +6,8 @@
 //
 // The group follows the Files tree's row contract (docs/design-system.md, "Container Rows"):
 // one `.tree-children[role="group"]` after the pull request's three lines, owned by its row
-// as a folder's children are, and controlled by its change line, the line that carries the
-// toggle (pulls-panel.js), folders that lead with the
+// as a folder's children are, whose chevron is on its change line, the line that carries the
+// toggle for the pointer (pulls-panel.js), folders that lead with the
 // registry's chevron in the tree's icon slot and file rows with the change letter a patch's
 // children carry in place of an icon, the tree's indent and row height, and the inline change
 // stats: a file's own, and a folder's rolled up from every file under it, open or closed, as
@@ -107,7 +107,7 @@ export function mountFileTree(host) {
   /** The item the tree hangs from: the pull request's row (pulls-panel.js). */
   /** @type {HTMLElement | null} */
   let owner = null;
-  /** The line that carries the tree's toggle: the pull request's change line. */
+  /** The line that carries the tree's toggle for the pointer: the pull request's change line. */
   /** @type {HTMLElement | null} */
   let toggle = null;
   /** @type {FileTreeModel | null} */
@@ -135,15 +135,15 @@ export function mountFileTree(host) {
 
   /**
    * Whether the tree is open, said where the Files tree says a folder's: `aria-expanded` on
-   * the row that owns it, and on the line that carries its toggle, which `.expanded` and
-   * `.collapsed` turn the chevron of.
+   * the row that owns it, and `.expanded` and `.collapsed` on the line that carries its
+   * toggle, which turn the chevron. The line is hidden from assistive technology, so the row
+   * alone says the state (mb-1z7j).
    *
    * @param {boolean} expanded
    */
   function showState(expanded) {
     owner?.setAttribute("aria-expanded", String(expanded));
     if (toggle !== null) {
-      toggle.setAttribute("aria-expanded", String(expanded));
       toggle.classList.toggle("expanded", expanded);
       toggle.classList.toggle("collapsed", !expanded);
     }
@@ -618,8 +618,8 @@ export function mountFileTree(host) {
     controller,
     /**
      * Hang the tree under a pull request's row, the item that owns it, as a folder owns its
-     * children, after the item's three lines; *line*, its change line, carries the toggle
-     * and controls it. A repaint of the list may build all three again.
+     * children, after the item's three lines; *line*, its change line, carries the toggle's
+     * chevron. A repaint of the list may build all three again.
      *
      * @param {HTMLElement} item
      * @param {HTMLElement} row
@@ -629,7 +629,6 @@ export function mountFileTree(host) {
       owner = row;
       toggle = line;
       row.setAttribute("aria-owns", id);
-      line.setAttribute("aria-controls", id);
       if (model !== null) {
         showState(model.expanded);
       }
@@ -641,7 +640,6 @@ export function mountFileTree(host) {
     detach() {
       controller.setShown(false);
       owner?.removeAttribute("aria-owns");
-      toggle?.removeAttribute("aria-controls");
       owner = null;
       toggle = null;
       for (const entry of drawn.values()) {
@@ -662,7 +660,6 @@ export function mountFileTree(host) {
       controller.dispose();
       drawn.clear();
       owner?.removeAttribute("aria-owns");
-      toggle?.removeAttribute("aria-controls");
       group.remove();
     },
   });
