@@ -5,7 +5,7 @@ title: CI takes ~20-25 minutes per push; assess end to end and design how to get
 kind: task
 status: in_progress
 priority: 1
-version: 35
+version: 36
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -36,10 +36,11 @@ child_order_hints:
   - is-01m7man9fyy31fp5mmq7xg7ake
   - is-01m7mby30w7w14nj5hhj6m9jx0
   - is-01m7mby7m1z850mwaf34qn4xfx
+  - is-01m7pj8gve71bkvxyw96nqa4yn
 hold: null
 hold_until: null
 created_at: 2026-11-17T01:14:58.454Z
-updated_at: 2026-11-17T09:03:21.728Z
+updated_at: 2026-11-18T05:32:19.181Z
 started_at: 2026-11-17T01:15:52.976Z
 ---
 Owner, 2026-11-16: 'investigate why CI is taking so long. This is unacceptably slow for CI. CI should be something like 3 to 5 minutes, or else we should figure out ways to avoid extraneous checks except when they're appropriate. ... properly assess this end-to-end and what the proper engineering solution is to maintain the same levels of coverage but speed up our development velocity.' Deliverable: a research brief and plan PR with implementation beads; workflow-file changes need the owner's OK (no grant covers workflow files).
