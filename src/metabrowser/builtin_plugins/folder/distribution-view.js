@@ -1,3 +1,5 @@
+import { createDistributionLegend } from "./distribution-legend.js";
+
 /** @param {HTMLElement} parent @param {string} className */
 function element(parent, className) {
   const child = document.createElement("div");
@@ -74,12 +76,9 @@ export function mountDistributionView(
     metricClasses,
     fileTypeIcon,
     hover,
-    // The tally row the legend's shares are of, Total while Show ignored is on and
-    // Files while it is off: the row whose segments its entries name.
-    legendPopulation: /** @type {DistributionPopulation} */ ("files"),
-    // The hover a legend entry under the pointer entered, until the pointer leaves it.
-    legendHover: /** @type {DistributionHoverTarget | null} */ (null),
-    // What the hover marks here, a legend entry and a Details row's bar (drawHover).
+    // The legend, bound to the hover while the body shows one (distribution-legend.js).
+    legendView: /** @type {DistributionLegend | null} */ (null),
+    // The Details row's bar the hover marks, while Details is open (drawHover).
     /** @type {Array<HTMLElement>} */
     hovered: [],
     unsubscribeHover: () => {},
@@ -115,19 +114,13 @@ export function mountDistributionView(
 }
 
 /**
- * Draw the hover on the legend and the Details table; the bars draw the rest, and the
- * tooltip (folder-totals.js, showHover).
- *
- * The legend entry naming the hovered family is marked whichever handle the pointer is
- * on, the entry or one of the family's segments, so the key and the marks it keys answer
- * together: its dot lifts and shimmers as the segments do, and its name takes the
- * family's ink. Other names no one family and is never marked.
- *
- * A hover from a legend entry, which names the family, also marks the bar of the
- * family's own row in Details, not its extensions' rows, which are its parts and other
- * values; a segment names one value and marks no row. Only while Details is open, so the
- * marks on the page are the ones a reader sees, and opening or closing Details draws it
- * again (applyDetailsState).
+ * Draw the hover on the Details table; the legend marks its own entry
+ * (distribution-legend.js), and the bars draw the rest and the tooltip (folder-totals.js,
+ * showHover). A hover from a legend entry, which names the family, marks the bar of the
+ * family's own row, not its extensions' rows, which are its parts and other values; a
+ * segment names one value and marks no row. Only while Details is open, so the marks on
+ * the page are the ones a reader sees, and opening or closing Details draws it again
+ * (applyDetailsState).
  *
  * @param {DistributionHandle} handle
  */
@@ -140,17 +133,13 @@ function drawHover(handle) {
   if (!target) {
     return;
   }
-  const entries = /** @type {Array<HTMLElement>} */ ([...(handle.legend?.children ?? [])]);
-  const entry = entries.find((item) => item.dataset.legendKey === target.key);
   const fill =
     handle.detailsExpanded && target.marks === "family"
       ? handle.rows.get(target.key)?.metricFill
       : undefined;
-  for (const marked of [entry, fill]) {
-    if (marked) {
-      marked.dataset.hovered = "";
-      handle.hovered.push(marked);
-    }
+  if (fill) {
+    fill.dataset.hovered = "";
+    handle.hovered.push(fill);
   }
 }
 
@@ -198,8 +187,9 @@ export function updateDistributionView(handle, model) {
   if (handle.caption) {
     handle.caption.textContent = model.caption ?? "";
   }
-  handle.legendPopulation = model.showIgnored ? "all" : "files";
-  updateLegend(handle, model.legend ?? []);
+  // The tally row the legend's shares are of, Total while Show ignored is on and Files
+  // while it is off: the row whose segment of a family gives an entry's tooltip.
+  handle.legendView?.update(model.legend ?? [], model.showIgnored ? "all" : "files");
   // The rows are kept current while Details is closed. They are bounded — ten
   // to a group and the families someone opened — so opening Details has
   // nothing left to build and shows the numbers at once.
@@ -250,26 +240,14 @@ function renderScanningProgress(status, indexedFiles) {
   status.append(spinner, text);
 }
 
-/**
- * Let go of the hover a legend entry holds, when the entry is about to leave the
- * document: a removed element never hears the pointer leave it, so without this the
- * segment it named would stay lifted and its tooltip up.
- *
- * @param {DistributionHandle} handle
- */
-function releaseLegendHover(handle) {
-  if (handle.legendHover) {
-    handle.hover.leave(handle.legendHover);
-    handle.legendHover = null;
-  }
-}
-
 /** @param {DistributionHandle} handle @param {string} mode */
 function resetBody(handle, mode) {
-  releaseLegendHover(handle);
+  // The legend leaves with the body: it lets go of the hover an entry under the pointer
+  // holds, which a removed element never hears leave, and stops listening.
+  handle.legendView?.dispose();
+  handle.legendView = null;
   handle.mode = mode;
   handle.body.replaceChildren();
-  // What a hover held from a segment marked here left with the body.
   handle.hovered = [];
   handle.rows.clear();
   handle.groups.clear();
@@ -321,81 +299,6 @@ function applyDetailsState(handle) {
   drawHover(handle);
 }
 
-/**
- * The compact summary's legend, GitHub's Languages box in this table's colors:
- * a dot, the type, and its share, for each entry the model names.
- *
- * Rebuilt whole on each update. It is at most a handful of items with nothing
- * focusable in them, so there is no state in it to preserve but the hover an
- * entry under the pointer holds, which it lets go of first, and the mark a hover
- * held from a segment puts on the family's entry, which it draws again last.
- *
- * A family's entry is a handle on that family's marks in every bar on screen:
- * pointing at the entry lifts and grows its segment in each tally row and, while
- * Details is open, its row's bar, through the one hover the bars and the table
- * draw (distribution-hover.js). It shows one tooltip, the file count and byte
- * size of its segment in the tally row the legend's shares are of, anchored on
- * the entry, which already shows the name. The entry is marked too, from itself
- * or from one of its family's segments: its dot lifts and shimmers as they do and
- * its name takes the family's ink, and nothing in it moves or resizes. Other
- * names no one segment — it is the families too small to name and the files no
- * family claims, each its own segment in its own place — so it answers no hover
- * and is never marked. No entry is a tab stop, as no segment is
- * (docs/design-system.md, "Aggregate Distributions").
- *
- * @param {DistributionHandle} handle
- * @param {ReadonlyArray<SummaryLegendEntry>} entries
- */
-function updateLegend(handle, entries) {
-  if (!handle.legend) {
-    return;
-  }
-  releaseLegendHover(handle);
-  handle.legend.hidden = entries.length === 0;
-  handle.legend.replaceChildren(
-    ...entries.map((entry) => {
-      const item = document.createElement("li");
-      item.className = "file-type-summary-legend-item";
-      item.dataset.legendKey = entry.key;
-      // The entry carries its family's color, which the dot inherits, and which its name
-      // takes as ink while the hover marks it (drawHover).
-      handle.palette.paint(item, entry.paletteKey);
-      const swatch = document.createElement("span");
-      swatch.className = "file-type-summary-legend-swatch";
-      swatch.setAttribute("aria-hidden", "true");
-      const label = document.createElement("span");
-      label.className = "file-type-summary-legend-label";
-      label.textContent = entry.label;
-      const percent = document.createElement("span");
-      percent.className = "file-type-summary-legend-percent";
-      percent.textContent = entry.percent;
-      item.append(swatch, label, percent);
-      if (entry.kind === "family") {
-        /** @type {DistributionHoverTarget} */
-        const target = Object.freeze({
-          population: handle.legendPopulation,
-          key: entry.key,
-          anchor: item,
-          marks: /** @type {const} */ ("family"),
-        });
-        // The bars redraw whenever the folder's sums arrive, and this entry outlives that
-        // draw, so the bars draw its hover again themselves (folder-totals.js, render).
-        item.addEventListener("mouseenter", () => {
-          handle.legendHover = target;
-          handle.hover.enter(target);
-        });
-        item.addEventListener("mouseleave", () => {
-          handle.legendHover = null;
-          handle.hover.leave(target);
-        });
-      }
-      return item;
-    }),
-  );
-  // A hover held from a segment outlives the legend, so its family's new entry is marked.
-  drawHover(handle);
-}
-
 /** @param {DistributionHandle} handle */
 function ensureDistributionBody(handle) {
   if (handle.mode === "distribution") {
@@ -438,6 +341,7 @@ function ensureDistributionBody(handle) {
   legend.className = "file-type-summary-legend";
   legend.setAttribute("aria-labelledby", captionId);
   share.append(legend);
+  handle.legendView = createDistributionLegend(legend, handle.palette, handle.hover);
 
   // Everything else, behind the same disclosure an "N more" row uses.
   const details = element(handle.body, "file-type-summary-details");
@@ -695,6 +599,5 @@ function updateRows(handle, rows, groupOrder, metric = "files") {
 /** @typedef {{body: HTMLTableSectionElement}} SummaryGroupHandle */
 /** @typedef {{tr: HTMLTableRowElement, icon: HTMLElement, label: HTMLElement, disclosure: HTMLButtonElement, disclosureLabel: HTMLElement, metricCell: HTMLTableCellElement, metricValue: HTMLElement, metricFill: HTMLElement, metricPercent: HTMLElement}} SummaryRowHandle */
 /** @typedef {import("./distribution-hover.js").DistributionHover} DistributionHover */
-/** @typedef {import("./distribution-hover.js").DistributionHoverTarget} DistributionHoverTarget */
-/** @typedef {import("./distribution-hover.js").DistributionPopulation} DistributionPopulation */
-/** @typedef {{body: HTMLElement, container: HTMLElement, root: HTMLElement, palette: Palette, metricClasses: MetricClasses, fileTypeIcon: FileTypeIconResolver, hover: DistributionHover, legendPopulation: DistributionPopulation, legendHover: DistributionHoverTarget | null, hovered: Array<HTMLElement>, unsubscribeHover: () => void, idPrefix: string, rows: Map<string, SummaryRowHandle>, groups: Map<string, SummaryGroupHandle>, expandedFamilies: Set<string>, lastRows: ReadonlyArray<SummaryRow>, lastGroupOrder: ReadonlyArray<SummaryGroup>, table: HTMLTableElement | null, metricHeader: HTMLTableCellElement | null, caption: HTMLElement | null, legend: HTMLElement | null, detailsToggle: HTMLButtonElement | null, detailsExpanded: boolean, metric: "files" | "size", status: HTMLElement | null, mode: string}} DistributionHandle */
+/** @typedef {import("./distribution-legend.js").DistributionLegend} DistributionLegend */
+/** @typedef {{body: HTMLElement, container: HTMLElement, root: HTMLElement, palette: Palette, metricClasses: MetricClasses, fileTypeIcon: FileTypeIconResolver, hover: DistributionHover, legendView: DistributionLegend | null, hovered: Array<HTMLElement>, unsubscribeHover: () => void, idPrefix: string, rows: Map<string, SummaryRowHandle>, groups: Map<string, SummaryGroupHandle>, expandedFamilies: Set<string>, lastRows: ReadonlyArray<SummaryRow>, lastGroupOrder: ReadonlyArray<SummaryGroup>, table: HTMLTableElement | null, metricHeader: HTMLTableCellElement | null, caption: HTMLElement | null, legend: HTMLElement | null, detailsToggle: HTMLButtonElement | null, detailsExpanded: boolean, metric: "files" | "size", status: HTMLElement | null, mode: string}} DistributionHandle */

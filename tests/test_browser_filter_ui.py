@@ -148,13 +148,18 @@ def test_treemap_hover_never_promotes_a_container_over_nested_cells() -> None:
     """A nested folder and its descendants are flattened siblings.
 
     Hover may adjust the folder fill, but changing its stacking level would
-    paint the folder over every descendant rectangle inside it.
+    paint the folder over every descendant rectangle inside it. The hover is the
+    attribute the map's shared hover marks a cell with, not `:hover`, since a legend
+    entry marks every cell of its family; the shimmer's sheen sits under the cell's
+    own label, inside the stacking context the lift's filter makes, and never lifts
+    the cell itself.
     """
 
     folder_root = proc_browser.STATIC_DIR.parent / "builtin_plugins" / "folder"
     shared_css = (proc_browser.STATIC_DIR / "styles.css").read_text()
     plugin_css = (folder_root / "styles.css").read_text()
-    hover_start = plugin_css.index(".tm-cell:hover {")
+    assert ".tm-cell:hover" not in plugin_css
+    hover_start = plugin_css.index(".tm-cell[data-hovered] {")
     hover_block = plugin_css[hover_start : plugin_css.index("}", hover_start)]
 
     assert "filter: var(--viz-data-mark-hover-filter);" in hover_block
@@ -167,6 +172,10 @@ def test_treemap_hover_never_promotes_a_container_over_nested_cells() -> None:
     assert "--viz-data-mark-hover-filter:" in shared_css[dark_start:]
     assert "z-index" not in hover_block
     assert "display:" not in hover_block
+    sheen_start = plugin_css.index(".tm-cell[data-hovered]::after {")
+    sheen_block = plugin_css[sheen_start : plugin_css.index("}", sheen_start)]
+    assert "z-index: -1;" in sheen_block
+    assert "animation: viz-hover-shimmer" in " ".join(sheen_block.split())
 
 
 def test_treemap_pointer_hit_testing_uses_the_full_actionable_cell() -> None:

@@ -1,5 +1,17 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const { pathToFileURL } = require("node:url");
+
+// The folder plugin's modules have no package.json saying they are modules, which the
+// browser never asks about, and distribution-view.js imports the legend it shows, so it is
+// loaded from its file. Node's warning names the process and the checkout.
+const emitWarning = process.emitWarning;
+process.emitWarning = (warning, ...rest) => {
+  if (String(warning).includes("is not specified and it doesn't parse as CommonJS")) {
+    return;
+  }
+  emitWarning.call(process, warning, ...rest);
+};
 
 const repoRoot = path.resolve(process.argv[2]);
 const failures = [];
@@ -159,25 +171,15 @@ function familyRow() {
 }
 
 (async () => {
-  const source = fs.readFileSync(
-    path.join(repoRoot, "src/metabrowser/builtin_plugins/folder/distribution-view.js"),
-    "utf8",
-  );
   const styles = fs.readFileSync(
     path.join(repoRoot, "src/metabrowser/builtin_plugins/folder/file_type_summary.css"),
     "utf8",
   );
-  const view = await import(
-    `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`
-  );
-  const { createDistributionHover } = await import(
-    `data:text/javascript;base64,${Buffer.from(
-      fs.readFileSync(
-        path.join(repoRoot, "src/metabrowser/builtin_plugins/folder/distribution-hover.js"),
-        "utf8",
-      ),
-    ).toString("base64")}`
-  );
+  // By their file URLs, so their own imports (distribution-legend.js) resolve beside them.
+  const folder = (name) =>
+    pathToFileURL(path.join(repoRoot, "src/metabrowser/builtin_plugins/folder", name)).href;
+  const view = await import(folder("distribution-view.js"));
+  const { createDistributionHover } = await import(folder("distribution-hover.js"));
   const palette = {
     classFor: (key) => (key ? `slot-${key.slice(1)}` : "slot-other"),
     styleFor: () => "",
