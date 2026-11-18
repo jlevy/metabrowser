@@ -115,12 +115,20 @@ const sections = model.groupSections(answer);
 transcript.sections = sections.map((section) => ({
   key: section.key,
   label: section.label,
+  icon: section.icon,
   files: section.files,
   topLevel: section.tree.map((node) => node.path),
 }));
 check(
   "sections keep the server's order, Documentation first",
   sections.map((section) => section.id).join() === "docs,code,data,other",
+  transcript.sections,
+);
+// Each section carries its category's icon, which leads its heading (docs/design-system.md,
+// "File-Type Category Icons").
+check(
+  "each section carries its category's icon",
+  sections.map((section) => section.icon).join() === "doc,alignLeft,list,file",
   transcript.sections,
 );
 check(

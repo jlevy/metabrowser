@@ -471,6 +471,10 @@
      Pulls title 44px, its slots two of them; at 14px, 20 and 40, a
      pull request's title 4px wider. It is --icon-glyph, so the two cannot part. */
   --tree-icon-slot: var(--icon-glyph);
+  /* A tree row's gap from its icon slot to its name (.tree-item), which the paging row's
+     inset and a category heading's icon (--category-icon-gap) also take, so a heading's
+     name and its rows' names stay on one column. */
+  --tree-icon-gap: 6px;
   /* The disclosure chevron's glyph (.toggle-chevron), 2px under --icon-glyph. A tree's
      folder and container toggles center it in the slot, half the slot's spare width each
      side, 1px. */
@@ -528,6 +532,10 @@
   --icon-glyph: 14px;
   --icon-box: 16px;
   --icon-btn-size: 24px;
+  /* From a category's icon to its name in the heading (.category-icon): a tree row's
+     gap from its file icon to its name, so the mark sits off the word as it does in a
+     row, and a Group by heading's name lines up with its rows' names. */
+  --category-icon-gap: var(--tree-icon-gap);
   /* A person's avatar box and the gap before the name (`.actor-identity`), on every page
      that names a person: a commit's author, a pull request's, a comment's; a Pulls row's
      is a tenth smaller (`.github-pulls-by`, github/styles.css).
@@ -2161,6 +2169,24 @@ summary {
   letter-spacing: var(--label-letter-spacing);
   text-transform: var(--label-text-transform);
 }
+/* A file-type category's representative icon, leading the heading that names the
+   category: a Group by section, a type filter section, File Overview's Details
+   (docs/design-system.md, "File-Type Category Icons"). It is a mark beside text, so
+   --icon-glyph, and it takes the heading's ink through currentColor, the gray every
+   category heading reads in, never its format's colour. The heading's type is
+   unchanged. In a flex heading it centers on the line; in a block one it sits on the
+   text as a lowercase letter's descent does, the glyph's lower edge 2px under the
+   baseline, so its middle meets the capitals' middle. */
+.category-icon {
+  flex: none;
+  width: var(--icon-glyph);
+  height: var(--icon-glyph);
+  margin-right: var(--category-icon-gap);
+  vertical-align: -2px;
+}
+.tree-section-heading .category-icon {
+  align-self: center;
+}
 /* Segmented chooser: icon-only buttons sharing a row, applied instantly
    on click. The active segment fills with the selection surface; the rest
    are muted until hovered. */
@@ -3069,7 +3095,13 @@ html[data-prose-font="sans"] .kpress-prose h2,
 .tree-item.tree-page-more {
   /* On the names' column: the row's inset, its slot, and its gap. */
   padding: 2px 12px 2px
-    calc(10px + var(--tree-icon-slot) + 6px + (var(--tree-depth, 1) - 1) * var(--tree-indent));
+    calc(
+      10px +
+      var(--tree-icon-slot) +
+      var(--tree-icon-gap) +
+      (var(--tree-depth, 1) - 1) *
+      var(--tree-indent)
+    );
   cursor: pointer;
   -webkit-user-select: var(--toggle-user-select);
   user-select: var(--toggle-user-select);
@@ -3098,7 +3130,7 @@ html[data-prose-font="sans"] .kpress-prose h2,
   cursor: pointer;
   -webkit-user-select: var(--toggle-user-select);
   user-select: var(--toggle-user-select);
-  gap: 6px;
+  gap: var(--tree-icon-gap);
   font-size: var(--nav-font-size);
   transition: background var(--transition-fast);
 }
@@ -4194,6 +4226,33 @@ a.tab-btn {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* By age, a section's name takes its band's age ink (docs/design-system.md, "Grouping
+   the Files Tree"): the ink every file age in the band reads in, and the one the
+   Modified within row for that window wears (FILTER_RECENCY_OPTIONS in app.js). Each
+   band lies inside one tier of AGE_TIERS (formatters.js); Live is the activity state,
+   as the Live badge and the Live row are. The band is the route's group id
+   (metabrowser/tree_groups.py), which the section carries, so this is paint alone.
+   It takes the shared tokens, not an .age-* class, because the name is not an age: the
+   heading keeps its size, weight, caps, and tracking, and its tally stays muted.
+   tests/test_tree_groups.py holds the mapping to the menu's and to the tiers. */
+.tree-section[data-tree-group="age:live"] .tree-section-label {
+  color: var(--file-age-live);
+}
+.tree-section[data-tree-group="age:1h"] .tree-section-label {
+  color: var(--file-age-min);
+}
+.tree-section[data-tree-group="age:24h"] .tree-section-label {
+  color: var(--file-age-hr);
+}
+.tree-section[data-tree-group="age:7d"] .tree-section-label {
+  color: var(--file-age-day);
+}
+.tree-section[data-tree-group="age:30d"] .tree-section-label {
+  color: var(--file-age-wk);
+}
+.tree-section[data-tree-group="age:older"] .tree-section-label {
+  color: var(--file-age-old);
 }
 /* Regrouping (docs/design-system.md, "Grouping the Files Tree", Waiting): while a
    grouping's first sections are on their way, the tree on screen is the arrangement

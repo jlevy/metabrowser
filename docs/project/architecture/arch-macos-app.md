@@ -11,12 +11,11 @@ The WebKit measurement gate failed on 2026-11-11 (`mb-gvtw`), and its rerun is o
 
 The app finds a command-line install of `metab`, starts one server per folder or GitHub
 repository the user opens, and shows each in a native window or tab.
-Everything a window shows comes from that server, except the GitHub view it can show in
-the page’s place ([The GitHub View](#the-github-view)): the page talks to the server
-over HTTP and server-sent events and never calls into the app, so any shell can replace
-another. The app adds what a browser tab cannot: a Dock icon, folders opened with Open
-With or dropped on it, native menus, windows, and tabs, a session that comes back at the
-next launch, and server lifetimes it controls.
+Everything a window shows comes from that server: the page talks to it over HTTP and
+server-sent events and never calls into the app, so any shell can replace another.
+The app adds what a browser tab cannot: a Dock icon, folders opened with Open With or
+dropped on it, native menus, windows, and tabs, a session that comes back at the next
+launch, and server lifetimes it controls.
 [Using the app](../../macos-app.md) is a user guide, and building, testing, and
 releasing it is [the app’s README](../../../apps/macos/README.md).
 
@@ -26,11 +25,11 @@ Paths are under `apps/macos/`.
 
 | Path | Holds |
 | --- | --- |
-| `Sources/ShellCore/Supervision/` | Spawning a server, recognizing it as ready, checking its health, and stopping it |
+| `Sources/ShellCore/Supervision/` | Spawning a server, what it says as it starts, recognizing it as ready, checking its health, and stopping it |
 | `Sources/ShellCore/Runtime/` | Finding `metab`, settling which one runs, and the child environment |
 | `Sources/ShellCore/Setup/` | The version floor, the first-run steps, file watches, the restart offer after an upgrade, and the launch notice |
-| `Sources/ShellCore/Logs/`, `Folders/`, `Web/` | Server logs; folder identity, titles, files opened inside folders, GitHub links and File > Open URL…, tab placement, and the saved session; the navigation policy, web view configuration, tab discards, reloads, downloads, and the GitHub view’s policy, state, and data store |
-| `Sources/ShellCore/App/` | Which build is running (`AppIdentity`), the title-bar mark, and the GitHub view’s toggle |
+| `Sources/ShellCore/Logs/`, `Folders/`, `Web/` | Server logs; folder identity, titles, files opened inside folders, GitHub links, their failures, and File > Open URL…, tab placement, and the saved session; the navigation policy, web view configuration, tab discards, reloads, and downloads |
+| `Sources/ShellCore/App/` | Which build is running (`AppIdentity`), and the title-bar mark |
 | `Sources/ShellViews/` | `DropAwareWebView` and `WebContainerView`, a library of their own so that the WebKit gate’s driver builds the same views |
 | `Sources/Metabrowser/` | The AppKit app: lifecycle, menus, folder sessions, windows, and the SwiftUI status and settings views |
 | `webkit-gate/` | The WebKit measurement gate and its driver, which no product ships |
@@ -77,16 +76,16 @@ before one exists, windows, menus, the Dock, and file events.
    so a first clone holds up no folder.
 4. **Show.** The window’s `WKWebView` uses the persistent default data store
    (`WebConfiguration.make`), since Metabrowser keeps preferences in host-only cookies.
-   A GitHub view uses a store of its own ([The GitHub View](#the-github-view)). A status
-   view covers it until the page commits, and only the navigation the window submitted
-   last can reveal the page (`PageReveal`), so a late commit cannot hide a server’s
-   failure.
+   A status view covers it until the page commits, and only the navigation the window
+   submitted last can reveal the page (`PageReveal`), so a late commit cannot hide a
+   server’s failure.
 5. **Check.** A window that joins a running server first asks for the entry page within
    `SupervisorPolicy.healthDeadline`, since a hung server keeps its pid; one that does
    not answer is stopped, and fails.
 6. **Fail.** Every window of the folder shows the reason, the last lines of output, and
-   Retry. Nothing restarts by itself; after Retry, each window returns to its page on the
-   new port.
+   Retry. Nothing restarts by itself, except a repository whose start failed on GitHub,
+   when the app becomes active ([GitHub Links](#github-links)); after Retry, each window
+   returns to its page on the new port.
 7. **Stop.** Closing a folder’s last window stops its server: SIGTERM to the process
    group, `SupervisorPolicy.shutdownGrace`, SIGKILL, `killWait`, then SIGKILL to
    anything left in the group.
@@ -230,6 +229,54 @@ and the server, which resolves the link against its mirror, announces the right 
   the CI jobs that run on every change.
   A start waiting on another process’s acquisition of the same source writes one note
   and then nothing, so it is given up on after `startupTimeout`.
+- **Progress.** While a repository’s server starts, its windows show the newest line of
+  `metab`’s clone report (`StartProgress`): where the clone goes, how far it has got,
+  that it is done, that the cache held it, or that `metab` is reading the pull request
+  the link names. The supervisor reads the log’s newest lines each
+  `SupervisorPolicy.progressInterval` that the output grew
+  (`ServerSupervisor.startProgress`), which for a clone is once per
+  `MetabAcquisition.progressLineInterval`, and only for a start with a `startupLimit`;
+  what a line means is the launch’s (`ServerLaunch.startProgress(in:)`). The lines are
+  `metab`’s words around Git’s numbers, never text Git or the origin wrote, so the
+  window shows them as written, less the repository’s URL.
+- **A failure on GitHub.** A start that fails ends with `metab`’s `Error:` line, and
+  when that line names a state of reaching or reading GitHub (`GitHubFailure.kinds`),
+  the windows say which it is: the repository was not found or its account cannot read
+  it (`not_found_or_private`); the same with no GitHub CLI found, which the provider’s
+  hint to install it marks, so the window names both causes; the connection failed;
+  GitHub is limiting requests (`rate_limited`); or GitHub answered with an error
+  (`server_error`). The table also maps the GitHub plugin’s `not_logged_in` and
+  `gh_missing`, which no start names yet: the plugin’s messages carry no state and reach
+  no start’s `Error:` line, so the Swift samples of both are placeholders until the
+  status check (`mb-si2g`) decides how a start reports them.
+  They show `metab`’s message, the `gh` commands that fix it or show what is wrong, each
+  with Copy, as the first-run steps do, and Retry; Copy Message copies the failure, the
+  message, and the commands together.
+  Any other failure, `too_large` among them, shows its summary and the server’s output.
+  `tests/test_macos_app_pins.py` holds the states the app maps, and the lines its tests
+  diagnose, to what `metab` prints.
+  A clone cannot tell a signed-out `gh`, an account without access, or a sign-in without
+  the `repo` scope from a repository that does not exist, since GitHub answers all four
+  alike, so today each is `not_found_or_private`, and its steps start with
+  `gh auth status`. Telling them apart is the GitHub status check’s (`mb-si2g`).
+- **Back from Terminal.** When the app becomes active, each repository whose server
+  failed in a way a sign-in in Terminal can fix starts again, as Retry does: GitHub
+  showed no repository while `gh` was found (`GitHubFailure.Kind.rechecksOnActivation`,
+  `ServerFailure.rechecksOnActivation`, `FolderSession.recheckAfterActivation`), so the
+  sign-in clears the failure once the user switches back, and only then does the window
+  say it tries again. Nothing else changes: a folder, a server that is ready or starting,
+  and every other failure wait for Retry.
+  A network failure can come minutes into a first clone’s fetch (`timed_out`), which a
+  retry would start again from zero while holding the repository launch gate; a rate
+  limit asks for fewer requests; a server error is GitHub’s to fix; and without `gh`
+  nothing changes until Find Again, which restarts nothing.
+  The recheck runs the start again, since no route reports the sign-in yet, so each
+  switch back to the app while a not-found failure stands costs GitHub that failure’s
+  requests: the provider’s size check, when `gh` is found, and the probe of the origin,
+  which `REMOTE_PROBE_TIMEOUT_S` in `src/metabrowser/cache/origin.py` bounds and whose
+  comment holds its measurement; the not-found answer comes from those, before any
+  object is fetched. Reading the sign-in instead, and rechecking without a start, is
+  `mb-1rl3`’s, once the status check (`mb-si2g`) reports it.
 - **Titles.** Until the server answers `/api/identity`, the window is named for the
   repository (`FolderIdentity.repository`), a cached mirror.
   Only a local folder’s window gets a path menu, whatever identity its port answers.
@@ -422,8 +469,6 @@ Applications.
   A clicked link to another `http`, `https`, or `mailto` URL opens in the default
   browser; the same URL reached by script, redirect, or history is cancelled, and so are
   `file://` and other schemes.
-  The view header’s GitHub toggle is the one link that stays, in the window’s GitHub
-  view ([The GitHub View](#the-github-view)).
 - **Downloads.** `WKDownload` with a save panel.
   A confirmed Replace downloads to a staging file on the same volume and renames it over
   the original only when it finishes (`StagedDownload`).
@@ -489,76 +534,6 @@ A background root is admitted again at its turn and just before its server spawn
 process that changes the path after that check can still win, and macOS enforces its
 privacy grants regardless.
 
-### The GitHub View
-
-A window can show the item its page shows on github.com, in place of the page (bead
-`mb-lxgw`). Every page opens in the Metabrowser view, and the view header’s toggle
-(`static/github-page.js`) switches to the GitHub view and back.
-
-- **Two web views.** The GitHub view is a second `WKWebView` in a `GitHubPane`, below
-  one native bar, which `WebContainerView.setPane` shows in the page’s place.
-  The page’s web view stays beneath it, hidden, so choosing Metabrowser shows it again
-  with its page, scroll, and state, and the GitHub view keeps its own page and history
-  while it is hidden. `GitHubViewState` says which view shows and which item the GitHub
-  view was opened for: choosing GitHub again for that item shows it as it was left, and
-  for another item loads that item’s page in it.
-- **Only the toggle.** The toggle’s GitHub link is marked `data-view-toggle="github"`.
-  `GitHubViewRequests` installs a user script in the page’s main frame, in the app’s own
-  content world, that takes a trusted primary click with no modifier key on a marked
-  link, cancels the link’s new window, and posts its `href` to a handler in that world,
-  which the page’s scripts cannot reach.
-  The window shows the GitHub view only for a document of the server’s own origin
-  (`GitHubViewRequests.allows`, the check the page’s Print button has) and only for an
-  `https` page on github.com (`GitHubView.togglePage`). View > Show GitHub View asks the
-  page for the same link in the same world.
-  Nothing else opens the GitHub view: any other github.com link in a page opens in the
-  default browser (`NavigationPolicy`), and so does a modified click on the toggle.
-- **The inverse direction.** A github.com link handed to the app (`open -b`, File > Open
-  URL…, `metab --present`) resolves to the Metabrowser view of its repository
-  ([GitHub Links](#github-links)), never to the GitHub view, and a window that shows its
-  GitHub view returns to the Metabrowser view when a file or link is sent to it.
-- **The bar.** `GitHubViewBar` holds the view toggle, drawn as the header draws its own
-  (`ViewToggleControl`, with the stylesheet’s marks, `ViewToggleMarks`), at the trailing
-  edge, inset as the header is, and a one-line label of the page’s location
-  (`GitHubView.location`), which shows the site you are on when you sign in.
-  `ViewToggleLayout` places both.
-  The bar has no background of its own and no buttons: Back, Forward, Reload Page, zoom,
-  Find, Print, and Open in Default Browser act on the shown view, and View > Show GitHub
-  View, Option-Command-G, switches either way.
-- **Navigation.** `GitHubViewPolicy` keeps a main-frame `https` page on github.com,
-  githubusercontent.com, or githubassets.com, with their subdomains, in the view; GitHub
-  Pages (`github.io`) runs anyone’s script and is not one of them.
-  A link clicked or a form sent to anything else opens in the default browser, and the
-  same URL reached by script is cancelled.
-  A `target=_blank` link to GitHub loads in place.
-- **One sign-in.** Every GitHub view uses `GitHubDataStore.shared`, one persistent
-  `WKWebsiteDataStore` named by a fixed identifier, so signing in once holds in every
-  window and tab and after a relaunch.
-  The pages keep the default store, whose host-only cookies hold Metabrowser’s
-  preferences across ports and whose local storage stays per origin, so a page a
-  folder’s server serves never shares a cookie jar with github.com.
-  WebKit keeps the store under `~/Library/WebKit/<bundle identifier>/WebsiteDataStore/`,
-  so each variant has its own.
-  Anyone using the Mac account can use the sign-in, as in a browser.
-  Metabrowser > Clear GitHub Data… removes everything in it (`GitHubDataStore.clear`)
-  after a confirmation whose default is Cancel, and reloads every GitHub view, signed
-  out.
-- **Lifetime.** A tab that gives up its page (`TabDiscardPolicy`) gives up its GitHub
-  view too, and the session saves and restores only the page, so a restored window shows
-  the Metabrowser view.
-- **Tests.** `GitHubViewTests` cover the toggle’s page, the policy, the state, the
-  label, and the bar’s layout; `GitHubViewWebKitTests` cover the shared persistent
-  store, the pages’ default store, a cookie one GitHub view sets reaching another and
-  not the pages, and the script in a real `WKWebView`: a user’s click on the toggle
-  reaches the handler, a scripted click and a Command-click do not, and the page cannot
-  see the handler. [The hand checks](../qa/qa-macos-app-hand-checks.md#the-github-view)
-  cover signing in.
-
-Following the GitHub view’s own navigation back into Metabrowser, so that choosing
-Metabrowser after moving to another file on github.com opens that file, is a possible
-later option through the same resolver as [GitHub Links](#github-links); it is not
-built.
-
 ## The Title-Bar Accessory
 
 AppKit draws a system title in one font and color, so the window hides it and draws its
@@ -582,9 +557,6 @@ mark in a trailing one (`TitleBarMarkController`).
 - **A link.** A click opens `ProjectLinks.repository` in the default browser, and a
   press that moves `TitleBarMarkInteraction.dragDistance` drags the window instead.
   `TitleBarMarkInteraction` decides each pointer event and is tested event by event.
-  It stays the project’s link: the view toggle is not a title-bar control, since the
-  title bar names the folder, and the GitHub view draws its own toggle in its bar
-  ([The GitHub View](#the-github-view)).
 - **System behavior.** The title dims when its window is not main in the active app,
   AppKit dims the mark with it, and both follow light and dark mode.
 
@@ -597,9 +569,6 @@ The page is the one any browser opens, and the app handles what WebKit does diff
   prints only for a document whose security origin is the server’s own.
   It checks the origin, not the URL, because a `/raw` response’s CSP sandbox gives it an
   opaque origin.
-- **The view header’s GitHub toggle** opens a new window, which the app would send to
-  the default browser, so a user script in the app’s own content world takes the user’s
-  click on it and hands its page to the window’s GitHub view (`GitHubViewRequests`).
 - **A dropped file** would make WebKit navigate to its `file://` URL, so
   `DropAwareWebView` takes file and folder drops before WebKit sees them and hands them
   to the app (`FileDrop`).

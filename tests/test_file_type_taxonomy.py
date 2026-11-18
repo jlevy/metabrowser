@@ -70,7 +70,7 @@ def test_projected_families_track_the_registry() -> None:
 
 
 def test_catalog_validation_rejects_duplicate_members() -> None:
-    categories = (FileTypeCategory("code", "Code", ()),)
+    categories = (FileTypeCategory("code", "Code", (), None, "alignLeft"),)
     families = (
         FileTypeFamily("first", "First", "code", (".x",), 12.5),
         FileTypeFamily("second", "Second", "code", (".x",), 200.0),
@@ -83,8 +83,8 @@ def test_catalog_validation_rejects_duplicate_members() -> None:
         raise AssertionError("duplicate family members must be rejected")
 
     overlapping_categories = (
-        FileTypeCategory("code", "Code", ()),
-        FileTypeCategory("data", "Data", (".x",)),
+        FileTypeCategory("code", "Code", (), None, "alignLeft"),
+        FileTypeCategory("data", "Data", (".x",), None, "list"),
     )
     try:
         validate_file_type_taxonomy(

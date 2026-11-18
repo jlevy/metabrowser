@@ -58,6 +58,7 @@ status: 200
     {
       "id": "docs",
       "label": "Documentation",
+      "icon": "doc",
       "files": 3,
       "size": 23,
       "entries": 3,
@@ -93,6 +94,7 @@ status: 200
     {
       "id": "code",
       "label": "Code",
+      "icon": "alignLeft",
       "files": 3,
       "size": 25,
       "entries": 3,
@@ -120,6 +122,7 @@ status: 200
     {
       "id": "data",
       "label": "Data",
+      "icon": "list",
       "files": 1,
       "size": 3,
       "entries": 1,
@@ -139,6 +142,7 @@ status: 200
     {
       "id": "other",
       "label": "Other",
+      "icon": "file",
       "files": 2,
       "size": 15,
       "entries": 2,
@@ -185,6 +189,7 @@ status: 200
     {
       "id": "docs",
       "label": "Documentation",
+      "icon": "doc",
       "files": 2,
       "size": 17,
       "entries": 2,
@@ -193,6 +198,7 @@ status: 200
     {
       "id": "code",
       "label": "Code",
+      "icon": "alignLeft",
       "files": 1,
       "size": 9,
       "entries": 1,
@@ -284,6 +290,7 @@ status: 200
     {
       "id": "live",
       "label": "Live",
+      "icon": null,
       "files": 1,
       "size": 4,
       "entries": 1,
@@ -292,6 +299,7 @@ status: 200
     {
       "id": "older",
       "label": "Older",
+      "icon": null,
       "files": 1,
       "size": 4,
       "entries": 1,
@@ -320,6 +328,7 @@ status: 200
     {
       "id": "live",
       "label": "Live",
+      "icon": null,
       "files": 1,
       "size": 4,
       "entries": 1,

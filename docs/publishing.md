@@ -85,10 +85,27 @@ Confirm the repository’s public-hygiene gate is green before changing visibili
    differing tallies confined to what the changelog describes is the explicit acceptance
    this step allows.
 
-4. Confirm CI is green for the exact commit to be tagged and record its full SHA as
-   `RELEASE_COMMIT`.
+4. Review changes since the previous release, choose a semantic version, and assemble
+   the changelog in the release-preparation pull request:
 
-5. Review changes since the previous release and choose a semantic version.
+   ```shell
+   uv --config-file uv.toml run --frozen python -m devtools.changelog assemble
+   ```
+
+   It writes every fragment in `changelog.d/` at the top of `CHANGELOG.md`’s Unreleased
+   section, the most recently landed first, and deletes the fragments.
+   Then add a `## X.Y.Z` heading right below the Unreleased section’s note, so the
+   entries fall under the version and Unreleased keeps only its note.
+   The changelog check in `make lint-check` lets this pull request through, because the
+   entries it adds come from the fragments it deletes.
+
+5. Once that lands, confirm CI is green for the exact commit to be tagged and record its
+   full SHA as `RELEASE_COMMIT`. Confirm that the commit holds no fragment, which this
+   command shows by listing only `changelog.d/README.md`:
+
+   ```shell
+   git ls-tree --name-only "$RELEASE_COMMIT" changelog.d/
+   ```
 
 6. After approval of the exact commit and notes, check the version tag as described
    above and create a GitHub release with a `vX.Y.Z` tag targeting `RELEASE_COMMIT`.

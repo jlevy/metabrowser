@@ -5,16 +5,13 @@ The Metabrowser app is an alpha preview built from source;
 [Installation](installation.md#the-macos-app) says how to build it.
 
 The app is a native shell over `metab`. Everything inside a window is the page `metab`
-serves, the same page a browser shows, or, when you choose its GitHub view, the same
-item’s page on github.com.
+serves, the same page a browser shows.
 What the app adds is what a browser tab cannot give:
 
 - a window per folder or GitHub repository, each with its own server, which the app
   starts and stops;
 - a Dock icon, and folders opened from Finder with Open With or dropped on the icon;
-- native menus, tabs across folders, recent items, and the last session restored;
-- the item’s page on github.com in the window, beside Metabrowser’s view of it, with one
-  GitHub sign-in for every window.
+- native menus, tabs across folders, recent items, and the last session restored.
 
 ## Opening Folders and Files
 
@@ -126,16 +123,33 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
   to the link’s page. If GitHub does not have it either, or the fetch fails, the windows
   stay on the default branch and the app says so.
 - **A first clone** of a large repository can take minutes.
-  The window says it is starting meanwhile, and File > Reveal Server Log shows the
-  clone’s progress. The app waits for as long as the clone keeps reporting progress, up
-  to `metab`’s own bound on a clone, and gives up on one that stops; the window then
-  offers Retry. Folders you open meanwhile start at once; another repository waits for
-  the clone, and its window says so.
+  The window says it is starting meanwhile, with the clone’s progress under it, as
+  `metab` reports it in Terminal: how far the clone has got, how fast, and for how long,
+  then that it is done, and then that it is reading the pull request the link names.
+  File > Reveal Server Log shows the whole account.
+  The app waits for as long as the clone keeps reporting progress, up to `metab`’s own
+  bound on a clone, and gives up on one that stops; the window then offers Retry.
+  Folders you open meanwhile start at once; another repository waits for the clone, and
+  its window says so.
+- **When GitHub is the problem,** the window of a repository that could not be cloned
+  says which problem it is.
+  The repository was not found, which is also how GitHub answers when GitHub CLI (`gh`)
+  is signed out, its account cannot read a private repository, or its sign-in lacks the
+  `repo` scope; so a signed-out `gh` shows as not found, until Metabrowser checks the
+  sign-in itself. Or the repository was not found and Metabrowser did not find GitHub CLI
+  either, so it could offer GitHub no sign-in; or the connection to GitHub failed; or
+  GitHub answered but is limiting requests, or answered with an error.
+  It shows `metab`’s message and the commands that fix the problem or show what it is,
+  each with Copy, and Copy Message copies all of it, to paste into a message or a note.
+  When the repository was not found and GitHub CLI was, run the commands in Terminal and
+  switch back: Metabrowser tries again by itself, as Retry does, and the window says so.
+  Any other failure waits for Retry, since trying again on every switch could restart a
+  long clone from the beginning or ask GitHub again while it asks for fewer requests.
+  After installing GitHub CLI, choose Find Again in Settings first, so that Metabrowser
+  finds it, then Retry.
 - **A link `metab` refuses**, such as an issues page, shows `metab`’s message, which
-  says what to do. A private repository that your `gh` sign-in cannot read opens a window
-  whose server fails, with its message and Retry.
-  A link to another site, an `http` link, and a link with a user name, a password, or a
-  port other than 443 show the app’s own message.
+  says what to do. A link to another site, an `http` link, and a link with a user name, a
+  password, or a port other than 443 show the app’s own message.
 - **Many links at once** are read one at a time, a link sent again while it waits opens
   once, and what could not be opened is said in one message at the end, never over
   another message or question.
@@ -155,71 +169,17 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
 - **Links:** a link to the same server stays in the window, and Command-click opens it
   in a new tab of that folder’s window.
   A clicked link to another site opens in your default browser; a page cannot open one
-  by itself. The view header’s GitHub mark is the exception: it shows the item’s page on
-  github.com in the window ([The GitHub View](#the-github-view)).
+  by itself.
 - **Background tabs:** the tab each window shows keeps its page, and so do the three
   background tabs shown most recently.
   Any other background tab gives up its page to save memory and reloads it when shown,
   at the top of the page and without its Back and Forward history.
 
-The menus add what a browser would: File > Restart Server, Open in Default Browser
-(Shift-Command-O), Reveal Server Log (each folder has its own log), and Print; View >
-Back, Forward, Reload Page, Show GitHub View (Option-Command-G), and zoom, which the app
-remembers; Edit > Find; and Help > Metabrowser Documentation and Reveal Logs Folder.
+The menus add what a browser would: File > Restart Server, Open in Default Browser,
+Reveal Server Log (each folder has its own log), and Print; View > Back, Forward, Reload
+Page, and zoom, which the app remembers; Edit > Find; and Help > Metabrowser
+Documentation and Reveal Logs Folder.
 The mark at the title bar’s trailing end opens the project on GitHub.
-
-## The GitHub View
-
-On a page of a repository on github.com, the view header’s upper right holds a toggle of
-two marks, Metabrowser’s and GitHub’s ([Browsing Files](browsing-files.md)). In the app,
-choosing GitHub shows the same file or folder on github.com in the window itself, in
-place of the page.
-
-- **Back to Metabrowser:** a thin bar above the github.com page holds the same toggle,
-  with GitHub pressed, where the page’s own toggle sits.
-  Choose Metabrowser there, or View > Show Metabrowser View (Option-Command-G), and the
-  window shows its page again as you left it: the same page, scroll position, and state.
-- **Back to GitHub:** choose GitHub again, from the page or with View > Show GitHub
-  View, and the github.com page is as you left it too, with its Back and Forward
-  history. From another file or folder, the GitHub view goes to that item’s page.
-- **The bar** names the github.com location the view shows, so you can see which site
-  you are on, such as when you sign in.
-- **The menus act on the view shown:** View > Back, Forward, Reload Page, and zoom, Edit
-  \> Find, File > Print, and File > Open in Default Browser, which opens the github.com
-  page in your browser.
-- **Links in the GitHub view:** pages on github.com and on GitHub’s content and asset
-  sites (githubusercontent.com and githubassets.com) stay in the view.
-  A link to any other site opens in your default browser, and so does a Command-click on
-  a GitHub link.
-- **Only the toggle:** a GitHub link you send to the app, with File > Open URL…,
-  `metab URL --present`, or `open -b`, still opens Metabrowser’s own view of it
-  ([Opening GitHub Links](#opening-github-links)), and a link to github.com anywhere
-  else in a page still opens in your default browser.
-  A Command-click on the toggle’s GitHub mark opens your browser too.
-- **The Metabrowser view first:** a file or link sent to a window, a reopened session,
-  and a tab that gave up its page to save memory, which gives up its GitHub view with
-  it, show the Metabrowser view.
-
-### Signing In to GitHub
-
-Sign in to github.com once, in any GitHub view, and you stay signed in in every window
-and tab, and after you quit and reopen the app.
-Every GitHub view keeps what github.com stores, its sign-in cookies, cache, and other
-site data, in one store of the app’s own, which macOS keeps under `~/Library/WebKit` in
-the app’s folder. It is apart from your browser, from Metabrowser’s own pages and
-settings, and from your `gh` sign-in, which is what Metabrowser reads repositories and
-pull requests with. A development build keeps a store of its own.
-
-- **Who can use it:** as with a browser, anyone using your Mac account can open the app
-  and act as you on github.com.
-- **Signing out:** sign out on github.com in the GitHub view, or choose Metabrowser >
-  Clear GitHub Data…, which removes everything github.com stored in the app, signs you
-  out in every window, and reloads each GitHub view.
-  It leaves your `gh` sign-in, your browser, and Metabrowser’s settings as they were.
-- **Ways to sign in:** a password, with GitHub’s two-factor code, signs in within the
-  view. A sign-in that goes through another site, such as an organization’s single
-  sign-on, opens that site in your default browser, so it signs you in there and not in
-  the app.
 
 ## Recent Items
 

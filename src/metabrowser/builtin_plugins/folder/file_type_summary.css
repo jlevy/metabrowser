@@ -193,6 +193,15 @@
   text-transform: var(--label-text-transform);
 }
 
+/* A group heading's category icon stands in its rows' icon box (.file-identity-icon,
+   --icon-box wide with the glyph centered, then the row's 6px gap), so the heading's icon
+   and name start where its rows' do: a bare glyph started 1px and its name 2px short of
+   them (tests/test_overview_legend_hover_chrome.py). */
+.file-type-summary-group-row .category-icon {
+  margin-left: calc((var(--icon-box) - var(--icon-glyph)) / 2);
+  margin-right: calc((var(--icon-box) - var(--icon-glyph)) / 2 + 6px);
+}
+
 .file-type-summary-ignored-row th,
 .file-type-summary-files-row th {
   font-weight: var(--weight-bold);

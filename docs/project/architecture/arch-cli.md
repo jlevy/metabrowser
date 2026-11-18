@@ -155,7 +155,8 @@ imports the serve mode’s modules before a mode is chosen.
    ASCII, is what the app is handed, and its root is the repository URL with no ref.
    Its `page` is what `selection_view_href` (`cli/selection_href.py`) gives a pinned
    server where the URL leaves one reading, and `None` where only the mirror knows where
-   a ref ends or what an abbreviated commit ID names (`_source_page`). A file named
+   a ref ends or what an abbreviated commit ID names, or only the cache which changed
+   file a Changes tab URL’s `#diff-<hash>` anchor names (`_source_page`). A file named
    alone is handed over alone, for the app to place as it places any file; a file
    `--path` names is handed over after ROOT, which makes the app open the root named.
 2. **Find the app.** `bundle_lookup` asks LaunchServices through
