@@ -50,6 +50,8 @@ from metabrowser.mirror_refresh import MAX_PULL_JOBS, PullJobStart, StoreTurn, m
 from metabrowser.source import get_source_session
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from metabrowser.builtin_plugins.github.pull_record import PullRecord, RecordAbsence
     from metabrowser.builtin_plugins.github.served_pull import ServedPull, ServedPulls
     from metabrowser.cache.acquire import PublishedSource
@@ -703,6 +705,50 @@ async def _attach_store(
     return True
 
 
+def checkout_store_turn(
+    repository: CheckoutRepository, preempt: Callable[[], object]
+) -> contextlib.AbstractAsyncContextManager[None]:
+    """The checkout's store turn for background work outside a pull request's job, the
+    prefetch's: it goes when no other job waits, and *preempt* is called when one starts
+    waiting (:class:`StoreTurn`)."""
+
+    return _checkout_state(repository).turn(lambda: False, background=lambda: True, preempt=preempt)
+
+
+# How long the prefetch waits for another process's cold open of the checkout's source
+# before it leaves the lists to GitHub: a reader's comparison waits the acquisition's own
+# bound, but the lane must not stall behind it.
+ATTACH_WAIT_S: Final = 30.0
+
+
+async def attach_store_for_lists(repository: CheckoutRepository) -> PublishedSource | None:
+    """The checkout's store, attached now if it has none, for the prefetch to list changed
+    files from (:mod:`.pull_prefetch`); ``None`` when it could not be attached.
+
+    The caller holds the checkout's store turn (:func:`checkout_store_turn`), as a reader's
+    comparison does when it attaches the same store (:func:`_attach_store`), so the two
+    never bind at once. This one is background work: it holds no network slot, gives up
+    after :data:`ATTACH_WAIT_S`, and a failure is only logged, since each list then goes to
+    GitHub as it would have, and a reader's comparison reports its own.
+    """
+
+    state = _checkout_state(repository)
+    if state.pulls.git_dir is None:
+        try:
+            async with asyncio.timeout(ATTACH_WAIT_S):
+                await _wait_for_cold_open(repository)
+                acquired = await _acquire_comparison(repository)
+        except (PullDataError, TimeoutError) as exc:
+            log.debug("the prefetch could not attach the checkout's store: %r", exc)
+            return None
+        # Another attach may have bound one meanwhile; a second bind would drop the
+        # previews it kept.
+        if state.pulls.git_dir is None:
+            state.pulls.bind(acquired)
+    published = state.pulls.published
+    return None if isinstance(published, ListedRepository) else published
+
+
 async def _prepare_foreground(
     coordinator: RefreshCoordinator,
     state: _CheckoutPulls,
@@ -830,6 +876,8 @@ async def _pull_job(
 
 __all__ = [
     "CheckoutRepository",
+    "attach_store_for_lists",
+    "checkout_store_turn",
     "checkout_pulls",
     "checkout_job_key",
     "claim_source",
