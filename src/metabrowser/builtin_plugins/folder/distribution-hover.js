@@ -1,14 +1,25 @@
-// One hover for File Overview's population bars and the legend under them.
+// One hover for the population bars, the legend under them, and the marks beside them:
+// File Overview's Details rows, or the Treemap's cells.
 //
 // A segment of a tally bar and the legend entry that names its family are two
-// handles on one mark, so they share one hover rather than each keeping its
-// own: pointing at either one lifts and grows the segment and shows its
-// tooltip, anchored on the handle the pointer is on, the entry or the segment
-// (docs/design-system.md, "Aggregate Distributions"). The bars draw the hover;
-// the segments and the legend entries only say where the pointer is. A legend
-// entry names one tally row's segment, the row its shares are of, so the hover
-// is a row and a family, not a family alone: the same family has a segment in
-// each row.
+// handles on the bars, so they share one hover rather than each keeping its own
+// (docs/design-system.md, "Aggregate Distributions"). The hover marks what its
+// handle names. A segment names one value, the family's share of its own row, so
+// pointing at it lifts and grows that segment alone: its tooltip is that value's,
+// and lifting the family's other marks would say it describes them too. A legend
+// entry names the family, so pointing at it lifts and grows the family's mark in
+// every bar on screen: its segment in each tally row, and its row's bar in the
+// Details table while that is open. Either way there is one tooltip, one
+// segment's, anchored on the handle the pointer is on: for an entry, the family's
+// segment in the tally row the legend's shares are of. So the hover is a row, a
+// family, and what it marks, not a family alone. The bars, the legend, and the
+// Details table draw the hover; the segments and the legend entries only say where
+// the pointer is.
+//
+// The Treemap shares the same store among its bars, its legend, and its cells
+// (treemap.js). A cell is a third handle: it names one value, as a segment does, so
+// it marks itself and its family's entry, and keeps a tooltip of its own; a legend
+// entry's hover marks every cell of its family as well.
 //
 // `enter` and `leave` are what the pointer says. `leave` lets go only of the
 // handle it names, so a leave that arrives after the pointer has already entered
@@ -19,10 +30,21 @@
 
 /** @typedef {"all" | "files" | "ignored"} DistributionPopulation */
 /**
- * A mark and the handle the pointer is on: the segment itself, or a legend entry naming
- * it. The tooltip is anchored on *anchor*, so it sits by what the reader points at.
+ * What the hover marks: `self`, the one mark the pointer is on, a bar segment or a
+ * Treemap cell; `family`, every mark of the family on screen, as a legend entry naming
+ * the family does. Either way the family's legend entry is marked too.
  *
- * @typedef {Readonly<{population: DistributionPopulation, key: string, anchor: Element}>} DistributionHoverTarget
+ * @typedef {"self" | "family"} DistributionHoverMarks
+ */
+/**
+ * A family, the handle the pointer is on, and what the hover marks. *key* names the
+ * family. *population* is read by the bars alone, for the tooltip they show: for a legend
+ * entry, the tally row whose segment of the family gives it, the row the legend's shares
+ * are of; for a segment, the row it is in. A Treemap cell shows its own tooltip, and its
+ * population is the map's. The bars' tooltip is anchored on *anchor*, so it sits by what
+ * the reader points at.
+ *
+ * @typedef {Readonly<{population: DistributionPopulation, key: string, anchor: Element, marks: DistributionHoverMarks}>} DistributionHoverTarget
  */
 /** @typedef {(current: DistributionHoverTarget | null, previous: DistributionHoverTarget | null) => void} DistributionHoverListener */
 /** @typedef {{current: () => DistributionHoverTarget | null, enter: (target: DistributionHoverTarget) => void, leave: (target: DistributionHoverTarget) => void, clear: () => void, subscribe: (listener: DistributionHoverListener) => () => void}} DistributionHover */
@@ -35,7 +57,8 @@ function sameTarget(left, right) {
   return (
     left?.population === right?.population &&
     left?.key === right?.key &&
-    left?.anchor === right?.anchor
+    left?.anchor === right?.anchor &&
+    left?.marks === right?.marks
   );
 }
 
@@ -56,7 +79,12 @@ export function createDistributionHover() {
     }
     const previous = current;
     current = next
-      ? Object.freeze({ population: next.population, key: next.key, anchor: next.anchor })
+      ? Object.freeze({
+          population: next.population,
+          key: next.key,
+          anchor: next.anchor,
+          marks: next.marks,
+        })
       : null;
     for (const listener of [...listeners]) {
       listener(current, previous);
