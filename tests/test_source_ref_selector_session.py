@@ -36,6 +36,7 @@ from starlette.testclient import TestClient
 from metabrowser import server
 from metabrowser.cache.acquire import acquire_source
 from metabrowser.cache.records import StoreOperation
+from metabrowser.git.process import UnsupportedGitVersionError
 from metabrowser.git.tree_source import GitPath
 from metabrowser.mirror_refresh import serve_mirror
 from tests.golden_harness import (
@@ -48,7 +49,7 @@ from tests.golden_harness import (
     stand_in_sandbox,
 )
 from tests.required_tools import needs_git
-from tests.source_checkout_fixture import build_checkout
+from tests.source_checkout_fixture import admit_installed_git, build_checkout
 from tests.source_checkout_fixture import view as revision_view
 from tests.source_mirror_fixture import FETCHED_AT, build_origin
 from tests.test_cache_acquire import _allow_installed_git, _file_source
@@ -127,9 +128,11 @@ def test_recording_is_what_a_served_mirror_answers(
     check_recording(RECORDING, recorded, transcript=TRANSCRIPT)
 
 
-def _record_checkout(tmp_path: Path) -> dict[str, Any]:
+def _record_checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     sandbox = tmp_path.resolve()
-    server._set_root_dir(build_checkout(sandbox))
+    admit_installed_git(monkeypatch)
+    checkout = build_checkout(sandbox)
+    server._set_root_dir(checkout)
     readme = revision_view("README.md")
     recorded: dict[str, Any] = {"views": {"readme": "/view/README.md", "readme_revision": readme}}
     with TestClient(server.app) as client:
@@ -151,11 +154,30 @@ def _record_checkout(tmp_path: Path) -> dict[str, Any]:
         recorded["branches_on_revision"] = listing(kind="branch")
         recorded["switch_checked_out"] = switch({"ref": "refs/heads/topic", "view": readme})
         recorded["switch_working_tree"] = switch({"working_tree": True, "view": readme})
+    # A folder holding a `.git` that is no repository, whose row the page removes.
+    hollow = sandbox / "hollow"
+    (hollow / ".git").mkdir(parents=True)
+    server._set_root_dir(hollow)
+    with TestClient(server.app) as client:
+        recorded["not_a_repository"] = answer(client.get("/api/source/refs"))
+
+    # The checkout again, on a Git below the floor.
+    def below_the_floor() -> tuple[int, int, int]:
+        raise UnsupportedGitVersionError("git version 2.39.2", "2.43.7 or newer")
+
+    monkeypatch.setattr("metabrowser.checkout_revisions.require_acquisition_git", below_the_floor)
+    server._set_root_dir(checkout)
+    with TestClient(server.app) as client:
+        recorded["unsupported_git"] = answer(client.get("/api/source/refs"))
     return stand_in_sandbox(recorded, sandbox)
 
 
-def test_recording_is_what_a_served_checkout_answers(tmp_path: Path) -> None:
-    recorded = _record_checkout(tmp_path)
+def test_recording_is_what_a_served_checkout_answers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    recorded = _record_checkout(tmp_path, monkeypatch)
+    assert recorded["not_a_repository"]["body"]["code"] == "unsupported_for_subject"
+    assert recorded["unsupported_git"]["body"]["code"] == "unsupported_git"
     branches = recorded["branches"]["body"]
     assert branches["kinds"] == ["branch", "tag", "remote"]
     assert branches["working_tree"] == {
@@ -233,6 +255,13 @@ def test_the_session_runs_a_checkout_on_its_recording() -> None:
     )
     assert by_name["a revision's page left behind offers one too"]["paint"]["stale"] == (
         "The server now shows the working tree [Reload]"
+    )
+    assert by_name["a folder Git does not take for a repository loses its row"]["paint"] == {
+        "removed": True
+    }
+    assert (
+        by_name["an older Git is refused in the server's words"]["paint"]["error"]
+        == (recording["unsupported_git"]["body"]["error"])
     )
     mirror = by_name["a mirror's selector asks for no working tree and offers no reload"]
     assert mirror["requests"] == [] and "stale" not in mirror["paint"]

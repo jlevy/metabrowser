@@ -171,6 +171,9 @@ function paintOf(model) {
   }
   const checkout = model.workingTree !== null;
   const stale = model.stale === null ? {} : { stale: `${model.stale} [Reload]` };
+  if (model.removed) {
+    return { removed: true };
+  }
   if (!model.open) {
     return { button: model.button, open: false, ...stale };
   }
@@ -477,6 +480,25 @@ async function runCheckout() {
   selector = selectorRuntime.createSelector(page.deps, options(shownOf(recording.switch_branch)));
   selector.servedChanged("");
   steps.push(page.observe("a revision's page left behind offers one too"));
+  selector.dispose();
+
+  // A folder holding a `.git` that Git does not take for a repository's root: the server
+  // drew the row from the entry, and the listing's refusal takes it away again.
+  page = createPage(onReadme);
+  selector = selectorRuntime.createSelector(page.deps, options(null));
+  const hollow = selector.open();
+  await page.answer(recording.not_a_repository);
+  await hollow;
+  steps.push(page.observe("a folder Git does not take for a repository loses its row"));
+  selector.dispose();
+
+  // A Git too old to be trusted never to fetch into a checkout: the server's own words.
+  page = createPage(onReadme);
+  selector = selectorRuntime.createSelector(page.deps, options(null));
+  const refusedGit = selector.open();
+  await page.answer(recording.unsupported_git);
+  await refusedGit;
+  steps.push(page.observe("an older Git is refused in the server's words"));
   selector.dispose();
 
   // A mirror has no working tree to choose, and its freshness row makes that offer.

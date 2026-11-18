@@ -261,10 +261,19 @@ const rowNamed = (name) =>
 
 // From each document's start: every distinct height of the selector's row and every
 // distinct top of the tree's first row, frame by frame. The row is drawn by the server
-// with its button, so mounting the selector moves nothing below it.
+// with its button, so mounting the selector moves nothing below it. The first toggle the
+// parser adds is the server's, kept to ask afterwards whether the module adopted it.
+const TOGGLE = "#source-ref-selector button.source-ref-selector-toggle";
 const LAYOUT_PROBE = `(() => {
   window.__rowHeights = [];
   window.__treeTops = [];
+  const parsed = new MutationObserver(() => {
+    window.__firstToggle = document.querySelector(${JSON.stringify(TOGGLE)});
+    if (window.__firstToggle !== null) {
+      parsed.disconnect();
+    }
+  });
+  parsed.observe(document, { childList: true, subtree: true });
   const note = (list, value) => {
     if (value !== null && list[list.length - 1] !== value) {
       list.push(value);
@@ -279,7 +288,14 @@ const LAYOUT_PROBE = `(() => {
   };
   requestAnimationFrame(frame);
 })()`;
-const LAYOUT = `({ rowHeights: window.__rowHeights, treeTops: window.__treeTops })`;
+const LAYOUT = `({
+  rowHeights: window.__rowHeights,
+  treeTops: window.__treeTops,
+  toggles: document.querySelectorAll(${JSON.stringify(TOGGLE)}).length,
+  adopted: window.__firstToggle != null
+    && window.__firstToggle === document.querySelector(${JSON.stringify(TOGGLE)})
+    && window.__firstToggle.parentElement.querySelector(".source-ref-selector-panel") !== null,
+})`;
 
 const result = {};
 try {

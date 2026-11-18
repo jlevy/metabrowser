@@ -39,8 +39,8 @@ registered, any other status, and a golden that never runs the route.
 | `/api/identity` | covered | `--api` | `cli-api-shell.tryscript.md`, `cli-api-source.tryscript.md`, `cli-github-pull.tryscript.md` |
 | `/api/source/status` | covered | `--api` | `cli-api-shell.tryscript.md`, `cli-api-source.tryscript.md`, `cli-checkout-overlay.tryscript.md`, `cli-checkout-overlay.txt` |
 | `/api/source/refresh` | covered | `--api --data` | `cli-api-source.tryscript.md`, `cli-api-shell.tryscript.md` |
-| `/api/source/pin` | covered | `--api --data` | `cli-api-source.tryscript.md`, `cli-api-source-checkout.tryscript.md`, `cli-api-shell.tryscript.md`, `cli-api-diff-view-file.tryscript.md` |
-| `/api/source/refs` | covered | `--api` | `cli-api-source.tryscript.md`, `cli-api-source-checkout.tryscript.md`, `cli-api-shell.tryscript.md` |
+| `/api/source/pin` | covered | `--api --data` | `cli-api-source.tryscript.md`, `cli-api-source-checkout.txt`, `cli-api-shell.tryscript.md`, `cli-api-diff-view-file.tryscript.md` |
+| `/api/source/refs` | covered | `--api` | `cli-api-source.tryscript.md`, `cli-api-source-checkout.txt`, `cli-api-shell.tryscript.md` |
 | `/api/git/repo` | covered | `--api` | `cli-api-git.tryscript.md` |
 | `/api/git/refs` | covered | `--api` | `cli-api-git.tryscript.md` |
 | `/api/git/summary` | covered | `--api` | `cli-api-git.tryscript.md` |
@@ -130,10 +130,10 @@ fails when a named function did not execute.
 | `source.stale-pin-guard` | interaction | `static/source-pin-guard.js#guardFetch`, `static/source-pin-guard.js#guardedRequest` | `/api/file`, `/api/tree`, `/api/source/status` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |
 | `source.ref-selector` | interaction | `static/source-ref-selector.js#createSelector`, `static/source-ref-selector.js#describe`, `static/source-ref-selector.js#moveRow` | `/api/source/refs`, `/api/source/pin` | `node tests/dom/source-ref-selector-session.js` | `cli-ui-source-ref-selector.tryscript.md` |
 | `source.ref-selector-keys` | interaction | `static/source-ref-selector.js#mount` | `/api/source/refs` | `node tests/dom/source-ref-selector-keys-session.js` | `cli-ui-source-ref-selector-keys.tryscript.md` |
-| `source.checkout-refs` | data | `/api/source/refs` | `owned-route` | `metab --cache-dir home --config-dir config checkout --api /api/source/refs` | `cli-api-source-checkout.tryscript.md` |
-| `source.checkout-revision` | data | `/api/source/pin` | `owned-route` | `metab --cache-dir home --config-dir config checkout --api /api/source/pin --data pin-feature-view.json` | `cli-api-source-checkout.tryscript.md` |
-| `source.checkout-ref-option` | data | `/api/source/status` | `owned-route` | `metab --cache-dir home --config-dir config checkout --ref feature --api /api/source/status` | `cli-api-source-checkout.tryscript.md` |
-| `source.checkout-revision-content` | data | `/api/catalog` | `owned-route` | `metab --cache-dir home --config-dir config checkout --ref feature --api /api/catalog` | `cli-api-source-checkout.tryscript.md` |
+| `source.checkout-refs` | data | `/api/source/refs` | `owned-route` | `metab checkout --api /api/source/refs` | `cli-api-source-checkout.txt` |
+| `source.checkout-revision` | data | `/api/source/pin` | `owned-route` | `metab checkout --api /api/source/pin --data pin-feature-view.json` | `cli-api-source-checkout.txt` |
+| `source.checkout-ref-option` | data | `/api/source/status` | `owned-route` | `metab checkout --ref feature --api /api/source/status` | `cli-api-source-checkout.txt` |
+| `source.checkout-revision-content` | data | `/api/catalog` | `owned-route` | `metab checkout --ref feature --api /api/catalog` | `cli-api-source-checkout.txt` |
 | `source.checkout-selector` | interaction | `static/source-ref-selector.js#createSelector`, `static/source-ref-selector.js#describe`, `static/source-ref-selector.js#shownLabel`, `static/source-pin-guard.js#shownPin`, `static/source-pin-guard.js#servesAnother` | `/api/source/refs`, `/api/source/pin` | `node tests/dom/source-ref-selector-session.js` | `cli-ui-source-ref-selector.tryscript.md` |
 | `git.commit-history-landing` | interaction | `static/git-panel.js#restoreCommitLanding`, `static/git-panel.js#selectCommit`, `static/git-panel.js#revealWaitingCommit`, `static/git-panel.js#loadedOrdinalOf`, `static/navigation.js#createController` | `/api/git/repo`, `/api/git/log`, `/api/git/commit` | `node tests/dom/git-commit-history-session.js` | `cli-ui-git-commit-history.tryscript.md` |
 | `git.commit-comparison-reuse` | interaction | `static/git-panel.js#fetchComparison`, `static/git-panel.js#comparisonCacheKey` | `/api/plugin/diff/comparison` | `node tests/dom/git-commit-history-session.js` | `cli-ui-git-commit-history.tryscript.md` |

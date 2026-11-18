@@ -38,7 +38,10 @@ commit; only the working-tree row asks the pin route for the working tree.
 A page left behind by a switch elsewhere offers a reload, which a mirror’s freshness row
 does for a mirror. A checkout’s rows say which chip each name is drawn as, and its
 `labels` are the button on the working tree, a branch, a remote-tracking branch, a tag,
-and a commit. `guard` is what each kind of page names on its data requests
+and a commit. A folder holding a `.git` that Git does not take for a repository’s root
+loses its row when the listing says so, and a Git older than the one a checkout’s
+revisions are read with is refused in the server’s own words.
+`guard` is what each kind of page names on its data requests
 (`static/source-pin-guard.js`), which is how a tab left behind is refused: a revision
 its commit, a checkout’s working tree the word `working-tree`, and a plain folder
 nothing, since its server can serve nothing else.
@@ -698,6 +701,40 @@ $ node tests/dom/source-ref-selector-session.js
           "button": "Branch: feature",
           "open": false,
           "stale": "The server now shows the working tree [Reload]"
+        }
+      },
+      {
+        "step": "a folder Git does not take for a repository loses its row",
+        "requests": [
+          "GET /api/source/refs?kind=branch"
+        ],
+        "filterPending": false,
+        "paint": {
+          "removed": true
+        }
+      },
+      {
+        "step": "an older Git is refused in the server's words",
+        "requests": [
+          "GET /api/source/refs?kind=branch"
+        ],
+        "filterPending": false,
+        "paint": {
+          "button": "Working tree",
+          "open": true,
+          "workingTree": "Working tree: Live local files [current]",
+          "lists": [
+            "branch",
+            "tag",
+            "remote"
+          ],
+          "kind": "branch",
+          "query": "",
+          "loading": false,
+          "switching": false,
+          "rows": [],
+          "note": "",
+          "error": "showing a branch or tag of a checkout needs Git 2.43.7 or newer, which is known never to fetch into it; this is git version 2.39.2"
         }
       },
       {

@@ -39,7 +39,11 @@ import sys
 from pathlib import Path
 from typing import Final
 
+import pytest
+
+from metabrowser.git.process import detect_git_version
 from metabrowser.git.tree_source import GitPath
+from tests.admitted_git import require_admitted_git, required_admitted_git
 from tests.source_mirror_fixture import build_origin
 
 # The fixed identity and date of the one commit made in the checkout, so its ID is literal.
@@ -103,6 +107,90 @@ def build_checkout(directory: Path) -> Path:
     git(checkout, "add", "STAGED.md")
     (checkout / "UNTRACKED.md").write_text(UNTRACKED_TEXT, encoding="utf-8")
     return checkout
+
+
+def signed_branch(checkout: Path, name: str = "signed") -> str:
+    """Write ``refs/heads/<name>``: ``feature``'s commit with a signature header. Its ID.
+
+    The header is what a signed commit carries, with no key behind it, so a Git asked to
+    verify signatures runs its signature program for this commit and nothing else has to
+    be installed. The working tree, the index, and ``HEAD`` are not touched.
+    """
+
+    env = git_env(checkout.parent)
+    plain = subprocess.run(
+        ["git", "-C", str(checkout), "cat-file", "commit", "refs/heads/feature"],
+        check=True,
+        capture_output=True,
+        env=env,
+    ).stdout
+    headers, _, message = plain.partition(b"\n\n")
+    signature = (
+        b"gpgsig -----BEGIN PGP SIGNATURE-----\n \n iQEzBAABCAAdFiEE\n -----END PGP SIGNATURE-----"
+    )
+    signed = headers + b"\n" + signature + b"\n\n" + message
+    oid = (
+        subprocess.run(
+            ["git", "-C", str(checkout), "hash-object", "-t", "commit", "-w", "--stdin"],
+            check=True,
+            capture_output=True,
+            input=signed,
+            env=env,
+        )
+        .stdout.decode()
+        .strip()
+    )
+    git(checkout, "update-ref", f"refs/heads/{name}", oid)
+    return oid
+
+
+def build_partial_clone(directory: Path) -> Path:
+    """A blobless clone of ``origin.git`` under *directory*, with nothing checked out.
+
+    It names every blob of every commit and holds none, as a ``--filter=blob:none`` clone
+    of a large repository does until a checkout fetches them.
+    """
+
+    origin = directory / "origin.git"
+    if not origin.exists():
+        build_origin(directory)
+    env = git_env(directory)
+    subprocess.run(
+        ["git", "--git-dir", str(origin), "config", "uploadpack.allowfilter", "true"],
+        check=True,
+        env=env,
+    )
+    clone = directory / "partial"
+    subprocess.run(
+        [
+            *("git", "clone", "-q", "--template=", "--filter=blob:none", "--no-checkout"),
+            f"file://{origin}",
+            str(clone),
+        ],
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+    return clone
+
+
+def admit_installed_git(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Let a checkout's revisions be read with the installed Git, whatever its version.
+
+    Production reads them only with a Git the acquisition floor admits
+    (``checkout_revisions.py``, "Which Git"), and the suite has to pass on whatever Git a
+    machine has. As ``tests/test_cache_acquire.py`` does for acquisition: when the run
+    names an admitted release, the CI ``admitted-git`` job, nothing is patched and the
+    production floor itself must admit the Git on ``PATH``.
+    """
+
+    if required_admitted_git() is not None:
+        require_admitted_git()
+        return
+    version, raw = detect_git_version()
+    if version is None:
+        pytest.fail(f"the installed Git's version is unparseable: {raw!r}")
+    monkeypatch.setattr("metabrowser.checkout_revisions.require_acquisition_git", lambda: version)
 
 
 def snapshot(checkout: Path) -> dict[str, tuple[str, int, int, int, str]]:

@@ -174,6 +174,20 @@ def test_a_bad_listing_request_is_refused(served: TestClient, params: dict[str, 
     assert response.json()["code"] == "invalid_request"
 
 
+def test_a_mirrors_page_fetch_that_names_no_commit_is_answered(served: TestClient) -> None:
+    """The refusal of a nameless page fetch is a checkout's server's, not a mirror's.
+
+    A mirror has no working-tree page whose guard has yet to arrive, so its requests are
+    checked only by the commit they name: a worker's, a frame's, or an event stream's,
+    which can carry none, is answered as it always was.
+    """
+
+    page_fetch = {"sec-fetch-site": "same-origin", "sec-fetch-dest": "empty"}
+    assert served.get("/api/tree", headers=page_fetch).status_code == 200
+    stale = served.get("/api/tree", headers={**page_fetch, "x-metabrowser-pin": "0" * 40})
+    assert (stale.status_code, stale.json()["code"]) == (409, "pin_changed")
+
+
 def test_a_folder_has_no_refs_to_list(tmp_path: Path) -> None:
     server._set_root_dir(tmp_path)
     with TestClient(server.app) as client:

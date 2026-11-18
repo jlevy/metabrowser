@@ -35,6 +35,7 @@ from typing import Any
 
 import pytest
 
+from metabrowser.git.process import acquisition_allowed, detect_git_version
 from tests.process_group import GROUP_STOP_S, PROFILE_TEARDOWN_S, run_in_own_group
 from tests.required_tools import needs_git, require_chrome, require_node
 from tests.source_checkout_fixture import build_checkout, snapshot, view
@@ -80,6 +81,14 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
     tmp_path: Path, chrome_profile: Path
 ) -> None:
     chrome = require_chrome()
+    # The server here is a real `metab`, which reads a checkout's revisions only with a Git
+    # the acquisition floor admits and refuses by name otherwise (checkout_revisions.py,
+    # "Which Git"). Nothing can admit an older Git for another process, so on one this
+    # has no subject; CI's Git is admitted. tests/test_checkout_revisions.py holds the
+    # same behavior in process on any Git.
+    version, raw = detect_git_version()
+    if not acquisition_allowed(version):
+        pytest.skip(f"needs a Git the acquisition floor admits; found {raw or 'no git'!r}")
     checkout = build_checkout((tmp_path / "served").resolve())
     state = tmp_path / "state"
     for part in ("cache", "config"):
@@ -164,6 +173,9 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
         layout = result[name]
         assert len(layout["rowHeights"]) == 1, f"{name}: the row changed height: {layout}"
         assert len(layout["treeTops"]) == 1, f"{name}: the tree moved: {layout}"
+        # The button the parser drew is the one the mounted module uses, so focus put on
+        # it before the module arrived is not lost to a swap.
+        assert (layout["toggles"], layout["adopted"]) == (1, True), f"{name}: {layout}"
 
     # A page that shows what the server serves is never refused: the working tree's page
     # before its guard arrived, and the revision's through a file and its history. The

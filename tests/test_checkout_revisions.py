@@ -18,7 +18,9 @@ compares it across a whole session.
 
 from __future__ import annotations
 
+import asyncio
 import os
+import re
 import subprocess
 import time
 from collections.abc import Generator
@@ -36,19 +38,35 @@ from metabrowser.capabilities import (
     get_capabilities,
 )
 from metabrowser.checkout_revisions import NOT_A_CHECKOUT, open_on_ref
-from metabrowser.source import SubjectOpenError, subject_open_failure
+from metabrowser.git.process import (
+    GIT_NO_DRIVER_ARGS,
+    GIT_NO_SIGNATURE_ARGS,
+    UnsupportedGitVersionError,
+    repository_store_target,
+    run_git,
+)
+from metabrowser.source import (
+    SubjectOpenError,
+    attach_subject,
+    get_source_session,
+    subject_open_failure,
+)
 from metabrowser.source_routes import PIN_CHANGED_HEADER, PIN_HEADER, WORKING_TREE_PIN
 from tests.required_tools import needs_git
 from tests.source_checkout_fixture import (
     EDITED_README,
     STAGED_TEXT,
     UNTRACKED_TEXT,
+    admit_installed_git,
     build_checkout,
+    build_partial_clone,
     git,
     git_env,
+    signed_branch,
     snapshot,
     view,
 )
+from tests.source_mirror_fixture import build_origin
 
 pytestmark = [
     pytest.mark.skipif(os.name != "posix", reason="the fixture's Git environment is POSIX"),
@@ -59,6 +77,13 @@ _JSON = {"content-type": "application/json"}
 FIRST = "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e"
 SECOND = "42382ea2303b733e1e21b4bd6ddb974ca4e775eb"
 FEATURE = "c7ae2a331f546e6a2431ed7093e9e430a9d1269b"
+
+
+@pytest.fixture(autouse=True)
+def _installed_git(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]
+    """A checkout's revisions are read with an admitted Git; see ``admit_installed_git``."""
+
+    admit_installed_git(monkeypatch)
 
 
 @pytest.fixture
@@ -691,12 +716,163 @@ def test_the_snapshot_sees_an_index_rewritten_with_the_same_entries(checkout: Pa
     assert [key for key in before if before[key] != after.get(key)] == [".git", ".git/index"]
 
 
-def test_a_linked_worktree_shows_its_repositorys_refs_and_is_not_written(
+# The reads that honor a repository's configuration: a revision's history, a commit's
+# view, and its diffs, whole and one file.
+def _commit_views(*commits: str) -> tuple[str, ...]:
+    views = [
+        "/api/git/repo",
+        "/api/git/refs",
+        "/api/git/log?limit=5",
+        "/api/git/log?limit=5&scope=all",
+    ]
+    for commit in commits:
+        views += [
+            f"/api/git/commit/{commit}",
+            f"/api/git/summary?rev={commit}",
+            f"/api/plugin/diff/comparison?revision={commit}",
+        ]
+    return tuple(views)
+
+
+def _plant(
+    checkout: Path, tmp_path: Path, *, selected_by: str = "info/attributes"
+) -> dict[str, Path]:
+    """Give *checkout* a configuration that names a program for everything Git can run.
+
+    Each program leaves its own marker, so a test says which ran: a diff driver (external,
+    textconv with its cache, and per-driver command, selected for every path the way
+    *selected_by* says), a signature program for each format with ``log.showSignature``,
+    and the rest (fsmonitor, hooks, pager, ssh, credential and upload-pack helpers).
+    """
+
+    markers = {name: tmp_path / f"ran-{name}" for name in ("driver", "signature", "other")}
+    scripts: dict[str, Path] = {}
+    for name, marker in markers.items():
+        script = tmp_path / f"{name}.sh"
+        body = 'cat "$1" 2>/dev/null\n' if name == "driver" else ""
+        script.write_text(f"#!/bin/sh\necho ran >> '{marker}'\n{body}", encoding="utf-8")
+        script.chmod(0o755)
+        scripts[name] = script
+    settings = [
+        ("diff.external", scripts["driver"]),
+        ("diff.planted.textconv", scripts["driver"]),
+        ("diff.planted.cachetextconv", "true"),
+        ("diff.planted.command", scripts["driver"]),
+        ("log.showSignature", "true"),
+        ("gpg.program", scripts["signature"]),
+        ("gpg.ssh.program", scripts["signature"]),
+        ("gpg.x509.program", scripts["signature"]),
+        ("core.fsmonitor", scripts["other"]),
+        ("core.hooksPath", tmp_path),
+        ("core.sshCommand", scripts["other"]),
+        ("core.pager", scripts["other"]),
+        ("core.alternateRefsCommand", scripts["other"]),
+        ("credential.helper", f"!{scripts['other']}"),
+        ("uploadpack.packObjectsHook", scripts["other"]),
+    ]
+    for key, value in settings:
+        git(checkout, "config", key, str(value))
+    for hook in ("post-checkout", "reference-transaction", "post-index-change"):
+        (tmp_path / hook).unlink(missing_ok=True)
+        (tmp_path / hook).symlink_to(scripts["other"])
+    common = Path(git(checkout, "rev-parse", "--path-format=absolute", "--git-common-dir"))
+    if selected_by == "info/attributes":
+        (common / "info").mkdir(exist_ok=True)
+        (common / "info" / "attributes").write_text("* diff=planted\n", encoding="utf-8")
+    elif selected_by == "core.attributesFile":
+        attributes = tmp_path / "attributes"
+        attributes.write_text("* diff=planted\n", encoding="utf-8")
+        git(checkout, "config", "core.attributesFile", str(attributes))
+    else:
+        (checkout / ".gitattributes").write_text("* diff=planted\n", encoding="utf-8")
+    for marker in markers.values():
+        marker.unlink(missing_ok=True)
+    return markers
+
+
+def _differing(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
+    return sorted(key for key in before.keys() | after.keys() if before.get(key) != after.get(key))
+
+
+def _read_revisions(client: TestClient, refs: tuple[str, ...], views: tuple[str, ...]) -> None:
+    """Show each of *refs* and read its tree, its files, and each of *views*."""
+
+    for kind in ("branch", "tag", "remote"):
+        _refs(client, kind=kind)
+    for ref in refs:
+        _pin(client, ref=ref)
+        for node in client.get("/api/tree", params={"depth": "2"}).json()["tree"]:
+            assert client.get("/api/file", params={"path": node["path"]}).status_code == 200
+            assert client.get("/raw", params={"path": node["path"]}).status_code == 200
+        for address in views:
+            assert client.get(address).status_code == 200, (ref, address)
+    _pin(client, working_tree=True)
+
+
+@pytest.mark.parametrize(
+    "selected_by", ["info/attributes", "core.attributesFile", ".gitattributes"]
+)
+def test_a_hostile_checkout_configuration_runs_nothing_for_a_revision(
+    checkout: Path, tmp_path: Path, selected_by: str
+) -> None:
+    """No program a checkout's configuration names runs for a revision, and nothing is written.
+
+    The store policies leave a checkout's local configuration in effect. It can name a
+    diff driver, cached, which would run for a commit's view and write a
+    ``refs/notes/textconv/`` ref into the reader's ``.git``, and a signature program,
+    which would run for every signed commit of a history and, by what it prints, take
+    that commit out of it. Every ``diff`` and ``show`` at a store target says
+    ``--no-textconv --no-ext-diff``, and every command says ``log.showSignature=false``
+    (``git/process.py``). So across a revision's files, its history, its commit views,
+    and its diffs: no marker, the signed commit is in the history and opens, and every
+    entry under the checkout is what it was.
+    """
+
+    signed = signed_branch(checkout)
+    markers = _plant(checkout, tmp_path, selected_by=selected_by)
+    views = _commit_views(FEATURE, SECOND, signed)
+    before = snapshot(checkout)
+    server._set_root_dir(checkout)
+    with TestClient(server.app) as client:
+        _read_revisions(client, ("feature", "topic", "signed", "v1", "origin/topic"), views)
+        _pin(client, ref="signed")
+        log = client.get("/api/git/log", params={"limit": "5"}).json()
+        assert log["commits"][0]["id"] == signed
+        assert client.get(f"/api/git/commit/{signed}").json()["commit"]["id"] == signed
+        _pin(client, working_tree=True)
+    assert [name for name, marker in markers.items() if marker.exists()] == []
+    assert _differing(before, snapshot(checkout)) == []
+    # The fixture is live. The folder's own Commits tab honors its diff drivers, as
+    # before, so the same diff asked of the working tree's server runs the one planted.
+    # It verifies no signature either: that option is on every command, a folder's too,
+    # where a signature program's lines took a signed commit out of the history.
+    server._set_root_dir(checkout)
+    with TestClient(server.app) as client:
+        for address in _commit_views(signed):
+            assert client.get(address).status_code == 200, address
+        assert client.get(f"/api/git/commit/{signed}").json()["commit"]["id"] == signed
+    assert markers["driver"].exists()
+    assert not markers["signature"].exists()
+    # And the signature program is live: Git asked without the option runs it.
+    assert git(checkout, "log", "-1", "--format=%H", signed) == signed
+    assert markers["signature"].exists()
+
+
+def test_a_linked_worktree_shows_its_repositorys_refs_and_neither_is_written(
     checkout: Path, tmp_path: Path
 ) -> None:
+    """The three places differ here: the worktree, its Git directory, and the common one.
+
+    The worktree's refs and objects are its main repository's, so the driver's cache
+    would be written there. With the hostile configuration planted, a revision's files,
+    history, commit views, and diffs leave the worktree and the main repository, each
+    with its ``.git``, as they were, and run nothing.
+    """
+
     linked = tmp_path / "linked"
     git(checkout, "worktree", "add", "-q", str(linked), "feature")
     (linked / "DRAFT.md").write_text("Only in the linked worktree.\n", encoding="utf-8")
+    markers = _plant(linked, tmp_path)
     before = (snapshot(checkout), snapshot(linked))
     server._set_root_dir(linked.resolve())
     with TestClient(server.app) as client:
@@ -706,120 +882,256 @@ def test_a_linked_worktree_shows_its_repositorys_refs_and_is_not_written(
         assert _names(listing) == ["feature", "local-work", "topic"]
         assert _pin(client, ref="topic")["status"]["pin"] == SECOND
         assert _tree(client) == ["NOTES.md", "README.md"]
-        _pin(client, working_tree=True)
+        _read_revisions(client, ("topic", "feature", "v1"), _commit_views(FEATURE, SECOND))
         assert "DRAFT.md" in _live_tree(client)
-    assert (snapshot(checkout), snapshot(linked)) == before
+    assert [name for name, marker in markers.items() if marker.exists()] == []
+    after = (snapshot(checkout), snapshot(linked))
+    assert (_differing(before[0], after[0]), _differing(before[1], after[1])) == ([], [])
 
 
-def test_a_hostile_checkout_configuration_runs_nothing_for_a_revision(
-    checkout: Path, tmp_path: Path
+def test_a_submodule_served_as_the_root_is_read_from_its_own_git_directory(
+    tmp_path: Path,
 ) -> None:
-    """What a revision's own reads run, with a checkout whose configuration names programs.
+    """A submodule's Git directory is under its superproject's, and neither is written."""
 
-    The checkout's configuration is the reader's, and its Commits tab already reads it;
-    this holds that listing refs, switching, and reading a revision's tree and files run
-    none of the programs it names, and fetch nothing a promisor remote would.
+    origin = build_origin(tmp_path)
+    superproject = tmp_path / "super"
+    env = git_env(tmp_path)
+    subprocess.run(
+        ["git", "init", "-q", "--template=", "-b", "main", str(superproject)], check=True, env=env
+    )
+    subprocess.run(
+        [
+            *("git", "-C", str(superproject), "-c", "protocol.file.allow=always"),
+            *("submodule", "add", "-q", str(origin), "sub"),
+        ],
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+    git(superproject, "commit", "-q", "-m", "add sub")
+    module = (superproject / "sub").resolve()
+    assert (module / ".git").is_file()
+    markers = _plant(module, tmp_path)
+    before = snapshot(superproject)
+    server._set_root_dir(module)
+    with TestClient(server.app) as client:
+        assert _refs(client)["working_tree"]["head"] == "refs/heads/topic"
+        _read_revisions(client, ("origin/feature", "v1"), _commit_views(FEATURE))
+    assert [name for name, marker in markers.items() if marker.exists()] == []
+    assert _differing(before, snapshot(superproject)) == []
+
+
+def test_a_partial_clone_answers_object_unavailable_and_fetches_nothing(tmp_path: Path) -> None:
+    """A blobless clone names blobs it does not hold, and a revision's read fetches none.
+
+    A file, a commit's view, and its diff each answer a typed ``object_unavailable``;
+    the tree and the history, which need no blob, answer. No pack arrives and the clone,
+    its ``.git`` included, is what it was: ``GIT_NO_LAZY_FETCH`` on a Git the floor
+    admits, which is why this module is in the admitted-git list.
     """
 
-    marker = tmp_path / "marker"
-    script = tmp_path / "planted.sh"
-    script.write_text(f"#!/bin/sh\necho ran >> '{marker}'\n", encoding="utf-8")
-    script.chmod(0o755)
-    for key, value in (
-        ("core.fsmonitor", str(script)),
-        ("core.hooksPath", str(tmp_path)),
-        ("core.sshCommand", str(script)),
-        ("core.pager", str(script)),
-        ("core.alternateRefsCommand", str(script)),
-        ("credential.helper", f"!{script}"),
-        ("uploadpack.packObjectsHook", str(script)),
-        ("remote.origin.promisor", "true"),
-        ("remote.origin.partialclonefilter", "blob:none"),
-        ("remote.origin.url", f"ext::{script}"),
-    ):
-        git(checkout, "config", key, value)
-    for hook in ("post-checkout", "reference-transaction", "post-index-change"):
-        (tmp_path / hook).symlink_to(script)
-    marker.unlink(missing_ok=True)
-    before = snapshot(checkout)
+    clone = build_partial_clone(tmp_path.resolve())
+    packs = sorted(path.name for path in (clone / ".git" / "objects" / "pack").iterdir())
+    before = snapshot(clone)
+    server._set_root_dir(clone)
+    with TestClient(server.app, raise_server_exceptions=False) as client:
+        assert _pin(client, ref="origin/feature")["status"]["pin"] == FEATURE
+        assert _tree(client) == ["FEATURE.md", "README.md"]
+        assert client.get("/api/git/log", params={"limit": "5"}).status_code == 200
+        blob = client.get("/api/file", params={"path": _wire("FEATURE.md")})
+        assert (blob.status_code, blob.json()["code"]) == (404, "object_unavailable")
+        commit = client.get(f"/api/git/commit/{FEATURE}")
+        assert (commit.status_code, commit.json()["code"]) == (404, "object_unavailable")
+        assert commit.json()["oid"] == blob.json()["oid"]
+        # A commit the clone does not have at all is still not found, and not unavailable.
+        unknown = client.get(f"/api/git/commit/{'0123456789abcdef' * 2}01234567")
+        assert (unknown.status_code, unknown.json()["code"]) == (404, "commit_not_found")
+        for address in (
+            f"/api/plugin/diff/comparison?revision={FEATURE}",
+            f"/api/plugin/diff/comparison?revision={FEATURE}&file=FEATURE.md",
+        ):
+            diff = client.get(address)
+            assert (diff.status_code, diff.json()["error"]) == (409, "object_unavailable"), address
+            assert "nothing is fetched into it" in diff.json()["message"]
+        _pin(client, working_tree=True)
+    assert sorted(path.name for path in (clone / ".git" / "objects" / "pack").iterdir()) == packs
+    assert _differing(before, snapshot(clone)) == []
+
+
+# ── Which Git, which directory, and which folders ────────────
+
+
+def test_an_older_git_is_refused_by_name_and_the_working_tree_is_still_served(
+    checkout: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only a Git the acquisition floor admits is known never to fetch into a checkout."""
+
+    def below_the_floor() -> tuple[int, int, int]:
+        raise UnsupportedGitVersionError("git version 2.39.2", "2.43.7 or newer")
+
+    monkeypatch.setattr("metabrowser.checkout_revisions.require_acquisition_git", below_the_floor)
+    said = (
+        "showing a branch or tag of a checkout needs Git 2.43.7 or newer, which is known "
+        "never to fetch into it; this is git version 2.39.2"
+    )
     server._set_root_dir(checkout)
     with TestClient(server.app) as client:
-        for kind in ("branch", "tag", "remote"):
-            _refs(client, kind=kind)
-        for ref in ("feature", "v1", "origin/topic"):
-            _pin(client, ref=ref)
-            for node in client.get("/api/tree", params={"depth": "2"}).json()["tree"]:
-                assert client.get("/api/file", params={"path": node["path"]}).status_code == 200
-        _pin(client, working_tree=True)
-    assert not marker.exists(), marker.read_text(encoding="utf-8")
-    assert snapshot(checkout) == before
+        for refused in (
+            client.get("/api/source/refs"),
+            client.post("/api/source/pin", json={"ref": "feature"}, headers=_JSON),
+        ):
+            assert (refused.status_code, refused.json()) == (
+                409,
+                {"error": said, "code": "unsupported_git"},
+            )
+        assert client.get("/api/source/status").json()["subject"] == "attached_filesystem"
+        assert _live_tree(client) == ["NOTES.md", "README.md", "STAGED.md", "UNTRACKED.md"]
+    open_on_ref("feature")
+    with pytest.raises(SubjectOpenError) as stopped, TestClient(server.app):
+        pass
+    assert str(stopped.value) == f"--ref: {said}"
 
 
-@pytest.mark.parametrize(
-    "selected_by", ["info/attributes", "core.attributesFile", ".gitattributes"]
-)
-def test_a_revisions_commit_view_runs_no_driver_and_writes_nothing(
-    checkout: Path, tmp_path: Path, selected_by: str
-) -> None:
-    """A revision's history, commit view, and diff run no driver a checkout's configuration names.
+def test_the_directory_read_is_the_one_git_names(tmp_path: Path) -> None:
+    """A ``.git`` pointer Git and another parser read differently is read as Git reads it.
 
-    The store policies leave a checkout's local configuration in effect, and it can name
-    a textconv driver, cached, and an external diff, which the repository's own
-    ``info/attributes`` or a local ``core.attributesFile`` selects for every path. Run,
-    each is a program started by a page of fetched content, and the cache is a
-    ``refs/notes/textconv/`` ref written into the reader's ``.git``. Every ``diff`` and
-    ``show`` at a store target says ``--no-textconv --no-ext-diff``
-    (``GitLocation.diff_driver_args``), so none runs and nothing is written.
+    ``gitdir:`` followed by two spaces and an absolute path: Git keeps the second space
+    and reads a directory of that name inside the folder; a parser that strips it reads
+    the absolute path, a repository the reader did not open and Git did not check.
     """
 
-    marker = tmp_path / "marker"
-    script = tmp_path / "driver.sh"
-    script.write_text(f"#!/bin/sh\necho ran >> '{marker}'\ncat \"$1\"\n", encoding="utf-8")
-    script.chmod(0o755)
-    for key, value in (
-        ("diff.external", str(script)),
-        ("diff.planted.textconv", str(script)),
-        ("diff.planted.cachetextconv", "true"),
-        ("diff.planted.command", str(script)),
-    ):
-        git(checkout, "config", key, value)
-    if selected_by == "info/attributes":
-        (checkout / ".git" / "info").mkdir(exist_ok=True)
-        (checkout / ".git" / "info" / "attributes").write_text("* diff=planted\n", "utf-8")
-    elif selected_by == "core.attributesFile":
-        attributes = tmp_path / "attributes"
-        attributes.write_text("* diff=planted\n", encoding="utf-8")
-        git(checkout, "config", "core.attributesFile", str(attributes))
-    else:
-        (checkout / ".gitattributes").write_text("* diff=planted\n", encoding="utf-8")
-    commit_view = (
-        "/api/git/repo",
-        "/api/git/refs",
-        "/api/git/log?limit=5",
-        f"/api/git/commit/{FEATURE}",
-        f"/api/git/summary?rev={FEATURE}",
-        f"/api/plugin/diff/comparison?revision={FEATURE}",
-        f"/api/plugin/diff/comparison?revision={FEATURE}&file=FEATURE.md",
-        f"/api/plugin/diff/comparison?revision={SECOND}&file=NOTES.md",
+    outside = build_checkout((tmp_path / "outside").resolve())
+    served_root = (tmp_path / "served").resolve()
+    inner = served_root / " " / str(outside).lstrip("/")
+    inner.mkdir(parents=True)
+    env = git_env(tmp_path)
+    scratch = tmp_path / "scratch"
+    subprocess.run(
+        ["git", "init", "-q", "--template=", "-b", "inside", str(scratch)], check=True, env=env
     )
-    marker.unlink(missing_ok=True)
+    (scratch / "INSIDE.md").write_text("inside\n", encoding="utf-8")
+    git(scratch, "add", "INSIDE.md")
+    git(scratch, "commit", "-q", "-m", "inside")
+    (scratch / ".git").rename(inner / ".git")
+    (served_root / ".git").write_text(f"gitdir:  {outside / '.git'}\n", encoding="utf-8")
+    (served_root / "INSIDE.md").write_text("inside\n", encoding="utf-8")
+    server._set_root_dir(served_root)
+    with TestClient(server.app) as client:
+        history = [ref["name"] for ref in client.get("/api/git/refs").json()["refs"]]
+        chosen = client.get("/api/source/refs")
+        assert chosen.status_code == 200, chosen.text
+        assert _names(chosen.json()) == ["inside"] == [name for name in history if name == "inside"]
+        assert "topic" not in _names(chosen.json())
+
+
+def test_a_git_entry_that_is_no_repository_has_its_row_removed_by_the_page(
+    tmp_path: Path,
+) -> None:
+    """The row is drawn from a ``.git`` entry, and Git's answer takes it away again."""
+
+    hollow = tmp_path / "hollow"
+    (hollow / ".git").mkdir(parents=True)
+    (hollow / "README.md").write_text("# Hollow\n", encoding="utf-8")
+    server._set_root_dir(hollow)
+    with TestClient(server.app) as client:
+        assert 'id="source-ref-selector"' in client.get("/view/").text
+        refused = client.get("/api/source/refs")
+        # The code the selector removes its row for (static/source-ref-selector.js).
+        assert (refused.status_code, refused.json()["code"]) == (409, "unsupported_for_subject")
+        pin = client.post("/api/source/pin", json={"ref": "main"}, headers=_JSON)
+        assert (pin.status_code, pin.json()["code"]) == (409, "unsupported_for_subject")
+
+
+def test_a_repository_git_refuses_for_its_owner_is_not_read(
+    checkout: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Git's ownership check decides, and ``--git-dir`` is never used to step around it."""
+
     before = snapshot(checkout)
+    # What Git's own tests set to have every repository belong to someone else.
+    monkeypatch.setenv("GIT_TEST_ASSUME_DIFFERENT_OWNER", "1")
     server._set_root_dir(checkout)
     with TestClient(server.app) as client:
-        for ref in ("feature", "topic"):
-            _pin(client, ref=ref)
-            for address in commit_view:
-                assert client.get(address).status_code == 200, address
-        _pin(client, working_tree=True)
-    assert not marker.exists(), marker.read_text(encoding="utf-8")
-    after = snapshot(checkout)
-    assert (
-        sorted(key for key in before.keys() | after.keys() if before.get(key) != after.get(key))
-        == []
-    )
-    # The fixture is live: the folder's own Commits tab honors its drivers, as before, so
-    # the same diff asked of the working tree's server runs the one planted here.
-    server._set_root_dir(checkout)
+        for refused in (
+            client.get("/api/source/refs"),
+            client.post("/api/source/pin", json={"ref": "feature"}, headers=_JSON),
+        ):
+            assert (refused.status_code, refused.json()["code"]) == (
+                409,
+                "unsupported_for_subject",
+            )
+        assert client.get("/api/source/status").json()["subject"] == "attached_filesystem"
+    monkeypatch.delenv("GIT_TEST_ASSUME_DIFFERENT_OWNER")
+    assert _differing(before, snapshot(checkout)) == []
+
+
+def test_a_repository_made_in_a_served_folder_gets_its_selector_without_a_restart(
+    tmp_path: Path,
+) -> None:
+    plain = tmp_path / "later"
+    plain.mkdir()
+    (plain / "README.md").write_text("# Later\n", encoding="utf-8")
+    server._set_root_dir(plain)
     with TestClient(server.app) as client:
-        assert client.get(commit_view[-2]).status_code == 200
-    assert marker.exists()
+        assert 'id="source-ref-selector"' not in client.get("/view/").text
+        assert client.get("/api/source/refs").status_code == 409
+        env = git_env(tmp_path)
+        subprocess.run(
+            ["git", "init", "-q", "--template=", "-b", "main", str(plain)], check=True, env=env
+        )
+        git(plain, "add", "README.md")
+        git(plain, "commit", "-q", "-m", "first")
+        assert 'id="source-ref-selector"' in client.get("/view/").text
+        assert _names(_refs(client)) == ["main"]
+
+
+def test_a_shell_rendered_while_the_server_switches_is_still_its_folders(
+    served: TestClient, checkout: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The shell reads its folder once, with its subject, and not again after an await."""
+
+    _pin(served, ref="feature")
+    revision = get_source_session().subject
+    _pin(served, working_tree=True)
+    discover = server.discover_repository_context
+
+    def switched_meanwhile(root: Path) -> Any:
+        # Another request attached a revision while this shell was being rendered.
+        attach_subject(revision)
+        return discover(root)
+
+    monkeypatch.setattr(server, "discover_repository_context", switched_meanwhile)
+    shell = served.get("/view/")
+    monkeypatch.undo()
+    server._set_root_dir(checkout)
+    assert shell.status_code == 200
+    assert 'window.METABROWSER_SOURCE_KIND="filesystem"' in shell.text
+    assert "content-security-policy" not in shell.headers
+
+
+def test_a_store_read_that_could_run_a_configured_program_is_refused_at_the_spawn(
+    checkout: Path,
+) -> None:
+    """The options are held where every store spawn passes, not by each caller remembering."""
+
+    target = repository_store_target(git_dir=checkout / ".git")
+
+    async def run(*args: str) -> bytes:
+        return await run_git(list(args), target=target)
+
+    for args, missing in (
+        (("show", FEATURE), "--no-textconv --no-ext-diff"),
+        (("diff", FIRST, FEATURE), "--no-textconv --no-ext-diff"),
+        (("log", "-p", "-1", FEATURE), "--no-textconv --no-ext-diff"),
+        (("--literal-pathspecs", "log", "--stat", "-1", FEATURE), "--no-textconv --no-ext-diff"),
+        (("log", "-1", FEATURE), "-c log.showSignature=false"),
+        (("-C", ".", "log", "-1", FEATURE), "-c log.showSignature=false"),
+        ((*GIT_NO_SIGNATURE_ARGS, "log", "--show-signature", "-1"), "-c log.showSignature=false"),
+        (("show", *GIT_NO_DRIVER_ARGS, FEATURE), "-c log.showSignature=false"),
+    ):
+        with pytest.raises(ValueError, match=re.escape(missing)):
+            asyncio.run(run(*args))
+    listed = asyncio.run(run(*GIT_NO_SIGNATURE_ARGS, "log", "-1", "--format=%H", FEATURE))
+    assert listed.decode().strip() == FEATURE
+    assert asyncio.run(run("rev-parse", FEATURE)).decode().strip() == FEATURE
