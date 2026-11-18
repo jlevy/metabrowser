@@ -9,10 +9,14 @@ type MetabrowserRenderContext = {
     right: string;
     base_policy: "direct" | "merge_base";
     route?: string;
-    /** The route that opens a file at either end, which a page completes with a side and a path. */
-    snapshot_route?: string;
+    /** The route that serves an image of the head a rendered Markdown file shows, which a
+     *  page completes with a path. */
+    image_route?: string;
     /** The route that renders one changed Markdown file, which a page completes with its ID. */
     rendered_route?: string;
+    /** A pull request's Changes: its head ref when the comparison shows the pull request's
+     *  head, which View on branch opens, and null when it shows another commit. */
+    branch?: { ref: string } | null;
   };
   /** The owner of a selected comparison read, while its view is mounting. */
   comparisonSignal?: AbortSignal;
@@ -184,6 +188,20 @@ type MetabrowserViewSpec = {
     slot: HTMLElement,
     ctx: { raw: unknown; openFile: (path: string) => void },
   ) => Promise<{ dispose: () => void } | null>;
+  /**
+   * Switch the served pin through the page's one switch, which the diff view's controls
+   * share, for a page whose own controls switch it too, as a pull request's Browse code
+   * does. The diff view has one; what follows a switch is the caller's.
+   */
+  switchPin?: (
+    selection: { oid: string; under?: string; view?: string },
+    wanted?: () => boolean,
+  ) => Promise<
+    | { kind: "switched"; href: string | null }
+    | { kind: "busy" }
+    | { kind: "abandoned" }
+    | { kind: "refused"; message: string }
+  >;
 };
 
 type MetabrowserViewDescriptor = {
@@ -1172,8 +1190,10 @@ type MarkdownBuiltins = {
     ctx: MetabrowserRenderContext,
     /** `includeToc: "off"` for a document embedded in host navigation that is
      * already the reader's way around it; omitted leaves the decision to
-     * KPress' own thresholds. */
-    options?: { signal?: AbortSignal; includeToc?: "auto" | "on" | "off" },
+     * KPress' own thresholds. `pagePath` is the path of the page that shows the
+     * document as its own when that is not the document's, as a folder's Overview
+     * shows its README: the document's fragments are places on that page. */
+    options?: { signal?: AbortSignal; includeToc?: "auto" | "on" | "off"; pagePath?: string },
   ) => DisposableHandle;
   renderSource: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
 };
@@ -1543,7 +1563,12 @@ type MetabrowserSdk = {
   ensureKindAssets(kind: string): Promise<void>;
   /** Run *callback* when the page is idle, no later than *timeout* ms; returns its cancel. */
   whenIdle(callback: () => void, options?: { timeout?: number }): () => void;
-  kpressInitToc(container: HTMLElement): (() => void) | null;
+  /** Wire KPress's table of contents in *container*; *config* is KPress's per-binding
+   * configuration, such as the narrow toggle's `visible` policy. */
+  kpressInitToc(
+    container: HTMLElement,
+    config?: { visible?: (context: { scrollTop(): number }) => boolean },
+  ): (() => void) | null;
   langForExtension(ext: string): string;
   langForPath(pathOrName: string, ext?: string): string;
   loadKpressAssets(manifest: KpressAssetManifest): Promise<void>;

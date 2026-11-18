@@ -1,6 +1,6 @@
 """The plugin's data routes, every one the manifest names, all under ``/api/plugin/github/``:
 one pull request's (``pull``, ``pull-refresh``, and the routes of its texts, timeline,
-comparison, snapshots, and rendered diffs), the catalog's (``pulls``, ``pulls-refresh``,
+comparison, rendered diffs, and their images), the catalog's (``pulls``, ``pulls-refresh``,
 ``pull-cores-prepare``), changed files (``pull-files``, ``pull-files-refresh``), stacks
 (``stacks``, ``stacks-refresh``), background prefetch (``pulls-prefetch``), and
 ``cache-clear``, which discards all of a repository's. The table in
@@ -257,12 +257,13 @@ async def pull_markdown_handler(request: Request) -> JSONResponse:
     return JSONResponse(body, status_code=status_code, headers=_NO_STORE)
 
 
-async def pull_snapshot_handler(request: Request) -> Response:
+async def pull_image_handler(request: Request) -> Response:
+    """An image at the head of an admitted comparison, for its rendered Markdown."""
     from metabrowser.builtin_plugins.github.pull_snapshot import (
-        pull_snapshot_handler as read_snapshot,
+        pull_image_handler as read_image,
     )
 
-    return await read_snapshot(request)
+    return await read_image(request)
 
 
 async def pull_rendered_diff_handler(request: Request) -> Response:

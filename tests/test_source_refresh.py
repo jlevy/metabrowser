@@ -58,6 +58,7 @@ from metabrowser.source import (
     reset_source_session,
     serve_subject_opener,
 )
+from tests.loop_gate import held_until
 from tests.required_tools import needs_git
 from tests.test_cache_acquire import _git
 from tests.test_serve_pin import (
@@ -281,7 +282,7 @@ def test_concurrent_refresh_requests_join_one_fetch(
 
     async def held_update(home: Path, store_key: str, *, remote_url: str) -> StoreUpdate:
         calls.append(store_key)
-        await asyncio.to_thread(release.wait, 30)
+        await held_until(release, 30)
         return StoreUpdate(RefreshOutcome.succeeded, _FUTURE)
 
     monkeypatch.setattr("metabrowser.cache.served_mirror.update_store", held_update)

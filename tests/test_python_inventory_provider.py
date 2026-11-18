@@ -60,6 +60,7 @@ from metabrowser.inventory_engine.providers.python_inventory import (
 from metabrowser.inventory_engine.providers.python_inventory import (
     _PythonInventoryStore as PythonInventoryStore,
 )
+from tests.loop_gate import held_until
 
 
 async def _open_settled(
@@ -701,7 +702,7 @@ def test_rollup_collision_retries_once_and_reports_discarded_work(
             handle.read(ReadRequest(queries=(RollupQuery(query_id="rollup"),)))
         )
         try:
-            assert await asyncio.to_thread(build_started.wait, 1.0)
+            assert await held_until(build_started, 1.0)
             (tmp_path / "b.txt").write_text("b", encoding="utf-8")
             await handle.refresh(RefreshRequest(observations=(RefreshObservation(path="b.txt"),)))
             after_entries = len(handle._entries)
@@ -1148,7 +1149,7 @@ def test_concurrent_refresh_cannot_replace_a_newer_observation(
         request = RefreshRequest(observations=(RefreshObservation(path=target.name),))
         older = asyncio.create_task(handle.refresh(request))
         try:
-            assert await asyncio.to_thread(observed.wait, 5)
+            assert await held_until(observed, 5)
             target.write_text("the newer observation")
             newer = await handle.refresh(request)
             release.set()

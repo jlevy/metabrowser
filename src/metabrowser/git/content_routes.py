@@ -1721,6 +1721,7 @@ async def git_revision_kpress_render(
         parse_source = source_override.encode() if source_override is not None else body
         _, _, frontmatter, frontmatter_error = _git_blob_content_predicates(ext, parse_source)
     envelope = _git_frontmatter_envelope(mapping=frontmatter, error=frontmatter_error)
+    trusted = get_capabilities().active_content
     try:
         rendered = await asyncio.to_thread(
             kpress_adapter.render_kpress_view,
@@ -1736,6 +1737,11 @@ async def git_revision_kpress_render(
             frontmatter_error=envelope.get("frontmatter_error"),
             profile=profile,
             include_toc=include_toc,
+            # Under the untrusted profile, which a pin always runs under, fenced code is
+            # not highlighted. The inert render below drops every class highlighting
+            # writes, so a fence showed as plain text anyway, and a lexer can cost far
+            # more than its input's size (`kpress_adapter._PLAIN_CODE`).
+            plain_code=not trusted,
         )
     except kpress_adapter.KPressInvalidRequestError as exc:
         return JSONResponse(
@@ -1757,7 +1763,7 @@ async def git_revision_kpress_render(
             },
             status_code=502,
         )
-    if not get_capabilities().active_content:
+    if not trusted:
         rendered = kpress_adapter.inert_render(rendered)
     return JSONResponse(rendered, headers={"cache-control": "no-cache"})
 
