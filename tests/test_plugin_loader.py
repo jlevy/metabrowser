@@ -987,9 +987,9 @@ def test_yaml_top_level_caches_on_context(tmp_path: Path, monkeypatch) -> None:
     call_count = {"n": 0}
     real_load = classify_module.load_bounded_yaml
 
-    def counting_load(text: str, *, max_expanded_size: int) -> object:
+    def counting_load(text: str, **options: Any) -> object:
         call_count["n"] += 1
-        return real_load(text, max_expanded_size=max_expanded_size)
+        return real_load(text, **options)
 
     monkeypatch.setattr(classify_module, "load_bounded_yaml", counting_load)
 

@@ -8,15 +8,19 @@ All notable changes to Metabrowser are documented here.
   YAML aliases let a few hundred bytes of front matter stand for millions of values: 310
   bytes of seven alias levels made `/api/file` spend over a second building 39 MB of
   JSON, answering nothing else meanwhile, and each further level multiplied both by
-  nine. Merge keys (`<<`) and a duplicated key did the same inside the YAML parser
-  itself, the second into the error message.
+  nine. Merge keys (`<<`), merges nested inline, and a duplicated key did the same inside
+  the YAML parser itself, and so did `!!timestamp` on a list, the last two into the
+  error message; flow lists nested hundreds deep cost the parser seconds.
   A served GitHub mirror or a folder served with `--untrusted` could carry such a file,
   and so could a downloaded repository served as a trusted folder.
-  Front matter is now measured before it is built, and refused when, written out without
-  its aliases, it is larger than `FRONTMATTER_MAX_EXPANDED_SIZE` characters
-  (`frontmatter_yaml.py`), or when an alias sits inside the value it names: the file
-  reads as text, and its header badge and rendered document say why, in at most
-  `YAML_ERROR_MAX_CHARS` characters.
+  Front matter is now measured before it is built, and Metabrowser builds it itself,
+  leaving the YAML parser only its scalars.
+  It is refused when, written out without its aliases, it is larger than
+  `FRONTMATTER_MAX_EXPANDED_SIZE` characters (`frontmatter_yaml.py`), when it nests more
+  than `YAML_MAX_DEPTH` levels, when an alias sits inside the value it names, or when it
+  declares a YAML version other than 1.2: the file reads as text, and its header badge
+  and rendered document say why, in at most `YAML_ERROR_MAX_CHARS` characters, naming a
+  line rather than quoting it.
   The `.yaml` prefix that `yaml_has_key` and `yaml_value_prefix` read goes through the
   same loader. The parse runs off the server’s event loop on every path, and an
   uncompressed file’s front matter is read only from its first `FRONTMATTER_MAX_BYTES`,
@@ -31,10 +35,14 @@ All notable changes to Metabrowser are documented here.
 - Plugin authors: `frontmatter_has_key` and `yaml_has_key` now match a key that is not a
   string by its JSON text, the spelling a renderer already received, so `"1"` matches a
   YAML `1:` key and `"true"` a `true:` key.
+  Keys are compared by that text, so `1:` and `"1":` in one mapping are a duplicate.
   `yaml_has_key` and `yaml_value_prefix` now read YAML 1.2, as front matter and the
-  structured viewer do, so `on`, `yes`, and `no` are strings rather than booleans; a
-  `.yaml` prefix that is not UTF-8 does not match.
-  See [Kind Rules](docs/plugins.md#kind-rules).
+  structured viewer do: `on`, `yes`, `no`, and `12:30:45` are strings rather than
+  booleans and numbers, and `0o17` and `1e3` are numbers rather than strings.
+  A `.yaml` prefix no longer matches when it is not UTF-8, declares another YAML version
+  (`%YAML 1.1`), nests past `YAML_MAX_DEPTH`, or holds aliases that write out past
+  `_YAML_PREFIX_MAX_EXPANDED_SIZE`. A key that appears twice in it keeps its last value,
+  as it did before. See [Kind Rules](docs/plugins.md#kind-rules).
 
 - The agent skill’s commands now produce output an agent can parse, and its recipes stop
   with a nonzero status when `metab` fails.

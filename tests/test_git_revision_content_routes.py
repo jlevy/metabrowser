@@ -56,7 +56,7 @@ from tests.test_frontmatter_bounds import (
     OVER_BUDGET,
     OVER_BUDGET_SHAPES,
     SURROGATES,
-    guard_constructors,
+    forbid_ruamel_collections,
     merge_bomb,
 )
 
@@ -610,11 +610,12 @@ def test_git_pin_answers_a_frontmatter_alias_bomb_as_text_parsed_off_the_loop(
     """A pinned page shares the bounded loader (``tests/test_frontmatter_bounds.py``).
 
     Twelve levels of aliases, of merge keys, and of aliases under a duplicated key are
-    9**12 values written out, and none reaches a constructor. The file, its KPress
-    render, and a request beside them all answer; the parse runs on a worker thread,
-    the tags JSON has no type for arrive as JSON-safe values, a constructor's own
-    failure is a reason rather than a server error, and a `.yaml` blob's prefix
-    predicate refuses a merge bomb too.
+    9**12 values written out, and none is built; no YAML constructor builds a
+    collection on this page at all. The file, its KPress render, and a request beside
+    them all answer; the parse runs on a worker thread, the tags JSON has no type for
+    arrive as JSON-safe values, a scalar or tag the loader does not read is a reason
+    rather than a server error, and a `.yaml` blob's prefix predicate refuses a merge
+    bomb too.
     """
 
     work = tmp_path / "work"
@@ -636,13 +637,13 @@ def test_git_pin_answers_a_frontmatter_alias_bomb_as_text_parsed_off_the_loop(
     commit = _git(work, "rev-parse", "HEAD").decode().strip()
     _git(tmp_path, "clone", "--bare", "--template=", str(work), str(store), env_root=tmp_path)
 
-    guard_constructors(monkeypatch)
+    forbid_ruamel_collections(monkeypatch)
     parse_threads: list[int] = []
     real_load = frontmatter_yaml._load
 
-    def recording_load(*args: Any) -> object:
+    def recording_load(*args: Any, **kwargs: Any) -> object:
         parse_threads.append(threading.get_ident())
-        return real_load(*args)
+        return real_load(*args, **kwargs)
 
     monkeypatch.setattr(frontmatter_yaml, "_load", recording_load)
     seen: dict[str, Any] = {}
@@ -687,12 +688,12 @@ def test_git_pin_answers_a_frontmatter_alias_bomb_as_text_parsed_off_the_loop(
             assert odd["frontmatter"]["nan"] == ".nan"
             assert odd["frontmatter"]["1"] == "int key"
 
-            for case, (_text, raised) in CONSTRUCTOR_FAILURES.items():
+            for case, (_text, reason) in CONSTRUCTOR_FAILURES.items():
                 path = _wire(f"fails-{case}.md".encode())
                 failed = await client.get("/api/file", params={"path": path})
                 assert failed.status_code == 200, case
                 assert failed.json()["frontmatter_error"].startswith(
-                    f"Error parsing YAML metadata: {raised}"
+                    f"Error parsing YAML metadata: {reason}"
                 ), case
 
             escaped = await client.get("/api/file", params={"path": _wire(b"escaped.md")})

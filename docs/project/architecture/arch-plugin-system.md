@@ -107,9 +107,11 @@ The content predicates read lazily through `FileContext` and are bounded:
 `_YAML_PREFIX_BYTES` parses a prefix.
 Every front-matter read, of a plain file, a compressed Markdown file, or a Git blob,
 stops at `FRONTMATTER_MAX_BYTES`, and both YAML predicates parse through the bounded
-loader in `frontmatter_yaml.py`, which refuses a document larger than its budget written
-out without its YAML aliases (`FRONTMATTER_MAX_EXPANDED_SIZE` for front matter,
-`_YAML_PREFIX_MAX_EXPANDED_SIZE` for the YAML prefix) before constructing it.
+loader in `frontmatter_yaml.py`. It refuses a document that nests past `YAML_MAX_DEPTH`
+or is larger than its budget written out without its YAML aliases
+(`FRONTMATTER_MAX_EXPANDED_SIZE` for front matter, `_YAML_PREFIX_MAX_EXPANDED_SIZE` for
+the YAML prefix) before building it, and builds every collection and merge key itself,
+leaving ruamel’s constructor only the scalars.
 Compressed files classify by their logical name, so `notes.md.gz` is Markdown.
 
 A Git blob has no filesystem path, so `classify_identity` applies the same rules without

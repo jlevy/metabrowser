@@ -116,9 +116,10 @@ def yaml_mapping_from_bytes(
 
     The prefix goes through the bounded loader front matter uses
     (:func:`metabrowser.frontmatter_yaml.load_bounded_yaml`), so its keys are the same
-    text: a YAML ``1:`` key matches ``"1"``. Returns None for a prefix that is not
-    UTF-8 (one that ends inside a character included), does not parse, is refused by
-    the loader, or is not a mapping.
+    text: a YAML ``1:`` key matches ``"1"``. A key that appears twice keeps its last
+    value, as most YAML tools do: a classification hint has no reason to refuse it.
+    Returns None for a prefix that is not UTF-8 (one that ends inside a character
+    included), does not parse, is refused by the loader, or is not a mapping.
     """
 
     try:
@@ -126,7 +127,9 @@ def yaml_mapping_from_bytes(
     except UnicodeDecodeError:
         return None
     try:
-        parsed = load_bounded_yaml(text, max_expanded_size=_YAML_PREFIX_MAX_EXPANDED_SIZE)
+        parsed = load_bounded_yaml(
+            text, max_expanded_size=_YAML_PREFIX_MAX_EXPANDED_SIZE, keep_last_duplicate=True
+        )
     except BoundedYamlError:
         return None
     return cast("dict[str, Any]", parsed) if isinstance(parsed, dict) else None

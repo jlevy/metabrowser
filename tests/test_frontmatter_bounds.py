@@ -1,13 +1,13 @@
 """Front matter is parsed under bounds, off the event loop, and never fails a request.
 
 YAML aliases let a few hundred bytes of front matter stand for millions of values.
-:mod:`metabrowser.frontmatter_yaml` measures the composed document before constructing
-it, refuses front matter whose written-out size passes ``FRONTMATTER_MAX_EXPANDED_SIZE``,
-and answers tags JSON has no type for as JSON-safe values. These tests pin the outcome
-on every path a served folder reaches -- the loader, ``/api/file``, and
+:mod:`metabrowser.frontmatter_yaml` composes the document, measures the node graph, and
+builds the value itself, leaving ruamel's constructor only the scalars. These tests pin
+the outcome on every path a served folder reaches -- the loader, ``/api/file``, and
 ``/api/kpress/render`` under the untrusted profile -- and bound the work by counting it
-rather than timing it: a document past the budget never reaches a YAML constructor.
-The pinned-revision path is in ``tests/test_git_revision_content_routes.py``.
+rather than timing it: a document past the budget is never built, ruamel never builds a
+collection, and ruamel never writes a node into a message. The pinned-revision path is
+in ``tests/test_git_revision_content_routes.py``.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ import gzip
 import json
 import string
 import threading
+import tracemalloc
 import warnings
 from collections.abc import Iterator
 from pathlib import Path
@@ -26,6 +27,7 @@ from unittest.mock import Mock
 import pytest
 import yaml as pyyaml
 from ruamel.yaml import constructor as ruamel_constructor
+from ruamel.yaml import nodes as ruamel_nodes
 
 from metabrowser import frontmatter_yaml, server
 from metabrowser.capabilities import Capabilities, set_capabilities
@@ -34,8 +36,8 @@ from metabrowser.frontmatter_yaml import (
     FRONTMATTER_MAX_BYTES,
     FRONTMATTER_MAX_EXPANDED_SIZE,
     YAML_ERROR_MAX_CHARS,
+    YAML_MAX_DEPTH,
     FrontmatterError,
-    json_safe_frontmatter,
     load_frontmatter_yaml,
 )
 from metabrowser.plugin_loader.classify import (
@@ -46,9 +48,9 @@ from metabrowser.plugin_loader.classify import (
 from metabrowser.plugin_loader.manifest import KindMatch, KindRule
 
 REFUSED = "without its YAML aliases"
+TOO_DEEP = "nests too deeply"
 
-# A comment the shapes past the budget carry, so `constructor_guard` can tell them from
-# the front matter a test expects to be built.
+# A comment the shapes past the budget carry, so a test can find them in an answer.
 OVER_BUDGET = "# over budget\n"
 
 
@@ -66,8 +68,8 @@ def alias_bomb(levels: int, width: int = 9) -> str:
 def merge_bomb(levels: int, width: int = 9) -> str:
     """Each mapping merges *width* aliases of the one before (review A, A1).
 
-    ruamel's constructor copies every merged entry into the merging mapping, so the
-    last holds width**(levels - 1) entries before any walk of the value.
+    ruamel's constructor copied every merged entry into the merging mapping, so the
+    last held width**(levels - 1) entries before any walk of the value.
     """
 
     names = string.ascii_lowercase
@@ -81,7 +83,7 @@ def merge_bomb(levels: int, width: int = 9) -> str:
 def duplicate_key_bomb(levels: int) -> str:
     """An alias bomb and a key repeated with it as the value (review B, B1).
 
-    ruamel writes both values of a duplicated key into its error message.
+    ruamel wrote both values of a duplicated key into its error message.
     """
 
     top = string.ascii_lowercase[levels - 1]
@@ -104,10 +106,49 @@ def sequence_key_bomb(items: int, uses: int) -> str:
 
 
 def duplicated_sequence_key(length: int, aliases: int) -> str:
-    """A key of *aliases* aliases to one string, used twice: the message names the key."""
+    """A key of *aliases* aliases to one string, used twice: the message named the key."""
 
     refs = ", ".join(["*s"] * aliases)
     return OVER_BUDGET + f"s: &s {'y' * length}\nz:\n  ? [{refs}]\n  : 1\n  ? [{refs}]\n  : 2\n"
+
+
+def long_tag_under_a_collection_tag(tag: str, tag_length: int, uses: int, *, mapping: bool) -> str:
+    """One scalar with a long tag, aliased *uses* times, in a collection tagged *tag*.
+
+    Review C, C1: `!!timestamp` on a sequence made ruamel write the composed nodes,
+    tags and all, into its message, once per use, and the count has no tag in it.
+    """
+
+    scalar = f"&a !<{'t' * tag_length}> v"
+    if mapping:
+        entries = [f"k0: {scalar}"] + [f"k{index}: *a" for index in range(1, uses + 1)]
+        return f"z: !<{tag}> {{{', '.join(entries)}}}\n"
+    return f"z: !<{tag}> [{scalar}, {', '.join(['*a'] * uses)}]\n"
+
+
+def nested_inline_merges(depth: int, fan1: int = 100, fan2: int = 3_300) -> str:
+    """Review C, C2: one mapping near the budget, wrapped in *depth* inline merges.
+
+    ruamel flattened the merged entries again at each level, and the anchor on each
+    level kept every level's two copies alive: 2.5 GB at 480 levels.
+    """
+
+    head = "c: &c {'': ''}\n"
+    head += "d: &d {<<: [" + ",".join(["*c"] * fan1) + "]}\n"
+    inner = "{<<: [" + ",".join(["*d"] * fan2) + "]}"
+    opens = "".join(f"{{<<: &n{index} " for index in range(depth))
+    return head + "x: " + opens + inner + "}" * depth + "\n"
+
+
+def flow_sawtooth(depth: int, size: int) -> str:
+    """Review C, C3: flow sequences *depth* deep, rising and falling on one line.
+
+    ruamel's scanner walks one pending simple key for each open flow level on every
+    token, so the parse cost a factor of the depth.
+    """
+
+    unit = "[" * depth + "]" * depth + ","
+    return "x: [" + unit * ((size - 6) // len(unit)) + "]\n"
 
 
 # Every tag the safe loader builds that JSON has no type for, and keys JSON cannot key by.
@@ -131,12 +172,17 @@ huge: 0x{huge}
 null: null key
 """.replace("{huge}", "F" * 4_000)
 
-# Front matter ruamel's constructors fail on with an exception that is not a YAMLError.
+# Front matter the loader does not build, and the reason it gives. A reason names the
+# line and the kind of node, never the scalar's text.
 CONSTRUCTOR_FAILURES = {
-    "bool": ("x: !!bool maybe\n", "KeyError"),
-    "int": ("x: !!int ''\n", "IndexError"),
-    "timestamp": ("when: 9999-12-31T23:59:59.9999999999Z\n", "OverflowError"),
-    "omap": ("x: !!omap [a: 1, a: 2]\n", "AssertionError"),
+    "bool": ("x: !!bool maybe\n", "line 1: not a valid !!bool"),
+    "int": ("x: !!int ''\n", "line 1: not a valid !!int"),
+    "timestamp": ("when: 9999-12-31T23:59:59.9999999999Z\n", "line 1: not a valid !!timestamp"),
+    "omap": ("x: !!omap [a: 1, a: 2]\n", "line 1: a key appears twice in an ordered map"),
+    "timestamp-sequence": (
+        "z: !!timestamp [&a v, *a]\n",
+        "line 1: a sequence has a tag the loader does not read",
+    ),
     "version": ("%YAML 1.31\n--- # x\nkey: v\n", "AssertionError"),
 }
 
@@ -155,29 +201,40 @@ OVER_BUDGET_SHAPES = {
     "duplicated-sequence-key": duplicated_sequence_key(30_000, 2_000),
 }
 
+_COLLECTION_TAGS = tuple(
+    f"tag:yaml.org,2002:{name}" for name in ("map", "seq", "set", "omap", "pairs")
+)
 
-def guard_constructors(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Fail at once if a YAML constructor starts on a document marked OVER_BUDGET.
 
-    The bound is that the constructor never runs on such a document, so this checks it
-    directly; and where it would run, it stops a merge bomb that would otherwise take
-    hours. Both ruamel's and PyYAML's constructors are guarded.
+def forbid_ruamel_collections(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fail at once if ruamel's constructor builds a collection, or PyYAML builds anything.
+
+    The loader builds every mapping, sequence, and merge key itself (review C, C6), so
+    none of these may run. Where they would, they stop a document that would otherwise
+    take gigabytes or hours.
     """
 
-    for base in (ruamel_constructor.BaseConstructor, pyyaml.constructor.BaseConstructor):
-        original = base.construct_document
+    def refuse(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError("a YAML constructor built a collection")
 
-        def guarded(self: Any, node: Any, original: Any = original) -> Any:
-            if OVER_BUDGET in getattr(node.start_mark, "buffer", ""):
-                raise AssertionError("a YAML constructor ran on a document past the budget")
-            return original(self, node)
-
-        monkeypatch.setattr(base, "construct_document", guarded)
+    for cls in (ruamel_constructor.BaseConstructor, ruamel_constructor.SafeConstructor):
+        for name in (
+            "construct_document",
+            "construct_mapping",
+            "construct_sequence",
+            "construct_pairs",
+            "flatten_mapping",
+        ):
+            if name in vars(cls):
+                monkeypatch.setattr(cls, name, refuse)
+    for tag in _COLLECTION_TAGS:
+        monkeypatch.setitem(ruamel_constructor.SafeConstructor.yaml_constructors, tag, refuse)
+    monkeypatch.setattr(pyyaml.constructor.BaseConstructor, "construct_document", refuse)
 
 
 @pytest.fixture
-def constructor_guard(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    guard_constructors(monkeypatch)
+def no_ruamel_collections(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    forbid_ruamel_collections(monkeypatch)
     yield
 
 
@@ -192,15 +249,15 @@ def test_the_seven_level_bomb_from_the_report_is_refused() -> None:
 
 
 @pytest.mark.parametrize("shape", OVER_BUDGET_SHAPES)
-@pytest.mark.usefixtures("constructor_guard")
-def test_a_document_past_the_budget_is_refused_before_it_is_constructed(
+@pytest.mark.usefixtures("no_ruamel_collections")
+def test_a_document_past_the_budget_is_refused_before_it_is_built(
     shape: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Aliases, merge keys, sequence keys, and duplicated keys are measured, not built.
 
     The measure visits each composed node once, whatever shares it: at most two child
-    lists for each node, and so at most two for each byte. No constructor and no copy
-    runs, so no expansion happens and none reaches the reason.
+    lists for each node, and so at most two for each byte. Nothing is built, so no
+    expansion happens and none reaches the reason.
     """
 
     text = OVER_BUDGET_SHAPES[shape]
@@ -213,14 +270,120 @@ def test_a_document_past_the_budget_is_refused_before_it_is_constructed(
         return children(node)
 
     monkeypatch.setattr(frontmatter_yaml, "_children", counting)
-    copies = Mock(side_effect=AssertionError("the copy ran on a document past the budget"))
-    monkeypatch.setattr(frontmatter_yaml._Walk, "value", copies)
+    builds = Mock(side_effect=AssertionError("the builder ran on a document past the budget"))
+    monkeypatch.setattr(frontmatter_yaml._Builder, "value", builds)
 
     with pytest.raises(FrontmatterError, match=REFUSED) as refused:
         load_frontmatter_yaml(text)
 
     assert 0 < child_lists <= 2 * len(text)
     assert len(str(refused.value)) <= YAML_ERROR_MAX_CHARS
+
+
+@pytest.mark.parametrize("mapping", [False, True], ids=["sequence", "mapping"])
+@pytest.mark.parametrize(
+    "tag",
+    [
+        *sorted(str(tag) for tag in ruamel_constructor.SafeConstructor.yaml_constructors if tag),
+        "!x",
+    ],
+)
+@pytest.mark.usefixtures("no_ruamel_collections")
+def test_ruamel_never_writes_a_node_into_a_message(
+    tag: str, mapping: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every tag the safe constructor knows, on a collection of one long-tagged alias.
+
+    Review C, C1: ruamel's timestamp reader wrote the composed nodes, tags and all, into
+    its message. A node is never written out here, whichever tag a collection carries,
+    and the reason stays within its bound.
+    """
+
+    writes = 0
+    node_repr = ruamel_nodes.Node.__repr__
+
+    def counting(node: Any) -> str:
+        nonlocal writes
+        writes += 1
+        return node_repr(node)
+
+    monkeypatch.setattr(ruamel_nodes.Node, "__repr__", counting)
+    text = long_tag_under_a_collection_tag(tag, 1_000, 1_000, mapping=mapping)
+
+    try:
+        load_frontmatter_yaml(text)
+    except FrontmatterError as refused:
+        assert len(str(refused)) <= YAML_ERROR_MAX_CHARS
+        assert "ttttt" not in str(refused)
+
+    assert writes == 0
+
+
+@pytest.mark.usefixtures("no_ruamel_collections")
+def test_nested_inline_merges_are_built_once_whatever_their_depth() -> None:
+    """Review C, C2: 60 inline merge levels, each anchored, around 330,000 merged entries.
+
+    A mapping reached twice through merges adds nothing the second time, so the value
+    is one entry and the load holds a few megabytes, where ruamel's copies at each
+    level held hundreds. Past YAML_MAX_DEPTH the nesting is refused before it is built.
+    """
+
+    text = nested_inline_merges(60)
+    tracemalloc.start()
+    try:
+        parsed = load_frontmatter_yaml(text)
+        _current, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+
+    assert parsed == {"c": {"": ""}, "d": {"": ""}, "x": {"": ""}}
+    assert peak < 32 * 1024 * 1024
+
+    with pytest.raises(FrontmatterError, match=TOO_DEEP):
+        load_frontmatter_yaml(nested_inline_merges(400))
+
+
+@pytest.mark.usefixtures("no_ruamel_collections")
+def test_merge_keys_take_ruamels_values_and_order() -> None:
+    """A mapping's own keys win; an earlier merged mapping wins over a later one, and a
+    merged mapping's own keys over those it merges. The keys come in ruamel's order: the
+    merged ones first, the last named first, then the mapping's own (ruamel 0.19.1
+    answers each of these the same, keys in the same order).
+    """
+
+    parsed = load_frontmatter_yaml(
+        "a: &a {x: a, y: a}\n"
+        "b: &b {y: b, z: b, w: b}\n"
+        "c: &c {<<: *a, x: c}\n"
+        "m: {<<: [*c, *b, *a], z: own}\n"
+        "n: {<<: [*a, *b, *a]}\n"
+    )
+
+    assert isinstance(parsed, dict)
+    assert list(parsed["c"].items()) == [("x", "c"), ("y", "a")]
+    assert list(parsed["m"].items()) == [("x", "c"), ("y", "a"), ("z", "own"), ("w", "b")]
+    assert list(parsed["n"].items()) == [("x", "a"), ("y", "a"), ("z", "b"), ("w", "b")]
+
+
+@pytest.mark.usefixtures("no_ruamel_collections")
+def test_nesting_is_refused_past_its_bound_before_the_scanner_pays_for_it() -> None:
+    """Review C, C3: 400 flow levels on one line cost ruamel's scanner 53 us a byte.
+
+    The composer stops at YAML_MAX_DEPTH, so the deepest shape is refused at once, and
+    nesting up to the bound still loads.
+    """
+
+    with pytest.raises(FrontmatterError, match=TOO_DEEP):
+        load_frontmatter_yaml(flow_sawtooth(400, 8_192))
+
+    # The mapping is one level, and the scalar inside the sequences is one more.
+    sequences = YAML_MAX_DEPTH - 2
+    expected: object = "a"
+    for _level in range(sequences):
+        expected = [expected]
+    assert load_frontmatter_yaml("x: " + "[" * sequences + "a" + "]" * sequences) == {"x": expected}
+    with pytest.raises(FrontmatterError, match=TOO_DEEP):
+        load_frontmatter_yaml("x: " + "[" * (sequences + 1) + "a" + "]" * (sequences + 1))
 
 
 def test_a_shared_anchor_within_the_bound_is_written_out_as_a_plain_tree() -> None:
@@ -261,9 +424,9 @@ def test_an_alias_inside_its_own_anchor_is_refused(text: str) -> None:
 
 
 def test_nesting_too_deep_for_the_parser_is_refused_not_raised() -> None:
-    assert load_frontmatter_yaml("x: " + "[" * 100 + "]" * 100 + "\n") is not None
+    assert load_frontmatter_yaml("x: " + "[" * 50 + "]" * 50 + "\n") is not None
 
-    with pytest.raises(FrontmatterError, match="nests too deeply"):
+    with pytest.raises(FrontmatterError, match=TOO_DEEP):
         load_frontmatter_yaml("x: " + "[" * 5_000 + "]" * 5_000 + "\n")
 
 
@@ -272,26 +435,31 @@ def test_text_past_the_byte_bound_is_refused_before_parsing() -> None:
         load_frontmatter_yaml("x: " + "y" * FRONTMATTER_MAX_BYTES + "\n")
 
 
-def test_the_densest_alias_free_front_matter_at_the_byte_bound_is_accepted() -> None:
-    """The densest alias-free shape found writes out to 3.85 times its bytes.
+def _built_size(text: str) -> int:
+    yaml = frontmatter_yaml._new_yaml(FRONTMATTER_MAX_EXPANDED_SIZE, keep_last=False)
+    node = yaml.compose(text)
+    builder = frontmatter_yaml._Builder(
+        yaml.constructor, FRONTMATTER_MAX_EXPANDED_SIZE, keep_last=False
+    )
+    builder.value(node)
+    return FRONTMATTER_MAX_EXPANDED_SIZE - builder.remaining
 
-    Each flow mapping holds the keys ``1e15`` to ``9e15`` with no values: five bytes of
-    YAML a key, and twenty in the copy (``1000000000000000.0`` and a null). The family's
-    limit is four, and the expansion bound is four times the byte bound, so front
+
+def test_the_densest_alias_free_front_matter_at_the_byte_bound_is_accepted() -> None:
+    """The densest alias-free shape found writes out to 3.8 times its bytes.
+
+    Each ``1e15`` is five bytes of a flow list and ``1000000000000000.0`` once built,
+    with one for the node. The expansion bound is four times the byte bound, so front
     matter with no aliases is not refused by it even at the byte bound.
     """
 
-    item = "{" + ",".join(f"{digit}e15" for digit in range(1, 10)) + "}"
-    count = (FRONTMATTER_MAX_BYTES - len("x: []\n")) // (len(item) + 1)
-    text = "x: [" + ",".join([item] * count) + "]\n"
-    assert FRONTMATTER_MAX_BYTES - len(text) < len(item) + 1
+    count = (FRONTMATTER_MAX_BYTES - len("x: []\n")) // len("1e15,")
+    text = "x: [" + ",".join(["1e15"] * count) + "]\n"
+    assert FRONTMATTER_MAX_BYTES - len(text) < len("1e15,")
 
-    parsed = load_frontmatter_yaml(text)
-
-    walk = frontmatter_yaml._Walk(FRONTMATTER_MAX_EXPANDED_SIZE)
-    walk.value(parsed)
-    expanded = FRONTMATTER_MAX_EXPANDED_SIZE - walk._remaining
-    assert expanded / len(text) > 3.8
+    assert load_frontmatter_yaml(text) == {"x": [1e15] * count}
+    expanded = _built_size(text)
+    assert expanded / len(text) > 3.79
     assert expanded <= FRONTMATTER_MAX_EXPANDED_SIZE
 
 
@@ -322,6 +490,18 @@ def test_tags_json_has_no_type_for_are_answered_as_json_safe_values() -> None:
     json.dumps(parsed, allow_nan=False, sort_keys=True)
 
 
+def test_keys_are_compared_by_their_json_text() -> None:
+    """``1`` and ``"1"`` are one key, as JSON sees them; ``1`` and ``true`` are two.
+
+    Comparing text also keeps a mapping's build linear in integer keys chosen to share
+    one hash (review C, C4): a string's hash is seeded.
+    """
+
+    assert load_frontmatter_yaml("1: one\ntrue: yes\n") == {"1": "one", "true": "yes"}
+    with pytest.raises(FrontmatterError, match="line 2: a key appears twice in one mapping"):
+        load_frontmatter_yaml("1: one\n'1': quoted\n")
+
+
 def test_an_integer_within_the_decimal_digit_limit_stays_a_number() -> None:
     parsed = load_frontmatter_yaml("x: " + "9" * 4_000 + "\n")
 
@@ -337,18 +517,20 @@ def test_lone_surrogates_from_escapes_are_replaced_so_the_answer_encodes() -> No
 
 
 @pytest.mark.parametrize("case", CONSTRUCTOR_FAILURES)
-def test_a_constructor_failure_of_any_type_is_a_front_matter_error(case: str) -> None:
-    text, raised = CONSTRUCTOR_FAILURES[case]
+def test_a_scalar_or_tag_the_loader_does_not_read_is_a_front_matter_error(case: str) -> None:
+    text, reason = CONSTRUCTOR_FAILURES[case]
 
-    with pytest.raises(FrontmatterError, match=f"^Error parsing YAML metadata: {raised}"):
+    with pytest.raises(FrontmatterError) as refused:
         load_frontmatter_yaml(text)
 
+    assert str(refused.value).startswith(f"Error parsing YAML metadata: {reason}")
 
-def test_a_duplicated_key_names_the_key_and_never_its_values() -> None:
+
+def test_a_duplicated_key_names_its_line_and_never_its_values() -> None:
     big = "y" * 10_000
     text = f"s: &s {big}\nd: *s\nd: *s\n"
 
-    with pytest.raises(FrontmatterError, match='found duplicate key "d"') as refused:
+    with pytest.raises(FrontmatterError, match="line 3: a key appears twice") as refused:
         load_frontmatter_yaml(text)
 
     assert big[:100] not in str(refused.value)
@@ -356,15 +538,27 @@ def test_a_duplicated_key_names_the_key_and_never_its_values() -> None:
 
 
 def test_a_reason_that_quotes_the_document_is_cut_to_its_bound() -> None:
-    with pytest.raises(FrontmatterError, match="could not determine a constructor") as refused:
-        load_frontmatter_yaml("a: !" + "t" * 200_000 + " 1\n")
+    with pytest.raises(FrontmatterError, match="found undefined alias") as refused:
+        load_frontmatter_yaml("a: *" + "t" * 200_000 + "\n")
 
     assert len(str(refused.value)) == YAML_ERROR_MAX_CHARS
     assert str(refused.value).endswith("\u2026")
 
 
+def test_only_yaml_1_2_is_read() -> None:
+    """A `%YAML 1.1` directive would bring back 1.1's booleans, octals, and sexagesimals
+    (review C, C5), and with them a parse superlinear in its text."""
+
+    with pytest.raises(FrontmatterError, match="declares YAML 1.1, and only YAML 1.2"):
+        load_frontmatter_yaml("%YAML 1.1\n--- # x\non: 1\nmode: 0755\n")
+    assert load_frontmatter_yaml("%YAML 1.2\n--- # x\non: 1\nmode: 0755\n") == {
+        "on": 1,
+        "mode": 755,
+    }
+
+
 def test_untrusted_front_matter_writes_no_warning(capsys: pytest.CaptureFixture[str]) -> None:
-    """ruamel warns on each reused anchor and on a YAML 1.1 exponent without a dot.
+    """ruamel warns on each reused anchor, and under YAML 1.1 on an exponent without a dot.
 
     Each message quotes the author's text, and Python keeps every distinct one for the
     life of the process, so the loader must not raise them at all.
@@ -374,22 +568,22 @@ def test_untrusted_front_matter_writes_no_warning(capsys: pytest.CaptureFixture[
         warnings.simplefilter("always")
         for index in range(20):
             assert load_frontmatter_yaml(f"k{index}: &a 1\nv{index}: &a 2\n") is not None
-        parsed = load_frontmatter_yaml("%YAML 1.1\n--- # x\na: 1e3\nb: -2E2\n")
+        with pytest.raises(FrontmatterError, match="declares YAML 1.1"):
+            load_frontmatter_yaml("%YAML 1.1\n--- # x\na: 1e3\n")
 
-    assert parsed == {"a": 1000.0, "b": -200.0}
     assert caught == []
     assert capsys.readouterr().err == ""
 
 
-def test_a_value_the_safe_loader_never_builds_is_named_not_stringified() -> None:
+def test_a_scalar_the_safe_loader_never_builds_is_named_not_stringified() -> None:
     class Opaque:
         def __str__(self) -> str:
             raise AssertionError("str() of an unknown value is unbounded")
 
-    assert json_safe_frontmatter({"x": Opaque()}) == {"x": "<Opaque>"}
+    assert frontmatter_yaml._json_scalar(Opaque()) == ("<Opaque>", len("<Opaque>"))
 
 
-@pytest.mark.usefixtures("constructor_guard")
+@pytest.mark.usefixtures("no_ruamel_collections")
 def test_the_yaml_prefix_predicate_refuses_a_merge_bomb_before_building_it() -> None:
     """The classifier's `.yaml` prefix parses through the same bound (review A, A2)."""
 
@@ -402,6 +596,15 @@ def test_the_yaml_prefix_predicate_refuses_a_merge_bomb_before_building_it() -> 
         "1": "one",
         "on": "yes",
     }
+
+
+@pytest.mark.usefixtures("no_ruamel_collections")
+def test_the_yaml_prefix_keeps_a_duplicated_keys_last_value_and_reads_only_1_2() -> None:
+    """Review C, C5: most YAML tools keep a repeated key's last value, so a file can carry
+    one unnoticed; the predicate does too, where front matter refuses it."""
+
+    assert yaml_mapping_from_bytes(b"a: 1\nb: 2\na: 3\n") == {"a": 3, "b": 2}
+    assert yaml_mapping_from_bytes(b"%YAML 1.1\n--- # x\non: 1\n") is None
 
 
 def _rule(match: KindMatch) -> CompiledKindRule:
@@ -455,16 +658,16 @@ def parse_threads(monkeypatch: pytest.MonkeyPatch) -> list[int]:
     threads: list[int] = []
     load = frontmatter_yaml._load
 
-    def recording(*args: Any) -> object:
+    def recording(*args: Any, **kwargs: Any) -> object:
         threads.append(threading.get_ident())
-        return load(*args)
+        return load(*args, **kwargs)
 
     monkeypatch.setattr(frontmatter_yaml, "_load", recording)
     return threads
 
 
 @pytest.mark.parametrize("shape", ["alias-7", "alias-12", "merge-12", "duplicate-key-12"])
-@pytest.mark.usefixtures("constructor_guard")
+@pytest.mark.usefixtures("no_ruamel_collections")
 def test_api_file_answers_a_bomb_as_text_with_the_reason_and_keeps_answering(
     shape: str, tmp_path: Path, parse_threads: list[int]
 ) -> None:
@@ -506,11 +709,11 @@ def test_api_file_answers_tags_json_has_no_type_for(tmp_path: Path) -> None:
     assert body["frontmatter"]['["a", "b"]'] == "tuple key"
 
 
-@pytest.mark.parametrize("case", ["bool", "int", "timestamp", "omap"])
-def test_api_file_and_render_answer_a_constructor_failure_with_its_reason(
+@pytest.mark.parametrize("case", ["bool", "int", "timestamp", "omap", "timestamp-sequence"])
+def test_api_file_and_render_answer_a_scalar_or_tag_the_loader_does_not_read(
     case: str, tmp_path: Path
 ) -> None:
-    text, raised = CONSTRUCTOR_FAILURES[case]
+    text, reason = CONSTRUCTOR_FAILURES[case]
     set_capabilities(Capabilities(active_content=False, mutations=False))
     server._set_root_dir(tmp_path)
     _write_markdown(tmp_path / "odd.md", text)
@@ -525,7 +728,7 @@ def test_api_file_and_render_answer_a_constructor_failure_with_its_reason(
 
     body = _body(answered)
     assert (answered.status_code, body["type"]) == (200, "text")
-    assert body["frontmatter_error"].startswith(f"Error parsing YAML metadata: {raised}")
+    assert body["frontmatter_error"].startswith(f"Error parsing YAML metadata: {reason}")
     assert rendered.status_code == 200
     reasons = [
         item["message"]
@@ -611,7 +814,7 @@ def test_invalid_utf8_after_the_front_matter_does_not_hide_it(tmp_path: Path) ->
 
 
 @pytest.mark.parametrize("shape", ["alias-12", "merge-12", "duplicate-key-12"])
-@pytest.mark.usefixtures("constructor_guard")
+@pytest.mark.usefixtures("no_ruamel_collections")
 def test_untrusted_render_of_a_bomb_reports_the_reason_and_renders_the_body(
     shape: str, tmp_path: Path, parse_threads: list[int]
 ) -> None:

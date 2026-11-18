@@ -1,18 +1,23 @@
 """Measure the cost shape behind the front-matter bounds in ``frontmatter_yaml``.
 
 An exploration tool, not a release gate: it prints machine-dependent timings beside
-the structural facts that set ``FRONTMATTER_MAX_BYTES`` and
-``FRONTMATTER_MAX_EXPANDED_SIZE``. Five questions:
+the structural facts that set ``FRONTMATTER_MAX_BYTES``, ``FRONTMATTER_MAX_EXPANDED_SIZE``,
+``YAML_MAX_DEPTH``, and ``YAML_ERROR_MAX_CHARS``. Load times are CPU time, the best of
+``--repeat`` runs, so a loaded machine changes them less than it changes wall time.
+Five questions:
 
 1. How long alias-free front matter takes to load at ``FRONTMATTER_MAX_BYTES``, whether
    that is linear in its bytes, and how big it gets once written out, on the composed
-   node graph and in the copy, for the shapes whose JSON text outgrows their YAML.
-2. That front matter past the expansion budget is refused before it is constructed,
-   after bounded work, for aliases, merge keys, sequence keys, and duplicated keys.
-3. What accepted front matter near the budget costs to build, copy, encode, and render.
+   node graph and once built, for the shapes whose JSON text outgrows their YAML and
+   the shapes that cost the parser most (deep flow nesting, colliding integer keys).
+2. That front matter past the expansion budget or the depth bound is refused before it
+   is built, after bounded work, for aliases, merge keys, nested inline merges,
+   sequence keys, duplicated keys, and deep flow nesting.
+3. What accepted front matter near the budget costs to build, encode, and render, and
+   what it holds in memory.
 4. What a load at the byte bound on a worker thread costs a plain request beside it.
 5. How long the reasons for malformed front matter are, against ``YAML_ERROR_MAX_CHARS``,
-   and how large the front matter in this repository's Markdown files is.
+   and how large and how deep the front matter and YAML in this repository are.
 
 Run with ``uv --config-file uv.toml run --frozen python -m devtools.frontmatter_bound_benchmark``.
 """
@@ -27,6 +32,7 @@ import string
 import subprocess
 import tempfile
 import time
+import tracemalloc
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
@@ -37,9 +43,11 @@ from ruamel.yaml.nodes import Node
 from metabrowser import kpress_adapter, server
 from metabrowser.frontmatter_yaml import (
     FRONTMATTER_MAX_BYTES,
+    YAML_MAX_DEPTH,
     FrontmatterError,
+    _Builder,  # pyright: ignore[reportPrivateUsage]
+    _children,  # pyright: ignore[reportPrivateUsage]
     _new_yaml,  # pyright: ignore[reportPrivateUsage]
-    _Walk,  # pyright: ignore[reportPrivateUsage]
     _written_out_size,  # pyright: ignore[reportPrivateUsage]
     load_frontmatter_yaml,
 )
@@ -48,23 +56,42 @@ _UNBOUNDED = 1 << 62
 
 
 def _best_ms(run: Callable[[], object], repeat: int) -> float:
+    """The least CPU time of *repeat* runs, in milliseconds."""
+
     best = float("inf")
     for _ in range(repeat):
-        start = time.perf_counter()
+        start = time.process_time()
         run()
-        best = min(best, time.perf_counter() - start)
+        best = min(best, time.process_time() - start)
     return best * 1e3
 
 
-def _copy_size(value: object) -> int:
-    walk = _Walk(_UNBOUNDED)
-    walk.value(value)
-    return _UNBOUNDED - walk._remaining  # pyright: ignore[reportPrivateUsage]
+def _peak_mib(run: Callable[[], object]) -> float:
+    """The most memory Python allocated during one run, in MiB."""
+
+    tracemalloc.start()
+    try:
+        run()
+        _current, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    return peak / (1 << 20)
 
 
 def _compose(text: str) -> Node:
-    node: Node = _new_yaml(_UNBOUNDED).compose(text)  # pyright: ignore[reportUnknownMemberType]
+    yaml = _new_yaml(_UNBOUNDED, keep_last=False)
+    node: Node = yaml.compose(text)  # pyright: ignore[reportUnknownMemberType]
     return node
+
+
+def _copy_size(text: str) -> int:
+    """What building *text* spends of an unbounded budget."""
+
+    yaml = _new_yaml(_UNBOUNDED, keep_last=False)
+    node: Node = yaml.compose(text)  # pyright: ignore[reportUnknownMemberType]
+    builder = _Builder(yaml.constructor, _UNBOUNDED, keep_last=False)
+    builder.value(node)
+    return _UNBOUNDED - builder.remaining
 
 
 def _graph_size(text: str) -> int:
@@ -87,9 +114,34 @@ def _lines(line: Callable[[int], str], size: int) -> str:
     return "".join(parts)
 
 
-# A flow mapping of the keys 1e15 to 9e15 and no values: each key is five bytes of YAML
-# and `1000000000000000.0` in the copy. The densest alias-free shape found.
+# A flow mapping of the keys 1e15 to 9e15 and no values.
 _NINE_FLOAT_KEYS = "{" + ",".join(f"{digit}e15" for digit in range(1, 10)) + "}"
+
+# CPython hashes an integer modulo this prime, unseeded, so its multiples share a hash.
+_HASH_MODULUS = (1 << 61) - 1
+
+
+def _flow_sawtooth(depth: int, size: int) -> str:
+    """Flow sequences *depth* deep, rising and falling on one line (review C, C3)."""
+
+    unit = "[" * depth + "]" * depth + ","
+    return "x: [" + unit * ((size - 6) // len(unit)) + "]\n"
+
+
+def _integer_keys(size: int, step: int) -> str:
+    keys: list[str] = []
+    total = 3
+    index = 1
+    while total + len(f"{index * step},") <= size:
+        keys.append(f"{index * step}")
+        total += len(keys[-1]) + 1
+        index += 1
+    return "{" + ",".join(keys) + "}\n"
+
+
+# The deepest a flow sequence under `x:` may nest: the mapping, the outer list, and the
+# innermost scalar are three of YAML_MAX_DEPTH's levels.
+_DEEPEST_FLOW = YAML_MAX_DEPTH - 3
 
 ALIAS_FREE_SHAPES: dict[str, Callable[[int], str]] = {
     "one-character strings": lambda size: _flow("a", size),
@@ -97,6 +149,8 @@ ALIAS_FREE_SHAPES: dict[str, Callable[[int], str]] = {
     "empty strings": lambda size: _flow('""', size),
     "integers": lambda size: _flow("7", size),
     "short floats": lambda size: _flow(".1", size),
+    # `1e15` is five bytes of YAML and `1000000000000000.0` once built: the densest
+    # alias-free shape found.
     "exponent floats": lambda size: _flow("1e15", size),
     "nine float keys": lambda size: _flow(_NINE_FLOAT_KEYS, size),
     "dates": lambda size: _flow("2001-12-14", size),
@@ -104,6 +158,11 @@ ALIAS_FREE_SHAPES: dict[str, Callable[[int], str]] = {
     "NUL escapes": lambda size: 'x: "' + "\\0" * ((size - 7) // 2) + '"\n',
     "key-value lines": lambda size: _lines(lambda i: f"k{i}: {i}\n", size),
     "block one-key mappings": lambda size: "x:\n" + _lines(lambda i: f"- k{i}: v\n", size - 3),
+    f"flow sequences {_DEEPEST_FLOW} deep": lambda size: _flow_sawtooth(_DEEPEST_FLOW, size),
+    "flow sequences 16 deep": lambda size: _flow_sawtooth(16, size),
+    # Review C, C4: integer keys that share one hash, and a control of distinct hashes.
+    "colliding integer keys": lambda size: _integer_keys(size, _HASH_MODULUS),
+    "distinct integer keys": lambda size: _integer_keys(size, _HASH_MODULUS + 2),
 }
 
 
@@ -111,11 +170,12 @@ def alias_free(repeat: int) -> None:
     print("alias-free front matter at FRONTMATTER_MAX_BYTES")
     for name, build in ALIAS_FREE_SHAPES.items():
         text = build(FRONTMATTER_MAX_BYTES)
-        copy = _copy_size(load_frontmatter_yaml(text))
+        load_frontmatter_yaml(text)
+        copy = _copy_size(text)
         graph = _graph_size(text)
         load_ms = _best_ms(lambda text=text: load_frontmatter_yaml(text), repeat)
         print(
-            f"  {name:<22} bytes={len(text):>7} load_ms={load_ms:7.1f} "
+            f"  {name:<24} bytes={len(text):>7} cpu_ms={load_ms:7.1f} "
             f"us_per_byte={load_ms * 1e3 / len(text):5.2f} graph_ratio={graph / len(text):.2f} "
             f"copy_ratio={copy / len(text):.3f}"
         )
@@ -124,7 +184,7 @@ def alias_free(repeat: int) -> None:
     for fraction in (4, 2, 1):
         text = ALIAS_FREE_SHAPES[dearest](FRONTMATTER_MAX_BYTES // fraction)
         load_ms = _best_ms(lambda text=text: load_frontmatter_yaml(text), repeat)
-        print(f"    bytes={len(text):>7} load_ms={load_ms:7.1f}")
+        print(f"    bytes={len(text):>7} cpu_ms={load_ms:7.1f}")
 
 
 def alias_bomb(levels: int, width: int = 9) -> str:
@@ -160,6 +220,22 @@ def sequence_key_bomb(items: int, uses: int) -> str:
     return head + "".join(f"m{i}: {{? *k : v}}\n" for i in range(uses))
 
 
+def nested_inline_merges(depth: int, fan1: int = 100, fan2: int = 3_300) -> str:
+    """One mapping near the budget wrapped in *depth* anchored inline merges (C2)."""
+
+    head = "c: &c {'': ''}\n"
+    head += "d: &d {<<: [" + ",".join(["*c"] * fan1) + "]}\n"
+    inner = "{<<: [" + ",".join(["*d"] * fan2) + "]}"
+    opens = "".join(f"{{<<: &n{index} " for index in range(depth))
+    return head + "x: " + opens + inner + "}" * depth + "\n"
+
+
+def long_tag_timestamp(tag_length: int, uses: int) -> str:
+    """`!!timestamp` over one long-tagged scalar aliased many times (review C, C1)."""
+
+    return f"z: !!timestamp [&a !<{'t' * tag_length}> v, {','.join(['*a'] * uses)}]\n"
+
+
 def _outcome(text: str) -> str:
     try:
         load_frontmatter_yaml(text)
@@ -181,7 +257,7 @@ def over_budget(repeat: int) -> None:
             load_ms = _best_ms(lambda text=text: _outcome(text), repeat)
             print(
                 f"  {name:<14} levels={levels:>2} bytes={len(text):>5} {_outcome(text):<26} "
-                f"load_ms={load_ms:6.1f}"
+                f"cpu_ms={load_ms:6.1f}"
             )
     quadratic = {
         "merged into many 1000x1000": merged_into_many(1_000, 1_000),
@@ -192,8 +268,20 @@ def over_budget(repeat: int) -> None:
         load_ms = _best_ms(lambda text=text: _outcome(text), repeat)
         compose_ms = _best_ms(lambda text=text: _compose(text), repeat)
         print(
-            f"  {name:<27} bytes={len(text):>6} {_outcome(text):<26} load_ms={load_ms:6.1f} "
-            f"compose_ms={compose_ms:6.1f}"
+            f"  {name:<27} bytes={len(text):>6} {_outcome(text):<26} cpu_ms={load_ms:6.1f} "
+            f"compose_cpu_ms={compose_ms:6.1f}"
+        )
+    deep = {
+        "nested inline merges 400 deep": nested_inline_merges(400),
+        "flow sequences 400 deep": _flow_sawtooth(400, FRONTMATTER_MAX_BYTES),
+        "timestamp over a long tag 64000x64000": long_tag_timestamp(64_000, 64_000),
+    }
+    for name, text in deep.items():
+        load_ms = _best_ms(lambda text=text: _outcome(text), repeat)
+        peak = _peak_mib(lambda text=text: _outcome(text))
+        print(
+            f"  {name:<37} bytes={len(text):>6} {_outcome(text):<26} cpu_ms={load_ms:6.1f} "
+            f"peak_mib={peak:6.1f}"
         )
 
 
@@ -236,19 +324,23 @@ def near_budget(repeat: int) -> None:
         ),
         "long string aliased": lambda n: f"a: &a {'y' * 1_000}\nb: [{', '.join(['*a'] * n)}]\n",
         "escapes aliased": lambda n: f'a: &a "{_ESCAPES}"\nb: [{", ".join(["*a"] * n)}]\n',
+        f"inline merges {_DEEPEST_FLOW - 1} deep": lambda n: nested_inline_merges(
+            _DEEPEST_FLOW - 1, fan2=n
+        ),
     }
     for name, build in shapes.items():
         text = _largest_accepted(build)
         parsed = load_frontmatter_yaml(text)
         load_ms = _best_ms(lambda text=text: load_frontmatter_yaml(text), repeat)
+        peak = _peak_mib(lambda text=text: load_frontmatter_yaml(text))
         encode_ms = _best_ms(lambda parsed=parsed: json.dumps(parsed, ensure_ascii=False), repeat)
         json_bytes = len(json.dumps(parsed, ensure_ascii=False).encode())
         frontmatter = cast("dict[str, Any]", parsed)
         render_ms = _best_ms(lambda frontmatter=frontmatter: _render(frontmatter), repeat)
         print(
             f"  {name:<29} bytes={len(text):>6} graph={_graph_size(text):>8} "
-            f"copy={_copy_size(parsed):>8} load_ms={load_ms:6.1f} encode_ms={encode_ms:5.1f} "
-            f"json_bytes={json_bytes:>8} kpress_ms={render_ms:5.1f}"
+            f"built={_copy_size(text):>8} cpu_ms={load_ms:6.1f} peak_mib={peak:5.1f} "
+            f"encode_ms={encode_ms:5.1f} json_bytes={json_bytes:>8} kpress_ms={render_ms:5.1f}"
         )
 
 
@@ -308,13 +400,32 @@ MALFORMED = {
     "duplicate merge key": "a: &a {x: 1}\nb: {<<: *a, <<: *a}\n",
     "merge of a scalar": "a: {<<: 1}\n",
     "unknown boolean": "a: !!bool maybe\n",
+    "timestamp on a list": long_tag_timestamp(30_000, 30_000),
 }
 
 
 def reasons() -> None:
     print("reasons for malformed front matter, against YAML_ERROR_MAX_CHARS")
     for name, text in MALFORMED.items():
-        print(f"  {name:<24} {_outcome(text)}")
+        peak = _peak_mib(lambda text=text: _outcome(text))
+        print(f"  {name:<24} {_outcome(text):<26} peak_mib={peak:6.1f}")
+
+
+def _depth(node: Node, level: int, seen: set[int]) -> int:
+    """How deep *node* nests, as the composer counts it: an alias is a leaf where used."""
+
+    if id(node) in seen:
+        return level
+    seen.add(id(node))
+    return max([level, *(_depth(child, level + 1, seen) for child in _children(node))])
+
+
+def _nesting(text: str) -> int | None:
+    try:
+        return _depth(_compose(text), 1, set())
+    # A file that does not parse, or nests past YAML_MAX_DEPTH, has no depth to report.
+    except Exception:
+        return None
 
 
 def survey() -> None:
@@ -324,6 +435,7 @@ def survey() -> None:
         ["git", "ls-files", "-z", "*.md"], cwd=root, capture_output=True, check=True
     ).stdout
     sizes: list[int] = []
+    depths: list[int] = []
     for name in filter(None, listed.decode().split("\0")):
         head = (root / name).read_bytes()[: FRONTMATTER_MAX_BYTES + 1]
         if not head.startswith(b"---\n"):
@@ -331,7 +443,23 @@ def survey() -> None:
         end = head.find(b"\n---\n", 3)
         if end != -1:
             sizes.append(end - 3)
-    print(f"  files={len(sizes)} largest_bytes={max(sizes, default=0)}")
+            found = _nesting(head[4 : end + 1].decode("utf-8", "replace"))
+            if found is not None:
+                depths.append(found)
+    print(
+        f"  files={len(sizes)} largest_bytes={max(sizes, default=0)} "
+        f"deepest={max(depths, default=0)}"
+    )
+    print("the first 16 KiB of this repository's tracked YAML files")
+    listed = subprocess.run(
+        ["git", "ls-files", "-z", "*.yaml", "*.yml"], cwd=root, capture_output=True, check=True
+    ).stdout
+    depths = []
+    for name in filter(None, listed.decode().split("\0")):
+        found = _nesting((root / name).read_bytes()[: 16 * 1024].decode("utf-8", "replace"))
+        if found is not None:
+            depths.append(found)
+    print(f"  files={len(depths)} deepest={max(depths, default=0)}")
 
 
 def main() -> None:

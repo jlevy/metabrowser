@@ -14,8 +14,8 @@ before: >-
 
 A Markdown file’s YAML front matter is parsed by one loader,
 `src/metabrowser/frontmatter_yaml.py`. YAML aliases let a few hundred bytes stand for
-millions of values, so the loader measures the composed document before constructing it,
-and refuses front matter that, written out without its aliases, is larger than
+millions of values, so the loader measures the composed document and then builds it
+itself, and refuses front matter that, written out without its aliases, is larger than
 `FRONTMATTER_MAX_EXPANDED_SIZE` characters, and an alias inside the value it names.
 A refused front matter is not metadata: the file still answers as text, with
 `frontmatter_error` saying why, and its rendered document carries the same reason.
@@ -112,7 +112,7 @@ $ metab docs --api '/api/file?path=badtag.md' > badtag.txt
 ```console
 $ grep -E '^  "(type|frontmatter|frontmatter_error)":' badtag.txt
   "type": "text",
-  "frontmatter_error": "Error parsing YAML metadata: KeyError: 'maybe'"
+  "frontmatter_error": "Error parsing YAML metadata: line 1: not a valid !!bool"
 ? 0
 ```
 

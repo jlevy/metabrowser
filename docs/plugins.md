@@ -209,13 +209,26 @@ dependency is never Metabrowser’s.
 Content predicates are bounded: JSON predicates parse only a complete document within
 `_JSON_CLASSIFICATION_MAX_BYTES`, and YAML predicates a prefix of `_YAML_PREFIX_BYTES`,
 both in `src/metabrowser/plugin_loader/classify.py`. An oversized or truncated document
-does not match, so claim large files by `basename`, `ext`, or `path_glob`. Front matter
-and YAML are read as YAML 1.2 by one bounded loader,
-`src/metabrowser/frontmatter_yaml.py`, and a key that is not a string is matched by its
-JSON text, the spelling a renderer receives: `frontmatter_has_key = "1"` and
-`yaml_has_key = "1"` match a YAML `1:` key, `"true"` a `true:` key, and `"on"` an `on:`
-key. Front matter or YAML the loader refuses, such as YAML aliases that write out past
-its budget, does not match.
+does not match, so claim large files by `basename`, `ext`, or `path_glob`.
+
+Front matter and YAML are read by one bounded loader,
+`src/metabrowser/frontmatter_yaml.py`, as YAML 1.2:
+
+- A key that is not a string is matched by its JSON text, the spelling a renderer
+  receives: `frontmatter_has_key = "1"` and `yaml_has_key = "1"` match a YAML `1:` key,
+  `"true"` a `true:` key, and `"on"` an `on:` key.
+  Keys are compared by that text, so `1:` and `"1":` are the same key.
+- Scalars are typed as YAML 1.2 types them: `on`, `yes`, `no`, and `12:30:45` are
+  strings, which `yaml_value_prefix` can match, and `0o17` and `1e3` are numbers, which
+  it cannot.
+- A document that declares another version, such as `%YAML 1.1`, is not read.
+- In a YAML prefix a key that appears twice keeps its last value, as most YAML tools do;
+  in front matter it is an error.
+- Front matter or YAML the loader refuses does not match: YAML aliases that write out
+  past `FRONTMATTER_MAX_EXPANDED_SIZE` in front matter or
+  `_YAML_PREFIX_MAX_EXPANDED_SIZE` in a YAML prefix, nesting past `YAML_MAX_DEPTH`, or a
+  tag the loader does not read.
+
 On a Git revision, `path_glob` rules never match, since a blob has no served-root path.
 
 ### Views
