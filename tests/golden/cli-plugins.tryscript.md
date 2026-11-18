@@ -288,6 +288,7 @@ assets in static_root:
   - print-indicator.js
   - project-adapters.js
   - reconciliation-coordinator.js
+  - render-refusal.js
   - rendered.js
   - source.js
   - toc-toggle.js
@@ -363,6 +364,7 @@ $ metab --plugin markdown --json
       "print-indicator.js",
       "project-adapters.js",
       "reconciliation-coordinator.js",
+      "render-refusal.js",
       "rendered.js",
       "source.js",
       "toc-toggle.js",

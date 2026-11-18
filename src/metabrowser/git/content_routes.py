@@ -83,7 +83,15 @@ from starlette.responses import JSONResponse, PlainTextResponse, Response
 
 from metabrowser import kpress_adapter
 from metabrowser.capabilities import get_capabilities
+from metabrowser.client_disconnect import CLIENT_CLOSED, unless_disconnected
 from metabrowser.content_sniff import SNIFF_PREFIX_BYTES, ContentClass, classify_prefix
+from metabrowser.diff.markdown_projection_worker import (
+    InertRender,
+    InertRenderRefused,
+    kpress_refusal_payload,
+    shared_worker,
+    text_identity,
+)
 from metabrowser.file_extensions import (
     BROWSER_IMAGE_EXTS,
     BROWSER_TEXT_EXTS,
@@ -1663,6 +1671,7 @@ async def git_revision_file(request: Request, subject: GitRevisionSubject) -> JS
 async def git_revision_kpress_render(
     subject: GitRevisionSubject,
     *,
+    request: Request,
     subpath: str,
     view: str,
     profile: str | None,
@@ -1737,25 +1746,58 @@ async def git_revision_kpress_render(
     envelope = _git_frontmatter_envelope(mapping=frontmatter, error=frontmatter_error)
     trusted = get_capabilities().active_content
     try:
-        rendered = await asyncio.to_thread(
-            kpress_adapter.render_kpress_view,
-            source_text=content,
-            # Display text is not a route identity; wiki rewrite must stay on the wire.
-            source_path=entry.path.to_wire(),
-            kind=kind,
-            view=view,
-            ext=ext,
-            mtime_hash=entry.oid,
-            size=logical_size,
-            frontmatter=envelope.get("frontmatter"),
-            frontmatter_error=envelope.get("frontmatter_error"),
-            profile=profile,
-            include_toc=include_toc,
-            # Under the untrusted profile, which a pin always runs under, fenced code is
-            # not highlighted. The inert render below drops every class highlighting
-            # writes, so a fence showed as plain text anyway, and a lexer can cost far
-            # more than its input's size (`kpress_adapter._PLAIN_CODE`).
-            plain_code=not trusted,
+        if trusted:
+            rendered = await asyncio.to_thread(
+                kpress_adapter.render_kpress_view,
+                source_text=content,
+                # Display text is not a route identity; wiki rewrite must stay on the wire.
+                source_path=entry.path.to_wire(),
+                kind=kind,
+                view=view,
+                ext=ext,
+                mtime_hash=entry.oid,
+                size=logical_size,
+                frontmatter=envelope.get("frontmatter"),
+                frontmatter_error=envelope.get("frontmatter_error"),
+                profile=profile,
+                include_toc=include_toc,
+            )
+        else:
+            # Inert, in the Markdown child under its deadline, and known by its blob, or
+            # by the text a page sent in its place. A client that goes away leaves the
+            # render to no one, and an abandoned render must not hold the child.
+            inert = await unless_disconnected(
+                request,
+                shared_worker().render_inert(
+                    InertRender(
+                        source_text=content,
+                        source_path=entry.path.to_wire(),
+                        display_path=entry.path.display(),
+                        identity=(
+                            f"blob:{entry.oid}"
+                            if source_override is None
+                            else await asyncio.to_thread(text_identity, source_override)
+                        ),
+                        kind=kind,
+                        view=view,
+                        ext=ext,
+                        mtime_hash=entry.oid,
+                        size=logical_size,
+                        frontmatter=envelope.get("frontmatter"),
+                        frontmatter_error=envelope.get("frontmatter_error"),
+                        profile=profile,
+                        include_toc=include_toc,
+                    )
+                ),
+            )
+            if inert is None:
+                return JSONResponse({}, status_code=CLIENT_CLOSED)
+            rendered = inert
+    except InertRenderRefused as refused:
+        return JSONResponse(
+            kpress_refusal_payload(refused, path.to_wire()),
+            status_code=refused.http_status,
+            headers={"cache-control": "no-cache"},
         )
     except kpress_adapter.KPressInvalidRequestError as exc:
         return JSONResponse(
@@ -1777,8 +1819,6 @@ async def git_revision_kpress_render(
             },
             status_code=502,
         )
-    if not trusted:
-        rendered = kpress_adapter.inert_render(rendered)
     return JSONResponse(rendered, headers={"cache-control": "no-cache"})
 
 
