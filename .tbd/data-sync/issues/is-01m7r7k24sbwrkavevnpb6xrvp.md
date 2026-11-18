@@ -5,14 +5,14 @@ title: "Files view: the border under the file tally stops short of the full widt
 kind: bug
 status: in_progress
 priority: 2
-version: 4
+version: 5
 delegate: claude-code@spud10
 labels: []
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-18T21:04:19.094Z
-updated_at: 2026-11-18T22:06:36.818Z
+updated_at: 2026-11-18T22:51:16.806Z
 started_at: 2026-11-18T21:06:44.438Z
 ---
 Owner, 2026-11-18: in the files view, the border line below the file tally and above the files does not extend the full width; it stops a little short, unlike the other border lines between the sections. Make it consistent with the other section borders.
@@ -23,3 +23,6 @@ Diagnosis 2026-11-18 (main 341d2c5c4, headless Chrome via the browser pane, 300 
 
 
 Fix 2026-11-18: PR #573 (branch claude/nav-metadata-full-width, head 23a904979, merged with origin/main after #550). Server draws an empty .nav-metadata-band under the Files filter bar (#nav-metadata-files) and the Pulls toolbar (#nav-metadata-pulls); app.js paints the Files totals and remarks there in place (the _lastTreeSummaryHtml cache and chromeHtml summary swap are gone); pulls-panel.js mounts its status and connection lines in the band the host passes (pullsNav.metadata). Measured with tests/dom/nav-metadata-chrome.mjs at 180/300/720 px panes, window height and 220 px, overflowing and not: before, every Files and Pulls metadata rule ended 11.00 px short of the pane's right edge; after, all 0.00. The lines now stay in view while scrolling (intended, in CHANGELOG). Follow-ups in the PR: root-summary-refresh session reads the painted row; stable-totals fixture widened to '+ 10,000 ignored (1001.4 MB)' so 180 px still cuts it. Eager: app.js -44 gzip bytes (gated folder shell smaller); pulls-nav.js +97 (eager only with a Pulls tab, not gated). Coordinator owns merge and close.
+
+
+Review A 2026-11-18 (4 Low): A1 fixed by one CSS rule hiding a band while its panel or the scroller leads with an alert (replaces failTree's and showFailure's JS clears); A3 fixed (band z-index 1, filter bar and toolbars 2); A4 comments fixed; A2 (rows move when a line arrives mid-scroll) recorded as accepted cost in CHANGELOG and design-system Placement: the ResizeObserver compensation measured +309 gzip bytes of app.js, against the no-added-eager-bytes brief. Dispositions posted on #573; merged main (#572, #576); head 18362f9ea. Eager now: app.js -45, pulls-nav.js +56.
