@@ -6,6 +6,7 @@ env:
   TERM: "dumb"
   TZ: "UTC"
   METABROWSER_PLUGINS_DIRS: ""
+  METABROWSER_RECORD_RECENT: "0"
 patterns:
   ROOT_ARG: '\[ROOT\]'
 before: >-

@@ -35,6 +35,26 @@ All notable changes to Metabrowser are documented here.
   See
   [Branches and Tags of a Local Checkout](docs/browsing-history.md#branches-and-tags-of-a-local-checkout).
 
+- Metabrowser now keeps a list of recent targets, the folders and repositories opened
+  lately, and the macOS app’s File > Open Recent shows it.
+  Every `metab` that serves records what it serves, so the menu lists folders opened in
+  either build of the app and folders served from Terminal, most recent first, up to the
+  list’s own length. Before, the menu showed macOS’s recent-documents list, which holds
+  ten entries unless System Settings says otherwise, only folders that build of the app
+  had been asked to open, and none served by `metab`. `metab --recent` lists the
+  entries, with `--json` for a script; `--recent-forget` and `--recent-clear` remove
+  them, and `--recent-add` records one without serving it.
+  An entry is a folder or a repository, with the file opened as its `target` when
+  `metab FILE` opened a file’s folder.
+  The list is `recent-targets.yml` in the configuration directory, which serving a
+  folder now creates. The Dock icon’s menu lists the same items.
+  Only an open changes the order: the windows the app restores at launch do not, and
+  `METABROWSER_RECORD_RECENT=0` keeps a server, such as a benchmark’s, out of the list.
+  The menu starts empty the first time this build of the app runs: what macOS listed
+  before is not carried over, and the windows it restores are not opens.
+  The app now needs a `metab` with `--recent`, and names the upgrade for one without.
+  See [Recent Targets](docs/command-line.md#recent-targets).
+
 - A pull request’s page shows its changes’ counts at once, “36 files changed · 2 A, 3 D,
   31 M · +2,076 −224”, from the changed-files list the Pulls tab keeps, while it reads
   the full Diff summary, which then replaces the line in place.

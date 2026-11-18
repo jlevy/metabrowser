@@ -162,9 +162,18 @@ final class FolderSession: ManagedServer {
 
     /// A folder the user opened: starts its server from the runtime accepted when it
     /// spawns, unless one is starting, running, or stopping, and returns once that start
-    /// is ready or has failed. Without an accepted runtime the windows say so, and the
+    /// is ready or has failed. That server records the folder as a recent target, which no
+    /// other start does (`FolderServer.start`): not a restored folder's, a reload's, a
+    /// retry's, or a restart's. Without an accepted runtime the windows say so, and the
     /// start waits for `resume()`.
     func startServer() async {
+        settle(await server.start(recordsOpen: true))
+    }
+
+    /// Command-R in a window whose server has not started, such as a restored folder's
+    /// still waiting its turn: the same start, joined if one is under way, but not an
+    /// open, so it records nothing.
+    func startForReload() async {
         settle(await server.start())
     }
 

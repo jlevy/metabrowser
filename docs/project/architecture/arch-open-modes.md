@@ -3,12 +3,13 @@
 **Status:** Designed and partly built.
 The owner settled the model on 2026-11-18: [Decisions](#decisions) lists each answer,
 and [Not Decided](#not-decided) what is still open.
-Built on `main`: mirror mode, a folder served as the exact path named, with history only
-when that path is a repository’s root, and a repository folder’s revision views with
-their chooser and `--ref`. Not built: resolving a path to its repository’s root, Pulls
-and the toggle on a folder’s revision, the mode indicator, File > Open URL…, and recent
-targets kept by `metab`. [Implementation Status](#implementation-status) names the pull
-request or bead for each part.
+Built on `main`: mirror mode; a folder served as the exact path named, with history only
+when that path is a repository’s root; a repository folder’s revision views with their
+chooser and `--ref`; and recent targets kept by `metab`, behind File > Open Recent.
+Not built: resolving a path to its repository’s root, Pulls and the toggle on a folder’s
+revision, the mode indicator, and File > Open URL….
+[Implementation Status](#implementation-status) names the pull request or bead for each
+part.
 
 Whatever a reader opens, a folder, a file, or a URL, Metabrowser serves a **root** in
 one of three **modes**: a plain folder, a repository folder, or a mirror.
@@ -123,7 +124,8 @@ a second time.
 - **Asking without serving.** `metab TARGET --present --dry-run --format json` answers
   the open root, whether that root is a repository’s, and the place the reader named,
   and a golden pins its answers.
-  `--recent-add` records the root the same resolver answers.
+  `--recent-add` records the root the same resolver answers: today both ask
+  `resolve_local_open` in `cli/common.py`, whose body the resolver replaces.
 - **The app asks, and then serves exactly.** It starts each server on a root that is
   already resolved, with `--exact-root`, and that includes the servers a restore starts,
   so a saved root is never resolved again.
@@ -410,7 +412,7 @@ finished.
 
 Three records name what is open.
 Each keys on the mode and the root, never on the view and never on the path the reader
-named. The first is not on `main` yet ([Implementation Status](#implementation-status)).
+named.
 
 | Record | Key | Holds |
 | --- | --- | --- |
@@ -421,10 +423,12 @@ named. The first is not on `main` yet ([Implementation Status](#implementation-s
 - **No record holds a view.** A recent folder reopens on its working tree, and a mirror
   on its default branch until recent targets record what a mirror was opened at.
 - **The path the reader named is not a key.** It may be kept beside one, as where to
-  land when the root reopens.
+  land when the root reopens: a recent target keeps it as its `target`
+  ([Recent Targets](arch-recent-targets.md#the-entry)).
 - **Recent targets are `metab`’s.** The list is kept in the configuration directory and
   reached through `metab` alone, with no route, so every shell reads one list.
-  The owner also chose its file’s format, which that feature’s own document states.
+  The owner also chose its file’s format, which
+  [Recent Targets](arch-recent-targets.md#the-store) states.
 - **A restore is not an open.** Restoring a session starts servers and reorders nothing
   in the recent list.
 - **In the app, a file joins the most specific open folder that contains it, never one
@@ -435,7 +439,10 @@ named. The first is not on `main` yet ([Implementation Status](#implementation-s
 ## The File Menu
 
 **Partly built.** Today the menu has Open…, for folders and files, and an Open Recent
-that lists what macOS keeps.
+that lists the recent targets `metab` keeps
+([Recent Targets](arch-recent-targets.md#the-macos-app)): folders, and repositories
+opened by URL, a GitHub link sent to the app among them
+([#539](https://github.com/jlevy/metabrowser/pull/539)).
 
 - **Open Folder…** opens a folder or a file in folder mode, resolved as
   [above](#resolving-a-target-to-a-root).
@@ -554,7 +561,7 @@ A pull request that builds a part updates its row.
 | GitHub links opened in the app, and `SessionRoot` | Built | [#539](https://github.com/jlevy/metabrowser/pull/539), `mb-87j0` |
 | A repository folder’s revision views, its chooser, and their command line, with the two revision requirements above | Built | [Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout); [#559](https://github.com/jlevy/metabrowser/pull/559), `mb-8ob8` |
 | Pulls and the toggle on a folder’s revision; View on branch and Browse code to the head as a revision | Not built | Follows `mb-8ob8` |
-| Recent targets kept by `metab`, behind File > Open Recent | Not built | [#546](https://github.com/jlevy/metabrowser/pull/546), `mb-40k4` |
+| Recent targets kept by `metab`, behind File > Open Recent | Built; a mirror’s `target` waits for `ProviderUrlReducer.web_url` (`mb-8bds`), and the resolved root for the resolver | [Recent Targets](arch-recent-targets.md), `mb-40k4` |
 | File > Open URL… | Not built | `mb-m4mg` |
 | The GitHub toggle | Not built | [#552](https://github.com/jlevy/metabrowser/pull/552), `mb-zp7y` |
 | The mode indicator | Not built | `mb-wup3` |
