@@ -963,12 +963,11 @@ line. Open that address with the browser’s developer tools open.
     - Each keycap is a small yellow key with a deeper yellow border and dark text.
       A tab’s keycap sits inside the tab at its end, centered top to bottom, over the
       label’s last letter, which still reads through it.
-      In the file header, the Up keycap sits over the end of the folder’s breadcrumb.
-      Each covers no text outside its own control: the file name, the mirror note, and
-      the size read in full.
-      At the root, Up’s control is the `/` crumb, which is narrower than a keycap, so
-      the keycap also reaches back over the last letter or two of the dimmed root name,
-      the folder Up opens.
+      In the file’s view header, the Up keycap sits over the Up button at the start of
+      the eyebrow. It covers no text outside its own control: the address, the mirror
+      note, the file name, and the size read in full.
+      (Before 0.13, Up’s control for a file was its folder’s crumb; at the root, the `/`
+      crumb, whose keycap reached back over the dimmed root name.)
       No keycap is cut off, and nothing beside one moves.
     - The Copy path button, which shows only on hover and has no key, stays hidden while
       Shift is held with the pointer away from the header.
@@ -1484,16 +1483,18 @@ Open `http://127.0.0.1:8471/view/` in a browser, with its developer tools open.
    equal `/api/rollup?depth=0` (a symlink counts as a file on a pin).
    The file header prefix is `<name>`, not a commit.
 2. Open `README.md` in a window at least 1100px wide.
-   The file header reads `<name> / README.md`, then, toward the right and before the
-   file’s size, a muted `mirror in <location>`, cut with an ellipsis at its end if it
-   does not fit. Hovering the note, or `<name>` in the file header, shows the same
+   The view header’s eyebrow reads `<name> /`, then, toward the right, a muted
+   `mirror in <location>`, cut with an ellipsis at its end if it does not fit, and the
+   title under it is `README.md`, with the size under that.
+   (In 0.12 the one-row file header read `<name> / README.md`, the note before the
+   file’s size.) Hovering the note, or `<name>` in the file header, shows the same
    `Mirror of … with no checked-out files.` sentence, wrapped inside the tooltip.
    Narrow the window: the note disappears whole (never a one- or two-letter stub) before
-   `<name>` or any part of the path narrows, and the file name is the last thing to
-   shorten. In a terminal, `git -C <location> log --all --oneline | head -3` lists
-   commits, and `curl -s "$BASE/api/source/status"` reports the same `name`, `origin`,
-   and `location`. Repeat with a repository name of at least 24 characters: its width
-   must match the heading with the note removed, even at narrow widths.
+   `<name>` or any part of the eyebrow’s path narrows; the title shortens on its own
+   row. In a terminal, `git -C <location> log --all --oneline | head -3` lists commits,
+   and `curl -s "$BASE/api/source/status"` reports the same `name`, `origin`, and
+   `location`. Repeat with a repository name of at least 24 characters: its width must
+   match the heading with the note removed, even at narrow widths.
    A checkout made by 0.1 is named `checkout`, so also test a longer-named origin.
 3. The tree lists this repository’s top-level entries with sizes; folders expand.
    The filter bar has no recency filter and no “Show ignored” control, and neither has

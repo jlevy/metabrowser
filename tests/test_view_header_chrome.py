@@ -66,20 +66,6 @@ TOLERANCE_PX = 0.5
 # Three days old: every age reads "3d ago" from 2.5 to 3.5 days (`AGE_TIERS` in
 # formatters.js rounds), so no age changes its label inside the session's bound.
 _AGE_S = 3 * 24 * 60 * 60
-# The type scale's tokens (static/styles.css), as Chrome computes them.
-_PAGE_TITLE_PX = "24px"
-_BODY_PX = "14px"
-# The view header's rhythm tokens (static/styles.css, `--view-header-*`).
-_ROW_GAP_PX = 4
-_EYEBROW_PX = 22
-_LINE_PX = 22
-# The toggle's (`--view-header-up-size`, `--view-header-toggle-option-width`,
-# `--chip-border`, `--icon-glyph`) and the header's inset (`--content-padding-x`).
-_UP_PX = 20
-_TOGGLE_OPTION_PX = 28
-_CHIP_BORDER_PX = 1
-_GLYPH_PX = 14
-_INSET_PX = 24
 
 
 def _served(root: Path) -> Path:
@@ -103,6 +89,11 @@ def _served(root: Path) -> Path:
     for path in [root, *root.rglob("*")]:
         os.utime(path, (when, when))
     return root
+
+
+def _px(value: str) -> float:
+    assert value.endswith("px"), value
+    return float(value[:-2])
 
 
 def _free_port() -> int:
@@ -142,25 +133,36 @@ def test_view_headers_hold_their_rows_ground_and_values_in_chrome(
         assert page["scheme"] == result["theme"], f"{name}: drawn in {page['scheme']}"
         assert abs(page["paneWidth"] - result["pane"]) <= 1, f"{name}: {page['paneWidth']} px"
 
-        # The rows, one gap apart, each its token's height, and the tab bar under them.
+        # The rows, one gap apart, each its token's height, and the tab bar under them: the
+        # tokens as the page resolves them (static/styles.css, `--view-header-*`).
+        tokens = page["tokens"]
+        gap = _px(tokens["--view-header-row-gap"])
         eyebrow, heading, line, bar = page["eyebrow"], page["heading"], page["line"], page["bar"]
-        assert eyebrow["height"] == _EYEBROW_PX, f"{name}: eyebrow {eyebrow}"
-        assert line["height"] == _LINE_PX, f"{name}: line {line}"
-        assert abs(heading["top"] - eyebrow["bottom"] - _ROW_GAP_PX) <= TOLERANCE_PX, name
-        assert abs(line["top"] - heading["bottom"] - _ROW_GAP_PX) <= TOLERANCE_PX, name
+        assert eyebrow["height"] == _px(tokens["--view-header-eyebrow-height"]), (
+            f"{name}: eyebrow {eyebrow}"
+        )
+        assert line["height"] == _px(tokens["--view-header-line-height"]), f"{name}: line {line}"
+        assert abs(heading["top"] - eyebrow["bottom"] - gap) <= TOLERANCE_PX, name
+        assert abs(line["top"] - heading["bottom"] - gap) <= TOLERANCE_PX, name
         assert abs(bar["top"] - page["header"]["bottom"]) <= TOLERANCE_PX, name
         # The line starts on the eyebrow's inset, as the title's row does.
         assert abs(line["left"] - eyebrow["left"]) <= TOLERANCE_PX, name
         assert abs(heading["left"] - eyebrow["left"]) <= TOLERANCE_PX, name
         # The icon at the title's size, before the title.
-        assert page["iconGlyph"]["width"] == 24, f"{name}: icon {page['iconGlyph']}"
+        assert page["iconGlyph"]["width"] == _px(tokens["--page-title-font-size"]), (
+            f"{name}: icon {page['iconGlyph']}"
+        )
         assert page["icon"]["right"] <= page["title"]["left"], name
 
         # The type.
-        assert page["type"]["title"] == _PAGE_TITLE_PX, f"{name}: title {page['type']}"
+        assert page["type"]["title"] == tokens["--page-title-font-size"], (
+            f"{name}: title {page['type']}"
+        )
         assert int(page["type"]["titleWeight"]) >= 600, f"{name}: title {page['type']}"
-        assert page["type"]["line"] == _BODY_PX, f"{name}: line {page['type']}"
-        assert page["type"]["eyebrow"] == _BODY_PX, f"{name}: eyebrow {page['type']}"
+        assert page["type"]["line"] == tokens["--body-font-size"], f"{name}: line {page['type']}"
+        assert page["type"]["eyebrow"] == tokens["--body-font-size"], (
+            f"{name}: eyebrow {page['type']}"
+        )
 
         # One ground, the body's, under the header and its tabs, which is not the
         # navigation's; the header has no rule of its own, and the tab bar's is the one.
@@ -191,15 +193,21 @@ def test_view_headers_hold_their_rows_ground_and_values_in_chrome(
         # mark the view the page is in and the GitHub mark a link to the item's page.
         toggle, end = page["toggle"], page["end"]
         assert toggle is not None, f"{name}: no toggle"
-        assert toggle["height"] == _UP_PX + 2 * _CHIP_BORDER_PX, f"{name}: toggle {toggle}"
-        assert toggle["width"] == 2 * _TOGGLE_OPTION_PX + 2 * _CHIP_BORDER_PX, name
+        up, option = (
+            _px(tokens["--view-header-up-size"]),
+            _px(tokens["--view-header-toggle-option-width"]),
+        )
+        border, inset = _px(tokens["--chip-border"]), _px(tokens["--content-padding-x"])
+        assert toggle["height"] == up + 2 * border, f"{name}: toggle {toggle}"
+        assert toggle["width"] == 2 * option + 2 * border, name
         assert abs(toggle["right"] - end["right"]) <= TOLERANCE_PX, f"{name}: {toggle} {end}"
-        assert abs(end["right"] - page["header"]["right"] + _INSET_PX) <= TOLERANCE_PX, name
+        assert abs(end["right"] - page["header"]["right"] + inset) <= TOLERANCE_PX, name
         middle = (heading["top"] + heading["bottom"]) / 2
         assert abs((toggle["top"] + toggle["bottom"]) / 2 - middle) <= TOLERANCE_PX, name
         assert "view-header-toggle-metabrowser" in (page["toggleCurrent"] or ""), name
         assert page["toggleHref"].startswith("https://github.com/octo/demo/"), name
-        assert [mark["height"] for mark in page["marks"]] == [_GLYPH_PX, _GLYPH_PX], name
+        glyph = _px(tokens["--icon-glyph"])
+        assert [mark["height"] for mark in page["marks"]] == [glyph, glyph], name
 
         # Every item is whole on the line or wrapped out of sight, never cut; the first is
         # always shown.

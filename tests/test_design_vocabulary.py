@@ -1587,7 +1587,7 @@ _INHERITED_METADATA: tuple[tuple[str, str], ...] = (
     ("styles.css", ".file-header-mirror"),
     ("styles.css", ".file-header-size"),
     ("styles.css", ".folder-header-count"),
-    ("styles.css", ".folder-header-age"),
+    ("styles.css", ".view-header-age"),
     ("diff/styles.css", ".metabrowser-diff-host .diff-file-path"),
     ("diff/styles.css", ".metabrowser-diff-host .diff-file-note"),
     ("github/styles.css", ".github-pulls-by"),

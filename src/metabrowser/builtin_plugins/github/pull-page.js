@@ -3934,9 +3934,9 @@ export function mountPullPage(container, ctx, mb) {
    * - `hidden`, over nothing or the loading blocks: the conversation is painted and laid out
    *   out of sight, and waits for every text that is plain and on its first screen, measured
    *   from the page's own top (`parts`, all it waited for). Its kept renders are already
-   *   final. A text whose Markdown cannot come is `failed` and waits no longer. Over the
-   *   loading page the header waits with it (`header`), so the loading heading and any
-   *   blocks that had shown (`cover`) stay as they are, and header and body change once.
+   *   final. A text whose Markdown cannot come is `failed` and waits no longer. The header
+   *   paints the record at once, so the title shows without waiting; loading blocks that had
+   *   shown stay over the body (`cover`) until it shows, so it never blinks empty.
    * - `delayed`, over a core preview: the preview stays as it is, and the full record paints
    *   once its description's Markdown can be inserted with it (`text`), or `plain` can.
    *
@@ -3947,7 +3947,6 @@ export function mountPullPage(container, ctx, mb) {
    *   parts: Set<string>,
    *   failed: Set<string>,
    *   cover: HTMLElement | null,
-   *   header: boolean,
    *   since: number,
    *   timer: ReturnType<typeof window.setTimeout>,
    * } | null}
@@ -4481,8 +4480,6 @@ export function mountPullPage(container, ctx, mb) {
   });
   /** The links' keys, from `attachTabKeys` once the page can end them. @type {MetabrowserPublicPluginShortcutHandle[]} */
   let tabKeys = [];
-  /** The tab link that had focus when a held header made the column inert. @type {HTMLElement | null} */
-  let focusedTab = null;
   /** The header's numbered links and actions, by what each does; see `numberHeaderControls`.
    * @type {Map<string, {handle: MetabrowserPublicPluginShortcutHandle, run: () => unknown}>} */
   const headerNumbers = new Map();
@@ -4549,9 +4546,7 @@ export function mountPullPage(container, ctx, mb) {
   }
 
   /**
-   * The menu most recently used chooses a stack when a PR has several memberships. A header
-   * held over the loading page shows no stack menu yet, so Control-N and Control-P wait with
-   * it, as the tab keys do (`holdTabColumn`).
+   * The menu most recently used chooses a stack when a PR has several memberships.
    */
   function currentStack() {
     if (
@@ -4559,7 +4554,6 @@ export function mountPullPage(container, ctx, mb) {
       listening.signal.aborted ||
       shown === null ||
       shown.pull === null ||
-      headerWaits() ||
       document.visibilityState !== "visible" ||
       !onPageRoute(window.location.pathname, number, controller.snapshot().tab)
     ) {
@@ -4721,8 +4715,6 @@ export function mountPullPage(container, ctx, mb) {
    * @type {boolean | null}
    */
   let coldHeld = null;
-  /** Whether the held cold page is kept unseen past the quiet period (`keepColdUnseen`). */
-  let coldKept = false;
 
   /**
    * A page mounted with no record in hand keeps its header and tab column out of sight for
@@ -4747,33 +4739,9 @@ export function mountPullPage(container, ctx, mb) {
     } else {
       coldHeld = false;
     }
-    coldKept = false;
     for (const part of [header, tabColumn]) {
       part.classList.toggle("github-pull-cold", coldHeld);
-      part.classList.remove("github-pull-cold-held");
     }
-  }
-
-  /**
-   * A record that lands while the cold page is still unseen, and whose header waits with the
-   * conversation's held first paint (`headerWaits`), keeps the cold page unseen past the quiet
-   * period until that paint, at most `DESCRIPTION_HOLD_MS`: the body is out of sight then too,
-   * with no loading blocks over it, since none had shown. Shown at the quiet period's end, the
-   * cold header would change with the body, and an unlabelled pull request's tab bar would
-   * move as it did (`.github-pull-cold-held`).
-   */
-  function keepColdUnseen() {
-    if (
-      coldHeld !== true ||
-      coldKept ||
-      (typeof window.getComputedStyle === "function" &&
-        window.getComputedStyle(header).opacity !== "0")
-    ) {
-      return;
-    }
-    coldKept = true;
-    header.classList.add("github-pull-cold-held");
-    tabColumn.classList.add("github-pull-cold-held");
   }
 
   /** @param {PullModel} model */
@@ -6103,8 +6071,6 @@ export function mountPullPage(container, ctx, mb) {
       // Another tab holds the body now: the conversation paints as it is when it returns.
       releaseFirstPaint("closed");
     }
-    // The conversation's first paint is decided before the header, since a hold over the
-    // loading page keeps the loading heading too: header and body then change once.
     const conversation = model.pull !== null && model.tab !== "files" && model.tab !== "checks";
     const key = conversation ? conversationKey(model) : null;
     const action =
@@ -6115,14 +6081,10 @@ export function mountPullPage(container, ctx, mb) {
             { key, recordRevision: model.recordRevision },
           );
     const hold = action === "repaint" ? holdFirstPaint(model) : null;
-    const headerHeld = headerWaits();
-    holdTabColumn(headerHeld);
-    if (!headerHeld) {
-      paintHeader(model);
-      paintStacks(model);
-    } else {
-      keepColdUnseen();
-    }
+    // The header paints the record at once, held or not: only the body waits for its
+    // Markdown, so the title shows as soon as the record is in hand (exp-099).
+    paintHeader(model);
+    paintStacks(model);
     // Conversation and Checks use the reading column. Changes uses the full pane.
     body.classList.toggle("page-reading-column", model.pull === null || model.tab !== "files");
     if (model.pull === null) {
@@ -6248,7 +6210,6 @@ export function mountPullPage(container, ctx, mb) {
       parts: new Set(),
       failed: new Set(),
       cover: null,
-      header: !delayed && bodyShows === "loading",
       since: Date.now(),
       timer: window.setTimeout(() => releaseFirstPaint("bound"), DESCRIPTION_HOLD_MS),
     };
@@ -6376,44 +6337,6 @@ export function mountPullPage(container, ctx, mb) {
   }
 
   /**
-   * Whether the header waits with a held first paint, still the loading heading: what the
-   * record's header shows, its stack menu among it, is not on screen until the release.
-   */
-  function headerWaits() {
-    return firstPaint?.mode === "hidden" && firstPaint.header;
-  }
-
-  /**
-   * The tab links wait with a held header. The header keeps its tab column from first paint,
-   * so the links stay on screen while the loading heading waits for the conversation
-   * (`firstPaint.header`), but neither a click nor a key acts on them: the column is inert,
-   * which the shortcut registry reads as not live. As it wakes, retargeting the keys badges
-   * the links at once if Shift is held. A link that had focus loses it to the page while
-   * inert, as `paintStacks` keeps the stack's control's, so it gets it back on waking.
-   *
-   * @param {boolean} held
-   */
-  function holdTabColumn(held) {
-    if (held === (tabColumn.getAttribute("inert") !== null)) {
-      return;
-    }
-    if (held) {
-      focusedTab = tabLinks.find(({ link }) => link === document.activeElement)?.link ?? null;
-      tabColumn.setAttribute("inert", "");
-      return;
-    }
-    tabColumn.removeAttribute("inert");
-    tabKeys.forEach((handle, at) => {
-      handle.retarget(tabLinks[at].link);
-    });
-    const restore = focusedTab;
-    focusedTab = null;
-    if (restore?.isConnected) {
-      restore.focus({ preventScroll: true });
-    }
-  }
-
-  /**
    * Show the held conversation now, as it is: its wait was met, its bound passed, or another
    * tab took the body. The span says how long it held and why it ended, so a round can count
    * holds that ran to their bound.
@@ -6431,12 +6354,6 @@ export function mountPullPage(container, ctx, mb) {
     firstPaint = null;
     firstPaintSpent = true;
     if (reveal) {
-      if (held.header && outcome !== "closed" && shown !== null) {
-        // The header waited with the body: both change in this task, once.
-        paintHeader(shown);
-        paintStacks(shown);
-      }
-      holdTabColumn(false);
       body.classList.remove("github-pull-body-holding");
       held.cover?.remove();
     }
@@ -6786,8 +6703,7 @@ export function mountPullPage(container, ctx, mb) {
   }
   const stacks = watchStacks((index) => {
     stackIndex = index;
-    // A held header paints its stacks with the rest of it, at the release.
-    if (shown !== null && !listening.signal.aborted && !headerWaits()) {
+    if (shown !== null && !listening.signal.aborted) {
       paintStacks(shown);
     }
   });

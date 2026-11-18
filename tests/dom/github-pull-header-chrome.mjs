@@ -844,9 +844,9 @@ const PENDING_EM = 14.5;
 // In the page: a pull request page mounted with no record in hand, as a direct load or a
 // reload mounts it, whose pull read the session answers (docs/design-system.md, "Layout").
 // The quiet period is set long, so where it ends is the session's to say: it finishes the
-// hold's animation itself, before the read for `slow`, and while the header waits for the
-// conversation's held first paint for `held`, whose description's Markdown never answers,
-// so that paint runs to its bound. Every frame from the mount to the landing is read: whether
+// hold's animation itself before the read for `slow`. For `held` the description's Markdown
+// never answers, so the conversation's first paint stays held while the header lands with
+// its record. Every frame from the mount to the landing is read: whether
 // the header and the tab column show, the cold header or the record's, and where the tab
 // bar is against the same record mounted in hand.
 const COLD_LANDING = `async (width, labelled, outcome) => {
@@ -959,15 +959,8 @@ const COLD_LANDING = `async (width, labelled, outcome) => {
   const shownCold = look("the read on its way");
   answer();
   const deadline = performance.now() + 5000;
-  let waited = null;
   while (performance.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 5));
-    if (outcome === "held" && waited === null && header.classList.contains("github-pull-cold-held")) {
-      // The record is in hand and the header waits for the conversation: the quiet period ends.
-      quietEnds();
-      await frames();
-      waited = look("the header waits, the quiet period over");
-    }
     if (!look("landing").cold) {
       break;
     }
@@ -975,6 +968,9 @@ const COLD_LANDING = `async (width, labelled, outcome) => {
   await frames();
   sampling = false;
   const landed = look("landed");
+  // A held landing's conversation is still out of sight, waiting for its Markdown.
+  const bodyHeld =
+    container.querySelector(".github-pull-body")?.classList.contains("github-pull-body-holding") ?? null;
   handle.dispose();
   document.documentElement.style.removeProperty("--loading-state-delay");
   window.fetch = realFetch;
@@ -982,8 +978,8 @@ const COLD_LANDING = `async (width, labelled, outcome) => {
     landsAt,
     before,
     shownCold,
-    waited,
     landed,
+    bodyHeld,
     coldShown: seen.filter((state) => state.cold && Number(state.header) > 0).length,
     halfShown: seen.filter((state) => state.header !== state.column && state.column !== null).length,
     tabBarsShown: [...new Set(seen.filter((state) => Number(state.header) > 0).map((state) => state.tabBar))],
@@ -1276,17 +1272,25 @@ const RUN_BADGE = `async (live, width) => {
     take("const RUN_STATUS_SIZERS = ", '.join("");'),
     take("function renderBadges(data) {", "\\n}\\n"),
     take("function flagRunEndedBadge() {", "\\n}\\n"),
+    take("function viewHeaderItemsHtml(items) {", "\\n}\\n"),
+    take("function viewHeaderHtml(parts) {", "\\n}\\n"),
   ].join("\\n");
   const esc = (text) => String(text).replace(/[&<>"]/g, (c) => "&#" + c.charCodeAt(0) + ";");
   const activeFiles = new Map(live ? [["logs/session.jsonl", {}]] : []);
-  const app = new Function("esc", "activeFiles", code + "\\nreturn { renderBadges, flagRunEndedBadge };")(esc, activeFiles);
+  const app = new Function("esc", "activeFiles", code + "\\nreturn { renderBadges, flagRunEndedBadge, viewHeaderItemsHtml, viewHeaderHtml };")(esc, activeFiles);
   const pane = document.getElementById("preview-pane");
   pane.style.width = width + "px";
-  // A file's view header (renderFileHeader in app.js): the badges lead its metadata line.
-  pane.innerHTML =
-    '<div class="file-header view-header" data-kbd-badge-anchor><div class="view-header-heading"><h1 class="view-header-title page-heading">session.jsonl</h1><span class="view-header-end"><button class="icon-btn file-header-icon file-header-print" type="button" hidden></button></span></div><div class="view-header-line page-header-line">' +
-    app.renderBadges({ type: "jsonl", kind: "agent-log", path: "logs/session.jsonl", summary: { adapter: "claude", is_done: false } }) +
-    '<span class="view-header-item"><span class="size file-header-size">1.2 MB</span></span></div></div>';
+  // A file's view header, through app.js's own builder (renderFileHeader): the badges
+  // lead its metadata line.
+  pane.innerHTML = app.viewHeaderHtml({
+    eyebrow: "",
+    iconHtml: "",
+    title: "session.jsonl",
+    end: '<button class="icon-btn file-header-icon file-header-print" type="button" hidden></button>',
+    line:
+      app.renderBadges({ type: "jsonl", kind: "agent-log", path: "logs/session.jsonl", summary: { adapter: "claude", is_done: false } }) +
+      app.viewHeaderItemsHtml(['<span class="size file-header-size">1.2 MB</span>']),
+  });
   await document.fonts.ready;
   const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   await frames();
@@ -1793,7 +1797,7 @@ async function main() {
                 `(${COLD_LANDING})(${width}, ${labelled}, ${JSON.stringify(outcome)})`,
               );
               landings.push({ where, run });
-              const { before, shownCold, waited, landed } = run;
+              const { before, shownCold, landed } = run;
               check(
                 `${where}: the cold page is held unseen in the quiet period, its tab keys live`,
                 before.cold &&
@@ -1835,9 +1839,9 @@ async function main() {
               }
               if (outcome === "held") {
                 check(
-                  `${where}: a record that lands in the quiet period keeps the cold page unseen past it while the header waits for the conversation`,
-                  waited?.cold === true && waited.header === "0" && waited.column === "0",
-                  JSON.stringify(waited),
+                  `${where}: a record that lands in the quiet period shows its header while the conversation still waits for its Markdown`,
+                  !landed.cold && landed.header === "1" && run.bodyHeld === true,
+                  JSON.stringify({ landed, bodyHeld: run.bodyHeld }),
                 );
               }
             }

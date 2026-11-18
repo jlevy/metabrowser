@@ -241,7 +241,7 @@ def test_the_header_markup_carries_the_hooks_the_keymap_reads() -> None:
     # header's eyebrow, which both headers build.
     for name in ("renderFolderHeader", "renderFileHeader"):
         render = _function_source(js, name)
-        assert "eyebrow: viewHeaderEyebrowHtml(path)," in render, name
+        assert re.search(r"eyebrow:\s+viewHeaderEyebrowHtml\(path\)", render), name
     eyebrow = _function_source(js, "viewHeaderEyebrowHtml")
     assert eyebrow.index("viewHeaderUpHtml(path)") < eyebrow.index(
         '`<span class="file-header-path folder-breadcrumb">${headerEyebrowAddressHtml(path)}</span>`'

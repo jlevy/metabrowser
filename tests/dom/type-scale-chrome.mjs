@@ -297,10 +297,10 @@ try {
     ".file-header .folder-header-count",
     ".file-header .view-header-line",
   );
-  if (await evaluate("document.querySelector('.folder-header-age [class*=age-]') !== null")) {
+  if (await evaluate("document.querySelector('.view-header-age [class*=age-]') !== null")) {
     await accompanies(
       folderHeader,
-      ".folder-header-age [class*=age-]",
+      ".view-header-age [class*=age-]",
       ".file-header .view-header-line",
     );
   }

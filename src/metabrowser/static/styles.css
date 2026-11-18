@@ -1501,15 +1501,10 @@ body {
 
 /* ── Header ──────────────────────────────────────────────────── */
 
-/* One row — the path, then the Metabrowser menu — which is the shape
-   .file-header has on the other side of the divider, so the two headers
-   read as one bar across the top of the app rather than as two headers
-   that happen to be adjacent. */
-/* The navigation column's path row. Its twin across the divider is
-   .file-header: same height, same hairline, so the top of the app reads as one
-   band rather than as two panes that happen to be adjacent. Anything that
-   changes the height of one belongs in --pane-header-row-height, which changes
-   both. */
+/* The navigation column's path row: one row, the path and then the
+   Metabrowser menu, at one fixed height (--pane-header-row-height) with its
+   hairline under it. The main view's header across the divider is a view
+   header of its own rows (.view-header, below), not a twin of this one. */
 .app-header {
   background: var(--header-bg);
   color: var(--header-text);
@@ -3392,11 +3387,11 @@ a.tab-btn {
   z-index: 1;
   transition: box-shadow var(--transition-fast);
 }
-/* A view's tab bar, under its view header (docs/design-system.md, "View Headers"): on
-   the header's ground, --bg, and its rule the one rule under the header block. Its
-   labels keep the content's inset, where a folder's Overview labels start
-   ("Folder Overview Is a Panel Stack"). */
-:is(.preview-pane, .preview-file-stage) > .tab-bar {
+/* A tab bar in the main view (docs/design-system.md, "View Headers"): on the view's
+   ground, --bg, its rule the one rule under the header block, a file's or a folder's
+   and a pull request's alike. Its labels keep the content's inset, where a folder's
+   Overview labels start ("Folder Overview Is a Panel Stack"). */
+:is(.preview-pane, .preview-file-stage) .tab-bar {
   background: var(--bg);
 }
 .tab-bar.nav-tab-bar.scrolled,
@@ -4091,8 +4086,10 @@ a.tab-btn {
    Headers"; app.js, viewHeaderHtml): the eyebrow, the heading row, and the metadata
    line, on the main view's own ground, --bg, with no rule of its own. The one rule
    under a view's header is the tab bar's, under the tabs. Every row holds its height
-   whatever fills it, so a value arriving or changing moves nothing below it. */
-.file-header {
+   whatever fills it, so a value arriving or changing moves nothing below it.
+   The block's rules are on .view-header, the structure a kind's header takes;
+   .file-header names a file's or a folder's for the keymap and the key badges. */
+.view-header {
   display: flex;
   flex-direction: column;
   gap: var(--view-header-row-gap);
@@ -4102,7 +4099,12 @@ a.tab-btn {
   min-width: 0;
 }
 /* The eyebrow: what holds the item, quiet, at the body size, above its title. It is
-   one line, which a long address gives way inside (`.folder-breadcrumb`). */
+   one line, which a long address gives way inside (`.folder-breadcrumb`). A kind
+   with nothing to say there writes it empty, and an empty eyebrow is left out of
+   the header, its height and its gap with it. */
+.view-header-eyebrow:empty {
+  display: none;
+}
 .view-header-eyebrow {
   display: flex;
   align-items: center;
@@ -4118,6 +4120,13 @@ a.tab-btn {
 }
 .view-header-eyebrow > .file-header-path {
   font-weight: var(--weight-normal);
+}
+/* Copy path, at the eyebrow's end: the Up control's size, and none of the title's
+   row, which in a narrow pane is the title's only room. */
+.view-header-eyebrow > .file-header-copy {
+  flex: none;
+  width: var(--view-header-up-size);
+  height: var(--view-header-up-size);
 }
 /* The heading row: the kind's icon, the title at the page title's size, what follows
    the title, and the row's end, its controls, at the far end. */
@@ -4428,7 +4437,7 @@ a.view-header-toggle-option:focus-visible {
   color: var(--muted);
 }
 .folder-header-count,
-.folder-header-age {
+.view-header-age {
   color: var(--muted);
   font-variant-numeric: var(--tabular-numerals);
   white-space: nowrap;
@@ -4448,12 +4457,12 @@ a.view-header-toggle-option:focus-visible {
   flex-shrink: 0;
 }
 /* .file-header-icon (the print action) has no block of its own: it is
-   entirely the .icon-btn primitive. It sits beside the copy icon and,
-   across the header, the settings gear, so it must not grow chrome
-   that those do not have. */
-/* A view that cannot print keeps the button's slot, so switching views never
-   moves the header's size label beside it. Hidden, it is out of the tab order
-   and the accessibility tree all the same. */
+   entirely the .icon-btn primitive, as the copy icon and, across the
+   divider, the settings gear are, so it must not grow chrome that those do
+   not have. */
+/* A view that cannot print keeps the button's slot at the heading row's end,
+   so switching views never moves what sits beside it. Hidden, it is out of the
+   tab order and the accessibility tree all the same. */
 .file-header-print[hidden] {
   display: inline-flex;
   visibility: hidden;

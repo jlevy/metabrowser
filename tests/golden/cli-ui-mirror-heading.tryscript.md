@@ -34,8 +34,11 @@ own directory.
 
 Each page runs `static/mirror-heading.js` first when its shell carried it, then loads
 the production SDK whole, and runs the shell’s own heading code lifted verbatim from
-`app.js`: the folder’s view header, a file’s eyebrow and title, and the block that wires
-the navigation heading’s tooltip.
+`app.js`: the folder’s view header, a file’s eyebrow and title, a file’s whole view
+header (`renderFileHeader` with `renderBadges`), and the block that wires the navigation
+heading’s tooltip. `fileHeaders` holds a file’s header for a served file, a compressed
+one, one whose time is pending, and a pin’s file: its icon’s name, its title, and its
+metadata line, badges then size then age, the age absent where the envelope has no time.
 No heading is composed here; every string is what that code returned or showed.
 The steps are a page load, which mounts the commit’s copy control on a mirror; the main
 heading at the root folder and at a nested file; the pointer entering the navigation
@@ -81,6 +84,39 @@ $ node tests/dom/mirror-heading-session.js
         "html": "<button type=\"button\" class=\"btn parent-nav-btn parent-nav-btn-icon-only folder-up\" data-tip-text=\"Open docs/\" aria-label=\"Open parent folder docs/\" data-nav-dir=\"docs\" data-mb-owner><span class=\"parent-nav-arrow\" aria-hidden=\"true\">↑</span></button><span class=\"file-header-path folder-breadcrumb\"><span class=\"file-header-root\"><bdi>~/wrk/squares</bdi></span><button type=\"button\" class=\"folder-crumb folder-crumb-root\" data-nav-dir=\"\" data-mb-owner data-tip-text=\"Served root\">/</button><button type=\"button\" class=\"folder-crumb\" data-nav-dir=\"docs\" data-mb-owner data-tip-text=\"docs\">docs</button></span>",
         "text": "↑ ~/wrk/squares / docs",
         "title": "guide.md"
+      },
+      "fileHeaders": {
+        "a served file": {
+          "icon": "icon-for-guide.md",
+          "title": "guide.md",
+          "line": "140 B · 3d ago",
+          "lineParts": [
+            "view-header-item",
+            "view-header-item"
+          ],
+          "pending": false
+        },
+        "a compressed file": {
+          "icon": "icon-for-run.log",
+          "title": "run.log.gz",
+          "line": "Gzip 2.0 KB · 3d ago",
+          "lineParts": [
+            "file-header-badge badge-compressed",
+            "view-header-item",
+            "view-header-item"
+          ],
+          "pending": false
+        },
+        "a pending time": {
+          "icon": "icon-for-guide.md",
+          "title": "guide.md",
+          "line": "140 B ·",
+          "lineParts": [
+            "view-header-item",
+            "view-header-item"
+          ],
+          "pending": true
+        }
       }
     },
     "tooltips": {
@@ -132,6 +168,17 @@ $ node tests/dom/mirror-heading-session.js
         "html": "<button type=\"button\" class=\"btn parent-nav-btn parent-nav-btn-icon-only folder-up\" data-tip-text=\"Open docs/\" aria-label=\"Open parent folder docs/\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner><span class=\"parent-nav-arrow\" aria-hidden=\"true\">↑</span></button><span class=\"file-header-path folder-breadcrumb\"><span class=\"file-header-root\"><bdi>squares</bdi></span><button type=\"button\" class=\"folder-crumb folder-crumb-root\" data-nav-dir=\"\" data-mb-owner data-tip-text=\"Served root\">/</button><button type=\"button\" class=\"folder-crumb\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner data-tip-text=\"docs\">docs</button><span class=\"file-header-mirror\"><span class=\"file-header-mirror-text\">mirror in ~/.cache/metabrowser/repository-stores/store-key-1/repository.git</span></span></span>",
         "text": "↑ squares / docs mirror in ~/.cache/metabrowser/repository-stores/store-key-1/repository.git",
         "title": "guide.md"
+      },
+      "fileHeaders": {
+        "a pin's file": {
+          "icon": "icon-for-guide.md",
+          "title": "guide.md",
+          "line": "140 B",
+          "lineParts": [
+            "view-header-item"
+          ],
+          "pending": false
+        }
       }
     },
     "tooltips": {
@@ -183,6 +230,17 @@ $ node tests/dom/mirror-heading-session.js
         "html": "<button type=\"button\" class=\"btn parent-nav-btn parent-nav-btn-icon-only folder-up\" data-tip-text=\"Open docs/\" aria-label=\"Open parent folder docs/\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner><span class=\"parent-nav-arrow\" aria-hidden=\"true\">↑</span></button><span class=\"file-header-path folder-breadcrumb\"><span class=\"file-header-root\"><bdi>a&lt;b&gt;&amp;�x</bdi></span><button type=\"button\" class=\"folder-crumb folder-crumb-root\" data-nav-dir=\"\" data-mb-owner data-tip-text=\"Served root\">/</button><button type=\"button\" class=\"folder-crumb\" data-nav-dir=\"g1-ZG9jcw\" data-mb-owner data-tip-text=\"docs\">docs</button><span class=\"file-header-mirror\"><span class=\"file-header-mirror-text\">mirror in ~/odd&quot;&lt;&amp;&gt;home/repository-stores/store-key-2/repository.git</span></span></span>",
         "text": "↑ a<b>&�x / docs mirror in ~/odd\"<&>home/repository-stores/store-key-2/repository.git",
         "title": "guide.md"
+      },
+      "fileHeaders": {
+        "a pin's file": {
+          "icon": "icon-for-guide.md",
+          "title": "guide.md",
+          "line": "140 B",
+          "lineParts": [
+            "view-header-item"
+          ],
+          "pending": false
+        }
       }
     },
     "tooltips": {

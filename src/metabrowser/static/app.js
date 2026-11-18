@@ -238,8 +238,8 @@ function countHtml(n, extraClass) {
  * inherits whatever emphasis its container declares. This is what the
  * navigation heading shows: the directories above the served root never
  * change, and the column they would spend width on is the narrowest in the
- * app. Where a whole path is wanted the file header renders it as an
- * address of controls instead — see headerAddressHtml.
+ * app. Where the main view names an item, its view header renders the
+ * folders above it as an address of controls — see headerEyebrowAddressHtml.
  */
 function pathBaseHtml(path) {
   return `<span class="path"><span class="path-base">${esc(pathBaseName(path))}</span></span>`;
@@ -425,10 +425,10 @@ function viewHeaderItemsHtml(items) {
 }
 
 /**
- * One view header (docs/design-system.md, "View Headers"): the eyebrow, the heading row
- * (icon, title, what follows it, the row's end), and the metadata line. `path` is the
- * item's, which the GitHub toggle reads (github-page.js).
- * @param {Record<string, string>} parts
+ * One view header (docs/design-system.md, "View Headers"): the eyebrow, which an empty
+ * one leaves out, the heading row (icon, title, the row's end), and the metadata line.
+ * `path` is the item's, which the GitHub toggle reads (github-page.js).
+ * @param {MetabrowserViewHeaderParts} parts
  */
 function viewHeaderHtml(parts) {
   return (
@@ -437,7 +437,6 @@ function viewHeaderHtml(parts) {
     '<div class="view-header-heading">' +
     `<span class="view-header-icon file-identity-icon${parts.iconClass ? ` ${parts.iconClass}` : ""}"${parts.iconStyle ? ` style="${esc(parts.iconStyle)}"` : ""} aria-hidden="true">${parts.iconHtml}</span>` +
     `<h1 class="view-header-title page-heading" data-tip-text="${esc(parts.title)}">${esc(parts.title)}</h1>` +
-    (parts.afterTitle || "") +
     `<span class="view-header-end">${parts.end}</span>` +
     "</div>" +
     `<div class="view-header-line page-header-line">${parts.line}</div>` +
@@ -6966,7 +6965,6 @@ function renderFolderHeader(data) {
     path: path,
     eyebrow: viewHeaderEyebrowHtml(path),
     iconHtml: ICONS.folder || "",
-    iconClass: "view-header-folder-icon",
     title: viewHeaderName(path),
     end: viewHeaderPrintHtml(),
     line: `<span class="folder-header-summary">${dir ? folderHeaderSummaryHtml(dir) : ""}</span>`,
@@ -6983,15 +6981,16 @@ function renderFileHeader(data) {
   );
   return viewHeaderHtml({
     path: path,
-    eyebrow: viewHeaderEyebrowHtml(path),
+    // Copy path at the eyebrow's end, so the title keeps the heading row's width.
+    eyebrow:
+      viewHeaderEyebrowHtml(path) +
+      `<button class="icon-btn icon-btn-reveal file-header-copy" type="button" data-mb-copy="text" data-mb-copy-text="${esc(window.MetabrowserNavigationRoute.displayPath(path))}"${ownedControlAttr()} data-mb-copy-label="Copy path" data-tip-text="Copy path" aria-label="Copy path">` +
+      ICON_COPY +
+      "</button>",
     iconHtml: icon.svg,
     iconClass: icon.cls,
     iconStyle: icon.style,
     title: name,
-    afterTitle:
-      `<button class="icon-btn icon-btn-reveal file-header-copy" type="button" data-mb-copy="text" data-mb-copy-text="${esc(window.MetabrowserNavigationRoute.displayPath(path))}"${ownedControlAttr()} data-mb-copy-label="Copy path" data-tip-text="Copy path" aria-label="Copy path">` +
-      ICON_COPY +
-      "</button>",
     end: viewHeaderPrintHtml(),
     line:
       renderBadges(data) +
@@ -7008,7 +7007,7 @@ function viewHeaderAgeHtml(mtime) {
     return "";
   }
   var age = formatAge(mtime, { style: "relative" });
-  return age ? `<span class="folder-header-age">${age}</span>` : "";
+  return age ? `<span class="view-header-age">${age}</span>` : "";
 }
 
 // Aggregate items of the folder header's line. Split out so the live

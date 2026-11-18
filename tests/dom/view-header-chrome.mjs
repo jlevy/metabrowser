@@ -98,7 +98,12 @@ const READ = `(() => {
   }) : [];
   const title = q('.view-header-title');
   const pane = document.getElementById('preview-pane');
+  const token = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   return {
+    // The tokens the layout is held to, as the page resolves them.
+    tokens: Object.fromEntries(
+      ["--view-header-row-gap", "--view-header-eyebrow-height", "--view-header-line-height", "--page-title-font-size", "--body-font-size", "--view-header-up-size", "--view-header-toggle-option-width", "--chip-border", "--icon-glyph", "--content-padding-x"].map((name) => [name, token(name)]),
+    ),
     paneWidth: Math.round(pane.getBoundingClientRect().width),
     scheme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
     header: box(header),
@@ -150,7 +155,7 @@ const RELABEL = (kind, step) => `(() => {
   const now = Date.now() / 1000;
   const mtime = ${step === "pending" ? "null" : step === "fresh" ? "now" : "now - 59 * 60"};
   if ('${kind}' === 'file') {
-    const age = document.querySelector('#preview-pane > .file-header .folder-header-age');
+    const age = document.querySelector('#preview-pane > .file-header .view-header-age');
     age.outerHTML = viewHeaderAgeHtml(mtime);
     return true;
   }
@@ -194,7 +199,7 @@ async function main() {
             "document.documentElement.style.setProperty('--tree-pane-width', '300px'), true",
           );
           await browser.waitFor(
-            "document.querySelector('#preview-pane > .file-header .folder-header-age [class*=age-]') !== null && document.querySelector('#preview-pane > .tab-bar') !== null",
+            "document.querySelector('#preview-pane > .file-header .view-header-age [class*=age-]') !== null && document.querySelector('#preview-pane > .tab-bar') !== null",
           );
           // Fonts, then two frames, so the boxes read are the painted ones.
           await browser.evaluate(
