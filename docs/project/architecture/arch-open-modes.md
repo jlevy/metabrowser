@@ -98,7 +98,7 @@ The root Git reports is opened only when all of these hold:
 
 | Guard | Why |
 | --- | --- |
-| Git answers with a root that contains the path | Git’s own checks decide what a repository is, including its refusal of a repository another user owns. A `.git` that Git refuses names no root |
+| Git answers with a root that contains the path and can be read | Git’s own checks decide what a repository is, including its refusal of a repository another user owns. A `.git` that Git refuses names no root |
 | That root holds the `.git` entry naming the Git directory Git used: `<root>/.git`, followed if it is a file, is what `git rev-parse --absolute-git-dir` answers | A repository’s own configuration can place its working tree anywhere. With `core.worktree = ../..` in the `.git/config` of an unpacked archive, Git reports the folder above the unpacked archive as the root, and every other guard passes. An ordinary checkout, a nested repository, a linked worktree, and a submodule each hold their own `.git` |
 | The root is not the home folder, unless the reader named the home folder itself. The design adds a volume’s root, which the owner was not asked about | A dotfiles repository at the home folder would turn every open into the home folder: a walk and a watch of all of it, and on macOS a privacy prompt for each protected location. A repository at a volume’s root would do the same to the volume |
 | The repository does not ignore the path the reader named: `git check-ignore -q` exits 1 for it, a file’s own path where a file was named | A repository does not count an ignored path as its own, so its root is not what the reader named. Any other answer opens the path named: exit 0, which is ignored, and a failure such as exit 128. This also stops the usual dotfiles layout, which ignores everything |
@@ -141,7 +141,7 @@ for that check, and not a second account.
 | A nested repository, or a submodule | The nearest one; a submodule is its own root | The nearest repository |
 | A linked worktree | The worktree’s own root. Its `HEAD` is its own, and its refs and objects are in the repository’s common directory | The worktree, as a repository folder |
 | A bare repository, or a path inside `.git` | “this operation must be run in a work tree” | A plain folder |
-| A `.git` Git refuses, such as an empty directory by that name, a repository another user owns, or a Git directory the reader cannot read | A failure | A plain folder at the path named |
+| A `.git` Git refuses, such as an empty directory by that name, a repository another user owns, or a Git directory the reader cannot read; or a root the reader cannot read | A failure, or for an unreadable root an answer the first guard refuses | A plain folder at the path named |
 | A `.git` whose configuration places its working tree elsewhere (`core.worktree`) | The configured directory, which holds no `.git` naming that Git directory | The path named |
 | A symbolic link into a repository | The physical root | Links are resolved first, then the repository is found |
 | The home folder is a repository | The home folder | The path named |
@@ -149,6 +149,7 @@ for that check, and not a second account.
 | A path the repository does not ignore, tracked or not | `check-ignore -q` exits 1 | The repository’s root |
 | A shallow clone | Its root | A repository folder. Revisions work, and history stops at the boundary |
 | A partial clone | Its root | A repository folder. A revision’s missing object is `object_unavailable` and is never fetched |
+| A sparse partial clone, and a path that only an ignore file outside the sparse checkout would ignore | Under the resolver’s policy `check-ignore -q` exits 1 and fetches nothing | The repository’s root |
 | A dirty index, or a detached `HEAD` | Its root | A repository folder. A revision view reads neither the index nor the working tree |
 | No commit yet | Its root | A repository folder with no revision to choose |
 
@@ -275,8 +276,8 @@ part ships.
 A root above the path the reader named exposes more files, walks and watches more of the
 disk, carries the folder’s trust profile across the whole repository, and runs Git under
 the configuration of a repository the reader did not name directly.
-The resolver’s commands are also the first Git that Metabrowser runs before the reader
-has chosen a repository.
+The resolver adds `check-ignore`, which reads the index, to the Git that already runs in
+a folder below a repository’s root.
 
 - **Git decides, through the process boundary, and its answer is checked.** Discovery is
   `git rev-parse` run by `git/process.py`, never a walk for a `.git` marker.
@@ -292,16 +293,21 @@ has chosen a repository.
   With Git 2.50.1 that keeps an ordinary subfolder, a nested repository, a linked
   worktree, and a submodule, and refuses the planted case.
 - **The resolver has its own Git policy.** Its commands run with
-  `-c core.fsmonitor=false` and with optional locks off, so resolving runs no program
-  the repository’s configuration names, starts no daemon, and writes nothing under the
-  Git directory. `git check-ignore` reads the index, and Git’s file-system monitor
-  settings apply to that read.
-  With Git 2.50.1 and `core.fsmonitor` naming a program, `check-ignore -q` ran the
-  program, which `rev-parse --show-toplevel` did not; with `core.fsmonitor=true` it
+  `-c core.fsmonitor=false`, with optional locks off, and with `GIT_NO_LAZY_FETCH=1`, so
+  resolving runs no program the repository’s configuration names, starts no daemon,
+  fetches nothing, and writes nothing under the Git directory.
+  `git check-ignore` reads the index, and Git’s file-system monitor settings apply to
+  that read. With Git 2.50.1 and `core.fsmonitor` naming a program, `check-ignore -q` ran
+  the program, which `rev-parse --show-toplevel` did not; with `core.fsmonitor=true` it
   started Git’s `fsmonitor--daemon` and created its files under `.git`. Under the policy
   it ran nothing, changed nothing under `.git`, and gave the same exit code.
   `check-ignore --no-index` avoids the index too, but it reports a tracked file that
   matches a pattern as ignored, which contradicts the guard’s reason.
+  `check-ignore` also reads an ignore file from the index when sparse checkout keeps it
+  off disk, and in a partial clone it fetched that file’s blob from the origin; with
+  `GIT_NO_LAZY_FETCH=1` it fetched nothing and exited 1. So an ignore file that is
+  neither on disk nor in the object store is not consulted, and a path only such a file
+  would ignore opens the repository’s root.
 - **Every guard is checked before the root is taken**, and a server bound beyond
   loopback serves exactly the path named.
 - **The root is always said.** The `Serving` line and the page name the resolved root.
@@ -318,9 +324,10 @@ has chosen a repository.
   A repository whose configuration places its working tree elsewhere names no root, so a
   path inside one opens as a plain folder.
 - **Test:** the shared fixture of resolution cases.
-  It holds each guard’s case, each row of [Edge Cases](#edge-cases), and a hostile
-  configuration whose `core.fsmonitor` would leave a marker file, and it asserts no
-  marker and an unchanged Git directory across resolution.
+  It holds each guard’s case, each row of [Edge Cases](#edge-cases), the sparse partial
+  clone among them, and a hostile configuration whose `core.fsmonitor` would leave a
+  marker file, and it asserts no marker and an unchanged Git directory across
+  resolution.
 
 ### Showing a Revision Never Writes the Checkout
 
@@ -470,7 +477,7 @@ the design that carries it out.
 | A path opens its nearest enclosing repository; in no repository, a folder opens as itself and a file opens its folder | 2026-11-18 | [Resolving a Target to a Root](#resolving-a-target-to-a-root) |
 | Walk-up is guarded: not for an ignored path, not up to the home folder, not when bound beyond loopback, and `--exact-root` opts out | 2026-11-18 | [The Guards](#the-guards) |
 | Only serving, `--present`, and the app resolve; the data modes keep the exact path | 2026-11-18 | [Which Commands Resolve](#which-commands-resolve) |
-| Mirror mode never has working-copy changes; folder mode views every other branch as a mirror would and also has the true working tree | 2026-11-18 | [The Three Modes](#the-three-modes), [Views](#views) |
+| Mirror mode never has working-copy changes; a repository folder views every other branch as a mirror would and also has the true working tree | 2026-11-18 | [The Three Modes](#the-three-modes), [Views](#views) |
 | Repository folder mode is for any Git repository; Pulls and the GitHub toggle are for github.com only | 2026-11-18 | [The Three Modes](#the-three-modes) |
 | One view for each server for now; links that select a branch are deferred under `mb-itzy` | 2026-11-18 | [Views](#views) |
 | A revision renders inert | 2026-11-09, confirmed 2026-11-18 | [Views](#views) |
