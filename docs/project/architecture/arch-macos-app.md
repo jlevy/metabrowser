@@ -241,10 +241,14 @@ and the server, which resolves the link against its mirror, announces the right 
   window shows them as written, less the repository’s URL.
 - **A failure on GitHub.** A start that fails ends with `metab`’s `Error:` line, and
   when that line names a state of reaching or reading GitHub (`GitHubFailure.kinds`),
-  the windows say which of four it is: GitHub CLI is not signed in (`not_logged_in`);
-  `metab` found no GitHub CLI (`gh_missing`, or `not_found_or_private` with the
-  provider’s hint to install it); the repository was not found or its account cannot
-  read it (`not_found_or_private`); or the connection failed.
+  the windows say which it is: the repository was not found or its account cannot read
+  it (`not_found_or_private`); the same with no GitHub CLI found, which the provider’s
+  hint to install it marks, so the window names both causes; the connection failed;
+  GitHub is limiting requests (`rate_limited`); or GitHub answered with an error
+  (`server_error`). The table also maps the GitHub plugin’s `not_logged_in` and
+  `gh_missing`, which no start names yet: the plugin’s messages carry no state and reach
+  no start’s `Error:` line, so the Swift samples of both are placeholders until the
+  status check (`mb-si2g`) decides how a start reports them.
   They show `metab`’s message, the `gh` commands that fix it or show what is wrong, each
   with Copy, as the first-run steps do, and Retry; Copy Message copies the failure, the
   message, and the commands together.
@@ -256,16 +260,23 @@ and the server, which resolves the link against its mirror, announces the right 
   alike, so today each is `not_found_or_private`, and its steps start with
   `gh auth status`. Telling them apart is the GitHub status check’s (`mb-si2g`).
 - **Back from Terminal.** When the app becomes active, each repository whose server
-  failed on GitHub starts again, as Retry does (`ServerFailure.rechecksOnActivation`,
-  `FolderSession.recheckAfterActivation`), so a sign-in in Terminal clears the failure
-  once the user switches back.
-  Nothing else changes: a folder, a server that is ready or starting, and a failure with
-  another cause wait for Retry.
+  failed in a way a sign-in in Terminal can fix starts again, as Retry does: GitHub
+  showed no repository while `gh` was found (`GitHubFailure.Kind.rechecksOnActivation`,
+  `ServerFailure.rechecksOnActivation`, `FolderSession.recheckAfterActivation`), so the
+  sign-in clears the failure once the user switches back, and only then does the window
+  say it tries again. Nothing else changes: a folder, a server that is ready or starting,
+  and every other failure wait for Retry.
+  A network failure can come minutes into a first clone’s fetch (`timed_out`), which a
+  retry would start again from zero while holding the repository launch gate; a rate
+  limit asks for fewer requests; a server error is GitHub’s to fix; and without `gh`
+  nothing changes until Find Again, which restarts nothing.
   The recheck runs the start again, since no route reports the sign-in yet, so each
-  switch back to the app while the failure stands costs a failed clone’s requests to
-  GitHub: the provider’s size check, when `gh` is found, and the probe of the origin,
+  switch back to the app while a not-found failure stands costs GitHub that failure’s
+  requests: the provider’s size check, when `gh` is found, and the probe of the origin,
   which `REMOTE_PROBE_TIMEOUT_S` in `src/metabrowser/cache/origin.py` bounds and whose
-  comment holds its measurement.
+  comment holds its measurement; the not-found answer comes from those, before any
+  object is fetched. Reading the sign-in instead, and rechecking without a start, is
+  `mb-1rl3`’s, once the status check (`mb-si2g`) reports it.
 - **Titles.** Until the server answers `/api/identity`, the window is named for the
   repository (`FolderIdentity.repository`), a cached mirror.
   Only a local folder’s window gets a path menu, whatever identity its port answers.

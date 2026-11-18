@@ -160,11 +160,18 @@ def test_the_app_declares_what_present_reads() -> None:
     assert _swift_value("Folders/RecentTargets.swift", "opensURLsKey") == f'"{OPENS_URLS_KEY}"'
 
 
-def _swift_test_strings(name: str) -> set[str]:
-    """The one-line string literals of ``Tests/ShellCoreTests/<name>``: its samples."""
+def _swift_samples(name: str, enum: str) -> set[str]:
+    """The one-line string literals in ``enum <enum> { … }`` of ``Tests/ShellCoreTests/<name>``.
+
+    Only that enum's: the rest of the file also holds lines a test expects the app to
+    reject, such as a pull request step without its elapsed time, and a sample set that
+    took those in would accept ``metab`` writing one (review A2 on #571).
+    """
 
     source = (SHELL_CORE_TESTS / name).read_text(encoding="utf-8")
-    return set(re.findall(r'"((?:[^"\\\n]|\\.)*)"', source))
+    body = re.search(rf"^enum {re.escape(enum)} \{{\n(.*?)^\}}$", source, re.DOTALL | re.MULTILINE)
+    assert body, f"{name} no longer declares enum {enum}"
+    return set(re.findall(r'"((?:[^"\\\n]|\\.)*)"', body.group(1)))
 
 
 def test_the_clone_report_the_app_reads_is_metabs(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -174,6 +181,11 @@ def test_the_clone_report_the_app_reads_is_metabs(monkeypatch: pytest.MonkeyPatc
     fixed, so a change to what ``metab`` says while it clones fails here rather than
     leaving the app's status view with nothing to say.
     """
+
+    samples = _swift_samples("StartProgressTests.swift", "CloneReportSamples")
+    # The test file expects the app to ignore this line, a pull request step without its
+    # elapsed time, so it must not count as a sample: metab writing it fails here.
+    assert "reading pull request 12" not in samples
 
     clock = [0.0]
     monkeypatch.setattr(clone_report, "_monotonic", lambda: clock[0])
@@ -213,17 +225,24 @@ def test_the_clone_report_the_app_reads_is_metabs(monkeypatch: pytest.MonkeyPatc
     asyncio.run(read_pull_request())
     written = stream.getvalue().splitlines()
     assert len(written) == 6, written
-    missing = set(written) - _swift_test_strings("StartProgressTests.swift")
+    missing = set(written) - samples
     assert not missing, f"StartProgressTests.swift no longer parses what metab writes: {missing}"
 
 
 def test_the_github_failures_the_app_reads_are_metabs(monkeypatch: pytest.MonkeyPatch) -> None:
     """``GitHubFailure`` reads states ``metab`` names, from the lines ``metab`` prints.
 
-    The states in its table are ``metab``'s, the samples ``GitHubFailureTests.swift``
-    diagnoses are messages ``metab`` builds, prefixed as the CLI prints an error, and the
-    hint it reads to tell that no ``gh`` was found is the one the GitHub provider gives.
-    A start that fails as ``cli-github-not-found.txt`` records ends with those lines.
+    The states in its table are ``metab``'s; the clone failures ``GitHubFailureTests.swift``
+    diagnoses are the lines ``describe_remote_failure`` builds, prefixed as the CLI prints
+    an error; and the hint it reads to tell that no ``gh`` was found is the one the GitHub
+    provider gives. A start that fails as ``cli-github-not-found.txt`` records ends with
+    the not-found lines.
+
+    Its ``not_logged_in`` and ``gh_missing`` samples are placeholders: the GitHub plugin's
+    messages name no state and reach no start's ``Error:`` line, so they are built here
+    from those messages with the state appended, a format ``metab`` does not print. They
+    hold the samples to the plugin's wording only, until the GitHub status check
+    (``mb-si2g``) decides how a start reports either state.
     """
 
     swift = (SHELL_CORE / "Folders" / "GitHubFailure.swift").read_text(encoding="utf-8")
@@ -249,14 +268,17 @@ def test_the_github_failures_the_app_reads_are_metabs(monkeypatch: pytest.Monkey
     assert found in printed and without_gh in printed
 
     demo = "https://github.com/octo/demo"
-    samples = _swift_test_strings("GitHubFailureTests.swift")
+    samples = _swift_samples("GitHubFailureTests.swift", "GitHubFailureSamples")
+    printed_states = ("network_unreachable", "timed_out", "rate_limited", "server_error")
+    placeholders = {
+        f"{prefix}{github_gh._SIGN_IN_MESSAGE} (not_logged_in)",
+        f"{prefix}{github_gh.GhUnavailableError()} (gh_missing)",
+    }
     built = {
         found,
         without_gh,
-        prefix + describe_remote_failure("network_unreachable", demo),
-        prefix + describe_remote_failure("rate_limited", demo),
-        f"{prefix}{github_gh._SIGN_IN_MESSAGE} (not_logged_in)",
-        f"{prefix}{github_gh.GhUnavailableError()} (gh_missing)",
+        *(prefix + describe_remote_failure(state, demo) for state in printed_states),
+        *placeholders,
     }
     missing = built - samples
     assert not missing, f"GitHubFailureTests.swift no longer diagnoses what metab prints: {missing}"

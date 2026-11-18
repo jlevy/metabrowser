@@ -215,9 +215,9 @@ final class FolderSession: ManagedServer {
     }
 
     /// The app became active, most likely back from Terminal: a server whose start failed
-    /// because of GitHub, such as a sign-in, starts again, as Retry does, so that the fix
-    /// made there clears the windows' failure (`ServerFailure.rechecksOnActivation`).
-    /// Any other session is left as it is.
+    /// in a way a sign-in there can fix starts again, as Retry does, so that the sign-in
+    /// clears the windows' failure (`ServerFailure.rechecksOnActivation`).
+    /// Any other session, other GitHub failures among them, is left as it is.
     func recheckAfterActivation() {
         guard case .failed = supervisor.state, let failure, failure.rechecksOnActivation else { return }
         let state = failure.gitHub?.state ?? ""

@@ -7,13 +7,16 @@ All notable changes to Metabrowser are documented here.
 - The macOS app shows a first clone’s progress in the window of the repository being
   opened: how far the clone has got, how fast, and for how long, as `metab` reports it
   in Terminal, then that it is reading the pull request the link names.
-  A repository that could not be cloned because of GitHub says which problem it is:
-  GitHub CLI is not signed in or was not found, the repository was not found or your
-  account cannot read it, or the connection failed.
+  A repository that could not be cloned because of GitHub says which problem it is: the
+  repository was not found or your account cannot read it, which is also how a
+  signed-out GitHub CLI shows until the app checks the sign-in itself; it was not found
+  and GitHub CLI was not found either; the connection failed; or GitHub is limiting
+  requests or answered with an error.
   The window shows `metab`’s message and the `gh` commands that fix the problem, each
-  with Copy, a Copy Message button that copies all of it, and Retry, and the app tries
-  such a repository again when you switch back to it, so a sign-in in Terminal clears
-  the failure. See [the app’s guide](docs/macos-app.md#opening-github-links).
+  with Copy, a Copy Message button that copies all of it, and Retry.
+  The app tries a repository that was not found again when you switch back to it, so a
+  sign-in in Terminal clears the failure; other failures wait for Retry.
+  See [the app’s guide](docs/macos-app.md#opening-github-links).
 
 - In the macOS app, Open Recent, the Dock menu and the title’s path menu show folders
   with the same outline folder symbol as the mirror’s cloud, instead of Finder’s colored

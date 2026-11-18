@@ -132,16 +132,21 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
   Folders you open meanwhile start at once; another repository waits for the clone, and
   its window says so.
 - **When GitHub is the problem,** the window of a repository that could not be cloned
-  says which problem it is: GitHub CLI (`gh`) is not signed in, or Metabrowser did not
-  find it; the repository was not found, which is also how GitHub answers when your
-  account cannot read a private repository, or its sign-in lacks the `repo` scope; or
-  the connection to GitHub failed.
+  says which problem it is.
+  The repository was not found, which is also how GitHub answers when GitHub CLI (`gh`)
+  is signed out, its account cannot read a private repository, or its sign-in lacks the
+  `repo` scope; so a signed-out `gh` shows as not found, until Metabrowser checks the
+  sign-in itself. Or the repository was not found and Metabrowser did not find GitHub CLI
+  either, so it could offer GitHub no sign-in; or the connection to GitHub failed; or
+  GitHub answered but is limiting requests, or answered with an error.
   It shows `metab`’s message and the commands that fix the problem or show what it is,
   each with Copy, and Copy Message copies all of it, to paste into a message or a note.
-  Run the command in Terminal and switch back: Metabrowser tries again by itself, as
-  Retry does, for such a window and no other.
+  When the repository was not found and GitHub CLI was, run the commands in Terminal and
+  switch back: Metabrowser tries again by itself, as Retry does, and the window says so.
+  Any other failure waits for Retry, since trying again on every switch could restart a
+  long clone from the beginning or ask GitHub again while it asks for fewer requests.
   After installing GitHub CLI, choose Find Again in Settings first, so that Metabrowser
-  finds it.
+  finds it, then Retry.
 - **A link `metab` refuses**, such as an issues page, shows `metab`’s message, which
   says what to do. A link to another site, an `http` link, and a link with a user name, a
   password, or a port other than 443 show the app’s own message.

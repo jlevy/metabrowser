@@ -139,7 +139,8 @@ private struct FailureView: View {
 }
 
 /// A GitHub failure: what went wrong, `metab`'s message, and the commands that fix it,
-/// each with Copy, as the first-run steps show theirs (`SetupGuideView`).
+/// each with Copy, as the first-run steps show theirs (`SetupGuideView`), and, for one
+/// that a sign-in can fix, that switching back tries again.
 private struct GitHubFailureDetails: View {
     let failure: GitHubFailure
 
@@ -157,7 +158,9 @@ private struct GitHubFailureDetails: View {
                     CopyableCommand(text: step.command)
                 }
             }
-            Text(GitHubFailure.recheckNote).foregroundStyle(.secondary)
+            if failure.rechecksOnActivation {
+                Text(GitHubFailure.recheckNote).foregroundStyle(.secondary)
+            }
         }
     }
 }
