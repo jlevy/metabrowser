@@ -60,6 +60,9 @@ It links each document below and the contributor standards in `docs/`.
 
 ## Active Plans
 
+- [View on branch](specs/active/plan-2026-11-17-view-on-branch.md): one control on a
+  pull request’s Changes that opens a changed file at the pull request’s head in the
+  main UI, replacing the standalone revision page; approved 2026-11-17
 - [Object data model and views](specs/active/plan-2026-11-14-object-data-model-and-views.md):
   a draft for one modeled object per file, folder, commit, and pull request, drawn in
   several view shapes; its key decisions are open
@@ -72,7 +75,8 @@ It links each document below and the contributor standards in `docs/`.
 - [Fast CI](specs/active/plan-2026-11-16-fast-ci.md): bringing a pull request’s CI from
   20 minutes to about 5 with the same checks, by running the suite on every processor,
   splitting it into unit, golden, and browser jobs, and cutting what a flake costs; the
-  owner approved Phases 1 and 2 on 2026-11-16, and nothing is implemented
+  owner approved Phases 1 and 2 on 2026-11-16, and they are implemented by
+  jlevy/metabrowser#499 and jlevy/metabrowser#504
 - [Publishing the macOS app](specs/active/plan-2026-11-16-macos-app-publishing.md):
   Developer ID signing, notarization, the DMG, provenance, a tag-driven release job, and
   the checks of a downloaded copy, with the owner-only steps

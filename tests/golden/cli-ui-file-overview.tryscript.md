@@ -25,6 +25,16 @@ Other for the rest; the table of every group, family, and type waits behind Deta
 On a folder of many types, Details starts closed, opens to the full table, stays open
 through a measure change, Show ignored, a refresh, and a rescan, closes back to the
 compact summary, and starts closed again on the next mount.
+Pointing at a legend entry marks what pointing at its family’s segment marks, in the
+tally row the legend’s shares are of, Total with Show ignored on and Files with it off:
+that segment, as hovered.
+The tooltip is anchored on the handle the pointer is on, the entry or the segment: on
+the segment it names the family and its counts, on the entry, which shows the name, the
+counts alone. Other draws nothing.
+When the folder’s sums redraw the bars under the pointer, an entry keeps its hover.
+Show ignored, a rescan that empties the legend, a refresh, or the section’s disposal
+under the pointer puts it away, and the browser’s entering the rebuilt entry brings it
+back.
 
 ```console
 $ node tests/dom/file-overview-session.js
@@ -251,6 +261,78 @@ $ node tests/dom/file-overview-session.js
     },
     "disposed, then mounted again": {
       "details": "false"
+    }
+  },
+  "a legend entry hovers its segment": {
+    "at rest": {
+      "marked": [],
+      "tooltip": null,
+      "anchoredOn": null
+    },
+    "pointer on the JSON entry, Show ignored on": {
+      "marked": [
+        "Total family:json"
+      ],
+      "tooltip": "240 files · 100 B",
+      "anchoredOn": "legend family:json"
+    },
+    "left the entry": {
+      "marked": [],
+      "tooltip": null,
+      "anchoredOn": null
+    },
+    "pointer on the Total row's JSON segment": {
+      "marked": [
+        "Total family:json"
+      ],
+      "tooltip": "JSON 240 files · 100 B",
+      "anchoredOn": "Total family:json"
+    },
+    "pointer on Other": {
+      "marked": [],
+      "tooltip": null,
+      "anchoredOn": null
+    },
+    "Show ignored turned off under the pointer": {
+      "marked": [],
+      "tooltip": null,
+      "anchoredOn": null
+    },
+    "pointer on the Markdown entry, Show ignored off": {
+      "marked": [
+        "Files family:markdown"
+      ],
+      "tooltip": "150 files · 300 B",
+      "anchoredOn": "legend family:markdown"
+    },
+    "the folder's sums redrew the bars under the pointer": {
+      "marked": [
+        "Files family:markdown"
+      ],
+      "tooltip": "150 files · 300 B",
+      "anchoredOn": "legend family:markdown"
+    },
+    "a rescan emptied the legend under the pointer": {
+      "marked": [],
+      "tooltip": null,
+      "anchoredOn": null
+    },
+    "the rollup refreshed under the pointer": {
+      "marked": [],
+      "tooltip": null,
+      "anchoredOn": null
+    },
+    "the browser entered the rebuilt entry": {
+      "marked": [
+        "Files family:markdown"
+      ],
+      "tooltip": "150 files · 300 B",
+      "anchoredOn": "legend family:markdown"
+    },
+    "the section disposed under the pointer": {
+      "marked": [],
+      "tooltip": null,
+      "anchoredOn": null
     }
   },
   "the folder header's tally": {

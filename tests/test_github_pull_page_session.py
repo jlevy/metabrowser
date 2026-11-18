@@ -126,6 +126,7 @@ def _switch(response: Any) -> dict[str, Any]:
             "pin": status.get("pin"),
             "ref": status.get("ref"),
             "code": body.get("code"),
+            "view_href": body.get("view_href"),
         },
     }
 
@@ -289,13 +290,16 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             recorded["markdown missing"] = _answer(
                 client.get(_MARKDOWN, params={**read_7, "part": "issue_comment/1"})
             )
-            # The pin is a branch, so Browse code serves the head first; one the mirror
-            # lacks is refused, and the page says why.
+            # The pin is a branch, so Browse code serves the head first, by its commit and
+            # under the pull request's ref; one the mirror lacks is refused, and the page
+            # says why.
+            head = recorded["current"]["body"]["record"]["pull"]["head"]["sha"]
+            browse = {"under": "refs/pull/7/head", "view": "/view/"}
             recorded["switch_refused"] = _switch(
-                client.post(_PIN, json={"ref": "refs/pull/999/head"}, headers=JSON_BODY)
+                client.post(_PIN, json={"oid": "e" * 40, **browse}, headers=JSON_BODY)
             )
             recorded["switch_to_head"] = _switch(
-                client.post(_PIN, json={"ref": "refs/pull/7/head"}, headers=JSON_BODY)
+                client.post(_PIN, json={"oid": head, **browse}, headers=JSON_BODY)
             )
             recorded["on_head"] = _answer(client.get(_PULL, params=read_7))
 
@@ -629,8 +633,9 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
         # which paintHeader's retarget does. The header's links and actions are numbered
         # by their place, through the same facade, and a number runs what its place's
         # control does in the paint on screen: View on GitHub opens the pull request on
-        # GitHub, Browse code asks to serve the head and, once a refresh serves it, opens
-        # the code; Refresh asks for a refresh, and moves up to 2 when Browse code goes.
+        # GitHub, Browse code asks to serve the head, by its commit and under its ref, and,
+        # once a refresh serves it, opens the code; Refresh asks for a refresh, and moves up
+        # to 2 when Browse code goes.
         "tabKeys": [
             "before the record, the tab column in the page: "
             "Conversation C, Changes G, Checks E; live conversation files checks",
@@ -641,7 +646,9 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "live: conversation files checks",
             "numbered: 1 View on GitHub, 2 Browse code",
             f"1: window.open {_PULL_URL} _blank noopener,noreferrer",
-            '2: POST /api/source/pin {"ref":"refs/pull/7/head"}',
+            "2: POST /api/source/pin "
+            '{"oid":"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a","under":"refs/pull/7/head",'
+            '"view":"/view/"}',
             "C: showed Conversation",
             "G: opened the files route",
             "the route arrives: Changes",
@@ -670,6 +677,13 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "live: conversation files checks",
             "G: showed Changes",
             "disposed: keys none",
+        ],
+        # Browse code's switch is the diff plugin's, in a module it loads on demand: the
+        # plugin's assets or that module not loading is said as a failed request, and asks
+        # the server nothing (A3 of review A on #511).
+        "switchUnavailable": [
+            "the diff plugin's assets not loading: The switch request failed.; asked nothing",
+            "the switch module not loading: The switch request failed.; asked nothing",
         ],
     }
 

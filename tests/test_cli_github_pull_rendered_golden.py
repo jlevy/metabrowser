@@ -4,8 +4,8 @@
 pull request's record names as ``markdown-diff-v1``: rendered blocks, each removed, added
 or unchanged, with changed words marked and a ``source_only`` flag on a block whose source
 says more than its render. This drives it in-process, as
-``tests/test_cli_github_pull_snapshot_golden.py`` drives the revision-file route, and
-writes ``tests/golden/cli-github-pull-rendered.txt``.
+``tests/test_cli_github_pull_image_golden.py`` drives the image route, and writes
+``tests/golden/cli-github-pull-rendered.txt``.
 
 Pull request 7's head moves to a commit that edits a heading beside an HTML comment (a
 word mark, and a block the render cannot fully show), adds a task list (raw markup, so

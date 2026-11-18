@@ -21,108 +21,10 @@ gh api repos/octo/demo/issues/7/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1
 gh auth status
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj/g1-YXBwLnR4dA&mode=download'
-exit: 0
---- stdout ---
-api: /api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj/g1-YXBwLnR4dA&mode=download
-status: 200
-one
-two
-
---- stderr ---
-selection: pull_request
-pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
-pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
---- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=base&path=g1-c3Jj/g1-YXBwLnR4dA&mode=download'
-exit: 0
---- stdout ---
-api: /api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=base&path=g1-c3Jj/g1-YXBwLnR4dA&mode=download
-status: 200
-one
-
---- stderr ---
-selection: pull_request
-pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
-pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
---- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj/g1-YXBwLnR4dA&mode=source'
-exit: 0
---- stdout ---
-api: /api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj/g1-YXBwLnR4dA&mode=source
-status: 200
-<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><title>src/app.txt at 85fcb2fa9e77</title><script>[the document width default]</script><script>[the shell's document width script]</script><script>[the shell's theme script]</script><link rel="stylesheet" href="/static/styles.css"><link rel="stylesheet" href="/plugin-static/github/pull-snapshot.css"><body class="pull-snapshot-page"><main class="pull-snapshot"><header><nav aria-label="Revision file"><a href="/pull/7/files">Pull request #7 Changes</a></nav><h1 class="page-heading">src/app.txt</h1><code>85fcb2fa9e77eb5db485ffef445cbbc645d6db4a</code></header><article class="pull-snapshot-content"><pre><code>one
-two
-</code></pre></article></main></body></html>
---- stderr ---
-selection: pull_request
-pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
-pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
---- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-snapshot?number=7&left=0000000000000000000000000000000000000000&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj/g1-YXBwLnR4dA&mode=image'
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&path=g1-c3Jj/g1-YXBwLnR4dA'
 exit: 1
 --- stdout ---
-api: /api/plugin/github/pull-snapshot?number=7&left=0000000000000000000000000000000000000000&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj/g1-YXBwLnR4dA&mode=image
-status: 410
-{
-  "code": "snapshot_expired",
-  "message": "This PR revision is no longer available. Open Changes again for the current comparison."
-}
---- stderr ---
-selection: pull_request
-pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
-pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-Error: /api/plugin/github/pull-snapshot?number=7&left=0000000000000000000000000000000000000000&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj/g1-YXBwLnR4dA&mode=image returned HTTP 410
---- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=middle&path=g1-c3Jj/g1-YXBwLnR4dA&mode=image'
-exit: 1
---- stdout ---
-api: /api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=middle&path=g1-c3Jj/g1-YXBwLnR4dA&mode=image
-status: 400
-{
-  "code": "invalid_snapshot",
-  "message": "This revision file address is invalid."
-}
---- stderr ---
-selection: pull_request
-pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
-pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-Error: /api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=middle&path=g1-c3Jj/g1-YXBwLnR4dA&mode=image returned HTTP 400
---- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj/g1-YWJzZW50LnR4dA&mode=image'
-exit: 1
---- stdout ---
-api: /api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj/g1-YWJzZW50LnR4dA&mode=image
-status: 404
-{
-  "code": "file_not_found",
-  "message": "This file is absent at this revision."
-}
---- stderr ---
-selection: pull_request
-pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
-pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-Error: /api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj/g1-YWJzZW50LnR4dA&mode=image returned HTTP 404
---- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj&mode=image'
-exit: 1
---- stdout ---
-api: /api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj&mode=image
-status: 404
-{
-  "code": "not_a_file",
-  "message": "This path is a folder at this revision."
-}
---- stderr ---
-selection: pull_request
-pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
-pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-Error: /api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj&mode=image returned HTTP 404
---- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-UkVBRE1FLm1k&mode=image'
-exit: 1
---- stdout ---
-api: /api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-UkVBRE1FLm1k&mode=image
+api: /api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&path=g1-c3Jj/g1-YXBwLnR4dA
 status: 415
 {
   "code": "unsupported_image",
@@ -132,19 +34,67 @@ status: 415
 selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-Error: /api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-UkVBRE1FLm1k&mode=image returned HTTP 415
+Error: /api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&path=g1-c3Jj/g1-YXBwLnR4dA returned HTTP 415
 --- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj/g1-YXBwLnR4dA&mode=source&offset=99'
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-image?number=7&left=0000000000000000000000000000000000000000&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&path=g1-c3Jj/g1-YXBwLnR4dA'
 exit: 1
 --- stdout ---
-api: /api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj/g1-YXBwLnR4dA&mode=source&offset=99
-status: 416
-<!doctype html><html lang=en><meta charset=utf-8><title>File unavailable</title><main><h1>File unavailable</h1><p>This source window is outside the preview limit.</p></main></html>
+api: /api/plugin/github/pull-image?number=7&left=0000000000000000000000000000000000000000&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&path=g1-c3Jj/g1-YXBwLnR4dA
+status: 410
+{
+  "code": "snapshot_expired",
+  "message": "This PR revision is no longer available. Open Changes again for the current comparison."
+}
 --- stderr ---
 selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-Error: /api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj/g1-YXBwLnR4dA&mode=source&offset=99 returned HTTP 416
+Error: /api/plugin/github/pull-image?number=7&left=0000000000000000000000000000000000000000&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&path=g1-c3Jj/g1-YXBwLnR4dA returned HTTP 410
+--- gh ---
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&path='
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&path=
+status: 400
+{
+  "code": "invalid_image",
+  "message": "This image address is invalid."
+}
+--- stderr ---
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+Error: /api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&path= returned HTTP 400
+--- gh ---
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&path=g1-c3Jj/g1-YWJzZW50LnBuZw'
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&path=g1-c3Jj/g1-YWJzZW50LnBuZw
+status: 404
+{
+  "code": "file_not_found",
+  "message": "This file is absent at this revision."
+}
+--- stderr ---
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+Error: /api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&path=g1-c3Jj/g1-YWJzZW50LnBuZw returned HTTP 404
+--- gh ---
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&path=g1-c3Jj'
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&path=g1-c3Jj
+status: 404
+{
+  "code": "not_a_file",
+  "message": "This path is a folder at this revision."
+}
+--- stderr ---
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+Error: /api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&path=g1-c3Jj returned HTTP 404
 --- gh ---
 # sources/<SLUG>/pulls/7.snapshots.json
 [{"store":"<STORE>","reader":"gh:octo-reader","base":"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b","head":"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"}]
@@ -178,7 +128,7 @@ status: 202
       "at": "2026-09-17T12:00:00Z"
     },
     "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
-    "snapshot_route": "/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+    "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
     "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
     "record": {
       "schema_version": 2,
@@ -375,7 +325,7 @@ status: 200
   "verified_by": "fetch",
   "head_moved": false,
   "checks_pending": false,
-  "record_revision": "110506edb97812d9e5a74edaee93e0bc817e8b375503a0fdd1df0a4edd17f83b",
+  "record_revision": "c7e69ff926b1958699d816d8c0988196806d4cb3b111587afe60be87da06c5b5",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -384,9 +334,9 @@ status: 200
     "reset_at": null,
     "at": "2026-09-17T12:00:00Z"
   },
-  "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=f7c5a9918657080d6aeb455902615b6e17df760a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
-  "snapshot_route": "/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=f7c5a9918657080d6aeb455902615b6e17df760a&store=<STORE>",
-  "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=f7c5a9918657080d6aeb455902615b6e17df760a&store=<STORE>",
+  "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=de22d10b6b8d1dd5f87861fb532b0ab66af5f408&base_policy=merge_base&build=<BUILD>&store=<STORE>",
+  "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=de22d10b6b8d1dd5f87861fb532b0ab66af5f408&store=<STORE>",
+  "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=de22d10b6b8d1dd5f87861fb532b0ab66af5f408&store=<STORE>",
   "record": {
     "schema_version": 2,
     "projection_version": 2,
@@ -395,12 +345,12 @@ status: 200
     "fetched_at": "2026-09-17T12:00:00Z",
     "reader": "gh:octo-reader",
     "etags": {
-      "repos/octo/demo/pulls/7": "W/\"78e3783480145382270d9a438ac8f38ee89baf34145910408cef3fe6ce8f307f\"",
+      "repos/octo/demo/pulls/7": "W/\"26f44eb2c85b6cfe5fc1351793e919e053eab5fb9cce558264ca8d1ae8ef58db\"",
       "repos/octo/demo/issues/7/comments?per_page=100&page=1": "W/\"129ba5d41c7ad9dc46b0ecc3d92124b83747ed95e5ff5422603eb05b99399608\"",
       "repos/octo/demo/pulls/7/reviews?per_page=100&page=1": "W/\"553dbffc68c21141af1083cb13e8be39e4138e90d4011da721d679e7853c5e9d\"",
       "repos/octo/demo/pulls/7/comments?per_page=100&page=1": "W/\"b4ca741eae91bcff3445421bd4f16ee7b2ae05d25fa979346f04a378ee3bd6cc\"",
-      "repos/octo/demo/commits/f7c5a9918657080d6aeb455902615b6e17df760a/check-runs?per_page=100&page=1": "W/\"3ce11c9515d54ffe4aa424209cd7cac7b2460f2d872e4a76517ed10398aa4701\"",
-      "repos/octo/demo/commits/f7c5a9918657080d6aeb455902615b6e17df760a/status?per_page=100&page=1": "W/\"a1d3ebf699ed08833f26e9118f0cda9c0220ea8a6bcaf959ede03bbfca21e5ac\""
+      "repos/octo/demo/commits/de22d10b6b8d1dd5f87861fb532b0ab66af5f408/check-runs?per_page=100&page=1": "W/\"660d9e0d00953fec09297bfdc98a4c6e5f4ebeaccc9bbd8255acb3a6fe221cdd\"",
+      "repos/octo/demo/commits/de22d10b6b8d1dd5f87861fb532b0ab66af5f408/status?per_page=100&page=1": "W/\"87cfa5d1cb2a12d71a7aca3893eb0bc526265421f7539c21904d82be75992388\""
     },
     "pull": {
       "number": 7,
@@ -435,7 +385,7 @@ status: 200
       },
       "head": {
         "ref": "count-to-two",
-        "sha": "f7c5a9918657080d6aeb455902615b6e17df760a",
+        "sha": "de22d10b6b8d1dd5f87861fb532b0ab66af5f408",
         "repository": "forker/demo"
       },
       "html_url": "<PATH>/pull/7"
@@ -524,7 +474,7 @@ status: 200
     },
     "comparison": {
       "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
-      "head": "f7c5a9918657080d6aeb455902615b6e17df760a",
+      "head": "de22d10b6b8d1dd5f87861fb532b0ab66af5f408",
       "base_commit": "c691256511d05858850bc7684ae062fea0d41132",
       "base_from": "base_branch"
     },
@@ -549,38 +499,54 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
 gh auth status
 gh api repos/octo/demo/pulls/7 (If-None-Match)
-gh api repos/octo/demo/commits/f7c5a9918657080d6aeb455902615b6e17df760a/check-runs?per_page=100&page=1
-gh api repos/octo/demo/commits/f7c5a9918657080d6aeb455902615b6e17df760a/status?per_page=100&page=1
+gh api repos/octo/demo/commits/de22d10b6b8d1dd5f87861fb532b0ab66af5f408/check-runs?per_page=100&page=1
+gh api repos/octo/demo/commits/de22d10b6b8d1dd5f87861fb532b0ab66af5f408/status?per_page=100&page=1
 gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
 gh auth status
 # sources/<SLUG>/pulls/7.snapshots.json
-[{"store":"<STORE>","reader":"gh:octo-reader","base":"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b","head":"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"},{"store":"<STORE>","reader":"gh:octo-reader","base":"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b","head":"f7c5a9918657080d6aeb455902615b6e17df760a"}]
+[{"store":"<STORE>","reader":"gh:octo-reader","base":"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b","head":"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"},{"store":"<STORE>","reader":"gh:octo-reader","base":"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b","head":"de22d10b6b8d1dd5f87861fb532b0ab66af5f408"}]
 
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj/g1-YXBwLnR4dA&mode=download'
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=de22d10b6b8d1dd5f87861fb532b0ab66af5f408&store=<STORE>&path=g1-bG9nby5wbmc'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&side=head&path=g1-c3Jj/g1-YXBwLnR4dA&mode=download
+api: /api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=de22d10b6b8d1dd5f87861fb532b0ab66af5f408&store=<STORE>&path=g1-bG9nby5wbmc
 status: 200
-one
-two
+logo bytes
 
 --- stderr ---
 selection: pull_request
-pin: f7c5a9918657080d6aeb455902615b6e17df760a (pull request 7 head)
+pin: de22d10b6b8d1dd5f87861fb532b0ab66af5f408 (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-# metab <PATH>/pull/7 --api '/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=f7c5a9918657080d6aeb455902615b6e17df760a&store=<STORE>&side=head&path=g1-c3Jj/g1-YXBwLnR4dA&mode=download'
-exit: 0
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&path=g1-c3Jj/g1-YXBwLnR4dA'
+exit: 1
 --- stdout ---
-api: /api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=f7c5a9918657080d6aeb455902615b6e17df760a&store=<STORE>&side=head&path=g1-c3Jj/g1-YXBwLnR4dA&mode=download
-status: 200
-one
-extra
-
+api: /api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&path=g1-c3Jj/g1-YXBwLnR4dA
+status: 415
+{
+  "code": "unsupported_image",
+  "message": "This image cannot be displayed."
+}
 --- stderr ---
 selection: pull_request
-pin: f7c5a9918657080d6aeb455902615b6e17df760a (pull request 7 head)
+pin: de22d10b6b8d1dd5f87861fb532b0ab66af5f408 (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+Error: /api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&path=g1-c3Jj/g1-YXBwLnR4dA returned HTTP 415
+--- gh ---
+# metab <PATH>/pull/7 --api '/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&path=g1-bG9nby5wbmc'
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&path=g1-bG9nby5wbmc
+status: 404
+{
+  "code": "file_not_found",
+  "message": "This file is absent at this revision."
+}
+--- stderr ---
+selection: pull_request
+pin: de22d10b6b8d1dd5f87861fb532b0ab66af5f408 (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+Error: /api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>&path=g1-bG9nby5wbmc returned HTTP 404
 --- gh ---
