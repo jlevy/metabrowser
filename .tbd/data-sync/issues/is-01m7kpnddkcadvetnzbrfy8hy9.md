@@ -3,9 +3,9 @@ type: is
 id: is-01m7kpnddkcadvetnzbrfy8hy9
 title: "Chrome flake: 'Chrome wrote no DevTools port' from launchChrome in tests/dom/chrome-session.mjs failed tests/test_changed_file_rows_chrome.py twice and passed on a rerun of the same commit"
 kind: bug
-status: in_progress
+status: closed
 priority: 1
-version: 7
+version: 8
 spec_path: docs/project/specs/active/plan-2026-11-16-fast-ci.md
 delegate: claude-code@spud10
 labels: []
@@ -14,8 +14,12 @@ parent_id: is-01m7kh4k0qtd75277xcq14dt1b
 hold: null
 hold_until: null
 created_at: 2026-11-17T02:51:32.658Z
-updated_at: 2026-11-18T05:49:14.939Z
+updated_at: 2026-11-18T07:16:11.880Z
 started_at: 2026-11-18T03:46:45.922Z
+closed_at: 2026-11-18T07:16:11.879Z
+close_reason: "Fixed by #554 (merged fb3e4809d): Chrome warm-up before the run; A11 follow-up in mb-bl54."
+resolution: null
+duplicate_of: null
 ---
 Found by the CI speed assessment (research-2026-11-16-ci-speed.md). Runs 43915467225 attempt 1, test (3.14), and 43917125328 attempt 3, test (3.13): test_both_trees_of_changed_files_draw_one_row_in_chrome, 'Error: Chrome wrote no DevTools port at launchChrome (tests/dom/chrome-session.mjs:51)'. Both runs went green on a rerun with no change. The helper is shared by every Chrome-tier module, so the cause is not that test's. Find whether Chrome exited or the 30 s deadline passed, reproduce under load with the loop mb-alff and mb-nvo0 used, and fix the cause.
 
