@@ -40,6 +40,7 @@ from metabrowser.cache.layout import (
     read_layout,
 )
 from metabrowser.cache.locks import application_cache_lock
+from metabrowser.cache.paths import CONFIG_MAX_BYTES
 from metabrowser.cache.records import CacheLayout
 from metabrowser.cli.main import _app
 from metabrowser.home import (
@@ -628,9 +629,7 @@ def test_a_config_past_its_bound_is_refused_rather_than_parsed(cache_home: Path)
 
     settings = "".join(f"  k{index:06d}: v\n" for index in range(3000))
     _write_config(cache_home, f"config:\n  format: f01\n  written_by: 0.11.0\n{settings}")
-    assert (
-        configuration_directory() / "config.yml"
-    ).stat().st_size > layout_module._MAX_CONFIG_BYTES
+    assert (configuration_directory() / "config.yml").stat().st_size > CONFIG_MAX_BYTES
     before = _snapshot(cache_home)
 
     with pytest.raises(LayoutError, match="larger than any valid record"):

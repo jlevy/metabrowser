@@ -88,6 +88,24 @@
       "record": "config",
       "changes": [{ "path": ["token_budget"], "value": 4000 }],
       "expect": "valid"
+    },
+    {
+      "name": "config-open-in-is-a-known-choice",
+      "record": "config",
+      "changes": [{ "path": ["open_in"], "value": "browser" }],
+      "expect": "valid"
+    },
+    {
+      "name": "config-open-in-may-be-null",
+      "record": "config",
+      "changes": [{ "path": ["open_in"], "value": null }],
+      "expect": "valid"
+    },
+    {
+      "name": "config-open-in-must-be-a-choice",
+      "record": "config",
+      "changes": [{ "path": ["open_in"], "value": "sometimes" }],
+      "expect": "invalid"
     }
   ]
 }
