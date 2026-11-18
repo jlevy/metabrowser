@@ -35,6 +35,25 @@ All notable changes to Metabrowser are documented here.
   See
   [Branches and Tags of a Local Checkout](docs/browsing-history.md#branches-and-tags-of-a-local-checkout).
 
+- A pull request’s page shows its changes’ counts at once, “36 files changed · 2 A, 3 D,
+  31 M · +2,076 −224”, from the changed-files list the Pulls tab keeps, while it reads
+  the full Diff summary, which then replaces the line in place.
+  Opened from a Pulls row, the page asks nothing for it; opened at its address, one
+  quick read of the cache.
+  A list of an earlier head or base, after new commits were pushed or the pull request
+  was retargeted, is not shown.
+  The changed-files summary route (`/api/plugin/github/pull-files-summary`) now also
+  says what each list was listed against, its `base` commit or GitHub’s `base_ref`.
+
+- A pull request’s page opened at its address, or from a Pulls row whose record is not
+  cached yet, shows the Diff summary’s gentle loading box from its first paint, after
+  the usual short quiet period, instead of an empty row until GitHub’s first answer
+  arrives, which took a second or more.
+  Once the server first answers, a pull request that is not GitHub’s, one served from a
+  checkout that has no Git store yet, or one whose refresh failed with nothing running
+  shows no box. The pull request route (`/api/plugin/github/pull`) says
+  `"no_store": true` when its server has no Git store to compare in.
+
 - A page that opens at a file deep in a long folder, one the page could not draw with
   its first rows, now scrolls the file’s row into the Files tab once its folders have
   opened. Before, the row was scrolled while its folder was still opening, within the

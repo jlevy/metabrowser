@@ -96,7 +96,8 @@
       },
       "core_preview": null,
       "repository_labels": [],
-      "labels_pending": false
+      "labels_pending": false,
+      "no_store": true
     }
   },
   "started": {
@@ -198,7 +199,8 @@
         },
         "core_preview": null,
         "repository_labels": [],
-        "labels_pending": false
+        "labels_pending": false,
+        "no_store": true
       },
       "status_route": "/api/plugin/github/pull?number=10"
     }
