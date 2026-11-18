@@ -69,10 +69,14 @@ FRONTMATTER_MAX_BYTES: Final = 256 * 1024
 # The most front matter a load may build and copy once every YAML alias is written out.
 # It is spent in two places, in the same unit, so either bounds its own work:
 # - On the composed node graph, before construction: each node counts one, and each
-#   scalar adds the length of its text in the document. A merge key's mappings count
-#   into each mapping that merges them, and a node used twice counts twice.
-# - In the copy, after construction: each value and key counts one, and each string,
-#   key, number, date, and binary value adds the length of its JSON text.
+#   scalar adds the length of its text in the document, after escapes. A merge key's
+#   mappings count into each mapping that merges them, and a node used twice counts
+#   twice.
+# - In the copy, after construction: each value and key counts one, each string and
+#   string key adds its length in characters, and each number, date, and binary value
+#   adds the length of its JSON text. The encoded response can be larger than the count:
+#   JSON escapes a control character in six bytes, and UTF-8 takes up to four a
+#   character.
 #
 # Measured 2026-11-17 (machine as above) with `devtools/frontmatter_bound_benchmark.py`:
 # - Alias-free front matter at FRONTMATTER_MAX_BYTES writes out to at most 1.17 times
