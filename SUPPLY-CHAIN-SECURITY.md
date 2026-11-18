@@ -56,6 +56,7 @@ introduces.
 | `softschema==0.8.1` | `0.8.0` | Runtime contract validation; adds SoftSchema and upgrades `frontmatter-format` from 0.3.0 to 0.4.0 |
 | `tryscript==0.3.0` | `0.1.7` | Removes the vulnerable fast-glob/micromatch/braces chain; adds tinyglobby discovery and the tsx loader |
 | `tryscript==0.3.1` | `0.3.0` | Security patch only; upgrades zod from 3.25.76 to 4.6.6 for GHSA-mrhx-c7xc-m3w5 |
+| `tryscript==0.4.0` | `0.3.1` | Replaces tinyglobby with tryscript’s own matcher, removing tinyglobby, fdir, and picomatch and with them GHSA-fc5q-39xc-vjpf; rejects extended globs, alternation groups, and brace ranges in test patterns, none of which this repository uses |
 | `get-tbd` | n/a | Issue tracker, first-party; not a build or runtime input |
 
 Tryscript 0.3.0 is a first-party exception to the release-age delay.
@@ -75,7 +76,9 @@ picomatch 4.0.7 on 2026-08-24. The esbuild platform packages have the same 0.28.
 version and are optional platform selections.
 No browser asset or Python runtime dependency changes.
 Install scripts remain disabled; the full golden suite exercises the installed runner,
-and the dependency audit has no exception for the advisory.
+and the dependency audit took no exception for the advisory the removed chain carried.
+picomatch 4.0.7, one of the branches this selection added, later drew
+GHSA-fc5q-39xc-vjpf; tryscript 0.4.0, below, removed that branch.
 
 Tryscript 0.3.1 is the same first-party exception, taken on 2026-10-26 because 0.3.0
 reaches the vulnerable zod 3.25.76 and `npm audit` fails on GHSA-mrhx-c7xc-m3w5 (high,
@@ -113,6 +116,53 @@ entry paths in union validation warnings, and development-only Vitest, Vite, and
 source-map-js advisories that this repository does not install.
 Golden parsing is unaffected — the full 278-check golden suite passes unchanged at
 0.3.1, which is the behavior the 0.3.0 selection had to realign.
+
+Tryscript 0.4.0 is the same first-party exception, taken on 2026-11-17 because 0.3.1
+reaches picomatch 4.0.7, through tinyglobby 0.2.17 and fdir 6.5.0, and from that day
+`npm audit` failed on
+[GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf) (high, a
+regular-expression denial of service through single-branch repeated extglobs), which no
+picomatch release fixes.
+That was the advisory’s only path into the lock, and
+[#523](https://github.com/jlevy/metabrowser/pull/523) tolerated it on that path alone
+until a release removed it.
+The [upstream release](https://github.com/jlevy/tryscript/releases/tag/v0.4.0) replaces
+tinyglobby with tryscript’s own matcher, which builds no regular expression from a
+pattern, so 0.4.0 depends on none of the three.
+This selection removes that exception with its check, its tests, and its fixture, so the
+audit again fails on any advisory at or above its level.
+The wrapper keeps what #523 fixed apart from the exception: a report is a finding even
+when an advisory’s title names an outage (see [Automated Checks](#automated-checks)).
+
+It was selected with `--min-release-age=0`, as 0.3.1 was, and npm applies that to the
+whole command; but the command moved no other package and added none, so no third-party
+release entered the lock without the age gate.
+`.npmrc` is unchanged.
+The published artifact SHA-512 matches the committed lockfile:
+`65hMMeYB0gDCHtbCFSOY1vIwVjlYrAHqYor4IoeaBwDqn8L7KE/RBD644qv+88WgFUtwmlg9paTit8yjf8Zk7A==`.
+Its npm provenance attestation names the `v0.4.0` tag of jlevy/tryscript, commit
+`4f33b3ccbc7aa7c470a6b1b25649eee5457957d7`, built by that repository’s release workflow.
+
+One package version changes, three packages are removed, and none is added: tryscript
+0.3.1 to 0.4.0, and tinyglobby 0.2.17, fdir 6.5.0, and picomatch 4.0.7 removed.
+That is the whole lockfile delta, six hunks, and it is reproducible from the base with
+one command:
+`npm install --package-lock-only --save-exact tryscript@0.4.0 --min-release-age=0`.
+tryscript’s own dependencies lose tinyglobby and are otherwise unchanged.
+`npm ls picomatch` is empty.
+No browser asset or Python runtime dependency changes.
+
+0.4.0 is a minor release because it stops the run with an error on a test pattern that
+uses an extended glob such as `+(a)`, an alternation group such as `(a|b)`, or a brace
+range such as `{1..3}`, and because it reads parentheses in a pattern literally.
+None of that reaches Metabrowser: its one test pattern is the Makefile’s
+`tests/golden/*.tryscript.md`, which `make test` and `make golden-update` pass, and no
+tryscript configuration file exists to add another.
+The release’s discovery fixes concern negations, dot directories, and symbolic links,
+and that pattern has no negation and names one directory, which holds no dot entry and
+no link. The full golden suite passes unchanged at 0.4.0, and
+`tests/test_tryscript_blocks.py` still finds the installed parser in agreement with
+`devtools/tryscript_blocks.py`.
 
 `get-tbd` carries no version review because it is not pinned to one, and the reason is
 narrower than “we publish it.”
@@ -206,6 +256,44 @@ release and the newest patched one.
 matrix to agree, and requires the matrix to include both floors from the version-gates
 fixture. Moving a floor therefore means pinning and reviewing the new release here.
 
+## Apple Developer ID Intermediate (November 17, 2026)
+
+`apps/macos/packaging/DeveloperIDG2CA.cer` is Apple’s “Developer ID - G2” intermediate
+certificate, committed so that the release Mac, and later a CI release job, installs it
+from the repository instead of downloading it.
+codesign builds a Developer ID identity’s chain from the keychains on the search list,
+and macOS’s own roots hold only the G1 intermediate, so without this file a G2 identity
+is not valid.
+
+| File | SHA-256 |
+| --- | --- |
+| `DeveloperIDG2CA.cer` | `f16cd3c54c7f83cea4bf1a3e6a0819c8aaa8e4a1528fd144715f350643d2df3a` |
+
+- **Source.** Downloaded on November 17, 2026, from
+  `https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer`, the link
+  [Apple PKI](https://www.apple.com/certificateauthority/) gives for it, and committed
+  unchanged (DER, 1,090 bytes).
+  Its subject is `CN=Developer ID Certification Authority, OU=G2, O=Apple Inc., C=US`,
+  its issuer is Apple Root CA, and it is valid from September 22, 2021, to September 17,
+  2031\.
+- **Chain.** `openssl verify` accepts it against Apple Root CA, downloaded from Apple
+  PKI at `https://www.apple.com/appleca/AppleIncRootCertificate.cer`, whose SHA-256
+  fingerprint is `b0b1730ecbc7ff4505142c49f1295e6eda6bcaed7e2c68c5be91b5a11001f024`.
+  That root is committed as `apps/macos/scripts/fixtures/AppleIncRootCertificate.cer`,
+  so `apps/macos/scripts/test-release-logic.sh` repeats the check on every test run, and
+  the signing doctor (`apps/macos/scripts/check-signing.sh`) repeats it on the release
+  Mac against the Apple Root CA in macOS’s own roots.
+- **Pin.** `g2_intermediate_sha256` in `apps/macos/scripts/signing-lib.sh` holds the
+  SHA-256 above. The doctor refuses a file that does not match it, and an installed
+  certificate with this subject and other contents.
+  `apple_root_ca_sha256` in `apps/macos/scripts/test-release-logic.sh` holds the root’s,
+  and the test checks the fixture against it before the chain.
+  `tests/test_macos_release_scripts.py` holds both values here to their pins, and each
+  pin to its file.
+- **Reach.** It is a public certificate and grants nothing by itself: installing it lets
+  macOS build the chain of an identity Apple already issued.
+  Replacing it is a new review here, with the pin changed in the same commit.
+
 ## Verification
 
 ### Development HTTP Client Review (September 8, 2026)
@@ -284,16 +372,25 @@ workflows, and documentation.
 executes the tests and audits, builds the package, inspects its contents, and exercises
 the installed wheel and plugin surface.
 
-CI and publishing also run `npm audit --audit-level=moderate` after installing the exact
-lock, through `devtools/npm_audit.sh`. That wrapper exists because `npm audit` exits
-non-zero for two unrelated events: it found an advisory, or it could not reach the
-advisory endpoint. Only the first is a reason to stop.
-The wrapper retries, then reports an unreachable endpoint as **not performed** --
-loudly, and without failing the build, because a registry outage is not a finding and
-the lockfile is pinned, so the dependency set has not moved since the last run that did
-reach it. An advisory at or above the level still fails exactly as before.
-A run that reports “not performed” has not cleared the dependencies; re-run the gate
-once the registry answers before relying on it.
+CI and publishing also run `npm audit --include=dev --audit-level=moderate` after
+installing the exact lock, through `devtools/npm_audit.sh`. That wrapper exists because
+`npm audit` exits non-zero for two unrelated events: it found an advisory, or it could
+not reach the advisory endpoint.
+Only the first is a reason to stop.
+npm writes its report to stdout and its own errors to stderr, and the wrapper keeps them
+apart. A report is a finding and fails, whatever its advisories’ titles say, and even if
+npm also warned on stderr about a failed request.
+Only when there is no report does the wrapper search stderr for an unreachable endpoint.
+It retries, then reports the outage as **not performed** -- loudly, and without failing
+the build, because a registry outage is not a finding and the lockfile is pinned, so the
+dependency set has not moved since the last run that did reach it.
+Any other npm failure, such as a missing lockfile, fails, and so does an
+`NPM_AUDIT_ATTEMPTS` that is not a positive integer.
+Every npm package in this lock is a dev dependency, so `--include=dev` keeps an ambient
+`NODE_ENV=production` or `NPM_CONFIG_OMIT=dev` from reducing the audit to nothing.
+`tests/test_npm_audit.py` runs the wrapper against a stand-in `npm` for each of these
+cases. A run that reports “not performed” has not cleared the dependencies; re-run the
+gate once the registry answers before relying on it.
 
 Treat an unexpected lockfile source, install script, binary artifact, or publish-time
 change as a blocker until it is explained and reviewed.

@@ -56,9 +56,13 @@ const RESOURCE_ATTRIBUTES = Object.freeze([
  * @param {HTMLElement} container
  * @param {string} sourcePath
  * @param {MetabrowserPublicSdk} mb
- * @param {{eventTarget?: Pick<Window, "addEventListener" | "removeEventListener">, schedule?: (callback: FrameRequestCallback) => number, cancel?: (handle: number) => void, signal?: AbortSignal, enhancementBudget?: ReturnType<typeof createMarkdownEnhancementBudget>, reconciliation?: ReturnType<typeof createMarkdownReconciliationCoordinator>, transclusionBudget?: ReturnType<typeof import("./transclusion.js").createTransclusionBudget>, transclusionChain?: ReadonlyArray<ReturnType<typeof import("./transclusion.js").transclusionKey>>, rawVersions?: unknown, workerClient?: import("./markdown-worker-client.js").MarkdownWorkerRunner}=} options
+ * @param {{eventTarget?: Pick<Window, "addEventListener" | "removeEventListener">, schedule?: (callback: FrameRequestCallback) => number, cancel?: (handle: number) => void, signal?: AbortSignal, enhancementBudget?: ReturnType<typeof createMarkdownEnhancementBudget>, reconciliation?: ReturnType<typeof createMarkdownReconciliationCoordinator>, transclusionBudget?: ReturnType<typeof import("./transclusion.js").createTransclusionBudget>, transclusionChain?: ReadonlyArray<ReturnType<typeof import("./transclusion.js").transclusionKey>>, rawVersions?: unknown, pagePath?: string, workerClient?: import("./markdown-worker-client.js").MarkdownWorkerRunner}=} options
  *   `rawVersions` is the render's `raw_versions`: the version of each served file it
  *   embeds, by identity, which that file's address carries.
+ *   `pagePath` is the path of the page that shows this document as its own, when that is
+ *   not `sourcePath`: the folder whose Overview shows its README. A fragment-only link
+ *   names a place in this document, so it names that place on that page, and the page's
+ *   fragment scrolls to it. A transclusion is not its page's document and keeps its own.
  */
 export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
   const eventTarget = options.eventTarget ?? window;
@@ -74,7 +78,8 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
     undefined,
     sourceKind,
   );
-  const preserveFragmentOnlyHrefs = isCurrentDocument(sourcePath, mb.navigation.current());
+  const pagePath = options.pagePath ?? sourcePath;
+  const preserveFragmentOnlyHrefs = isCurrentDocument(pagePath, mb.navigation.current());
   /** @type {WeakMap<Element, NavigationTarget>} */
   const internalTargets = new WeakMap();
   const ownsReconciliation = !options.reconciliation;
@@ -175,13 +180,13 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
       return;
     }
     const path = adapted?.status === "internal" ? adapted.path : resolved.path;
-    const target = navigationTarget({ ...resolved, path });
+    const documentTarget = navigationTarget({ ...resolved, path });
+    const sameDocument = isSameDocumentFragment(authoredTarget, documentTarget, sourcePath);
+    const target = sameDocument ? { ...documentTarget, path: pagePath } : documentTarget;
     clearDisabledTarget(anchor);
     anchor.setAttribute(
       "href",
-      preserveFragmentOnlyHrefs && isSameDocumentFragment(authoredTarget, target, sourcePath)
-        ? authoredTarget
-        : mb.navigation.href(target),
+      preserveFragmentOnlyHrefs && sameDocument ? authoredTarget : mb.navigation.href(target),
     );
     if (adapted?.status === "internal") {
       anchor.setAttribute("data-metabrowser-link-adapter", adapted.adapter);
@@ -306,7 +311,7 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
 
   /** @param {NavigationTarget | null | undefined} target */
   function scheduleFragment(target) {
-    if (!target?.fragment || normalizedFilePath(target.path) !== normalizedFilePath(sourcePath)) {
+    if (!target?.fragment || normalizedFilePath(target.path) !== normalizedFilePath(pagePath)) {
       return;
     }
     const fragment = target.fragment;
@@ -319,7 +324,7 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
       if (
         disposed ||
         !current ||
-        normalizedFilePath(current.path) !== normalizedFilePath(sourcePath) ||
+        normalizedFilePath(current.path) !== normalizedFilePath(pagePath) ||
         current.fragment !== fragment
       ) {
         return;
@@ -524,15 +529,15 @@ function normalizedFilePath(path) {
   return path.endsWith("/") ? path.slice(0, -1) : path;
 }
 
-/** @param {string} sourcePath @param {NavigationTarget | null | undefined} current */
-function isCurrentDocument(sourcePath, current) {
-  return Boolean(current && normalizedFilePath(current.path) === normalizedFilePath(sourcePath));
+/** @param {string} pagePath @param {NavigationTarget | null | undefined} current */
+function isCurrentDocument(pagePath, current) {
+  return Boolean(current && normalizedFilePath(current.path) === normalizedFilePath(pagePath));
 }
 
 /**
  * KPress identifies the primary document's TOC entries from their fragment-only
- * hrefs. The caller separately verifies that the source is the current document;
- * embedded documents need canonical hrefs relative to their own source.
+ * hrefs. The caller separately verifies that the page showing the source is the
+ * current page; embedded documents need canonical hrefs relative to their own source.
  *
  * @param {string} authoredTarget
  * @param {NavigationTarget} target

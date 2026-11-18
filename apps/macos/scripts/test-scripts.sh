@@ -2,13 +2,17 @@
 # Tests the release scripts' shared checks in scripts/common.sh against real codesign
 # results and generated casks, and the icon renderer's reject check (scripts/build-icon.sh
 # --check) on a copy of its fixtures, without building the app. `make test` runs it after
-# the Swift tests.
+# the Swift tests. It also runs scripts/test-release-logic.sh, which Linux CI runs too,
+# here with macOS's bash, BSD tools, and LibreSSL; and on a CI runner only, the keychain
+# reader and the signing doctor against a throwaway keychain.
 #
 #   scripts/test-scripts.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # shellcheck source=common.sh
 source scripts/common.sh
+# shellcheck source=gatekeeper-lib.sh
+source scripts/gatekeeper-lib.sh
 
 work="$(mktemp -d -t metabrowser-script-tests)"
 trap 'rm -rf "$work"' EXIT
@@ -82,6 +86,26 @@ elif grep -q "has entitlements" "$work/out"; then
   pass "a signature with entitlements stops the check"
 else
   fail "a signature with entitlements stopped the check for another reason: $(cat "$work/out")"
+fi
+
+# signature_facts, on real ad hoc signatures of copies of a system binary, with and
+# without the hardened runtime: what check-dmg.sh requires of every build's app.
+cp /usr/bin/true "$work/runtime"
+quietly codesign --force --sign - --options runtime "$work/runtime"
+clean_facts="$(signature_facts <<<"$(codesign -dvvv "$work/clean" 2>&1)")"
+runtime_facts="$(signature_facts <<<"$(codesign -dvvv "$work/runtime" 2>&1)")"
+if [[ "$(fact runtime <<<"$clean_facts")$(fact runtime <<<"$runtime_facts")" == 01 &&
+  "$(fact adhoc <<<"$clean_facts")$(fact adhoc <<<"$runtime_facts")" == 11 &&
+  "$(fact timestamp <<<"$runtime_facts")" == none && -z "$(fact team <<<"$runtime_facts")" ]]; then
+  pass "signature_facts reads an ad hoc signature, and its hardened runtime flag only when it has one"
+else
+  fail "signature_facts read: without the runtime: $clean_facts; with it: $runtime_facts"
+fi
+runtime_problems="$(developer_id_problems "$runtime_facts" app "")"
+if [[ "$runtime_problems" == *"no secure timestamp"* ]]; then
+  pass "an ad hoc signature is not taken for a Developer ID one"
+else
+  fail "developer_id_problems passed an ad hoc signature: $runtime_facts"
 fi
 
 # The app's minimum macOS:
@@ -325,6 +349,123 @@ if ! stops refuse_ambient old-metab "$globbed" && grep -qF "$work/ambient/g[l]ob
   pass "a metab in a directory with glob characters in its name stops every case"
 else
   fail "a metab in a directory with glob characters in its name: $(cat "$work/out")"
+fi
+
+# ── The quarantine helper ──────────────────────────────────────
+# scripts/quarantine.swift, on a scratch file: it quarantines a file that is not, through
+# the supported interface, leaves one that is, and describe_quarantine reads what it set.
+quietly swiftc -O scripts/quarantine.swift -o "$work/quarantine"
+printf x >"$work/download"
+first="$("$work/quarantine" "$work/download" 2>&1)" || true
+second="$("$work/quarantine" "$work/download" 2>&1)" || true
+attribute="$(xattr -p com.apple.quarantine "$work/download" 2>/dev/null)" || attribute=""
+if [[ "$first $second" == "simulated already" &&
+  "$(describe_quarantine "$attribute")" == *"by Metabrowser check-release (simulated download)"* ]]; then
+  pass "the quarantine helper quarantines a file once: $(describe_quarantine "$attribute")"
+else
+  fail "the quarantine helper said '$first', then '$second', and left: $attribute"
+fi
+
+# ── The release scripts' decisions ─────────────────────────────
+# The same checks Linux CI runs, on this Mac's tools.
+if scripts/test-release-logic.sh; then
+  pass "the release-logic checks pass with macOS's tools"
+else
+  fail "the release-logic checks failed with macOS's tools (above)"
+fi
+
+# ── The keychain reader and the signing doctor, on a real keychain ──
+# Only on a CI runner, which is discarded after the job: this creates a keychain, puts
+# it on the search list, changes its settings, and deletes it, restoring the list. A
+# keychain prompt would hang rather than fail, so each run is bounded (common.sh), and a
+# stop is a failure. Each check prints what macOS reported, so a run records it.
+ci_bound=120
+# Whether the user search list holds the keychain "$1", as security prints the list.
+listed() {
+  local list
+  list="$(security list-keychains -d user | parse_keychain_list)"
+  [[ $'\n'"$list"$'\n' == *$'\n'"$1"$'\n'* ]]
+}
+# Runs the signing doctor on the keychain into "$1", and sets doctor_status.
+doctor_on() {
+  set +e
+  SIGN_KEYCHAIN="$keychain" bounded "$ci_bound" scripts/check-signing.sh >"$1" 2>&1
+  doctor_status=$?
+  set -e
+}
+if [[ "${CI:-}" == true && -n "${RUNNER_TEMP:-}" ]]; then
+  # shellcheck source=signing-lib.sh
+  source scripts/signing-lib.sh
+  keychain="$RUNNER_TEMP/signing-doctor-test.keychain-db"
+  # A throwaway password for a throwaway keychain, deleted below; it guards nothing.
+  password="$(openssl rand -hex 16)"
+  search_list="$(security list-keychains -d user | parse_keychain_list)"
+  quietly swiftc -suppress-warnings -O scripts/keychain-status.swift -o "$work/keychain-status"
+  quietly security create-keychain -p "$password" "$keychain"
+  if listed "$keychain"; then created_listed=1; else created_listed=0; fi
+  echo "note: after security create-keychain, the user search list is: $(security list-keychains -d user | parse_keychain_list | tr '\n' ' ')"
+  quietly security set-keychain-settings -l -u -t 600 "$keychain"
+  quietly security lock-keychain "$keychain"
+  if locked="$(bounded "$ci_bound" "$work/keychain-status" "$keychain" metabrowser-notary 2>&1)" &&
+    grep -qx exists=1 <<<"$locked" && grep -qx unlocked=0 <<<"$locked"; then
+    pass "the keychain reader sees a locked keychain as locked, without a prompt: $(grep -E '^(settings|profile|lock_|use_)' <<<"$locked" | tr '\n' ' ')"
+  else
+    fail "the keychain reader on a locked keychain: $locked"
+  fi
+  # The doctor's search-list check against the list itself, before anything adds it.
+  doctor_on "$work/doctor-locked"
+  if ((created_listed)); then expected_line="ok: it is on the user search list"; else expected_line="FAIL: it is not on the user search list"; fi
+  if ((doctor_status == 1)) && grep -q "holds no Developer ID Application identity" "$work/doctor-locked" &&
+    grep -qF "$expected_line" "$work/doctor-locked"; then
+    pass "the signing doctor reads a locked keychain without a prompt, finds no identity, and agrees with security that create-keychain left it $( ((created_listed)) && echo on || echo off) the search list"
+  else
+    fail "the signing doctor on a locked keychain exited $doctor_status (create-keychain left it listed: $created_listed): $(cat "$work/doctor-locked")"
+  fi
+  if ((created_listed == 0)); then
+    # The command the doctor prints for it, which keeps the keychains listed now.
+    remedy="$(sed -n 's/^FAIL: it is not on the user search list (O1: \(.*\))$/\1/p' "$work/doctor-locked")"
+    if [[ "$remedy" == "security list-keychains -d user -s "*"\"$keychain\"" ]] && eval "$remedy" && listed "$keychain" &&
+      [[ -z "$(comm -23 <(sort <<<"$search_list") <(security list-keychains -d user | parse_keychain_list | sort))" ]]; then
+      pass "the doctor's command adds the keychain to the search list and keeps the keychains on it: $remedy"
+    else
+      fail "the doctor's search-list command, '$remedy', left: $(security list-keychains -d user | parse_keychain_list | tr '\n' ' ')"
+    fi
+  fi
+  quietly security unlock-keychain -p "$password" "$keychain"
+  unlocked="$(bounded "$ci_bound" "$work/keychain-status" "$keychain" metabrowser-notary 2>&1)" || true
+  if grep -qx unlocked=1 <<<"$unlocked" && grep -qx lock_on_sleep=1 <<<"$unlocked" &&
+    grep -qx lock_interval=600 <<<"$unlocked" && grep -qx profile=absent <<<"$unlocked"; then
+    pass "the keychain reader reads an unlocked keychain's lock settings and finds no profile: $(grep -E '^(lock_|use_)' <<<"$unlocked" | tr '\n' ' ')"
+  else
+    fail "the keychain reader on an unlocked keychain: $unlocked"
+  fi
+  doctor_on "$work/doctor-unlocked"
+  if ((doctor_status == 1)) && grep -q "^ok: it is on the user search list" "$work/doctor-unlocked" &&
+    grep -q "^ok: it locks on sleep and after 600 s idle" "$work/doctor-unlocked" &&
+    grep -q "^warn: the release keychain holds no item named as notarytool 1.1 names the profile metabrowser-notary" "$work/doctor-unlocked" &&
+    ! grep -q "notary profile" <(grep '^FAIL' "$work/doctor-unlocked"); then
+    pass "the signing doctor passes -l -u -t 600, and warns, not fails, that it found no profile item"
+  else
+    fail "the signing doctor on an unlocked keychain exited $doctor_status: $(cat "$work/doctor-unlocked")"
+  fi
+  # A keychain that locks on sleep but never when idle, which the doctor must refuse.
+  quietly security set-keychain-settings -l "$keychain"
+  sleep_only="$(bounded "$ci_bound" "$work/keychain-status" "$keychain" 2>&1)" || true
+  doctor_on "$work/doctor-sleep-only"
+  if grep -q "^FAIL: it must lock on sleep and after at most $release_keychain_lock_seconds s idle" "$work/doctor-sleep-only"; then
+    pass "the signing doctor refuses a keychain set with -l alone, which reads: $(grep -E '^(lock_|use_)' <<<"$sleep_only" | tr '\n' ' ')"
+  else
+    fail "the signing doctor on a keychain set with -l alone ($(grep -E '^(lock_|use_)' <<<"$sleep_only" | tr '\n' ' ')): $(cat "$work/doctor-sleep-only")"
+  fi
+  quietly security delete-keychain "$keychain"
+  # delete-keychain takes it off the list; put back exactly what was there.
+  restore_list=()
+  while IFS= read -r entry; do
+    [[ -n "$entry" ]] && restore_list+=("$entry")
+  done <<<"$search_list"
+  quietly security list-keychains -d user -s ${restore_list[@]+"${restore_list[@]}"}
+else
+  echo "note: the keychain reader's live checks run only on a CI runner (CI=true, RUNNER_TEMP set)"
 fi
 
 if ((failures)); then
