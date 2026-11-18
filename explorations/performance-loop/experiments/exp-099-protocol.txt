@@ -1,0 +1,68 @@
+PR view regression hunt: protocol (bead mb-g5wf, epic mb-h36r), 2026-11-17
+
+Question. The owner reports the GitHub pull-request view "seems even a little slower
+since some of our recent PRs". Is a PR page or the Pulls tab slower on current main than
+on v0.12.0 and on main of 3 to 5 days ago, and if there is a step, which merge made it?
+
+Builds (wheels built from `git archive <commit>` by pr-view-wheel.sh, hatchling from the
+locked `build` group, version from `git describe` in the pep440 bump style):
+  v0120   v0.12.0                         87b8ec812774bb12a4d9f5f29901719b8b66d323
+  n12     main 2026-11-12 06:00 (#373)    27ea216c72f9e54f8692f1a7ff9d2ff7c85ef0eb
+  n14     main 2026-11-14 09:52 (#423)    c098e6a8283e07ccd644fe28cde6d6c1452eae56
+  main    main 2026-11-17 09:48 (#513)    c6aa02085763a23f7c96cda422cbb3e290518a19
+  bisect  before #369                     84b2ffdce85e6a9c4f31351225190274affb85b6
+          #369 merge (perf-prpage)        597a7c70ed711102f8520defa9cce85e2ec57b62
+          before #478                     509e0ed2f7228b93ff70f26be1d4fc524db468e3
+          #478 merge (comparison-cache)   1dcbe93f1708c464d9b657bbedaa79884967ff6b
+  extra   claude/prefetch-local-files-lists  227b5bab5d58975a786966214bb963279a05c37a
+
+Environment. One virtual environment made from main's `uv export --frozen --no-dev
+--no-emit-project` constraints; each run installs only the build's wheel and the KPress
+version it pins (`kpress==0.3.5` for v0.12.0 to n14 and the bisect builds before #482,
+`kpress==0.3.8` for main), with --no-deps --compile-bytecode --reinstall-package
+metabrowser, then `uv pip check` and an exact `metab --version` check. KPress is part of
+what each build ships, so it moves with the wheel. Bytecode is compiled at every swap:
+without it every run recompiled the reinstalled package on its first requests, which
+costs more for a larger build (the first series, without it, was discarded).
+
+Subject. $CHECKOUT, a clean linked worktree of this repository at 4eb299fd1 on
+claude/pr-view-regression, served as a folder: `metab $CHECKOUT --no-open --port P
+--cache-dir $CACHE`, METABROWSER_CONFIG_DIR under the measurement root,
+METABROWSER_REQUEST_LOG=verbose. Real GitHub, jlevy/metabrowser. Pull requests: #470
+(merged, 36 files), #487 (merged, 35 files), #514 (merged, 3 files, store preparation
+only). Headless Chrome 152, fresh profile per server, 1400x900 window (1400x813
+viewport), document.visibilityState visible. Apple M1 Pro, 10 cores.
+
+Steps, each run for both builds back to back (pr-view-pairs.sh), order alternating by
+round (odd rounds control first):
+  pr-fresh   /pull/470 on an empty cache (no Git store, so no Diff summary). After the
+             measurement the same server attaches a store with #514's comparison request
+             ({"number":514,"retry":true,"comparison":true}), unrecorded.
+  pr-store   /pull/487 on that cache: a record never read, a store attached.
+  pr-warm    /pull/487 again, new server and browser: record, store, and comparison
+             cached. Then pr-warm-reload: the same document again, same server and
+             browser (server caches in memory, HTTP cache warm).
+  pulls-cold /pulls on an empty cache of its own; pulls-warm and pulls-warm-reload as above.
+
+Metrics (pr-view.mjs, first animation frame at which each holds, ms from navigation
+start): title (record's title on screen), description_final (rendered Markdown or empty
+note, no plain placeholder), summary_pending and summary (main only), complete (the last
+of title, description_final, and, with a store, summary); Pulls first_row, last_row,
+first_line, last_line, first_pending. Route figures from resource timing and
+Server-Timing: the first GET pull of the page (client ms and srv), pull-refresh srv,
+pull-comparison client ms and git, stacks srv; replay of each GET once more. gh calls and
+their summed time from a logging gh shim. Load average (1 min) at each run's start.
+
+Decision rule. Pair ratio candidate/control per metric (pr-view-stats.mjs), rough cut
+1.3x because the machine cannot be kept quiet (load 8 to 13 from other sessions): a
+metric is slower when two or more of three pairs exceed 1.3x and the medians move the
+same way; one pair beyond is "rerun that pair", not a result. No claim from one run.
+
+Budget. GitHub core rate limit checked before each round; stop below 1500 remaining.
+Disk checked before each round; stop below 2 GB.
+
+Limits declared in advance. A fresh server per run measures each server's first
+requests, which a long-running server pays once; the reload step is the long-running
+case. The served checkout and the open pull requests on GitHub are live: the Pulls list
+changes between series, so Pulls figures compare only within a series. Three pairs
+resolve a large effect, not one under about 1.3x.
