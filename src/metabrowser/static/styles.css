@@ -519,7 +519,8 @@
   --icon-box: 16px;
   --icon-btn-size: 24px;
   /* A person's avatar box and the gap before the name (`.actor-identity`), on every page
-     that names a person: a commit's author, a pull request's, a comment's, a Pulls row's.
+     that names a person: a commit's author, a pull request's, a comment's; a Pulls row's
+     is a tenth smaller (`.github-pulls-by`, github/styles.css).
      The Conversation timeline's geometry is derived from both (github/styles.css). */
   --actor-avatar-size: 18px;
   --actor-identity-gap: 4px;

@@ -24,7 +24,7 @@
 //   first icon slot and the line in the title's column; the link holds no chevron;
 // - nothing moves when the line arrives: the item, the link, the change line, the chevron, the
 //   state icon, the title, and the placeholder's start, which is the line's;
-// - the change line stays one line: whole, its statuses cut short with its totals whole, or out
+// - the change line stays one line: whole, its totals alone with its statuses out of view, or out
 //   of view entirely, never cut through its totals; nothing scrolls sideways;
 // - the line's inks and weights are the component's, part for part, as the same line drawn by
 //   the SDK outside the row resolves them in that theme, and its item's name says it in words;
@@ -306,8 +306,14 @@ const READ = `(() => {
       changeLine: box(line), pending: box(pending), block: box(pending?.querySelector(".tally-pending")),
       pendingShown: pending !== null && getComputedStyle(pending).visibility === "visible",
       line: box(said), stats: box(stats),
+      group: box(said?.querySelector(".change-line-group") ?? null), statusesBox: box(statuses),
       statsWhole: stats === null || stats.scrollWidth <= stats.clientWidth + 0.5,
       statusesCut: statuses !== null && statuses.scrollWidth > statuses.clientWidth + 0.5,
+      // Statuses are whole or out of view, on the line's hidden second line, never cut short.
+      statusesShown:
+        statuses === null ||
+        (line !== null &&
+          statuses.getBoundingClientRect().top < line.getBoundingClientRect().bottom - 0.5),
       text: line?.textContent ?? null, nodes: line?.childNodes.length ?? null,
       name: change?.getAttribute("aria-label") ?? null,
       expanded: change?.getAttribute("aria-expanded") ?? null,
@@ -406,24 +412,27 @@ function threeLines(r) {
   const within = (inner, outer) =>
     inner.top >= outer.top - TOLERANCE_PX && inner.bottom <= outer.bottom + TOLERANCE_PX;
   const parts = {
-    // The state icon and the number's line are the first line, the title alone the second.
+    // The state icon and the title alone are the first line, the number's line and the age
+    // the second.
     iconOnFirst:
-      middle(r.icon) >= r.meta.top - TOLERANCE_PX && middle(r.icon) <= r.meta.bottom + TOLERANCE_PX,
-    titleUnder:
-      r.meta.bottom <= r.title.top + TOLERANCE_PX && r.age.bottom <= r.title.top + TOLERANCE_PX,
-    // The state icon is in the one icon slot, on the row's inset; the link holds no chevron.
+      middle(r.icon) >= r.title.top - TOLERANCE_PX &&
+      middle(r.icon) <= r.title.bottom + TOLERANCE_PX,
+    titleAbove:
+      r.title.bottom <= r.meta.top + TOLERANCE_PX && r.title.bottom <= r.age.top + TOLERANCE_PX,
+    // The state icon is in the one icon slot, on the row's inset (mb-3vil); the link holds no
+    // chevron.
     iconOnInset: near(r.icon.left, r.inset),
     noLinkChevron: r.rowToggles === 0,
     // The change line is under the link, and the item is the two.
     changeUnder:
-      r.change.top >= r.row.bottom - TOLERANCE_PX && r.change.top >= r.title.bottom - TOLERANCE_PX,
+      r.change.top >= r.row.bottom - TOLERANCE_PX && r.change.top >= r.meta.bottom - TOLERANCE_PX,
     itemIsBoth: near(r.item.height, r.row.height + r.change.height),
     // The chevron is on the change line, under the title's start, and the line one icon slot
     // and gap past it (mb-3vil): the line's inset is the row's, one slot and gap in.
     chevronOnThird:
       within(r.chevron, r.change) &&
       within(r.toggle, r.change) &&
-      r.chevron.top >= r.title.bottom - TOLERANCE_PX,
+      r.chevron.top >= r.meta.bottom - TOLERANCE_PX,
     chevronUnderTitle:
       near(r.toggle.left, r.changeInset) &&
       near(r.toggle.width, r.slot) &&
@@ -645,7 +654,18 @@ async function main() {
             shown !== dropped,
             JSON.stringify({ line: now.line, changeLine: now.changeLine }),
           );
-          measured[at][number] = shown ? (now.statusesCut ? "statuses cut" : "whole") : "dropped";
+          measured[at][number] = shown
+            ? now.statusesCut
+              ? "statuses cut"
+              : now.statusesShown
+                ? "whole"
+                : "totals only"
+            : "dropped";
+          check(
+            `${at}: #${number}'s statuses are whole or out of view, never cut short`,
+            !now.statusesCut,
+            JSON.stringify({ text: now.text }),
+          );
           if (shown) {
             if (waitedInView) {
               check(
@@ -660,6 +680,19 @@ async function main() {
                 now.stats.right <= now.changeLine.right + TOLERANCE_PX &&
                 now.changeLine.right <= now.change.right + TOLERANCE_PX,
               JSON.stringify({ stats: now.stats, line: now.changeLine }),
+            );
+            // Statuses shown are whole on the line, its totals 6 px after them; with none
+            // shown, the totals start the line, with no blank run before them.
+            check(
+              `${at}: #${number}'s totals follow its whole statuses, or start the line alone`,
+              now.statusesBox === null
+                ? near(now.stats.left, now.line.left)
+                : now.statusesShown
+                  ? now.statusesBox.bottom <= now.line.bottom + TOLERANCE_PX &&
+                    now.group.right <= now.changeLine.right + TOLERANCE_PX &&
+                    near(now.stats.left, now.group.right + 6)
+                  : near(now.stats.left, now.line.left),
+              JSON.stringify({ stats: now.stats, group: now.group, line: now.line }),
             );
           }
         }
@@ -724,6 +757,11 @@ async function main() {
       "the line shows whole at the widest pane",
       measured["420 px light"]?.[106] === "whole",
       JSON.stringify(measured["420 px light"]?.[106]),
+    );
+    check(
+      "a narrow pane shows the line's totals alone, its statuses out of view",
+      Object.values(measured).some((at) => at?.[106] === "totals only"),
+      JSON.stringify(Object.fromEntries(Object.entries(measured).map(([k, v]) => [k, v?.[106]]))),
     );
     measured.real = await browser.evaluate(`(${REAL})(${JSON.stringify(REAL_LINES)})`);
     check(

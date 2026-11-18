@@ -3872,9 +3872,9 @@ export function mountPullsPanel(container, ctx, mb) {
   }
 
   /**
-   * The number's line, on a row's first after the chevron and the state icon: a stack
-   * member's place (`paintPlace`), the number, and the author, with the age at the row's
-   * end; the title has the second line to itself, from the text column to the row's end
+   * The number's line, on a row's second, under the title: a stack member's place
+   * (`paintPlace`), the number, and the author, with the age at the row's end; the title has
+   * the first line to itself, after the state icon, from the text column to the row's end
    * (github/styles.css, `.github-pulls-row`). A row names no branches: the page does, and
    * the row's room goes to its title (docs/design-system.md, "The Pulls Tab"). The title
    * is the row's first text, so its accessible name gives the state, from the state icon's
