@@ -4,30 +4,41 @@
 written, so a renamed flag, a moved route, or a recipe whose output stops parsing fails
 there, for someone else, while every check here stays green. A review of the skill on
 2026-11-17 found all three. These checks read the skill the way an agent does, every
-command in its code blocks and code spans, and hold it to the build:
+command in its code blocks and code spans, and hold it to the ``metab`` of the same
+commit, the build the skill is written for:
 
-1. **Flags.** Every ``--flag`` of a ``metab`` command, or of a span of flags alone, is an
-   option of the command Typer builds from ``metabrowser.cli.main``. Every whole command
-   also passes the mode check the CLI makes before it does anything, so a flag its mode
-   refuses, as ``--no-serve --format json`` is refused, fails here and not with exit
-   status 2 in an agent's shell.
+1. **Flags.** Every ``--flag`` of a ``metab`` command, or of a span of flags alone such
+   as ``--plugins --json`` or ``<path> --walk``, is an option of the command Typer builds
+   from ``metabrowser.cli.main``. Every whole command also passes the checks the CLI
+   makes before it does anything, so a flag its mode refuses, as ``--no-serve --format
+   json`` is refused, fails here and not with exit status 2 in an agent's shell.
+   :func:`mode_refusal` runs the command itself up to its dispatch, so a mode or option
+   the CLI gains needs no change here.
 2. **Routes.** Every ``/api/`` route the skill names is one ``metab --api /api/routes``
    lists, with the method its command uses: POST for an ``--api`` with ``--data`` or a
    route the text calls ``POST``, and GET for any other ``--api``.
-3. **Parseable output.** A ``metab`` command whose output another program reads, piped or
-   captured with ``$(…)``, and every ``--api`` command, asks for ``--format json`` or
-   ``yaml``, or ``--json`` in a plugin mode, so standard output is one document.
-4. **Recipes run.** Each recipe under "From a Pull-Request URL" that pipes to ``jq`` is a
-   command of ``tests/golden/cli-skill-recipes.tryscript.md``, with the placeholders
-   that transcript names filled in, so the golden runs the skill's own text.
-5. **The release floor.** The skill says which release its commands run on, and every
-   flag and route it names is in that release's surface, recorded in
-   ``tests/fixtures/metab-0.12.0-surface.json``: the long options of ``metab`` 0.12.0,
-   built from the ``v0.12.0`` tag, and the ``/api/`` routes its ``--api /api/routes
-   --format json`` listed for an empty folder, each with its methods. A release does not
-   change, so the recording cannot go stale; raising the floor means recording the new
-   release the same way. Names are not behavior, so the recording also lists the option
-   values that release refuses: it reads ``--data -`` as a file named ``-``.
+3. **Parseable output.** A ``metab`` command whose output another program reads, piped,
+   captured with ``$(…)``, or written to a file, and every ``--api`` command, asks for
+   ``--format json`` or ``yaml``, or ``--json`` in a plugin mode, so standard output is
+   one document.
+4. **Recipes run.** Each recipe under "From a Pull-Request URL" that reads JSON with
+   ``jq`` is a run of consecutive commands of
+   ``tests/golden/cli-skill-recipes.tryscript.md`` joined with ``&&``, with the
+   placeholders that transcript names filled in, so the golden runs the skill's own
+   text. The refresh beside a checkout cannot run offline there:
+   ``tests/test_cli_github_checkout_golden.py`` posts its body, :func:`refresh_body`, and
+   :func:`refresh_findings` holds every field its filter reads to the answer that test
+   pins.
+5. **Names.** A code span of prose that is a field path, such as
+   ``.last_refresh.outcome``, or a name with an underscore, such as
+   ``not_found_or_private``, names only words of the source under ``src/``: a key, a
+   field, or a value the code spells. A word the code also uses elsewhere passes, so
+   this catches a misspelling and not a name moved to another meaning.
+
+``docs/working-with-agents.md`` repeats the skill's commands for a person, so checks 1,
+2, 3, and 5 read it too. Outside every check: the names of query parameters, page
+addresses such as ``/pull/<n>/files``, package names, and one-word values such as
+``stale``.
 
 Each check is proven by a mutation of the skill it must fail.
 """
@@ -39,28 +50,29 @@ import re
 import shlex
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
-from functools import cache
 from pathlib import Path
-from typing import Any, Final, cast
+from typing import Any, Final
 
 import pytest
+import typer
 import typer.main
-from typer._click.exceptions import ClickException
 
 from devtools import tryscript_blocks
-from metabrowser.cli.main import (
-    _app,
-    _check_format_applicability,
-    _check_option_applicability,
-    _explicit_params,
-    _resolve_mode,
-)
+from metabrowser.cli import main as cli_main
 from tests.golden_harness import run_metab
 
 REPO_ROOT: Final = Path(__file__).resolve().parent.parent
 SKILL: Final = REPO_ROOT / "skills" / "metabrowser" / "SKILL.md"
+GUIDE: Final = REPO_ROOT / "docs" / "working-with-agents.md"
 GOLDEN: Final = REPO_ROOT / "tests" / "golden" / "cli-skill-recipes.tryscript.md"
-SURFACE: Final = REPO_ROOT / "tests" / "fixtures" / "metab-0.12.0-surface.json"
+# What `tests/test_cli_github_checkout_golden.py` pins for the checkout's refresh: the
+# transcript of the bodies it posts, and the answer to the one that asks for a comparison.
+CHECKOUT_GOLDEN: Final = REPO_ROOT / "tests" / "golden" / "cli-github-checkout.txt"
+CHECKOUT_ANSWERS: Final = (
+    REPO_ROOT / "tests" / "fixtures" / "github-checkout-comparison-responses.json"
+)
+# The pull request that test refreshes with a comparison.
+CHECKOUT_PULL: Final = 10
 
 # The words that run ``metab`` in the skill; ``<invocation>`` is the local command or
 # ``uvx metabrowser@latest``, and a ``uvx`` line runs it after the package.
@@ -71,21 +83,24 @@ _ASSIGNMENT: Final = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
 _SEPARATORS: Final = frozenset({"|", "||", "&&", ";", ";;", "&", "(", ")"})
 # A redirection, and not a placeholder such as `<path>` or `<file>.patch`.
 _REDIRECT: Final = re.compile(r"^\d*(?:>>?|<)(?![^<>]*>)")
+# A redirection of standard output to a file, which the next command then reads.
+_TO_FILE: Final = re.compile(r"^1?>>?(?![^<>]*>)")
 _FLAG: Final = re.compile(r"^--[A-Za-z]")
 _ROUTE: Final = re.compile(r"/api/[^\s`'\"?),]+")
 _POSTED: Final = re.compile(r"\bPOST (/api/[^\s`'\"?),]+)")
 _SPAN: Final = re.compile(r"`([^`]+)`")
 _HEADING: Final = re.compile(r"^#{2,6} (.+)$")
-_FENCE: Final = re.compile(r"^(`{3,})(.*)$")
-_FLOOR: Final = re.compile(r"Every\s+command\s+here\s+runs\s+on\s+`metab`\s+(\S+)\s+and\s+later")
+# A fence opens a block at any indentation, under a list item too, with backticks or
+# tildes; the block ends at a line of the same character at least as long.
+_FENCE: Final = re.compile(r"^\s*(`{3,}|~{3,})")
 # A line that the next one continues: a backslash, or an operator that needs more.
 _CONTINUED: Final = re.compile(r"(?:\\|\||&&)\s*$")
 _FORMATS: Final = frozenset({"json", "yaml"})
 _PLUGIN_MODES: Final = frozenset({"--plugins", "--plugin", "--doctor"})
+# A field path such as `.last_refresh.outcome`, or a name such as `not_cached`.
+_NAME: Final = re.compile(r"\.?[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*")
 
-# The section whose recipes the golden runs, and how it spells their placeholders. The
-# checkout's refresh is not run there: its ``"comparison": true`` acquires a store from
-# GitHub, so ``tests/test_cli_github_checkout_golden.py`` runs it in process instead.
+# The section whose recipes the golden runs, and how it spells their placeholders.
 GOLDEN_SECTION: Final = "From a Pull-Request URL"
 GOLDEN_SPELLING: Final = {
     "<invocation>": (
@@ -94,7 +109,13 @@ GOLDEN_SPELLING: Final = {
     "<url>": "https://github.com/octo/demo/pull/7",
     "<n>": "7",
     "<path>": "src/app.txt",
+    "<tmp>": "tmp",
 }
+# The section of the refresh a checkout's folder server needs before it reads a pull
+# request; its `"comparison": true` acquires a store from GitHub, so the golden cannot
+# run it, and `tests/test_cli_github_checkout_golden.py` posts its body instead.
+REFRESH_SECTION: Final = "Beside a Checkout"
+REFRESH_ROUTE: Final = "/api/plugin/github/pull-refresh"
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,7 +136,8 @@ class Command:
     args: tuple[str, ...]
     # A whole command line, as opposed to a span of flags alone such as `--plugins --json`.
     whole: bool
-    # Its standard output is piped to another command or captured with `$(…)`.
+    # Its standard output is piped to another command, captured with `$(…)`, or written
+    # to a file.
     read: bool
 
 
@@ -142,6 +164,13 @@ def _depth(text: str) -> int:
     return tokens.count("(") - tokens.count(")")
 
 
+def _closes(line: str, fence: str) -> bool:
+    """Whether *line* ends the block that *fence* opened."""
+
+    closing = line.strip()
+    return len(closing) >= len(fence) and set(closing) == {fence[0]}
+
+
 def code_pieces(text: str) -> list[Code]:
     """Every logical line of a fenced block, and every code span of the prose."""
 
@@ -162,19 +191,19 @@ def code_pieces(text: str) -> list[Code]:
 
     for index, line in enumerate(lines):
         number = index + 1 + offset
-        opened = _FENCE.match(line)
         if fence is not None:
-            if opened is not None and line.strip() == fence:
+            if _closes(line, fence):
                 fence = None
                 continue
             if not pending:
                 pending_line = number
             pending.append(line)
-            logical = " ".join(part.removesuffix("\\") for part in pending)
+            logical = " ".join(part.strip().removesuffix("\\") for part in pending)
             if not _CONTINUED.search(line) and _depth(logical) <= 0:
                 pieces.append(Code(pending_line, " ".join(logical.split()), True, section))
                 pending.clear()
             continue
+        opened = _FENCE.match(line)
         if opened is not None:
             spans()
             fence = opened.group(1)
@@ -249,23 +278,30 @@ def _without_redirects(args: list[str]) -> tuple[str, ...]:
     return tuple(kept)
 
 
-def commands(text: str) -> list[Command]:
-    """Every ``metab`` invocation in the skill, whole or as a span of flags."""
+def commands(text: str, name: str = "SKILL.md") -> list[Command]:
+    """Every ``metab`` invocation in *text*, whole or as a span of flags."""
 
     found: list[Command] = []
     for piece in code_pieces(text):
-        where = f"SKILL.md:{piece.line}"
+        where = f"{name}:{piece.line}"
         try:
             tokens = _tokens(piece.text)
         except ValueError:
             continue
-        if not piece.block and tokens and _FLAG.match(tokens[0]):
+        # A span that starts with a flag or a placeholder, such as `--plugins --json` or
+        # `<path> --walk`, names flags of a command the prose describes.
+        first = tokens[0] if tokens else ""
+        names_flags = _FLAG.match(first) is not None or first.startswith("<")
+        if not piece.block and names_flags and first not in PROGRAMS:
             found.append(Command(where, tuple(tokens), whole=False, read=False))
             continue
         for words, read in _segments(tokens):
             args = _metab_args(words)
             if args is not None:
-                found.append(Command(where, _without_redirects(args), whole=True, read=read))
+                written = any(_TO_FILE.match(word) for word in args)
+                found.append(
+                    Command(where, _without_redirects(args), whole=True, read=read or written)
+                )
     return found
 
 
@@ -276,13 +312,46 @@ def _value(args: tuple[str, ...], option: str) -> str | None:
     return args[index + 1] if index + 1 < len(args) else None
 
 
+def _recipes(text: str) -> list[Code]:
+    """The recipes of :data:`GOLDEN_SECTION` that read JSON with ``jq``."""
+
+    return [
+        piece
+        for piece in code_pieces(text)
+        if piece.block and piece.section == GOLDEN_SECTION and "jq" in _tokens(piece.text)
+    ]
+
+
+def refresh_recipe(text: str) -> tuple[str, str]:
+    """The body the checkout's refresh recipe posts, ``<n>`` and all, and its ``jq`` filter."""
+
+    recipes = [
+        piece
+        for piece in code_pieces(text)
+        if piece.block and piece.section == REFRESH_SECTION and REFRESH_ROUTE in piece.text
+    ]
+    assert len(recipes) == 1, f"SKILL.md has {len(recipes)} recipes of {REFRESH_ROUTE}"
+    tokens = _tokens(recipes[0].text)
+    assert "echo" in tokens and "jq" in tokens, f"the recipe has no body or filter: {tokens}"
+    body = tokens[tokens.index("echo") + 1]
+    query = next(word for word in tokens[tokens.index("jq") + 1 :] if not word.startswith("-"))
+    return body, query
+
+
+def refresh_body(number: int, text: str | None = None) -> dict[str, Any]:
+    """The body the skill's refresh recipe posts for pull request *number*."""
+
+    body, _query = refresh_recipe(SKILL.read_text(encoding="utf-8") if text is None else text)
+    return json.loads(body.replace("<n>", str(number)))
+
+
 # ── What the build offers ───────────────────────────────────────────
 
 
 def option_names() -> frozenset[str]:
     """Every long option of the ``metab`` command, ``--help`` included."""
 
-    command = typer.main.get_command(_app)
+    command = typer.main.get_command(cli_main._app)
     context = command.make_context("metab", [], resilient_parsing=True)
     return frozenset(
         name
@@ -292,40 +361,56 @@ def option_names() -> frozenset[str]:
     )
 
 
+def _usage_error() -> type[Exception]:
+    """Click's ``UsageError``, which every refusal before ``_metab``'s dispatch raises.
+
+    Typer vendors Click and exports ``BadParameter``, one of its subclasses, and not the
+    class itself, so it is reached through that public name.
+    """
+
+    base = next(cls for cls in typer.BadParameter.__mro__ if cls.__name__ == "UsageError")
+    assert issubclass(base, Exception)
+    return base
+
+
+_USAGE_ERROR: Final = _usage_error()
+
+
+class _Dispatched(Exception):
+    """Raised in place of ``_metab``'s dispatch, once every check before it has passed."""
+
+
 def mode_refusal(args: tuple[str, ...]) -> str | None:
     """Why the CLI refuses *args* before running anything, or ``None`` when it accepts them.
 
-    The same calls, in the same order, as ``metabrowser.cli.main._metab`` makes before it
-    dispatches on the mode.
+    This runs the ``metab`` command itself: Click parses *args*, and ``_metab`` runs as far
+    as its dispatch on the mode. ``_check_format_applicability`` is the last check it makes
+    before the dispatch, so a stand-in calls it and then raises, and nothing the command
+    would do runs. A command that returns without that check is reported, not accepted.
     """
 
     if "--help" in args or "--version" in args:
         return None
-    command = typer.main.get_command(_app)
-    try:
-        # The context `_metab` itself receives: Typer annotates it as `typer.Context`, and
-        # at run time it is the vendored Click context this makes.
-        context = cast(typer.Context, command.make_context("metab", list(args)))
-        params = context.params
-        mode = _resolve_mode(
-            context,
-            walk=params["walk"],
-            diff=params["diff"],
-            api=params["api"],
-            show=params["show"],
-            check_api=params["check_api"],
-            no_serve=params["no_serve"],
-            remote=params["remote"],
-            plugins=params["plugins"],
-            plugin=params["plugin"],
-            doctor=params["doctor"],
-        )
-        explicit = _explicit_params(context)
-        _check_option_applicability(context, mode, explicit)
-        _check_format_applicability(context, mode, params["fmt"], explicit)
-    except ClickException as refusal:
-        return refusal.format_message()
-    return None
+    command = typer.main.get_command(cli_main._app)
+    last_check = cli_main._check_format_applicability
+
+    def check_then_stop(*arguments: Any) -> None:
+        last_check(*arguments)
+        raise _Dispatched
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(cli_main, "_check_format_applicability", check_then_stop)
+        try:
+            with command.make_context("metab", list(args)) as context:
+                command.invoke(context)
+        except _Dispatched:
+            return None
+        except _USAGE_ERROR as refusal:
+            return str(refusal)
+    raise AssertionError(
+        f"metab {' '.join(args)} returned without calling _check_format_applicability, "
+        "where mode_refusal stops it"
+    )
 
 
 RouteTable = Mapping[str, tuple[str, ...]]
@@ -353,9 +438,8 @@ def _methods(route: str, table: RouteTable) -> tuple[str, ...] | None:
     return None
 
 
-@cache
-def _served_routes(root: str) -> dict[str, tuple[str, ...]]:
-    result = run_metab([root, "--api", "/api/routes", "--format", "json"])
+def _served_routes(root: Path) -> dict[str, tuple[str, ...]]:
+    result = run_metab([str(root), "--api", "/api/routes", "--format", "json"])
     assert result.exit_code == 0, result.stderr
     return {
         entry["path"]: tuple(entry["methods"] or ())
@@ -364,25 +448,21 @@ def _served_routes(root: str) -> dict[str, tuple[str, ...]]:
     }
 
 
-def surface() -> dict[str, Any]:
-    return json.loads(SURFACE.read_text(encoding="utf-8"))
-
-
 # ── The checks ──────────────────────────────────────────────────────
 
 
-def flag_findings(text: str, options: frozenset[str]) -> list[str]:
+def flag_findings(text: str, options: frozenset[str], name: str = "SKILL.md") -> list[str]:
     return [
         f"{command.where}: {word.split('=', 1)[0]} is not an option of metab"
-        for command in commands(text)
+        for command in commands(text, name)
         for word in command.args
         if _FLAG.match(word) and word.split("=", 1)[0] not in options
     ]
 
 
-def mode_findings(text: str) -> list[str]:
+def mode_findings(text: str, name: str = "SKILL.md") -> list[str]:
     found: list[str] = []
-    for command in commands(text):
+    for command in commands(text, name):
         if not command.whole:
             continue
         refusal = mode_refusal(command.args)
@@ -391,12 +471,12 @@ def mode_findings(text: str) -> list[str]:
     return found
 
 
-def route_findings(text: str, table: RouteTable) -> list[str]:
-    """Routes the skill names that *table* lacks, or that its commands use another way."""
+def route_findings(text: str, table: RouteTable, name: str = "SKILL.md") -> list[str]:
+    """Routes *text* names that *table* lacks, or that its commands use another way."""
 
     found: list[str] = []
     for piece in code_pieces(text):
-        where = f"SKILL.md:{piece.line}"
+        where = f"{name}:{piece.line}"
         for route in _ROUTE.findall(piece.text):
             if _methods(route, table) is None:
                 found.append(f"{where}: {route} is not a registered route")
@@ -404,7 +484,7 @@ def route_findings(text: str, table: RouteTable) -> list[str]:
             methods = _methods(route, table)
             if methods is not None and "POST" not in methods:
                 found.append(f"{where}: {route} does not take POST")
-    for command in commands(text):
+    for command in commands(text, name):
         route = _value(command.args, "--api")
         if not command.whole or route is None or not route.startswith("/api/"):
             continue
@@ -415,9 +495,9 @@ def route_findings(text: str, table: RouteTable) -> list[str]:
     return found
 
 
-def format_findings(text: str) -> list[str]:
+def format_findings(text: str, name: str = "SKILL.md") -> list[str]:
     found: list[str] = []
-    for command in commands(text):
+    for command in commands(text, name):
         if not command.whole or not (command.read or "--api" in command.args):
             continue
         plugin_mode = any(mode in command.args for mode in _PLUGIN_MODES)
@@ -435,52 +515,69 @@ def _normalized(command: str) -> str:
     return " ".join(command.split())
 
 
-def recipe_findings(text: str, golden: str) -> list[str]:
-    """Recipes of :data:`GOLDEN_SECTION` piped to ``jq`` that the golden does not run."""
+def _runs(golden: str) -> set[str]:
+    """Each run of consecutive commands of *golden*, chained as a recipe chains them."""
 
-    ran = {_normalized(block.command) for block in tryscript_blocks.blocks(golden)}
-    recipes = [
-        piece
-        for piece in code_pieces(text)
-        if piece.block and piece.section == GOLDEN_SECTION and "jq" in _tokens(piece.text)
-    ]
+    ran = [_normalized(block.command) for block in tryscript_blocks.blocks(golden)]
+    return {
+        " && ".join(ran[start:end])
+        for start in range(len(ran))
+        for end in range(start + 1, len(ran) + 1)
+    }
+
+
+def recipe_findings(text: str, golden: str) -> list[str]:
+    """Recipes of :data:`GOLDEN_SECTION` that read JSON and the golden does not run."""
+
+    recipes = _recipes(text)
     if not recipes:
-        return [f"SKILL.md has no recipe piped to jq under {GOLDEN_SECTION!r} for the golden"]
+        return [f"SKILL.md has no recipe that reads JSON under {GOLDEN_SECTION!r}"]
+    runs = _runs(golden)
     found: list[str] = []
     for piece in recipes:
         spelled = piece.text
         for placeholder, value in GOLDEN_SPELLING.items():
             spelled = spelled.replace(placeholder, value)
-        if _normalized(spelled) not in ran:
-            found.append(f"SKILL.md:{piece.line}: no command of {GOLDEN.name} runs {spelled!r}")
+        if _normalized(spelled) not in runs:
+            found.append(
+                f"SKILL.md:{piece.line}: no run of consecutive commands of {GOLDEN.name} "
+                f"is {spelled!r}"
+            )
     return found
 
 
-def floor_findings(text: str, recorded: Mapping[str, Any]) -> list[str]:
-    """What the skill names that the release it says it runs on lacks."""
+def refresh_findings(text: str, answer: Mapping[str, Any]) -> list[str]:
+    """Fields the refresh recipe's filter reads that *answer*, a refresh's, lacks."""
 
-    stated = _FLOOR.findall(text)
-    if stated != [recorded["version"]]:
-        return [
-            f"SKILL.md states {stated or 'no'} release floor; its commands are checked "
-            f"against {SURFACE.name}, release {recorded['version']}"
-        ]
-    options = frozenset(recorded["options"])
-    table = {path: tuple(methods) for path, methods in recorded["api_routes"].items()}
-    found = [
-        finding.replace("is not an option of metab", f"is not an option of {recorded['version']}")
-        for finding in flag_findings(text, options)
-    ]
-    found += [finding + f" in {recorded['version']}" for finding in route_findings(text, table)]
-    for command in commands(text):
-        if not command.whole:
+    _body, query = refresh_recipe(text)
+    found: list[str] = []
+    for path in (part.strip() for part in query.split(",")):
+        if _NAME.fullmatch(path) is None or not path.startswith("."):
+            found.append(f"the refresh recipe's filter reads {path!r}, which is not a field path")
             continue
-        for option, values in recorded["unsupported"].items():
-            if _value(command.args, option) in values:
-                found.append(
-                    f"{command.where}: {recorded['version']} does not take "
-                    f"{option} {_value(command.args, option)}"
-                )
+        node: Any = answer
+        for key in path.removeprefix(".").split("."):
+            if not isinstance(node, Mapping) or key not in node:
+                found.append(f"the refresh recipe reads {path}, which the answer lacks")
+                break
+            node = node[key]
+    return found
+
+
+def name_findings(text: str, words: frozenset[str], name: str = "SKILL.md") -> list[str]:
+    """Field paths and underscored names in *text*'s prose that are not among *words*."""
+
+    found: list[str] = []
+    for piece in code_pieces(text):
+        if piece.block or _NAME.fullmatch(piece.text) is None:
+            continue
+        if not piece.text.startswith(".") and "_" not in piece.text:
+            continue
+        found += [
+            f"{name}:{piece.line}: `{piece.text}` names {part!r}, which no source under src/ uses"
+            for part in piece.text.removeprefix(".").split(".")
+            if part not in words
+        ]
     return found
 
 
@@ -493,58 +590,102 @@ def skill() -> str:
 
 
 @pytest.fixture
-def routes(tmp_path: Path) -> RouteTable:
-    return _served_routes(str(tmp_path))
+def guide() -> str:
+    return GUIDE.read_text(encoding="utf-8")
 
 
-def test_the_skill_is_read_as_commands(skill: str) -> None:
+@pytest.fixture(scope="module")
+def routes(tmp_path_factory: pytest.TempPathFactory) -> RouteTable:
+    return _served_routes(tmp_path_factory.mktemp("routes"))
+
+
+@pytest.fixture(scope="module")
+def source() -> frozenset[str]:
+    """Every identifier and word of the Python under ``src/``."""
+
+    return frozenset(
+        word
+        for path in sorted((REPO_ROOT / "src").rglob("*.py"))
+        for word in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", path.read_text(encoding="utf-8"))
+    )
+
+
+# The routes the recipes read with `jq`, and the others the skill names in prose, which
+# the reader must find for the checks to mean anything.
+RECIPE_ROUTES: Final = frozenset(
+    {"/api/plugin/github/pull?number=<n>", "$ROUTE", "/api/source/status", REFRESH_ROUTE}
+)
+PROSE_ROUTES: Final = frozenset({"/api/routes", "/api/file?path=<log>", "/api/git/log?limit=<n>"})
+
+
+def test_the_skill_is_read_as_commands(skill: str, guide: str) -> None:
     """The reader finds the recipes, so the checks below are not passing on nothing."""
 
     found = commands(skill)
-    assert sum(command.whole for command in found) > 30
-    assert sum(command.read for command in found) >= 6
+    flagged = [c for c in found if c.whole and any(_FLAG.match(word) for word in c.args)]
+    # 21 when this was written. The floor sits well below it, so an edit of the skill
+    # does not trip it, and a reader that stops seeing blocks or spans still does; the
+    # named routes below are the specific check.
+    assert len(flagged) >= 12, [command.where for command in flagged]
+    read = {_value(command.args, "--api") for command in found if command.read}
+    named = {_value(command.args, "--api") for command in found if command.whole}
+    assert read >= RECIPE_ROUTES and named >= PROSE_ROUTES, (read, named)
     assert any(not command.whole for command in found)
+    assert len(_recipes(skill)) == 3
+    assert len([c for c in commands(guide, GUIDE.name) if c.whole]) >= 8
 
 
-def test_every_flag_is_an_option_of_metab(skill: str) -> None:
+def test_every_flag_is_an_option_of_metab(skill: str, guide: str) -> None:
     assert flag_findings(skill, option_names()) == []
+    assert flag_findings(guide, option_names(), GUIDE.name) == []
 
 
-def test_every_command_passes_its_mode_check(skill: str) -> None:
+def test_every_command_passes_its_mode_check(skill: str, guide: str) -> None:
     assert mode_findings(skill) == []
+    assert mode_findings(guide, GUIDE.name) == []
 
 
-def test_every_route_is_registered(skill: str, routes: RouteTable) -> None:
+def test_every_route_is_registered(skill: str, guide: str, routes: RouteTable) -> None:
     assert route_findings(skill, routes) == []
+    assert route_findings(guide, routes, GUIDE.name) == []
 
 
-def test_every_read_command_prints_one_document(skill: str) -> None:
+def test_every_read_command_prints_one_document(skill: str, guide: str) -> None:
     assert format_findings(skill) == []
+    assert format_findings(guide, GUIDE.name) == []
 
 
 def test_the_golden_runs_the_recipes(skill: str) -> None:
     assert recipe_findings(skill, GOLDEN.read_text(encoding="utf-8")) == []
 
 
-def test_the_release_floor_has_every_flag_and_route(skill: str) -> None:
-    assert floor_findings(skill, surface()) == []
+def test_the_checkout_golden_posts_the_refresh_and_pins_what_it_reads(skill: str) -> None:
+    posted = json.dumps(refresh_body(CHECKOUT_PULL, skill))
+    assert f"--- body ---\n{posted}\n" in CHECKOUT_GOLDEN.read_text(encoding="utf-8")
+    answers = json.loads(CHECKOUT_ANSWERS.read_text(encoding="utf-8"))
+    assert refresh_findings(skill, answers["ready"]["body"]) == []
+
+
+def test_every_name_in_prose_is_one_the_source_uses(
+    skill: str, guide: str, source: frozenset[str]
+) -> None:
+    assert name_findings(skill, source) == []
+    assert name_findings(guide, source, GUIDE.name) == []
 
 
 # ── Each check fails its mutation ───────────────────────────────────
 
 
 def _mutated(skill: str, old: str, new: str) -> str:
-    assert old in skill, f"the mutation no longer applies: {old!r} is not in SKILL.md"
+    assert old in skill, f"the mutation no longer applies: {old!r} is not in the text"
     return skill.replace(old, new, 1)
 
 
-DETECT: Final = "--api '/api/plugin/github/pull?number=<n>' --format json |\n  jq -r '.state"
+DETECT: Final = "--api '/api/plugin/github/pull?number=<n>' --format json > <tmp>/pull.json"
 
 
 def test_a_recipe_without_format_json_fails(skill: str) -> None:
-    mutated = _mutated(
-        skill, DETECT, "--api '/api/plugin/github/pull?number=<n>' |\n  jq -r '.state"
-    )
+    mutated = _mutated(skill, DETECT, DETECT.replace(" --format json", ""))
     findings = format_findings(mutated)
     assert len(findings) == 1 and "lacks --format json, and its output is read" in findings[0]
     assert recipe_findings(mutated, GOLDEN.read_text(encoding="utf-8"))
@@ -566,9 +707,9 @@ def test_a_missing_route_fails(skill: str, routes: RouteTable) -> None:
 
 
 def test_a_route_used_with_the_wrong_method_fails(skill: str, routes: RouteTable) -> None:
-    mutated = _mutated(skill, ' --data "$BODY"', "")
+    mutated = _mutated(skill, "\n  --data <tmp>/refresh.json --format json", "\n  --format json")
     assert [
-        finding.endswith("/api/plugin/github/pull-refresh does not take GET")
+        finding.endswith(f"{REFRESH_ROUTE} does not take GET")
         for finding in route_findings(mutated, routes)
     ] == [True]
 
@@ -588,37 +729,92 @@ def test_a_flag_its_mode_refuses_fails(skill: str) -> None:
     assert len(findings) == 1 and "--format not valid with --no-serve" in findings[0]
 
 
+def test_the_mode_check_runs_the_cli_up_to_its_dispatch() -> None:
+    """Accepted commands stop before they run, and refusals are the CLI's own words."""
+
+    assert mode_refusal(("--plugins", "--json")) is None
+    assert mode_refusal(("root", "--api", "/api/routes", "--format", "json")) is None
+    refused = mode_refusal(("root", "--walk", "--no-serve"))
+    assert refused is not None and "mode flags are mutually exclusive" in refused
+    unknown = mode_refusal(("root", "--no-sreve"))
+    assert unknown is not None and "--no-sreve" in unknown
+
+
 def test_a_recipe_the_golden_does_not_run_fails(skill: str) -> None:
-    mutated = _mutated(skill, "jq -r .comparison_route)", "jq -r '.comparison_route')")
+    mutated = _mutated(
+        skill, "jq -er .comparison_route <tmp>/pull.json)", "jq -er .comparison <tmp>/pull.json)"
+    )
     findings = recipe_findings(mutated, GOLDEN.read_text(encoding="utf-8"))
-    assert len(findings) == 1 and "comparison_route" in findings[0]
+    assert len(findings) == 1 and ".comparison " in findings[0]
 
 
-def test_a_route_newer_than_the_floor_fails(skill: str) -> None:
+def test_a_broken_filter_fails(skill: str) -> None:
     mutated = _mutated(
-        skill, "--api /api/routes --format json`", "--api /api/identity --format json`"
+        skill,
+        "jq -r '.state, .reason, .last_refresh.outcome' <tmp>/pull.json",
+        "jq -r '.state, .reason, .last_refresh.outcom' <tmp>/pull.json",
     )
-    assert [
-        finding.endswith("/api/identity is not a registered route in 0.12.0")
-        for finding in floor_findings(mutated, surface())
-    ] == [True]
+    findings = recipe_findings(mutated, GOLDEN.read_text(encoding="utf-8"))
+    assert len(findings) == 1 and ".last_refresh.outcom'" in findings[0]
 
 
-def test_a_value_the_floor_refuses_fails(skill: str) -> None:
-    mutated = _mutated(skill, '--data "$BODY"', "--data -")
-    assert [
-        finding.endswith("0.12.0 does not take --data -")
-        for finding in floor_findings(mutated, surface())
-    ] == [True]
+def test_a_refresh_the_checkout_golden_does_not_post_fails(skill: str) -> None:
+    mutated = _mutated(skill, '"comparison": true}', '"compare": true}')
+    posted = json.dumps(refresh_body(CHECKOUT_PULL, mutated))
+    assert f"--- body ---\n{posted}\n" not in CHECKOUT_GOLDEN.read_text(encoding="utf-8")
 
 
-def test_a_floor_the_skill_does_not_state_fails(skill: str) -> None:
-    mutated = _mutated(
-        skill, "runs on `metab` 0.12.0 and later", "runs on `metab` 0.11.0 and later"
+def test_a_refresh_field_the_answer_lacks_fails(skill: str) -> None:
+    answers = json.loads(CHECKOUT_ANSWERS.read_text(encoding="utf-8"))
+    mutated = _mutated(skill, "'.state, .last_refresh.outcome,", "'.state, .last_refresh.result,")
+    assert refresh_findings(mutated, answers["ready"]["body"]) == [
+        "the refresh recipe reads .last_refresh.result, which the answer lacks"
+    ]
+
+
+def test_a_span_that_starts_with_a_placeholder_is_checked(skill: str) -> None:
+    mutated = _mutated(skill, "`<path> --walk`", "`<path> --wlak`")
+    assert [finding.split(": ", 1)[1] for finding in flag_findings(mutated, option_names())] == [
+        "--wlak is not an option of metab"
+    ]
+
+
+@pytest.mark.parametrize("fence", ["```", "~~~"])
+def test_an_indented_or_tilde_block_is_checked(skill: str, fence: str) -> None:
+    """A block under a list item, or fenced with tildes, is read as code and not as prose."""
+
+    block = (
+        f"\n  {fence}shell\n"
+        "  <invocation> <url> --no-sreve\n"
+        "  <invocation> <url> --no-serve --format json\n"
+        "  <invocation> <url> --api /api/routes --format json > <tmp>/routes.json &&\n"
+        "    jq -r '.routes[].path' <tmp>/routes.json\n"
+        f"  {fence}\n"
     )
-    assert floor_findings(mutated, surface())[0].startswith(
-        "SKILL.md states ['0.11.0'] release floor"
-    )
+    anchor = "  `.record.unavailable.comparison` names why\n"
+    mutated = _mutated(skill, anchor, anchor + block)
+    assert [finding.split(": ", 1)[1] for finding in flag_findings(mutated, option_names())] == [
+        "--no-sreve is not an option of metab"
+    ]
+    assert any("--format not valid with --no-serve" in found for found in mode_findings(mutated))
+    assert any("routes.json" in found for found in recipe_findings(mutated, GOLDEN.read_text()))
+
+
+def test_a_name_the_source_does_not_use_fails(skill: str, source: frozenset[str]) -> None:
+    mutated = _mutated(skill, "`.pin_ref` names", "`.pinref` names")
+    assert [finding.split(": ", 1)[1] for finding in name_findings(mutated, source)] == [
+        "`.pinref` names 'pinref', which no source under src/ uses"
+    ]
+
+
+def test_the_guide_is_held_to_the_same_checks(guide: str, routes: RouteTable) -> None:
+    mutated = _mutated(guide, "--api /api/routes --format json`", "--api /api/route --fromat json`")
+    assert [found.split(": ", 1)[1] for found in flag_findings(mutated, option_names(), "g")] == [
+        "--fromat is not an option of metab"
+    ]
+    assert [found.split(": ", 1)[1] for found in route_findings(mutated, routes, "g")] == [
+        "/api/route is not a registered route"
+    ]
 
 
 def _line(text: str, needle: str) -> int:

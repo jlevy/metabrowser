@@ -15,7 +15,7 @@ env:
 patterns:
   ROOT_ARG: '\[ROOT\]'
 before: >-
-  mkdir url co &&
+  mkdir url co tmp &&
   (cd url && METABROWSER_CONFIG_DIR="$PWD/config"
   uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync
   --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" .
@@ -28,10 +28,14 @@ before: >-
 # Golden Tests: The Agent Skill’s Pull-Request Recipes
 
 The recipes in `skills/metabrowser/SKILL.md` under “Read a Pull Request”, run as an
-agent runs them: each `--api` answer piped to `jq`. `tests/test_skill_commands.py` fails
-when a recipe there and its command here differ, with `<invocation>` read as `metab` and
-the fixture’s cache and configuration directories, `<url>` as
-`https://github.com/octo/demo/pull/7`, `<n>` as `7`, and `<path>` as `src/app.txt`.
+agent runs them. Each recipe writes `metab`’s answer to a file and reads the file with
+`jq` only when `metab` succeeded, so its parts are consecutive blocks here, split where
+the recipe chains with `&&`: each block then records the status of the command that ran
+last, and a failure stops the recipe with a nonzero status.
+`tests/test_skill_commands.py` fails when a recipe there is not a run of consecutive
+blocks here joined with `&&`, with `<invocation>` read as `metab` and the fixture’s
+cache and configuration directories, `<url>` as `https://github.com/octo/demo/pull/7`,
+`<n>` as `7`, `<path>` as `src/app.txt`, and `<tmp>` as `tmp`.
 
 `tests/github_pull_fixture.py` builds two homes before these commands run.
 `url/home` holds a mirror of `https://github.com/octo/demo` and the records of pull
@@ -44,36 +48,25 @@ A record fetched more than a minute ago reads as `stale`, which every one here i
 
 The recipe that refreshes a pull request beside a checkout is not run here: its
 `"comparison": true` acquires a store from the checkout’s origin, which is GitHub.
-`tests/test_cli_github_checkout_golden.py` runs that request in process with the origin
-substituted, and pins the comparison it attaches.
+`tests/test_cli_github_checkout_golden.py` posts the recipe’s own body in process with
+the origin substituted, and checks that every field the recipe’s filter reads is in the
+answer it pins.
 
 ## Test: the record says whether the pull request was read
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/url/config METABROWSER_CACHE_DIR=$PWD/url/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull?number=7' --format json |
->   jq -r '.state, .reason, .last_refresh.outcome'
+$ METABROWSER_CONFIG_DIR=$PWD/url/config METABROWSER_CACHE_DIR=$PWD/url/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull?number=7' --format json > tmp/pull.json
 selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-stale
-null
-succeeded
 ? 0
 ```
 
-Nothing is cached for 14, so the command asks the failing `gh`, serves the default
-branch, and still exits 0; the record says why.
-
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/url/config METABROWSER_CACHE_DIR=$PWD/url/home metab https://github.com/octo/demo/pull/14 --api '/api/plugin/github/pull?number=14' --format json |
->   jq -r '.state, .reason, .last_refresh.outcome, .pin_ref'
-selection: pull_request
-pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
-pull_request: 14 (not opened: pull request 14 of https://github.com/octo/demo: gh exited 1 without an HTTP response (gh_failed); the pin is the default branch)
-absent
-not_cached
-gh_failed
-refs/remotes/origin/topic
+$ jq -r '.state, .reason, .last_refresh.outcome' tmp/pull.json
+stale
+null
+succeeded
 ? 0
 ```
 
@@ -91,37 +84,97 @@ Try 'metab --help' for help.
 
 ## Test: the diff is the record’s comparison route
 
+The recipe reads the route from the record the check wrote.
+
 ```console
-$ ROUTE=$(METABROWSER_CONFIG_DIR=$PWD/url/config METABROWSER_CACHE_DIR=$PWD/url/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull?number=7' --format json |
->   jq -r .comparison_route) &&
-> METABROWSER_CONFIG_DIR=$PWD/url/config METABROWSER_CACHE_DIR=$PWD/url/home metab https://github.com/octo/demo/pull/7 --api "$ROUTE" --format json |
->   jq -r '.manifest.files[] | "\(.kind) \(.new.path // .old.path) +\(.additions) -\(.deletions)"'
+$ ROUTE=$(jq -er .comparison_route tmp/pull.json) &&
+> METABROWSER_CONFIG_DIR=$PWD/url/config METABROWSER_CACHE_DIR=$PWD/url/home metab https://github.com/octo/demo/pull/7 --api "$ROUTE" --format json > tmp/diff.json
 selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-selection: pull_request
-pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
-pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-added docs/new.md +1 -0
-modified src/app.txt +1 -0
+? 0
+```
+
+```console
+$ jq -r '.manifest.files[] | "\(.id) \(.kind) \(.new.path // .old.path) +\(.additions) -\(.deletions)"' tmp/diff.json
+f1 added docs/new.md +1 -0
+f2 modified src/app.txt +1 -0
+? 0
+```
+
+The same answer holds each file’s hunks, by the file’s `id`.
+
+```console
+$ jq -c '.patches["f2"].hunks[] | [.old_start, .new_start, [.lines[] | .op]]' tmp/diff.json
+[1,1,["context","add"]]
 ? 0
 ```
 
 ## Test: a file at the head, read with Git in the mirror
 
 ```console
-$ LOC=$(METABROWSER_CONFIG_DIR=$PWD/url/config METABROWSER_CACHE_DIR=$PWD/url/home metab https://github.com/octo/demo/pull/7 --api /api/source/status --format json | jq -r .location | sed "s|^~|$HOME|") &&
-> PIN=$(METABROWSER_CONFIG_DIR=$PWD/url/config METABROWSER_CACHE_DIR=$PWD/url/home metab https://github.com/octo/demo/pull/7 --api /api/source/status --format json | jq -r .pin) &&
+$ METABROWSER_CONFIG_DIR=$PWD/url/config METABROWSER_CACHE_DIR=$PWD/url/home metab https://github.com/octo/demo/pull/7 --api /api/source/status --format json > tmp/status.json
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+? 0
+```
+
+```console
+$ LOC=$(jq -er --arg home "$HOME" '.location | sub("^~"; $home)' tmp/status.json) &&
+> PIN=$(jq -er 'select(.ref == "refs/pull/7/head") | .pin' tmp/status.json) &&
 > git -C "$LOC" show "$PIN:src/app.txt"
-selection: pull_request
-pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
-pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-selection: pull_request
-pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
-pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 one
 two
 ? 0
+```
+
+## Test: a pull request that cannot be read stops the recipes
+
+Nothing is cached for 14, so the command asks the failing `gh`, serves the default
+branch, and still exits 0; the record says why.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/url/config METABROWSER_CACHE_DIR=$PWD/url/home metab https://github.com/octo/demo/pull/14 --api '/api/plugin/github/pull?number=14' --format json > tmp/pull.json
+selection: pull_request
+pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
+pull_request: 14 (not opened: pull request 14 of https://github.com/octo/demo: gh exited 1 without an HTTP response (gh_failed); the pin is the default branch)
+? 0
+```
+
+```console
+$ jq -r '.state, .reason, .last_refresh.outcome, .pin_ref' tmp/pull.json
+absent
+not_cached
+gh_failed
+refs/remotes/origin/topic
+? 0
+```
+
+The record has no comparison route, so the diff recipe stops before it runs `metab`.
+
+```console
+$ ROUTE=$(jq -er .comparison_route tmp/pull.json) &&
+> METABROWSER_CONFIG_DIR=$PWD/url/config METABROWSER_CACHE_DIR=$PWD/url/home metab https://github.com/octo/demo/pull/14 --api "$ROUTE" --format json > tmp/diff.json
+? 1
+```
+
+The pin is the default branch, not the pull request’s head, so the file recipe stops
+before it runs Git.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/url/config METABROWSER_CACHE_DIR=$PWD/url/home metab https://github.com/octo/demo/pull/14 --api /api/source/status --format json > tmp/status.json
+selection: pull_request
+pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
+pull_request: 14 (not opened: pull request 14 of https://github.com/octo/demo: gh exited 1 without an HTTP response (gh_failed); the pin is the default branch)
+? 0
+```
+
+```console
+$ LOC=$(jq -er --arg home "$HOME" '.location | sub("^~"; $home)' tmp/status.json) &&
+> PIN=$(jq -er 'select(.ref == "refs/pull/14/head") | .pin' tmp/status.json) &&
+> git -C "$LOC" show "$PIN:src/app.txt"
+? 4
 ```
 
 ## Test: beside a checkout, a read fetches nothing
@@ -130,8 +183,12 @@ The checkout’s server has never fetched 8, and a read does not start a fetch, 
 record is absent with no refresh behind it.
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/co/config METABROWSER_CACHE_DIR=$PWD/co/home metab co/checkout --api '/api/plugin/github/pull?number=8' --format json |
->   jq -r '.state, .reason, .last_refresh.outcome'
+$ METABROWSER_CONFIG_DIR=$PWD/co/config METABROWSER_CACHE_DIR=$PWD/co/home metab co/checkout --api '/api/plugin/github/pull?number=8' --format json > tmp/pull.json
+? 0
+```
+
+```console
+$ jq -r '.state, .reason, .last_refresh.outcome' tmp/pull.json
 absent
 not_cached
 null
@@ -141,8 +198,12 @@ null
 10 has a record but no store, so its conversation stands while its diff does not.
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/co/config METABROWSER_CACHE_DIR=$PWD/co/home metab co/checkout --api '/api/plugin/github/pull?number=10' --format json |
->   jq -r '.state, .comparison_route, .record.unavailable.comparison'
+$ METABROWSER_CONFIG_DIR=$PWD/co/config METABROWSER_CACHE_DIR=$PWD/co/home metab co/checkout --api '/api/plugin/github/pull?number=10' --format json > tmp/pull.json
+? 0
+```
+
+```console
+$ jq -r '.state, .comparison_route, .record.unavailable.comparison' tmp/pull.json
 stale
 null
 no_store

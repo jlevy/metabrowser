@@ -10,7 +10,7 @@ description: >-
   or inspect and validate Metabrowser plugins.
 compatibility: >-
   Requires either a local metab command or uv (for the zero-install uvx fallback, which
-  needs network access on first use). Recipes that read JSON pipe it to jq. Git-backed
+  needs network access on first use). Recipes that read JSON read it with jq. Git-backed
   browsing requires Git; fetching fresh GitHub metadata requires gh and a verified
   sign-in. Cached PR records remain readable without new provider work.
 ---
@@ -49,14 +49,22 @@ A release older than the flat CLI exposes `serve`, `walk`, `plugins`, and `remot
 subcommands instead of mode flags; report that and use its own help if the environment
 resolves one.
 
-Every command here runs on `metab` 0.12.0 and later.
+This skill is tested against the `metab` built from the same commit of its repository,
+not against a release: a skill installed from a release tag matches that release, and
+one installed from `main` can name a flag or route that no release has yet.
 `metab --version` names the build you have, and the Unreleased section of the
 [changelog](https://github.com/jlevy/metabrowser/blob/main/CHANGELOG.md) lists what the
 source has that the newest release lacks.
-Use one build for one cache: an older `metab` reads a record a newer one wrote as
-`absent`, with the reason `schema_mismatch` or `unreadable`. The macOS app is a separate
-front end over the same server, which this skill does not drive; the app needs `metab`
-0.12.1 or later, and no release on PyPI has it yet.
+Until the next release, the skill on `main` needs a `metab` built from a source
+checkout: clone the repository and set it up as
+[Install metab](https://github.com/jlevy/metabrowser/blob/main/docs/installation.md#install-metab)
+describes for the code on `main`, then use the checkout’s `.venv/bin/metab` as the local
+command. When a command here fails with `No such option`, or `--api` answers 404 for a
+route named here, the build is older than the skill: report that, and use a source build
+or the build’s own `--help`. Use one build for one cache: an older `metab` reads a
+record a newer one wrote as `absent`, with the reason `schema_mismatch` or `unreadable`.
+The macOS app is a separate front end over the same server, which this skill does not
+drive; the app needs `metab` 0.12.1 or later, and no release on PyPI has it yet.
 
 ## Route the Task
 
@@ -92,7 +100,9 @@ Start one server in the background and give the user addresses on it:
 - Serving blocks until the server is stopped, so start it in the background and do not
   wait for it to exit
 - Read the address from the `Serving <root> at <url>` line it prints.
-  The port is the first free one from the default, so never assume it
+  The port is the first free one from the default, so never assume it.
+  The address answers a moment after the line appears, so retry a refused connection
+  before you report the server down
 - `--path` selects a file on launch, and the printed URL names it; passing a file as
   `<root>` serves its folder with the file selected
 - One server serves every page under its root, so reuse it rather than starting another
@@ -127,8 +137,8 @@ The page updates as files change, so the user can keep watching while you work.
   the user’s page, so hand them its address and they can watch the run
 - For yourself, read the parsed log with
   `<invocation> <root> --api '/api/file?path=<log>' --format json`: its `summary` names
-  the agent and counts events, tool calls, and errors, and `is_done` and `is_error` say
-  whether the run ended and how.
+  the agent and counts events, tool calls, and errors, and its `.summary.is_done` and
+  `.summary.is_error` say whether the run ended and how.
   Read the file itself for its newest lines
 - Do not issue the two streaming routes.
   `--api` refuses `/api/events` as soon as it answers.
@@ -147,8 +157,8 @@ parent. From a terminal:
 - Add `--diff-patch <path>` for one file’s hunks, and `--format json` for the data the
   page draws
 - Add `--diff-check` to verify that the change set rebuilds the target tree.
-  It can take more than a minute on a merge of a few dozen files, so give the command a
-  long timeout or run it in the background
+  It can take more than a minute in a large repository, whatever the size of the change,
+  so give the command a long timeout or run it in the background
 - `<invocation> <repo> --show /commit/<rev>` reports the comparison behind a commit
   page, and accepts any revision Git resolves, `HEAD` included.
   The page address and `/api/git/commit/<id>` take only a full commit ID and refuse
@@ -162,7 +172,12 @@ parent. From a terminal:
 Open a GitHub repository URL, a pull-request URL, or an existing checkout; a checkout
 whose `origin` is on github.com has a **Pulls** tab.
 The commands below read everything without a browser or a port.
-With `--format json`, `--api` prints one JSON document, which these pipe to `jq`.
+With `--format json`, `--api` prints one JSON document.
+Each recipe writes it to a file in `<tmp>`, a folder of your own such as one `mktemp -d`
+made and never the user’s checkout, and reads the file with `jq` only when `metab`
+succeeded.
+So a recipe that fails exits nonzero, and standard error says why; a pipe from
+`metab` into `jq` would end with `jq`’s status and hide the failure.
 
 ### From a Pull-Request URL
 
@@ -179,13 +194,13 @@ no `--format`, so passing one is a usage error with exit status 2. Check the rec
 instead:
 
 ```shell
-<invocation> <url> --api '/api/plugin/github/pull?number=<n>' --format json |
-  jq -r '.state, .reason, .last_refresh.outcome'
+<invocation> <url> --api '/api/plugin/github/pull?number=<n>' --format json > <tmp>/pull.json &&
+  jq -r '.state, .reason, .last_refresh.outcome' <tmp>/pull.json
 ```
 
 - `.state` is `current` or `stale` when a record is cached, `pending` while the first
-  fetch runs, and `absent` when no usable record is cached, with `.reason` saying why,
-  such as `not_cached`
+  fetch runs, so read the record again shortly, and `absent` when no usable record is
+  cached, with `.reason` saying why, such as `not_cached`
 - `.last_refresh.outcome` says how the last fetch ended: `succeeded`, or a failure such
   as `gh_missing`, `not_logged_in`, or `not_found_or_private`. The
   [guide](https://github.com/jlevy/metabrowser/blob/main/docs/reviewing-pull-requests.md#when-something-does-not-open)
@@ -194,25 +209,31 @@ instead:
   and `.pin_ref` names that branch rather than `refs/pull/<n>/head`
 - A record can stand while its diff cannot: `.comparison_route` is then null, and
   `.record.unavailable.comparison` names why
+- A repository that is private or does not exist is a failure: the command exits 1, and
+  its `Error:` line names the reason
 
 The record (`.record`) holds the description, comments, reviews, review comments, and
 checks; `<invocation> <url> --show /pull/<n>` sums them up.
-Read the diff from the record’s `comparison_route`:
+Read the diff from the record the check wrote; `jq -e` stops the recipe when
+`comparison_route` is null:
 
 ```shell
-ROUTE=$(<invocation> <url> --api '/api/plugin/github/pull?number=<n>' --format json |
-  jq -r .comparison_route) &&
-<invocation> <url> --api "$ROUTE" --format json |
-  jq -r '.manifest.files[] | "\(.kind) \(.new.path // .old.path) +\(.additions) -\(.deletions)"'
+ROUTE=$(jq -er .comparison_route <tmp>/pull.json) &&
+<invocation> <url> --api "$ROUTE" --format json > <tmp>/diff.json &&
+  jq -r '.manifest.files[] | "\(.id) \(.kind) \(.new.path // .old.path) +\(.additions) -\(.deletions)"' <tmp>/diff.json
 ```
 
+The same answer holds each file’s hunks: `.patches["<id>"].hunks` for the file whose
+`.id` is `<id>`.
+
 Read a file at the head with Git, in the clone that `/api/source/status` names, whose
-`location` may start with `~`:
+`location` may start with `~`. The `select` stops the recipe when the pin is not the
+pull request’s head, as when the pull request cannot be read:
 
 ```shell
-LOC=$(<invocation> <url> --api /api/source/status --format json |
-  jq -r .location | sed "s|^~|$HOME|") &&
-PIN=$(<invocation> <url> --api /api/source/status --format json | jq -r .pin) &&
+<invocation> <url> --api /api/source/status --format json > <tmp>/status.json &&
+LOC=$(jq -er --arg home "$HOME" '.location | sub("^~"; $home)' <tmp>/status.json) &&
+PIN=$(jq -er 'select(.ref == "refs/pull/<n>/head") | .pin' <tmp>/status.json) &&
 git -C "$LOC" show "$PIN:<path>"
 ```
 
@@ -226,19 +247,21 @@ Served as a folder, a `<checkout>` whose `origin` is on github.com reads only wh
 cached: a pull request not fetched yet answers `absent` with `not_cached`, and no read
 fetches it. POST a refresh, which fetches the record and prepares its diff in the cache,
 borrowing the checkout’s objects.
-The command waits for the refresh and prints the record, so the outcome line says
-whether it succeeded:
+The command waits for the refresh and prints the record.
+A refresh that fails exits 1, and its `Error:` line names the outcome, such as
+`gh_missing`:
 
 ```shell
-BODY=$(mktemp) &&
-echo '{"number": <n>, "retry": true, "comparison": true}' > "$BODY" &&
-<invocation> <checkout> --api /api/plugin/github/pull-refresh --data "$BODY" --format json |
-  jq -r '.state, .last_refresh.outcome, .comparison_route'
+echo '{"number": <n>, "retry": true, "comparison": true}' > <tmp>/refresh.json &&
+<invocation> <checkout> --api /api/plugin/github/pull-refresh \
+  --data <tmp>/refresh.json --format json > <tmp>/pull.json &&
+  jq -r '.state, .last_refresh.outcome, .comparison_route' <tmp>/pull.json
 ```
 
-`--data` takes the body from a file; a build newer than 0.12.0 also reads it from
-standard input as `--data -`. Then read the record and the diff with the recipes above,
-with `<checkout>` in place of `<url>`. Nothing is written to the checkout.
+`--data` takes the body from a file, or from standard input as `--data -`. The refresh
+leaves the record in `<tmp>/pull.json`, so the diff recipe above follows it, with
+`<checkout>` in place of `<url>`; the check reads the record again the same way.
+Nothing is written to the checkout.
 To read a file at the head, open the pull-request URL with `--checkout <checkout>` and
 use the file recipe above.
 
@@ -260,18 +283,11 @@ is the reference.
 
 `<invocation> --remote <host> --path <dir> --no-open` serves a directory of another
 machine through an SSH tunnel; the host needs the same Metabrowser installed.
-It is interactive: SSH may ask for a password or to trust the host key, the command
+It is interactive only: SSH may ask for a password or to trust the host key, the command
 holds the tunnel until it is interrupted, and the far server stops as soon as the
 command’s standard input closes, so a background job started with no input ends at once.
-Give the user the command to run in their own terminal.
-If you must run it yourself, make SSH fail rather than ask, and keep the input open:
-
-```shell
-sleep 86400 | <invocation> --remote <host> --path <dir> --no-open \
-  --ssh-options '-o BatchMode=yes'
-```
-
-Read the address from its `Browser URL:` line, not from the far server’s `Serving` line,
+Give the user the command to run in their own terminal rather than running it yourself.
+The address to open is on its `Browser URL:` line, not the far server’s `Serving` line,
 which names the far port; the address answers once the far server is up.
 
 ## Operate Safely
@@ -290,7 +306,8 @@ which names the far port; the address answers once the far server is up.
 - Prefer `--walk --format json` when the task needs machine-readable inventory rather
   than an interactive browser
 - Parse JSON from standard output; human-readable diagnostics, such as the `selection`
-  and `pull_request` lines of a URL-backed command, use standard error
+  and `pull_request` lines of a URL-backed `--api` or `--show`, use standard error.
+  `--no-serve` prints its report for a person on standard output
 - In a headless environment, avoid opening a browser and report the local URL and
   whether the server is still running
 - Preserve nonzero exits from all plugin modes; discovery errors mean the registry is

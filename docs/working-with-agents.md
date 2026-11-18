@@ -21,7 +21,9 @@ The skill itself is [skills/metabrowser/SKILL.md](../skills/metabrowser/SKILL.md
 With it installed, an agent can browse and inventory folders, open a file or a live log,
 read commits and diffs, read a GitHub pull request, and check plugins.
 It uses `metab --help` as the reference for options, so it follows the build you have.
-The skill names the oldest release its commands run on, and
+The skill is tested against the `metab` of the same commit, not against a release, so
+the skill on `main` can name a flag or route that the newest release lacks; it says how
+to run a source checkout’s `metab` until the next release.
 [Release Status](installation.md#release-status) says which `metab` the macOS app needs,
 a separate front end that the skill does not drive yet.
 
@@ -68,7 +70,7 @@ a log being written tails in place ([live updates](browsing-files.md#live-update
 server runs until the agent stops it or you ask it to.
 
 A single command that shows a page in the running macOS app or your browser, and reports
-which it did, is planned as `metab --present`
+which it did, is planned
 ([native macOS app plan](project/specs/active/plan-2026-11-10-native-macos-app.md),
 Phase 3).
 
