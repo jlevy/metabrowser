@@ -1078,7 +1078,8 @@ $ node tests/dom/preview-pane-state-session.js
       "lineAnchorsAtStartup": "undefined",
       "scriptRequests": [
         "view-composition.js",
-        "plugin-sdk-views.js"
+        "plugin-sdk-views.js",
+        "view-header.js"
       ],
       "renderedViews": [
         "a.py: source"
@@ -1094,7 +1095,8 @@ $ node tests/dom/preview-pane-state-session.js
         "anchoredAddress": {
           "requestedMeanwhile": [
             "view-composition.js",
-            "plugin-sdk-views.js"
+            "plugin-sdk-views.js",
+            "view-header.js"
           ],
           "renderedViews": [
             "a.py: source"
@@ -1112,7 +1114,8 @@ $ node tests/dom/preview-pane-state-session.js
       "folderAddresses": {
         "scriptRequests": [
           "view-composition.js",
-          "plugin-sdk-views.js"
+          "plugin-sdk-views.js",
+          "view-header.js"
         ],
         "hostCreated": false
       },
@@ -1178,7 +1181,8 @@ $ node tests/dom/preview-pane-state-session.js
           },
           "scriptRequests": [
             "view-composition.js",
-            "plugin-sdk-views.js"
+            "plugin-sdk-views.js",
+            "view-header.js"
           ]
         },
         "reopened": {

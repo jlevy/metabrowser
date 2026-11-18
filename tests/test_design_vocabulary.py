@@ -247,7 +247,6 @@ def _baseline_rows() -> list[tuple[str, str, _El]]:
     """
     el, text, box = _El, _text, _box
     tree = "File tree row"  # renderTreeNodes, _buildRowHtml, renderContainerChildren
-    header = "File and folder header"  # the file view header and renderFolderHeader
     diff_host = ".metabrowser-diff-host"
     rows = [
         (
@@ -335,51 +334,6 @@ def _baseline_rows() -> list[tuple[str, str, _El]]:
                 text("git-graph-meta", el("git-graph-age age-min")),
             ),
         ),
-        (
-            header,
-            ".file-header",
-            el(
-                "file-header",
-                text("file-header-path folder-breadcrumb", el("folder-crumb folder-crumb-current")),
-                box("file-header-badge-slot", el("file-header-badge badge-live")),
-                text("size file-header-size"),
-            ),
-        ),
-        (
-            header,
-            ".file-header",
-            el("file-header", text("file-header-path"), box("size tally-pending file-header-size")),
-        ),
-        (
-            header,
-            ".file-header",
-            el(
-                "file-header folder-header",
-                box("btn parent-nav-btn parent-nav-btn-icon-only folder-up"),
-                text("file-header-path folder-breadcrumb"),
-                text(
-                    "folder-header-summary",
-                    el("size file-header-size"),
-                    el("count folder-header-count"),
-                    el("folder-header-age", el("age-min")),
-                ),
-            ),
-        ),
-        (
-            header,
-            ".file-header",
-            el(
-                "file-header folder-header",
-                box("btn parent-nav-btn folder-up"),
-                text("file-header-path"),
-                box(
-                    "folder-header-summary",
-                    el("size tally-pending file-header-size"),
-                    el("count tally-pending folder-header-count"),
-                    el("folder-header-age", el("tally-pending tally-pending-narrow")),
-                ),
-            ),
-        ),
     ]
     # Diff file bar: renderFileBar in the diff plugin, inside its host.
     toggle = el(
@@ -458,11 +412,12 @@ def test_row_text_shares_one_baseline() -> None:
                 assert applying, f"{label}: text slot .{name} does not opt in to the baseline"
             elif child.role == "box":
                 assert not applying, f"{label}: box .{name} is baseline-aligned by {applying}"
-    # The header's path fills the header's content box, so the baseline
-    # group lands where centering put it at any header height.
-    assert "min-height: 100%;" in _rule(styles, ".file-header > .file-header-path"), (
-        "the header path no longer fills the header, so its text rides to the top"
-    )
+    # A view header's rows each set their text at one size, so they center it and need no
+    # baseline (docs/design-system.md, "View Headers"): no baseline rule reaches them.
+    for selector, _is_items in rules:
+        assert not re.search(r"\.(?:file-header|view-header)", selector), (
+            f"{selector} aligns a view header's text to a baseline"
+        )
     # The diff bar's View file controls are centered boxes beside the toggle, so they
     # land on the path's baseline only at the path's own size: the toggle's, which its
     # path inherits, and the view's, both the main view's body size.
@@ -657,6 +612,8 @@ def test_copyable_identifiers_share_the_copy_contract() -> None:
     """Paths and revisions use one explicit-value copy delegate."""
     design = (REPO_ROOT / "docs" / "design-system.md").read_text(encoding="utf-8")
     app = (STATIC / "app.js").read_text(encoding="utf-8")
+    # A file's view header writes its Copy path control (view-header.js).
+    header = (STATIC / "view-header.js").read_text(encoding="utf-8")
     sdk = (STATIC / "plugin-sdk.js").read_text(encoding="utf-8")
     git = (STATIC / "git-panel.js").read_text(encoding="utf-8")
     diff = (REPO_ROOT / "src/metabrowser/builtin_plugins/diff/diff-view.js").read_text(
@@ -667,11 +624,11 @@ def test_copyable_identifiers_share_the_copy_contract() -> None:
     assert "test_copyable_identifiers_share_the_copy_contract" in design
     assert 'target.closest("[data-mb-copy]")' in sdk
     assert 'mode === "text"' in sdk and 'mode === "wrap"' in sdk
-    assert 'data-mb-copy="text"' in app
+    assert 'data-mb-copy="text"' in header
     assert 'setAttribute("data-mb-copy", "text")' in diff
     assert 'data-mb-copy="text"' in git and "commit.id" in git
     assert "git-commit-revision-copy" in git
-    for source in (app, diff, git):
+    for source in (app, header, diff, git):
         assert "data-copy-path" not in source, "a local path-copy contract reappeared"
 
 
@@ -1642,7 +1599,7 @@ _INHERITED_METADATA: tuple[tuple[str, str], ...] = (
     ("styles.css", ".file-header-mirror"),
     ("styles.css", ".file-header-size"),
     ("styles.css", ".folder-header-count"),
-    ("styles.css", ".folder-header-age"),
+    ("styles.css", ".view-header-age"),
     ("diff/styles.css", ".metabrowser-diff-host .diff-file-path"),
     ("diff/styles.css", ".metabrowser-diff-host .diff-file-note"),
     ("github/styles.css", ".github-pulls-by"),
@@ -3755,11 +3712,12 @@ def test_key_badges_are_positioned_paint_over_layer_three_markup() -> None:
     assert (beside["top"], beside["translate"]) == ("var(--kbd-badge-block)", "0 -50%")
     assert selected[":where(.kbd-badge-host)"] == {"position": "relative"}
     assert selected[":where([data-kbd-badge-anchor])"] == {"position": "relative"}
-    # The anchors: the file header and the folder header, for Up's crumb and button. The
+    # The anchor: the view header, a file's and a folder's alike, for Up's button. The
     # commit heading anchored Copy revision's badge, and copying has no key any more.
-    app = (STATIC / "app.js").read_text(encoding="utf-8")
-    assert app.count('class="file-header" data-kbd-badge-anchor') == 1
-    assert app.count('class="file-header folder-header" data-kbd-badge-anchor') == 1
+    header = (STATIC / "view-header.js").read_text(encoding="utf-8")
+    assert header.count("data-kbd-badge-anchor") == 1
+    assert '`<div class="file-header view-header${' in header
+    assert "data-kbd-badge-anchor" not in (STATIC / "app.js").read_text(encoding="utf-8")
     git_panel = (STATIC / "git-panel.js").read_text(encoding="utf-8")
     assert "data-kbd-badge-anchor" not in git_panel
 

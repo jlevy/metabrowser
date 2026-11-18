@@ -50,11 +50,14 @@ def test_generated_html_handlers_keep_their_global_names() -> None:
     assert "async function loadMoreCurrentText()" in app
     # Header copy/navigation buttons carry values in data-* attributes
     # consumed by the SDK's delegated listener (inline onclick would
-    # HTML-decode quotes back into the JavaScript string).
-    assert 'data-mb-copy="text"' in app
-    assert "data-mb-copy-text=" in app
-    assert "data-nav-dir=" in app
-    assert "function copyPath(btn, path)" not in app
+    # HTML-decode quotes back into the JavaScript string). The view header's
+    # builders are view-header.js's.
+    header = _browser_asset("static/view-header.js")
+    assert 'data-mb-copy="text"' in header
+    assert "data-mb-copy-text=" in header
+    assert "data-nav-dir=" in header
+    for source in (app, header):
+        assert "function copyPath(btn, path)" not in source
     assert "content-copy-btn" in sdk_views
     assert 'target.closest("[data-mb-copy]")' in sdk
     assert "_copyDelegationInstalled" in sdk
