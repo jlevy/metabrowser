@@ -44,8 +44,8 @@ metab ./notes/report.md --present
 metab https://github.com/owner/repo/pull/123 --present
 ```
 
-`metab TARGET --present` hands a folder, a file, or a GitHub URL to the app and says
-what it sent; the app opens it as it opens a folder from Finder, and starts if it is not
+`metab ROOT --present` hands a folder, a file, or a GitHub URL to the app and says what
+it sent; the app opens it as it opens a folder from Finder, and starts if it is not
 running. [The command-line guide](command-line.md#handing-a-target-to-the-app---present)
 has the report, its codes, and `--dry-run`, which checks a target without sending it.
 
@@ -53,15 +53,20 @@ has the report, its codes, and `--dry-run`, which checks a target without sendin
   registered it: an installed release first, then a development build, which is what
   every build from source is.
   `--app-bundle-id` or `METABROWSER_APP_BUNDLE_ID` names another.
-- **GitHub URLs:** a URL goes only to a build of the app that opens GitHub URLs.
-  To an older build `--present` sends folders and files, and refuses a URL with
-  `app_opens_no_urls` rather than send what the app would drop.
+- **Only a current build:** `--present` sends only to a build that declares it takes
+  what `--present` sends, GitHub URLs included, and refuses an older build, or another
+  app an override names, with `app_not_marked` rather than send what it would drop or
+  run.
+- **A file in its folder:** a file is handed over after its folder, so the app opens
+  that folder and shows the file in it, unless a folder inside it that holds the file is
+  open already, where the file then shows.
 - **A folder inside another:** the app opens each folder in a window of its own, so
   `--path` naming a folder is not sent; present that folder itself.
 - **No confirmation yet:** the app does not answer, so `--present` reports what
   LaunchServices accepted, never that a window shows it.
-- **In an agent’s sandbox,** `open` may be refused; the report says so and gives the
-  command to run outside it.
+- **In an agent’s sandbox,** LaunchServices may not answer; the report says
+  `lookup_failed` or `open_failed`, with its own exit status, rather than that no app is
+  installed.
 
 ## Windows and Tabs
 

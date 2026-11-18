@@ -224,7 +224,10 @@ def pending_selection_opener(
         ):
             await subject.aclose()
             return None
-        return OpenedSelection(subject, selection_view_href(selection, resolution.path))
+        return OpenedSelection(
+            subject,
+            selection_view_href(selection, resolution.path, commit=resolution.commit),
+        )
 
     return open_selection
 

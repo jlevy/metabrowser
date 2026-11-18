@@ -485,7 +485,9 @@ async def _prove_servable(
         if path:
             view_href = await _selection_href(subject, path)
         elif source.selection is not None and selected.resolved is not None:
-            view_href = selection_view_href(source.selection, selected.resolved.path)
+            view_href = selection_view_href(
+                source.selection, selected.resolved.path, commit=selected.resolved.commit
+            )
         else:
             view_href = VIEW_ROUTE_PREFIX
         return _ServablePin(selected=selected, view_href=view_href)

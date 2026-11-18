@@ -322,50 +322,115 @@ def test_a_local_folders_page_does_not_load_git_source_modules(
     assert _git_source_modules_in(set(answer["loaded"])) == []
 
 
-# What `--present` must not load: it reads TARGET and hands it to the app, so it builds no
-# server, opens no repository, and needs nothing that would reach the network or `gh`.
-# The macOS app runs `--present --dry-run` to check what a user types, so this is also
-# its startup cost.
-_PRESENT_UNNEEDED_MODULES = (
-    "metabrowser.server",
-    "metabrowser.source_routes",
-    "metabrowser.git.routes",
-    "metabrowser.mirror_refresh",
-    "metabrowser.cache.acquire",
-    "metabrowser.cache.repository_store",
-    "metabrowser.cache.resolve",
-    "metabrowser.builtin_plugins.github.provider",
-    "metabrowser.builtin_plugins.github.gh",
-    "metabrowser.builtin_plugins.github.pulls",
-    "metabrowser.cli.selection",
-    "metabrowser.cli.git_pin_cli",
-    "metabrowser.cli.acquire_cli",
+# What `--present --dry-run` may load beyond what `metab --version` loads, which already
+# holds the CLI, the serve mode's module, and what they import. The macOS app runs a dry
+# run to check what a user types, so this is also its cost per link. A boundary stated
+# against `--version` fails for anything added, where a list of forbidden modules fails
+# only for what someone thought to list. Standard-library packages are named by their
+# top-level name, since their submodules differ between Python versions.
+_PRESENT_LOCAL_EXTRA = frozenset({"metabrowser.cli.present", "metabrowser.invisible_chars"})
+# The property-list reader, for a bundle's Info.plist, and the XML parser it uses.
+_PRESENT_STDLIB_EXTRA = frozenset({"plistlib", "pyexpat", "xml"})
+# A link adds the URL grammar, each provider's reducer without its provider, and the path
+# encoding and revision grammar a page is spelled with.
+_PRESENT_LINK_EXTRA = frozenset(
+    {
+        "metabrowser.builtin_plugins",
+        "metabrowser.builtin_plugins.github",
+        "metabrowser.builtin_plugins.github.urls",
+        "metabrowser.cache",
+        "metabrowser.cache.identity",
+        "metabrowser.cache.providers",
+        "metabrowser.cache.urls",
+        "metabrowser.cli.selection_href",
+        "metabrowser.git.tree_source",
+        "metabrowser.git.wire",
+    }
 )
+
+# Run with an audit hook: what the dry run imports, and every process it starts or
+# address it connects to or looks up, which a list of modules would miss when it is
+# reached through a module nobody listed.
+_REPORT_LOADED_MODULES_AND_EFFECTS = textwrap.dedent(
+    """
+    import atexit, json, sys
+    effects = []
+    _WATCHED = ("subprocess.Popen", "os.posix_spawn", "os.exec", "os.system", "os.fork",
+                "socket.connect", "socket.getaddrinfo", "socket.gethostbyname")
+    def hook(event, args):
+        if event.startswith(_WATCHED):
+            effects.append(event)
+    sys.addaudithook(hook)
+    def report():
+        sys.stderr.write("\\nloaded-modules:" + json.dumps(
+            {"modules": sorted(sys.modules), "effects": effects}) + "\\n")
+    atexit.register(report)
+    sys.argv = ["metab", *sys.argv[1:]]
+    from metabrowser.cli.entrypoint import main
+    main()
+    """
+)
+
+
+def _loaded_and_effects(*args: str) -> tuple[set[str], list[str], int]:
+    result = subprocess.run(
+        [sys.executable, "-c", _REPORT_LOADED_MODULES_AND_EFFECTS, *args],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=_CHILD_TIMEOUT_S,
+    )
+    report = json.loads(result.stderr.rpartition("loaded-modules:")[2])
+    return set(report["modules"]), report["effects"], result.returncode
+
+
+def _beyond(loaded: set[str], baseline: set[str]) -> set[str]:
+    """What *loaded* adds to *baseline*, a standard-library module by its package."""
+
+    return {
+        name if name.startswith("metabrowser.") else name.partition(".")[0]
+        for name in loaded - baseline
+    }
 
 
 @pytest.mark.parametrize(
-    "target",
+    ("target", "status"),
     [
-        "browse",
-        "browse/README.md",
-        "https://github.com/octo/demo",
-        "https://github.com/octo/demo/blob/main/docs/guide.md#L2",
-        "https://github.com/octo/demo/pull/7/files",
-        "https://github.com/octo/demo/commit/1a2b3c4",
+        ("browse", 0),
+        ("browse/README.md", 0),
+        ("missing", 3),
+        ("https://github.com/octo/demo", 0),
+        ("https://github.com/octo/demo/blob/main/docs/guide.md#L2", 0),
+        ("https://github.com/octo/demo/pull/7/files", 0),
+        ("https://github.com/octo/demo/commit/1a2b3c4", 0),
+        # Refused, and sources other than GitHub's: still nothing started or fetched.
+        ("https://github.com/octo/demo/issues/5", 3),
+        ("https://example.com/octo/demo.git", 3),
+        ("ssh://git@example.com/octo/demo.git", 3),
+        ("ext::sh -c touch% pwned", 3),
     ],
 )
-def test_present_dry_run_builds_no_server_and_opens_no_repository(
-    tmp_path: Path, target: str
+def test_present_dry_run_loads_little_beyond_version(
+    tmp_path: Path, target: str, status: int
 ) -> None:
     root = tmp_path / "browse"
     root.mkdir()
     (root / "README.md").write_text("# Local\n")
-    argument = str(tmp_path / target) if target.startswith("browse") else target
+    local = target.startswith(("browse", "missing"))
+    argument = str(tmp_path / target) if local else target
+    baseline, _effects, _status = _loaded_and_effects("--version")
 
-    loaded = _modules_loaded_by(argument, "--present", "--dry-run", "--json")
+    loaded, effects, exit_status = _loaded_and_effects(
+        argument, "--present", "--dry-run", "--format", "json"
+    )
 
-    assert "metabrowser.cli.present" in loaded
-    assert sorted(name for name in _PRESENT_UNNEEDED_MODULES if name in loaded) == []
-    if target.startswith("browse"):
+    assert exit_status == status
+    allowed = _PRESENT_LOCAL_EXTRA | _PRESENT_STDLIB_EXTRA
+    if not local:
+        allowed |= _PRESENT_LINK_EXTRA
+    assert sorted(_beyond(loaded, baseline) - allowed) == []
+    assert effects == []
+    assert not (tmp_path / "pwned").exists()
+    if local:
         # A local target needs not even the Git tree source a URL's page is spelled with.
         assert _git_source_modules_in(loaded) == []

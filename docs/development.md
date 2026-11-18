@@ -336,10 +336,11 @@ The check makes those tiers executable.
 For an interaction row it runs the session under V8 coverage and credits an owner only
 when the session executed that production file and one named function in it, so a
 transitive import, a stdout claim, or a relabeled snippet is not evidence.
-The **Data inputs** column states provenance: a data row declares `owned-route`, a
-paint-exempt row `local-only`, and an interaction row names registered, parity-covered
-routes, `local-only`, or `transport-exempt:/api/events` for the event stream whose
-snapshot its data routes already own.
+The **Data inputs** column states provenance: a data row declares `owned-route`, or
+`owned-model` for the model of a mode no route can honestly serve, such as `--present`,
+which must start no server; a paint-exempt row `local-only`, and an interaction row
+names registered, parity-covered routes, `local-only`, or `transport-exempt:/api/events`
+for the event stream whose snapshot its data routes already own.
 The check cannot infer an undeclared behavior from source code, so review requires a row
 whenever a change adds or alters an observable contract.
 

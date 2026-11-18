@@ -131,6 +131,47 @@ Markdown file open:
 4. **A file dragged onto the page** opens at its page, in the open folder that holds it
    or else in its own folder.
 
+## Presenting From metab
+
+`metab ROOT --present` hands the app a target with `open -b`
+([Presenting to the App](../architecture/arch-cli.md#presenting-to-the-app)); its
+goldens use a recording stand-in, so these are the checks that a real app receives what
+the report says. Use a `metab` built from this checkout, with the development build
+registered (opened once) and every other copy quit:
+
+```shell
+APP_ID=io.github.jlevy.metabrowser.dev
+folder="$(mktemp -d)" && mkdir -p "$folder/docs" && echo '# Guide' > "$folder/docs/guide.md"
+present() { /usr/bin/time -p metab "$@" --present --app-bundle-id "$APP_ID" --format json; }
+```
+
+1. **A folder.** `present "$folder"` exits 0 with `delivered_to: app` and `bundle_path`
+   naming the development build, and a window opens on the folder.
+   Note the `real` time with the app running and again after a quit (a cold start),
+   beside `OPEN_TIMEOUT_S` in `cli/present.py`.
+2. **A file, its root not open.** Close the folder’s windows, then
+   `present "$folder" --path docs/guide.md`: one window opens, rooted at `$folder` (its
+   title is the folder’s name, not `docs`), showing `guide.md`.
+3. **A file, its root open.** With that window open, the same command shows the file in
+   it and opens no second window.
+4. **A file, a folder inside its root open.** Open `$folder/docs` on its own
+   (`present "$folder/docs"`), then `present "$folder" --path docs/guide.md`: the file
+   shows in the `docs` window, the limit the guide states.
+5. **A build without the marker.** With a build from before `MetabrowserOpensURLs` (or
+   the key deleted from a copy’s `Info.plist` and the copy opened once),
+   `present https://github.com/jlevy/metabrowser` exits 4 with `app_not_marked`, and so
+   does `present "$folder"`; nothing opens.
+6. **A GitHub URL.** With a build that declares the marker,
+   `present https://github.com/jlevy/metabrowser/pull/517` opens the pull request’s
+   page, as the GitHub Links checks do with `open -b`.
+7. **Inside an agent’s sandbox.** From an agent session whose sandbox is on,
+   `metab "$folder" --present` exits 5 with `lookup_failed` or `open_failed`, never
+   `app_not_found`. Record which, and what the reason says.
+8. **An older copy running.** With a build without the marker running and a newer one
+   registered, `present https://github.com/jlevy/metabrowser`: record which copy takes
+   the URL and whether a window shows it, since the marker is read from the bundle
+   LaunchServices prefers, not from the running copy.
+
 ## Setup Flows
 
 What a new user sees first is a window, which no unit test reaches.

@@ -4,19 +4,24 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
-- `metab TARGET --present` hands a folder, a file, or a GitHub URL to the macOS app and
+- `metab ROOT --present` hands a folder, a file, or a GitHub URL to the macOS app and
   reports what it sent.
   It finds the app through LaunchServices, the release build first and then the
   development build, or the one `--app-bundle-id` or `METABROWSER_APP_BUNDLE_ID` names,
-  and sends the target with `open -b`; it clones, fetches, and serves nothing.
-  `--present --dry-run --json` prints what would be sent: the target’s `kind`, its
-  `root` (an absolute folder, or the repository’s canonical GitHub URL with no ref), its
-  `page`, or a `refusal` with a code and a message.
-  It exits 3 when TARGET cannot be presented and 4 when nothing was sent, such as with
-  no app, and every report says `confirmed: false`, because the app does not answer yet.
-  A URL goes only to an app whose `Info.plist` declares `MetabrowserOpensURLs`, so an
-  older app is never sent a URL it would drop.
-  `--json` now applies to `--present` as well as the plugin modes.
+  and sends the target with `/usr/bin/open -b`; it clones, fetches, and serves nothing.
+  `--present --dry-run --format json` prints what would be sent: the target’s `kind`,
+  its `root` (an absolute folder, or the repository’s canonical GitHub URL with no ref),
+  its `page`, null where only the repository’s mirror knows it, the `handoff` that
+  `open -b` is given, or a `refusal` with a code and a message.
+  A file is handed over after its folder, so the app opens the folder that is reported.
+  It exits 3 when ROOT cannot be presented, 4 when no app takes it, and 5 when
+  LaunchServices could not be asked or refused it, as in a sandbox; the report names the
+  case in `code`, and says `confirmed: false`, because the app does not answer yet.
+  It sends only to an app whose `Info.plist` declares `MetabrowserOpensURLs` true, so an
+  older build is never sent a URL it would drop and another app is never sent a file.
+
+- `metab COMMIT_URL` opens at the commit’s page, `/commit/<full id>`, instead of the
+  tree at that commit.
 
 - On a folder’s Overview, pointing at a File Overview legend entry, its dot or its
   words, now lifts its family’s segment in the bar above, as pointing at the segment

@@ -1,13 +1,17 @@
-"""Golden CLI transcript: ``metab TARGET --present`` handing targets to the macOS app.
+"""Golden CLI transcript: ``metab ROOT --present`` handing targets to the macOS app.
 
 Each command runs the production CLI in-process with two substitutions, so the
 transcript is the same on every platform and nothing reaches a real app:
 
 - ``metabrowser.cli.present.bundle_lookup``, the LaunchServices lookup, answers from a
-  table of fixture bundles: one whose ``Info.plist`` declares ``MetabrowserOpensURLs``
-  and one, an older app, that does not; and
-- an ``open`` first on ``PATH`` records its arguments and exits 0, or, under
-  ``OPEN_STAND_IN_FAIL=1``, prints what LaunchServices prints when it refuses and exits 1.
+  table of fixture bundles: one whose ``Info.plist`` declares ``MetabrowserOpensURLs``,
+  one, an older app, that does not, and a Terminal-shaped app, or raises
+  :class:`~metabrowser.cli.present.AppLookupError` as a sandbox makes it; and
+- ``metabrowser.cli.present.open_executable``, ``/usr/bin/open``, is a stand-in that
+  records its arguments and exits 0, or, under ``OPEN_STAND_IN_FAIL=1``, prints a line
+  of the shape LaunchServices' failures take and exits 1. An ``open`` planted first on
+  ``PATH`` would record itself as ``planted``; no block shows it, because ``--present``
+  never looks ``open`` up on ``PATH``.
 
 Each block lists the bundle identifiers looked up, with the bundle each named, and every
 ``open`` the command ran. The lookup itself runs against LaunchServices in
@@ -26,13 +30,18 @@ from typing import Final
 import pytest
 
 from metabrowser.cli import present
-from metabrowser.cli.present import DEV_BUNDLE_ID, OPENS_URLS_KEY, RELEASE_BUNDLE_ID
+from metabrowser.cli.present import (
+    DEV_BUNDLE_ID,
+    OPENS_URLS_KEY,
+    RELEASE_BUNDLE_ID,
+    AppLookupError,
+)
 from tests.golden_harness import Invocation, block, check_golden, quoted, run_metab
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="the open stand-in is a shell script")
 
 _OPEN_STAND_IN: Final = """#!/bin/sh
-printf 'open' >> "$OPEN_STAND_IN_LOG"
+printf '%s' "$OPEN_STAND_IN_NAME" >> "$OPEN_STAND_IN_LOG"
 for argument in "$@"; do printf ' %s' "$argument" >> "$OPEN_STAND_IN_LOG"; done
 printf '\\n' >> "$OPEN_STAND_IN_LOG"
 if [ "$OPEN_STAND_IN_FAIL" = 1 ]; then
@@ -40,7 +49,17 @@ if [ "$OPEN_STAND_IN_FAIL" = 1 ]; then
   exit 1
 fi
 """
-OTHER_BUNDLE_ID: Final = "org.example.viewer"
+# A Metabrowser build installed under an identifier of its own, as a local fork's is.
+OTHER_BUNDLE_ID: Final = "org.example.metabrowser-fork"
+TERMINAL_BUNDLE_ID: Final = "com.apple.Terminal"
+
+
+def _stand_in(directory: Path, name: str) -> Path:
+    directory.mkdir()
+    opener = directory / "open"
+    opener.write_text(_OPEN_STAND_IN.replace('"$OPEN_STAND_IN_NAME"', f"'{name}'"))
+    opener.chmod(opener.stat().st_mode | stat.S_IXUSR)
+    return opener
 
 
 class _Sandbox:
@@ -53,15 +72,15 @@ class _Sandbox:
         (notes / "docs").mkdir(parents=True)
         (notes / "README.md").write_text("# Notes\n")
         (notes / "docs" / "guide.md").write_text("# Guide\n")
+        (notes / "run-me.command").write_text("echo hi\n")
         self.current = _app(tmp_path, "Metabrowser.app", {OPENS_URLS_KEY: True})
         self.older = _app(tmp_path, "Metabrowser Older.app", {})
-        bin_dir = tmp_path / "bin"
-        bin_dir.mkdir()
-        opener = bin_dir / "open"
-        opener.write_text(_OPEN_STAND_IN)
-        opener.chmod(opener.stat().st_mode | stat.S_IXUSR)
+        self.terminal = _app(tmp_path, "Terminal.app", {"CFBundleIdentifier": TERMINAL_BUNDLE_ID})
+        self.opener = _stand_in(tmp_path / "system", "open")
+        planted = _stand_in(tmp_path / "planted", "planted")
         self.log = tmp_path / "open.log"
-        monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}")
+        monkeypatch.setattr(present, "open_executable", str(self.opener))
+        monkeypatch.setenv("PATH", f"{planted.parent}{os.pathsep}{os.environ.get('PATH', '')}")
         monkeypatch.setenv("OPEN_STAND_IN_LOG", str(self.log))
         monkeypatch.delenv("OPEN_STAND_IN_FAIL", raising=False)
         monkeypatch.delenv(present.BUNDLE_ID_ENV, raising=False)
@@ -71,8 +90,12 @@ class _Sandbox:
         self.looked_up: list[str] = []
         self.apps: dict[str, Path] = {}
         self.platform = True
+        self.unreachable = False
 
         def lookup(bundle_id: str) -> Path | None:
+            if self.unreachable:
+                self.looked_up.append(f"{bundle_id} -> error -10661")
+                raise AppLookupError("LaunchServices could not be asked (error -10661)")
             bundle = self.apps.get(bundle_id)
             self.looked_up.append(f"{bundle_id} -> {bundle if bundle else 'none'}")
             return bundle
@@ -126,65 +149,81 @@ def test_golden_present_hands_targets_to_the_app(
 ) -> None:
     sandbox = _Sandbox(tmp_path, monkeypatch)
     blocks: list[str] = []
+    as_json = ["--format", "json"]
 
-    # An app that opens URLs: every kind of target goes, each as `open -b` with the
-    # absolute path or the canonical github.com URL.
+    # A current app: every kind of target goes, as `open -b` with the folder, the root
+    # and then the file, or the canonical github.com URL.
     sandbox.apps = {DEV_BUNDLE_ID: sandbox.current}
-    blocks.append(sandbox.run(["notes", "--present", "--json"]))
+    blocks.append(sandbox.run(["notes", "--present", *as_json]))
     blocks.append(sandbox.run(["notes/README.md", "--present"]))
-    blocks.append(sandbox.run(["notes", "--path", "docs/guide.md", "--present", "--json"]))
-    blocks.append(sandbox.run(["https://github.com/octo/demo/pull/7/files", "--present", "--json"]))
+    blocks.append(sandbox.run(["notes", "--path", "docs/guide.md", "--present", *as_json]))
+    blocks.append(sandbox.run(["https://github.com/octo/demo/pull/7/files", "--present", *as_json]))
     blocks.append(
         sandbox.run(
             [
                 "https://raw.githubusercontent.com/Octo/Demo/main/docs/guide.md",
                 "--present",
-                "--json",
+                *as_json,
             ]
         )
     )
     blocks.append(sandbox.run(["git@github.com:octo/demo.git", "--present"]))
 
     # A folder inside the root is not sent: the app opens every folder as its own window.
-    blocks.append(sandbox.run(["notes", "--path", "docs", "--present", "--json"]))
+    blocks.append(sandbox.run(["notes", "--path", "docs", "--present", *as_json]))
 
-    # An older app without the marker would drop a URL, so it is sent folders only.
+    # An older app without the marker would drop a URL, and is sent nothing.
     sandbox.apps = {DEV_BUNDLE_ID: sandbox.older}
-    blocks.append(sandbox.run(["https://github.com/octo/demo", "--present", "--json"]))
-    blocks.append(sandbox.run(["https://github.com/octo/demo", "--present"]))
-    blocks.append(sandbox.run(["notes", "--present", "--json"]))
+    blocks.append(sandbox.run(["https://github.com/octo/demo", "--present", *as_json]))
+    blocks.append(sandbox.run(["notes", "--present"]))
 
     # The release build wins over the development build when both are registered.
     sandbox.apps = {RELEASE_BUNDLE_ID: sandbox.current, DEV_BUNDLE_ID: sandbox.older}
-    blocks.append(sandbox.run(["notes", "--present", "--json"]))
+    blocks.append(sandbox.run(["notes", "--present", *as_json]))
 
-    # The flag, then the environment, names the one app to look for.
-    sandbox.apps = {OTHER_BUNDLE_ID: sandbox.current, DEV_BUNDLE_ID: sandbox.older}
-    blocks.append(sandbox.run(["notes", "--present", "--app-bundle-id", OTHER_BUNDLE_ID, "--json"]))
+    # The flag, then the environment, names the one app to look for, which must still
+    # carry the marker: an override naming Terminal is not handed a file it would run.
+    sandbox.apps = {
+        OTHER_BUNDLE_ID: sandbox.current,
+        DEV_BUNDLE_ID: sandbox.older,
+        TERMINAL_BUNDLE_ID: sandbox.terminal,
+    }
+    blocks.append(sandbox.run(["notes", "--present", "--app-bundle-id", OTHER_BUNDLE_ID, *as_json]))
     blocks.append(
         sandbox.run(
-            ["https://github.com/octo/demo", "--present", "--json"],
+            ["https://github.com/octo/demo", "--present", *as_json],
             env={present.BUNDLE_ID_ENV: OTHER_BUNDLE_ID},
+        )
+    )
+    blocks.append(
+        sandbox.run(
+            ["notes/run-me.command", "--present", *as_json],
+            env={present.BUNDLE_ID_ENV: TERMINAL_BUNDLE_ID},
         )
     )
 
     # No app: nothing is sent, and the reason names both variants looked for.
     sandbox.apps = {}
-    blocks.append(sandbox.run(["notes", "--present", "--json"]))
+    blocks.append(sandbox.run(["notes", "--present", *as_json]))
     blocks.append(sandbox.run(["notes", "--present"]))
 
-    # LaunchServices refuses: the report says so and names the command to run instead.
+    # Blocked, with its own status: LaunchServices cannot be asked, as under a sandbox
+    # that denies its database, or `open` fails.
+    sandbox.unreachable = True
+    blocks.append(sandbox.run(["notes", "--present", *as_json]))
+    sandbox.unreachable = False
     sandbox.apps = {DEV_BUNDLE_ID: sandbox.current}
-    blocks.append(sandbox.run(["notes", "--present", "--json"], env={"OPEN_STAND_IN_FAIL": "1"}))
+    blocks.append(sandbox.run(["notes", "--present", *as_json], env={"OPEN_STAND_IN_FAIL": "1"}))
 
     # A target that cannot be presented looks up nothing.
-    blocks.append(sandbox.run(["missing", "--present", "--json"]))
+    blocks.append(sandbox.run(["missing", "--present", *as_json]))
     blocks.append(sandbox.run(["https://github.com/octo/demo/issues/5", "--present"]))
 
     # Off macOS there is no LaunchServices to ask.
     sandbox.platform = False
-    blocks.append(sandbox.run(["notes", "--present", "--json"]))
+    blocks.append(sandbox.run(["notes", "--present", *as_json]))
 
     rendered = "".join(blocks)
     assert str(tmp_path) not in rendered
+    assert "planted" not in rendered
     check_golden("cli-present-delivery.txt", rendered)

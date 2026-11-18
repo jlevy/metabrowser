@@ -127,7 +127,9 @@ $ metab --help
 │                                              diff: json/yaml dump the exact  │
 │                                              data the browser consumes.      │
 │                                              Show: json reports the four     │
-│                                              layers as an object. Api: json  │
+│                                              layers as an object. Present:   │
+│                                              json prints the target or the   │
+│                                              report as one object. Api: json │
 │                                              or yaml prints the envelope     │
 │                                              alone, so stdout parses; unset  │
 │                                              prints the route and status     │
@@ -137,8 +139,6 @@ $ metab --help
 │                                              inventory to finish. Applies to │
 │                                              --api, --show, and --check-api. │
 │                                              [default: 60.0]                 │
-│ --json                                       Emit structured JSON (plugin    │
-│                                              modes and --present).           │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Modes (default: serve ROOT) ────────────────────────────────────────────────╮
 │ --walk                    Walk ROOT with the inventory walker and dump the   │
@@ -165,7 +165,8 @@ $ metab --help
 │                           the Metabrowser macOS app through LaunchServices   │
 │                           and report what was sent. Clones and serves        │
 │                           nothing. Exit 3 when ROOT cannot be presented, 4   │
-│                           when nothing was sent.                             │
+│                           when no app takes it, 5 when LaunchServices could  │
+│                           not be asked or refused it.                        │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Diff (--diff SPEC) ─────────────────────────────────────────────────────────╮
 │ --diff-patch        PATH  Print one changed file's hunks from the comparison │
@@ -259,6 +260,9 @@ $ metab --help
 │                                                  [default: us-central1-b]    │
 │ --project            TEXT                        GCP project (only with      │
 │                                                  --gcp).                     │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Plugins (--plugins / --plugin / --doctor) ──────────────────────────────────╮
+│ --json          Emit structured JSON (plugin modes).                         │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Present (--present) ────────────────────────────────────────────────────────╮
 │ --dry-run                  Resolve ROOT and print what --present would hand  │

@@ -18,6 +18,7 @@ import re
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from typing import get_args
 
 import click
 from watchfiles import DefaultFilter
@@ -25,11 +26,12 @@ from watchfiles import DefaultFilter
 from metabrowser.builtin_plugins.github.provider import MAX_FIRST_CLONE_ENV
 from metabrowser.cli.exit_codes import (
     INTERRUPTED_EXIT_CODE,
-    PRESENT_NOT_DELIVERED_EXIT_CODE,
+    PRESENT_BLOCKED_EXIT_CODE,
+    PRESENT_NO_APP_EXIT_CODE,
     PRESENT_REFUSED_EXIT_CODE,
 )
 from metabrowser.cli.hangup import HANGUP_EXIT_STATUS, TERMINATION_EXIT_STATUS
-from metabrowser.cli.present import BUNDLE_ID_ENV, OPENS_URLS_KEY
+from metabrowser.cli.present import BUNDLE_ID_ENV, OPENS_URLS_KEY, DeliveryCode, PresentKind
 from metabrowser.constants import LOGS_DIR, STATE_DIR
 from metabrowser.dotenv import ALLOWED_KEYS
 from metabrowser.file_extensions import BROWSER_TRACKABLE_EXTS
@@ -223,9 +225,15 @@ def stated_values() -> list[Stated]:
         ),
         Stated(
             "docs/command-line.md",
-            "the --present status when nothing was sent",
-            r"^\| (\d+) \| `--present`: nothing was sent",
-            (str(PRESENT_NOT_DELIVERED_EXIT_CODE),),
+            "the --present status when no app takes the target",
+            r"^\| (\d+) \| `--present`: no app takes the target",
+            (str(PRESENT_NO_APP_EXIT_CODE),),
+        ),
+        Stated(
+            "docs/command-line.md",
+            "the --present status when LaunchServices is blocked",
+            r"^\| (\d+) \| `--present`: LaunchServices could not be asked",
+            (str(PRESENT_BLOCKED_EXIT_CODE),),
         ),
         Stated(
             "docs/command-line.md",
@@ -235,8 +243,8 @@ def stated_values() -> list[Stated]:
         ),
         Stated(
             "docs/command-line.md",
-            "the key an app that opens URLs declares",
-            r"whose `Info.plist` declares `(\w+)`",
+            "the key an app that takes what --present sends declares",
+            r"whose `Info.plist` declares `(\w+)` true",
             (OPENS_URLS_KEY,),
         ),
         Stated(
@@ -406,3 +414,19 @@ def test_the_values_check_sees_what_it_must() -> None:
     assert findings("ends in `.gz` or `.bz2`", pair)
     assert _series(["a", "b", "c"]) == "a, b, and c"
     assert _series(["a", "b"]) == "a and b"
+
+
+_PRESENT_SECTION = "Handing a Target to the App: `--present`"
+
+
+def test_the_present_guide_names_every_delivery_code_and_kind() -> None:
+    guide = (REPO_ROOT / "docs/command-line.md").read_text(encoding="utf-8")
+    section = guide[guide.index(f"\n## {_PRESENT_SECTION}\n") :]
+    section = section[: section.find("\n## ", 1)]
+    table = [match.group(1) for match in re.finditer(r"^\| `([a-z_]+)` \| ", section, re.MULTILINE)]
+    kinds = re.search(r"^- \*\*`kind`:\*\* (.+?)\. ", section, re.MULTILINE)
+
+    assert table == list(get_args(DeliveryCode.__value__)), "update the guide's code table"
+    assert kinds is not None
+    named = re.findall(r"`([a-z_]+)`", kinds.group(1))
+    assert sorted(named) == sorted(get_args(PresentKind.__value__)), "update the kind list"

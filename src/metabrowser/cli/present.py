@@ -1,12 +1,15 @@
-"""``metab TARGET --present``: hand a folder, a file, or a GitHub URL to the macOS app.
+"""``metab ROOT --present``: hand a folder, a file, or a GitHub URL to the macOS app.
 
 This is the command-line half of opening anything in the native app. It is a client
-mode: it reads TARGET as ROOT is read, imports neither the server nor the inventory,
-clones and fetches nothing, and gives the app one path or URL through LaunchServices,
-which is how macOS opens a document in an app (``open -b``). The app does the rest by
-running ``metab`` on what it was given, as it does for a folder opened in Finder.
+mode: it reads ROOT as every mode reads it, clones and fetches nothing, starts no server,
+and gives the app what it needs through LaunchServices, which is how macOS opens a
+document in an app (``open -b``). The app does the rest by running ``metab`` on what it
+was given, as it does for a folder opened in Finder. A dry run loads nothing beyond what
+``metab --version`` loads except this module, the property-list reader, and for a link
+the URL grammar, which ``test_present_dry_run_loads_little_beyond_version`` in
+``tests/test_plugin_public_api.py`` holds.
 
-**Resolving.** :func:`resolve_target` reads TARGET with the ``--path`` it came with:
+**Resolving.** :func:`resolve_target` reads ROOT with the ``--path`` it came with:
 
 - a folder is ``folder``, rooted there, at ``/view/``; with ``--path`` naming a folder
   inside it, at that folder's address;
@@ -16,25 +19,27 @@ running ``metab`` on what it was given, as it does for a folder opened in Finder
   ``commit``, or ``pull_request``, rooted at the canonical repository URL, which never
   names a ref, because the app keys a session by its repository.
 
-A GitHub URL's ``page`` is the address a server of its pin opens: ``/pull/<n>`` with
-its tab, ``/commit/<id>`` with the ID as the URL spells it, or ``/view/`` for a
-repository. For a ``tree`` or ``blob`` URL only the mirror knows where a ref containing
-``/`` ends (:class:`~metabrowser.cache.urls.RepositorySelection`), and nothing here reads
-a mirror, so ``page`` takes the first segment as the ref, which is right for every ref
-without a ``/``; the server the app starts resolves the URL itself and opens the right
-address either way.
+``page`` is the address a server of the root opens, or ``None`` where only the mirror
+knows it, which a consumer reads as the server's entry page: the server the app starts
+resolves the URL itself and opens the right address. :func:`_source_page` says which
+links leave one reading.
+
+``handoff`` is exactly what ``open -b <bundle id>`` is given after the identifier: the
+folder; the root and then the file, so that the app opens the reported root and shows the
+file in it; or the canonical web URL. A folder inside the root has none, because the app
+opens every folder in a window of its own.
 
 Anything else is a :class:`Refusal` with a stable code and a one-line message that
 names the fix. ``--dry-run`` stops here and prints the target, which is how the app
 checks what a user typed without parsing a URL itself.
 
 **Delivering.** :func:`deliver` finds the app through LaunchServices, release first,
-then the development build, or the one ``--app-bundle-id`` or
-:data:`BUNDLE_ID_ENV` names, and sends the target with ``open -b``. A URL goes only to
-an app whose ``Info.plist`` declares :data:`OPENS_URLS_KEY`, because an app without it
-drops a URL silently while ``open`` still succeeds. A folder inside the root cannot be
-selected in the app, which opens every folder as a window of its own, so it is not sent.
-``open`` returning 0 means LaunchServices took the target, not that a window shows it,
+then the development build, or the one ``--app-bundle-id`` or :data:`BUNDLE_ID_ENV`
+names, and sends the handoff with ``open -b``. It sends only to a bundle whose
+``Info.plist`` declares :data:`OPENS_URLS_KEY`, the marker of a Metabrowser build that
+takes everything this mode sends: an app without it drops a URL while ``open`` still
+succeeds, and an override naming another app must not receive a file it would run.
+``open`` returning 0 means LaunchServices took the handoff, not that a window shows it,
 and the app cannot answer yet, so every report says ``confirmed: false``.
 """
 
@@ -46,7 +51,7 @@ import os
 import plistlib
 import re
 import shlex
-import shutil
+import stat
 import subprocess
 import sys
 from collections.abc import Callable, Sequence
@@ -56,10 +61,14 @@ from typing import TYPE_CHECKING, Final, Literal, NoReturn
 
 import typer
 
-from metabrowser.cli.exit_codes import PRESENT_NOT_DELIVERED_EXIT_CODE, PRESENT_REFUSED_EXIT_CODE
+from metabrowser.cli.exit_codes import (
+    PRESENT_BLOCKED_EXIT_CODE,
+    PRESENT_NO_APP_EXIT_CODE,
+    PRESENT_REFUSED_EXIT_CODE,
+)
 from metabrowser.errors import CLIError
 from metabrowser.invisible_chars import display_segment
-from metabrowser.view_routes import format_commit_href, format_view_href
+from metabrowser.view_routes import format_view_href
 
 if TYPE_CHECKING:
     from metabrowser.cache.urls import RejectedRoot, RepositorySelection
@@ -71,7 +80,8 @@ DEV_BUNDLE_ID: Final = "io.github.jlevy.metabrowser.dev"
 DEFAULT_BUNDLE_IDS: Final = (RELEASE_BUNDLE_ID, DEV_BUNDLE_ID)
 # Names the one app to look for, as `--app-bundle-id` does; the flag wins.
 BUNDLE_ID_ENV: Final = "METABROWSER_APP_BUNDLE_ID"
-# The Info.plist key, a boolean, that an app which opens a GitHub URL sent to it declares.
+# The Info.plist key, a boolean, that a Metabrowser build which opens everything
+# `--present` sends declares true: folders, files, and GitHub URLs.
 OPENS_URLS_KEY: Final = "MetabrowserOpensURLs"
 # An app's Info.plist is a few kilobytes; a larger one is not read.
 INFO_PLIST_MAX_BYTES: Final = 1024 * 1024
@@ -79,13 +89,39 @@ INFO_PLIST_MAX_BYTES: Final = 1024 * 1024
 # LaunchServices has it, without waiting for a window, but a launch of an app that is not
 # running comes first. Not measured: it bounds a hang rather than estimating a cost, so
 # it is generous. Past it the report says `open_failed`, though LaunchServices may still
-# deliver what it was given.
+# deliver what it was given. The hand check in docs/project/qa/qa-macos-app-hand-checks.md
+# records how long `open` takes.
 OPEN_TIMEOUT_S: Final = 30.0
 
-# CFBundleIdentifier's alphabet: letters, digits, hyphens, and periods.
-_BUNDLE_ID: Final = re.compile(r"^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$")
+# CFBundleIdentifier's alphabet, letters, digits, hyphens, and periods, in segments that
+# start with a letter or a digit, so no value can read as an option after `open -b`.
+_BUNDLE_ID: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]*(?:\.[A-Za-z0-9][A-Za-z0-9-]*)+$")
 
 type PresentKind = Literal["folder", "file", "repository", "pull_request", "commit", "tree"]
+"""What a target is. A file is ``file`` locally and on GitHub, a folder ``folder``
+locally and ``tree`` on GitHub; ``root`` tells the two apart."""
+
+type DeliveryCode = Literal[
+    "not_confirmed",
+    "not_macos",
+    "app_not_found",
+    "app_not_marked",
+    "app_cannot_select_folder",
+    "lookup_failed",
+    "open_failed",
+]
+"""What became of a target that resolved: taken by LaunchServices, or why not sent."""
+
+# The exit status each delivery code ends the command with (`cli/exit_codes.py`).
+DELIVERY_EXIT_CODES: Final[dict[DeliveryCode, int]] = {
+    "not_confirmed": 0,
+    "not_macos": PRESENT_NO_APP_EXIT_CODE,
+    "app_not_found": PRESENT_NO_APP_EXIT_CODE,
+    "app_not_marked": PRESENT_NO_APP_EXIT_CODE,
+    "app_cannot_select_folder": PRESENT_NO_APP_EXIT_CODE,
+    "lookup_failed": PRESENT_BLOCKED_EXIT_CODE,
+    "open_failed": PRESENT_BLOCKED_EXIT_CODE,
+}
 
 _SOURCE_KINDS: Final[dict[str, PresentKind]] = {
     "repository": "repository",
@@ -102,16 +138,22 @@ class Presentable:
 
     kind: PresentKind
     root: str
-    page: str
-    handoff: str
-    """What ``open`` is given: an absolute path, or the canonical web URL."""
-    url: bool
-    """The handoff is a URL, which only an app declaring :data:`OPENS_URLS_KEY` takes."""
-    selects_folder: bool = False
-    """The page is a folder inside the root, which the app cannot select."""
+    page: str | None
+    """The address in *root*, or ``None`` where only the mirror knows it."""
+    handoff: tuple[str, ...] | None
+    """What ``open -b <id>`` is given: absolute paths, or the canonical web URL; ``None``
+    for a folder inside the root, which no handoff makes the app select."""
+    url: bool = False
+    """The handoff is a URL."""
 
     def as_json(self) -> dict[str, object]:
-        return {"kind": self.kind, "root": self.root, "page": self.page, "refusal": None}
+        return {
+            "kind": self.kind,
+            "root": self.root,
+            "page": self.page,
+            "handoff": list(self.handoff) if self.handoff is not None else None,
+            "refusal": None,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,6 +168,7 @@ class Refusal:
             "kind": None,
             "root": None,
             "page": None,
+            "handoff": None,
             "refusal": {"code": self.code, "message": self.message},
         }
 
@@ -184,20 +227,22 @@ def _resolve_local(value: str, path: str) -> Presentable | Refusal:
         if path:
             return Refusal(
                 "path_with_file",
-                "--path selects inside a folder, and TARGET is a file; "
-                "present the file alone, or name its folder as TARGET",
+                "--path selects inside a folder, and ROOT is a file; "
+                "present the file alone, or name its folder as ROOT",
             )
         page = _view_href(resolved.name)
         if isinstance(page, Refusal):
             return page
-        return Presentable("file", str(resolved.parent), page, str(resolved), url=False)
+        folder = str(resolved.parent)
+        return Presentable("file", folder, page, (folder, str(resolved)))
     if not resolved.is_dir():
         return Refusal(
             "not_a_file_or_folder",
             f"{_shown(resolved)} is neither a file nor a folder; present a file or a folder",
         )
+    root = str(resolved)
     if not path:
-        return Presentable("folder", str(resolved), "/view/", str(resolved), url=False)
+        return Presentable("folder", root, "/view/", (root,))
     selected = (resolved / path).resolve()
     if not selected.is_relative_to(resolved):
         return Refusal(
@@ -213,39 +258,79 @@ def _resolve_local(value: str, path: str) -> Presentable | Refusal:
     logical = selected.relative_to(resolved).as_posix()
     if selected.is_dir():
         if not logical or logical == ".":
-            return Presentable("folder", str(resolved), "/view/", str(resolved), url=False)
+            return Presentable("folder", root, "/view/", (root,))
         page = _view_href(logical + "/")
         if isinstance(page, Refusal):
             return page
-        return Presentable(
-            "folder", str(resolved), page, str(selected), url=False, selects_folder=True
-        )
+        return Presentable("folder", root, page, None)
     page = _view_href(logical)
     if isinstance(page, Refusal):
         return page
-    return Presentable("file", str(resolved), page, str(selected), url=False)
+    return Presentable("file", root, page, (root, str(selected)))
 
 
 def _rejected(rejected: RejectedRoot) -> Refusal:
     if rejected.detail:
         return Refusal(rejected.reason, rejected.detail)
     if rejected.reason == "empty":
-        return Refusal("empty", "TARGET is empty; write . for the current folder")
+        return Refusal("empty", "ROOT is empty; write . for the current folder")
     return Refusal(
         rejected.reason,
-        "TARGET is neither a path that exists nor a GitHub URL; "
+        "ROOT is neither a path that exists nor a GitHub URL; "
         "give a local file or folder, or a github.com URL",
     )
 
 
-def _source_page(selection: RepositorySelection) -> str:
-    if selection.kind == "commit" and selection.commit is not None:
-        return format_commit_href(selection.commit)
-    # Imported for a source only: it loads the Git tree source's path encoding, which no
-    # local target needs (docs/development.md, "Deferred Imports").
-    from metabrowser.cli.selection_href import selection_view_href
+# A ref spelled in full, which `resolve_ref_and_path` (`cache/resolve.py`) looks up in
+# that namespace alone.
+_EXPLICIT_REF_PREFIXES: Final = ((b"refs", b"heads"), (b"refs", b"tags"))
 
-    return selection_view_href(selection, selection.ref_and_path[1:])
+
+def _unambiguous_path(selection: RepositorySelection) -> tuple[bytes, ...] | None:
+    """The path a ``tree`` or ``blob`` URL selects when every reading of it agrees.
+
+    ``resolve_selection`` (``cache/resolve.py``) reads a leading ``HEAD`` as the default
+    branch and the rest as the path. Otherwise it drops a leading ``refs/heads/`` or
+    ``refs/tags/``, and tries each leading run of the segments left as a ref, which only
+    the mirror can answer. A tree with one segment left is that ref at its top, and a
+    blob with two is a ref and a file, since a blob names a file; anything longer is
+    ``None``.
+    """
+
+    segments = selection.ref_and_path
+    if segments[:1] == (b"HEAD",):
+        return segments[1:]
+    if segments[:2] in _EXPLICIT_REF_PREFIXES:
+        segments = segments[2:]
+    if selection.kind == "tree" and len(segments) == 1:
+        return ()
+    if selection.kind == "blob" and len(segments) == 2:
+        return segments[1:]
+    return None
+
+
+def _source_page(selection: RepositorySelection) -> str | None:
+    """The page a served pin of *selection* opens at, or ``None`` if only its mirror knows.
+
+    A commit opens at ``/commit/<id>``, which the commit route answers only for a full
+    ID, so an abbreviated one, which the mirror expands, has no page here.
+    """
+
+    # Imported for a source only: they load the Git tree source's path encoding and the
+    # revision grammar, which no local target needs (docs/development.md, "Deferred
+    # Imports").
+    from metabrowser.cli.selection_href import selection_view_href
+    from metabrowser.git.wire import is_full_revision
+
+    if selection.kind == "commit":
+        commit = selection.commit
+        if commit is None or not is_full_revision(commit):
+            return None
+        return selection_view_href(selection, (), commit=commit)
+    if selection.kind in {"tree", "blob"}:
+        path = _unambiguous_path(selection)
+        return None if path is None else selection_view_href(selection, path)
+    return selection_view_href(selection, ())
 
 
 def _resolve_source(value: str, path: str) -> Presentable | Refusal:
@@ -274,8 +359,7 @@ def _resolve_source(value: str, path: str) -> Presentable | Refusal:
     if selection is None or handoff is None:
         return Refusal(
             "unsupported_source",
-            "--present opens a local file or folder, or a GitHub URL; "
-            "serve another Git source with metab URL",
+            "--present opens a local file or folder, or a GitHub URL; give one of those",
         )
     if path:
         return Refusal(
@@ -287,13 +371,13 @@ def _resolve_source(value: str, path: str) -> Presentable | Refusal:
         _SOURCE_KINDS[selection.kind],
         classified.normalized,
         _source_page(selection),
-        handoff,
+        (handoff,),
         url=True,
     )
 
 
 def resolve_target(value: str, path: str, *, local: bool) -> Presentable | Refusal:
-    """What TARGET with *path* presents, reading no repository and starting nothing.
+    """What ROOT with *path* presents, reading no repository and starting nothing.
 
     *local* is ROOT's own rule (``cli/main.py``): an argument that names an existing
     path, or that the grammar could only read as one, is that path, and anything else is
@@ -317,6 +401,11 @@ _CORE_SERVICES: Final = "/System/Library/Frameworks/CoreServices.framework/CoreS
 _CF_STRING_ENCODING_UTF8: Final = 0x08000100
 # MAXPATHLEN is 1024 on macOS; the buffer is roomier than any path it can return.
 _PATH_BUFFER_BYTES: Final = 4096
+# `kLSApplicationNotFoundErr`, LaunchServices' answer for an identifier it has no app
+# for. Any other error means it could not be asked, as when a sandbox denies its
+# database: on 2026-11-17 a lookup under `sandbox-exec` denying `com.apple.lsd.mapdb`
+# answered -10661 for every identifier, an installed app's included.
+_LS_APPLICATION_NOT_FOUND: Final = -10814
 
 
 def _launch_services_bundle(bundle_id: str) -> Path | None:
@@ -326,52 +415,67 @@ def _launch_services_bundle(bundle_id: str) -> Path | None:
     LaunchServices prefers first, which is the one ``open -b`` opens. It reads the
     database ``open -b`` reads, so it finds an app wherever it was registered, which
     Spotlight's index (``mdfind``) does not promise: Spotlight can be off, or leave out
-    the folder an app is in. On 2026-11-17 one lookup took 9 ms on a Mac.
+    the folder an app is in. On 2026-11-17 one lookup took 9 ms on a Mac. Raises
+    :class:`AppLookupError` when LaunchServices cannot be loaded or asked, which is not
+    the same answer as an app it does not have.
     """
 
     try:
         cf = ctypes.CDLL(_CORE_FOUNDATION)
         ls = ctypes.CDLL(_CORE_SERVICES)
-    except OSError as exc:
+        create_string = cf.CFStringCreateWithCString
+        release = cf.CFRelease
+        array_count = cf.CFArrayGetCount
+        array_value = cf.CFArrayGetValueAtIndex
+        url_path = cf.CFURLGetFileSystemRepresentation
+        error_code = cf.CFErrorGetCode
+        copy_urls = ls.LSCopyApplicationURLsForBundleIdentifier
+    except (OSError, AttributeError) as exc:
+        # AttributeError: a symbol the framework no longer exports. The lookup function
+        # has been deprecated since macOS 12.
         raise AppLookupError(f"LaunchServices could not be loaded ({exc})") from exc
-    cf.CFStringCreateWithCString.argtypes = (ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint32)
-    cf.CFStringCreateWithCString.restype = ctypes.c_void_p
-    cf.CFRelease.argtypes = (ctypes.c_void_p,)
-    cf.CFRelease.restype = None
-    cf.CFArrayGetCount.argtypes = (ctypes.c_void_p,)
-    cf.CFArrayGetCount.restype = ctypes.c_long
-    cf.CFArrayGetValueAtIndex.argtypes = (ctypes.c_void_p, ctypes.c_long)
-    cf.CFArrayGetValueAtIndex.restype = ctypes.c_void_p
-    cf.CFURLGetFileSystemRepresentation.argtypes = (
-        ctypes.c_void_p,
-        ctypes.c_bool,
-        ctypes.c_char_p,
-        ctypes.c_long,
-    )
-    cf.CFURLGetFileSystemRepresentation.restype = ctypes.c_bool
-    ls.LSCopyApplicationURLsForBundleIdentifier.argtypes = (ctypes.c_void_p, ctypes.c_void_p)
-    ls.LSCopyApplicationURLsForBundleIdentifier.restype = ctypes.c_void_p
+    create_string.argtypes = (ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint32)
+    create_string.restype = ctypes.c_void_p
+    release.argtypes = (ctypes.c_void_p,)
+    release.restype = None
+    array_count.argtypes = (ctypes.c_void_p,)
+    array_count.restype = ctypes.c_long
+    array_value.argtypes = (ctypes.c_void_p, ctypes.c_long)
+    array_value.restype = ctypes.c_void_p
+    url_path.argtypes = (ctypes.c_void_p, ctypes.c_bool, ctypes.c_char_p, ctypes.c_long)
+    url_path.restype = ctypes.c_bool
+    error_code.argtypes = (ctypes.c_void_p,)
+    error_code.restype = ctypes.c_long
+    copy_urls.argtypes = (ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p))
+    copy_urls.restype = ctypes.c_void_p
 
-    name = cf.CFStringCreateWithCString(None, bundle_id.encode("ascii"), _CF_STRING_ENCODING_UTF8)
+    name = create_string(None, bundle_id.encode("ascii"), _CF_STRING_ENCODING_UTF8)
     if not name:
         raise AppLookupError("the bundle identifier could not be passed to LaunchServices")
+    error = ctypes.c_void_p()
     try:
-        urls = ls.LSCopyApplicationURLsForBundleIdentifier(name, None)
+        urls = copy_urls(name, ctypes.byref(error))
     finally:
-        cf.CFRelease(name)
+        release(name)
+    code: int | None = None
+    if error.value:
+        try:
+            code = int(error_code(error))
+        finally:
+            release(error)
     if not urls:
-        return None
+        if code is None or code == _LS_APPLICATION_NOT_FOUND:
+            return None
+        raise AppLookupError(f"LaunchServices could not be asked (error {code})")
     try:
-        if cf.CFArrayGetCount(urls) < 1:
+        if array_count(urls) < 1:
             return None
         buffer = ctypes.create_string_buffer(_PATH_BUFFER_BYTES)
-        if not cf.CFURLGetFileSystemRepresentation(
-            cf.CFArrayGetValueAtIndex(urls, 0), True, buffer, _PATH_BUFFER_BYTES
-        ):
+        if not url_path(array_value(urls, 0), True, buffer, _PATH_BUFFER_BYTES):
             raise AppLookupError("LaunchServices named an app with no file-system path")
         return Path(os.fsdecode(buffer.value))
     finally:
-        cf.CFRelease(urls)
+        release(urls)
 
 
 # How an app bundle is looked up, and `None` where there is no LaunchServices. A module
@@ -380,21 +484,40 @@ bundle_lookup: Callable[[str], Path | None] | None = (
     _launch_services_bundle if sys.platform == "darwin" else None
 )
 
+# The `open` that hands LaunchServices the target: the system's, by its one location on
+# macOS, never whichever `open` comes first on PATH. A module attribute so tests replace
+# it with a recording stand-in.
+open_executable: str = "/usr/bin/open"
 
-def opens_urls(bundle: Path) -> bool:
-    """Whether the app at *bundle* declares that it opens a URL sent to it."""
+
+def declares_marker(bundle: Path) -> bool:
+    """Whether the app at *bundle* declares :data:`OPENS_URLS_KEY` true in its Info.plist.
+
+    Reads a regular file only, without waiting on one that is not (a FIFO would block),
+    and at most :data:`INFO_PLIST_MAX_BYTES`; anything it cannot read or parse is no.
+    """
 
     info = bundle / "Contents" / "Info.plist"
     try:
-        with info.open("rb") as stream:
-            data = stream.read(INFO_PLIST_MAX_BYTES + 1)
+        descriptor = os.open(info, os.O_RDONLY | os.O_NONBLOCK)
     except OSError:
         return False
+    with os.fdopen(descriptor, "rb") as stream:
+        try:
+            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                return False
+            data = stream.read(INFO_PLIST_MAX_BYTES + 1)
+        except OSError:
+            return False
     if len(data) > INFO_PLIST_MAX_BYTES:
         return False
     try:
         plist = plistlib.loads(data)
-    except (plistlib.InvalidFileException, ValueError, OverflowError):
+    except Exception:
+        # A malformed property list raises from the XML parser or the binary reader, and
+        # what it raises is not one class: ExpatError, IndexError, AttributeError, and
+        # RecursionError are among them. Every one means the same here, no marker, so
+        # nothing is sent.
         return False
     return isinstance(plist, dict) and plist.get(OPENS_URLS_KEY) is True
 
@@ -408,27 +531,28 @@ class Delivery:
 
     delivered_to: Literal["app", "none"]
     bundle_id: str | None
-    code: str
+    bundle_path: str | None
+    """The bundle LaunchServices named for *bundle_id*, whose Info.plist was read."""
+    code: DeliveryCode
     message: str
 
     @property
-    def reason(self) -> str:
-        return f"{self.code}: {self.message}"
+    def exit_code(self) -> int:
+        return DELIVERY_EXIT_CODES[self.code]
 
 
-def _not_sent(code: str, message: str, bundle_id: str | None = None) -> Delivery:
-    return Delivery("none", bundle_id, code, message)
+def _not_sent(
+    code: DeliveryCode, message: str, bundle_id: str | None = None, bundle: Path | None = None
+) -> Delivery:
+    return Delivery("none", bundle_id, str(bundle) if bundle else None, code, message)
 
 
-def _send(bundle_id: str, handoff: str) -> str | None:
+def _send(bundle_id: str, handoff: Sequence[str]) -> str | None:
     """Give *handoff* to the app through ``open -b``; ``None``, or why it failed."""
 
-    opener = shutil.which("open")
-    if opener is None:
-        return "there is no open command on PATH"
     try:
         result = subprocess.run(
-            [opener, "-b", bundle_id, handoff],
+            [open_executable, "-b", bundle_id, *handoff],
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
@@ -454,14 +578,14 @@ def deliver(target: Presentable, bundle_ids: Sequence[str]) -> Delivery:
     if lookup is None:
         return _not_sent(
             "not_macos",
-            "the Metabrowser app runs on macOS only; serve the target with metab TARGET",
+            "the Metabrowser app runs on macOS only; serve the target with metab ROOT",
         )
     found: tuple[str, Path] | None = None
     for bundle_id in bundle_ids:
         try:
             bundle = lookup(bundle_id)
         except AppLookupError as exc:
-            return _not_sent("lookup_failed", f"{exc}; serve the target with metab TARGET")
+            return _not_sent("lookup_failed", f"{exc}; serve the target with metab ROOT instead")
         if bundle is not None:
             found = (bundle_id, bundle)
             break
@@ -469,37 +593,37 @@ def deliver(target: Presentable, bundle_ids: Sequence[str]) -> Delivery:
         return _not_sent(
             "app_not_found",
             f"LaunchServices knows no app {' or '.join(bundle_ids)}; install or build the "
-            "Metabrowser app and open it once, or serve the target with metab TARGET",
+            "Metabrowser app and open it once, or serve the target with metab ROOT",
         )
     bundle_id, bundle = found
-    if target.selects_folder:
+    if target.handoff is None:
         return _not_sent(
             "app_cannot_select_folder",
             "the app opens a folder in a window of its own and cannot select one inside "
-            f"another; present {_shown(target.handoff)} itself, or TARGET without --path",
+            "another; present that folder itself, or ROOT without --path",
             bundle_id,
+            bundle,
         )
-    if target.url and not opens_urls(bundle):
+    if not declares_marker(bundle):
         return _not_sent(
-            "app_opens_no_urls",
-            f"the app at {_shown(bundle)} does not declare {OPENS_URLS_KEY}, so it would "
-            "drop a URL; update it to a build that opens GitHub URLs",
+            "app_not_marked",
+            f"the app at {_shown(bundle)} does not declare {OPENS_URLS_KEY}, so it is not a "
+            "Metabrowser build that takes what --present sends; update it to a current build",
             bundle_id,
+            bundle,
         )
     failure = _send(bundle_id, target.handoff)
     if failure is not None:
         return _not_sent(
-            "open_failed",
-            f"{failure}; run {_shown(shlex.join(['open', '-b', bundle_id, target.handoff]))} "
-            "yourself, outside any sandbox",
-            bundle_id,
+            "open_failed", f"{failure}; serve the target with metab ROOT instead", bundle_id, bundle
         )
     return Delivery(
         "app",
         bundle_id,
+        str(bundle),
         "not_confirmed",
-        f"LaunchServices took the target for the app at {_shown(bundle)}; the app does not "
-        "reply yet, so nothing confirms that a window shows it",
+        "LaunchServices took the target; the app does not reply yet, so nothing confirms "
+        "that a window shows it",
     )
 
 
@@ -534,27 +658,44 @@ def _exit(code: int) -> NoReturn:
     raise typer.Exit(code=code)
 
 
+def _report(
+    delivery: Delivery | None, target: Presentable | Refusal, code: str, reason: str
+) -> dict[str, object]:
+    return {
+        "delivered_to": delivery.delivered_to if delivery else "none",
+        "bundle_id": delivery.bundle_id if delivery else None,
+        "bundle_path": delivery.bundle_path if delivery else None,
+        "target": target.as_json(),
+        "confirmed": False,
+        "code": code,
+        "reason": reason,
+    }
+
+
 def _refuse(refusal: Refusal, *, as_json: bool, dry_run: bool) -> NoReturn:
     if as_json:
         if dry_run:
             _print_json(refusal.as_json())
         else:
-            _print_json(
-                {
-                    "delivered_to": "none",
-                    "bundle_id": None,
-                    "target": refusal.as_json(),
-                    "confirmed": False,
-                    "reason": f"{refusal.code}: {refusal.message}",
-                }
-            )
+            _print_json(_report(None, refusal, refusal.code, refusal.message))
     else:
         typer.echo(f"Error: {refusal.message} ({refusal.code})", err=True)
     _exit(PRESENT_REFUSED_EXIT_CODE)
 
 
 def _target_lines(target: Presentable) -> list[str]:
-    return [f"kind: {target.kind}", f"root: {_shown(target.root)}", f"page: {target.page}"]
+    page = target.page if target.page is not None else "(the server's entry page)"
+    handoff = (
+        shlex.join(_shown(argument) for argument in target.handoff)
+        if target.handoff is not None
+        else "(none)"
+    )
+    return [
+        f"kind: {target.kind}",
+        f"root: {_shown(target.root)}",
+        f"page: {page}",
+        f"handoff: {handoff}",
+    ]
 
 
 def run_present(
@@ -566,7 +707,7 @@ def run_present(
     as_json: bool,
     app_bundle_id: str | None,
 ) -> None:
-    """Resolve TARGET and, unless *dry_run*, hand it to the app; exit with what happened."""
+    """Resolve ROOT and, unless *dry_run*, hand it to the app; exit with what happened."""
 
     bundle_ids = () if dry_run else present_bundle_ids(app_bundle_id)
     target = resolve_target(value, path, local=local)
@@ -580,43 +721,41 @@ def run_present(
         return
     delivery = deliver(target, bundle_ids)
     if as_json:
-        _print_json(
-            {
-                "delivered_to": delivery.delivered_to,
-                "bundle_id": delivery.bundle_id,
-                "target": target.as_json(),
-                "confirmed": False,
-                "reason": delivery.reason,
-            }
-        )
+        _print_json(_report(delivery, target, delivery.code, delivery.message))
     elif delivery.delivered_to == "app":
         lines = [
             "delivered_to: app",
             f"bundle_id: {delivery.bundle_id}",
+            f"bundle_path: {_shown(delivery.bundle_path or '')}",
             *_target_lines(target),
             "confirmed: false",
-            f"reason: {delivery.reason}",
+            f"code: {delivery.code}",
+            f"reason: {delivery.message}",
         ]
         typer.echo("\n".join(lines))
     else:
         typer.echo(f"Error: not sent to the app: {delivery.message} ({delivery.code})", err=True)
-    if delivery.delivered_to != "app":
-        _exit(PRESENT_NOT_DELIVERED_EXIT_CODE)
+    if delivery.exit_code:
+        _exit(delivery.exit_code)
 
 
 __all__ = [
     "BUNDLE_ID_ENV",
     "DEFAULT_BUNDLE_IDS",
+    "DELIVERY_EXIT_CODES",
     "DEV_BUNDLE_ID",
     "OPENS_URLS_KEY",
     "RELEASE_BUNDLE_ID",
     "AppLookupError",
     "Delivery",
+    "DeliveryCode",
+    "PresentKind",
     "Presentable",
     "Refusal",
     "bundle_lookup",
+    "declares_marker",
     "deliver",
-    "opens_urls",
+    "open_executable",
     "present_bundle_ids",
     "resolve_target",
     "run_present",

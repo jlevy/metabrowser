@@ -112,7 +112,8 @@ def url_reducers() -> tuple[ProviderUrlReducer, ...]:
     which classifying a ROOT needs: on 2026-11-17 importing the GitHub provider loaded 55
     more modules and took 0.77 s cold, against 7 modules and 14 ms for its reducer, and
     ``--present --dry-run`` classifies a ROOT and opens nothing.
-    ``test_url_reducers_are_the_providers_reducers`` holds this list to the providers'.
+    ``test_url_reducers_are_the_providers_reducers`` in ``tests/test_cache_urls.py`` holds
+    this list to the providers'.
     """
 
     from metabrowser.builtin_plugins.github.urls import GithubUrlReducer

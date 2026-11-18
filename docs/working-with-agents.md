@@ -60,8 +60,10 @@ The page stays live while the agent works: new and changed files appear in the t
 a log being written tails in place ([live updates](browsing-files.md#live-updates)). The
 server runs until the agent stops it or you ask it to.
 
-A single command that shows a page in the running macOS app or your browser, and reports
-which it did, is planned as `metab --present`
+`metab ROOT --present` hands a folder, a file, or a GitHub URL to the
+[macOS app](macos-app.md#opening-from-a-terminal-or-an-agent) instead, and reports what
+it sent; the app does not yet confirm that a window shows it, and a browser when there
+is no app is planned
 ([native macOS app plan](project/specs/active/plan-2026-11-10-native-macos-app.md),
 Phase 3).
 

@@ -137,10 +137,13 @@ acquisition, so cache inspection cannot expose origin objects through `/api/tree
 ## Presenting to the App
 
 `run_present` in `cli/present.py` resolves ROOT and, unless `--dry-run`, hands it to the
-macOS app. It imports no server, no inventory, and no acquisition or `gh` module, which
-`test_present_dry_run_builds_no_server_and_opens_no_repository` in
-`tests/test_plugin_public_api.py` holds, so the app can run `--present --dry-run` to
-check what a user types.
+macOS app. A dry run loads nothing beyond what `metab --version` loads except
+`cli/present.py`, the property-list reader, and for a link the URL grammar, and starts
+no process and opens no connection, which
+`test_present_dry_run_loads_little_beyond_version` in `tests/test_plugin_public_api.py`
+holds, so the app can run `--present --dry-run` to check what a user types.
+It still pays `metab`’s startup, which `--version` measures, because `cli/main.py`
+imports the serve mode’s modules before a mode is chosen.
 
 1. **Resolve.** `resolve_target` reads a local ROOT as serve mode does: the resolved
    folder, or a file’s folder with the file selected, and `--path` within it.
@@ -150,23 +153,30 @@ check what a user types.
    URL (`ProviderUrlReducer.web_url`), which only GitHub’s does; that URL, canonical and
    ASCII, is what the app is handed, and its root is the repository URL with no ref.
    Its `page` is what `selection_view_href` (`cli/selection_href.py`) gives a pinned
-   server, with the first segment of a `tree` or `blob` path read as the ref, since no
-   mirror is read; a commit’s is its `/commit/` page.
+   server where the URL leaves one reading, and `None` where only the mirror knows where
+   a ref ends or what an abbreviated commit ID names (`_source_page`). A local file’s
+   handoff is its root and then the file, which makes the app open that root.
 2. **Find the app.** `bundle_lookup` asks LaunchServices through
    `LSCopyApplicationURLsForBundleIdentifier` for each identifier in turn, release
    first, and takes the bundle LaunchServices prefers, the one `open -b` opens.
    That is the database `open -b` reads; Spotlight’s index (`mdfind`) is not asked,
    because it can be off or leave out the folder an app is in.
    Off macOS the lookup is `None` and nothing is sent.
-3. **Check what the app takes.** A URL needs `OPENS_URLS_KEY` set in the bundle’s
-   `Info.plist`, because an older app drops a URL while `open` still succeeds; a folder
-   inside the root is refused, because the app opens each folder in a window of its own.
-4. **Send.** `open -b <bundle id> <path or URL>`, bounded by `OPEN_TIMEOUT_S`. Exit 0
-   from `open` means LaunchServices took it, so the report says `confirmed: false` until
-   the app can reply.
-5. **Report.** A `key: value` report, or with `--json` one object; a refusal exits with
-   `PRESENT_REFUSED_EXIT_CODE` and anything not sent with
-   `PRESENT_NOT_DELIVERED_EXIT_CODE` (`cli/exit_codes.py`).
+   A lookup LaunchServices does not answer, as under a sandbox that denies its database,
+   raises `AppLookupError` rather than reading as no app.
+3. **Check what the app takes.** Every target needs `OPENS_URLS_KEY` set true in the
+   bundle’s `Info.plist`, read as a bounded regular file: an older app drops a URL while
+   `open` still succeeds, and an app an override names must not be handed a file it
+   would run. A folder inside the root is refused, because the app opens each folder in a
+   window of its own.
+4. **Send.** `/usr/bin/open -b <bundle id> <handoff>`, by its absolute path
+   (`open_executable`), bounded by `OPEN_TIMEOUT_S`. Exit 0 from `open` means
+   LaunchServices took it, so the report says `confirmed: false` until the app can
+   reply.
+5. **Report.** A `key: value` report, or with `--format json` one object with the
+   handoff, the bundle’s path, and a `code`; a refusal exits with
+   `PRESENT_REFUSED_EXIT_CODE`, and each delivery code with its status in
+   `DELIVERY_EXIT_CODES` (`cli/exit_codes.py` documents the statuses).
 
 ## Remote Tunnels
 
