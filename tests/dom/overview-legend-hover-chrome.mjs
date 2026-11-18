@@ -8,14 +8,15 @@
 // STATE_DIR, runs this in a process group of its own, which Chrome and the server join,
 // and judges what it prints: one JSON line of readings.
 //
-// A legend entry is a second handle on its family's segment (docs/design-system.md,
-// "Aggregate Distributions"). Which segment an entry names, the tooltip it shows, and
-// when the hover is put away run browserlessly in tests/dom/file-overview-session.js.
-// What only a browser can say is that Chrome's pointer reaches them: that moving it onto
-// an entry's name and its dot lifts and grows the segment, in the computed style, and
-// shows the segment's file count and byte size, placed on the entry the pointer is on;
-// that moving it off puts both away; and that pointing at the segment itself lifts the
-// same segment and shows the same counts under the family's name, placed on the segment.
+// A legend entry is a handle on its family's marks in every bar on screen, and a segment
+// on itself (docs/design-system.md, "Aggregate Distributions"). Which marks a handle
+// names, the tooltip it shows, and when the hover is put away run browserlessly in
+// tests/dom/file-overview-session.js. What only a browser can say is that Chrome's
+// pointer reaches them and what they then compute to and where they sit: the marks' lift
+// and growth, the entry's lifted dot and its name's ink and that ink's contrast, the
+// shimmer's animations, the tooltip's place, the clearance between grown bars and what is
+// next to them, that no layout box moves, and that reduced motion keeps the highlight and
+// drops the motion.
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { launchChrome } from "./chrome-session.mjs";
@@ -86,12 +87,20 @@ const ENTRY = (label, part) =>
 const SEGMENT = (row, key) =>
   `document.querySelector(${JSON.stringify(`.folder-totals .file-type-summary-${row}-row [data-segment-key="${key}"]`)})`;
 
-// What the hover draws once it has settled: the segments marked as hovered, with each
-// one's row, its computed lift and growth, and the tooltip's words and box against the
-// handle it is anchored on, the legend entry or the segment the pointer is on. Waits out
-// the shell's tooltip appear delay and fade (TOOLTIP_APPEAR_DELAY and TOOLTIP_FADE_OUT in
-// static/app.js, read from the page) and the segment's transition rather than guessing
-// at them.
+// What the hover draws once it has settled. Waits out the shell's tooltip appear delay and
+// fade (TOOLTIP_APPEAR_DELAY and TOOLTIP_FADE_OUT in static/app.js, read from the page) and
+// every finite transition in the section rather than guessing at them; the shimmer is
+// infinite and is read as it runs. Reads:
+// - every element marked as hovered, named by its tally row, its Details row, or its
+//   legend entry, with each bar mark's computed lift and growth;
+// - the legend entry's dot's lift and its name's ink, the ink's contrast on the ground
+//   behind it, and every other entry and bar as it is at rest;
+// - the shimmers running, on what, whether they share one start, and what they animate;
+// - the layout box of every row, track, bar, legend entry, and the Details toggle, the
+//   bars' by their offsets, which a transform does not move;
+// - how far each grown bar is from the tracks above and below it, grown or not, and
+//   Total's from the legend;
+// - the tooltip's words and its place against the handle the pointer is on.
 const READ = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const tip = document.querySelector(".custom-tooltip");
@@ -106,43 +115,141 @@ const READ = `(async () => {
     last = now;
     await wait(TOOLTIP_APPEAR_DELAY + TOOLTIP_FADE_OUT);
   }
-  const marked = [...document.querySelectorAll(".folder-totals [data-hovered]")];
   await Promise.all(
-    marked.flatMap((element) => element.getAnimations().map((animation) => animation.finished)),
+    document
+      .getAnimations()
+      .filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity)
+      .map((animation) => animation.finished.catch(() => null)),
   );
-  const segments = [...document.querySelectorAll(".folder-totals [data-segment-key]")];
   const round = (value) => Math.round(value * 100) / 100;
+  const nameOf = (element) => {
+    if (element.dataset.legendKey !== undefined) return "legend " + element.dataset.legendKey;
+    const row = element.closest("tr");
+    if (element.closest(".folder-totals")) return row.querySelector("th").textContent + " " + element.dataset.segmentKey;
+    return "Details " + row.dataset.typeKey;
+  };
+  const marked = [...document.querySelectorAll("[data-hovered]")];
+  const bars = marked.filter((element) => element.classList.contains("file-type-summary-fill"));
   const style = (element) => {
     const computed = getComputedStyle(element);
     const matrix = new DOMMatrixReadOnly(computed.transform === "none" ? undefined : computed.transform);
     return { scaleY: round(matrix.d), scaleX: round(matrix.a), filter: computed.filter };
   };
-  const rowOf = (element) => element.closest("tr").querySelector("th").textContent;
+  const fills = [...document.querySelectorAll(".file-type-summary-fill")].filter((element) => element.offsetParent);
+  const entries = [...document.querySelectorAll(".file-type-summary-legend-item")];
+  // Colours through a canvas, which takes any colour the cascade computes, oklab included.
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 1;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  const rgb = (color) => {
+    context.clearRect(0, 0, 1, 1);
+    context.fillStyle = color;
+    context.fillRect(0, 0, 1, 1);
+    return [...context.getImageData(0, 0, 1, 1).data.slice(0, 3)];
+  };
+  const luminance = (channels) => {
+    const [r, g, b] = channels.map((c) => {
+      const v = c / 255;
+      return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  // The first painted background behind an element.
+  const ground = (element) => {
+    for (let node = element; node; node = node.parentElement) {
+      const color = getComputedStyle(node).backgroundColor;
+      if (!/^rgba\\(0, 0, 0, 0\\)$|^transparent$/.test(color)) return rgb(color);
+    }
+    return [255, 255, 255];
+  };
+  const ratio = (a, b) => {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return round((hi + 0.05) / (lo + 0.05));
+  };
+  const markedEntries = marked.filter((element) => element.dataset.legendKey !== undefined);
+  const entryReading = markedEntries.map((item) => {
+    const label = item.querySelector(".file-type-summary-legend-label");
+    const ink = rgb(getComputedStyle(label).color);
+    return {
+      dotFilter: getComputedStyle(item.querySelector(".file-type-summary-legend-swatch")).filter,
+      ink,
+      inkContrast: ratio(ink, ground(item)),
+    };
+  });
+  const restingEntries = entries
+    .filter((item) => !marked.includes(item))
+    .every(
+      (item) =>
+        getComputedStyle(item.querySelector(".file-type-summary-legend-swatch")).filter === "none" &&
+        getComputedStyle(item.querySelector(".file-type-summary-legend-label")).color ===
+          getComputedStyle(item).color,
+    );
+  const shimmers = document
+    .getAnimations()
+    .filter((animation) => animation.animationName === "viz-hover-shimmer");
+  const shimmerOn = (animation) => {
+    const target = animation.effect.target;
+    return nameOf(target.closest(".file-type-summary-legend-item") ?? target) + animation.effect.pseudoElement;
+  };
+  const box = (element) => {
+    const r = element.getBoundingClientRect();
+    return [r.left, r.top, r.width, r.height].map(round).join(",");
+  };
+  const layout = [
+    ...[...document.querySelectorAll(".folder-totals tr, .file-type-summary-details tr, .file-type-summary-track, .file-type-summary-details-toggle")].filter((e) => e.offsetParent).map(box),
+    ...entries.flatMap((item) => [item, ...item.children]).map(box),
+    ...fills.map((fill) => [fill.offsetLeft, fill.offsetTop, fill.offsetWidth, fill.offsetHeight].join(",")),
+  ];
+  const tracks = [...document.querySelectorAll(".file-type-summary-track")].filter((e) => e.offsetParent);
+  const legendBox = document.querySelector(".file-type-summary-legend").getBoundingClientRect();
+  const clearance = bars.map((bar) => {
+    const own = bar.closest(".file-type-summary-track");
+    const index = tracks.indexOf(own);
+    const barBox = bar.getBoundingClientRect();
+    const sameTable = (track) => track.closest("table") === own.closest("table");
+    const gaps = [tracks[index - 1], tracks[index + 1]].filter((t) => t && sameTable(t)).map((t) => {
+      const other = (t.querySelector("[data-hovered]") ?? t).getBoundingClientRect();
+      return round(other.top >= barBox.bottom ? other.top - barBox.bottom : barBox.top - other.bottom);
+    });
+    if (own.closest(".file-type-summary-total-row")) gaps.push(round(legendBox.top - barBox.bottom));
+    return Math.min(...gaps);
+  });
   const tipBox = shown() ? tip.getBoundingClientRect() : null;
+  const hoveredEntry = document.querySelector(".file-type-summary-legend-item:hover");
+  const pointedSegment = bars.find((bar) => bar.matches(":hover"));
+  const handle = hoveredEntry ?? pointedSegment;
   return {
-    marked: marked.map((element) => rowOf(element) + " " + element.dataset.segmentKey),
-    markedStyle: marked.map(style),
-    // Every other segment as it is at rest.
-    othersAtRest: segments
+    marked: marked.map(nameOf),
+    barStyle: bars.map(style),
+    // Every other bar, and every bar outside the tally rows and an open Details, at rest.
+    othersAtRest: fills
       .filter((element) => !marked.includes(element))
       .every((element) => {
         const { scaleY, scaleX, filter } = style(element);
         return scaleY === 1 && scaleX === 1 && filter === "none";
       }),
-    legendMarked: [...document.querySelectorAll(".file-type-summary-legend [data-hovered]")].length,
+    entries: entryReading,
+    otherEntriesAtRest: restingEntries,
+    shimmer: {
+      on: shimmers.map(shimmerOn),
+      running: shimmers.every((animation) => animation.playState === "running"),
+      oneStart: new Set(shimmers.map((animation) => animation.startTime)).size <= 1,
+      animates: [...new Set(shimmers.flatMap((animation) => animation.effect.getKeyframes().flatMap((frame) => Object.keys(frame).filter((key) => !["offset", "easing", "composite", "computedOffset"].includes(key)))))],
+    },
+    layout,
+    entrySize: entries.map((item) => { const r = item.getBoundingClientRect(); return round(r.width) + "x" + round(r.height); }),
+    clearance,
     tooltip: shown() ? tip.innerText.replace(/\\s+/g, " ").trim() : null,
-    // Where the tooltip sits: its centre against the centre of what the pointer is on,
-    // the legend entry under it or else the marked segment, and whether it is above or
-    // below that rather than over it.
+    // Where the tooltip sits: its centre against the centre of what the pointer is on, and
+    // whether it is above or below that rather than over it.
     tooltipOnAnchor:
-      tipBox && marked.length === 1
+      tipBox && handle
         ? (() => {
-            const entry = document.querySelector(".file-type-summary-legend-item:hover");
-            const box = (entry ?? marked[0]).getBoundingClientRect();
+            const anchorBox = handle.getBoundingClientRect();
             return {
-              anchor: entry ? "legend" : "segment",
-              centerOffset: round(tipBox.left + tipBox.width / 2 - (box.left + box.width / 2)),
-              clear: tipBox.top >= box.bottom || tipBox.bottom <= box.top,
+              anchor: hoveredEntry ? "legend" : "segment",
+              centerOffset: round(tipBox.left + tipBox.width / 2 - (anchorBox.left + anchorBox.width / 2)),
+              clear: tipBox.top >= anchorBox.bottom || tipBox.bottom <= anchorBox.top,
             };
           })()
         : null,
@@ -160,10 +267,13 @@ try {
     height: 900,
   });
   phase("chrome");
+  // The light page, whatever the machine's own appearance, until a step asks for the dark.
+  const LIGHT = { name: "prefers-color-scheme", value: "light" };
+  await chrome.send("Emulation.setEmulatedMedia", { features: [LIGHT] });
   await chrome.send("Page.enable");
   await chrome.send("Page.navigate", { url: `${base}/view/` });
   await chrome.waitFor(
-    `document.querySelectorAll(".file-type-summary-legend-item").length > 0 && document.querySelectorAll(".folder-totals .file-type-summary-total-row [data-segment-key]").length > 0`,
+    `document.querySelectorAll(".file-type-summary-legend-item").length > 0 && document.querySelectorAll(".folder-totals .file-type-summary-ignored-row [data-segment-key]").length > 0`,
     30000,
   );
   phase("loaded");
@@ -178,7 +288,14 @@ try {
   const away = async () => {
     await chrome.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 1270, y: 890 });
   };
+  // Details, toggled by its own control without the pointer, as a key toggles it while
+  // the pointer rests on a legend entry.
+  const toggleDetails = () =>
+    chrome.evaluate(`document.querySelector(".file-type-summary-details-toggle").click()`);
   const result = {};
+  result.theme = await chrome.evaluate(
+    `getComputedStyle(document.documentElement).getPropertyValue("--viz-data-mark-hover-filter").trim()`,
+  );
   result.legend = await chrome.evaluate(
     `[...document.querySelectorAll(".file-type-summary-legend-item")].map((item) => item.querySelector(".file-type-summary-legend-label").textContent)`,
   );
@@ -194,6 +311,28 @@ try {
   result.segment = await chrome.evaluate(READ);
   await away();
   result.segmentLeft = await chrome.evaluate(READ);
+  await toggleDetails();
+  result.detailsAtRest = await chrome.evaluate(READ);
+  await move(ENTRY("Python", "label"));
+  result.detailsEntry = await chrome.evaluate(READ);
+  await toggleDetails();
+  result.detailsClosedUnderEntry = await chrome.evaluate(READ);
+  await away();
+  await chrome.evaluate(`document.documentElement.dataset.theme = "dark"`);
+  await move(ENTRY("Python", "label"));
+  result.darkEntry = await chrome.evaluate(READ);
+  await away();
+  await chrome.evaluate(`document.documentElement.dataset.theme = "light"`);
+  await chrome.send("Emulation.setEmulatedMedia", {
+    features: [LIGHT, { name: "prefers-reduced-motion", value: "reduce" }],
+  });
+  await move(ENTRY("Python", "label"));
+  result.reducedMotion = await chrome.evaluate(READ);
+  result.reducedMotionTransitions = await chrome.evaluate(
+    `[...new Set([...document.querySelectorAll(".file-type-summary-fill, .file-type-summary-legend-swatch, .file-type-summary-legend-label")].map((e) => getComputedStyle(e).transitionDuration))]`,
+  );
+  await away();
+  await chrome.send("Emulation.setEmulatedMedia", { features: [LIGHT] });
   await move(ENTRY("Other", "label"));
   result.other = await chrome.evaluate(READ);
   await away();
