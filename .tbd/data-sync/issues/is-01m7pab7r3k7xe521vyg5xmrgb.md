@@ -5,7 +5,7 @@ title: "View header: move the size, file count and age (e.g. '379.2 MB · 18,344
 kind: task
 status: in_progress
 priority: 2
-version: 2
+version: 3
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -13,7 +13,11 @@ parent_id: is-01m7ksbn803jhw15qjc6beg7qf
 hold: null
 hold_until: null
 created_at: 2026-11-18T03:13:59.554Z
-updated_at: 2026-11-18T03:15:32.080Z
+updated_at: 2026-11-18T03:21:32.328Z
 started_at: 2026-11-18T03:15:32.079Z
 ---
 Owner, 2026-11-18 in chat: 'let's remove the file size on the top right of the upper view bar as well and instead put the file age and file size next to the filename with a small gap, trying to fit in with other design styles we already have, much like the nav bar. these numbers 379.2 MB / 18,344 files / 11m ago should all be next to the folder itself. after these changes the upper right will be empty.' Then the upper right holds a small toggle (separate bead).
+
+## Notes
+
+2026-11-18 owner (chat): 'make sure that the headers are better organized for consistency on files, PRs, and commits. All of these should have a similar styling at the top, even if there's some variation. Right now, PRs have icons, and commits and files do not, but files and folders should probably have the corresponding icon: a folder icon for folders and the corresponding file icon that we already use in the nav panel for the files. The font size of the main file name should be the full size, but the enclosing folder and up button (inactive or active) could be more like an eyebrow.' Folded into the same agent's work: one shared header pattern (eyebrow: enclosing folder + up button; title row: kind icon + full-size title + quiet metadata; upper-right GitHub toggle), possibly as a stack.
