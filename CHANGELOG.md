@@ -12,6 +12,18 @@ All notable changes to Metabrowser are documented here.
   (`MANIFEST_LISTING` in `diff/adapters/git.py`); manifests kept before this change are
   listed once more.
 
+- Two writes of the same cached file at once no longer fail, rarely, with an entry that
+  “was replaced while it was being checked”.
+  Each write first removes the temporary files a crashed write left beside its target,
+  and it could take another write’s new temporary file for one in the moment between
+  that write creating it and locking it.
+  A pull request’s changed files, refreshed twice at once, could then fail to be cached.
+  Now a write creates and locks its temporary file under a shared lock on the folder,
+  and the removal runs only while it holds that lock exclusively.
+  A write waits for that lock only briefly; if another process keeps it, as a stopped
+  one can, the write goes ahead without it and logs a warning.
+  See [Atomic Writes](docs/project/architecture/arch-repository-cache.md#atomic-writes).
+
 - The agent skill’s commands now produce output an agent can parse, and its recipes stop
   with a nonzero status when `metab` fails.
   Every `--api` recipe asks for `--format json` and writes the answer to a file that
