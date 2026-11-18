@@ -380,8 +380,10 @@ client contract. `/api/*` shapes, `window.metabrowser`, `METABROWSER_SETTINGS`, 
 plugin manifest, and the built-in plugin interfaces are therefore internal contracts.
 
 **The macOS app is internal too.** It runs the installed `metab` with the flags in
-`ServerSupervisor` and reads `GET /api/identity`, and Metabrowser keeps no compatibility
-with an older app: change a flag or the route and the app in the same commit, and raise
+`CLIServeLaunch` and `MetabRequirement.requiredFlags`, asks it what a GitHub link opens
+(`PresentDryRun`) and whether its cache holds a repository (`RepositoryCache`), and
+reads `GET /api/identity`. Metabrowser keeps no compatibility with an older app: change
+a flag or the route and the app in the same commit, and raise
 `MetabRequirement.minimumRelease` when the app needs the newer `metab`
 ([the version floor](project/architecture/arch-macos-app.md#the-version-floor)).
 

@@ -1015,14 +1015,19 @@ an animated deep reveal moves the rows below it with no input
 ([measured](../explorations/performance-loop/design-rule-measurements.md#disclosure-motion)).
 The reader’s next toggle of that folder travels again.
 Such a reveal is the reader’s own doing, so it then scrolls the new selection into view
-in the same frame. A landing within the inline’s bounds needs no reveal: the server
-inlines the folders of the address’s path, open, and the tree’s first paint selects and
-shows its row, so nothing is fetched, opened, or scrolled after it.
+in the same frame, unless a folder above the row is still travelling, one the reader has
+just opened or a landing’s: then the scroll waits for that travel to end.
+A landing within the inline’s bounds needs no reveal: the server inlines the folders of
+the address’s path, open, and the tree’s first paint selects and shows its row, so
+nothing is fetched, opened, or scrolled after it.
 The bounds are a folder’s whole listing within `_INLINE_INITIAL_TREE_ROWS`, the path’s
 folders within `_INLINE_LANDING_ROWS` rows and `_INLINE_LANDING_DEPTH` folders, all in
 `server.py`, and the inventory’s discovery complete.
 A landing outside them inlines the root alone, and the page reveals its path after the
 first paint with its folders travelling, which still moves the tree with no input.
+Its row is scrolled into view once they are open (`folderTravelAbove` in `app.js`):
+scrolled while they travelled, it was scrolled within the opening folder’s clipped body,
+not the pane, and once the folder was open it lay below the pane.
 
 ### Disclosure Toggles Never Select Text
 
@@ -2605,6 +2610,9 @@ width.
   top too: stacks that arrive after the list’s first window regroup the list around it,
   as far as the list’s top allows, rather than around the first row in view, which moved
   the revealed row out of view.
+  It stays so across a trip to another tab, as the Pulls tab’s button brings the list
+  back where the reader left it: stacks that arrive while the reader is away, or just
+  after the return, regroup the list around it too.
 - **Read ahead.** An open reads ahead the pull requests a key reaches next as drawn, a
   stack’s row passed over, and the first pull requests drawn.
 - **Change line.** A stack’s row shows the stack’s combined change as its

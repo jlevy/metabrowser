@@ -13,6 +13,18 @@ All notable changes to Metabrowser are documented here.
   shows no box. The pull request route (`/api/plugin/github/pull`) says
   `"no_store": true` when its server has no Git store to compare in.
 
+- A page that opens at a file deep in a long folder, one the page could not draw with
+  its first rows, now scrolls the file’s row into the Files tab once its folders have
+  opened. Before, the row was scrolled while its folder was still opening, within the
+  folder rather than the tab, and once the folder was open it lay far below the tab,
+  which had stayed at its top: the 906th file of a 1,000-file folder sat 7,433 px down.
+
+- A pull request revealed in the Pulls tab before its stacks are read stays in view
+  under its stack when they arrive while the reader is on another tab, or just after the
+  tab’s button brings the list back.
+  Before, the list came back where the pull request had stood in the flat list, with the
+  pull request regrouped far above it.
+
 - Rendering a Markdown document from an untrusted source can no longer hold the server.
   Every document rendered under the untrusted profile, a served mirror’s files, a folder
   served with `--untrusted`, and a pull request’s description and comments, now renders
@@ -120,6 +132,27 @@ All notable changes to Metabrowser are documented here.
 
 - `metab COMMIT_URL` opens at the commit’s page, `/commit/<full id>`, instead of the
   tree at that commit.
+
+- The macOS app opens GitHub links: a repository, a pull request, a commit, or a file or
+  folder at a ref, sent with `metab URL --present` or `open -b`. Before, the app took
+  such a link and did nothing.
+  `metab URL --present --dry-run --format json` resolves each link, one at a time, and
+  the app opens the repository’s mirror in its one window, cloning the repository or
+  reusing its cache as `metab URL` does; a link `metab` refuses shows `metab`’s message,
+  and what a burst of links could not open is said in one alert.
+  A link to a repository the cache does not hold asks first, with Cancel as the default,
+  while other links go on opening; one into a repository with a window starts its server
+  again on the link, so the window shows the revision the link names, and the app says
+  when GitHub has nothing the link names.
+  Servers start on the canonical link `metab` hands back, never on the link as sent, so
+  a token in a link reaches no server.
+  A first clone is no longer stopped 60 seconds after its server started: the app waits
+  as long as the clone reports progress, up to `metab`’s own bound on a clone, and
+  folders opened meanwhile start at once.
+  The app now requires a `metab` with `--present`, which setup checks, and its
+  `Info.plist` declares `MetabrowserOpensURLs`, which `--present` reads before it sends
+  anything. A repository’s window does not come back with the last session.
+  See [the app’s guide](docs/macos-app.md#opening-github-links).
 
 - The Treemap tab shows File Overview’s file-type legend under its bars.
   Pointing at an entry highlights every cell of that family, its segments in the bars,
