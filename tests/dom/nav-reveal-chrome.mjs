@@ -10,7 +10,8 @@
 //
 // After each route it reads the navigation pane as a reader sees it: which tab is in front,
 // which row is selected, whether that row lies inside the pane's scroller with nothing
-// between them clipping it, what a panel says of an item it cannot show, and where focus is
+// between them clipping it and no folder above it still travelling, what a panel says of
+// an item it cannot show, and where focus is
 // (docs/design-system.md, "Navigation Reveals the Item"). The decisions behind them run
 // browserlessly in tests/dom/nav-reveal-session.js.
 //
@@ -59,6 +60,20 @@ const CLIPPED_BY = `((element, rect, scroller) => {
   return null;
 })`;
 
+// In the page: whether a folder body above *element* still travels, opening or closing. A
+// row is read in view only once they stand still: in the first frame of the travel, a row
+// scrolled within the opening body sat at that body's top, unclipped and inside the pane,
+// and the next frame carried it far below the pane (app.js, folderTravelAbove; mb-551m).
+// Each body's own animations, not the document's: others keep running after a landing.
+const TRAVELLING = `((element) => {
+  for (let body = element.parentElement?.closest(".tree-children"); body; body = body.parentElement?.closest(".tree-children")) {
+    if (body.getAnimations().some((animation) => animation.playState === "running")) {
+      return true;
+    }
+  }
+  return false;
+})`;
+
 // In the page: the navigation pane as a reader sees it, for the row *selector* names.
 const PANE = (selector) => `(() => {
   const scroller = document.getElementById("tree-content");
@@ -66,6 +81,7 @@ const PANE = (selector) => `(() => {
   const row = document.querySelector(${JSON.stringify(selector)});
   const box = row?.getBoundingClientRect();
   const clip = row ? ${CLIPPED_BY}(row, box, scroller) : null;
+  const travelling = row ? ${TRAVELLING}(row) : false;
   const active = document.activeElement;
   const notes = [...document.querySelectorAll(".tree-selection-note, .github-pulls-outside")]
     .filter((note) => note.offsetParent !== null)
@@ -75,9 +91,10 @@ const PANE = (selector) => `(() => {
     address: location.pathname,
     row: row ? {
       selected: row.classList.contains("selected") || row.getAttribute("aria-current") === "page",
-      inView: row.offsetParent !== null && box.height > 0 && box.top >= view.top - 1 && box.bottom <= view.bottom + 1 && clip === null,
+      inView: row.offsetParent !== null && box.height > 0 && box.top >= view.top - 1 && box.bottom <= view.bottom + 1 && clip === null && !travelling,
       at: [Math.round(box.top), Math.round(box.bottom), Math.round(view.top), Math.round(view.bottom), scroller.scrollTop],
       clip,
+      travelling,
     } : null,
     selectedFiles: [...document.querySelectorAll("#tab-files .tree-item.selected")].map((r) => r.dataset.path),
     notes,
@@ -653,7 +670,7 @@ try {
     return {
       address: location.pathname,
       row: row?.getAttribute?.("href") ?? null,
-      inView: Boolean(box) && row.offsetParent !== null && box.height > 0 && box.top >= view.top - 1 && box.bottom <= view.bottom + 1 && ${CLIPPED_BY}(row, box, scroller) === null,
+      inView: Boolean(box) && row.offsetParent !== null && box.height > 0 && box.top >= view.top - 1 && box.bottom <= view.bottom + 1 && ${CLIPPED_BY}(row, box, scroller) === null && !${TRAVELLING}(row),
       scrollTop: scroller.scrollTop,
     };
   })()`;
