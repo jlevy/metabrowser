@@ -80,6 +80,15 @@ diff line by line.
 reasons: why `--walk` and `--diff` prove a model and not the wire, what counts as
 evidence for a route, and why only what no fixture can pin is normalized.
 
+tryscript runs its files one after another, so `make test` runs them through
+`devtools/run_goldens.py`, `GOLDEN_JOBS` files at a time; the `Makefile` holds the value
+and the measurement that chose it.
+The runner prints each file’s output whole when the file finishes, then a `golden:` line
+with its verdict and time, and fails unless every file the pattern matches printed its
+own `PASS` verdict. A file that printed no verdict fails the run, and so does a pattern
+that matches nothing.
+`make test GOLDEN_JOBS=1` runs them one at a time.
+
 ### One Harness and One Update Command
 
 `tests/golden_harness.py` is the one place an expectation is compared or rewritten, and
@@ -170,7 +179,8 @@ and CLI. This catches missing package data and source-checkout assumptions.
 ## Running Tests
 
 [Everyday Commands](development.md#everyday-commands) lists the commands.
-Node and Git are prerequisites.
+Node, Git, and jq are prerequisites; jq runs the CI workflow’s `plan` and `ci-ok`
+scripts, which their tests run too.
 The first test that needs one and finds it missing stops the run, with one message that
 names the tool and the way to opt out.
 It does so in CI and locally alike: a run that skipped those tests would pass without
@@ -183,7 +193,7 @@ that need it skip with that reason:
 METABROWSER_ALLOW_MISSING_TOOLS=node uv --config-file uv.toml run --frozen pytest -rs
 ```
 
-The variable takes `node`, `git`, or both separated by a comma.
+The variable takes `node`, `git`, or `jq`, or several of them separated by commas.
 `tests/required_tools.py` is the gate, and a test asks it rather than looking the tool
 up itself; a test in `tests/test_suite_gates.py` fails when one does.
 
@@ -195,7 +205,7 @@ Each has one command, one way its tests are selected, and a stated time when it 
 
 | Tier | Command | Selected by | When it runs |
 | --- | --- | --- | --- |
-| Default | `make test` | everything that does not skip | Every pull request in CI, on each supported Python version on Ubuntu; the pre-push hook |
+| Default | `make test` | everything that does not skip | Every pull request in CI, as the [CI Jobs](#ci-jobs) on Ubuntu; the pre-push hook |
 | Admitted Git | `make test-admitted-git` | `ADMITTED_GIT_TESTS` in the `Makefile` | Every pull request in CI, on the lowest admitted Git release and the newest patched one |
 | macOS | `make test-macos` | the `macos_tier` marker | Never in CI. Part of `make test` on a Mac; run it there before a release |
 | Live GitHub | `make test-live-github` | the `live_github` marker | Never in CI. By hand, before a release and after a change to GitHub URL or pull request reading |
@@ -227,10 +237,111 @@ With the tier selected, a live test that skips for any of those fails; it may sk
 for what github.com holds that day.
 Every other test runs with a failing stand-in `gh` first on `PATH`.
 
+### Serial and Chrome Tests
+
+Within the default tier, two markers say what a test needs from the machine it runs on,
+and `tests/suite_tiers.py` holds what each means:
+
+- `chrome`: the test drives headless Chrome.
+  Every test that uses the `chrome_profile` fixture, directly or through another
+  fixture, gets it, and nothing else sets it.
+- `serial`: the test measures wall-clock time and needs the machine to itself.
+  A module sets it by hand, as `pytest.mark.serial(reason=...)` with the measurement
+  that forced it as the reason, the way a module raises its timeout.
+  `tests/test_process_group.py` is one; its one Chrome test is `chrome` as well.
+
+The three `-m` expressions in `TIERS` there, the parallel, serial, and Chrome tiers,
+cover each combination of the two markers once, so they partition the suite whatever is
+marked.
+`--shard=I/N` keeps the Ith of N disjoint parts of what a selection leaves, dealt
+by node ID, so that one tier can be split across machines.
+`--shard-by=file` deals whole files instead, so that a module runs in one part, its
+tests in order; `make test-parallel` passes it, since its files run that way on their
+workers (`tests/suite_tiers.py`). A tier or a shard that selects no test passes, with a
+line that says so; a `-m` that is not one of `TIERS`, or a run that collected nothing,
+still fails when nothing is left.
+
+`make test` runs the default tier as four targets, in this order, and each also runs
+alone, as a CI job can call it:
+
+| Target | Runs | How |
+| --- | --- | --- |
+| `make test-parallel` | every test in neither marker’s tier | under pytest-xdist, `PYTEST_WORKERS` workers, each test file on one worker, its tests in order |
+| `make test-serial` | the tests marked `serial` and not `chrome` | one at a time, after the parallel tier, so never beside its workers |
+| `make test-chrome` | the tests marked `chrome` | one at a time, after the serial tier |
+| `make test-goldens` | `tests/golden/*.tryscript.md` | `devtools/run_goldens.py`, `GOLDEN_JOBS` files at a time |
+
+`PYTEST_WORKERS` defaults to one worker per logical processor, and a shared or loaded
+machine lowers it: `make test PYTEST_WORKERS=2`. `make test-chrome SHARD=2/4` runs the
+second of four parts of a tier, and `SHARD` works with each pytest target.
+`make test-admitted-git` runs its list under pytest-xdist too.
+The `Makefile` documents each variable beside its default.
+
+`tests/suite_gates.py` holds each marker to its meaning.
+A test fails when:
+
+- it asks for Chrome through `require_chrome` and is not `chrome`;
+- it is marked `chrome` and does not use `chrome_profile`;
+- it is marked `serial` without a reason;
+- it is `serial` or `chrome` in a module that `ADMITTED_GIT_TESTS` lists.
+  `make test-admitted-git` runs that list with no marker filter, so a module there that
+  fails beside other tests is fixed, not marked.
+
+The markers are two because the properties are: a test that needs the machine to itself
+says nothing by that about the interpreters it has to pass on.
+
+### CI Jobs
+
+`.github/workflows/ci.yml` runs the default tier’s four targets as separate jobs side by
+side, so a run takes as long as its slowest job rather than their sum.
+[Plan for Fast CI](project/specs/active/plan-2026-11-16-fast-ci.md) is the design and
+says why each check runs where it does.
+
+| Job | Runs | On |
+| --- | --- | --- |
+| `plan` | `devtools/ci_plan.sh`: reads `main`’s state, and decides the Chrome tier’s interpreters and whether `stack-integration` has anything to check | every run; its summary says what it decided and from what |
+| `unit` | `make test-parallel`, in parts by `SHARD` | each supported Python and the free-threaded build |
+| `goldens and serial` | `make test-goldens`, then `make test-serial` | the same interpreters |
+| `chrome` | `make test-chrome`, in parts by `SHARD` | `PR_CHROME_PYTHON` for a pull request while `main` is green; every interpreter for a push to `main`, and for a pull request while `main` is red |
+| `admitted-git` | `make test-admitted-git` | the two admitted Git releases |
+| `stack-integration` | `make lint-check` and the four tiers, on the head merged with `main` | a stacked pull request whose tested commit lacks `main`’s head and whose merge with `main` changes the tree: in practice an informal chain, since a formal GitHub stack’s merge commit already holds `main` |
+| `ci-ok` | `devtools/ci_verdict.sh`: fails unless every other job succeeded, and says why it accepted a skipped `stack-integration` | every run |
+
+`ci-ok` is the one check to require.
+While `main` is red it also writes a `main-red` verdict line, which
+[Git](../AGENTS.md#git) merges by, read from the `ci-ok` job’s own log.
+The `plan` job reads `main`’s state for a pull request to `main` and for any pull
+request whose tested commit contains `main`’s head, a formal stack’s layers among them.
+A newer push to a pull request cancels its running jobs, and a push to `main` is never
+cancelled. No leg cancels its siblings, so “Re-run failed jobs” reruns only the one that
+failed, and the legs that passed stay as evidence.
+
+**Time limits and shards.** Each job’s `timeout-minutes` is about 1.5 times its measured
+90th percentile, with the measurement in a comment beside it.
+A limit that trips means a tier grew by half: split its job further, or make its slowest
+tests cheaper.
+To add a shard, raise `N` in the job’s `SHARD=${{ matrix.shard }}/N`, list
+`1` through `N` in its `shard` matrix, and deal the matching `stack-integration` parts
+the same way.
+`devtools/check_ci.py`, part of `make lint-check`, fails an edit that drops
+a check and still goes green: a sharded job whose shards are not `1` through `N`, a
+fixed `SHARD`, a matrix `include` or `exclude`, a tier or required job no step runs, a
+step or job skipped or allowed to fail, a `make` option or variable on a tier, a `ci-ok`
+step other than `devtools/ci_verdict.sh` on every job’s result, an interpreter list that
+differs from `pyproject.toml`’s classifiers and the free-threaded build, and a lost
+trigger. It also fails a permission, trigger, or expression that widens what a pull
+request can reach. Its docstring lists every rule.
+
+**The nightly soak.** `.github/workflows/nightly.yml` repeats the serial and Chrome
+tiers on the interpreter a pull request draws the Chrome tier on, so that a flake is
+found away from a pull request, then runs `make ci-report` with `--check`
+([Measuring CI](#measuring-ci)). It finds flakes; the runs on each commit of `main` are
+the coverage.
+
 ### Skips
 
 `make test` runs pytest with `-rs`, which prints each skipped test with its reason, and
-with `--durations`, which lists the slowest tests.
+with `--durations` and `--file-durations`, which list the slowest tests and test files.
 In CI it also sets `METABROWSER_STRICT_SKIPS`, and a skip has to belong to an outer tier
 or the test fails:
 
@@ -300,14 +411,20 @@ Strict mode is off on a developer machine, which can add these:
   reads the face documents and chrome prose are drawn in under each reading font and
   font set; `tests/test_raw_profile_cache_chrome.py`, which follows a `/raw` answer
   Chrome kept under the trusted profile after the folder is served `--untrusted`;
+  `tests/test_overview_readme_toc_chrome.py`, which measures a folder Overview’s README
+  table of contents against the same README opened as a file;
   `tests/test_diff_markdown_fold_chrome.py`, which measures a rendered Markdown diff’s
   fold of unchanged blocks closed, open, and under the pointer, and its quote and code
   against a document’s in the light and the dark theme;
   `tests/test_control_chords_chrome.py`, which presses Control-N and Control-P through
   Chrome’s input under a navigator overridden to name a Mac and then Linux, on every
-  host, and reads that only the Mac’s binds them; and
-  `tests/test_title_prefix_chrome.py`, which reads a title prefix’s and the rest’s
-  computed weight, face, size, and ink on every title surface.
+  host, and reads that only the Mac’s binds them;
+  `tests/test_overview_legend_hover_chrome.py`, which moves Chrome’s pointer onto a File
+  Overview legend entry and its bar segment and reads the segment’s computed lift and
+  growth and where the tooltip lands; and `tests/test_title_prefix_chrome.py`, which
+  reads a title prefix’s and the rest’s computed weight, face, size, and ink on every
+  title surface. Any other check that calls `require_chrome` in `tests/required_tools.py`
+  skips for the same reason.
   The CI runners have Chrome, so CI runs them.
   Each runs its Node script in a process group of its own and stops that whole group,
   Chrome included, however the run ends, with the group’s leader kept unreaped until
@@ -361,24 +478,60 @@ make test-report LOG=run.log
 
 - An **area** is the first word of a test module’s name: `tests/test_cache_update.py` is
   in `cache`.
+
 - **Lines** are counted from the files of the tree or commit alone, so they are the same
   on every machine. An image is a file with no lines.
+
 - **Test functions** are the ones pytest collects, read from each module’s syntax tree:
   `test_` functions at module level and `test_` methods of a `Test` class.
   A parametrized function is one function, so this is lower than the number of cases a
   run reports.
-- **Time** is read from a CI job log and belongs to that one run, so quote the run and
-  the job with it. A test file’s time is the gap between the timestamps of consecutive
-  progress lines: pytest ends a file’s line when the next file starts.
-  A golden’s time is the gap before tryscript printed its verdict.
-  A pytest output with no timestamps gives no time per file.
-  A developer machine under load gives other times; compare the CI `test (3.13)` job
-  with itself.
+
+- **Time** is read from a CI job log, or a run’s own output, and belongs to that one
+  run, so quote the run and the job with it.
+  Every pytest session and golden run in the job is read.
+  - A test file’s time is the one the run listed under `--file-durations`
+    (`tests/suite_timing.py`): the sum of its tests’ setup, call, and teardown, which a
+    run under pytest-xdist needs, since its progress lines name no file.
+    The section lists the slowest files and counts every one, so the report gives the
+    count and the total beside the files it names.
+  - A golden’s time is the one on its `golden:` line from `devtools/run_goldens.py`.
+  - A log from before those lines existed is read by its timestamps instead: a file’s
+    time is the gap between consecutive progress lines, and a golden’s the gap before
+    tryscript printed its verdict.
+
+  A developer machine under load gives other times; compare a CI job with itself.
+
 - **Skips** are the cases `-rs` listed in the log, counted by reason.
   [Skips](#skips) says which reason belongs to which tier.
 
 `uv --config-file uv.toml run --frozen python -m devtools.check_goldens --report` gives
 the size distribution of the goldens and recordings against their review budget.
+
+### Measuring CI
+
+`make ci-report` takes the same kind of numbers for CI itself, from the run data `gh`
+reads: each job’s median and 90th percentile, the push to green of each kind of run, and
+the runs that needed another attempt.
+`devtools/ci_report.py` says how each is taken.
+
+```shell
+# The newest runs of ci.yml.
+make ci-report
+
+# More runs, on main only, with each job's steps, keeping the data it read.
+make ci-report CI_REPORT_FLAGS="--runs 300 --branch main --steps --save attic/ci-runs"
+
+# The kept data again, without the network.
+make ci-report CI_REPORT_FLAGS="--from attic/ci-runs"
+```
+
+With `--check` it fails when a job’s 90th percentile passes `CHECK_FRACTION` of the
+`timeout-minutes` the workflow gives that job, before the limit itself trips.
+`--containing` keeps only the runs whose head contains a commit, and the nightly soak
+runs `--check` over `main`’s push runs since `ci.yml` last changed, since an older run
+may have done other work under a job’s name.
+Quote the runs a number came from, as for a suite run.
 
 ## Adding Coverage
 

@@ -51,6 +51,8 @@ runner = CliRunner()
 
 # Rich may interleave panel borders between words when wrapping narrow output.
 RICH_PANEL_GLYPH_RE = re.compile(r"[│╭╮╰╯─]")
+# The line serve mode prints once it has chosen its port (src/metabrowser/cli/serve.py).
+_SERVING_LINE = re.compile(r"^Serving .* at http://127\.0\.0\.1:(?P<port>\d+)/")
 
 
 class _ResultWithOutput(Protocol):
@@ -810,7 +812,13 @@ def test_serve_reports_sigint_as_exit_130(tmp_path: Path) -> None:
 
 
 def _serve_then_interrupt(root: Path, *, count: int, gap_s: float) -> tuple[int | None, str, str]:
-    """Serve *root*, wait until it answers, then send *count* interrupts."""
+    """Serve *root*, wait until it answers, then send *count* interrupts.
+
+    The probed port is where the server starts its search for a free one, not where it
+    serves: a test running beside this one can take the port first, and the server then
+    moves up while another server may answer on the probed one. So this waits on the
+    port the server announces, which only that server can be serving.
+    """
     with socket.socket() as port_probe:
         port_probe.bind(("127.0.0.1", 0))
         port = port_probe.getsockname()[1]
@@ -823,8 +831,15 @@ def _serve_then_interrupt(root: Path, *, count: int, gap_s: float) -> tuple[int 
         text=True,
         start_new_session=True,
     )
+    announced: list[str] = []
     try:
-        _wait_until_serving(process, port)
+        serving = None
+        while serving is None:
+            line = read_line(process)
+            assert line, f"the server exited before it said where it serves: {announced!r}"
+            announced.append(line)
+            serving = _SERVING_LINE.match(line)
+        _wait_until_serving(process, int(serving["port"]))
         for _ in range(count):
             try:
                 process.send_signal(signal.SIGINT)
@@ -836,7 +851,7 @@ def _serve_then_interrupt(root: Path, *, count: int, gap_s: float) -> tuple[int 
         if process.poll() is None:
             process.kill()
             process.wait(timeout=5)
-    return process.returncode, stdout, stderr
+    return process.returncode, "".join(announced) + stdout, stderr
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX signal behavior")
