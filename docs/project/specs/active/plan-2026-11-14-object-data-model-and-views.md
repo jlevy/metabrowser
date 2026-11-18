@@ -6,6 +6,11 @@
 
 **Status:** Draft. A design direction for review: every item under
 [Key Decisions](#key-decisions) is open, and nothing here is built.
+Revised 2026-11-18 against `main` at `a1100bca6`, and against the open pull requests
+under [Work in Flight](#work-in-flight).
+Some of what the plan proposes now exists on `main`: a shared page header, a drawing of
+an author, and a pull request’s change totals served and drawn as one facet.
+The plan builds on those pieces instead of designing them again.
 
 ## Overview
 
@@ -82,13 +87,15 @@ It has no place for the same thing shown as a row, or for many things shown toge
   `image` are kinds of file.
   A list has a kind of its own, `pull-request-list`. A commit has none: `/commit/<rev>`
   selects the `comparison` kind, and the commit’s subject, author, and totals are drawn
-  by shell code, not a registered view (`static/git-panel.js:443`).
+  by shell code, not a registered view (`static/git-panel.js:449`), in the
+  `.page-header` the pull request page also uses
+  ([Page Headers](../../../design-system.md#page-headers)).
 - **A view is a tab in the pane.** `[[view]]` and `mb.registerView` register page views
   only. Nothing registers how a kind looks as a row.
 - **The one list in the pane is a placeholder.** The `pull-request-list` view mounts
   twice: in the Pulls tab with a host context, and in the pane at `/pulls`, where it
   draws “Select a pull request.”
-  (`github/index.js:21`, `github/pulls-panel.js:4969`).
+  (`github/index.js:21`, `github/pulls-panel.js:5507`).
 
 ### How Each Object Is Modeled Today
 
@@ -105,8 +112,8 @@ Each object has several models, one per surface.
 | `/api/events` change | `FsEntry`: `path`, `parent`, `name`, `type`, `ext`, `kind`, `size`, `mtime_ns`, `mtime_hash`, `active`, `views`, `labels` | `fs_record.py:46`, `events.py:317` |
 | `/api/recent` row | `name`, `path`, `type`, `size`, `mtime`, `ext`, optional `gitignored` | `recent.py:56` |
 | `/api/catalog` row | `{"p": path, "e": logical extension}`; size and time dropped on purpose | `events_route.py:1253` |
-| `/api/file` envelope | A dict per content type: `type`, `kind`, `views`, `path`, `ext`, `size`, `mtime_hash`, and a content window; no `name`, no time | `server.py:3549` |
-| On a pinned revision | `path` as a `GitPath` wire, plus `display`, `mode`, `git_kind`, `symlink`, `gitlink`, `oid`; no time | `git/content_routes.py:236` |
+| `/api/file` envelope | A dict per content type: `type`, `kind`, `views`, `path`, `ext`, `size`, `mtime_hash`, and a content window; no `name`, and no time until #550 adds `mtime` in epoch seconds | `server.py:3726` |
+| On a pinned revision | `path` as a `GitPath` wire, plus `display`, `mode`, `git_kind`, `symlink`, `gitlink`, `oid`; no time | `git/content_routes.py:245` |
 | Quick Search result | `kind: "file"`, `id`, `label`, `description`, `path`, `logicalExtension`, ranking fields | `static/search-controller.js:103` |
 
 **Folder.**
@@ -115,7 +122,7 @@ Each object has several models, one per surface.
 | --- | --- | --- |
 | `/api/tree` row | `DirNode`: `name`, `path`, `type`, `children`, `total_files`, `total_size`, `mtime`, optional `has_children`, `gitignored`, `empty` | `wire_models.py:87` |
 | `/api/events` change | `FsEntry` with `total_files`, `total_size`, `unignored_files`, `unignored_size`, `newest_mtime_ns`, `empty` | `fs_record.py:46` |
-| `/api/file` envelope | `type: "folder"`, `kind`, `path`, `name`, `views`, `dir{…totals, mtime, gitignored, state}`, `readme_path` | `server.py:3175` |
+| `/api/file` envelope | `type: "folder"`, `kind`, `path`, `name`, `views`, `dir{…totals, mtime, gitignored, state}`, `readme_path` | `server.py:3350` |
 | `/api/rollup` node | `RollupDirNode`: totals, `state`, `dominant_ext`, `children`, `rest` | `wire_models.py:228` |
 | Browser totals store | `{path, revision, state, totalFiles, totalBytes, unignoredFiles, unignoredBytes}` | `static/directory-totals-store.js:44` |
 
@@ -137,67 +144,83 @@ Each object has several models, one per surface.
 | Record, `GET pull` | `PullRequest` inside `PullRecord`: adds `body`, `merged`, `merged_by`, `commits`, `merge_commit_sha`, `mergeable`, `html_url`, labels as `{name, color, description}` where a row has names, and `base` and `head` as `{ref, sha, repository}` | `github/pull_record.py:187`, `:325` |
 | Core preview | `CachedCore` on disk and `PullCorePreview` on the wire | `github/pull_core_cache.py:36`, `github/served_pull.py:81` |
 | Search row, `GET pulls?q=` | `number`, `title`, and a four-valued `state` | `github/pull_catalog.py:540` |
-| Navigation row, in the browser | `PullRow`: text only, camel case (`stateLabel`, `updatedAt`, `meta`), and no branches | `github/pulls-panel.js:199` |
-| Page header, in the browser | A second description built from the record | `github/pull-page.js:1130` |
+| Navigation row, in the browser | `PullRow`: camel case (`stateLabel`, `updatedAt`, `meta`), no branches, and the head commit as `head`, which the row does not show but which its change line is read again for when it moves | `github/pulls-panel.js:234`, `:312` |
+| Change totals, `GET pull-files-summary?numbers=` | `FilesSummaryWire`: `head`, `base`, `base_ref`, `generation`, nullable `files`, `additions`, and `deletions`, `exact`, and `statuses`; batched up to `MAX_SUMMARY_NUMBERS`, answered from the cache alone | `github/pull_files_summary.py:98`, `:64` |
+| A stack’s change totals, `GET stack-change` | `StackChangeEnvelope`: the stack’s combined change, not a sum of its members’ | `github/pull_stack_change.py:109` |
+| Page header, in the browser | A second description built from the record | `github/pull-page.js:1174` |
 
 A pull request’s nested parts are modeled the same way, once per use: comments and
 reviews as record items (`github/pull_record.py:221`, `:233`, `:246`) and again as
 timeline events that carry only a kind and an identifier (`github/pull_timeline.py:81`),
-which the page joins to the record’s cards by `kind/id` (`github/pull-page.js:5180`);
-check runs (`github/pull_record.py:270`); changed files (`github/pull_list.py:295`); and
+which the page joins to the record’s cards by `kind/id` (`github/pull-page.js:5420`);
+check runs (`github/pull_record.py:270`); changed files (`github/pull_list.py:299`); and
 stacks (`github/pull_stacks.py:76`).
+
+The change totals are the exception, and the nearest thing to a facet that exists.
+One route serves them, keyed by the head and base they describe; one browser memory per
+document holds them (`documentRowLines`, `github/row-lines.js:157`); and the Pulls row,
+the stack heading, and the pull request page’s brief line all read that memory, so a
+page opened from a row asks for nothing (`github/pull-summary-brief.js`).
 
 ### Where the Same Fact Is Spelled Differently
 
 | Fact | Spellings |
 | --- | --- |
-| A file’s modification time | `mtime` in seconds (`wire_models.py:58`), `mtime_ns` (`fs_record.py:46`), `mtime_hash` (`server.py:3556`), `newest_mtime_ns` for a folder, absent in the catalog and on a pin |
+| A file’s modification time | `mtime` in seconds (`wire_models.py:58`), `mtime_ns` (`fs_record.py:46`), `mtime_hash` (`server.py:3595`), `newest_mtime_ns` for a folder, absent in the catalog and on a pin |
 | A time, in general | Epoch seconds in the tree and Git wires (`git/wire.py`, module docstring); UTC strings at second precision in GitHub models (`github/pull_record.py:108`) and with optional milliseconds in cache records (`cache/records.py:58`); nanoseconds in the event stream |
 | A pull request’s state | `state` and `draft` and `merged_at` in a row; `state`, `draft`, and `merged` in a record; one four-valued `state` in search; and “state” also names every envelope’s cache state |
 | That four-valued state | Derived four times: `displayState` (`github/pull-state.js:43`), the search projection (`github/pull_catalog.py:640`), a record’s summary line (`github/pulls.py:1239`), and `--show` (`cli/show_cli.py:248`); and inverted once, in `withListedState` (`github/pull-state.js:118`) |
 | A pull request’s branches | `base_ref`, `head_ref`, `head_repository`, `head_oid` in a row; `base.ref`, `head.sha`, `head.repository` in a record |
 | A commit’s identifier | `id`, `oid`, `revision`, `head_revision`, `sha` |
-| A change’s totals | `GitCommitStats` with six counts (`git/wire.py:243`); the diff format’s `Totals{files, additions, deletions, exact}` (`diff/format.py:170`); per-file `additions` and `deletions` in `GitFileChange` and `PullFileRow`, whose status words differ |
-| What kind of thing | `type` is `file` or `dir` in a tree row and `text`, `folder`, or `image` in an envelope; `kind` is a view classifier in an envelope, a ref’s kind in Git, and a blob or tree on a pin |
+| A change’s totals | `GitCommitStats` with six counts (`git/wire.py:243`); the diff format’s `Totals{files, additions, deletions, exact}` (`diff/format.py:170`); per-file `additions` and `deletions` in `GitFileChange` and `PullFileRow`, whose status words differ; on the server, `ChangeSums{files, additions, deletions, exact, statuses, short}`, which fixes the status words (`github/pull_change_sums.py:38`); in the browser, the `{files, additions, deletions, exact}` that `changeSummary` and `changeLine` draw, where an unknown count draws as “?” (`static/formatters.js:304`, `:393`) |
+| What kind of thing | `type` is `file` or `dir` in a tree row and `text`, `folder`, or `image` in an envelope; `kind` is a view classifier in an envelope, a ref’s kind in Git, and a blob or tree on a pin; `--present` prints a `kind` of `folder`, `file`, `repository`, `pull_request`, `commit`, or `tree`, which the macOS app reads (`cli/present.py:126`); and a selection’s `SelectionKind` is `repository`, `tree`, `blob`, `commit`, or `pull_request` (`cache/urls.py:77`) |
 
 ### How Each Object Is Drawn Today
 
 Every surface builds its own rows.
 There is no shared row or list helper; the design system’s
 [Descriptor Contract](../../../design-system.md#descriptor-contract) describes keyboard
-commands, not rows.
+commands, not rows. Below the row, three drawings are shared: a page header, an author,
+and change totals.
 
 | Surface | Builder | Notes |
 | --- | --- | --- |
-| Files tree | `renderTreeNodes` (`static/app.js:2504`) and, for live inserts, `_buildRowHtml` (`static/app.js:8215`) | Two builders over two shapes of one entry, which the design system holds together with a test ([Navigation Tree Folders](../../../design-system.md#navigation-tree-folders)) |
-| Recent | `renderRecentList` (`static/app.js:5536`) | Reuses `renderTreeNodes` over a clustered tree |
+| Files tree | `renderTreeNodes` (`static/app.js:2538`) and, for live inserts, `_buildRowHtml` (`static/app.js:8210`) | Two builders over two shapes of one entry, which the design system holds together with a test ([Navigation Tree Folders](../../../design-system.md#navigation-tree-folders)) |
+| Recent | `renderRecentList` (`static/app.js:5575`) | Reuses `renderTreeNodes` over a clustered tree |
 | Quick Search | `appendFileResult` and `appendPullResult` (`static/search-palette.js:436`, `:472`) | An option builder per kind of result, over a `file` or `pull` result union |
-| Commit row | `renderRow` (`static/git-panel.js:2152`) | Reads the log row |
-| Commit summary | `renderCommitSummary` (`static/git-panel.js:443`) | One component in two projections: the page’s header and, with `compact`, the hover card |
-| Pull request row | `describeRow` then `buildRow` (`github/pulls-panel.js:276`, `:3781`) | A pure description, then paint |
-| Pull request header | `describeCore` then `paintHeader` (`github/pull-page.js:1130`, `:4784`) | A second description of the same pull request |
+| Commit row | `renderRow` (`static/git-panel.js:2183`) | Reads the log row |
+| Commit summary | `renderCommitSummary` (`static/git-panel.js:449`) | One component in two projections: the page’s header and, with `compact`, the hover card |
+| Pull request row | `describeRow` then `buildRow` (`github/pulls-panel.js:312`, `:3951`) | A pure description, then paint. Three lines: the title first, then the number and author, then the change line, which is the row’s one child and its own focus stop ([The Pulls Tab](../../../design-system.md#the-pulls-tab)) |
+| Stack heading | `createStackLines` (`github/stack-lines.js:234`) | A section heading that reads data of its own, the stack’s change line from `stack-change`; a row in a stack sits one slot in, a row in none flush left |
+| Pull request header | `describeCore` then `paintHeader` (`github/pull-page.js:1174`, `:4955`) | A second description of the same pull request |
+| Page header | `.page-header` on the commit and pull request pages | Lines in one order: title, author, place, age, then the Diff summary ([Page Headers](../../../design-system.md#page-headers)) |
+| Author | `metabrowser.actorIdentity(name, {avatar, placeholder})` (`static/plugin-sdk-views.js:1063`) | The commit page, the pull request page, and the Pulls rows draw an author through it |
+| Change totals | `changeLine` and `changeSummary` (`static/formatters.js:304`, `:393`) | One drawing on the commit card, the commit totals, the Diff summary, the Pulls rows, the stack headings, and the pull request page’s brief line |
 | Folder Overview | A panel stack (`builtin_plugins/folder/overview.js:83`) | Totals, type breakdown, README; no list of children |
 
-Two of these are precedents this plan builds on.
+Four of these are precedents this plan builds on.
 `describeRow` separates a pure description from paint, and a browserless session pins it
 (`github.pulls-panel` in the
 [Parity Registry](../../architecture/arch-parity-registry.md)). `renderCommitSummary`
 draws one component at two sizes, which `test_git_commit_summary_is_one_component` holds
-to one renderer.
+to one renderer. The page header and `actorIdentity` are drawings of the shared header
+and of the `actor` sub-object below, already extracted; `changeLine` is the drawing of
+the change-totals sub-object.
 
 Long lists are windowed three ways: a fixed-height window for Git history
 (`static/git-history-window.js:172`), a variable-height one for pull requests
 (`github/pulls-window.js:8`), and a third for a pull request’s changed files
-(`github/pull-files-view.js:284`). The Files tree pages by `TREE_PAGE_SIZE`
+(`github/pull-files-view.js:286`). The Files tree pages by `TREE_PAGE_SIZE`
 (`static/app.js:16`) and does not window.
 
 The keyboard rules for these lists are one contract,
 [Navigational Row Collections](../../../design-system.md#navigational-row-collections),
 implemented four times (`static/tree-keyboard-navigation.js:491`,
-`static/git-panel.js:1792`, `static/pulls-nav.js:461`, and the changed-files tree) and
+`static/git-panel.js:1823`, `static/pulls-nav.js:461`, and the changed-files tree) and
 held together by a source-text check,
 `test_nav_like_row_sets_share_the_vertical_keyboard_contract`
-(`tests/test_design_vocabulary.py:593`).
+(`tests/test_design_vocabulary.py:599`). In the Pulls tab, Right moves to a row’s change
+line, Space on the row is consumed and does nothing, and Up and Down never expand.
 
 ### Browser Stores Today
 
@@ -206,29 +229,38 @@ stores. Each surface also keeps its own:
 
 | Store | Keyed by | Kept fresh by |
 | --- | --- | --- |
-| `fileStore` (`static/app.js:7835`) | Path, one `FsEntry` each | The event stream, within its depth scope |
+| `fileStore` (`static/app.js:7830`) | Path, one `FsEntry` each | The event stream, within its depth scope |
 | Directory totals (`static/directory-totals-store.js`) | Path | The same events; subscribers per path |
 | Folder context (`static/resource-context.js`) | Path, the folder envelope | A refetch on an intersecting change |
-| File cache (`static/app.js:6379`) | Path, the `/api/file` envelope | Entity tags |
+| File cache (`static/app.js:6418`) | Path, the `/api/file` envelope | Entity tags |
 | Known-file catalog (`static/known-file-catalog.js`) | Path | One bulk read, then catalog deltas |
 | Git pages and details (`static/git-panel.js:76`, `:120`) | Page number; revision | A generation that moves with HEAD |
-| Pull lists (`github/pulls-panel.js:667`) | Filter name | A content generation, entity tags, and polling |
+| Pull lists (`github/pulls-panel.js:710`) | Filter name | A content generation, entity tags, and polling |
 | Listed states (`github/pull-state.js:60`) | Source, then number | Written as rows arrive |
+| Row change lines (`documentRowLines`, `github/row-lines.js:157`) | Number and head | Read again when a row’s head moves; bounded, per document |
+| Stack change lines (`documentStackLines`, `github/stack-lines.js`) | Stack | Read again when a member’s head moves |
 
-Three findings matter for the design.
+Four findings matter for the design.
 
 - **The pull list store holds descriptions, not pull requests.** `holdRows` maps each
-  wire row through `describeRow` and keeps the result (`github/pulls-panel.js:1541`), so
+  wire row through `describeRow` and keeps the result (`github/pulls-panel.js:1587`), so
   the labels, branches, creation time, and close time a wider row would show are
   discarded when the row arrives.
 - **The pull list lives inside the panel.** `createPullsController` is created by the
-  panel’s mount (`github/pulls-panel.js:664`, `:4480`), reads only while the tab is
-  shown (`:875`), and holds at most `DISPLAY_ROWS` rows.
+  panel’s mount (`github/pulls-panel.js:707`, `:4852`), reads only while the tab is
+  shown (`:921`), and holds at most `DISPLAY_ROWS` rows.
   Nothing outside the panel can read its list.
+  The change-line lane is created in the same mount (`:5028`), and asks for no lines
+  while the panel is hidden (`:4541-4547`).
 - **A row and its page reconcile by hand.** The page reads a different model from the
   row, so `withListedState` (`github/pull-state.js:108`) patches a cached record with
   the state the list saw later.
   That is a merge of two partial copies of one object, written for one field.
+- **A facet already arrives by a lane of its own, matched by revision.** The change
+  totals are read in batches for the rows in view, kept per document, and drawn only
+  where their head and base match the ones a surface shows (`briefMatches`,
+  `github/pull-summary-brief.js:67`). A total for another head is not older; it is about
+  something else.
 
 ### Validation and SoftSchema Today
 
@@ -257,10 +289,10 @@ validates in two layers, structural and semantic, at one of three maturities: `s
   in [Repository Cache](../../architecture/arch-repository-cache.md#record-contracts),
   in `make lint-check`.
 - Importing `metabrowser` must not load `softschema`, `jsonschema`, or
-  `frontmatter_format` (`tests/test_plugin_public_api.py:101`,
+  `frontmatter_format` (`tests/test_plugin_public_api.py:108`,
   `devtools/check_distribution.py:62`), so schema validation stays off the startup path.
   A server loads them on first use of the cache or a GitHub route, through the cache’s
-  contract imports (`cache/atomic.py:26`, `:39`) and `github/pull_list.py:43`, which is
+  contract imports (`cache/atomic.py:26`, `:41`) and `github/pull_list.py:43`, which is
   why the GitHub sidekick imports its builders inside each handler
   (`github/sidekick.py:13`).
 
@@ -281,14 +313,15 @@ envelope is produced and consumed by one artifact in one request.
 [Plugin Authoring](../../../plugins.md) describe the contract.
 A manifest declares `[[kind]]` rules, `[[view]]` tabs, and `[[data_hook]]` routes
 (`plugin_loader/manifest.py:164`, `:184`, `:275`); the browser side is
-`mb.registerView(kind, viewId, {render, dispose})` (`static/plugin-sdk.js:456`).
+`mb.registerView(kind, viewId, {render, dispose})` (`static/plugin-sdk.js:479`).
 `PLUGIN_SDK_VERSION` (`plugin_loader/manifest.py:43`) refuses a manifest written for
 another SDK.
 
 Four facts shape what follows:
 
 - **The SDK has no list, row, or object primitive.** It offers formatters, icons, ref
-  chips, and data fetches (`static/plugin-sdk.js:1777`).
+  chips, and data fetches (`static/plugin-sdk.js:1802`), and drawings of parts of an
+  object: `actorIdentity` for an author and `changeLine` for change totals.
 - **One composition contract exists already.** Folder Overview panels register with
   `resolve`, `mount`, and `update`, and a composer owns order and layout
   ([Folder Overview Contributions](../../../plugins.md#folder-overview-contributions)).
@@ -299,7 +332,7 @@ Four facts shape what follows:
 - **Pull requests reach past the plugin boundary.** The Pulls tab’s host and the
   pull-request route are core modules (`static/pulls-nav.js`, `static/pull-route.js`);
   the tab registers through the internal `window.MetabrowserShell`
-  (`static/pulls-nav.js:707`, `static/app.js:5081`); and Quick Search’s pull-request
+  (`static/pulls-nav.js:715`, `static/app.js:5120`); and Quick Search’s pull-request
   provider is in core (`static/search-controller.js:397`). Core names a GitHub concept
   because a plugin cannot yet supply it.
 
@@ -312,7 +345,12 @@ Four facts shape what follows:
 - **Rows.** A row is one activation target at one height, on the shared row height and
   hover tokens ([Rows and Disclosures](../../../design-system.md#rows-and-disclosures));
   a pull request’s row is one link, so a new tab and a copied address are the browser’s
-  own ([Rows](../../../design-system.md#rows)).
+  own ([Rows](../../../design-system.md#rows)), and its change line is a second target,
+  its one child, which toggles its files and opens no page
+  ([The Pulls Tab](../../../design-system.md#the-pulls-tab)).
+- **Text by role.** Navigation rows and the pane each have one body size, and metadata
+  takes the size of the text it accompanies, in muted ink
+  ([Text Roles](../../../design-system.md#text-roles)). A new shape’s lines follow it.
 - **Stable boxes.** A region’s box is decided at first paint, and data that arrives
   later fills a reserved slot
   ([Regions Keep Their Boxes](../../../design-system.md#regions-keep-their-boxes)); in
@@ -375,9 +413,13 @@ Four facts shape what follows:
    object, with its own field names.
 2. Two surfaces already separate description from paint, and one already draws a single
    component at two sizes.
-   The pattern exists; it is not shared.
+   Below the row, the sharing has begun: one page header, one author, and one change
+   line serve the commit and pull request surfaces.
+   Rows and lists are still built per surface.
 3. The stores keep what a surface draws, so a second surface cannot reuse them, and a
    row and its page are reconciled by hand.
+   The one exception, the change totals, shows the shape a facet takes in practice: its
+   own batched route, its own memory, and a match by revision, not by age.
 4. List mechanics (windowing, roving focus, paging, arrival) are implemented per list
    and kept consistent by tests over source text.
 5. The contract machinery for a named, versioned, corpus-checked model exists and has
@@ -385,6 +427,19 @@ Four facts shape what follows:
 6. A plugin can add a kind, a tab in the pane, a data route, and an Overview panel, but
    not a row, a list, or a navigation panel, which is why pull requests live partly in
    core.
+
+### Work in Flight
+
+Open pull requests and planned work that touch this plan, as of 2026-11-18. Each changes
+what a phase builds on, so a phase starts from whatever of it has landed.
+
+| Work | What it does | Bearing on this plan | Before Phase 1? |
+| --- | --- | --- | --- |
+| [#550](https://github.com/jlevy/metabrowser/pull/550) and [#552](https://github.com/jlevy/metabrowser/pull/552) | One view header for files and folders, `viewHeaderHtml(parts)` over `MetabrowserViewHeaderParts{eyebrow, iconHtml, title, end, line}`; `mtime` on `/api/file`; a GitHub toggle at the header’s end | The `page` shape’s frame for all four types; a time on the file envelope ([Decision 7](#decision-7-the-shared-header), [Decision 8](#decision-8-timestamps)) | Likely; not drafts, waiting on a startup-script budget call |
+| Bead mb-7t5s | Moves the pull request and commit pages onto the view header | Whether a plugin draws the header through an SDK frame or by writing its classes, which [Decision 12](#decision-12-how-a-view-is-defined) needs | Not started |
+| [#380](https://github.com/jlevy/metabrowser/pull/380) | Plugin sources and out-of-process environments: one `sdk_version` under a caret rule, read before schema validation; third-party Python in a worker | How a manifest block versions ([Decision 20](#decision-20-plugin-declaration-and-the-sdk-gate)); whether the host can import a plugin’s model ([Plugins](#plugins)) | Unlikely; a draft awaiting the owner’s decisions |
+| [#534](https://github.com/jlevy/metabrowser/pull/534) | Opening any target from the CLI, the skill, and the macOS app; its code landed in #539 and #540 | Agrees with [Decision 5](#decision-5-identity) A; adds spellings of a kind | A docs draft; the code is on `main` |
+| [#498](https://github.com/jlevy/metabrowser/pull/498) and its stack (#501 to #520) | fdu as an inventory provider; #507 records decisions D1 to D22 in [Inventory Provider](../../architecture/arch-inventory-provider.md) | File and folder identity, completeness, removed subtrees, and a retryable tree answer, for [Phase 2](#phase-2-core-types-the-folder-page-and-recent-changes) | No; drafts, Phase 2 only |
 
 ## Design
 
@@ -414,9 +469,20 @@ routes and events    ──►  one model per type,     ──►  nav row · wi
 | **View** | The drawing of one type in one shape |
 | **Feed** | A route or event stream that supplies objects, in whatever encoding its cost allows |
 
-Two existing names sit near these and mean something else.
-The **Git Commit Summary** component is, in these terms, a commit’s page header and its
-card. A kind’s `[[view]]` is a view in the `page` shape, called a **page view** below.
+Several existing names sit near these and mean something else.
+
+- The **Git Commit Summary** component is, in these terms, a commit’s page header and
+  its card.
+- A kind’s `[[view]]` is a view in the `page` shape, called a **page view** below.
+- The server’s **view** is what it shows now, a folder’s working tree or one revision
+  ([Open Modes](../../architecture/arch-open-modes.md)). This plan says “the served
+  revision” for that, and keeps “view” for a drawing.
+- **Recent** already names two things: the Files tab’s Recent view over `/api/recent`,
+  and the recent targets `metab --recent` keeps for the macOS app’s Open Recent
+  ([Recent Targets](../../architecture/arch-recent-targets.md)). Recent Changes would be
+  a third; [Decision 19](#decision-19-where-recent-changes-lives) weighs its name.
+- The **view header** (#550) and the **page header** (#487) are drawings of the shared
+  header below, in the `page` shape.
 
 The design rests on five rules:
 
@@ -473,16 +539,32 @@ The identifier is the one each type already uses:
 | `commit` | The full commit ID | `/commit/<id>` | Commit time |
 | `pull-request` | The number, as a string | `/pull/<id>` | GitHub’s `updated_at` |
 
+The `type` tokens are this plan’s, and two vocabularies on `main` already spell a kind
+of thing differently: `--present`’s `kind` and a selection’s `SelectionKind` say
+`pull_request` and `tree`
+([the Background](#where-the-same-fact-is-spelled-differently)).
+[Decision 5](#decision-5-identity) recommends one spelling for all three,
+`pull_request`, which the CLI and the macOS app already read; if the vocabularies turn
+out to name different things, the plan states the mapping instead.
+This document keeps `pull-request` until that is settled.
+
 The address is a function of the identity through the encoders that exist
-(`view_routes.py`, `static/navigation.js`, `static/pull-route.js`), which the
+(`view_routes.py`, `static/navigation.js`, `static/pull-route.js`, and on the Python
+side `selection_view_href` in `cli/selection_href.py:16`), which the
 `navigation.route-identity` parity row already pins.
+A GitHub object also has a web address, which `GithubUrlReducer.web_url` builds
+(`github/urls.py:560`) and which #552 draws at the end of the view header; whether the
+header carries it is an [open question](#open-questions).
 A type with no page of its own, such as a comment once it is one, is addressed as its
 parent’s address plus a fragment, which the
 [URL grammar](../../architecture/arch-views-models-routes.md#browser-url-grammar) leaves
 to the document. So every object a collection can hold has an address, and every row the
 list host draws is a link.
-An identity is scoped by its type’s source: the served root or pin for files, folders,
-and commits, and the repository and signed-in reader for pull requests.
+An identity is scoped by its type’s source: the served root and the served revision for
+files, folders, and commits, and the repository and signed-in reader for pull requests.
+Since #559 a repository folder can switch between its working tree and a revision of its
+own checkout (`POST /api/source/pin`, guarded by `pin_changed`), so the served revision
+is a scope for a plain repository folder too, not only for a mirror.
 When a scope changes, the store drops that type’s objects, as the pin guard refuses
 requests for another pin today.
 
@@ -497,16 +579,21 @@ A facet is present whole or absent; a view never tests single fields of one.
 | `file` | `ext`, `logical_ext`, `size`, `kind` when classified, `gitignored`, compression, and on a pin `display_path`, `mode`, and `oid` | None. The page is the `/api/file` envelope |
 | `folder` | `totals{files, bytes, unignored_files, unignored_bytes, complete}`, `gitignored`, `empty` | `readme{path}`, `types` (the rollup’s leading types) |
 | `commit` | `short_id`, `authored_at`, `parent_ids` | `refs`, `message{body}`, `changes` (change totals) |
-| `pull-request` | `number`, `state` (one of open, draft, merged, closed), `created_at`, `closed_at`, `merged_at`, `base{ref}`, `head{ref, repository, sha}`, `labels` | `description{body, truncated}`, `merge{mergeable, merged_by, commits}`, `stack{number, position, total}`, `checks`, `changes` |
+| `pull-request` | `number`, `state` (one of open, draft, merged, closed), `created_at`, `closed_at`, `merged_at`, `base{ref}`, `head{ref, repository, sha}`, `labels` | `description{body, truncated}`, `merge{mergeable, merged_by, commits}`, `stack{number, position, total}`, `checks`, `changes` (served today by `pull-files-summary`, for a head and base) |
 
 The field lists are a sketch grounded in today’s models; the model written against a
 corpus settles them.
 The corpus is shaped like cached records and written by the production writers from the
-synthetic fixture accounts, as `tests/cache_home_fixture.py` builds cache homes, never
-copied from a real cache: a cached row carries GitHub users’ logins, avatars, titles,
-and labels (`github/pull_list.py:99`), which
+synthetic fixture accounts, never copied from a real cache: a cached row carries GitHub
+users’ logins, avatars, titles, and labels (`github/pull_list.py:99`), which
 [AGENTS.md](../../../../AGENTS.md#documentation-and-public-hygiene) forbids committing.
-Three choices in the sketch are deliberate:
+`tests/test_github_drawn_from_disk.py` already builds such a cache home for the GitHub
+plugin: record, catalog, changed-files lists, stacks, labels, timeline, core, and
+manifest, through the production writers (`_build`, `:314`). Its `ELEMENTS` table
+(`:566`) maps each drawn element to the route that answers it, which is close to a table
+of where each summary field and facet comes from.
+The pull request corpus starts there; the core types’ corpus starts from
+`tests/cache_home_fixture.py`. Three choices in the sketch are deliberate:
 
 - **One state for a pull request,** derived in the projection
   ([Decision 10](#decision-10-how-far-a-contract-normalizes-its-source)).
@@ -515,16 +602,22 @@ Three choices in the sketch are deliberate:
 - **A commit’s refs are a facet.** Refs move while the commit does not, so they carry
   the history’s generation and not the commit’s time.
 
-Four places where the sketch does not yet fit the records are open items for the corpus
+Five places where the sketch does not yet fit the records are open items for the corpus
 work, settled before each contract is written:
 
 - **The base side’s commit and repository.** `base` keeps only `ref` in the summary, and
   no facet yet holds the record’s `base.sha` and `base.repository`
   (`github/pull_record.py:176`, `:216`).
-- **Unknown change totals.** A commit at a shallow boundary has every count null
-  (`git/wire.py:243`), while File Diff Format’s `Totals.files` is a required count
+- **Unknown and partial change totals.** A commit at a shallow boundary has every count
+  null (`git/wire.py:243`), while File Diff Format’s `Totals.files` is a required count
   (`diff/format.py:170`), so the one change-totals sub-object must be able to say
-  “unknown”.
+  “unknown”. `ChangeSums` adds a third state, `short`, for a list that stopped before its
+  end (`github/pull_change_sums.py:38`), and `FilesSummaryWire` makes each count
+  nullable (`github/pull_files_summary.py:98`). The sub-object starts from those two and
+  from what `changeLine` draws, an unknown count as “?”, rather than from a new shape.
+- **The facet’s key.** A `changes` facet describes one head and base, not a moment.
+  It carries them, and a surface draws it only for the head and base it shows, as
+  `briefMatches` does today (`github/pull-summary-brief.js:67`).
 - **An empty folder’s time.** A finalized empty folder’s time is `0.0`, which differs
   from the null of a pending one (`wire_models.py:34-39`); under
   [Decision 8](#decision-8-timestamps) A, the mapping to `updated_at` must keep that
@@ -554,8 +647,10 @@ Three levels of modeling, chosen by what a thing must do:
   commit may be absent from a served checkout, as it is today.
 - **A sub-object has one definition.** Change totals,
   `{files, additions, deletions, exact}` with optional per-status counts, serve a
-  commit, a pull request, and a changed file’s line counts, in place of the three shapes
-  there are now.
+  commit, a pull request, a stack, and a changed file’s line counts, in place of the
+  shapes there are now.
+  Its drawing exists, `changeLine`, and so does an author’s, `actorIdentity`; each
+  sub-object’s definition is written to what its drawing already takes.
 
 #### Extension Path
 
@@ -563,8 +658,9 @@ Three levels of modeling, chosen by what a thing must do:
 | --- | --- | --- |
 | Comment, review, review comment | GitHub plugin | Recent Changes lists comments (Phase 2) |
 | Check run | GitHub plugin | A checks list appears outside the pull request page |
-| Branch, tag | Core, from `GitRef` (`git/wire.py:69`) | A branches list is built |
-| Changed file | Diff plugin, from File Diff Format’s file entry | A changes list is drawn outside a comparison |
+| Stack | GitHub plugin, from `github/pull_stacks.py` and `stack-change` | A stack is listed or linked outside the Pulls tab; its heading already draws its own change totals |
+| Branch, tag | Core, from `GitRef` (`git/wire.py:69`) or the chooser’s `SourceRef` and `WorkingTree` (`source_routes.py:246`, `:261`) | Now: #559’s branch and tag chooser is a branches list, with a second model of a ref beside `GitRef`; the type picks one of the two |
+| Changed file | Diff plugin, from File Diff Format’s file entry | A changes list is drawn outside a comparison. Its row is not always a link: “View on branch” is a link only where the served revision is the diff’s head, and otherwise a button that switches the revision first (#511) |
 | Issue | GitHub plugin | Issues are added at all |
 | Agent session | The `agent-log` plugin | Sessions are listed |
 
@@ -586,9 +682,9 @@ Shared sub-objects are definitions in one module that each contract includes.
 **What the registry needs.** A declaration in `plugin_loader/artifact_contracts.py`
 names an artifact profile, an envelope key, producers, consumers, and a corpus (`:64`),
 and the registry admits only the `pure-yaml` profile and only `enforced` artifacts
-(`:399`). Object contracts declare that profile with the envelope key `object`. Objects
-travel as JSON and are validated as records, through `validate_record`; the profile is
-the form an object takes if it is ever written out, which the CLI could do.
+(`:311`, `:399`). Object contracts declare that profile with the envelope key `object`.
+Objects travel as JSON and are validated as records, through `validate_record`; the
+profile is the form an object takes if it is ever written out, which the CLI could do.
 
 **What is not a contract.** The transport around objects stays an internal envelope, as
 the envelope plan decided.
@@ -629,10 +725,17 @@ what it printed.
 
 | Shape | For | The host’s frame | Draws from |
 | --- | --- | --- | --- |
-| `nav-row` | A navigation panel | One link; the shared row height, hover, and current marks; at most two lines; may own a child group | Summary |
+| `nav-row` | A navigation panel | One link; the shared row height, hover, and current marks; up to three lines; may own a facet line as its one child, which may own a child group | Summary; named facets in reserved slots |
 | `wide-row` | A list in the main pane | One link in a grid: leading mark, title line, metadata line, trailing columns | Summary; named facets in reserved slots |
 | `card` | A timeline or a hover | A bordered box on `.page-card`: title, byline, and a bounded body | Summary; named facets in reserved slots |
-| `page` | The pane | The kind’s `[[view]]` tabs, as today | The page’s own model |
+| `page` | The pane | The shared view header (#487, #550), then the kind’s `[[view]]` tabs | The header from the summary; the body from the page’s own model |
+
+The Pulls row sets the `nav-row` frame: a container whose one child is its change line,
+at the row’s level plus one, which owns the changed files at plus two
+([The Pulls Tab](../../../design-system.md#the-pulls-tab)). A shape that allowed only “a
+row that may own a child group” could not express it.
+The metadata line of a `wide-row` follows the view header’s line rules from #550: the
+age last, and an item that does not fit leaves the line whole.
 
 The set is closed and owned by the host, because a shape is a contract with the list
 host about height and activation ([Decision 11](#decision-11-the-set-of-shapes)). Two
@@ -685,6 +788,8 @@ mb.objects.registerView("pull-request", "wide-row", {
 The narrow and wide rows of a pull request are then two descriptions of one object.
 The wide row has room for what the narrow one omits and the summary already holds:
 labels, the opened and closed ages, and both branch chips.
+It also draws what the narrow row now draws from a facet, the change line, from the same
+lane, so the wide row never says less than the narrow one.
 A commit’s card is the compact commit summary: its subject, author, age, and revision
 come from the summary, and its two change-totals rows hold their height until the
 `changes` facet arrives.
@@ -708,8 +813,11 @@ come from the summary, and its two change-totals rows hold their height until th
   maintains.
 - **Disclosure.** A row may own a nested collection drawn under it, as a folder owns its
   children and a pull request its changed files.
-  The host owns the chevron, the expanded state, and the child group, and asks only
-  whether a row owns one, as the tree does.
+  The host owns the chevron, the expanded state, and the child group, and asks whether a
+  row owns one, as the tree does, and where the disclosure sits: on the row, as a
+  folder’s is, or on a facet line under it, as a pull request’s change line is.
+  The keyboard follows the place: Right on a row with a facet line moves to that line
+  and opens nothing, and Up and Down never expand.
 - **Loading.** Rows paint from the store when the collection is held.
   A cold list shows row-shaped skeletons after the shared quiet period, never a spinner
   over rows.
@@ -718,14 +826,19 @@ come from the summary, and its two change-totals rows hold their height until th
   the shared arrival highlight.
 - **Sections.** A list may group consecutive items under headings: days in a timeline,
   stacks in the pull list.
-  The grouping is a pure function over the items, tested as `describe` is.
+  Which items share a section is a pure function over the items, tested as `describe`
+  is. A heading is more than a label, though: a stack’s heading reads its own data, the
+  stack’s change line from `stack-change`, and a section can change its rows’ indent, as
+  a stacked pull request sits one slot in (#506). So a section has a `describe` of its
+  own, and may name a facet of the section, as a row names one of its object.
 - **The collection’s own facts.** Counts, filters, and freshness belong to the
   collection handle, so the wide list and the Pulls tab show one filter and one set of
   totals.
 
 #### Pages That Show Several Objects
 
-A page is an ordinary page view of a kind, and it mounts one list host or several
+A page is an ordinary page view of a kind, under the shared view header, and it mounts
+one list host or several
 ([Decision 17](#decision-17-composing-a-page-of-several-lists)).
 
 - **The pull requests page** mounts the pull request collection as wide rows, and may
@@ -759,23 +872,23 @@ be reachable through `metab` ([Decision 18](#decision-18-composing-a-mixed-list)
 - **Honesty about coverage.** The envelope names each source with `complete` and
   `truncated`, as Quick Search batches do.
   Comments come only from pull requests whose records are cached, and the page says so.
-  On a pinned revision files have no time and no event stream runs, so Recent Changes
-  there lists the commits at or before the pin, reports the changed-files source as
-  absent, and says so.
+  On a pinned revision, a mirror’s or, since #559, a checkout’s, files have no time and
+  no event stream runs, so Recent Changes there lists the commits at or before the pin,
+  reports the changed-files source as absent, and says so.
 
 **No source can answer that query today.** Each needs a new time-ordered read, and each
 is a cost to measure before it is admitted:
 
 | Source | Pages today by | Needs |
 | --- | --- | --- |
-| Changed files | A time window and a limit, with no cursor (`recent.py:25`) | A cursor below a time |
-| Commits | An opaque session cursor over a `--date-order` walk, which follows topology (`git/history.py:638`) | A bounded walk before a time, merged by commit time |
+| Changed files | A time window and a limit, with no cursor (`recent.py:25`) | A cursor below a time, which is a requirement on the inventory provider’s contract, since every provider must answer it ([Inventory Provider](../../architecture/arch-inventory-provider.md)), not a change to `recent.py` alone |
+| Commits | An opaque session cursor over a `--date-order` walk, which follows topology (`git/history.py:641`) | A bounded walk before a time, merged by commit time |
 | Pull requests | `number` descending; the only index is `(state, number)` (`github/pull_catalog.py:122`, `:517`) | An index on `updated_at`, which is a catalog schema change |
 | Comments | Per pull request, inside its record | An index across cached records |
 
 Day headings group by the reader’s local date in the browser; the route supplies the
 times. Recent Changes is not the Files tab’s Recent view, which stays a filter over
-files.
+files, nor the recent targets `metab --recent` keeps for Open Recent.
 
 ### Browser Data Model
 
@@ -810,11 +923,12 @@ mb.objects.put(object, { feed, generation })        // hold a summary or facets,
   `registerType`. Commits, pull requests, and plugin types use a default table keyed by
   `id`, bounded per type at a measured size.
 - **Files and folders are adapters, registered by the shell.** `fileStore` is private to
-  `app.js`, so the shell registers the source and a plugin reads through `mb.objects`.
-  An object is built on demand from what is held, so a large tree allocates nothing per
-  file. Three shapes are adapted: an event-stream entry, within the stream’s depth scope;
-  a `/api/tree` node, for a deeper folder; and a pinned revision’s row, where there is
-  no stream.
+  `static/app.js`, so the shell registers the source and a plugin reads through
+  `mb.objects`. An object is built on demand from what is held, so a large tree
+  allocates nothing per file.
+  Three shapes are adapted: an event-stream entry, within the stream’s depth scope; a
+  `/api/tree` node, for a deeper folder; and a pinned revision’s row, where there is no
+  stream.
 - **A folder’s children are a route’s answer.** The Files view reads
   `/api/tree?path=<folder>`, so membership and order stay with the route, and refetches
   on an intersecting change, as `folderContext` does.
@@ -823,8 +937,18 @@ mb.objects.put(object, { feed, generation })        // hold a summary or facets,
   by another feed’s summary with a strictly later `updated_at`, which is
   `withListedState`’s rule.
   An unknown time is older than any known one, so across feeds a summary with a time
-  replaces one without, and a summary without a time never replaces another feed’s. A
-  facet carries the revision of what supplied it and is replaced whole by a newer one.
+  replaces one without, and a summary without a time never replaces another feed’s.
+- **Facets are keyed, not aged.** A facet carries the revision it describes, a pull
+  request’s `changes` its head and base, and is replaced whole by another facet for the
+  same key. A facet for a key the summary no longer shows is not drawn and is not an
+  error: it is about another revision, and it stays in the lane’s bounded memory for a
+  return to that revision.
+  This is the rule `briefMatches` keeps today (`github/pull-summary-brief.js:67`).
+- **A facet may keep its own lane.** `ensure` asks the type’s loader, and a loader may
+  be an existing batched route and memory.
+  The pull request’s `changes` loader is the `pull-files-summary` lane and
+  `documentRowLines` that the Pulls rows and the page already share; the store does not
+  hold a second copy.
 - **Freshness.** Each source keeps the mechanism it has, tabulated below, and a
   collection handle reports one vocabulary over them: absent, pending, current, or
   stale, and whether a refresh is running.
@@ -839,7 +963,7 @@ mb.objects.put(object, { feed, generation })        // hold a summary or facets,
 | Pull request | The catalog’s content generation, entity tags, and polling |
 
 **The pull request collection in Phase 1.** The Pulls panel’s controller stays the one
-reader and writer of the list, and four things about it change
+reader and writer of the list, and five things about it change
 ([Decision 14](#decision-14-who-reads-a-collection)):
 
 1. It holds objects and describes at paint, where it now holds descriptions, and it
@@ -847,9 +971,13 @@ reader and writer of the list, and four things about it change
 2. It registers its held lists as the collection’s source with `registerSource`, and
    puts each object in the store with `put`.
 3. It counts a mounted pane list as shown, where `live()` now asks only about the tab
-   (`github/pulls-panel.js:875`), so the wide list does not freeze when the reader
+   (`github/pulls-panel.js:921`), so the wide list does not freeze when the reader
    switches the navigation to Files.
 4. Either list’s request for more drives its paging, within `DISPLAY_ROWS`.
+5. The change-line lane wants the lines of the rows any shown list draws.
+   Today `rowLines.want` is passed nothing whenever the panel is hidden
+   (`github/pulls-panel.js:4541-4547`), and the lane is created in the panel’s mount
+   (`:5028`), so it moves to where the collection lives.
 
 Its generations, entity tags, offers, cores, and prefetch are untouched.
 Because this changes what an existing surface reads, it lands behind a measured pair on
@@ -865,6 +993,8 @@ Objects are served by the layer that owns them, through routes that mostly exist
 | `GET /api/plugin/github/pulls` | The pull request collection; `rows` are `PullRequest` summaries | Rows conform, Phase 1 |
 | `POST /api/plugin/github/pulls-refresh` | A refresh; its answer nests the `pulls` list envelope, with no rows | Conforms with `pulls`, Phase 1 |
 | `GET /api/plugin/github/pull` | One pull request with its facets | Phase 3 |
+| `GET /api/plugin/github/pull-files-summary` | The `changes` facet of up to `MAX_SUMMARY_NUMBERS` pull requests, from the cache | None; it becomes the facet’s loader |
+| `GET /api/plugin/github/stack-change` | A stack’s change totals | None until a stack is a type |
 | `GET /api/tree`, `/api/recent` | Files and folders, in their compact encodings, read through adapters | None |
 | `GET /api/git/log`, `/api/git/commit/<rev>` | Commits; the log row is close to the summary already | Rows conform, Phase 2 |
 | `GET /api/recent-changes` | The mixed collection | New, core, Phase 2 |
@@ -877,12 +1007,12 @@ Objects are served by the layer that owns them, through routes that mostly exist
   convention. Its search answer (`q=`) keeps its own rows until Quick Search adopts
   references in Phase 3. Both say `rows`, so validation applies to the list answer, the
   one a `q` parameter does not select.
-- **`pulls-refresh` carries the same envelope.** Its answer nests what
-  `pull_list_envelope` builds for `pulls`, asked for no rows
-  (`github/sidekick.py:701-702`), so it changes in the commit that changes `pulls`, with
-  its golden (`tests/golden/cli-github-pulls-refresh.txt:41-62`) and the parity rows
-  that name it: `github.pulls-panel`, `github.pulls-watch`, and
-  `github.background-freshness`
+- **`pulls-refresh` carries the same envelope.** Its answer nests what `list_envelope`
+  builds for `pulls` from `read_catalog_window`, asked for no rows
+  (`github/sidekick.py:689`, `github/pull_list_route.py:279`), so it changes in the
+  commit that changes `pulls`, with its golden
+  (`tests/golden/cli-github-pulls-refresh.txt:41-63`) and the parity rows that name it:
+  `github.pulls-panel`, `github.pulls-watch`, and `github.background-freshness`
   ([Parity Registry](../../architecture/arch-parity-registry.md)).
 
 `metab` exposes the model three ways:
@@ -893,13 +1023,18 @@ Objects are served by the layer that owns them, through routes that mostly exist
   contract of what the address selects, and `shapes:` with the shapes that type has
   views for. `--show /pulls`, which asks the route for no rows, reports the collection
   and its member type from the registry.
+  The `object:` type is the token `--present --format json` prints as `kind` for the
+  same target, so one target has one name across the CLI and the macOS app
+  ([Decision 5](#decision-5-identity)).
 - **`devtools/check_parity.py`** gains two rules beside the kind rule.
   Every registered type with a page of its own appears as an exact `object: <type>` line
   in a successful `--show` golden; a type addressed inside its parent’s page, which
   `--show` reports as the parent, appears instead as a validated row in a collection
   route’s `--api` golden.
   Every registered view has an interaction row whose session ran its named `describe`
-  function.
+  function. They sit beside the `owned-model` data rows `devtools/check_parity.py` gained
+  with #540 (`devtools/check_parity.py:56-64`), which are the precedent for a rule over
+  models.
 
 ### Plugins
 
@@ -931,6 +1066,11 @@ route = "pulls"
   GitHub sidekick imports nothing from the cache for that reason
   (`github/sidekick.py:13`). The loader records `model` as text; `metab --doctor`, the
   contract checks, and `--api` validation import it.
+- **The packaged schema is the authority for a plugin’s type.** #380 proposes running a
+  third-party plugin’s Python in a worker on its own environment, where the host cannot
+  import its model. So validation reads the compiled `schema` the plugin packages, and
+  `model` is allowed for built-in plugins only, which stay in the server under either
+  design.
 - **A view for someone else’s type.** A plugin may register a view for a type it does
   not own, as it may add a tab to another plugin’s kind.
 - **Two views of one type in one shape.** A later `[[object_view]]` for the same type
@@ -940,6 +1080,8 @@ route = "pulls"
   the winner’s `registerView` and ignores the loser’s.
 - **Python is required for a type, not for a view.** An operator-directory plugin runs
   no Python, so it can draw existing types and cannot serve a new one.
+  Under #380 that Python is a worker’s, and a `[[collection_source]]` becomes a worker
+  hook with a deadline.
 - **A test binds the two halves.** As `tests/test_plugin_e2e_render.py` fails a manifest
   view with no `registerView`, it fails an `[[object_view]]` with no
   `mb.objects.registerView`.
@@ -962,15 +1104,18 @@ panel is a small step, and it is not part of this plan.
   [the strategy ladder](../../../large-content-rendering.md#the-strategy-ladder) asks.
 - **Nothing per file at scale.** File objects are views over entries already held.
   The Files tree, the catalog, and their feeds are untouched.
-- **Prefetch.** A row in view may ask for its facets in the batch that
-  `pull-cores-prepare` already uses for descriptions; a hover warms the page as the tree
-  and the Pulls panel do.
+- **Prefetch.** A pull request’s `changes` facet is already batched for the rows in view
+  (`pull-files-summary`, from the cache alone), and a page opened from a row reads the
+  same memory and asks for nothing.
+  A wide row reads that lane; a new facet takes the same form, a batch for the rows in
+  view and a memory per document, or rides the batch `pull-cores-prepare` uses.
+  A hover warms the page as the tree and the Pulls panel do.
 - **Loading tiers.** Each module’s tier follows from what first needs it, and neither
   enters the eager path that `devtools/check_startup_scripts.py` bounds:
   - **The store** (`static/object-store.js`) is in the `sdk-views` on-demand bundle,
     beside `registerView`. Its first writer is the Pulls panel, plugin code that already
     waits on that bundle, and `pulls-nav`, which the shell loads whenever it serves a
-    GitHub repository (`server.py:1605`), mounts the panel in idle time
+    GitHub repository (`server.py:1683`), mounts the panel in idle time
     (`static/pulls-nav.js:365-371`). A bundle of its own would be fetched in nearly
     every such session anyway.
     Its bytes are measured against that bundle, which records its own measured size
@@ -995,6 +1140,11 @@ panel is a small step, and it is not part of this plan.
 - The Git graph’s layout, session cursors, and checkpoints.
 - The pull-request record, catalog, cores, and their cache formats.
 - The Pulls panel’s rows, window, keys, and changed-files trees, until Phase 3.
+- The change-line lanes (`github/row-lines.js`, `github/stack-lines.js`,
+  `github/pull-summary-brief.js`) and their routes, which the model reads as facet
+  loaders.
+- The page header and `actorIdentity`, which the model’s `page` shape and `actor`
+  sub-object adopt.
 - File Diff Format, File Rollup Format, and the cache’s record contracts.
 - The URL grammar. No route is added to the browser’s address spaces in Phase 1.
 
@@ -1083,13 +1233,13 @@ first external plugin author who reads them.
   `truncated`, and `generation`, checked by tests, with the rest of the envelope the
   route’s own. It keeps the envelope plan’s decision.
   The keys are the spellings routes already answer: `pulls` says `rows` and `next_after`
-  (`github/pull_list_route.py:307-308`), `pull-files` and the search answer say `rows`
-  (`github/pull_files_route.py:471`, `github/pull_catalog.py:648`), and the cache routes
-  say `next_after` (`cache/wire.py:202`). So the pull request list keeps its keys, and
-  the Git log is the main rename: its `commits` and `cursor` (`git/wire.py:207-208`)
-  become `rows` and `next_after`, and its `cursor` parameter becomes `after`. A cursor
-  is opaque to the store, a number for pull requests and a string for the cache, and is
-  passed back as `after`.
+  (`github/pull_list_route.py:97`, `:306`), `pull-files` and the search answer say
+  `rows` (`github/pull_files_route.py:549`, `github/pull_catalog.py:648`), and the cache
+  routes say `next_after` (`cache/wire.py:202`). So the pull request list keeps its
+  keys, and the Git log is the main rename: its `commits` and `cursor`
+  (`git/wire.py:207-208`) become `rows` and `next_after`, and its `cursor` parameter
+  becomes `after`. A cursor is opaque to the store, a number for pull requests and a
+  string for the cache, and is passed back as `after`.
 - **B. A `Collection` contract** wrapping the rows.
   Uniform and validated.
   It makes every list route’s freshness, counts, and cursors part of a versioned
@@ -1127,7 +1277,12 @@ wires, outweighs it; `items` and `next` would add a third spelling of each key.
 - **C. Opaque global identifiers,** as GraphQL nodes have.
   They need a resolver and are unreadable in a golden.
 
-**Recommendation: A.**
+**Recommendation: A,** with one vocabulary of types shared with `--present`’s `kind` and
+`SelectionKind`, which spell `pull_request` and `tree` today: the object’s `type` takes
+those spellings, `pull_request` for a pull request, so the CLI, the macOS app, and the
+model name a target one way.
+#534’s “addresses first” agrees with A: an address is derived from the identity and is
+what a user, the CLI, and the app hand over.
 
 ### Decision 6: Summary and Detail
 
@@ -1160,7 +1315,12 @@ wires, outweighs it; `items` and `next` would add a third spelling of each key.
   It puts drawing decisions in the data and cannot express a graph gutter or a stack
   badge.
 
-**Recommendation: A.**
+**Recommendation: A,** with C’s drawing kept where it now lives, in a view.
+#487 and #550 have built the presentation header as a drawing, not as data:
+`MetabrowserViewHeaderParts{eyebrow, iconHtml, title, end, line}` (#550,
+`static/types.d.ts` on its branch) is what a page’s header `describe` returns, filled
+from the object’s `title`, `actor`, and `updated_at`. So the object stays
+self-describing, and the header every page shows is one view of that header.
 
 ### Decision 8: Timestamps
 
@@ -1178,8 +1338,9 @@ wires, outweighs it; `items` and `next` would add a third spelling of each key.
   A schema can say only “number,” the unit lives in a naming rule, and the pull request
   projection and its browser readers convert in Phase 1.
 
-**Recommendation: A,** by a narrower margin than the others.
-Two forms are ruled out.
+**Recommendation: A,** by a narrower margin than the others, and narrower since #550,
+which adds `mtime` to `/api/file` in epoch seconds: under A the file projection converts
+that field too. Two forms are ruled out.
 The cache’s canonical timestamp has optional milliseconds (`cache/records.py:58`), so
 its strings are not comparable.
 A nanosecond integer exceeds the safe-integer range SoftSchema’s portable values allow.
@@ -1227,6 +1388,8 @@ comments.
   for most of its items.
 
 **Recommendation: A,** adding a shape to the host when a second type needs it.
+A shape’s frame is written to the most demanding row that uses it, so `nav-row` admits a
+facet line as its one child, as the Pulls row has since #491 ([Shapes](#shapes)).
 
 ### Decision 12: How a View Is Defined
 
@@ -1241,7 +1404,14 @@ comments.
 - **C. A host frame, a pure `describe`, a type’s `paint` inside the frame, and a header
   fallback.** Shared slot primitives are extracted as they repeat.
 
-**Recommendation: C.**
+**Recommendation: C.** Three slot primitives have been extracted already:
+`actorIdentity`, `changeLine`, and the view header.
+The header is shared by class structure today: #550’s review decided that another kind
+writes the `.view-header-*` classes itself rather than calling its builder.
+Under C the host owns the frame, so bead mb-7t5s, which moves the pull request and
+commit pages onto the view header, should take the header through an SDK frame, not
+through the classes, or Phase 3 undoes it.
+That is the one choice in this plan that work already planned would settle first.
 
 ### Decision 13: The Browser Store
 
@@ -1265,7 +1435,8 @@ panel.
 
 - **A. The collection’s source reads while any list of it is shown.** The pane’s list
   stays live when the reader switches the navigation to Files.
-  It needs the four controller changes under [Browser Data Model](#browser-data-model).
+  It needs the five controller changes under [Browser Data Model](#browser-data-model),
+  the fifth for the change lines.
 - **B. The pane’s list mirrors the panel.** The smallest change.
   A visible list stops refreshing whenever the tab is hidden.
 - **C. A second controller for the pane.** No change to the panel.
@@ -1293,7 +1464,7 @@ panel.
 the browser’s normalizer does not.
 
 A server already loads the schema libraries on first use of the cache or a GitHub route
-(`cache/atomic.py:26`, `:39`, `github/pull_list.py:43`); only startup is gated.
+(`cache/atomic.py:26`, `:41`, `github/pull_list.py:43`); only startup is gated.
 The cost in question is validation time per row.
 
 - **A. Validate in tests, in goldens through `--api`, and where data crosses a trust
@@ -1353,6 +1524,9 @@ measurement.
   The most visible, and a timeline of cards is a poor fit for a narrow panel.
 
 **Recommendation: A,** falling back to B if the path-scoped walk measures badly.
+Whichever it is, the label needs a word other than “Recent” alone, which already names
+the Files tab’s Recent view and Open Recent’s targets ([Approach](#approach)); “Changes”
+or “Activity” would do, and the page view’s id should match the label.
 
 ### Decision 20: Plugin Declaration and the SDK Gate
 
@@ -1368,7 +1542,12 @@ measurement.
 - **C. JavaScript only,** with no manifest blocks.
   Less to validate, and nothing `--doctor`, the CLI, or the parity check can see.
 
-**Recommendation: A.**
+**Recommendation: A, unless #380 is accepted first.** #380’s Decision 8 proposes one
+`sdk_version` under Cargo’s caret rule, where an addition bumps the patch number, the
+gate reads the version from the raw manifest before schema validation, and each change
+is listed in `sdk-changes.toml`. If that is accepted, this decision becomes “a patch
+bump and an `sdk-changes` entry”, and B’s worry, an unknown-key error on an older host,
+is gone, because the version is read before the keys.
 
 ### Decision 21: Keyboard Contract for a List in the Pane
 
@@ -1381,6 +1560,8 @@ measurement.
 
 **Recommendation: A,** as a new design-system section beside Navigational Row
 Collections, with the list host registered in the same check.
+A wide row with a facet line under it takes the Pulls tab’s rule for that line: Right
+moves to it, and Enter or Space there toggles what it owns.
 
 ### Decision 22: The First Slice
 
@@ -1388,9 +1569,10 @@ Collections, with the list host registered in the same check.
 
 - **A. The pull requests page, on the model.** The wide row shows what the catalog row
   holds: state, title, labels, number, author, opened and updated ages, and both
-  branches; and the stack position, from the stacks snapshot, as the narrow row does.
-  It changes the `pulls` route’s rows and the panel’s controller, behind a measured
-  pair.
+  branches; the stack position, from the stacks snapshot, as the narrow row does; and
+  the change line, from the `changes` facet’s existing lane, as the narrow row does
+  since #491. It changes the `pulls` route’s rows and the panel’s controller, behind a
+  measured pair.
 - **B. The same page inside the plugin, with no shared model.** The fastest route to one
   page. The next surface starts from nothing, and the panel’s store still discards the
   fields the wide row needs.
@@ -1404,12 +1586,12 @@ Collections, with the list host registered in the same check.
   and the two new parity rules wait for Phase 2, when the file, folder, and commit types
   can test the header against more than one type.
   The first slice does not need the registry for parity: the `pulls` route’s `--api`
-  goldens and the `github.pulls-panel` interaction row
-  (`docs/project/architecture/arch-parity-registry.md:170`) already pin the route and
-  its `describe` functions.
-  It ships the page sooner and designs the header against four types before the header
-  is a contract. Its cost is a second pass over the projection, and over the `pulls`
-  goldens, when the contract lands.
+  goldens and the `github.pulls-panel` interaction row already pin the route and its
+  `describe` functions, and `github.pulls-row-lines` pins the change lines
+  ([Parity Registry](../../architecture/arch-parity-registry.md)). It ships the page
+  sooner and designs the header against four types before the header is a contract.
+  Its cost is a second pass over the projection, and over the `pulls` goldens, when the
+  contract lands.
 
 **Recommendation: D,** the owner’s call, which [Open Questions](#open-questions) keeps
 open.
@@ -1418,6 +1600,9 @@ design against the core types first, for the price of a second pass over one pro
 The phases below are written for A. Under D, the Phase 1 items for the contract, the
 manifest blocks, and the registry route with its validation and parity rules move to
 Phase 2, and the architecture document’s tables move with them.
+Under either, the first slice reuses what has landed since the plan was first written:
+the `changes` facet’s route and memory, the view header for the page, `actorIdentity`
+for the author, and the drawn-from-disk fixture for the corpus.
 Under either, three things are left out of the first slice on purpose.
 Review decision, check status, and comment counts are not in the catalog, whose query is
 kept light (`github/pull_list_refresh.py:81`); adding them is a separate change with its
@@ -1436,9 +1621,12 @@ objects. The route’s search answer keeps its shape.
 
 **Recommendation: A.** The duplicate builders are a real cost, and the Files tree and
 the Git graph are also the most measured code in the shell.
-The list host is specified to make convergence possible: disclosure rows, activation
-options, and collection context exist for the three navigation lists, not for the new
-pages.
+The Pulls row has grown since the plan was first written, to three lines, a facet line
+as a second focus stop, and stack sections that read their own data, so moving it is the
+largest of the Phase 3 items, and the list host is specified to carry it
+([The List Host](#the-list-host)). The list host is specified to make convergence
+possible: disclosure rows, activation options, and collection context exist for the
+three navigation lists, not for the new pages.
 
 ## Implementation Plan
 
@@ -1451,25 +1639,30 @@ with the architecture document’s tables.
 - [ ] Add the header, the shared sub-objects, the registry, and the `PullRequest`
   contract, with compiled schemas, a corpus, and the drift and corpus checks.
   The corpus is shaped like cached rows and written by the production writers from the
-  synthetic fixture accounts of `tests/github_pull_fixture.py`, as
-  `tests/cache_home_fixture.py` builds cache homes, and it settles the open items under
-  [Summary and Facets](#summary-and-facets).
+  synthetic fixture accounts of `tests/github_pull_fixture.py`, building on the cache
+  home `tests/test_github_drawn_from_disk.py` already builds, and it settles the open
+  items under [Summary and Facets](#summary-and-facets).
 - [ ] Add `[[object_type]]`, `[[object_view]]`, and `[[collection]]` to the manifest
   schema, with their load-time validation and `metab --doctor` output.
 - [ ] Project `PullListRow` to the object where the catalog makes its wire rows
   (`github/pull_catalog.py:531`), and change the readers of the `pulls` list answer in
   the same commit. Under [Decision 3](#decision-3-the-collection-envelope) A the envelope
   keeps its keys, so what changes is what each row holds.
-  The readers are, in `github/pulls-panel.js`: `isEnvelope` (`:514`), `describeRow`
-  (`:276`), `describePulls` (`:391`), `pumpCores` (`:970`), `holdRows` (`:1541`),
-  `holdEnvelope` (`:1564`), `holdContent` (`:1724`), `arrivalsFromTop` (`:1790`), `ask`
-  (`:2050`), and `loadWindow` (`:2440`); and `noteListed`, which takes the held
-  descriptions (`github/pull-state.js:70`). The `pulls-refresh` answer nests the same
-  envelope and changes in the same commit ([Routes and the CLI](#routes-and-the-cli)).
-  So do the tests, fixtures, and goldens that name either route,
-  `tests/golden/cli-github-pulls-refresh.txt` among them, and the parity rows
-  `github.pulls-panel`, `github.pulls-watch`, and `github.background-freshness`.
-- [ ] Make the four controller changes under [Browser Data Model](#browser-data-model),
+  The readers are, in `github/pulls-panel.js`: `isEnvelope` (`:553`), `describeRow`
+  (`:312`), `describePulls` (`:430`), `pumpCores` (`:1016`), `holdRows` (`:1587`),
+  `holdEnvelope` (`:1610`), `holdContent` (`:1770`), `arrivalsFromTop` (`:1836`), `ask`
+  (`:2096`), and `loadWindow` (`:2516`); `noteListed`, which takes the held descriptions
+  (`github/pull-state.js:70`); and the readers of the description’s `head`, which the
+  change lines are read again by: `pulls-panel.js:4048`, `:4129`, and `:4545`,
+  `createRowLines` (`github/row-lines.js:173`), `createStackLines`
+  (`github/stack-lines.js:234`), and `github/pull-summary-brief.js`. The `pulls-refresh`
+  answer nests the same envelope and changes in the same commit
+  ([Routes and the CLI](#routes-and-the-cli)). So do the tests, fixtures, and goldens
+  that name either route, `tests/golden/cli-github-pulls-refresh.txt` among them, and
+  the parity rows `github.pulls-panel`, `github.pulls-watch`,
+  `github.background-freshness`, `github.pulls-row-lines`, `github.pulls-stack-lines`,
+  and `github.pull-summary-brief`.
+- [ ] Make the five controller changes under [Browser Data Model](#browser-data-model),
   behind a measured pair on the Pulls tab.
 - [ ] Add `GET /api/object-types`, the `object:` and `shapes:` lines in `--show`,
   validation in `--api`, and the two parity rules.
@@ -1483,21 +1676,33 @@ with the architecture document’s tables.
   `docs/project/architecture/arch-object-model.md`, with a table of contracts and a
   table of declared types, views, and collections, each naming its check, linked from
   Architecture and `docs/project/README.md`. `devtools/check_artifact_contracts.py`
-  compares only the cache’s registry with `arch-repository-cache.md`
+  compares only the cache’s registry with
+  `docs/project/architecture/arch-repository-cache.md`
   (`devtools/check_artifact_contracts.py:10`, `:19`), so it gains a second pair: the
   object registry that `objects/registry.py` builds, and the new document’s contract
   table. A test compares the declarations table with `/api/object-types`.
   [Architecture Documents](../../../development.md#architecture-documents) asks for both
   in the change that registers the surfaces.
 - [ ] Record the wide list’s measured row estimate and overscan; add the design-system
-  sections for object views and for a list in the pane; register the map and the parity
+  sections for object views and for a list in the pane, sized by
+  [Text Roles](../../../design-system.md#text-roles); register the map and the parity
   rows.
+- [ ] Draw the `/pulls` page under the view header, through the SDK frame if mb-7t5s has
+  made one ([Decision 12](#decision-12-how-a-view-is-defined)).
 
 ### Phase 2: Core Types, the Folder Page, and Recent Changes
 
 - [ ] Add the `File`, `Folder`, and `Commit` contracts with adapters over the tree,
   event, recent, and pinned-revision feeds, and conform the Git log: its rows, and its
-  `commits` and `cursor` renamed to `rows` and `next_after`.
+  `commits` and `cursor` renamed to `rows` and `next_after`. Take the inventory
+  provider’s decisions as #507 records them: a file’s identity is its byte-exact
+  canonical name (D10, D18); a folder’s `totals.complete` says “complete with issues”
+  apart from “still discovering” (D1), where a boolean cannot; the folder adapter drops
+  objects under a subtree the provider reports removed (D20); and the `types` facet is
+  projected from the tallies the provider’s contract owns (D22).
+- [ ] Give the Files view and the freshness vocabulary a retry state for a moved
+  inventory version, which #520 answers as `503 inventory_version_moved` with
+  `Retry-After: 1`, if that lands first.
 - [ ] Add a **Files** view to the `folder` kind: the folder’s children as wide rows,
   read from `/api/tree`.
 - [ ] Register the commit’s `card`, from the compact commit summary, and a `card` for
@@ -1521,9 +1726,12 @@ with the architecture document’s tables.
 Each item is independent, lands behind a back-to-back measurement against the code it
 replaces, and may be declined.
 
-- [ ] The pull-request page reads the object: its header, and its commits, discussion,
-  and changed files as collections; the store’s merge replaces `withListedState`.
-- [ ] The Pulls panel’s rows become `nav-row` views on the list host.
+- [ ] The pull-request page reads the object: its view header from the object’s header,
+  and its commits, discussion, and changed files as collections; the store’s merge
+  replaces `withListedState`.
+- [ ] The Pulls panel’s rows become `nav-row` views on the list host, with their change
+  line as a facet line and their stack headings as sections with a `describe` of their
+  own.
 - [ ] Quick Search results become references, the `pulls` route’s search answer
   conforms, and the pull-request provider moves to the plugin.
 - [ ] The commit row and summary become views of the commit.
@@ -1571,11 +1779,15 @@ Phase 3 items ship singly.
   view windows what it is given.
 - **Does a folder’s Files view follow the navigation filter?** The tree’s responses are
   keyed by the filter, and inside a Group by section by the group too
-  (`static/app.js:2739`).
+  (`static/app.js:2773`).
 - **Is a symlink a file with a flag, or a third core type?** The inventory types it as
   its own leaf (`fs_record.py:46`).
 - **Should a commit gain a kind,** so its page header is a registered page view and not
-  shell code?
+  shell code? The shared header (#487, and mb-7t5s once it lands) gives the commit page
+  the same frame without one, which weakens the case.
+- **Does the header carry a web address?** #552 ends the view header with a GitHub link,
+  built in JavaScript; `GithubUrlReducer.web_url` builds the same address on the server.
+  An optional `web_url` on the object would let every view and the CLI reach it.
 - **Should the CLI print an object as a self-describing artifact?**
   `--api --format yaml` exists; with a `softschema:` header its output would validate
   with the `softschema` command.
@@ -1598,10 +1810,15 @@ Phase 3 items ship singly.
   [Plugin System](../../architecture/arch-plugin-system.md),
   [Browser Shell](../../architecture/arch-browser-shell.md),
   [GitHub Pull Requests](../../architecture/arch-github-pull-requests.md),
-  [Git](../../architecture/arch-git.md), and
-  [Parity Registry](../../architecture/arch-parity-registry.md)
+  [Git](../../architecture/arch-git.md),
+  [Parity Registry](../../architecture/arch-parity-registry.md),
+  [Open Modes](../../architecture/arch-open-modes.md),
+  [Recent Targets](../../architecture/arch-recent-targets.md),
+  [Inventory Provider](../../architecture/arch-inventory-provider.md), and
+  [Command Line](../../architecture/arch-cli.md)
 - [Design System](../../../design-system.md): Rows and Disclosures, The Pulls Tab, Git
-  Commit Summary, Navigational Row Collections, Folder Views Are Tabs
+  Commit Summary, Page Headers, Text Roles, Navigational Row Collections, Folder Views
+  Are Tabs
 - [Plugin Authoring](../../../plugins.md) and
   [Rendering Large Content](../../../large-content-rendering.md)
 - [A Machine-Readable Contract for the API Envelopes](plan-2026-08-30-api-schema-and-contract.md)
