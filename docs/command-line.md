@@ -288,6 +288,9 @@ every route, the stack routes among them, which need the optional
 [gh-stack extension](installation.md#git-and-github-setup); each handler’s docstring
 holds its contract. A pull request that cannot be read does not fail the command, so a
 script reads the `pull_request` line or the route’s `state`, not the exit status.
+The exception is a pull request not yet cached while `gh` is missing, too old, or not
+signed in: the command stops with exit status 1 and the step to take, without cloning
+anything.
 [When something does not open](reviewing-pull-requests.md#when-something-does-not-open)
 lists the reasons and what to do.
 
@@ -465,6 +468,18 @@ and ends with `result: pass` or a failure.
 For the underlying data, `--api` is more direct.
 The plugin modes take `--plugins-dir` and `--json`; [plugins](plugins.md) says where
 plugins are discovered.
+
+After its verdict, `--doctor` reports what GitHub work needs from `gh`: the `gh` on
+`PATH` and its version, the account it is signed in to, that account’s token scopes, and
+one state with the step that fixes it, under `github` with `--json`.
+[The GitHub status check](project/architecture/arch-github-pull-requests.md#the-github-status-check)
+says where the states are listed and what reads them.
+The report never changes the exit status.
+A script that needs only this report issues its route, which any served root answers:
+
+```shell
+echo '{}' | metab . --api /api/plugin/github/status --data -
+```
 
 ## Handing a Target to the App: `--present`
 
