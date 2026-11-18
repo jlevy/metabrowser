@@ -123,16 +123,28 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
   to the link’s page. If GitHub does not have it either, or the fetch fails, the windows
   stay on the default branch and the app says so.
 - **A first clone** of a large repository can take minutes.
-  The window says it is starting meanwhile, and File > Reveal Server Log shows the
-  clone’s progress. The app waits for as long as the clone keeps reporting progress, up
-  to `metab`’s own bound on a clone, and gives up on one that stops; the window then
-  offers Retry. Folders you open meanwhile start at once; another repository waits for
-  the clone, and its window says so.
+  The window says it is starting meanwhile, with the clone’s progress under it, as
+  `metab` reports it in Terminal: how far the clone has got, how fast, and for how long,
+  then that it is done, and then that it is reading the pull request the link names.
+  File > Reveal Server Log shows the whole account.
+  The app waits for as long as the clone keeps reporting progress, up to `metab`’s own
+  bound on a clone, and gives up on one that stops; the window then offers Retry.
+  Folders you open meanwhile start at once; another repository waits for the clone, and
+  its window says so.
+- **When GitHub is the problem,** the window of a repository that could not be cloned
+  says which problem it is: GitHub CLI (`gh`) is not signed in, or Metabrowser did not
+  find it; the repository was not found, which is also how GitHub answers when your
+  account cannot read a private repository, or its sign-in lacks the `repo` scope; or
+  the connection to GitHub failed.
+  It shows `metab`’s message and the commands that fix the problem or show what it is,
+  each with Copy, and Copy Message copies all of it, to paste into a message or a note.
+  Run the command in Terminal and switch back: Metabrowser tries again by itself, as
+  Retry does, for such a window and no other.
+  After installing GitHub CLI, choose Find Again in Settings first, so that Metabrowser
+  finds it.
 - **A link `metab` refuses**, such as an issues page, shows `metab`’s message, which
-  says what to do. A private repository that your `gh` sign-in cannot read opens a window
-  whose server fails, with its message and Retry.
-  A link to another site, an `http` link, and a link with a user name, a password, or a
-  port other than 443 show the app’s own message.
+  says what to do. A link to another site, an `http` link, and a link with a user name, a
+  password, or a port other than 443 show the app’s own message.
 - **Many links at once** are read one at a time, a link sent again while it waits opens
   once, and what could not be opened is said in one message at the end, never over
   another message or question.

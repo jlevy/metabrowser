@@ -4,6 +4,17 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- The macOS app shows a first clone’s progress in the window of the repository being
+  opened: how far the clone has got, how fast, and for how long, as `metab` reports it
+  in Terminal, then that it is reading the pull request the link names.
+  A repository that could not be cloned because of GitHub says which problem it is:
+  GitHub CLI is not signed in or was not found, the repository was not found or your
+  account cannot read it, or the connection failed.
+  The window shows `metab`’s message and the `gh` commands that fix the problem, each
+  with Copy, a Copy Message button that copies all of it, and Retry, and the app tries
+  such a repository again when you switch back to it, so a sign-in in Terminal clears
+  the failure. See [the app’s guide](docs/macos-app.md#opening-github-links).
+
 - In a navigation pane too narrow for the Files toolbar’s controls, the Files tree no
   longer moves down as the page loads.
   The toolbar wraps to a second line when its controls arrive, and the tree, shown under

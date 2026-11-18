@@ -240,6 +240,55 @@ LOG="$HOME/Library/Logs/Metabrowser/metabrowser-$(printf %s "$REPO" | shasum -a 
     repository’s window is open: the repository is listed first again.
     Choosing it in Open Recent opens it as a link to `$REPO` does: its window comes
     forward and starts again on the default branch.
+19. **A first clone’s progress.** Send the link of a public repository the cache does
+    not hold that takes several `MetabAcquisition.progressLineInterval` to clone, such
+    as `https://github.com/git/git`, and choose Clone and Open.
+    Under “Starting Metabrowser for git…”, the window says “Cloning into
+    ~/.cache/metabrowser”, then a line such as “Receiving objects: 45%, 334.0 MiB at 9.5
+    MiB/s (40 s)” that changes about once an interval, then a line such as “Cloned in 44
+    s (311.2 MiB); starting the server”, and then shows the repository.
+    A pull request link into a repository the cache does not hold ends with “Reading
+    pull request N (… s)” while GitHub answers slowly enough to show it.
+    A folder’s window never shows such a line.
+20. **Not found, or not readable.** Send
+    `https://github.com/jlevy/no-such-repository-here` and choose Clone and Open.
+    The window says “Not found, or this account cannot read it”, shows `metab`’s
+    message, which names `not_found_or_private`, and three commands, `gh auth status`,
+    `gh auth login`, and `gh auth refresh … --scopes repo`, each of whose Copy buttons
+    copies that command alone.
+    Copy Message copies “Metabrowser could not open
+    github.com/jlevy/no-such-repository-here: Not found, or this account cannot read
+    it.”, the message, and the three commands; the server’s output is under “Recent
+    server output”.
+21. **Signed out, then back from Terminal.** Note the account `gh auth status` names,
+    then `gh auth logout --hostname github.com`, and send the link of a private
+    repository that account can read, which the cache does not hold.
+    The window shows the failure of check 20, since a clone cannot tell a signed-out
+    `gh` from a missing repository, and its first command, run in Terminal, says no
+    account is signed in.
+    Run `gh auth login --hostname github.com` in Terminal and switch back to the app:
+    the window starts again by itself, shows the clone’s progress, and opens the
+    repository, and
+    `log show --last 5m --predicate "subsystem == '$APP_ID'" | grep "on activation"`
+    lists one start again after `not_found_or_private`.
+22. **No GitHub CLI.** Move `gh` aside
+    (`mv "$(command -v gh)" "$(command -v gh).aside"`), choose Find Again in Settings,
+    whose gh row then says not found, and send the link of a private repository the
+    cache does not hold.
+    The window says “Metabrowser did not find GitHub CLI”, tells you to install it and
+    then choose Find Again, and offers `gh auth login --hostname github.com`. Move `gh`
+    back, choose Find Again, and press Retry: the repository opens.
+23. **No connection.** Turn Wi-Fi off and send the link of a public repository the cache
+    does not hold. The window says “The connection to GitHub failed”, with `metab`’s
+    message, which names `network_unreachable`, and
+    `metab https://github.com/OWNER/REPO --no-serve` to copy.
+    Switching to another app and back with Wi-Fi still off starts it again and shows the
+    same failure; turning Wi-Fi on and switching back opens the repository.
+24. **Only failures on GitHub start again.** With a folder whose server failed, as in
+    check 2 of [Servers and the Runtime](#servers-and-the-runtime), and a repository’s
+    window that is ready, switch to another app and back: the folder still offers Retry,
+    the repository’s page does not reload, and no `pgrep -fl -- "--no-open"` pid
+    changes.
 
 ## File > Open URL…
 
