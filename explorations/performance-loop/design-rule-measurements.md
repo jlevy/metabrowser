@@ -365,6 +365,22 @@ A, 3 D, 30 M · +1,234 −3,423” arriving moved no row and not the tab bar, an
 row’s 24 px on one line, its breakdown cut short at 320 px with the whole header as its
 tooltip.
 
+Recorded on 2026-11-17, when the freshness note moved to the end of the author’s row,
+Refresh to the end of the row of ages, and the status line came to be there only while
+it has something to say (mb-ne91): measured in Chrome 152 at 980 to 320 px on every tab,
+the header is 208 px with no labels and 234 px with labels or while its record is on its
+way, and 27 px more, a 21 px line and its 6 px gap, while the status line shows, as an
+offer makes it; a rate limit’s hold, said in the note’s place, adds nothing.
+Before, the freshness line was always there, and the header was 261 px with labels in
+every state.
+With the recorded record’s login, 38.08 px, its sentence, 153.27 px, and one
+stack’s chip, the note, 198.55 px at its widest age, is whole beside the sentence from
+980 px to 560 px and out of view from 420 px down; with a 39-character login it is out
+of view from 560 px down, and from 760 px with an avatar and two stacks’ chips too.
+Wherever it shows, the login and the sentence keep their natural widths.
+Shrunk together with the sentence, the note had cut it 0.38 px at 560 px, dropping whole
+letters to its ellipsis.
+
 ## Pull Request Stacks and the Timeline
 
 Recorded on 2026-11-15, when the files-grouping and pull-stacks stack landed.

@@ -98,8 +98,9 @@
   white-space: nowrap;
 }
 /* One line: the author's sentence is cut short instead of wrapping the row, which made it
-   21 to 67 px tall when the branches shared it. A narrow row gives way in its sentence
-   first: the action is cut to nothing before the author is. */
+   21 to 67 px tall when the branches shared it. A narrow row gives way in its freshness note
+   first, which leaves the line whole, and then in its sentence: the action is cut to nothing
+   before the author is. */
 .github-pull-meta {
   position: relative;
   display: flex;
@@ -108,6 +109,26 @@
   gap: 4px 8px;
   white-space: nowrap;
 }
+/* The row's lead: the sentence, then the freshness note (mb-ne91). The note is whole beside
+   the sentence or not on the line: the lead wraps, so a note that cannot be whole there goes
+   to a second line, dot and all, which the lead's one-line box leaves out of view, as a Pulls
+   row's change line leaves its line (`.github-pulls-change-line`). A wrapping flex line takes
+   each item at its own width before it shrinks any, so the sentence keeps its natural width
+   while the note is on the line, and gives way only once the note has left it. Shrunk
+   together, the note's factor 100 times the sentence's, the sentence still lost 0.38 px at
+   560 px and with it whole letters to its ellipsis, and the note was drawn "F." at 420 px
+   (Chrome 152). The sentence leads the line, so it never wraps out. */
+.github-pull-meta-lead {
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  align-items: center;
+  column-gap: 8px;
+  min-width: 0;
+  height: 1lh;
+  overflow: hidden;
+}
 .github-pull-meta-details {
   display: flex;
   flex: 0 1 auto;
@@ -115,6 +136,10 @@
   gap: 0.3em;
   min-width: 0;
   overflow: hidden;
+}
+/* Before a record there is no sentence, so the note leads the line alone. */
+.github-pull-meta-details[hidden] {
+  display: none;
 }
 .github-pull-meta-details > .github-pull-action {
   flex: 0 1000 auto;
@@ -412,17 +437,18 @@
   );
 }
 /* One of the header's metadata lines, under the row of ages and as tall as it, there only
-   while it has something to say beyond the note: a failure and its remedy, a message about
-   the record shown, an offer; with no author's row, a pull request that cannot be shown, it
-   also ends in Refresh's slot. One line at the body size, as every line under the title is
+   while it has something to say beyond the note: a failure and its remedy, a message, an
+   offer. So those, and only those, move the tab bar as the line comes and goes; a rate
+   limit's hold, which begins and lifts by itself, is said in the note's place and moves
+   nothing (mb-ne91). With no row of ages, a pull request that cannot be shown, the line also
+   ends in Refresh's slot. One line at the body size, as every line under the title is
    (`.page-header-line`); it was the small type, a step under the lines above it (mb-kisi).
    Refresh, Fetch, and Switch to the head are text actions (`.github-pull-text-action`), a
    line tall, as Browse code on the row of ages is (mb-2u08). As bordered `.btn`s they made
    this row 26 px where the row of ages was 18, and with the empty labels row it stood 32 px
    under that row against the 6 px between the others (Chrome 152). Its text is cut short
    before it wraps; its controls never are.
-   A failure is the exception: it says what to do, so the row wraps to show all of it, the
-   one state where the tab bar may move. */
+   A failure is the exception: it says what to do, so the row wraps to show all of it. */
 .github-pull-failure {
   color: var(--status-warning-strong);
 }
@@ -437,7 +463,7 @@
 .github-pull-status[hidden] {
   display: none;
 }
-.github-pull-status > :is(.github-pull-freshness, .github-pull-message, .github-pull-failure) {
+.github-pull-status > :is(.github-pull-message, .github-pull-failure) {
   /* The row's text gives way before the offers at its end, and they before their controls. */
   flex-shrink: 100;
   min-width: 0;
@@ -457,9 +483,10 @@
 .github-pull-status > a {
   flex: none;
 }
-/* The offers end the row, so a message changing width moves none of them. An offer's sentence is cut short, with all of it in a tooltip, before its control
-   is: kept whole, the group ran 62 px past the header in a 560 px pane and 262 px past at
-   360, and the pane scrolled sideways. */
+/* The offers end the row, so a message changing width moves none of them. An offer's
+   sentence is cut short, with all of it in a tooltip, before its control is: kept whole, the
+   group ran 62 px past the header in a 560 px pane and 262 px past at 360, and the pane
+   scrolled sideways. */
 .github-pull-status-end {
   display: flex;
   flex: 0 1 auto;
@@ -489,20 +516,26 @@
   display: inline-block;
   visibility: hidden;
 }
-/* The author's row ends in its note (mb-ne91): a muted dot, then how fresh what is shown
-   is, one time, "Fetched just now via GitHub CLI", in muted ink, small beside the sentence
-   in text ink, then Refresh. The note's slot is a grid of one cell that holds the note and
-   a hidden copy of it at its widest age (`widestNote` in pull-page.js), so the slot is as
-   wide as the widest and the age ticking moves nothing after it. On a narrow row the note
-   is cut short first, with an ellipsis, before the sentence; Refresh never is. */
-/* Its floor is its dot and Refresh, its min-content: the text in its slot gives way to
-   nothing, and then the sentence before it does. With no floor, at 420 px with a long login,
-   Refresh ran 53 px past the header. */
+/* Refresh, or Fetch, ends the row of ages, at its right end, after View on GitHub and Browse
+   code, so it takes the number after theirs and renumbers neither as it comes or is held
+   (mb-ne91). The ages are cut short before it; it never is. */
+.github-pull-opened > .github-pull-refresh {
+  margin-inline-start: auto;
+}
+/* The author's row's lead ends in the note (mb-ne91): a muted dot, then how fresh what is
+   shown is, one time, "Fetched just now via GitHub CLI", in muted ink at the sentence's size,
+   stepping back from the sentence in text ink by its ink alone. The note's slot is a grid of
+   one cell that holds the note and a hidden copy of it at its widest age (`widestNote` in
+   pull-page.js), so the slot is as wide as the widest and the age ticking changes its width
+   not at all. Beside the sentence the note is whole or gone (`.github-pull-meta-lead`); alone
+   on the row, the page's word before a record, it is cut short with an ellipsis and its
+   text as a tooltip. A rate limit's hold, said in its place, is in the failure's ink. */
 .github-pull-note {
   display: flex;
-  flex: 0 100 auto;
+  flex: 0 1 auto;
   align-items: center;
   gap: 0.3em;
+  min-width: 0;
   color: var(--muted);
 }
 .github-pull-note[hidden] {
@@ -524,15 +557,15 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.github-pull-freshness-slot > .github-pull-freshness-held {
+  color: var(--status-warning-strong);
+}
 .github-pull-freshness-sizer {
   grid-area: 1 / 1;
   font-variant-numeric: var(--tabular-numerals);
   height: 0;
   overflow: hidden;
   visibility: hidden;
-}
-.github-pull-note > .github-pull-refresh {
-  margin-inline-start: 0.4em;
 }
 /* Changes while its first screen's Markdown waits (CHANGES_FIRST_SCREEN_MS), and the
    conversation while its first screen's texts do (DESCRIPTION_HOLD_MS): laid out, so each

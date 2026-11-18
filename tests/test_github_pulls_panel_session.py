@@ -964,7 +964,7 @@ def test_rows_likely_to_be_expanded_have_their_files_listed_behind_the_reader() 
     assert facts["admissionAnswered"] == {"askedAfterMs": 3000, "first": 104}
 
 
-def test_background_freshness_asks_only_while_visible_and_says_how_old_each_part_is() -> None:
+def test_background_freshness_asks_only_while_visible_and_names_one_fetch_age() -> None:
     """The prefetch policy and the page's catalog ask; the transcript shows the rest."""
 
     facts = run_session("github-pulls-prefetch-behavior.js")

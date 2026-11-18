@@ -568,6 +568,21 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
         "checkRows": True,
         "headerAges": True,
         "headerShape": True,
+        # The freshness note's slot is as wide as its widest age, "59 min ago"; an age wider
+        # still sizes its own (mb-ne91).
+        "widestNotes": {
+            "Fetched just now via GitHub CLI": "Fetched 59 min ago via GitHub CLI",
+            "Fetched 3 h ago via GitHub CLI": "Fetched 59 min ago via GitHub CLI",
+            "Offline · fetched 12 d ago via GitHub CLI": (
+                "Offline · fetched 59 min ago via GitHub CLI"
+            ),
+            "Description fetched 7 min ago via GitHub CLI": (
+                "Description fetched 59 min ago via GitHub CLI"
+            ),
+            "Fetched at an unknown time via GitHub CLI": (
+                "Fetched at an unknown time via GitHub CLI"
+            ),
+        },
         # The Diff summary is the header's last row on every tab (mb-pb35), and holds the
         # shell's pending placeholder while a comparison is on its way and while it is read,
         # on Changes the mounted diff's, and nothing once a read draws none, until a read of

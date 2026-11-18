@@ -26,10 +26,13 @@
 // header is set in the faces the shell uses.
 //
 // The header is reserved at first paint, so a record that has not arrived and every
-// loaded record with labels lay out to one height on every tab, row by row, and the tab bar
-// under it starts at one place; a record with no labels has no labels row, and lays out to
-// that height less the row and its gap (mb-2u08). Its status line is a metadata line, as
-// tall as the row of ages above it. That is layout, which no browserless DOM can compute: the
+// loaded record with labels and nothing to say on its status line lay out to one height on
+// every tab, row by row, and the tab bar under it starts at one place; a record with no
+// labels has no labels row, and lays out to that height less the row and its gap (mb-2u08).
+// The status line is there only while it has something to say, here an offer, and is then
+// a metadata line, as tall as the row of ages above it, one line and one gap more; a rate
+// limit's hold is said in the freshness note's place and adds none (mb-ne91). The note is
+// whole beside the author's sentence or out of view, and the sentence whole while it shows. That is layout, which no browserless DOM can compute: the
 // stylesheet text passed with a state badge whose first flex item was a zero-height sizer,
 // which hung the badge below the line and made the loaded header 5.6 px taller than the
 // empty one. And no record's row may end past the header: an offer kept whole ran 262 px
@@ -517,22 +520,62 @@ const MEASURE = `async (name, change, tab, width) => {
     }))
     .filter((each) => each.shown)
     .map(({ shown, ...each }) => each);
-  // Refresh's slot follows the freshness note at the author's row's sentence's end (mb-ne91).
-  const refresh = header.querySelector(".github-pull-meta .github-pull-note .github-pull-refresh");
-  // The age ticking moves nothing after it: Refresh's place with the note at its narrowest
-  // age and at its widest, then the note put back.
-  const ageMoves = (() => {
-    const note = header.querySelector(".github-pull-note:not([hidden]) .github-pull-freshness");
-    if (refresh === null || note === null || !/ via GitHub CLI$/.test(note.textContent)) return null;
-    const was = note.textContent;
+  const r2 = (value) => Math.round(value * 100) / 100;
+  // Refresh's slot ends the row of ages, after View on GitHub and Browse code, so it is
+  // numbered after them (A1 of review A on #506).
+  const refresh = header.querySelector(".github-pull-opened > .github-pull-refresh");
+  const contentEdge = box(header).right - parseFloat(getComputedStyle(header).paddingRight);
+  // The freshness note ends the author's row's lead (mb-ne91). Its slot is as wide as its
+  // widest age, so the age ticking from "just now" to "59 min ago" changes its width not at
+  // all: the slot's width at each, then the note put back.
+  const lead = header.querySelector(".github-pull-meta-lead");
+  const note = header.querySelector(".github-pull-note");
+  const noteText = note?.querySelector(".github-pull-freshness") ?? null;
+  const ageWidens = (() => {
+    if (noteText === null || note.hidden || !/^Fetched .+ via GitHub CLI$/.test(noteText.textContent)) return null;
+    const slot = note.querySelector(".github-pull-freshness-slot");
+    const was = noteText.textContent;
     const at = (text) => {
-      note.textContent = text;
-      return box(refresh).left;
+      noteText.textContent = text;
+      return box(slot).width;
     };
-    const moved = Math.abs(at("Fetched just now via GitHub CLI") - at("Fetched 59 min ago via GitHub CLI"));
-    note.textContent = was;
-    return Math.round(moved * 100) / 100;
+    const widened = Math.abs(at("Fetched just now via GitHub CLI") - at("Fetched 59 min ago via GitHub CLI"));
+    noteText.textContent = was;
+    return r2(widened);
   })();
+  // Beside the sentence the note is whole or out of view, dot and all, and while it is in
+  // view the login and the sentence keep their natural widths: the width each lays out to
+  // alone, at max-content, beside the width it has (A2 of review A on #506).
+  const natural = (node) => {
+    const probe = node.cloneNode(true);
+    probe.style.cssText = "position: absolute; visibility: hidden; width: max-content; min-width: 0; max-width: none";
+    node.parentElement.append(probe);
+    const width = box(probe).width;
+    probe.remove();
+    return r2(width);
+  };
+  const inView = (node) =>
+    node !== null && lead !== null && !node.hidden && box(node).height > 0 &&
+    box(node).top < box(lead).bottom - 0.5 && box(node).bottom > box(lead).top + 0.5 && shown(node) > 0;
+  const login = header.querySelector(".github-pull-meta-details .github-pull-author");
+  const action = header.querySelector(".github-pull-meta-details > .github-pull-action");
+  const sep = header.querySelector(".github-pull-note-sep");
+  const leadShape = lead === null ? null : {
+    said: noteText?.textContent ?? null,
+    held: noteText?.classList.contains("github-pull-freshness-held") ?? false,
+    inView: inView(note),
+    dotInView: sep !== null && inView(sep),
+    textWidth: noteText ? r2(box(noteText).width) : null,
+    cut: noteText !== null && noteText.scrollWidth > noteText.clientWidth,
+    tip: (() => {
+      if (noteText === null) return null;
+      noteText.dispatchEvent(new Event("pointerenter"));
+      return noteText.dataset.tipText ?? null;
+    })(),
+    sentence: action !== null && action.offsetParent !== null,
+    login: login ? { width: r2(box(login).width), natural: natural(login) } : null,
+    action: action ? { width: r2(box(action).width), natural: natural(action) } : null,
+  };
   const result = {
     edges,
     header: Math.round(box(header).height * 100) / 100,
@@ -543,13 +586,18 @@ const MEASURE = `async (name, change, tab, width) => {
     // How many labels the record names, or null while there is no record.
     recordLabels: body.record ? body.record.pull.labels.length : null,
     refresh: refresh
-      ? { shown: !refresh.hidden, height: Math.round(box(refresh).height * 100) / 100 }
+      ? { shown: !refresh.hidden, height: r2(box(refresh).height), rightEdge: r2(box(refresh).right - contentEdge) }
       : null,
-    ageMoves,
+    ageWidens,
+    lead: leadShape,
+    statusShown: !header.querySelector(".github-pull-status").hidden,
     meta: meta ? Math.round(box(meta).height * 100) / 100 : null,
     strut: strutHeight,
     badgeOffset: badge ? Math.round((centre(box(badge)) - centre(box(opened))) * 100) / 100 : null,
-    offers: header.querySelectorAll(".github-pull-offer").length,
+    // The offers drawn where a reader sees them: laid out, with some of each in view.
+    offers: [...header.querySelectorAll(".github-pull-offer")].filter(
+      (offer) => box(offer).height > 0 && shown(offer) > 0,
+    ).length,
     mergeShown,
     chipMoves,
     summaryMoves,
@@ -1340,6 +1388,13 @@ const OFFER_RECORDS = [
   ["current", { pinBehind: true }],
   ["on_head", { checkoutAtHead: true }],
 ];
+// The same records by the labels the header parts give them.
+const OFFERED = new Set(
+  OFFER_RECORDS.map(
+    ([name, change]) =>
+      `${name}${Object.keys(change).length ? ` ${Object.keys(change).join(" ")}` : ""}`,
+  ),
+);
 const TABS = ["", "files", "checks"];
 const WIDTHS = [980, 760, 560, 420, 360, 320];
 // Each part's header widths; together they are WIDTHS. The offers are counted in the part
@@ -1574,9 +1629,60 @@ async function main() {
                 String(shape.chipMoves.headingNamesMenu),
               );
             }
-            seen[`${label} ${tab || "conversation"}`] = shape;
+            seen[`${label} ${tab || "conversation"}`] = { ...shape, label };
             if (shape.offers > 0) {
               offersDrawn.add(label);
+            }
+            // The status line is there exactly while it has something to say, here an offer,
+            // each drawn where it is seen; a rate limit's hold is said in the note's place and
+            // adds no line (A3, A4 of review A on #506).
+            check(
+              `${where}: the status line is there exactly while it draws an offer`,
+              shape.statusShown === OFFERED.has(label) &&
+                shape.offers === (OFFERED.has(label) ? 1 : 0),
+              JSON.stringify({ statusShown: shape.statusShown, offers: shape.offers }),
+            );
+            const lead = shape.lead;
+            if (change.lastRefresh?.outcome === "rate_limited") {
+              check(
+                `${where}: a rate limit's hold is said in the note's place, in the failure's ink`,
+                lead !== null &&
+                  /^GitHub rate limit · next check at /.test(lead.said) &&
+                  lead.held &&
+                  (width < 760 || lead.inView),
+                JSON.stringify(lead),
+              );
+            }
+            if (lead?.sentence) {
+              // Beside the sentence the note is whole or out of view, and while it is in view
+              // the login and the sentence keep their natural widths (A2 of review A on #506).
+              check(
+                `${where}: the note beside the sentence is whole or out of view, the login and the sentence whole while it shows`,
+                !lead.inView ||
+                  (!lead.cut &&
+                    (lead.login === null || lead.login.width >= lead.login.natural - 0.05) &&
+                    lead.action.width >= lead.action.natural - 0.05),
+                JSON.stringify(lead),
+              );
+              if (width >= 760 && !change.longNames) {
+                check(
+                  `${where}: in a wide pane the note shows whole`,
+                  lead.inView && !lead.cut,
+                  JSON.stringify(lead),
+                );
+              }
+            }
+            if (lead !== null) {
+              check(
+                `${where}: no dot shows beside a note of no width`,
+                !lead.dotInView || (lead.inView && lead.textWidth >= 1),
+                JSON.stringify(lead),
+              );
+              check(
+                `${where}: a note cut short carries its whole text as its tooltip, and only then`,
+                lead.cut ? lead.tip === lead.said : lead.tip === null,
+                JSON.stringify(lead),
+              );
             }
             if (shape.badgeOffset !== null) {
               check(
@@ -1616,14 +1722,13 @@ async function main() {
             );
             // The status line is one of the header's metadata lines (mb-2u08), there only
             // while it has something to say: as tall as the row of ages above it, and every
-            // row one gap under the row before it. Refresh, shown or held, ends the author's
-            // row after the freshness note (mb-ne91), no taller than that row. As a bordered
-            // .btn, Refresh made its line 26 px against the row of ages' 18, and an empty
-            // labels row stood between them.
+            // row one gap under the row before it. Refresh, shown or held, ends the row of
+            // ages (A1 of review A on #506), no taller than that row. As a bordered .btn,
+            // Refresh made its line 26 px against the row of ages' 18, and an empty labels row
+            // stood between them.
             const line = (row) => shape.lines.find((each) => each.row === row);
             const opened = line("opened");
             const statusLine = line("status");
-            const metaLine = line("meta");
             const tall = (each) => Math.round((each.bottom - each.top) * 100) / 100;
             check(
               `${where}: the status line, when there, is as tall as the row of ages`,
@@ -1632,15 +1737,16 @@ async function main() {
               JSON.stringify(shape.lines),
             );
             check(
-              `${where}: the note's age ticking from "just now" to "59 min ago" moves Refresh not at all`,
-              shape.ageMoves === null || shape.ageMoves <= 0.5,
-              JSON.stringify({ ageMoves: shape.ageMoves }),
+              `${where}: the note's age ticking from "just now" to "59 min ago" widens its slot not at all`,
+              shape.ageWidens === null || shape.ageWidens <= 0.5,
+              JSON.stringify({ ageWidens: shape.ageWidens }),
             );
             check(
-              `${where}: Refresh's slot ends the author's row, no taller than it`,
+              `${where}: Refresh's slot ends the row of ages at the header's content edge, no taller than it`,
               shape.refresh !== null &&
-                metaLine !== undefined &&
-                shape.refresh.height <= tall(metaLine) + 0.5,
+                opened !== undefined &&
+                shape.refresh.height <= tall(opened) + 0.5 &&
+                Math.abs(shape.refresh.rightEdge) <= 0.5,
               JSON.stringify({ refresh: shape.refresh, lines: shape.lines }),
             );
             check(
@@ -1677,21 +1783,22 @@ async function main() {
           tabBar: reference.tabBar - labelsSpace,
           rows: reference.rows.filter((row) => row.row !== "labels"),
         };
+        // The status line is there only while it has something to say (mb-ne91), here an
+        // offer: then it is one metadata line, as tall as the row of ages, and one gap more,
+        // and moves nothing above it. Without one it is not there, a hold included. The
+        // expectation is the empty record's row of ages, never the line measured (A4 of review A
+        // on #506).
+        const agesHeight = reference.rows.find((row) => row.row === "opened").height;
         for (const [key, shape] of Object.entries(seen)) {
           const none = shape.recordLabels === 0;
           const base = none ? unlabelled : reference;
-          // The status line is there only while it has something to say (mb-ne91), an offer
-          // or a hold: then it is one line and one gap more, and moves nothing above it.
-          const status = shape.rows.find((row) => row.row === "status");
-          const extra =
-            status !== undefined && status.height > 0 ? status.height + shape.rowGap : 0;
+          const offered = OFFERED.has(shape.label);
+          const extra = offered ? agesHeight + shape.rowGap : 0;
           const expected = {
             header: base.header + extra,
             tabBar: base.tabBar + extra,
             rows: base.rows.map((row) =>
-              row.row === "status" && status !== undefined
-                ? { ...row, height: status.height }
-                : row,
+              row.row === "status" ? { ...row, height: offered ? agesHeight : 0 } : row,
             ),
           };
           check(

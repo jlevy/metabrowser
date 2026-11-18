@@ -457,7 +457,7 @@ async function run() {
   const age = statusLine.querySelector(".github-pull-freshness");
   assert.match(age.textContent, /^Description fetched .+ via GitHub CLI$/);
   assert.ok(age.classes.has("mb-refreshing") && age.classes.has("mb-refreshing-muted"));
-  // Busy is the age's, never the note's, whose Refresh stays usable.
+  // Busy is the age's, never the note's or the header's, whose controls stay usable.
   assert.equal(age.getAttribute("aria-busy"), "true");
   assert.equal(statusLine.getAttribute("aria-busy"), null);
   function land(tab) {

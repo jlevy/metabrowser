@@ -6,12 +6,16 @@ All notable changes to Metabrowser are documented here.
 
 - A pull request’s page says how fresh it is once, at the end of the author’s line, in
   muted text after a dot: “jlevy wants to merge 1 commit · Fetched just now via GitHub
-  CLI”, with Refresh after it.
-  It no longer says “Checked just now · fetched 3 h ago”: a check that found nothing
-  changed does not make what is shown newer, so the page names the fetch alone.
+  CLI”. It no longer says “Checked just now · fetched 3 h ago”: a check that found
+  nothing changed does not make what is shown newer, so the page names the fetch alone.
+  Where the line has no room for all of it, the note leaves the line rather than cutting
+  the author’s name or sentence short.
+  A rate limit’s hold, “GitHub rate limit · next check at 14:05”, is said in its place.
+  Refresh ends the row of ages, after View on GitHub and Browse code, so those keep the
+  numbers 1 and 2 and Refresh is 3 when it shows.
   The age ticking and Refresh appearing move nothing.
-  The line under the row of ages is there only while it has something to say, such as a
-  failure or an offer to switch to the pull request’s head.
+  The line under the row of ages is there only while it has something to say: a failure,
+  a message, or an offer to switch to the pull request’s head.
   See [The Pull Request Page](docs/design-system.md#the-pull-request-page).
 
 - In the Pulls tab, a pull request’s row starts at the list’s left edge, and only the

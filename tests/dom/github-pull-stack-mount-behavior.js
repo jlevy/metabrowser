@@ -225,15 +225,16 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     "cached refreshing page remains readable",
   );
   assert(warm.textContent.includes(current.body.record.pull.title));
-  // The freshness note ends the author's row, Refresh after it (mb-ne91).
+  // The freshness note ends the author's row (mb-ne91).
   const refreshing = warm.querySelector(".github-pull-note");
   assert.match(
     refreshing.querySelector(".github-pull-freshness").textContent,
     /^Fetched .+ via GitHub CLI$/,
   );
-  // Refresh keeps its slot after the note, held hidden while a refresh runs.
-  assert.ok(refreshing.children.at(-1).classes.has("github-pull-refresh"));
-  assert.equal(refreshing.children.at(-1).hidden, true);
+  // Refresh keeps its slot at the row of ages' end, held hidden while a refresh runs.
+  const refresh = warm.querySelector(".github-pull-opened").children.at(-1);
+  assert.ok(refresh.classes.has("github-pull-refresh"));
+  assert.equal(refresh.hidden, true);
   assert.equal(refreshing.querySelector(".spinner"), null, "nothing spins over the cached page");
   const age = refreshing.querySelector(".github-pull-freshness");
   assert(

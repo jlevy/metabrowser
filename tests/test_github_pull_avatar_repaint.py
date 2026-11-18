@@ -3,9 +3,10 @@ placement's policy.
 
 ``tests/dom/github-pull-avatar-repaint-behavior.js`` mounts the production pull page on
 the recorded record of pull request 7, gives its actors avatars, switches through every
-tab and back, and lets two polls find a refresh running, the second changing only the
-freshness note's age. Then four polls each change one of the header's inputs: a label, the
-head branch, the author's avatar, and the state, merged by another actor. It asserts that
+tab and back, and lets two polls find a refresh running, the second finding the record
+checked, which changes nothing shown, since the freshness note says the fetch alone.
+Then four polls each change one of the header's inputs: a label, the head branch, the
+author's avatar, and the state, merged by another actor. It asserts that
 every avatar the page creates has its placement's loading, eager in the header and lazy in
 the conversation, decodes asynchronously, sits in its 18 px box, and gives the box to
 the person glyph on an error; that the header's avatar is the one its actor has at each
@@ -46,7 +47,9 @@ def test_the_header_keeps_its_nodes_and_each_avatar_loads_by_its_placement() -> 
                 # by every repaint below (mb-pb35), with its pending placeholder, a reveal and
                 # its block, built once at mount and kept across the waits (mb-onr2). The
                 # author is the shell's identity, its avatar in a box of its own (mb-nunw).
-                "built": 50,
+                # The author's row's lead holds the sentence and the freshness note, its dot,
+                # slot, and sizer (mb-ne91).
+                "built": 51,
                 "detached": 0,
                 "created": {"header": 1, "conversation": 6},
                 "shown": 7,

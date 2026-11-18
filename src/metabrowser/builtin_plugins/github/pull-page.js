@@ -426,7 +426,8 @@ export function relativeAge(iso, nowMs) {
 /**
  * A freshness note as wide as its age makes it: its age put at the widest `relativeAge`
  * says, "59 min ago", so the note's slot is that wide whatever the age reads (mb-ne91). An
- * age wider still, "at an unknown time", sizes its own note.
+ * age wider still, "at an unknown time", sizes its own note. Exported for
+ * tests/dom/github-pull-page-mount-behavior.js, whose golden records what it gives.
  *
  * @param {string} note
  */
@@ -3831,10 +3832,12 @@ export function mountPullPage(container, ctx, mb) {
   const header = h("div", { class: "github-pull-header page-header page-reading-column" });
   const body = h("div", { class: "github-pull-body" });
   // The header's box is decided at first paint: every row is there in every state, at one
-  // line each, so nothing that arrives later, a stack, a label's color, a Refresh, moves the
-  // tab bar or the rows below it. The one row that depends on the record is the labels row:
-  // held while the labels are unknown, and not there for a pull request with none (mb-2u08).
-  // docs/design-system.md, "The Pull Request Page".
+  // line each, so nothing that arrives later, a stack, a label's color, a Refresh, the age
+  // ticking, a rate limit's hold, moves the tab bar or the rows below it. Two rows depend on
+  // what the page has to say. The labels row is held while the labels are unknown, and not
+  // there for a pull request with none (mb-2u08). The status line is there only for a
+  // failure, a message, or an offer, so those, and only those, move the tab bar as they come
+  // and go (mb-ne91). docs/design-system.md, "The Pull Request Page".
   // A hidden chip of no width, which gives a row a chip's height whatever else it holds.
   const strut = () =>
     h(
@@ -3854,16 +3857,21 @@ export function mountPullPage(container, ctx, mb) {
   const labelsRow = h("div", { class: "github-pull-labels" }, [labelList]);
   const stateBadge = h("span", { class: "github-pull-state-slot" });
   const stateDetails = h("span", { class: "github-pull-meta-details" });
-  // The author's sentence ends in a small, muted note of how fresh what is shown is, one
-  // time, then Refresh (mb-ne91): "jlevy wants to merge 1 commit · Fetched just now via
-  // GitHub CLI  Refresh". Before a record is shown the note is the page's word on it,
-  // "Fetching the pull request…", with Fetch, so the sentence landing changes no line.
-  // The note and its age are kept across paints, so the age's breathing while a refresh runs
-  // is one animation from start to end rather than one restarted at each paint. The note's
-  // slot is as wide as its widest age (`freshnessSizer`), so the age ticking from "just now"
-  // to "12 min ago" moves nothing after it, Refresh above all; Refresh holds its slot hidden
-  // when there is nothing to refresh, so it coming moves nothing either.
-  const freshnessLine = h("span", { class: "github-pull-freshness mb-refreshing-muted" });
+  // The author's sentence ends in a muted note of how fresh what is shown is, one time
+  // (mb-ne91): "jlevy wants to merge 1 commit · Fetched just now via GitHub CLI". A rate
+  // limit's hold is said in its place, since it begins and lifts by itself and asks nothing of
+  // the reader. Before a record is shown the note is the page's word on it, "Fetching the pull
+  // request…", so the sentence landing changes no line. The note and its age are kept across
+  // paints, so the age's breathing while a refresh runs is one animation from start to end
+  // rather than one restarted at each paint. The note's slot is as wide as its widest age
+  // (`freshnessSizer`), so the age ticking from "just now" to "12 min ago" changes its width
+  // not at all. The sentence and the note share the row's lead (`stateLead`), which the note
+  // leaves whole, dot and all, where it cannot be whole beside the sentence, so the sentence
+  // never gives up width to it; alone on the row, before a record, it is cut short with its
+  // text as a tooltip. Refresh is not in the note, which can leave: it ends the row of ages.
+  const freshnessLine = tipWhenCut(
+    h("span", { class: "github-pull-freshness mb-refreshing-muted" }),
+  );
   const freshnessSizer = h("span", {
     class: "github-pull-freshness-sizer",
     "aria-hidden": "true",
@@ -3874,9 +3882,9 @@ export function mountPullPage(container, ctx, mb) {
   ]);
   const freshnessSep = h("span", { class: "github-pull-note-sep", "aria-hidden": "true" }, ["·"]);
   const freshnessNote = h("span", { class: "github-pull-note" }, [freshnessSep, freshnessSlot]);
+  const stateLead = h("span", { class: "github-pull-meta-lead" }, [stateDetails, freshnessNote]);
   const stateRow = h("div", { class: "github-pull-meta page-header-line" }, [
-    stateDetails,
-    freshnessNote,
+    stateLead,
     stackColumn,
   ]);
   // The head and base branches, on a line of their own under the author's sentence: a line
@@ -3908,9 +3916,9 @@ export function mountPullPage(container, ctx, mb) {
   );
   header.append(stateRow);
   // The status line: what the page has to say beyond the note, a failure and its remedy, a
-  // message about a record shown, and the offers, one of the header's metadata lines, under
-  // the row of ages and as tall as it, there only while it has something to say. Its
-  // controls are text actions, a line tall (mb-2u08).
+  // message, and the offers, one of the header's metadata lines, under the row of ages and as
+  // tall as it, there only while it has something to say. Its controls are text actions, a
+  // line tall (mb-2u08).
   const status = h("div", { class: "github-pull-status page-header-line" });
   /** Commits of the conversation are being read from GitHub for the record shown. */
   let timelineBusy = false;
@@ -4648,6 +4656,7 @@ export function mountPullPage(container, ctx, mb) {
     // A narrow row gives way in its sentence first: the action is cut short before the
     // author is (styles.css, "One line"). The branches have the line below to themselves.
     const actor = pull.actor;
+    stateDetails.hidden = false;
     placeChildren(stateDetails, [
       ...(actor === null
         ? []
@@ -4679,10 +4688,12 @@ export function mountPullPage(container, ctx, mb) {
    * @param {PullModel | null} model
    */
   function paintRefreshing(model) {
+    // The note breathes only while it says the age, not a rate limit's hold in its place.
     const busy =
       model !== null &&
       model.pull !== null &&
       model.freshness !== null &&
+      model.failureHold !== true &&
       (model.revalidating || (timelineBusy && model.tab === ""));
     freshnessLine.classList.toggle("mb-refreshing", busy);
     // Busy is said of the age being updated, never of the status line's buttons and links.
@@ -4809,6 +4820,26 @@ export function mountPullPage(container, ctx, mb) {
     /** The situational controls this paint draws, by what each does, for their numbers.
      * @type {Map<string, {element: HTMLElement, run: () => unknown}>} */
     const numbered = new Map();
+    // Refresh, or Fetch before a record, ends the row of ages, its slot held hidden when there
+    // is nothing to refresh: it came and went with the tab, moving the tab bar 8 px. It is a
+    // text action, as Browse code before it is, so its line is a metadata line's height: as a
+    // bordered .btn it was 26 px where the line's text is 18 (mb-2u08). Numbers go in reading
+    // order, so after View on GitHub and Browse code it is 3 and renumbers neither as it comes
+    // or is held; on the author's row, before them, it took 1 (review A on #506). With no row
+    // of ages, a pull request that cannot be shown, it ends the status line.
+    const refreshLabel = model.status === "absent" ? "Fetch" : "Refresh";
+    const refresh = headerPart("refresh", refreshLabel, () => {
+      const button = h(
+        "button",
+        { type: "button", class: "github-pull-text-action github-pull-refresh" },
+        [refreshLabel],
+      );
+      button.addEventListener("click", refreshShown);
+      return button;
+    });
+    if (refresh.hidden !== !model.canRefresh) {
+      refresh.hidden = !model.canRefresh;
+    }
     if (pull !== null) {
       // The updated age is left out where it reads the same as the merged or closed age
       // beside it, or else the opened age; its exact time joins the tooltip of the age it
@@ -4903,12 +4934,13 @@ export function mountPullPage(container, ctx, mb) {
               : () => controller.browseCode(root),
         });
       }
-      placeChildren(openedRow, [stateBadge, opened.row]);
+      placeChildren(openedRow, [stateBadge, opened.row, refresh]);
       children.push(title, paintStateRow(pull), branchesRow, openedRow);
-      // A pull request with no labels has no labels row, and no gap for it: the status line
-      // follows the row of ages as the next metadata line (mb-2u08). Its labels come with its
-      // record or core, so the row is decided with the record's first paint; a label's color
-      // and tooltip, which the repository's set may bring later, change no chip's box.
+      // A pull request with no labels has no labels row, and no gap for it: the next row
+      // shown follows the row of ages as the next metadata line (mb-2u08). Its labels come
+      // with its record or core, so the row is decided with the record's first paint; a
+      // label's color and tooltip, which the repository's set may bring later, change no
+      // chip's box.
       if (pull.labels.length > 0) {
         placeChildren(
           labelList,
@@ -4929,63 +4961,62 @@ export function mountPullPage(container, ctx, mb) {
       // the one paint that changes the header and the body together (mb-2u08).
       if (model.status !== "unavailable") {
         placeChildren(stateBadge, []);
+        // No sentence yet, so the note, the page's word on the record, leads the row alone.
         placeChildren(stateDetails, []);
+        stateDetails.hidden = true;
         placeChildren(branchesRow, []);
         placeChildren(openedRow, [
           stateBadge,
           headerPart("opened placeholder", null, () =>
             h("div", { class: "github-pull-quiet" }, ["\u00a0"]),
           ),
+          refresh,
         ]);
         placeChildren(labelList, []);
         children.push(stateRow, branchesRow, openedRow, labelsRow);
       }
     }
     status.dataset.status = model.status;
-    // A failure is the one text the row lets wrap: it carries its remedy. A rate limit's
-    // hold carries none and lifts by itself, so it stays on the line, cut short with its
-    // whole text in a tooltip: wrapping it moved the tab bar 22 px as it began and lifted.
+    // A failure is the one text the row lets wrap: it carries its remedy.
     status.classList.toggle(
       "github-pull-status-failed",
       model.failure !== null && model.failureHold !== true,
     );
-    // The author's row ends in the note (mb-ne91): a record's one time, or, before a record
-    // is shown, the page's word on it, which the status line then does not repeat. A header
-    // with no author's row, a pull request that cannot be shown, says it on the status line.
+    // The author's row ends in the note (mb-ne91): a record's one time, or a rate limit's hold
+    // in its place, which begins and lifts by itself and asks nothing of the reader, so it
+    // changes no row: on the status line it added one, moving the tab bar 27 px as it began
+    // and lifted (A3 of review A on #506). Before a record is shown the note is the page's
+    // word on it, which the status line then does not repeat, unless a failure goes with that
+    // word, which then says it on the status line beside the failure (A10 of that review): on
+    // the author's row it stood three empty rows above its failure. A header with no
+    // author's row, a pull request that cannot be shown, says it on the status line.
     const noteRow = children.includes(stateRow);
-    const noteText = noteRow ? (model.freshness ?? (pull === null ? model.message : null)) : null;
-    const message = noteRow && pull === null && model.freshness === null ? null : model.message;
+    const hold = model.failureHold === true ? model.failure : null;
+    const noteText = !noteRow
+      ? null
+      : pull !== null
+        ? (hold ?? model.freshness)
+        : model.failure === null
+          ? model.message
+          : null;
+    const message = noteRow && pull === null && noteText !== null ? null : model.message;
+    const failure = hold !== null && noteText === hold ? null : model.failure;
     freshnessNote.hidden = noteText === null;
+    freshnessLine.classList.toggle(
+      "github-pull-freshness-held",
+      hold !== null && noteText === hold,
+    );
     // The dot joins the note to the author's sentence, so it is there only after one.
     freshnessSep.hidden = pull === null;
     if (freshnessLine.textContent !== (noteText ?? "")) {
       freshnessLine.textContent = noteText ?? "";
     }
-    const sizer = model.freshness === null || noteText === null ? "" : widestNote(noteText);
+    const sizer = noteText !== null && noteText === model.freshness ? widestNote(noteText) : "";
     if (freshnessSizer.textContent !== sizer) {
       freshnessSizer.textContent = sizer;
     }
     paintRefreshing(model);
-    const failure = model.failure;
     const failureHelp = model.failureHelp;
-    // Refresh has its slot after the note, held hidden when there is nothing to refresh: it
-    // came and went with the tab, moving the tab bar 8 px. It is a text action, as Browse
-    // code on the row of ages is, so its line is a metadata line's height: as a bordered
-    // .btn it was 26 px where the line's text is 18 (mb-2u08). With no author's row it ends
-    // the status line.
-    const refreshLabel = model.status === "absent" ? "Fetch" : "Refresh";
-    const refresh = headerPart("refresh", refreshLabel, () => {
-      const button = h(
-        "button",
-        { type: "button", class: "github-pull-text-action github-pull-refresh" },
-        [refreshLabel],
-      );
-      button.addEventListener("click", refreshShown);
-      return button;
-    });
-    if (refresh.hidden !== !model.canRefresh) {
-      refresh.hidden = !model.canRefresh;
-    }
     // Offers end the status line, so a message or failure changing its width moves nothing
     // after it: the freshness text before them once moved an offer by 100 px.
     /** @type {Element[]} */
@@ -4994,7 +5025,7 @@ export function mountPullPage(container, ctx, mb) {
       const text = model.headOffer.text;
       const switchNow = () => void controller.switchToHead();
       const held = headerPart("switch offer", text, () => {
-        // A text action, as Refresh beside it is: following it switches the served pin.
+        // A text action, as Refresh is: following it switches the served pin.
         const button = h(
           "button",
           { type: "button", class: "github-pull-text-action github-pull-switch" },
@@ -5026,8 +5057,9 @@ export function mountPullPage(container, ctx, mb) {
     const end = headerPart("status end", null, () =>
       h("span", { class: "github-pull-status-end" }),
     );
-    placeChildren(end, noteRow ? ending : [...ending, refresh]);
-    placeChildren(freshnessNote, noteRow ? [freshnessSep, freshnessSlot, refresh] : []);
+    // Refresh ends the row of ages wherever there is one (above).
+    const agesRow = children.includes(openedRow);
+    placeChildren(end, agesRow ? ending : [...ending, refresh]);
     /** @type {Element[]} */
     const statusText = [
       ...(message === null
@@ -5055,8 +5087,10 @@ export function mountPullPage(container, ctx, mb) {
           ]),
     ];
     placeChildren(status, [...statusText, end]);
-    // The line is there only while it has something to say: the note says the rest.
-    status.hidden = statusText.length === 0 && end.childElementCount === 0;
+    // The line is there only while it has something to say, from what this paint put on it:
+    // the note says the rest, and Refresh is on the row of ages. With no row of ages it holds
+    // Refresh and the page's message, so it is there.
+    status.hidden = agesRow && statusText.length === 0 && ending.length === 0;
     children.push(status);
     if (pull !== null || model.status !== "unavailable") {
       children.push(summaryRow);

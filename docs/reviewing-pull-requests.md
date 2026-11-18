@@ -181,8 +181,9 @@ entries.
 ## Staying Current
 
 The page says when GitHub CLI fetched what it shows, as in
-`Fetched 3 min ago via GitHub CLI`, at the end of the author’s line, with Refresh after
-it. While the Pulls tab or a pull request’s page is visible, Metabrowser rescans the
+`Fetched 3 min ago via GitHub CLI`, at the end of the author’s line; Refresh ends the
+row of ages under it.
+While the Pulls tab or a pull request’s page is visible, Metabrowser rescans the
 repository’s list of pull requests, so new pull requests, state changes, and edits
 arrive by themselves.
 A record counts as current for 60 seconds after its fetch, the freshness window, and for
