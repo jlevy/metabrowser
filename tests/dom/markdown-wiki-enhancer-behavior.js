@@ -137,7 +137,15 @@ async function loadModule() {
       ),
     )
     .replace('"./markdown-worker-client.js"', JSON.stringify(workerUrl))
-    .replace('"./wiki-parser.js"', JSON.stringify(parserUrl));
+    .replace('"./wiki-parser.js"', JSON.stringify(parserUrl))
+    .replace(
+      '"./toc-toggle.js"',
+      JSON.stringify(
+        require("node:url").pathToFileURL(
+          path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/toc-toggle.js"),
+        ).href,
+      ),
+    );
   const transclusionUrl = `data:text/javascript;base64,${Buffer.from(transclusionSource).toString("base64")}`;
   const resolverSource = fs.readFileSync(
     path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/wiki-resolver.js"),

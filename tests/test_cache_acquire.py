@@ -235,6 +235,63 @@ def test_exact_pull_fetch_waiter_reuses_the_commit_under_the_fetch_lock(
 
 
 @posix_only
+def test_several_pull_heads_arrive_in_one_fetch_and_compare_from_the_base_branch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The prefetch's lists: every head the store lacks, and the base branch, in one command."""
+    _allow_installed_git(monkeypatch)
+    origin = _origin(tmp_path)
+    work = tmp_path / "work"
+    home = tmp_path / "home"
+    published = asyncio.run(acquire_source(_file_source(origin), home=home))
+    base = subprocess.check_output(
+        ["git", "-C", str(work), "rev-parse", "HEAD"], env=_git_env(work), text=True
+    ).strip()
+    # The branch `_origin` makes, which the mirror keeps.
+    branch = "topic"
+    heads: dict[int, str] = {}
+    for number in (7, 9):
+        _git(work, "checkout", "-q", "--detach", base)
+        (work / f"pull-{number}").write_text(f"{number}\n")
+        _git(work, "add", f"pull-{number}")
+        _git(work, "commit", "-qm", f"pull {number}")
+        _git(work, "push", "-q", str(origin), f"HEAD:refs/pull/{number}/head")
+        heads[number] = subprocess.check_output(
+            ["git", "-C", str(work), "rev-parse", "HEAD"], env=_git_env(work), text=True
+        ).strip()
+
+    async def scenario() -> list[pull_refs.PullEndpoints | None]:
+        assert not any([await pull_refs.has_commit(published, head) for head in heads.values()])
+        real_git = pull_refs.run_git
+        fetches: list[list[str]] = []
+
+        async def counted(args: list[str], **kwargs: Any) -> bytes:
+            if "fetch" in args:
+                fetches.append(args)
+            return await real_git(args, **kwargs)
+
+        monkeypatch.setattr(pull_refs, "run_git", counted)
+        await pull_refs.fetch_pull_heads(published, [7, 9, 7], base_branches=[branch, branch])
+        assert len(fetches) == 1
+        assert fetches[0][-3:] == [
+            "+refs/pull/7/head:refs/pull/7/head",
+            "+refs/pull/9/head:refs/pull/9/head",
+            f"+refs/heads/{branch}:refs/remotes/origin/{branch}",
+        ]
+        return [
+            await pull_refs.branch_endpoints(published, head=head, base_branch=branch)
+            for head in heads.values()
+        ] + [await pull_refs.branch_endpoints(published, head=heads[7], base_branch="absent")]
+
+    *found, absent = asyncio.run(scenario())
+    assert [(ends.base, ends.head) for ends in found if ends is not None] == [
+        (base, heads[7]),
+        (base, heads[9]),
+    ]
+    assert absent is None
+
+
+@posix_only
 def test_an_ordinary_non_bare_clone_acquires_through_its_own_head(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

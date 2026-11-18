@@ -1,0 +1,16 @@
+{
+    "archiveFilename": "Overnight TextEditor.app",
+    "issues": [
+        {
+            "message": "The signature of the binary is invalid.",
+            "path": "Overnight TextEditor.app/Contents/MacOS/Overnight TextEditor",
+            "severity": "error"
+        }
+    ],
+    "jobId": "2EFE2717-52EF-43A5-96DC-0797E4CA1041",
+    "logFormatVersion": 1,
+    "status": "Invalid",
+    "statusSummary": "Archive contains critical validation errors",
+    "ticketContents": null,
+    "uploadDate": "2021-04-19T16:56:17Z"
+}
