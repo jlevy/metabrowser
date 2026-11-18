@@ -362,6 +362,40 @@ def test_a_pipe_on_a_continuation_line_is_reported(tmp_path: Path) -> None:
     assert len(_transcript_findings(tmp_path, body)) == 1
 
 
+RECIPES = frozenset({"tests/golden/cli-ui.tryscript.md"})
+PIPED = "```console\n$ metab root --api /api/tree --format json | jq -r .path\n? 0\n```\n"
+
+
+def test_a_recipe_transcript_may_pipe_metab() -> None:
+    """A listed transcript is held to the rest of the rules, and is not one if nothing pipes."""
+
+    assert check_goldens.transcript_findings("r.md", PIPED, recipe=True) == []
+    skipped = check_goldens.transcript_findings(
+        "r.md", "## T <!-- skip -->\n\n" + PIPED, recipe=True
+    )
+    assert len(skipped) == 1 and "a `skip` annotation" in skipped[0]
+    assert check_goldens.transcript_findings("r.md", RUN, recipe=True) == [
+        "r.md: every block records `metab`'s own status, so it is not a recipe transcript; "
+        "remove it from RECIPE_TRANSCRIPTS"
+    ]
+
+
+def test_only_a_listed_transcript_may_pipe_metab(tmp_path: Path) -> None:
+    root = _tree(tmp_path)
+    _write(root, "tests/golden/cli-ui.tryscript.md", PIPED)
+    assert check_goldens.tryscript_findings(root, recipes=RECIPES) == []
+    assert len(check_goldens.tryscript_findings(root, recipes=frozenset())) == 1
+
+
+def test_every_listed_recipe_transcript_exists() -> None:
+    missing = [
+        name
+        for name in check_goldens.RECIPE_TRANSCRIPTS
+        if not (check_goldens.REPO_ROOT / name).is_file()
+    ]
+    assert not missing, f"remove {missing} from RECIPE_TRANSCRIPTS"
+
+
 def test_a_transcript_with_no_command_is_reported(tmp_path: Path) -> None:
     assert _transcript_findings(tmp_path, "# Only prose\n") == [
         "tests/golden/cli-ui.tryscript.md: no block with a command, so tryscript runs nothing in it"

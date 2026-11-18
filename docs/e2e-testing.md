@@ -187,6 +187,12 @@ The variable takes `node`, `git`, or both separated by a comma.
 `tests/required_tools.py` is the gate, and a test asks it rather than looking the tool
 up itself; a test in `tests/test_suite_gates.py` fails when one does.
 
+`jq` is a prerequisite of the tryscript goldens, because
+`tests/golden/cli-skill-recipes.tryscript.md` pipes the agent skill’s recipes to it as
+an agent does. That transcript names it under `requires`, so tryscript stops before it
+runs any golden when `jq` is missing and names the directories it searched; nothing
+skips it.
+
 ## Test Tiers
 
 `make test` is the default tier.

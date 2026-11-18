@@ -21,6 +21,9 @@ The skill itself is [skills/metabrowser/SKILL.md](../skills/metabrowser/SKILL.md
 With it installed, an agent can browse and inventory folders, open a file or a live log,
 read commits and diffs, read a GitHub pull request, and check plugins.
 It uses `metab --help` as the reference for options, so it follows the build you have.
+The skill names the oldest release its commands run on, and
+[Release Status](installation.md#release-status) says which `metab` the macOS app needs,
+a separate front end that the skill does not drive yet.
 
 ## Ask an Agent to Show You a Page
 
@@ -45,7 +48,10 @@ The port is the first free one from 8411, so the agent reads it from that line.
 in a sandbox, or on another machine.
 
 One server serves every page under its folder, so the agent can hand you several
-addresses on the same port:
+addresses on the same port.
+A server of a repository or pull-request URL shows one commit at a time, starting where
+the URL points; controls on the page, such as **Browse code** and the branch selector,
+move it, and its pull-request pages answer for any pull request of the repository.
 
 | Address | Shows |
 | --- | --- |
@@ -55,6 +61,7 @@ addresses on the same port:
 | `/commit/<full-id>/<path>` | One file’s change in that commit |
 | `/pulls` | The repository’s pull requests |
 | `/pull/<n>`, `/pull/<n>/files`, `/pull/<n>/checks` | A pull request, its changes, and its checks |
+| `/pull/<n>/files/<path>` | One changed file in a pull request’s changes |
 
 The page stays live while the agent works: new and changed files appear in the tree, and
 a log being written tails in place ([live updates](browsing-files.md#live-updates)). The
@@ -95,23 +102,30 @@ and error counts, and whether the run is done or failed.
 ## Reading the Data Without a Browser
 
 Every route the page reads is reachable from `metab`, and each data mode runs the server
-in the same process, with no port and nothing left running.
+in the same process, with no port and nothing left running, so a POST through `--api`
+changes nothing on a server that is already running.
 What a mode prints is what the page would draw, so an agent can check its work against
 the same data you see.
 
 | To learn | Run |
 | --- | --- |
-| Which routes this build serves | `metab ROOT --api /api/routes` |
+| Which routes this build serves | `metab ROOT --api /api/routes --format json` |
 | What the page shows for one path or address: route, kind, views, and model | `metab ROOT --show PATH` |
 | One route’s answer | `metab ROOT --api ROUTE --format json` |
 | The whole inventory | `metab ROOT --walk --format json`, or `--stream` for one record per line |
 | What a change set holds | `metab ROOT --diff BASE..TARGET`, or `--diff REV` for one commit |
+| Whether a pull request was read, and why not | `metab URL --api '/api/plugin/github/pull?number=N' --format json`, then its `state` and `last_refresh.outcome` |
 
 With `--format json`, `--api` prints only the envelope, so the output parses, and it
-exits nonzero when the route answers outside 2xx. Routes that read the inventory wait
-for the scan to finish, so prefer one `--walk` over many `/api/tree` calls on a large
-tree. [The command-line guide](command-line.md) has every mode and option, and
-`metab --help` is the reference.
+exits nonzero when the route answers outside 2xx. A pull request that cannot be read is
+not such an answer: the command still exits 0, so the skill reads the record’s `state`
+and `last_refresh.outcome` instead.
+Beside a checkout, a read never fetches a pull request; the skill POSTs
+`/api/plugin/github/pull-refresh` for one the cache does not hold.
+Routes that read the inventory wait for the scan to finish, so prefer one `--walk` over
+many `/api/tree` calls on a large tree.
+[The command-line guide](command-line.md) has every mode and option, and `metab --help`
+is the reference.
 
 ## Trust
 

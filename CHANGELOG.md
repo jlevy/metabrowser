@@ -4,6 +4,20 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- The agent skill’s commands now produce output an agent can parse, and the steps it
+  gives work as written.
+  Every `--api` recipe asks for `--format json`, so its answer pipes to `jq`; whether a
+  pull request was read comes from the record’s `state` and `last_refresh.outcome`, not
+  from a line of prose; a new recipe fetches a pull request beside a checkout, where a
+  read never fetches one; and `--remote` is described as the interactive command it is,
+  with the way to run it unattended.
+  The skill no longer says `--api` refuses `/api/stream`, says that a served pin can
+  move, warns that `--diff-check` can take more than a minute, and lists
+  `/pull/<n>/files/<path>`. It states the oldest release its commands run on, and
+  `tests/test_skill_commands.py` fails when a flag, route, or recipe in it drifts from
+  `metab` or from that release.
+  The test suite now needs `jq`, which a transcript of the skill’s recipes pipes to.
+
 - The Pulls tab’s change lines, each row’s file and line totals, arrive in seconds
   rather than tens of seconds on a cold cache.
   The prefetch now lists the changed files of the open pull requests in view from the

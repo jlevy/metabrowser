@@ -14,7 +14,7 @@ Install uv at the version `required-version` in `uv.toml` names, using the
 Install the Node release `.nvmrc` and `.node-version` pin, with an npm in the range
 `engines` in `package.json` gives, and select it with `fnm use`, `nvm use`, or
 `mise install`; `npm ci` refuses an older Node with an `EBADENGINE` error.
-The tests also need Git on `PATH`, and stop when Node or Git is missing
+The tests also need Git and `jq` on `PATH`, and stop when Node, Git, or `jq` is missing
 ([Running Tests](e2e-testing.md#running-tests)). Then clone the repository and run:
 
 ```shell

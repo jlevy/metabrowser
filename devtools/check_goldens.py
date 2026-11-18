@@ -78,6 +78,17 @@ class Excepted:
 # entry whose file fits again, so the list cannot outlive its reasons.
 OVER_BUDGET: Final[dict[str, Excepted]] = {}
 
+# Transcripts of the agent skill's recipes, run as an agent runs them: an `--api` answer
+# piped to `jq`, or captured for the next command. A block there records what the agent
+# sees, the pipeline's status and what `jq` prints, and `jq` exits 5 on an answer that
+# does not parse, the failure those transcripts exist to catch. So the status rule does
+# not apply to them. `metab`'s own status for each of their requests is pinned where the
+# request runs alone (`cli-github-pull.tryscript.md` and `cli-github-checkout.txt`), and
+# `tests/test_skill_commands.py` holds each block to the skill's text. A listed file
+# whose blocks all record `metab`'s status is reported, so an entry cannot outlive its
+# reason.
+RECIPE_TRANSCRIPTS: Final = frozenset({"tests/golden/cli-skill-recipes.tryscript.md"})
+
 HARNESS: Final = "tests/golden_harness.py"
 UPDATE_ENV: Final = "GOLDEN_UPDATE"
 # The harness function a module calls decides which Makefile list must name it.
@@ -320,10 +331,15 @@ def size_findings(
     return findings
 
 
-def transcript_findings(relative: str, text: str) -> list[str]:
-    """What in one transcript reads as evidence and is not."""
+def transcript_findings(relative: str, text: str, *, recipe: bool = False) -> list[str]:
+    """What in one transcript reads as evidence and is not.
+
+    A *recipe* transcript is one of :data:`RECIPE_TRANSCRIPTS`: its blocks may hide
+    ``metab``'s status, and it is reported when none does.
+    """
 
     findings: list[str] = []
+    hidden = 0
     try:
         blocks = tryscript_blocks.blocks(text)
     except tryscript_blocks.ParseError as error:
@@ -337,12 +353,19 @@ def transcript_findings(relative: str, text: str) -> list[str]:
                 f"{where}: a `{block.annotation}` annotation, which makes tryscript report "
                 "tests it did not run as passed"
             )
-        for reason in shell_status.hidden_statuses(block.command):
+        reasons = shell_status.hidden_statuses(block.command)
+        hidden += bool(reasons)
+        for reason in [] if recipe else reasons:
             findings.append(
                 f"{where}: {reason}, so the block records another command's exit status; "
                 "end the line with the command under test, redirected to a file if its "
                 "output is long, and filter the file in the next block"
             )
+    if recipe and blocks and not hidden:
+        findings.append(
+            f"{relative}: every block records `metab`'s own status, so it is not a recipe "
+            "transcript; remove it from RECIPE_TRANSCRIPTS"
+        )
     run = tryscript_blocks.run_lines(text)
     for number, line in enumerate(text.split("\n"), start=1):
         dollar = _DOLLAR_LINE.match(line)
@@ -356,11 +379,12 @@ def transcript_findings(relative: str, text: str) -> list[str]:
     return findings
 
 
-def tryscript_findings(root: Path) -> list[str]:
+def tryscript_findings(root: Path, *, recipes: frozenset[str] = RECIPE_TRANSCRIPTS) -> list[str]:
     findings: list[str] = []
     for path in sorted((root / "tests" / "golden").glob("*.tryscript.md")):
+        relative = path.relative_to(root).as_posix()
         findings += transcript_findings(
-            path.relative_to(root).as_posix(), path.read_text(encoding="utf-8")
+            relative, path.read_text(encoding="utf-8"), recipe=relative in recipes
         )
     return findings
 

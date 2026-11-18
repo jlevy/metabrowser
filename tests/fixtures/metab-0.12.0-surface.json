@@ -1,0 +1,232 @@
+{
+  "api_routes": {
+    "/api/activity": [
+      "GET",
+      "HEAD"
+    ],
+    "/api/cache/layout": [
+      "GET",
+      "HEAD"
+    ],
+    "/api/cache/source/{slug}": [
+      "GET",
+      "HEAD"
+    ],
+    "/api/cache/sources": [
+      "GET",
+      "HEAD"
+    ],
+    "/api/cache/stores": [
+      "GET",
+      "HEAD"
+    ],
+    "/api/capabilities": [
+      "GET",
+      "HEAD"
+    ],
+    "/api/catalog": [
+      "GET",
+      "HEAD"
+    ],
+    "/api/diagnostics/pending-tallies": [
+      "POST"
+    ],
+    "/api/events": [
+      "GET",
+      "HEAD"
+    ],
+    "/api/file": [
+      "GET",
+      "HEAD"
+    ],
+    "/api/git/commit/{revision}": [
+      "GET",
+      "HEAD"
+    ],
+    "/api/git/log": [
+      "GET",
+      "HEAD"
+    ],
+    "/api/git/refs": [
+      "GET",
+      "HEAD"
+    ],
+    "/api/git/repo": [
+      "GET",
+      "HEAD"
+    ],
+    "/api/git/summary": [
+      "GET",
+      "HEAD"
+    ],
+    "/api/index/meta": [
+      "GET",
+      "HEAD"
+    ],
+    "/api/index/progress": [
+      "GET",
+      "HEAD"
+    ],
+    "/api/kpress/export": [
+      "POST"
+    ],
+    "/api/kpress/render": [
+      "GET",
+      "HEAD",
+      "POST"
+    ],
+    "/api/plugin/agent-log/charts": [
+      "GET",
+      "HEAD"
+    ],
+    "/api/plugin/binary/chunk": [
+      "GET",
+      "HEAD"
+    ],
+    "/api/plugin/diff/children": [
+      "GET",
+      "HEAD"
+    ],
+    "/api/plugin/diff/comparison": [
+      "GET",
+      "HEAD"
+    ],
+    "/api/plugin/diff/document": [
+      "GET",
+      "HEAD"
+    ],
+    "/api/plugin/github/pull": [
+      "GET",
+      "HEAD"
+    ],
+    "/api/plugin/github/pull-comparison": [
+      "GET",
+      "HEAD"
+    ],
+    "/api/plugin/github/pull-cores-prepare": [
+      "POST"
+    ],
+    "/api/plugin/github/pull-files": [
+      "GET",
+      "HEAD"
+    ],
+    "/api/plugin/github/pull-files-refresh": [
+      "POST"
+    ],
+    "/api/plugin/github/pull-markdown": [
+      "GET",
+      "HEAD"
+    ],
+    "/api/plugin/github/pull-refresh": [
+      "POST"
+    ],
+    "/api/plugin/github/pull-timeline": [
+      "POST"
+    ],
+    "/api/plugin/github/pulls": [
+      "GET",
+      "HEAD"
+    ],
+    "/api/plugin/github/pulls-refresh": [
+      "POST"
+    ],
+    "/api/plugin/github/stacks": [
+      "GET",
+      "HEAD"
+    ],
+    "/api/plugin/github/stacks-refresh": [
+      "POST"
+    ],
+    "/api/plugin/structured/parsed": [
+      "GET",
+      "HEAD"
+    ],
+    "/api/recent": [
+      "GET",
+      "HEAD"
+    ],
+    "/api/rollup": [
+      "GET",
+      "HEAD"
+    ],
+    "/api/routes": [
+      "GET",
+      "HEAD"
+    ],
+    "/api/source/pin": [
+      "POST"
+    ],
+    "/api/source/refresh": [
+      "POST"
+    ],
+    "/api/source/refs": [
+      "GET",
+      "HEAD"
+    ],
+    "/api/source/status": [
+      "GET",
+      "HEAD"
+    ],
+    "/api/stream": [
+      "GET",
+      "HEAD"
+    ],
+    "/api/tree": [
+      "GET",
+      "HEAD"
+    ]
+  },
+  "options": [
+    "--age",
+    "--all-at-once",
+    "--allow-edits",
+    "--api",
+    "--base-port",
+    "--cache-dir",
+    "--check-api",
+    "--checkout",
+    "--config-dir",
+    "--data",
+    "--detail",
+    "--diff",
+    "--diff-check",
+    "--diff-patch",
+    "--doctor",
+    "--format",
+    "--gcp",
+    "--help",
+    "--host",
+    "--ignored",
+    "--index-timeout",
+    "--json",
+    "--log-level",
+    "--max-depth",
+    "--max-files",
+    "--min-size",
+    "--no-active-content",
+    "--no-ignored",
+    "--no-open",
+    "--no-serve",
+    "--path",
+    "--plugin",
+    "--plugins",
+    "--plugins-dir",
+    "--port",
+    "--project",
+    "--remote",
+    "--show",
+    "--ssh-options",
+    "--stream",
+    "--type",
+    "--untrusted",
+    "--version",
+    "--walk",
+    "--zone"
+  ],
+  "unsupported": {
+    "--data": [
+      "-"
+    ]
+  },
+  "version": "0.12.0"
+}
