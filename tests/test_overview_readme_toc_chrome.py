@@ -6,11 +6,16 @@ at all. Now the README keeps it, and its toggle follows one rule for every docum
 (``builtin_plugins/markdown/toc-toggle.js``): past KPress's threshold, and once the reader
 has reached the document. ``tests/dom/markdown-toc-scrollspy-session.js`` and
 ``tests/dom/markdown-inert-toc-session.js`` hold the rule and the fragment links
-browserlessly; where the rail and the card land, the toggle's fade, and a real click are
-layout and paint, which ``tests/dom/overview-readme-toc-chrome.mjs`` measures in headless
+browserlessly. Where the rail and the card land, the edge the card shares with the section
+rules and File Overview, the toggle's fade, a real click, a deep link, a collapse, and the
+scroll-spy after a full load and after in-app navigation are layout, paint, and the shell's
+staged handoff, which ``tests/dom/overview-readme-toc-chrome.mjs`` measures in headless
 Chrome, trusted and ``--untrusted``, against the same README opened as a file
 (docs/design-system.md, "Embedded Document Navigation"). Without Chrome this skips
 (``require_chrome`` in ``tests/required_tools.py``).
+
+The session reports a known defect that has a bead as an expected failure, and fails if
+it passes; ``EXPECTED_FAILURES`` below is the same list, so the fix updates both.
 """
 
 from __future__ import annotations
@@ -28,8 +33,10 @@ from tests.required_tools import require_chrome, require_node
 
 SESSION = Path(__file__).resolve().parent / "dom" / "overview-readme-toc-chrome.mjs"
 # Two server starts and four Chrome launches, each opening the README and the Overview:
-# 11.4 s on a 10-core Mac at a load average near 6, so the bound is several times that,
-# with room for a cold first Chrome launch in CI (28.2 s in tests/test_page_header_chrome.py).
+# 11.4 s on a 10-core Mac at a load average near 6, and 15.0 s at one near 18 once the
+# narrow pages also checked three widths, a collapse, the scroll-spy twice, and the wide
+# ones a deep link (2026-11-17). The bound is several times that, with room for a cold
+# first Chrome launch in CI (28.2 s in tests/test_page_header_chrome.py).
 SESSION_TIMEOUT_S = 100
 # The longest the test can take: the session's bound, its process group stopped after it
 # (Chrome and both servers are in it), and the profile's teardown (tests/process_group.py);
@@ -37,6 +44,13 @@ SESSION_TIMEOUT_S = 100
 LIFECYCLE_S = SESSION_TIMEOUT_S + GROUP_STOP_S + PROFILE_TEARDOWN_S
 pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)
 _METAB = Path(sys.executable).with_name("metab")
+# The session's expected failures, each a known defect with a bead: after in-app navigation
+# from the README's file to the Overview, KPress's toc.js watches the file's headings, which
+# share the README's ids.
+EXPECTED_FAILURES = [
+    "expected to fail (mb-hpoq): trusted narrow: arriving in-app from the README's file, "
+    "an entry follows the reader",
+]
 
 # Long enough for KPress's table of contents: more headings and words than its thresholds
 # (``toc_min_headings`` and ``toc_min_words`` in KPress's models.py).
@@ -80,5 +94,7 @@ def test_the_overview_readme_keeps_its_table_of_contents_in_chrome(
     # Each step's time, shown with the output when it fails.
     print(result.stderr)
     assert result.returncode == 0, result.stdout or result.stderr
-    passed = re.fullmatch(r"overview README TOC in Chrome: (\d+) checks passed\n", result.stdout)
+    summary, *expected = result.stdout.splitlines()
+    passed = re.fullmatch(r"overview README TOC in Chrome: (\d+) checks passed", summary)
     assert passed is not None and int(passed.group(1)) > 0, result.stdout
+    assert expected == EXPECTED_FAILURES, result.stdout
