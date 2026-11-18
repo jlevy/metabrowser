@@ -55,7 +55,7 @@ from metabrowser.home import (
     application_cache,
     configuration_directory,
     ensure_home,
-    ensure_private_directory,
+    ensure_storage_root,
     validate_storage_separation,
     write_private_file_atomic,
 )
@@ -320,18 +320,6 @@ def ensure_configuration(*, version: str) -> ApplicationConfig:
     except OSError as error:
         raise ConfigurationIOError(error, path, operation="create") from error
     return config
-
-
-def ensure_storage_root(directory: Path) -> None:
-    """Create missing parents, then verify the private application directory."""
-    missing: list[Path] = []
-    parent = directory.parent
-    while not parent.exists():
-        missing.append(parent)
-        parent = parent.parent
-    for ancestor in reversed(missing):
-        ensure_private_directory(ancestor)
-    ensure_private_directory(directory)
 
 
 def _has_durable_entries(home: Path) -> bool:

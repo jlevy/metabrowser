@@ -71,7 +71,12 @@ async function startServer() {
         cwd: R,
         detached: true,
         stdio: ["ignore", logFd ?? "pipe", logFd ?? "pipe"],
-        env: { ...process.env, METABROWSER_CACHE_DIR: cache, METABROWSER_CONFIG_DIR: cfg },
+        env: {
+          ...process.env,
+          METABROWSER_CACHE_DIR: cache,
+          METABROWSER_CONFIG_DIR: cfg,
+          METABROWSER_RECORD_RECENT: "0",
+        },
       },
     );
   } finally {

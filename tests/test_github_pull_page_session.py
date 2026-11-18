@@ -126,6 +126,7 @@ def _switch(response: Any) -> dict[str, Any]:
             "pin": status.get("pin"),
             "ref": status.get("ref"),
             "code": body.get("code"),
+            "view_href": body.get("view_href"),
         },
     }
 
@@ -289,13 +290,16 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             recorded["markdown missing"] = _answer(
                 client.get(_MARKDOWN, params={**read_7, "part": "issue_comment/1"})
             )
-            # The pin is a branch, so Browse code serves the head first; one the mirror
-            # lacks is refused, and the page says why.
+            # The pin is a branch, so Browse code serves the head first, by its commit and
+            # under the pull request's ref; one the mirror lacks is refused, and the page
+            # says why.
+            head = recorded["current"]["body"]["record"]["pull"]["head"]["sha"]
+            browse = {"under": "refs/pull/7/head", "view": "/view/"}
             recorded["switch_refused"] = _switch(
-                client.post(_PIN, json={"ref": "refs/pull/999/head"}, headers=JSON_BODY)
+                client.post(_PIN, json={"oid": "e" * 40, **browse}, headers=JSON_BODY)
             )
             recorded["switch_to_head"] = _switch(
-                client.post(_PIN, json={"ref": "refs/pull/7/head"}, headers=JSON_BODY)
+                client.post(_PIN, json={"oid": head, **browse}, headers=JSON_BODY)
             )
             recorded["on_head"] = _answer(client.get(_PULL, params=read_7))
 
@@ -568,10 +572,33 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
         "checkRows": True,
         "headerAges": True,
         "headerShape": True,
+        # The freshness note's slot is as wide as its widest age, "59 min ago"; an age wider
+        # still sizes its own (mb-ne91).
+        "widestNotes": {
+            "Fetched just now via GitHub CLI": "Fetched 59 min ago via GitHub CLI",
+            "Fetched 3 h ago via GitHub CLI": "Fetched 59 min ago via GitHub CLI",
+            "Offline · fetched 12 d ago via GitHub CLI": (
+                "Offline · fetched 59 min ago via GitHub CLI"
+            ),
+            "Description fetched 7 min ago via GitHub CLI": (
+                "Description fetched 59 min ago via GitHub CLI"
+            ),
+            "Fetched at an unknown time via GitHub CLI": (
+                "Fetched at an unknown time via GitHub CLI"
+            ),
+        },
+        # A hold's lift time in the short form, en-US in UTC: a time of day when it lifts
+        # today, a short date and time when not (B3 of review B on #506).
+        "holdLifts": {
+            "today": "2:05 PM",
+            "tomorrow": "9/18/26, 12:30 AM",
+            "next year": "1/2/27, 8:00 AM",
+        },
         # The Diff summary is the header's last row on every tab (mb-pb35), and holds the
         # shell's pending placeholder while a comparison is on its way and while it is read,
         # on Changes the mounted diff's, and nothing once a read draws none, until a read of
         # it starts again (mb-onr2), as one does at the page's next paint after a failure;
+        # from the first paint of a page whose read will bring a comparison (mb-30dz);
         # a pull request opened again in the document is drawn from the kept comparison as
         # it mounts, one first read on Changes too (mb-neg9).
         "headerSummary": [
@@ -589,14 +616,23 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "that read fails too: nothing",
             "a comparison the summary draws nothing for: nothing",
             "opened on Changes, whose diff reads no comparison: nothing",
-            "the record on its way: nothing",
+            "the record on its way: the pending placeholder",
+            "a direct link's page before its first answer: the pending placeholder",
+            "its first answer: not cached, its own fetch to be sent: the pending placeholder",
+            "its fetch's core preview: the pending placeholder",
+            "its record lands, the comparison not yet read: the pending placeholder",
+            "the comparison read: the summary",
+            "a direct link's first answer: not GitHub's: nothing",
+            "a direct link's first answer: a server with no store, its own fetch to be sent: nothing",
+            "a direct link's first answer: its refresh failed, nothing running: nothing",
+            "a direct link's first answer: a core, its refresh failed, nothing running: nothing",
             "a record that names no comparison: nothing",
             "a core preview whose read prepares its comparison: the pending placeholder",
             "its record lands, the comparison not yet read: the pending placeholder",
             "the comparison read: the summary",
             "a core preview whose read prepares no comparison: nothing",
-            "a prepared core no read is running for: nothing",
-            "a core preview whose read prepared nothing and ended: nothing",
+            "a prepared core, the page's own fetch still to be sent: the pending placeholder",
+            "a core whose read ended, the page's own fetch still to be sent: the pending placeholder",
             "a record whose comparison the page asked to prepare: the pending placeholder",
             "the preparation ends with no comparison: nothing",
             "a record whose comparison nothing prepares: nothing",
@@ -610,12 +646,35 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "Changes, its diff still reading: the pending placeholder",
             "the record then names no comparison: nothing",
         ],
+        # The cached changed-files list's brief line holds the Diff summary's row while its
+        # comparison is on its way or read, once the page knows the head, for its head and
+        # base only, from the Pulls rows' memory when nothing said it changed, else one read
+        # at mount; the summary replaces it, a failed read keeps it, and a page that went
+        # draws nothing more (mb-z8ea).
+        "summaryBrief": [
+            "a direct link's page before its first answer, its head unknown: the pending placeholder; 1 reads",
+            'its core preview, of the list\'s head and base branch: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
+            'its record lands, the comparison not yet read: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
+            "the comparison read: the summary; 1 reads",
+            "a direct link's page, the list of an older head: the pending placeholder; 1 reads",
+            "its core preview, of a newer head: the pending placeholder; 1 reads",
+            "a record whose list was read for another base branch: the pending placeholder; 1 reads",
+            "a core preview, the local comparison's list, whose base the core cannot say: the pending placeholder; 1 reads",
+            'its record lands, naming the same comparison: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
+            "a record whose comparison has another base than the local list's: the pending placeholder; 1 reads",
+            'a record of the list\'s head, its comparison not yet read: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
+            'the comparison\'s read fails: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
+            "no list cached: the pending placeholder; 1 reads",
+            'opened from a Pulls row that drew its line: the brief line "1 file changed \u00b7 1 M \u00b7 +12 \u22124"; 0 reads',
+            'opened from a Pulls row whose line the lane marked out of date, read again: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
+            "a page that went before its read answered, its summary drawn: the summary; 1 reads",
+        ],
         # A page mounted with no record in hand holds its cold header and tab column for the
-        # quiet period, kept unseen while a record that landed in it waits for the
-        # conversation's held first paint, and the first header with a record lifts it.
+        # quiet period, and the first header with a record lifts it, also while the
+        # conversation's first paint still waits for its Markdown (exp-099).
         "coldHold": [
             "mounted with no record in hand: header github-pull-cold, tab column github-pull-cold",
-            "its record lands, the header waiting for the conversation: header github-pull-cold github-pull-cold-held, tab column github-pull-cold github-pull-cold-held",
+            "its record lands, the conversation waiting for its Markdown: header shown, tab column shown",
             "the conversation's first paint, at its bound: header shown, tab column shown",
             "on Changes, mounted with no record in hand: header github-pull-cold, tab column github-pull-cold",
             "its record lands: header shown, tab column shown",
@@ -629,8 +688,9 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
         # which paintHeader's retarget does. The header's links and actions are numbered
         # by their place, through the same facade, and a number runs what its place's
         # control does in the paint on screen: View on GitHub opens the pull request on
-        # GitHub, Browse code asks to serve the head and, once a refresh serves it, opens
-        # the code; Refresh asks for a refresh, and moves up to 2 when Browse code goes.
+        # GitHub, Browse code asks to serve the head, by its commit and under its ref, and,
+        # once a refresh serves it, opens the code; Refresh asks for a refresh, and moves up
+        # to 2 when Browse code goes.
         "tabKeys": [
             "before the record, the tab column in the page: "
             "Conversation C, Changes G, Checks E; live conversation files checks",
@@ -641,7 +701,9 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "live: conversation files checks",
             "numbered: 1 View on GitHub, 2 Browse code",
             f"1: window.open {_PULL_URL} _blank noopener,noreferrer",
-            '2: POST /api/source/pin {"ref":"refs/pull/7/head"}',
+            "2: POST /api/source/pin "
+            '{"oid":"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a","under":"refs/pull/7/head",'
+            '"view":"/view/"}',
             "C: showed Conversation",
             "G: opened the files route",
             "the route arrives: Changes",
@@ -653,6 +715,25 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "numbered after a refresh with no pin: 1 View on GitHub, 2 Refresh",
             f"2: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
             "3: not handled",
+            # Code behind the head offers to switch to it, numbered after Refresh; while the
+            # refresh 3 asks for runs, Refresh waits, shown and disabled, and keeps 3, so the
+            # offer keeps 4 and a second 3 asks nothing (B2 of review B on #506).
+            f"2: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
+            "numbered with the code behind the head: "
+            "1 View on GitHub, 2 Browse code, 3 Refresh, 4 Switch to the head",
+            f"3: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
+            "numbered while that refresh runs: "
+            "1 View on GitHub, 2 Browse code, 3 Refresh, 4 Switch to the head",
+            "3: nothing asked",
+            # Once the refresh ends Refresh is offered again on Changes, and the offer keeps 4;
+            # on Conversation nothing is left to refresh, so Refresh is not shown and the offer
+            # takes 3 (C2 of review C on #506, accepted).
+            "numbered once the refresh ends: "
+            "1 View on GitHub, 2 Browse code, 3 Refresh, 4 Switch to the head",
+            "numbered on Conversation once the refresh ends: "
+            "1 View on GitHub, 2 Browse code, 3 Switch to the head",
+            "4: POST /api/source/pin "
+            '{"oid":"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a","under":"refs/pull/7/head"}',
             "Shift+H: not handled",
             "Shift+E: opened the checks route",
             "Shift+C: opened the conversation route",
@@ -670,6 +751,27 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "live: conversation files checks",
             "G: showed Changes",
             "disposed: keys none",
+        ],
+        # A refused text on the mounted page (review A of #527, A6 and A8; review D, D8):
+        # one notice right after its plain text, which a rebuilt text element keeps, a
+        # later refusal replaces, and a render takes away.
+        "textRefusal": [
+            "refused past the deadline: plain, 1 notice right after it, a status: "
+            "This text took longer than 5 seconds to render, so it is shown as plain text.",
+            "rebuilt for another state, its Markdown not yet answered: plain, 1 notice "
+            "right after it, a status: This text took longer than 5 seconds to render, so "
+            "it is shown as plain text., new element",
+            "a newer record, the same text refused again as unavailable: plain, 1 notice "
+            "right after it, a status: The renderer could not start, so this text is shown "
+            "as plain text. Reload to try again., new element",
+            "a newer record whose Markdown renders: rendered rendered A, no notice, same element",
+        ],
+        # Browse code's switch is the diff plugin's, in a module it loads on demand: the
+        # plugin's assets or that module not loading is said as a failed request, and asks
+        # the server nothing (A3 of review A on #511).
+        "switchUnavailable": [
+            "the diff plugin's assets not loading: The switch request failed.; asked nothing",
+            "the switch module not loading: The switch request failed.; asked nothing",
         ],
     }
 
@@ -737,10 +839,15 @@ def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
         # Each hold's span says how it ended (review B1).
         "holdSpans": ["hidden met 1", "hidden bound 1"],
         # A direct landing's loading blocks give way to the held conversation (review B5).
-        # The header waits with the body, so header and body change once (review D1).
+        # The header paints the record at once and only the body waits (exp-099), which
+        # reverses review D1's change-once for the header.
         "landing": {
             "blocksBefore": True,
-            "whileHeld": {"holding": True, "blocks": False, "heading": "Pull request #7"},
+            "whileHeld": {
+                "holding": True,
+                "blocks": False,
+                "heading": "Count to two in the app #7",
+            },
             "final": True,
             "heading": "Count to two in the app #7",
         },
@@ -751,7 +858,7 @@ def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
                 "holding": True,
                 "sameBlocks": True,
                 "cover": True,
-                "heading": "Pull request #7",
+                "heading": "Count to two in the app #7",
             },
             "shown": {
                 "blocks": False,
@@ -815,27 +922,27 @@ def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
         # cancelled (review E1); before, the diff was shown and the wait recorded as met.
         | {"cancelled": {"held": True, "keptOutOfSight": True, "outcome": "cancelled"}},
         "bounded": True,
-        # No tab key is live while the header waits with the held body; all three at release
-        # (review E2).
+        # The header does not wait with the held body (exp-099), so all three tab keys, the
+        # stack menu, and the stack keys are live while it waits, as at release (review E2).
         "tabKeysWhileHeld": {
             "whileHeld": {
                 "holding": True,
-                "tabColumn": "inert",
-                "live": [],
-                "badges": "none",
-                "g": "not handled",
-                # The stack keys and menu wait with the header, as the tab keys do.
-                "stackMenus": 0,
-                "stackKeys": "none",
-                "strip": "none",
-                "control-n": "not handled",
+                "tabColumn": "live",
+                "live": ["conversation", "files", "checks"],
+                "badges": "Conversation C, Changes G, Checks E",
+                "g": "opened the files route",
+                "stackMenus": 1,
+                "stackKeys": "pulls.stack.top, pulls.stack.base",
+                "strip": "pulls.stack.top, pulls.stack.base",
+                "control-n": "opened #8",
             },
             "released": {
                 "holding": False,
                 "tabColumn": "live",
                 "live": ["conversation", "files", "checks"],
                 "badges": "Conversation C, Changes G, Checks E",
-                "focus": "Changes, preventScroll true",
+                # Nothing went inert, so focus never left the Changes link to be given back.
+                "focus": "none",
                 "g": "opened the files route",
                 "stackMenus": 1,
                 "stackKeys": "pulls.stack.top, pulls.stack.base",

@@ -28,6 +28,23 @@ _OID = r"([0-9a-f]{40}(?:[0-9a-f]{24})?)"
 _MISSING = re.compile(
     rf"(?:^|\n)(?:fatal: unable to read |error: Could not read |fatal: bad object ){_OID}(?=\n|$)"
 )
+# What Git says of an object a partial clone names and does not hold, when it may not
+# fetch it: every store read sets ``GIT_NO_LAZY_FETCH``, and a store target can be a
+# blobless checkout's own Git directory.
+_NOT_FETCHED = re.compile(rf"(?:^|\n)fatal: could not fetch {_OID} from promisor remote(?=\n|$)")
+
+
+def missing_object(error: GitError) -> str | None:
+    """The full ID of the object a failed command could not read, or ``None``.
+
+    Read from Git's own refusal and nothing else of its text: a missing object, and one a
+    promisor remote holds that this read may not fetch.
+    """
+
+    if not isinstance(error, GitCommandError):
+        return None
+    found = _MISSING.search(error.stderr_summary) or _NOT_FETCHED.search(error.stderr_summary)
+    return found.group(1) if found is not None and is_full_revision(found.group(1)) else None
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,10 +85,8 @@ class ObjectFailures:
             oid = error.oid
             if isinstance(error, GitObjectCorruptError):
                 state = "object_corrupt"
-        elif isinstance(error, GitCommandError):
-            match = _MISSING.search(error.stderr_summary)
-            if match is not None:
-                oid = match.group(1)
+        else:
+            oid = missing_object(error)
         if oid is None or not is_full_revision(oid):
             return None
         failure = FailedObject(oid, state, time.monotonic())

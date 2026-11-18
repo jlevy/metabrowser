@@ -9,11 +9,20 @@ next person, so this prints them from one command, at the working tree or at any
     python -m devtools.suite_report origin/main HEAD .      # commits side by side; `.` is the tree
     python -m devtools.suite_report --log run.log           # and what that run cost
 
-``--log`` takes a CI job log from ``gh run view <run> --job <job> --log``. The time of
-each test file and each tryscript golden is the gap between the timestamps of consecutive
-lines: pytest ends a file's progress line when the next file starts, and tryscript prints
-a golden's verdict when it finishes. A pytest output with no timestamps gives the summary
-line and the skips ``-rs`` listed, and no times.
+``--log`` takes a CI job log from ``gh run view <run> --job <job> --log``, or a run's own
+output, and reads every pytest session and golden run in it:
+
+- **A test file's time** is what the run listed: the ``--file-durations`` section that
+  ``tests/suite_timing.py`` prints, summed from each test's own durations, which a run
+  under pytest-xdist needs since its progress lines name no file. A log with no such
+  section, from before it existed, gives each file the gap between the timestamps of
+  consecutive progress lines instead: pytest ends a file's line when the next file starts.
+- **A golden's time** is the one ``devtools/run_goldens.py`` printed on the file's
+  ``golden:`` line, which several files at a time need. A log from before the runner gives
+  the gap before tryscript printed the file's verdict.
+
+A pytest output with no timestamps and no section gives the summary lines and the skips
+``-rs`` listed, and no times.
 
 Sizes come from the files alone, so they are the same on every machine. Run times are
 one run's: quote the run they came from.
@@ -39,7 +48,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Final
 
-from devtools import tryscript_blocks
+from devtools import run_goldens, tryscript_blocks
 
 REPO_ROOT: Final = Path(__file__).resolve().parent.parent
 # The name that stands for the working tree where a commit is expected.
@@ -264,10 +273,22 @@ _LOG_LINE: Final = re.compile(
 )
 # A colour sequence, as the terminal got it or as `gh run view --log` spells the escape.
 _ANSI: Final = re.compile(r"(?:\x1b|\^\[)\[[0-9;]*m")
-_COLLECTED: Final = re.compile(r"^collected \d+ items?")
+# A session starts: pytest's own count, or pytest-xdist's, which replaces it.
+_COLLECTED: Final = re.compile(r"^(?:collected \d+ items?|\d+ workers? \[\d+ items?\])")
 _PROGRESS: Final = re.compile(r"^(?:(?P<file>\S+\.py) )?[.sxXEF]+(?:\s+\[\s*\d+%\])?$")
 _SUMMARY: Final = re.compile(r"^=+ (?P<summary>.*\bin [\d.]+s.*?) =+$")
 _SKIPPED: Final = re.compile(r"^SKIPPED \[(?P<count>\d+)\] [^:]+:\d+: (?P<reason>.*)$")
+# The section tests/suite_timing.py prints, and each of its lines.
+_FILE_TIMES: Final = re.compile(
+    r"^=+ (?:slowest \d+|all) of (?P<files>\d+) test files, "
+    r"(?P<seconds>\d+(?:\.\d+)?) s of test time =+$"
+)
+_FILE_TIME: Final = re.compile(r"^(?P<seconds>\d+(?:\.\d+)?)s (?P<file>\S+\.py)$")
+# The line devtools/run_goldens.py prints for each golden.
+_GOLDEN_LINE: Final = re.compile(
+    rf"^{re.escape(run_goldens.PREFIX)} \S+ (?P<seconds>\d+(?:\.\d+)?) s "
+    r"\S*?(?P<file>tests/golden/\S+\.tryscript\.md)$"
+)
 _TRYSCRIPT_START: Final = re.compile(r"\btryscript run\b")
 _TRYSCRIPT_FILE: Final = re.compile(
     r"^(?:PASS|FAIL) \S*?(?P<file>tests/golden/\S+\.tryscript\.md)$"
@@ -276,14 +297,19 @@ _TRYSCRIPT_FILE: Final = re.compile(
 
 @dataclass(slots=True)
 class Run:
-    """What one pytest and tryscript run recorded."""
+    """What the pytest sessions and golden runs of one job recorded."""
 
     job: str = ""
     other_jobs: list[str] = field(default_factory=lambda: list[str]())
-    summary: str = ""
-    # Seconds per test file and per golden, from timestamps; empty for a log that has none.
+    # Each pytest session's last line, in the order they ran.
+    summaries: list[str] = field(default_factory=lambda: list[str]())
+    # Seconds per test file and per golden: what the run listed, or else the gaps between
+    # timestamps; empty for a log that has neither.
     files: dict[str, float] = field(default_factory=lambda: dict[str, float]())
     goldens: dict[str, float] = field(default_factory=lambda: dict[str, float]())
+    # The files and seconds each ``--file-durations`` section counted, which may list
+    # fewer files than it counted; empty where ``files`` came from timestamps.
+    listed: list[tuple[int, float]] = field(default_factory=lambda: list[tuple[int, float]]())
     # Skipped cases by the reason ``-rs`` printed.
     skips: Counter[str] = field(default_factory=lambda: Counter[str]())
 
@@ -302,9 +328,11 @@ def parse_log(text: str, *, job: str = "") -> Run:
     named = [name for name in jobs if job and job in name]
     run = Run(job=(named or ran_pytest or jobs or [""])[0] or "")
     run.other_jobs = [name for name in jobs if name != run.job]
+    gaps: dict[str, float] = {}
+    golden_gaps: dict[str, float] = {}
     previous: float | None = None
     current = ""
-    in_tryscript = False
+    in_tryscript = in_file_times = False
     for match in parsed:
         if (match["job"] or "") != run.job:
             continue
@@ -312,24 +340,34 @@ def parse_log(text: str, *, job: str = "") -> Run:
         stamp = _seconds(match["stamp"]) if match["stamp"] else None
         if _COLLECTED.match(line):
             previous, current, in_tryscript = stamp, "", False
+        elif in_file_times and (timed := _FILE_TIME.match(line)):
+            run.files[timed["file"]] = run.files.get(timed["file"], 0.0) + float(timed["seconds"])
         elif (progress := _PROGRESS.match(line)) and (progress["file"] or current):
             current = progress["file"] or current
             if stamp is not None and previous is not None:
-                run.files[current] = run.files.get(current, 0.0) + stamp - previous
+                gaps[current] = gaps.get(current, 0.0) + stamp - previous
             previous = stamp
         elif line.startswith("="):
             # A section rule ends the progress lines; the last one carries the totals.
-            current = ""
-            if summary := _SUMMARY.match(line):
-                run.summary = summary["summary"]
+            current, in_file_times = "", False
+            if section := _FILE_TIMES.match(line):
+                in_file_times = True
+                run.listed.append((int(section["files"]), float(section["seconds"])))
+            elif summary := _SUMMARY.match(line):
+                run.summaries.append(summary["summary"])
         elif skipped := _SKIPPED.match(line):
             run.skips[skipped["reason"]] += int(skipped["count"])
+        elif golden_line := _GOLDEN_LINE.match(line):
+            run.goldens[golden_line["file"]] = float(golden_line["seconds"])
         elif _TRYSCRIPT_START.search(line):
             previous, in_tryscript = stamp, True
         elif in_tryscript and (golden := _TRYSCRIPT_FILE.match(line)):
             if stamp is not None and previous is not None:
-                run.goldens[golden["file"]] = stamp - previous
+                golden_gaps[golden["file"]] = stamp - previous
             previous = stamp
+    # A log from before the listed times has only the gaps, so it is read by them.
+    run.files = run.files if run.listed else gaps
+    run.goldens = run.goldens or golden_gaps
     return run
 
 
@@ -343,8 +381,19 @@ def render_run(run: Run, *, top: int) -> str:
     lines = [f"job: {run.job}" if run.job else "job: (a pytest output, not a CI log)"]
     if run.other_jobs:
         lines.append("other jobs in this log, chosen with --job: " + ", ".join(run.other_jobs))
-    lines.append(f"pytest: {run.summary or 'no summary line in this log'}")
-    if run.files:
+    lines += [f"pytest: {summary}" for summary in run.summaries] or [
+        "pytest: no summary line in this log"
+    ]
+    if run.listed:
+        counted = sum(files for files, _ in run.listed)
+        seconds = sum(seconds for _, seconds in run.listed)
+        lines += [
+            "",
+            f"{counted} test files, {seconds:.1f} s of test time, as {len(run.listed)} "
+            f"session(s) listed them; {len(run.files)} files are named",
+            *table(("Test file", "Seconds"), slowest(run.files)),
+        ]
+    elif run.files:
         total = sum(run.files.values())
         lines += [
             "",
@@ -352,12 +401,16 @@ def render_run(run: Run, *, top: int) -> str:
             *table(("Test file", "Seconds"), slowest(run.files)),
         ]
     else:
-        lines += ["", "No timestamps in this log, so no time per file; use a CI job log."]
+        lines += [
+            "",
+            "No time per file in this log: it has no --file-durations section and no "
+            "timestamps; use a CI job log.",
+        ]
     if run.goldens:
         total = sum(run.goldens.values())
         lines += [
             "",
-            f"{len(run.goldens)} tryscript goldens, {total:.1f} s",
+            f"{len(run.goldens)} tryscript goldens, {total:.1f} s of files",
             *table(("Golden", "Seconds"), slowest(run.goldens)),
         ]
     if run.skips:

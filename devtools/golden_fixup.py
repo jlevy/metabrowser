@@ -17,6 +17,10 @@ restores them so `make golden-update` is a single reviewable step:
 * the KPress icon sprite at the head of a rendered document, which is tens of
   kilobytes of third-party SVG and would make the transcript unreviewable; the
   rendered article after it stays literal
+* `[ROOTS]` for the sandbox's `roots` directory, and `[TIMESTAMP]` for the time each
+  entry was opened, in the recent-targets transcript: a folder's root there is the
+  resolved path, which on macOS starts with `/private` and so is not the `[CWD]`
+  tryscript knows, and every time is the wall clock's
 * `[CLOCK]` for the logger's time of day on the pending-tally diagnostic line
 * `[TIMESTAMP]` for a time taken from the wall clock while the transcript or its
   fixture ran: when a one-shot refresh found another process refreshing, when a
@@ -70,10 +74,10 @@ class UnexpectedTime(ValueError):
 FIXUPS: list[tuple[str, str]] = [
     # PR comparison addresses name the editable build and sandbox store, neither pinned.
     (r"(&build=)[0-9a-f]{12}(&store=)[0-9a-f]{16}", r"\1[BUILD]\2[STORE]"),
-    # Its revision-file and rendered-Markdown addresses name the sandbox store after the
+    # Its image and rendered-Markdown addresses name the sandbox store after the
     # endpoints.
     (
-        r"(/api/plugin/github/pull-(?:snapshot|rendered-diff)\?number=\d+"
+        r"(/api/plugin/github/pull-(?:image|rendered-diff)\?number=\d+"
         r"&left=[0-9a-f]{40,64}&right=[0-9a-f]{40,64}&store=)[0-9a-f]{16}",
         r"\1[STORE]",
     ),
@@ -88,6 +92,16 @@ FIXUPS: list[tuple[str, str]] = [
         r'("location": ")[^\s"]*/tryscript-[A-Za-z0-9]+/home(/repository-stores/)',
         r"\1[APP_HOME]\2",
     ),
+    # The recent-targets transcript's folders, under the sandbox's `roots`: ahead of the
+    # sandbox rule, because a recorded root is the resolved path, which on macOS begins
+    # `/private` and is not the directory tryscript substitutes for `[CWD]`. An earlier
+    # update's `[CWD]/roots` is the same place.
+    (r'(?:[^\s"]*/tryscript-[A-Za-z0-9]+|\[CWD\])/roots(?=[/\s"]|$)', "[ROOTS]"),
+    # When each recent target was opened, as its listing, its JSON, and its file spell
+    # it: always the wall clock's, since the transcript records every entry itself.
+    (rf"^((?:folder|mirror)  ){_TIME}(  )", r"\1[TIMESTAMP]\2"),
+    (rf'("opened_at": "){_TIME}(")', r"\1[TIMESTAMP]\2"),
+    (rf"(^  opened_at: '){_TIME}(')", r"\1[TIMESTAMP]\2"),
     # Not \S*: the sandbox path is often quoted in a JSON envelope, and a
     # non-space run swallows the opening quote along with the path.
     (r'[^\s"]*/tryscript-[A-Za-z0-9]+', "[CWD]"),

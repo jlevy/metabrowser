@@ -18,13 +18,28 @@ import re
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from typing import get_args
 
 import click
 from watchfiles import DefaultFilter
 
 from metabrowser.builtin_plugins.github.provider import MAX_FIRST_CLONE_ENV
-from metabrowser.cli.exit_codes import INTERRUPTED_EXIT_CODE
+from metabrowser.cli.exit_codes import (
+    INTERRUPTED_EXIT_CODE,
+    PRESENT_BLOCKED_EXIT_CODE,
+    PRESENT_NO_APP_EXIT_CODE,
+    PRESENT_REFUSED_EXIT_CODE,
+)
 from metabrowser.cli.hangup import HANGUP_EXIT_STATUS, TERMINATION_EXIT_STATUS
+from metabrowser.cli.present import (
+    ANY_APP_LOCATION_ENV,
+    APP_BUNDLE_NAME,
+    APP_INSTALL_LOCATIONS,
+    BUNDLE_ID_ENV,
+    OPENS_URLS_KEY,
+    DeliveryCode,
+    PresentKind,
+)
 from metabrowser.constants import LOGS_DIR, STATE_DIR
 from metabrowser.dotenv import ALLOWED_KEYS
 from metabrowser.file_extensions import BROWSER_TRACKABLE_EXTS
@@ -212,6 +227,60 @@ def stated_values() -> list[Stated]:
         ),
         Stated(
             "docs/command-line.md",
+            "the --present refusal status",
+            r"^\| (\d+) \| `--present`: ROOT cannot be presented",
+            (str(PRESENT_REFUSED_EXIT_CODE),),
+        ),
+        Stated(
+            "docs/command-line.md",
+            "the --present status when no app takes the target",
+            r"^\| (\d+) \| `--present`: no app takes the target",
+            (str(PRESENT_NO_APP_EXIT_CODE),),
+        ),
+        Stated(
+            "docs/command-line.md",
+            "the --present status when LaunchServices is blocked",
+            r"^\| (\d+) \| `--present`: LaunchServices could not be asked",
+            (str(PRESENT_BLOCKED_EXIT_CODE),),
+        ),
+        Stated(
+            "docs/command-line.md",
+            "the variable that names the app --present looks for",
+            r"^\| `(\w+)` \| The app `--present` hands a target to",
+            (BUNDLE_ID_ENV,),
+        ),
+        Stated(
+            "docs/command-line.md",
+            "where --present finds an installed app",
+            r"it is at `([^`]+)` or\s+`([^`]+)`",
+            APP_INSTALL_LOCATIONS,
+        ),
+        Stated(
+            "docs/command-line.md",
+            "the name an installed app's Info.plist gives it",
+            r"its `Info.plist` names it `(\w+)`",
+            (APP_BUNDLE_NAME,),
+        ),
+        Stated(
+            "docs/command-line.md",
+            "the setting that lifts the install-location check",
+            r"(?:^\| `|\bsets\s+`)(METABROWSER_ALLOW_\w+)",
+            (ANY_APP_LOCATION_ENV,),
+        ),
+        Stated(
+            "docs/project/qa/qa-macos-app-hand-checks.md",
+            "the setting the --present hand checks use",
+            r"\b(METABROWSER_ALLOW_\w+)=1",
+            (ANY_APP_LOCATION_ENV,),
+        ),
+        Stated(
+            "docs/command-line.md",
+            "the key an app that takes what --present sends declares",
+            r"`Info.plist`\s+declares\s+`(\w+)`\s+true",
+            (OPENS_URLS_KEY,),
+        ),
+        Stated(
+            "docs/command-line.md",
             "the termination status",
             r"^\| (\d+) \| Stopped by `SIGTERM`",
             (str(TERMINATION_EXIT_STATUS),),
@@ -268,6 +337,12 @@ def stated_values() -> list[Stated]:
             "docs/macos-app.md",
             "the app's minimum metab",
             r"the app runs `metab` (\d+\.\d+\.\d+) or later",
+            (".".join(app_minimum.groups()),),
+        ),
+        Stated(
+            "skills/metabrowser/SKILL.md",
+            "the app's minimum metab",
+            r"the app needs `metab` (\d+\.\d+\.\d+) or later",
             (".".join(app_minimum.groups()),),
         ),
         Stated(
@@ -334,12 +409,13 @@ def test_the_app_guides_say_whether_its_minimum_is_released() -> None:
     released = _swift(
         APP_SOURCES / "Setup" / "MetabVersion.swift", r"static let isReleased = (true|false)"
     ).group(1)
-    guide = (REPO_ROOT / "docs/installation.md").read_text(encoding="utf-8")
-    says_unreleased = "no release on PyPI has it yet" in " ".join(guide.split())
-    assert says_unreleased == (released == "false"), (
-        "MetabRequirement.isReleased changed: update Release Status in docs/installation.md "
-        "and the steps in docs/macos-app.md, then this test"
-    )
+    for name in ("docs/installation.md", "skills/metabrowser/SKILL.md"):
+        guide = (REPO_ROOT / name).read_text(encoding="utf-8")
+        says_unreleased = "no release on PyPI has it yet" in " ".join(guide.split())
+        assert says_unreleased == (released == "false"), (
+            f"MetabRequirement.isReleased changed: update {name}, Release Status in "
+            "docs/installation.md, and the steps in docs/macos-app.md, then this test"
+        )
 
 
 def _reason_codes(guide: str, heading: str) -> list[str]:
@@ -377,3 +453,19 @@ def test_the_values_check_sees_what_it_must() -> None:
     assert findings("ends in `.gz` or `.bz2`", pair)
     assert _series(["a", "b", "c"]) == "a, b, and c"
     assert _series(["a", "b"]) == "a and b"
+
+
+_PRESENT_SECTION = "Handing a Target to the App: `--present`"
+
+
+def test_the_present_guide_names_every_delivery_code_and_kind() -> None:
+    guide = (REPO_ROOT / "docs/command-line.md").read_text(encoding="utf-8")
+    section = guide[guide.index(f"\n## {_PRESENT_SECTION}\n") :]
+    section = section[: section.find("\n## ", 1)]
+    table = [match.group(1) for match in re.finditer(r"^\| `([a-z_]+)` \| ", section, re.MULTILINE)]
+    kinds = re.search(r"^- \*\*`kind`:\*\* (.+?)\. ", section, re.MULTILINE)
+
+    assert table == list(get_args(DeliveryCode.__value__)), "update the guide's code table"
+    assert kinds is not None
+    named = re.findall(r"`([a-z_]+)`", kinds.group(1))
+    assert sorted(named) == sorted(get_args(PresentKind.__value__)), "update the kind list"

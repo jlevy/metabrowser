@@ -4,6 +4,12 @@ The server is authoritative. Client settings and ``/api/capabilities``
 publish the same block as a hint. ``--untrusted`` sets every switch to
 its conservative value; individual CLI flags override that profile, and
 nothing in the environment does.
+
+The block is the process's and says how the reader trusts the files they opened. A
+pinned Git revision is never served under it: its content is whatever its repository
+holds, so every route that answers a pin uses :data:`UNTRUSTED_CAPABILITIES`, chosen by
+the subject the request resolved and not by anything read later
+(:func:`capabilities_for`).
 """
 
 from __future__ import annotations
@@ -71,11 +77,32 @@ class Capabilities:
 
 
 DEFAULT_CAPABILITIES = Capabilities(active_content=True, mutations=False)
+# Every switch at its conservative value: what ``--untrusted`` resolves to, and what a
+# pinned revision is always served under.
+UNTRUSTED_CAPABILITIES = Capabilities(active_content=False, mutations=False)
 _current = DEFAULT_CAPABILITIES
 
 
 def get_capabilities() -> Capabilities:
+    """The process's block: how the reader trusts the folder they opened."""
+
     return _current
+
+
+def capabilities_for(*, pinned_revision: bool) -> Capabilities:
+    """The block a request is answered under, by the subject it resolved.
+
+    A pinned revision is never trusted, whatever the process's block: a mirror's content
+    is its origin's, and a branch or tag in a checkout's ``.git`` is whatever a fetch
+    brought, where the folder is what the reader works in. A caller passes whether the
+    subject it resolved *at the start of the request* is a pin, and uses the answer for
+    the whole request, so a switch of the served subject while the request awaits cannot
+    render a revision's content under the folder's profile. A server showing a revision
+    of its own checkout therefore needs no flag: the folder's profile is simply what its
+    working tree's requests get.
+    """
+
+    return UNTRUSTED_CAPABILITIES if pinned_revision else _current
 
 
 def set_capabilities(capabilities: Capabilities) -> None:

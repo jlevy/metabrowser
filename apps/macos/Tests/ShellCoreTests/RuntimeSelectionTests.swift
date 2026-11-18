@@ -100,6 +100,24 @@ import Testing
         #expect(selection.waitingFolders.isEmpty)
     }
 
+    /// C9 on #539: links that wait for a runtime are bounded as the link queue bounds
+    /// them, and counted past that; a folder, which comes from the user, still waits.
+    @Test func linksWaitingForARuntimeAreBounded() {
+        let selection = RuntimeSelection(settings: settings(), setup: nil)
+        _ = selection.startSearch()
+        for n in 0..<LinkQueue.limit {
+            #expect(selection.setupForOpening(URL(string: "https://github.com/o/r/pull/\(n)")!) == nil)
+        }
+        #expect(selection.setupForOpening(URL(string: "https://github.com/o/r/pull/0")!) == nil)  // waits once
+        #expect(selection.droppedLinks == 0)
+        #expect(selection.setupForOpening(URL(string: "https://github.com/o/r/pull/999")!) == nil)
+        #expect(selection.waitingFolders.count == LinkQueue.limit)
+        #expect(selection.setupForOpening(folder) == nil)
+        #expect(selection.waitingFolders.count == LinkQueue.limit + 1)
+        #expect(selection.takeDroppedLinks() == 1)
+        #expect(selection.droppedLinks == 0)
+    }
+
     @Test func aFolderAskedForTwiceWaitsOnce() {
         let selection = RuntimeSelection(settings: settings(), setup: nil)
         _ = selection.startSearch()

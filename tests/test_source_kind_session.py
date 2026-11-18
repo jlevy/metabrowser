@@ -59,8 +59,10 @@ SYMLINKS: dict[bytes, bytes] = {b"guide-link.md": b"docs/guide.md"}
 _INDEX_POLL_S = 0.05
 _INDEX_POLLS = 1200
 
+# A pin's shell is never trusted, so each of its inline scripts carries the page's nonce.
 _SOURCE_KIND_BLOCK = re.compile(
-    r"<script>(window\.METABROWSER_(?:SOURCE_KIND|REPOSITORY_CONTEXT)=[^<]*;)</script>"
+    r'<script(?: nonce="[^"]*")?>(window\.METABROWSER_(?:SOURCE_KIND|REPOSITORY_CONTEXT)=[^<]*;)'
+    r"</script>"
 )
 # The navigation heading as served: a folder's name, or a pin's ref and short commit.
 _HEADING = re.compile(

@@ -3872,9 +3872,9 @@ export function mountPullsPanel(container, ctx, mb) {
   }
 
   /**
-   * The number's line, on a row's first after the chevron and the state icon: a stack
-   * member's place (`paintPlace`), the number, and the author, with the age at the row's
-   * end; the title has the second line to itself, from the text column to the row's end
+   * The number's line, on a row's second, under the title: a stack member's place
+   * (`paintPlace`), the number, and the author, with the age at the row's end; the title has
+   * the first line to itself, after the state icon, from the text column to the row's end
    * (github/styles.css, `.github-pulls-row`). A row names no branches: the page does, and
    * the row's room goes to its title (docs/design-system.md, "The Pulls Tab"). The title
    * is the row's first text, so its accessible name gives the state, from the state icon's
@@ -4287,11 +4287,20 @@ export function mountPullsPanel(container, ctx, mb) {
 
   /**
    * The place a paint keeps: a reveal's, until the list is scrolled other than by this view,
-   * and otherwise the first row in view.
+   * and otherwise the first row in view. A hidden panel keeps the place it had: its rows
+   * have none, and the scroller it shares is another tab's, whose scroll is not the
+   * reader's here. The Pulls tab's button returns to the list as the reader left it
+   * (main-tabs.js, `revealPlan`), so stacks read while the reader was away, or just after,
+   * regroup it around the row a reveal put in view. With the place forgotten on the way,
+   * the row was regrouped out of view: #7, revealed far down the flat list, came back
+   * 5,446 px above the pane, its stack's row undrawn (headless Chrome 152, 2026-11-18).
    *
    * @returns {{key: number, offset: number} | null}
    */
   function keptPlace() {
+    if (!panelShown) {
+      return readingPlace;
+    }
     if (
       revealedPlace !== null &&
       Math.abs((tab.scrollRoot?.scrollTop ?? 0) - revealedPlace.scrollTop) >= 1
@@ -4540,7 +4549,7 @@ export function mountPullsPanel(container, ctx, mb) {
     if (builtRefreshing) {
       alignRefreshing(list);
     }
-    if (readingPlace !== null && tab.scrollRoot !== null) {
+    if (readingPlace !== null && tab.scrollRoot !== null && panelShown) {
       const item =
         readingPlace.key < 0
           ? paintedStacks.get(readingPlace.key)?.item
@@ -5301,7 +5310,7 @@ export function mountPullsPanel(container, ctx, mb) {
       if (visible) {
         queueWindow();
       } else {
-        revealedPlace = null;
+        // The place a reveal put the list in stays (keptPlace).
         cancelCoreSample();
         // Hiding the tab cancels its animations without an animationend event.
         clearArrivalFlashes();
