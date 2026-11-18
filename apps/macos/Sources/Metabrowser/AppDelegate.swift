@@ -36,6 +36,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let runtimeModel = RuntimeModel()
     /// The runtime, and the folders waiting for one. `runtimeModel` only mirrors it.
     private lazy var selection = RuntimeSelection(settings: settings, setup: settings.usable())
+    /// The window each waiting folder was asked to open in (`request(_:into:)`).
+    private var waitingWindows = WaitingWindows<BrowserWindowController>()
     /// The searches, rechecks, and choices that change `selection`, and what follows each.
     private lazy var operations: RuntimeOperations = {
         let settings = self.settings
@@ -270,9 +272,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// says.
     ///
     /// With `window`, a folder that opens is shown in that window in place of the folder it
-    /// shows (`FolderWindows.switchWindow`), as the folder chooser opens a recent folder. A
-    /// link still opens in a window of its own: which repository it names is `metab`'s
-    /// answer, which arrives later.
+    /// shows (`FolderWindows.switchWindow`), as the folder chooser opens a recent folder,
+    /// and one that waits for a runtime still opens there (`WaitingWindows`). A link still
+    /// opens in a window of its own: which repository it names is `metab`'s answer, which
+    /// arrives later.
     func request(_ url: URL, into window: BrowserWindowController? = nil) {
         guard url.isFileURL else { return requestLink(url) }
         let path = FileChecks.canonicalPath(url.path(percentEncoded: false))
@@ -296,7 +299,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             beginRecheck()
         }
         // A request waiting for a runtime is resolved again when one is found.
-        guard selection.setupForOpening(URL(filePath: path)) != nil, let session = session(for: .folder(root)) else {
+        let waiting = URL(filePath: path)
+        guard selection.setupForOpening(waiting) != nil, let session = session(for: .folder(root)) else {
+            if let window, selection.waitingFolders.contains(waiting) { waitingWindows.wait(waiting, in: window) }
             if !selection.isBusy { showSettings(nil) }
             return
         }
@@ -716,7 +721,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func openPendingFolders() {
-        selection.takeWaitingFolders().forEach { request($0) }
+        openReleased(selection.takeWaitingFolders())
+    }
+
+    /// Opens the folders that waited for a runtime, each in the window it was asked to
+    /// open in if that window is still open.
+    private func openReleased(_ folders: [URL]) {
+        for (folder, window) in waitingWindows.release(folders) { request(folder, into: window) }
     }
 
     @objc func openFolder(_ sender: Any?) {
@@ -807,7 +818,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             restoreAfterDiscovery = false
             restoreLastSession()
         }
-        waiting.forEach { request($0) }
+        openReleased(waiting)
         let held = folderSessions.filter(\.isWaitingForRuntime)
         offerRestart(for: found.runtime)
         // A paused restore carries on in its own order, each root admitted again in its
