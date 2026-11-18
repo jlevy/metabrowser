@@ -419,8 +419,10 @@ whole: an item and the dot before it are one box that does not wrap, and a wrapp
 falls to a second line the line’s height clips away.
 No value is cut mid-number.
 
-**The tab bar** is the one tab style, `.tab-bar` and `.tab-btn`, with its labels on the
-header’s inset, cancelling the tab’s own padding as the navigation’s tab bar does.
+**The tab bar** is the one tab style, `.tab-bar` and `.tab-btn`, its labels on the
+content’s inset, where a folder’s Overview labels start
+([Folder Overview Is a Panel Stack](#folder-overview-is-a-panel-stack)), one tab’s
+padding in from the header’s rows.
 
 **Ground and rules.** The header and its tab bar sit on the main view’s ground, `--bg`,
 the ground the content under them has: `--sidebar-bg` is the navigation column’s, and
