@@ -2186,7 +2186,11 @@ A text stays inert. The server and `static/inert-html.js` reduce it to the allow
 KPress script loads, and every class in the article is the page’s, chosen by element.
 The route’s answer names KPress’s stylesheets, and that list is the same for every text,
 so a comment does not choose what the page loads.
-Until its render arrives a text shows as plain text in the same face and size.
+Until its render arrives a text’s place holds the loading blocks’ gray rows and pulse,
+shown after the quiet period, in the box its plain text would take, so a text first
+shows rendered and never as Markdown source.
+A text whose render will not come shows as plain text in the same face and size, with
+the line that says why.
 
 ### Conversation Timeline
 

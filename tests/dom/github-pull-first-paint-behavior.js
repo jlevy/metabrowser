@@ -550,7 +550,9 @@ async function run() {
   revisit.handle.dispose();
   facts.revisit = "final at first paint";
 
-  // A text never rendered, whose Markdown does not come in time: plain once the bound passes.
+  // A text never rendered, whose Markdown does not come in time: once the bound passes the
+  // page shows, the text a placeholder while its Markdown is on its way, never its source
+  // (mb-d59o).
   const slow = envelope("c".repeat(64), "slow text");
   session.current = slow;
   session.holdMarkdown(true);
@@ -563,7 +565,11 @@ async function run() {
   session.timers.delete(bound[0]);
   bound[1].callback();
   await settle();
-  assert.equal(late.plain()?.textContent, "slow text", "past the bound the text paints plain");
+  assert.equal(late.plain()?.textContent, "slow text", "past the bound the text keeps its box");
+  assert.ok(
+    late.plain()?.classes.has("github-pull-plain-pending"),
+    "as a placeholder, its source out of sight, while its Markdown is on its way",
+  );
   // A text is chrome prose, plain or rendered: sans under either reading font
   // (docs/design-system.md, "Serif Is for Documents"; tests/test_prose_faces_chrome.py).
   assert.ok(late.description().classes.has("chrome-prose"), "a plain text is chrome prose");
@@ -574,7 +580,22 @@ async function run() {
   await settle();
   assert.equal(late.rendered()?.textContent, "rendered slow text", "and its Markdown follows");
   late.handle.dispose();
-  facts.pastTheBound = "plain, then Markdown";
+  facts.pastTheBound = "a placeholder, then Markdown";
+
+  // A text whose Markdown will not come shows its source, with nothing hiding it.
+  const failing = envelope("e".repeat(64), "failing text");
+  session.current = failing;
+  session.failMarkdown.add("body");
+  const failed = session.mount(page, failing);
+  await settle();
+  assert.equal(failed.plain()?.textContent, "failing text", "a failed render shows its source");
+  assert.equal(
+    failed.plain()?.classes.has("github-pull-plain-pending"),
+    false,
+    "and no placeholder hides it",
+  );
+  failed.handle.dispose();
+  session.failMarkdown.delete("body");
 
   // Comments and reviews the first screen shows wait with the description (review A6): at
   // the paint that makes the page ready every text is Markdown, none plain.

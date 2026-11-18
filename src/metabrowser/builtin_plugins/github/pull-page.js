@@ -77,8 +77,9 @@ export const MARKDOWN_CONCURRENCY = 2;
 export const MARKDOWN_AHEAD = "100% 0px";
 // How long a conversation's first paint waits, out of sight, for the Markdown of the texts
 // its first screen shows, so each is final when it first shows; kept renders wait for
-// nothing. Past this the texts show plain and their Markdown replaces them when it comes. A
-// page replacing another keeps that one on screen meanwhile. Measured 2026-11-12 in headless
+// nothing. A core preview's first paint waits for its description the same way. Past this
+// the page shows, each text still waiting a placeholder until its Markdown comes, and never
+// its source (`showPending`). A page replacing another keeps that one on screen meanwhile. Measured 2026-11-12 in headless
 // Chrome 152 against a local server on this repository, from the hold's
 // `githubPull:firstPaintHold` span, each pull request clicked from the previous
 // conversation scrolled by 1,500 px, two documents of five, load average 4 to 7: 23 to 155
@@ -366,6 +367,7 @@ const TRUNCATED = Object.freeze({
  *   tab: string,
  *   status: "loading" | "absent" | "pending" | "current" | "stale" | "unavailable",
  *   recordRevision: string | null,
+ *   textRevision: string | null,
  *   corePreview: boolean,
  *   contentReady: boolean,
  *   message: string | null,
@@ -1283,6 +1285,7 @@ export function describePull(envelope, page) {
     tab: page.tab,
     status: "unavailable",
     recordRevision: null,
+    textRevision: null,
     corePreview: false,
     contentReady: Boolean(page.error),
     message: page.error ?? null,
@@ -1358,6 +1361,7 @@ export function describePull(envelope, page) {
       knownLabels(envelope.repository_labels),
     );
     model.corePreview = true;
+    model.textRevision = textRevision(envelope);
     model.head = text(preview.pull?.head?.sha) || null;
     model.baseRef = text(preview.pull?.base?.ref) || null;
     model.contentReady = true;
@@ -1410,6 +1414,7 @@ export function describePull(envelope, page) {
     return model;
   }
   model.recordRevision = envelope.record_revision;
+  model.textRevision = textRevision(envelope);
   model.contentReady = true;
   // A comparison's refusal is said where its Retry is, in the Changes body (below), not on
   // the header's status line, which then showed it on Changes alone and moved the tab bar
@@ -1801,6 +1806,40 @@ export function partText(record, part) {
   return item === undefined ? null : text(item.body);
 }
 
+/**
+ * What a page's texts are read from: the record, or with no record the core preview, whose
+ * description is the one text it has. Null with neither.
+ *
+ * @param {PullEnvelope | null} envelope
+ * @returns {Record<string, any> | null}
+ */
+export function textSource(envelope) {
+  if (envelope === null) {
+    return null;
+  }
+  if (envelope.record !== null) {
+    return envelope.record;
+  }
+  return envelope.core_preview === null ? null : { pull: envelope.core_preview.pull };
+}
+
+/**
+ * The revision a page's texts are asked under: the record's, or with no record the core
+ * preview's, so a preview's description renders while its record is fetched (mb-d59o).
+ *
+ * @param {PullEnvelope | null} envelope
+ * @returns {string | null}
+ */
+export function textRevision(envelope) {
+  if (envelope === null) {
+    return null;
+  }
+  if (envelope.record !== null) {
+    return envelope.record_revision;
+  }
+  return envelope.core_preview?.revision ?? null;
+}
+
 /** How much the kept renders hold, for tests of the bounds. */
 export function renderedTextsHeld() {
   return {
@@ -1917,19 +1956,32 @@ export function createPullController(deps, options) {
   let walkSettling = false;
   // Only this page's acknowledged selected refresh can opt in to a settlement read.
   let waitForFull = false;
-  /** Markdown by part, for the record content revision `markdownFor`, with the text it renders. @type {Map<string, {rendered: Record<string, any>, text: string}>} */
+  /**
+   * Markdown by part, for `markdownFor`, with the text it renders. `markdownFor` is the
+   * revision the page's texts are asked under: the record's, or with no record the core
+   * preview's, whose description the route renders from the core (`textRevision`).
+   *
+   * @type {Map<string, {rendered: Record<string, any>, text: string}>}
+   */
   const markdown = new Map();
   /** @type {string | null} */
   let markdownFor = null;
   /** @type {string[]} */
   const queue = [];
   /**
-   * The parts asked for, with the text and the record revision each was asked for: an answer
+   * The parts asked for, with the text and the revision each was asked for: an answer
    * rendered from another revision is not the render of that text.
    *
    * @type {Map<string, {text: string | null, revision: string | null}>}
    */
   const asked = new Map();
+  /**
+   * The text each part's Markdown is coming for: queued, or asked and not yet answered. The
+   * glue shows such a text as a placeholder, never as its source (`pending`).
+   *
+   * @type {Map<string, string>}
+   */
+  const coming = new Map();
   let inFlight = 0;
 
   /** A direct link's cold miss, which the page asks to fill once it is visible. */
@@ -2241,14 +2293,18 @@ export function createPullController(deps, options) {
     if (next.record !== null || !next.refreshing) {
       waitForFull = false;
     }
-    const revision = next.record === null ? null : next.record_revision;
+    const revision = textRevision(next);
     if (revision !== markdownFor) {
       cancelIdleComparison();
-      // Another record: its texts may differ, so nothing rendered from the last one
-      // is shown again. The page asks again for the parts a reader sees.
+      // Another record or preview: its texts may differ, so nothing rendered from the last
+      // one is shown again. The page asks again for the parts a reader sees. A render still
+      // on its way is answered all the same, and serves the part if its text is unchanged.
       markdownFor = revision;
       markdown.clear();
       asked.clear();
+      for (const part of queue) {
+        coming.delete(part);
+      }
       queue.length = 0;
     }
     return true;
@@ -2793,15 +2849,24 @@ export function createPullController(deps, options) {
         )
         .then((response) => {
           const body = /** @type {Record<string, any> | null} */ (response.body);
-          if (
-            disposed ||
-            response.status !== 200 ||
-            body === null ||
-            typeof body.html !== "string" ||
-            body.record_revision !== revision ||
-            revision !== markdownFor
-          ) {
-            // A render of a record the page no longer shows, or none at all: the
+          if (text !== null && coming.get(part) === text) {
+            coming.delete(part);
+          }
+          const rendered =
+            !disposed &&
+            response.status === 200 &&
+            body !== null &&
+            typeof body.html === "string" &&
+            text !== null;
+          // A render is of its text alone (`pull_markdown.render_part`), so one asked under a
+          // record or preview the page has since replaced still serves the same text: the
+          // full record that follows a core preview usually has its description unchanged.
+          const current =
+            rendered &&
+            (body.record_revision ?? body.core_revision ?? null) === revision &&
+            (revision === markdownFor || partText(textSource(envelope), part) === text);
+          if (!current || text === null) {
+            // A render of a text the page no longer shows, or none at all: the
             // plain text stays, and a newer record is asked for again. A text the
             // server would not render says why.
             if (!disposed && text !== null) {
@@ -2809,14 +2874,14 @@ export function createPullController(deps, options) {
             }
             return;
           }
-          if (text === null) {
-            return;
-          }
           markdown.set(part, { rendered: body, text });
           rememberRendered(source, options.number, part, text, body);
           deps.renderMarkdown(part, body, text);
         })
         .catch(() => {
+          if (text !== null && coming.get(part) === text) {
+            coming.delete(part);
+          }
           if (!disposed && text !== null) {
             deps.textUnavailable?.(part, text);
           }
@@ -2841,7 +2906,7 @@ export function createPullController(deps, options) {
       return;
     }
     // A part the record does not name is still asked for, and its answer is kept by no text.
-    const text = shownText ?? partText(envelope?.record ?? null, part);
+    const text = shownText ?? partText(textSource(envelope), part);
     const done = markdown.get(part);
     if (done !== undefined && done.text === text) {
       deps.renderMarkdown(part, done.rendered, done.text);
@@ -2857,8 +2922,21 @@ export function createPullController(deps, options) {
       return;
     }
     asked.set(part, { text, revision: markdownFor });
+    if (text !== null) {
+      coming.set(part, text);
+    }
     queue.push(part);
     pump();
+  }
+
+  /**
+   * Whether *text*'s Markdown is on its way for *part*: queued, or asked and not answered.
+   *
+   * @param {string} part
+   * @param {string} text
+   */
+  function pending(part, text) {
+    return !disposed && coming.get(part) === text;
   }
 
   /**
@@ -2943,6 +3021,7 @@ export function createPullController(deps, options) {
     browseCode,
     requestMarkdown,
     renderedFor,
+    pending,
     setTab,
     walkCancelled,
     onVisibilityChange,
@@ -3269,15 +3348,15 @@ export function conversationKey(model) {
  * rendered and asks again for the texts still plain, whose renders of the older record
  * were dropped.
  *
- * @param {{key: string, recordRevision: string | null}} previous
- * @param {{key: string, recordRevision: string | null}} next
+ * @param {{key: string, textRevision: string | null}} previous
+ * @param {{key: string, textRevision: string | null}} next
  * @returns {"repaint" | "reask" | "keep"}
  */
 export function conversationAction(previous, next) {
   if (previous.key !== next.key) {
     return "repaint";
   }
-  return previous.recordRevision !== next.recordRevision ? "reask" : "keep";
+  return previous.textRevision !== next.textRevision ? "reask" : "keep";
 }
 
 /**
@@ -4065,7 +4144,7 @@ export function mountPullPage(container, ctx, mb) {
   const ready = new Promise((resolve) => {
     resolveReady = () => resolve(undefined);
   });
-  /** The record the conversation last asked for Markdown from. @type {string | null} */
+  /** The record or core preview the conversation last asked for Markdown from. @type {string | null} */
   let markdownRevision = null;
   /** @type {Map<string, HTMLElement>} */
   const texts = new Map();
@@ -4251,6 +4330,7 @@ export function mountPullPage(container, ctx, mb) {
               if (part !== null && value !== undefined) {
                 observer?.unobserve(entry.target);
                 controller.requestMarkdown(part, value);
+                showPending(/** @type {HTMLElement} */ (entry.target), part, value);
               }
             }
           },
@@ -4365,6 +4445,7 @@ export function mountPullPage(container, ctx, mb) {
       if (refused?.text === value) {
         element.append(refusalNotice(refused.note));
       }
+      showPending(element, part, value);
     }
     if (truncated) {
       element.append(notice("warning", ["This text was cut; the rest is on GitHub."]));
@@ -4391,9 +4472,49 @@ export function mountPullPage(container, ctx, mb) {
       }
       if (part === "body" || observer === null) {
         controller.requestMarkdown(part, value);
+        showPending(element, part, value);
       } else {
         observer.observe(element);
       }
+    }
+  }
+
+  /**
+   * Renders answered and waiting to be inserted, for the allowlist and KPress's stylesheets,
+   * by part, with the text each renders.
+   *
+   * @type {Map<string, string>}
+   */
+  const inserting = new Map();
+
+  /**
+   * Show a plain text as the placeholder while its Markdown is on its way: asked and not yet
+   * answered, or answered and waiting to be inserted. Its source keeps its box out of sight
+   * (`.github-pull-plain-pending`), so a text's first sight is its render; the source shows
+   * only once its Markdown will not come, with the notice that says why. A text not asked for
+   * yet, past `MARKDOWN_AHEAD` below the view, stays plain, so find-in-page reaches it.
+   *
+   * @param {HTMLElement} element
+   * @param {string} part
+   * @param {string} value
+   */
+  function showPending(element, part, value) {
+    const plain = element.querySelector(":scope > .github-pull-plain");
+    if (plain === null || textOf.get(element) !== value) {
+      return;
+    }
+    plain.classList.toggle(
+      "github-pull-plain-pending",
+      controller.pending(part, value) || inserting.get(part) === value,
+    );
+  }
+
+  /** @param {string} part */
+  function showPendingPart(part) {
+    const element = texts.get(part);
+    const value = element === undefined ? undefined : textOf.get(element);
+    if (element !== undefined && value !== undefined) {
+      showPending(element, part, value);
     }
   }
 
@@ -4478,6 +4599,7 @@ export function mountPullPage(container, ctx, mb) {
    */
   function renderMarkdown(part, rendered, text) {
     const element = texts.get(part);
+    inserting.set(part, text);
     if (documentStyles === null) {
       // Only a load that succeeded lets later pages insert kept renders without asking again.
       documentStyles = mb.loadKpressAssets(rendered.assets).then(
@@ -4490,6 +4612,9 @@ export function mountPullPage(container, ctx, mb) {
       );
     }
     void Promise.all([inertReady, documentStyles]).then(([inert]) => {
+      if (inserting.get(part) === text) {
+        inserting.delete(part);
+      }
       if (listening.signal.aborted) {
         return;
       }
@@ -4516,6 +4641,8 @@ export function mountPullPage(container, ctx, mb) {
       } else if (inert === null) {
         held?.failed.add(part);
       }
+      // A text still plain shows its source now if no other render of it is on its way.
+      showPendingPart(part);
       if (held?.mode === "hidden") {
         settleFirstPaint();
       }
@@ -6421,8 +6548,8 @@ export function mountPullPage(container, ctx, mb) {
       key === null
         ? null
         : conversationAction(
-            { key: bodyKey, recordRevision: markdownRevision },
-            { key, recordRevision: model.recordRevision },
+            { key: bodyKey, textRevision: markdownRevision },
+            { key, textRevision: model.textRevision },
           );
     const hold = action === "repaint" ? holdFirstPaint(model) : null;
     // The header paints the record at once, held or not: only the body waits for its
@@ -6504,7 +6631,7 @@ export function mountPullPage(container, ctx, mb) {
     if (firstPaint?.mode === "hidden") {
       body.classList.add("github-pull-body-holding");
     }
-    markdownRevision = model.recordRevision;
+    markdownRevision = model.textRevision;
   }
 
   /**
@@ -6520,7 +6647,8 @@ export function mountPullPage(container, ctx, mb) {
    */
   function holdFirstPaint(model) {
     const pull = model.pull;
-    if (firstPaintSpent || model.corePreview || model.recordRevision === null || pull === null) {
+    // A core preview's is held too: its description renders from the core (mb-d59o).
+    if (firstPaintSpent || model.textRevision === null || pull === null) {
       return null;
     }
     if (bodyShows === "files" || bodyShows === "checks") {
@@ -6667,6 +6795,7 @@ export function mountPullPage(container, ctx, mb) {
         const value = textOf.get(element);
         if (value !== undefined) {
           controller.requestMarkdown(part, value);
+          showPending(element, part, value);
         }
       }
       if (waiting.length > 0) {
@@ -7007,6 +7136,7 @@ export function mountPullPage(container, ctx, mb) {
         if (note) {
           refusedText(part, text, note);
         }
+        showPendingPart(part);
         // A text a held first paint waits for will not come: it shows plain, and waits no longer.
         const held = firstPaint;
         if (held?.mode === "delayed" && part === "body" && held.text === text) {

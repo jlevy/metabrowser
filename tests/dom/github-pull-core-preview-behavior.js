@@ -386,16 +386,44 @@ async function run() {
     }
     if (route.includes("pull-markdown")) {
       markdownRequests++;
-      return { status: 404, headers: { get: () => null }, json: async () => ({}) };
+      // The route renders the description of what the pull route serves: the record's, or
+      // with none the core preview's (pull_markdown.render_part).
+      const answer =
+        current.record === null
+          ? { record_revision: null, core_revision: current.core_preview?.revision ?? null }
+          : { record_revision: current.record_revision };
+      return {
+        status: current.record === null && current.core_preview === null ? 404 : 200,
+        headers: { get: () => null },
+        json: async () => ({
+          number: 7,
+          part: "body",
+          fetched_at: null,
+          ...answer,
+          html: "rendered description",
+          assets: {},
+        }),
+      };
     }
     if (route.includes("wait_full_after=")) {
       settlementSignal = options.signal;
     }
     return { status: 200, headers: { get: () => null }, json: async () => current };
   };
+  const inert = {
+    sanitizeHtml: (html) => html,
+    kpressProse(html) {
+      const node = document.createElement("p");
+      node.textContent = html;
+      return node;
+    },
+  };
   const mb = {
     perf,
-    ensureAsset: async () => {},
+    ensureAsset: async () => {
+      window.MetabrowserInertHtml = inert;
+    },
+    loadKpressAssets: () => Promise.resolve(),
     whenIdle: require("./sdk-idle-fixture.js").whenIdle,
     ensureKindAssets: async () => {},
     ...require("./sdk-ref-fixture.js").refHelpers(document),
@@ -438,7 +466,14 @@ async function run() {
   await settle();
   await handle.ready;
   assert.equal(container.dataset.corePreview, "true");
-  assert.equal(container.querySelector(".github-pull-plain").textContent, full.record.pull.body);
+  // The preview's description is held for its Markdown, rendered from the core, so its source
+  // never shows (mb-d59o).
+  assert.equal(container.querySelector(".github-pull-plain"), null, "no source shows");
+  assert.equal(
+    container.querySelector(".github-pull-text").textContent,
+    "rendered description",
+    "the preview's description shows rendered at its first paint",
+  );
   const body = container.querySelector(".github-pull-body");
   assert.doesNotMatch(body.textContent, /Checks and statuses|No checks or statuses reported/);
   assert.doesNotMatch(container.textContent, /still loading|Loading details/);
@@ -482,7 +517,7 @@ async function run() {
   assert.ok(body.querySelector(".github-pull-section-loading"));
   assert.ok(body.classes.has("page-reading-column"), "Checks uses the reading column");
   land("");
-  assert.equal(markdownRequests, 0, "preview stays plain and never asks for full-record Markdown");
+  assert.equal(markdownRequests, 1, "the preview asks once, for its own description's Markdown");
   const model = page.describePull(preview, { number: 7, tab: "", nowMs: Date.now() });
   assert.equal(model.browse, null);
   assert.equal(model.canRetryComparison, false);
@@ -601,13 +636,14 @@ async function run() {
   timers.delete(poll[0]);
   poll[1].callback();
   await settle();
-  // The full record's first paint waits for its description's Markdown, which this server
-  // answers with a 404: plain then, at once, and in place of the preview it replaces.
+  // The full record's description is the preview's text, rendered already: it shows at once,
+  // in place of the preview it replaces, with no wait and no request.
   assert.equal(
     [...timers].some(([, task]) => task.delay === page.DESCRIPTION_HOLD_MS),
     false,
-    "a description whose Markdown cannot come does not wait out the bound",
+    "the full record's description, rendered with the preview, does not wait",
   );
+  assert.equal(container.querySelector(".github-pull-plain"), null, "and never shows source");
   assert.equal(
     body.querySelector(".github-pull-card"),
     previewDescription,
@@ -621,7 +657,11 @@ async function run() {
   assert.equal(settledAge.getAttribute("aria-busy"), null, "with no busy attribute left behind");
   assert.doesNotMatch(body.textContent, /No checks or statuses reported/);
   const fullMarkdownRequests = markdownRequests;
-  assert.equal(fullMarkdownRequests, 1, "full-record arrival enables the normal Markdown path");
+  assert.equal(
+    fullMarkdownRequests,
+    1,
+    "the full record's unchanged description is not asked again",
+  );
   land("checks");
   assert.match(body.textContent, /No checks or statuses reported/);
   assert.equal(body.querySelector(".spinner"), null, "an empty complete Checks pane is settled");
@@ -1074,11 +1114,11 @@ async function run() {
   assert.equal(pane.textContent, "new file");
 
   return {
-    description: "plain preview before full conversation",
+    description: "rendered preview before full conversation",
     pendingParts: ["discussion", "checks"],
     checkResults,
     waitCorePost,
-    previewMarkdownRequests: 0,
+    previewMarkdownRequests: 1,
     fullMarkdownRequests,
     fullRecordWins: true,
     crossOwnerRetirement: true,
