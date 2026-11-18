@@ -497,8 +497,10 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
     assert not refresh["before"]["written"], refresh
     assert refresh["after"] == {**refresh["before"], "written": True}, refresh
     # Code's heading is the one it had, its tally counting the new file beside its name.
+    # A refresh rewrites the heading it keeps, which still leads with its category's icon.
     assert measured["refreshedHeading"] == {
         "kept": True,
+        "icon": True,
         "tally": f" · {len(_CODE) * 3 + _LIB_FILES + 1} files",
     }, measured["refreshedHeading"]
     # No grouping is the one Files tree again.

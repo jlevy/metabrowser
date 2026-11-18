@@ -966,9 +966,10 @@ try {
   }
   await browser.evaluate(frames);
   result.refresh = { before: beforeWrite, after: await browser.evaluate(REFRESH_STATE) };
-  // The heading kept its place and updated its tally beside its name.
+  // The heading kept its place, its category's icon, and its name, and updated its tally
+  // beside its name.
   result.refreshedHeading = await browser.evaluate(
-    `(() => { const heading = ${CODE_HEADING}; return { kept: heading.dataset.before === "1", tally: heading.querySelector(":scope > .heading-tally").textContent }; })()`,
+    `(() => { const heading = ${CODE_HEADING}; return { kept: heading.dataset.before === "1", icon: heading.firstElementChild?.matches(".category-icon") ?? false, tally: heading.querySelector(":scope > .heading-tally").textContent }; })()`,
   );
   phase("refreshed");
   // No grouping is the one tree again.
