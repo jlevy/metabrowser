@@ -69,9 +69,8 @@ private final class LoadWatcher: NSObject, WKNavigationDelegate {
 /// Which page print requests a folder window answers.
 /// Review G1: a page print is authorized by the document's security origin, through the
 /// same check the window uses (`PagePrintRequests.allows`). A `/raw` response has the
-/// server's URL but, under its CSP sandbox, an opaque origin.
-/// A test runs again on a new page if WebKit's network process ends under its load
-/// (`NetworkProcessLost`).
+/// server's URL but, under its CSP sandbox, an opaque origin. A test fails at once if
+/// WebKit's network process ends under its load (`NetworkProcessLost`).
 @Suite struct PagePrintAuthorizationTests {
     init() { ignoreSIGPIPELikeTheApp() }
 
@@ -102,7 +101,7 @@ private final class LoadWatcher: NSObject, WKNavigationDelegate {
         do {
             #expect(try await eventually(unlessLost: { watcher.networkProcessEnded }) { watcher.loaded })
         } catch {
-            server.stop()  // the caller stops it otherwise
+            server.stop()  // returned, the caller stops it
             throw error
         }
         withExtendedLifetime(watcher) {}
@@ -118,28 +117,24 @@ private final class LoadWatcher: NSObject, WKNavigationDelegate {
             ask(); ask(); setTimeout(ask, 0);
             </script>
             """
-        try await rerunningIfTheNetworkProcessEnds {
-            let (webView, server, received, accepted) = try await serve(page, headers: [rawSandbox])
-            defer { server.stop() }
-            _ = try await webView.evaluateJavaScript("for (let i = 0; i < 3; i++) window.webkit.messageHandlers.metabrowserPrint.postMessage(null); 0")
-            #expect(await eventually { received.count >= 6 }, "the requests reach the handler: \(received.count)")
-            #expect(received.all.allSatisfy { $0 }, "from the main frame")
-            #expect(accepted.count == 0)
-            withExtendedLifetime(webView) {}
-        }
+        let (webView, server, received, accepted) = try await serve(page, headers: [rawSandbox])
+        defer { server.stop() }
+        _ = try await webView.evaluateJavaScript("for (let i = 0; i < 3; i++) window.webkit.messageHandlers.metabrowserPrint.postMessage(null); 0")
+        #expect(await eventually { received.count >= 6 }, "the requests reach the handler: \(received.count)")
+        #expect(received.all.allSatisfy { $0 }, "from the main frame")
+        #expect(accepted.count == 0)
+        withExtendedLifetime(webView) {}
     }
 
     /// The control: the server's own page, through the same check, prints.
     @Test func theServersOwnPagePrintsThroughTheSameCheck() async throws {
         let page = #"<button id="print" onclick="window.print()">Print</button>"#
-        try await rerunningIfTheNetworkProcessEnds {
-            let (webView, server, received, accepted) = try await serve(page, headers: [])
-            defer { server.stop() }
-            _ = try await webView.evaluateJavaScript("document.getElementById('print').click(); 0")
-            #expect(await eventually { accepted.count == 1 })
-            #expect(received.count == 1)
-            withExtendedLifetime(webView) {}
-        }
+        let (webView, server, received, accepted) = try await serve(page, headers: [])
+        defer { server.stop() }
+        _ = try await webView.evaluateJavaScript("document.getElementById('print').click(); 0")
+        #expect(await eventually { accepted.count == 1 })
+        #expect(received.count == 1)
+        withExtendedLifetime(webView) {}
     }
 }
 

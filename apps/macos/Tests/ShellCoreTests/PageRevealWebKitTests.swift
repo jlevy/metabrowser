@@ -8,8 +8,8 @@ import WebKit
 /// window tell its own load's callbacks from a superseded one's. Each test holds the
 /// load's response decision, so the commit or failure arrives after the window has moved
 /// on, as one already on its way does. Runs in a process of its own, with the other
-/// WebKit suites; see `ignoreSIGPIPELikeTheApp`. A test runs again on a new page if
-/// WebKit's network process ends under its loads (`NetworkProcessLost`).
+/// WebKit suites; see `ignoreSIGPIPELikeTheApp`. A test fails at once if WebKit's network
+/// process ends under its loads (`NetworkProcessLost`).
 @Suite struct PageRevealWebKitTests {
     init() { ignoreSIGPIPELikeTheApp() }
 
@@ -25,8 +25,8 @@ import WebKit
         /// Whether WebKit's network process ended under a load (`isNetworkProcessLoss`).
         private(set) var networkProcessEnded = false
 
-        /// `eventually`, which gives up on this page once WebKit's network process ended
-        /// under its loads.
+        /// `eventually`, which fails the test once WebKit's network process ended under
+        /// this page's loads.
         func eventually(_ condition: () -> Bool) async throws -> Bool {
             try await ShellCoreTests.eventually(unlessLost: { networkProcessEnded }, condition)
         }
@@ -68,8 +68,8 @@ import WebKit
         return (webView, window, server, url)
     }
 
-    /// Ends a page however its test ended: a run abandoned for `NetworkProcessLost` can
-    /// leave response decisions held, which WebKit raises over if they go unanswered.
+    /// Ends a page however its test ended. A test that stopped early can leave response
+    /// decisions held, and WebKit raises over one released unanswered.
     private func finish(_ window: Window, _ server: LocalHTTPServer) {
         window.answerAll(.cancel)
         server.stop()
@@ -79,39 +79,35 @@ import WebKit
     /// control, while it still runs.
     @Test(arguments: [false, true])
     func aLoadsCommitRevealsThePageOnlyIfNothingSupersededIt(superseded: Bool) async throws {
-        try await rerunningIfTheNetworkProcessEnds {
-            let (webView, window, server, url) = try page()
-            defer { finish(window, server) }
-            let load = webView.load(URLRequest(url: url))
-            window.reveal.submitted(load)
-            #expect(try await window.eventually { window.heldResponses.count == 1 })
-            if superseded { window.reveal.supersede() }  // showFailure, before the commit arrives
-            window.answerAll(.allow)
-            #expect(try await window.eventually { window.commits.count == 1 })
-            #expect(window.commits.first?.navigation === load)
-            #expect(window.commits.first?.revealed == !superseded)
-            withExtendedLifetime(webView) {}
-        }
+        let (webView, window, server, url) = try page()
+        defer { finish(window, server) }
+        let load = webView.load(URLRequest(url: url))
+        window.reveal.submitted(load)
+        #expect(try await window.eventually { window.heldResponses.count == 1 })
+        if superseded { window.reveal.supersede() }  // showFailure, before the commit arrives
+        window.answerAll(.allow)
+        #expect(try await window.eventually { window.commits.count == 1 })
+        #expect(window.commits.first?.navigation === load)
+        #expect(window.commits.first?.revealed == !superseded)
+        withExtendedLifetime(webView) {}
     }
 
     /// The load fails provisionally (its response refused) after the server failed, or,
     /// as a control, while it still runs.
     @Test(arguments: [false, true])
     func aLoadsProvisionalFailureIsReportedOnlyIfNothingSupersededIt(superseded: Bool) async throws {
-        try await rerunningIfTheNetworkProcessEnds {
-            let (webView, window, server, url) = try page()
-            defer { finish(window, server) }
-            let load = webView.load(URLRequest(url: url))
-            window.reveal.submitted(load)
-            #expect(try await window.eventually { window.heldResponses.count == 1 })
-            if superseded { window.reveal.supersede() }
-            window.answerAll(.cancel)
-            #expect(try await window.eventually { window.failures.count == 1 })
-            #expect(window.failures.first?.navigation === load)
-            #expect(window.failures.first?.reported == !superseded)
-            #expect(window.commits.isEmpty)
-            withExtendedLifetime(webView) {}
-        }
+        let (webView, window, server, url) = try page()
+        defer { finish(window, server) }
+        let load = webView.load(URLRequest(url: url))
+        window.reveal.submitted(load)
+        #expect(try await window.eventually { window.heldResponses.count == 1 })
+        if superseded { window.reveal.supersede() }
+        window.answerAll(.cancel)
+        #expect(try await window.eventually { window.failures.count == 1 })
+        #expect(window.failures.first?.navigation === load)
+        #expect(window.failures.first?.reported == !superseded)
+        #expect(window.commits.isEmpty)
+        withExtendedLifetime(webView) {}
     }
 
     /// The server restarts and a replacement load starts while the old one waits: only
@@ -120,22 +116,20 @@ import WebKit
     /// 102 on macOS 26), which the Boolean took for the window's own: it showed a page
     /// error and never revealed the replacement's page.
     @Test func onlyTheReplacementLoadRevealsThePage() async throws {
-        try await rerunningIfTheNetworkProcessEnds {
-            let (webView, window, server, url) = try page()
-            defer { finish(window, server) }
-            let old = webView.load(URLRequest(url: url))
-            window.reveal.submitted(old)
-            #expect(try await window.eventually { window.heldResponses.count == 1 })
-            window.reveal.supersede()  // showStarting
-            let new = webView.load(URLRequest(url: try #require(URL(string: url.absoluteString + "?after-restart"))))
-            window.reveal.submitted(new)
-            #expect(try await window.eventually { window.heldResponses.count == 2 })
-            window.answerAll(.allow)
-            #expect(try await window.eventually { window.commits.contains { $0.navigation === new } })
-            #expect(window.commits.filter { $0.revealed }.map { $0.navigation } == [new])
-            #expect(!window.failures.contains { $0.reported })
-            withExtendedLifetime(webView) {}
-        }
+        let (webView, window, server, url) = try page()
+        defer { finish(window, server) }
+        let old = webView.load(URLRequest(url: url))
+        window.reveal.submitted(old)
+        #expect(try await window.eventually { window.heldResponses.count == 1 })
+        window.reveal.supersede()  // showStarting
+        let new = webView.load(URLRequest(url: try #require(URL(string: url.absoluteString + "?after-restart"))))
+        window.reveal.submitted(new)
+        #expect(try await window.eventually { window.heldResponses.count == 2 })
+        window.answerAll(.allow)
+        #expect(try await window.eventually { window.commits.contains { $0.navigation === new } })
+        #expect(window.commits.filter { $0.revealed }.map { $0.navigation } == [new])
+        #expect(!window.failures.contains { $0.reported })
+        withExtendedLifetime(webView) {}
     }
 
     /// What a window remembers of a load on its way, when Command-R loads its page again
@@ -144,24 +138,22 @@ import WebKit
     /// the page in flight before it stops the load; this records what `url` names after the
     /// stop, which is why the remembering comes first.
     @Test func aLoadOnItsWayIsTheURLUntilItStops() async throws {
-        try await rerunningIfTheNetworkProcessEnds {
-            let (webView, window, server, url) = try page()
-            defer { finish(window, server) }
-            webView.load(URLRequest(url: url))
-            #expect(try await window.eventually { window.heldResponses.count == 1 })
-            window.answerAll(.allow)
-            #expect(try await window.eventually { window.commits.count == 1 })
-            let committed = try #require(webView.url)
-            let next = try #require(URL(string: url.absoluteString + "?next"))
-            webView.load(URLRequest(url: next))
-            #expect(webView.url == next, "the load's page, as soon as it is submitted")
-            #expect(try await window.eventually { window.heldResponses.count == 1 })
-            #expect(webView.url == next, "the load's page, while its response waits")
-            #expect(webView.backForwardList.currentItem?.url == committed)
-            webView.stopLoading()
-            window.answerAll(.cancel)
-            #expect(try await window.eventually { webView.url == committed }, "after the stop, the committed page again")
-            withExtendedLifetime(webView) {}
-        }
+        let (webView, window, server, url) = try page()
+        defer { finish(window, server) }
+        webView.load(URLRequest(url: url))
+        #expect(try await window.eventually { window.heldResponses.count == 1 })
+        window.answerAll(.allow)
+        #expect(try await window.eventually { window.commits.count == 1 })
+        let committed = try #require(webView.url)
+        let next = try #require(URL(string: url.absoluteString + "?next"))
+        webView.load(URLRequest(url: next))
+        #expect(webView.url == next, "the load's page, as soon as it is submitted")
+        #expect(try await window.eventually { window.heldResponses.count == 1 })
+        #expect(webView.url == next, "the load's page, while its response waits")
+        #expect(webView.backForwardList.currentItem?.url == committed)
+        webView.stopLoading()
+        window.answerAll(.cancel)
+        #expect(try await window.eventually { webView.url == committed }, "after the stop, the committed page again")
+        withExtendedLifetime(webView) {}
     }
 }

@@ -1,23 +1,24 @@
 import Foundation
 import OSLog
-import os
 
 /// WebKit's network process ended under a test's page loads (mb-1cd0).
 ///
 /// Every page load in a test process goes through one WebKit network process. When it
 /// ends, WebKit fails each navigation then on its way with `WebKitErrorDomain` 300 ("WebKit
 /// encountered an internal error"), and one whose response decision is held with 102 as
-/// well. None of them commits afterward and nothing loads them again; only the next load
-/// gets a new network process. On CI it ended while the WebKit suites' first loads were
-/// on their way, and each of their tests waited out `eventually` for a commit or a finish
-/// that could not come. Ending it at that point (`_terminateNetworkProcess`) reproduces
-/// that run's failures exactly. What ended it on CI is not known, so
-/// `rerunningIfTheNetworkProcessEnds` prints what WebKit logged about it.
-///
-/// A test whose pages load over HTTP therefore runs its scenario again on new pages when
-/// this happens. Waiting longer would not help, because those loads never complete.
+/// well. None of them commits or finishes afterward, and nothing loads them again. A test
+/// that waited for one would wait out `eventually` and fail on what followed, as the WebKit
+/// suites did on CI when `DownloadTests` made WebKit end the network process. A test that
+/// waits through `eventually(unlessLost:)` fails at once with this error, which carries
+/// what WebKit logged about the network process, the cause included.
 nonisolated struct NetworkProcessLost: Error, CustomStringConvertible {
-    var description: String { "WebKit's network process ended under this test's page loads on every attempt" }
+    /// WebKit's errors in this process that mention the network process.
+    var webKitLog: [String]
+
+    var description: String {
+        (["WebKit's network process ended under this test's page loads, which will not complete. WebKit logged:"]
+            + webKitLog.map { "  \($0)" }).joined(separator: "\n")
+    }
 }
 
 /// Whether `error`, a navigation's failure, is WebKit's report that its network process
@@ -29,52 +30,23 @@ nonisolated func isNetworkProcessLoss(_ error: any Error) -> Bool {
 }
 
 /// `eventually` for a condition on page loads. It throws `NetworkProcessLost` once `lost`
-/// holds, and `rerunningIfTheNetworkProcessEnds` then runs the scenario again. `lost` is
-/// checked after `condition`, so a condition that a lost load's failure satisfied does
-/// not count as met.
+/// holds. `lost` is checked after `condition`, so a condition that the lost load's failure
+/// satisfied does not count as met.
 func eventually(unlessLost lost: () -> Bool, _ condition: () -> Bool) async throws -> Bool {
     let met = await eventually { lost() || condition() }
-    if lost() { throw NetworkProcessLost() }
+    if lost() { throw NetworkProcessLost(webKitLog: await webKitNetworkProcessLog()) }
     return met
 }
 
-/// Runs `scenario`, which makes its own pages, until a run ends without WebKit's network
-/// process ending under its loads, at most `attempts` times.
-///
-/// In each CI run that lost the network process, a single loss caused every failure, so
-/// a second run is enough and a third allows for another loss. A loss on every attempt is
-/// not chance, so the test then fails with `NetworkProcessLost`.
-func rerunningIfTheNetworkProcessEnds(attempts: Int = 3, _ scenario: () async throws -> Void) async throws {
-    let start = Date()
-    for attempt in 1... {
-        do {
-            return try await scenario()
-        } catch is NetworkProcessLost where attempt < attempts {
-            let first = webKitLogPrinted.withLock { printed in
-                defer { printed = true }
-                return !printed
-            }
-            print("WebKit's network process ended under this test's page loads; running it again "
-                + "(attempt \(attempt + 1) of \(attempts))" + (first ? ". WebKit logged:" : "."))
-            guard first else { continue }
-            for line in await webKitNetworkProcessLines(since: start) { print("  \(line)") }
-        }
-    }
-}
-
-/// Whether a rerun in this process has printed WebKit's log. One loss ends every load on
-/// its way, so the first rerun prints it for all of them.
-nonisolated private let webKitLogPrinted = OSAllocatedUnfairLock(initialState: false)
-
-/// The errors WebKit logged in this process about its network process since `start`,
-/// which name what ended it, such as `NetworkProcessProxy::didClose (Network Process 0
-/// crash)` or `NetworkProcessProxy::didBecomeUnresponsive`. Each content process logs its
-/// own line, so repeats are counted rather than listed. This is best effort and reads off
-/// the main actor, because reading the log store can take seconds on a loaded machine.
-@concurrent nonisolated func webKitNetworkProcessLines(since start: Date) async -> [String] {
-    let filter = NSPredicate(format: "subsystem == 'com.apple.WebKit' AND composedMessage CONTAINS[c] 'networkprocess'")
+/// The errors and faults WebKit logged in this process that mention the network process,
+/// which name what ended it: for example, `Received an invalid message
+/// 'DownloadProxy_DidCreateDestination' from the Networking process`. Each content process
+/// logs its own line, so repeated lines are counted instead of listed. The log is read off
+/// the main actor, because reading it can take seconds on a loaded machine.
+@concurrent nonisolated func webKitNetworkProcessLog() async -> [String] {
+    let filter = NSPredicate(format: "subsystem == 'com.apple.WebKit' AND composedMessage CONTAINS[c] 'network'")
     guard let store = try? OSLogStore(scope: .currentProcessIdentifier),
-        let entries = try? store.getEntries(at: store.position(date: start), matching: filter)
+        let entries = try? store.getEntries(matching: filter)
     else { return ["(this process's log could not be read)"] }
     var counted: [(message: String, count: Int)] = []
     for case let entry as OSLogEntryLog in entries where entry.level == .error || entry.level == .fault {
@@ -86,6 +58,6 @@ nonisolated private let webKitLogPrinted = OSAllocatedUnfairLock(initialState: f
             counted.append((message, 1))
         }
     }
-    if counted.isEmpty { return ["(no errors about its network process)"] }
+    if counted.isEmpty { return ["(nothing about its network process)"] }
     return counted.map { $0.count > 1 ? "\($0.count) times: \($0.message)" : $0.message }
 }
