@@ -72,6 +72,9 @@ has the report, its codes, and `--dry-run`, which checks a target without sendin
 - **In an agent’s sandbox,** LaunchServices may not answer; the report says
   `lookup_failed` or `open_failed`, with its own exit status, rather than that no app is
   installed.
+  [Working with agents](working-with-agents.md#let-an-agent-reach-the-app-from-a-sandbox)
+  has the settings that let an agent run `--present` outside its sandbox, and the
+  `metabrowser` skill uses `--present` to hand you pages.
 
 ## Opening GitHub Links
 

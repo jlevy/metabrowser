@@ -170,6 +170,37 @@ switch branches and take a newer commit.
 [Mirror acquisition and refresh](project/architecture/arch-mirror-acquisition-and-refresh.md)
 covers the refresh cadence, the `/api/source/…` routes, and what a clone prints.
 
+### A Branch or Tag of a Local Checkout
+
+A folder that is a repository’s root opens on its working tree, and `--ref` opens it on
+one of its branches or tags, read from the repository’s own Git objects:
+
+```shell
+metab ~/src/repo --ref release-1.2
+metab ~/src/repo --ref origin/main --show README.md
+metab ~/src/repo --ref v2.0 --api '/api/tree?depth=1'
+```
+
+- **What it takes:** a branch, a tag, a remote-tracking branch such as `origin/main`, or
+  a commit ID, looked up in that order and never as revision syntax, so `HEAD~2` is
+  refused.
+- **What it shows:** that commit, as a repository URL’s page shows one.
+  Nothing is checked out, fetched, or written, so the working tree, the index, and
+  `HEAD` are untouched.
+  The revision is read-only and runs under the untrusted profile, whatever
+  `--allow-edits` and the environment say of the folder.
+- **Where it applies:** when serving and with `--api`, `--show`, and `--check-api`. ROOT
+  must be the repository’s root.
+  A Git source names its branch or tag in its URL, so `--ref` is refused there.
+- **What it needs:** a Git as recent as cloning needs
+  ([installation](installation.md#git-and-github-setup)), and a newer one in a partial
+  clone. With an older one `--ref` stops with the release it needs, and `metab ROOT`
+  without it opens the working tree.
+
+While serving, the page’s button switches to any other branch or tag and back to the
+working tree; the
+[history guide](browsing-history.md#branches-and-tags-of-a-local-checkout) shows it.
+
 ### GitHub URLs
 
 A GitHub URL copied from the browser opens the repository it names, pinned where it
@@ -564,6 +595,17 @@ A developer testing a build where it was built sets
 `METABROWSER_ALLOW_UNINSTALLED_APP=1`, which lifts the first check alone.
 `APP_INSTALL_LOCATIONS` and the other constants in `cli/present.py` hold the locations,
 the bundle identifiers, the name, and the marker.
+
+A build that predates `--present` refuses it as an unknown option, a usage error.
+`metab --present --version` checks for it without presenting anything, as the app checks
+each `metab` it might run for the flags it needs
+([Choosing a metab](macos-app.md#choosing-a-metab)).
+
+In an agent’s sandbox, LaunchServices may not answer, or may refuse what `open` asks,
+and `--present` reports `lookup_failed` or `open_failed`. Run it outside the sandbox:
+[Working with agents](working-with-agents.md#let-an-agent-reach-the-app-from-a-sandbox)
+has the Claude Code and Codex settings, which match a command by its first words, so
+write it as `metab --present ROOT`, and says when such a setting is safe.
 
 ## Recent Targets
 
