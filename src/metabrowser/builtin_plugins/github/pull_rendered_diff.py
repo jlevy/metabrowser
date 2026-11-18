@@ -1,9 +1,12 @@
-"""``GET github/pull-rendered-diff``: one changed Markdown file of an admitted comparison.
+"""``GET github/pull-rendered-diff``: the Rendered view of one changed file of a comparison.
 
 The envelope's ``rendered_route`` names the comparison; a page appends ``file``, the
 manifest ID of the file. The pair passes the same admission check as the images its
-Markdown shows (``GET github/pull-image``), and the answer is ``markdown-diff-v1``
-(:mod:`metabrowser.diff.markdown_projection`) or a refusal with its own code. A page's
+Markdown shows (``GET github/pull-image``). A Markdown file answers ``markdown-diff-v1``
+(:mod:`metabrowser.diff.markdown_projection`), and a YAML or JSON file
+``structured-diff-v1`` (:mod:`metabrowser.diff.structured_projection`), the formats the
+file view draws from data rather than as text. Anything else answers the Markdown
+format's refusal, and the route itself refuses with its own code. A page's
 request sent before the reader asks names ``prefetch=1``, which also starts the projection
 process, so the first screen of Changes is computed while the reader is still on
 Conversation.
@@ -40,6 +43,11 @@ from metabrowser.diff.markdown_projection import (
     bind_markdown_diff,
 )
 from metabrowser.diff.markdown_projection_worker import ProjectionWorker
+from metabrowser.diff.structured_projection import (
+    STRUCTURED_DIFF_MAX_BYTES,
+    Format,
+    structured_format,
+)
 from metabrowser.git.process import GitError, GitLocation, RepositoryStoreTarget
 from metabrowser.git.tree_source import (
     GitBlobTooLargeError,
@@ -140,16 +148,32 @@ def _path(side: EntrySide) -> GitPath:
     return GitPath(tuple(raw.split(b"/")))
 
 
-def _projectable(change: FileChange) -> bool:
+type _Rendered = Literal["markdown"] | Format
+
+
+def _rendered_format(change: FileChange) -> _Rendered | None:
+    """The format both sides of a ready file render as, or ``None``."""
+
     if change.availability is not Availability.ready or change.binary:
-        return False
+        return None
     sides = [side for side in (change.old, change.new) if side is not None]
-    return bool(sides) and all(
-        side.entry_type is EntryType.file
-        and side.content.kind is ContentRefKind.git_object
-        and blob_logical_ext(_path(side)) in _MARKDOWN
+    if not sides or not all(
+        side.entry_type is EntryType.file and side.content.kind is ContentRefKind.git_object
         for side in sides
-    )
+    ):
+        return None
+    formats = {
+        "markdown" if ext in _MARKDOWN else structured_format(ext)
+        for ext in (blob_logical_ext(_path(side)) for side in sides)
+    }
+    found = formats.pop() if len(formats) == 1 else None
+    return cast("_Rendered | None", found)
+
+
+def _projectable(change: FileChange) -> bool:
+    """A Markdown file the projection reads a patch for."""
+
+    return _rendered_format(change) == "markdown"
 
 
 def _lines_of(patch: FilePatch) -> int:
@@ -229,7 +253,8 @@ async def _project(
     if resolved.left.id != snapshot.base or resolved.right.id != snapshot.head:
         return _fallback()
     change = next((entry for entry in manifest.files if entry.id == file_id), None)
-    if change is None or not _projectable(change):
+    rendered = None if change is None else _rendered_format(change)
+    if change is None or rendered is None:
         return _fallback()
 
     async def blob(side: EntrySide | None, budget: int) -> bytes | None:
@@ -239,11 +264,17 @@ async def _project(
         assert oid is not None
         return await read_store_blob(target, oid, max_blob_bytes=budget)
 
+    budget = MARKDOWN_DIFF_MAX_BYTES if rendered == "markdown" else STRUCTURED_DIFF_MAX_BYTES
     try:
-        old = await blob(change.old, MARKDOWN_DIFF_MAX_BYTES)
-        new = await blob(change.new, MARKDOWN_DIFF_MAX_BYTES - len(old or b""))
+        old = await blob(change.old, budget)
+        new = await blob(change.new, budget - len(old or b""))
     except GitBlobTooLargeError:
         return _fallback("too_large")
+    if rendered != "markdown":
+        # The tree compares parsed values, so it reads no patch, and shows no images.
+        return dict(
+            await projection_worker(state).project_structured(old=old, new=new, fmt=rendered)
+        )
     patches = getattr(state, "pull_rendered_diff_patches", None)
     if patches is None:
         patches = state.pull_rendered_diff_patches = _Patches()

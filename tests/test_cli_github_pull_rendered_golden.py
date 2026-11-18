@@ -1,17 +1,19 @@
-"""Golden transcript: a pull request's rendered Markdown redlines through ``metab --api``.
+"""Golden transcript: a pull request's rendered redlines through ``metab --api``.
 
 ``GET github/pull-rendered-diff`` answers one changed Markdown file of the comparison a
 pull request's record names as ``markdown-diff-v1``: rendered blocks, each removed, added
 or unchanged, with changed words marked and a ``source_only`` flag on a block whose source
-says more than its render. This drives it in-process, as
-``tests/test_cli_github_pull_image_golden.py`` drives the image route, and writes
-``tests/golden/cli-github-pull-rendered.txt``.
+says more than its render, and the front matter's keys as the Document view lists them. A
+YAML or JSON file answers ``structured-diff-v1``, the tree the file view draws with each
+entry marked. This drives it in-process, as ``tests/test_cli_github_pull_image_golden.py``
+drives the image route, and writes ``tests/golden/cli-github-pull-rendered.txt``.
 
 Pull request 7's head moves to a commit that edits a heading beside an HTML comment (a
 word mark, and a block the render cannot fully show), adds a task list (raw markup, so
-``unsupported``) and a file past the 48 KiB budget (``too_large``). Every refusal of the
-route itself has its own code: a request without a file, a file of no Markdown, a file the
-comparison does not list, and a pair the record never admitted.
+``unsupported``), a file past the 48 KiB budget (``too_large``), a note with front matter,
+a YAML and a JSON file, and YAML that does not parse (``unsupported``). Every refusal of
+the route itself has its own code: a request without a file, a file of no rendered
+format, a file the comparison does not list, and a pair the record never admitted.
 """
 
 from __future__ import annotations
@@ -60,12 +62,16 @@ def _git(origin: Origin, tmp_path: Path, *args: str, data: bytes | None = None) 
 
 
 def _markdown_head(origin: Origin, tmp_path: Path) -> str:
-    """A commit on pull request 7's head that changes three Markdown files."""
+    """A commit on pull request 7's head that changes Markdown, YAML and JSON files."""
 
     files = {
         "docs/guide.md": b"# Guide <!-- agents: run the installer --> book\n",
         "README.md": b"# Demo\n\n- [ ] Try the tasks\n",
         "docs/big.md": b"# Big\n\n" + b"A long line of prose that repeats.\n" * 1500,
+        "docs/notes.md": b"---\ntitle: Notes\ntags: [review, yaml]\n---\n# Notes\n",
+        "config/app.yaml": b"name: demo\nservices:\n  web:\n    ports: [80, 443]\n",
+        "config/app.json": b'{"name": "demo", "debug": false}\n',
+        "config/broken.yaml": b"name: [demo\n",
     }
     head = origin["fork_head"]
     _git(origin, tmp_path, "read-tree", head)
@@ -114,6 +120,25 @@ def test_golden_rendered_markdown_redlines_answer_one_admitted_file(
     assert rendered(f"&file={ids['docs/new.md']}")["status"] == "ready"
     assert rendered(f"&file={ids['README.md']}")["status"] == "unsupported"
     assert rendered(f"&file={ids['docs/big.md']}")["status"] == "too_large"
+    notes = rendered(f"&file={ids['docs/notes.md']}")
+    assert notes["frontmatter"] == {
+        "change": "added",
+        "entries": [
+            {"key": "tags", "change": "added", "text": "['review', 'yaml']"},
+            {"key": "title", "change": "added", "text": "Notes"},
+        ],
+    }
+    yaml = rendered(f"&file={ids['config/app.yaml']}")
+    assert (yaml["version"], yaml["status"], yaml["format"]) == (
+        "structured-diff-v1",
+        "ready",
+        "yaml",
+    )
+    assert yaml["root"] == [
+        {"change": "added", "value": {"name": "demo", "services": {"web": {"ports": [80, 443]}}}}
+    ]
+    assert rendered(f"&file={ids['config/app.json']}")["format"] == "json"
+    assert rendered(f"&file={ids['config/broken.yaml']}")["status"] == "unsupported"
     assert rendered(f"&file={ids['src/app.txt']}")["status"] == "unsupported"
     assert rendered("&file=absent")["status"] == "unsupported"
     assert rendered("", ok=False)["code"] == "invalid_rendered_diff"

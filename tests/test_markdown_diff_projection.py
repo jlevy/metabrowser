@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import difflib
+from html import escape
 import random
 from collections.abc import Callable, Sequence
 
@@ -226,11 +227,94 @@ def test_frontmatter_stays_out_of_prose_and_keeps_original_git_ranges() -> None:
     new = old.replace(b"Old", b"New").replace(b"**old**", b"**new**")
     result = _project(old, new)
     assert result["status"] == "ready"
-    assert result["source_only"] is True
+    assert result["source_only"] is False
     assert [block["html"] for block in result["blocks"]] == [
         "<p>The <strong><del>old</del></strong> content.</p>",
         "<p>The <strong><ins>new</ins></strong> content.</p>",
     ]
+    assert result["frontmatter"] == {
+        "change": "modified",
+        "entries": [
+            {"key": "title", "change": "removed", "text": "Old"},
+            {"key": "title", "change": "added", "text": "New"},
+        ],
+    }
+
+
+def test_frontmatter_lists_keys_as_kpress_does_with_each_change_marked() -> None:
+    old = b"---\nzeta: 1\ntags: [a, b]\nauthor:\n  name: Ada\ndate: 2026-11-18\n---\n# T\n"
+    new = b"---\ntags: [a, c]\nauthor:\n  name: Ada\ndate: 2026-11-18\nalpha: yes\n---\n# T\n"
+    result = _project(old, new)
+    assert result["source_only"] is False
+    assert result["blocks"] == [
+        {
+            "kind": "context",
+            "side": "new",
+            "html": result["blocks"][0]["html"],
+            "source_only": False,
+        }
+    ]
+    assert result["frontmatter"] == {
+        "change": "modified",
+        "entries": [
+            {"key": "alpha", "change": "added", "text": "yes"},
+            {"key": "author", "change": "context", "text": "{'name': 'Ada'}"},
+            {"key": "date", "change": "context", "text": "2026-11-18"},
+            {"key": "tags", "change": "removed", "text": "['a', 'b']"},
+            {"key": "tags", "change": "added", "text": "['a', 'c']"},
+            {"key": "zeta", "change": "removed", "text": "1"},
+        ],
+    }
+
+
+def test_frontmatter_text_matches_what_the_document_view_shows() -> None:
+    from kpress.format.model import DocumentInput
+    from kpress.format.render import (
+        _render_frontmatter,  # pyright: ignore[reportPrivateUsage]
+    )
+
+    from metabrowser.plugin_loader.classify import parse_frontmatter_bytes
+    from metabrowser.server import (
+        _json_safe_frontmatter,  # pyright: ignore[reportPrivateUsage]
+    )
+
+    source = b"---\nb: {x: [1, 2.5, null]}\na: 2026-11-18T10:00:00\n'3': true\n---\nBody\n"
+    mapping, error = parse_frontmatter_bytes(source)
+    assert error is None and mapping is not None
+    shown = _render_frontmatter(
+        DocumentInput(
+            title="t",
+            source_path="t.md",
+            source_text="",
+            frontmatter=_json_safe_frontmatter(mapping),
+        )
+    )
+    result = _project(None, source)
+    rows = "".join(
+        f"<dt>{entry['key']}</dt><dd>{escape(entry['text'])}</dd>"
+        for entry in result["frontmatter"]["entries"]
+    )
+    assert result["frontmatter"]["change"] == "added"
+    assert f"<dl>{rows}</dl>" in shown
+
+
+def test_unchanged_frontmatter_is_context_and_a_comment_change_is_source_only() -> None:
+    old = b"---\ntitle: Same  # one\n---\nBody\n"
+    new = b"---\ntitle: Same  # two\n---\nBody\n"
+    result = _project(old, new)
+    assert result["frontmatter"] == {
+        "change": "context",
+        "entries": [{"key": "title", "change": "context", "text": "Same"}],
+    }
+    assert result["source_only"] is True
+
+
+def test_frontmatter_the_document_view_would_not_show_is_absent_or_unsupported() -> None:
+    assert "frontmatter" not in _project(b"Body\n", b"Body 2\n")
+    assert "frontmatter" not in _project(b"---\n- a\n---\nBody\n", b"---\n- b\n---\nBody\n")
+    alias = b"---\na: &x [1]\nb: *x\n---\nBody\n"
+    assert _project(None, alias)["status"] == "unsupported"
+    assert _project(None, b"---\na: [1\n---\nBody\n")["status"] == "unsupported"
 
 
 def test_rewrite_local_uses_only_live_links_and_assets() -> None:

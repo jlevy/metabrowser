@@ -128,7 +128,7 @@ def _serialize_to_yaml(value: Any) -> str:
     return re.sub(r"\n{3,}", "\n\n", text)
 
 
-def _parse_text(text: str, ext: str) -> Any:
+def parse_structured_text(text: str, ext: str) -> Any:
     """Parse JSON or YAML text into a JSON-safe Python value.
 
     Raises whatever the underlying parser raises on malformed input.
@@ -164,10 +164,10 @@ def _parse_text(text: str, ext: str) -> Any:
         import yaml as pyyaml  # type: ignore[import-not-found]
 
         docs = list(pyyaml.safe_load_all(text))
-    return _collapse_yaml_documents(docs)
+    return collapse_yaml_documents(docs)
 
 
-def _collapse_yaml_documents(docs: list[Any]) -> Any:
+def collapse_yaml_documents(docs: list[Any]) -> Any:
     """Reduce a YAML document stream to a single tree-renderable value.
 
     A lone document renders as itself. A multi-document stream renders as a
@@ -285,7 +285,7 @@ def parse_structured_bytes(data: bytes, ext: str) -> StructuredPayload:
     if len(data) > STRUCTURED_PARSE_MAX_BYTES:
         return truncated_payload()
     try:
-        parsed = _parse_text(decode_text(data), ext)
+        parsed = parse_structured_text(decode_text(data), ext)
     except Exception as exc:
         return error_payload(exc)
     return _payload_from_parsed(parsed, label="bytes")

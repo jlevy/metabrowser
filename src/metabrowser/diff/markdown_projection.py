@@ -23,6 +23,7 @@ visible counterpart shows only in the Source view.
 
 from __future__ import annotations
 
+import datetime as dt
 import hashlib
 import re
 from collections import Counter
@@ -31,7 +32,7 @@ from dataclasses import dataclass, field, replace
 from difflib import SequenceMatcher
 from html import escape
 from html.parser import HTMLParser
-from typing import Literal, TypedDict
+from typing import Any, Literal, NotRequired, TypedDict
 from urllib.parse import unquote
 
 from frontmatter_format import fmf_split_frontmatter
@@ -45,6 +46,7 @@ from markdown_it.token import Token
 from pygments.lexers import get_all_lexers
 
 from metabrowser.diff.format import FilePatch, Hunk, LineOp, LineRecord
+from metabrowser.diff.structured_projection import UnboundedYamlError, load_guarded_yaml
 from metabrowser.inert_html import ALLOWED_TAGS, ANCHOR_PREFIX, harden, is_inside
 
 MARKDOWN_DIFF_VERSION = "markdown-diff-v1"
@@ -145,11 +147,29 @@ class MarkdownDiffBlock(TypedDict):
     source_only: bool
 
 
+class FrontmatterDiffEntry(TypedDict):
+    """One front matter key, as KPress's Frontmatter disclosure lists it, and its change."""
+
+    key: str
+    change: Literal["context", "removed", "added"]
+    # The value as the disclosure shows it: `str` of its JSON-safe value.
+    text: str
+
+
+class FrontmatterDiff(TypedDict):
+    """Both sides' front matter, in the order KPress lists it: keys sorted as text."""
+
+    change: Literal["context", "modified", "removed", "added"]
+    entries: list[FrontmatterDiffEntry]
+
+
 class MarkdownDiffProjection(TypedDict):
     version: Literal["markdown-diff-v1"]
     status: Literal["ready", "unsupported", "too_large"]
     blocks: list[MarkdownDiffBlock]
     source_only: bool
+    # Present when either side shows front matter.
+    frontmatter: NotRequired[FrontmatterDiff]
 
 
 @dataclass(frozen=True, slots=True)
@@ -506,13 +526,16 @@ class _Side:
     blocks: list[tuple[int, int]]
     # Elements the tokens must render, which bounds the render tree before building it.
     elements: int
+    # The YAML between the front matter's fences, when the source opens with them.
+    frontmatter: str | None = None
 
 
 def _parse(text: str) -> _Side:
     offset = 0
     source = text
+    frontmatter = None
     if source.startswith(("---\n", "---\r\n")):
-        _, body_start, _ = fmf_split_frontmatter(source, strict=False)
+        frontmatter, body_start, _ = fmf_split_frontmatter(source, strict=False)
         offset = source.count("\n", 0, body_start)
         source = source[body_start:]
     if _SPLIT in source:
@@ -549,7 +572,9 @@ def _parse(text: str) -> _Side:
             elif member.type in {"fence", "code_block"}:
                 # `pre` and `code`.
                 elements += 2
-    return _Side(source, offset, tokens, _slices(tokens, 0, len(tokens), 0), elements)
+    return _Side(
+        source, offset, tokens, _slices(tokens, 0, len(tokens), 0), elements, frontmatter
+    )
 
 
 def _render(side: _Side, budget: int) -> tuple[list[_Block], int]:
@@ -1307,6 +1332,72 @@ class _Projector:
         return True
 
 
+def _json_safe(value: Any) -> Any:
+    """Front matter as the file view hands it to KPress: dates and times as ISO-8601.
+
+    The same coercion as ``server._json_safe_frontmatter``, which the child cannot import.
+    """
+
+    if isinstance(value, dict):
+        return {key: _json_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, (dt.date, dt.time)):
+        return value.isoformat()
+    return value
+
+
+def _frontmatter_mapping(text: str | None) -> dict[Any, Any] | None:
+    """The mapping the Document view shows, or ``None`` where it shows no disclosure.
+
+    As ``plugin_loader.classify.parse_frontmatter_bytes`` reads it: ruamel's safe loader,
+    and nothing unless the YAML is a non-empty mapping. YAML that does not load, or would
+    expand an alias, leaves the file to Source.
+    """
+
+    if not text:
+        return None
+    try:
+        parsed = load_guarded_yaml(text, stream=False)
+    except UnboundedYamlError as exc:
+        raise _Unsupported(str(exc)) from exc
+    except Exception as exc:
+        # The Document view shows a front matter error then, which Source shows too.
+        raise _Unsupported("front matter does not load") from exc
+    return _json_safe(parsed) if isinstance(parsed, dict) and parsed else None
+
+
+def _frontmatter_diff(old: str | None, new: str | None) -> FrontmatterDiff | None:
+    """Both sides' front matter, merged key by key, as KPress's disclosure lists it."""
+
+    before, after = _frontmatter_mapping(old), _frontmatter_mapping(new)
+    if before is None and after is None:
+        return None
+    rows = {str(key): str(value) for key, value in (before or {}).items()}
+    now = {str(key): str(value) for key, value in (after or {}).items()}
+    entries: list[FrontmatterDiffEntry] = []
+    for key in sorted(rows.keys() | now.keys()):
+        was, text = rows.get(key), now.get(key)
+        if was == text:
+            assert text is not None
+            entries.append({"key": key, "change": "context", "text": text})
+            continue
+        if was is not None:
+            entries.append({"key": key, "change": "removed", "text": was})
+        if text is not None:
+            entries.append({"key": key, "change": "added", "text": text})
+    change: Literal["context", "modified", "removed", "added"]
+    if before is None:
+        change = "added"
+    elif after is None:
+        change = "removed"
+    elif any(entry["change"] != "context" for entry in entries):
+        change = "modified"
+    else:
+        change = "context"
+    return {"change": change, "entries": entries}
+
+
 def _project(
     old: bytes | None, new: bytes | None, patch: FilePatch, namespace: str
 ) -> PreparedMarkdownDiff:
@@ -1341,9 +1432,17 @@ def _project(
     )
     projector.walk(old_blocks, new_blocks)
     projector.flag_moves()
+    frontmatter = _frontmatter_diff(old_side.frontmatter, new_side.frontmatter)
+    if frontmatter is not None and frontmatter["change"] != "context":
+        # The disclosure shows what changed in the front matter's lines. It cannot say
+        # which line a key came from, so a comment changed beside a key counts as shown.
+        projector.removed.difference_update(range(old_side.offset))
+        projector.added.difference_update(range(new_side.offset))
     # A blank separator beside an already visible addition or deletion adds no
     # information to the notice. Standalone whitespace changes still point to Source.
-    has_visual_change = any(block["kind"] != "context" for block in projector.blocks)
+    has_visual_change = any(block["kind"] != "context" for block in projector.blocks) or (
+        frontmatter is not None and frontmatter["change"] != "context"
+    )
     unmapped = any(old_lines[i].strip() for i in projector.removed) or any(
         new_lines[i].strip() for i in projector.added
     )
@@ -1356,15 +1455,15 @@ def _project(
             and (projector.blank or bool(projector.removed or projector.added))
         )
     )
-    return PreparedMarkdownDiff(
-        {
-            "version": MARKDOWN_DIFF_VERSION,
-            "status": "ready",
-            "blocks": projector.blocks,
-            "source_only": source_only,
-        },
-        tuple(projector.references),
-    )
+    projection: MarkdownDiffProjection = {
+        "version": MARKDOWN_DIFF_VERSION,
+        "status": "ready",
+        "blocks": projector.blocks,
+        "source_only": source_only,
+    }
+    if frontmatter is not None:
+        projection["frontmatter"] = frontmatter
+    return PreparedMarkdownDiff(projection, tuple(projector.references))
 
 
 def unavailable_markdown_diff(status: Literal["unsupported", "too_large"]) -> PreparedMarkdownDiff:
@@ -1416,12 +1515,15 @@ def bind_markdown_diff(
         }
         for block in projection["blocks"]
     ]
-    return {
+    answer: MarkdownDiffProjection = {
         "version": projection["version"],
         "status": projection["status"],
         "blocks": blocks,
         "source_only": projection["source_only"],
     }
+    if "frontmatter" in projection:
+        answer["frontmatter"] = projection["frontmatter"]
+    return answer
 
 
 def project_markdown_diff(

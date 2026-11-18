@@ -1,4 +1,10 @@
-"""Run Markdown projections in one long-lived child process, off the server's GIL.
+"""Run rendered-diff projections in one long-lived child process, off the server's GIL.
+
+The child answers both projections a changed file's Rendered view draws: Markdown
+(:mod:`metabrowser.diff.markdown_projection`) and YAML or JSON
+(:mod:`metabrowser.diff.structured_projection`, a request with ``op`` ``structured``).
+Parsing YAML and JSONC is pure Python as well, about 5 ms per KiB, so it holds the GIL
+as a Markdown projection does.
 
 A projection is pure Python. In a thread it holds the GIL, and every other request on
 the server waits up to the interpreter's switch interval at each of its event-loop
@@ -49,6 +55,12 @@ from metabrowser.diff.markdown_projection import (
     unavailable_markdown_diff,
     warm_markdown_projection,
 )
+from metabrowser.diff.structured_projection import (
+    Format,
+    StructuredDiffProjection,
+    project_structured_diff,
+    unavailable_structured_diff,
+)
 
 # A frame larger than this is a protocol fault: a request is at most 48 KiB of blobs
 # and their patch, and an answer at most a few hundred KiB of HTML.
@@ -78,21 +90,28 @@ def _frame(payload: object) -> bytes:
     return len(data).to_bytes(4, "big") + data
 
 
+def _blob(data: bytes | None) -> str | None:
+    return None if data is None else base64.b64encode(data).decode()
+
+
+def _unblob(value: object) -> bytes | None:
+    return None if value is None else base64.b64decode(str(value), validate=True)
+
+
 def _encode(
     old: bytes | None, new: bytes | None, patch: FilePatch, namespace: str
 ) -> dict[str, Any]:
-    def blob(data: bytes | None) -> str | None:
-        return None if data is None else base64.b64encode(data).decode()
-
     return {
-        "old": blob(old),
-        "new": blob(new),
+        "old": _blob(old),
+        "new": _blob(new),
         "patch": patch.model_dump(mode="json"),
         "namespace": namespace,
     }
 
 
 def _decode(answer: dict[str, Any]) -> PreparedMarkdownDiff:
+    """A Markdown projection's answer."""
+
     projection = cast("MarkdownDiffProjection", answer["projection"])
     references = tuple(
         LocalReference(str(href), bool(image), str(template), str(fallback))
@@ -102,12 +121,16 @@ def _decode(answer: dict[str, Any]) -> PreparedMarkdownDiff:
 
 
 def _answer(request: dict[str, Any]) -> dict[str, Any]:
-    def blob(value: object) -> bytes | None:
-        return None if value is None else base64.b64decode(str(value), validate=True)
-
+    if request.get("op") == "structured":
+        fmt = cast("Format", request["format"])
+        return {
+            "structured": project_structured_diff(
+                old=_unblob(request["old"]), new=_unblob(request["new"]), fmt=fmt
+            )
+        }
     prepared = prepare_markdown_diff(
-        old=blob(request["old"]),
-        new=blob(request["new"]),
+        old=_unblob(request["old"]),
+        new=_unblob(request["new"]),
         patch=FilePatch.model_validate(request["patch"]),
         namespace=str(request["namespace"]),
     )
@@ -280,6 +303,36 @@ class ProjectionWorker:
     async def prepare(
         self, *, old: bytes | None, new: bytes | None, patch: FilePatch, namespace: str
     ) -> PreparedMarkdownDiff:
+        """A Markdown projection (`prepare_markdown_diff`), in the child once it is ready."""
+
+        def local() -> PreparedMarkdownDiff:
+            return prepare_markdown_diff(old=old, new=new, patch=patch, namespace=namespace)
+
+        return await self._run(
+            _encode(old, new, patch, namespace), local, _decode, unavailable_markdown_diff
+        )
+
+    async def project_structured(
+        self, *, old: bytes | None, new: bytes | None, fmt: Format
+    ) -> StructuredDiffProjection:
+        """A YAML or JSON projection (`project_structured_diff`), as `prepare` runs one."""
+
+        def local() -> StructuredDiffProjection:
+            return project_structured_diff(old=old, new=new, fmt=fmt)
+
+        def decode(answer: dict[str, Any]) -> StructuredDiffProjection:
+            return cast("StructuredDiffProjection", answer["structured"])
+
+        request = {"op": "structured", "format": fmt, "old": _blob(old), "new": _blob(new)}
+        return await self._run(request, local, decode, unavailable_structured_diff)
+
+    async def _run[T](
+        self,
+        request: dict[str, Any],
+        local: Callable[[], T],
+        decode: Callable[[dict[str, Any]], T],
+        refused: Callable[[Literal["unsupported", "too_large"]], T],
+    ) -> T:
         loop = asyncio.get_running_loop()
         if self._counted is not loop:
             # Each event loop counts its own: a command that runs one request per loop
@@ -291,30 +344,26 @@ class ProjectionWorker:
             self.start()
         process, lock = self._process, self._lock
         if not self.ready or process is None or lock is None:
-            return await asyncio.to_thread(
-                prepare_markdown_diff, old=old, new=new, patch=patch, namespace=namespace
-            )
+            return await asyncio.to_thread(local)
         assert process.stdin is not None and process.stdout is not None
         failure: Literal["unsupported", "too_large"] = "unsupported"
         async with lock:
             try:
                 if process.returncode is not None:
                     raise ConnectionError("the child exited while idle")
-                process.stdin.write(_frame(_encode(old, new, patch, namespace)))
+                process.stdin.write(_frame(request))
                 await process.stdin.drain()
             except ConnectionError:
                 # Gone before this request reached it: not this input's doing, so the
                 # request runs in a thread and the next one starts a child again.
                 self._kill(process)
-                return await asyncio.to_thread(
-                    prepare_markdown_diff, old=old, new=new, patch=patch, namespace=namespace
-                )
+                return await asyncio.to_thread(local)
             except BaseException:
                 # A request cut off part-way leaves the child's input out of step.
                 self._kill(process)
                 raise
             try:
-                answer = _decode(
+                answer = decode(
                     await asyncio.wait_for(_read(process.stdout), _PROJECTION_TIMEOUT_S)
                 )
                 self._touch()
@@ -329,7 +378,7 @@ class ProjectionWorker:
                 self._kill(process)
                 raise
             self._kill(process)
-        return unavailable_markdown_diff(failure)
+        return refused(failure)
 
 
 def _running_loop() -> asyncio.AbstractEventLoop | None:
