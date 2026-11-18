@@ -3393,12 +3393,11 @@ a.tab-btn {
   transition: box-shadow var(--transition-fast);
 }
 /* A view's tab bar, under its view header (docs/design-system.md, "View Headers"): on
-   the header's ground, --bg, and its rule the one rule under the header block. The
-   tab's own padding is cancelled as the navigation's is, so a label starts on the
-   inset the header's rows start on. */
+   the header's ground, --bg, and its rule the one rule under the header block. Its
+   labels keep the content's inset, where a folder's Overview labels start
+   ("Folder Overview Is a Panel Stack"). */
 :is(.preview-pane, .preview-file-stage) > .tab-bar {
   background: var(--bg);
-  padding-left: calc(var(--content-padding-x) - var(--file-tab-padding-x));
 }
 .tab-bar.nav-tab-bar.scrolled,
 .nav-filter-bar.scrolled,
