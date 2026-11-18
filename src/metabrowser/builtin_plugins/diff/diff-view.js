@@ -1134,12 +1134,7 @@ function renderFileBar(change, toggleId, bodyId, view) {
     api?.ownDelegate?.(copy);
     copy.setAttribute("data-tip-text", "Copy path");
     copy.setAttribute("aria-label", "Copy path");
-    const svg = shellIcon("copy");
-    if (svg) {
-      copy.innerHTML = svg;
-    } else {
-      copy.textContent = "⧉";
-    }
+    copy.innerHTML = shellIcon("copy");
     bar.append(copy);
   }
   return { bar, toggle, notice };

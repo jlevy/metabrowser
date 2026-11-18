@@ -99,18 +99,6 @@
   outline-offset: -2px;
 }
 
-.log-event-expand {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-  transition: transform var(--transition-fast);
-  color: var(--muted);
-}
-
-.log-event.expanded .log-event-expand {
-  transform: rotate(90deg);
-}
-
 .log-event-kind {
   font-size: var(--ui-small-font-size);
   font-weight: var(--weight-bold);
