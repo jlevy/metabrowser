@@ -37,7 +37,8 @@ Rendered Markdown draws its own chrome from KPress’s icon set, the same Lucide
 A glyph enters the registry only when a folder’s first paint can draw it: every page
 fetches the registry before it paints, so each glyph there is paid for by every folder
 ([asset loading tiers](project/architecture/arch-browser-shell.md#asset-loading-tiers)).
-A glyph that one view or plugin alone draws lives beside that code.
+A glyph that one view or plugin alone draws lives beside that code; two registry glyphs
+break this rule ([Known Departures](#known-departures)).
 
 ## Choosing an Icon
 
@@ -91,8 +92,6 @@ header ([View Headers](design-system.md#view-headers)).
 Each category is a type registry group, and its `icon` is the shape every family in it
 takes unless the family declares its own.
 The same shape stands for the category wherever the app names one.
-Where a category’s icon is drawn beside the category’s heading, in Details > Overview
-and in Group by file type, and in what ink, belongs in this section.
 
 | Icon | Source | Meaning | Defined in | Ink | Size |
 | --- | --- | --- | --- | --- | --- |
@@ -127,9 +126,9 @@ with its chevron, and a repository and a mirror have no glyph.
 | `gitPullRequestDraft`, Lucide `git-pull-request-draft` | Plugin | A draft pull request | `builtin_plugins/github/pull-state.js` | `--github-pull-draft` | `--icon-glyph` in a row; `1em` of the page’s title |
 | `gitMerge`, Lucide `git-merge` | Plugin | A merged pull request | `builtin_plugins/github/pull-state.js` | `--github-pull-merged` | `--icon-glyph` in a row; `1em` of the page’s title |
 | `gitPullRequestClosed`, Lucide `git-pull-request-closed` | Plugin | A closed pull request | `builtin_plugins/github/pull-state.js` | `--github-pull-closed` | `--icon-glyph` in a row; `1em` of the page’s title |
-| `pull`, Lucide `git-pull-request` | View bundle | A link to a pull request whose state the page does not know | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; `0.85em` in a rendered document |
-| `issue`, Lucide `circle-dot` | View bundle | A link to a GitHub issue | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; `0.85em` in a rendered document |
-| `github`, Octicons `mark-github-16` | View bundle | GitHub: View on GitHub, and a link to any other GitHub page | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; `0.85em` in a rendered document |
+| `pull`, Lucide `git-pull-request` | View bundle | A link to a pull request whose state the page does not know | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; smaller in a rendered document (`.kpress .external-link-icon`) |
+| `issue`, Lucide `circle-dot` | View bundle | A link to a GitHub issue | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; smaller in a rendered document (`.kpress .external-link-icon`) |
+| `github`, Octicons `mark-github-16` | View bundle | GitHub: View on GitHub, and a link to any other GitHub page | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; smaller in a rendered document (`.kpress .external-link-icon`) |
 | `.view-header-toggle-mark`, Octicons `mark-github-16` | CSS mask | View on GitHub: the link segment of a view header’s GitHub toggle, the same drawing as `github` | `static/styles.css` | The link’s, `--text` | `--icon-glyph` |
 | `layers`, Lucide `layers` | Registry | A stack of pull requests: a stack’s row, the page’s stack button, and another stack a member is in | `static/icons.js` | `--muted` on a row, the button’s text ink on the stack button | `--icon-glyph`; the text’s `1em` in a member’s place |
 | `PERSON_GLYPH`, Lucide `circle-user-round` | View bundle | A person with no avatar, in an actor identity’s box | `static/plugin-sdk-views.js` | `--muted` | `--actor-avatar-size`, the avatar it stands in for |
@@ -238,6 +237,11 @@ Each of these breaks a rule above, and is listed so that nobody copies it.
   the glyph; a stack menu’s is the text’s ink in an `--icon-glyph` column.
 - **A branch chip’s copy glyph is smaller than `--icon-glyph`**, by its own rule, which
   the size rule does not list as an exception.
+- **Two glyphs one plugin draws are in the registry.** Only the GitHub plugin draws
+  `layers`, and only the Markdown plugin’s print button draws `print`, yet both are
+  registry glyphs that every folder’s startup pays for.
+  `print` stayed when the print button moved from the shell’s header into a rendered
+  document.
 - **The app’s failure screen draws its warning triangle in color.**
   `exclamationmark.triangle.fill` renders in Apple’s multicolor yellow, where every
   other symbol takes its menu’s template ink and every other glyph `currentColor`.
