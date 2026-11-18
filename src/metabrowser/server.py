@@ -1304,6 +1304,21 @@ def _mirror_heading_attrs(status: SourceStatus) -> str:
 
 
 @functools.cache
+def _github_page_script() -> str:
+    """`static/github-page.js`, as the shell of a page with a GitHub repository carries it.
+
+    Only a page whose repository context the server found, a checkout whose ``origin`` is
+    on github.com or a mirror the GitHub provider owns, has a GitHub page to toggle to, so
+    the toggle's code is written into that page and is no startup script of a folder's
+    (docs/design-system.md, "View Headers").
+    """
+
+    script = STATIC_DIR.joinpath("github-page.js").read_text(encoding="utf-8")
+    if "</script" in script.lower():
+        raise RuntimeError("github-page.js cannot be safely embedded in the index shell")
+    return script
+
+
 def _mirror_heading_script() -> str:
     """`static/mirror-heading.js`, as a served mirror's shell carries it inline.
 
@@ -1821,6 +1836,8 @@ async def index(
         )
         if mirror_attrs:
             repository_context_block += f"<script>{_mirror_heading_script()}</script>"
+    if repository_context is not None:
+        repository_context_block += f"<script>{_github_page_script()}</script>"
     # Read preferences from host-only cookies (not localStorage): cookies
     # ignore the port, so the choice is shared across every metabrowser instance
     # on this host (each folder server lands on its own port). Runs before the

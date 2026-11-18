@@ -1,0 +1,39 @@
+{
+  "github-https": {
+    "branch": "main",
+    "host": "github.com",
+    "name": "demo",
+    "owner": "octo",
+    "revision": "0123456789abcdef0123456789abcdef01234567",
+    "served_prefix": ""
+  },
+  "github-ssh-detached": {
+    "branch": null,
+    "host": "github.com",
+    "name": "demo",
+    "owner": "octo",
+    "revision": "0123456789abcdef0123456789abcdef01234567",
+    "served_prefix": ""
+  },
+  "github-subfolder": {
+    "branch": "feature/x",
+    "host": "github.com",
+    "name": "demo",
+    "owner": "octo",
+    "revision": "0123456789abcdef0123456789abcdef01234567",
+    "served_prefix": "docs"
+  },
+  "gitlab": null,
+  "github-enterprise": null,
+  "no-remote": null,
+  "plain-folder": null,
+  "mirror-github": {
+    "branch": "main",
+    "host": "github.com",
+    "name": "demo",
+    "owner": "octo",
+    "revision": "0123456789abcdef0123456789abcdef01234567",
+    "served_prefix": ""
+  },
+  "mirror-file": null
+}

@@ -700,6 +700,9 @@
   --view-header-eyebrow-height: 22px;
   --view-header-line-height: 22px;
   --view-header-up-size: 20px;
+  /* A toggle segment's width: the up control's height and a few pixels for the wide
+     Metabrowser mark's ink, so the pair reads as two equal buttons. */
+  --view-header-toggle-option-width: 28px;
   --file-tab-padding-x: 12px;
   --file-tab-padding-y: 4px;
   --file-tab-align-adjust: 3px;
@@ -4181,6 +4184,62 @@ a.tab-btn {
   flex: none;
   height: var(--view-header-line-height);
   white-space: nowrap;
+}
+/* The GitHub toggle at the heading row's end (static/github-page.js; docs/design-system.md,
+   "View Headers"), on a page whose repository is on github.com: a joined pair, as a
+   segmented control is, of the Metabrowser mark, gray, on the pressed segment's fill,
+   the view the page is in, and the GitHub mark, a link to the item's page on
+   github.com. The marks are masks in the ink of their segment.
+
+   The Metabrowser mark is the app icon's own, the partial M and the B, from
+   apps/macos/Sources/ShellCore/App/AppIconMarkGeometry.swift, framed to its ink; the
+   GitHub mark is the one plugin-sdk-views.js draws, Primer Octicons mark-github-16 (MIT).
+   tests/test_view_header_toggle.py holds both copies to their sources. */
+.view-header-toggle {
+  display: inline-flex;
+  flex: none;
+  border: var(--chip-border) solid var(--viz-border);
+  border-radius: var(--radius-pill);
+  background: var(--viz-surface);
+  overflow: hidden;
+}
+.view-header-toggle-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--view-header-toggle-option-width);
+  block-size: var(--view-header-up-size);
+  color: var(--muted);
+}
+.view-header-toggle-option + .view-header-toggle-option {
+  border-left: 1px solid var(--viz-border-subtle);
+}
+/* The view the page is in: the pressed segment, as a pressed toggle chip is drawn. */
+.view-header-toggle-option[aria-current="page"] {
+  background: var(--hover-bg);
+  box-shadow: inset 0 0 0 1px var(--viz-border-strong);
+}
+a.view-header-toggle-option {
+  color: var(--text);
+}
+a.view-header-toggle-option:hover {
+  background: var(--hover-bg);
+}
+a.view-header-toggle-option:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
+}
+.view-header-toggle-mark {
+  inline-size: var(--icon-glyph);
+  block-size: var(--icon-glyph);
+  background-color: currentColor;
+  mask:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M6.766 11.328c-2.063-.25-3.516-1.734-3.516-3.656 0-.781.281-1.625.75-2.188-.203-.515-.172-1.609.063-2.062.625-.078 1.468.25 1.968.703.594-.187 1.219-.281 1.985-.281.765 0 1.39.094 1.953.265.484-.437 1.344-.765 1.969-.687.218.422.25 1.515.046 2.047.5.593.766 1.39.766 2.203 0 1.922-1.453 3.375-3.547 3.64.531.344.89 1.094.89 1.954v1.625c0 .468.391.734.86.547C13.781 14.359 16 11.53 16 8.03 16 3.61 12.406 0 7.984 0 3.563 0 0 3.61 0 8.031a7.88 7.88 0 0 0 5.172 7.422c.422.156.828-.125.828-.547v-1.25c-.219.094-.5.156-.75.156-1.031 0-1.64-.562-2.078-1.609-.172-.422-.36-.672-.719-.719-.187-.015-.25-.093-.25-.187 0-.188.313-.328.625-.328.453 0 .844.281 1.25.86.313.452.64.655 1.031.655s.641-.14 1-.5c.266-.265.47-.5.657-.656'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+.view-header-toggle-metabrowser > .view-header-toggle-mark {
+  inline-size: var(--icon-box);
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='142.676 172.023 241.654 166.977'%3E%3Cpath d='M211.515 239.451L238.171 191.36L238.171 256.261L222.564 284.418L200.465 284.418L174.14 236.924L174.14 339L142.676 339L142.676 172.023L174.14 172.023Z'/%3E%3Cpath d='M300.927 339L300.927 310.434L333.088 310.434Q342.096 310.434 347.624 304.412Q353.153 298.39 353.153 288.192Q353.153 278.311 347.428 272.628Q341.703 266.944 332.3 266.944L300.198 266.944L300.198 241.775L325.415 241.775Q330.635 241.775 334.637 239.078Q338.639 236.381 340.892 231.575Q343.145 226.768 343.145 220.596Q343.145 211.205 338.077 205.897Q333.008 200.59 324.921 200.59L300.198 200.59L300.198 172.023L323.858 172.023Q339.51 172.023 350.632 177.532Q361.754 183.042 367.619 192.621Q373.485 202.2 373.485 214.421Q373.485 224.094 369.944 232.602Q366.403 241.111 360.646 247.321Q354.888 253.531 348.188 256.216L348.287 248.287Q358.04 250.364 366.241 255.664Q374.441 260.963 379.385 269.76Q384.33 278.557 384.33 291.215Q384.33 305.336 378.061 316.085Q371.791 326.835 360.81 332.917Q349.829 339 335.679 339ZM272.171 339L272.171 172.023L303.635 172.023L303.635 339Z'/%3E%3C/svg%3E");
 }
 .file-header-path {
   font-family: var(--font-sans);

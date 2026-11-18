@@ -18,6 +18,11 @@ button and the folders that hold it, then its icon and its name, then its size a
 and a folder’s file count, “4.7 MB · 138 files · 8m ago”.
 In a narrow pane a long name is cut short, with the whole name in its tooltip, and the
 values that do not fit leave the line from its end, each whole.
+When the folder is a checkout of a repository on github.com, or a mirror of one, the
+header’s upper right holds two marks: Metabrowser’s, the view you are in, and GitHub’s,
+which opens the same file or folder on github.com, at the branch you are on.
+A browser opens it in a new tab, since github.com cannot be shown inside the page, and
+the macOS app opens it in your default browser.
 
 - **Rows:** a file row shows its size and age; a folder row shows its file count, total
   size, and newest change, for everything beneath it.

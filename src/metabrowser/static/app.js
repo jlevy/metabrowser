@@ -426,14 +426,13 @@ function viewHeaderItemsHtml(items) {
 
 /**
  * One view header (docs/design-system.md, "View Headers"): the eyebrow, the heading row
- * (icon, title, what follows it, the row's end), and the metadata line.
- * @param {{className?: string, eyebrow: string, iconHtml: string, iconClass?: string,
- *          iconStyle?: string, title: string, afterTitle?: string, end: string,
- *          line: string}} parts
+ * (icon, title, what follows it, the row's end), and the metadata line. `path` is the
+ * item's, which the GitHub toggle reads (github-page.js).
+ * @param {Record<string, string>} parts
  */
 function viewHeaderHtml(parts) {
   return (
-    `<div class="file-header view-header${parts.className ? ` ${parts.className}` : ""}" data-kbd-badge-anchor>` +
+    `<div class="file-header view-header${parts.className ? ` ${parts.className}` : ""}" data-path="${esc(parts.path)}" data-kbd-badge-anchor>` +
     `<div class="view-header-eyebrow">${parts.eyebrow}</div>` +
     '<div class="view-header-heading">' +
     `<span class="view-header-icon file-identity-icon${parts.iconClass ? ` ${parts.iconClass}` : ""}"${parts.iconStyle ? ` style="${esc(parts.iconStyle)}"` : ""} aria-hidden="true">${parts.iconHtml}</span>` +
@@ -6964,6 +6963,7 @@ function renderFolderHeader(data) {
   var dir = data.dir && typeof data.dir === "object" ? data.dir : null;
   return viewHeaderHtml({
     className: "folder-header",
+    path: path,
     eyebrow: viewHeaderEyebrowHtml(path),
     iconHtml: ICONS.folder || "",
     iconClass: "view-header-folder-icon",
@@ -6982,6 +6982,7 @@ function renderFileHeader(data) {
     getLogicalName({ name: name, compressed: data.compressed, compression: data.compression }),
   );
   return viewHeaderHtml({
+    path: path,
     eyebrow: viewHeaderEyebrowHtml(path),
     iconHtml: icon.svg,
     iconClass: icon.cls,

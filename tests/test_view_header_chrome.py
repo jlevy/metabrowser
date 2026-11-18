@@ -22,6 +22,10 @@ pending skeletons of a walk that has not finished. This judges the record:
 - the ground and the rules: the header and the tab bar on the body's ground, which is not
   the navigation's, the header with no rule of its own, and the tab bar's one rule under
   it;
+- the GitHub toggle (mb-zp7y), on a folder served as a checkout whose origin is on
+  github.com: at the heading row's far end, centered on it, two segments of its tokens'
+  size in their pill's border, the Metabrowser mark the view the page is in and the
+  GitHub mark a link to the item's page;
 - the narrow panes: a title too long for its row cut short at its end, and every
   metadata item on the line whole or wrapped out of sight with its dot, never cut;
 - steadiness: as the values change, no box of the header but the line's own items moves
@@ -69,6 +73,13 @@ _BODY_PX = "14px"
 _ROW_GAP_PX = 4
 _EYEBROW_PX = 22
 _LINE_PX = 22
+# The toggle's (`--view-header-up-size`, `--view-header-toggle-option-width`,
+# `--chip-border`, `--icon-glyph`) and the header's inset (`--content-padding-x`).
+_UP_PX = 20
+_TOGGLE_OPTION_PX = 28
+_CHIP_BORDER_PX = 1
+_GLYPH_PX = 14
+_INSET_PX = 24
 
 
 def _served(root: Path) -> Path:
@@ -79,6 +90,15 @@ def _served(root: Path) -> Path:
     )
     (notes / "b.txt").write_text("b\n" * 4000, encoding="utf-8")
     (root / "README.md").write_text("# Served\n", encoding="utf-8")
+    # A checkout whose origin is on github.com, as far as the server reads one
+    # (repository_context.py), so its pages carry the GitHub toggle.
+    git = root / ".git"
+    (git / "refs" / "heads").mkdir(parents=True)
+    (git / "config").write_text(
+        '[remote "origin"]\n\turl = https://github.com/octo/demo.git\n', encoding="utf-8"
+    )
+    (git / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    (git / "refs" / "heads" / "main").write_text(f"{'0' * 40}\n", encoding="utf-8")
     when = time.time() - _AGE_S
     for path in [root, *root.rglob("*")]:
         os.utime(path, (when, when))
@@ -166,6 +186,21 @@ def test_view_headers_hold_their_rows_ground_and_values_in_chrome(
         # Up: disabled at the root, a control everywhere else.
         assert page["upDisabled"] is (result["kind"] == "root"), name
 
+        # The GitHub toggle ends the heading row, centered on it: two segments of the Up
+        # control's height and the toggle's width, in their pill's border, the Metabrowser
+        # mark the view the page is in and the GitHub mark a link to the item's page.
+        toggle, end = page["toggle"], page["end"]
+        assert toggle is not None, f"{name}: no toggle"
+        assert toggle["height"] == _UP_PX + 2 * _CHIP_BORDER_PX, f"{name}: toggle {toggle}"
+        assert toggle["width"] == 2 * _TOGGLE_OPTION_PX + 2 * _CHIP_BORDER_PX, name
+        assert abs(toggle["right"] - end["right"]) <= TOLERANCE_PX, f"{name}: {toggle} {end}"
+        assert abs(end["right"] - page["header"]["right"] + _INSET_PX) <= TOLERANCE_PX, name
+        middle = (heading["top"] + heading["bottom"]) / 2
+        assert abs((toggle["top"] + toggle["bottom"]) / 2 - middle) <= TOLERANCE_PX, name
+        assert "view-header-toggle-metabrowser" in (page["toggleCurrent"] or ""), name
+        assert page["toggleHref"].startswith("https://github.com/octo/demo/"), name
+        assert [mark["height"] for mark in page["marks"]] == [_GLYPH_PX, _GLYPH_PX], name
+
         # Every item is whole on the line or wrapped out of sight, never cut; the first is
         # always shown.
         for snapshot in (page, *result["relabeled"].values()):
@@ -179,7 +214,7 @@ def test_view_headers_hold_their_rows_ground_and_values_in_chrome(
 
         # Steadiness: as the values change, nothing but the line's items moves.
         for step, after in result["relabeled"].items():
-            for key in ("header", "eyebrow", "heading", "title", "end", "line", "bar"):
+            for key in ("header", "eyebrow", "heading", "title", "end", "toggle", "line", "bar"):
                 moved = _moved(page[key], after[key])
                 assert moved <= TOLERANCE_PX, f"{name} {step}: {key} moved {moved} px"
         # The age is last: from "just now" to "59m ago" it moves no item before it.

@@ -3992,6 +3992,16 @@ declare global {
     }>;
     /** The pin and ref a pin's page was rendered for; absent on a folder. */
     METABROWSER_SOURCE_PIN?: MetabrowserSourcePage;
+    /** static/github-page.js, which only a page with a repository on github.com carries. */
+    MetabrowserGithubPage?: Readonly<{
+      pageUrl(
+        context: MetabrowserRepositoryContext | null,
+        path: string,
+        item: { folder: boolean; sourceKind: string },
+      ): string | null;
+      sync(doc: Document): HTMLElement | null;
+      toggle(doc: Document, url: string): HTMLElement;
+    }>;
     /** static/mirror-heading.js, which only a served mirror's page carries. */
     MetabrowserMirrorHeading?: Readonly<{
       mountCommitCopy(): void;

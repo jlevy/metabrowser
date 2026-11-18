@@ -29,6 +29,7 @@ it, may read them, and an installed plugin uses the SDK.
 | Keyboard and dialogs | `keyboard-shortcuts.js`, `shell-keymap.js`, `plugin-shortcuts.js`, `key-reveal.js`, `keyboard-help.js`, `overlay-layer.js` |
 | Quick Search | `search-controller.js`, `search-palette.js`, `file-fuzzy-match.js` |
 | Pinned revisions and mirrors | `git-path.js`, `source-pin-guard.js`, `source-freshness.js`, `source-ref-selector.js`, `mirror-heading.js` |
+| Repositories on github.com | `github-page.js`, the view header’s GitHub toggle, which the server writes inline into such a page only |
 | Shared rendering | `formatters.js`, `icons.js`, `charts.js`, `file-type-taxonomy.js`, `inert-html.js`, `source-append.js`, `theme-state.js`, `document-width.js`, `request-error.js`, `contribution-registry.js` |
 
 `types.d.ts` declares the globals and the SDK. `tsconfig.json` type-checks every module
