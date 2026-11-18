@@ -176,7 +176,9 @@ def test_treemap_hover_never_promotes_a_container_over_nested_cells() -> None:
     assert "display:" not in hover_block
     reduced_start = plugin_css.index("@media (prefers-reduced-motion: reduce)")
     reduced_end = plugin_css.index("\n}\n", reduced_start)
-    moving, reduced = plugin_css[:reduced_start], plugin_css[reduced_start:reduced_end]
+    reduced = plugin_css[reduced_start:reduced_end]
+    # The whole sheet outside its reduced-motion block, so a rule after the block counts too.
+    moving = plugin_css[:reduced_start] + plugin_css[reduced_end:]
     # The pointer's cell is the only one with a sheen.
     assert re.findall(r"\.tm-cell[^{,]*::after", moving) == ['.tm-cell[data-hovered="self"]::after']
     sheen_start = moving.index('.tm-cell[data-hovered="self"]::after {')

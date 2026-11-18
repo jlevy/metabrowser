@@ -4881,6 +4881,16 @@ while the pointer holds; the values and their measurements are beside the tokens
 `static/styles.css`. Marks the hover enters together shimmer in step, and one marked
 later, as a Details row opened under a held hover, starts its own cycle.
 
+The shimmer is for the few marks a handle names.
+Each shimmering mark is a composited layer and an animation of its own, so the cost
+grows with their number, though no main-thread work runs.
+Where a handle can mark every mark a view draws, as a legend entry marks every Treemap
+cell of its family, those marks take the lift alone, and only the mark under the pointer
+shimmers. The cost at the Treemap’s cell limit, with and without the family’s sheen, is
+measured beside the rule in the folder plugin’s stylesheet
+([Folder Treemap](#folder-treemap)). A new mark that a handle can name in numbers
+bounded only by the view states the same, or measures the shimmer at that bound.
+
 The lift darkens on light and brightens on dark, and it is relative to the mark’s own
 color rather than a fixed overlay: file-type families sit at different lightnesses in a
 band, and a deviating family outside it, so a fixed delta lands differently on a pale
@@ -4974,14 +4984,16 @@ lines of the toolbar in front.
 There a tab switch can move the panel under the slot, and the Commits slot gains a line
 when its tally lands, if the tally is wider than the pane; the Treemap’s legend row
 likewise holds one line and takes as many as its entries wrap to
-([Folder Treemap](#folder-treemap)). Heights are in line units, or struts of the
-controls a row holds, never pixels measured in one engine, because WebKit’s font metrics
-differ from Chrome’s. Where a region’s size is its data’s and arrives a moment after the
-rest, as the File Overview’s first rollup does, the view holds its first paint for that
-data, briefly, with the previous view still shown.
-The server draws the tab an address lands on in front, a commit’s address on Commits, so
-a landing never shows one tab’s chrome and then swaps it; a toolbar that cannot load
-says so in its slot rather than pulsing.
+([Folder Treemap](#folder-treemap)), which `tests/test_treemap_legend_hover_chrome.py`
+holds at one line where they fit.
+Heights are in line units, or struts of the controls a row holds, never pixels measured
+in one engine, because WebKit’s font metrics differ from Chrome’s. Where a region’s size
+is its data’s and arrives a moment after the rest, as the File Overview’s first rollup
+does, the view holds its first paint for that data, briefly, with the previous view
+still shown.
+The server draws the tab an address lands on in front, a commit’s address on
+Commits, so a landing never shows one tab’s chrome and then swaps it; a toolbar that
+cannot load says so in its slot rather than pulsing.
 `tests/test_reserved_chrome.py` pins the rules.
 
 ### Loading Chrome
