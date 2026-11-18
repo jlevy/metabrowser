@@ -36,6 +36,23 @@ All notable changes to Metabrowser are documented here.
   `.yaml` prefix that is not UTF-8 does not match.
   See [Kind Rules](docs/plugins.md#kind-rules).
 
+- The agent skill’s commands now produce output an agent can parse, and its recipes stop
+  with a nonzero status when `metab` fails.
+  Every `--api` recipe asks for `--format json` and writes the answer to a file that
+  `jq` reads only when `metab` succeeded, so a repository that cannot be read, a pull
+  request with no diff, or a pin that is not the pull request’s head stops the recipe,
+  where a pipe into `jq` printed nothing, `null`, or the default branch’s file.
+  Whether a pull request was read comes from the record’s `state` and
+  `last_refresh.outcome`, not from a line of prose, and a new recipe fetches a pull
+  request beside a checkout, where a read never fetches one.
+  The skill no longer says `--api` refuses `/api/stream`. It now says that a served pin
+  can move, that `--diff-check` can take more than a minute in a large repository, that
+  a server’s address answers a moment after its `Serving` line, and that `--remote` is
+  for the user’s own terminal, and it lists `/pull/<n>/files/<path>`. It says that it is
+  tested against the `metab` of its own commit, so the skill on `main` can need a source
+  checkout’s `metab` until the next release, and `tests/test_skill_commands.py` fails
+  when a flag, route, recipe, or field name in it drifts from that `metab`.
+
 - A Pulls row now leads with its title, right after the state icon, on its first line,
   and puts the stack position, number, author, and age on the second; its author’s
   avatar is a little smaller.
