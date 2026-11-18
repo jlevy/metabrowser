@@ -242,8 +242,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     @objc func toggleGitHubView(_ sender: Any?) {
         if gitHub.showsGitHub { return showMetabrowser() }
         guard currentServerURL != nil else { return NSSound.beep() }
-        let query = "window.origin === \"null\" ? \"\" : \(GitHubViewRequests.query)"
-        webView.evaluateJavaScript(query, in: nil, in: GitHubViewRequests.world) { [weak self] result in
+        webView.evaluateJavaScript(GitHubViewRequests.query, in: nil, in: GitHubViewRequests.world) { [weak self] result in
             guard let self, !gitHub.showsGitHub else { return }
             guard case .success(let value) = result, let href = value as? String, let page = GitHubView.togglePage(href)
             else { return NSSound.beep() }

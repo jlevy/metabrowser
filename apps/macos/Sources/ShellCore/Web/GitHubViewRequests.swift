@@ -38,8 +38,11 @@ public final class GitHubViewRequests: NSObject, WKScriptMessageHandler {
         """
 
     /// Evaluated in `world` for View > Show GitHub View: the page's toggle's `href`, or an
-    /// empty string on a page with no toggle.
-    public static let query = "document.querySelector('\(marker)')?.href ?? \"\""
+    /// empty string on a page with no toggle or with an opaque origin, such as a `/raw`
+    /// file's under its CSP sandbox, as `allows` refuses a click there.
+    public static let query = """
+        window.origin === "null" ? "" : document.querySelector('\(marker)')?.href ?? ""
+        """
 
     private let onRequest: (WKWebView, WKFrameInfo, String) -> Void
 

@@ -36,7 +36,7 @@ private final class PageWatcher: NSObject, WKUIDelegate, WKNavigationDelegate {
         """
 
     private func load(
-        _ html: String, requests: GitHubViewRequests, in frame: NSRect = .zero
+        _ html: String, requests: GitHubViewRequests, in frame: NSRect = .zero, baseURL: URL? = nil
     ) async -> (WKWebView, PageWatcher) {
         let configuration = WebConfiguration.make(gitHubViews: requests)
         configuration.websiteDataStore = .nonPersistent()  // tests leave no cookies behind
@@ -44,7 +44,7 @@ private final class PageWatcher: NSObject, WKUIDelegate, WKNavigationDelegate {
         let watcher = PageWatcher()
         webView.navigationDelegate = watcher
         webView.uiDelegate = watcher
-        webView.loadHTMLString(html, baseURL: origin)
+        webView.loadHTMLString(html, baseURL: baseURL ?? origin)
         #expect(await eventually { watcher.loaded })
         return (webView, watcher)
     }
@@ -154,7 +154,8 @@ private final class PageWatcher: NSObject, WKUIDelegate, WKNavigationDelegate {
         }
     }
 
-    /// View > Show GitHub View asks the page, in the app's world, for its toggle's page.
+    /// View > Show GitHub View asks the page, in the app's world, for its toggle's page:
+    /// none on a page without one, or on a document of an opaque origin.
     @Test func theQueryFindsTheTogglesPageOrNone() async throws {
         let requests = GitHubViewRequests { _, _, _ in }
         let (webView, _) = await load(page, requests: requests)
@@ -166,5 +167,12 @@ private final class PageWatcher: NSObject, WKUIDelegate, WKNavigationDelegate {
         let none = try await plain.evaluateJavaScript(
             GitHubViewRequests.query, in: nil, contentWorld: GitHubViewRequests.world)
         #expect(none as? String == "")
+
+        let (opaque, _) = await load(page, requests: requests, baseURL: URL(string: "about:blank"))
+        let origin = try await opaque.evaluateJavaScript("window.origin")
+        let hidden = try await opaque.evaluateJavaScript(
+            GitHubViewRequests.query, in: nil, contentWorld: GitHubViewRequests.world)
+        #expect(origin as? String == "null")
+        #expect(hidden as? String == "")
     }
 }
