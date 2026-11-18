@@ -61,6 +61,9 @@ A recent target is a root and the mode it was opened in:
   window forward.
 - **No credential is ever stored.** A root comes from the grammar that refuses a URL
   with a password or token, never from the argument as typed.
+- **A root with a control character or a line separator is not recorded.** A terminal
+  acts on the first, and YAML reads the second as a line break, which its two emitters
+  write differently. Such a folder serves as any other and stays out of the list.
 - **What a mirror was pinned to is not recorded yet.** An entry reopens its repository
   at the default branch, and a pull request is one click away on its Pulls tab.
   Recording the `target` is planned with File > Open URL….
