@@ -1,5 +1,6 @@
 import Foundation
 import OSLog
+import os
 
 /// WebKit's network process ended under a test's page loads (mb-1cd0).
 ///
@@ -49,24 +50,42 @@ func rerunningIfTheNetworkProcessEnds(attempts: Int = 3, _ scenario: () async th
         do {
             return try await scenario()
         } catch is NetworkProcessLost where attempt < attempts {
+            let first = webKitLogPrinted.withLock { printed in
+                defer { printed = true }
+                return !printed
+            }
             print("WebKit's network process ended under this test's page loads; running it again "
-                + "(attempt \(attempt + 1) of \(attempts)). WebKit logged:")
+                + "(attempt \(attempt + 1) of \(attempts))" + (first ? ". WebKit logged:" : "."))
+            guard first else { continue }
             for line in await webKitNetworkProcessLines(since: start) { print("  \(line)") }
         }
     }
 }
 
+/// Whether a rerun in this process has printed WebKit's log. One loss ends every load on
+/// its way, so the first rerun prints it for all of them.
+nonisolated private let webKitLogPrinted = OSAllocatedUnfairLock(initialState: false)
+
 /// The errors WebKit logged in this process about its network process since `start`,
 /// which name what ended it, such as `NetworkProcessProxy::didClose (Network Process 0
-/// crash)` or `NetworkProcessProxy::didBecomeUnresponsive`. This is best effort and reads
-/// off the main actor, because reading the log store can take seconds on a loaded machine.
+/// crash)` or `NetworkProcessProxy::didBecomeUnresponsive`. Each content process logs its
+/// own line, so repeats are counted rather than listed. This is best effort and reads off
+/// the main actor, because reading the log store can take seconds on a loaded machine.
 @concurrent nonisolated func webKitNetworkProcessLines(since start: Date) async -> [String] {
     let filter = NSPredicate(format: "subsystem == 'com.apple.WebKit' AND composedMessage CONTAINS[c] 'networkprocess'")
     guard let store = try? OSLogStore(scope: .currentProcessIdentifier),
         let entries = try? store.getEntries(at: store.position(date: start), matching: filter)
     else { return ["(this process's log could not be read)"] }
-    return entries.compactMap { entry in
-        guard let entry = entry as? OSLogEntryLog, entry.level == .error || entry.level == .fault else { return nil }
-        return entry.composedMessage
+    var counted: [(message: String, count: Int)] = []
+    for case let entry as OSLogEntryLog in entries where entry.level == .error || entry.level == .fault {
+        // "WebContent[123] 0x10c06c0e0 - WebLoaderStrategy::...", without what varies
+        let message = entry.composedMessage.replacing(#/^(WebContent\[\d+\] )?0x[0-9a-f]+ - /#, with: "")
+        if let index = counted.firstIndex(where: { $0.message == message }) {
+            counted[index].count += 1
+        } else {
+            counted.append((message, 1))
+        }
     }
+    if counted.isEmpty { return ["(no errors about its network process)"] }
+    return counted.map { $0.count > 1 ? "\($0.count) times: \($0.message)" : $0.message }
 }
