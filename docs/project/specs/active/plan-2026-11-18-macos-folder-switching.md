@@ -55,8 +55,14 @@ folders, and adds a keyboard switcher over the same list.
 - Warm folders after their last window closes (`mb-e7im`). This plan keeps folders open
   that the user switched away from; warmth is a cache under closed folders, and stays
   that bead’s.
-- A cap on servers. Background tabs have none today; the shared budget is `mb-e7im`’s,
-  measured once the activity tracker’s idle cost is fixed (`mb-z46o`).
+- A cap on the servers of folders in the background, which the owner chose on 2026-11-18
+  to leave out. This is a known limit.
+  A folder in the background keeps its server running until File > Close Folder, Close
+  Background Folders, or Quit, so a window walked through many recent folders leaves as
+  many servers running, and only the chooser and the switcher show them.
+  Each costs what a warm folder would, which the parent plan holds back until the
+  activity tracker’s idle cost is fixed (`mb-z46o`); a bound would come from `mb-e7im`’s
+  shared budget, measured once it is.
 
 ## Background
 
@@ -67,7 +73,8 @@ What the app does today, from
   show it. When its last window closes, the server stops and the folder is closed.
 - **A window is one folder.** `BrowserWindowController` is created for a session and
   never changes it; it holds the web view and every piece of per-page state: the
-  navigation policy, page loads, the reveal, page sheets, print, find, and downloads.
+  navigation policy, page loads, the reveal, page sheets, print, and find.
+  Downloads are the app’s, not a page’s: one `DownloadCoordinator` serves every window.
 - **Windows or native tabs.** `FolderPlacement` puts a new folder in a tab of the front
   window or a window of its own.
   Every folder window shares one tabbing identifier, so AppKit’s Merge All Windows, tab
@@ -84,8 +91,10 @@ What the app does today, from
   [parity row](../../architecture/arch-parity-registry.md) `app.open-recent-menu`
   exempts only the drawing.
 - **Opening an open folder brings its window forward,** as the user guide says.
-- **The session is saved and restored** (`FolderWindows`, `SavedSession`). A restored
-  background tab waits to start its server until it is shown (`RestoreRun`).
+- **The session is saved and restored** (`FolderWindows`, `SavedSession`). The restore
+  starts every saved root’s server, one at a time, the shown tabs’ first
+  (`RestoreQueue`, `RestoreRun`); only a root in a protected location, or one whose
+  identity is uncertain, waits until one of its tabs is selected.
 
 How other apps solve this, which the design draws on:
 
@@ -117,11 +126,11 @@ What the app draws outside the page follows macOS; what the page draws follows
 
 **Marks are shared where they mean the same thing.** The page draws a folder with the
 Lucide `folder` glyph from `static/icons.js`. The app’s menus that list roots (the
-chooser, the switcher, File > Open Recent, and the Dock menu) draw the same glyph, and a
-repository the same glyph the page uses for one, as template images, so they take the
-menu’s ink and highlight as an SF Symbol would.
-The app loads each glyph’s SVG through `NSImage`, whose CoreSVG reads Lucide’s stroked
-paths (it drops only filters, which these glyphs have none of; see
+chooser, the switcher, File > Open Recent, and the Dock menu) draw the same glyph, as
+template images, so they take the menu’s ink and highlight as an SF Symbol would; a
+repository’s mark is the app’s alone while the page draws none for one (Q5). The app
+loads each glyph’s SVG through `NSImage`, whose CoreSVG reads Lucide’s stroked paths (it
+drops only filters, which these glyphs have none of; see
 `apps/macos/AppIcon/render-svg.swift`). One table names each root kind’s Lucide id, and
 a test holds the app’s copy of each glyph to its entry in `static/icons.js`, so the two
 cannot drift (`RootMarkTests`, in Swift, which reads `static/icons.js` from the
@@ -140,32 +149,53 @@ The window and the page come apart.
 - **The window controller** keeps the window and its chrome: the title and mark
   accessories, the window delegate, and the menu validation that does not depend on the
   page. It shows one page at a time as its content.
-- **Switching** puts another page in the window as its content view controller.
-  The `NSWindow` itself never changes, so its frame, Space, full-screen state, Stage
-  Manager set, minimized state, and place in its tab group all hold, which replacing one
-  window with another cannot promise.
+- **Switching** puts another page’s view in the window in place of the one it showed.
+  The window keeps one content view of its own and puts each page’s view inside it,
+  sized to fill it; it never sets `contentViewController`, which would resize the window
+  to the page’s last size (`NSWindow.h`). The `NSWindow` itself never changes, so its
+  frame, Space, full-screen state, Stage Manager set, minimized state, and place in its
+  tab group all hold, which replacing one window with another cannot promise.
 - **A page sheet** (an alert, a confirm, a print panel) is modal to its window, so a
   window with one open cannot switch; the title does not respond until the sheet ends.
+- **A page no window shows,** a background folder’s, has no window to put a sheet on.
+  It answers `alert` with OK, `confirm` and `prompt` with Cancel, and a file input with
+  no file, as WebKit does with no handler, rather than raise an alert modal to the whole
+  app for a folder nobody can see.
+  It opens no window, since `window.open` needs a user gesture
+  (`WebConfiguration.restrict`) and such a page gets none, and its `window.close()` does
+  nothing.
 
 ### Open Folders
 
 A folder is **open** while it is in the app’s open set, in one of two states:
 
-- **Shown:** at least one window shows it.
+- **Shown:** at least one window shows one of its pages.
 - **In the background:** no window shows it, because a window switched away from it.
-  Its server keeps running, and its page is kept or discarded by the same policy that
-  governs background tabs: `TabDiscardPolicy` ranks pages, not windows, and a background
-  folder’s page is a background page.
+  Its server keeps running, with no cap (Non-Goals), and its page is kept or discarded
+  by the same policy that governs background tabs: `TabDiscardPolicy` ranks pages, not
+  windows, and a background folder’s page is a background page.
+
+**A folder has at most one page in the background,** and only while no window shows it
+(`SwitchedAwayPage`). A folder can have several pages, one in each window or tab that
+shows it, since Command-click and `target=_blank` each add a tab of the same folder.
+When a window switches away from a page, the page stays in the background only if it is
+its folder’s last page; otherwise its folder is shown elsewhere or already has a page in
+the background, and the page closes.
+A window that switches to a folder shows its page in the background if it has one, and
+otherwise a new page of it.
 
 The transitions:
 
 | Event | The folder it concerns |
 | --- | --- |
-| A window switches from A to B | A goes to the background if no other window shows it; B is shown |
+| A window switches from A to B | A’s page goes to the background if it is A’s last page, and closes otherwise; B is shown, by its page in the background if it has one |
 | Close Window, Command-W | A folder shown in no other window closes: its server stops and it stays in Open Recent, as today |
-| File > Close Folder | The folder closes everywhere: each window that showed it switches to the most recently shown background folder, or closes if there is none |
+| The app’s last window closes | Folders in the background stay open, their servers running, and the app keeps running, as it does today with no window |
+| File > Close Folder | The folder closes everywhere: the windows that showed it take the background folders, one each, the most recently shown first, and a window left without one closes |
 | Close Background Folders, in the chooser | Every background folder closes |
 | Opening a background folder from Finder, Open With, `open -a`, or `--present` | It is placed as a newly opened folder is (`FolderPlacement`), so an agent never takes over the window the user is reading |
+| A Dock click, or reopening the app, with no window on screen | The folder shown most recently comes forward in a new window, placed as a newly opened folder is; with no folder open, the Open panel appears, as today |
+| A launch that restores folders in the background and no window | One of them comes forward the same way, so the launch does not open to nothing |
 | Quit | Every server stops, as today |
 
 Switching back to a background folder costs nothing when its page is live; a discarded
@@ -173,10 +203,18 @@ page reloads from the running server, as a discarded tab does.
 A background folder whose server failed or stopped shows its failure when it is shown,
 with Retry, as a window does today.
 
-**The saved session** records background folders after its windows, by root path, and
-the restore reopens them in the background without starting their servers; each starts
-when a window first shows it, as a restored background tab does now (`RestoreRun`).
-Repositories stay out of the saved session, as their tabs are today.
+**The saved session** records the folders in the background after its windows, in the
+order they opened, each as a `SavedTab` with its page (`SavedSession.background`). A
+file the released app saved has no such field, and that app is on users’ Macs, so the
+field reads as empty when it is absent (`decodeIfPresent`). Each background root is
+admitted as a tab’s root is (`RootAdmission`), dropped if a window’s tab or an earlier
+background folder names the same folder, and counted against `RestoreBudget.standard`
+after every window’s tabs.
+The restore reopens each as a page with no window and no server, its root held in the
+restore queue as a protected root’s is, until a window shows it (`RestoreQueue`,
+`RestoreRun`). A saved path that now leads to another folder moves the root’s pages
+there, shown or not, as it moves its tabs (`RootActivation`). Repositories stay out of
+the saved session, as their tabs are today.
 
 ### The Title Is a Chooser
 
@@ -207,7 +245,11 @@ title truncates before the chevron, never under it.
 - In a window that is not key, the title takes the first press, as the mark does: a drag
   moves the window and a click opens the chooser.
 - Command-click and right-click open the path menu, as today.
-- Outside the button, the title bar keeps the system’s double-click action.
+- A double-click on the title opens the chooser at its first click, so it no longer
+  takes the title bar’s double-click action (zoom or minimize, as System Settings sets
+  it); the rest of the title bar keeps that action.
+  The title is the title bar’s widest target, and losing its double-click is the cost of
+  making it a control, as a toolbar button takes its own clicks.
 
 **The keyboard and VoiceOver.** The button is a pop-up button to VoiceOver, whose value
 is the title; Show Menu opens the chooser, and a custom action, Show Path, opens the
@@ -237,6 +279,8 @@ route.
   where the hand expects them; a check mark is on this window’s folder.
   Each row’s subtitle (`NSMenuItem.subtitle`) is its location, abbreviated as the status
   view abbreviates it, or “In another window” for a folder another window shows.
+  That includes another tab of this window’s tab group, since each tab is a window to
+  macOS, which lists each one in the Window menu.
 - **Recent** lists `metab`’s recent targets that are not open, in `metab`’s order, as
   File > Open Recent lists them.
 - The two headers are `NSMenuItem.sectionHeader(title:)`.
@@ -250,10 +294,12 @@ route.
 | A recent folder | It opens, and this window shows it |
 | A recent repository | It opens as its link does, in a window of its own: which repository a link names is `metab`’s answer, which arrives later |
 | Any folder, with Option held | It opens in a new window, placed as a new folder is; the row reads “Open … in New Window” while Option is down (`NSMenuItem.isAlternate`) |
-| This window’s folder | Nothing |
+| This window’s folder | Nothing; with Option held, the row above applies, and a new window shows a second page of it |
+| Open Folder… or Open URL… | What the File menu’s command does: what it opens is placed as a newly opened folder is, not shown in this window |
 
-In every case the folder this window showed goes to the background, unless another
-window still shows it.
+When a choice switches this window (a background folder, or a recent folder), the folder
+it showed goes to the background, or, if another window still shows it, its page here
+closes.
 
 ### The Switcher Panel
 
@@ -265,8 +311,12 @@ subtitles, matched by name and location as the user types.
   Return on the first row goes back to the folder shown before this one.
 - Return shows the row in this window, Option-Return in a new window, and Escape closes
   the panel; the choices do what the chooser’s do.
-- Command-Delete on an open folder’s row closes that folder, so the list can be pruned
-  without leaving it.
+- Command-Delete on an open folder’s row closes that folder while the search field is
+  empty, so the list can be pruned without leaving it.
+  With text in the field, Command-Delete deletes it to the start of the line, as in any
+  text field. Many people clear a query that way, and closing a folder by mistake stops
+  its server and drops its page, so the text field’s meaning wins; the cost is clearing
+  the field before closing a row the search found.
 
 The panel is chrome: an AppKit panel, not a page, by the principle above, and it reads
 the same model as the chooser, so the two never disagree.
@@ -290,19 +340,33 @@ Each is a value type with unit tests, as `FolderPlacement`, `TabDiscardPolicy`, 
 ### Parity
 
 The chooser’s recent rows are `metab --recent --json`’s, in its order, already pinned by
-its golden. The open rows are the app’s own live processes, which no `metab` command can
-list until the registry exists (`mb-5xi4`); like the Window menu, they are platform
-state, decided in `ShellCore` and pinned by its tests.
-A new row in the [parity registry](../../architecture/arch-parity-registry.md),
-`app.folder-chooser`, exempts the drawing of the chooser and the panel the way
-`app.open-recent-menu` exempts Open Recent’s, and names `cli/recent_cli.py`. When the
-registry lands, `mb-9lf4` moves the open rows’ membership to it.
+its golden. The open rows are not `metab`’s. Which folders they hold, in what order (the
+order opened in the chooser, recency in the panel), how the panel matches what the user
+types, and what each choice does are state of the app’s own windows and server
+processes, which no `metab` command can report until the registry exists (`mb-5xi4`).
+Like the Window menu, they are platform state, decided in `ShellCore` and pinned by its
+tests: `OpenFoldersTests`, `FolderChooserTests`, and `FolderSwitcherTests`. A new row in
+the [parity registry](../../architecture/arch-parity-registry.md), `app.folder-chooser`,
+records this as the owner’s decision of 2026-11-18. It exempts the drawing of the
+chooser and the panel, as `app.open-recent-menu` exempts Open Recent’s, and the open
+rows’ membership, order, matching, and choices, for the reason above; it names those
+tests and `cli/recent_cli.py`. When the registry lands, `mb-9lf4` moves the open rows’
+membership and order to it, with goldens, and narrows the row to drawing.
+The folders in the background in the saved session fall under the same platform
+exemption as the saved windows
+([the macOS app’s architecture](../../architecture/arch-macos-app.md)), and
+`BackgroundFoldersInTheSavedSessionTests` pins them.
 
 ## Implementation Plan
 
 One phase, as one stack of four pull requests, layers 1 to 4 below.
 Each pull request updates the user guide (`docs/macos-app.md`), the architecture
 document (`arch-macos-app.md`), and `CHANGELOG.md` for what it changes.
+Layer 2 also rewords “Closing a folder’s last window stops it” in both documents, since
+a folder’s last page now stops it and the app’s last window leaves folders in the
+background running; rewrites the user guide’s account of the last session; and corrects
+the lifecycle comment on `FolderSession`. Layer 3 says in the user guide that a
+double-click on the title opens the chooser.
 
 ### Phase 1: Switch Folders in a Window
 
@@ -325,14 +389,19 @@ document (`arch-macos-app.md`), and `CHANGELOG.md` for what it changes.
 ## Testing Strategy
 
 - **`ShellCore` unit tests:** every transition of `OpenFolders`, including Close Folder
-  with and without a background folder to fall back to; the chooser’s rows, order,
-  checks, subtitles, and choices; the panel’s order and matching; the discard policy
-  over background pages; the saved session’s background folders surviving a save and a
-  restore.
+  with and without a background folder to fall back to, and with more windows than
+  background folders; the page a switch leaves, kept only as its folder’s last page; the
+  chooser’s rows, order, checks, subtitles, and choices; the panel’s order and matching,
+  and Command-Delete with and without text in the field; the discard policy over
+  background pages; the saved session’s background folders surviving a save and a
+  restore, a file saved before them reading as having none, their admission, their place
+  in the budget, and their wait for a window.
 - **App tests** (beside `TabsTests`): a switch keeps the same `NSWindow`, its frame, and
   its place in a tab group; a switch back to a live page loads nothing; a switch to a
   discarded page loads once; a window with a page sheet does not switch; closing a
-  window closes only folders no other window shows.
+  window closes only folders no other window shows; a switch away from a folder another
+  window shows closes the page left; a dialog from a page no window shows is answered
+  without an alert.
 - **Live tests** against a real `metab`: switching between two folders and a repository,
   each server running once.
 - **Marks:** the drift test holds each glyph to `static/icons.js`.

@@ -42,6 +42,7 @@ from metabrowser.builtin_plugins.github.gh import (
     parse_included_response,
     rate_limit_reset,
 )
+from metabrowser.builtin_plugins.github.pull_file_anchor import path_digest
 from metabrowser.builtin_plugins.github.pull_markdown import render_part
 from metabrowser.builtin_plugins.github.pull_record import (
     MAX_BODY_BYTES,
@@ -1617,6 +1618,44 @@ def test_a_switch_by_commit_id_back_to_the_head_keeps_the_pull_requests_ref(
             assert pin({"oid": base})["ref"] is None
             again = pin({"oid": head})
             assert (again["pin"], again["ref"]) == (head, "refs/pull/7/head")
+    finally:
+        serve_mirror(None)
+        git_repo.clear_repo_cache()
+
+
+def test_a_changes_url_anchoring_one_file_is_served_at_that_file(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GitHub's `#diff-<sha256 of the path>` opens the file it names on the Changes tab.
+
+    The first open fetches the record, whose comparison lists the changed files; an
+    anchor that names none of them opens the tab itself, and the banner says why.
+    """
+
+    monkeypatch.setattr("metabrowser.cli.git_pin_cli.stop_on_interrupt", lambda: None)
+    app_txt = path_digest("src/app.txt")
+    try:
+        result = _serve(f"{CANONICAL}/pull/7/files#diff-{app_txt}R2")
+        assert result.exit_code == 0, result.output
+        served = next(line for line in result.stdout.splitlines() if line.startswith("Serving "))
+        assert served.split()[3] == "http://127.0.0.1:8411/pull/7/files/src/app.txt"
+        assert "Selection: pull_request files\nFile: src/app.txt\n" in result.stdout
+        assert "Diff line: R2 (the Changes tab opens at the file, not the line)\n" in (
+            result.stdout
+        )
+        with TestClient(app) as client:
+            assert client.get("/pull/7/files/src/app.txt").status_code == 200
+    finally:
+        serve_mirror(None)
+        git_repo.clear_repo_cache()
+    try:
+        result = _serve(f"{CANONICAL}/pull/7/files#diff-{path_digest('README.md')}")
+        assert result.exit_code == 0, result.output
+        served = next(line for line in result.stdout.splitlines() if line.startswith("Serving "))
+        assert served.split()[3] == "http://127.0.0.1:8411/pull/7/files"
+        note = next(line for line in result.stdout.splitlines() if line.startswith("File: "))
+        assert note.startswith("File: not resolved: no file pull request 7 changes ")
+        assert note.endswith("(file_not_changed); opening the Changes tab")
     finally:
         serve_mirror(None)
         git_repo.clear_repo_cache()
