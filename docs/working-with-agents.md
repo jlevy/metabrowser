@@ -92,13 +92,24 @@ server runs until the agent stops it or you ask it to.
 
 `--present` asks LaunchServices for the app and hands it the target with
 `/usr/bin/open`, and an agent’s sandbox can block either step.
-The command then exits with status 5, and its report says `lookup_failed` or
-`open_failed`; the skill has the agent rerun the command outside the sandbox when you
-allow that, or serve the page instead.
-To spare a blocked run and its retry each time, let the one command prefix,
-`metab --present`, run outside the sandbox.
-The skill writes `--present` first and runs the command alone, with no redirect or pipe,
-so that such a rule matches it and nothing else.
+The command then reports `lookup_failed` or `open_failed`, with the status the
+[exit-status table](command-line.md#exit-status) gives a target LaunchServices did not
+take, and the skill has the agent rerun the command outside the sandbox when you allow
+that, or serve the page instead.
+A rule can let the one command prefix, `metab --present`, run outside the sandbox every
+time. The skill writes `--present` first and runs the command alone, with no redirect or
+pipe, so that such a rule matches it and nothing else.
+
+> **A rule runs `metab` with your full access.** Add one only for a `metab` installed
+> outside every folder the agent can write, its code included, such as one that
+> `uv tool install` made: the command in `~/.local/bin`, its code under
+> `~/.local/share/uv/tools`. Never name a source checkout the agent works in.
+> A checkout’s `.venv/bin/metab` is an editable install that runs the checkout’s own
+> `src/`, so an agent that can write the checkout can change that code inside the
+> sandbox and then run it outside, with no prompt under an allow rule.
+> To use a source build, point the rule, and the app’s Settings > Choose metab…, at a
+> separate checkout the agent never works in; the app’s servers run that `metab` too.
+> Otherwise add no rule, and approve each run when the agent asks.
 
 - **Claude Code:** the sandbox is off by default.
   When it is on, it blocks the Apple Events and Launch Services requests `open` makes,
@@ -106,8 +117,9 @@ so that such a rule matches it and nothing else.
   mode approves or asks you about each time.
   An entry in `sandbox.excludedCommands`, in your user or project settings, runs
   matching commands outside the sandbox, still through the usual permission prompts,
-  which an allow rule such as `Bash(metab --present *)` answers
-  ([Claude Code’s sandboxing guide](https://code.claude.com/docs/en/sandboxing)):
+  which an allow rule such as `Bash(metab --present *)` answers without asking
+  ([Claude Code’s sandboxing guide](https://code.claude.com/docs/en/sandboxing), which
+  warns about an exclusion for a tool the agent can write):
 
   ```json
   {"sandbox": {"excludedCommands": ["metab --present *"]}}
@@ -115,8 +127,8 @@ so that such a rule matches it and nothing else.
 
   The entry matches the text of the call, so a redirect, a pipe, `cd`, or another
   command in the same call keeps it sandboxed.
-  `sandbox.allowAppleEvents` also lets `open` work, but for every sandboxed command,
-  which can then launch any app outside the sandbox; prefer the entry.
+  `sandbox.allowAppleEvents` also lets `open` work, for every sandboxed command, which
+  can then launch any app outside the sandbox with no prompt.
 
 - **Codex:** its default sandbox blocks launching an app.
   Approve running the command outside the sandbox when Codex asks; allowing the prefix
@@ -128,9 +140,8 @@ so that such a rule matches it and nothing else.
   prefix_rule(pattern = ["metab", "--present"], decision = "allow")
   ```
 
-Both rules match the command as the agent types it.
-An agent that runs a source checkout’s `metab` by its path, as the skill does until a
-release has `--present`, needs that path in place of `metab`.
+Both rules match the command as the agent types it, so a `metab` the agent runs by its
+path, as it runs a separate checkout’s, needs that path in place of `metab`.
 
 ## Reading Agent Logs
 

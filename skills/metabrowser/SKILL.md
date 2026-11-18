@@ -114,65 +114,83 @@ serve it and give the user an address for a browser:
   open that holds it, and otherwise in its own folder.
   With `--path`, the file opens in `<root>`, unless a folder inside `<root>` that holds
   it is open already
+- Write a relative `<target>` or `<root>` that begins with `-` as `./<name>`, or `metab`
+  reads it as an option
 - Run the command alone, without a redirect, pipe, `cd`, or `&&`, and with `--present`
   first, so that a sandbox rule for the prefix `metab --present` matches it; see
   [When a Sandbox Blocks It](#when-a-sandbox-blocks-it)
-- It prints one JSON report on standard output for every status but 1 and 2. `.code`
-  names the outcome and `.reason` says it in words.
-  `.target` is what was handed over: `.target.kind`, `.target.root`, the folder or
-  repository the app opens, and `.target.page`, the address in it, which is null where
-  only the repository’s mirror knows it; the app then opens where its server resolves
-  the URL
+- It prints one JSON report on standard output, except after a usage error or an
+  `Error:` line. `.code` names the outcome and `.reason` says it in words.
+  `.target` is what was handed over: `.target.kind`; `.target.root`, the folder `metab`
+  would serve, or the repository; `.target.page`, the address in that root, which is
+  null where only the repository’s mirror knows it, and the app then opens where its
+  server resolves the URL; and `.target.handoff`, what the app was given, a file last
 
-Act on the exit status:
+Act on the exit status, which the
+[exit-status table](https://github.com/jlevy/metabrowser/blob/main/docs/command-line.md#exit-status)
+also lists:
 
 | Status | `.code` | What to do |
 | --- | --- | --- |
-| 0 | `not_confirmed` | Tell the user what you handed the app: its kind, root, and page. The report says `"confirmed": false` because the app does not reply yet, so say the app was handed the page, not that a window shows it |
-| 3 | The refusal’s code | The target cannot be presented: tell the user `.reason`, which names the fix |
+| 0 | `not_confirmed` | Tell the user what you handed the app. For a `file`, name the file, the last entry of `.target.handoff`: the app shows it in the most specific folder it has open that holds it, and `.target.root` and `.target.page` say where it opens only when no such folder is open. For any other kind, name `.target.root` and `.target.page`. The report says `"confirmed": false` because the app does not reply yet, so say the app was handed the page, not that a window shows it |
+| 3 | A refusal’s code | The target cannot be presented: tell the user `.reason`, which names the fix |
 | 4 | `not_macos`, `app_not_found`, `app_not_installed`, `app_not_marked`, `app_cannot_select_folder` | No app takes the target, and nothing was sent: serve it, and pass `.reason` on when the user expected the app |
 | 5 | `lookup_failed`, `open_failed` | LaunchServices could not be asked or did not take the target, which in an agent’s shell is most often its sandbox: see [When a Sandbox Blocks It](#when-a-sandbox-blocks-it) |
-| 2 | None, with nothing on standard output | A usage error: standard error says `No such option: --present` when the build predates it. Serve instead |
-| 1 | None | Standard error says why: serve instead |
+| 2 | None: a usage error | Standard error names what `metab` could not read. Only `No such option: --present` means the build predates `--present`, and then you serve instead; anything else is a mistake in the command, such as a target that begins with `-`, so fix it |
+| 1 | None: an `Error:` line | Standard error says why: serve instead |
 
 - A GitHub URL makes the app clone the repository into its cache, and read it with the
   user’s `gh` sign-in, when the cache does not hold it yet.
   The app asks the user before it clones, so tell them a question may be waiting
 - A build that predates `--present` refuses it as an unknown option and does nothing, so
   there is no need to check first.
-  `<invocation> --present --version` checks without presenting anything: status 0 means
-  the build has `--present`, and status 2 means it predates it.
+  `<invocation> --present --version` checks without presenting anything: it prints the
+  version when the build has `--present`, and the usage error that names `--present`
+  when the build predates it.
   Until a release has it, `uvx metabrowser@latest` lacks it, so with that fallback serve
   directly
 
 ### When a Sandbox Blocks It
 
-Status 5 in an agent’s sandbox most often means the sandbox kept `metab` from
-LaunchServices, which is how it reaches the app.
+`lookup_failed` or `open_failed` in an agent’s sandbox most often means the sandbox kept
+`metab` from LaunchServices, which is how it reaches the app.
 Do not run `open` on the app yourself instead: `--present` checks that the bundle is the
 installed Metabrowser app before it sends anything.
 Rerun the same command outside the sandbox where your harness lets the user approve
-that, or serve instead:
+that, or serve instead.
+
+A rule can let the command run outside the sandbox every time.
+It is the user’s to add, and it matches the command as typed, so a `metab` run by its
+path needs that path in place of `metab`:
 
 - **Claude Code:** its sandbox is off by default, and when it is on, it blocks `open`. A
   retry outside the sandbox goes through the user’s permission mode, which may ask them
-  each time. With this entry in Claude Code’s settings, which is the user’s to add, the
-  command runs outside the sandbox through the usual permission prompts:
+  each time. This entry in Claude Code’s settings runs the command outside the sandbox,
+  still through its permission prompts:
 
   ```json
   {"sandbox": {"excludedCommands": ["metab --present *"]}}
   ```
 
 - **Codex:** the user approves running the command outside the sandbox when Codex asks.
-  This rule in `~/.codex/rules/default.rules`, also the user’s to add, allows it without
+  This rule in `~/.codex/rules/default.rules` runs it outside the sandbox without
   asking:
 
   ```python
   prefix_rule(pattern = ["metab", "--present"], decision = "allow")
   ```
 
-Both match the command as typed, so for a source checkout’s `metab`, write its path in
-place of `metab`. The
+A command such a rule matches runs with the user’s full access.
+So suggest a rule only for a `metab` installed outside every folder you can write, its
+code included, such as one `uv tool install` made, which keeps the command in
+`~/.local/bin` and its code under `~/.local/share/uv/tools`. Never suggest one for a
+`metab` in a folder you can write: a source checkout’s `.venv/bin/metab` runs the
+checkout’s own code, so in a checkout you work in, a rule naming it runs code you can
+change, unsandboxed.
+For a source build, the rule, and the app’s Settings > Choose metab…, name a separate
+checkout you never work in.
+Otherwise, rerun with the user’s approval each time, or serve the page.
+The
 [guide](https://github.com/jlevy/metabrowser/blob/main/docs/working-with-agents.md#let-an-agent-reach-the-app-from-a-sandbox)
 explains each setting.
 
@@ -407,10 +425,11 @@ which names the far port; the address answers once the far server is up.
 
 ## Report the Result
 
-State what Metabrowser opened or inspected; for a page handed to the app, its kind,
-root, and page, and that the app was handed it without confirming a window shows it; for
-a server, the served root, the selected file when applicable, each address you handed
-the user, and whether the server is still running; and any plugin or validation errors.
+State what Metabrowser opened or inspected; for a page handed to the app, what you
+handed it, the file itself for a file, and that the app was handed it without confirming
+a window shows it; for a server, the served root, the selected file when applicable,
+each address you handed the user, and whether the server is still running; and any
+plugin or validation errors.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

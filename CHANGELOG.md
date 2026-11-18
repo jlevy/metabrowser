@@ -170,10 +170,13 @@ All notable changes to Metabrowser are documented here.
   prefix `metab --present` matches it.
   [Working with agents](docs/working-with-agents.md#let-an-agent-reach-the-app-from-a-sandbox)
   gives that rule for Claude Code (`sandbox.excludedCommands`) and Codex (a prefix
-  rule), and `metab --present --version` checks a build for the flag without presenting
-  anything. `tests/test_skill_commands.py` fails when the skill’s `--present` recipes are
-  not commands `tests/golden/cli-present-delivery.txt` runs against a stand-in app, or
-  when its table of statuses names other codes than `DELIVERY_EXIT_CODES` maps to them.
+  rule), and warns that it runs `metab` with your full access: it is safe only for a
+  `metab` the agent cannot write, never a source checkout the agent works in, whose
+  editable install runs code the agent can change.
+  `metab --present --version` checks a build for the flag without presenting anything.
+  `tests/test_skill_commands.py` fails when the skill’s `--present` recipes are not
+  commands `tests/golden/cli-present-delivery.txt` runs against a stand-in app, or when
+  a status its table restates is not the one the code ends that case with.
 
 - `metab COMMIT_URL` opens at the commit’s page, `/commit/<full id>`, instead of the
   tree at that commit.

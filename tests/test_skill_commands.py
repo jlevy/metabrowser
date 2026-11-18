@@ -42,7 +42,8 @@ commit, the build the skill is written for:
    section's prose names is a key of each report it prints. The section's table lists,
    for each status a delivery code ends with, exactly the codes ``DELIVERY_EXIT_CODES``
    in ``cli/present.py`` maps to it, so a new code fails here until the skill says what
-   to do about it.
+   to do about it, and every other status it restates is the constant behind its row:
+   a refusal's, a usage error's, and an ``Error:`` line's.
 
 ``docs/working-with-agents.md`` repeats the skill's commands for a person, so checks 1,
 2, 3, and 5 read it too. Outside every check: the names of query parameters, page
@@ -70,6 +71,7 @@ from devtools import tryscript_blocks
 from metabrowser.cli import main as cli_main
 from metabrowser.cli.exit_codes import PRESENT_REFUSED_EXIT_CODE
 from metabrowser.cli.present import DELIVERY_EXIT_CODES
+from metabrowser.errors import CLIError
 from tests.golden_harness import run_metab
 
 REPO_ROOT: Final = Path(__file__).resolve().parent.parent
@@ -149,6 +151,13 @@ _TRANSCRIPT_BLOCK: Final = re.compile(
 # A row of the section's table: its status, and the cell of codes after it.
 _STATUS_ROW: Final = re.compile(r"^\| (\d+) \| ([^|]*) \|")
 _CODE: Final = re.compile(r"`([a-z_]+)`")
+# What the code cell of a row without a delivery code says it is, and the status the code
+# ends such a command with.
+_MARKED_STATUSES: Final = {
+    "a refusal": PRESENT_REFUSED_EXIT_CODE,
+    "a usage error": typer.BadParameter("").exit_code,
+    "an `error:` line": CLIError("").exit_code,
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -691,28 +700,47 @@ def present_findings(text: str, transcript: str) -> list[str]:
 
 
 def status_code_findings(text: str) -> list[str]:
-    """Statuses whose row in the recipes' table lists codes ``DELIVERY_EXIT_CODES`` does not.
+    """Rows of the recipes' table whose status is not the one the code ends with.
 
-    Each status a delivery code ends with lists exactly the codes mapped to it, and the
-    refusal's status has a row of its own, since its codes are the refusals'.
+    A row that lists delivery codes gives the status ``DELIVERY_EXIT_CODES`` maps them
+    to, and the rows of one status list exactly the codes mapped to it. Each row without
+    a delivery code says what it is in its code cell: a refusal, whose status is
+    ``PRESENT_REFUSED_EXIT_CODE``; a usage error, Click's; or an ``Error:`` line,
+    ``CLIError``'s. So every status the table restates is held to its constant.
     """
 
     listed: dict[int, set[str]] = {}
+    marked: dict[str, list[int]] = {marker: [] for marker in _MARKED_STATUSES}
+    found: list[str] = []
     for line in _section(text, PRESENT_SECTION).splitlines():
         row = _STATUS_ROW.match(line)
-        if row is not None:
-            listed[int(row.group(1))] = set(_CODE.findall(row.group(2)))
-    found: list[str] = []
-    if PRESENT_REFUSED_EXIT_CODE not in listed:
-        found.append(f"the table has no row for status {PRESENT_REFUSED_EXIT_CODE}, a refusal")
-    for status in sorted(set(DELIVERY_EXIT_CODES.values())):
-        expected = {code for code, mapped in DELIVERY_EXIT_CODES.items() if mapped == status}
-        if status not in listed:
-            found.append(f"the table has no row for status {status}")
-        elif listed[status] != expected:
+        if row is None:
+            continue
+        status, cell = int(row.group(1)), row.group(2)
+        codes = set(_CODE.findall(cell))
+        markers = [marker for marker in _MARKED_STATUSES if marker in cell.lower()]
+        if codes:
+            listed.setdefault(status, set()).update(codes)
+        elif len(markers) == 1:
+            marked[markers[0]].append(status)
+        else:
             found.append(
-                f"the table lists {sorted(listed[status])} for status {status}, where "
-                f"DELIVERY_EXIT_CODES maps {sorted(expected)} to it"
+                f"the row for status {status} names no delivery code and is not one of {list(_MARKED_STATUSES)}"
+            )
+    for marker, expected in _MARKED_STATUSES.items():
+        if not marked[marker]:
+            found.append(f"the table has no row for {marker}")
+        found += [
+            f"the table gives {marker} status {status}, where the code ends with {expected}"
+            for status in marked[marker]
+            if status != expected
+        ]
+    for status in sorted(set(DELIVERY_EXIT_CODES.values()) | set(listed)):
+        expected_codes = {code for code, mapped in DELIVERY_EXIT_CODES.items() if mapped == status}
+        if listed.get(status, set()) != expected_codes:
+            found.append(
+                f"the table lists {sorted(listed.get(status, set()))} for status {status}, where "
+                f"DELIVERY_EXIT_CODES maps {sorted(expected_codes)} to it"
             )
     return found
 
@@ -1001,6 +1029,27 @@ def test_a_delivery_code_under_another_status_fails(skill: str) -> None:
         "| `lookup_failed`, `open_failed` |", "| `app_not_marked`, `lookup_failed`, `open_failed` |"
     )
     assert len(status_code_findings(moved)) == 2
+
+
+@pytest.mark.parametrize(
+    ("row", "marker", "expected"),
+    [
+        ("| 3 | A refusal’s code |", "a refusal", 3),
+        ("| 2 | None: a usage error |", "a usage error", 2),
+        ("| 1 | None: an `Error:` line |", "an `error:` line", 1),
+    ],
+)
+def test_a_restated_status_the_code_does_not_end_with_fails(
+    skill: str, row: str, marker: str, expected: int
+) -> None:
+    renumbered = _mutated(skill, row, row.replace(f"| {expected} |", "| 7 |", 1))
+    assert status_code_findings(renumbered) == [
+        f"the table gives {marker} status 7, where the code ends with {expected}"
+    ]
+    assert status_code_findings(_mutated(skill, row + " ", "| 9 | Gone | ")) == [
+        f"the row for status 9 names no delivery code and is not one of {list(_MARKED_STATUSES)}",
+        f"the table has no row for {marker}",
+    ]
 
 
 def test_the_guide_is_held_to_the_same_checks(guide: str, routes: RouteTable) -> None:
