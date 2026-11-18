@@ -99,8 +99,9 @@ of it.
   Its server starts again on the link, which takes a few seconds, its other tabs reload
   on that revision, and what pages kept in local storage starts fresh, since the server
   comes back on a new port.
-  A start under way, such as a first clone, finishes first, and sending the same link
-  again meanwhile changes nothing.
+  A start under way, such as a first clone or a File > Restart Server, finishes first,
+  and sending the same link again meanwhile starts nothing more: the window still comes
+  to the link’s page once that start ends.
   Without a window, a new one opens, and its server clones the repository, or uses the
   clone the cache has.
 - **A branch or commit the copy lacks:** a link to a branch, tag, or commit pushed since
@@ -260,8 +261,9 @@ The app moves nothing itself.
   not open until that clone ends: the window’s start is given up on meanwhile, and Retry
   then opens it from the cache.
   A repository opened while another repository’s first clone runs starts once that clone
-  ends, and so does a link into a repository that is already open: its other tabs keep
-  working meanwhile, and the window the link brought forward says it waits.
+  ends, and so do a link into a repository that is already open and File > Restart
+  Server in one of its windows: its other tabs keep working meanwhile, and the window
+  the link brought forward, or the one you chose Restart Server in, says it waits.
 - A folder opens as the folder named, even inside a Git repository, and the File menu
   opens no URL. Opening the repository’s root instead, File > Open URL…, and an Open
   Recent that also lists repositories opened by URL are planned in
