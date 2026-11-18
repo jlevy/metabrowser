@@ -28,7 +28,11 @@ anchor in the document is left out and a depth out of range is clamped; and the 
 after scrolling, after a heading loses its layout box (as one inside a closed disclosure
 does, so the section above it stays active) and after a run of them to the last heading
 does, opening the drawer, clicking an entry, and clicking the backdrop.
-Disposal removes every listener.
+The narrow toggle follows the rule in `builtin_plugins/markdown/toc-toggle.js`, as a
+trusted render’s does: in a document that starts the pane, it shows past the threshold;
+in one a folder Overview shows 1,000px down the pane (`belowOtherPanels`), it stays
+hidden past the threshold until the reader reaches the document’s beginning, and hides
+again above it. Disposal removes every listener.
 
 ```console
 $ node tests/dom/markdown-inert-toc-session.js
@@ -156,6 +160,24 @@ $ node tests/dom/markdown-inert-toc-session.js
     "drawerOpen": false,
     "backdropVisible": false,
     "toggleShown": true
+  },
+  "belowOtherPanels": {
+    "pastThreshold": {
+      "scrollTop": 500,
+      "toggleShown": false
+    },
+    "justAbove": {
+      "scrollTop": 980,
+      "toggleShown": false
+    },
+    "reached": {
+      "scrollTop": 1005,
+      "toggleShown": true
+    },
+    "backAbove": {
+      "scrollTop": 500,
+      "toggleShown": false
+    }
   },
   "disposed": {
     "listeners": 0
