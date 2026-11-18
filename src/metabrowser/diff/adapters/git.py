@@ -91,6 +91,33 @@ MAX_MANIFEST_FILES = 2000
 the manifest reports `truncated` with a cursor rather than growing without
 bound, matching the patch-file parser's section cap."""
 
+MANIFEST_LISTING_OPTIONS = (
+    "--raw",
+    "--numstat",
+    "-z",
+    "--no-abbrev",
+    "-M50",
+    "-C",
+    "--diff-merges=first-parent",
+)
+"""The options the run that lists a comparison's manifest passes to `git diff`, before its
+endpoints. The run that prints the patch after its listing prints the same listing, which
+`test_one_run_prints_what_the_two_runs_print` in `tests/test_diff_one_run.py` holds."""
+
+MANIFEST_READING = 1
+"""The version of how a listing's output is read into a manifest (`_manifest_of` and the
+parsers it calls). A manifest kept on disk names it, not the build, so it outlives an
+upgrade or an edit of the source. Raise it with a change to what a listing reads as, and
+every kept manifest is listed again. `test_a_kept_manifest_names_how_it_was_read` in
+`tests/test_diff_git_adapter.py` pins the fixture comparison's manifest to it, so such a
+change fails there until it is raised."""
+
+MANIFEST_LISTING = (
+    f"{' '.join(MANIFEST_LISTING_OPTIONS)} files<={MAX_MANIFEST_FILES} reading={MANIFEST_READING}"
+)
+"""The listing a kept manifest names: its options, the file cap, and how it is read. How
+the store's Git is run is named beside it (`_STORE_READ` in `pull_manifest.py`)."""
+
 MAX_FILE_PATCH_BYTES = MAX_PATCH_BYTES
 """One file's patch, and what one run hydrates. A comparison is not a patch file a reader
 chose: nobody picked its size, and a cut through the whole patch cost them files they never
@@ -742,13 +769,7 @@ class GitDiffSource:
         listed = await run_git_at(
             [
                 "diff",
-                "--raw",
-                "--numstat",
-                "-z",
-                "--no-abbrev",
-                "-M50",
-                "-C",
-                "--diff-merges=first-parent",
+                *MANIFEST_LISTING_OPTIONS,
                 # At a store target, no driver the repository's configuration names.
                 *self._location.diff_driver_args,
                 *endpoints,
