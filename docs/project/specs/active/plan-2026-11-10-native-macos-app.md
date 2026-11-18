@@ -467,9 +467,13 @@ The owner asked, on 2026-11-18:
    and a golden, and a second shell or a CLI feature then gets the same list for free.
    The app runs `metab --recent --json` and draws what it answers.
 2. **The store holds recent targets, not only folders.** An entry is a root and the
-   [mode](plan-2026-11-02-pr-review-mirror-and-checkout.md#open-modes) it was opened in:
-   a folder by its path, or a repository by its address in mirror mode.
-   The owner’s File menu, specified on 2026-11-18, needs both:
+   [mode](plan-2026-11-02-pr-review-mirror-and-checkout.md#open-modes) it was opened in,
+   `folder` or `mirror`: a folder by its open root, or a repository by its address.
+   The modes, roots, and views are the open-modes design’s,
+   `docs/project/architecture/arch-open-modes.md` (jlevy/metabrowser#558). An entry
+   never records a view, so a recent folder reopens on its working tree, and it may
+   record where the open pointed, its `target`, beside the key.
+   The owner’s File menu, specified on 2026-11-18, needs both (`mb-387v`):
    - **Open Folder…** opens a folder, a checkout of a GitHub repository included.
    - **Open URL…** opens a supported GitHub URL (`mb-m4mg`).
    - **Open Recent** opens any recent item, folders and GitHub targets alike.
@@ -529,16 +533,25 @@ The owner asked, on 2026-11-18:
   golden (`mb-40k4`).
 - [x] Every serve records its root, in both modes (`mb-40k4`).
 - [x] File > Open Recent lists `metab --recent --json` (`mb-40k4`).
-- [ ] Record the `target` a mirror was opened at: the canonical web URL of a pull
-  request, a ref, a commit, or a file, from `ProviderUrlReducer.web_url`
-  (jlevy/metabrowser#540), so Open Recent reopens a pull request and not only its
-  repository, and Open URL… can offer recent GitHub targets (`mb-m4mg`). The key does
-  not change: the newest target replaces the entry’s last one.
-  It is a new field on an entry, which keeps `mf01`: a `metab` from before it carries
-  the field along. Until then Open URL… offers the recent entries whose mode is `mirror`.
-- [ ] Record a checkout’s repository with a folder entry, also a new field that keeps
-  `mf01`, so Open URL… can offer the checkout beside the mirror
-  ([Open Modes](plan-2026-11-02-pr-review-mirror-and-checkout.md#how-a-target-reaches-a-mode)).
+- [x] An entry’s optional `target`, where its open pointed, outside the key: a folder
+  writes the file or the `--path` named inside it, and every entry’s is checked to lie
+  inside its root (`mb-40k4`). The newest open’s target replaces the entry’s last one.
+- [x] One function decides a folder’s open root for both a serve and `--recent-add`:
+  `resolve_local_open` in `cli/common.py`, which today serves the folder named or a
+  file’s folder (`mb-40k4`).
+- [ ] Record the resolved root: the open-modes resolver (`mb-2wfk`) replaces
+  `resolve_local_open`’s body, and the list then records the repository’s root with the
+  path named as its `target`. Nothing in the store changes.
+- [ ] Write a mirror’s `target`, the canonical web URL of a pull request, a ref, a
+  commit, or a file, from `ProviderUrlReducer.web_url` (jlevy/metabrowser#540), so Open
+  Recent reopens a pull request and not only its repository, and Open URL… can offer
+  recent GitHub targets (`mb-m4mg`). This release already reads and keeps one
+  (`mb-8bds`). Until then Open URL… offers the recent entries whose mode is `mirror`.
+- [ ] Record a checkout’s repository with a folder entry, a new field that keeps `mf01`,
+  so Open URL… can offer the checkout beside the mirror, as the open-modes design’s File
+  Menu says.
+- [ ] The owner’s File menu: rename Open… to Open Folder…, and add Open URL… (`mb-m4mg`,
+  after jlevy/metabrowser#539), beside the Open Recent built here (`mb-387v`).
 - [ ] Restore repository windows with the saved session, which needs a saved tab to name
   a `SessionRoot` rather than a path.
 

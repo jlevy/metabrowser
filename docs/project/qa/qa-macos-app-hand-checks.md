@@ -61,7 +61,7 @@ Set `APP` to the development build and make some folders:
 ```shell
 APP="$PWD/apps/macos/build/dev/Metabrowser.app"
 LOGS="$HOME/Library/Logs/Metabrowser"
-mkdir -p /tmp/mb-check/{a/sub,b,c,d,e} "$HOME/Documents/mb-check"
+mkdir -p /tmp/mb-check/{a/sub,b,c,d,e,f,g} "$HOME/Documents/mb-check"
 echo '# notes' > /tmp/mb-check/a/notes.md; echo '# deep' > /tmp/mb-check/a/sub/deep.md
 log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the app log
 ```
@@ -76,11 +76,20 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
    two. After `metab /tmp/mb-check/c --no-open` in Terminal, stopped with Control-C, and
    a switch back to the app, File > Open Recent lists `c` first.
    Opening `a` again, while its window is open, moves it to the top.
-   After `rm -r /tmp/mb-check/c`, choosing `c` shows the alert and removes it.
-   Clear Menu empties both menus and `metab --recent`. After a quit and a relaunch that
-   restores `a` and `b`, both menus and `metab --recent` list them in the order they had
-   before the quit. `defaults read io.github.jlevy.metabrowser.dev` shows no
-   `recentFolders` key.
+   **One list in the Dock:** drop `f` on the Dock icon, run
+   `open -a "$APP" /tmp/mb-check/g`, which opens it as Finder’s Open With does, and
+   choose `b` with File > Open…. The Dock icon’s menu then lists each folder exactly
+   once, in the order File > Open Recent shows, with nothing but separators between that
+   list and the app’s own items, and choosing `g` in it brings `g`’s window forward.
+   A folder listed twice, or a second group of folders, is macOS’s own recent-documents
+   list beside the app’s, and fails the check: the app clears macOS’s list only once, at
+   launch, and would have to clear it after each open.
+   Close the windows of `f` and `g`, and look at the Dock menu again after the quit and
+   relaunch below. After `rm -r /tmp/mb-check/c`, choosing `c` shows the alert and
+   removes it. Clear Menu empties both menus and `metab --recent`. After a quit and a
+   relaunch that restores `a` and `b`, both menus and `metab --recent` list them in the
+   order they had before the quit.
+   `defaults read io.github.jlevy.metabrowser.dev` shows no `recentFolders` key.
 3. **Tabs.** With Settings > Open folders in set to Tabs, opening `c` and `d` adds them
    as tabs of the front window; set to Windows, opening `e` gives it a window, and
    Window > Merge All Windows then merges every folder into one window.
