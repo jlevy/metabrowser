@@ -1004,6 +1004,16 @@
   border-color: var(--border);
   cursor: default;
 }
+/* The Pulls rows' column gap, and the text column's offset: one icon slot and that gap. A
+   row's title, a change line's values, a stack member's indent, and the changed files under a
+   row each start a whole number of it in (mb-3vil), so the five sums and the rows' gap read
+   the one value. On `:root`, so a changed files tree drawn outside the list has them too, and
+   named `--github-pull-`, as `--github-pull-file-depth` is: this sheet's `:root` declares
+   only its own tokens (tests/test_pull_page_route.py). */
+:root {
+  --github-pull-row-gap: 6px;
+  --github-pull-row-text-column: calc(var(--tree-icon-slot) + var(--github-pull-row-gap));
+}
 .github-pulls-list {
   margin: 0;
   padding: 0;
@@ -1033,14 +1043,6 @@
    (docs/design-system.md, "Row Text Shares a Baseline"), and the title is alone on its. The
    DOM keeps the title the row's first text, so its accessible name gives the state, from the
    state icon's label, and then the title, before the number's line. */
-/* The Pulls rows' column gap, and the text column's offset: one icon slot and that gap. A
-   row's title, a change line's values, a stack member's indent, and the changed files under a
-   row each start a whole number of it in (mb-3vil), so the five sums and the rows' gap read
-   the one value. */
-:root {
-  --github-pulls-gap: 6px;
-  --github-pulls-text-column: calc(var(--tree-icon-slot) + var(--github-pulls-gap));
-}
 /* The age has a column of one width, so an age that grows a digit does not move the number's
    line. The longest compact age is four characters ("12mo", 345 to 364 days), and its m is
    wider than a digit; 5ch of the row's type holds it at the row's own size, which the age
@@ -1054,7 +1056,7 @@
   /* A row under a stack's row is a tree level in (`--github-pulls-indent`, below). */
   padding: 2px 12px 2px calc(10px + var(--github-pulls-indent, 0px));
   border-left: 2px solid transparent;
-  column-gap: var(--github-pulls-gap);
+  column-gap: var(--github-pull-row-gap);
   color: var(--text);
   font-size: var(--nav-font-size);
   text-decoration: none;
@@ -1216,9 +1218,10 @@
   grid-template-columns: var(--tree-icon-slot) minmax(0, 1fr);
   align-items: center;
   height: var(--github-pulls-change-line);
-  padding: 0 12px 2px calc(10px + var(--github-pulls-indent, 0px) + var(--github-pulls-text-column));
+  padding: 0 12px 2px
+    calc(10px + var(--github-pulls-indent, 0px) + var(--github-pull-row-text-column));
   border-left: 2px solid transparent;
-  column-gap: var(--github-pulls-gap);
+  column-gap: var(--github-pull-row-gap);
   color: var(--text);
   font-size: var(--nav-font-size);
   cursor: pointer;
@@ -1327,7 +1330,7 @@
 .github-pull-folder-row {
   --changed-file-indent: calc(
     var(--github-pulls-indent, 0px) +
-    var(--github-pulls-text-column) +
+    var(--github-pull-row-text-column) +
     var(--github-pull-file-depth, 1) *
     var(--tree-indent)
   );
@@ -1352,7 +1355,7 @@
       10px +
       var(--github-pulls-indent, 0px) +
       2 *
-      var(--github-pulls-text-column) +
+      var(--github-pull-row-text-column) +
       var(--tree-indent)
     );
   color: var(--muted);
@@ -1374,7 +1377,7 @@
     calc(
       10px +
       var(--github-pulls-indent, 0px) +
-      var(--github-pulls-text-column) +
+      var(--github-pull-row-text-column) +
       var(--tree-indent)
     );
   padding: 4px 8px;
@@ -1558,7 +1561,7 @@
    and the rows' column gap, so a member's state icon and chevron sit under the stack's Layers
    icon and its title under the stack's label (mb-3vil). */
 .github-pulls-item[data-level="2"] {
-  --github-pulls-indent: var(--github-pulls-text-column);
+  --github-pulls-indent: var(--github-pull-row-text-column);
 }
 /* A stack's row keeps both leading slots: its chevron's, then its Layers icon's. */
 .github-pulls-row.github-pulls-stack-row {

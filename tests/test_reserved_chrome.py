@@ -475,9 +475,11 @@ def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None
     )
     # The rows' one gap and the text column's offset, which every indent sums (A8 of review A
     # on #506).
-    assert "column-gap: var(--github-pulls-gap);" in _rule(css, ".github-pulls-row")
-    assert "  --github-pulls-gap: 6px;\n" in css
-    column = "--github-pulls-text-column: calc(var(--tree-icon-slot) + var(--github-pulls-gap));"
+    assert "column-gap: var(--github-pull-row-gap);" in _rule(css, ".github-pulls-row")
+    assert "  --github-pull-row-gap: 6px;\n" in css
+    column = (
+        "--github-pull-row-text-column: calc(var(--tree-icon-slot) + var(--github-pull-row-gap));"
+    )
     assert column in css
     assert "var(--tree-icon-slot) + 6px" not in css
     count = _rule(css, ".github-pulls-filters .count")
