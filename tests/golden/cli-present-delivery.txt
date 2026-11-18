@@ -1,0 +1,500 @@
+# metab notes --present --format json
+exit: 0
+--- stdout ---
+{
+  "delivered_to": "app",
+  "bundle_id": "io.github.jlevy.metabrowser.dev",
+  "bundle_path": "<ROOT>/Applications/Metabrowser.app",
+  "target": {
+    "kind": "folder",
+    "root": "<ROOT>/notes",
+    "page": "/view/",
+    "handoff": [
+      "<ROOT>/notes"
+    ],
+    "refusal": null
+  },
+  "confirmed": false,
+  "code": "not_confirmed",
+  "reason": "LaunchServices took the target; the app does not reply yet, so nothing confirms that a window shows it"
+}
+--- stderr ---
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> <ROOT>/Applications/Metabrowser.app
+--- open ---
+open -b io.github.jlevy.metabrowser.dev <ROOT>/notes
+# metab notes/README.md --present
+exit: 0
+--- stdout ---
+delivered_to: app
+bundle_id: io.github.jlevy.metabrowser.dev
+bundle_path: <ROOT>/Applications/Metabrowser.app
+kind: file
+root: <ROOT>/notes
+page: /view/README.md
+handoff: <ROOT>/notes <ROOT>/notes/README.md
+confirmed: false
+code: not_confirmed
+reason: LaunchServices took the target; the app does not reply yet, so nothing confirms that a window shows it
+--- stderr ---
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> <ROOT>/Applications/Metabrowser.app
+--- open ---
+open -b io.github.jlevy.metabrowser.dev <ROOT>/notes <ROOT>/notes/README.md
+# metab notes --path docs/guide.md --present --format json
+exit: 0
+--- stdout ---
+{
+  "delivered_to": "app",
+  "bundle_id": "io.github.jlevy.metabrowser.dev",
+  "bundle_path": "<ROOT>/Applications/Metabrowser.app",
+  "target": {
+    "kind": "file",
+    "root": "<ROOT>/notes",
+    "page": "/view/docs/guide.md",
+    "handoff": [
+      "<ROOT>/notes",
+      "<ROOT>/notes/docs/guide.md"
+    ],
+    "refusal": null
+  },
+  "confirmed": false,
+  "code": "not_confirmed",
+  "reason": "LaunchServices took the target; the app does not reply yet, so nothing confirms that a window shows it"
+}
+--- stderr ---
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> <ROOT>/Applications/Metabrowser.app
+--- open ---
+open -b io.github.jlevy.metabrowser.dev <ROOT>/notes <ROOT>/notes/docs/guide.md
+# metab https://github.com/octo/demo/pull/7/files --present --format json
+exit: 0
+--- stdout ---
+{
+  "delivered_to": "app",
+  "bundle_id": "io.github.jlevy.metabrowser.dev",
+  "bundle_path": "<ROOT>/Applications/Metabrowser.app",
+  "target": {
+    "kind": "pull_request",
+    "root": "https://github.com/octo/demo",
+    "page": "/pull/7/files",
+    "handoff": [
+      "https://github.com/octo/demo/pull/7/files"
+    ],
+    "refusal": null
+  },
+  "confirmed": false,
+  "code": "not_confirmed",
+  "reason": "LaunchServices took the target; the app does not reply yet, so nothing confirms that a window shows it"
+}
+--- stderr ---
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> <ROOT>/Applications/Metabrowser.app
+--- open ---
+open -b io.github.jlevy.metabrowser.dev https://github.com/octo/demo/pull/7/files
+# metab https://raw.githubusercontent.com/Octo/Demo/main/docs/guide.md --present --format json
+exit: 0
+--- stdout ---
+{
+  "delivered_to": "app",
+  "bundle_id": "io.github.jlevy.metabrowser.dev",
+  "bundle_path": "<ROOT>/Applications/Metabrowser.app",
+  "target": {
+    "kind": "file",
+    "root": "https://github.com/octo/demo",
+    "page": null,
+    "handoff": [
+      "https://github.com/octo/demo/blob/main/docs/guide.md"
+    ],
+    "refusal": null
+  },
+  "confirmed": false,
+  "code": "not_confirmed",
+  "reason": "LaunchServices took the target; the app does not reply yet, so nothing confirms that a window shows it"
+}
+--- stderr ---
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> <ROOT>/Applications/Metabrowser.app
+--- open ---
+open -b io.github.jlevy.metabrowser.dev https://github.com/octo/demo/blob/main/docs/guide.md
+# metab git@github.com:octo/demo.git --present
+exit: 0
+--- stdout ---
+delivered_to: app
+bundle_id: io.github.jlevy.metabrowser.dev
+bundle_path: <ROOT>/Applications/Metabrowser.app
+kind: repository
+root: https://github.com/octo/demo
+page: /view/
+handoff: https://github.com/octo/demo
+confirmed: false
+code: not_confirmed
+reason: LaunchServices took the target; the app does not reply yet, so nothing confirms that a window shows it
+--- stderr ---
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> <ROOT>/Applications/Metabrowser.app
+--- open ---
+open -b io.github.jlevy.metabrowser.dev https://github.com/octo/demo
+# metab notes --path docs --present --format json
+exit: 4
+--- stdout ---
+{
+  "delivered_to": "none",
+  "bundle_id": "io.github.jlevy.metabrowser.dev",
+  "bundle_path": "<ROOT>/Applications/Metabrowser.app",
+  "target": {
+    "kind": "folder",
+    "root": "<ROOT>/notes",
+    "page": "/view/docs/",
+    "handoff": null,
+    "refusal": null
+  },
+  "confirmed": false,
+  "code": "app_cannot_select_folder",
+  "reason": "the app opens a folder in a window of its own and cannot select one inside another; present that folder itself, or ROOT without --path"
+}
+--- stderr ---
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> <ROOT>/Applications/Metabrowser.app
+--- open ---
+# metab notes --present --format json
+exit: 4
+--- stdout ---
+{
+  "delivered_to": "none",
+  "bundle_id": "io.github.jlevy.metabrowser.dev",
+  "bundle_path": "<ROOT>/apps/macos/build/dev/Metabrowser.app",
+  "target": {
+    "kind": "folder",
+    "root": "<ROOT>/notes",
+    "page": "/view/",
+    "handoff": [
+      "<ROOT>/notes"
+    ],
+    "refusal": null
+  },
+  "confirmed": false,
+  "code": "app_not_installed",
+  "reason": "LaunchServices names the app at <ROOT>/apps/macos/build/dev/Metabrowser.app, which is not installed; --present sends only to /Applications/Metabrowser.app or ~/Applications/Metabrowser.app, so move or copy the app there and open it once from there"
+}
+--- stderr ---
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> <ROOT>/apps/macos/build/dev/Metabrowser.app
+--- open ---
+# metab notes --present
+exit: 4
+--- stdout ---
+--- stderr ---
+Error: not sent to the app: LaunchServices names the app at <ROOT>/apps/macos/build/dev/Metabrowser.app, which is not installed; --present sends only to /Applications/Metabrowser.app or ~/Applications/Metabrowser.app, so move or copy the app there and open it once from there (app_not_installed)
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> <ROOT>/apps/macos/build/dev/Metabrowser.app
+--- open ---
+# METABROWSER_ALLOW_UNINSTALLED_APP=1 metab notes --present
+exit: 0
+--- stdout ---
+delivered_to: app
+bundle_id: io.github.jlevy.metabrowser.dev
+bundle_path: <ROOT>/apps/macos/build/dev/Metabrowser.app
+kind: folder
+root: <ROOT>/notes
+page: /view/
+handoff: <ROOT>/notes
+confirmed: false
+code: not_confirmed
+reason: LaunchServices took the target; the app does not reply yet, so nothing confirms that a window shows it
+--- stderr ---
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> <ROOT>/apps/macos/build/dev/Metabrowser.app
+--- open ---
+open -b io.github.jlevy.metabrowser.dev <ROOT>/notes
+# HOME=<ROOT>/older-home metab https://github.com/octo/demo --present --format json
+exit: 4
+--- stdout ---
+{
+  "delivered_to": "none",
+  "bundle_id": "io.github.jlevy.metabrowser.dev",
+  "bundle_path": "<ROOT>/older-home/Applications/Metabrowser.app",
+  "target": {
+    "kind": "repository",
+    "root": "https://github.com/octo/demo",
+    "page": "/view/",
+    "handoff": [
+      "https://github.com/octo/demo"
+    ],
+    "refusal": null
+  },
+  "confirmed": false,
+  "code": "app_not_marked",
+  "reason": "the app at <ROOT>/older-home/Applications/Metabrowser.app does not declare MetabrowserOpensURLs, so it is not a Metabrowser build that takes what --present sends; update it to a current build"
+}
+--- stderr ---
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> <ROOT>/older-home/Applications/Metabrowser.app
+--- open ---
+# HOME=<ROOT>/older-home metab notes --present
+exit: 4
+--- stdout ---
+--- stderr ---
+Error: not sent to the app: the app at <ROOT>/older-home/Applications/Metabrowser.app does not declare MetabrowserOpensURLs, so it is not a Metabrowser build that takes what --present sends; update it to a current build (app_not_marked)
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> <ROOT>/older-home/Applications/Metabrowser.app
+--- open ---
+# metab notes --present --format json
+exit: 0
+--- stdout ---
+{
+  "delivered_to": "app",
+  "bundle_id": "io.github.jlevy.metabrowser",
+  "bundle_path": "<ROOT>/Applications/Metabrowser.app",
+  "target": {
+    "kind": "folder",
+    "root": "<ROOT>/notes",
+    "page": "/view/",
+    "handoff": [
+      "<ROOT>/notes"
+    ],
+    "refusal": null
+  },
+  "confirmed": false,
+  "code": "not_confirmed",
+  "reason": "LaunchServices took the target; the app does not reply yet, so nothing confirms that a window shows it"
+}
+--- stderr ---
+--- launch_services ---
+io.github.jlevy.metabrowser -> <ROOT>/Applications/Metabrowser.app
+--- open ---
+open -b io.github.jlevy.metabrowser <ROOT>/notes
+# metab notes --present --app-bundle-id org.example.metabrowser-fork --format json
+exit: 0
+--- stdout ---
+{
+  "delivered_to": "app",
+  "bundle_id": "org.example.metabrowser-fork",
+  "bundle_path": "<ROOT>/Applications/Metabrowser.app",
+  "target": {
+    "kind": "folder",
+    "root": "<ROOT>/notes",
+    "page": "/view/",
+    "handoff": [
+      "<ROOT>/notes"
+    ],
+    "refusal": null
+  },
+  "confirmed": false,
+  "code": "not_confirmed",
+  "reason": "LaunchServices took the target; the app does not reply yet, so nothing confirms that a window shows it"
+}
+--- stderr ---
+--- launch_services ---
+org.example.metabrowser-fork -> <ROOT>/Applications/Metabrowser.app
+--- open ---
+open -b org.example.metabrowser-fork <ROOT>/notes
+# METABROWSER_APP_BUNDLE_ID=org.example.metabrowser-fork metab https://github.com/octo/demo --present --format json
+exit: 0
+--- stdout ---
+{
+  "delivered_to": "app",
+  "bundle_id": "org.example.metabrowser-fork",
+  "bundle_path": "<ROOT>/Applications/Metabrowser.app",
+  "target": {
+    "kind": "repository",
+    "root": "https://github.com/octo/demo",
+    "page": "/view/",
+    "handoff": [
+      "https://github.com/octo/demo"
+    ],
+    "refusal": null
+  },
+  "confirmed": false,
+  "code": "not_confirmed",
+  "reason": "LaunchServices took the target; the app does not reply yet, so nothing confirms that a window shows it"
+}
+--- stderr ---
+--- launch_services ---
+org.example.metabrowser-fork -> <ROOT>/Applications/Metabrowser.app
+--- open ---
+open -b org.example.metabrowser-fork https://github.com/octo/demo
+# METABROWSER_APP_BUNDLE_ID=com.apple.Terminal metab notes/run-me.command --present --format json
+exit: 4
+--- stdout ---
+{
+  "delivered_to": "none",
+  "bundle_id": "com.apple.Terminal",
+  "bundle_path": "<ROOT>/Utilities/Terminal.app",
+  "target": {
+    "kind": "file",
+    "root": "<ROOT>/notes",
+    "page": "/view/run-me.command",
+    "handoff": [
+      "<ROOT>/notes",
+      "<ROOT>/notes/run-me.command"
+    ],
+    "refusal": null
+  },
+  "confirmed": false,
+  "code": "app_not_installed",
+  "reason": "LaunchServices names the app at <ROOT>/Utilities/Terminal.app, which is not installed; --present sends only to /Applications/Metabrowser.app or ~/Applications/Metabrowser.app, so move or copy the app there and open it once from there"
+}
+--- stderr ---
+--- launch_services ---
+com.apple.Terminal -> <ROOT>/Utilities/Terminal.app
+--- open ---
+# HOME=<ROOT>/copy-home metab notes/run-me.command --present --app-bundle-id com.apple.Terminal
+exit: 4
+--- stdout ---
+--- stderr ---
+Error: not sent to the app: the app at <ROOT>/copy-home/Applications/Metabrowser.app is not named Metabrowser in its Info.plist, so it is not the Metabrowser app; install a current Metabrowser build (app_not_marked)
+--- launch_services ---
+com.apple.Terminal -> <ROOT>/copy-home/Applications/Metabrowser.app
+--- open ---
+# metab notes --present --format json
+exit: 4
+--- stdout ---
+{
+  "delivered_to": "none",
+  "bundle_id": null,
+  "bundle_path": null,
+  "target": {
+    "kind": "folder",
+    "root": "<ROOT>/notes",
+    "page": "/view/",
+    "handoff": [
+      "<ROOT>/notes"
+    ],
+    "refusal": null
+  },
+  "confirmed": false,
+  "code": "app_not_found",
+  "reason": "LaunchServices knows no app io.github.jlevy.metabrowser or io.github.jlevy.metabrowser.dev; install or build the Metabrowser app and open it once, or serve the target with metab ROOT"
+}
+--- stderr ---
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> none
+--- open ---
+# metab notes --present
+exit: 4
+--- stdout ---
+--- stderr ---
+Error: not sent to the app: LaunchServices knows no app io.github.jlevy.metabrowser or io.github.jlevy.metabrowser.dev; install or build the Metabrowser app and open it once, or serve the target with metab ROOT (app_not_found)
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> none
+--- open ---
+# metab notes --present --format json
+exit: 5
+--- stdout ---
+{
+  "delivered_to": "none",
+  "bundle_id": null,
+  "bundle_path": null,
+  "target": {
+    "kind": "folder",
+    "root": "<ROOT>/notes",
+    "page": "/view/",
+    "handoff": [
+      "<ROOT>/notes"
+    ],
+    "refusal": null
+  },
+  "confirmed": false,
+  "code": "lookup_failed",
+  "reason": "LaunchServices could not be asked (error -10661); serve the target with metab ROOT instead"
+}
+--- stderr ---
+--- launch_services ---
+io.github.jlevy.metabrowser -> error -10661
+--- open ---
+# OPEN_STAND_IN_FAIL=1 metab notes --present --format json
+exit: 5
+--- stdout ---
+{
+  "delivered_to": "none",
+  "bundle_id": "io.github.jlevy.metabrowser.dev",
+  "bundle_path": "<ROOT>/Applications/Metabrowser.app",
+  "target": {
+    "kind": "folder",
+    "root": "<ROOT>/notes",
+    "page": "/view/",
+    "handoff": [
+      "<ROOT>/notes"
+    ],
+    "refusal": null
+  },
+  "confirmed": false,
+  "code": "open_failed",
+  "reason": "open exited with status 1: The application cannot be opened for an unexpected reason, error=-54; serve the target with metab ROOT instead"
+}
+--- stderr ---
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> <ROOT>/Applications/Metabrowser.app
+--- open ---
+open -b io.github.jlevy.metabrowser.dev <ROOT>/notes
+# metab missing --present --format json
+exit: 3
+--- stdout ---
+{
+  "delivered_to": "none",
+  "bundle_id": null,
+  "bundle_path": null,
+  "target": {
+    "kind": null,
+    "root": null,
+    "page": null,
+    "handoff": null,
+    "refusal": {
+      "code": "not_found",
+      "message": "nothing is at <ROOT>/missing; check the path"
+    }
+  },
+  "confirmed": false,
+  "code": "not_found",
+  "reason": "nothing is at <ROOT>/missing; check the path"
+}
+--- stderr ---
+--- launch_services ---
+--- open ---
+# metab https://github.com/octo/demo/issues/5 --present
+exit: 3
+--- stdout ---
+--- stderr ---
+Error: GitHub issues pages are not opened; open the repository at https://github.com/octo/demo (unsupported_github_url)
+--- launch_services ---
+--- open ---
+# metab notes --present --format json
+exit: 4
+--- stdout ---
+{
+  "delivered_to": "none",
+  "bundle_id": null,
+  "bundle_path": null,
+  "target": {
+    "kind": "folder",
+    "root": "<ROOT>/notes",
+    "page": "/view/",
+    "handoff": [
+      "<ROOT>/notes"
+    ],
+    "refusal": null
+  },
+  "confirmed": false,
+  "code": "not_macos",
+  "reason": "the Metabrowser app runs on macOS only; serve the target with metab ROOT"
+}
+--- stderr ---
+--- launch_services ---
+no LaunchServices on this platform
+--- open ---

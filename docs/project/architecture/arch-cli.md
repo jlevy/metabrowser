@@ -1,7 +1,9 @@
 # Architecture: Command Line
 
-**Status:** Built, in `src/metabrowser/cli/`. Planned: `metab --present`, one front door
-that shows content in the running app or browser
+**Status:** Built, in `src/metabrowser/cli/`, including the first slice of `--present`:
+a handoff to the macOS app that the app does not yet answer.
+Planned: a reply from the app, navigation of a page already open, and a browser when
+there is no app
 ([native macOS app plan](../specs/active/plan-2026-11-10-native-macos-app.md), Phase 3).
 
 `metab` is one flat command whose default operation is serving a folder.
@@ -33,6 +35,7 @@ produce is refused rather than ignored.
 | Change set | `--diff SPEC` | `diff_cli.py` |
 | Remote host | `--remote HOST` | `remote.py` |
 | Plugins | `--plugins`, `--plugin NAME`, `--doctor` | `plugins.py` |
+| Hand a target to the macOS app | `--present` | `present.py` |
 
 `_classified_root` decides whether ROOT is a local path or a Git source.
 An `ssh` source is refused in every mode.
@@ -41,6 +44,11 @@ profile described in
 [Server and Content](arch-server-and-content.md#acquired-git-sources).
 The diff, API, acquire, and show modes import their modules inside their branch, so a
 mode on a local folder does not load the Git revision machinery it never uses.
+
+`--present` is a client mode, and reads ROOT without `_classified_root`, because a
+target it cannot present is a refusal it reports as data, with
+`PRESENT_REFUSED_EXIT_CODE`, rather than an `Error:` line;
+[Presenting to the App](#presenting-to-the-app) describes it.
 
 `cli/entrypoint.py` is the console-script boundary.
 It imports `cli/main.py` inside a `try`, so a Ctrl-C while Python is still importing
@@ -125,6 +133,54 @@ keys, and status codes, rather than only the library beneath a route; the parity
 On a Git source, `git_pin_cli.py` attaches a `GitRevisionSubject` and drives the same
 stack; a cache route (`/api/cache/…`) instead runs against an empty throwaway root after
 acquisition, so cache inspection cannot expose origin objects through `/api/tree`.
+
+## Presenting to the App
+
+`run_present` in `cli/present.py` resolves ROOT and, unless `--dry-run`, hands it to the
+macOS app. A dry run loads nothing beyond what `metab --version` loads except
+`cli/present.py`, the property-list reader, and for a link the URL grammar, and starts
+no process and opens no connection, which
+`test_present_dry_run_loads_little_beyond_version` in `tests/test_plugin_public_api.py`
+holds, so the app can run `--present --dry-run` to check what a user types.
+It still pays `metab`’s startup, which `--version` measures, because `cli/main.py`
+imports the serve mode’s modules before a mode is chosen.
+
+1. **Resolve.** `resolve_target` reads a local ROOT as serve mode does: the resolved
+   folder, or a file’s folder with the file selected, and `--path` within it.
+   Anything else goes through `classify_root_argument` with `url_reducers()`, which
+   imports each provider’s reducer without the provider.
+   A source is presentable only when a reducer claims it and can spell it back as a web
+   URL (`ProviderUrlReducer.web_url`), which only GitHub’s does; that URL, canonical and
+   ASCII, is what the app is handed, and its root is the repository URL with no ref.
+   Its `page` is what `selection_view_href` (`cli/selection_href.py`) gives a pinned
+   server where the URL leaves one reading, and `None` where only the mirror knows where
+   a ref ends or what an abbreviated commit ID names (`_source_page`). A local file’s
+   handoff is its root and then the file, which makes the app open that root.
+2. **Find the app.** `bundle_lookup` asks LaunchServices through
+   `LSCopyApplicationURLsForBundleIdentifier` for each identifier in turn, release
+   first, and takes the bundle LaunchServices prefers, the one `open -b` opens.
+   That is the database `open -b` reads; Spotlight’s index (`mdfind`) is not asked,
+   because it can be off or leave out the folder an app is in.
+   Off macOS the lookup is `None` and nothing is sent.
+   A lookup LaunchServices does not answer, as under a sandbox that denies its database,
+   raises `AppLookupError` rather than reading as no app.
+3. **Check what the app takes.** A folder inside the root is refused, because the app
+   opens each folder in a window of its own.
+   Every other handoff passes `app_refusal`: the bundle is at one of
+   `APP_INSTALL_LOCATIONS` (unless `ANY_APP_LOCATION_ENV` is `1`), because
+   LaunchServices registers a bundle wherever it was opened; its `Info.plist`, read as a
+   bounded regular file, names it `APP_BUNDLE_NAME`; and it sets `OPENS_URLS_KEY` true,
+   because an older app drops a URL while `open` still succeeds and an app an override
+   names must not be handed a file it would run.
+   It is a path check, not a signature; a release’s team identifier is not checked.
+4. **Send.** `/usr/bin/open -b <bundle id> <handoff>`, by its absolute path
+   (`open_executable`), bounded by `OPEN_TIMEOUT_S`. Exit 0 from `open` means
+   LaunchServices took it, so the report says `confirmed: false` until the app can
+   reply.
+5. **Report.** A `key: value` report, or with `--format json` one object with the
+   handoff, the bundle’s path, and a `code`; a refusal exits with
+   `PRESENT_REFUSED_EXIT_CODE`, and each delivery code with its status in
+   `DELIVERY_EXIT_CODES` (`cli/exit_codes.py` documents the statuses).
 
 ## Remote Tunnels
 

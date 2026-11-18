@@ -1298,3 +1298,63 @@ def test_interaction_commands_cannot_smuggle_eval_before_a_session_name(
     assert any(
         "navigation.filter" in problem and "must be exactly" in problem for problem in problems
     )
+
+
+def _model_row_problems(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, owner: str, command: str, golden: str
+) -> list[str]:
+    golden_dir = tmp_path / "golden"
+    _write_golden(golden_dir, "present.tryscript.md", golden)
+    doc = _write_registry(tmp_path, "| `/api/tree` | exempt | — | streaming |")
+    text = doc.read_text(encoding="utf-8").replace(
+        "| `test.paint` | paint-exempt | `static/styles.css` | `local-only` | — | "
+        "fixture reason; `tests/test_check_parity.py` |",
+        f"| `app.present` | data | `{owner}` | `owned-model` | `{command}` | "
+        "`present.tryscript.md` |",
+    )
+    doc.write_text(text, encoding="utf-8")
+    monkeypatch.setattr(check_parity, "GOLDEN_DIR", golden_dir)
+    monkeypatch.setattr(check_parity, "REGISTRY_DOC", doc)
+    return [problem for problem in check_parity.check() if "app.present" in problem]
+
+
+_PRESENT_COMMAND = "metab notes --present --dry-run --format json"
+
+
+def test_a_model_a_mode_owns_is_covered_by_a_golden_that_runs_the_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, only_tree: None
+) -> None:
+    ran = f"```console\n$ {_PRESENT_COMMAND}\n{{}}\n? 0\n```\n"
+    failed = f"```console\n$ {_PRESENT_COMMAND}\n{{}}\n? 3\n```\n"
+
+    assert _model_row_problems(tmp_path, monkeypatch, "cli/present.py", _PRESENT_COMMAND, ran) == []
+    assert any(
+        "never runs successful CLI command" in problem
+        for problem in _model_row_problems(
+            tmp_path, monkeypatch, "cli/present.py", _PRESENT_COMMAND, failed
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    ("owner", "command", "expected"),
+    [
+        # Only a module a mode owns, and only through that mode.
+        ("cli/serve.py", _PRESENT_COMMAND, "an owned model must name exactly one module"),
+        ("cli/present.py", "metab notes --walk --format json", "does not run the mode"),
+        ("cli/present.py", "metab notes --present --api /api/tree", "cannot be shown by --api"),
+    ],
+)
+def test_an_owned_model_cannot_be_credited_to_another_module_or_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    only_tree: None,
+    owner: str,
+    command: str,
+    expected: str,
+) -> None:
+    golden = f"```console\n$ {command}\n{{}}\n? 0\n```\n"
+
+    problems = _model_row_problems(tmp_path, monkeypatch, owner, command, golden)
+
+    assert any(expected in problem for problem in problems), problems

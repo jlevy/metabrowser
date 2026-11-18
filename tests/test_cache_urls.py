@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import pytest
 
+from metabrowser.cache.providers import installed_providers, url_reducers
 from metabrowser.cache.urls import (
     GitSource,
     ReducerArbitrationError,
     ReducerOutcome,
+    RepositorySelection,
     classify_root_argument,
 )
 
@@ -23,6 +25,9 @@ class _ClaimingReducer:
     def reduce(self, value: str) -> ReducerOutcome | None:
         if "github.com" in value:
             return ReducerOutcome(clone_url=self.clone_url)
+        return None
+
+    def web_url(self, clone_url: str, selection: RepositorySelection) -> str | None:
         return None
 
 
@@ -47,3 +52,11 @@ def test_two_reducer_claims_are_a_discovery_error() -> None:
                 _ClaimingReducer("https://github.com/owner/other.git"),
             ),
         )
+
+
+def test_url_reducers_are_the_providers_reducers() -> None:
+    # `url_reducers()` imports each reducer without its provider, so the two lists are
+    # written apart; this holds them equal.
+    assert [type(reducer) for reducer in url_reducers()] == [
+        type(provider.reducer) for provider in installed_providers()
+    ]
