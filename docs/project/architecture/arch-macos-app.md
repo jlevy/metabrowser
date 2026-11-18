@@ -49,6 +49,8 @@ before one exists, windows, menus, the Dock, and file events.
    a root has one server however many windows and tabs show it.
    That path is also the folder’s key among the
    [recent targets](arch-recent-targets.md).
+   [Open Modes](arch-open-modes.md#what-keys-on-the-root) designs that key as the open
+   root `metab` resolves, which for a path inside a repository is the repository’s root.
 2. **Spawn.** `ServerSupervisor` runs `CLIServeLaunch`’s command,
    `metab ROOT --no-open --exit-on-eof --host 127.0.0.1 --port N`, from
    `CLIServeLaunch.defaultBasePort`. `SpawnedProcess` starts it with `posix_spawn` in
@@ -222,7 +224,9 @@ Applications.
 - **Files.** A file opens in the most specific open folder that contains it, or else in
   its own folder, as `metab FILE` does (`OpenTarget`), at the view route `metab` spells
   (`PageAddress.view`). A page requested while the server is not ready loads once it is
-  (`NextPage`).
+  (`NextPage`). By design the open folder that takes a file never lies above the file’s
+  repository root, and a file with no such folder opens its open root
+  ([Open Modes](arch-open-modes.md#what-keys-on-the-root)).
 - **Recents.** File > Open Recent lists `metab`’s
   [recent targets](arch-recent-targets.md#the-macos-app), which every server records as
   it starts, so the app decides nothing about the list and keeps none of its own.
@@ -338,6 +342,8 @@ and attaching to an agent’s server are planned in the
 reasons in the
 [packaging brief](../research/research-2026-11-08-macos-app-packaging.md)’s Layering
 section and Recommendations.
+[Open Modes](arch-open-modes.md#the-file-menu) designs the File menu’s Open Folder…,
+Open URL…, and Open Recent, and what each opens.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

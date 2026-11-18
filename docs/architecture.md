@@ -54,7 +54,7 @@ metab CLI (cli/)                          native macOS shell (apps/macos/)
   │ serves, or answers --api in process     │ runs one metab server per folder
   ▼                                         ▼
 server and routes (server.py)  ◄──  kinds and plugin system (plugin_loader/)
-  ├─ source session (source.py): a folder, or a pinned Git revision
+  ├─ source session (source.py): a folder’s working tree, or a pinned revision
   ├─ inventory provider (inventory_engine/): the contract above, an engine below
   ├─ live delivery (events_route.py): the change feed as server-sent events
   ├─ Git (git/) and diff (diff/)
@@ -73,7 +73,7 @@ Module paths are under `src/metabrowser/` unless they start with `apps/`.
 | Inventory provider and engine | `inventory_engine/` (`contract.py`, `coordinator.py`, `factory.py`, engines under `providers/`), `inventory_rollup.py`, `file_type_registry.py`; the Python engine’s `walker.py` and `watch_backends.py`; `walk.py` for `--walk` | Hold a bounded index of the served tree and answer bounded, versioned queries over it | [Inventory Provider](project/architecture/arch-inventory-provider.md), [Python Engine](project/architecture/arch-inventory-engine-python.md) |
 | Live delivery | `events.py`, `events_route.py`, `sse.py`, `active_tracker.py`, `activity.py`; `static/catalog-feed.js` | Carry the provider’s change feed to the browser’s stores, and recover a client that falls behind | [Live Delivery](project/architecture/arch-live-delivery.md) |
 | Git | `git/` | Run every Git command on a served repository through one bounded process boundary (`git/process.py`), and serve history, graph checkpoints, commit detail, and Git trees | [Git](project/architecture/arch-git.md) |
-| Source sessions and pins | `source.py`, `source_routes.py`, `root_identity.py`; `static/source-pin-guard.js` | Hold the one subject a server serves, a folder or a pinned Git revision, with its capabilities, and switch the pin | [Source Sessions and Pins](project/architecture/arch-source-sessions-and-pins.md) |
+| Source sessions and pins | `source.py`, `source_routes.py`, `root_identity.py`; `static/source-pin-guard.js` | Hold the one view a server shows, a folder’s working tree or a pinned revision, with its capabilities, and switch the pin | [Open Modes](project/architecture/arch-open-modes.md), [Source Sessions and Pins](project/architecture/arch-source-sessions-and-pins.md) |
 | Diff | `diff/`, `builtin_plugins/diff/` | Build change sets from patch files, commits, and pull requests in File Diff Format, and hydrate them file by file | [Diff Pipeline](project/architecture/arch-diff-pipeline.md) |
 | Repository cache and mirrors | `cache/`, `mirror_refresh.py` | Acquire repositories into the application cache as mirrors, keep their records, and refresh them in the background | [Repository Cache](project/architecture/arch-repository-cache.md), [Mirror Acquisition and Refresh](project/architecture/arch-mirror-acquisition-and-refresh.md) |
 | GitHub provider | `builtin_plugins/github/`, behind `cache/providers.py` | Reduce GitHub URLs to sources and pins, and serve pull-request records, the catalog, changed files, checks, and stacks through `gh` | [GitHub Pull Requests](project/architecture/arch-github-pull-requests.md) |
@@ -129,7 +129,8 @@ the map and the [Plugin System](project/architecture/arch-plugin-system.md).
 4. [Plugin System](project/architecture/arch-plugin-system.md) and
    [Browser Shell](project/architecture/arch-browser-shell.md): how kinds are claimed
    and views are mounted.
-5. For Git and review: [Git](project/architecture/arch-git.md),
+5. For Git and review: [Open Modes](project/architecture/arch-open-modes.md), the model
+   of what a folder or a URL opens; then [Git](project/architecture/arch-git.md),
    [Source Sessions and Pins](project/architecture/arch-source-sessions-and-pins.md),
    [Diff Pipeline](project/architecture/arch-diff-pipeline.md),
    [Repository Cache](project/architecture/arch-repository-cache.md),

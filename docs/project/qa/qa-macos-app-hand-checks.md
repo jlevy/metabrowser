@@ -132,6 +132,16 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
    `a`: it shows `notes.md`. Dragged onto another folder’s window, it opens `a` (or
    shows the file in `a`, if open).
    A drag of text or a web link is still the page’s.
+10. **A root above the folder picked.** This check applies once a path opens at its
+    repository’s root, which is designed in
+    [Open Modes](../architecture/arch-open-modes.md#resolving-a-target-to-a-root) and
+    not built. Make `~/Documents/mb-check` a repository holding `sub/notes.md`
+    (`git init`, `git add`, and one commit), reset the Documents grant as in step 6, and
+    choose `sub` with File > Open…. Note which folder the window names, how many prompts
+    appear and for which folder, and that the tree lists the repository’s root once
+    access is granted. Repeat with the repository in `~/Desktop` and in `~/Downloads`.
+    How macOS treats a served root above the folder chosen in the open panel is
+    untested.
 
 ## Print and Drops
 

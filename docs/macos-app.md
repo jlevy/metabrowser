@@ -183,6 +183,11 @@ The app moves nothing itself.
   cache and configuration locations.
   A `metab` in Terminal that one of those variables points elsewhere keeps recent
   targets of its own, which File > Open Recent does not show.
+- A folder opens as the folder named, even inside a Git repository, and the File menu
+  opens no URL. Opening the repository’s root instead and File > Open URL… are planned
+  in [Open Modes](project/architecture/arch-open-modes.md#the-file-menu), and so is an
+  Open Recent that also lists the repositories `metab` opened by URL, which
+  `metab --recent` already lists.
 - There is no updater and no URL scheme, and an agent cannot yet show you a page in the
   app; the
   [native macOS app plan](project/specs/active/plan-2026-11-10-native-macos-app.md) has
