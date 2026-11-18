@@ -18,6 +18,174 @@ CANONICAL = "https://github.com/octo/demo"
 _REDUCERS = (GithubUrlReducer(),)
 
 
+_REPOSITORY_SPELLINGS = [
+    "https://github.com/octo/demo",
+    "https://github.com/Octo/Demo",
+    "https://github.com/octo/demo/",
+    "https://github.com/octo/demo.git",
+    "https://github.com/octo/demo.GIT/",
+    "https://www.github.com/octo/demo",
+    "HTTPS://GitHub.COM/octo/demo",
+    "https://github.com:443/octo/demo",
+    "https://github.com/octo/demo?tab=readme-ov-file",
+    "https://github.com/octo/demo#readme",
+    "git@github.com:octo/demo.git",
+    "git@github.com:Octo/Demo",
+    "ssh://git@github.com/octo/demo.git",
+    "ssh://git@github.com:22/octo/demo",
+    "ssh://git@www.github.com/octo/demo.git",
+    "git@www.github.com:octo/demo.git",
+]
+
+
+_WEB_URL_SHAPES = [
+    (
+        "https://github.com/octo/demo/tree/main",
+        RepositorySelection(kind="tree", ref_and_path=(b"main",)),
+    ),
+    (
+        "https://github.com/octo/demo/tree/release/v1/docs/",
+        RepositorySelection(kind="tree", ref_and_path=(b"release", b"v1", b"docs")),
+    ),
+    (
+        "https://github.com/octo/demo/blob/main/README.md",
+        RepositorySelection(kind="blob", ref_and_path=(b"main", b"README.md")),
+    ),
+    (
+        "https://github.com/octo/demo/blob/main/README.md#L10",
+        RepositorySelection(
+            kind="blob",
+            ref_and_path=(b"main", b"README.md"),
+            lines=LineSelection(start=10, end=10),
+        ),
+    ),
+    (
+        "https://github.com/octo/demo/blob/main/README.md#L10-L20",
+        RepositorySelection(
+            kind="blob",
+            ref_and_path=(b"main", b"README.md"),
+            lines=LineSelection(start=10, end=20),
+        ),
+    ),
+    (
+        "https://github.com/octo/demo/blob/main/README.md#L10C5-L20C8",
+        RepositorySelection(
+            kind="blob",
+            ref_and_path=(b"main", b"README.md"),
+            lines=LineSelection(start=10, end=20, start_column=5, end_column=8),
+        ),
+    ),
+    (
+        "https://github.com/octo/demo/blob/main/README.md#L10C8-L10C5",
+        RepositorySelection(
+            kind="blob",
+            ref_and_path=(b"main", b"README.md"),
+            lines=LineSelection(start=10, end=10, start_column=5, end_column=8),
+        ),
+    ),
+    (
+        "https://github.com/octo/demo/blob/main/README.md#L20-L10",
+        RepositorySelection(
+            kind="blob",
+            ref_and_path=(b"main", b"README.md"),
+            lines=LineSelection(start=10, end=20),
+        ),
+    ),
+    (
+        "https://github.com/octo/demo/blob/main/README.md?plain=1&utm_source=x#L3",
+        RepositorySelection(
+            kind="blob",
+            ref_and_path=(b"main", b"README.md"),
+            lines=LineSelection(start=3, end=3),
+            plain=True,
+        ),
+    ),
+    (
+        "https://github.com/octo/demo/blob/main/README.md#readme-section",
+        RepositorySelection(kind="blob", ref_and_path=(b"main", b"README.md")),
+    ),
+    (
+        "https://github.com/octo/demo/blob/main/My%20Notes/%E6%97%A5%E6%9C%AC.md",
+        RepositorySelection(kind="blob", ref_and_path=(b"main", b"My Notes", "日本.md".encode())),
+    ),
+    (
+        "https://github.com/octo/demo/commit/ABCDEF0123",
+        RepositorySelection(kind="commit", commit="abcdef0123"),
+    ),
+    (
+        "https://github.com/octo/demo/pull/12",
+        RepositorySelection(kind="pull_request", pull_request=12),
+    ),
+    (
+        "https://github.com/octo/demo/pull/12/files",
+        RepositorySelection(kind="pull_request", pull_request=12, pull_tab="files"),
+    ),
+    (
+        "https://github.com/octo/demo/pull/12/checks?check_run_id=987",
+        RepositorySelection(kind="pull_request", pull_request=12, pull_tab="checks"),
+    ),
+    (
+        "https://github.com/octo/demo/pull/12/commits",
+        RepositorySelection(kind="pull_request", pull_request=12),
+    ),
+    (
+        "https://github.com/octo/demo/pull/12/commits/abcdef0",
+        RepositorySelection(kind="commit", commit="abcdef0", pull_request=12),
+    ),
+    (
+        "https://raw.githubusercontent.com/octo/demo/main/docs/a.md",
+        RepositorySelection(kind="blob", ref_and_path=(b"main", b"docs", b"a.md")),
+    ),
+    (
+        "https://raw.githubusercontent.com/Octo/Demo/refs/heads/main/a.md",
+        RepositorySelection(kind="blob", ref_and_path=(b"refs", b"heads", b"main", b"a.md")),
+    ),
+]
+
+
+_RAW_AND_ENCODED = [
+    (
+        "https://github.com/octo/demo/blob/main/docs/雪.md#L1",
+        "https://github.com/octo/demo/blob/main/docs/%E9%9B%AA.md#L1",
+    ),
+    (
+        "https://github.com/octo/demo/blob/main/space name.md",
+        "https://github.com/octo/demo/blob/main/space%20name.md",
+    ),
+    (
+        "https://github.com/octo/demo/tree/雪/a b",
+        "https://github.com/octo/demo/tree/%E9%9B%AA/a%20b",
+    ),
+    (
+        "https://raw.githubusercontent.com/octo/demo/main/docs/résumé notes.md",
+        "https://raw.githubusercontent.com/octo/demo/main/docs/r%C3%A9sum%C3%A9%20notes.md",
+    ),
+    (
+        "https://github.com/octo/demo/blob/main/😀.md?plain=1&q=a b#L2-L3",
+        "https://github.com/octo/demo/blob/main/%F0%9F%98%80.md?plain=1&q=a%20b#L2-L3",
+    ),
+    # A combining mark is drawn on the letter before it, so a reader sees it.
+    (
+        f"https://github.com/octo/demo/blob/main/cafe{chr(0x301)}.md",
+        "https://github.com/octo/demo/blob/main/cafe%CC%81.md",
+    ),
+    # A variation selector attached to its base is part of the name: an emoji, a
+    # keycap, and an ideographic variation sequence.
+    (
+        f"https://github.com/octo/demo/blob/main/{chr(0x2764)}{chr(0xFE0F)}.md",
+        "https://github.com/octo/demo/blob/main/%E2%9D%A4%EF%B8%8F.md",
+    ),
+    (
+        f"https://github.com/octo/demo/blob/main/1{chr(0xFE0F)}{chr(0x20E3)}.md",
+        "https://github.com/octo/demo/blob/main/1%EF%B8%8F%E2%83%A3.md",
+    ),
+    (
+        f"https://github.com/octo/demo/blob/main/{chr(0x845B)}{chr(0xE0100)}.md",
+        "https://github.com/octo/demo/blob/main/%E8%91%9B%F3%A0%84%80.md",
+    ),
+]
+
+
 def _source(value: str) -> GitSource:
     classified = classify_root_argument(value, reducers=_REDUCERS)
     assert isinstance(classified, GitSource), classified
@@ -31,27 +199,7 @@ def _refused(value: str) -> RejectedRoot:
     return classified
 
 
-@pytest.mark.parametrize(
-    "value",
-    [
-        "https://github.com/octo/demo",
-        "https://github.com/Octo/Demo",
-        "https://github.com/octo/demo/",
-        "https://github.com/octo/demo.git",
-        "https://github.com/octo/demo.GIT/",
-        "https://www.github.com/octo/demo",
-        "HTTPS://GitHub.COM/octo/demo",
-        "https://github.com:443/octo/demo",
-        "https://github.com/octo/demo?tab=readme-ov-file",
-        "https://github.com/octo/demo#readme",
-        "git@github.com:octo/demo.git",
-        "git@github.com:Octo/Demo",
-        "ssh://git@github.com/octo/demo.git",
-        "ssh://git@github.com:22/octo/demo",
-        "ssh://git@www.github.com/octo/demo.git",
-        "git@www.github.com:octo/demo.git",
-    ],
-)
+@pytest.mark.parametrize("value", _REPOSITORY_SPELLINGS)
 def test_repository_spellings_share_one_canonical_source(value: str) -> None:
     source = _source(value)
     assert source.normalized == CANONICAL
@@ -60,114 +208,7 @@ def test_repository_spellings_share_one_canonical_source(value: str) -> None:
     assert source == GitSource(transport="https", form="url", normalized=CANONICAL)
 
 
-@pytest.mark.parametrize(
-    ("value", "expected"),
-    [
-        (
-            "https://github.com/octo/demo/tree/main",
-            RepositorySelection(kind="tree", ref_and_path=(b"main",)),
-        ),
-        (
-            "https://github.com/octo/demo/tree/release/v1/docs/",
-            RepositorySelection(kind="tree", ref_and_path=(b"release", b"v1", b"docs")),
-        ),
-        (
-            "https://github.com/octo/demo/blob/main/README.md",
-            RepositorySelection(kind="blob", ref_and_path=(b"main", b"README.md")),
-        ),
-        (
-            "https://github.com/octo/demo/blob/main/README.md#L10",
-            RepositorySelection(
-                kind="blob",
-                ref_and_path=(b"main", b"README.md"),
-                lines=LineSelection(start=10, end=10),
-            ),
-        ),
-        (
-            "https://github.com/octo/demo/blob/main/README.md#L10-L20",
-            RepositorySelection(
-                kind="blob",
-                ref_and_path=(b"main", b"README.md"),
-                lines=LineSelection(start=10, end=20),
-            ),
-        ),
-        (
-            "https://github.com/octo/demo/blob/main/README.md#L10C5-L20C8",
-            RepositorySelection(
-                kind="blob",
-                ref_and_path=(b"main", b"README.md"),
-                lines=LineSelection(start=10, end=20, start_column=5, end_column=8),
-            ),
-        ),
-        (
-            "https://github.com/octo/demo/blob/main/README.md#L10C8-L10C5",
-            RepositorySelection(
-                kind="blob",
-                ref_and_path=(b"main", b"README.md"),
-                lines=LineSelection(start=10, end=10, start_column=5, end_column=8),
-            ),
-        ),
-        (
-            "https://github.com/octo/demo/blob/main/README.md#L20-L10",
-            RepositorySelection(
-                kind="blob",
-                ref_and_path=(b"main", b"README.md"),
-                lines=LineSelection(start=10, end=20),
-            ),
-        ),
-        (
-            "https://github.com/octo/demo/blob/main/README.md?plain=1&utm_source=x#L3",
-            RepositorySelection(
-                kind="blob",
-                ref_and_path=(b"main", b"README.md"),
-                lines=LineSelection(start=3, end=3),
-                plain=True,
-            ),
-        ),
-        (
-            "https://github.com/octo/demo/blob/main/README.md#readme-section",
-            RepositorySelection(kind="blob", ref_and_path=(b"main", b"README.md")),
-        ),
-        (
-            "https://github.com/octo/demo/blob/main/My%20Notes/%E6%97%A5%E6%9C%AC.md",
-            RepositorySelection(
-                kind="blob", ref_and_path=(b"main", b"My Notes", "日本.md".encode())
-            ),
-        ),
-        (
-            "https://github.com/octo/demo/commit/ABCDEF0123",
-            RepositorySelection(kind="commit", commit="abcdef0123"),
-        ),
-        (
-            "https://github.com/octo/demo/pull/12",
-            RepositorySelection(kind="pull_request", pull_request=12),
-        ),
-        (
-            "https://github.com/octo/demo/pull/12/files",
-            RepositorySelection(kind="pull_request", pull_request=12, pull_tab="files"),
-        ),
-        (
-            "https://github.com/octo/demo/pull/12/checks?check_run_id=987",
-            RepositorySelection(kind="pull_request", pull_request=12, pull_tab="checks"),
-        ),
-        (
-            "https://github.com/octo/demo/pull/12/commits",
-            RepositorySelection(kind="pull_request", pull_request=12),
-        ),
-        (
-            "https://github.com/octo/demo/pull/12/commits/abcdef0",
-            RepositorySelection(kind="commit", commit="abcdef0", pull_request=12),
-        ),
-        (
-            "https://raw.githubusercontent.com/octo/demo/main/docs/a.md",
-            RepositorySelection(kind="blob", ref_and_path=(b"main", b"docs", b"a.md")),
-        ),
-        (
-            "https://raw.githubusercontent.com/Octo/Demo/refs/heads/main/a.md",
-            RepositorySelection(kind="blob", ref_and_path=(b"refs", b"heads", b"main", b"a.md")),
-        ),
-    ],
-)
+@pytest.mark.parametrize(("value", "expected"), _WEB_URL_SHAPES)
 def test_web_url_shapes_carry_their_selection(value: str, expected: RepositorySelection) -> None:
     source = _source(value)
     assert source.normalized == CANONICAL
@@ -250,50 +291,7 @@ def test_the_generic_checks_run_before_the_reducer_parses(value: str, reason: st
     assert "token" not in (refused.detail or "")
 
 
-@pytest.mark.parametrize(
-    ("raw", "encoded"),
-    [
-        (
-            "https://github.com/octo/demo/blob/main/docs/雪.md#L1",
-            "https://github.com/octo/demo/blob/main/docs/%E9%9B%AA.md#L1",
-        ),
-        (
-            "https://github.com/octo/demo/blob/main/space name.md",
-            "https://github.com/octo/demo/blob/main/space%20name.md",
-        ),
-        (
-            "https://github.com/octo/demo/tree/雪/a b",
-            "https://github.com/octo/demo/tree/%E9%9B%AA/a%20b",
-        ),
-        (
-            "https://raw.githubusercontent.com/octo/demo/main/docs/résumé notes.md",
-            "https://raw.githubusercontent.com/octo/demo/main/docs/r%C3%A9sum%C3%A9%20notes.md",
-        ),
-        (
-            "https://github.com/octo/demo/blob/main/😀.md?plain=1&q=a b#L2-L3",
-            "https://github.com/octo/demo/blob/main/%F0%9F%98%80.md?plain=1&q=a%20b#L2-L3",
-        ),
-        # A combining mark is drawn on the letter before it, so a reader sees it.
-        (
-            f"https://github.com/octo/demo/blob/main/cafe{chr(0x301)}.md",
-            "https://github.com/octo/demo/blob/main/cafe%CC%81.md",
-        ),
-        # A variation selector attached to its base is part of the name: an emoji, a
-        # keycap, and an ideographic variation sequence.
-        (
-            f"https://github.com/octo/demo/blob/main/{chr(0x2764)}{chr(0xFE0F)}.md",
-            "https://github.com/octo/demo/blob/main/%E2%9D%A4%EF%B8%8F.md",
-        ),
-        (
-            f"https://github.com/octo/demo/blob/main/1{chr(0xFE0F)}{chr(0x20E3)}.md",
-            "https://github.com/octo/demo/blob/main/1%EF%B8%8F%E2%83%A3.md",
-        ),
-        (
-            f"https://github.com/octo/demo/blob/main/{chr(0x845B)}{chr(0xE0100)}.md",
-            "https://github.com/octo/demo/blob/main/%E8%91%9B%F3%A0%84%80.md",
-        ),
-    ],
-)
+@pytest.mark.parametrize(("raw", "encoded"), _RAW_AND_ENCODED)
 def test_a_raw_web_url_is_read_as_a_browser_sends_it(raw: str, encoded: str) -> None:
     pasted, sent = _source(raw), _source(encoded)
     assert pasted.normalized == sent.normalized == CANONICAL
@@ -509,3 +507,27 @@ def test_parse_repository_url_reads_only_canonical_urls() -> None:
     assert parse_repository_url(CANONICAL) == ("octo", "demo")
     assert parse_repository_url(f"{CANONICAL}/tree/main") is None
     assert parse_repository_url("https://example.com/octo/demo") is None
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        *_REPOSITORY_SPELLINGS,
+        *(value for value, _expected in _WEB_URL_SHAPES),
+        *(raw for raw, _encoded in _RAW_AND_ENCODED),
+    ],
+)
+def test_the_web_url_of_a_selection_reduces_to_it(value: str) -> None:
+    source = _source(value)
+    assert source.selection is not None
+    url = _REDUCERS[0].web_url(source.normalized, source.selection)
+
+    assert url is not None
+    assert url.isascii() and " " not in url
+    assert url.startswith(CANONICAL)
+    again = _source(url)
+    assert (again.normalized, again.selection) == (source.normalized, source.selection)
+
+
+def test_the_web_url_of_another_providers_source_is_none() -> None:
+    assert _REDUCERS[0].web_url("https://example.com/octo/demo", RepositorySelection()) is None

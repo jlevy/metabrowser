@@ -44,6 +44,29 @@ All notable changes to Metabrowser are documented here.
   `_YAML_PREFIX_MAX_EXPANDED_SIZE`. A key that appears twice in it keeps its last value,
   as it did before. See [Kind Rules](docs/plugins.md#kind-rules).
 
+- `metab ROOT --present` hands a folder, a file, or a GitHub URL to the macOS app and
+  reports what it sent.
+  It finds the app through LaunchServices, the release build first and then the
+  development build, or the one `--app-bundle-id` or `METABROWSER_APP_BUNDLE_ID` names,
+  and sends the target with `/usr/bin/open -b`; it clones, fetches, and serves nothing.
+  `--present --dry-run --format json` prints what would be sent: the target’s `kind`,
+  its `root` (an absolute folder, or the repository’s canonical GitHub URL with no ref),
+  its `page`, null where only the repository’s mirror knows it, the `handoff` that
+  `open -b` is given, or a `refusal` with a code and a message.
+  A file named alone is handed over alone, for the app to place in the most specific
+  folder it has open; a file `--path` names is handed over after ROOT, so the app opens
+  the root named. It exits 3 when ROOT cannot be presented, 4 when no app takes it, and 5
+  when LaunchServices could not be asked or refused it, as in a sandbox; the report
+  names the case in `code`, and says `confirmed: false`, because the app does not answer
+  yet. It sends only to the installed app: a bundle at `/Applications/Metabrowser.app` or
+  `~/Applications/Metabrowser.app` whose `Info.plist` names it Metabrowser and declares
+  `MetabrowserOpensURLs` true, so an older build is never sent a URL it would drop,
+  another app is never sent a file, and a build registered where it was built is refused
+  unless `METABROWSER_ALLOW_UNINSTALLED_APP=1`.
+
+- `metab COMMIT_URL` opens at the commit’s page, `/commit/<full id>`, instead of the
+  tree at that commit.
+
 - The Treemap tab shows File Overview’s file-type legend under its bars.
   Pointing at an entry highlights every cell of that family, its segments in the bars,
   and the entry; pointing at a cell or a segment highlights it and its family’s entry.
