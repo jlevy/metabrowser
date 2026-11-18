@@ -50,7 +50,7 @@ import Testing
 }
 
 @Suite struct FolderChooserTests {
-    private static let home = "/Users/me"
+    private static let home = "/Volumes/Home"
 
     private func open(_ key: String, _ shown: FolderChooser.Shown, mark: RootMark = .folder) -> FolderChooser.OpenFolder {
         FolderChooser.OpenFolder(
@@ -65,15 +65,15 @@ import Testing
 
     @Test func theMenuListsOpenFoldersInOpenOrderThenRecentOnesThatAreNotOpen() {
         let rows = FolderChooser.menuRows(
-            open: [open("/Users/me/b", .background), open("/Users/me/a", .here), open("/Users/me/c", .inAnotherWindow)],
-            recent: [recent("/Users/me/a/"), recent("/Users/me/d"), recent("https://github.com/o/r", mode: .mirror)],
+            open: [open("/Volumes/Home/b", .background), open("/Volumes/Home/a", .here), open("/Volumes/Home/c", .inAnotherWindow)],
+            recent: [recent("/Volumes/Home/a/"), recent("/Volumes/Home/d"), recent("https://github.com/o/r", mode: .mirror)],
             home: Self.home)
         #expect(rows.map(\.title) == ["b", "a", "c", "d", "r"])
         #expect(rows.map(\.section) == [.open, .open, .open, .recent, .recent])
         #expect(rows.map(\.isChecked) == [false, true, false, false, false])
         #expect(rows.map(\.subtitle) == ["~/b", "~/a", FolderChooser.inAnotherWindow, "~/d", "github.com/o/r"])
         #expect(rows.map(\.mark) == [.folder, .folder, .folder, .folder, .repository])
-        #expect(rows[3].target == .recent(URL(filePath: "/Users/me/d", directoryHint: .isDirectory)))
+        #expect(rows[3].target == .recent(URL(filePath: "/Volumes/Home/d", directoryHint: .isDirectory)))
     }
 
     @Test func anOpenRepositoryIsNotListedAgainAmongTheRecent() {
@@ -99,11 +99,11 @@ import Testing
 
     @Test func thePanelPutsTheFolderShownLastFirstAndThisWindowsFolderLast() {
         let folders = [
-            open("/Users/me/a", .here), open("/Users/me/b", .background), open("/Users/me/c", .inAnotherWindow),
-            open("/Users/me/never", .background),
+            open("/Volumes/Home/a", .here), open("/Volumes/Home/b", .background), open("/Volumes/Home/c", .inAnotherWindow),
+            open("/Volumes/Home/never", .background),
         ]
         let rows = FolderChooser.panelRows(
-            open: folders, byRecency: ["/Users/me/a", "/Users/me/c", "/Users/me/b"], recent: [recent("/Users/me/d")],
+            open: folders, byRecency: ["/Volumes/Home/a", "/Volumes/Home/c", "/Volumes/Home/b"], recent: [recent("/Volumes/Home/d")],
             home: Self.home)
         #expect(rows.map(\.title) == ["c", "b", "never", "d", "a"])
         #expect(rows.last?.isChecked == true)
@@ -111,7 +111,7 @@ import Testing
 
     @Test func thePanelMatchesEveryWordInTheTitleOrTheLocation() {
         let rows = FolderChooser.menuRows(
-            open: [open("/Users/me/wrk/métabrowser", .here), open("/Users/me/notes", .inAnotherWindow)],
+            open: [open("/Volumes/Home/wrk/métabrowser", .here), open("/Volumes/Home/notes", .inAnotherWindow)],
             recent: [recent("https://github.com/jlevy/kpress", mode: .mirror)], home: Self.home)
         #expect(FolderChooser.matching(rows, query: "").count == 3)
         #expect(FolderChooser.matching(rows, query: "META").map(\.title) == ["métabrowser"])

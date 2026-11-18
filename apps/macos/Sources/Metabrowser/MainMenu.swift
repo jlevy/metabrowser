@@ -97,7 +97,10 @@ enum MainMenu {
         return main
     }
 
-    private static func item(
+    /// A menu item, with its key equivalent's modifiers: the one place the app sets a
+    /// modifier mask, which the folder chooser's items use too, so
+    /// `tests/test_modified_keys.py` reads every one.
+    static func item(
         _ title: String, _ action: Selector, _ key: String = "",
         _ modifiers: NSEvent.ModifierFlags = .command
     ) -> NSMenuItem {
