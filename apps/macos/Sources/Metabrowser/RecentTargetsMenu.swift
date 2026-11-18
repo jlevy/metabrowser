@@ -63,6 +63,7 @@ final class RecentTargetsMenu: NSObject, NSMenuDelegate {
     private func took(_ answer: RecentTargets.Answer, from metab: String) {
         isAsking = false
         askedAt = .now
+        let shown = (items, problem)
         switch answer {
         case .listing(let listing):
             items = RecentTargets.items(listing.targets, opensURLs: opensURLs)
@@ -76,7 +77,9 @@ final class RecentTargetsMenu: NSObject, NSMenuDelegate {
             // The last list stays: one failed answer should not empty the menu.
             AppLog.app.error("could not list recent targets: metab --recent \(reason, privacy: .public)")
         }
-        if let menu { draw(menu) }
+        // An open menu is redrawn only for a list that changed, so its rows do not move
+        // under the pointer for an answer that says what it already shows.
+        if let menu, shown.0 != items || shown.1 != problem { draw(menu) }
     }
 
     /// Runs a command that changes the list, then asks for the list again.
