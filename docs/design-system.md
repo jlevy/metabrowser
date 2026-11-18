@@ -361,8 +361,8 @@ a pull request, and a commit.
 
 ```text
 +--------------------------------------------------------------------+
-| [Up] ~/wrk/project / docs / specs                    mirror in ... |  1 eyebrow, optional
-| [icon] Title, at the page title's size  [copy]            [toggle] |  2 heading row
+| [Up] ~/wrk/project / docs / specs  mirror in ...  [copy]  [toggle] |  1 eyebrow, optional; the corner
+| [icon] Title, at the page title's size                             |  2 heading row
 | 33.9 KB · 2h ago                                                   |  3 metadata line(s)
 | DOCUMENT   SOURCE                                                  |  4 tab bar
 +--------------------------------------------------------------------+  the one rule, the tab bar's
@@ -372,7 +372,8 @@ a pull request, and a commit.
 | Row | A file | A folder | A pull request | A commit |
 | --- | --- | --- | --- | --- |
 | 1. Eyebrow | Up, the address of the folder that holds it, and Copy path | Up, and the address of its parent; at the served root, the directory that holds the root | Only where it says something the rows under it do not (planned) | The same (planned) |
-| 2. Heading row | The navigation row’s icon for its type, its name, and the GitHub toggle | The folder icon, its name, and the GitHub toggle | Its state icon, its title, and its number | The commit icon, its subject (planned) |
+| 2. Heading row | The navigation row’s icon for its type, and its name | The folder icon, and its name | Its state icon, its title, and its number | The commit icon, its subject (planned) |
+| The corner | The GitHub toggle | The GitHub toggle | The GitHub toggle | None |
 | 3. Metadata | Its badges, size, and age | Its size, file count, and age | Its author line, branches, and ages ([Page Headers](#page-headers)) | Its author, revision, and age ([Page Headers](#page-headers)) |
 | 4. Tab bar | Its views: Document, Source, and so on | Overview and Treemap | Conversation, Changes, and Checks | None |
 
@@ -403,41 +404,65 @@ A file’s eyebrow ends in Copy path, revealed on hover, so the heading row’s 
 title’s.
 
 **The heading row** is the kind’s icon, then the title at `--page-title-font-size`,
-bold, then the row’s controls at its far end.
+bold. The header’s controls are not in it but in the header’s corner.
 The icon is the one the rest of the app draws for the item, at the title’s size: a
 file’s is its navigation row’s icon for its type, through the same function, and a pull
 request’s is its state icon.
 A file’s or a folder’s name is one line, cut short at its end with the whole name as its
 tooltip ([Tooltips Add Information](#tooltips-add-information)); a pull request’s title
-holds two lines. The far end holds the row’s controls: the GitHub toggle.
-The header has no print button ([Print](#print)).
+holds two lines. The header has no print button ([Print](#print)).
 
-**The GitHub toggle** ends the heading row on a page whose repository is on github.com:
-a joined pair, as a segmented control is, of the Metabrowser mark, the app icon’s
-partial M and B in gray on the pressed segment’s fill, and the GitHub mark, a link to
-the same item’s page on github.com, a folder’s tree or a file’s blob.
-The link’s ref is the branch the page is on, when `origin` has it as of the checkout’s
-last fetch (`branch_on_origin` in the repository context, which a mirror’s branch always
-has); otherwise the page’s commit, and the tooltip says that origin had no such branch
-at the last fetch, writing the commit short so the item’s path still shows.
-Hovering the GitHub mark tints it with the accent fill, which never reads as the pressed
-segment. In a view header narrower than the container query on `.view-header` in
-`static/styles.css` names, the Metabrowser segment, which only says where the page
-already is, is left out and the GitHub mark kept, so the title keeps the row.
+**The corner**, the header’s upper right, holds its controls: the GitHub toggle.
+It sits at a fixed inset from the header’s top and right edges and is a fixed height,
+whatever the rows under it hold, so a title that wraps or an eyebrow that a long address
+fills moves it not at all.
+`--view-header-toggle-inset-top`, `--view-header-toggle-inset-end`, and
+`--view-header-toggle-height` in `static/styles.css` are that inset and height: the
+header’s top pad, its side pad, and the eyebrow’s height, so on a file’s or a folder’s
+header the toggle is level with the eyebrow.
+The row beside it, the header’s first, ends `--view-header-toggle-room` short of the
+header’s content edge, which is the toggle’s width, `--view-header-toggle-width`, and
+the heading row’s gap; the rows under it have the header’s whole width.
+A native bar that draws the same toggle, as the macOS app’s over its GitHub view, takes
+the same inset, height, and [states](#choosing-among-values), so the toggle does not
+move as the view changes.
+A pull request’s page places its corner in the page, which is as wide as the main view,
+so its toggle is where a file’s is; its header is the reading column, and where that
+column reaches the toggle, the title leaves the toggle its room and its number moves in
+with it. A commit’s page has no corner yet.
+
+**The GitHub toggle** is in the corner of a page whose repository is on github.com: a
+joined pair of the Metabrowser mark, the app icon’s partial M and B, the view the page
+is in, and the GitHub mark, a link to the same item’s page on github.com: a folder’s
+tree, a file’s blob, or a pull request’s own page.
+It is one of the [shared toggles](#choosing-among-values), drawn as every exclusive
+choice is: a joined chip group’s frame and ground; the Metabrowser segment selected,
+`--link` on `--highlight-bg`, so the page’s view reads as the chosen one in either
+theme; and the GitHub segment at rest, `--muted` with no fill, `--text` on `--hover-bg`
+under the pointer, with the family’s focus ring.
+A header’s own link styles, such as a pull request’s, do not recolor it.
+It keeps both segments at every width.
+A file’s or a folder’s link names the branch the page is on, when `origin` has it as of
+the checkout’s last fetch (`branch_on_origin` in the repository context, which a
+mirror’s branch always has); otherwise the page’s commit, and the tooltip says that
+origin had no such branch at the last fetch, writing the commit short so the item’s path
+still shows. A pull request’s link is the address its record names.
 Every page opens in the Metabrowser view, and a page opened next opens in it too.
 github.com refuses to be shown in a frame, so a browser cannot show the GitHub view in
 the page: its mark opens the page in a new tab, as View on GitHub does, and the macOS
 app hands it to the default browser.
 Each mark has its name for a screen reader and its tooltip, and the GitHub mark is a
-link in the tab order.
+link in the tab order, after the heading row.
 The toggle appears exactly where the Pulls tab does: on a checkout whose `origin` is on
 github.com and on a mirror of a repository there, from the repository context the server
 writes into the page (`static/github-page.js`, which the server writes inline into those
-pages only). A plain folder, a checkout whose `origin` is on another host or that has
-none, and a mirror of a repository elsewhere have no toggle and no slot held for one:
-nothing in the row is placed by it.
-The folder-or-mirror indicator is a separate mark, not a third segment of the toggle;
-where it goes is not decided yet.
+pages only).
+A pull request’s page draws it through the SDK’s `githubToggle`, which calls
+the same builder, once its record or core preview names the pull request’s address.
+A plain folder, a checkout whose `origin` is on another host or that has none, and a
+mirror of a repository elsewhere have no toggle, and their first row keeps its whole
+width. The folder-or-mirror indicator is a separate mark, not a third segment of the
+toggle; where it goes is not decided yet.
 
 **The metadata lines** sit under the title, at the body size, in muted ink, and each
 value keeps its own primitive: a size its chip, a count its count, an age its freshness
@@ -941,6 +966,7 @@ state looks like.
 | One of a few labelled values | `.chip-group[data-select="one"][data-layout="joined"]` | `radiogroup` of `radio` with `aria-checked`; one tab stop, arrow keys select | Split / Unified, Files / Bytes, Branches / Tags, and for a checkout Branches / Tags / Remotes |
 | Any of a set of labelled values | `.chip-group[data-select="many"]` | `group` of buttons with `aria-pressed`; each a tab stop | An agent log’s event types |
 | One of a few values in a menu, where the glyph is the label | `.menu-chooser` of `.menu-seg` | `group` of `menuitemradio` with `aria-checked`; each a tab stop | Theme and reading font |
+| The view a page is shown in, where the other view is another page | `.view-header-toggle` of `.view-header-toggle-option` | `group`; the shown view `aria-current="page"`, the other a link and a tab stop | The view header’s GitHub toggle |
 | One of a long list, named by its trigger | `.chip-menu-trigger` over a `.menu` | `aria-haspopup`, `aria-expanded`; the panel’s pattern within | Filter dropdowns, the source ref selector of a mirror and of a checkout |
 | A boolean whose polarity has to be legible | `.filter-check` | A real checkbox | Show ignored |
 | A boolean with no room for a word | `.icon-btn[aria-pressed]` | A button with an accessible action name | The filter drawer |
@@ -950,6 +976,9 @@ word and a glyph need different boxes.
 A chip sizes to its word at `--chip-height` and sits in a row of chrome.
 A segment holds one glyph, carries the weight of a word, and shares a menu’s whole width
 at a target large enough to hit in a popup.
+The view toggle is a joined pair of glyphs whose choices are pages, not values: the
+current view is a mark and the other a link, so it states no radio, and it takes the
+joined chip group’s frame and the states below.
 
 | State | Text and fill | Also |
 | --- | --- | --- |

@@ -1739,9 +1739,13 @@ def test_exclusive_choices_share_one_answer_to_each_state() -> None:
     """A joined chip and a menu segment differ in shape and agree on what a state looks like."""
 
     styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    # The view header's GitHub toggle is one of them (mb-70d6): its segment for the view the
+    # page is in was the pressed toggle chip's gray, which did not read as the chosen one.
+    toggle = ".view-header-toggle > .view-header-toggle-option"
     selected = (
         _rule(styles, '.chip-group[data-select="one"] > .chip[aria-checked="true"]'),
         _rule(styles, '.menu-seg[aria-checked="true"]'),
+        _rule(styles, f'{toggle}[aria-current="page"]'),
     )
     for rule in selected:
         assert "background: var(--highlight-bg)" in rule
@@ -1749,6 +1753,17 @@ def test_exclusive_choices_share_one_answer_to_each_state() -> None:
     hover_chip = _rule(styles, ".chip-group > .chip:hover")
     assert "background: var(--hover-bg)" in hover_chip
     assert "background: var(--hover-bg)" in _rule(styles, ".menu-seg:hover")
+    toggle_hover = _rule(styles, ".view-header-toggle > a.view-header-toggle-option:hover")
+    assert "background: var(--hover-bg)" in toggle_hover
+    assert "color: var(--text)" in toggle_hover
+    assert "color: var(--muted)" in _rule(styles, toggle)
+    # The toggle's frame and ground are a joined chip group's.
+    group, frame = _rule(styles, ".chip-group"), _rule(styles, ".view-header-toggle")
+    for declaration in ("border:", "border-radius:", "background:"):
+        stated = [
+            line.strip() for line in group.splitlines() if line.strip().startswith(declaration)
+        ]
+        assert stated and stated[0] in frame, f"the toggle's {declaration} is not a chip group's"
     # Later than the rest fill it ties with, or a joined chip answers the pointer with
     # nothing, and earlier than the selected fill, which outranks it either way.
     chip_rest = styles.index(".chip-group > .chip {")
@@ -1756,7 +1771,11 @@ def test_exclusive_choices_share_one_answer_to_each_state() -> None:
     assert styles.index(".chip-group > .chip:hover {") > max(chip_rest, wrapped_rest)
     # One focus ring. A fill cannot be the signal, since a checked segment's would hide it.
     ring = "outline: 2px solid var(--link)"
-    for selector in (".chip:focus-visible", ".menu-seg:focus-visible"):
+    for selector in (
+        ".chip:focus-visible",
+        ".menu-seg:focus-visible",
+        ".view-header-toggle > a.view-header-toggle-option:focus-visible",
+    ):
         rule = _rule(styles, selector)
         assert ring in rule, f"{selector} lost the focus ring"
         assert "outline-offset: -2px" in rule, f"{selector} moved the focus ring"

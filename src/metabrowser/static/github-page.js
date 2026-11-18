@@ -1,8 +1,11 @@
 // The view header's GitHub toggle (docs/design-system.md, "View Headers").
 //
-// On a page whose repository is on github.com, a file's or a folder's heading row ends in
-// two marks: Metabrowser's, gray, the view the page is in, and GitHub's, a link to the
-// same item's page on github.com. Every page opens in the Metabrowser view.
+// On a page whose repository is on github.com, a file's or a folder's view header holds in
+// its upper right corner two marks: Metabrowser's, selected, the view the page is in, and
+// GitHub's, a link to the same item's page on github.com. Every page opens in the
+// Metabrowser view. A pull request's page draws the same toggle, through the SDK's
+// `githubToggle` (plugin-sdk-views.js), which calls `toggle` here with the pull request's
+// own page.
 //
 // The server writes this module inline into a page for which it found a repository
 // context, as it does static/mirror-heading.js, and into no other (server.py,
@@ -150,8 +153,8 @@
   }
 
   /**
-   * End the committed view header's heading row with the toggle, once. The header names
-   * its item (`data-path`); a page with no repository on github.com gets nothing.
+   * Put the toggle in the committed view header's corner, once. The header names its item
+   * (`data-path`); a page with no repository on github.com gets nothing.
    * @param {Document} doc
    */
   function sync(doc) {
@@ -189,7 +192,7 @@
   }
 
   // A header is committed into the main pane as a child of it; the observer's callback
-  // runs before the next frame, so the toggle is drawn with the header it ends.
+  // runs before the next frame, so the toggle is drawn with the header that holds it.
   const start = () => {
     const pane = document.getElementById("preview-pane");
     if (pane) {

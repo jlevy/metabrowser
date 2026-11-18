@@ -2,10 +2,12 @@
 // (docs/design-system.md, "View Headers") at several pane widths in both themes.
 //
 // For each page it reads the header's rows, its ground and rules, the title's and the
-// metadata line's type, and each metadata item's box; then it changes the line's values in
+// metadata line's type, each metadata item's box, and the GitHub toggle in the header's
+// corner with the inks and fills of its segments; then it changes the line's values in
 // place, as the folder header's live refresh does (`folderHeaderSummaryHtml` in view-header.js),
-// and reads every box again. The caller (tests/test_view_header_chrome.py) judges the
-// record. Arguments: the `metab` executable, the served root, a port to start the server's
+// and reads every box again. At one pane width in each theme it also puts the pointer on
+// the toggle's GitHub segment and reads its ink and fill. The caller
+// (tests/test_view_header_chrome.py) judges the record. Arguments: the `metab` executable, the served root, a port to start the server's
 // search from, and a state directory for its cache and config.
 //
 // Prints one JSON line, `{"results": [...]}`; each step's time goes to stderr.
@@ -99,11 +101,53 @@ const READ = `(() => {
   const title = q('.view-header-title');
   const pane = document.getElementById('preview-pane');
   const token = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  // A token as the page resolves it in the header: a length a calc() states, which a custom
+  // property's own value leaves unevaluated, an ink, a fill, and a border's color.
+  const probe = document.createElement('div');
+  probe.style.position = 'absolute';
+  probe.style.visibility = 'hidden';
+  header.append(probe);
+  const resolved = (property, value) => {
+    probe.style[property] = value;
+    const got = getComputedStyle(probe)[property];
+    probe.style[property] = '';
+    return got;
+  };
+  const toggleEl = q('.view-header-toggle');
+  const here = toggleEl && toggleEl.querySelector('[aria-current=page]');
+  const there = toggleEl && toggleEl.querySelector('a');
+  const paint = (el) => (el ? { ink: style(el).color, fill: style(el).backgroundColor } : null);
+  const eyebrowEl = q('.view-header-eyebrow');
+  const states = {
+    here: paint(here),
+    there: paint(there),
+    frame: toggleEl ? { fill: style(toggleEl).backgroundColor, border: style(toggleEl).borderTopColor, radius: style(toggleEl).borderTopLeftRadius } : null,
+    want: {
+      link: resolved('color', 'var(--link)'),
+      muted: resolved('color', 'var(--muted)'),
+      text: resolved('color', 'var(--text)'),
+      highlight: resolved('backgroundColor', 'var(--highlight-bg)'),
+      hover: resolved('backgroundColor', 'var(--hover-bg)'),
+      surface: resolved('backgroundColor', 'var(--viz-surface)'),
+      border: resolved('borderTopColor', 'var(--viz-border)'),
+    },
+  };
+  const lengths = Object.fromEntries(
+    ["--view-header-toggle-inset-top", "--view-header-toggle-inset-end", "--view-header-toggle-height", "--view-header-toggle-width", "--view-header-toggle-room"].map((name) => [name, resolved('width', 'var(' + name + ')')]),
+  );
+  probe.remove();
   return {
     // The tokens the layout is held to, as the page resolves them.
-    tokens: Object.fromEntries(
-      ["--view-header-row-gap", "--view-header-eyebrow-height", "--view-header-line-height", "--page-title-font-size", "--body-font-size", "--view-header-up-size", "--view-header-toggle-option-width", "--chip-border", "--icon-glyph", "--content-padding-x"].map((name) => [name, token(name)]),
-    ),
+    tokens: {
+      ...Object.fromEntries(
+        ["--view-header-row-gap", "--view-header-eyebrow-height", "--view-header-line-height", "--page-title-font-size", "--body-font-size", "--view-header-up-size", "--view-header-toggle-option-width", "--chip-border", "--icon-glyph", "--content-padding-x", "--view-header-padding-top"].map((name) => [name, token(name)]),
+      ),
+      ...lengths,
+    },
+    states,
+    // The corner is the header's own, not the heading row's, and what the eyebrow leaves it.
+    cornerInHeader: !!q('.view-header-end') && q('.view-header-end').parentElement === header,
+    eyebrowPadEnd: eyebrowEl ? style(eyebrowEl).paddingRight : null,
     paneWidth: Math.round(pane.getBoundingClientRect().width),
     scheme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
     header: box(header),
@@ -150,6 +194,17 @@ const READ = `(() => {
     },
     line_ink: style(line) && style(line).color,
   };
+})()`;
+
+// The pane width at which each theme's pages are read under the pointer as well.
+const HOVER_PANE = 900;
+// The GitHub segment's ink and fill once every transition on it has ended.
+const HOVERED = `(async () => {
+  const link = document.querySelector('#preview-pane > .file-header .view-header-toggle a');
+  await Promise.all(link.getAnimations().map((motion) => motion.finished));
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const style = getComputedStyle(link);
+  return { ink: style.color, fill: style.backgroundColor, hovered: link.matches(':hover') };
 })()`;
 
 // Change the line's values in place, as the live refresh does: the folder's summary
@@ -211,6 +266,22 @@ async function main() {
             "document.fonts.ready.then(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))).then(() => true)",
           );
           const settled = await browser.evaluate(READ);
+          // The pointer on the GitHub segment, once its color and fill have ended their
+          // transition, then away again, so the reads that follow are of the page at rest.
+          let hovered = null;
+          if (pane === HOVER_PANE && settled.toggle) {
+            const link = await browser.evaluate(
+              "(() => { const r = document.querySelector('#preview-pane > .file-header .view-header-toggle a').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()",
+            );
+            await browser.send("Input.dispatchMouseEvent", {
+              type: "mouseMoved",
+              x: link.x,
+              y: link.y,
+            });
+            hovered = await browser.evaluate(HOVERED);
+            await browser.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 1, y: 799 });
+            await browser.evaluate(HOVERED);
+          }
           const relabeled = {};
           for (const step of ["fresh", "hour", "pending"]) {
             await browser.evaluate(RELABEL(page.kind, step));
@@ -219,7 +290,7 @@ async function main() {
             );
             relabeled[step] = await browser.evaluate(READ);
           }
-          results.push({ ...page, theme, pane, settled, relabeled });
+          results.push({ ...page, theme, pane, settled, relabeled, hovered });
         }
       }
       phase(theme);

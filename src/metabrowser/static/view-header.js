@@ -133,7 +133,9 @@
 
     /**
      * One view header (docs/design-system.md, "View Headers"): the eyebrow, which an empty
-     * one leaves out, the heading row (icon, title, the row's end), and the metadata line.
+     * one leaves out, the heading row (icon and title), the header's corner, its controls,
+     * and the metadata line. The corner is placed in the header's upper right whatever
+     * the rows hold, and follows the heading row in the reading order.
      * @param {MetabrowserViewHeaderParts} parts
      */
     function viewHeaderHtml(parts) {
@@ -143,8 +145,8 @@
         '<div class="view-header-heading">' +
         `<span class="view-header-icon file-identity-icon${parts.iconClass ? ` ${parts.iconClass}` : ""}"${parts.iconStyle ? ` style="${esc(parts.iconStyle)}"` : ""} aria-hidden="true">${parts.iconHtml}</span>` +
         `<h1 class="view-header-title page-heading" data-tip-text="${esc(parts.title)}">${esc(parts.title)}</h1>` +
-        `<span class="view-header-end">${parts.end}</span>` +
         "</div>" +
+        `<span class="view-header-end">${parts.end}</span>` +
         `<div class="view-header-line page-header-line">${parts.line}</div>` +
         "</div>"
       );

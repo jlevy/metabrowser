@@ -143,8 +143,9 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
     Repeat with the repository in `~/Desktop` and in `~/Downloads`. How macOS treats a
     served root above the folder chosen in the open panel is untested.
 11. **The GitHub toggle.** Open a checkout of a repository on github.com whose branch is
-    pushed, such as this repository, and open `README.md`. The view header ends in two
-    marks, the gray Metabrowser mark pressed and the GitHub mark.
+    pushed, such as this repository, and open `README.md`. The view header’s upper right
+    corner holds two marks, the Metabrowser mark selected, in the accent color on the
+    selected fill, and the GitHub mark muted.
     Click the GitHub mark: the default browser opens `README.md` on github.com at the
     branch, and the app’s window still shows Metabrowser’s view.
     On a branch that `origin` did not have at your last fetch, the GitHub mark’s tooltip

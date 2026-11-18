@@ -23,9 +23,16 @@ pending skeletons of a walk that has not finished. This judges the record:
   the navigation's, the header with no rule of its own, and the tab bar's one rule under
   it;
 - the GitHub toggle (mb-zp7y), on a folder served as a checkout whose origin is on
-  github.com: at the heading row's far end, centered on it, two segments of its tokens'
-  size in their pill's border, the Metabrowser mark the view the page is in and the
-  GitHub mark a link to the item's page;
+  github.com: in the header's upper right corner at its inset tokens, level with the
+  eyebrow, which leaves it its room, and not with the title (mb-70d6: the owner, "the
+  toggle between mb and github should be in upper right, not lower just because the
+  file title is lower on the page"); two segments of its tokens' size in their pill's
+  border at every width, the Metabrowser mark the view the page is in and the GitHub
+  mark a link to the item's page; and drawn as the shared toggles are, the page's view
+  selected in `--link` on `--highlight-bg`, the GitHub segment at rest in `--muted` with
+  no fill and under the pointer in `--text` on `--hover-bg`, in both themes ("a
+  consistent color, where the active one is clearer ... like our other toggles, not
+  gray");
 - the narrow panes: a title too long for its row cut short at its end, and every
   metadata item on the line whole or wrapped out of sight with its dot, never cut;
 - the title's tooltip, its whole name, shown by the shell's own rule on every page
@@ -96,10 +103,11 @@ def _served(root: Path) -> Path:
     return root
 
 
-# The toggle's narrow rule (`@container view-header (width < 400px)` in styles.css).
-_TOGGLE_NARROW_PX = 400
-# The least of the heading row the title keeps: 103 px in the 260 px pane, measured.
-_TITLE_FLOOR_PX = 96
+# The least of the heading row a title cut short keeps: the whole row less the icon and
+# its gap, 169 px in the 260 px pane, measured, since the toggle left the row (mb-70d6).
+_TITLE_FLOOR_PX = 160
+# The space the heading row's gap leaves between the eyebrow and the toggle.
+_TOGGLE_GAP_PX = 8
 # Each page's link: the branch origin has, then the item's tree or blob.
 _LINKS = {
     "file": "https://github.com/octo/demo/blob/main/docs/notes/a-long-name-for-a-view-header-title.md",
@@ -222,34 +230,72 @@ def test_view_headers_hold_their_rows_ground_and_values_in_chrome(
         assert page["titleTip"] is page["titleCut"], (
             f"{name}: tooltip {page['titleTip']}, cut {page['titleCut']}, {page['titleHeights']}"
         )
-        assert page["title"]["right"] <= page["end"]["left"] + TOLERANCE_PX, name
+        # The heading row has the header's whole width: the toggle is not in it.
+        inset = _px(tokens["--content-padding-x"])
+        assert abs(heading["right"] - (page["header"]["right"] - inset)) <= TOLERANCE_PX, name
+        assert page["title"]["right"] <= heading["right"] + TOLERANCE_PX, name
         # Up: disabled at the root, a control everywhere else.
         assert page["upDisabled"] is (result["kind"] == "root"), name
 
-        # The GitHub toggle ends the heading row, centered on it: two segments of the Up
-        # control's height and the toggle's width, in their pill's border, the Metabrowser
-        # mark the view the page is in and the GitHub mark a link to the item's page. A
-        # header whose rows are under 400 px keeps the GitHub segment alone.
+        # The GitHub toggle is in the header's corner, a child of the header and not of its
+        # heading row, at its inset tokens from the header's top and right edges, whatever
+        # the rows under it hold: its height is the eyebrow's, and it is level with the
+        # eyebrow, not centered on the title's row as it was. Two segments of the toggle's
+        # width at every pane width, in their pill's border, the Metabrowser mark the view
+        # the page is in and the GitHub mark a link to the item's page.
         toggle, end = page["toggle"], page["end"]
         assert toggle is not None, f"{name}: no toggle"
-        up, option = (
-            _px(tokens["--view-header-up-size"]),
-            _px(tokens["--view-header-toggle-option-width"]),
+        assert page["cornerInHeader"], f"{name}: the toggle is not in the header's corner"
+        header = page["header"]
+        top, right = (
+            _px(tokens["--view-header-toggle-inset-top"]),
+            _px(tokens["--view-header-toggle-inset-end"]),
         )
-        border, inset = _px(tokens["--chip-border"]), _px(tokens["--content-padding-x"])
-        assert toggle["height"] == up + 2 * border, f"{name}: toggle {toggle}"
-        narrow = page["header"]["width"] - 2 * inset < _TOGGLE_NARROW_PX
-        segments = 1 if narrow else 2
-        assert toggle["width"] == segments * option + 2 * border, f"{name}: toggle {toggle}"
+        assert top == _px(tokens["--view-header-padding-top"]), tokens
+        assert right == inset, tokens
+        assert abs(toggle["top"] - (header["top"] + top)) <= TOLERANCE_PX, f"{name}: {toggle}"
+        assert abs(toggle["right"] - (header["right"] - right)) <= TOLERANCE_PX, (
+            f"{name}: {toggle} {header}"
+        )
         assert abs(toggle["right"] - end["right"]) <= TOLERANCE_PX, f"{name}: {toggle} {end}"
-        assert abs(end["right"] - page["header"]["right"] + inset) <= TOLERANCE_PX, name
-        middle = (heading["top"] + heading["bottom"]) / 2
-        assert abs((toggle["top"] + toggle["bottom"]) / 2 - middle) <= TOLERANCE_PX, name
+        assert toggle["height"] == _px(tokens["--view-header-toggle-height"]), (
+            f"{name}: toggle {toggle}"
+        )
+        assert toggle["height"] == eyebrow["height"], f"{name}: toggle {toggle}"
+        assert abs(toggle["top"] - eyebrow["top"]) <= TOLERANCE_PX, f"{name}: {toggle}"
+        option, border = (
+            _px(tokens["--view-header-toggle-option-width"]),
+            _px(tokens["--chip-border"]),
+        )
+        assert toggle["width"] == 2 * option + 2 * border, f"{name}: toggle {toggle}"
+        assert toggle["width"] == _px(tokens["--view-header-toggle-width"]), name
+        # The eyebrow leaves the toggle its room, its width and the heading row's gap.
+        room = _px(tokens["--view-header-toggle-room"])
+        assert room == toggle["width"] + _TOGGLE_GAP_PX, tokens
+        assert _px(page["eyebrowPadEnd"]) == room, f"{name}: {page['eyebrowPadEnd']}"
+        assert eyebrow["right"] - room <= toggle["left"] - _TOGGLE_GAP_PX + TOLERANCE_PX, name
         assert "view-header-toggle-metabrowser" in (page["toggleCurrent"] or ""), name
         assert page["toggleHref"] == _LINKS[result["kind"]], f"{name}: {page['toggleHref']}"
         glyph = _px(tokens["--icon-glyph"])
         marks = [mark["height"] for mark in page["marks"]]
-        assert marks == ([0, glyph] if narrow else [glyph, glyph]), f"{name}: marks {marks}"
+        assert marks == [glyph, glyph], f"{name}: marks {marks}"
+        # The shared toggles' states, in this theme's tokens: the page's view selected, the
+        # other segment at rest, the frame and ground a joined chip group's.
+        states = page["states"]
+        want = states["want"]
+        assert states["here"] == {"ink": want["link"], "fill": want["highlight"]}, (
+            f"{name}: selected {states['here']} against {want}"
+        )
+        assert states["there"] == {"ink": want["muted"], "fill": "rgba(0, 0, 0, 0)"}, (
+            f"{name}: at rest {states['there']} against {want}"
+        )
+        assert states["frame"]["fill"] == want["surface"], f"{name}: {states['frame']}"
+        assert states["frame"]["border"] == want["border"], f"{name}: {states['frame']}"
+        if result["hovered"] is not None:
+            hovered = result["hovered"]
+            assert hovered["hovered"], f"{name}: the pointer is not on the GitHub segment"
+            assert hovered["ink"] == want["text"], f"{name}: hovered {hovered} against {want}"
+            assert hovered["fill"] == want["hover"], f"{name}: hovered {hovered} against {want}"
         # A title cut short keeps at least a floor of the row; a whole one has all it
         # needs. A whole title is not measured against its scroll width, which is whole
         # pixels where its width is fractional: a whole "docs" is 48.94 px and needs 49.

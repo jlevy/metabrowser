@@ -6,9 +6,9 @@ env:
 ---
 # Golden Test: The View Header’s GitHub Toggle
 
-On a page whose repository is on github.com, a file’s or a folder’s view header ends its
-heading row in a toggle of two marks: Metabrowser’s, gray, the view every page opens in,
-and GitHub’s, a link to the same item’s page on github.com.
+On a page whose repository is on github.com, a file’s or a folder’s view header has a
+toggle of two marks in its corner: Metabrowser’s, selected, the view every page opens
+in, and GitHub’s, a link to the same item’s page on github.com.
 A plain folder, a checkout whose `origin` is on another host or that has no remote, and
 a mirror of a repository that is not on github.com have no toggle.
 

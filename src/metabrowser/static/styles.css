@@ -711,9 +711,28 @@
   --view-header-eyebrow-height: 22px;
   --view-header-line-height: 22px;
   --view-header-up-size: 20px;
-  /* A toggle segment's width: the up control's height and a few pixels for the wide
-     Metabrowser mark's ink, so the pair reads as two equal buttons. */
+  /* The GitHub toggle's box (docs/design-system.md, "View Headers"), which a native bar
+     drawing the same toggle matches. It sits in the header's upper right corner at a fixed
+     inset from the header's top and right edges, whatever rows are under it: the header's
+     own top pad and side pad, so its top is the first row's top and its right edge the
+     rows' content edge. Its height is the eyebrow's, pill border included, so on a file's
+     or a folder's header it is level with that row. A segment is that height inside the
+     border, and as wide as the up control and a few pixels for the wide Metabrowser
+     mark's ink, so the pair reads as two equal buttons; the toggle is two segments and the
+     border. The row beside it leaves it its width and the heading row's 8 px gap at the
+     row's end (`--view-header-toggle-room`), which is all it needs because the right
+     inset is the header's side pad. */
+  --view-header-toggle-inset-top: var(--view-header-padding-top);
+  --view-header-toggle-inset-end: var(--content-padding-x);
+  --view-header-toggle-height: var(--view-header-eyebrow-height);
   --view-header-toggle-option-width: 28px;
+  --view-header-toggle-width: calc(
+    2 *
+    var(--view-header-toggle-option-width) +
+    2 *
+    var(--chip-border)
+  );
+  --view-header-toggle-room: calc(var(--view-header-toggle-width) + 8px);
   --file-tab-padding-x: 12px;
   --file-tab-padding-y: 4px;
   --file-tab-align-adjust: 3px;
@@ -4230,8 +4249,10 @@ a.tab-btn {
    rule under a view's header is the tab bar's, under the tabs. Every row holds its
    height whatever fills it, so a value arriving or changing moves nothing below it.
    The block's rules are on .view-header, the structure a kind's header takes;
-   .file-header names a file's or a folder's for the keymap and the key badges. */
+   .file-header names a file's or a folder's for the keymap and the key badges. Its
+   upper right corner holds its controls (.view-header-end, below), placed in it. */
 .view-header {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--view-header-row-gap);
@@ -4270,8 +4291,8 @@ a.tab-btn {
   width: var(--view-header-up-size);
   height: var(--view-header-up-size);
 }
-/* The heading row: the kind's icon, the title at the page title's size, what follows
-   the title, and the row's end, its controls, at the far end. */
+/* The heading row: the kind's icon, the title at the page title's size, and what follows
+   the title. The header's controls are not in it but in the header's corner. */
 .view-header-heading {
   display: flex;
   align-items: center;
@@ -4307,12 +4328,24 @@ a.tab-btn {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* The header's upper right corner, which holds its controls, the GitHub toggle: at a fixed
+   inset from the top and right edges of the box it is placed in, and a fixed height, so
+   it never moves with the rows under it. A file's or a folder's is placed in its header
+   (.view-header); a pull request's in its page, so it is where a file's is
+   (github/styles.css). The row it stands beside, the header's first, leaves it its room
+   (below), and the rows under that one have the header's whole width. */
 .view-header-end {
-  display: inline-flex;
+  position: absolute;
+  inset-block-start: var(--view-header-toggle-inset-top);
+  inset-inline-end: var(--view-header-toggle-inset-end);
+  display: flex;
   align-items: center;
   gap: 4px;
-  flex: none;
-  margin-inline-start: auto;
+  block-size: var(--view-header-toggle-height);
+}
+.view-header:has(> .view-header-end > .view-header-toggle)
+  > :is(.view-header-eyebrow, .view-header-eyebrow:empty + .view-header-heading) {
+  padding-inline-end: var(--view-header-toggle-room);
 }
 /* The metadata line: badges, then the item's values after muted dots, at the body
    size. It is one line at its height whatever fills it. A pane too narrow for an item
@@ -4342,11 +4375,14 @@ a.tab-btn {
   height: var(--view-header-line-height);
   white-space: nowrap;
 }
-/* The GitHub toggle at the heading row's end (static/github-page.js; docs/design-system.md,
+/* The GitHub toggle in the view header's corner (static/github-page.js; docs/design-system.md,
    "View Headers"), on a page whose repository is on github.com: a joined pair, as a
-   segmented control is, of the Metabrowser mark, gray, on the pressed segment's fill,
-   the view the page is in, and the GitHub mark, a link to the item's page on
-   github.com. The marks are masks in the ink of their segment.
+   segmented control is, of the Metabrowser mark, the view the page is in, and the GitHub
+   mark, a link to the item's page on github.com. It is drawn as every exclusive choice is
+   ("Choosing Among Values"): the group's frame and ground a joined chip group's, the
+   segment the page is in the selected one, --link on --highlight-bg, and the other at
+   rest, --muted with no fill, --text on --hover-bg under the pointer, with the family's
+   focus ring. The marks are masks in the ink of their segment.
 
    The Metabrowser mark is the app icon's own, the partial M and the B, from
    apps/macos/Sources/ShellCore/App/AppIconMarkGeometry.swift, framed to its ink; the
@@ -4355,35 +4391,38 @@ a.tab-btn {
 .view-header-toggle {
   display: inline-flex;
   flex: none;
+  block-size: var(--view-header-toggle-height);
   border: var(--chip-border) solid var(--viz-border);
   border-radius: var(--radius-pill);
   background: var(--viz-surface);
   overflow: hidden;
 }
-.view-header-toggle-option {
+/* Each state's rule names the group too, so a host's rules for the links in its header, as
+   a pull request's `.github-pull-header a`, do not recolor a segment or move its ring. */
+.view-header-toggle > .view-header-toggle-option {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   inline-size: var(--view-header-toggle-option-width);
-  block-size: var(--view-header-up-size);
   color: var(--muted);
+  transition:
+    color var(--transition-fast),
+    background var(--transition-fast);
 }
-.view-header-toggle-option + .view-header-toggle-option {
+.view-header-toggle > .view-header-toggle-option + .view-header-toggle-option {
   border-left: 1px solid var(--viz-border-subtle);
 }
-/* The view the page is in: the pressed segment, as a pressed toggle chip is drawn. */
-.view-header-toggle-option[aria-current="page"] {
-  background: var(--hover-bg);
-  box-shadow: inset 0 0 0 1px var(--viz-border-strong);
-}
-a.view-header-toggle-option {
+.view-header-toggle > a.view-header-toggle-option:hover {
   color: var(--text);
+  background: var(--hover-bg);
 }
-/* Hover is the accent tint, so a hovered link never reads as the pressed segment. */
-a.view-header-toggle-option:hover {
+/* The view the page is in: the selected segment, as a joined chip group's checked chip
+   and a menu segment's are drawn. */
+.view-header-toggle > .view-header-toggle-option[aria-current="page"] {
+  color: var(--link);
   background: var(--highlight-bg);
 }
-a.view-header-toggle-option:focus-visible {
+.view-header-toggle > a.view-header-toggle-option:focus-visible {
   outline: 2px solid var(--link);
   outline-offset: -2px;
 }
@@ -4394,23 +4433,6 @@ a.view-header-toggle-option:focus-visible {
   mask:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M6.766 11.328c-2.063-.25-3.516-1.734-3.516-3.656 0-.781.281-1.625.75-2.188-.203-.515-.172-1.609.063-2.062.625-.078 1.468.25 1.968.703.594-.187 1.219-.281 1.985-.281.765 0 1.39.094 1.953.265.484-.437 1.344-.765 1.969-.687.218.422.25 1.515.046 2.047.5.593.766 1.39.766 2.203 0 1.922-1.453 3.375-3.547 3.64.531.344.89 1.094.89 1.954v1.625c0 .468.391.734.86.547C13.781 14.359 16 11.53 16 8.03 16 3.61 12.406 0 7.984 0 3.563 0 0 3.61 0 8.031a7.88 7.88 0 0 0 5.172 7.422c.422.156.828-.125.828-.547v-1.25c-.219.094-.5.156-.75.156-1.031 0-1.64-.562-2.078-1.609-.172-.422-.36-.672-.719-.719-.187-.015-.25-.093-.25-.187 0-.188.313-.328.625-.328.453 0 .844.281 1.25.86.313.452.64.655 1.031.655s.641-.14 1-.5c.266-.265.47-.5.657-.656'/%3E%3C/svg%3E")
     center / contain no-repeat;
-}
-/* A view header whose rows are under 400 px drops the Metabrowser segment, which only
-   says where the page already is, and keeps the GitHub link, so the title keeps the
-   row. Measured in Chrome 152 on 2026-11-18 with README.md, 130 px wide, as the title:
-   in a 260 px pane it had 43 px with Copy path and both segments in its row, and has
-   103 px with Copy path in the eyebrow and the GitHub segment alone; from a 320 px pane
-   it is whole. */
-.view-header {
-  container: view-header / inline-size;
-}
-@container view-header (width < 400px) {
-  .view-header-toggle-metabrowser {
-    display: none;
-  }
-  .view-header-toggle-option + .view-header-toggle-option {
-    border-left: 0;
-  }
 }
 .view-header-toggle-metabrowser > .view-header-toggle-mark {
   inline-size: var(--icon-box);
