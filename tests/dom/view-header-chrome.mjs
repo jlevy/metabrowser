@@ -3,7 +3,7 @@
 //
 // For each page it reads the header's rows, its ground and rules, the title's and the
 // metadata line's type, and each metadata item's box; then it changes the line's values in
-// place, as the folder header's live refresh does (`folderHeaderSummaryHtml` in app.js),
+// place, as the folder header's live refresh does (`folderHeaderSummaryHtml` in view-header.js),
 // and reads every box again. The caller (tests/test_view_header_chrome.py) judges the
 // record. Arguments: the `metab` executable, the served root, a port to start the server's
 // search from, and a state directory for its cache and config.
@@ -150,17 +150,18 @@ const READ = `(() => {
 
 // Change the line's values in place, as the live refresh does: the folder's summary
 // rewritten by the shell's own `folderHeaderSummaryHtml`, a file's age item by
-// `viewHeaderAgeHtml`, at the age a just-written folder has, then an hour later.
+// `viewHeaderAgeHtml`, both the page's own view-header.js builders (app.js's
+// viewHeaderBuilders), at the age a just-written folder has, then an hour later.
 const RELABEL = (kind, step) => `(() => {
   const now = Date.now() / 1000;
   const mtime = ${step === "pending" ? "null" : step === "fresh" ? "now" : "now - 59 * 60"};
   if ('${kind}' === 'file') {
     const age = document.querySelector('#preview-pane > .file-header .view-header-age');
-    age.outerHTML = viewHeaderAgeHtml(mtime);
+    age.outerHTML = viewHeaderBuilders().viewHeaderAgeHtml(mtime);
     return true;
   }
   const summary = document.querySelector('#preview-pane > .file-header .folder-header-summary');
-  summary.innerHTML = folderHeaderSummaryHtml(${
+  summary.innerHTML = viewHeaderBuilders().folderHeaderSummaryHtml(${
     step === "pending"
       ? "{ total_size: null, total_files: null, mtime: null }"
       : "{ total_size: 1234567, total_files: 12345, mtime }"

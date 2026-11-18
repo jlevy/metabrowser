@@ -376,8 +376,9 @@ a pull request, and a commit.
 | 3. Metadata | Its badges, size, and age | Its size, file count, and age | Its author line, branches, and ages ([Page Headers](#page-headers)) | Its author, revision, and age ([Page Headers](#page-headers)) |
 | 4. Tab bar | Its views: Document, Source, and so on | Overview and Treemap | Conversation, Changes, and Checks | None |
 
-Files and folders draw these rows today (`viewHeaderHtml` in `static/app.js`). A pull
-request’s page and a commit’s draw their title and lines as
+Files and folders draw these rows today (`viewHeaderHtml` in `static/view-header.js`, an
+on-demand bundle the shell fetches beside the view compositor).
+A pull request’s page and a commit’s draw their title and lines as
 [Page Headers](#page-headers) says, and move onto the same rows, icon, and ground next
 (planned). What another kind shares is the class structure, not that builder, which is
 the shell’s own: a `.view-header` block holding `.view-header-eyebrow`,

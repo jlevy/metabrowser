@@ -60,9 +60,10 @@ const SOURCES = new Map(
 );
 const TAB_LABELS = { files: "Files", git: "Commits", pulls: "Pulls" };
 
-// The view header's builders, lifted verbatim from app.js, which cannot load without a
-// document: the header's structure and its Up control are app.js's own, so a change to
-// either reaches the keymap here. Their collaborators do not branch on the structure.
+// The view header's builders, from the production view-header.js over app.js's own `esc`,
+// lifted verbatim, since app.js cannot load without a document: the header's structure
+// and its Up control are the shell's own, so a change to either reaches the keymap here.
+// The collaborators that do not branch on the structure are stubs.
 const appSource = fs.readFileSync(path.join(staticDir, "app.js"), "utf8");
 const liftApp = (name) => {
   const match = appSource.match(new RegExp(`\\nfunction ${name}\\([^)]*\\) \\{[\\s\\S]*?\\n\\}`));
@@ -71,14 +72,31 @@ const liftApp = (name) => {
   }
   return match[0];
 };
-const viewHeader = vm.runInNewContext(
-  `${["esc", "viewHeaderUpHtml", "viewHeaderHtml"].map(liftApp).join("\n")}
-   ({ viewHeaderHtml, viewHeaderUpHtml });`,
-  {
-    window: { MetabrowserNavigationRoute: { displayPath: (/** @type {string} */ p) => p } },
+const viewHeader = (() => {
+  const page = {
+    MetabrowserNavigationRoute: { displayPath: (/** @type {string} */ p) => p },
+  };
+  page.window = page;
+  vm.createContext(page);
+  vm.runInContext(fs.readFileSync(path.join(staticDir, "view-header.js"), "utf8"), page);
+  const esc = vm.runInContext(`${liftApp("esc")}\nesc;`, page);
+  const notDrawnHere = () => {
+    throw new Error("this session's headers draw only their structure and Up");
+  };
+  return page.MetabrowserViewHeader.create({
+    esc,
+    servedRoot: notDrawnHere,
+    pathBaseName: notDrawnHere,
     ownedControlAttr: () => "",
-  },
-);
+    mirrorHeading: notDrawnHere,
+    getFileIcon: notDrawnHere,
+    getLogicalName: notDrawnHere,
+    sizeHtml: notDrawnHere,
+    countHtml: notDrawnHere,
+    formatAge: notDrawnHere,
+    activeFiles: new Map(),
+  });
+})();
 const HOLD_MS = 200;
 const REVISION = "0123456789abcdef0123456789abcdef01234567";
 

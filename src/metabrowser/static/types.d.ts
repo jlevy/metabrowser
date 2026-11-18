@@ -2923,7 +2923,65 @@ type MetabrowserTreeKeyboardRuntime = Readonly<{
 }>;
 
 declare global {
-  /** The parts of a view header, which app.js's viewHeaderHtml writes in its rows. */
+  /** The shell's helpers view-header.js builds a header with, which app.js passes to it. */
+  interface MetabrowserViewHeaderShell {
+    esc(value: unknown): string;
+    /** The served root, absolute. */
+    servedRoot(): string;
+    pathBaseName(path: string): string;
+    /** The SDK's owner mark for the shell's delegated controls. */
+    ownedControlAttr(): string;
+    /** What a served mirror's page adds to its headings (mirror-heading.js). */
+    mirrorHeading(part: "note"): string;
+    /** A tree row's icon for a file name. */
+    getFileIcon(name: string): { svg: string; cls: string; style: string };
+    /** The name without a recognized compression suffix. */
+    getLogicalName(entry: { name: string; compressed?: boolean; compression?: string }): string;
+    sizeHtml(bytes: number | null | undefined, extraClass?: string): string;
+    countHtml(n: number | null | undefined, extraClass?: string): string;
+    formatAge(mtime: number | null, options?: { style?: "relative" }): string;
+    /** The files whose writer the activity poll reports, which a run's status badge reads. */
+    activeFiles: ReadonlyMap<string, unknown>;
+  }
+  /** What a file's view header reads from its `/api/file` envelope. */
+  type MetabrowserViewHeaderFile = {
+    path: string;
+    compressed?: boolean;
+    /** The compression's name, as `gzip`, where the file is compressed on disk. */
+    compression?: string;
+    size?: number | null;
+    /** Epoch seconds; absent where the time could not be read. */
+    mtime?: number | null;
+    kind?: string;
+    type?: string;
+    /** A run's adapter, and whether and how the run ended. */
+    summary?: { adapter?: string; is_done?: boolean; is_error?: boolean } | null;
+    /** The YAML parser's message for a leading block it could not parse. */
+    frontmatter_error?: string;
+  };
+  /** What a folder's view header reads from its folder envelope's `dir`. */
+  type MetabrowserViewHeaderFolderTotals = Pick<
+    MetabrowserFolderEnvelope["dir"],
+    "mtime" | "not_indexed" | "total_files" | "total_size"
+  >;
+  /** What view-header.js builds: a file's and a folder's view header and their parts. */
+  interface MetabrowserViewHeaderBuilders {
+    folderHeaderSummaryHtml(dirInfo: MetabrowserViewHeaderFolderTotals): string;
+    renderBadges(data: MetabrowserViewHeaderFile): string;
+    renderFileHeader(data: MetabrowserViewHeaderFile): string;
+    /** A Git tree's envelope has no `dir`. */
+    renderFolderHeader(data: {
+      path: string;
+      dir?: MetabrowserViewHeaderFolderTotals | null;
+    }): string;
+    viewHeaderAgeHtml(mtime: number | null | undefined): string;
+    viewHeaderEyebrowHtml(path: string): string;
+    viewHeaderHtml(parts: MetabrowserViewHeaderParts): string;
+    viewHeaderItemsHtml(items: string[]): string;
+    viewHeaderName(path: string): string;
+    viewHeaderUpHtml(path: string): string;
+  }
+  /** The parts of a view header, which view-header.js's viewHeaderHtml writes in its rows. */
   type MetabrowserViewHeaderParts = {
     /** Extra classes on the header, as `folder-header`. */
     className?: string;
@@ -4078,6 +4136,10 @@ declare global {
     }>;
     MetabrowserViewState: MetabrowserViewStateRuntime;
     MetabrowserViewComposition: MetabrowserViewCompositionRuntime;
+    /** static/view-header.js, an on-demand bundle loadViewComposition fetches. */
+    MetabrowserViewHeader?: Readonly<{
+      create(shell: MetabrowserViewHeaderShell): Readonly<MetabrowserViewHeaderBuilders>;
+    }>;
     MetabrowserTreemapLayout: MetabrowserTreemapLayoutApi;
     MetabrowserTooltip?: {
       hide(within?: Element | null): void;

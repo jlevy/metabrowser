@@ -1990,6 +1990,19 @@ async def index(
         # first tree is usable. renderFile awaits this bundle and rechecks its
         # ownership claim before preparing or mounting a view.
         "view-composition": [{"src": view_composition_url}],
+        # A file's and a folder's view header: its builders, and the folder line's live
+        # refresh. renderFile draws a header only after loadViewComposition, which fetches
+        # this beside the compositor and the SDK's view helpers, so the first tree never
+        # waits for it. What that costs a view, measured in Chrome on 2026-11-18 against
+        # the builders in app.js, 36 cold loads of a folder and of a file a side in
+        # alternating back-to-back pairs, at load averages of 24 to 33 on 10 cores: the
+        # bundle is 14,102 bytes, 4,514 as a gzip client receives it; its request starts
+        # with the other two and ended no later than both in 48 of 72 loads; and the
+        # header's median time after DOMContentLoaded went from 40 to 41 ms on a folder
+        # and stayed at 58 ms on a file.
+        "view-header": [
+            {"src": _static_asset_url("view-header.js"), "provides": "MetabrowserViewHeader"}
+        ],
         # What a view's renderer calls: the line-number gutter with its `#L` anchors,
         # and the SDK helpers a renderer builds its markup with (the Source surface,
         # the copy wrapper, the partial-content notice, the syntax service). Nothing

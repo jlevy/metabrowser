@@ -1419,21 +1419,24 @@ const PULLS = [
   },
 ];
 const PULLS_WIDTHS = [420, 360, 300, 240, 180];
-// The file header of a run's log: renderBadges, RUN_STATUS_SIZERS, and flagRunEndedBadge
-// are app.js's own, read from the served file and run here with the two names they use.
-// The header is the one renderFile draws around them: the path, the badges, and the size.
-// A live run ends, and a running one turns live, as app.js
+// The file header of a run's log: renderBadges and its RUN_STATUS_SIZERS are the view
+// header's own (view-header.js), read from the served file and made here with the two
+// helpers they use, and flagRunEndedBadge is app.js's own, read from the served file. The
+// header is the one renderFile draws around them: the path, the badges, and the size. A
+// live run ends, and a running one turns live, as app.js
 // changes them in place (flagRunEndedBadge, and _mirrorActiveFromFsEntry's two lines), and
 // every box of the header is read before and after.
 const RUN_BADGE = `async (live, width) => {
   // Read with XMLHttpRequest: the header's measurements stand in for window.fetch.
-  const source = await new Promise((resolve, reject) => {
-    const request = new XMLHttpRequest();
-    request.open("GET", "/static/app.js");
-    request.onload = () => resolve(request.responseText);
-    request.onerror = reject;
-    request.send();
-  });
+  const served = (file) =>
+    new Promise((resolve, reject) => {
+      const request = new XMLHttpRequest();
+      request.open("GET", "/static/" + file);
+      request.onload = () => resolve(request.responseText);
+      request.onerror = reject;
+      request.send();
+    });
+  const source = await served("app.js");
   const take = (start, end) => {
     const at = source.indexOf(start);
     if (at < 0) {
@@ -1441,20 +1444,35 @@ const RUN_BADGE = `async (live, width) => {
     }
     return source.slice(at, source.indexOf(end, at) + end.length);
   };
-  const code = [
-    take("const RUN_STATUS_SIZERS = ", '.join("");'),
-    take("function renderBadges(data) {", "\\n}\\n"),
-    take("function flagRunEndedBadge() {", "\\n}\\n"),
-    take("function viewHeaderItemsHtml(items) {", "\\n}\\n"),
-    take("function viewHeaderHtml(parts) {", "\\n}\\n"),
-  ].join("\\n");
+  const flagRunEndedBadge = new Function(
+    take("function flagRunEndedBadge() {", "\\n}\\n") + "\\nreturn flagRunEndedBadge;",
+  )();
+  if (!window.MetabrowserViewHeader) {
+    new Function(await served("view-header.js"))();
+  }
   const esc = (text) => String(text).replace(/[&<>"]/g, (c) => "&#" + c.charCodeAt(0) + ";");
   const activeFiles = new Map(live ? [["logs/session.jsonl", {}]] : []);
-  const app = new Function("esc", "activeFiles", code + "\\nreturn { renderBadges, flagRunEndedBadge, viewHeaderItemsHtml, viewHeaderHtml };")(esc, activeFiles);
+  const notDrawnHere = () => {
+    throw new Error("this header draws only its badges and a size");
+  };
+  const builders = window.MetabrowserViewHeader.create({
+    esc,
+    servedRoot: notDrawnHere,
+    pathBaseName: notDrawnHere,
+    ownedControlAttr: notDrawnHere,
+    mirrorHeading: notDrawnHere,
+    getFileIcon: notDrawnHere,
+    getLogicalName: notDrawnHere,
+    sizeHtml: notDrawnHere,
+    countHtml: notDrawnHere,
+    formatAge: notDrawnHere,
+    activeFiles,
+  });
+  const app = { ...builders, flagRunEndedBadge };
   const pane = document.getElementById("preview-pane");
   pane.style.width = width + "px";
-  // A file's view header, through app.js's own builder (renderFileHeader): the badges
-  // lead its metadata line.
+  // A file's view header, through the view header's own builder (renderFileHeader): the
+  // badges lead its metadata line.
   pane.innerHTML = app.viewHeaderHtml({
     eyebrow: "",
     iconHtml: "",

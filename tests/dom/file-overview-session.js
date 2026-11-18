@@ -1020,7 +1020,8 @@ const rollupError = (status) =>
   }
 
   // The shell's folder header reads the same envelope: pending aggregates are a skeleton
-  // until they arrive, and a folder the inventory leaves out has no tally to wait for.
+  // until they arrive, and a folder the inventory leaves out has no tally to wait for. The
+  // line is view-header.js's, over app.js's own cell helpers, lifted verbatim.
   {
     const appSource = fs.readFileSync(path.join(sourceRoot, "static/app.js"), "utf8");
     const lift = (name) => {
@@ -1030,24 +1031,36 @@ const rollupError = (status) =>
       assert(match, `${name} not found in app.js`);
       return match[0];
     };
-    const summaryHtml = vm.runInNewContext(
+    const shellPage = {
+      MetabrowserFormatters: { age: () => ({ className: "age", label: "3h" }) },
+    };
+    shellPage.window = shellPage;
+    vm.createContext(shellPage);
+    vm.runInContext(
+      fs.readFileSync(path.join(sourceRoot, "static/view-header.js"), "utf8"),
+      shellPage,
+    );
+    const summaryHtml = vm.runInContext(
       `function sizeClass() { return ""; }
        function countClass() { return ""; }
        function formatSize(value) { return value + " B"; }
        function formatCount(value) { return value + " files"; }
-       ${[
-         "isPendingNumber",
-         "sizeHtml",
-         "countHtml",
-         "formatAge",
-         "viewHeaderAgeHtml",
-         "viewHeaderItemsHtml",
-         "folderHeaderSummaryHtml",
-       ]
-         .map(lift)
-         .join("\n")}
-       folderHeaderSummaryHtml;`,
-      { window: { MetabrowserFormatters: { age: () => ({ className: "age", label: "3h" }) } } },
+       function notDrawnHere() { throw new Error("the folder line draws only its cells"); }
+       ${["isPendingNumber", "sizeHtml", "countHtml", "formatAge"].map(lift).join("\n")}
+       MetabrowserViewHeader.create({
+         esc: notDrawnHere,
+         servedRoot: notDrawnHere,
+         pathBaseName: notDrawnHere,
+         ownedControlAttr: notDrawnHere,
+         mirrorHeading: notDrawnHere,
+         getFileIcon: notDrawnHere,
+         getLogicalName: notDrawnHere,
+         sizeHtml,
+         countHtml,
+         formatAge,
+         activeFiles: new Map(),
+       }).folderHeaderSummaryHtml;`,
+      shellPage,
     );
     const header = (dir) => {
       const html = summaryHtml(dir);

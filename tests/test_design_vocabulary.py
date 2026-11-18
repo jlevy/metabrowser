@@ -612,6 +612,8 @@ def test_copyable_identifiers_share_the_copy_contract() -> None:
     """Paths and revisions use one explicit-value copy delegate."""
     design = (REPO_ROOT / "docs" / "design-system.md").read_text(encoding="utf-8")
     app = (STATIC / "app.js").read_text(encoding="utf-8")
+    # A file's view header writes its Copy path control (view-header.js).
+    header = (STATIC / "view-header.js").read_text(encoding="utf-8")
     sdk = (STATIC / "plugin-sdk.js").read_text(encoding="utf-8")
     git = (STATIC / "git-panel.js").read_text(encoding="utf-8")
     diff = (REPO_ROOT / "src/metabrowser/builtin_plugins/diff/diff-view.js").read_text(
@@ -622,11 +624,11 @@ def test_copyable_identifiers_share_the_copy_contract() -> None:
     assert "test_copyable_identifiers_share_the_copy_contract" in design
     assert 'target.closest("[data-mb-copy]")' in sdk
     assert 'mode === "text"' in sdk and 'mode === "wrap"' in sdk
-    assert 'data-mb-copy="text"' in app
+    assert 'data-mb-copy="text"' in header
     assert 'setAttribute("data-mb-copy", "text")' in diff
     assert 'data-mb-copy="text"' in git and "commit.id" in git
     assert "git-commit-revision-copy" in git
-    for source in (app, diff, git):
+    for source in (app, header, diff, git):
         assert "data-copy-path" not in source, "a local path-copy contract reappeared"
 
 
@@ -3695,9 +3697,10 @@ def test_key_badges_are_positioned_paint_over_layer_three_markup() -> None:
     assert selected[":where([data-kbd-badge-anchor])"] == {"position": "relative"}
     # The anchor: the view header, a file's and a folder's alike, for Up's button. The
     # commit heading anchored Copy revision's badge, and copying has no key any more.
-    app = (STATIC / "app.js").read_text(encoding="utf-8")
-    assert app.count("data-kbd-badge-anchor") == 1
-    assert '`<div class="file-header view-header${' in app
+    header = (STATIC / "view-header.js").read_text(encoding="utf-8")
+    assert header.count("data-kbd-badge-anchor") == 1
+    assert '`<div class="file-header view-header${' in header
+    assert "data-kbd-badge-anchor" not in (STATIC / "app.js").read_text(encoding="utf-8")
     git_panel = (STATIC / "git-panel.js").read_text(encoding="utf-8")
     assert "data-kbd-badge-anchor" not in git_panel
 

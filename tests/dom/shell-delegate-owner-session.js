@@ -8,10 +8,11 @@
 // rendered document's markup, but for a control page code placed in it and marked, as
 // the document's print button (builtin_plugins/markdown/print-indicator.js) is.
 //
-// The production SDK loads whole. The shell's markup builders and delegates are
-// lifted verbatim from app.js, which cannot load without a document, as
-// source-kind-session.js does; their navigation collaborators are stubs that record
-// calls. Each click target is an element built from the attributes the lifted builder
+// The production SDK and the view header's builders (view-header.js) load whole. The
+// shell's helpers and delegates are lifted verbatim from app.js, which cannot load
+// without a document, as source-kind-session.js does, and the builders are made over
+// them as loadViewComposition makes them; the navigation collaborators are stubs that
+// record calls. Each click target is an element built from the attributes the builder
 // wrote, so the owner mark under test is the one the production code emitted, not one
 // this file assigned.
 //
@@ -34,9 +35,10 @@ const PRODUCTION_MODULES = [
   "view-state.js",
   "navigation.js",
   "plugin-sdk.js",
+  "view-header.js",
 ];
 
-// Builders, gates, and delegates lifted verbatim from app.js.
+// Helpers, gates, and delegates lifted verbatim from app.js.
 const LIFTED = [
   "esc",
   "queryHtml",
@@ -47,20 +49,32 @@ const LIFTED = [
   "isOwnedControl",
   "isPageElement",
   "pathBaseName",
-  "headerEyebrowAddressHtml",
-  "servedRootParent",
-  "viewHeaderName",
-  "viewHeaderUpHtml",
-  "viewHeaderItemsHtml",
-  "viewHeaderHtml",
-  "viewHeaderEyebrowHtml",
-  "renderFolderHeader",
   "tipTextAnchor",
   "onHeaderNavigationClick",
 ];
 
+// The view header's builders over the lifted helpers. The headers built here show no
+// icon, size, count, age, or badge, so those helpers say so if one is asked for.
+const VIEW_HEADER = `
+function notDrawnHere() {
+  throw new Error("this session's headers draw no icon, size, count, age, or badge");
+}
+var viewHeader = MetabrowserViewHeader.create({
+  esc,
+  servedRoot,
+  pathBaseName,
+  ownedControlAttr,
+  mirrorHeading,
+  getFileIcon: notDrawnHere,
+  getLogicalName: notDrawnHere,
+  sizeHtml: notDrawnHere,
+  countHtml: notDrawnHere,
+  formatAge: notDrawnHere,
+  activeFiles: new Map(),
+});
+`;
+
 const COLLABORATORS = `
-var ICONS = { folder: "" };
 function navigateToFolder(path) {
   __calls.push("folder:" + path);
 }
@@ -182,7 +196,7 @@ for (const name of PRODUCTION_MODULES) {
   const file = path.join(staticDir, name);
   vm.runInContext(fs.readFileSync(file, "utf8"), sandbox, { filename: name });
 }
-vm.runInContext(COLLABORATORS + LIFTED.map(lift).join("\n"), sandbox, {
+vm.runInContext(COLLABORATORS + LIFTED.map(lift).join("\n") + VIEW_HEADER, sandbox, {
   filename: "app.js (lifted)",
 });
 
@@ -192,8 +206,8 @@ function click(element) {
 
 // The page's own controls, as the shell renders them: a file's eyebrow, its Up control and
 // its folder's address, and a folder's whole view header.
-const fileHeader = buttons(sandbox.viewHeaderEyebrowHtml("docs/a%25b.md"));
-const folderHeader = buttons(sandbox.renderFolderHeader({ path: "docs/sub" }));
+const fileHeader = buttons(sandbox.viewHeader.viewHeaderEyebrowHtml("docs/a%25b.md"));
+const folderHeader = buttons(sandbox.viewHeader.renderFolderHeader({ path: "docs/sub" }));
 const owner = fileHeader[0].getAttribute("data-mb-owner");
 check(
   "each control carries its tip text: Up its folder, the served root's crumb its name, and every other crumb its own name, not its path",
