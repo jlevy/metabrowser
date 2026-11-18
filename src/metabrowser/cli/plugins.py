@@ -10,7 +10,9 @@ Three modes on the ``metab`` CLI (parsing lives in
   asset and kind-id collisions across plugins and for view keys the
   server drops from a kind's merged views. It also checks the
   packaged cache record contracts. Exit code != 0 when any plugin
-  or contract is broken.
+  or contract is broken. After the verdict it reports each
+  repository provider's tools, GitHub CLI's path, version,
+  account, and scopes, which never change the exit code.
 
 These modes answer the operator question 'is my plugin loaded?'
 without having to start the server. They use the same discovery
@@ -23,10 +25,11 @@ invocations. A ``.env`` file cannot name a plugin directory: see
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import typer
 
@@ -35,6 +38,9 @@ from metabrowser.errors import CLIError
 from metabrowser.keymap import check_view_keys
 from metabrowser.plugin_loader.discovery import LoadedPlugin, discover_plugins
 from metabrowser.plugin_loader.manifest import DataHookSpec, merge_views, view_entry
+
+if TYPE_CHECKING:
+    from metabrowser.cache.providers import ProviderStatus
 
 
 def _format_table(rows: list[list[str]], headers: list[str]) -> str:
@@ -292,10 +298,25 @@ def _view_key_problems(plugins: list[LoadedPlugin]) -> list[str]:
     return problems
 
 
-def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = False) -> None:
-    """Validate every discovered plugin and the packaged cache record contracts.
+def _provider_sections() -> tuple[ProviderStatus, ...]:
+    """Each repository provider's report on its own tools, such as GitHub CLI's sign-in.
 
-    Exit non-zero on any problem.
+    A report, not a check: only a provider's URLs need its tools, so no state of one
+    changes the doctor's exit status. Imported here, as ``_view_key_problems`` imports the
+    registry, so ``--version`` loads none of it.
+    """
+    from metabrowser.cache.providers import provider_statuses
+
+    return asyncio.run(provider_statuses())
+
+
+def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = False) -> None:
+    """Validate every discovered plugin and the packaged cache record contracts, and
+    report each repository provider's tools, such as GitHub CLI's sign-in.
+
+    Exit non-zero on any plugin or contract problem; a provider's state never changes it.
+    The provider sections follow the verdict, on stdout after a clean run and on stderr
+    after the problems.
     """
     extra = resolve_extra_plugin_dirs(plugins_dir)
     result = discover_plugins(extra_dirs=extra)
@@ -355,17 +376,15 @@ def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = Fal
     # Cross-plugin: view keys stay clear of each other and the shell within a kind.
     problems.extend(_view_key_problems(result.plugins))
 
+    providers = _provider_sections()
     if as_json:
-        typer.echo(
-            json.dumps(
-                {
-                    "ok": not problems,
-                    "plugin_count": len(result.plugins),
-                    "problems": problems,
-                },
-                indent=2,
-            )
-        )
+        report: dict[str, object] = {
+            "ok": not problems,
+            "plugin_count": len(result.plugins),
+            "problems": problems,
+        }
+        report.update((section.name, dict(section.report)) for section in providers)
+        typer.echo(json.dumps(report, indent=2))
         if problems:
             raise typer.Exit(code=1)
         return
@@ -374,9 +393,17 @@ def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = Fal
         typer.echo(f"metab --doctor: {len(problems)} problem(s):", err=True)
         for problem in problems:
             typer.echo(f"  • {problem}", err=True)
+        _echo_provider_sections(providers, err=True)
         raise typer.Exit(code=1)
 
     typer.echo(f"metab --doctor: {len(result.plugins)} plugin(s) OK")
+    _echo_provider_sections(providers, err=False)
+
+
+def _echo_provider_sections(providers: tuple[ProviderStatus, ...], *, err: bool) -> None:
+    for section in providers:
+        for line in section.lines:
+            typer.echo(line, err=err)
 
 
 def _plugins_with_index_check(plugins: list[LoadedPlugin]) -> list[str]:

@@ -2,8 +2,9 @@
 one pull request's (``pull``, ``pull-refresh``, and the routes of its texts, timeline,
 comparison, rendered diffs, and their images), the catalog's (``pulls``, ``pulls-refresh``,
 ``pull-cores-prepare``), changed files (``pull-files``, ``pull-files-refresh``), stacks
-(``stacks``, ``stacks-refresh``), background prefetch (``pulls-prefetch``), and
-``cache-clear``, which discards all of a repository's. The table in
+(``stacks``, ``stacks-refresh``), background prefetch (``pulls-prefetch``),
+``cache-clear``, which discards all of a repository's, and ``status``, the GitHub status
+check, which any served root answers. The table in
 ``docs/project/architecture/arch-github-pull-requests.md``, checked against the manifest
 by ``tests/test_github_route_table.py``, names each one.
 
@@ -929,6 +930,35 @@ async def cache_clear_handler(request: Request) -> JSONResponse:
             headers=_NO_STORE,
         )
     return JSONResponse({"cleared": cleared, "source": repository.source}, headers=_NO_STORE)
+
+
+async def status_handler(request: Request) -> JSONResponse:
+    """``POST /api/plugin/github/status`` — the GitHub status check (:mod:`.gh_status`).
+
+    ``gh``'s path and version, the active github.com account, its token's scopes, and one
+    state with the step that fixes it: the ``github`` section ``metab --doctor --json``
+    prints. It runs ``gh``, which asks GitHub, so it is a ``POST`` with a JSON object
+    body, as every route that starts work is. The body is empty, or names ``fresh: true``
+    to run gh again rather than reuse an answer from the last
+    :data:`~.gh_status.GH_STATUS_TTL_S`, as a retry after signing in does. Every state
+    answers ``200``.
+    """
+
+    from metabrowser.builtin_plugins.github.gh_status import (
+        forget_github_status,
+        github_status,
+    )
+
+    body = await _json_body(request)
+    if isinstance(body, tuple):
+        return _invalid_request(*body)
+    fresh = body.get("fresh", False)
+    if set(body) - {"fresh"} or not isinstance(fresh, bool):
+        return _invalid_request("a status request names only fresh, true or false")
+    if fresh:
+        forget_github_status()
+    status = await github_status()
+    return JSONResponse(status.to_json(), headers=_NO_STORE)
 
 
 async def pull_files_handler(request: Request) -> Response:

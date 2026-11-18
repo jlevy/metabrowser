@@ -8,8 +8,11 @@ kills anything it started. Its stdout is never logged, because it can be private
 repository data or, for ``auth status``, the account's scopes.
 
 :func:`gh_api` issues one ``gh api --hostname github.com --include`` request and returns
-the status, headers, and body; :func:`gh_account` reads the active github.com login.
-Both raise :class:`GhError` with a typed ``state`` a user can act on. Nothing here
+the status, headers, and body; :func:`gh_active_account` reads the active github.com
+account, with its token's source and scopes where gh reports them, and :func:`gh_account`
+its login. Each raises :class:`GhError` with a typed ``state`` a user can act on.
+:func:`gh_version` reads the version; :mod:`.gh_status` combines them into the one
+status check that ``metab --doctor``, a route, and the checks before GitHub work read. Nothing here
 paginates, caches, or shares a read: callers name every page, as ``gh api --paginate``
 and ``--cache`` would hide the page cap, the ETags, and the rate-limit headers. Each
 read is owned by the one refresh job of what it reads, so identical reads do not overlap:
@@ -631,11 +634,71 @@ async def gh_graphql(
     return data
 
 
-def parse_account(stdout: bytes) -> str | None:
-    """The active github.com login from ``gh auth status --json hosts``, or ``None``.
+@dataclass(frozen=True, slots=True)
+class GhAccount:
+    """The active github.com account ``gh auth status --json hosts`` names.
+
+    ``token_source`` is where gh found the token: ``keyring``, ``oauth_token`` for its
+    own configuration file, or an environment variable's name such as ``GH_TOKEN``.
+    ``scopes`` are the token's OAuth scopes as gh reports them, sorted, or ``None`` where
+    gh reports none, as for a fine-grained or GitHub App token. ``problem`` is gh's own
+    verdict when it could not confirm the token, typed: offline is ``network_error``,
+    which is not being signed out, and a refused token is ``not_logged_in``. The token
+    and gh's own text are never read into it.
+    """
+
+    login: str
+    token_source: str | None = None
+    scopes: tuple[str, ...] | None = None
+    problem: GhError | None = None
+
+
+# One OAuth scope as GitHub names them, such as ``repo``, ``read:org``, or
+# ``admin:repo_hook``; anything else in the list is left out. A classic token holds at
+# most the two dozen scopes GitHub defines, so the cap only bounds a malformed answer.
+_SCOPE = re.compile(r"^[a-z][a-z0-9_]{0,39}(?::[a-z][a-z0-9_]{0,39})?$")
+_MAX_SCOPES: Final = 64
+_TOKEN_SOURCE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
+_TOO_OLD_MESSAGE: Final = (
+    "This GitHub CLI cannot report the active account. Update gh from "
+    "https://cli.github.com/, then run gh auth status --hostname github.com."
+)
+
+
+def _scopes(value: object) -> tuple[str, ...] | None:
+    """The scopes gh names, as one comma-separated string or a list, or ``None``."""
+
+    if isinstance(value, str):
+        items: list[object] = list(value.split(","))
+    elif isinstance(value, list):
+        items = list(value)  # pyright: ignore[reportUnknownArgumentType]
+    else:
+        return None
+    named = {item.strip() for item in items if isinstance(item, str)}
+    scopes = sorted(scope for scope in named if _SCOPE.match(scope))[:_MAX_SCOPES]
+    return tuple(scopes) or None
+
+
+def _token_problem(entry: Mapping[str, object]) -> GhError | None:
+    """gh's verdict on the active token, typed, or ``None`` when it confirmed it."""
+
+    state = entry.get("state")
+    if state in {None, "success"}:
+        return None
+    if state == "timeout":
+        return GhError("gh could not reach api.github.com", state="network_error")
+    diagnostic = entry.get("error")
+    if isinstance(diagnostic, str) and (failure := _diagnosed_failure(diagnostic)):
+        return failure
+    return GhError("gh could not confirm the account's token")
+
+
+def parse_active_account(stdout: bytes) -> GhAccount | None:
+    """The active github.com account from ``gh auth status --json hosts``, or ``None``.
 
     A non-success ``state`` still names the login: gh reports an error state when it is
-    offline, which is not being signed out. Scopes and token source are never read.
+    offline, which is not being signed out, so the login is kept and the state is the
+    account's ``problem``.
     """
 
     try:
@@ -651,7 +714,15 @@ def parse_account(stdout: bytes) -> str | None:
             continue
         login = entry.get("login")
         if isinstance(login, str) and _LOGIN.match(login):
-            return login
+            source = entry.get("tokenSource")
+            return GhAccount(
+                login=login,
+                token_source=(
+                    source if isinstance(source, str) and _TOKEN_SOURCE.match(source) else None
+                ),
+                scopes=_scopes(entry.get("scopes")),
+                problem=_token_problem(entry),
+            )
         # An environment token needs GitHub to resolve its login. A saved
         # account with a valid login remains available through a network failure.
         if login == "":
@@ -669,27 +740,53 @@ def parse_account(stdout: bytes) -> str | None:
     return None
 
 
-async def gh_account() -> str:
-    """The active github.com login, from ``gh auth status --active --json hosts``."""
+async def gh_active_account(*, timeout_s: float = GH_TIMEOUT_S) -> GhAccount:
+    """The active github.com account, from ``gh auth status --active --json hosts``.
+
+    Raises :class:`GhError` when there is none or gh cannot say; an account gh could not
+    confirm is returned with its ``problem``.
+    """
 
     completed = await _run(
         ["auth", "status", "--active", "--hostname", GH_HOSTNAME, "--json", "hosts"],
-        timeout_s=GH_TIMEOUT_S,
+        timeout_s=timeout_s,
         max_bytes=_ACCOUNT_MAX_BYTES,
     )
     if completed.stdout.strip().startswith(b"{"):
-        login = parse_account(completed.stdout)
-        if login is None:
+        account = parse_active_account(completed.stdout)
+        if account is None:
             raise GhError(_SIGN_IN_MESSAGE, state="not_logged_in")
-        gh_budget.note_account(login)
-        return login
+        gh_budget.note_account(account.login)
+        return account
     if b"unknown flag" in completed.stderr:
-        raise GhError(
-            "This GitHub CLI cannot report the active account. Update gh from "
-            "https://cli.github.com/, then run gh auth status --hostname github.com.",
-            state="gh_too_old",
-        )
+        raise GhError(_TOO_OLD_MESSAGE, state="gh_too_old")
     raise _failure_without_response(completed)
+
+
+async def gh_account() -> str:
+    """The active github.com login, from ``gh auth status --active --json hosts``."""
+
+    return (await gh_active_account()).login
+
+
+# ``gh --version`` prints ``gh version 2.98.0 (2026-08-20)`` and then a release link.
+_VERSION_LINE = re.compile(rb"^gh version ([0-9][0-9A-Za-z.+-]{0,31})(?: |\r?$)")
+_VERSION_MAX_BYTES: Final = 4096
+
+
+async def gh_version(*, timeout_s: float) -> str | None:
+    """The version ``gh --version`` names, or ``None`` when it names none.
+
+    Raises :class:`GhError` only for a missing gh, a deadline, or too much output.
+    """
+
+    completed = await _run(
+        ["--version"], timeout_s=timeout_s, max_bytes=_VERSION_MAX_BYTES, cwd=Path("/")
+    )
+    if completed.returncode != 0:
+        return None
+    match = _VERSION_LINE.match(completed.stdout.split(b"\n", 1)[0])
+    return match.group(1).decode("ascii") if match is not None else None
 
 
 __all__ = [
@@ -697,6 +794,7 @@ __all__ = [
     "GH_API_TIMEOUT_S",
     "GH_MAX_BYTES",
     "GH_TIMEOUT_S",
+    "GhAccount",
     "GhCursorError",
     "GhError",
     "GhFailureState",
@@ -704,11 +802,13 @@ __all__ = [
     "GhServerError",
     "GhUnavailableError",
     "gh_account",
+    "gh_active_account",
     "gh_api",
     "gh_graphql",
     "gh_environment",
     "gh_executable",
-    "parse_account",
+    "gh_version",
+    "parse_active_account",
     "parse_included_response",
     "rate_limit_reset",
     "run_gh",

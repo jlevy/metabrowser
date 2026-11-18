@@ -4,13 +4,15 @@ Core code names no provider and never branches on one. It asks the providers lis
 here, through :class:`RepositoryProvider`, for six things: URL reducers for the root
 argument, extra Git configuration for a remote URL (a credential helper), a check to run
 before a first clone, the ``repository_context`` of a mirrored source, the commit a
-pull-request URL pins, and the pull requests a server keeps fresh beside the mirror. The
-list is fixed, as the built-in browser plugin directories are; there is no public
+pull-request URL pins, and the pull requests a server keeps fresh beside the mirror; and,
+for ``metab --doctor``, a report on the provider's own tools (:func:`provider_statuses`).
+The list is fixed, as the built-in browser plugin directories are; there is no public
 registration surface for the alpha.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cache
 from typing import TYPE_CHECKING, Literal, Protocol
@@ -38,12 +40,29 @@ class PullRequestPin:
 class PullRequestUnavailableError(Exception):
     """A pull request's data could not be read or fetched; ``state`` says why.
 
-    ``str()`` is written for the user and names no local path.
+    ``str()`` is written for the user and names no local path. ``blocking`` is true when
+    only the step it names, installing or signing in to the provider's own tools, can
+    make the pull request readable, so an open stops there rather than falling back to
+    the default branch.
     """
 
-    def __init__(self, state: str, message: str) -> None:
+    def __init__(self, state: str, message: str, *, blocking: bool = False) -> None:
         super().__init__(message)
         self.state = state
+        self.blocking = blocking
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderStatus:
+    """What one provider's own tools report, as ``metab --doctor`` prints it.
+
+    ``name`` is the key of its ``--doctor --json`` section, ``report`` that section,
+    which the provider's own status route also serves, and ``lines`` its text.
+    """
+
+    name: str
+    report: Mapping[str, object]
+    lines: tuple[str, ...]
 
 
 class RepositoryProvider(Protocol):
@@ -121,6 +140,18 @@ def url_reducers() -> tuple[ProviderUrlReducer, ...]:
     return (GithubUrlReducer(),)
 
 
+async def provider_statuses() -> tuple[ProviderStatus, ...]:
+    """Every provider's status report, for ``metab --doctor``.
+
+    Each is imported alone, without its provider, as :func:`url_reducers` imports each
+    reducer: the doctor needs the status check, not the mirror machinery.
+    """
+
+    from metabrowser.builtin_plugins.github.gh_status import doctor_status
+
+    return (await doctor_status(),)
+
+
 def provider_git_config(remote_url: str) -> tuple[str, ...]:
     """Every provider's extra Git configuration for *remote_url*, in provider order."""
 
@@ -187,6 +218,7 @@ def served_pull_requests_for(published: PublishedSource) -> PullRequestSet | Non
 
 
 __all__ = [
+    "ProviderStatus",
     "PullRequestFetch",
     "PullRequestPin",
     "PullRequestUnavailableError",
@@ -196,6 +228,7 @@ __all__ = [
     "open_pull_request",
     "provider_credential_hint",
     "provider_git_config",
+    "provider_statuses",
     "served_pull_requests_for",
     "repository_context_for",
     "url_reducers",

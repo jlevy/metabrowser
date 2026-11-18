@@ -143,6 +143,14 @@ route = "cache-clear"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:cache_clear_handler"
 methods = ["POST"]
 
+# The GitHub status check: gh's path and version, the signed-in account, its scopes, and
+# one state with the step that fixes it, as metab --doctor reports it. It runs gh, so it
+# is a POST; {"fresh": true} runs it again rather than reuse a recent answer.
+[[data_hook]]
+route = "status"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:status_handler"
+methods = ["POST"]
+
 # A pull request's page at /pull/<n>[/files]. No file is ever this kind: the
 # shell selects it for the pull-request route and mounts this view there.
 [[view]]
