@@ -4,6 +4,15 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- In the Pulls list, a pull request’s three lines are one row: they hover, show as
+  selected, and take keyboard focus together, as a Files row does.
+  Up and Down move between whole pull requests, Enter opens one, Space shows or hides
+  its changed files, and Right and Left show and hide them as on a folder.
+  Clicking the title or number opens the pull request without showing its files;
+  clicking anywhere on the third line, the one with the chevron, shows or hides them,
+  and that line shows its own hover on the chevron.
+  The third line no longer takes focus of its own.
+
 - In the macOS app, Open Recent, the Dock menu and the title’s path menu show folders
   with the same outline folder symbol as the mirror’s cloud, instead of Finder’s colored
   folder.
