@@ -7,14 +7,23 @@
 //       /api/rollup via mb.watchRollup: a Bytes/Files metric choice,
 //       a default-on ignored-file checkbox, shared file-type colors,
 //       fluid cell typography, hover tooltip, click navigation,
-//       keyboard support, pending and truncated presentations.
+//       keyboard support, pending and truncated presentations, and the
+//       file-type legend File Overview shows, under the tally bars.
+//
+// The map's cells, its tally bars, and its legend share one hover
+// (distribution-hover.js), as File Overview's bars, legend, and table do:
+// pointing at a legend entry marks every cell of its family and the family's
+// segment in every tally row, and pointing at a cell or a segment marks it and
+// its family's entry (docs/design-system.md, "Aggregate Distributions").
 //
 // Geometry comes from treemap-layout.js. Toggle state comes from the shared
 // folder rollup controls, persists through mb.prefs (host-only cookies,
 // shared across per-root ports), and live refresh rides mb.watchRollup's
 // debounced /api/events signal.
 
-import { normalizeRollupEnvelope } from "./file-type-summary-model.js";
+import { createDistributionHover } from "./distribution-hover.js";
+import { createDistributionLegend } from "./distribution-legend.js";
+import { buildFileTypeLegendModel, normalizeRollupEnvelope } from "./file-type-summary-model.js";
 import {
   buildFolderTotalsComposition,
   mountFolderTotalsView,
@@ -27,6 +36,7 @@ import { parentNavigation } from "./treemap-model.js";
 /** @typedef {{classFor: (key: string) => string, styleFor: (key: string) => string, paint: (element: HTMLElement, key: string) => void}} TreemapPalette */
 /** @typedef {{acquire: (path: string) => TreemapPalette}} TreemapPalettePool */
 /** @typedef {{metric: "size" | "files", includeIgnored: boolean}} TreemapState */
+/** @typedef {import("./distribution-hover.js").DistributionHoverTarget} DistributionHoverTarget */
 
 /** @param {MetabrowserPublicSdk} mb @param {TreemapPalette} palette @param {{mount: (container: HTMLElement) => () => void, get: () => TreemapState, subscribe: (listener: (state: TreemapState) => void) => () => void}} rollupControls */
 export function registerTreemap(mb, palette, rollupControls) {
@@ -286,6 +296,10 @@ export function registerTreemap(mb, palette, rollupControls) {
       // silently moved the other's.
       '<div class="tm-rollup-controls folder-rollup-controls"></div>' +
       '<div class="tm-totals"></div>' +
+      // The legend's line is held while it has no entries, so the map below does not move
+      // when the rollup's legend arrives (docs/design-system.md, "Regions Keep Their
+      // Boxes").
+      '<div class="tm-legend-row"><ul class="file-type-summary-legend tm-legend" hidden></ul></div>' +
       parentControlHtml +
       '<div class="tm-viewport" role="application" aria-label="Folder treemap"></div>' +
       '<div class="tm-status" role="status"></div>';
@@ -302,12 +316,22 @@ export function registerTreemap(mb, palette, rollupControls) {
       ctx.raw && typeof ctx.raw === "object"
         ? /** @type {Record<string, any>} */ (ctx.raw).dir
         : null;
+    // The one hover the cells, the tally bars, and the legend share.
+    const hover = createDistributionHover();
     const totalsView = mountFolderTotalsView(
       totalsContainer,
       normalizeFolderTotals(initialRaw),
       mb,
       state.metric,
+      hover,
     );
+    const legendList = /** @type {HTMLElement} */ (container.querySelector(".tm-legend"));
+    const legend = createDistributionLegend(legendList, palette, hover);
+    // The hover a cell under the pointer entered, until the pointer leaves the cell.
+    /** @type {DistributionHoverTarget | null} */
+    let cellHover = null;
+    /** @type {Array<HTMLElement>} */
+    let hoveredCells = [];
     const unsubscribeTotals = mb.directoryTotals.subscribe(ctx.path || "", (next) => {
       const normalized = normalizeFolderTotals(next);
       if (normalized.state === "complete") {
@@ -336,6 +360,81 @@ export function registerTreemap(mb, palette, rollupControls) {
         console.warn("Could not compose treemap population bars.", error);
       }
     }
+    /**
+     * The legend File Overview shows for the same rollup, measure, and Show ignored, under
+     * the tally bars it keys. A rollup that breaks the legend's contract leaves it empty
+     * rather than taking the map down with it.
+     */
+    function updateLegend() {
+      /** @type {ReturnType<typeof buildFileTypeLegendModel>} */
+      let model = { legend: [], caption: "" };
+      try {
+        model = buildFileTypeLegendModel(
+          totalsEnvelope,
+          state.includeIgnored,
+          state.metric,
+          mb,
+          mb.fileTypes,
+        );
+      } catch (error) {
+        console.warn("Could not read the treemap file-type legend.", error);
+      }
+      // The tally row the entries' shares are of, whose segment of a family gives an
+      // entry's tooltip, as in File Overview.
+      legend.update(model.legend, state.includeIgnored ? "all" : "files");
+      legendList.setAttribute("aria-label", model.caption);
+    }
+
+    /**
+     * Draw the hover on the map's cells: a legend entry's hover marks every cell of its
+     * family, the files of its types and the folders it is the dominant type of, the cells
+     * it colors, as `family`; a cell's own hover marks that cell as `self`. The legend
+     * marks its entry and the tally bars their segments (distribution-legend.js,
+     * folder-totals.js). Every marked cell lifts, and none grows, since a cell's area is
+     * its value; only the cell under the pointer shimmers, because a family can hold
+     * every cell the map draws and each shimmering cell is a layer of its own
+     * (styles.css, beside the rule; docs/design-system.md, "Folder Treemap").
+     */
+    function drawCellHover() {
+      for (const element of hoveredCells) {
+        delete element.dataset.hovered;
+      }
+      hoveredCells = [];
+      const target = hover.current();
+      if (!target || !viewport) {
+        return;
+      }
+      if (target.marks === "self") {
+        const own = cellElementFor(target.anchor);
+        if (own === target.anchor && viewport.contains(own)) {
+          own.dataset.hovered = "self";
+          hoveredCells.push(own);
+        }
+        return;
+      }
+      for (const element of /** @type {NodeListOf<HTMLElement>} */ (
+        viewport.querySelectorAll("[data-tm-cell]")
+      )) {
+        const cell = cells[Number(element.dataset.tmCell)];
+        if (cell && cellPaletteKey(cell) === target.key) {
+          element.dataset.hovered = "family";
+          hoveredCells.push(element);
+        }
+      }
+    }
+    const unsubscribeCellHover = hover.subscribe(drawCellHover);
+
+    /**
+     * Let go of the hover the cell under the pointer entered, as a layout replaces the
+     * cell or the pointer leaves it: a removed element never hears the pointer leave it.
+     */
+    function releaseCellHover() {
+      if (cellHover) {
+        hover.leave(cellHover);
+        cellHover = null;
+      }
+    }
+
     // No parts argument: this row is both halves.
     const unmountControls = rollupControls.mount(rollupControlsHost);
 
@@ -383,6 +482,18 @@ export function registerTreemap(mb, palette, rollupControls) {
       if (disposed || !viewport) {
         return;
       }
+      // The cells are replaced below, and with them the one a cell's hover was entered
+      // from; the browser enters its replacement under a pointer that has not moved. A
+      // legend entry outlives the layout, so its hover is drawn again on the new cells.
+      releaseCellHover();
+      try {
+        layoutCells();
+      } finally {
+        drawCellHover();
+      }
+    }
+
+    function layoutCells() {
       const rect = viewport.getBoundingClientRect();
       const node = envelope ? envelope.node : null;
       status.textContent = statusHtml(envelope);
@@ -491,15 +602,36 @@ export function registerTreemap(mb, palette, rollupControls) {
     // descendant the pointer crosses inside a cell, so the tooltip is anchored
     // to the cell's own element: re-announcing the same anchor holds it still,
     // and crossing into a different cell replaces it.
+    //
+    // The cell also says where the pointer is to the hover the map shares with its bars
+    // and legend, once per cell: crossing a cell's own label is not leaving it.
     viewport.addEventListener("mouseover", (e) => {
       const host = cellElementFor(/** @type {Element} */ (e.target));
       const cell = cellForElement(/** @type {Element} */ (e.target));
       if (host && cell) {
         mb.tooltip.show(tooltipHtml(cell, state), host);
+        if (cellHover?.anchor !== host) {
+          releaseCellHover();
+          /** @type {DistributionHoverTarget} */
+          const target = Object.freeze({
+            population: state.includeIgnored ? "all" : "files",
+            key: cellPaletteKey(cell),
+            anchor: host,
+            marks: /** @type {const} */ ("self"),
+          });
+          cellHover = target;
+          hover.enter(target);
+        }
       }
     });
-    viewport.addEventListener("mouseout", () => {
+    viewport.addEventListener("mouseout", (e) => {
       mb.tooltip.hide();
+      if (
+        cellHover &&
+        cellElementFor(/** @type {Element | null} */ (e.relatedTarget)) !== cellHover.anchor
+      ) {
+        releaseCellHover();
+      }
     });
     viewport.addEventListener("keydown", (e) => {
       // A key held with Command, Control, or Option is the browser's: Command-R
@@ -537,6 +669,9 @@ export function registerTreemap(mb, palette, rollupControls) {
         updateTotalsComposition();
       }
       relayout();
+      if (metricChanged || populationChanged) {
+        updateLegend();
+      }
     });
 
     sizeViewport();
@@ -585,6 +720,7 @@ export function registerTreemap(mb, palette, rollupControls) {
         }
         updateTotalsComposition();
         relayout();
+        updateLegend();
       },
     );
     const unsubscribeActive = mb.viewState.subscribeActive(container, (active) => {
@@ -606,6 +742,13 @@ export function registerTreemap(mb, palette, rollupControls) {
         : null;
     if (resizeObserver) {
       resizeObserver.observe(viewport);
+      // The legend's row holds one line, and takes more in a pane too narrow for its
+      // entries, which moves the map's top edge: measured again, the map keeps to the
+      // space below it.
+      const legendRow = legendList.parentElement;
+      if (legendRow) {
+        resizeObserver.observe(legendRow);
+      }
     }
     // Window resize re-measures the available height; the observer
     // then relayouts off the height change (directly where there is
@@ -628,6 +771,13 @@ export function registerTreemap(mb, palette, rollupControls) {
       unsubscribeControls();
       unsubscribeTotals();
       unmountControls();
+      // The hover goes with the marks it was drawn on. Each part lets go of what it holds
+      // before the cells stop listening, so nothing is left marked: the cells, the legend,
+      // and the bars, whose disposal clears the hover for every part still listening.
+      releaseCellHover();
+      legend.dispose();
+      totalsView.dispose();
+      unsubscribeCellHover();
       if (parentControl) {
         parentControl.removeEventListener("click", openParent);
       }
