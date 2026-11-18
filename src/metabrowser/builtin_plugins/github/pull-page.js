@@ -57,6 +57,7 @@ import {
   pullStateIcon,
   withListedState,
 } from "./pull-state.js";
+import { briefLine, createSummaryBrief, PULL_FILES_SUMMARY_ROUTE } from "./pull-summary-brief.js";
 
 // The same intervals as the freshness row (static/source-freshness.js), measured there:
 // one second while a refresh runs makes its end visible promptly, and thirty seconds
@@ -290,6 +291,7 @@ const TRUNCATED = Object.freeze({
  *     revision: string, pull: Record<string, any>, comparison_state: "pending" | "no_store" | "not_started"} | null,
  *   repository_labels?: RepositoryLabel[],
  *   labels_pending?: boolean,
+ *   no_store?: true,
  * }} PullEnvelope
  */
 
@@ -391,6 +393,8 @@ const TRUNCATED = Object.freeze({
  *   notes: string[],
  *   comparison: {left: string, right: string, route?: string, image_route?: string, rendered_route?: string, headMoved: boolean, branch: {ref: string} | null} | null,
  *   comparisonComing: boolean,
+ *   head: string | null,
+ *   baseRef: string | null,
  *   browse: BrowseCode | null,
  *   filesUnavailable: string,
  *   changesPending: boolean,
@@ -1255,11 +1259,19 @@ export function rateLimitLifts(envelope) {
  * when the list saw a later update than the record or preview did.
  *
  * `comparisonComing` is a comparison on its way that the page has none of yet, so the Diff
- * summary's row waits for it (mb-onr2): a core preview whose selected read prepares the
- * comparison with the record (`comparison_state: "pending"`), and a record whose comparison
- * is not in the store and that the page asked the server to prepare, as Conversation's idle
- * work does (`preparing_comparison`) and Changes does while it fetches it. A core with no
- * store, or one no read is running for, has none coming until Changes asks.
+ * summary's row waits for it (mb-onr2), from the page's first paint (mb-30dz): before
+ * anything is read, until a read fails; with no record or core, while the selected read
+ * runs or will be sent, or the page waits for the reader to send it; a core preview while a
+ * read that brings its record runs or will be sent, unless the server said it has no store
+ * to compare in (`comparison_state: "no_store"`); and a record whose comparison is not in
+ * the store and that the page asked the server to prepare, as Conversation's idle work does
+ * (`preparing_comparison`) and Changes does while it fetches it. A pull request that is not
+ * GitHub's, a server or core with no store (`no_store`), and a read that failed with nothing
+ * running have none coming until Changes asks, so the placeholder never outlives its wait.
+ *
+ * `head` is the head commit the page knows, the one its Diff summary is drawn for: the
+ * comparison's, else the record's or the core's, and null before either; `baseRef` is the
+ * record's or the core's base branch.
  *
  * @param {{number: number, tab: string, nowMs: number, error?: string | null, errorFromComparison?: boolean, fetching?: boolean, fetchQueued?: boolean, refreshPending?: boolean, refreshDue?: boolean, online?: boolean, formatHold?: (liftMs: number, nowMs: number) => string, ownsChanges?: boolean, comparisonAttempted?: boolean, comparisonRefusal?: string | null, waitForReader?: boolean, checkoutHead?: string | null, listed?: {state: import("./pull-state.js").PullState, updatedAt: string} | null}} page
  * @returns {PullModel}
@@ -1289,6 +1301,8 @@ export function describePull(envelope, page) {
     notes: [],
     comparison: null,
     comparisonComing: false,
+    head: null,
+    baseRef: null,
     browse: null,
     filesUnavailable: filesUnavailableText(null),
     changesPending: false,
@@ -1299,6 +1313,11 @@ export function describePull(envelope, page) {
   if (envelope === null) {
     // Nothing read yet: the page shows a skeleton, and an error once a read failed.
     model.status = page.error ? "unavailable" : "loading";
+    // The first read brings the record, or the core whose read prepares its comparison, so
+    // the Diff summary's row waits from the first paint rather than empty until the core.
+    // Until it answers the page cannot know that the server has no store (`no_store`) or
+    // serves no GitHub repository: on such a server the placeholder ends with that answer.
+    model.comparisonComing = !page.error;
     return model;
   }
   model.status = envelope.state;
@@ -1339,6 +1358,8 @@ export function describePull(envelope, page) {
       knownLabels(envelope.repository_labels),
     );
     model.corePreview = true;
+    model.head = text(preview.pull?.head?.sha) || null;
+    model.baseRef = text(preview.pull?.base?.ref) || null;
     model.contentReady = true;
     model.message = page.error ?? null;
     const age = relativeAge(preview.observed_at, page.nowMs);
@@ -1356,7 +1377,12 @@ export function describePull(envelope, page) {
     model.filesUnavailable = model.changesPending
       ? "Changes are still being prepared."
       : "Changes are unavailable because the full pull request could not be loaded.";
-    model.comparisonComing = envelope.refreshing && preview.comparison_state === "pending";
+    // The record follows the core, and its comparison with it unless the server has no store;
+    // a core read from the cache (`not_started`) has its record coming once a read runs.
+    model.comparisonComing =
+      preview.comparison_state !== "no_store" &&
+      envelope.no_store !== true &&
+      (envelope.refreshing || page.fetching === true || page.fetchQueued === true);
     return model;
   }
   if (record === null) {
@@ -1370,6 +1396,12 @@ export function describePull(envelope, page) {
     // Nothing is shown to refresh: the skeleton or the message is all there is.
     model.revalidating = false;
     model.contentReady = Boolean(page.error) || (!fetching && !page.waitForReader);
+    // The selected read, running, still to be sent, or waiting for the reader, brings the
+    // core and then the record; nothing running after a failure brings neither.
+    model.comparisonComing =
+      envelope.reason !== "not_github" &&
+      envelope.no_store !== true &&
+      (fetching || page.fetchQueued === true || page.waitForReader === true);
     model.canRefresh =
       !fetching &&
       envelope.state === "absent" &&
@@ -1428,6 +1460,8 @@ export function describePull(envelope, page) {
   model.checkNotes = notes(record, true);
   model.notes = notes(record, false);
   const head = text(pull.head?.sha);
+  model.head = head || null;
+  model.baseRef = text(pull.base?.ref) || null;
   const headRef = `refs/pull/${pull.number}/head`;
   if (envelope.pin !== null && head !== "") {
     model.browse = { kind: "link", at: envelope.pin.slice(0, 12) };
@@ -1474,6 +1508,8 @@ export function describePull(envelope, page) {
   }
   const comparison = pullComparison(envelope);
   if (comparison !== null) {
+    // The Diff summary's head: the comparison's, which a record read at a newer head keeps.
+    model.head = comparison.right;
     const headMoved = model.headOffer !== null;
     model.comparison = {
       ...comparison,
@@ -5822,6 +5858,71 @@ export function mountPullPage(container, ctx, mb) {
    * read of it starts again (mb-pb35, mb-onr2).
    */
   let summaryFailed = "";
+  /**
+   * The cached changed-files list's brief line, drawn in the Diff summary's row while the
+   * comparison is on its way or read (pull-summary-brief.js, mb-z8ea), and the line drawn,
+   * by the list's generation and the tree's breakdown having loaded. An SDK without the
+   * change line's painters has none.
+   */
+  const summaryBrief =
+    typeof mb.changeLine === "function" &&
+    typeof mb.changeLineNodes === "function" &&
+    typeof mb.countPartsNodes === "function" &&
+    typeof mb.formatInteger === "function"
+      ? createSummaryBrief({
+          async read(asked, signal) {
+            const response = await fetch(`${PULL_FILES_SUMMARY_ROUTE}?numbers=${asked}`, {
+              signal,
+            });
+            return { status: response.status, body: response.ok ? await response.json() : null };
+          },
+          // What the line is painted with, as the summary that replaces it is: the diff
+          // plugin's styles and the changed-files tree, whose breakdown says its letters.
+          async ready() {
+            const [, tree] = await Promise.all([
+              mb.ensureKindAssets("diff"),
+              mb.loadChangedFilesTree(),
+            ]);
+            return tree.statusBreakdown;
+          },
+          changed: () => paintSummaryWait(shown),
+        })
+      : null;
+  let briefShown = { key: "", node: /** @type {HTMLElement | null} */ (null) };
+  // Asked as the page mounts: a page opened from a Pulls row has the row's line in the
+  // document's memory, by the repository its envelope names; any other asks the route once.
+  const readerSource = /** @type {{source?: unknown} | null | undefined} */ (
+    ctx.reader?.initial?.body
+  )?.source;
+  summaryBrief?.want(number, typeof readerSource === "string" ? readerSource : null);
+
+  /**
+   * The brief line for what *model*'s Diff summary is drawn for, or null: on Changes the
+   * mounted diff's comparison, else the record's, or the record's or core's head and base
+   * branch before it has one (`briefMatches`). The node drawn is kept while its list is the
+   * same, so a repaint moves nothing.
+   *
+   * @param {PullModel | null} model
+   */
+  function briefFor(model) {
+    const compared =
+      model?.tab === "files" && diffFor !== null ? diffFor : (model?.comparison ?? null);
+    const summary =
+      summaryBrief?.summary({
+        head: compared?.right ?? model?.head ?? null,
+        base: compared?.left ?? null,
+        baseRef: model?.baseRef ?? null,
+      }) ?? null;
+    if (summary === null || summaryBrief === null) {
+      return null;
+    }
+    const breakdown = summaryBrief.breakdown();
+    const key = `${summary.generation}:${summary.head}:${breakdown === null ? 0 : 1}`;
+    if (briefShown.key !== key || briefShown.node === null) {
+      briefShown = { key, node: briefLine(mb, h, summary, breakdown) };
+    }
+    return briefShown.node;
+  }
   /** The comparison whose first screen's Markdown this page asked for, and how to stop it. */
   let markdownAsked = { key: "", controller: /** @type {AbortController | null} */ (null) };
 
@@ -5883,7 +5984,7 @@ export function mountPullPage(container, ctx, mb) {
    * @param {PullModel | null} model
    */
   function paintSummaryWait(model) {
-    if (summaryShown.handle !== null) {
+    if (summaryShown.handle !== null || listening.signal.aborted) {
       return;
     }
     const awaited = model === null ? null : model.tab === "files" ? diffFor : model.comparison;
@@ -5891,12 +5992,17 @@ export function mountPullPage(container, ctx, mb) {
       awaited === null
         ? model?.comparisonComing === true
         : comparisonKey(awaited) !== summaryFailed;
-    if (waits) {
-      if (summaryRow.firstChild !== summaryPending || summaryRow.childNodes.length !== 1) {
-        summaryRow.replaceChildren(summaryPending);
+    // The cached list's line for the head the page knows takes the placeholder's place, and
+    // stays when the wait ends with no summary; another head's is never shown.
+    const brief = briefFor(model);
+    const holds = brief ?? (waits ? summaryPending : null);
+    if (holds !== null) {
+      if (summaryRow.firstChild !== holds || summaryRow.childNodes.length !== 1) {
+        summaryRow.replaceChildren(holds);
       }
     } else {
       summaryPending.remove();
+      briefShown.node?.remove();
     }
   }
 
@@ -6973,6 +7079,7 @@ export function mountPullPage(container, ctx, mb) {
     filesRefresh = null;
     wantedFile = null;
     listening.abort();
+    summaryBrief?.dispose();
     cancelTimeline();
     body.querySelector(".github-pull-diff-loading")?.remove();
     observer?.disconnect();

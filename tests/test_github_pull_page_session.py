@@ -598,6 +598,7 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
         # shell's pending placeholder while a comparison is on its way and while it is read,
         # on Changes the mounted diff's, and nothing once a read draws none, until a read of
         # it starts again (mb-onr2), as one does at the page's next paint after a failure;
+        # from the first paint of a page whose read will bring a comparison (mb-30dz);
         # a pull request opened again in the document is drawn from the kept comparison as
         # it mounts, one first read on Changes too (mb-neg9).
         "headerSummary": [
@@ -615,14 +616,23 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "that read fails too: nothing",
             "a comparison the summary draws nothing for: nothing",
             "opened on Changes, whose diff reads no comparison: nothing",
-            "the record on its way: nothing",
+            "the record on its way: the pending placeholder",
+            "a direct link's page before its first answer: the pending placeholder",
+            "its first answer: not cached, its own fetch to be sent: the pending placeholder",
+            "its fetch's core preview: the pending placeholder",
+            "its record lands, the comparison not yet read: the pending placeholder",
+            "the comparison read: the summary",
+            "a direct link's first answer: not GitHub's: nothing",
+            "a direct link's first answer: a server with no store, its own fetch to be sent: nothing",
+            "a direct link's first answer: its refresh failed, nothing running: nothing",
+            "a direct link's first answer: a core, its refresh failed, nothing running: nothing",
             "a record that names no comparison: nothing",
             "a core preview whose read prepares its comparison: the pending placeholder",
             "its record lands, the comparison not yet read: the pending placeholder",
             "the comparison read: the summary",
             "a core preview whose read prepares no comparison: nothing",
-            "a prepared core no read is running for: nothing",
-            "a core preview whose read prepared nothing and ended: nothing",
+            "a prepared core, the page's own fetch still to be sent: the pending placeholder",
+            "a core whose read ended, the page's own fetch still to be sent: the pending placeholder",
             "a record whose comparison the page asked to prepare: the pending placeholder",
             "the preparation ends with no comparison: nothing",
             "a record whose comparison nothing prepares: nothing",
@@ -635,6 +645,29 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "the diff reads the comparison: the summary",
             "Changes, its diff still reading: the pending placeholder",
             "the record then names no comparison: nothing",
+        ],
+        # The cached changed-files list's brief line holds the Diff summary's row while its
+        # comparison is on its way or read, once the page knows the head, for its head and
+        # base only, from the Pulls rows' memory when nothing said it changed, else one read
+        # at mount; the summary replaces it, a failed read keeps it, and a page that went
+        # draws nothing more (mb-z8ea).
+        "summaryBrief": [
+            "a direct link's page before its first answer, its head unknown: the pending placeholder; 1 reads",
+            'its core preview, of the list\'s head and base branch: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
+            'its record lands, the comparison not yet read: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
+            "the comparison read: the summary; 1 reads",
+            "a direct link's page, the list of an older head: the pending placeholder; 1 reads",
+            "its core preview, of a newer head: the pending placeholder; 1 reads",
+            "a record whose list was read for another base branch: the pending placeholder; 1 reads",
+            "a core preview, the local comparison's list, whose base the core cannot say: the pending placeholder; 1 reads",
+            'its record lands, naming the same comparison: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
+            "a record whose comparison has another base than the local list's: the pending placeholder; 1 reads",
+            'a record of the list\'s head, its comparison not yet read: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
+            'the comparison\'s read fails: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
+            "no list cached: the pending placeholder; 1 reads",
+            'opened from a Pulls row that drew its line: the brief line "1 file changed \u00b7 1 M \u00b7 +12 \u22124"; 0 reads',
+            'opened from a Pulls row whose line the lane marked out of date, read again: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
+            "a page that went before its read answered, its summary drawn: the summary; 1 reads",
         ],
         # A page mounted with no record in hand holds its cold header and tab column for the
         # quiet period, and the first header with a record lifts it, also while the
