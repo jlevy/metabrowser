@@ -416,8 +416,8 @@ def test_the_pulls_rows_age_column_and_filter_counts_keep_their_widths() -> None
     css = _github_css()
     columns = re.search(r"grid-template-columns:\s*([^;]*);", _rule(css, ".github-pulls-row"))
     assert columns is not None
-    # The number's line and the age share the first line, and the title runs under the age to
-    # the row's end on the second (mb-lkkt).
+    # The title runs to the row's end on the first line, and the number's line and the age
+    # share the second (mb-lkkt; the title first since 2026-11-17).
     # The chevron and the icon are each the tree's one icon slot (mb-hmv7).
     assert (
         " ".join(columns.group(1).split())
@@ -459,13 +459,13 @@ def test_a_stack_members_place_is_on_its_numbers_line() -> None:
     assert "grid-column: 4;" in _rule(css, ".github-pulls-row > .github-pulls-age")
 
 
-def test_a_pulls_rows_number_line_comes_first_and_its_title_runs_to_the_end() -> None:
+def test_a_pulls_rows_title_comes_first_and_runs_to_the_end() -> None:
     """A pull request's row is three lines (mb-lkkt, mb-d0a3). Its link is two: the state
-    icon in its slot, then the number's line, "1/4 · #113 · jlevy", with the age at the
-    row's end; then the title alone, from the text column under the age to the row's end.
-    The chevron and the icon sat on the title's line until mb-3cbf, and the chevron on the
-    number's line until mb-h0ml, when it moved to the row's third line, its change line,
-    which is not part of the link. The number's line is one line, so the link is always
+    icon in its slot, then the title alone, from the text column to the row's end; then the
+    number's line, "1/4 · #113 · jlevy", with the age at the row's end. The number's line
+    came first, the icon leading it, from mb-3cbf until 2026-11-17, when the owner asked for
+    the title first; the chevron moved to the row's third line, its change line, which is
+    not part of the link, in mb-h0ml. The number's line is one line, so the link is always
     two: the author leaves it whole onto a clipped second line rather than growing the row.
     The DOM keeps the title the link's first text, so its accessible name gives the state
     icon's label and then the title, before the number's line.
@@ -476,13 +476,13 @@ def test_a_pulls_rows_number_line_comes_first_and_its_title_runs_to_the_end() ->
     assert "[icon, title, updated, meta]," in panel, "the title leads the name"
     css = _github_css()
     meta = _rule(css, ".github-pulls-meta")
-    for declaration in ("grid-row: 1;", "grid-column: 3;", "height: 1lh;", "overflow: clip;"):
+    for declaration in ("grid-row: 2;", "grid-column: 3;", "height: 1lh;", "overflow: clip;"):
         assert declaration in meta, declaration
     age = _rule(css, ".github-pulls-row > .github-pulls-age")
-    assert "grid-row: 1;" in age and "grid-column: 4;" in age and "justify-self: end;" in age
+    assert "grid-row: 2;" in age and "grid-column: 4;" in age and "justify-self: end;" in age
     title = _rule(css, ".github-pulls-row > .github-pulls-title")
-    assert "grid-row: 2;" in title and "grid-column: 3 / -1;" in title
-    # The icon leads the first line in the second slot, and only the title is on the second.
+    assert "grid-row: 1;" in title and "grid-column: 3 / -1;" in title
+    # The icon leads the first line in the second slot, before the title.
     # A stack's row keeps its chevron in the first slot of its one line.
     for part, column in (("github-pulls-toggle", 1), ("github-pull-state-icon", 2)):
         rule = _rule(css, f".github-pulls-row > .{part}")
@@ -491,8 +491,11 @@ def test_a_pulls_rows_number_line_comes_first_and_its_title_runs_to_the_end() ->
     # text column.
     assert "grid-column: 1;" in _rule(css, ".github-pulls-change > .github-pulls-toggle")
     assert "grid-column: 3;" in _rule(css, ".github-pulls-change-line")
-    second = re.findall(r"(?m)^(\.github-pulls-row[^{\n]*)\{[^}]*grid-row: 2;", css)
-    assert [selector.strip() for selector in second] == [".github-pulls-row > .github-pulls-title"]
+    second = re.findall(r"(?m)^(\.github-pulls[^{\n]*)\{[^}]*grid-row: 2;", css)
+    assert sorted(selector.strip() for selector in second) == [
+        ".github-pulls-meta",
+        ".github-pulls-row > .github-pulls-age",
+    ]
     # The number's line and the age share a baseline.
     assert (
         ".github-pulls-row > :is(.github-pulls-meta, .github-pulls-title, .github-pulls-age)"
