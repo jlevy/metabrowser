@@ -82,6 +82,7 @@ from tests.golden_harness import (
     run_session,
     settle,
 )
+from tests.loop_gate import held_until
 from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git
 
@@ -257,8 +258,8 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             release = threading.Event()
 
             async def held() -> None:
-                # The test thread sets it; a worker thread waits, so the job runs until then.
-                await asyncio.to_thread(release.wait, 30)
+                # The test thread sets it; the job is held on the loop until then.
+                await held_until(release, 30)
                 await original()
 
             monkeypatch.setattr(served, "refresh", held)
@@ -404,7 +405,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             gate = threading.Event()
 
             async def waiting(_served: ServedPull) -> None:
-                await asyncio.to_thread(gate.wait, 30)
+                await held_until(gate, 30)
 
             monkeypatch.setattr(ServedPull, "refresh", waiting)
             for number in range(20, 20 + MAX_PULL_JOBS):

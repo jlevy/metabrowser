@@ -837,9 +837,12 @@ def test_the_newest_of_record_and_row_names_the_head(
             updated_at="2026-09-17T12:00:00Z",
             head=SimpleNamespace(sha="a" * 40),
             base=SimpleNamespace(ref="topic"),
+            state="open",
         )
     )
-    row = SimpleNamespace(updated_at="2026-09-17T12:00:00Z", head_oid=None, base_ref="topic")
+    row = SimpleNamespace(
+        updated_at="2026-09-17T12:00:00Z", head_oid=None, base_ref="topic", state="open"
+    )
     monkeypatch.setattr(pull_files_route, "PullRecord", SimpleNamespace)
     monkeypatch.setattr(pull_files_route, "cached_pull_record", lambda *_: (record, None, None))
     monkeypatch.setattr(pull_files_route, "cached_list_row", lambda *_: row)
