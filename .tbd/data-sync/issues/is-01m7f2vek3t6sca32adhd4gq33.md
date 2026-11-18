@@ -5,7 +5,7 @@ title: "Object data model and views: plan and decisions"
 kind: epic
 status: open
 priority: 2
-version: 16
+version: 17
 spec_path: docs/project/specs/active/plan-2026-11-14-object-data-model-and-views.md
 labels: []
 dependencies: []
@@ -25,7 +25,8 @@ child_order_hints:
   - is-01m7kcj10pdf3kgddaacfs5t38
   - is-01m7kcj1g467xr9syzqj4j4fm6
   - is-01m7kcj1zhedcbge81ch06x6pk
+  - is-01m7r76k6f8m2een1fvgt1a1ea
 created_at: 2026-11-15T07:48:21.218Z
-updated_at: 2026-11-16T23:54:56.880Z
+updated_at: 2026-11-18T20:57:30.574Z
 ---
 Design (not yet implementation) of one object data model with multiple views: SoftSchema contracts for file, folder, commit, and pull-request objects; named shapes (nav-row, wide-row, card) drawn by a host list component; one browser store interface; plugin-declared object types and views; a Pull Requests page, folder Files view, and Recent Changes timeline as first uses. Spec: docs/project/specs/active/plan-2026-11-14-object-data-model-and-views.md, 23 numbered decisions waiting on the user's review. Stacked on the documentation rewrite PR.
