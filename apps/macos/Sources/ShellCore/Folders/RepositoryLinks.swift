@@ -6,10 +6,13 @@ import Foundation
 /// A link into a repository with a window starts its server again on the link, so the
 /// window shows the revision the link names. A start under way, such as a first clone,
 /// runs to its end first, and the newest link sent meanwhile waits for it. A link equal
-/// to the one that start runs on is already being opened, so it changes nothing, and a
+/// to the one that start runs on is already being opened, so it joins that start, and a
 /// link that waited for a start on that same link is dropped when the start ends: a
 /// second click during a first clone neither clones nor restarts again (review C3 on
-/// #539). A session that has shut down starts nothing.
+/// #539). Joining still brings the window to the link's page, whoever began the start:
+/// Retry, Restart Server, and an upgrade's restart run on the target too, and the window
+/// they leave would otherwise reload the page it showed (review D2). A session that has
+/// shut down starts nothing.
 public nonisolated struct RepositoryLinks: Equatable, Sendable {
     /// What the session does with a link it was sent.
     public enum Step: Equatable, Sendable {
@@ -18,7 +21,10 @@ public nonisolated struct RepositoryLinks: Equatable, Sendable {
         /// A start is under way: the link waits for it to end (`startEnded()`).
         case hold
         /// The start under way, or the restart waiting for its turn, runs on this link
-        /// already, or the session has shut down: only bring the window forward.
+        /// already, whoever began it: the window loads that start's entry page, which is
+        /// the link's, rather than the page it showed.
+        case join
+        /// The session has shut down: nothing starts.
         case none
     }
 
@@ -45,9 +51,9 @@ public nonisolated struct RepositoryLinks: Equatable, Sendable {
         case .starting, .stopping:
             // The newest link wins: one equal to the target cancels a link held before it.
             pending = same ? nil : link
-            return same ? .none : .hold
+            return same ? .join : .hold
         case .ready where restarting && same:
-            return .none
+            return .join
         case .ready, .failed, .stopped:
             target = link
             pending = nil

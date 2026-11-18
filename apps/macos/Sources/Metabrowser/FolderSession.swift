@@ -42,13 +42,12 @@ final class FolderSession: ManagedServer {
     /// Retries and restarts asked for and not yet carried out, which a link into a ready
     /// repository counts as a start on the target (`RepositoryLinks.receive`).
     private var restartsInFlight = 0
-    /// The window a link restarted the server for, which says that it waits while the old
-    /// server serves the other tabs.
-    private weak var linkWindow: BrowserWindowController?
+    /// Whether the start waits for another repository's, which the status view says, and
+    /// the windows that asked for a restart, which say so while the old server serves the
+    /// other tabs.
+    private var restartWait = RestartWait<BrowserWindowController>()
     /// Asks the ready server whether it found what the link it started on names.
     private var selectionWatch: Task<Void, Never>?
-    /// Whether the start waits for another repository's, which the status view says.
-    private var isWaitingAtGate = false
     /// The folder's title changed, so every open folder's window title may change.
     var onTitleChange: ((FolderSession) -> Void)?
     var onAllWindowsClosed: ((FolderSession) -> Void)?
@@ -108,10 +107,9 @@ final class FolderSession: ManagedServer {
         if !served.isLocal {
             supervisor.onGateWait = { [weak self] waiting in
                 guard let self else { return }
-                isWaitingAtGate = waiting
-                // A restart on a link waits while the old server serves: the link's window
-                // stops showing the old revision and says it waits; the other tabs serve on.
-                if waiting, case .ready = self.supervisor.state { linkWindow?.showStarting() }
+                // A restart of the ready server waits while it serves: the window that
+                // asked stops showing the old page and says it waits; the other tabs serve on.
+                restartWait.gateWait(waiting, state: self.supervisor.state).forEach { $0.showStarting() }
                 windows.forEach { $0.showWaitingAtGate(waiting) }
             }
         }
@@ -191,7 +189,12 @@ final class FolderSession: ManagedServer {
     /// Retry and Restart Server: a fresh server from the runtime accepted now, which may
     /// not be the one this folder started with. Without one, nothing is stopped, and the
     /// restart waits for `resume()`.
-    func retry() {
+    ///
+    /// - Parameter window: the window it was asked from, which says it waits while the
+    ///   restart of a ready server waits at the launch gate (`RestartWait`); nil, as for
+    ///   the restart an upgrade offers, is the front window.
+    func retry(from window: BrowserWindowController? = nil) {
+        restartWait.asked(from: window ?? frontWindow, state: supervisor.state)?.showStarting()
         restartsInFlight += 1
         Task {
             settle(await server.restart())
@@ -260,28 +263,41 @@ final class FolderSession: ManagedServer {
     /// window's pin. The server resolves `link` as a first start does, pins what it names,
     /// and announces its page. A start under way, such as a first clone, runs to its end
     /// first, and the server then starts again on the newest link, from the cache; a link
-    /// that start already runs on changes nothing (`RepositoryLinks`).
+    /// that start already runs on starts nothing more, and the window loads that start's
+    /// entry page, whoever began it (`RepositoryLinks`).
     func open(link: URL) {
         frontWindow?.window?.makeKeyAndOrderFront(nil)
         let name = root.lastPathComponent
         switch target.links.receive(link, state: supervisor.state, restarting: restartsInFlight > 0) {
         case .restart:
             restart()
+        case .join:
+            AppLog.app.info("\(name, privacy: .public): its server is starting on that link already")
+            showLinkPage()
         case .hold:
             AppLog.app.info("\(name, privacy: .public): a link waits for the start under way to end")
         case .none:
-            AppLog.app.info("\(name, privacy: .public): its server is starting on that link already")
+            AppLog.app.info("\(name, privacy: .public): a link into a closed session starts nothing")
         }
+    }
+
+    /// The front window, which a link brought forward, loads the entry page of the server
+    /// starting on the link, the link's page, and says it waits while a restart of the ready
+    /// server waits at the launch gate (`RestartWait`).
+    private func showLinkPage() {
+        let window = frontWindow
+        window?.showEntryPage()
+        restartWait.asked(from: window, state: supervisor.state)?.showStarting()
     }
 
     /// Starts the server again on `target`, which a link just set: the front window loads
     /// the new server's entry page, and until then shows no page from the old one.
     private func restart() {
         selectionWatch?.cancel()
-        linkWindow = frontWindow
-        linkWindow?.showEntryPage()
+        let window = frontWindow
+        window?.showEntryPage()
         AppLog.app.info("\(self.root.lastPathComponent, privacy: .public): starting its server again on a link it was sent")
-        retry()
+        retry(from: window)
     }
 
     /// Whether the server still answers, asked before a window joins it
@@ -339,7 +355,7 @@ final class FolderSession: ManagedServer {
         controller.adoptServer(endpoint)
         if let failure { controller.showFailure(failure) }
         if isWaitingForRuntime, endpoint == nil { controller.showWaitingForRuntime() }
-        if isWaitingAtGate { controller.showWaitingAtGate(true) }
+        if restartWait.isWaiting { controller.showWaitingAtGate(true) }
         return controller
     }
 
@@ -351,6 +367,7 @@ final class FolderSession: ManagedServer {
 
     private func serverChanged(_ state: ServerState) {
         selectionWatch?.cancel()
+        restartWait.serverChanged()
         // A link sent while a start was under way: that start has ended, so the server
         // starts again on the link before any window loads from the one that ended.
         switch state {
@@ -370,7 +387,6 @@ final class FolderSession: ManagedServer {
         case .ready(let ready):
             endpoint = ready
             failure = nil
-            linkWindow = nil
             let authorization = supervisor.launch.authorization(for: ready)
             windows.forEach { $0.attach(ready, authorization: authorization) }
             requestIdentity(from: ready, authorization: authorization)

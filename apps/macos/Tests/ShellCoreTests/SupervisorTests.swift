@@ -312,6 +312,8 @@ private func supervisor(
     @Test func aNewerRequestReplacesARestartWaitingAtTheGate() async {
         let (subject, gate, children) = await gatedServer()
         await gate.acquire()
+        let waits = Recorder<Bool>()
+        subject.onGateWait = { waits.append($0) }
         let older = LaunchSpec(executable: "/usr/bin/older")
         let newer = LaunchSpec(executable: "/usr/bin/newer")
         let first = Task { await subject.restart(using: older) }
@@ -319,9 +321,13 @@ private func supervisor(
         try? await Task.sleep(for: .milliseconds(20))
         let second = Task { await subject.restart(using: newer) }
         try? await Task.sleep(for: .milliseconds(20))
+        // D1: the second restart waiting is not said again, so the window that asked for it
+        // is shown waiting when it asks (`RestartWait.asked`).
+        #expect(waits.all == [true])
         gate.release()
         await first.value
         await second.value
+        #expect(waits.all == [true, false])
         #expect(children().count == 2)
         #expect(subject.spec == newer)
         #expect(subject.state == .ready(endpoint))

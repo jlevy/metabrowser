@@ -86,11 +86,13 @@ extension LinkAlert {
         case .notFound(let serving):
             return LinkAlert(
                 message: "\(name) has nothing this link names",
-                detail: "Even after fetching, \(name) has no branch, tag, commit, or pull request that this link names, so its windows show \(serving ?? "its default branch") instead.\n\n\(shown)")
+                detail: "Even after fetching, \(name) has no branch, tag, commit, or pull request that this link names, so its windows show \(serving ?? "its default branch") instead.\n\n\(shown)",
+                links: .openedElsewhere)
         case .fetchFailed(let serving):
             return LinkAlert(
                 message: "Metabrowser could not fetch what this link names",
-                detail: "Metabrowser’s copy of \(name) does not have what this link names yet, and fetching it failed, so its windows show \(serving ?? "its default branch") until a refresh finds it.\n\n\(shown)")
+                detail: "Metabrowser’s copy of \(name) does not have what this link names yet, and fetching it failed, so its windows show \(serving ?? "its default branch") until a refresh finds it.\n\n\(shown)",
+                links: .openedElsewhere)
         }
     }
 }

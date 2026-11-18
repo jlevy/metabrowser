@@ -352,7 +352,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         case .reloadPage: webView.reload()
         case .loadPage: if let endpoint { loadPageAgain(from: endpoint) }
         case .startServer: Task { await session?.startServer() }
-        case .restartServer: session?.retry()
+        case .restartServer: session?.retry(from: self)
         case .startAsSelected: session?.windowShown(self)
         }
     }
@@ -455,7 +455,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         textFinder.performAction(action)
     }
 
-    @objc func restartServer(_ sender: Any?) { session?.retry() }
+    @objc func restartServer(_ sender: Any?) { session?.retry(from: self) }
     @objc func revealServerLog(_ sender: Any?) { session?.revealLog() }
 
     @objc func openInDefaultBrowser(_ sender: Any?) {
