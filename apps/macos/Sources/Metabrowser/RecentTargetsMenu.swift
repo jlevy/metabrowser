@@ -30,7 +30,10 @@ final class RecentTargetsMenu: NSObject, NSMenuDelegate {
         }
     }
 
-    private static let iconSize = NSSize(width: 16, height: 16)
+    /// The symbols' size as a menu item's text size, so each keeps its own proportions;
+    /// forcing a square image box would squash the folder, which is wider than it is tall.
+    static let symbolConfiguration = NSImage.SymbolConfiguration(
+        pointSize: NSFont.menuFont(ofSize: 0).pointSize, weight: .regular)
     private let setup: () -> RuntimeSetup?
     private let open: (URL) -> Void
     private let opensURLs = RecentTargets.opensURLs(infoDictionary: Bundle.main.infoDictionary ?? [:])
@@ -169,7 +172,6 @@ final class RecentTargetsMenu: NSObject, NSMenuDelegate {
                 item.representedObject = Carried(entry)
                 item.toolTip = entry.toolTip
                 item.image = Self.icon(for: entry.target.mode)
-                item.image?.size = Self.iconSize
                 menu.addItem(item)
             case .empty:
                 let none = NSMenuItem(title: "No Recent Items", action: nil, keyEquivalent: "")
@@ -185,13 +187,23 @@ final class RecentTargetsMenu: NSObject, NSMenuDelegate {
         }
     }
 
-    /// The generic folder icon, and a cloud for a mirror, neither read from the entry's
-    /// own path: a look at a listed folder can raise a privacy prompt nobody asked for.
+    /// A folder for a folder and a cloud for a mirror: SF Symbols outlines, drawn as
+    /// templates in the menu's own ink so the two read as one set, rather than Finder's
+    /// colored folder beside a line-drawn cloud. Neither is read from the entry's own path:
+    /// a look at a listed folder can raise a privacy prompt nobody asked for.
     private static func icon(for mode: RecentTarget.Mode) -> NSImage? {
         switch mode {
-        case .folder: NSWorkspace.shared.icon(for: .folder)
-        case .mirror: NSImage(systemSymbolName: "cloud", accessibilityDescription: "Mirror")
+        case .folder: folderSymbol
+        case .mirror:
+            NSImage(systemSymbolName: "cloud", accessibilityDescription: "Mirror")?
+                .withSymbolConfiguration(symbolConfiguration)
         }
+    }
+
+    /// The folder outline at the menu's size, shared with the title's path menu.
+    static var folderSymbol: NSImage? {
+        NSImage(systemSymbolName: "folder", accessibilityDescription: "Folder")?
+            .withSymbolConfiguration(symbolConfiguration)
     }
 
     @objc private func openRecent(_ sender: NSMenuItem) {
