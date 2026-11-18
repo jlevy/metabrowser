@@ -148,23 +148,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         page.responds(to: action) ? page : super.supplementalTarget(forAction: action, sender: sender)
     }
 
-    /// The window's own items. Close Folder is off while a sheet is open on the window,
-    /// which keeps its page until the sheet ends (`FolderSwitch.refused`); the page
-    /// validates its own items.
+    /// The window's own items. Close Folder and Switch Folder… are off while a page's sheet
+    /// (an alert, a confirm, the print panel) is open on the window, which keeps its page
+    /// until the sheet ends (`FolderSwitch.refused`); the page validates its own items.
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
-        case #selector(closeFolder(_:)): window?.attachedSheet == nil
+        case #selector(closeFolder(_:)), #selector(switchFolder(_:)): window?.attachedSheet == nil
         default: true
         }
     }
 }
 
-extension BrowserWindowController: NSMenuItemValidation {
-    /// View > Switch Folder… is off while a page's sheet (an alert, a confirm, the print
-    /// panel) is open over the window, which cannot switch until the sheet ends; AppKit
-    /// still finds this controller for the menu bar then, through the main window. Every
-    /// other item this controller takes stays on.
-    func validateMenuItem(_ item: NSMenuItem) -> Bool {
-        item.action != #selector(switchFolder(_:)) || window?.attachedSheet == nil
-    }
-}
