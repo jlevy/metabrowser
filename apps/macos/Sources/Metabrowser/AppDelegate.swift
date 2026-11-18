@@ -79,6 +79,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var linkProblems = LinkProblems()
     /// Whether a clone question or the problems alert is up: one at a time.
     private var isShowingLinkModal = false
+    /// File > Open URL…, made the first time it is chosen and kept: it starts empty each
+    /// time it comes on screen.
+    private lazy var openURLWindow = OpenURLWindowController(
+        onOpen: { [weak self] in self?.checkEnteredLink($0) },
+        onDrop: { [weak self] in self?.stopCheckingEnteredLink($0) })
+    /// The dry run for the link File > Open URL… awaits, and the task that applies its
+    /// answer: at most one, since the panel awaits one answer and stops this one when it
+    /// drops it (`stopCheckingEnteredLink`).
+    private var enteredLinkCheck: (link: URL, task: Task<Void, Never>)?
     /// The runtime's file, or where `metab` may appear while there is none.
     private var watch: SetupWatch?
     private var watchedRuntime: Runtime?
@@ -341,9 +350,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             _ = selection.setupForOpening(url)
             return
         }
-        let spec = PresentDryRun.spec(
-            for: url, with: setup, inherited: ProcessInfo.processInfo.environment, home: NSHomeDirectory())
-        let answer = PresentDryRun.answer(await CommandRunner.run(spec, timeout: PresentDryRun.timeout))
+        let answer = await askMetab(about: url, with: setup)
         guard !isQuitting else { return }
         let link = url.absoluteString
         switch answer {
@@ -356,9 +363,82 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .unreadable(let reason, _):
             AppLog.app.error("could not resolve \(link, privacy: .private): metab \(reason, privacy: .public)")
         }
-        if let alert = answer.alert(link: url, metab: "metab \(setup.runtime.version) at \(setup.runtime.executable)") {
+        if let alert = answer.alert(link: url, metab: Self.describe(setup)) {
             noteLinkProblem(alert)
         }
+    }
+
+    /// What `metab LINK --present --dry-run --format json` says `url` opens: the one
+    /// command a link sent to the app and a link typed into File > Open URL… are both
+    /// resolved with.
+    private func askMetab(about url: URL, with setup: RuntimeSetup) async -> PresentAnswer {
+        let spec = PresentDryRun.spec(
+            for: url, with: setup, inherited: ProcessInfo.processInfo.environment, home: NSHomeDirectory())
+        return PresentDryRun.answer(await CommandRunner.run(spec, timeout: PresentDryRun.timeout))
+    }
+
+    /// The `metab` an alert or the Open URL… panel names when it could not read its answer.
+    private static func describe(_ setup: RuntimeSetup) -> String {
+        "metab \(setup.runtime.version) at \(setup.runtime.executable)"
+    }
+
+    /// File > Open URL…: one field for a full GitHub URL, which opens as a link sent to
+    /// the app does, in the repository's mirror and never a checkout of it
+    /// (`OpenURLPanel`). The panel asks `metab` itself, with the command `resolveLink`
+    /// runs, so a refusal is said in the panel, which stays open to fix the text, and not
+    /// in the alert at the end of a burst.
+    @objc func showOpenURL(_ sender: Any?) {
+        openURLWindow.show()
+    }
+
+    /// Asks `metab` about a link typed into File > Open URL…, and opens its plan as a
+    /// link sent to the app opens (`open(_:with:)`). With no `metab` the app can run now,
+    /// as while it finds or checks one, the link goes to the link queue instead, which
+    /// waits for one as it waits for any link (`requestLink`): the panel closes, and a
+    /// refusal comes as the alert at the end of the burst.
+    private func checkEnteredLink(_ link: URL) {
+        if let current = selection.setup?.runtime, !selection.isUnverified,
+           !current.isCurrent(fingerprint: FileFingerprint.of(current.executable)) {
+            beginRecheck()
+        }
+        guard let setup = operations.launchableSetup() else {
+            if let waiting = openURLWindow.handOff() { requestLink(waiting) }
+            return
+        }
+        enteredLinkCheck?.task.cancel()
+        let task = Task {
+            let answer = await askMetab(about: link, with: setup)
+            // Dropped by an edit, Cancel, or closing the panel, which cancelled this task
+            // and so killed the dry run (`CommandRunner.finish`): its answer is moot.
+            guard !Task.isCancelled else { return }
+            enteredLinkCheck = nil
+            let text = link.absoluteString
+            switch answer {
+            case .plan(let plan):
+                AppLog.app.info(
+                    "Open URL…: \(text, privacy: .private) resolves to \(plan.kind.rawValue, privacy: .public) in \(plan.repository.absoluteString, privacy: .public)")
+            case .refused(let refusal):
+                AppLog.app.info("Open URL…: metab refused \(text, privacy: .private): \(refusal.code, privacy: .public)")
+            case .unreadable(let reason, let output):
+                AppLog.app.error(
+                    "Open URL…: could not resolve \(text, privacy: .private): metab \(reason, privacy: .public); its last output: \(output.suffix(PresentDryRun.shownLines).joined(separator: " | "), privacy: .private)")
+            }
+            guard !isQuitting,
+                  let plan = openURLWindow.answered(answer, for: link, metab: Self.describe(setup))
+            else { return }
+            await open(plan, with: setup)
+            showNextLinkModal()
+        }
+        enteredLinkCheck = (link, task)
+    }
+
+    /// The Open URL… panel no longer awaits the answer about `link`: cancelling its task
+    /// kills the dry run's process group at once (`CommandRunner.finish`), so an edit,
+    /// Cancel, or a closed panel leaves no `metab` running for it.
+    private func stopCheckingEnteredLink(_ link: URL) {
+        guard let check = enteredLinkCheck, check.link == link else { return }
+        check.task.cancel()
+        enteredLinkCheck = nil
     }
 
     /// Shows `plan` in its repository's window, or in a new session whose server starts on

@@ -298,7 +298,7 @@ public nonisolated enum PresentDryRun {
     /// compiles bytecode.
     public static let timeout = RuntimeDiscovery.versionTimeout
     /// How many of its last lines an unreadable answer's alert shows.
-    static let shownLines = 5
+    public static let shownLines = 5
     /// The most of an unknown `kind` a reason quotes: every kind the app knows is shorter.
     static let quotedKindLength = 40
 

@@ -239,6 +239,19 @@ All notable changes to Metabrowser are documented here.
   anything. A repository’s window does not come back with the last session.
   See [the app’s guide](docs/macos-app.md#opening-github-links).
 
+- The macOS app’s File menu has Open URL… (Command-L), which opens a full GitHub URL you
+  paste or type, a repository, a pull request, a commit, or a file or folder, as a link
+  sent to the app opens: `metab URL --present --dry-run --format json` checks it, and it
+  opens in the repository’s mirror, never a checkout.
+  A space or a letter outside ASCII in the path is sent encoded, as a browser sends it.
+  A URL it does not open keeps the panel open with the reason under the field: `metab`’s
+  message for a GitHub page it refuses, and the app’s own for a shorthand such as
+  `owner/repo`, which is not taken, or for anything but an `https` URL on GitHub.
+  While the app is still finding or rechecking its `metab`, the panel closes instead,
+  and a URL it does not open is reported in an alert once `metab` is ready.
+  File > Open… is now Open Folder…. See
+  [the app’s guide](docs/macos-app.md#opening-github-links).
+
 - The Treemap tab shows File Overview’s file-type legend under its bars.
   Pointing at an entry highlights every cell of that family, its segments in the bars,
   and the entry; pointing at a cell or a segment highlights it and its family’s entry.

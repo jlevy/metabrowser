@@ -70,7 +70,7 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
    `notes.md`. `open -a "$APP" /tmp/mb-check/a/sub/deep.md` shows `deep.md` in that same
    window, and `pgrep -fl 'metab /private/tmp/mb-check'` still lists one server.
    `open -a "$APP" /dev/null` shows an alert.
-   File > Open… chooses a file too.
+   File > Open Folder… chooses a file too.
 2. **Recents.** After opening `b`, File > Open Recent and the Dock icon’s menu list `b`
    above `a`, and `metab --recent`, run with the `metab` the app uses, lists the same
    two. After `metab /tmp/mb-check/c --no-open` in Terminal, stopped with Control-C, and
@@ -78,12 +78,12 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
    Opening `a` again, while its window is open, moves it to the top.
    **One list in the Dock:** drop `f` on the Dock icon, run
    `open -a "$APP" /tmp/mb-check/g`, which opens it as Finder’s Open With does, and
-   choose `b` with File > Open…. The Dock icon’s menu then lists each folder exactly
-   once, in the order File > Open Recent shows, with nothing but separators between that
-   list and the app’s own items, and choosing `g` in it brings `g`’s window forward.
-   A folder listed twice, or a second group of folders, is macOS’s own recent-documents
-   list beside the app’s, and fails the check: the app clears macOS’s list only once, at
-   launch, and would have to clear it after each open.
+   choose `b` with File > Open Folder…. The Dock icon’s menu then lists each folder
+   exactly once, in the order File > Open Recent shows, with nothing but separators
+   between that list and the app’s own items, and choosing `g` in it brings `g`’s window
+   forward. A folder listed twice, or a second group of folders, is macOS’s own
+   recent-documents list beside the app’s, and fails the check: the app clears macOS’s
+   list only once, at launch, and would have to clear it after each open.
    Close the windows of `f` and `g`, and look at the Dock menu again after the quit and
    relaunch below. After `rm -r /tmp/mb-check/c`, choosing `c` shows the alert and
    removes it. Clear Menu empties both menus and `metab --recent`. After a quit and a
@@ -137,11 +137,11 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
     [Open Modes](../architecture/arch-open-modes.md#resolving-a-target-to-a-root) and
     not built. Make `~/Documents/mb-check` a repository holding `sub/notes.md`
     (`git init`, `git add`, and one commit), reset the Documents grant as in step 6, and
-    choose `sub` with File > Open…. Note which folder the window names, how many prompts
-    appear and for which folder, and that the tree lists the repository’s root once
-    access is granted. Repeat with the repository in `~/Desktop` and in `~/Downloads`.
-    How macOS treats a served root above the folder chosen in the open panel is
-    untested.
+    choose `sub` with File > Open Folder…. Note which folder the window names, how many
+    prompts appear and for which folder, and that the tree lists the repository’s root
+    once access is granted.
+    Repeat with the repository in `~/Desktop` and in `~/Downloads`. How macOS treats a
+    served root above the folder chosen in the open panel is untested.
 
 ## GitHub Links
 
@@ -240,6 +240,56 @@ LOG="$HOME/Library/Logs/Metabrowser/metabrowser-$(printf %s "$REPO" | shasum -a 
     repository’s window is open: the repository is listed first again.
     Choosing it in Open Recent opens it as a link to `$REPO` does: its window comes
     forward and starts again on the default branch.
+
+## File > Open URL…
+
+With `APP_ID`, `REPO`, and `LOG` set as in [GitHub Links](#github-links), and the same
+build, `metab`, and `gh` sign-in.
+What the panel decides is unit-tested in `OpenURLPanelTests`, and against the real
+`metab` in `LiveMetabTests`; these check what AppKit does with it.
+
+1. **The menu.** The File menu reads Open Folder… (Command-O), Open URL… (Command-L),
+   then Open Recent. Command-L with a folder’s page focused, with a repository’s page
+   focused, and with no window open shows a panel titled Open URL with its field
+   focused; Command-L again brings that panel forward and opens no second one.
+2. **A pull request.** Paste `$REPO/pull/517` and press Return: the panel closes, and
+   the pull request opens as GitHub Links check 1 opens it, in the repository’s mirror:
+   `pgrep -fl -- "metab $REPO/pull/517"` lists one server, and the title’s tooltip says
+   it is a cached mirror.
+   With a checkout of this repository also open as a folder, Open URL… `$REPO/tree/main`
+   brings the mirror’s window forward on `main`, never the checkout’s.
+3. **Each kind.** `$REPO`, `$REPO/tree/main/docs`, `$REPO/blob/main/README.md`, and
+   `$REPO/commit/dcf2bcfa8` each bring the repository’s window forward at that page, as
+   GitHub Links check 2 does.
+4. **The app’s refusals.** `jlevy/metabrowser`, `github.com/jlevy/metabrowser`,
+   `http://github.com/jlevy/metabrowser`,
+   `https://user:secret@github.com/jlevy/metabrowser`,
+   `https://github.com:8443/jlevy/metabrowser`, and
+   `https://gitlab.com/jlevy/metabrowser` each show a reason under the field, with no
+   alert and no window; the panel stays open with the text, editing it clears the
+   reason, and `log show --last 2m --predicate "subsystem == '$APP_ID'"` has no
+   `Open URL…` line for any of them, since no `metab` ran.
+5. **`metab`’s refusals.** `$REPO/issues/1` shows `metab`’s message about issues pages,
+   and `$REPO/pull/0` its message about pull request numbers, under the field, with no
+   alert and no window, and never JSON or a traceback; then editing the text to
+   `$REPO/pull/517` and pressing Return opens it.
+6. **Cancel.** Escape, the Cancel button, the close button, and File > Close Window
+   (Command-W) each close the panel and open nothing, and close no window behind it.
+   The panel comes back empty.
+7. **A repository the cache does not hold.** A small public repository you have never
+   opened: the panel closes, and the confirmation of GitHub Links check 4 appears.
+8. **No runtime yet.** As in GitHub Links check 10, choose a file that is not a `metab`
+   in Settings, then Open URL… `$REPO`: the panel closes and no window opens; choose
+   this checkout’s `.venv/bin/metab`, and the repository opens.
+9. **Editing.** Command-V and Edit > Paste paste into the field, and Command-A selects
+   its text.
+10. **A space in the path.** `$REPO/blob/main/docs/a b.md` closes the panel and brings
+    the repository’s window forward at the `handoff` that
+    `metab "$REPO/blob/main/docs/a b.md" --present --dry-run --format json` prints,
+    `docs/a%20b.md`, which the mirror reports missing.
+    `$REPO/blob/main/README`, then U+3164 HANGUL FILLER pasted from a character viewer,
+    then `.md`, shows a reason that names U+3164 and `%E3%85%A4` under the field, and no
+    window opens.
 
 ## Print and Drops
 

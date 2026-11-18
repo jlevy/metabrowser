@@ -5,9 +5,10 @@ The owner settled the model on 2026-11-18: [Decisions](#decisions) lists each an
 and [Not Decided](#not-decided) what is still open.
 Built on `main`: mirror mode; a folder served as the exact path named, with history only
 when that path is a repository’s root; a repository folder’s revision views with their
-chooser and `--ref`; and recent targets kept by `metab`, behind File > Open Recent.
+chooser and `--ref`; recent targets kept by `metab`, behind File > Open Recent; and File
+\> Open URL…, without its offer of a known checkout.
 Not built: resolving a path to its repository’s root, Pulls and the toggle on a folder’s
-revision, the mode indicator, and File > Open URL….
+revision, the mode indicator, and Open URL…’s offer of a checkout.
 [Implementation Status](#implementation-status) names the pull request or bead for each
 part.
 
@@ -438,10 +439,11 @@ named.
 
 ## The File Menu
 
-**Partly built.** Today the menu has Open…, for folders and files, and an Open Recent
-that lists the recent targets `metab` keeps
+**Partly built.** Today the menu has Open Folder…, for folders and files; Open URL…,
+which opens a mirror and offers no checkout yet (`mb-bkk2`); and an Open Recent that
+lists the recent targets `metab` keeps
 ([Recent Targets](arch-recent-targets.md#the-macos-app)): folders, and repositories
-opened by URL, a GitHub link sent to the app among them
+opened by URL, a GitHub link sent to the app or a URL entered in Open URL… among them
 ([#539](https://github.com/jlevy/metabrowser/pull/539)).
 
 - **Open Folder…** opens a folder or a file in folder mode, resolved as
@@ -562,7 +564,7 @@ A pull request that builds a part updates its row.
 | A repository folder’s revision views, its chooser, and their command line, with the two revision requirements above | Built | [Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout); [#559](https://github.com/jlevy/metabrowser/pull/559), `mb-8ob8` |
 | Pulls and the toggle on a folder’s revision; View on branch and Browse code to the head as a revision | Not built | Follows `mb-8ob8` |
 | Recent targets kept by `metab`, behind File > Open Recent | Built; a mirror’s `target` waits for `ProviderUrlReducer.web_url` (`mb-8bds`), and the resolved root for the resolver | [Recent Targets](arch-recent-targets.md), `mb-40k4` |
-| File > Open URL… | Not built | `mb-m4mg` |
+| File > Open URL… | Built, without the offer of a known checkout, which waits for a way to tell that an open folder is a checkout of the URL’s repository | [#560](https://github.com/jlevy/metabrowser/pull/560), `mb-m4mg`; the offer is `mb-bkk2` |
 | The GitHub toggle | Not built | [#552](https://github.com/jlevy/metabrowser/pull/552), `mb-zp7y` |
 | The mode indicator | Not built | `mb-wup3` |
 | One mode vocabulary across `IdentityKind`, the recent-targets store, and the app, held by a test; the shared resolution fixture | Not built | `mb-ajxe` |

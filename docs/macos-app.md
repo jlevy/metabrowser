@@ -15,9 +15,9 @@ What the app adds is what a browser tab cannot give:
 
 ## Opening Folders and Files
 
-- **File > Open…** chooses one or more folders or files.
+- **File > Open Folder…** (Command-O) chooses one or more folders or files.
 - **Finder’s Open With and the Dock icon** accept folders.
-  A file opens through File > Open…, a drop on a window, or
+  A file opens through File > Open Folder…, a drop on a window, or
   `open -a Metabrowser path/to/file`.
 - **A file opens in its folder:** in the most specific open folder that contains it, or
   else in its own folder, as `metab FILE` serves the file’s folder.
@@ -80,11 +80,22 @@ has the report, its codes, and `--dry-run`, which checks a target without sendin
 
 The app opens the GitHub links `metab URL` opens in a browser: a repository, a pull
 request and its tabs, a commit, and a file or folder at a branch, tag, or commit.
-`metab URL --present` sends one to the app, and so does
-`open -b io.github.jlevy.metabrowser URL` (`io.github.jlevy.metabrowser.dev` for a
-development build). `metab` reads each link first, and the app shows what `metab` makes
-of it.
+File > Open URL… (Command-L) opens one you paste or type, `metab URL --present` sends
+one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
+(`io.github.jlevy.metabrowser.dev` for a development build).
+`metab` reads each link first, and the app shows what `metab` makes of it.
 
+- **File > Open URL…** takes the full URL, starting with `https://github.com/`; a
+  shorthand such as `owner/repo` is not opened.
+  A space or a letter outside ASCII in the path is sent encoded, as a browser sends it,
+  so a file named `Design Notes.md` opens as it does with `metab URL`. Open checks the
+  URL with `metab`, and a URL it accepts opens as a sent link does, below.
+  A URL it does not open keeps the panel open with the reason under the field: the app’s
+  own for anything but an `https` URL on GitHub, and `metab`’s for a GitHub page it does
+  not open, such as an issues page.
+  One exception: while Metabrowser is still finding its `metab`, or checking it again
+  after it changed, the panel closes at once, the URL is checked once `metab` is ready,
+  and a URL it does not open is reported in an alert.
 - **Always the mirror:** a link opens Metabrowser’s own copy of the repository, its
   mirror in `metab`’s cache, never a checkout of it that you have open
   ([Open Modes](project/architecture/arch-open-modes.md)).
@@ -167,8 +178,8 @@ you open, up to the list’s length.
 - **A folder that is gone** stays listed, since the app never looks at a listed folder
   until you choose it; choosing it says the folder is gone, and removes it.
 - **Clear Menu** empties the list, for `metab` too.
-- **Only an open changes the order:** File > Open…, Open Recent, a drop, Open With, a
-  GitHub link, or `metab` in Terminal.
+- **Only an open changes the order:** File > Open Folder…, Open URL…, Open Recent, a
+  drop, Open With, a GitHub link, or `metab` in Terminal.
   The windows the app brings back at launch, and a server it restarts, leave the list as
   it was.
 - **The Dock icon’s menu** lists the same items while the app is running, as the app
@@ -267,8 +278,8 @@ The app moves nothing itself.
 
 ## Known Limitations
 
-- The tab bar has no new-tab button: a new folder tab comes from File > Open… with
-  Settings set to tabs, or from Merge All Windows.
+- The tab bar has no new-tab button: a new tab comes from File > Open Folder… or Open
+  URL… with Settings set to tabs, or from Merge All Windows.
 - A restarted server comes back on a new port, and local storage is per origin, so what
   a page kept there starts fresh, as with the CLI.
 - The app does not pass state-location variables (`XDG_CACHE_HOME`,
@@ -283,9 +294,10 @@ The app moves nothing itself.
   ends, and so do a link into a repository that is already open and File > Restart
   Server in one of its windows: its other tabs keep working meanwhile, and the window
   the link brought forward, or the one you chose Restart Server in, says it waits.
-- A folder opens as the folder named, even inside a Git repository, and the File menu
-  opens no URL. Opening the repository’s root instead and File > Open URL… are planned
-  in [Open Modes](project/architecture/arch-open-modes.md#the-file-menu).
+- A folder opens as the folder named, even inside a Git repository, and File > Open URL…
+  opens the repository’s mirror without offering a checkout of it that you have open.
+  Opening the repository’s root instead, and that offer, are planned in
+  [Open Modes](project/architecture/arch-open-modes.md#the-file-menu).
 - There is no updater and no URL scheme, and an agent can hand the app a target with
   [`--present`](#opening-from-a-terminal-or-an-agent) but cannot yet learn which window
   shows it or move a page that is already open; the
