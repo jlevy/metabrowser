@@ -235,6 +235,7 @@ class GithubProvider:
         owner, name = parsed
         return RepositoryContext(
             branch=branch,
+            branch_on_origin=branch is not None,
             host=CANONICAL_HOST,
             name=name,
             owner=owner,

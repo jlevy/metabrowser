@@ -102,7 +102,7 @@ const READ = `(() => {
   return {
     // The tokens the layout is held to, as the page resolves them.
     tokens: Object.fromEntries(
-      ["--view-header-row-gap", "--view-header-eyebrow-height", "--view-header-line-height", "--page-title-font-size", "--body-font-size"].map((name) => [name, token(name)]),
+      ["--view-header-row-gap", "--view-header-eyebrow-height", "--view-header-line-height", "--page-title-font-size", "--body-font-size", "--view-header-up-size", "--view-header-toggle-option-width", "--chip-border", "--icon-glyph", "--content-padding-x"].map((name) => [name, token(name)]),
     ),
     paneWidth: Math.round(pane.getBoundingClientRect().width),
     scheme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
@@ -122,6 +122,10 @@ const READ = `(() => {
     titleTip: title ? tipAddsInformation(title) : null,
     titleHeights: title ? { scroll: title.scrollHeight, client: title.clientHeight } : null,
     end: box(q('.view-header-end')),
+    toggle: box(q('.view-header-toggle')),
+    toggleCurrent: q('.view-header-toggle [aria-current=page]') ? q('.view-header-toggle [aria-current=page]').className : null,
+    toggleHref: q('.view-header-toggle a') ? q('.view-header-toggle a').href : null,
+    marks: [...(header ? header.querySelectorAll('.view-header-toggle-mark') : [])].map(box),
     line: lineBox,
     items,
     bar: box(bar),
