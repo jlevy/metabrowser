@@ -595,6 +595,82 @@ async function mountOn(page, body, tab, ageLabel) {
   return { container, handle };
 }
 
+// Browse code switches the pin through the diff plugin's view, whose switch is in a module
+// the plugin loads on demand (builtin_plugins/diff/index.js awaits its import). The
+// plugin's assets failing to load, or that module failing to, as when the server is
+// restarting, is said as a failed request is, and never left as a rejection nothing
+// handles, which would end this process (A3 of review A on #511).
+async function switchUnavailable(page) {
+  const said = [];
+  for (const failure of ["the diff plugin's assets", "the switch module"]) {
+    globalThis.document = {
+      visibilityState: "visible",
+      addEventListener() {},
+      removeEventListener() {},
+      createElement: (tag) => new Element(tag),
+      importNode: () => new Element("svg"),
+    };
+    globalThis.window = {
+      location: { pathname: "/pull/7" },
+      setTimeout: () => Symbol(),
+      clearTimeout() {},
+    };
+    const asked = [];
+    globalThis.fetch = async (route, init = {}) => {
+      if (init.method === "POST") {
+        asked.push(`POST ${route.split("?")[0]}`);
+      }
+      return { status: 304, headers: { get: () => null } };
+    };
+    const container = new Element("main");
+    const handle = page.mountPullPage(
+      container,
+      {
+        number: 7,
+        tab: "",
+        reader: { initial: { etag: null, body: recorded.current.body }, fetchAfterMs: 60_000 },
+      },
+      {
+        perf,
+        ensureAsset: async () => {},
+        whenIdle: require("./sdk-idle-fixture.js").whenIdle,
+        ensureKindAssets: async () => {
+          if (failure === "the diff plugin's assets") {
+            throw new Error("asset failed");
+          }
+        },
+        // As index.js's switchPin rejects when `import("./diff-view-file.js")` does.
+        getRegisteredView: () => ({
+          switchPin: async () => {
+            throw new TypeError("Failed to fetch dynamically imported module");
+          },
+        }),
+        ...require("./sdk-ref-fixture.js").refHelpers(document),
+        formatAge: () => ({ label: "now", className: "age" }),
+        formatTimestamp: () => "now",
+        navigation: { href: () => "/view/" },
+        sourceKind: () => "git_revision",
+        icons: { toggle: "" },
+      },
+    );
+    await settle();
+    const browse = [...container.descendants()].find(
+      (node) => node.tag === "button" && node.textContent === "Browse code",
+    );
+    assert.ok(browse, "Browse code is the switch: the page's pin is not the head");
+    browse.events.get("click")({ preventDefault() {} });
+    await settle();
+    const live = [...container.descendants()].find(
+      (node) => node.getAttribute("aria-live") === "polite",
+    );
+    said.push(
+      `${failure} not loading: ${live.textContent}; asked ${asked.join(", ") || "nothing"}`,
+    );
+    handle.dispose();
+  }
+  return said;
+}
+
 // The page's tabs answer to C, G, and E through the SDK's shortcut surface, and its header's
 // links and actions to the numbers of their places, through the same surface. The production
 // shortcut registry and plugin shortcut facade (static/keyboard-shortcuts.js and
@@ -711,6 +787,22 @@ async function tabKeys(page) {
   const registry = shell.MetabrowserKeyboardShortcuts.create({ document: globalThis.document });
   const detachRegistry = facade.attachShortcutRegistry(registry);
   const opened = [];
+  // The diff plugin's view, whose pin switch the page's Browse code shares: the production
+  // switch (diff-view-file.js), posting as builtin_plugins/diff/index.js posts.
+  const { createPinSwitch } = await import(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/diff/diff-view-file.js")).href
+  );
+  const pinSwitch = createPinSwitch({
+    async post(selection) {
+      const response = await fetch("/api/source/pin", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(selection),
+      });
+      return { status: response.status, body: null };
+    },
+    onRestored: () => () => {},
+  });
   /** Mount #7 into a new container in the page; `reader` is the Pulls tab's, if any. */
   const mountPage = (reader) => {
     const target = new LiveElement("main");
@@ -730,6 +822,7 @@ async function tabKeys(page) {
         ensureAsset: async () => {},
         whenIdle: require("./sdk-idle-fixture.js").whenIdle,
         ensureKindAssets: async () => {},
+        getRegisteredView: () => ({ switchPin: pinSwitch.switchTo }),
         ...require("./sdk-ref-fixture.js").refHelpers(globalThis.document),
         formatAge: () => ({ label: "now", className: "age" }),
         formatTimestamp: () => "now",
@@ -2587,6 +2680,7 @@ async function run() {
   const headerSummarySteps = await headerSummary(page);
   const coldHoldSteps = await coldHold(page);
   const tabKeySteps = await tabKeys(page);
+  const switchUnavailableSteps = await switchUnavailable(page);
   for (const label of [
     "githubPull:decode",
     "githubPull:render",
@@ -2612,6 +2706,7 @@ async function run() {
     headerSummary: headerSummarySteps,
     coldHold: coldHoldSteps,
     tabKeys: tabKeySteps,
+    switchUnavailable: switchUnavailableSteps,
   };
 }
 module.exports = { Element, recorded, root, settle, perf };

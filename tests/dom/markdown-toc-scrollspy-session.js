@@ -5,6 +5,18 @@ const { createSdkSandbox } = require("./sdk-sandbox.js");
 
 const repoRoot = path.resolve(process.argv[2] || ".");
 const markdownModuleRoot = path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown");
+const folderModuleRoot = path.join(repoRoot, "src/metabrowser/builtin_plugins/folder");
+
+// The folder plugin's modules have no package.json saying they are modules, which the
+// browser never asks about. Node's warning names the process and the checkout, so it is
+// kept out of the transcript.
+const emitWarning = process.emitWarning;
+process.emitWarning = (warning, ...rest) => {
+  if (String(warning).includes("is not specified and it doesn't parse as CommonJS")) {
+    return;
+  }
+  emitWarning.call(process, warning, ...rest);
+};
 
 function dataUrl(source) {
   return `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
@@ -40,15 +52,19 @@ async function loadProductionModules() {
     .replace('"./overlay.js"', JSON.stringify(overlayUrl))
     .replace('"./runtime.js"', JSON.stringify(runtimeUrl))
     .replace('"./viewport.js"', JSON.stringify(viewportUrl));
-  const [rendered, kpressToc, linkEnhancer] = await Promise.all([
+  const [rendered, kpressToc, linkEnhancer, tocToggle, readmePanel] = await Promise.all([
     import(pathToFileURL(path.join(markdownModuleRoot, "rendered.js")).href),
     import(dataUrl(tocSource)),
     import(pathToFileURL(path.join(markdownModuleRoot, "link-enhancer.js")).href),
+    import(pathToFileURL(path.join(markdownModuleRoot, "toc-toggle.js")).href),
+    import(pathToFileURL(path.join(folderModuleRoot, "readme-panel.js")).href),
   ]);
   return {
     kpressToc,
     linkEnhancer,
+    readmePanel,
     rendered,
+    tocToggle,
   };
 }
 
@@ -196,8 +212,182 @@ function plainClick(target) {
   };
 }
 
+/**
+ * The README of a folder's Overview: the production README panel mounts the production
+ * Markdown mount on the folder's page, whose File Overview puts the document 1,000px down
+ * the pane. KPress's toc.js runs with the toggle policy the mount supplies, so the narrow
+ * toggle stays hidden past KPress's threshold until the reader reaches the README, and the
+ * entries keep their fragment-only links: a click opens the heading on the folder's page,
+ * and that page's fragment scrolls the README's heading into view.
+ */
+async function overviewReadmeSession({
+  documentTarget,
+  flush,
+  frames,
+  headingById,
+  initKpressToc,
+  mountRenderedMarkdown,
+  readmePanel,
+  windowTarget,
+}) {
+  const README_TOP = 1_000;
+  const pane = new ElementShim("main", { "data-kpress-viewport": "" });
+  pane.clientHeight = 800;
+  pane.getBoundingClientRect = () => ({
+    bottom: 100 + pane.clientHeight,
+    height: pane.clientHeight,
+    left: 0,
+    right: 1_200,
+    top: 100,
+    width: 1_200,
+  });
+  const scrolledTo = [];
+  const headings = [
+    { id: "why", offset: 0 },
+    { id: "quick-start", offset: 600 },
+    { id: "direction", offset: 1_800 },
+  ].map(({ id, offset }) => {
+    const heading = new ElementShim("h2", { id });
+    heading.getBoundingClientRect = () => ({ top: 100 + README_TOP + offset - pane.scrollTop });
+    heading.scrollIntoView = () => scrolledTo.push(id);
+    headingById.set(id, heading);
+    return heading;
+  });
+  const links = headings.map((heading) => new ElementShim("a", { href: `#${heading.id}` }));
+  const list = new ElementShim("ol");
+  list.queryMany.set(
+    ":scope > li",
+    links.map((link) => {
+      const item = new ElementShim("li", { class: "kpress-toc-level-1" });
+      item.queryOne.set("a", link);
+      return item;
+    }),
+  );
+  const toggle = new ElementShim("button", { "aria-expanded": "false" });
+  const scope = new ElementShim("section");
+  scope.queryOne.set("[data-kpress-toc-toggle], .kpress-toc-toggle", toggle);
+  const toc = new ElementShim("nav", { "data-kpress-toc": "" });
+  toc.closestMatches = new Map([[".kpress-content-with-toc", scope]]);
+  toc.queryOne.set("ol", list);
+  toc.queryMany.set("ol a[href]", links);
+  // The README panel's body, which the Markdown mount renders into.
+  const body = new ElementShim("div");
+  body.getBoundingClientRect = () => ({
+    bottom: 100 + README_TOP - pane.scrollTop + 4_000,
+    height: 4_000,
+    top: 100 + README_TOP - pane.scrollTop,
+    width: 1_000,
+  });
+  body.ownerDocument = {
+    createElement: () => ({ content: { querySelectorAll: () => [] }, innerHTML: "" }),
+  };
+  body.replaceChildren = () => {};
+  body.queryMany.set("a[href]", links);
+  body.queryMany.set(
+    "a[href],img[src],audio[src],video[src],source[src],object[data],[data-mb-wiki-target]",
+    links,
+  );
+  body.queryMany.set("[data-kpress-toc]", [toc]);
+  for (const heading of headings) {
+    body.queryOne.set(`[id="${heading.id}"]`, heading);
+  }
+  for (const link of links) {
+    link.parentElement = toc;
+  }
+  toc.parentElement = scope;
+  scope.parentElement = body;
+  body.parentElement = pane;
+
+  let current = { path: "" };
+  const opened = [];
+  let mountOptions = null;
+  const mb = {
+    builtins: {},
+    decorateExternalLink: createSdkSandbox().metabrowser.decorateExternalLink,
+    ensureKindAssets: async () => {
+      // index.js's mountRendered, with the session's stand-in for the Markdown Worker.
+      mb.builtins.markdown = {
+        mountRendered: (container, ctx, options) => {
+          mountOptions = options;
+          return mountRenderedMarkdown(container, ctx, mb, {
+            ...options,
+            workerClient: {
+              dispose() {},
+              run: async () => ({ changed: false, complete: true, diagnostics: [], source: null }),
+            },
+          });
+        },
+      };
+    },
+    errors: { isAbortError: () => false },
+    escapeHtml: (value) => value,
+    fetchKpressRender: async () => ({ diagnostics: [], html: "<article></article>" }),
+    fileCatalog: { snapshot: () => ({ complete: true, files: [] }), subscribe: () => () => {} },
+    kpressInitToc: (target, config) => initKpressToc(target, config),
+    navigation: {
+      current: () => current,
+      href: (target) => `/view/${target.path}${target.fragment ? `#${target.fragment}` : ""}`,
+      open: async (target) => opened.push(target),
+    },
+    repository: null,
+  };
+  const handle = await readmePanel
+    .createReadmePanel(mb)
+    .mount(body, { path: "", raw: {} }, { path: "README.md" }, {});
+  await handle.ready;
+
+  const steps = [];
+  const activeId = () => {
+    const index = links.findIndex((link) => link.getAttribute("data-active") === "true");
+    return index < 0 ? null : headings[index].id;
+  };
+  const scrollTo = (label, scrollTop) => {
+    pane.scrollTop = scrollTop;
+    pane.dispatch("scroll");
+    flush();
+    steps.push({
+      active: activeId(),
+      label,
+      scrollTop,
+      toggleShown: toggle.classList.names.has("show-toggle"),
+    });
+  };
+  scrollTo("top of the Overview", 0);
+  scrollTo("past the threshold, in the File Overview", 500);
+  scrollTo("the README just below the pane's top", README_TOP - 20);
+  scrollTo("the README's beginning reached", README_TOP + 5);
+  scrollTo("reading Quick Start", README_TOP + 650);
+  scrollTo("back up in the File Overview", 500);
+
+  const click = plainClick(links[2]);
+  body.dispatch("click", click);
+  await Promise.resolve();
+  current = { path: "", fragment: "direction" };
+  windowTarget.dispatch("metabrowser:navigation-fragment", { detail: { target: current } });
+  flush();
+
+  handle.dispose();
+  return {
+    click: { defaultPrevented: click.defaultPrevented, opened },
+    fragment: { scrolledTo, pendingFrames: frames.size },
+    hrefs: links.map((link) => link.getAttribute("href")),
+    listenersAfterDispose: {
+      body: body.totalListenerCount(),
+      document: documentTarget.totalListenerCount(),
+      pane: pane.listenerCount("scroll"),
+      toc: toc.totalListenerCount(),
+      toggle: toggle.totalListenerCount(),
+      window: windowTarget.totalListenerCount(),
+    },
+    mountOptions: { includeToc: mountOptions?.includeToc, pagePath: mountOptions?.pagePath },
+    readmeTop: README_TOP,
+    steps,
+  };
+}
+
 (async () => {
-  const { kpressToc, linkEnhancer, rendered } = await loadProductionModules();
+  const { kpressToc, linkEnhancer, readmePanel, rendered, tocToggle } =
+    await loadProductionModules();
   const { enhanceRenderedLinks } = linkEnhancer;
   const { initKpressToc } = kpressToc;
   const { mountRenderedMarkdown } = rendered;
@@ -260,6 +450,13 @@ function plainClick(target) {
   toc.queryOne.set("[data-kpress-toc-expand-all]", expandAllButton);
   toc.queryMany.set("ol a[href]", links);
   const container = new ElementShim("article");
+  // An opened file: its document starts the pane's scroll, as a file's does under its header.
+  container.getBoundingClientRect = () => ({
+    bottom: 100 - viewport.scrollTop + 80_000,
+    height: 80_000,
+    top: 100 - viewport.scrollTop,
+    width: 1_000,
+  });
   // The render is placed through a template (place-rendered.js); the document it places
   // is the one built above, so placing it keeps the container's children.
   container.ownerDocument = {
@@ -351,9 +548,10 @@ function plainClick(target) {
       },
       subscribe: () => () => {},
     },
-    kpressInitToc: (target) => {
+    // As the SDK does, KPress's toc.js is handed the configuration the mount supplies.
+    kpressInitToc: (target, config) => {
       tocMountedWithoutCatalogSnapshot = catalogSnapshots === 0;
-      return initKpressToc(target);
+      return initKpressToc(target, config);
     },
     navigation: {
       current: () => ({ path: sourcePath }),
@@ -448,7 +646,12 @@ function plainClick(target) {
     return index < 0 ? null : headings[index].id;
   };
   const record = (label) => {
-    steps.push({ active: activeId(), label, scrollTop: viewport.scrollTop });
+    steps.push({
+      active: activeId(),
+      label,
+      scrollTop: viewport.scrollTop,
+      toggleShown: button.classList.names.has("show-toggle"),
+    });
   };
   record("top");
 
@@ -490,6 +693,12 @@ function plainClick(target) {
   record("pane resized to half height");
   viewport.clientHeight = 800;
 
+  // Within KPress's threshold of the top, the toggle stays hidden, as KPress has it.
+  viewport.scrollTop = 60;
+  viewport.dispatch("scroll");
+  flush();
+  record("short of the toggle threshold");
+
   viewport.scrollTop = 600;
   viewport.dispatch("scroll");
   mountHandle.dispose();
@@ -511,6 +720,19 @@ function plainClick(target) {
     label: expandAllButton.getAttribute("aria-label"),
   };
 
+  // The README a folder's Overview shows, mounted by the production README panel on the
+  // folder's page: the File Overview above it puts its document 1,000px down the pane.
+  const overview = await overviewReadmeSession({
+    documentTarget,
+    flush,
+    frames,
+    headingById,
+    initKpressToc,
+    mountRenderedMarkdown,
+    readmePanel,
+    windowTarget,
+  });
+
   const result = {
     coalescedFrames,
     dispose: { listenersAfterDispose, pendingFramesAfterDispose, tocBindingDisposed },
@@ -526,6 +748,7 @@ function plainClick(target) {
       enhancedHref,
     },
     maxHeadingGeometryReadsPerUpdate: Math.max(...geometryReadsPerUpdate),
+    overview,
     paneResizeObservers,
     passiveScrollListener,
     productionModules: {
@@ -539,6 +762,10 @@ function plainClick(target) {
     },
     steps,
     tocExpansion,
+    toggleThreshold: {
+      kpress: kpressToc.TOC_TOGGLE_SCROLL_THRESHOLD_PX,
+      metabrowser: tocToggle.TOC_TOGGLE_SCROLL_THRESHOLD_PX,
+    },
   };
   const expectedActive = [
     "overview",
@@ -548,8 +775,12 @@ function plainClick(target) {
     "testing",
     "design",
     "overview",
+    "overview",
   ];
   const actualActive = steps.map((step) => step.active);
+  const expectedToggle = [false, true, true, true, true, true, true, false];
+  const actualToggle = steps.map((step) => step.toggleShown);
+  const expectedOverviewToggle = [false, false, false, true, true, false];
   const expectedTarget = { path: sourcePath, fragment: "implementation-plan" };
   if (
     authoredHref !== "#implementation-plan" ||
@@ -565,6 +796,19 @@ function plainClick(target) {
     embeddedNewTabClick.defaultPrevented ||
     opened.length !== 2 ||
     JSON.stringify(actualActive) !== JSON.stringify(expectedActive) ||
+    JSON.stringify(actualToggle) !== JSON.stringify(expectedToggle) ||
+    result.toggleThreshold.kpress !== result.toggleThreshold.metabrowser ||
+    overview.mountOptions.pagePath !== "" ||
+    overview.mountOptions.includeToc !== undefined ||
+    overview.hrefs.join(" ") !== "#why #quick-start #direction" ||
+    JSON.stringify(overview.steps.map((step) => step.toggleShown)) !==
+      JSON.stringify(expectedOverviewToggle) ||
+    overview.steps[4].active !== "quick-start" ||
+    !overview.click.defaultPrevented ||
+    JSON.stringify(overview.click.opened) !==
+      JSON.stringify([{ path: "", fragment: "direction" }]) ||
+    JSON.stringify(overview.fragment.scrolledTo) !== JSON.stringify(["direction"]) ||
+    Object.values(overview.listenersAfterDispose).some((count) => count !== 0) ||
     coalescedFrames !== 1 ||
     !tocMountedWithoutCatalogSnapshot ||
     catalogSnapshotsAfterFirstFlush !== 0 ||

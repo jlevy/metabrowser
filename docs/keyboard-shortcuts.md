@@ -66,8 +66,8 @@ The navigation pane’s numbers come first, so a pull request page’s numbers c
 after those of the tab beside it.
 A tenth control gets no number.
 
-Copy buttons, per-file controls such as a changed file’s View file, and controls that
-appear only on hover have no key; Tab and the pointer reach them.
+Copy buttons, per-file controls such as a changed file’s View file or View on branch,
+and controls that appear only on hover have no key; Tab and the pointer reach them.
 
 ## Lists and Search
 

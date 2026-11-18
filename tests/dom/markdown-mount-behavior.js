@@ -161,7 +161,14 @@ class FakeWorker {
     .replace('"./link-enhancer.js"', JSON.stringify(enhancerUrl))
     .replace('"./markdown-worker-client.js"', JSON.stringify(workerClientUrl))
     .replace('"./place-rendered.js"', JSON.stringify(placeRenderedUrl))
-    .replace('"./transclusion.js"', JSON.stringify(transclusionUrl));
+    .replace('"./transclusion.js"', JSON.stringify(transclusionUrl))
+    .replace(
+      '"./toc-toggle.js"',
+      JSON.stringify(
+        pathToFileURL(path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/toc-toggle.js"))
+          .href,
+      ),
+    );
   const module = await import(
     `data:text/javascript;base64,${Buffer.from(importableSource).toString("base64")}`
   );
