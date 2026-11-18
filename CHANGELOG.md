@@ -4,6 +4,43 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- With the Files tab grouped by age, each section’s name is drawn in the age color its
+  files’ ages show: Past hour in the yellow of a file changed minutes ago, then quieter
+  yellow-greens through Past month, Older in the oldest age’s gray, and Live in Live’s
+  orange. Only the color changes, in both themes; the headings keep their size and
+  weight, and grouping by file type is unchanged.
+
+- On a checkout of a repository on github.com, or a mirror of one, a file’s or a
+  folder’s header ends in a small toggle of two marks: Metabrowser’s, gray, the view the
+  page is in, and GitHub’s, a link to the same item’s page on github.com: at the branch
+  the page is on when `origin` has it, or else at its commit, with a tooltip that says
+  `origin` had no such branch at your last fetch.
+  A narrow pane shows the GitHub mark alone.
+  A browser opens it in a new tab, since github.com cannot be framed, and the macOS app
+  in the default browser.
+  A plain folder, or a checkout whose origin is elsewhere, has no toggle.
+  See [View Headers](docs/design-system.md#view-headers).
+
+- A file’s and a folder’s header is now a view header of three rows on the main view’s
+  ground: a quiet line with the Up button and the folders that hold the item, then the
+  item’s icon and its name at the page title’s size, then its badges, size, file count,
+  and age, “4.7 MB · 138 files · 8m ago”, in the navigation rows’ inks.
+  The size and age moved from the header’s upper right to the line under the name, and a
+  file’s header shows its age too, from a new `mtime` in the `/api/file` envelope.
+  A file now has the Up button a folder has, which `U` presses; the item’s own name is
+  the title, so the address no longer ends in a crumb that reopens the page.
+  The header and its tabs share the content’s white or dark ground with one rule under
+  the tabs, where the header was a gray band with a rule of its own above the tabs; a
+  pull request’s tabs moved onto that ground too.
+  Copy path sits at the end of the quiet line, so the name keeps its row.
+  The line holds its height and puts the age last, so a value arriving or an age
+  changing width moves nothing; in a narrow pane values leave it from the end, each
+  whole. See [View Headers](docs/design-system.md#view-headers).
+
+- In the macOS app, Open Recent, the Dock menu and the title’s path menu show folders
+  with the same outline folder symbol as the mirror’s cloud, instead of Finder’s colored
+  folder.
+
 - In a navigation pane too narrow for the Files toolbar’s controls, the Files tree no
   longer moves down as the page loads.
   The toolbar wraps to a second line when its controls arrive, and the tree, shown under

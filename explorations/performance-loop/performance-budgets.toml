@@ -256,6 +256,13 @@ description = "JavaScript requests started before DOMContentLoaded, excluding th
 # startup code because the SDK's methods are synchronous and the lines drawn where the
 # changed-files tree or the diff plugin did not load call them (diff-view.js summaryOrTotals,
 # git-panel.js renderCommitTotals), so the on-demand tree bundle cannot hold them.
+# Measured with it on 2026-11-18: the view header's builders (#550) put the folder's shell
+# at 226,291 bytes, 500 over, against main's 225,729 at a1100bca6. They are not startup
+# code: renderFile draws a header only after loadViewComposition has fetched the bundles a
+# view needs, so they moved to static/view-header.js, an on-demand bundle fetched beside
+# the compositor, which took the shell to 222,991 bytes, 2,800 under; header code added
+# there later is off this budget too. server.py's comment on the `view-header` bundle has
+# what the move costs a view.
 [metrics.startup_script_transfer_kb]
 category = "loading"
 maximum = 220

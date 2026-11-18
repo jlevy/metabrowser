@@ -406,6 +406,10 @@ Outside the milestone, each for a stated reason:
 
 ### Phase 3: Host Mode, the Registry, and the Agent Front Door
 
+A release-scoped slice of the front door, delivered through LaunchServices before host
+mode, with GitHub URLs in the app, is
+[Opening Anything from the CLI and the App](plan-2026-11-17-open-anything-from-cli-and-app.md).
+
 No root is admitted on an agent’s request alone.
 Socket ownership authenticates the user, not the agent, so a request through the front
 door, by rendezvous or by link, may present a root the app already has open or warm, or
