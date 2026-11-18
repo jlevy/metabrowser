@@ -3,9 +3,9 @@ type: is
 id: is-01m7r8jfm690nwt4rbad8ny3k2
 title: "Design system: a systematic icon catalog (file formats, categories, chrome/UI icons such as pull request states) and consistent use, with a check"
 kind: feature
-status: in_progress
+status: closed
 priority: 2
-version: 7
+version: 8
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -18,7 +18,11 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-18T21:21:28.704Z
-updated_at: 2026-11-18T21:52:23.521Z
+updated_at: 2026-11-18T23:24:53.394Z
 started_at: 2026-11-18T21:23:08.714Z
+closed_at: 2026-11-18T23:24:53.393Z
+close_reason: "Merged in #580 (b383f25e0)"
+resolution: null
+duplicate_of: null
 ---
 Owner, 2026-11-18: Make sure all icons are systematically cataloged in our design system as well, so we use them consistently. Some are file types, some are categories, some are Chrome icons like PR icons of different kinds, and so on. They should all be systematically organized, and make sure we use them consistently.
