@@ -321,6 +321,23 @@ slower CPU, and 16 to 23 ms with no `requestIdleCallback`, a pull request first 
 on Changes included; and a first visit to a row the pointer rested on for 250 ms, 9 to
 12 ms after the click, where it was 283 to 343 ms.
 
+### A Pulls Row’s Change Line
+
+Recorded on 2026-11-17, when the Pulls tab’s prefetch began listing changed files from
+the store before it reads records (`_prepare_lists` in
+`src/metabrowser/builtin_plugins/github/pull_prefetch.py`, whose docstring has the same
+readings). Measured in headless Chrome 152 on this repository’s own Pulls tab, served
+from its checkout with a fresh cache, 11 open rows in view, at a load average of 11 to
+14; the list of pull requests was drawn 6.4 s after the tab opened in both.
+Before, the lane took turns, a record of 3.6 to 4.7 s and then a list from GitHub of 0.3
+to 2 s, and the rows’ change lines were drawn from 12.3 s to 40.6 s. After, every list
+is the store’s comparison of the row’s head with the mirror’s base branch, with no
+GitHub request: the lines were drawn from 9.4 s to 10.4 s, of which attaching the
+checkout’s store took 2.3 to 2.5 s once, 11 merge bases 0.42 s, and each list 42 to 134
+ms. A batch of heads the store lacks is one Git fetch: 39 of this repository’s pull
+request heads, fetched from GitHub into a store that borrows the checkout’s objects,
+took 0.76 s.
+
 ## The Pull Request Header
 
 For [Layout](../../docs/design-system.md#layout), on the pull request page.
@@ -410,6 +427,33 @@ For [One Glyph Size](../../docs/design-system.md#one-glyph-size), recorded 2026-
 at a 16px slot a Files name started 22px from the row’s content edge and a Pulls title
 44px, past two slots; at 14px they start at 20 and 40, and a pull request’s title is 4px
 wider.
+
+## Pulls Rows
+
+For [The Pulls Tab](../../docs/design-system.md#the-pulls-tab).
+
+Recorded on 2026-11-17, when a Pulls row’s title moved to its first line, after the
+state icon, and its number’s line, with the age, to its second; its avatar went from the
+shell’s 18 px to 16 px; and a row’s or a stack heading’s statuses became whole or out of
+view rather than cut short with an ellipsis.
+Measured in headless Chrome 152 in both themes by
+`tests/dom/github-pulls-row-lines-chrome.mjs` and
+`tests/dom/github-pulls-stack-lines-chrome.mjs`, from 420 px to the 180 px minimum: a
+row’s link is still 41 px and its item, with the change line, 61 px, before and after
+its line arrives; #106’s line, “2 A, 3 D, 30 M · +1,234 −3,423” in the stand-in, shows
+whole down to 299 px and its totals alone from 260 px, where it showed its statuses cut
+short before. A stack heading’s line shows whole down to 260 px, its totals alone at 220
+and 200 px, and goes at 180 px, where it went before too.
+Measured again after review, on hand-built headings in headless Chrome 152 with the
+production stylesheet: a heading whose totals are estimated, “21 A, 7 D, 15 M · +1,234
+−567 (estimated)”, drops its “(estimated)” whole first and keeps its statuses to 360 px,
+then shows its totals alone with nothing after them, and goes at 240 px, as an exact one
+does. Before the review’s fix the statuses went at the first pixel of squeeze and left a
+blank run of 83 to 115 px, and before this change the note was cut to “(estimat” at 420
+px and the line went at 320 px.
+`tests/dom/github-pulls-stacks-chrome.mjs` holds the order: the title’s line above the
+number’s, the state icon centred on the title’s line, the title from the text column to
+the row’s end, and the number’s line in the title’s column.
 
 ## Grouping Cost
 
