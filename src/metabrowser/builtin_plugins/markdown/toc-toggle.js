@@ -7,9 +7,9 @@
 // document: a file's header above it, or the Folder Overview's other panels above its
 // README. So the toggle also waits for the reader to reach the document, its top at or
 // above the pane's, and goes again once the reader is above or past it. A file's document
-// starts within the threshold of the pane's top, so the threshold decides there as in
-// KPress; the README starts further down, so reaching it decides, and its toggle appears
-// as the reader scrolls to its beginning.
+// starts below its view header and tab bar, and the README below File Overview, both
+// further down than the threshold, so reaching the document decides, and its toggle
+// appears as the reader scrolls to its beginning.
 //
 // It is in the plugin's static tree, since every trusted mount hands KPress this policy
 // (rendered.js, transclusion.js), and imports nothing, so it adds no level. Measured
