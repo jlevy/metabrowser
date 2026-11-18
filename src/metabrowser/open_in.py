@@ -40,14 +40,14 @@ from typing import Final, Literal, cast
 from metabrowser.errors import CLIError
 from metabrowser.invisible_chars import display_segment
 
-type opening = Literal["auto", "app", "browser"]
+type OpenInChoice = Literal["auto", "app", "browser"]
 """Where ``--present`` opens a target."""
 
 type OpenInSource = Literal["flag", "environment", "config", "default"]
 """Where the preference in effect was read."""
 
-OPEN_IN_CHOICES: Final[tuple[opening, ...]] = ("auto", "app", "browser")
-DEFAULT_OPEN_IN: Final[opening] = "auto"
+OPEN_IN_CHOICES: Final[tuple[OpenInChoice, ...]] = ("auto", "app", "browser")
+DEFAULT_OPEN_IN: Final[OpenInChoice] = "auto"
 # Chooses as `--open-in` does, which overrides it, and overrides config.yml.
 OPEN_IN_ENV: Final = "METABROWSER_OPEN_IN"
 # The key in config.yml's `config` mapping.
@@ -63,7 +63,7 @@ class OpenInError(CLIError):
 class OpenInPreference:
     """The preference in effect and where it was read."""
 
-    value: opening
+    value: OpenInChoice
     source: OpenInSource
 
 
@@ -71,11 +71,11 @@ def _choices() -> str:
     return ", ".join(OPEN_IN_CHOICES[:-1]) + f", or {OPEN_IN_CHOICES[-1]}"
 
 
-def parse_open_in(value: object) -> opening | None:
+def parse_open_in(value: object) -> OpenInChoice | None:
     """*value* as a choice, or ``None`` when it is not one."""
 
     if isinstance(value, str) and value in OPEN_IN_CHOICES:
-        return cast(opening, value)
+        return cast(OpenInChoice, value)
     return None
 
 
@@ -83,7 +83,7 @@ def _shown(path: Path) -> str:
     return display_segment(os.fsencode(path))
 
 
-def configured_open_in(directory: Path | None = None) -> opening | None:
+def configured_open_in(directory: Path | None = None) -> OpenInChoice | None:
     """The ``open_in`` that ``config.yml`` sets, or ``None`` when it sets none.
 
     *directory* is the configuration directory, ``configuration_directory()`` when
@@ -183,7 +183,7 @@ __all__ = [
     "OPEN_IN_CHOICES",
     "OPEN_IN_ENV",
     "OPEN_IN_SETTING",
-    "opening",
+    "OpenInChoice",
     "OpenInError",
     "OpenInPreference",
     "OpenInSource",

@@ -23,7 +23,7 @@ $defs:
     minLength: 1
     pattern: ^[0-9A-Za-z.+!_-]+$
     type: string
-  OpenIn:
+  OpenInChoice:
     enum:
     - auto
     - app
@@ -42,7 +42,7 @@ properties:
     $ref: '#/$defs/LayoutFormat'
   open_in:
     anyOf:
-    - $ref: '#/$defs/OpenIn'
+    - $ref: '#/$defs/OpenInChoice'
     - type: 'null'
     default: null
   upgrades:
@@ -60,4 +60,4 @@ title: ApplicationConfig
 type: object
 x-softschema:
   contract: metabrowser.config:ApplicationConfig/v1
-  schema_sha256: 223e4ce455a78c96ddd99db47acee45237aeb7dfe42ef719c6f1e0fad4f1e333
+  schema_sha256: d2cc980c0b4edc5ca7bf93e6dfc24c371e186e6089e72bbc3ccc19768f2e801c

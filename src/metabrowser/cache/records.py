@@ -37,7 +37,7 @@ from metabrowser.cache.identity import (
     slug_matches_identity,
     source_identity,
 )
-from metabrowser.open_in import opening
+from metabrowser.open_in import OpenInChoice
 
 CONFIG_CONTRACT_ID: Final = "metabrowser.config:ApplicationConfig/v1"
 CACHE_LAYOUT_CONTRACT_ID: Final = "metabrowser.cache:CacheLayout/v1"
@@ -184,7 +184,7 @@ class ApplicationConfig(_UserRecord):
     format: LayoutFormat
     written_by: MetabrowserVersion
     upgrades: list[ConfigUpgrade]
-    open_in: opening | None = None
+    open_in: OpenInChoice | None = None
     """Where ``metab TARGET --present`` opens a target (:mod:`metabrowser.open_in`), a
     setting only the user writes; absent, which this release reads as ``auto``."""
 
