@@ -126,6 +126,7 @@ WHEEL_SMOKE_SCRIPT = dedent(
         "static/plugin-sdk-views.js",
         "static/tree-keyboard-navigation.js",
         "static/view-composition.js",
+        "static/view-header.js",
         "builtin_plugins/folder/overview.js",
         "builtin_plugins/diff/diff-view.js",
         "builtin_plugins/image/index.js",

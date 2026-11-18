@@ -119,24 +119,13 @@
     }
 
     /**
-     * The committed header's control for Up: the folder header's Up button, which has
-     * no parent to open at the root, or for a file the crumb of its folder.
+     * The committed view header's control for Up: the Up button in its eyebrow, a file's
+     * and a folder's alike, which has no parent to open at the served root.
      */
     function headerParent() {
       const header = committed().find((child) => child.classList.contains("file-header"));
-      if (header?.classList.contains("folder-header")) {
-        return /** @type {HTMLElement | null} */ (
-          header.querySelector(".folder-up[data-nav-dir]:not([disabled])")
-        );
-      }
-      if (!header) {
-        return null;
-      }
-      return (
-        Array.from(
-          header.querySelectorAll(".folder-breadcrumb [data-nav-dir]"),
-          (crumb) => /** @type {HTMLElement} */ (crumb),
-        ).at(-1) ?? null
+      return /** @type {HTMLElement | null} */ (
+        header?.querySelector(".folder-up[data-nav-dir]:not([disabled])") ?? null
       );
     }
 
@@ -231,8 +220,8 @@
       : null;
 
     /**
-     * Read the main-pane header again: Up's target is the folder header's Up button or,
-     * for a file, the crumb of its folder, and none at the root.
+     * Read the main-pane header again: Up's target is the view header's Up button, a
+     * file's and a folder's alike, and none at the root.
      */
     function syncHeader() {
       if (disposed) {
