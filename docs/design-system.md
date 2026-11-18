@@ -4262,6 +4262,15 @@ in the Commits slot, and 12px muted text with no space above it under the Pulls 
   of its own, the line stands in the slot and its text sits as far from either rule as
   it does under the Files and Pulls toolbars.
   Consecutive lines are one band: padding above the first, below the last, and one rule.
+- **Placement.** Every line stands in the fixed chrome over its panel, never in the
+  panel’s scroller, so it stays in view while the tree or the list scrolls, and its rule
+  runs the pane’s full width, as the tab bar’s and the toolbar’s do.
+  On Commits the line is the toolbar slot; on Files and Pulls the lines are a band of
+  their own directly under the toolbar, `.nav-metadata-band`, which the shell draws
+  empty under each toolbar, the tab fills, and which shows only while its toolbar does.
+  The scroller reserves its scrollbar’s gutter (`scrollbar-gutter: stable`) and clips
+  what it holds at its padding box, so a line inside it ended its rule a gutter short of
+  the pane’s edge, 11 px with classic scrollbars, at every pane width.
 - **Spacing.** `--nav-metadata-gap` between a line’s items and between the words of an
   item built of spans, about a word space and a half.
 - **Pending.** A figure still being counted is the pending tally inside the span its
@@ -4323,7 +4332,10 @@ at one wide enough for every text: the Files totals settled, pending, counting,
 filtered, with the outside-filter note, and with the stale recent-files note; the
 Commits tally settled, as the server ships it pending, and failed; and the Pulls lines
 loading, updated, unreachable, signed out, and with no gh; and the Pulls count cut short
-in a narrow pane.
+in a narrow pane. It also holds every section rule on Files, Commits, and Pulls, the tab
+bar’s, the toolbar’s, and the band’s, to the pane’s full width, at the narrowest pane,
+the default, and a wide one, with the content under them overflowing its scroller and
+not.
 
 ### Section Headings
 

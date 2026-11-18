@@ -3421,14 +3421,20 @@ export function mountPullsPanel(container, ctx, mb) {
   // The filters are the tab's toolbar: in the navigation's toolbar slot when the host has one,
   // at the slot's height, so the list starts where the Files tree does. There they are a
   // toolbar row, which wraps between its controls in a narrow pane, Reload last and at the
-  // line's end (`.nav-toolbar-row` in the shell's styles.css).
+  // line's end (`.nav-toolbar-row` in the shell's styles.css). The count and connection lines
+  // go in the band under the slot when the host has one (`.nav-metadata-band`), outside the
+  // scroller that holds the list, so their rule runs the pane's width and they stay in view
+  // while the list scrolls, as the Files totals do.
   const toolbar = nav.toolbar ?? null;
+  const band = nav.metadata ?? null;
+  const lines = band ? [] : [status, connection];
+  band?.replaceChildren(status, connection);
   if (toolbar) {
     filters.classList.add("nav-toolbar-row");
     toolbar.replaceChildren(filters);
-    container.replaceChildren(status, connection, list, empty, foot, live);
+    container.replaceChildren(...lines, list, empty, foot, live);
   } else {
-    container.replaceChildren(filters, status, connection, list, empty, foot, live);
+    container.replaceChildren(filters, ...lines, list, empty, foot, live);
   }
 
   /**
@@ -5498,7 +5504,11 @@ export function mountPullsPanel(container, ctx, mb) {
       paintedStacks.clear();
       container.classList.remove("github-pulls");
       container.replaceChildren();
+      // What it put in the toolbar slot and the band under it, outside the container.
       filters.remove();
+      status.remove();
+      connection.remove();
+      outsideNote.remove();
     },
   });
 }

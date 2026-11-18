@@ -96,6 +96,11 @@ type MetabrowserPullsNavHost = Readonly<{
   checkout: boolean;
   /** The tab's toolbar in the navigation's slot, which the list's filters fill; or null. */
   toolbar?: HTMLElement | null;
+  /**
+   * The band under the toolbar, outside the panel's scroller, which the list's count and
+   * connection lines fill; or null.
+   */
+  metadata?: HTMLElement | null;
   scrollRoot: HTMLElement | null;
   open(route: MetabrowserPullRoute): unknown;
   /** A changed file's address, through the route's encoder; null where a path is not one. */
