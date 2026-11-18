@@ -1,8 +1,9 @@
 #!/bin/sh
 # A gh that answers `gh --version` and `gh auth status --json hosts` as the variant
 # FAKE_GH_STATUS names, and fails anything else. It is first on PATH in
-# tests/golden/cli-github-status.tryscript.md, so no command there reaches a gh a
-# developer has signed in. Each answer has the shape gh 2.98.0 gives (2026-11-18): with
+# tests/golden/cli-github-status.tryscript.md and the goldens that run `metab --doctor`,
+# and tests/test_github_status.py, so no command there reaches a gh a developer has
+# signed in. Each answer has the shape gh 2.98.0 gives (2026-11-18): with
 # --json, auth status exits 0 whatever the account's state, and a gh without --json
 # says "unknown flag".
 variant="${FAKE_GH_STATUS:-signed-in}"

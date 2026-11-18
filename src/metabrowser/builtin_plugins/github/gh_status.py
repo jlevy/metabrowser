@@ -1,9 +1,9 @@
 """The GitHub status check: which ``gh``, its version, the signed-in account, and its scopes.
 
-One bounded check, read three ways: ``metab --doctor`` prints it, ``GET
-/api/plugin/github/status`` serves it to the page and the app, and the GitHub provider
-reads it before a first clone, so a pull request that cannot be read without ``gh``
-stops before the clone with the step that fixes it. Each answer has one
+One bounded check, read three ways: ``metab --doctor`` prints it, ``POST
+/api/plugin/github/status`` serves it (a POST, since it runs ``gh``), and the GitHub
+provider reads it before a first clone, so a pull request that cannot be read without
+``gh`` stops before the clone with the step that fixes it. Each answer has one
 :data:`GithubStatusState`:
 
 | State | Meaning | ``fix`` |
@@ -32,8 +32,9 @@ import asyncio
 import os
 import time
 import weakref
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, replace
-from typing import Final, Literal
+from typing import Any, Final, Literal
 
 from metabrowser.builtin_plugins.github.gh import (
     GH_HOSTNAME,
@@ -238,11 +239,12 @@ class _Kept:
 
 _kept: _Kept | None = None
 _versions: dict[str, tuple[float, str | None]] = {}
-# One check in flight per event loop: a task belongs to the loop that made it, and the CLI
-# and a server each run their own.
-_in_flight: weakref.WeakKeyDictionary[
-    asyncio.AbstractEventLoop, tuple[_Key, asyncio.Task[GithubStatus]]
-] = weakref.WeakKeyDictionary()
+# The checks in flight, per event loop: a task belongs to the loop that made it, and the
+# CLI and a server each run their own. Callers asking for the same answer at once await
+# one task.
+_in_flight: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, dict[_Key, asyncio.Task[Any]]] = (
+    weakref.WeakKeyDictionary()
+)
 
 
 def _key() -> _Key:
@@ -273,35 +275,49 @@ def forget_github_status() -> None:
     _versions.clear()
 
 
+async def _once[T](key: _Key, run: Callable[[], Coroutine[Any, Any, T]]) -> T:
+    """*run*'s answer, from the one task in this event loop running it for *key*.
+
+    A caller that is cancelled leaves the task to the others; it ends within its own
+    deadline.
+    """
+
+    loop = asyncio.get_running_loop()
+    tasks = _in_flight.setdefault(loop, {})
+    task = tasks.get(key)
+    if task is None or task.done():
+        task = loop.create_task(run())
+        tasks[key] = task
+    try:
+        return await asyncio.shield(task)
+    finally:
+        if task.done() and tasks.get(key) is task:
+            del tasks[key]
+
+
 async def _sign_in() -> GithubStatus:
     global _kept
     key = _key()
     kept = _kept
     if kept is not None and kept.key == key and time.monotonic() - kept.at < GH_STATUS_TTL_S:
         return kept.status
-    loop = asyncio.get_running_loop()
-    running = _in_flight.get(loop)
-    if running is None or running[0] != key or running[1].done():
-        running = (key, loop.create_task(_check()))
-        _in_flight[loop] = running
-    task = running[1]
-    try:
-        status = await asyncio.shield(task)
-    finally:
-        if task.done() and _in_flight.get(loop) is running:
-            del _in_flight[loop]
+    status = await _once(("auth", *key), _check)
     _kept = _Kept(key, time.monotonic(), status)
     return status
+
+
+async def _read_version() -> str | None:
+    try:
+        return await gh_version(timeout_s=GH_VERSION_TIMEOUT_S)
+    except GhError:
+        return None
 
 
 async def _version(path: str) -> str | None:
     known = _versions.get(path)
     if known is not None and time.monotonic() - known[0] < GH_STATUS_TTL_S:
         return known[1]
-    try:
-        version = await gh_version(timeout_s=GH_VERSION_TIMEOUT_S)
-    except GhError:
-        version = None
+    version = await _once(("version", path), _read_version)
     _versions[path] = (time.monotonic(), version)
     return version
 

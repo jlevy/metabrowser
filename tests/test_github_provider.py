@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import os
 import stat
 from collections.abc import Sequence
@@ -22,6 +23,7 @@ from metabrowser.builtin_plugins.github.provider import (
     MAX_FIRST_CLONE_ENV,
     MAX_FIRST_CLONE_KB,
     GithubProvider,
+    GithubSignInRequiredError,
 )
 from metabrowser.cache.acquire import RepositoryTooLargeError
 from metabrowser.cache.origin import describe_remote_failure
@@ -30,12 +32,13 @@ from metabrowser.cache.providers import (
     provider_git_config,
     repository_context_for,
 )
-from metabrowser.cache.urls import GitSource
+from metabrowser.cache.urls import GitSource, RepositorySelection
 from metabrowser.git.process import GIT_ACQUISITION_TIMEOUT_S, terminate_git_process
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="the fake gh is a POSIX shell script")
 
 _FAKE_GH = """#!/bin/sh
+if [ "$1" = auth ]; then printf '%s\\n' "$FAKE_GH_AUTH"; exit 0; fi
 env > "$FAKE_GH_LOG.env"
 printf '%s\\n' "$@" > "$FAKE_GH_LOG.args"
 if [ -t 0 ]; then echo tty > "$FAKE_GH_LOG.stdin"; else cat > "$FAKE_GH_LOG.stdin"; fi
@@ -53,6 +56,27 @@ esac
 """
 
 SOURCE = GitSource(transport="https", form="url", normalized="https://github.com/octo/demo")
+PULL = GitSource(
+    transport="https",
+    form="url",
+    normalized="https://github.com/octo/demo",
+    selection=RepositorySelection(kind="pull_request", pull_request=7),
+)
+
+
+def _signed_in(scopes: str = "gist, read:org, repo, workflow") -> str:
+    """``gh auth status --json hosts`` for one active account, as gh 2.98.0 prints it."""
+
+    host = {
+        "state": "success",
+        "active": True,
+        "host": "github.com",
+        "login": "octo-reader",
+        "tokenSource": "keyring",
+        "scopes": scopes,
+        "gitProtocol": "https",
+    }
+    return json.dumps({"hosts": {"github.com": [host]}})
 
 
 @pytest.fixture
@@ -64,6 +88,7 @@ def fake_gh(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     gh.chmod(gh.stat().st_mode | stat.S_IXUSR)
     monkeypatch.setenv("PATH", f"{directory}{os.pathsep}{os.environ.get('PATH', '')}")
     monkeypatch.setenv("FAKE_GH_LOG", str(tmp_path / "gh-log"))
+    monkeypatch.setenv("FAKE_GH_AUTH", _signed_in())
     monkeypatch.setenv("GH_DEBUG", "api")
     monkeypatch.setenv("GH_HOST", "enterprise.example.com")
     monkeypatch.setenv("GH_REPO", "other/repo")
@@ -272,6 +297,57 @@ def test_a_not_found_message_does_not_say_git_has_no_credentials(fake_gh: Path) 
         "https://github.com/octo/demo was not found, or it is private and could not be read "
         "(not_found_or_private); if it is private, sign in with gh auth login to an account "
         "that can read it; nothing was published"
+    )
+
+
+def test_a_pull_request_gh_cannot_read_stops_before_its_first_clone(
+    fake_gh: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Signed out, a pull-request URL stops before anything is cloned, with the command
+    that fixes it; a repository URL goes on, since a public one clones without gh."""
+
+    monkeypatch.setenv("FAKE_GH_AUTH", '{"hosts":{}}')
+    monkeypatch.setenv("FAKE_GH_MODE", "size")
+    monkeypatch.setenv("FAKE_GH_SIZE", str(MAX_FIRST_CLONE_KB + 1))
+    with pytest.raises(GithubSignInRequiredError) as refused:
+        asyncio.run(GithubProvider().check_first_clone(PULL))
+    assert refused.value.state == "not_logged_in"
+    assert str(refused.value) == (
+        "pull request 7 of https://github.com/octo/demo cannot be read: GitHub CLI is not "
+        "signed in to github.com. Run gh auth login --hostname github.com, then retry. "
+        "(not_logged_in); nothing was cloned"
+    )
+    # Signed out, the size read would fail as well, so it is not asked.
+    asyncio.run(GithubProvider().check_first_clone(SOURCE))
+    assert not (fake_gh.parent / "gh-log.args").exists()
+
+
+def test_a_pull_request_with_no_gh_stops_before_its_first_clone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("PATH", str(tmp_path))
+    with pytest.raises(
+        GithubSignInRequiredError, match=r"Install it from https://cli\.github\.com/"
+    ):
+        asyncio.run(GithubProvider().check_first_clone(PULL))
+
+
+def test_a_token_without_the_repo_scope_is_named_when_a_repository_is_not_found(
+    fake_gh: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A public repository still clones, so the check stops nothing, and the size is
+    still read; the not-found message a failed clone then prints names the scope."""
+
+    monkeypatch.setenv("FAKE_GH_AUTH", _signed_in("gist, read:org"))
+    monkeypatch.setenv("FAKE_GH_MODE", "size")
+    monkeypatch.setenv("FAKE_GH_SIZE", "12")
+    asyncio.run(GithubProvider().check_first_clone(PULL))
+    assert (fake_gh.parent / "gh-log.args").read_text().split()[-1] == ".size"
+    message = describe_remote_failure("not_found_or_private", SOURCE.normalized)
+    assert message == (
+        "https://github.com/octo/demo was not found, or it is private and could not be read "
+        "(not_found_or_private); if it is private, gh's token for octo-reader lacks the repo "
+        "scope: gh auth refresh --hostname github.com --scopes repo; nothing was published"
     )
 
 

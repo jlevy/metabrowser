@@ -378,7 +378,12 @@ def _smoke_install(wheel: Path) -> None:
         "metab",
         "--doctor",
     ]
-    subprocess.run(doctor_command, cwd=ROOT, env=env, check=True)
+    # The doctor's GitHub section runs `gh auth status`, so the failing stand-in the
+    # goldens use comes first on PATH: no build reaches a developer's signed-in gh. Its
+    # state is reported and never changes the doctor's exit status.
+    no_real_gh = ROOT / "tests" / "no-real-gh"
+    doctor_env = {**env, "PATH": f"{no_real_gh}{os.pathsep}{env.get('PATH', '')}"}
+    subprocess.run(doctor_command, cwd=ROOT, env=doctor_env, check=True)
 
     api_check_command = [
         *uv_command,
