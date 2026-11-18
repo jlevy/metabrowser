@@ -4,6 +4,12 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- With the Files tab grouped by age, each section’s name is drawn in the age color its
+  files’ ages show: Past hour in the yellow of a file changed minutes ago, then quieter
+  yellow-greens through Past month, Older in the oldest age’s gray, and Live in Live’s
+  orange. Only the color changes, in both themes; the headings keep their size and
+  weight, and grouping by file type is unchanged.
+
 - In the macOS app, Open Recent, the Dock menu and the title’s path menu show folders
   with the same outline folder symbol as the mirror’s cloud, instead of Finder’s colored
   folder.
