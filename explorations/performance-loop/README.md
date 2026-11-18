@@ -781,6 +781,41 @@ between pairs, untimed: a scratch clone the timed servers never serve, whose ref
 moves before asking both builds for the refs, the summaries, and the first log page,
 which must agree. exp-061 is the round that used it.
 
+### Pull Request View Pairs
+
+[pr-view.mjs](pr-view.mjs) times a GitHub pull request’s page, or the Pulls tab, as a
+reader landing on it sees it.
+Each run starts its own server from an installed build, on a GitHub checkout, with a
+cold or a warm cache, and its own headless Chrome.
+It records the first animation frame at which each milestone holds: the title, the
+description as rendered Markdown, the Diff summary’s loading box and summary, and each
+Pulls row and change line.
+It also keeps every `/api/` resource timing with its Server-Timing, and counts gh calls
+through a logging shim.
+Its header comment lists the milestones and selectors.
+[pr-view-pairs.sh](pr-view-pairs.sh) runs back-to-back pairs of two builds from one
+environment, swapping only the wheel and the KPress it pins.
+[pr-view-wheel.sh](pr-view-wheel.sh) builds a commit’s wheel from `git archive`, with no
+second worktree. [pr-view-stats.mjs](pr-view-stats.mjs) reads the samples: per step and
+build, medians and ranges, and with `--control` and `--candidate` the ratio of each
+pair. [pr-view-first-routes.mjs](pr-view-first-routes.mjs) asks a fresh server for a
+page’s first GitHub routes without a browser.
+
+```shell
+explorations/performance-loop/pr-view-wheel.sh <commit> attic/pr-view/wheels attic/pr-view/build-venv/bin/python
+ROOT=$PWD/attic/pr-view/root ENV=$PWD/attic/pr-view/env CHECKOUT=<github checkout> \
+  OUT=$PWD/attic/pr-view/pairs.jsonl UV_CONFIG=$PWD/uv.toml \
+  explorations/performance-loop/pr-view-pairs.sh 3 pr control <wheel-a> candidate <wheel-b>
+node explorations/performance-loop/pr-view-stats.mjs attic/pr-view/pairs.jsonl --control control --candidate candidate
+```
+
+The header comments of `pr-view-wheel.sh` and `pr-view-pairs.sh` give the commands that
+make the build and runtime environments from the committed locks.
+A round runs against live GitHub, so the driver stops when the core budget or the disk
+runs low. The scripts are macOS-only as written (`df -g`, `sysctl vm.loadavg`, and the
+Chrome that `pr-cdp.mjs` finds, which `CHROME_BIN` overrides).
+exp-099 is the round that found #369’s first-paint hold with it.
+
 ### File View Navigation Scenario
 
 Use the parallel file scenario to measure ordinary connected plugin views rather than
