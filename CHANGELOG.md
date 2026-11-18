@@ -121,6 +121,21 @@ All notable changes to Metabrowser are documented here.
   another app is never sent a file, and a build registered where it was built is refused
   unless `METABROWSER_ALLOW_UNINSTALLED_APP=1`.
 
+- The agent skill hands a folder, a file, or a GitHub URL to the macOS app with
+  `metab --present TARGET --format json`, and acts on the exit status: it tells you what
+  it handed over, and that the app was asked rather than that a window shows it (status
+  0), shows a refusal’s reason (3), serves the page and gives you its address when no
+  app takes it (4) or when `metab` predates `--present` (2), and asks to rerun the
+  command outside its sandbox, or serves instead, when LaunchServices is blocked (5). It
+  writes `--present` first, and runs the command alone, so that one sandbox rule for the
+  prefix `metab --present` matches it.
+  [Working with agents](docs/working-with-agents.md#let-an-agent-reach-the-app-from-a-sandbox)
+  gives that rule for Claude Code (`sandbox.excludedCommands`) and Codex (a prefix
+  rule), and `metab --present --version` checks a build for the flag without presenting
+  anything. `tests/test_skill_commands.py` fails when the skill’s `--present` recipes are
+  not commands `tests/golden/cli-present-delivery.txt` runs against a stand-in app, or
+  when its table of statuses names other codes than `DELIVERY_EXIT_CODES` maps to them.
+
 - `metab COMMIT_URL` opens at the commit’s page, `/commit/<full id>`, instead of the
   tree at that commit.
 

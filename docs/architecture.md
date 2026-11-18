@@ -15,11 +15,11 @@ plugins own how each kind of file is drawn.
 Each aim ships in part today; the planned rest links its plan.
 
 - **Agents show you content.** The `metabrowser` agent skill
-  (`skills/metabrowser/SKILL.md`) lets an agent serve a path or a pull-request URL and
-  hand you the page. `metab --api`, `--show`, and `--walk` give an agent the same data
-  the page draws, which the
-  [Parity Registry](project/architecture/arch-parity-registry.md) enforces, and the
-  `agent-log` plugin draws coding-agent logs as timelines.
+  (`skills/metabrowser/SKILL.md`) lets an agent hand you a path or a pull-request URL in
+  the macOS app, or serve it and hand you the page.
+  `metab --api`, `--show`, and `--walk` give an agent the same data the page draws,
+  which the [Parity Registry](project/architecture/arch-parity-registry.md) enforces,
+  and the `agent-log` plugin draws coding-agent logs as timelines.
   `metab --present` hands a folder, a file, or a GitHub URL to the macOS app; planned: a
   reply from the app, and a browser when there is no app
   ([native macOS app plan](project/specs/active/plan-2026-11-10-native-macos-app.md),

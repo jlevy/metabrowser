@@ -289,9 +289,26 @@ def test_golden_present_hands_targets_to_the_app(
     blocks.append(sandbox.run(["missing", "--present", *as_json]))
     blocks.append(sandbox.run(["https://github.com/octo/demo/issues/5", "--present"]))
 
+    # The agent skill's two recipes, as `skills/metabrowser/SKILL.md` writes them, with
+    # `--present` first so that a sandbox rule for that prefix matches them, once for
+    # each status the skill tells apart; `tests/test_skill_commands.py` holds the skill
+    # to these commands and to the fields their reports carry.
+    skill = ["--present", "notes", *as_json]
+    sandbox.apps = {DEV_BUNDLE_ID: sandbox.current}
+    blocks.append(sandbox.run(skill))
+    blocks.append(sandbox.run(["--present", "notes", "--path", "docs/guide.md", *as_json]))
+    blocks.append(sandbox.run(["--present", "missing", *as_json]))
+    blocks.append(sandbox.run(skill, env={"OPEN_STAND_IN_FAIL": "1"}))
+    sandbox.unreachable = True
+    blocks.append(sandbox.run(skill))
+    sandbox.unreachable = False
+    sandbox.apps = {}
+    blocks.append(sandbox.run(skill))
+
     # Off macOS there is no LaunchServices to ask.
     sandbox.platform = False
     blocks.append(sandbox.run(["notes", "--present", *as_json]))
+    blocks.append(sandbox.run(skill))
 
     rendered = "".join(blocks)
     assert str(tmp_path) not in rendered
