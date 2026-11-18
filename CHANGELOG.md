@@ -8,19 +8,33 @@ All notable changes to Metabrowser are documented here.
   YAML aliases let a few hundred bytes of front matter stand for millions of values: 310
   bytes of seven alias levels made `/api/file` spend over a second building 39 MB of
   JSON, answering nothing else meanwhile, and each further level multiplied both by
-  nine. A served GitHub mirror or a folder served with `--untrusted` could carry such a
-  file, and so could a downloaded repository served as a trusted folder.
-  Front matter is now refused when, written out without its aliases, it is larger than
-  `FRONTMATTER_MAX_EXPANDED_SIZE` characters (`frontmatter_yaml.py`), or when an alias
-  sits inside the value it names: the file reads as text, and its header badge and
-  rendered document say why.
-  The parse runs off the server’s event loop on every path, and an uncompressed file’s
-  front matter is read only from its first `FRONTMATTER_MAX_BYTES`, as a compressed
-  file’s and a pinned revision’s already were.
+  nine. Merge keys (`<<`) and a duplicated key did the same inside the YAML parser
+  itself, the second into the error message.
+  A served GitHub mirror or a folder served with `--untrusted` could carry such a file,
+  and so could a downloaded repository served as a trusted folder.
+  Front matter is now measured before it is built, and refused when, written out without
+  its aliases, it is larger than `FRONTMATTER_MAX_EXPANDED_SIZE` characters
+  (`frontmatter_yaml.py`), or when an alias sits inside the value it names: the file
+  reads as text, and its header badge and rendered document say why, in at most
+  `YAML_ERROR_MAX_CHARS` characters.
+  The `.yaml` prefix that `yaml_has_key` and `yaml_value_prefix` read goes through the
+  same loader. The parse runs off the server’s event loop on every path, and an
+  uncompressed file’s front matter is read only from its first `FRONTMATTER_MAX_BYTES`,
+  as a compressed file’s and a pinned revision’s already were.
   Tags JSON has no type for (`!!binary`, `!!set`, `.nan`, a sequence or date as a key,
-  an integer past Python’s digit limit) now answer as JSON values, and nesting too deep
-  to parse answers with its reason; before, some of these showed a served folder’s file
-  as an internal error, and a pinned revision answered them with a server error.
+  an integer past Python’s digit limit, a lone surrogate from an escape) now answer as
+  JSON values, and every tag or scalar the parser refuses, and nesting too deep to
+  parse, answers with its reason; before, some of these showed a served folder’s file as
+  an internal error, and a pinned revision answered them with a server error.
+  The parser no longer writes a warning to the server’s log for each reused anchor name.
+
+- Plugin authors: `frontmatter_has_key` and `yaml_has_key` now match a key that is not a
+  string by its JSON text, the spelling a renderer already received, so `"1"` matches a
+  YAML `1:` key and `"true"` a `true:` key.
+  `yaml_has_key` and `yaml_value_prefix` now read YAML 1.2, as front matter and the
+  structured viewer do, so `on`, `yes`, and `no` are strings rather than booleans; a
+  `.yaml` prefix that is not UTF-8 does not match.
+  See [Kind Rules](docs/plugins.md#kind-rules).
 
 - On a folder’s Overview, pointing at a File Overview legend entry, its dot or its
   words, now lifts its family’s segment in the bar above, as pointing at the segment

@@ -22,8 +22,13 @@ from metabrowser.frontmatter_yaml import (
     FRONTMATTER_MAX_BYTES,
     FrontmatterError,
     load_frontmatter_yaml,
+    unclosed_frontmatter_error,
 )
-from metabrowser.gz_io import ArtifactDecompressionLimitError, ArtifactPath
+from metabrowser.gz_io import (
+    ArtifactDecompressionLimitError,
+    ArtifactDecompressionTimeoutError,
+    ArtifactPath,
+)
 
 # VIEW_REGISTRY carries the built-in kinds owned by metabrowser core.
 # Third-party plugins contribute additional kinds and views through their
@@ -79,13 +84,6 @@ def _frontmatter_mapping(metadata_text: str) -> dict[str, Any]:
     return cast("dict[str, Any]", parsed)
 
 
-def _unclosed_frontmatter_error() -> FrontmatterError:
-    return FrontmatterError(
-        "Front matter not parsed: its closing delimiter is not within the first "
-        f"{FRONTMATTER_MAX_BYTES // 1024} KiB"
-    )
-
-
 def _read_plain_frontmatter(path: Path) -> dict[str, Any] | None:
     """Parse the frontmatter at the head of an uncompressed file, in any fmf style.
 
@@ -104,7 +102,7 @@ def _read_plain_frontmatter(path: Path) -> dict[str, Any] | None:
     except FmFormatError as exc:
         if complete:
             raise
-        raise _unclosed_frontmatter_error() from exc
+        raise unclosed_frontmatter_error() from exc
     if not metadata_text:
         return None
     try:
@@ -115,7 +113,14 @@ def _read_plain_frontmatter(path: Path) -> dict[str, Any] | None:
 
 
 def _read_compressed_markdown_frontmatter(path: Path) -> dict[str, Any] | None:
-    """Parse YAML frontmatter from a bounded compressed Markdown stream."""
+    """Parse YAML frontmatter from a bounded compressed Markdown stream.
+
+    The decode stops at FRONTMATTER_MAX_BYTES. Reaching it after the opening fence
+    means the fence is not closed within the bound; reaching it on the first line means
+    the file has no front matter; and a decode past its CPU-time budget keeps its own
+    meaning, an unreadable file.
+    """
+    in_fence = False
     try:
         with ArtifactPath(path).open_text(
             errors="strict", max_output_bytes=FRONTMATTER_MAX_BYTES
@@ -123,6 +128,7 @@ def _read_compressed_markdown_frontmatter(path: Path) -> dict[str, Any] | None:
             first_line = source.readline()
             if not first_line or first_line.rstrip() != FmStyle.yaml.start:
                 return None
+            in_fence = True
 
             metadata_lines: list[str] = []
             for line in source:
@@ -134,12 +140,14 @@ def _read_compressed_markdown_frontmatter(path: Path) -> dict[str, Any] | None:
                 metadata_lines.append(line)
     except UnicodeDecodeError:
         return None
+    except ArtifactDecompressionTimeoutError:
+        raise
     except ArtifactDecompressionLimitError as exc:
-        raise _unclosed_frontmatter_error() from exc
+        if not in_fence:
+            return None
+        raise unclosed_frontmatter_error() from exc
 
-    raise FmFormatError(
-        f"Delimiter `{FmStyle.yaml.end}` for end of frontmatter not found: `{path}`"
-    )
+    raise FmFormatError(f"Delimiter `{FmStyle.yaml.end}` for end of frontmatter not found")
 
 
 class FileContext:
@@ -255,14 +263,12 @@ class FileContext:
         the classifier's ``yaml_has_key`` /
         ``yaml_value_prefix`` matchers. Cached per FileContext so multiple
         rules consulting the same file don't trigger multiple bounded reads
-        + PyYAML parses. Returns None when the file is unreadable, the
+        + parses. Returns None when the file is unreadable, the
         prefix doesn't parse, or the top-level value is not a mapping.
         """
         if not self._yaml_top_level_loaded:
             self._yaml_top_level_loaded = True
-            # Import locally so the classifier can call this without
-            # forcing a pyyaml import on the hot path of agent-log or
-            # markdown classification.
+            # Import locally: the classifier module imports this one.
             from metabrowser.plugin_loader.classify import (
                 _yaml_top_level,
             )

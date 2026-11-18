@@ -103,9 +103,13 @@ A plugin cannot claim a binary format by kind; it can add a view to the `binary`
 index, and returns the first match.
 Fields within one rule combine with AND, and rules sharing an id are alternatives.
 The content predicates read lazily through `FileContext` and are bounded:
-`_JSON_CLASSIFICATION_MAX_BYTES` admits only a complete JSON document,
-`_YAML_PREFIX_BYTES` parses a prefix, and `_FRONTMATTER_MAX_BYTES` in `file_kinds.py`
-bounds a compressed Markdown file’s frontmatter read.
+`_JSON_CLASSIFICATION_MAX_BYTES` admits only a complete JSON document, and
+`_YAML_PREFIX_BYTES` parses a prefix.
+Every front-matter read, of a plain file, a compressed Markdown file, or a Git blob,
+stops at `FRONTMATTER_MAX_BYTES`, and both YAML predicates parse through the bounded
+loader in `frontmatter_yaml.py`, which refuses a document larger than its budget written
+out without its YAML aliases (`FRONTMATTER_MAX_EXPANDED_SIZE` for front matter,
+`_YAML_PREFIX_MAX_EXPANDED_SIZE` for the YAML prefix) before constructing it.
 Compressed files classify by their logical name, so `notes.md.gz` is Markdown.
 
 A Git blob has no filesystem path, so `classify_identity` applies the same rules without

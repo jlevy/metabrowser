@@ -3034,8 +3034,9 @@ def _markdown_frontmatter(ctx: FileContext, ext: str) -> tuple[dict[str, Any] | 
     """A Markdown file's frontmatter and the reason it has none, for a worker thread.
 
     ``FileContext.frontmatter`` is already the bounded, JSON-safe copy
-    (:mod:`metabrowser.frontmatter_yaml`); parsing it can still take most of a second
-    at the byte bound, so callers run this off the event loop.
+    (:mod:`metabrowser.frontmatter_yaml`); parsing it can still take seconds at the
+    byte bound (``FRONTMATTER_MAX_BYTES`` records how many), so callers run this off
+    the event loop.
     """
 
     if ext != ".md":

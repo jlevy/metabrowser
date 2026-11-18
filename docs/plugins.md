@@ -186,11 +186,11 @@ Multiple rules may share an ID; they act as alternatives for the same kind.
 | `exts` | A list of alternative logical extensions. |
 | `basename` | Exact filename. |
 | `adapter` | Adapter identified while sniffing a JSONL stream. |
-| `frontmatter_has_key` | Required top-level Markdown frontmatter key. |
+| `frontmatter_has_key` | Required top-level Markdown frontmatter key, as text. |
 | `frontmatter_schema_prefix` | Prefix required in the frontmatter `schema` value. |
 | `json_has_key` | Required top-level JSON object key. |
 | `json_value_prefix` | Prefix required in the selected JSON value. |
-| `yaml_has_key` | Required top-level YAML mapping key. |
+| `yaml_has_key` | Required top-level YAML mapping key, as text. |
 | `yaml_value_prefix` | Prefix required in the selected YAML value. |
 | `folder_marker` | Exact marker filename that also decorates its parent directory. |
 | `path_glob` | Gitignore-style pattern for the served-root-relative path. |
@@ -209,8 +209,14 @@ dependency is never Metabrowser’s.
 Content predicates are bounded: JSON predicates parse only a complete document within
 `_JSON_CLASSIFICATION_MAX_BYTES`, and YAML predicates a prefix of `_YAML_PREFIX_BYTES`,
 both in `src/metabrowser/plugin_loader/classify.py`. An oversized or truncated document
-does not match, so claim large files by `basename`, `ext`, or `path_glob`. On a Git
-revision, `path_glob` rules never match, since a blob has no served-root path.
+does not match, so claim large files by `basename`, `ext`, or `path_glob`. Front matter
+and YAML are read as YAML 1.2 by one bounded loader,
+`src/metabrowser/frontmatter_yaml.py`, and a key that is not a string is matched by its
+JSON text, the spelling a renderer receives: `frontmatter_has_key = "1"` and
+`yaml_has_key = "1"` match a YAML `1:` key, `"true"` a `true:` key, and `"on"` an `on:`
+key. Front matter or YAML the loader refuses, such as YAML aliases that write out past
+its budget, does not match.
+On a Git revision, `path_glob` rules never match, since a blob has no served-root path.
 
 ### Views
 
