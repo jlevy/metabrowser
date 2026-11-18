@@ -68,9 +68,10 @@ It links each document below and the contributor standards in `docs/`.
 - [View on branch](specs/active/plan-2026-11-17-view-on-branch.md): one control on a
   pull request’s Changes that opens a changed file at the pull request’s head in the
   main UI, replacing the standalone revision page; approved 2026-11-17
-- [Object data model and views](specs/active/plan-2026-11-14-object-data-model-and-views.md):
+- [Object data model, views, and view state](specs/active/plan-2026-11-14-object-data-model-and-views.md):
   a draft for one modeled object per file, folder, commit, and pull request, drawn in
-  several view shapes; its key decisions are open
+  several view shapes, and a view state an agent can read and ask to change; its key
+  decisions are open
 - [Documentation from first principles](specs/active/plan-2026-11-14-documentation-from-first-principles.md):
   one owner per fact, task guides, architecture documents for every layer, a baseline
   scale benchmark, and checks that keep the set linked
