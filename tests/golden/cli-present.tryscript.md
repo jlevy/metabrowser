@@ -481,7 +481,17 @@ $ metab 'https://github.com/octo/demo/pull/7/files#diff-be97662273fac8ac301e8dfa
   "handoff": [
     "https://github.com/octo/demo/pull/7/files#diff-be97662273fac8ac301e8dfa98ba5d8d90d390bfa9419746155382b7ace0a3c2R2"
   ],
-  "refusal": null
+  "refusal": null,
+  "decision": {
+    "delivers_to": "browser",
+    "open_in": "browser",
+    "open_in_source": "environment",
+    "bundle_id": null,
+    "bundle_path": null,
+    "code": "browser_preferred",
+    "reason": "open_in is browser, so --present looks for no app and starts a metab server for the target that opens it in a browser",
+    "fallback": null
+  }
 }
 ? 0
 ```
@@ -495,7 +505,17 @@ $ metab 'https://github.com/octo/demo/pull/7/files#diff-be97662273fac8ac' --pres
   "handoff": [
     "https://github.com/octo/demo/pull/7/files"
   ],
-  "refusal": null
+  "refusal": null,
+  "decision": {
+    "delivers_to": "browser",
+    "open_in": "browser",
+    "open_in_source": "environment",
+    "bundle_id": null,
+    "bundle_path": null,
+    "code": "browser_preferred",
+    "reason": "open_in is browser, so --present looks for no app and starts a metab server for the target that opens it in a browser",
+    "fallback": null
+  }
 }
 ? 0
 ```
@@ -514,7 +534,17 @@ $ metab 'https://github.com/octo/demo/pull/7/changes#diff-be97662273fac8ac301e8d
   "handoff": [
     "https://github.com/octo/demo/pull/7/files#diff-be97662273fac8ac301e8dfa98ba5d8d90d390bfa9419746155382b7ace0a3c2R2"
   ],
-  "refusal": null
+  "refusal": null,
+  "decision": {
+    "delivers_to": "browser",
+    "open_in": "browser",
+    "open_in_source": "environment",
+    "bundle_id": null,
+    "bundle_path": null,
+    "code": "browser_preferred",
+    "reason": "open_in is browser, so --present looks for no app and starts a metab server for the target that opens it in a browser",
+    "fallback": null
+  }
 }
 ? 0
 ```
@@ -528,7 +558,17 @@ $ metab https://github.com/octo/demo/pull/7/changes --present --dry-run --format
   "handoff": [
     "https://github.com/octo/demo/pull/7/files"
   ],
-  "refusal": null
+  "refusal": null,
+  "decision": {
+    "delivers_to": "browser",
+    "open_in": "browser",
+    "open_in_source": "environment",
+    "bundle_id": null,
+    "bundle_path": null,
+    "code": "browser_preferred",
+    "reason": "open_in is browser, so --present looks for no app and starts a metab server for the target that opens it in a browser",
+    "fallback": null
+  }
 }
 ? 0
 ```
