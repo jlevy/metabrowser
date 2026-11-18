@@ -22,6 +22,10 @@ pending skeletons of a walk that has not finished. This judges the record:
 - the ground and the rules: the header and the tab bar on the body's ground, which is not
   the navigation's, the header with no rule of its own, and the tab bar's one rule under
   it;
+- the GitHub toggle (mb-zp7y), on a folder served as a checkout whose origin is on
+  github.com: at the heading row's far end, centered on it, two segments of its tokens'
+  size in their pill's border, the Metabrowser mark the view the page is in and the
+  GitHub mark a link to the item's page;
 - the narrow panes: a title too long for its row cut short at its end, and every
   metadata item on the line whole or wrapped out of sight with its dot, never cut;
 - the title's tooltip, its whole name, shown by the shell's own rule on every page
@@ -74,10 +78,34 @@ def _served(root: Path) -> Path:
     )
     (notes / "b.txt").write_text("b\n" * 4000, encoding="utf-8")
     (root / "README.md").write_text("# Served\n", encoding="utf-8")
+    # A checkout whose origin is on github.com, as far as the server reads one
+    # (repository_context.py), so its pages carry the GitHub toggle.
+    git = root / ".git"
+    (git / "refs" / "heads").mkdir(parents=True)
+    (git / "config").write_text(
+        '[remote "origin"]\n\turl = https://github.com/octo/demo.git\n', encoding="utf-8"
+    )
+    (git / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    (git / "refs" / "heads" / "main").write_text(f"{'0' * 40}\n", encoding="utf-8")
+    # Origin has the branch, so the toggle links at it rather than at the commit.
+    (git / "refs" / "remotes" / "origin").mkdir(parents=True)
+    (git / "refs" / "remotes" / "origin" / "main").write_text(f"{'0' * 40}\n", encoding="utf-8")
     when = time.time() - _AGE_S
     for path in [root, *root.rglob("*")]:
         os.utime(path, (when, when))
     return root
+
+
+# The toggle's narrow rule (`@container view-header (width < 400px)` in styles.css).
+_TOGGLE_NARROW_PX = 400
+# The least of the heading row the title keeps: 103 px in the 260 px pane, measured.
+_TITLE_FLOOR_PX = 96
+# Each page's link: the branch origin has, then the item's tree or blob.
+_LINKS = {
+    "file": "https://github.com/octo/demo/blob/main/docs/notes/a-long-name-for-a-view-header-title.md",
+    "folder": "https://github.com/octo/demo/tree/main/docs/notes",
+    "root": "https://github.com/octo/demo/tree/main",
+}
 
 
 def _px(value: str) -> float:
@@ -105,10 +133,25 @@ def test_view_headers_hold_their_rows_ground_and_values_in_chrome(
     state = tmp_path / "state"
     for part in ("cache", "config"):
         (state / part).mkdir(mode=0o700, parents=True)
+    # The checkout turns on the Pulls tab, which asks gh for the repository's pull
+    # requests: this test's own gh answers as one signed out does, and quietly, so the
+    # suite's guard counts no call from it.
+    fake_gh = tmp_path / "gh-bin"
+    fake_gh.mkdir()
+    (fake_gh / "gh").write_text(
+        "#!/bin/sh\necho 'You are not logged into any GitHub hosts.' >&2\nexit 4\n",
+        encoding="utf-8",
+    )
+    (fake_gh / "gh").chmod(0o755)
     run = run_in_own_group(
         [require_node(), str(SESSION), str(_METAB), str(root), str(_free_port()), str(state)],
         timeout_s=SESSION_TIMEOUT_S,
-        env={**os.environ, "CHROME_BIN": chrome, "CHROME_PROFILES": str(chrome_profile)},
+        env={
+            **os.environ,
+            "PATH": f"{fake_gh}{os.pathsep}{os.environ.get('PATH', '')}",
+            "CHROME_BIN": chrome,
+            "CHROME_PROFILES": str(chrome_profile),
+        },
     )
     assert not run.timed_out, f"the session ran past {SESSION_TIMEOUT_S} s: {run.stderr}"
     assert run.returncode == 0, run.stderr or run.stdout
@@ -183,6 +226,36 @@ def test_view_headers_hold_their_rows_ground_and_values_in_chrome(
         # Up: disabled at the root, a control everywhere else.
         assert page["upDisabled"] is (result["kind"] == "root"), name
 
+        # The GitHub toggle ends the heading row, centered on it: two segments of the Up
+        # control's height and the toggle's width, in their pill's border, the Metabrowser
+        # mark the view the page is in and the GitHub mark a link to the item's page. A
+        # header whose rows are under 400 px keeps the GitHub segment alone.
+        toggle, end = page["toggle"], page["end"]
+        assert toggle is not None, f"{name}: no toggle"
+        up, option = (
+            _px(tokens["--view-header-up-size"]),
+            _px(tokens["--view-header-toggle-option-width"]),
+        )
+        border, inset = _px(tokens["--chip-border"]), _px(tokens["--content-padding-x"])
+        assert toggle["height"] == up + 2 * border, f"{name}: toggle {toggle}"
+        narrow = page["header"]["width"] - 2 * inset < _TOGGLE_NARROW_PX
+        segments = 1 if narrow else 2
+        assert toggle["width"] == segments * option + 2 * border, f"{name}: toggle {toggle}"
+        assert abs(toggle["right"] - end["right"]) <= TOLERANCE_PX, f"{name}: {toggle} {end}"
+        assert abs(end["right"] - page["header"]["right"] + inset) <= TOLERANCE_PX, name
+        middle = (heading["top"] + heading["bottom"]) / 2
+        assert abs((toggle["top"] + toggle["bottom"]) / 2 - middle) <= TOLERANCE_PX, name
+        assert "view-header-toggle-metabrowser" in (page["toggleCurrent"] or ""), name
+        assert page["toggleHref"] == _LINKS[result["kind"]], f"{name}: {page['toggleHref']}"
+        glyph = _px(tokens["--icon-glyph"])
+        marks = [mark["height"] for mark in page["marks"]]
+        assert marks == ([0, glyph] if narrow else [glyph, glyph]), f"{name}: marks {marks}"
+        # A title cut short keeps at least a floor of the row; a whole one has all it
+        # needs. A whole title is not measured against its scroll width, which is whole
+        # pixels where its width is fractional: a whole "docs" is 48.94 px and needs 49.
+        if page["titleCut"]:
+            assert page["title"]["width"] >= _TITLE_FLOOR_PX, f"{name}: title {page['title']}"
+
         # Every item is whole on the line or wrapped out of sight, never cut; the first is
         # always shown.
         for snapshot in (page, *result["relabeled"].values()):
@@ -196,7 +269,7 @@ def test_view_headers_hold_their_rows_ground_and_values_in_chrome(
 
         # Steadiness: as the values change, nothing but the line's items moves.
         for step, after in result["relabeled"].items():
-            for key in ("header", "eyebrow", "heading", "title", "end", "line", "bar"):
+            for key in ("header", "eyebrow", "heading", "title", "end", "toggle", "line", "bar"):
                 moved = _moved(page[key], after[key])
                 assert moved <= TOLERANCE_PX, f"{name} {step}: {key} moved {moved} px"
         # The age is last: from "just now" to "59m ago" it moves no item before it.

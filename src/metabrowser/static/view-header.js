@@ -138,7 +138,7 @@
      */
     function viewHeaderHtml(parts) {
       return (
-        `<div class="file-header view-header${parts.className ? ` ${parts.className}` : ""}" data-kbd-badge-anchor>` +
+        `<div class="file-header view-header${parts.className ? ` ${parts.className}` : ""}" data-path="${esc(parts.path)}" data-kbd-badge-anchor>` +
         `<div class="view-header-eyebrow">${parts.eyebrow}</div>` +
         '<div class="view-header-heading">' +
         `<span class="view-header-icon file-identity-icon${parts.iconClass ? ` ${parts.iconClass}` : ""}"${parts.iconStyle ? ` style="${esc(parts.iconStyle)}"` : ""} aria-hidden="true">${parts.iconHtml}</span>` +
@@ -167,6 +167,7 @@
       const dir = data.dir && typeof data.dir === "object" ? data.dir : null;
       return viewHeaderHtml({
         className: "folder-header",
+        path: path,
         eyebrow: viewHeaderEyebrowHtml(path),
         iconHtml: window.MetabrowserIcons?.folder || "",
         title: viewHeaderName(path),
@@ -187,6 +188,7 @@
         getLogicalName({ name: name, compressed: data.compressed, compression: data.compression }),
       );
       return viewHeaderHtml({
+        path: path,
         // Copy path at the eyebrow's end, so the title keeps the heading row's width.
         eyebrow:
           viewHeaderEyebrowHtml(path) +
