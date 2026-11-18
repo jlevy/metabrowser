@@ -14,7 +14,8 @@ request by the first line of the render's text:
 - ``garbage``: a frame that is not JSON;
 - ``shapeless``: a render with no ``inert`` flag;
 - ``pid``: a render whose HTML is this process's ID;
-- anything else (``echo``): a render whose HTML is the text, inert for a document.
+- anything else (``echo``): a render whose HTML is the text, inert for a document,
+  with the front matter and its error as the frame carried them.
 
 A projection is answered ``ready`` with no blocks. ``--slow-start <seconds>`` waits
 before the ready frame.
@@ -56,7 +57,14 @@ def _render(request: dict[str, Any]) -> object:
     html = str(os.getpid()) if command == "pid" else f"<p>{text}</p>"
     if command == "shapeless" or request.get("link_base") is not None:
         return {"rendered": {"html": html}}
-    return {"rendered": {"html": html, "inert": True, "frontmatter": request["frontmatter"]}}
+    return {
+        "rendered": {
+            "html": html,
+            "inert": True,
+            "frontmatter": request["frontmatter"],
+            "frontmatter_error": request["frontmatter_error"],
+        }
+    }
 
 
 def main() -> None:

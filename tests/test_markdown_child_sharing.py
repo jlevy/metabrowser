@@ -42,6 +42,10 @@ from metabrowser.diff.markdown_projection_worker import (
     ProjectionWorker,
     shared_worker,
 )
+from metabrowser.frontmatter_yaml import FrontmatterError, load_frontmatter_yaml
+from metabrowser.git.tree_source import GitPath
+from tests.git_pin_harness import fast_import_store, pinned_client
+from tests.required_tools import needs_git
 from tests.test_markdown_diff_projection import (
     _patch,  # pyright: ignore[reportPrivateUsage]
 )
@@ -575,10 +579,12 @@ def test_a_kpress_render_error_in_the_child_is_the_routes_502(
     assert answer.json()["detail"] == "boom"
 
 
-def test_front_matter_json_has_no_type_for_reaches_the_child_as_an_in_process_render_shows_it(
+def test_front_matter_json_has_no_type_for_reaches_the_child_in_the_loaders_form(
     tmp_path: Path, untrusted: None
 ) -> None:
-    # Review B's B2: each of these answered 500 under the untrusted profile.
+    # Review B's B2: each of these answered 500 under the untrusted profile. Since review
+    # E's E1 the bounded loader (frontmatter_yaml.py) owns the form, and the worker sends
+    # its mapping as it is: a key by its JSON text, binary as base64, and a set as a list.
     (tmp_path / "doc.md").write_text(
         "---\nblob: !!binary aGVsbG8=\ntags: !!set {a, b}\n2: two\na: letter\n"
         "? [x, y]\n: pair\n~: nothing\ntrue: yes\n---\necho\n",
@@ -588,13 +594,117 @@ def test_front_matter_json_has_no_type_for_reaches_the_child_as_an_in_process_re
     shared_worker()._command = _standin()  # pyright: ignore[reportPrivateUsage]
     with TestClient(server.app) as client:
         answer = client.get("/api/kpress/render", params={"path": "doc.md", "view": "document"})
+        file = client.get("/api/file", params={"path": "doc.md"})
     assert answer.status_code == 200, answer.text
-    frontmatter = answer.json()["frontmatter"]
-    assert frontmatter["blob"] == str(b"hello")
-    assert frontmatter["2"] == "two" and frontmatter["a"] == "letter"
-    assert frontmatter["('x', 'y')"] == "pair"
-    assert frontmatter["None"] == "nothing" and frontmatter["True"] == "yes"
-    assert frontmatter["tags"] in ("{'a', 'b'}", "{'b', 'a'}")
+    assert answer.json()["frontmatter"] == {
+        "blob": "aGVsbG8=",
+        "tags": ["a", "b"],
+        "2": "two",
+        "a": "letter",
+        '["x", "y"]': "pair",
+        "null": "nothing",
+        "true": "yes",
+    }
+    assert answer.json()["frontmatter_error"] is None
+    # The same value `/api/file` answers, from the same loader.
+    assert file.json()["frontmatter"] == answer.json()["frontmatter"]
+
+
+# Review B's B1 document at six levels, 308 bytes: nine lists of nine aliases to the list
+# before them, which is 9**6 strings written out. Before the bounded loader it reached
+# the event loop as a mapping that cost 105 to 1,024 ms a walk (review E's E1).
+ALIAS_LEVELS_6 = (
+    "---\n"
+    + "l0: &l0 [" + ",".join(['"lol"'] * 9) + "]\n"
+    + "".join(f"l{level}: &l{level} [" + ",".join([f"*l{level - 1}"] * 9) + "]\n" for level in range(1, 6))
+    + "---\n# Doc\n"
+)  # fmt: skip
+
+
+def _alias_levels_reason() -> str:
+    metadata = ALIAS_LEVELS_6.split("---\n")[1]
+    with pytest.raises(FrontmatterError) as refused:
+        load_frontmatter_yaml(metadata)
+    return str(refused.value)
+
+
+def test_an_alias_bomb_in_front_matter_reaches_the_child_as_the_loaders_reason_on_a_folder(
+    tmp_path: Path, untrusted: None
+) -> None:
+    assert len(ALIAS_LEVELS_6.encode()) == 308
+    (tmp_path / "bomb.md").write_text(ALIAS_LEVELS_6, encoding="utf-8")
+    server._set_root_dir(tmp_path)  # pyright: ignore[reportPrivateUsage]
+    shared_worker()._command = _standin()  # pyright: ignore[reportPrivateUsage]
+    with TestClient(server.app) as client:
+        answer = client.get("/api/kpress/render", params={"path": "bomb.md", "view": "document"})
+    assert answer.status_code == 200, answer.text
+    # The text and the reason; written out, the value would be megabytes.
+    assert len(answer.content) < 4_096
+    assert answer.json()["frontmatter"] is None
+    assert answer.json()["frontmatter_error"] == _alias_levels_reason()
+    assert "larger than 1,048,576 characters" in answer.json()["frontmatter_error"]
+
+
+@needs_git
+def test_an_alias_bomb_in_front_matter_reaches_the_child_as_the_loaders_reason_on_a_pin(
+    tmp_path: Path, untrusted: None
+) -> None:
+    store, commit = fast_import_store(tmp_path, {b"bomb.md": ALIAS_LEVELS_6.encode()})
+    wire = GitPath.from_segments(b"bomb.md").to_wire()
+
+    async def run() -> tuple[int, dict[str, Any], int]:
+        shared_worker()._command = _standin()  # pyright: ignore[reportPrivateUsage]
+        async with pinned_client(store, commit) as (client, _subject):
+            answer = await client.get(
+                "/api/kpress/render", params={"path": wire, "view": "document"}
+            )
+            return answer.status_code, answer.json(), len(answer.content)
+
+    status, body, size = asyncio.run(run())
+    assert status == 200, body
+    assert size < 4_096
+    assert body["frontmatter"] is None
+    assert body["frontmatter_error"] == _alias_levels_reason()
+
+
+class _Watched(dict[str, Any]):
+    """Front matter that records the thread of each read of it, and can refuse every read.
+
+    C's JSON encoder reads a ``dict`` subclass through ``items()``, as a walk would.
+    """
+
+    def __init__(self, threads: list[int], *, refuse: bool = False, **items: Any) -> None:
+        super().__init__(**items)
+        self.threads = threads
+        self.refuse = refuse
+
+    def items(self) -> Any:
+        if self.refuse:
+            raise AssertionError("the front matter was read")
+        self.threads.append(threading.get_ident())
+        return super().items()
+
+
+def test_the_event_loop_never_reads_the_front_matter_and_its_key_ignores_it() -> None:
+    # Review E's E1: the front matter was copied, then encoded for the flight's key, on
+    # the event loop. Only the frame, built on a worker thread, reads it now.
+    reads: list[int] = []
+
+    async def run() -> tuple[int, dict[str, Any]]:
+        worker = ProjectionWorker(command=_standin())
+        try:
+            request = _request("echo", frontmatter=_Watched(reads, title="One", tags=["a"]))
+            return threading.get_ident(), await worker.render_inert(request)
+        finally:
+            await worker.aclose()
+
+    loop_thread, rendered = asyncio.run(run())
+    assert rendered["frontmatter"] == {"title": "One", "tags": ["a"]}
+    assert reads and loop_thread not in reads, "only the frame's thread read it"
+    # The key reads none of it, so the same bytes are one flight whatever object carries
+    # their front matter: the routes parse it from the bytes the key names.
+    unread = _Watched([], refuse=True, title="One")
+    assert _request("echo", frontmatter=unread).flight_key == _request("echo").flight_key
 
 
 def test_a_one_shot_command_starts_no_child_and_a_served_session_does(
@@ -840,17 +950,13 @@ def test_a_reload_of_a_refused_document_does_not_walk_its_front_matter(
 
     async def run() -> InertRenderRefused:
         worker = ProjectionWorker(command=_standin())
-        request = _request("sleep 5", frontmatter={"title": "Slow"})
         try:
             with pytest.raises(InertRenderRefused):
-                await worker.render_inert(request)
-
-            def walked(_request: InertRender) -> InertRender:
-                raise AssertionError("a kept refusal walked the front matter")
-
-            monkeypatch.setattr(worker_module, "_with_plain_frontmatter", walked)
+                await worker.render_inert(_request("sleep 5", frontmatter={"title": "Slow"}))
+            # The same document again, its front matter refusing any read.
+            unread = _Watched([], refuse=True, title="Slow")
             with pytest.raises(InertRenderRefused) as again:
-                await worker.render_inert(request)
+                await worker.render_inert(_request("sleep 5", frontmatter=unread))
             return again.value
         finally:
             await worker.aclose()

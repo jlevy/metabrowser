@@ -51,9 +51,10 @@ projection on the server, so the child is shared under these rules:
   client disconnects (:mod:`metabrowser.client_disconnect`), as a page that navigates
   away or a transclusion past its own deadline does.
 - At most :data:`_MAX_RENDERS` distinct renders are in flight, the one in the child among
-  them. Past that a render is refused ``renderer_busy`` (``503``), which is not kept. A
-  kept refusal is checked before the document's front matter is looked at, so a reload of
-  a refused document costs no walk of it.
+  them. Past that a render is refused ``renderer_busy`` (``503``), which is not kept.
+- The front matter is the bounded loader's value (:mod:`metabrowser.frontmatter_yaml`),
+  and the event loop never walks it: neither a kept refusal nor a flight's key reads it,
+  and only the frame, built on a worker thread, encodes it.
 - A refusal is kept only for what the child did with the document: it ran past the
   deadline, counted from when the child had the whole request, with a last look at the
   pipe, and a longer one when the server's own loop ran the deadline late; or the child
@@ -94,7 +95,6 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
-import dataclasses
 import hashlib
 import json
 import logging
@@ -121,7 +121,10 @@ LOG = logging.getLogger(__name__)
 # A request frame larger than this is a protocol fault. A projection is at most 48 KiB
 # of blobs and their patch; a render is the route's text, at most
 # ``settings.TEXT_PREVIEW_REQUEST_MAX_BYTES`` (16 MiB) of UTF-8, base64-encoded to a
-# third more, beside its front matter, which is parsed from the same text.
+# third more, beside its front matter: the loader's value, within
+# ``FRONTMATTER_MAX_EXPANDED_SIZE`` (``frontmatter_yaml.py``), at most twelve bytes of
+# ASCII JSON a unit of it (an astral character's two escapes; the largest accepted
+# string of them aliased framed to 12.6 MB, 2026-11-18).
 _MAX_REQUEST_FRAME: Final = 64 * 1024 * 1024
 # An answer frame larger than this is a protocol fault. A projection answers at most a
 # few hundred KiB of HTML. A render's answer is bounded by what the child writes before
@@ -302,6 +305,11 @@ class InertRender:
     reduced by :func:`metabrowser.inert_html.harden` with every reference made absolute
     against that page. Without it the answer is :func:`kpress_adapter.inert_render`'s.
     *display_path* only names the document in the log.
+
+    *frontmatter* and *frontmatter_error* are what the bounded loader
+    (:func:`metabrowser.frontmatter_yaml.load_frontmatter_yaml`) made of the document's
+    front matter: a JSON-safe mapping with string keys, within its budget, or the reason
+    it refused. The loader owns that form, so the mapping crosses to the child as it is.
     """
 
     source_text: str
@@ -332,7 +340,21 @@ class InertRender:
 
     @property
     def flight_key(self) -> tuple[object, ...]:
-        """Everything that makes one render differ from another of the same bytes."""
+        """Everything that makes one render differ from another of the same bytes.
+
+        The front matter is not in it, and the key never reads it: every route parses it
+        from what the rest of the key names, a pin's blob or the text a page sent, which
+        *identity* hashes, or a folder's file at *source_path* as of *mtime_hash* (its
+        size and modification time in nanoseconds; a file rewritten between a request's
+        reads of it can pair one version's text with another's front matter, and its
+        *kind*, whatever the key holds). Encoding it was the key's one cost
+        (review E of #527, E1): for the largest values the loader accepts, the
+        near-budget shapes of ``devtools/frontmatter_bound_benchmark.py``, up to 65 ms of
+        CPU (one-key mappings of an empty mapping, 4 KB of YAML), and the event loop's
+        longest gap was the same 66 ms with the encoding on a worker thread, since C's
+        JSON encoder holds the interpreter throughout (Apple M1 Pro, CPython 3.14.7 with
+        the GIL, load average 4 to 6, 2026-11-18).
+        """
 
         return (
             *self.verdict_key,
@@ -342,8 +364,6 @@ class InertRender:
             self.profile,
             self.include_toc,
             self.link_base,
-            self.frontmatter_error,
-            json.dumps(self.frontmatter, sort_keys=True, default=str),
         )
 
 
@@ -351,33 +371,6 @@ def text_identity(text: str) -> str:
     """The identity of a document with no blob: a hash of its text. Blocking for a large text."""
 
     return "sha256:" + hashlib.sha256(text.encode("utf-8", "surrogatepass")).hexdigest()
-
-
-def _plain_value(value: object) -> object:
-    """*value* as JSON can carry it, shown as an in-process render shows it.
-
-    KPress shows front matter as ``str(key)`` and ``str(value)``, sorted by ``str(key)``
-    (``kpress/format/render.py``), so a key becomes ``str(key)`` and a value JSON has no
-    type for (``!!binary`` bytes, a ``!!set``, a tuple) becomes ``str(value)``: the same
-    words as an in-process render of the mapping, which the trusted path makes.
-    """
-
-    if value is None or isinstance(value, (bool, int, float, str)):
-        return value
-    if isinstance(value, dict):
-        mapping = cast("dict[object, object]", value)
-        return {str(key): _plain_value(item) for key, item in mapping.items()}
-    if isinstance(value, list):
-        return [_plain_value(item) for item in cast("list[object]", value)]
-    return str(value)
-
-
-def _with_plain_frontmatter(request: InertRender) -> InertRender:
-    if request.frontmatter is None:
-        return request
-    return dataclasses.replace(
-        request, frontmatter=cast("dict[str, Any]", _plain_value(request.frontmatter))
-    )
 
 
 def _gil_enabled() -> bool:
@@ -1100,9 +1093,6 @@ class ProjectionWorker:
         refused = self.refusal(request)
         if refused is not None:
             raise refused
-        # After the kept refusal, which reads no front matter, so a refused document costs
-        # no walk of it.
-        request = _with_plain_frontmatter(request)
         loop = asyncio.get_running_loop()
         self._bind(loop)
         # Ahead of the lock, so the start overlaps the frame's encoding.
@@ -1165,6 +1155,11 @@ class ProjectionWorker:
 
     async def _render_flight(self, request: InertRender) -> _Outcome:
         # The server's asset prefix, so the child names the assets this server serves.
+        # With the GIL the thread still holds the interpreter while it encodes the front
+        # matter, as the loader did while it parsed it: up to 47 ms of CPU for the largest
+        # front matter the loader accepts (one-key mappings of an empty mapping, 2.8 MB of
+        # frame; 2026-11-18, machine as for `flight_key`). Parsing front matter in the
+        # child instead (bead mb-2y6a) would spare both.
         frame = await asyncio.to_thread(
             lambda: _frame(_encode_render(request, kpress_adapter.kpress_asset_url_prefix()))
         )

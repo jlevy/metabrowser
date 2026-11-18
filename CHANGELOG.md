@@ -10,8 +10,9 @@ All notable changes to Metabrowser are documented here.
   in the server’s Markdown child process under a deadline, instead of on a server thread
   that could not be stopped: a crafted document could hold the server for many seconds
   per reload, and reloads stacked.
-  A document’s YAML front matter is still read in the server before it renders, as
-  before. A render past the deadline stops the child, and the page shows the document’s
+  A document’s YAML front matter is still read in the server before it renders, by the
+  bounded loader in `frontmatter_yaml.py`, and the server’s event loop never walks what
+  it read. A render past the deadline stops the child, and the page shows the document’s
   source with one line saying why; a pull request text shows its plain text with the
   same kind of line, and the folder Overview’s README panel shows the line and the
   README’s source instead of a render error.
