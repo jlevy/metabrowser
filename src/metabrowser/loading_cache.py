@@ -13,8 +13,8 @@ loads in progress are not counted: while they run, the memory held can pass the 
 by what they hold, until each one finishes and the oldest kept values are let go.
 
 Not specific to the repository cache: the GitHub plugin shares a comparison's manifest
-load this way, and a revision page's Markdown render; ``encoded_assets`` keeps the
-application's own assets in memory by their bytes.
+load this way; ``encoded_assets`` keeps the application's own assets in memory by their
+bytes.
 """
 
 from __future__ import annotations

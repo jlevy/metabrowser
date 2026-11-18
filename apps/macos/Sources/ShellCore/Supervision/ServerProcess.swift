@@ -25,6 +25,14 @@ public nonisolated protocol ServerProcess: AnyObject, Sendable {
     /// Once a child is reaped and its group is empty, the kernel can hand the same id to
     /// an unrelated process group, so `signalGroup` does nothing after this.
     func release()
+    /// A count that changes whenever the child writes to stdout or stderr: what a start's
+    /// deadline watches for progress (`StartupDeadline`). Its value means nothing else.
+    var outputProgress: Int { get }
+}
+
+extension ServerProcess {
+    /// A child that does not count its output never shows progress.
+    public var outputProgress: Int { 0 }
 }
 
 /// One child to start: everything is explicit, nothing is inherited.
@@ -112,6 +120,8 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
     private let tail: OutputTail
     private let tailLimit: Int
     private let log: ChildLog?
+    /// The bytes read from the output pipe.
+    private let piped: OSAllocatedUnfairLock<Int>
     private let exitSource: DispatchSourceProcess
     private let ownership: ChildOwnership
 
@@ -201,10 +211,13 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
         lines = lineStream
         let splitter = LineSplitter()
         let ended = outputEnd
+        let piped = OSAllocatedUnfairLock(initialState: 0)
+        self.piped = piped
         let reader = FileHandle(fileDescriptor: outputPipe[0], closeOnDealloc: true)
         output = reader
         reader.readabilityHandler = { handle in
             let chunk = handle.availableData
+            piped.withLock { $0 &+= chunk.count }
             let emit: (String) -> Void = { line in
                 tail.append(line)
                 lineSink.yield(line)
@@ -268,6 +281,12 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
     public func waitForExit() async -> Int32? { await exit.wait() }
     public func waitForOutputEnd() async -> Void? { await outputEnd.wait() }
     public var hasExited: Bool { exit.isResolved }
+
+    /// The bytes read from the pipe, and with a log, the log's length too, which the
+    /// child's stderr grows without passing through this app: a clone's progress.
+    public var outputProgress: Int {
+        piped.withLock { $0 } &+ (log?.length ?? 0)
+    }
 
     public func signalGroup(_ signal: Int32) {
         ownership.signalGroup(signal)

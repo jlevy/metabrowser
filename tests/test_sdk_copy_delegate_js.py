@@ -30,11 +30,12 @@ SHELL_DELEGATE_SESSION = Path(__file__).resolve().parent / "dom" / "shell-delega
 
 
 def test_shell_delegates_act_only_on_controls_the_page_created() -> None:
-    """A trusted document's copy of a crumb, print, or tooltip control does nothing.
+    """A trusted document's copy of a crumb or tooltip control does nothing.
 
     KPress keeps class, id, and data-* in a trusted folder, so Markdown can spell the
-    shell's control markup. The address crumbs, parent button, and print button act only
-    with the SDK's per-page owner mark, and the tooltip ignores a rendered document.
+    shell's control markup. The address crumbs and parent button act only with the SDK's
+    per-page owner mark, and the tooltip ignores a rendered document but for a control
+    page code placed in it and marked, as the document's print button is.
     """
 
     require_node()
@@ -49,4 +50,4 @@ def test_shell_delegates_act_only_on_controls_the_page_created() -> None:
     transcript = json.loads(result.stdout)
     assert transcript["failures"] == []
     assert transcript["authoredCalls"] == []
-    assert "print" in transcript["pageCalls"]
+    assert "folder:docs/sub" in transcript["pageCalls"]

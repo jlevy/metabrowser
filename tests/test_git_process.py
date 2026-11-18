@@ -169,7 +169,9 @@ def test_a_store_read_names_the_empty_tree_of_the_stores_object_format(tmp_path:
         )
         target = repository_store_target(git_dir=store)
         assert target.object_format == object_format
-        hashed = asyncio.run(run_git(["hash-object", "-t", "tree", os.devnull], target=target))
+        hashed = asyncio.run(
+            run_git(["hash-object", "--no-filters", "-t", "tree", os.devnull], target=target)
+        )
         assert empty_tree_oid(target.object_format) == hashed.decode().strip()
         assert git_environment(STORE_READ_POLICY, target=target)["GIT_ATTR_SOURCE"] == (
             hashed.decode().strip()

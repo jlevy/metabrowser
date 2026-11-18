@@ -40,8 +40,10 @@ The served root is never an automatic plugin source; [the plugin guide](docs/plu
 lists where plugins are found.
 
 Report as security issues: path traversal or symlink escape, unsafe archive handling,
-browsed content reaching `/api` or the application page, cross-origin exposure, and
-plugin trust bypass.
+browsed content reaching `/api` or the application page, cross-origin exposure, plugin
+trust bypass, and a link sent to the macOS app that runs, clones, or reaches anything
+its [trust boundary](docs/project/architecture/arch-macos-app.md#the-trust-boundary)
+does not allow.
 
 ## Trust Settings
 

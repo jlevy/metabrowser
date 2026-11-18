@@ -14,6 +14,13 @@ same for every text, and it is the only part of KPress's render envelope that re
 the page: the render's own asset list names scripts KPress adds for what a text contains,
 and a comment must not choose what the page loads.
 
+A text's author is untrusted, and what KPress spends on a text depends on what it
+contains, so the render and the hardening run in the server's Markdown child under its
+deadline (:mod:`metabrowser.diff.markdown_projection_worker`), with fenced code plain:
+the allowlist drops every class highlighting would add. A text that runs past the
+deadline is refused with ``422`` and the code ``render_deadline``, and refused again at
+once while the server runs; the page then shows it as plain text and says why.
+
 It reads the record the pull route reads and never runs gh or Git. One part is one
 render of at most one body, which the record bounds, so a page with many comments asks
 for the ones a reader sees rather than the server rendering them all at once.
@@ -21,6 +28,7 @@ for the ones a reader sees rather than the server rendering them all at once.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import re
 from typing import Any, Final
@@ -28,7 +36,12 @@ from typing import Any, Final
 from metabrowser import kpress_adapter
 from metabrowser.builtin_plugins.github.pull_record import PullRecord
 from metabrowser.builtin_plugins.github.pull_route import PullView, cached_pull_record
-from metabrowser.inert_html import harden
+from metabrowser.diff.markdown_projection_worker import (
+    InertRender,
+    InertRenderRefused,
+    shared_worker,
+    text_identity,
+)
 
 PART_PATTERN: Final = re.compile(r"^(?:body|(?:issue_comment|review|review_comment)/[0-9]{1,20})$")
 
@@ -48,8 +61,8 @@ def part_text(record: PullRecord, part: str) -> str | None:
     return next((item.body for item in items if item.id == wanted), None)
 
 
-def render_part(view: PullView, part: str) -> tuple[int, dict[str, Any]]:
-    """The status and body for one part. Blocking and bounded; run it off the loop."""
+async def render_part(view: PullView, part: str) -> tuple[int, dict[str, Any]]:
+    """The status and body for one part."""
 
     if PART_PATTERN.fullmatch(part) is None:
         return 400, {"error": "name a part of the pull request", "code": "invalid_part"}
@@ -57,7 +70,9 @@ def render_part(view: PullView, part: str) -> tuple[int, dict[str, Any]]:
         return 409, {"error": "this server serves no GitHub repository", "code": "not_github"}
     served = view.host.pulls
     number = view.number
-    record, _dumped, revision = cached_pull_record(served.home, served.slug, number)
+    record, _dumped, revision = await asyncio.to_thread(
+        cached_pull_record, served.home, served.slug, number
+    )
     if not isinstance(record, PullRecord):
         return 404, {"error": "no record of this pull request is cached", "code": record}
     text = part_text(record, part)
@@ -67,27 +82,33 @@ def render_part(view: PullView, part: str) -> tuple[int, dict[str, Any]]:
     # nothing until a refresh changes the text.
     key = hashlib.sha256(f"{record.fetched_at}\0{part}\0{text}".encode()).hexdigest()[:16]
     try:
-        rendered = kpress_adapter.render_kpress_view(
-            source_text=text,
-            source_path=f"pull-{number}-{part.replace('/', '-')}.md",
-            kind="markdown",
-            view="document",
-            ext=".md",
-            mtime_hash=key,
-            size=len(text.encode()),
-            include_toc="off",
+        # KPress's sanitized mode keeps what a document may load; in the page it must not,
+        # so the child reduces the HTML to the allowlist against the pull request's page.
+        rendered = await shared_worker().render_inert(
+            InertRender(
+                source_text=text,
+                source_path=f"pull-{number}-{part.replace('/', '-')}.md",
+                identity=text_identity(text),
+                kind="markdown",
+                view="document",
+                ext=".md",
+                mtime_hash=key,
+                size=len(text.encode()),
+                include_toc="off",
+                link_base=record.pull.html_url,
+            )
         )
+    except InertRenderRefused as refused:
+        return refused.http_status, {**refused.payload(), "number": number, "part": part}
     except (kpress_adapter.KPressInvalidRequestError, kpress_adapter.KPressRenderError) as exc:
         return 422, {"error": f"the text could not be rendered: {exc}", "code": "render_failed"}
-    # KPress's sanitized mode keeps what a document may load; in the page it must not.
-    html = harden(str(rendered["html"]), record.pull.html_url)
     return 200, {
         "number": number,
         "fetched_at": record.fetched_at,
         "record_revision": revision,
         "part": part,
-        "html": html,
-        "assets": kpress_adapter.document_stylesheets(),
+        "html": str(rendered["html"]),
+        "assets": await asyncio.to_thread(kpress_adapter.document_stylesheets),
     }
 
 
