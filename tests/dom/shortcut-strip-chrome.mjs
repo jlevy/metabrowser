@@ -129,9 +129,11 @@ try {
   phase("load");
   await browser.send("Page.enable");
   await browser.send("Page.navigate", { url: `${base}/view/` });
+  // While the navigation replaces the document, `documentElement` can be null
+  // for a poll: read every step of the readiness check null-safely.
   await browser.waitFor(
-    `document.documentElement.dataset.shellToolsReady === "true" &&
-     !document.getElementById("nav-shortcut-hints").hidden`,
+    `document.documentElement?.dataset.shellToolsReady === "true" &&
+     document.getElementById("nav-shortcut-hints")?.hidden === false`,
     STEP_MS,
   );
   const read = (spec) => browser.evaluate(`(${READ})(${JSON.stringify(spec)})`);
