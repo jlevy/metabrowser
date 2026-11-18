@@ -13,6 +13,7 @@ It claims only ``github.com`` (with or without ``www.``) and
 | ``…/commit/<oid>``, ``…/pull/<n>/commits/<oid>`` | commit |
 | ``…/pull/<n>[/commits]`` | pull request |
 | ``…/pull/<n>/files``, ``…/pull/<n>/checks`` | pull request, on its Changes or Checks tab |
+| ``…/pull/<n>/files#diff-<hash>[R12][-R15]`` | pull request, on its Changes tab, at one file |
 | ``raw.githubusercontent.com/<o>/<r>/<ref-and-path>`` | blob |
 | ``git@github.com:<o>/<r>.git``, ``ssh://git@github.com/<o>/<r>.git`` (``www.``) | repository |
 
@@ -21,8 +22,15 @@ reason and a message that names the shape and offers the repository URL. Exactly
 trailing ``.git`` is removed from the repository name. The generic
 grammar never sees a claimed URL, so this module repeats its control-character,
 non-ASCII, backslash, and credentials checks before anything else. Query parameters
-other than ``plain=1`` and fragments other than a line anchor are dropped, and no
-refusal repeats the argument.
+other than ``plain=1``, and fragments other than a blob's line anchor and a Changes
+tab's file anchor, are dropped, and no refusal repeats the argument.
+
+GitHub's anchor for one file of a pull request's Changes tab is ``diff-`` and the
+SHA-256 of the file's path, in hexadecimal, optionally followed by a line in that file's
+diff, ``R`` for the head's side and ``L`` for the base's, or a range of two. Which file
+the hash names is in the pull request's list of changed files, which no URL carries, so
+the selection keeps the anchor (:class:`~metabrowser.cache.urls.FileAnchor`) and the
+provider resolves it once the pull request is open (``pull_file_anchor.py``).
 
 A web URL is read as a browser sends it. A person pastes the decoded form an address
 bar shows, such as ``…/docs/雪.md`` or ``…/space name.md``, and a browser sends a
@@ -56,6 +64,7 @@ from typing import Final
 from urllib.parse import quote_from_bytes
 
 from metabrowser.cache.urls import (
+    FileAnchor,
     LineSelection,
     ReducerOutcome,
     ReducerRejection,
@@ -77,6 +86,12 @@ _PULL_REQUEST = re.compile(r"^[1-9][0-9]{0,9}$")
 _COMMIT_ID = re.compile(r"^[0-9A-Fa-f]{7,64}$")
 _LINE_ANCHOR = re.compile(
     r"^L([1-9][0-9]{0,8})(?:C([1-9][0-9]{0,8}))?(?:-L([1-9][0-9]{0,8})(?:C([1-9][0-9]{0,8}))?)?$"
+)
+# GitHub's anchor for one file in a pull request's Changes tab: `diff-`, the SHA-256 of
+# the file's path in hexadecimal, and optionally a line of its diff or a range of two,
+# `R` on the head's side and `L` on the base's. Any other fragment there is dropped.
+_FILE_ANCHOR = re.compile(
+    r"^diff-([0-9A-Fa-f]{64})((?:[LR][1-9][0-9]{0,8})(?:-[LR][1-9][0-9]{0,8})?)?$"
 )
 _HEX: Final = frozenset(string.hexdigits)
 
@@ -449,7 +464,7 @@ def _repository_selection(
             raise _unsupported(None, repo_url)
         return RepositorySelection(kind="commit", commit=_commit_id(args[0], repo_url))
     if page == "pull":
-        return _pull_selection(args, repo_url)
+        return _pull_selection(args, fragment, repo_url)
     raise _unsupported(page, repo_url)
 
 
@@ -463,7 +478,16 @@ def _commit_id(text: str, repo_url: str) -> str:
     return text.lower()
 
 
-def _pull_selection(args: list[str], repo_url: str) -> RepositorySelection:
+def _file_anchor(fragment: str) -> FileAnchor | None:
+    """GitHub's anchor for one changed file, or ``None`` for any other fragment."""
+
+    match = _FILE_ANCHOR.fullmatch(fragment)
+    if match is None:
+        return None
+    return FileAnchor(digest=match.group(1).lower(), line=match.group(2) or "")
+
+
+def _pull_selection(args: list[str], fragment: str, repo_url: str) -> RepositorySelection:
     if not args or not _PULL_REQUEST.match(args[0]):
         raise _Refuse(
             "invalid_pull_request",
@@ -471,8 +495,15 @@ def _pull_selection(args: list[str], repo_url: str) -> RepositorySelection:
         )
     number = int(args[0])
     tail = args[1:]
-    if tail in (["files"], ["checks"]):
-        return RepositorySelection(kind="pull_request", pull_request=number, pull_tab=tail[0])
+    if tail == ["files"]:
+        return RepositorySelection(
+            kind="pull_request",
+            pull_request=number,
+            pull_tab="files",
+            pull_file=_file_anchor(fragment),
+        )
+    if tail == ["checks"]:
+        return RepositorySelection(kind="pull_request", pull_request=number, pull_tab="checks")
     # The page has no tab for GitHub's Commits, so that URL opens the page itself.
     if tail in ([], ["commits"]):
         return RepositorySelection(kind="pull_request", pull_request=number)
@@ -586,7 +617,10 @@ class GithubUrlReducer:
                 return f"{clone_url}/commit/{selection.commit}"
             case "pull_request":
                 tab = f"/{selection.pull_tab}" if selection.pull_tab else ""
-                return f"{clone_url}/pull/{selection.pull_request}{tab}"
+                url = f"{clone_url}/pull/{selection.pull_request}{tab}"
+                if selection.pull_file is not None:
+                    url += f"#diff-{selection.pull_file.digest}{selection.pull_file.line}"
+                return url
 
 
 def _encoded_path(segments: tuple[bytes, ...]) -> str:

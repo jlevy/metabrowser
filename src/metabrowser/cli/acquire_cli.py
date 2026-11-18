@@ -218,7 +218,12 @@ def run_no_serve(
         pull = None
         if selection.pull_request is not None:
             pull = run_cancelling_on_hangup(
-                open_pull_for_cli(published, selection.pull_request, fetch="always")
+                open_pull_for_cli(
+                    published,
+                    selection.pull_request,
+                    fetch="always",
+                    anchor=selection.pull_file,
+                )
             )
         resolved = run_cancelling_on_hangup(
             resolve_and_check_for_cli(published, selection, pull=pull)

@@ -1,10 +1,11 @@
 """The built-in repository providers and the few places core asks them anything.
 
 Core code names no provider and never branches on one. It asks the providers listed
-here, through :class:`RepositoryProvider`, for six things: URL reducers for the root
+here, through :class:`RepositoryProvider`, for seven things: URL reducers for the root
 argument, extra Git configuration for a remote URL (a credential helper), a check to run
 before a first clone, the ``repository_context`` of a mirrored source, the commit a
-pull-request URL pins, and the pull requests a server keeps fresh beside the mirror. The
+pull-request URL pins, the changed file a pull-request URL's anchor names, and the pull
+requests a server keeps fresh beside the mirror. The
 list is fixed, as the built-in browser plugin directories are; there is no public
 registration surface for the alpha.
 """
@@ -17,7 +18,7 @@ from typing import TYPE_CHECKING, Literal, Protocol
 
 if TYPE_CHECKING:
     from metabrowser.cache.acquire import PublishedSource
-    from metabrowser.cache.urls import GitSource, ProviderUrlReducer
+    from metabrowser.cache.urls import FileAnchor, GitSource, ProviderUrlReducer
     from metabrowser.mirror_refresh import PullRequestSet
     from metabrowser.repository_context import RepositoryContext
 
@@ -33,6 +34,19 @@ class PullRequestPin:
     head: str
     ref: str
     summary: str
+
+
+@dataclass(frozen=True, slots=True)
+class PullRequestFile:
+    """The changed file a pull-request URL's anchor names, or why none is named.
+
+    ``path`` is the file's path in the pull request's comparison, which
+    ``/pull/<n>/files/<path>`` addresses. Without one, ``unresolved`` says why for the
+    user, ending in a ``(code)``, and the URL opens the Changes tab itself.
+    """
+
+    path: str | None
+    unresolved: str | None = None
 
 
 class PullRequestUnavailableError(Exception):
@@ -83,6 +97,16 @@ class RepositoryProvider(Protocol):
 
         Return ``None`` for a source this provider does not own; raise
         :class:`PullRequestUnavailableError` when its data cannot be had.
+        """
+        ...
+
+    async def pull_request_file(
+        self, published: PublishedSource, number: int, anchor: FileAnchor
+    ) -> PullRequestFile | None:
+        """The changed file of pull request *number* that *anchor* names.
+
+        Read from the cache and the store alone: it never fetches. Return ``None`` for a
+        source this provider does not own.
         """
         ...
 
@@ -176,6 +200,21 @@ async def open_pull_request(
     )
 
 
+async def pull_request_file(
+    published: PublishedSource, number: int, anchor: FileAnchor
+) -> PullRequestFile:
+    """The changed file of pull request *number* that *anchor* names, from its provider."""
+
+    for provider in installed_providers():
+        found = await provider.pull_request_file(published, number, anchor)
+        if found is not None:
+            return found
+    return PullRequestFile(
+        None,
+        f"{published.source.normalized} has no pull requests Metabrowser can read (unsupported)",
+    )
+
+
 def served_pull_requests_for(published: PublishedSource) -> PullRequestSet | None:
     """The pull requests a server serves beside the mirror, from the provider that owns it."""
 
@@ -188,6 +227,7 @@ def served_pull_requests_for(published: PublishedSource) -> PullRequestSet | Non
 
 __all__ = [
     "PullRequestFetch",
+    "PullRequestFile",
     "PullRequestPin",
     "PullRequestUnavailableError",
     "RepositoryProvider",
@@ -196,6 +236,7 @@ __all__ = [
     "open_pull_request",
     "provider_credential_hint",
     "provider_git_config",
+    "pull_request_file",
     "served_pull_requests_for",
     "repository_context_for",
     "url_reducers",
