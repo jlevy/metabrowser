@@ -154,9 +154,9 @@ MAX_STORE_BYTES: Final = 512 * 1024
 # its atomic write, and both fsyncs, took a median 3.3 ms (p95 3.7 ms, slowest 5.3 ms),
 # so this covers hundreds of servers starting at once and still bounds what a wedged
 # holder can cost a server's start. A loaded machine stretches each hold, as a holder
-# loses its CPU partway: on the same Mac at load average 250 to 310, 40 processes that
-# each recorded once at the same moment held the lock a median 13 ms (p95 91 ms, slowest
-# 196 ms), and the longest any of them waited, over 10 such bursts, was 1.2 s.
+# loses its CPU partway: on the same Mac at load average 300, 40 processes that each
+# recorded once at the same moment held the lock a median 11 ms (p95 152 ms, slowest
+# 503 ms), and the longest any of them waited, over 10 such bursts, was 1.3 s.
 LOCK_WAIT_S: Final = 2.0
 _LOCK_RETRY_FIRST_S: Final = 0.005
 _LOCK_RETRY_MAX_S: Final = 0.1

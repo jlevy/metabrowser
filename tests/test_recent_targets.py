@@ -784,8 +784,8 @@ _WRITER = textwrap.dedent(
 # This test is about what the lock excludes; how long a writer may wait is
 # test_a_writer_gives_up_on_a_lock_held_too_long_and_a_server_starts_anyway's. Its burst
 # is not servers starting at once: each writer here takes the lock five times running,
-# and the one that has just released it takes it again before a waiter's next try (in 28
-# to 32 of the 39 handoffs of each of 8 bursts on 2026-11-18, at load average 250), so
+# and the one that has just released it takes it again before a waiter's next try (in 27
+# to 32 of the 39 handoffs of each of 8 bursts on 2026-11-18, at load average 300), so
 # the writer served last waits behind nearly every other writer's records, where a
 # server waits behind one record for each server starting with it. That wait passed
 # LOCK_WAIT_S on a loaded free-threaded CI runner (run 44386715486). A writer still gives

@@ -30,8 +30,8 @@ def probe_a_first_test_that_warms_the_process() -> None:
     pytest-timeout and ``StackDumps`` time a test from the start of its setup to the end
     of its teardown, and the first test of a process pays the deferred imports of the
     suite's autouse fixtures in both (``tests/conftest.py``). On 2026-11-18 at load
-    average 116, five nested runs gave their first test 1.7 to 2.8 s of setup and 2.5 to
-    4.8 s of teardown, and the test after it 0.01 s or less of each. A timed probe that
+    average 270, five nested runs gave their first test 0.7 to 3.5 s of setup and 1.9 to
+    5.5 s of teardown, and each test after it 0.03 s or less of each. A timed probe that
     ran first had its dump fire in setup, where its stack does not name it, or its
     budget end in teardown, which ended the process. With no budget this one is neither
     dumped nor ended; the nested run's own ``MAX_INNER_BOUND_S`` bounds it.
