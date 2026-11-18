@@ -164,6 +164,19 @@ class AmbiguousSelectionError(SelectionError):
     http_status = 409
 
 
+class SelectionRefMovedError(SelectionError):
+    """The ref a switch by commit ID names as ``under`` is not at that commit.
+
+    View on branch and Browse code name a pull request's head commit under its
+    ``refs/pull/<n>/head``. A page drawn before the pull request moved on names an earlier
+    head, which served under no ref, or another's, would open a bare commit the page called
+    the pull request's head; so nothing is switched, and the page says the head moved.
+    """
+
+    code = "ref_moved"
+    http_status = 409
+
+
 class SelectionFetchFailedError(SelectionError):
     """The fetch a missing selection waited for did not run to the end.
 
@@ -1161,9 +1174,15 @@ class MirrorSession:
 
     # ── Pin switching ───────────────────────────────────────────
 
-    async def switch_pin(self, *, ref: str | None, oid: str | None) -> tuple[bool, SourceSession]:
+    async def switch_pin(
+        self, *, ref: str | None, oid: str | None, under: str | None = None
+    ) -> tuple[bool, SourceSession]:
         """Serve the commit a selection names; ``False`` when it is already served.
 
+        *under* is a ref that a commit named by *oid* is served under, ahead of
+        :meth:`_refs_to_keep`: View on branch names the pull request's head, so of two
+        pull requests that share a head, each opens as itself. When *under* is not at that
+        commit, nothing is switched and :class:`SelectionRefMovedError` is raised.
         Raises :class:`SelectionError` for a selection the mirror cannot serve. In a
         server that fetches on demand, one the mirror does not have starts one
         background fetch and raises :class:`SelectionPendingError`; asked again after
@@ -1173,15 +1192,19 @@ class MirrorSession:
         """
 
         async with self._pin_lock:
+            kept = self._refs_to_keep()
+            if under is not None:
+                kept = tuple(dict.fromkeys((under, *kept)))
             try:
-                subject = await self.mirror.open_selection(
-                    ref=ref, oid=oid, keep_refs=self._refs_to_keep()
-                )
+                subject = await self.mirror.open_selection(ref=ref, oid=oid, keep_refs=kept)
             except SelectionNotFoundError as exc:
                 if not self._fetch_on_miss:
                     raise
                 raise self._missing((ref, oid), exc) from None
             self._misses.pop((ref, oid), None)
+            if under is not None and subject.ref != under:
+                await subject.aclose()
+                raise SelectionRefMovedError(f"{under} is no longer at that commit")
             if self._selection_state is not None:
                 # The reader chose a pin, even the one served: a URL selection still
                 # waiting must not replace it when its fetch ends, and a found one no
@@ -1210,8 +1233,8 @@ class MirrorSession:
     def _refs_to_keep(self) -> tuple[str, ...]:
         """The refs a commit pinned by ID is opened under when it is their tip.
 
-        View file on a diff switches by commit ID, to a base and back: without this the
-        way back to the head would leave the server on no ref, the selector reading
+        View file on a commit's diff switches by commit ID, to the commit and back: without
+        this the way back would leave the server on no ref, the selector reading
         "Commit: …" where it read the branch or the pull request, and freshness no
         longer following the ref. The ref last served comes first, then the attended pull
         request's head, GitHub's own ref for it.
@@ -1414,6 +1437,7 @@ __all__ = [
     "SelectionNotACommitError",
     "SelectionNotFoundError",
     "SelectionPendingError",
+    "SelectionRefMovedError",
     "SelectionState",
     "ServedMirror",
     "StoreTurn",

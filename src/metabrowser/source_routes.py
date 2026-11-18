@@ -26,7 +26,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from typing import TYPE_CHECKING, Any, Final, TypedDict, cast
+from typing import TYPE_CHECKING, Any, Final, NamedTuple, TypedDict, cast
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -413,18 +413,37 @@ async def api_source_refresh(request: Request) -> JSONResponse:
     )
 
 
-def _selection(body: dict[str, Any]) -> tuple[str | None, str | None, str | None]:
-    unknown = sorted(set(body) - {"ref", "oid", "view"})
+class _Selection(NamedTuple):
+    ref: str | None
+    oid: str | None
+    under: str | None
+    view: str | None
+
+
+def _selection(body: dict[str, Any]) -> _Selection:
+    unknown = sorted(set(body) - {"ref", "oid", "under", "view"})
     if unknown:
-        raise _BadRequestError('a pin request names only "ref" or "oid", and "view"')
+        raise _BadRequestError('a pin request names only "ref" or "oid", "under", and "view"')
     ref = body.get("ref")
     oid = body.get("oid")
+    under = body.get("under")
     view = body.get("view")
     if (ref is None) == (oid is None):
         raise _BadRequestError('give exactly one of "ref" and "oid"')
     if not isinstance(ref if ref is not None else oid, str):
         raise _BadRequestError("the selection must be a string")
-    return cast(str | None, ref), cast(str | None, oid), _view_identity(view)
+    if under is not None:
+        if oid is None or not isinstance(under, str):
+            raise _BadRequestError('"under" names the ref a commit given by "oid" is served under')
+        # Only a request that names one reads the mirror's ref rules, which a folder's
+        # server, registering this table too, never loads (tests/test_plugin_public_api.py).
+        from metabrowser.cache.resolve import is_pinnable_ref
+
+        if not is_pinnable_ref(under):
+            raise _BadRequestError(
+                '"under" is an origin branch, a tag, or a pull request\'s refs/pull/<n>/head'
+            )
+    return _Selection(cast(str | None, ref), cast(str | None, oid), under, _view_identity(view))
 
 
 def _view_identity(view: object) -> str | None:
@@ -489,6 +508,10 @@ async def api_source_pin(request: Request) -> JSONResponse:
     The body is ``{"ref": "<branch or tag>"}`` or ``{"oid": "<commit ID>"}``, and
     optionally ``"view"``, the ``/view/`` address the page shows: the answer's
     ``view_href`` is then where that page goes on the new pin (:func:`view_on_pin`).
+    With ``"oid"``, ``"under"`` names the full ref the commit is served under, as View on
+    branch names ``refs/pull/<n>/head``; when the mirror's ref is not at the commit, as
+    for a page drawn before the pull request moved on, nothing is switched and the answer
+    is ``409`` with ``ref_moved``.
     The selection is resolved in the mirror alone: a branch, then a tag, then a commit ID.
     In a server, one the mirror lacks answers ``202`` with ``selection_pending`` and
     starts one background fetch; asking again after it ends answers the switch or
@@ -499,14 +522,14 @@ async def api_source_pin(request: Request) -> JSONResponse:
     """
 
     try:
-        ref, oid, view = _selection(await _json_object(request))
+        ref, oid, under, view = _selection(await _json_object(request))
         mirror = _served_mirror(request, "pin")
     except _BadRequestError as exc:
         return _error(str(exc), "invalid_selection", exc.status_code)
     except UnsupportedSourceCapabilityError as exc:
         return JSONResponse(unsupported_source_payload(exc), status_code=409)
     try:
-        changed, session = await mirror.switch_pin(ref=ref, oid=oid)
+        changed, session = await mirror.switch_pin(ref=ref, oid=oid, under=under)
     except SelectionPendingError as exc:
         return JSONResponse(
             {

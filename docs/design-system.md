@@ -177,10 +177,9 @@ Rendered text is one of two things, and the dividing line is again what the text
 
 - **A document** is what the repository holds, rendered as one: a Markdown file in its
   Document view, a README on Overview, a note it transcludes, a Markdown file among a
-  pull request’s Changes or opened from a pull request or a commit, a pull request’s
-  revision page, and a plugin’s Markdown view.
-  It reads in the reader’s reading font: serif by default, and sans when the reader
-  chooses Sans.
+  pull request’s Changes or opened from a pull request or a commit, and a plugin’s
+  Markdown view. It reads in the reader’s reading font: serif by default, and sans when
+  the reader chooses Sans.
 
 - **Chrome prose** is text the app shows about the content: a pull request’s
   description, comments, and reviews, a commit message, and any other message or
@@ -727,7 +726,7 @@ An action that opens nothing, such as a pull request’s Refresh, is always a `<
 Both forms look the same in their context, a tooltip and accessible name say which
 commit opens and whether the pin switches, and keyboard and screen-reader users still
 get the element they expect.
-The diff file bar’s [View file](#diff-file-bar), and
+The diff file bar’s [View file and View on branch](#diff-file-bar), and
 [Browse code, a review comment’s file, Refresh, and Switch to the head](#chrome) on a
 pull request’s page, are text actions.
 Each context sets one look for the `<a>` and the `<button>`, box included: a `<button>`
@@ -886,7 +885,7 @@ unsettled rather than consistently offset.
 | Git history row | Subject, author, and age | Graph gutter, ref chips |
 | File and folder header | Path, file size, and folder summary | Parent button, badges, copy and print buttons, a summary still loading |
 | Pull request row, in [the Pulls tab](#the-pulls-tab) | The number’s line and the age, on the first line; the title, alone on the second | Chevron and state icon, on the first line |
-| Diff file bar | Change letter, path, change stats, and notes | Chevron, Markdown **Rendered** \| **Source** chooser, View file controls, copy button |
+| Diff file bar | Change letter, path, change stats, and notes | Chevron, Markdown **Rendered** \| **Source** chooser, View file or View on branch control, copy button |
 
 The row keeps `align-items: center`, and each text child opts in with
 `align-self: baseline`. A box aligned to the baseline would sit its bottom edge on the
@@ -909,9 +908,9 @@ capitals. A run’s status badge is one, for Running, Live, Done, Failed, and Ru
 and a pull request’s state badge is another; `tests/dom/github-pull-header-chrome.mjs`
 checks both in Chrome.
 
-The diff file bar’s View file controls are boxes beside the toggle, not text inside it,
-so they are set at the path’s own size and line height: text of one size and one line
-height centers onto one baseline.
+The diff file bar’s View file or View on branch control is a box beside the toggle, not
+text inside it, so it is set at the path’s own size and line height: text of one size
+and one line height centers onto one baseline.
 
 Two rows are deliberately not in the table.
 A mirror’s location note at the far end of the file header is whole or absent, by
@@ -1665,22 +1664,25 @@ file-header copy affordance, present wherever a filename is.
 Its content is left-aligned reading order (chevron, kind letter, filename in the shell’s
 file-path typography, then the stat pair beside the name), and the whole bar is one
 activation surface, the folder-row rule applied to a section header: clicking anywhere
-toggles, with only the copy control, the View file controls, and a Markdown file’s
-**Rendered** | **Source** chooser opting out.
+toggles, with only the copy control, the View file or View on branch control, and a
+Markdown file’s **Rendered** | **Source** chooser opting out.
 On a pull request’s Changes, a changed Markdown file’s bar carries that chooser, a
 joined chip pair, after the chevron, and beside it a small spinner that keeps its place
 in the bar and appears only after the loading-state delay while the rendered view is on
 its way. A file that falls back permanently to Source loses the chooser and the spinner,
 and its bar lays out as any other file’s, with a long path truncated on one line.
-On a page that shows a pinned revision, and on a pull request’s Changes beside a
-checkout, the bar ends with quiet text actions that open the file at a side of the
-change: **View file**, and **View at parent** or **View at base** where the old side
-exists. They stay visible rather than revealing on hover, because they are how a reader
-leaves the diff for the file.
-They are [text actions](#control-families), so each is a link or a button by whether it
-first switches the served pin, and looks the same either way.
-A pull request’s are always links: a side the page does not show opens on its revision
-page and never switches the pin.
+Where the main UI can show the file the change makes, the bar ends with one quiet text
+action that opens it there, with the tree, the tabs, and the ref selector around it:
+**View file** on a commit’s diff, at the commit, and **View on branch** on a pull
+request’s Changes, at the pull request’s head, on a mirror or beside a checkout whose
+`HEAD` is the head. Its label is a constant, since a branch name is the author’s, long,
+and on every bar; its tooltip says the commit and whether the pin switches.
+It stays visible rather than revealing on hover, because it is how a reader leaves the
+diff for the file. It is a [text action](#control-families), so it is a link or a button
+by whether it first switches the served pin, and looks the same either way.
+A bar with nowhere to go has none, never a disabled one: a deleted file, a symbolic link
+or submodule, a patch file, a pull request diff of another commit than its head, and a
+checkout elsewhere. The old side has none, since a parent or a merge base is no branch.
 A collapsed section keeps the section’s own border as its single line.
 
 ### Diff Change Surfaces
@@ -2610,7 +2612,7 @@ rather than restate them.
   a known meaning: `H`, Home’s first letter, is commit History.
   Shift-0 is `0`, as Shift with any digit is.
 - **No key on an ancillary item.** Copying a path, a revision, or a hash; a per-row or
-  per-file affordance, such as a changed file’s View file or its Rendered | Source
+  per-file affordance, such as a changed file’s View on branch or its Rendered | Source
   chooser, of which a page has many; and a control that shows only on hover take no key.
   Each stays reachable by pointer and Tab.
   A key goes on a major tab or a major button, and a rare one, such as the Metabrowser

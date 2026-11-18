@@ -1339,6 +1339,96 @@ def test_a_commit_is_pinned_under_the_head_of_any_pull_request_it_is_the_tip_of(
     assert asyncio.run(resolve_pin(target, oid=stand.origin["topic"])).ref is None
 
 
+def test_a_switch_by_commit_is_served_under_the_ref_it_names(
+    pinned_pull: tuple[_Stand, TestClient],
+) -> None:
+    """View on branch switches by commit ID and names its pull request's head ref, so of two
+    pull requests that share a head the page's own is the one served. A ref the commit is
+    not the tip of is refused, as is a name no pin could be under."""
+
+    stand, client = pinned_pull
+    merged = stand.origin["merged_head"]
+    stand.refresh(8)
+    subprocess.run(
+        [
+            "git",
+            "--git-dir",
+            str(stand.published.git_dir),
+            "update-ref",
+            "refs/pull/12/head",
+            merged,
+        ],
+        check=True,
+    )
+
+    def switch(body: dict[str, str]) -> Any:
+        return client.post("/api/source/pin", json=body, headers=_JSON)
+
+    newest = switch({"oid": merged})
+    assert newest.status_code == 200, newest.text
+    assert newest.json()["status"]["ref"] == "refs/pull/12/head"
+    named = switch({"oid": merged, "under": "refs/pull/8/head", "view": "/view/"})
+    assert named.status_code == 200, named.text
+    assert (named.json()["changed"], named.json()["status"]["ref"]) == (True, "refs/pull/8/head")
+    assert named.json()["view_href"] == "/view/"
+    # The pull request's ref is elsewhere: the commit is the tip of pull request 7's head,
+    # which the server would otherwise serve it under, and nothing is switched.
+    elsewhere = switch({"oid": stand.origin["fork_head"], "under": "refs/pull/8/head"})
+    assert (elsewhere.status_code, elsewhere.json()["code"]) == (409, "ref_moved")
+    served = client.get("/api/source/status").json()
+    assert (served["pin"], served["ref"]) == (merged, "refs/pull/8/head")
+    for body in (
+        {"ref": "refs/pull/8/head", "under": "refs/pull/8/head"},
+        {"oid": merged, "under": "refs/pull/8/merge"},
+        {"oid": merged, "under": "refs/heads/topic"},
+        {"oid": merged, "under": 8},
+    ):
+        refused = client.post("/api/source/pin", json=body, headers=_JSON)
+        assert refused.status_code == 400, (body, refused.text)
+        assert refused.json()["code"] == "invalid_selection"
+
+
+def test_a_switch_under_a_pull_requests_head_that_moved_on_switches_nothing(
+    pinned_pull: tuple[_Stand, TestClient],
+) -> None:
+    """Review M1 on #511: a Changes diff drawn for an earlier head keeps View on branch.
+
+    Its switch, and Browse code on a page whose record is as old, names that earlier head
+    under ``refs/pull/7/head``, which is now at the newer one. Served under no ref, the
+    page would land on a bare commit under a tooltip that called it this pull request's
+    head; the route refuses with ``ref_moved``, says why in words, and the pin stays.
+    """
+
+    stand, client = pinned_pull
+    earlier, head = stand.origin["fork_earlier"], stand.origin["fork_head"]
+    away = client.post("/api/source/pin", json={"oid": stand.origin["topic"]}, headers=_JSON)
+    assert away.status_code == 200, away.text
+    before = client.get("/api/source/status").json()
+
+    refused = client.post(
+        "/api/source/pin",
+        json={"oid": earlier, "under": "refs/pull/7/head", "view": "/view/"},
+        headers=_JSON,
+    )
+    assert refused.status_code == 409, refused.text
+    assert refused.json() == {
+        "error": "refs/pull/7/head is no longer at that commit",
+        "code": "ref_moved",
+    }
+    after = client.get("/api/source/status").json()
+    assert (after["generation"], after["pin"], after["ref"]) == (
+        before["generation"],
+        stand.origin["topic"],
+        before["ref"],
+    )
+    # The head the ref is at now is the pull request's, and is served under it.
+    current = client.post(
+        "/api/source/pin", json={"oid": head, "under": "refs/pull/7/head"}, headers=_JSON
+    )
+    assert current.status_code == 200, current.text
+    assert current.json()["status"]["ref"] == "refs/pull/7/head"
+
+
 def test_the_refresh_route_starts_or_joins_one_job(
     pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:

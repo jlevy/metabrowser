@@ -1229,13 +1229,32 @@ All notable changes to Metabrowser are documented here.
 - A cold open of a repository another Metabrowser process is acquiring says that it is
   waiting, and then uses that process’s store.
 
-- In a pull request’s **Changes**, **View file** and **View at base** open the file at
-  that exact commit on its own page, and no longer switch the commit the server serves.
-  A link stays valid after the pull request moves on, for the last 16 comparisons.
-  A file at the commit a mirror’s page shows still opens in the app’s viewer.
-  A Markdown file whose rendering would cost more than a few hundred milliseconds, such
-  as a long task list or thousands of very short lines, opens as Source.
-  Its code blocks show as plain text, as on any inert page, whatever language they name.
+- In a pull request’s **Changes**, each file offers one **View on branch**, which opens
+  the file at the pull request’s head in the main view, with the file tree, tabs, and
+  ref selector around it, as **Browse code** does for the whole tree.
+  When the mirror serves another commit it first switches to the head, under the pull
+  request’s own ref; beside a checkout it opens the working-tree file while the
+  checkout’s `HEAD` is the head.
+  A file with nowhere to open, such as a deleted one, has no control.
+  Changes no longer offers **View at base**, because the merge base is on no branch.
+  A tab whose served commit another tab switched turns its links into the switch back.
+  A page drawn before the pull request moved on switches nothing and says that the head
+  has moved, for **View on branch** and **Browse code** alike, rather than opening the
+  earlier head as a bare commit.
+  Rendered Markdown’s links to other files of the head open there only while the page
+  shows the head, and its images load as before.
+
+- On a repository opened by its URL, a Markdown file’s code blocks render as plain text
+  without running a highlighter.
+  They already looked plain there, since the page drops the highlighter’s colors, and
+  now cost a fraction as much: one 1.6 KB `console` block took 11.6 s to highlight and
+  4.9 ms plain.
+
+- A commit’s diff offers one **View file**, at the commit, and no longer **View at
+  parent**.
+
+- **Browse code** and **Switch to the head** say why a switch did not happen in plain
+  words, as a diff’s **View file** does, rather than with the server’s code.
 
 - A pull request’s **Changes** shows Markdown files **Rendered** by default: changed
   blocks are shown as removed and added, with changed words marked, and a changed list

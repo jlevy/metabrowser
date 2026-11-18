@@ -60,6 +60,9 @@ It links each document below and the contributor standards in `docs/`.
 
 ## Active Plans
 
+- [View on branch](specs/active/plan-2026-11-17-view-on-branch.md): one control on a
+  pull request’s Changes that opens a changed file at the pull request’s head in the
+  main UI, replacing the standalone revision page; approved 2026-11-17
 - [Object data model and views](specs/active/plan-2026-11-14-object-data-model-and-views.md):
   a draft for one modeled object per file, folder, commit, and pull request, drawn in
   several view shapes; its key decisions are open
