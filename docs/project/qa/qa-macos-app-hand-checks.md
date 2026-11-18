@@ -61,7 +61,7 @@ Set `APP` to the development build and make some folders:
 ```shell
 APP="$PWD/apps/macos/build/dev/Metabrowser.app"
 LOGS="$HOME/Library/Logs/Metabrowser"
-mkdir -p /tmp/mb-check/{a/sub,b,c,d,e} "$HOME/Documents/mb-check"
+mkdir -p /tmp/mb-check/{a/sub,b,c,d,e,f,g} "$HOME/Documents/mb-check"
 echo '# notes' > /tmp/mb-check/a/notes.md; echo '# deep' > /tmp/mb-check/a/sub/deep.md
 log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the app log
 ```
@@ -72,7 +72,23 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
    `open -a "$APP" /dev/null` shows an alert.
    File > Open Folder… chooses a file too.
 2. **Recents.** After opening `b`, File > Open Recent and the Dock icon’s menu list `b`
-   above `a`; Clear Menu empties both.
+   above `a`, and `metab --recent`, run with the `metab` the app uses, lists the same
+   two. After `metab /tmp/mb-check/c --no-open` in Terminal, stopped with Control-C, and
+   a switch back to the app, File > Open Recent lists `c` first.
+   Opening `a` again, while its window is open, moves it to the top.
+   **One list in the Dock:** drop `f` on the Dock icon, run
+   `open -a "$APP" /tmp/mb-check/g`, which opens it as Finder’s Open With does, and
+   choose `b` with File > Open Folder…. The Dock icon’s menu then lists each folder
+   exactly once, in the order File > Open Recent shows, with nothing but separators
+   between that list and the app’s own items, and choosing `g` in it brings `g`’s window
+   forward. A folder listed twice, or a second group of folders, is macOS’s own
+   recent-documents list beside the app’s, and fails the check: the app clears macOS’s
+   list only once, at launch, and would have to clear it after each open.
+   Close the windows of `f` and `g`, and look at the Dock menu again after the quit and
+   relaunch below. After `rm -r /tmp/mb-check/c`, choosing `c` shows the alert and
+   removes it. Clear Menu empties both menus and `metab --recent`. After a quit and a
+   relaunch that restores `a` and `b`, both menus and `metab --recent` list them in the
+   order they had before the quit.
    `defaults read io.github.jlevy.metabrowser.dev` shows no `recentFolders` key.
 3. **Tabs.** With Settings > Open folders in set to Tabs, opening `c` and `d` adds them
    as tabs of the front window; set to Windows, opening `e` gives it a window, and
@@ -187,7 +203,7 @@ LOG="$HOME/Library/Logs/Metabrowser/metabrowser-$(printf %s "$REPO" | shasum -a 
     `.venv/bin/metab`, and the link opens.
 11. **A `metab` without `--present`.** Choose a `metab` built before `--present`, such
     as one from a checkout of `main` before #540: Settings calls it too old, “built
-    before --present”, before any link is sent.
+    before --recent”, the newest flag the app needs, before any link is sent.
 12. **Not restored.** Merge a folder window and the repository’s window into one tab
     group with the repository’s tab shown, quit, and launch: the group comes back in its
     place among the windows, showing the folder’s tab, without the repository’s.
@@ -218,6 +234,12 @@ LOG="$HOME/Library/Logs/Metabrowser/metabrowser-$(printf %s "$REPO" | shasum -a 
     it shows the pull request, not the file.
     Then, during a third repository’s first clone, choose Restart Server again and send
     `$REPO/tree/main`: the window the link brought forward says it waits.
+18. **Recents.** After check 1, File > Open Recent and the Dock icon’s menu list the
+    repository first, and `metab --recent`, run with the `metab` the app uses, lists it
+    as a `mirror` at `$REPO`. Open a folder, then send `$REPO/tree/main` while the
+    repository’s window is open: the repository is listed first again.
+    Choosing it in Open Recent opens it as a link to `$REPO` does: its window comes
+    forward and starts again on the default branch.
 
 ## File > Open URL…
 

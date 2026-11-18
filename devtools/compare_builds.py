@@ -227,6 +227,9 @@ def run_once(command: list[str], tree: str, poll: float, deadline_s: float) -> d
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
         cwd="/tmp",
+        # Not an open: the tree stays out of the recent targets, and a build that records
+        # is not charged for it against one that does not.
+        env={**os.environ, "METABROWSER_RECORD_RECENT": "0"},
     )
     spawned = time.monotonic()
     out: dict[str, Any] = {

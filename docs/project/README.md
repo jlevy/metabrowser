@@ -50,6 +50,8 @@ It links each document below and the contributor standards in `docs/`.
   and asset loading tiers
 - [macOS app](architecture/arch-macos-app.md): server supervision, windows and tabs,
   restore, and WebKit differences
+- [Recent targets](architecture/arch-recent-targets.md): the list of folders and
+  repositories opened lately, what records an open, and the shells that read it
 
 ### Formats
 

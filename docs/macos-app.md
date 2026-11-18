@@ -11,7 +11,7 @@ What the app adds is what a browser tab cannot give:
 - a window per folder or GitHub repository, each with its own server, which the app
   starts and stops;
 - a Dock icon, and folders opened from Finder with Open With or dropped on the icon;
-- native menus, tabs across folders, recent folders, and the last session restored.
+- native menus, tabs across folders, recent items, and the last session restored.
 
 ## Opening Folders and Files
 
@@ -156,12 +156,26 @@ Page, and zoom, which the app remembers; Edit > Find; and Help > Metabrowser
 Documentation and Reveal Logs Folder.
 The mark at the title bar’s trailing end opens the project on GitHub.
 
-## Recent Folders
+## Recent Items
 
-File > Open Recent and the Dock icon’s menu list the folders you opened.
-The list is macOS’s own recent-documents list, so macOS keeps its order, System Settings
-\> Desktop & Dock sets its length, and Clear Menu empties it.
-Opening a file adds the folder it opened in.
+File > Open Recent and the Dock icon’s menu list what you opened lately, most recent
+first: the folders and GitHub repositories you opened in the app, in either build of it,
+and those `metab` served in Terminal.
+It is `metab`’s own list of [recent targets](command-line.md#recent-targets), so
+`metab --recent` shows the same entries, and a folder stays in it however many others
+you open, up to the list’s length.
+
+- **A file** adds the folder it opened in.
+- **A GitHub link** adds its repository, which reopens on its default branch.
+- **A folder that is gone** stays listed, since the app never looks at a listed folder
+  until you choose it; choosing it says the folder is gone, and removes it.
+- **Clear Menu** empties the list, for `metab` too.
+- **Only an open changes the order:** File > Open Folder…, Open URL…, Open Recent, a
+  drop, Open With, a GitHub link, or `metab` in Terminal.
+  The windows the app brings back at launch, and a server it restarts, leave the list as
+  it was.
+- **The Dock icon’s menu** lists the same items while the app is running, as the app
+  last read them; it reads them again each time the menu is opened, for the next time.
 
 ## The Last Session
 
@@ -201,8 +215,8 @@ miss `metab`, `git`, or `gh`, and it runs your shell’s startup files in the ap
 which can take seconds.
 
 - **The version:** the app runs `metab` 0.12.1 or later, and checks each candidate by
-  running `metab --exit-on-eof --present --version`. A build from before either flag is
-  too old whatever its number says.
+  running `metab --exit-on-eof --present --recent --version`. A build from before any of
+  those flags is too old whatever its number says.
 - **Trust:** the app runs a `metab` it found only if no other account can change it.
   A standard Homebrew prefix, writable by the `admin` group, fails that rule; Settings
   names each file it would not run, and why.
@@ -263,6 +277,8 @@ The app moves nothing itself.
 - The app does not pass state-location variables (`XDG_CACHE_HOME`,
   `METABROWSER_CACHE_DIR`, and the rest) to its servers, so they always use the default
   cache and configuration locations.
+  A `metab` in Terminal that one of those variables points elsewhere keeps recent
+  targets of its own, which File > Open Recent does not show.
 - A repository that another `metab`, in Terminal say, is cloning at the same moment does
   not open until that clone ends: the window’s start is given up on meanwhile, and Retry
   then opens it from the cache.
@@ -272,8 +288,7 @@ The app moves nothing itself.
   the link brought forward, or the one you chose Restart Server in, says it waits.
 - A folder opens as the folder named, even inside a Git repository, and File > Open URL…
   opens the repository’s mirror without offering a checkout of it that you have open.
-  Opening the repository’s root instead, that offer, and an Open Recent that also lists
-  repositories opened by URL are planned in
+  Opening the repository’s root instead, and that offer, are planned in
   [Open Modes](project/architecture/arch-open-modes.md#the-file-menu).
 - There is no updater and no URL scheme, and an agent can hand the app a target with
   [`--present`](#opening-from-a-terminal-or-an-agent) but cannot yet learn which window

@@ -28,7 +28,9 @@ PROBE=$OUT/$LABEL-probe.js
 } > "$PROBE"
 
 cd "$REPO"
-METABROWSER_REQUEST_LOG=verbose uv --config-file uv.toml run --frozen metab "$CORPUS" \
+# Not an open: the corpus stays out of the recent targets.
+METABROWSER_RECORD_RECENT=0 METABROWSER_REQUEST_LOG=verbose \
+  uv --config-file uv.toml run --frozen metab "$CORPUS" \
   --no-open --port "$PORT" --host 127.0.0.1 > "$OUT/$LABEL-server.log" 2>&1 &
 SERVER=$!
 WRITER=
