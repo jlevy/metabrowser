@@ -1,0 +1,577 @@
+== A folder opens on its working tree: no pin and no ref, and the subject is the folder.
+
+# metab checkout --api /api/source/status
+exit: 0
+--- stdout ---
+api: /api/source/status
+status: 200
+{
+  "subject": "attached_filesystem",
+  "generation": 1,
+  "pin": null,
+  "ref": null,
+  "ref_name": null,
+  "name": null,
+  "origin": null,
+  "location": null,
+  "borrows": null,
+  "shallow": false,
+  "refreshable": false,
+  "latest": null,
+  "ref_on_origin": null,
+  "last_fetch_at": null,
+  "last_outcome": null,
+  "refreshing": false,
+  "stale": false,
+  "pull_request": null,
+  "selection_state": null,
+  "selection_href": null
+}
+--- stderr ---
+
+== The selector lists the working tree and the checkout's own branches. working_tree says the working tree is served and which branch is checked out; kinds names the three lists. The checked-out branch lists first and is checked_out, not current: chosen as a ref it shows its commit, which the working tree is not.
+
+# metab checkout --api /api/source/refs
+exit: 0
+--- stdout ---
+api: /api/source/refs
+status: 200
+{
+  "kind": "branch",
+  "query": "",
+  "limit": 100,
+  "pin": null,
+  "ref": null,
+  "kinds": [
+    "branch",
+    "tag",
+    "remote"
+  ],
+  "working_tree": {
+    "current": true,
+    "head": "refs/heads/topic",
+    "head_name": "topic"
+  },
+  "total": 3,
+  "truncated": false,
+  "refs": [
+    {
+      "name": "topic",
+      "ref": "refs/heads/topic",
+      "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "default": false,
+      "checked_out": true,
+      "current": false
+    },
+    {
+      "name": "feature",
+      "ref": "refs/heads/feature",
+      "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+      "default": false,
+      "checked_out": false,
+      "current": false
+    },
+    {
+      "name": "local-work",
+      "ref": "refs/heads/local-work",
+      "commit": "25e0a2a76ab47a407f3dee083221e6efdcca6283",
+      "default": false,
+      "checked_out": false,
+      "current": false
+    }
+  ]
+}
+--- stderr ---
+
+== Remote-tracking branches are a third list, each with its remote's name. The symbolic origin/HEAD a clone writes is not a row. Tags list newest first, peeled to the commit they name.
+
+# metab checkout --api '/api/source/refs?kind=remote'
+exit: 0
+--- stdout ---
+api: /api/source/refs?kind=remote
+status: 200
+{
+  "kind": "remote",
+  "query": "",
+  "limit": 100,
+  "pin": null,
+  "ref": null,
+  "kinds": [
+    "branch",
+    "tag",
+    "remote"
+  ],
+  "working_tree": {
+    "current": true,
+    "head": "refs/heads/topic",
+    "head_name": "topic"
+  },
+  "total": 2,
+  "truncated": false,
+  "refs": [
+    {
+      "name": "origin/feature",
+      "ref": "refs/remotes/origin/feature",
+      "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+      "default": false,
+      "checked_out": false,
+      "current": false
+    },
+    {
+      "name": "origin/topic",
+      "ref": "refs/remotes/origin/topic",
+      "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "default": false,
+      "checked_out": false,
+      "current": false
+    }
+  ]
+}
+--- stderr ---
+
+# metab checkout --api '/api/source/refs?kind=tag'
+exit: 0
+--- stdout ---
+api: /api/source/refs?kind=tag
+status: 200
+{
+  "kind": "tag",
+  "query": "",
+  "limit": 100,
+  "pin": null,
+  "ref": null,
+  "kinds": [
+    "branch",
+    "tag",
+    "remote"
+  ],
+  "working_tree": {
+    "current": true,
+    "head": "refs/heads/topic",
+    "head_name": "topic"
+  },
+  "total": 2,
+  "truncated": false,
+  "refs": [
+    {
+      "name": "local-tag",
+      "ref": "refs/tags/local-tag",
+      "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+      "default": false,
+      "checked_out": false,
+      "current": false
+    },
+    {
+      "name": "v1",
+      "ref": "refs/tags/v1",
+      "commit": "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e",
+      "default": false,
+      "checked_out": false,
+      "current": false
+    }
+  ]
+}
+--- stderr ---
+
+== A branch is served as a revision of the checkout: a pin named as the folder is, with no origin and nothing to refresh, since nothing is fetched into a checkout. location is the checkout, whose Git objects the pages are read from. The page was on the folder's README.md; view_href is that file at the revision's address.
+
+# metab checkout --api /api/source/pin --data pin-feature-view.json
+exit: 0
+--- stdout ---
+api: /api/source/pin
+status: 200
+{
+  "changed": true,
+  "status": {
+    "subject": "git_revision",
+    "generation": 2,
+    "pin": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+    "ref": "refs/heads/feature",
+    "ref_name": "feature",
+    "name": "checkout",
+    "origin": null,
+    "location": "<ROOT>",
+    "borrows": null,
+    "shallow": false,
+    "refreshable": false,
+    "latest": null,
+    "ref_on_origin": null,
+    "last_fetch_at": null,
+    "last_outcome": null,
+    "refreshing": false,
+    "stale": false,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  },
+  "view_href": "/view/g1-UkVBRE1FLm1k"
+}
+--- stderr ---
+
+== The checked-out branch is its last commit, not the working tree. STAGED.md is in the index and in no commit, so a page on it goes to the root.
+
+# metab checkout --api /api/source/pin --data pin-checked-out.json
+exit: 0
+--- stdout ---
+api: /api/source/pin
+status: 200
+{
+  "changed": true,
+  "status": {
+    "subject": "git_revision",
+    "generation": 2,
+    "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref": "refs/heads/topic",
+    "ref_name": "topic",
+    "name": "checkout",
+    "origin": null,
+    "location": "<ROOT>",
+    "borrows": null,
+    "shallow": false,
+    "refreshable": false,
+    "latest": null,
+    "ref_on_origin": null,
+    "last_fetch_at": null,
+    "last_outcome": null,
+    "refreshing": false,
+    "stale": false,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  },
+  "view_href": "/view/"
+}
+--- stderr ---
+
+== A remote-tracking branch and a tag are served by name.
+
+# metab checkout --api /api/source/pin --data pin-remote.json
+exit: 0
+--- stdout ---
+api: /api/source/pin
+status: 200
+{
+  "changed": true,
+  "status": {
+    "subject": "git_revision",
+    "generation": 2,
+    "pin": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+    "ref": "refs/remotes/origin/feature",
+    "ref_name": "origin/feature",
+    "name": "checkout",
+    "origin": null,
+    "location": "<ROOT>",
+    "borrows": null,
+    "shallow": false,
+    "refreshable": false,
+    "latest": null,
+    "ref_on_origin": null,
+    "last_fetch_at": null,
+    "last_outcome": null,
+    "refreshing": false,
+    "stale": false,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  }
+}
+--- stderr ---
+
+# metab checkout --api /api/source/pin --data pin-tag.json
+exit: 0
+--- stdout ---
+api: /api/source/pin
+status: 200
+{
+  "changed": true,
+  "status": {
+    "subject": "git_revision",
+    "generation": 2,
+    "pin": "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e",
+    "ref": "refs/tags/v1",
+    "ref_name": "v1",
+    "name": "checkout",
+    "origin": null,
+    "location": "<ROOT>",
+    "borrows": null,
+    "shallow": false,
+    "refreshable": false,
+    "latest": null,
+    "ref_on_origin": null,
+    "last_fetch_at": null,
+    "last_outcome": null,
+    "refreshing": false,
+    "stale": false,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  }
+}
+--- stderr ---
+
+== The working tree is asked for by name. It is already served in a new start, so nothing changes.
+
+# metab checkout --api /api/source/pin --data pin-working-tree.json
+exit: 0
+--- stdout ---
+api: /api/source/pin
+status: 200
+{
+  "changed": false,
+  "status": {
+    "subject": "attached_filesystem",
+    "generation": 1,
+    "pin": null,
+    "ref": null,
+    "ref_name": null,
+    "name": null,
+    "origin": null,
+    "location": null,
+    "borrows": null,
+    "shallow": false,
+    "refreshable": false,
+    "latest": null,
+    "ref_on_origin": null,
+    "last_fetch_at": null,
+    "last_outcome": null,
+    "refreshing": false,
+    "stale": false,
+    "pull_request": null,
+    "selection_state": null,
+    "selection_href": null
+  }
+}
+--- stderr ---
+
+== A ref the checkout lacks is not found, and nothing is fetched. Revision syntax and a mixed selection are refused before any lookup.
+
+# metab checkout --api /api/source/pin --data pin-gone.json
+exit: 1
+--- stdout ---
+api: /api/source/pin
+status: 404
+{
+  "error": "no branch or tag with that name is in the checkout",
+  "code": "selection_not_found"
+}
+--- stderr ---
+Error: /api/source/pin returned HTTP 404
+
+# metab checkout --api /api/source/pin --data pin-syntax.json
+exit: 1
+--- stdout ---
+api: /api/source/pin
+status: 400
+{
+  "error": "the ref is not a valid Git ref name",
+  "code": "invalid_selection"
+}
+--- stderr ---
+Error: /api/source/pin returned HTTP 400
+
+# metab checkout --api /api/source/pin --data pin-working-tree-and-ref.json
+exit: 1
+--- stdout ---
+api: /api/source/pin
+status: 400
+{
+  "error": "\"working_tree\" is true, alone or with \"view\"",
+  "code": "invalid_selection"
+}
+--- stderr ---
+Error: /api/source/pin returned HTTP 400
+
+== --ref opens the folder on a branch: metab PATH --ref NAME starts on a revision where metab PATH starts on the working tree, by the switch the selector makes.
+
+# metab checkout --ref feature --api /api/source/status
+exit: 0
+--- stdout ---
+api: /api/source/status
+status: 200
+{
+  "subject": "git_revision",
+  "generation": 2,
+  "pin": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+  "ref": "refs/heads/feature",
+  "ref_name": "feature",
+  "name": "checkout",
+  "origin": null,
+  "location": "<ROOT>",
+  "borrows": null,
+  "shallow": false,
+  "refreshable": false,
+  "latest": null,
+  "ref_on_origin": null,
+  "last_fetch_at": null,
+  "last_outcome": null,
+  "refreshing": false,
+  "stale": false,
+  "pull_request": null,
+  "selection_state": null,
+  "selection_href": null
+}
+--- stderr ---
+
+== A revision's files are read by the routes a page reads them by. feature has FEATURE.md and the committed README.md, and none of the working tree's edited, staged, or untracked files. The catalog is every file of the revision, each named by its GitPath wire (p), as on a mirror.
+
+# metab checkout --ref feature --api /api/catalog
+exit: 0
+--- stdout ---
+api: /api/catalog
+status: 200
+{
+  "complete": true,
+  "truncated": false,
+  "revision": 1,
+  "files": [
+    {
+      "p": "g1-RkVBVFVSRS5tZA",
+      "e": ".md",
+      "n": "FEATURE.md"
+    },
+    {
+      "p": "g1-UkVBRE1FLm1k",
+      "e": ".md",
+      "n": "README.md"
+    }
+  ]
+}
+--- stderr ---
+
+# metab checkout --ref feature --show FEATURE.md
+exit: 0
+--- stdout ---
+show: FEATURE.md
+route: /view/g1-RkVBVFVSRS5tZA
+kind: markdown
+views: rendered (default, key V), source (key S)
+model: text envelope; size=17 content_bytes=17 content_truncated=False
+--- stderr ---
+
+== --ref takes a tag, a remote-tracking branch, and a commit ID. A window of a revision is still called by its folder, and its full name adds what is shown. The two identities run with HOME at the sandbox, so the folder is named from ~.
+
+# metab checkout --ref v1 --api /api/identity
+exit: 0
+--- stdout ---
+api: /api/identity
+status: 200
+{
+  "short_name": "checkout",
+  "full_name": "~/checkout@v1",
+  "kind": "folder",
+  "kind_label": "Local folder",
+  "title": "checkout • Metabrowser"
+}
+--- stderr ---
+
+# metab checkout --ref origin/feature --api /api/identity
+exit: 0
+--- stdout ---
+api: /api/identity
+status: 200
+{
+  "short_name": "checkout",
+  "full_name": "~/checkout@origin/feature",
+  "kind": "folder",
+  "kind_label": "Local folder",
+  "title": "checkout • Metabrowser"
+}
+--- stderr ---
+
+# metab checkout --ref fcb9d63c3c85 --show README.md
+exit: 0
+--- stdout ---
+show: README.md
+route: /view/g1-UkVBRE1FLm1k
+kind: markdown
+views: rendered (default, key V), source (key S)
+model: text envelope; size=9 content_bytes=9 content_truncated=False
+--- stderr ---
+
+== The navigation check runs on a revision. A revision has no recency, so the live filter answers its typed refusal, which is what a page hides that filter by.
+
+# metab checkout --ref feature --check-api
+exit: 0
+--- stdout ---
+api check: checkout
+scenario: nav-live-clear-filter
+initial tree: 200; response=tree
+live filter: 409; unsupported_for_subject
+cleared filter: 200; response=tree
+index: done
+final nav: 200; rows=2; files=2; size=26; index=done
+filtered nav: 200; rows=2; files=2; size=26; empty_dirs=0
+result: pass
+--- stderr ---
+
+== A ref the checkout lacks, revision syntax, and a root with no checkout are refused, and nothing starts. A Git source names its branch or tag in its URL.
+
+# metab checkout --ref gone --api /api/source/status
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: --ref gone: no branch or tag with that name is in the checkout
+
+# metab checkout --ref topic~1 --show README.md
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: --ref topic~1: the ref is not a valid Git ref name
+
+# metab plain --ref feature --api /api/source/status
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: --ref names a branch or tag of a checkout, and ROOT is not a Git repository's root
+
+# metab file://<ROOT>/origin.git --ref feature --api /api/source/status
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: --ref names a branch or tag of a local checkout, and ROOT is a Git source; name the branch or tag in the URL
+
+== A window of a checkout is called by its folder, and a plain folder has no refs to choose among.
+
+# metab checkout --api /api/identity
+exit: 0
+--- stdout ---
+api: /api/identity
+status: 200
+{
+  "short_name": "checkout",
+  "full_name": "<ROOT>",
+  "kind": "folder",
+  "kind_label": "Local folder",
+  "title": "checkout • Metabrowser"
+}
+--- stderr ---
+
+# metab plain --api /api/source/refs
+exit: 1
+--- stdout ---
+api: /api/source/refs
+status: 409
+{
+  "error": "source does not support refs",
+  "code": "unsupported_for_subject",
+  "capability": "refs"
+}
+--- stderr ---
+Error: /api/source/refs returned HTTP 409
+
+== None of it wrote the checkout: after every command above, HEAD, the index, and the working tree are what the fixture left, on topic, with README.md modified and not staged, STAGED.md added, and UNTRACKED.md untracked.
+
+# git -C checkout status --porcelain=v1 --branch
+exit: 0
+--- stdout ---
+## topic...origin/topic
+ M README.md
+A  STAGED.md
+?? UNTRACKED.md
+--- stderr ---
+
+# git -C checkout rev-parse HEAD
+exit: 0
+--- stdout ---
+42382ea2303b733e1e21b4bd6ddb974ca4e775eb
+--- stderr ---

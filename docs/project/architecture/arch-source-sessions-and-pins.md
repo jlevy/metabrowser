@@ -1,13 +1,13 @@
 # Source Sessions and Pins
 
 **Status:** Implemented: one active subject per server process, either a folder’s
-working tree or a pinned revision of a mirror; the content-source contract and
-capabilities; `GitPath` projection on every content route; switching the pin within one
-store; and the pin guard.
-Designed, not built: a pinned revision of a repository folder’s own checkout, shown in
-place of its working tree ([Open Modes](arch-open-modes.md), `mb-8ob8`). A server that
-serves several subjects at once is not designed: it would need subject-qualified
-addresses on every route.
+working tree or a pinned revision, of a mirror or of a repository folder’s own checkout;
+the content-source contract and capabilities; `GitPath` projection on every content
+route; switching the pin within one store; a folder’s server showing a
+[revision of its own checkout](#revisions-of-a-checkout) in its working tree’s place
+([Open Modes](arch-open-modes.md), `mb-8ob8`); and the pin guard.
+A server that serves several subjects at once is not designed: it would need
+subject-qualified addresses on every route.
 
 A server’s root, and whether it is a folder or a mirror, are fixed for its life
 ([Open Modes](arch-open-modes.md)). Its **subject** is the view it shows now: a folder’s
@@ -27,13 +27,15 @@ There are two kinds, `RepositorySubjectKind` in `source.py`:
   Metabrowser never fetches into, switches, resets, locks, or writes a checkout or its
   `.git` directory. A branch, tag, or commit of a checkout is a revision too, and showing
   one never switches, fetches into, or writes the checkout.
-  Today a pinned revision is always a store’s; [Open Modes](arch-open-modes.md#views)
-  designs the checkout’s.
+  [Open Modes](arch-open-modes.md#views) says which views a root has, and
+  [Revisions of a Checkout](#revisions-of-a-checkout) how a checkout’s revision is read.
 - **A pinned revision** (`git_revision`, `GitRevisionSubject` in `git/tree_source.py`)
   is one commit of a Metabrowser-owned, worktree-free repository store.
   A branch, tag, or pull-request head is resolved once to a full commit ID; the subject
   records the ref it came from and the ID, and every tree, blob, history, and diff read
-  uses the ID.
+  uses the ID. A folder’s server can serve one commit of its own checkout the same way,
+  read from the checkout’s Git directory and still never written
+  ([Revisions of a Checkout](#revisions-of-a-checkout)).
 
 Because a pin reads Git objects directly, two server processes can serve different
 branches of one store at the same time, with no index, checked-out branch, or detached
@@ -215,15 +217,19 @@ revisions, so every data request from a pin’s page names its commit:
 
 - The server writes `static/source-pin-guard.js` inline into a pin’s page, with the
   commit the page was rendered for, before any other script can fetch.
-  It wraps `fetch` so every same-origin `/api/` request outside `/api/source/` carries
-  the commit in `x-metabrowser-pin`.
+  A checkout’s working-tree page is guarded too, by another route
+  ([Revisions of a Checkout](#revisions-of-a-checkout)). It wraps `fetch` so every
+  same-origin `/api/` request outside `/api/source/` carries the commit in
+  `x-metabrowser-pin`.
 - `SourcePinGuard` in `source_routes.py` refuses a request that names another commit
   with 409 `pin_changed` and the served commit in `x-metabrowser-pin-changed`. A request
-  that names no commit, from `curl`, `metab --api`, or a folder’s page, is not checked.
-  Once a repository folder can show a revision, its working-tree page names the working
-  tree the same way, so a tab left on either view is refused when the other is served,
-  and only `curl` and `metab --api` name no view
-  ([Open Modes](arch-open-modes.md#views)).
+  that names no commit, from `curl`, `metab --api`, or a plain folder’s page, is not
+  checked. A repository folder’s working-tree page names the working tree the same way,
+  so a tab left on either view is refused when the other is served
+  ([Open Modes](arch-open-modes.md#views)). Where that page’s guard can arrive after its
+  first requests, a checkout’s server also refuses a page’s own request that names
+  nothing ([Revisions of a Checkout](#revisions-of-a-checkout)); a mirror’s server
+  answers one, as before.
 - The page announces the refusal as a `metabrowser:pin-changed` event, and the freshness
   row offers a reload.
   Nothing changes under a reader who is looking at the page.
@@ -273,6 +279,136 @@ A switch and the navigation after it are two steps, because a `/view/` address n
 revision; that is a limit of this design, not something View on branch adds.
 `builtin_plugins/diff/diff-view-file.js` holds the rules in its header, and the parity
 rows `diff.view-file` and `diff.view-file-sides` pin them.
+
+## Revisions of a Checkout
+
+A folder that is a repository’s root can show any branch or tag of its checkout as a
+mirror shows one, a pinned revision read from Git objects, while the working tree, which
+is what a folder opens on, stays a separate choice.
+The checked-out branch, chosen as a ref, shows its last commit, not the working tree.
+This section is the mechanism.
+Which modes exist, what each shows, and why is [Open Modes](arch-open-modes.md).
+
+- **Which folders.** The chooser follows the open root: it is offered when the served
+  root is a repository’s root, by the discovery behind the
+  [exact-root gate](arch-git.md#discovery-and-the-exact-root-gate), which is also what
+  draws the Commits tab.
+  `checkout_revisions` in `checkout_revisions.py` offers it from the root’s `.git`
+  entry, with no Git process, and the first listing or switch asks Git.
+  A “no” is not kept, so a repository made in a served folder gets its chooser on the
+  next load, as it gets its Commits tab.
+  Any other root answers `unsupported_for_subject`, and so does a `.git` entry Git
+  refuses, a hollow one or a repository of another owner: the page then removes the row
+  it was drawn, as discovery removes Commits.
+- **Which directory.** The Git directory read is the one Git names for the root,
+  `rev-parse --git-common-dir`, which is a linked worktree’s main repository and a
+  submodule’s directory under its superproject.
+  The `.git` pointer is never parsed a second time, since a second parser can disagree
+  with Git’s and `--git-dir` skips Git’s ownership check.
+- **Which Git.** One the acquisition floor admits (`require_acquisition_git` in
+  `git/process.py`), since `GIT_NO_LAZY_FETCH` is all that keeps a partial clone’s read
+  from fetching into the reader’s `.git`, and a mirror’s store has no promisor remote
+  where a checkout can.
+  An older Git answers 409 `unsupported_git` with the release needed
+  (`CheckoutGitUnsupportedError`), the panel shows those words, `--ref` fails the start
+  with them, and the working tree is served as before.
+  A partial clone, one whose configuration names a promisor remote, needs a Git from
+  `PARTIAL_CLONE_GIT_MINIMUM` on: before it the variable refuses the fetch and then ends
+  the process at the first missing object, so a revision could not even list its tree.
+  An admitted Git older than that is refused for a partial clone in the same way, and
+  asks nothing more of an ordinary checkout.
+- **Listing.** `GET /api/source/refs` answers the mirror’s envelope from one
+  `for-each-ref` over the checkout’s Git directory, the common one of a linked worktree.
+  `RefNamespaces` in `cache/resolve.py` says where each kind is kept: a mirror’s
+  branches are its origin’s under `refs/remotes/origin/`, a checkout’s are
+  `refs/heads/`, and its remote-tracking branches are a third list, `kind=remote`.
+  `kinds` names the lists a subject has, `working_tree` is null for a mirror and
+  otherwise says whether the working tree is served and which branch `HEAD` is on, and a
+  row’s `checked_out` marks that branch, which lists first.
+- **Showing one.** `POST /api/source/pin` resolves a selection in the checkout’s refs
+  with the mirror’s resolver, a branch, then a tag, then a remote-tracking branch, then
+  a commit ID, never revision syntax, and `replace_owned_subject` attaches a
+  `GitRevisionSubject` over the checkout’s Git directory in the folder’s place.
+  The selector names a row by its full ref.
+  Nothing is fetched for a selection the checkout lacks.
+  The folder’s inventory and watcher are not closed, so they are current when the
+  working tree is served again.
+- **Returning.** `{"working_tree": true}` on the same route calls
+  `restore_filesystem_subject`, which attaches the folder under a new generation and
+  then closes the revision’s batch readers.
+  A branch never returns to it, the checked-out one included.
+- **From a terminal.** `metab PATH --ref NAME` opens the folder on a revision:
+  `open_on_ref` tells the next application lifespan, and `lifespan_checkout` makes the
+  pin route’s own switch as it starts.
+  Serving, `--api`, `--show`, and `--check-api` all run that lifespan, so each reads a
+  checkout’s revision by the routes a page does.
+  A ref the checkout lacks, or a root with no checkout, fails the start with a message
+  that names no path (`fail_subject_open`).
+- **Never written.** A revision’s target is the checkout’s Git directory with no
+  worktree, read under the store policies of
+  [the process boundary](arch-git.md#the-process-boundary): no optional lock, and
+  `GIT_NO_LAZY_FETCH=1`, so a partial clone’s missing object is `object_unavailable` and
+  is not fetched into the reader’s `.git`. Those policies isolate the reader’s user and
+  system configuration, and not the checkout’s local one, which can name a diff driver
+  and select it from its own `info/attributes` or a local `core.attributesFile`. So
+  every `diff` and `show` at a store target says `--no-textconv --no-ext-diff`
+  (`GitLocation.diff_driver_args`): no driver runs, and `cachetextconv` writes no ref.
+  That configuration can also set `log.showSignature`, under which `log` and `show` run
+  the program `gpg.program` names, so every command at a `GitLocation` sets
+  `log.showSignature=false` (`GIT_NO_SIGNATURE_ARGS`). A superproject’s
+  `diff.submodule=diff` would diff a moved submodule in a child Git with the submodule’s
+  own drivers, so every command at a store target sets `diff.submodule=short`
+  (`GIT_NO_SUBMODULE_DIFF_ARGS`). It also sets `format.pretty=medium`,
+  `core.fsmonitor=false`, and `core.hooksPath` at the null device, so no format,
+  fsmonitor, or hook the checkout names runs either.
+  `spawn_git_process` refuses a store read that lacks the options it needs, and the
+  argument shapes known to start a configured program
+  (`_require_no_configured_program`), so a later read cannot forget them;
+  [the process boundary](arch-git.md#the-process-boundary) lists the shapes and what the
+  check does not see. `tests/test_checkout_revisions.py` compares every entry under the
+  checkout, `.git` included, with each file’s inode and modification time, across a
+  session of trees, files, history, commit views, and diffs, with an edited, a staged,
+  and an untracked file in the fixture, and with a hostile configuration, a driver and a
+  signature program, planted each of those ways.
+  It repeats the session in a linked worktree, in a submodule served as the root, and in
+  a superproject whose commit moves its submodule.
+  A blobless clone asked for a commit and a comparison whose blobs it lacks answers
+  `object_unavailable` for each, and no pack arrives.
+- **Trust.** A pinned revision is never trusted, a mirror’s or a checkout’s, whatever
+  the process’s block: `capabilities_for` in `capabilities.py` answers the untrusted
+  block for a pin, and each route takes it for the subject it resolved before anything
+  is awaited. The routes of `git/content_routes.py` are handed their pin and use the
+  untrusted block outright; the shell decides its policy from the subject it read at the
+  top of the request; and `/raw` marks the request when its handler answers a pin, so
+  the trust headers are a pin’s whatever was served when the request arrived.
+  A folder’s server therefore needs no flag to show a revision, and its working tree’s
+  requests get the folder’s own block.
+- **Addresses.** A folder names an entry by its path and a revision by a `GitPath` wire.
+  A switch’s `view_href` translates the page’s address to the other side, and
+  `crossed_view_href` in `source_routes.py` does the same for a `/view/` address that
+  arrives while the other is served, from a tab, a history entry, or a bookmark: the
+  shell redirects it to the same names on the served side when they exist there.
+- **What it is called.** `/api/source/status` reports a revision of a checkout as a pin
+  with no origin, named by the folder, with `location` the checkout’s path and nothing
+  refreshable. `/api/identity` keeps `kind: folder`, since the mode is how the root was
+  opened, and adds `@<ref>` to `full_name`. A remote-tracking branch keeps its remote,
+  `origin/topic` (`checkout_ref_name`).
+- **The guard.** The page of a checkout’s working tree names `working-tree` where a
+  pin’s page names its commit (`WORKING_TREE_PIN`), and is refused with `pin_changed`
+  while a revision is served; a plain folder’s page still names nothing.
+  That page takes `source-pin-guard.js` with the selector’s on-demand bundle and not
+  inline, so until it arrives its requests name nothing.
+  The server covers that moment: while a checkout’s revision is served, a page’s own
+  `fetch` that names no commit, which a browser marks `Sec-Fetch-Site: same-origin` with
+  `Sec-Fetch-Dest: empty`, cannot be the pin’s page and is refused the same way.
+  `curl` and `metab --api` send neither header and are answered.
+  The refusal is a checkout’s server’s alone: a mirror has no working-tree page, its
+  pages carry the guard inline, and a request there that names nothing, a plugin’s
+  worker’s or a preload’s, is answered as it was.
+  A checkout’s page has no freshness row, so its selector makes the offer to reload.
+- **Not yet.** A revision of a checkout has no Pulls tab; a branch that moves while it
+  is shown is not followed; and a revision is read in place, never through a store that
+  borrows the checkout’s objects.
 
 ## How a Mirror’s Page Names Itself
 

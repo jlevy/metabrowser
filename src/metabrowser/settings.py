@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from metabrowser.capabilities import get_capabilities
+from metabrowser.capabilities import Capabilities, get_capabilities
 from metabrowser.file_extensions import (
     SYNTAX_LANGUAGE_BY_BASENAME,
     SYNTAX_LANGUAGE_BY_EXTENSION,
@@ -382,7 +382,9 @@ GIT_COMPARISON_CACHE_BYTES = 16 * 1024 * 1024
 
 
 def client_settings_dict(
-    *, syntax_highlight_max_bytes: int = SYNTAX_HIGHLIGHT_MAX_BYTES
+    *,
+    syntax_highlight_max_bytes: int = SYNTAX_HIGHLIGHT_MAX_BYTES,
+    capabilities: Capabilities | None = None,
 ) -> dict[str, Any]:
     """The subset of settings injected into the client via the
     index template. Reading from a single dict keeps the JS
@@ -432,7 +434,9 @@ def client_settings_dict(
         "SYNTAX_LANGUAGE_BY_EXTENSION": dict(SYNTAX_LANGUAGE_BY_EXTENSION),
         "TEXT_PREVIEW_CHUNK_BYTES": TEXT_PREVIEW_CHUNK_BYTES,
         "TEXT_PREVIEW_MAX_CHUNK_BYTES": TEXT_PREVIEW_MAX_CHUNK_BYTES,
-        "CAPABILITIES": get_capabilities().as_wire(),
+        # The page's subject's block when its shell names one: a pin's is never the
+        # process's (capabilities.capabilities_for).
+        "CAPABILITIES": (capabilities or get_capabilities()).as_wire(),
         # The plugin shortcut facade refuses these, as the manifest loader does.
         "RESERVED_SHELL_KEYS": serialize_reserved_shell_keys(),
     }

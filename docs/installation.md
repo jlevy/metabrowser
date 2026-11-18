@@ -113,7 +113,9 @@ Elsewhere, follow the [Git](https://git-scm.com/install/) and
 [GitHub CLI](https://github.com/cli/cli#installation) instructions.
 Metabrowser refuses to clone or fetch with a Git older than 2.43.7, or with a release of
 a later series that lacks that series’ security fixes, and says which versions it
-accepts.
+accepts. Showing another branch or tag of a local checkout needs the same Git, and a
+newer one in a partial clone (`git clone --filter`), whose refusal names it; browsing
+the folder and reading its commits and diffs do not.
 
 Check the tools and the signed-in account in the terminal that runs `metab`:
 

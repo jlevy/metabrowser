@@ -82,7 +82,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 
 from metabrowser import kpress_adapter
-from metabrowser.capabilities import get_capabilities
+from metabrowser.capabilities import UNTRUSTED_CAPABILITIES
 from metabrowser.client_disconnect import CLIENT_CLOSED, unless_disconnected
 from metabrowser.content_sniff import SNIFF_PREFIX_BYTES, ContentClass, classify_prefix
 from metabrowser.diff.markdown_projection_worker import (
@@ -346,11 +346,17 @@ def _git_frontmatter_envelope(
     return fields
 
 
+# A pinned revision is never trusted, whatever the process's block: every route here was
+# handed the pin its request resolved, so the profile is fixed before anything is awaited
+# (capabilities.capabilities_for).
+_PIN_CAPABILITIES = UNTRUSTED_CAPABILITIES
+
+
 def _views_for_kind(kind: str) -> list[dict[str, Any]]:
     # Plugin kinds such as diff live in manifests, not VIEW_REGISTRY.
     from metabrowser.server import _views_for_kind as merged_views_for_kind
 
-    return merged_views_for_kind(kind)
+    return merged_views_for_kind(kind, active_content=_PIN_CAPABILITIES.active_content)
 
 
 def _passes_min_size(entry: GitTreeEntry, floor: int) -> bool:
@@ -1196,7 +1202,7 @@ async def git_revision_capabilities(subject: GitRevisionSubject) -> JSONResponse
                 "contract": _GIT_INDEX_CONTRACT,
             },
             "events": {"stream": "off", "reason": "git-revision-no-watcher"},
-            "capabilities": get_capabilities().as_wire(),
+            "capabilities": _PIN_CAPABILITIES.as_wire(),
         }
     )
 
@@ -1744,55 +1750,38 @@ async def git_revision_kpress_render(
             _git_blob_content_predicates, ext, parse_source
         )
     envelope = _git_frontmatter_envelope(mapping=frontmatter, error=frontmatter_error)
-    trusted = get_capabilities().active_content
     try:
-        if trusted:
-            rendered = await asyncio.to_thread(
-                kpress_adapter.render_kpress_view,
-                source_text=content,
-                # Display text is not a route identity; wiki rewrite must stay on the wire.
-                source_path=entry.path.to_wire(),
-                kind=kind,
-                view=view,
-                ext=ext,
-                mtime_hash=entry.oid,
-                size=logical_size,
-                frontmatter=envelope.get("frontmatter"),
-                frontmatter_error=envelope.get("frontmatter_error"),
-                profile=profile,
-                include_toc=include_toc,
-            )
-        else:
-            # Inert, in the Markdown child under its deadline, and known by its blob, or
-            # by the text a page sent in its place. A client that goes away leaves the
-            # render to no one, and an abandoned render must not hold the child.
-            inert = await unless_disconnected(
-                request,
-                shared_worker().render_inert(
-                    InertRender(
-                        source_text=content,
-                        source_path=entry.path.to_wire(),
-                        display_path=entry.path.display(),
-                        identity=(
-                            f"blob:{entry.oid}"
-                            if source_override is None
-                            else await asyncio.to_thread(text_identity, source_override)
-                        ),
-                        kind=kind,
-                        view=view,
-                        ext=ext,
-                        mtime_hash=entry.oid,
-                        size=logical_size,
-                        frontmatter=envelope.get("frontmatter"),
-                        frontmatter_error=envelope.get("frontmatter_error"),
-                        profile=profile,
-                        include_toc=include_toc,
-                    )
-                ),
-            )
-            if inert is None:
-                return JSONResponse({}, status_code=CLIENT_CLOSED)
-            rendered = inert
+        # A pin is never trusted (_PIN_CAPABILITIES), so its document renders inert, in the
+        # Markdown child under its deadline, and is known by its blob, or by the text a
+        # page sent in its place; display text is not a route identity, so the source path
+        # stays on the wire. A client that goes away leaves the render to no one, and an
+        # abandoned render must not hold the child. The child raises KPress's errors too.
+        rendered = await unless_disconnected(
+            request,
+            shared_worker().render_inert(
+                InertRender(
+                    source_text=content,
+                    source_path=entry.path.to_wire(),
+                    display_path=entry.path.display(),
+                    identity=(
+                        f"blob:{entry.oid}"
+                        if source_override is None
+                        else await asyncio.to_thread(text_identity, source_override)
+                    ),
+                    kind=kind,
+                    view=view,
+                    ext=ext,
+                    mtime_hash=entry.oid,
+                    size=logical_size,
+                    frontmatter=envelope.get("frontmatter"),
+                    frontmatter_error=envelope.get("frontmatter_error"),
+                    profile=profile,
+                    include_toc=include_toc,
+                )
+            ),
+        )
+        if rendered is None:
+            return JSONResponse({}, status_code=CLIENT_CLOSED)
     except InertRenderRefused as refused:
         return JSONResponse(
             kpress_refusal_payload(refused, path.to_wire()),

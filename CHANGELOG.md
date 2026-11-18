@@ -4,6 +4,37 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A local checkout has a branch and tag chooser.
+  A folder that is a repository’s root shows the button a repository URL’s page has,
+  under the navigation header, and opens on **Working tree**: your files on disk.
+  Its list has the working tree first, then the checkout’s branches, with the
+  checked-out one marked, its tags, and its remote-tracking branches under **Remotes**.
+  Choosing a branch or tag shows its last commit, read from the repository’s own Git
+  objects: nothing is checked out, fetched, or written, so your working tree, your
+  index, and `HEAD` are untouched.
+  The checked-out branch, chosen there, shows what is committed, and **Working tree**
+  returns to your live files.
+  A branch or tag is read-only and runs under the untrusted profile, as a repository
+  URL’s page does, and the folder’s own profile returns with the working tree.
+  `metab <folder> --ref <name>` opens the folder on a branch, tag, remote-tracking
+  branch, or commit ID from the start, when serving and with `--api`, `--show`, and
+  `--check-api`. `GET /api/source/refs` and `POST /api/source/pin` answer a checkout
+  too, with `kind=remote` and `{"working_tree": true}`. A pinned revision is now never
+  served under a trusting profile, whatever the process was started with: the profile is
+  the subject’s, so a mirror’s page and a checkout’s revision are untrusted by
+  construction and not by a flag.
+  A branch or tag of a checkout is read without running anything the checkout’s Git
+  configuration names, a diff driver (a submodule’s included) or a signature program,
+  and without fetching into a partial clone, where an object the clone lacks is reported
+  as unavailable. That last guarantee needs a Git as recent as cloning does, and a newer
+  one in a partial clone, so with an older Git the list says which release it needs and
+  the working tree is served as before.
+  The Commits tab of a folder no longer runs a signature program: where the repository’s
+  or your own Git configuration sets `log.showSignature`, Git verified each commit it
+  listed, and Metabrowser shows no signature state.
+  See
+  [Branches and Tags of a Local Checkout](docs/browsing-history.md#branches-and-tags-of-a-local-checkout).
+
 - Metabrowser now keeps a list of recent targets, the folders and repositories opened
   lately, and the macOS app’s File > Open Recent shows it.
   Every `metab` that serves records what it serves, so the menu lists folders opened in

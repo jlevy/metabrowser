@@ -52,8 +52,38 @@ or a trusted store target, never both.
 Each spawn runs under a named `GitProcessPolicy`: `READ_POLICY` for a served folder,
 `STORE_READ_POLICY` and `BATCH_OBJECT_POLICY` for a Metabrowser-owned store, and
 `ACQUISITION_POLICY` for fetching.
-A store target that names no policy gets the store policy, and a store spawn whose
-policy would allow lazy fetch is refused.
+A revision a folder’s server shows of its own checkout is read as a store is: its target
+is the checkout’s Git directory, with no worktree, under the two store policies
+([Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout)).
+Every `diff` and `show` at a store target also says `--no-textconv --no-ext-diff`
+(`GitLocation.diff_driver_args`), since those policies leave a repository’s local
+configuration in effect and a checkout’s can name a driver.
+Every command run at a `GitLocation`, a served folder’s included, sets
+`log.showSignature=false` (`GIT_NO_SIGNATURE_ARGS` in `GitLocation.config_args`): with
+that setting on in a repository’s configuration, `log` and `show` verify signatures by
+running the program `gpg.program`, `gpg.ssh.program`, or `gpg.x509.program` names, and
+no page shows a signature’s state.
+Every command at a store target also sets `diff.submodule=short`
+(`GIT_NO_SUBMODULE_DIFF_ARGS`): with `diff`, a patch diffs each changed submodule in a
+child Git in the submodule’s own Git directory, which runs that directory’s drivers
+whatever the parent passes.
+A store target’s `GitLocation` also sets `format.pretty=medium`
+(`GIT_NO_CONFIGURED_FORMAT_ARGS`), since that setting can hold `%G?`, which verifies a
+signature for a `show` or `log` without a format of its own, and `core.fsmonitor=false`
+with `core.hooksPath` at the null device (`GIT_NO_HOOK_ARGS`), since a read of an index
+path runs the one and a ref written runs a hook.
+A store target that names no policy gets the store policy, and a store spawn is refused
+when its policy would allow lazy fetch, or when its arguments have a shape that would
+start a program the repository’s configuration names (`_require_no_configured_program`):
+a `diff`, `show`, or `log` without the driver options after its command and the
+signature, submodule, and format settings before it; another value for one of those
+settings or the hook settings; `--show-signature`, `--textconv`, `--ext-diff`,
+`--alternate-refs`, a signature in a format or a sort, or a format given by name; a
+`cat-file` or `hash-object` filter, an editor, or a `rev-list` content search; and,
+under the read policies, any command outside `_STORE_READ_COMMANDS` and a `symbolic-ref`
+or `config` that writes.
+The guard reads arguments only: it does not see what a batch reads from its input, or an
+index path, which only a read through a `GitLocation` is protected for.
 
 | Invariant | Mechanism | What it prevents |
 | --- | --- | --- |
@@ -106,9 +136,12 @@ Git therefore writes into the checkout’s Git directory in two cases:
 
 Both were reproduced on 2026-11-18 with Git 2.50.1, through `/api/git/commit/<rev>` on a
 `--filter=blob:none` clone and through `/api/plugin/diff/comparison` on a checkout with
-such a driver. No test holds either yet (`mb-z849`).
-[Open Modes](arch-open-modes.md#what-is-never-written) states the rule they fall short
-of, and requires that a revision of a checkout never reach either.
+such a driver. No test holds either yet (`mb-z849`). A third case is closed for every
+location: a signature program named by the checkout’s configuration, which
+`log.showSignature` would run from the Commits tab, is never started, and
+`tests/test_checkout_revisions.py` holds that for a folder’s own history as for a
+revision’s. [Open Modes](arch-open-modes.md#what-is-never-written) states the rule they
+fall short of, and requires that a revision of a checkout never reach either.
 
 ### The One Other Git Process
 
