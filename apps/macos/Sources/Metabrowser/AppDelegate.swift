@@ -71,11 +71,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var isQuitting = false
     /// The GitHub links waiting for `metab` to resolve them, one at a time.
     private var links = LinkQueue()
-    /// What the links since the last alert could not open, said once none is resolving.
-    private var linkProblems: [LinkAlert] = []
-    /// The repositories this run of the app found in `metab`'s cache or was told to clone,
-    /// by key, which a later link opens without asking (`mayClone`). Kept in memory only.
-    private var knownRepositories: Set<String> = []
+    /// The repositories a link may clone, and the questions about the rest, which wait
+    /// beside the queue.
+    private var clones = CloneQuestions()
+    /// What the links since the last alert could not open, said once the burst has ended.
+    private var linkProblems = LinkProblems()
+    /// Whether a clone question or the problems alert is up: one at a time.
+    private var isShowingLinkModal = false
     /// The runtime's file, or where `metab` may appear while there is none.
     private var watch: SetupWatch?
     private var watchedRuntime: Runtime?
@@ -136,7 +138,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// A launch or reopen with nothing to show offers the Open panel.
     func applicationOpenUntitledFile(_ sender: NSApplication) -> Bool {
         if selection.setup != nil {
-            if sessions.openServers.isEmpty && selection.waitingFolders.isEmpty && links.isIdle { openFolder(nil) }
+            if sessions.openServers.isEmpty && selection.waitingFolders.isEmpty && linksAreIdle { openFolder(nil) }
         } else {
             showPanelAfterDiscovery = true
         }
@@ -275,9 +277,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// repository with a window starts its server again on that link, so the window shows
     /// the revision and page the link names (`FolderSession.open(link:)`). Otherwise a new
     /// session starts its server on the link, after asking first when `metab`'s cache does
-    /// not hold the repository (`mayClone`). The links a burst could not open are said in one
-    /// alert once the burst is resolved. A link waits for a runtime as a folder does. A
-    /// repository's windows are not saved with the session (`FolderWindows.snapshot`).
+    /// not hold the repository, a question that waits beside the queue (`CloneQuestions`).
+    /// The links a burst could not open are said in one alert once the burst has ended. A
+    /// link waits for a runtime as a folder does. A repository's windows are not saved with
+    /// the session (`FolderWindows.snapshot`).
     private func requestLink(_ url: URL) {
         guard GitHubLink.accepts(url) else {
             return noteLinkProblem(LinkAlert(
@@ -289,6 +292,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             beginRecheck()
         }
         guard selection.setupForOpening(url) != nil else {
+            if selection.droppedLinks > 0 { showNextLinkModal() }
             if !selection.isBusy { showSettings(nil) }
             return
         }
@@ -303,11 +307,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         resolveNextLink()
     }
 
-    /// Resolves the next waiting link, unless one is being resolved; once none waits, says
-    /// what could not be opened.
+    /// Resolves the next waiting link, unless one is being resolved; once none waits, the
+    /// burst may have ended (`showNextLinkModal`).
     private func resolveNextLink() {
         guard let url = links.next() else {
-            if links.isIdle { showLinkProblemsLater() }
+            if links.isIdle { showNextLinkModal() }
             return
         }
         Task {
@@ -335,7 +339,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .plan(let plan):
             AppLog.app.info(
                 "\(link, privacy: .private) resolves to \(plan.kind.rawValue, privacy: .public) in \(plan.repository.absoluteString, privacy: .public)")
-            await open(plan, requested: url, with: setup)
+            await open(plan, with: setup)
         case .refused(let refusal):
             AppLog.app.info("metab refused \(link, privacy: .private): \(refusal.code, privacy: .public)")
         case .unreadable(let reason, _):
@@ -349,31 +353,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Shows `plan` in its repository's window, or in a new session whose server starts on
     /// `plan.link`. A new window loads its server's entry page, which the server resolves
     /// from the link against its mirror, so a ref with a `/` in it opens the right page.
-    private func open(_ plan: PresentPlan, requested url: URL, with setup: RuntimeSetup) async {
+    ///
+    /// A repository nobody has said may be cloned is looked up in `metab`'s cache in the
+    /// link's turn; one the cache does not hold asks, and its question, with any later
+    /// links into it, waits beside the queue, so the links behind it go on (`CloneQuestions`).
+    private func open(_ plan: PresentPlan, with setup: RuntimeSetup) async {
         let root = SessionRoot.repository(plan.repository)
         if let session = sessions[root.key] as? FolderSession {
             return session.open(link: plan.link)
         }
-        guard await mayClone(root, with: setup), !isQuitting else { return }
-        if let session = sessions[root.key] as? FolderSession {
-            return session.open(link: plan.link)
+        let name = root.identity().fullName
+        switch clones.arrive(plan.link, into: root) {
+        case .open:
+            openRepository(root, on: plan.link)
+        case .waits:
+            AppLog.app.info("\(name, privacy: .public): a link waits for the answer about cloning it")
+        case .declined:
+            AppLog.app.info("\(name, privacy: .public): a link was not opened, since cloning it was declined")
+        case .dropped:
+            AppLog.app.error(
+                "\(CloneQuestions.limit) repositories wait for an answer about cloning them; a link into \(name, privacy: .public) was dropped")
+        case .lookUp:
+            if await isCached(root, with: setup) {
+                if let link = clones.found(root), !isQuitting { openRepository(root, on: link) }
+            } else {
+                clones.ask(root)
+                showNextLinkModal()
+            }
         }
-        // A runtime held off while `metab` answered: the link waits, and is resolved again.
-        guard selection.setupForOpening(url) != nil, let session = session(for: root, link: plan.link) else {
-            if !selection.isBusy { showSettings(nil) }
-            return
-        }
-        folderWindows.place(session.makeWindow())
-        Task { await session.startServer() }
     }
 
-    /// Whether a link may start a server for `root`: at once when `metab`'s cache holds the
-    /// repository (`RepositoryCache`), and otherwise once the user says to clone it, since a
-    /// first clone downloads it and reads it with the user's `gh` sign-in on the word of
-    /// whatever sent the link. A repository found or agreed to is not asked about again
-    /// while the app runs.
-    private func mayClone(_ root: SessionRoot, with setup: RuntimeSetup) async -> Bool {
-        if knownRepositories.contains(root.key) { return true }
+    /// Whether `metab`'s cache holds `root` (`RepositoryCache`); an answer the app cannot
+    /// read is no, so the user is asked.
+    private func isCached(_ root: SessionRoot, with setup: RuntimeSetup) async -> Bool {
         let folder = appIdentity.supportDirectory()
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let answer = await RepositoryCache.lookUp(
@@ -381,41 +393,85 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             inherited: ProcessInfo.processInfo.environment)
         switch answer {
         case .cached:
-            knownRepositories.insert(root.key)
             return true
         case .notCached:
-            break
+            return false
         case .unknown(let reason):
             AppLog.app.error(
                 "could not ask metab whether it has \(root.key, privacy: .public): \(reason, privacy: .public); asking before it clones")
+            return false
         }
-        guard !isQuitting else { return false }
-        let name = root.identity().fullName
-        let confirmed = await confirm(
-            "Clone \(name)?",
-            "Metabrowser has no copy of \(name) yet. Opening this link clones the repository into metab’s cache, and reads it and its pull requests with your gh sign-in.",
-            action: "Clone and Open")
-        AppLog.app.info("\(name, privacy: .public): clone \(confirmed ? "confirmed" : "declined", privacy: .public)")
-        if confirmed { knownRepositories.insert(root.key) }
-        return confirmed
+    }
+
+    /// The repository's window, whose server starts again on `link`, or a new session whose
+    /// server starts on it. Without a runtime accepted now, the link waits for one, and is
+    /// resolved again.
+    private func openRepository(_ root: SessionRoot, on link: URL) {
+        if let session = sessions[root.key] as? FolderSession {
+            return session.open(link: link)
+        }
+        guard selection.setupForOpening(link) != nil, let session = session(for: root, link: link) else {
+            if !selection.isBusy { showSettings(nil) }
+            return
+        }
+        folderWindows.place(session.makeWindow())
+        Task { await session.startServer() }
     }
 
     private func noteLinkProblem(_ alert: LinkAlert) {
-        linkProblems.append(alert)
-        if links.isIdle { showLinkProblemsLater() }
+        linkProblems.note(alert)
+        showNextLinkModal()
     }
 
-    /// One alert for what the links since the last could not open, once none is being
-    /// resolved. Several requests in one turn show one alert.
-    private func showLinkProblemsLater() {
-        onRunLoop { [weak self] in
-            guard let self, self.links.isIdle, !self.isQuitting else { return }
-            let problems = self.linkProblems
-            self.linkProblems = []
-            if let alert = LinkAlert.combined(problems, dropped: self.links.takeDropped()) {
-                self.refuse(alert.message, alert.detail)
+    /// Whether no link waits or is being resolved, and no repository waits for the cache or
+    /// a question: the end of a burst, and what the app checks before it offers the Open
+    /// panel, since a link under way is about to open a window.
+    private var linksAreIdle: Bool { links.isIdle && clones.isIdle }
+
+    /// Asks the next clone question, or once the burst has ended, says in one alert what
+    /// its links could not open. One modal at a time, from the run loop (`onRunLoop`):
+    /// what gathers while one is up is shown when it closes (review C9 on #539).
+    private func showNextLinkModal() {
+        onRunLoop { [weak self] in self?.raiseNextLinkModal() }
+    }
+
+    private func raiseNextLinkModal() {
+        guard !isShowingLinkModal, !isQuitting else { return }
+        if let root = clones.nextQuestion() {
+            isShowingLinkModal = true
+            let clone = askToClone(root)
+            isShowingLinkModal = false
+            if let link = clones.answer(root, clone: clone), !isQuitting { openRepository(root, on: link) }
+        } else {
+            guard linksAreIdle else { return }
+            linkProblems.noteTurnedAway(links.takeDropped(), .queueFull)
+            linkProblems.noteTurnedAway(clones.takeDropped(), .questionsFull)
+            linkProblems.noteTurnedAway(selection.takeDroppedLinks(), .runtimeWaitFull)
+            for (root, count) in clones.endBurst().sorted(by: { $0.key.key < $1.key.key }) {
+                linkProblems.note(LinkAlert.declined(root.identity().fullName, count: count))
             }
+            guard let alert = linkProblems.take() else { return }
+            isShowingLinkModal = true
+            refuse(alert.message, alert.detail)
+            isShowingLinkModal = false
         }
+        showNextLinkModal()
+    }
+
+    /// Asks whether to clone `root`, which its links wait for. Cancel is the default
+    /// button, so a Return typed into another app as this one comes forward declines
+    /// (review C7 on #539). A quit for a signal aborts the alert, which declines.
+    private func askToClone(_ root: SessionRoot) -> Bool {
+        let name = root.identity().fullName
+        let alert = NSAlert()
+        alert.messageText = "Clone \(name)?"
+        alert.informativeText =
+            "Metabrowser has no copy of \(name) yet. Opening this link clones the repository into metab’s cache, and reads it and its pull requests with your gh sign-in."
+        alert.addButton(withTitle: "Cancel")  // the first button is the default
+        alert.addButton(withTitle: "Clone and Open")
+        let clone = alert.runModal() == .alertSecondButtonReturn
+        AppLog.app.info("\(name, privacy: .public): clone \(clone ? "confirmed" : "declined", privacy: .public)")
+        return clone
     }
 
     /// The open session for `root`, or a new one with no window and no server yet; nil
@@ -438,6 +494,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if self?.selection.isBusy == false { self?.showSettings(nil) }
         }
         session.onRootRefused = { [weak self] refused in self?.folderWindows.rootRefused(refused) }
+        session.onLinkSelectionMissing = { [weak self] missing, link, outcome in
+            let name = missing.served.identity().fullName
+            if let alert = LinkAlert.selectionMissing(outcome, link: link, repository: name) { self?.noteLinkProblem(alert) }
+        }
         session.onAllWindowsClosed = { [weak self] closed in
             self?.sessions.retire(closed)
             self?.folderWindows.folderClosed(closed)
@@ -493,21 +553,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         CFRunLoopWakeUp(main)
     }
 
-    /// Asks `message` with `detail`, from the run loop (`onRunLoop`): true when the user
-    /// chose `action`. A quit for a signal aborts the alert, which declines.
-    private func confirm(_ message: String, _ detail: String, action: String) async -> Bool {
-        await withCheckedContinuation { (answered: CheckedContinuation<Bool, Never>) in
-            onRunLoop {
-                let alert = NSAlert()
-                alert.messageText = message
-                alert.informativeText = detail
-                alert.addButton(withTitle: action)
-                alert.addButton(withTitle: "Cancel")
-                answered.resume(returning: alert.runModal() == .alertFirstButtonReturn)
-            }
-        }
-    }
-
     private func openPendingFolders() {
         selection.takeWaitingFolders().forEach(request)
     }
@@ -551,7 +596,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             adopted(found, opening: finish.released)
             switch finish.operation {
             case .search:
-                if showPanelAfterDiscovery, sessions.openServers.isEmpty, selection.waitingFolders.isEmpty, links.isIdle {
+                if showPanelAfterDiscovery, sessions.openServers.isEmpty, selection.waitingFolders.isEmpty, linksAreIdle {
                     openFolder(nil)
                 }
                 showPanelAfterDiscovery = false

@@ -34,16 +34,19 @@ public nonisolated enum GitHubLink {
     nonisolated(unsafe) private static let prefix =
         #/^https://([A-Za-z0-9.-]+)(?::443)?(?:[/?#]|$)/#.ignoresCase()
 
-    /// `link` for an alert: without a user name or password, which can be a token on a
-    /// shared screen, and whole up to `shownLength` characters, else its start and end.
+    /// `link` for an alert: without a user name, a password, a query, or a fragment, any
+    /// of which can carry a token onto a shared screen (a raw file's `?token=`), and whole
+    /// up to `shownLength` characters, else its start and end. A query or fragment left
+    /// out shows as `?…` or `#…`.
     public static func shown(_ link: URL) -> String {
-        var text = link.absoluteString
-        if link.user != nil || link.password != nil, var parts = URLComponents(url: link, resolvingAgainstBaseURL: false) {
-            parts.user = nil
-            parts.password = nil
-            text = parts.string ?? "(a link with a user name)"
-        }
-        return Self.shortened(text, to: shownLength)
+        guard var parts = URLComponents(url: link, resolvingAgainstBaseURL: false) else { return "(a link that cannot be shown)" }
+        let elided = parts.percentEncodedQuery != nil ? "?…" : parts.percentEncodedFragment != nil ? "#…" : ""
+        parts.user = nil
+        parts.password = nil
+        parts.percentEncodedQuery = nil
+        parts.percentEncodedFragment = nil
+        guard let text = parts.string else { return "(a link that cannot be shown)" }
+        return Self.shortened(text + elided, to: shownLength)
     }
 
     /// `text` cut to at most `limit` characters, keeping its start and its end.
@@ -63,8 +66,10 @@ public nonisolated enum GitHubLink {
 /// `root` is the repository's canonical URL, which keys its session (`SessionRoot`).
 /// `handoff` is the link as `metab` rebuilds it from what its reducer kept, with no
 /// credentials, query, or tracking: it is what the server is started with, so what a
-/// sender put in the link beyond what `metab` reads never reaches the server's arguments,
-/// its log, or the process table. `page` is not read: a repository's server resolves the
+/// sender put in the link beyond what `metab` reads never reaches the server's arguments
+/// or its log. The dry run itself is given the link as sent, so the process table shows
+/// it for the dry run's lifetime, about a third of a second and at most
+/// `PresentDryRun.timeout`. `page` is not read: a repository's server resolves the
 /// link against its mirror and announces the page itself, which a dry run cannot always
 /// know (it is null where a ref may hold a `/`), so a window shows the server's entry page.
 public nonisolated struct PresentPlan: Equatable, Sendable {
@@ -137,19 +142,71 @@ public nonisolated struct LinkAlert: Equatable, Sendable {
     /// How many links one combined alert describes; the rest are counted.
     static let shownInBatch = 5
 
-    /// One alert for every link a burst could not open, so a burst raises one modal, not
-    /// one per link; nil for none. `dropped` links were never resolved (`LinkQueue.limit`).
-    public static func combined(_ alerts: [LinkAlert], dropped: Int = 0) -> LinkAlert? {
-        var detail: [String] = []
-        if dropped > 0 {
-            detail.append(
-                "\(dropped) more \(dropped == 1 ? "link was" : "links were") not opened: Metabrowser resolves at most \(LinkQueue.limit) links at a time.")
+    /// What the app says when the user declined to clone `name` and `count` more links
+    /// into it, waiting with its question or sent before the burst ended, were not opened
+    /// (`CloneQuestions`).
+    public static func declined(_ name: String, count: Int) -> LinkAlert {
+        LinkAlert(
+            message: "Metabrowser did not clone \(name)",
+            detail: "\(count) more \(count == 1 ? "link" : "links") into \(name) \(count == 1 ? "was" : "were") not opened, since you declined to clone it. Sending a link to it again asks again.")
+    }
+}
+
+/// What the links since the last alert could not open, said in one alert once the burst
+/// has ended, so a burst raises one modal, not one per link. It keeps the first
+/// `LinkAlert.shownInBatch` problems and counts the rest, so links that keep arriving
+/// keep no list that grows with them (review C9 on #539).
+public nonisolated struct LinkProblems: Equatable, Sendable {
+    /// Why links were turned away before `metab` resolved them.
+    public enum Turnaway: CaseIterable, Equatable, Hashable, Sendable {
+        /// `LinkQueue.limit` links waited to be resolved.
+        case queueFull
+        /// `LinkQueue.limit` links waited for a `metab` the app can run
+        /// (`RuntimeSelection.setupForOpening`).
+        case runtimeWaitFull
+        /// `CloneQuestions.limit` repositories waited for the cache or a question.
+        case questionsFull
+
+        var reason: String {
+            switch self {
+            case .queueFull: "Metabrowser resolves one link at a time and keeps \(LinkQueue.limit) waiting"
+            case .runtimeWaitFull: "Metabrowser keeps \(LinkQueue.limit) links waiting for a metab it can run"
+            case .questionsFull: "Metabrowser asks about \(CloneQuestions.limit) repositories it has no copy of at a time"
+            }
         }
-        if alerts.count == 1, dropped == 0 { return alerts[0] }
-        guard !alerts.isEmpty || dropped > 0 else { return nil }
-        detail += alerts.prefix(shownInBatch).map { "\($0.message): \($0.detail)" }
-        if alerts.count > shownInBatch { detail.append("and \(alerts.count - shownInBatch) more.") }
-        let total = alerts.count + dropped
+    }
+
+    public private(set) var shown: [LinkAlert] = []
+    /// Problems past `shown`, counted.
+    public private(set) var more = 0
+    /// Links never resolved, by why.
+    public private(set) var turnedAway: [Turnaway: Int] = [:]
+
+    public init() {}
+
+    public var isEmpty: Bool { shown.isEmpty && turnedAway.isEmpty }
+
+    public mutating func note(_ alert: LinkAlert) {
+        if shown.count < LinkAlert.shownInBatch { shown.append(alert) } else { more += 1 }
+    }
+
+    public mutating func noteTurnedAway(_ count: Int, _ why: Turnaway) {
+        guard count > 0 else { return }
+        turnedAway[why, default: 0] += count
+    }
+
+    /// The one alert for everything noted, which empties it; nil for nothing.
+    public mutating func take() -> LinkAlert? {
+        defer { self = LinkProblems() }
+        let dropped = turnedAway.values.reduce(0, +)
+        if shown.count == 1, more == 0, dropped == 0 { return shown[0] }
+        guard !isEmpty else { return nil }
+        var detail = Turnaway.allCases.compactMap { why in
+            turnedAway[why].map { "\($0) more \($0 == 1 ? "link was" : "links were") not opened: \(why.reason)." }
+        }
+        detail += shown.map { "\($0.message): \($0.detail)" }
+        if more > 0 { detail.append("and \(more) more.") }
+        let total = shown.count + more + dropped
         return LinkAlert(
             message: "Metabrowser could not open \(total) \(total == 1 ? "link" : "links")",
             detail: detail.joined(separator: "\n\n"))
@@ -178,7 +235,7 @@ public nonisolated enum PresentAnswer: Equatable, Sendable {
             let message = GitHubLink.shortened(refusal.message, to: Self.shownLineLength)
             return LinkAlert(message: "Metabrowser cannot open this link", detail: "\(message)\n\n\(shown)")
         case .unreadable(let reason, let output):
-            var detail = "\(shown)\n\n\(metab) \(reason)."
+            var detail = "\(shown)\n\n\(metab) \(GitHubLink.shortened(reason, to: Self.shownLineLength))."
             let tail = output.suffix(PresentDryRun.shownLines).map { GitHubLink.shortened($0, to: Self.shownLineLength) }
             if !tail.isEmpty { detail += " Its last output:\n" + tail.joined(separator: "\n") }
             return LinkAlert(message: "metab could not resolve this link", detail: detail)
@@ -205,6 +262,8 @@ public nonisolated enum PresentDryRun {
     public static let timeout = RuntimeDiscovery.versionTimeout
     /// How many of its last lines an unreadable answer's alert shows.
     static let shownLines = 5
+    /// The most of an unknown `kind` a reason quotes: every kind the app knows is shorter.
+    static let quotedKindLength = 40
 
     public static func arguments(for link: URL) -> [String] {
         [link.absoluteString, flag, "--dry-run", "--format", "json"]
@@ -261,7 +320,8 @@ public nonisolated enum PresentDryRun {
 
     private static func plan(_ wire: Wire) -> Result<PresentPlan, JSONAnswer.Problem> {
         guard let kindText = wire.kind, let kind = PresentPlan.Kind(rawValue: kindText) else {
-            return .failure(JSONAnswer.Problem("the kind \(wire.kind.map { "\"\($0)\"" } ?? "null") for a link"))
+            let quoted = wire.kind.map { "\"\(GitHubLink.shortened($0, to: quotedKindLength))\"" } ?? "null"
+            return .failure(JSONAnswer.Problem("the kind \(quoted) for a link"))
         }
         guard let text = wire.root, let repository = PresentPlan.repositoryURL(text) else {
             return .failure(JSONAnswer.Problem("a root that is not a GitHub repository"))
@@ -282,7 +342,10 @@ public nonisolated enum PresentDryRun {
 /// `{` to the next line that is exactly `}`, as `json.dumps(…, indent=2)` prints one. Lines
 /// around it, such as a warning on stderr, are passed over. Two candidates are an answer
 /// the app cannot trust, since a line on stderr that repeats decoded input could then
-/// stand in for the real answer, so they are refused, as are none.
+/// stand in for the real answer, so they are refused, as are none. A block that does not
+/// parse is a candidate too, and one the app cannot read: a stray `{` line before the
+/// real answer swallows it into such a block, which must not leave a one-line object
+/// after it to stand in (review C10 on #539).
 nonisolated enum JSONAnswer {
     /// Output past this holds no answer worth reading: an answer is a few hundred bytes,
     /// and a page of the cache's sources at most about 100 KB.
@@ -302,12 +365,13 @@ nonisolated enum JSONAnswer {
             guard (try? JSONSerialization.jsonObject(with: data)) is [String: Any] else { return nil }
             return data
         }
-        var candidates: [Data] = []
+        // nil for a block that does not parse.
+        var candidates: [Data?] = []
         var index = lines.startIndex
         while index < lines.endIndex {
             let line = lines[index]
             if line == "{", let end = lines[index...].firstIndex(of: "}") {
-                if let block = object(lines[index...end].joined(separator: "\n")) { candidates.append(block) }
+                candidates.append(object(lines[index...end].joined(separator: "\n")))
                 index = end + 1
                 continue
             }
@@ -317,7 +381,9 @@ nonisolated enum JSONAnswer {
         }
         switch candidates.count {
         case 0: return .failure(Problem("printed no answer"))
-        case 1: return .success(candidates[0])
+        case 1:
+            guard let only = candidates[0] else { return .failure(Problem("printed an answer this app cannot read")) }
+            return .success(only)
         default: return .failure(Problem("printed \(candidates.count) answers"))
         }
     }

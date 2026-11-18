@@ -137,6 +137,11 @@ public final class ServerSupervisor {
     /// The current launch's child. A child leaves this only by being retired.
     private var process: (any ServerProcess)?
     private var generation = 0
+    /// Counts restarts, stops, and shutdowns, so a restart that waited at the gate while
+    /// its server served can tell whether a newer one took its place.
+    private var requests = 0
+    /// How many starts and restarts wait at the gate, which `onGateWait` reports as one.
+    private var gateWaiters = 0
     private var isShutDown = false
     private var terminations: [ObjectIdentifier: Termination] = [:]
     /// The health check in flight, which a check that starts meanwhile joins, and the
@@ -202,18 +207,36 @@ public final class ServerSupervisor {
     /// restart, or a shutdown arrived while the old child was stopping: the newest request
     /// wins, so closing a folder's last window during a restart leaves nothing running.
     ///
+    /// A ready server keeps serving until the restart has the launch gate, rather than
+    /// stopping first and leaving its windows with nothing for as long as another start
+    /// holds the gate, which can be another repository's first clone (review C2 on #539).
+    /// A newer restart, a stop, or a shutdown meanwhile takes its place; the ready server
+    /// failing meanwhile does not.
+    ///
     /// - Parameter newSpec: what to run from now on, such as the command of a runtime
     ///   chosen since the server started; nil runs the same command again.
     public func restart(using newSpec: LaunchSpec? = nil) async {
+        requests += 1
+        let request = requests
+        var holdsGate = false
+        if let gate, case .ready = state {
+            await waitForTurn(at: gate, before: "restarts; the running server serves until then")
+            holdsGate = true
+            guard request == requests, !isShutDown else { return gate.release() }
+        }
         let mine = await halt()
-        guard mine == generation, !isShutDown else { return }
+        guard mine == generation, !isShutDown else {
+            if holdsGate { gate?.release() }
+            return
+        }
         if let newSpec { spec = newSpec }
-        await launchChild()
+        await launchChild(holdingGate: holdsGate)
     }
 
     /// Ends the current child and waits for every termination in flight, including one
     /// a failed start began. Safe in any state and from concurrent callers.
     public func stop() async {
+        requests += 1
         await halt()
     }
 
@@ -222,6 +245,7 @@ public final class ServerSupervisor {
     /// shut down, never just stopped.
     public func shutDown() async {
         isShutDown = true
+        requests += 1
         await halt()
     }
 
@@ -299,7 +323,29 @@ public final class ServerSupervisor {
         return mine
     }
 
-    private func launchChild() async {
+    /// Waits for `gate`, and while another start holds it, says so in the log and through
+    /// `onGateWait`, once for however many of this server's starts wait.
+    private func waitForTurn(at gate: LaunchGate, before what: String) async {
+        let waits = gate.isHeld
+        if waits {
+            gateWaiters += 1
+            if gateWaiters == 1 {
+                event("waiting for another server's start to finish before this one \(what)")
+                onGateWait?(true)
+            }
+        }
+        await gate.acquire()
+        if waits {
+            gateWaiters -= 1
+            if gateWaiters == 0 { onGateWait?(false) }
+        }
+    }
+
+    /// - Parameter holdingGate: whether the caller has the gate already, which this
+    ///   releases as it would its own.
+    private func launchChild(holdingGate: Bool = false) async {
+        var holdsGate = holdingGate
+        defer { if holdsGate { gate?.release() } }
         generation += 1
         let current = generation
         state = .starting
@@ -311,16 +357,10 @@ public final class ServerSupervisor {
         }
         await awaitTerminations()
         guard current == generation, !isShutDown else { return }
-        if let gate {
-            let waits = gate.isHeld
-            if waits {
-                event("waiting for another server's start to finish before this one starts")
-                onGateWait?(true)
-            }
-            await gate.acquire()
-            if waits { onGateWait?(false) }
+        if let gate, !holdsGate {
+            await waitForTurn(at: gate, before: "starts")
+            holdsGate = true
         }
-        defer { gate?.release() }
         guard current == generation else { return }
         launchWasRefused = false
         if let mayLaunch, !mayLaunch() {

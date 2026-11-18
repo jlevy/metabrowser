@@ -6,7 +6,7 @@ import Foundation
 /// Any local process can send the app links with `open -b`, so a burst is bounded here:
 /// one `metab` resolves at a time, a link equal to one waiting or being resolved is
 /// dropped as a repeat, and past `limit` waiting links the rest are counted, not kept,
-/// so the app says once how many it dropped (`LinkAlert.combined`).
+/// so the app says once how many it dropped (`LinkProblems`).
 public nonisolated struct LinkQueue: Equatable, Sendable {
     /// The most links that wait at once. Not measured: it bounds a burst rather than a
     /// cost, and an agent that hands the app a pull request and a few of its files sends

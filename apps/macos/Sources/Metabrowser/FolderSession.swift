@@ -36,11 +36,17 @@ final class FolderSession: ManagedServer {
     }
     private var identityRequest: Task<Void, Never>?
     /// What the server is started with: the folder, or the repository link `open(link:)`
-    /// gave last. Every start, Retry, and Restart Server reads it as it builds its command.
+    /// gave last, and the link that waits for a start under way (`RepositoryLinks`). Every
+    /// start, Retry, and Restart Server reads the target as it builds its command.
     private let target: StartTarget
-    /// A link that came while a start was under way, which the server starts again on once
-    /// that start has ended (`open(link:)`).
-    private var pendingLink: URL?
+    /// Retries and restarts asked for and not yet carried out, which a link into a ready
+    /// repository counts as a start on the target (`RepositoryLinks.receive`).
+    private var restartsInFlight = 0
+    /// The window a link restarted the server for, which says that it waits while the old
+    /// server serves the other tabs.
+    private weak var linkWindow: BrowserWindowController?
+    /// Asks the ready server whether it found what the link it started on names.
+    private var selectionWatch: Task<Void, Never>?
     /// Whether the start waits for another repository's, which the status view says.
     private var isWaitingAtGate = false
     /// The folder's title changed, so every open folder's window title may change.
@@ -55,6 +61,9 @@ final class FolderSession: ManagedServer {
     /// A restart or a resumed start of a restored background folder was refused by its
     /// root check: it now waits for one of its tabs to be selected (`FolderWindows`).
     var onRootRefused: ((FolderSession) -> Void)?
+    /// A repository's server could not find what the link it started on names, and serves
+    /// another revision (`LinkSelection`).
+    var onLinkSelectionMissing: ((FolderSession, URL, LinkSelection.Outcome) -> Void)?
 
     /// `accepted` is the runtime a server may start from at the moment it would start,
     /// which every start, Retry, and Restart Server ask, not `setup`.
@@ -74,7 +83,7 @@ final class FolderSession: ManagedServer {
         let log = FolderLog(root: root, directory: appIdentity.logsDirectory())
         self.log = log
         let launch = CLIServeLaunch(basePort: served.lane.basePort)
-        let target = StartTarget(link ?? root)
+        let target = StartTarget(RepositoryLinks(target: link ?? root))
         self.target = target
         let spec = { (setup: RuntimeSetup) in
             launch.spec(serving: target.url, with: setup, inherited: ProcessInfo.processInfo.environment, logURL: log.url)
@@ -100,6 +109,9 @@ final class FolderSession: ManagedServer {
             supervisor.onGateWait = { [weak self] waiting in
                 guard let self else { return }
                 isWaitingAtGate = waiting
+                // A restart on a link waits while the old server serves: the link's window
+                // stops showing the old revision and says it waits; the other tabs serve on.
+                if waiting, case .ready = self.supervisor.state { linkWindow?.showStarting() }
                 windows.forEach { $0.showWaitingAtGate(waiting) }
             }
         }
@@ -180,7 +192,11 @@ final class FolderSession: ManagedServer {
     /// not be the one this folder started with. Without one, nothing is stopped, and the
     /// restart waits for `resume()`.
     func retry() {
-        Task { settle(await server.restart()) }
+        restartsInFlight += 1
+        Task {
+            settle(await server.restart())
+            restartsInFlight -= 1
+        }
     }
 
     /// Carries out a start or restart that waited for a runtime, now that one is accepted.
@@ -212,6 +228,8 @@ final class FolderSession: ManagedServer {
 
     func shutDown() async {
         identityRequest?.cancel()
+        selectionWatch?.cancel()
+        target.links.shutDown()  // a link held for a start under way starts nothing now
         await supervisor.shutDown()
     }
 
@@ -241,20 +259,27 @@ final class FolderSession: ManagedServer {
     /// ref ends; so it never only navigates, which would show the link's page at the
     /// window's pin. The server resolves `link` as a first start does, pins what it names,
     /// and announces its page. A start under way, such as a first clone, runs to its end
-    /// first, and the server then starts again on the newest link, from the cache.
+    /// first, and the server then starts again on the newest link, from the cache; a link
+    /// that start already runs on changes nothing (`RepositoryLinks`).
     func open(link: URL) {
         frontWindow?.window?.makeKeyAndOrderFront(nil)
-        switch supervisor.state {
-        case .starting, .stopping:
-            pendingLink = link
-        case .ready, .failed, .stopped:
-            restart(on: link)
+        let name = root.lastPathComponent
+        switch target.links.receive(link, state: supervisor.state, restarting: restartsInFlight > 0) {
+        case .restart:
+            restart()
+        case .hold:
+            AppLog.app.info("\(name, privacy: .public): a link waits for the start under way to end")
+        case .none:
+            AppLog.app.info("\(name, privacy: .public): its server is starting on that link already")
         }
     }
 
-    private func restart(on link: URL) {
-        target.url = link
-        frontWindow?.showEntryPage()
+    /// Starts the server again on `target`, which a link just set: the front window loads
+    /// the new server's entry page, and until then shows no page from the old one.
+    private func restart() {
+        selectionWatch?.cancel()
+        linkWindow = frontWindow
+        linkWindow?.showEntryPage()
         AppLog.app.info("\(self.root.lastPathComponent, privacy: .public): starting its server again on a link it was sent")
         retry()
     }
@@ -325,14 +350,14 @@ final class FolderSession: ManagedServer {
     }
 
     private func serverChanged(_ state: ServerState) {
+        selectionWatch?.cancel()
         // A link sent while a start was under way: that start has ended, so the server
         // starts again on the link before any window loads from the one that ended.
         switch state {
         case .ready, .failed, .stopped:
-            if let link = pendingLink {
-                pendingLink = nil
+            if target.links.startEnded() != nil {
                 endpoint = nil
-                return restart(on: link)
+                return restart()
             }
         case .starting, .stopping:
             break
@@ -345,15 +370,38 @@ final class FolderSession: ManagedServer {
         case .ready(let ready):
             endpoint = ready
             failure = nil
+            linkWindow = nil
             let authorization = supervisor.launch.authorization(for: ready)
             windows.forEach { $0.attach(ready, authorization: authorization) }
             requestIdentity(from: ready, authorization: authorization)
+            if !served.isLocal { watchSelection(of: ready, authorization: authorization) }
         case .failed(let failed):
             endpoint = nil
             failure = failed
             windows.forEach { $0.showFailure(failed) }
         case .stopping, .stopped:
             break
+        }
+    }
+
+    /// Asks the ready repository server whether it found what its link names, for as
+    /// long as its fetch for it runs, and tells the app delegate when it did not, since
+    /// the windows then show another revision (`LinkSelection`). An answer from a server
+    /// that has since restarted is dropped.
+    private func watchSelection(of ready: ServerEndpoint, authorization: WebAuthorization) {
+        let link = target.url
+        selectionWatch = Task { [weak self] in
+            let outcome = await LinkSelection.watch(origin: ready.origin, authorization: authorization)
+            guard !Task.isCancelled, let self, self.endpoint == ready else { return }
+            switch outcome {
+            case .shown:
+                break
+            case .notFound, .fetchFailed:
+                AppLog.app.info("\(self.root.lastPathComponent, privacy: .public): its server serves another revision than its link names")
+                onLinkSelectionMissing?(self, link, outcome)
+            case .unknown(let reason):
+                AppLog.app.info("\(self.root.lastPathComponent, privacy: .public): not told what its link selects: \(reason, privacy: .public)")
+            }
         }
     }
 
@@ -391,9 +439,10 @@ final class FolderSession: ManagedServer {
 /// What a session's server is started with, which its command reads at each start, and
 /// which a link into the repository replaces (`FolderSession.open(link:)`).
 private final class StartTarget {
-    var url: URL
+    var links: RepositoryLinks
+    var url: URL { links.target }
 
-    init(_ url: URL) {
-        self.url = url
+    init(_ links: RepositoryLinks) {
+        self.links = links
     }
 }

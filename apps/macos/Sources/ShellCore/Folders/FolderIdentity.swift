@@ -118,8 +118,9 @@ public nonisolated enum IdentityClient {
     /// Sends a request and returns the status and body.
     public typealias Transport = @Sendable (URLRequest) async throws -> (status: Int, body: Data)
 
-    public static func request(origin: URL, authorization: WebAuthorization) -> URLRequest {
-        var request = URLRequest(url: origin.appending(path: path))
+    /// A JSON request for `route` (`path`, unless another route of the server's is asked).
+    public static func request(origin: URL, authorization: WebAuthorization, route: String = path) -> URLRequest {
+        var request = URLRequest(url: origin.appending(path: route))
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if case .cookie(let name, let value) = authorization {
             request.setValue("\(name)=\(value)", forHTTPHeaderField: "Cookie")

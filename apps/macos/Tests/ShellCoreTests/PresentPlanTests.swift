@@ -145,6 +145,18 @@ private nonisolated enum Fixture {
         #expect(GitHubLink.shown(URL(string: "https://x-access-token:SECRET@github.com/o/r")!) == "https://github.com/o/r")
     }
 
+    /// C11: a query or a fragment, which can carry a token, is left out of what an alert
+    /// shows, however long the link.
+    @Test func aQueryOrFragmentIsNotShown() {
+        #expect(GitHubLink.shown(URL(string: "https://raw.githubusercontent.com/o/r/main/f?token=SECRETTOKEN")!)
+            == "https://raw.githubusercontent.com/o/r/main/f?…")
+        #expect(GitHubLink.shown(URL(string: "https://github.com/o/r#access_token=SECRET")!) == "https://github.com/o/r#…")
+        let long = URL(string: "https://raw.githubusercontent.com/o/r/main/" + String(repeating: "a", count: 500) + "?token=SECRETTOKEN")!
+        #expect(!GitHubLink.shown(long).contains("SECRET"))
+        #expect(GitHubLink.shown(long).hasSuffix("aaa?…"))
+        #expect(!GitHubLink.shown(URL(string: "https://u:SECRET@github.com/o/r?t=SECRET#SECRET")!).contains("SECRET"))
+    }
+
     @Test func theDryRunIsTheContractsCommandRunInTheHomeFolder() {
         let link = URL(string: "https://github.com/jlevy/tbd/pull/12")!
         #expect(PresentDryRun.arguments(for: link) == [link.absoluteString, "--present", "--dry-run", "--format", "json"])
@@ -204,6 +216,14 @@ private nonisolated enum Fixture {
         let unreadable = PresentAnswer.unreadable(reason: "printed no answer", output: Array(repeating: message, count: 9))
             .alert(link: long, metab: "metab")
         #expect(unreadable?.detail.split(separator: "\n").allSatisfy { $0.count <= PresentAnswer.shownLineLength } == true)
+        // C11: the reason, which can quote the answer, is shortened too.
+        let reason = PresentAnswer.unreadable(reason: message, output: []).alert(link: repository, metab: "metab")
+        #expect((reason?.detail.count ?? .max) <= repository.absoluteString.count + 2 + "metab ".count + PresentAnswer.shownLineLength + 1)
+        guard case .unreadable(let quoted, _) = answer(Fixture.plan(kind: String(repeating: "k", count: 5_000))) else {
+            Issue.record("expected an unknown kind to be unreadable")
+            return
+        }
+        #expect(quoted.count < 100)
     }
 
     /// stdout and stderr share the command's pipe, so a warning before or after the JSON
@@ -228,6 +248,26 @@ private nonisolated enum Fixture {
             }
             #expect(reason.hasPrefix("printed 2 answers"))
         }
+    }
+
+    /// C10: a stray `{` line before the answer swallows it into a block that does not
+    /// parse, which counts as an answer, so a one-line object after it cannot stand in,
+    /// for the dry run or for the cache's route.
+    @Test func aStrayBraceCannotLetAForgedLineStandIn() {
+        let forged = Fixture.plan(root: "https://github.com/evil/x", handoff: #"["https://github.com/evil/x"]"#)
+        guard case .unreadable(let reason, _) = PresentDryRun.answer(result(["{"] + lines(Fixture.pullRequest) + [forged])) else {
+            Issue.record("expected the forged plan to be refused")
+            return
+        }
+        #expect(reason.hasPrefix("printed 2 answers"))
+        guard case .unreadable(let alone, _) = PresentDryRun.answer(result(["{"] + lines(Fixture.pullRequest))) else {
+            Issue.record("expected a swallowed answer to be unreadable")
+            return
+        }
+        #expect(alone.hasPrefix("printed an answer this app cannot read"))
+        let forgedPage = #"{"sources": [{"publication": "published", "identity": {"display_url": "https://github.com/jlevy/tbd"}, "problems": []}], "next_after": null}"#
+        let page = ["{", "{", #"  "sources": [],"#, #"  "next_after": null"#, "}", forgedPage]
+        #expect(RepositoryCache.read(result(page), looking: repository) == .unreadable("printed 2 answers"))
     }
 
     @Test(arguments: [
@@ -355,17 +395,6 @@ private nonisolated enum Fixture {
         #expect(queue.takeDropped() == 0)
     }
 
-    /// B1: a burst's problems are one alert, not one modal each.
-    @Test func aBurstsProblemsAreOneAlert() {
-        let one = LinkAlert(message: "Metabrowser cannot open this link", detail: "why")
-        #expect(LinkAlert.combined([]) == nil)
-        #expect(LinkAlert.combined([one]) == one)
-        let many = LinkAlert.combined(Array(repeating: one, count: 7), dropped: 3)
-        #expect(many?.message == "Metabrowser could not open 10 links")
-        #expect(many?.detail.contains("3 more links were not opened") == true)
-        #expect(many?.detail.contains("and 2 more.") == true)
-        #expect(many?.detail.components(separatedBy: "Metabrowser cannot open this link: why").count == LinkAlert.shownInBatch + 1)
-    }
 }
 
 @Suite struct RepositoryCacheTests {
