@@ -201,8 +201,12 @@ With active content off, Markdown reaches the page only as an allowlist of plain
 applied twice: on the server by `inert_html.py`, and in the page by
 `static/inert-html.js`, which parses the HTML into an inert `<template>` and inserts
 only nodes rebuilt from the allowlist.
-Active content is off for every served mirror, where a fork’s author controls the head’s
-Markdown, for a folder served untrusted, and for every pull-request comment.
+Active content is off for every revision view, which today is every served mirror, where
+a fork’s author controls the head’s Markdown; for a folder’s working tree served
+untrusted; and for every pull-request comment.
+Trust follows the view: by [Open Modes](arch-open-modes.md#a-revision-is-never-trusted)’
+design, a revision of a repository folder’s own checkout is untrusted whatever profile
+the folder was opened with.
 Such a document keeps no stylesheet, class, or `data-*`, which removes both limits
 above.
 
@@ -371,10 +375,14 @@ never offered there.
 Its Markdown renders with fenced code as plain text (`plain_code`, which the Markdown
 child sets on every inert render in `diff/markdown_projection_worker.py`): the inert
 render drops the classes highlighting writes anyway, and a lexer can cost far more than
-its input’s size (`kpress_adapter._PLAIN_CODE`). Plain fences do not bound the render
-itself; the child’s deadline does ([Inert Markdown](#inert-markdown)), so whoever wrote
-a pinned Markdown file, such as a pull request’s author, cannot decide how long the
-server spends rendering it.
+its input’s size (`kpress_adapter._PLAIN_CODE`). The profile here is the process’s one
+capability block, which holds while a process serves one kind of view.
+[Open Modes](arch-open-modes.md#a-revision-is-never-trusted) requires a revision’s
+profile to come from the subject a request resolved, once one server can show a trusted
+working tree and untrusted revisions.
+Plain fences do not bound the render itself; the child’s deadline does
+([Inert Markdown](#inert-markdown)), so whoever wrote a pinned Markdown file, such as a
+pull request’s author, cannot decide how long the server spends rendering it.
 
 ### Borrowed Objects
 
