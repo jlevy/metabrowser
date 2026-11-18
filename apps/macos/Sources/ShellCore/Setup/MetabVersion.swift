@@ -46,12 +46,17 @@ public nonisolated struct MetabVersion: Equatable, Sendable, CustomStringConvert
 /// versioned boundary: below the minimum the app starts no server and shows
 /// `upgradeCommand`. The host-protocol version replaces it once host mode exists.
 public nonisolated enum MetabRequirement {
-    /// The first release with `GET /api/identity`, which names each window, and with
-    /// `--exit-on-eof`, which ends a server with the app. 0.12.0, the latest published
-    /// release, lacks both; until a release that has them is on PyPI, only builds from a
-    /// source checkout meet this, and `RuntimeDiscovery.validate` finds one built before
-    /// the flag too old, whatever its number.
+    /// The first release with `GET /api/identity`, which names each window, with
+    /// `--exit-on-eof`, which ends a server with the app, and with `--present`, whose dry
+    /// run resolves a GitHub link (`PresentDryRun`). 0.12.0, the latest published release,
+    /// lacks all three; until a release that has them is on PyPI, only builds from a source
+    /// checkout meet this, and `RuntimeDiscovery.validate` finds one built before either
+    /// flag too old, whatever its number.
     public static let minimumRelease = [0, 12, 1]
+
+    /// The flags a `metab` must take that its number cannot show (`flagShortfall`), oldest
+    /// first: `RuntimeDiscovery.validate` passes them all with `--version`.
+    public static let requiredFlags = [CLIServeLaunch.exitOnEOF, PresentDryRun.flag]
 
     public static var minimum: String { minimumRelease.map(String.init).joined(separator: ".") }
 
@@ -64,22 +69,23 @@ public nonisolated enum MetabRequirement {
     /// checkout reports the next release with `.devN`, which PEP 440 orders before that
     /// release, so without this no development build would run. Its number says only
     /// that it was built after 0.12.0, not which changes it has, so
-    /// `RuntimeDiscovery.validate` also runs it with `--exit-on-eof`, and one that rejects
-    /// the flag is too old. The flag reached the source after the identity route, so a
-    /// build that has the flag has the route too.
+    /// `RuntimeDiscovery.validate` also runs it with `requiredFlags`, and one that rejects
+    /// either is too old. Each reached the source after the one before it and the identity
+    /// route, so a build that has the newest has them all.
     public static func accepts(_ version: MetabVersion) -> Bool {
         version.hasRelease(atLeast: minimumRelease)
     }
 
     /// What a `metab` that `RuntimeDiscovery.validate` found too old lacks when its number
-    /// meets the minimum: "built before --exit-on-eof". Nil when its number is below the
+    /// meets the minimum: "built before --present". Nil when its number is below the
     /// minimum, which then says why. `validate` finds a build that meets the number too old
-    /// only when it rejects `CLIServeLaunch.exitOnEOF` as an unknown option
-    /// (`RuntimeDiscovery.rejectsServeFlag`), so the screens that name one say that, rather
-    /// than compare its number with a minimum it meets.
+    /// only when it rejects one of `requiredFlags` as an unknown option
+    /// (`RuntimeDiscovery.rejectsServeFlag`), and a build without either was built before
+    /// the newest, so the screens that name one say that, rather than compare its number
+    /// with a minimum it meets.
     public static func flagShortfall(_ version: String) -> String? {
-        guard let parsed = MetabVersion(version), accepts(parsed) else { return nil }
-        return "built before \(CLIServeLaunch.exitOnEOF)"
+        guard let parsed = MetabVersion(version), accepts(parsed), let newest = requiredFlags.last else { return nil }
+        return "built before \(newest)"
     }
 
     /// Replaces an older CLI install with one this app runs. It asks for a floor, not an

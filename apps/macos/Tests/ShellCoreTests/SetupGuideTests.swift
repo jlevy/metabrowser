@@ -57,13 +57,13 @@ import Testing
         #expect(upgrade == [.upgradeMetab(path: bin + "/metab", version: version, inNewTerminal: false)])
         #expect(upgrade[0].command == "uv tool install --upgrade 'metabrowser>=0.12.1'")
         #expect(upgrade[0].title(home: "/Volumes/Home")
-            == "Upgrade metab: ~/.local/bin/metab is metab 0.12.1.dev38+5f0c2a1, built before --exit-on-eof,"
+            == "Upgrade metab: ~/.local/bin/metab is metab 0.12.1.dev38+5f0c2a1, built before --present,"
             + " which Metabrowser needs.")
         let checkout = guide(tried: [old], uv: bin + "/uv", loginPath: [bin], released: false).steps
         #expect(checkout[0].title(home: "/Volumes/Home")
             == "Build metab in the source checkout this app was built from, then choose its .venv/bin/metab"
             + " with Choose metab… below: ~/.local/bin/metab is metab 0.12.1.dev38+5f0c2a1, built before"
-            + " --exit-on-eof, and Metabrowser needs metab 0.12.1 or later, which is not on PyPI yet.")
+            + " --present, and Metabrowser needs metab 0.12.1 or later, which is not on PyPI yet.")
     }
 
     /// `uv tool install` says a broken tool is already installed and changes nothing.

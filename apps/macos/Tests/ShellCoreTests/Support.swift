@@ -34,9 +34,19 @@ nonisolated final class FakeProcess: ServerProcess, @unchecked Sendable {
     var hasExited: Bool { exit.isResolved }
 
     func say(_ line: String) {
+        written.withLock { $0 += line.utf8.count + 1 }
         tail.append(line)
         sink.yield(line)
     }
+
+    /// Writes `text` where a real child's stderr goes, the log, which the app does not read
+    /// line by line: it shows only as `outputProgress`, as a clone's progress does.
+    func writeToLog(_ text: String) {
+        written.withLock { $0 += text.utf8.count }
+    }
+
+    private let written = OSAllocatedUnfairLock(initialState: 0)
+    var outputProgress: Int { written.withLock { $0 } }
 
     /// Exits with `code`, as a crash or a startup error would.
     func exitOnItsOwn(code: Int32 = 1) {
