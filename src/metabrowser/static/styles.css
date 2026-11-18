@@ -4150,11 +4150,17 @@ a.tab-btn {
   height: 1em;
 }
 /* A file's or a folder's name is one line, cut short at its end with its whole name as
-   its tooltip, so the rows under it start at one height for every name. */
+   its tooltip, so the rows under it start at one height for every name.
+   The block padding holds the name's glyphs, so a whole name does not read as cut: Source
+   Sans 3's are 1.42em tall in the 1.25em line, and in its 30 px box a whole name's
+   scroll height was 32 px, which `tipAnchorIsCut` (app.js) took for a clamp, showing
+   the name as its own tooltip (measured in Chrome 152). The equal negative margin keeps
+   the row the line's height, and the padding stays inside the row gap. */
 .view-header-title.page-heading {
   flex: 0 1 auto;
   min-width: 0;
-  margin: 0;
+  margin: -0.125em 0;
+  padding: 0.125em 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -57,6 +57,7 @@ from tests.golden_harness import (
     run_metab,
 )
 from tests.required_tools import needs_git
+from tests.test_skill_commands import SKILL, refresh_body, refresh_findings
 
 pytestmark = [
     needs_git,
@@ -243,11 +244,12 @@ def test_golden_a_checkouts_pull_requests(
     assert again.payload()["record"]["unavailable"] == {"comparison": "no_store"}
 
     session.say("A comparison request attaches the cached store without changing the folder")
-    fetched = session.post(
-        checkout, f"{PULL}-refresh", {"number": 10, "retry": True, "comparison": True}
-    )
+    # The agent skill's own recipe for a pull request beside a checkout, whose body this
+    # posts and whose filter reads fields of the answer; `tests/test_skill_commands.py`.
+    fetched = session.post(checkout, f"{PULL}-refresh", refresh_body(10))
     assert fetched.exit_code == 0, fetched.stderr
     after = _after(fetched)
+    assert refresh_findings(SKILL.read_text(encoding="utf-8"), after) == []
     assert after["pin"] is None and after["record"]["comparison"] is not None
     route = after["comparison_route"]
     assert route.startswith("/api/plugin/github/pull-comparison?")

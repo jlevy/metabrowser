@@ -966,7 +966,7 @@ line. Open that address with the browser’s developer tools open.
       In the file’s view header, the Up keycap sits over the Up button at the start of
       the eyebrow. It covers no text outside its own control: the address, the mirror
       note, the file name, and the size read in full.
-      (Before 0.13, Up’s control for a file was its folder’s crumb; at the root, the `/`
+      (In 0.12, Up’s control for a file was its folder’s crumb; at the root, the `/`
       crumb, whose keycap reached back over the dimmed root name.)
       No keycap is cut off, and nothing beside one moves.
     - The Copy path button, which shows only on hover and has no key, stays hidden while
