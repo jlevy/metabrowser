@@ -79,8 +79,8 @@ const STATE = `(() => {
 
 // In the page: what the Pulls list decides that a fresh load draws, as a reader sees it,
 // each row named as it reads: its stacks closed, the pull requests whose changed files are
-// open, which is their change line's to say (mb-d0a3), the row that takes Tab, and the row
-// or change line with focus.
+// open, which their rows say (mb-1z7j), the row that takes Tab, and the row with focus, or
+// a change line, which never takes it.
 const PULLS = `(() => {
   const rows = [...document.querySelectorAll("#tab-pulls .github-pulls-row")];
   const name = (row) =>
@@ -91,8 +91,9 @@ const PULLS = `(() => {
     closedStacks: rows
       .filter((row) => row.dataset.stack && row.getAttribute("aria-expanded") === "false")
       .map(name),
-    filesOpen: [...document.querySelectorAll('#tab-pulls .github-pulls-change[aria-expanded="true"]')]
-      .map((change) => "#" + change.dataset.number),
+    filesOpen: rows
+      .filter((row) => !row.dataset.stack && row.getAttribute("aria-expanded") === "true")
+      .map(name),
     tabStop: name(rows.find((row) => row.getAttribute("tabindex") === "0")),
     focused: line ? "#" + line.dataset.number + " change line" : name(document.activeElement?.closest?.(".github-pulls-row")),
   };
@@ -440,35 +441,30 @@ try {
 
   // ── 1b. `0` from the Pulls list, its rows worked on ───────────
   // The reader walks the list with `J`, which moves the Tab stop and opens the next pull
-  // request, and opens that one's changed files with Right twice: once to its change line,
-  // which opens nothing, and once there. Home then leaves the list as a fresh load draws
-  // it, so `P` afterwards focuses the first row, with no files open.
+  // request, and opens that one's changed files with Right, as on a folder's, focus staying
+  // on its row (mb-1z7j). Home then leaves the list as a fresh load draws it, so `P`
+  // afterwards focuses the first row, with no files open.
   await waitFor(PULL_ROWS, "the Pulls rows");
   await evaluate("document.activeElement?.blur?.()");
   await press("p", P_KEY);
   await waitFor(ROW_FOCUSED, "P focuses a Pulls row");
   await press("j", J_KEY);
   await waitFor(`location.pathname.startsWith("/pull/")`, "J opens the next pull request");
+  const walked = await evaluate(PULLS);
   await press("ArrowRight", RIGHT);
   await waitFor(
-    `document.activeElement?.matches?.("#tab-pulls .github-pulls-change") === true`,
-    "Right goes to the change line",
-  );
-  const onLine = await evaluate(PULLS);
-  await press("ArrowRight", RIGHT);
-  await waitFor(
-    `document.querySelector('#tab-pulls .github-pulls-change[aria-expanded="true"]') !== null`,
-    "Right on the change line opens its changed files",
+    `document.querySelector('#tab-pulls a.github-pulls-row[aria-expanded="true"]:not(.github-pulls-stack-row)') !== null`,
+    "Right on the row opens its changed files",
   );
   const workedPulls = await evaluate(PULLS);
-  measure("worked-on Pulls", { onLine, workedPulls });
+  measure("worked-on Pulls", { walked, workedPulls });
   check(
-    "the Pulls list is worked on before Home: the Tab stop moved, Right went to a change line and opened nothing, and Right there opened its files",
+    "the Pulls list is worked on before Home: the Tab stop moved, and Right on its row opened its files, focus staying on the row",
     workedPulls.tabStop !== freshPulls.first &&
-      onLine.focused === `${workedPulls.tabStop} change line` &&
-      onLine.filesOpen.length === 0 &&
+      walked.filesOpen.length === 0 &&
+      workedPulls.focused === workedPulls.tabStop &&
       JSON.stringify(workedPulls.filesOpen) === JSON.stringify([workedPulls.tabStop]),
-    JSON.stringify({ onLine, workedPulls }),
+    JSON.stringify({ walked, workedPulls }),
   );
   await shot("pulls-worked-on");
   await evaluate("document.activeElement?.blur?.()");

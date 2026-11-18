@@ -30,14 +30,21 @@
 //   the SDK outside the row resolves them in that theme, and its item's name says it in words;
 // - #104 and #103, whose lists cannot be had, show the chevron alone, no placeholder, once
 //   answered;
-// - the open row's highlight carries onto its change line: its background and its left bar.
+// - the open row's highlight is its item's: one ground under its three lines, and its left bar
+//   down the link's and the change line's edge.
 //
 // At 299 px, the default pane, in each theme, with real pointer and keyboard input, it holds
-// that the change line hovers on its own and takes the focus ring on its own; that a press on a
-// row's title opens the pull request and expands nothing; and that a press on the chevron, and
-// one on the line, open and close the files under the change line, and open no page. The keys
+// that a pull request's three lines are one item (mb-1z7j): the pointer on any of them hovers
+// the item's one ground, and on the change line, the line with the toggle, the chevron's plate
+// too, the inner target's own hover, which the link's lines never show; Tab's stop is the
+// row's link, whose ring is drawn round the whole item, and the change line is no stop. A
+// press on a row's title or its number's line opens the pull request and expands nothing; a
+// press on the chevron, and one on the line, open and close the files under the change line,
+// and open no page (docs/design-system.md, "A Click on the Toggle's Line Toggles"). The keys
 // need the shell's registry, which this page has not: tests/dom/github-pulls-stacks-chrome.mjs
-// holds them in the running app.
+// holds them in the running app; here the handle's `expand` and `collapse`, which Right and
+// Left call, act on the focused item. With SHOTS_DIR set, it saves the item's hover and the
+// inner target's, at 299 px in each theme.
 //
 // It also lays out the change lines of this repository's own pull requests (`REAL_LINES`), to
 // say how wide a typical line is, which the placeholder's width is judged against.
@@ -325,7 +332,8 @@ const READ = `(() => {
 
 // In the page: the inks and weights of the line's parts in #106's row, and of the same line
 // drawn by the SDK in a plain block of the page, the component outside any host; the name the
-// SDK gives it; and the open row's highlight on its link and its change line.
+// SDK gives it; and the open row's highlight: its item's ground, and the bar on its link and
+// its change line.
 const INKS = `(() => {
   const parts = [".summary-number", ".file-change-status", ".change-line-statuses > .summary-punctuation", ".change-line-group > .summary-punctuation", ".diff-stat-add", ".diff-stat-del"];
   const read = (host) => Object.fromEntries(parts.map((selector) => {
@@ -345,10 +353,15 @@ const INKS = `(() => {
   const open = document.querySelector('a.github-pulls-row[data-number="${OPEN}"]');
   const openChange = document.querySelector('.github-pulls-change[data-number="${OPEN}"]');
   const other = document.querySelector('.github-pulls-change[data-number="104"]');
-  const paint = (el) => el ? [getComputedStyle(el).backgroundColor, getComputedStyle(el).borderLeftColor, getComputedStyle(el).borderLeftWidth] : null;
+  const ground = (el) => el ? getComputedStyle(el).backgroundColor : null;
+  const bar = (el) => el ? [getComputedStyle(el).borderLeftColor, getComputedStyle(el).borderLeftWidth] : null;
   return {
     row: read(host), reference: read(reference), text: reference.textContent, label: said.label,
-    highlight: { selected: open?.classList.contains("selected") ?? false, row: paint(open), change: paint(openChange), other: paint(other) },
+    highlight: {
+      selected: open?.classList.contains("selected") ?? false,
+      item: ground(open?.parentElement), row: [ground(open), ...bar(open)], change: [ground(openChange), ...bar(openChange)],
+      other: [ground(other?.parentElement), ...bar(other)],
+    },
   };
 })()`;
 
@@ -534,6 +547,10 @@ async function main() {
         const tokens = {
           hover: await browser.evaluate(`(${TOKEN})("--hover-bg")`),
           highlight: await browser.evaluate(`(${TOKEN})("--highlight-bg")`),
+          plate: await browser.evaluate(`(${TOKEN})("--border")`),
+          text: await browser.evaluate(`(${TOKEN})("--text")`),
+          // A box that paints no ground of its own.
+          none: "rgba(0, 0, 0, 0)",
         };
         // Each row waits in its placeholder, past the quiet period, its read held. A build that
         // draws no third line draws no placeholder either, and fails here.
@@ -723,12 +740,14 @@ async function main() {
             );
           }
         }
-        // The open row's mark: its link and its change line, as one block.
+        // The open row's mark is its item's: one ground under its three lines, which neither
+        // the link nor the change line paints over, and the bar down both boxes' edge.
         const mark = inks.highlight;
         check(
-          `${at}: the open row's highlight carries onto its change line, its background and its bar`,
+          `${at}: the open row's highlight is its item's, one ground and one bar down its three lines`,
           mark.selected &&
-            mark.row[0] === tokens.highlight &&
+            mark.item === tokens.highlight &&
+            mark.row[0] === tokens.none &&
             JSON.stringify(mark.change) === JSON.stringify(mark.row) &&
             mark.other[0] !== tokens.highlight &&
             mark.other[1] !== mark.row[1],
@@ -781,36 +800,62 @@ async function main() {
   }
 
   /**
-   * Real pointer and keyboard input on the panel mounted at 299 px: hover, the focus ring, a
-   * press on a title, and presses on the chevron and the line.
+   * Real pointer and keyboard input on the panel mounted at 299 px: the item's hover and the
+   * inner target's, the item's focus ring, presses on the title and the number's line, and
+   * presses on the chevron and the line.
    */
   async function interact(at, tokens) {
     const result = {};
-    const paint = (selector) =>
-      browser.evaluate(
-        `(() => { const el = document.querySelector(${JSON.stringify(selector)}); return el ? getComputedStyle(el).backgroundColor : null; })()`,
-      );
     const ROW = 'a.github-pulls-row[data-number="103"]';
     const CHANGE = '.github-pulls-change[data-number="103"]';
-    // Hover: the change line, then the title, each on its own.
-    await pointAt(`${CHANGE} .github-pulls-change-line`, false, "start");
-    result.hoverChange = [await paint(CHANGE), await paint(ROW)];
+    const look = () =>
+      browser.evaluate(`(() => {
+        const row = document.querySelector(${JSON.stringify(ROW)});
+        const change = document.querySelector(${JSON.stringify(CHANGE)});
+        const plate = change?.querySelector(":scope > .github-pulls-toggle") ?? null;
+        const ground = (el) => el ? getComputedStyle(el).backgroundColor : null;
+        const chevron = plate?.querySelector(".toggle-chevron") ?? null;
+        return {
+          item: ground(row?.parentElement), row: ground(row), change: ground(change), plate: ground(plate),
+          chevron: chevron ? getComputedStyle(chevron).color : null,
+        };
+      })()`);
+    const name = (what) => `${at.replace(/\s+/g, "-")}-${what}`;
+    // Hover: the title, the number's line, the change line, and the chevron. Every line hovers
+    // the item's one ground; only the change line, the toggle's line, also lights its chevron.
     await pointAt(`${ROW} .github-pulls-title`, false);
-    result.hoverRow = [await paint(CHANGE), await paint(ROW)];
+    result.hoverTitle = await look();
+    await shot(name("hover-item"), 299);
+    await pointAt(`${ROW} .github-pulls-meta`, false, "start");
+    result.hoverMeta = await look();
+    await pointAt(`${CHANGE} .github-pulls-change-line`, false, "start");
+    result.hoverLine = await look();
+    await shot(name("hover-inner"), 299);
+    await pointAt(`${CHANGE} > .github-pulls-toggle`, false);
+    result.hoverChevron = await look();
     await browser.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 1200, y: 880 });
     await frames();
+    result.away = await look();
+    const outer = (seen) =>
+      seen.item === tokens.hover && seen.row === tokens.none && seen.change === tokens.none;
     check(
-      `${at}: the change line hovers on its own`,
-      result.hoverChange[0] === tokens.hover && result.hoverChange[1] !== tokens.hover,
+      `${at}: the pointer on any of a pull request's three lines hovers its one item`,
+      [result.hoverTitle, result.hoverMeta, result.hoverLine, result.hoverChevron].every(outer) &&
+        result.away.item !== tokens.hover,
       JSON.stringify({ ...result, tokens }),
     );
     check(
-      `${at}: the row's link hovers without its change line`,
-      result.hoverRow[1] === tokens.hover && result.hoverRow[0] !== tokens.hover,
+      `${at}: the change line, the toggle's line, adds the inner target's hover, the chevron's plate`,
+      [result.hoverLine, result.hoverChevron].every(
+        (seen) => seen.plate === tokens.plate && seen.chevron === tokens.text,
+      ) &&
+        [result.hoverTitle, result.hoverMeta, result.away].every(
+          (seen) => seen.plate === tokens.none && seen.chevron !== tokens.text,
+        ),
       JSON.stringify({ ...result, tokens }),
     );
-    // The focus ring: Tab to the list's stop, as a keyboard reader does, then focus moved to a
-    // change line, as the panel moves it on Right; each element shows its own ring.
+    // The focus ring: Tab to the list's stop, as a keyboard reader does. The stop is the row's
+    // link, and the ring is drawn round its item, its three lines; the change line is no stop.
     for (let tab = 0; tab < 6; tab += 1) {
       await key("Tab", "Tab", 9);
       if (
@@ -819,30 +864,33 @@ async function main() {
         break;
       }
     }
-    const ring = `(() => {
+    result.ring = await browser.evaluate(`(() => {
       const el = document.activeElement;
-      const style = getComputedStyle(el);
-      return { focus: el.matches(".github-pulls-change") ? "change " + el.dataset.number : el.matches("a.github-pulls-row") ? "row " + el.dataset.number : el.tagName, visible: el.matches(":focus-visible"), outline: [style.outlineStyle, style.outlineColor], background: style.backgroundColor };
-    })()`;
-    result.rowRing = await browser.evaluate(ring);
-    await browser.evaluate(`document.querySelector(${JSON.stringify(CHANGE)})?.focus(), true`);
-    await frames();
-    result.changeRing = await browser.evaluate(ring);
-    result.rowWhileChange = await browser.evaluate(
-      `(() => { const style = getComputedStyle(document.querySelector(${JSON.stringify(ROW)})); return [style.outlineStyle, style.backgroundColor]; })()`,
-    );
+      const item = el.parentElement;
+      const change = item?.querySelector(":scope > .github-pulls-change") ?? null;
+      const own = getComputedStyle(el);
+      const style = item ? getComputedStyle(item) : null;
+      return {
+        focus: el.matches("a.github-pulls-row") ? "row " + el.dataset.number : el.tagName,
+        selected: el.classList.contains("selected"),
+        visible: el.matches(":focus-visible"), own: own.outlineStyle,
+        item: style ? [style.outlineStyle, style.outlineColor, style.outlineOffset, style.backgroundColor] : null,
+        changeStop: change === null ? null : change.tabIndex >= 0 || change.hasAttribute("tabindex"),
+      };
+    })()`);
     const link = await browser.evaluate(`(${TOKEN})("--link")`);
     check(
-      `${at}: the change line takes the focus ring on its own`,
-      result.rowRing.focus.startsWith("row ") &&
-        result.rowRing.visible &&
-        result.changeRing.focus === "change 103" &&
-        result.changeRing.visible &&
-        result.changeRing.outline[0] === "solid" &&
-        result.changeRing.outline[1] === link &&
-        result.changeRing.background === tokens.hover &&
-        result.rowWhileChange[0] === "none",
-      JSON.stringify({ ...result, link }),
+      `${at}: Tab's stop is a row's link, its item takes the ring, and its change line is no stop`,
+      result.ring.focus.startsWith("row ") &&
+        result.ring.visible &&
+        result.ring.own === "none" &&
+        result.ring.item?.[0] === "solid" &&
+        result.ring.item[1] === link &&
+        result.ring.item[2] === "-2px" &&
+        // The current item keeps its mark under the ring, as a Files row does.
+        result.ring.item[3] === (result.ring.selected ? tokens.highlight : tokens.hover) &&
+        result.ring.changeStop === false,
+      JSON.stringify({ ring: result.ring, link }),
     );
     // A press on the title opens the pull request and expands nothing.
     const state = `(() => {
@@ -866,6 +914,17 @@ async function main() {
         result.title.files === null,
       JSON.stringify(result.title),
     );
+    // A press on the number's line, the item's second line, is the link's too.
+    await pointAt('a.github-pulls-row[data-number="106"] .github-pulls-meta', true, "start");
+    result.meta = await browser.evaluate(state);
+    check(
+      `${at}: a press on a row's number's line opens the pull request and expands nothing`,
+      result.meta.opened.length === result.title.opened.length + 1 &&
+        result.meta.opened.at(-1) === 106 &&
+        result.meta.expanded === "false" &&
+        result.meta.files === null,
+      JSON.stringify(result.meta),
+    );
     // A press on the chevron opens the files, under the change line, and opens no page.
     await pointAt('.github-pulls-change[data-number="106"] .github-pulls-toggle', true);
     // Past the chevron's turn, a --transition-fast.
@@ -883,7 +942,7 @@ async function main() {
         result.chevron.files !== null &&
         result.chevron.files.top >= result.chevron.change.bottom - TOLERANCE_PX &&
         result.chevron.turned !== result.title.turned &&
-        result.chevron.opened.length === result.title.opened.length,
+        result.chevron.opened.length === result.meta.opened.length,
       JSON.stringify(result.chevron),
     );
     // The row pressed stays under the pointer: its files open below it, even above the row a
@@ -910,19 +969,22 @@ async function main() {
       result.line.expanded === "false" &&
         result.line.files === null &&
         result.line.turned === result.title.turned &&
-        result.line.opened.length === result.title.opened.length,
+        result.line.opened.length === result.meta.opened.length,
       JSON.stringify(result.line),
     );
-    // Right and Left on the change line, its handle's `expand` and `collapse`, keep it where
-    // it is too, over #105, the open row, placed again by a reveal before each.
+    // Right and Left on the item, its handle's `expand` and `collapse`, keep its change line
+    // where it is too, over #105, the open row, placed again by a reveal before each.
     const CHANGE106 = `document.querySelector('.github-pulls-change[data-number="106"]')`;
+    const ROW106 = `document.querySelector('a.github-pulls-row[data-number="106"]')`;
     for (const [handler, key, want] of [
       ["expand", "Right", "true"],
       ["collapse", "Left", "false"],
     ]) {
       await browser.evaluate(`window.__panel.setCurrent(105, null, { again: true }), true`);
       await frames();
-      await browser.evaluate(`${CHANGE106}.focus(), true`);
+      // Focus arrives on #106 as a reader brings it there, so it is the item the keys act on:
+      // the reveal made #105 the list's stop, and a press on #106 left focus on its row.
+      await browser.evaluate(`document.activeElement?.blur(), ${ROW106}.focus(), true`);
       const before = await browser.evaluate(`${CHANGE106}.getBoundingClientRect().top`);
       await browser.evaluate(`window.__panel.${handler}(), true`);
       await pause(250);
@@ -942,7 +1004,7 @@ async function main() {
       };
       result[key] = moved;
       check(
-        `${at}: ${key} on the change line ${want === "true" ? "opens" : "closes"} the files and leaves it where it was, over a revealed row`,
+        `${at}: ${key} on the item ${want === "true" ? "opens" : "closes"} the files and leaves it where it was, over a revealed row`,
         moved.expanded === want && Math.abs(moved.after - moved.before) <= TOLERANCE_PX,
         JSON.stringify(moved),
       );

@@ -15,8 +15,9 @@
 // inset and its pull requests one tree level in; that a stack row and a pull request's row
 // hover alike and are as tall as the row contract says; that the toolbar fits the default
 // pane with no Group by stack chip, since the tab always groups; that the keys move real
-// focus onto and off a stack row, and over a pull request's row and its change line, its
-// third line, which carries its changed files (mb-d0a3); and that the groups list a stack's
+// focus onto and off a stack row, and over a pull request's item, its three lines one stop
+// (mb-1z7j), whose changed files Space, Right, and Left open and close as a folder's; and that
+// the groups list a stack's
 // members in the order the page's stack menu does. It times the first row and the grouping's arrival, and with
 // SHOTS_DIR it saves the screenshots. `--before` takes only the screenshots and the first
 // row's time, for the shell as it was before grouping, and checks nothing of it.
@@ -108,7 +109,9 @@ const LIST = `(() => {
     }
   }
   const stackRow = list.querySelector(".github-pulls-stack-row");
-  const member = list.querySelector('.github-pulls-item[data-level="2"] > .github-pulls-row');
+  const member = list.querySelector(
+    '.github-pulls-item[data-level="2"] > .github-pulls-entry > .github-pulls-row',
+  );
   const flat = [...list.querySelectorAll('.github-pulls-row[aria-level="1"]')].find(
     (row) => !row.classList.contains("github-pulls-stack-row"),
   );
@@ -481,7 +484,8 @@ try {
     });
     await frames();
   };
-  // A pull request's change line (mb-d0a3) carries its number too, and is named apart.
+  // A pull request's change line (mb-d0a3) carries its number too, and is named apart: it is
+  // never focused (mb-1z7j), which naming it would show.
   const focused = () =>
     evaluate(`(() => {
       const el = document.activeElement;
@@ -764,11 +768,11 @@ try {
         list.toolbar.spare > 0,
       JSON.stringify(list.toolbar),
     );
-    // A stack's row and a pull request's row hover alike.
+    // A stack's row and a pull request's item, its three lines (mb-1z7j), hover alike.
     const stackHover = await hover(".github-pulls-stack-row");
-    const memberHover = await hover('.github-pulls-item[data-level="2"] > .github-pulls-row');
+    const memberHover = await hover('.github-pulls-item[data-level="2"] > .github-pulls-entry');
     const rest = await evaluate(
-      `getComputedStyle(document.querySelector('a.github-pulls-row[data-number="106"]')).backgroundColor`,
+      `getComputedStyle(document.querySelector('a.github-pulls-row[data-number="106"]').parentElement).backgroundColor`,
     );
     measured.hover = { stackHover, memberHover, rest };
     check(
@@ -791,7 +795,10 @@ try {
         expanded: await evaluate(
           `document.querySelector(".github-pulls-stack-row").getAttribute("aria-expanded")`,
         ),
-        ring: await evaluate(`getComputedStyle(document.activeElement).outlineStyle`),
+        // A pull request's ring is drawn round its item, the link's parent (mb-1z7j).
+        ring: await evaluate(
+          `(() => { const el = document.activeElement; return getComputedStyle(el.matches(".github-pulls-entry > .github-pulls-row") ? el.parentElement : el).outlineStyle; })()`,
+        ),
         place: await stackInView(),
       });
     }
@@ -841,111 +848,95 @@ try {
         ]),
       JSON.stringify(toggles),
     );
-    // A member's changed files hang from its change line, its third line (mb-d0a3): Right on
-    // the row goes to the change line and opens nothing, and Right there opens them, a tree
-    // level further in than the row; Left closes them, Left again goes back to the row, and
-    // Left from the row goes to the stack's row.
+    // A member's changed files hang under its item, its three lines (mb-1z7j): Right on the
+    // row opens them, as on a folder's, a tree level further in than the row, and focus stays
+    // on the row; Left closes them, and Left again goes to the stack's row.
     const SEVEN = `document.querySelector('.github-pulls-change[data-number="7"]')`;
+    const SEVEN_ROW = `document.querySelector('a.github-pulls-row[data-number="7"]')`;
     const sevenFiles = `document.querySelector('.github-pulls-item[data-number="7"] .github-pull-file-row, .github-pulls-item[data-number="7"] .github-pull-folder-row')`;
-    await evaluate(`document.querySelector('a.github-pulls-row[data-number="7"]').focus()`);
-    await press("ArrowRight");
-    const toLine = [
-      await focused(),
-      await evaluate(`${SEVEN}?.getAttribute("aria-expanded") ?? null`),
-      await evaluate(`${sevenFiles} !== null`),
-    ];
+    await evaluate(`${SEVEN_ROW}.focus()`);
     await press("ArrowRight");
     await waitFor(`${sevenFiles} !== null`);
     const files = await evaluate(`(() => {
-      const member = document.querySelector('a.github-pulls-row[data-number="7"]');
+      const member = ${SEVEN_ROW};
       const change = ${SEVEN};
       const file = ${sevenFiles};
       const start = (row) => parseFloat(getComputedStyle(row).paddingLeft) + row.getBoundingClientRect().left;
       // The file row's leading glyph, a folder's chevron or a file's change letter, from the
       // pull request's chevron, which leads its change line.
       const chevron = change?.querySelector(".github-pulls-toggle").getBoundingClientRect() ?? null;
+      const active = document.activeElement;
       return {
-        expanded: change?.getAttribute("aria-expanded") ?? null,
+        focus: active === member ? "#7" : active?.className ?? null,
+        expanded: member?.getAttribute("aria-expanded") ?? null,
+        lineExpanded: change?.getAttribute("aria-expanded") ?? null,
         level: file.getAttribute("aria-level"),
-        lineLevel: change?.getAttribute("aria-level") ?? null,
+        rowLevel: member?.getAttribute("aria-level") ?? null,
         indent: Math.round(start(file) - start(member)),
         fromChevron: chevron === null ? null : Math.round((file.firstElementChild.getBoundingClientRect().left - chevron.left) * 100) / 100,
         belowChange: change === null ? null : Math.round((file.getBoundingClientRect().top - change.getBoundingClientRect().bottom) * 100) / 100,
       };
     })()`);
-    files.toLine = toLine;
     measured.nestedTip = await evaluate(NESTED_TIP);
     await press("ArrowLeft");
     files.afterLeft = [
-      await evaluate(`${SEVEN}?.getAttribute("aria-expanded") ?? null`),
+      await evaluate(`${SEVEN_ROW}?.getAttribute("aria-expanded") ?? null`),
       await focused(),
     ];
     await press("ArrowLeft");
     files.afterSecondLeft = await focused();
-    await press("ArrowLeft");
-    files.afterThirdLeft = await focused();
     measured.memberFiles = files;
     check(
-      "a member's changed files are a tree level under its change line, which Right goes to first, and Left closes them, goes back to the row, then leaves for its stack",
-      JSON.stringify(files.toLine) === JSON.stringify(["line 7", "false", false]) &&
+      "a member's changed files are a tree level under its item, which Right opens with focus kept on its row, and Left closes them, then leaves for its stack",
+      files.focus === "#7" &&
         files.expanded === "true" &&
-        files.lineLevel === "3" &&
-        files.level === "4" &&
+        files.lineExpanded === "true" &&
+        files.rowLevel === "2" &&
+        files.level === "3" &&
         // One tree level under the change line's chevron, which is under the state icon, in the
         // row's one slot (mb-3vil).
         files.indent === Math.round(list.treeIndent) &&
         near(files.fromChevron, list.treeIndent) &&
         files.belowChange >= -0.5 &&
-        JSON.stringify(files.afterLeft) === JSON.stringify(["false", "line 7"]) &&
-        files.afterSecondLeft === "#7" &&
-        files.afterThirdLeft === "stack 286",
+        JSON.stringify(files.afterLeft) === JSON.stringify(["false", "#7"]) &&
+        files.afterSecondLeft === "stack 286",
       JSON.stringify(files),
     );
-    // The keys on a first-level pull request (mb-1l4i): Up and Down walk the pull requests
-    // and expand nothing; Right goes to the change line, where Enter and Space open and
-    // close the files, Left closes them and then goes back to the row, Up goes back to the
-    // row, and Down goes into the files once they are open.
+    // The keys on a first-level pull request (mb-1l4i, mb-1z7j): its three lines are one stop.
+    // Space opens and closes its changed files with focus kept on its row, and the list does
+    // not scroll a page from under it, as the browser's Space on a link would; Up and Down walk
+    // whole pull requests, over open files, and expand nothing; Right opens the files, Left
+    // closes them, Left on a closed first-level row stays, and Right on an open row goes into
+    // its files, as on a folder's.
+    const ROW106 = `document.querySelector('a.github-pulls-row[data-number="106"]')`;
     const LINE = `document.querySelector('.github-pulls-change[data-number="106"]')`;
     const state = async () => [
       await focused(),
-      await evaluate(`${LINE}?.getAttribute("aria-expanded") ?? null`),
+      await evaluate(`${ROW106}?.getAttribute("aria-expanded") ?? null`),
       await evaluate(
-        `document.querySelectorAll('.github-pulls-change[aria-expanded="true"]').length`,
+        `document.querySelectorAll('a.github-pulls-row[aria-expanded="true"]').length`,
       ),
     ];
-    await evaluate(`document.querySelector('a.github-pulls-row[data-number="106"]').focus()`);
-    // Space on a pull request's own row toggles nothing and is consumed: the list does not
-    // scroll a page from under the focused row, as the browser's Space on a link scrolls it.
+    await evaluate(`document.activeElement?.blur(), ${ROW106}.focus()`);
     const scrolled = `Math.round(document.querySelector(".tree-content").scrollTop)`;
     const spaceBefore = await evaluate(scrolled);
-    await press(" ");
-    await frames();
-    const space = { before: spaceBefore, after: await evaluate(scrolled), state: await state() };
-    measured.spaceOnRow = space;
-    check(
-      "Space on a pull request's row toggles nothing and leaves the list where it was",
-      space.after === space.before && JSON.stringify(space.state) === '["#106","false",0]',
-      JSON.stringify(space),
-    );
     const walk = [];
     for (const [key, want] of [
+      [" ", ["#106", "true", 1]],
+      [" ", ["#106", "false", 0]],
       ["ArrowDown", ["#105", "false", 0]],
       ["ArrowUp", ["#106", "false", 0]],
-      ["ArrowRight", ["line 106", "false", 0]],
-      ["Enter", ["line 106", "true", 1]],
-      ["Enter", ["line 106", "false", 0]],
-      [" ", ["line 106", "true", 1]],
-      ["ArrowLeft", ["line 106", "false", 0]],
+      ["ArrowRight", ["#106", "true", 1]],
       ["ArrowLeft", ["#106", "false", 0]],
-      ["ArrowRight", ["line 106", "false", 0]],
-      ["ArrowUp", ["#106", "false", 0]],
-      ["ArrowRight", ["line 106", "false", 0]],
-      ["ArrowRight", ["line 106", "true", 1]],
-      ["ArrowDown", ["file", "true", 1]],
+      ["ArrowLeft", ["#106", "false", 0]],
+      ["ArrowRight", ["#106", "true", 1]],
+      ["ArrowDown", ["#105", "true", 1]],
+      ["ArrowUp", ["#106", "true", 1]],
+      ["ArrowRight", ["file", "true", 1]],
     ]) {
-      if (key === "ArrowDown" && want[0] === "file") {
-        // Its files are read and shown before Down can go into them: an opening tree draws its
-        // rows in its group while it holds the group closed (pull-files-view.js).
+      if (key === "ArrowRight" && want[0] === "file") {
+        // Its files are read and shown before Right can go into them: an opening tree draws
+        // its rows in its group while it holds the group closed (pull-files-view.js).
         await waitFor(
           `(() => { const files = document.querySelector('.github-pulls-item[data-number="106"] .github-pull-files'); const row = files?.querySelector(":is(.github-pull-file-row, .github-pull-folder-row)"); return row != null && !files.classList.contains("tree-children-collapsed") && getComputedStyle(row).visibility === "visible"; })()`,
         );
@@ -953,35 +944,48 @@ try {
       await press(key);
       // The tree opens once its cached list is read, or past its hold (FILES_OPEN_HOLD_MS).
       await chrome
-        .waitFor(`${LINE}?.getAttribute("aria-expanded") === ${JSON.stringify(want[1])}`, 2000)
+        .waitFor(`${ROW106}?.getAttribute("aria-expanded") === ${JSON.stringify(want[1])}`, 2000)
         .catch(() => false);
       walk.push([key, ...(await state())]);
+      if (walk.length === 2) {
+        measured.spaceOnRow = { before: spaceBefore, after: await evaluate(scrolled) };
+      }
     }
     measured.walk = walk;
     check(
-      "Up and Down walk the pull requests and expand nothing; Right goes to the change line, where Enter and Space open and close the files, Left closes them, then goes back to the row, Up goes back to the row, and Down goes into the open files",
+      "Space on a pull request's row opens and closes its files and leaves the list where it was",
+      measured.spaceOnRow.after === measured.spaceOnRow.before,
+      JSON.stringify(measured.spaceOnRow),
+    );
+    check(
+      "Space toggles a pull request's files with focus on its row; Up and Down walk whole pull requests and expand nothing; Right opens the files, Left closes them and then stays, and Right on an open row goes into them",
       JSON.stringify(walk) ===
         JSON.stringify([
+          [" ", "#106", "true", 1],
+          [" ", "#106", "false", 0],
           ["ArrowDown", "#105", "false", 0],
           ["ArrowUp", "#106", "false", 0],
-          ["ArrowRight", "line 106", "false", 0],
-          ["Enter", "line 106", "true", 1],
-          ["Enter", "line 106", "false", 0],
-          [" ", "line 106", "true", 1],
-          ["ArrowLeft", "line 106", "false", 0],
+          ["ArrowRight", "#106", "true", 1],
           ["ArrowLeft", "#106", "false", 0],
-          ["ArrowRight", "line 106", "false", 0],
-          ["ArrowUp", "#106", "false", 0],
-          ["ArrowRight", "line 106", "false", 0],
-          ["ArrowRight", "line 106", "true", 1],
-          ["ArrowDown", "file", "true", 1],
+          ["ArrowLeft", "#106", "false", 0],
+          ["ArrowRight", "#106", "true", 1],
+          ["ArrowDown", "#105", "true", 1],
+          ["ArrowUp", "#106", "true", 1],
+          ["ArrowRight", "file", "true", 1],
         ]),
       JSON.stringify(walk),
     );
-    // Closed again, from its change line, for what follows.
-    await evaluate(`${LINE}?.focus()`);
+    // Its change line was never focused, and mirrors its row's state.
+    check(
+      "a pull request's change line is never focused, and says its row's state",
+      walk.every(([, focus]) => !String(focus).startsWith("line ")) &&
+        (await evaluate(`${LINE}?.getAttribute("aria-expanded") ?? null`)) === "true",
+      JSON.stringify(walk),
+    );
+    // Closed again, from its row, for what follows.
+    await evaluate(`document.activeElement?.blur(), ${ROW106}.focus()`);
     await press(" ");
-    await waitFor(`${LINE}?.getAttribute("aria-expanded") !== "true"`);
+    await waitFor(`${ROW106}?.getAttribute("aria-expanded") !== "true"`);
     check(
       "a stack's row takes the focus ring a pull request's row does",
       keys[1].ring === "solid" && keys[0].ring === "solid",
@@ -1019,8 +1023,10 @@ try {
       JSON.stringify(measured.nestedTip),
     );
     // #106 holds every folder open, and its one top-level file is its last row. Right on its
-    // change line opens them.
-    await evaluate(`document.querySelector('.github-pulls-change[data-number="106"]')?.focus()`);
+    // row opens them.
+    await evaluate(
+      `document.activeElement?.blur(), document.querySelector('a.github-pulls-row[data-number="106"]')?.focus()`,
+    );
     await press("ArrowRight");
     // Every page of its files is in, so its rows stand still.
     await waitFor(
@@ -1039,10 +1045,12 @@ try {
         fileTips.narrow.shown === "README.md",
       JSON.stringify(fileTips),
     );
-    await evaluate(`document.querySelector('.github-pulls-change[data-number="106"]')?.focus()`);
+    await evaluate(
+      `document.activeElement?.blur(), document.querySelector('a.github-pulls-row[data-number="106"]')?.focus()`,
+    );
     await press("ArrowLeft");
     await waitFor(
-      `document.querySelector('.github-pulls-change[data-number="106"]')?.getAttribute("aria-expanded") !== "true"`,
+      `document.querySelector('a.github-pulls-row[data-number="106"]')?.getAttribute("aria-expanded") !== "true"`,
     );
     await evaluate(`document.querySelector(".tree-content").scrollTop = 0, true`);
     await frames();
@@ -1510,8 +1518,8 @@ try {
       JSON.stringify(menuKeys),
     );
     // The current member is marked as the Pulls list marks its current row, #9's: the
-    // highlight's ground and its 2px bar, not the hover ground, hovered, focused, or not
-    // (mb-xlla). Focus shows on it as on every member, by the ring.
+    // highlight's ground, its item's (mb-1z7j), and its 2px bar, not the hover ground,
+    // hovered, focused, or not (mb-xlla). Focus shows on it as on every member, by the ring.
     await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 640, y: 895 });
     const CURRENT = `(() => {
       const member = document.querySelector('.github-pull-stack-menu .github-pull-stack-member[aria-current="page"]');
@@ -1522,7 +1530,7 @@ try {
       return {
         focused: focused === member,
         member: { background: ms.backgroundColor, shadow: ms.boxShadow, outline: ms.outlineStyle },
-        row: rs === null ? null : { number: row.dataset.number, background: rs.backgroundColor, bar: rs.borderLeftColor, width: rs.borderLeftWidth },
+        row: rs === null ? null : { number: row.dataset.number, background: getComputedStyle(row.parentElement).backgroundColor, bar: rs.borderLeftColor, width: rs.borderLeftWidth },
         focusGround: getComputedStyle(focused).backgroundColor,
         focusRing: getComputedStyle(focused).outlineStyle,
       };

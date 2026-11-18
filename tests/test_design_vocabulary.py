@@ -2357,12 +2357,29 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     assert "## The Pulls Tab" in doc
     assert "test_the_pulls_tab_carries_the_shells_primitives" in doc
     github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
-    # One Chevron, One Row Contract: the row height, the hover, and a row's own focus ring.
+    # One Chevron, One Row Contract: the row height, the hover, and a row's own focus ring. A
+    # pull request's three lines are one item (mb-1z7j): its zone hovers, carries the current
+    # mark, and takes the ring of the link inside it, as a Files row's `.tree-item` does.
     row = github[".github-pulls-row"]
     assert row["min-height"] == "var(--ui-row-height)"
-    assert github[".github-pulls-row:hover"]["background"] == "var(--hover-bg)"
-    assert github[".github-pulls-row.selected"]["background"] == "var(--highlight-bg)"
-    assert github[".github-pulls-row:focus-visible"]["outline"] == "2px solid var(--link)"
+    item = ".github-pulls-entry"
+    assert github[f"{item}:hover"]["background"] == "var(--hover-bg)"
+    assert github[".github-pulls-stack-row:hover"]["background"] == "var(--hover-bg)"
+    assert (
+        github[f"{item}:has(> .github-pulls-row.selected)"]["background"] == "var(--highlight-bg)"
+    )
+    assert github[".github-pulls-row.selected"]["border-left-color"] == "var(--highlight-bar)"
+    ring = github[f"{item}:has(> .github-pulls-row:focus-visible)"]
+    assert ring["outline"] == "2px solid var(--link)"
+    assert ring["outline-offset"] == "-2px"
+    assert github[".github-pulls-stack-row:focus-visible"]["outline"] == "2px solid var(--link)"
+    assert github[f"{item} > .github-pulls-row:focus-visible"]["outline"] == "none"
+    # The change line is the item's inner target: no ground of its own, and only its chevron's
+    # plate answers the pointer, so its status inks keep the grounds their contrast is held on.
+    assert ".github-pulls-change:hover" not in github
+    assert github[".github-pulls-change:hover > .github-pulls-toggle"]["background"] == (
+        "var(--border)"
+    )
     assert "transition" not in row, "a row crossed by a held key answers with no easing"
     # Icons: the app's glyph, in the state's color and never its own. The four shapes are the
     # plugin's, Lucide's, and drawn only on a GitHub repository's page, so no folder's startup

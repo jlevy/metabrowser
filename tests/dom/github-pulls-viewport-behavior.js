@@ -580,8 +580,7 @@ async function paint() {
   await settle();
   // The row's files open from its change line, which an arrow and a route leave closed.
   const changeFor = (number) =>
-    items().find((item) => item.dataset.number === String(number))?.firstElementChild
-      .childNodes[1];
+    items().find((item) => item.dataset.number === String(number))?.firstElementChild.childNodes[1];
   assert.equal(changeFor(preview.number).getAttribute("aria-expanded"), "false");
   assert.deepEqual(fileReads, [], "arrow and route selection read no changed-file metadata");
 
