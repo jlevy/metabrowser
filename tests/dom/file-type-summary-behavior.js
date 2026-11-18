@@ -229,6 +229,7 @@ function familyRow() {
     metricClasses,
     fileTypeIcon,
     createDistributionHover(),
+    (name) => `<svg data-category-icon="${name}"></svg>`,
   );
   const originalBody = handle.body;
   const originalPyRow = handle.rows.get(".py").tr;
@@ -765,15 +766,25 @@ function familyRow() {
   view.updateDistributionView(handle, {
     ...updated,
     groups: [
-      { id: "media", label: "Media" },
-      { id: "other", label: "Other" },
+      { id: "media", label: "Media", icon: "monitor" },
+      { id: "other", label: "Other", icon: null },
     ],
     rows: [singleton, noExtension, remainingTypes],
   });
+  const groupHeading = (id) => handle.groups.get(id).body.children[0].children[0];
   check(
     "registry group order and labels drive the table",
     [...handle.groups.keys()].join(",") === "media,other" &&
-      handle.groups.get("media").body.children[0].children[0].textContent === "Media",
+      groupHeading("media").children.at(-1).textContent === "Media",
+  );
+  // A group's heading leads with its category's icon, from the shell's registry, and a
+  // group that names none draws none (docs/design-system.md, "File-Type Category Icons").
+  check(
+    "a group's heading leads with its category icon",
+    groupHeading("media").innerHTML === '<svg data-category-icon="monitor"></svg>' &&
+      groupHeading("other").innerHTML === "" &&
+      groupHeading("other").children.at(-1).textContent === "Other",
+    `${groupHeading("media").innerHTML} | ${groupHeading("other").innerHTML}`,
   );
   const imageFamily = handle.rows.get("family:images");
   check(

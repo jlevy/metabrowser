@@ -25,10 +25,10 @@ Paths are under `apps/macos/`.
 
 | Path | Holds |
 | --- | --- |
-| `Sources/ShellCore/Supervision/` | Spawning a server, recognizing it as ready, checking its health, and stopping it |
+| `Sources/ShellCore/Supervision/` | Spawning a server, what it says as it starts, recognizing it as ready, checking its health, and stopping it |
 | `Sources/ShellCore/Runtime/` | Finding `metab`, settling which one runs, and the child environment |
 | `Sources/ShellCore/Setup/` | The version floor, the first-run steps, file watches, the restart offer after an upgrade, and the launch notice |
-| `Sources/ShellCore/Logs/`, `Folders/`, `Web/` | Server logs; folder identity, titles, files opened inside folders, GitHub links and File > Open URL…, tab placement, and the saved session; the navigation policy, web view configuration, tab discards, reloads, and downloads |
+| `Sources/ShellCore/Logs/`, `Folders/`, `Web/` | Server logs; folder identity, titles, files opened inside folders, GitHub links, their failures, and File > Open URL…, tab placement, and the saved session; the navigation policy, web view configuration, tab discards, reloads, and downloads |
 | `Sources/ShellCore/App/` | Which build is running (`AppIdentity`), and the title-bar mark |
 | `Sources/ShellViews/` | `DropAwareWebView` and `WebContainerView`, a library of their own so that the WebKit gate’s driver builds the same views |
 | `Sources/Metabrowser/` | The AppKit app: lifecycle, menus, folder sessions, windows, and the SwiftUI status and settings views |
@@ -83,8 +83,9 @@ before one exists, windows, menus, the Dock, and file events.
    `SupervisorPolicy.healthDeadline`, since a hung server keeps its pid; one that does
    not answer is stopped, and fails.
 6. **Fail.** Every window of the folder shows the reason, the last lines of output, and
-   Retry. Nothing restarts by itself; after Retry, each window returns to its page on the
-   new port.
+   Retry. Nothing restarts by itself, except a repository whose start failed on GitHub,
+   when the app becomes active ([GitHub Links](#github-links)); after Retry, each window
+   returns to its page on the new port.
 7. **Stop.** Closing a folder’s last page stops its server: SIGTERM to the process
    group, `SupervisorPolicy.shutdownGrace`, SIGKILL, `killWait`, then SIGKILL to
    anything left in the group.
@@ -228,6 +229,54 @@ and the server, which resolves the link against its mirror, announces the right 
   the CI jobs that run on every change.
   A start waiting on another process’s acquisition of the same source writes one note
   and then nothing, so it is given up on after `startupTimeout`.
+- **Progress.** While a repository’s server starts, its windows show the newest line of
+  `metab`’s clone report (`StartProgress`): where the clone goes, how far it has got,
+  that it is done, that the cache held it, or that `metab` is reading the pull request
+  the link names. The supervisor reads the log’s newest lines each
+  `SupervisorPolicy.progressInterval` that the output grew
+  (`ServerSupervisor.startProgress`), which for a clone is once per
+  `MetabAcquisition.progressLineInterval`, and only for a start with a `startupLimit`;
+  what a line means is the launch’s (`ServerLaunch.startProgress(in:)`). The lines are
+  `metab`’s words around Git’s numbers, never text Git or the origin wrote, so the
+  window shows them as written, less the repository’s URL.
+- **A failure on GitHub.** A start that fails ends with `metab`’s `Error:` line, and
+  when that line names a state of reaching or reading GitHub (`GitHubFailure.kinds`),
+  the windows say which it is: the repository was not found or its account cannot read
+  it (`not_found_or_private`); the same with no GitHub CLI found, which the provider’s
+  hint to install it marks, so the window names both causes; the connection failed;
+  GitHub is limiting requests (`rate_limited`); or GitHub answered with an error
+  (`server_error`). The table also maps the GitHub plugin’s `not_logged_in` and
+  `gh_missing`, which no start names yet: the plugin’s messages carry no state and reach
+  no start’s `Error:` line, so the Swift samples of both are placeholders until the
+  status check (`mb-si2g`) decides how a start reports them.
+  They show `metab`’s message, the `gh` commands that fix it or show what is wrong, each
+  with Copy, as the first-run steps do, and Retry; Copy Message copies the failure, the
+  message, and the commands together.
+  Any other failure, `too_large` among them, shows its summary and the server’s output.
+  `tests/test_macos_app_pins.py` holds the states the app maps, and the lines its tests
+  diagnose, to what `metab` prints.
+  A clone cannot tell a signed-out `gh`, an account without access, or a sign-in without
+  the `repo` scope from a repository that does not exist, since GitHub answers all four
+  alike, so today each is `not_found_or_private`, and its steps start with
+  `gh auth status`. Telling them apart is the GitHub status check’s (`mb-si2g`).
+- **Back from Terminal.** When the app becomes active, each repository whose server
+  failed in a way a sign-in in Terminal can fix starts again, as Retry does: GitHub
+  showed no repository while `gh` was found (`GitHubFailure.Kind.rechecksOnActivation`,
+  `ServerFailure.rechecksOnActivation`, `FolderSession.recheckAfterActivation`), so the
+  sign-in clears the failure once the user switches back, and only then does the window
+  say it tries again. Nothing else changes: a folder, a server that is ready or starting,
+  and every other failure wait for Retry.
+  A network failure can come minutes into a first clone’s fetch (`timed_out`), which a
+  retry would start again from zero while holding the repository launch gate; a rate
+  limit asks for fewer requests; a server error is GitHub’s to fix; and without `gh`
+  nothing changes until Find Again, which restarts nothing.
+  The recheck runs the start again, since no route reports the sign-in yet, so each
+  switch back to the app while a not-found failure stands costs GitHub that failure’s
+  requests: the provider’s size check, when `gh` is found, and the probe of the origin,
+  which `REMOTE_PROBE_TIMEOUT_S` in `src/metabrowser/cache/origin.py` bounds and whose
+  comment holds its measurement; the not-found answer comes from those, before any
+  object is fetched. Reading the sign-in instead, and rechecking without a start, is
+  `mb-1rl3`’s, once the status check (`mb-si2g`) reports it.
 - **Titles.** Until the server answers `/api/identity`, the window is named for the
   repository (`FolderIdentity.repository`), a cached mirror.
   Only a local folder’s window gets a path menu, whatever identity its port answers.

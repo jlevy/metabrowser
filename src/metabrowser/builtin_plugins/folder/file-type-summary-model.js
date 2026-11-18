@@ -847,8 +847,11 @@ export function buildFileTypeSummaryModel(
     runtime,
     selectedMetric,
   );
+  // Each group's heading names its category, led by the category's icon.
   const groupDescriptors = Object.freeze(
-    runtime.displayGroups.map((group) => Object.freeze({ id: group.id, label: group.label })),
+    runtime.displayGroups.map((group) =>
+      Object.freeze({ id: group.id, label: group.label, icon: group.icon ?? null }),
+    ),
   );
 
   const filesText = formatters.formatFileCount(population.files);

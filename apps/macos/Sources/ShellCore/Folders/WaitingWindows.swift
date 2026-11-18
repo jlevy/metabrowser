@@ -19,7 +19,8 @@ public struct WaitingWindows<Window: AnyObject> {
     public init() {}
 
     /// `folder`, which is waiting for a runtime, was asked to open in `window`. A later
-    /// request for the same folder names the window it opens in.
+    /// request for the same folder from a window names that window instead; one from no
+    /// window, such as the Dock, leaves the earlier window named.
     public mutating func wait(_ folder: URL, in window: Window) {
         windows[folder] = Held(window: window)
     }

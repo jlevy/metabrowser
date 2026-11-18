@@ -69,7 +69,8 @@ public nonisolated struct OpenFolders: Equatable, Sendable {
 /// A window as a switch or File > Close Folder sees it.
 public nonisolated struct SwitchingWindow<ID: Hashable & Sendable>: Equatable, Sendable {
     public var id: ID
-    /// On screen: not a tab hidden behind another of its group.
+    /// On screen: not minimized, and not a tab hidden behind another of its group. A window
+    /// that is not counts its folder as shown only once it is (`windowDidBecomeKey`).
     public var isOnScreen: Bool
     /// A sheet is open on it: an `alert`, `confirm`, or `prompt`, a file input's open
     /// panel, or the print panel, which the page it shows opened, or one of the app's own,

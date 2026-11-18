@@ -162,6 +162,7 @@ final class FolderWindows {
     /// folder's page in the background if it has one, else a new page of it. The page the
     /// window leaves stays open in the background, or closes if its folder has another
     /// page (`SwitchedAwayPage`).
+    /// A new page opens at `address`, if one is given.
     ///
     /// Every switch comes through here, and this is where a window with a sheet open
     /// refuses one (`FolderSwitch.refused`): it beeps, keeps its page, and returns false.
@@ -232,7 +233,8 @@ final class FolderWindows {
     /// `controller`'s window as a switch sees it.
     private static func switching(_ controller: BrowserWindowController) -> SwitchingWindow<ObjectIdentifier> {
         SwitchingWindow(
-            id: ObjectIdentifier(controller), isOnScreen: !isBackgroundTab(controller.window),
+            id: ObjectIdentifier(controller),
+            isOnScreen: !isBackgroundTab(controller.window) && controller.window?.isMiniaturized != true,
             hasSheet: controller.window?.attachedSheet != nil)
     }
 

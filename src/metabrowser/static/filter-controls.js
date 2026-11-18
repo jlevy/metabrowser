@@ -206,7 +206,7 @@
    *          anyValue?: string, anyKey?: string, select?: string, open?: boolean,
    *          menuId: string,
    *          presets?: Array<{id: string, label: string, values: string[], count?: number}>,
-   *          presetSections?: Array<{id: string, label?: string, presets: Array<{id: string, label: string, values: string[], count?: number}>}>}} spec
+   *          presetSections?: Array<{id: string, label?: string, icon?: string, presets: Array<{id: string, label: string, values: string[], count?: number}>}>}} spec
    */
   function menuGroupHtml(spec) {
     const many = spec.select !== "one";
@@ -303,7 +303,8 @@
         return (
           `<div class="menu-group" role="group" aria-labelledby="${esc(labelId)}"` +
           ` data-chip-menu-section="${esc(section.id)}">` +
-          `<div class="group-heading" id="${esc(labelId)}">${esc(section.label || section.id)}</div>` +
+          `<div class="group-heading" id="${esc(labelId)}">${section.icon || ""}` +
+          `${esc(section.label || section.id)}</div>` +
           section.presets
             .map((preset) => {
               const on =

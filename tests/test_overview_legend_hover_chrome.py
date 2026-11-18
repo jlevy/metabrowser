@@ -26,7 +26,10 @@ motion. This holds that:
   the hover, and every entry keeps its size;
 - under ``prefers-reduced-motion: reduce`` the marks still lift and grow, at once, with no
   transition and no shimmer;
-- Other draws nothing.
+- Other draws nothing;
+- each Details group's heading leads with its category's icon, the glyph size and in the
+  heading's ink, standing in its rows' icon box, so its icon and name start where its
+  family rows' do (docs/design-system.md, "File-Type Category Icons").
 
 What the shimmer costs on the main thread, which it does not, is measured beside the tokens
 in ``static/styles.css``.
@@ -207,6 +210,22 @@ def test_a_legend_entry_hovers_its_familys_marks_in_chrome(
     _tooltip_on(segment, "the segment", "segment")
     assert segment["layout"] == rest["layout"], "the segment"
     _nothing(measured["segmentLeft"], "off the segment")
+
+    # Each Details group's heading leads with its category's icon, in the heading's ink,
+    # its icon and name on its family rows' columns (docs/design-system.md, "File-Type
+    # Category Icons").
+    headings = measured["detailsHeadings"]
+    assert [heading["name"] for heading in headings["headings"]] == [
+        "Documentation",
+        "Code",
+        "Data",
+    ]
+    for heading in headings["headings"]:
+        icon = heading["icon"]
+        assert icon is not None, heading
+        assert icon["width"] == icon["height"] == headings["glyph"], heading
+        assert icon["inHeadingInk"], heading
+        assert icon["fromRowGlyph"] == 0 and icon["nameFromRowName"] == 0, heading
 
     # Details open, then the entry: the family's own row is marked with the bars.
     details_rest = measured["detailsAtRest"]
