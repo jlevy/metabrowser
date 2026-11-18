@@ -161,9 +161,11 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
 - **Switching by keyboard:** View > Switch Folder… (Shift-Command-O) opens a panel over
   the window that lists the same folders, the one you looked at last first, so
   Shift-Command-O then Return goes back to it.
-  Type to filter by name or path, Return to show the selected folder in this window,
-  Option-Return for a new window, and Escape to close the panel.
-  Command-Delete closes the selected open folder.
+  Type to filter by name or path, Return to go to the selected folder (in this window,
+  or by bringing forward the window that shows it), Option-Return to open it in a new
+  window, and Escape to close the panel.
+  Command-Delete clears what you typed; with nothing typed, it closes the selected open
+  folder.
 - **Tabs or windows:** Settings > Open folders in decides where a newly opened folder
   goes: as System Settings > Desktop & Dock > “Prefer tabs when opening documents” says
   (the default), as a tab of the front window, or in a window of its own.

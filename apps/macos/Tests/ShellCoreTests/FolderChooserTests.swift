@@ -190,4 +190,74 @@ import Testing
         #expect(switcher.shown.map(\.title) == ["beta", "delta", "alpha"])
         #expect(switcher.selected == 1)
     }
+
+    @Test func theFieldsKeysMoveChooseAndCloseThePanel() {
+        let switcher = FolderSwitcher(rows: rows)
+        let command = { (key: FolderSwitcher.Key) in switcher.command(for: key, text: "") }
+        #expect(command(.init(command: "moveUp:")) == .move(-1))
+        #expect(command(.init(command: "moveDown:")) == .move(1))
+        #expect(command(.init(command: "insertNewline:", isReturn: true)) == .choose(newWindow: false))
+        #expect(command(.init(command: "cancelOperation:")) == .dismiss)
+        // Option-Return arrives as the field editor's own new line.
+        #expect(
+            command(.init(command: "insertNewlineIgnoringFieldEditor:", isReturn: true, option: true))
+                == .choose(newWindow: true))
+        #expect(command(.init(command: "insertNewline:", isReturn: true, option: true)) == .choose(newWindow: true))
+        // Typing, deleting, and moving the caret are the field's.
+        for other in ["insertText:", "deleteBackward:", "moveLeft:", "moveToBeginningOfLine:", "selectAll:"] {
+            #expect(command(.init(command: other)) == .edit)
+        }
+    }
+
+    @Test func commandDeleteClearsTypedTextAndClosesAFolderOnlyWithTheFieldEmpty() {
+        var switcher = FolderSwitcher(rows: rows)
+        let commandDelete = FolderSwitcher.Key(command: "deleteToBeginningOfLine:")
+        #expect(switcher.command(for: commandDelete, text: "") == .close("/beta"))
+        // With text typed, it deletes the text, whichever row is selected, this window's own
+        // folder's included.
+        switcher.search("alp")
+        #expect(switcher.closable == "/alpha")
+        #expect(switcher.command(for: commandDelete, text: "alp") == .edit)
+        #expect(switcher.command(for: commandDelete, text: " ") == .edit)
+        // Cleared, the panel lists every row again with the first selected, and that one
+        // is what Command-Delete now closes.
+        switcher.search("")
+        #expect(switcher.command(for: commandDelete, text: "") == .close("/beta"))
+        // A recent row is not open, so there is nothing to close.
+        switcher.select(2)
+        #expect(switcher.command(for: commandDelete, text: "") == .edit)
+        #expect(FolderSwitcher(rows: []).command(for: commandDelete, text: "") == .edit)
+    }
+
+    @Test func controlOEditsTheFieldAndTabKeepsTheFocusInIt() {
+        let switcher = FolderSwitcher(rows: rows)
+        // Control-O sends Option-Return's command, but is not Return: it opens no window.
+        let controlO = FolderSwitcher.Key(command: "insertNewlineIgnoringFieldEditor:", isReturn: false)
+        #expect(switcher.command(for: controlO, text: "be") == .edit)
+        #expect(switcher.command(for: .init(command: "insertTab:"), text: "") == .ignore)
+        #expect(switcher.command(for: .init(command: "insertBacktab:"), text: "be") == .ignore)
+    }
+
+    @Test func thePanelOpensCenteredBelowTheWindowsTopAndStaysOnScreen() {
+        let size = CGSize(width: 480, height: 360)
+        let visible = CGRect(x: 0, y: 75, width: 1470, height: 844)
+        let window = CGRect(x: 100, y: 200, width: 1000, height: 700)
+        let drop = FolderSwitcher.dropBelowWindowTop
+        #expect(
+            FolderSwitcher.frame(size: size, over: window, visible: visible)
+                == CGRect(x: 360, y: 900 - drop - 360, width: 480, height: 360))
+        #expect(FolderSwitcher.frame(size: size, over: window, visible: nil).origin.x == 360)
+        // A short window near the bottom of the screen: the panel rises to its bottom edge.
+        let short = CGRect(x: 100, y: 75, width: 600, height: 300)
+        #expect(FolderSwitcher.frame(size: size, over: short, visible: visible).minY == visible.minY)
+        // A window dragged partly off the left or right edge keeps the panel on screen.
+        let left = CGRect(x: -500, y: 200, width: 600, height: 700)
+        #expect(FolderSwitcher.frame(size: size, over: left, visible: visible).minX == visible.minX)
+        let right = CGRect(x: 1300, y: 200, width: 600, height: 700)
+        #expect(FolderSwitcher.frame(size: size, over: right, visible: visible).maxX == visible.maxX)
+        // A screen too small for the panel keeps its top left corner, and so its field, on it.
+        let tiny = CGRect(x: 10, y: 20, width: 400, height: 300)
+        let frame = FolderSwitcher.frame(size: size, over: window, visible: tiny)
+        #expect(frame.minX == tiny.minX && frame.maxY == tiny.maxY)
+    }
 }

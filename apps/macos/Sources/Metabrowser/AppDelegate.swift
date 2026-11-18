@@ -28,19 +28,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             AppLog.app.info("closing every folder open in the background")
             self?.folderWindows.closeBackgroundFolders()
         })
-    /// View > Switch Folder…, the chooser's keyboard route (`FolderSwitcher`).
-    private lazy var switchFolderPanel = SwitchFolderWindowController(
-        rows: { [weak self] window in
-            guard let self else { return [] }
-            return FolderChooser.panelRows(
-                open: folderWindows.chooserFolders(for: window), byRecency: folderWindows.openFolders.byRecency,
-                recent: recentFolders.listed())
-        },
-        choose: { [weak self] in self?.choose($0, in: $1) },
-        close: { [weak self] key in
-            guard let self, let session = folderSessions.first(where: { $0.path == key }) else { return }
-            closeFolder(session)
-        })
+    /// View > Switch Folder…, the chooser's keyboard route (`FolderSwitcher`), made the
+    /// first time it opens (`showSwitchFolder`).
+    private var switchFolderPanel: SwitchFolderWindowController?
     private let launchGate = LaunchGate()
     /// The repositories' lane (`LaunchLane`), whose servers walk ports apart from a
     /// folder's, so they start behind a gate of their own, and a first clone holds up no
@@ -663,6 +653,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for (session, title) in zip(open, WindowTitle.windowTitles(open.map(\.title))) {
             session.windowTitle = title
         }
+        // A folder opened, closed, or was renamed: the Switch Folder panel, if up, lists
+        // the folders again.
+        switchFolderPanel?.foldersChanged()
     }
 
     /// The folder chooser for `window`'s title.
@@ -672,7 +665,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// View > Switch Folder…, over `window`.
     func showSwitchFolder(over window: BrowserWindowController) {
-        switchFolderPanel.show(over: window)
+        let panel = switchFolderPanel ?? makeSwitchFolderPanel()
+        switchFolderPanel = panel
+        panel.show(over: window)
+    }
+
+    private func makeSwitchFolderPanel() -> SwitchFolderWindowController {
+        SwitchFolderWindowController(
+            rows: { [weak self] window in
+                guard let self else { return [] }
+                return FolderChooser.panelRows(
+                    open: folderWindows.chooserFolders(for: window), byRecency: folderWindows.openFolders.byRecency,
+                    recent: recentFolders.listed())
+            },
+            choose: { [weak self] in self?.choose($0, in: $1) },
+            close: { [weak self] key in
+                guard let self, let session = folderSessions.first(where: { $0.path == key }) else { return }
+                closeFolder(session)
+            })
     }
 
     /// Carries out a choice made in the folder chooser of `window`, or of the window the

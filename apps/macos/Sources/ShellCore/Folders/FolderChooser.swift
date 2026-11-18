@@ -168,9 +168,49 @@ public nonisolated enum FolderChooser {
 }
 
 /// The Switch Folder panel's state: its rows (`FolderChooser.panelRows`), the search, the
-/// rows it matches, and the selected one, which Return chooses and Command-Delete closes.
-/// `SwitchFolderWindowController` shows it and passes on the user's keys.
+/// rows it matches, and the selected one, which Return chooses and Command-Delete closes;
+/// what each key pressed in its search field does (`command(for:text:)`); and where the
+/// panel opens (`frame(size:over:visible:)`). `SwitchFolderWindowController` shows it,
+/// passes on the user's keys, and carries out each command.
 public nonisolated struct FolderSwitcher: Equatable, Sendable {
+    /// What a key pressed in the panel's search field does.
+    public enum Command: Equatable, Sendable {
+        /// Up or Down: the selection moves by this many rows.
+        case move(Int)
+        /// Return, or Option-Return for a new window: the selected row is chosen.
+        case choose(newWindow: Bool)
+        /// Escape: the panel closes.
+        case dismiss
+        /// Command-Delete with nothing typed: the open folder with this key closes.
+        case close(String)
+        /// Tab and Shift-Tab: nothing, so the field keeps the focus and the panel its keys.
+        case ignore
+        /// Any other key: the field edits its text as any text field does.
+        case edit
+    }
+
+    /// A key the search field passes on, as AppKit reports it.
+    public struct Key: Equatable, Sendable {
+        /// The command the key's binding sends, as `NSStringFromSelector` names it:
+        /// `moveUp:` for Up, `deleteToBeginningOfLine:` for Command-Delete.
+        public var command: String
+        /// Return or Enter was pressed, rather than another key bound to the same command,
+        /// as Control-O is bound to Option-Return's `insertNewlineIgnoringFieldEditor:`.
+        public var isReturn: Bool
+        /// Option was held.
+        public var option: Bool
+
+        public init(command: String, isReturn: Bool = false, option: Bool = false) {
+            self.command = command
+            self.isReturn = isReturn
+            self.option = option
+        }
+    }
+
+    /// How far below a window's top edge the panel's top opens, so the window's title,
+    /// which names the folder the panel switches, stays in view above it.
+    public static let dropBelowWindowTop: CGFloat = 80
+
     /// Every row, in the panel's order.
     public private(set) var rows: [FolderChooser.Row]
     public private(set) var query = ""
@@ -210,10 +250,30 @@ public nonisolated struct FolderSwitcher: Equatable, Sendable {
         return FolderChooser.action(for: shown[selected].target, newWindow: newWindow)
     }
 
-    /// The open folder Command-Delete would close: the selected row's, if it is open.
+    /// The open folder Command-Delete closes once the field is empty: the selected row's,
+    /// if it is open.
     public var closable: String? {
         guard let selected, case .open(let key, _) = shown[selected].target else { return nil }
         return key
+    }
+
+    /// What `key` does in the search field, which holds `text`.
+    ///
+    /// Command-Delete is the field's own delete-to-start-of-line while anything is typed,
+    /// so it clears a search as it would in any field; only with the field empty does it
+    /// close the selected open folder, which the unfiltered list shows selected. Control-O
+    /// sends Option-Return's command, and edits the field as it would anywhere.
+    public func command(for key: Key, text: String) -> Command {
+        switch key.command {
+        case "moveUp:": .move(-1)
+        case "moveDown:": .move(1)
+        case "insertNewline:": .choose(newWindow: key.option)
+        case "insertNewlineIgnoringFieldEditor:": key.isReturn ? .choose(newWindow: true) : .edit
+        case "cancelOperation:": .dismiss
+        case "insertTab:", "insertBacktab:": .ignore
+        case "deleteToBeginningOfLine:": text.isEmpty ? closable.map(Command.close) ?? .edit : .edit
+        default: .edit
+        }
     }
 
     /// The rows changed under the panel, as when Command-Delete closed a folder: the
@@ -223,5 +283,22 @@ public nonisolated struct FolderSwitcher: Equatable, Sendable {
         self.rows = rows
         shown = FolderChooser.matching(rows, query: query)
         selected = shown.isEmpty ? nil : min(place, shown.count - 1)
+    }
+
+    /// The panel's frame, `size` large, over a window whose frame is `window`: centered
+    /// across it, `dropBelowWindowTop` below its top edge, and moved onto `visible`, its
+    /// screen's visible frame, where it would run past an edge, as for a short window near
+    /// the bottom of the screen or one dragged partly off it. On a screen too small for
+    /// the panel, its top left corner stays on screen, so its field can be reached.
+    ///
+    /// Frames are in AppKit's screen coordinates, whose y axis points up.
+    public static func frame(size: CGSize, over window: CGRect, visible: CGRect?) -> CGRect {
+        var x = (window.midX - size.width / 2).rounded()
+        var y = (window.maxY - dropBelowWindowTop - size.height).rounded()
+        if let visible {
+            x = max(min(x, visible.maxX - size.width), visible.minX)
+            y = min(max(y, visible.minY), visible.maxY - size.height)
+        }
+        return CGRect(origin: CGPoint(x: x, y: y), size: size)
     }
 }

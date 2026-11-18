@@ -57,7 +57,8 @@ final class FolderChooserMenu: NSObject {
             for row in shown { add(row, to: menu, window: window) }
         }
         menu.addItem(.separator())
-        // Nil-targeted, so they reach the app delegate as the File menu's do.
+        // Nil-targeted, so they reach the app delegate as the File menu's do, and Switch
+        // Folder… the window's controller, as the View menu's does.
         menu.addItem(MainMenu.item("Open Folder…", #selector(AppDelegate.openFolder(_:)), "o"))
         menu.addItem(MainMenu.item("Open URL…", #selector(AppDelegate.showOpenURL(_:)), "l"))
         menu.addItem(

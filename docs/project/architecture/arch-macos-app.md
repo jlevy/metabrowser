@@ -535,8 +535,16 @@ mark in a trailing one (`TitleBarMarkController`).
   `SwitchFolderWindowController`, an `NSPanel` with a search field and a table over the
   window, the chooser’s keyboard route.
   Its rows are `FolderChooser.panelRows` (the open folders most recently shown first,
-  this window’s last), and its search, selection, and Command-Delete are
+  this window’s last), and its search, selection, and where it opens are
   `FolderSwitcher`’s; a choice goes through `AppDelegate.choose`, as the chooser’s does.
+  The search field keeps the focus, since the table refuses it, and passes each key
+  command to `FolderSwitcher.command`, which decides what the key does: Command-Delete,
+  for one, deletes typed text as in any field, and closes the selected open folder only
+  with the field empty.
+  The field shares its focus with the table for VoiceOver, and each row reads as one
+  cell by its label. View > Switch Folder… is disabled, and the panel does not open, over
+  a window with a sheet; the panel lists the folders again when they change under it
+  (`foldersChanged`).
 - **Shared marks.** The menus that list roots (the chooser, File > Open Recent, and the
   Dock menu) draw each root’s `RootMark` as a template image: the page’s own Lucide
   glyph for a folder, copied from `static/icons.js` and held to it by `RootMarkTests`,
