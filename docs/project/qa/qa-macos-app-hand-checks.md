@@ -149,6 +149,68 @@ Markdown file open:
 4. **A file dragged onto the page** opens at its page, in the open folder that holds it
    or else in its own folder.
 
+## Presenting From metab
+
+`metab ROOT --present` hands the app a target with `open -b`
+([Presenting to the App](../architecture/arch-cli.md#presenting-to-the-app)); its
+goldens use a recording stand-in, so these are the checks that a real app receives what
+the report says. Use a `metab` built from this checkout, with the development build
+registered (opened once) and every other copy quit.
+The build must declare `MetabrowserOpensURLs`, which the app gains with
+[#539](https://github.com/jlevy/metabrowser/pull/539): a build without it receives
+nothing, so run these once a build with both changes exists, before either is released.
+The build stays where `make macos-app` leaves it, so `present` sets
+`METABROWSER_ALLOW_UNINSTALLED_APP=1`, which lifts `--present`’s install-location check
+for a developer; `make macos-run` launches the app with `open -a` and runs no
+`--present`, so it needs no such setting.
+
+```shell
+APP_ID=io.github.jlevy.metabrowser.dev
+folder="$(mktemp -d)" && mkdir -p "$folder/docs" && echo '# Guide' > "$folder/docs/guide.md"
+present() {
+  METABROWSER_ALLOW_UNINSTALLED_APP=1 \
+    /usr/bin/time -p metab "$@" --present --app-bundle-id "$APP_ID" --format json
+}
+```
+
+1. **A folder.** `present "$folder"` exits 0 with `delivered_to: app` and `bundle_path`
+   naming the development build, and a window opens on the folder.
+   Note the `real` time with the app running and again after a quit (a cold start),
+   beside `OPEN_TIMEOUT_S` in `cli/present.py`.
+2. **A file, its root not open.** Close the folder’s windows, then
+   `present "$folder" --path docs/guide.md`: one window opens, rooted at `$folder` (its
+   title is the folder’s name, not `docs`), showing `guide.md`.
+3. **A file, its root open.** With that window open, the same command shows the file in
+   it and opens no second window.
+4. **A file, a folder inside its root open.** Open `$folder/docs` on its own
+   (`present "$folder/docs"`), then `present "$folder" --path docs/guide.md`: the file
+   shows in the `docs` window, the limit the guide states.
+5. **A file named alone, a folder above its repository open.** Make `$folder` a
+   repository (`git -C "$folder" init`), open the folder that holds it
+   (`present "$(dirname "$folder")"`), then `present "$folder/docs/guide.md"`: the file
+   opens in a window of its own folder, `docs`, never in the window of the folder above
+   the repository, as
+   [Open Modes](../architecture/arch-open-modes.md#what-keys-on-the-root) requires.
+   With `$folder` open as well, it shows in `$folder`’s window.
+6. **A build without the marker.** With a build from before `MetabrowserOpensURLs` (or
+   the key deleted from a copy’s `Info.plist` and the copy opened once),
+   `present https://github.com/jlevy/metabrowser` exits 4 with `app_not_marked`, and so
+   does `present "$folder"`; nothing opens.
+7. **A GitHub URL.** With a build that declares the marker,
+   `present https://github.com/jlevy/metabrowser/pull/517` opens the pull request’s
+   page, as the GitHub Links checks do with `open -b`.
+8. **Inside an agent’s sandbox.** From an agent session whose sandbox is on,
+   `metab "$folder" --present` exits 5 with `lookup_failed` or `open_failed`, never
+   `app_not_found`. Record which, and what the reason says.
+9. **An older copy running.** With a build without the marker running and a newer one
+   registered, `present https://github.com/jlevy/metabrowser`: record which copy takes
+   the URL and whether a window shows it, since the marker is read from the bundle
+   LaunchServices prefers, not from the running copy.
+10. **Not installed.** `metab "$folder" --present --app-bundle-id "$APP_ID"`, without
+    the setting, exits 4 with `app_not_installed`, naming the build’s path under
+    `apps/macos/build/` and the two install locations, and asking for nothing to be done
+    with that build; nothing opens.
+
 ## Setup Flows
 
 What a new user sees first is a window, which no unit test reaches.

@@ -347,6 +347,7 @@ GOLDEN_DRIVERS := \
 	tests/test_cli_github_pulls_prefetch_golden.py \
 	tests/test_cli_checkout_golden.py \
 	tests/test_cli_github_checkout_golden.py \
+	tests/test_cli_present_golden.py \
 	tests/test_diff_comparison_cache.py
 
 golden-update:
