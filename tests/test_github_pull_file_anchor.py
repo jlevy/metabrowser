@@ -157,13 +157,23 @@ def test_an_anchor_no_list_names_says_why_and_is_not_an_error(
 def test_a_path_the_changes_tab_cannot_address_or_git_could_not_spell_is_not_named(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # A backslash is a valid Git path byte that the Changes tab's address refuses, and a
-    # path Git could not spell in UTF-8 has a lossy `path` that GitHub did not hash.
+    # A backslash is a valid Git path byte that the Changes tab's address refuses: the
+    # pull request changes the file, and the reason says so, from either source.
+    for listed in (_listed("a\\b.md"), "not_cached"):
+        _Sources(monkeypatch, listed=listed, record=_record(), changes=[_change("a\\b.md")])
+        unaddressable = _resolve("a\\b.md")
+        assert unaddressable.path is None
+        assert unaddressable.unresolved is not None
+        assert unaddressable.unresolved.endswith("(file_not_addressable)")
+
+    # A path Git could not spell in UTF-8 has a lossy `path` that GitHub did not hash, so
+    # a comparison holding one cannot say that the pull request does not change a file.
     _Sources(
         monkeypatch,
-        listed=_listed("a\\b.md"),
         record=_record(),
-        changes=[_change("a\\b.md"), _change("lossy.md", lossy=True)],
+        changes=[_change("src/app.txt"), _change("lossy.md", lossy=True)],
     )
-    assert _resolve("a\\b.md").path is None
-    assert _resolve("lossy.md").path is None
+    lossy = _resolve("lossy.md")
+    assert lossy.path is None
+    assert lossy.unresolved is not None
+    assert lossy.unresolved.endswith("(files_unknown)")

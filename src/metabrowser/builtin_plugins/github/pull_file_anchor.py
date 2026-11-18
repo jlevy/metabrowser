@@ -13,9 +13,9 @@ lists, in order, and takes the first that matches:
 
 Neither runs ``gh`` or fetches, so a URL resolves as well offline as on line, and an
 anchor neither list holds is not an error: the URL opens the Changes tab itself, and
-:class:`~metabrowser.cache.providers.PullRequestFile` says why. A path matches only when
-the Changes tab has an address for it (``format_pull_href``), so what this returns always
-opens.
+:class:`~metabrowser.cache.providers.PullRequestFile` says why. A changed file the
+Changes tab has no address for (``format_pull_href``), such as one with a backslash in
+its name, is reported as that and not named, so what this returns always opens.
 
 The work is bounded by what each source already bounds: a cached list by
 ``MAX_PULL_FILES_BYTES``, a record by ``MAX_PULL_RECORD_BYTES``, and a comparison's
@@ -62,10 +62,18 @@ def _addressable(number: int, path: str) -> bool:
     return True
 
 
-def _matching(number: int, digest: str, paths: Iterable[str]) -> str | None:
-    return next(
-        (path for path in paths if path_digest(path) == digest and _addressable(number, path)),
+def _matching(number: int, digest: str, paths: Iterable[str]) -> PullRequestFile | None:
+    """The file of *paths* whose path hashes to *digest*, or ``None`` when none does."""
+
+    found = next((path for path in paths if path_digest(path) == digest), None)
+    if found is None:
+        return None
+    if _addressable(number, found):
+        return PullRequestFile(found)
+    return PullRequestFile(
         None,
+        f"pull request {number} changes the file the URL's anchor hashes, but the Changes "
+        "tab has no address for its path (file_not_addressable)",
     )
 
 
@@ -76,9 +84,11 @@ def _cached_paths(listed: PullFileList | str) -> list[str]:
 async def _comparison_paths(
     published: PublishedSource, number: int, record: PullRecord | str
 ) -> tuple[list[str], bool] | None:
-    """The paths of the record's comparison and whether its manifest was cut short.
+    """The paths of the record's comparison, and whether they are all of its files.
 
-    ``None`` when there is no record with a comparison, or the store cannot list it.
+    They are not all when the manifest was cut short, or when Git could not spell a path
+    as GitHub hashed it. ``None`` when there is no record with a comparison, or the store
+    cannot list it.
     """
 
     if not isinstance(record, PullRecord) or record.comparison is None:
@@ -92,13 +102,18 @@ async def _comparison_paths(
         log.debug("pull request %s's comparison could not be listed: %s", number, exc)
         return None
     paths: list[str] = []
+    complete = not listed.manifest.truncated
     for change in listed.manifest.files:
         side = change.new if change.new is not None else change.old
+        if side is None:
+            continue
         # A path Git could not spell in UTF-8 has its bytes in `path_b64` and a lossy
         # `path`, which is not the name GitHub hashed.
-        if side is not None and side.path_b64 is None:
+        if side.path_b64 is None:
             paths.append(side.path)
-    return paths, listed.manifest.truncated
+        else:
+            complete = False
+    return paths, complete
 
 
 async def pull_file_for_anchor(
@@ -109,15 +124,15 @@ async def pull_file_for_anchor(
     listed = await asyncio.to_thread(read_pull_files, published.home, published.slug, number)
     found = _matching(number, anchor.digest, _cached_paths(listed))
     if found is not None:
-        return PullRequestFile(found)
+        return found
     record = await asyncio.to_thread(read_pull_record, published.home, published.slug, number)
     compared = await _comparison_paths(published, number, record)
     if compared is not None:
-        paths, truncated = compared
+        paths, complete = compared
         found = _matching(number, anchor.digest, paths)
         if found is not None:
-            return PullRequestFile(found)
-        if not truncated:
+            return found
+        if complete:
             return PullRequestFile(
                 None,
                 f"no file pull request {number} changes has the path the URL's anchor "
