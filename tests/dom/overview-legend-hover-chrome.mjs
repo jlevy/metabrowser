@@ -101,6 +101,48 @@ const SEGMENT = (row, key) =>
 // - how far each grown bar is from the tracks above and below it, grown or not, and
 //   Total's from the legend;
 // - the tooltip's words and its place against the handle the pointer is on.
+// Each Details group's heading: its category's icon, the glyph size and in the heading's
+// ink, with its name the gap after it, against its first family row's icon and name
+// (docs/design-system.md, "File-Type Category Icons").
+const DETAILS_HEADINGS = `(() => {
+  const round = (value) => Math.round(value * 100) / 100;
+  const root = getComputedStyle(document.documentElement);
+  const headings = [...document.querySelectorAll(".file-type-summary-group-row th")].map((heading) => {
+    const icon = heading.querySelector(":scope > .category-icon");
+    const name = heading.lastElementChild;
+    const row = heading.closest("tbody").querySelector("tr[data-type-key] .file-type-summary-type-content");
+    const rowGlyph = row.firstElementChild.querySelector("svg").getBoundingClientRect();
+    // The row's name: its first drawn words, in its label or, for a family that opens,
+    // its disclosure.
+    const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
+    let rowName = null;
+    for (let node = walker.nextNode(); node && !rowName; node = walker.nextNode()) {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const rect = range.getBoundingClientRect();
+      if (node.textContent.trim() && rect.width > 0) rowName = rect;
+    }
+    const box = icon?.getBoundingClientRect();
+    const ink = getComputedStyle(heading).color;
+    return {
+      name: name.textContent,
+      icon: icon && {
+        width: round(box.width),
+        height: round(box.height),
+        inHeadingInk: getComputedStyle(icon).color === ink && getComputedStyle(icon).stroke === ink,
+        textFromIcon: round(name.getBoundingClientRect().left - box.right),
+        fromRowGlyph: round(box.left - rowGlyph.left),
+        nameFromRowName: round(name.getBoundingClientRect().left - rowName.left),
+      },
+    };
+  });
+  return {
+    headings,
+    glyph: parseFloat(root.getPropertyValue("--icon-glyph")),
+    gap: parseFloat(root.getPropertyValue("--category-icon-gap")),
+  };
+})()`;
+
 const READ = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const tip = document.querySelector(".custom-tooltip");
@@ -313,6 +355,7 @@ try {
   result.segmentLeft = await chrome.evaluate(READ);
   await toggleDetails();
   result.detailsAtRest = await chrome.evaluate(READ);
+  result.detailsHeadings = await chrome.evaluate(DETAILS_HEADINGS);
   await move(ENTRY("Python", "label"));
   result.detailsEntry = await chrome.evaluate(READ);
   await toggleDetails();

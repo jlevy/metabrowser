@@ -12,7 +12,8 @@ Checked items below are supported today; unchecked items are planned work.
 The latest release is 0.12.0, tagged on 2026-11-08 and published on 2026-11-09. It adds
 the repository mirror and GitHub browsing: open a Git or GitHub URL, read pull requests
 from the Pulls tab, and reopen what was fetched while offline.
-Work merged since then is listed under Unreleased in [CHANGELOG.md](CHANGELOG.md).
+Work merged since then is listed under Unreleased in [CHANGELOG.md](CHANGELOG.md) and in
+[changelog.d/](changelog.d/README.md).
 The owner-deferred 0.12 checks are open beads under `mb-425f`, among them the landing
 differential (`mb-2g6f`) and the human sign-off matrix (`mb-etqi`).
 

@@ -202,12 +202,12 @@ A background folder whose server failed or stopped shows its failure when it is 
 with Retry, as a window does today.
 
 **The saved session** records the folders in the background after its windows, in the
-order they opened, each as a `SavedTab` with its page (`SavedSession.background`). A
-file the released app saved has no such field, and that app is on users’ Macs, so the
-field reads as empty when it is absent (`decodeIfPresent`). Each background root is
-admitted as a tab’s root is (`RootAdmission`), dropped if a window’s tab or an earlier
-background folder names the same folder, and counted against `RestoreBudget.standard`
-after every window’s tabs.
+order shown, the one shown most recently first, each as a `SavedTab` with its page
+(`SavedSession.background`). A file the released app saved has no such field, and that
+app is on users’ Macs, so the field reads as empty when it is absent
+(`decodeIfPresent`). Each background root is admitted as a tab’s root is
+(`RootAdmission`), dropped if a window’s tab or an earlier background folder names the
+same folder, and counted against `RestoreBudget.standard` after every window’s tabs.
 The restore reopens each as a page with no window and no server, its root held in the
 restore queue as a protected root’s is, until a window shows it (`RestoreQueue`,
 `RestoreRun`). A saved path that now leads to another folder moves the root’s pages
@@ -353,11 +353,12 @@ exemption as the saved windows
 One phase, as one stack of four pull requests, layers 1 to 4 below.
 Each pull request updates the user guide (`docs/macos-app.md`), the architecture
 document (`arch-macos-app.md`), and `CHANGELOG.md` for what it changes.
-Layer 2 also rewords “Closing a folder’s last window stops it” in both documents, since
-a folder’s last page now stops it and the app’s last window leaves folders in the
-background running; rewrites the user guide’s account of the last session; and corrects
-the lifecycle comment on `FolderSession`. Layer 3 says in the user guide that a
-double-click on the title opens the chooser.
+Layer 2 also rewords “Closing a folder’s last window stops it” in the architecture
+document (the user guide’s sentence stays true as written), since a folder’s last page
+now stops it and the app’s last window leaves folders in the background running;
+rewrites the user guide’s account of the last session; and corrects the lifecycle
+comment on `FolderSession`. Layer 3 says in the user guide that a double-click on the
+title opens the chooser.
 
 ### Phase 1: Switch Folders in a Window
 
