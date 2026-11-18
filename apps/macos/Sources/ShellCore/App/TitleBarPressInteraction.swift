@@ -13,9 +13,11 @@ import CoreGraphics
 ///   release after that opens nothing.
 /// - The hover goes out when the pointer leaves, and on those same deactivations, which
 ///   stop the key-window tracking area from reporting the pointer's exit.
-/// - A press counts the same whether or not the control was lit: in a window that is not
-///   key the tracking area reports no hover, and a press the control is given there
-///   still opens.
+/// - A press counts the same whether or not the control was lit, and whether or not its
+///   window was key. In a window that is not key the tracking area reports no hover, and
+///   a press there still opens, or drags. Each control takes the press that makes its
+///   window key (`acceptsFirstMouse`): neither is a window-drag region, so a press it is
+///   not given would neither drag the window nor open.
 public nonisolated struct TitleBarPressInteraction: Equatable, Sendable {
     public enum Effect: Equatable, Sendable {
         /// Open what the control opens: the project's page, or the chooser.

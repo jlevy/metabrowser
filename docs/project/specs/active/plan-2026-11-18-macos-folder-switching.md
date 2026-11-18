@@ -204,6 +204,8 @@ title truncates before the chevron, never under it.
 - A click, released without dragging past the system’s drag threshold, opens the chooser
   under the title.
 - A drag that starts on the title moves the window, as today.
+- In a window that is not key, the title takes the first press, as the mark does: a drag
+  moves the window and a click opens the chooser.
 - Command-click and right-click open the path menu, as today.
 - Outside the button, the title bar keeps the system’s double-click action.
 

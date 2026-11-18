@@ -146,7 +146,7 @@ final class TitleBarTitleView: NSView {
             url == nil
                 ? []
                 : [NSAccessibilityCustomAction(name: "Show Path") { [weak self] in
-                    self?.showPathMenu()
+                    self?.afterAccessibilityAction { $0.showPathMenu() }
                     return true
                 }])
         updateWidth()
@@ -160,18 +160,35 @@ final class TitleBarTitleView: NSView {
     /// offers the path menu as Show Menu, as the plain title did.
     override func accessibilityPerformShowMenu() -> Bool {
         if chooser != nil {
-            if interaction.accessibilityPressed() == .open { showChooser() }
+            if interaction.accessibilityPressed() == .open { afterAccessibilityAction { $0.showChooser() } }
             return true
         }
         guard url != nil else { return false }
-        showPathMenu()
+        afterAccessibilityAction { $0.showPathMenu() }
         return true
     }
 
     override func accessibilityPerformPress() -> Bool {
         guard chooser != nil else { return false }
-        if interaction.accessibilityPressed() == .open { showChooser() }
+        if interaction.accessibilityPressed() == .open { afterAccessibilityAction { $0.showChooser() } }
         return true
+    }
+
+    /// Opens a menu for an accessibility action on the run loop's next turn, in its
+    /// default mode. The action returns first, so VoiceOver is not left waiting inside the
+    /// call while the menu tracks, and can follow into the menu once it opens. The block
+    /// runs from the run loop, not the main queue: a menu's modal loop entered from a
+    /// main-actor job stops every other main-actor job until it closes
+    /// (`AppDelegate.onRunLoop`). The default mode keeps it from opening inside another
+    /// menu's tracking.
+    private func afterAccessibilityAction(_ body: @escaping (TitleBarTitleView) -> Void) {
+        let main = CFRunLoopGetMain()
+        CFRunLoopPerformBlock(main, CFRunLoopMode.defaultMode.rawValue) { [weak self] in
+            MainActor.assumeIsolated {
+                if let self { body(self) }
+            }
+        }
+        CFRunLoopWakeUp(main)
     }
 
     /// Show Menu is offered by a title that opens something: the chooser, or a local
@@ -363,18 +380,33 @@ final class TitleBarTitleView: NSView {
     /// itself, once a press has moved far enough not to be a click.
     override var mouseDownCanMoveWindow: Bool { chooser == nil }
 
+    /// A chooser's title takes the press that makes its window key, as the mark does: it
+    /// is not a window-drag region, so a press it is not given would neither move the
+    /// window nor open the chooser. That press opens or drags as in a key window
+    /// (`TitleBarPressInteraction`). A plain title leaves the first click to AppKit.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { chooser != nil }
+
+    /// A plain title is all title. A chooser's title is a control only where it lights,
+    /// the hover surface; the strips above and below it stay title bar, with the title
+    /// bar's own drag and double-click.
     override func hitTest(_ point: NSPoint) -> NSView? {
-        super.hitTest(point) == nil ? nil : self
+        guard super.hitTest(point) != nil else { return nil }
+        guard chooser != nil else { return self }
+        return hoverRect.contains(convert(point, from: superview)) ? self : nil
     }
 
     override func mouseDown(with event: NSEvent) {
         if url != nil, !event.modifierFlags.isDisjoint(with: [.command, .control]) {
             showPathMenu()
-        } else if chooser != nil {
+        } else if chooser == nil {
+            super.mouseDown(with: event)
+        } else if event.modifierFlags.contains(.control) {
+            // Control-click is a right-click, which opens nothing on a title with no path
+            // menu (`rightMouseDown`).
+            return
+        } else {
             pressEvent = event
             interaction.pressed(at: event.locationInWindow)
-        } else {
-            super.mouseDown(with: event)
         }
     }
 
@@ -388,7 +420,7 @@ final class TitleBarTitleView: NSView {
     override func mouseUp(with event: NSEvent) {
         guard chooser != nil else { return super.mouseUp(with: event) }
         pressEvent = nil
-        let inside = bounds.contains(convert(event.locationInWindow, from: nil))
+        let inside = hoverRect.contains(convert(event.locationInWindow, from: nil))
         if interaction.released(inside: inside) == .open { showChooser() }
     }
 

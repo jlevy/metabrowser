@@ -523,7 +523,10 @@ mark in a trailing one (`TitleBarMarkController`).
 - **The folder chooser.** The title is a pop-up control (`TitleBarTitleView`): an
   always-shown `chevron.down` after it, and on hover the system’s fill for a control
   under the pointer, resolved as the mark’s is.
-  A click opens `FolderChooserMenu` under it, and a press that moves
+  Only that surface is the control: the title bar above and below it keeps its own drag
+  and double-click. Like the mark, the control takes the press that makes its window key,
+  since neither is a window-drag region, and that press opens or drags as in a key
+  window. A click opens `FolderChooserMenu` under it, and a press that moves
   `TitleBarPressInteraction.dragDistance` drags the window instead; VoiceOver reads a
   pop-up button whose Press and Show Menu open the chooser.
   `FolderChooser` decides the rows (the open folders in the order they opened, then the
