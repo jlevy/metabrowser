@@ -382,11 +382,11 @@ $ node tests/dom/file-overview-session.js
   "the folder header's tally": {
     "still scanning": {
       "skeleton": true,
-      "text": ""
+      "text": "· ·"
     },
     "complete": {
       "skeleton": false,
-      "text": "3000 B 3 files 3h"
+      "text": "3000 B · 3 files · 3h"
     },
     "hidden": {
       "skeleton": false,
