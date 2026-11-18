@@ -4,6 +4,10 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- An agent log event’s chevron and a code block’s copy button draw the app’s one chevron
+  and copy icon. The chevron was larger and thinner than every other one, and the copy
+  button an older shape than the app’s other copy buttons.
+
 - In the macOS app, Open Recent, the Dock menu and the title’s path menu show folders
   with the same outline folder symbol as the mirror’s cloud, instead of Finder’s colored
   folder.
