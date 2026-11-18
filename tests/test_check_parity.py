@@ -34,6 +34,16 @@ def _write_registry(tmp_path: Path, rows: str) -> Path:
     return doc
 
 
+# The modes whose models the real registry must cover. A fixture registry declares no
+# mode's model, so each test starts with none, and one about a mode's model names it.
+_REAL_MODEL_MODES = dict(check_parity._MODEL_MODES)  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.fixture(autouse=True)
+def no_model_modes(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(check_parity, "_MODEL_MODES", {})
+
+
 @pytest.fixture
 def no_registered_kinds(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(check_parity, "registered_kinds", lambda: set())
@@ -215,7 +225,8 @@ def test_an_unknown_status_is_reported(
 
 
 @needs_node
-def test_the_real_table_passes() -> None:
+def test_the_real_table_passes(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(check_parity, "_MODEL_MODES", _REAL_MODEL_MODES)
     assert check_parity.check() == []
 
 
@@ -1358,3 +1369,81 @@ def test_interaction_commands_cannot_smuggle_eval_before_a_session_name(
     assert any(
         "navigation.filter" in problem and "must be exactly" in problem for problem in problems
     )
+
+
+def _model_row_problems(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, owner: str, command: str, golden: str
+) -> list[str]:
+    monkeypatch.setattr(check_parity, "_MODEL_MODES", {"--present": "cli/present.py"})
+    golden_dir = tmp_path / "golden"
+    _write_golden(golden_dir, "present.tryscript.md", golden)
+    doc = _write_registry(tmp_path, "| `/api/tree` | exempt | — | streaming |")
+    text = doc.read_text(encoding="utf-8").replace(
+        "| `test.paint` | paint-exempt | `static/styles.css` | `local-only` | — | "
+        "fixture reason; `tests/test_check_parity.py` |",
+        f"| `app.present` | data | `{owner}` | `owned-model` | `{command}` | "
+        "`present.tryscript.md` |",
+    )
+    doc.write_text(text, encoding="utf-8")
+    monkeypatch.setattr(check_parity, "GOLDEN_DIR", golden_dir)
+    monkeypatch.setattr(check_parity, "REGISTRY_DOC", doc)
+    return [problem for problem in check_parity.check() if "app.present" in problem]
+
+
+_PRESENT_COMMAND = "metab notes --present --dry-run --format json"
+
+
+def test_a_model_a_mode_owns_is_covered_by_a_golden_that_runs_the_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, only_tree: None
+) -> None:
+    ran = f"```console\n$ {_PRESENT_COMMAND}\n{{}}\n? 0\n```\n"
+    failed = f"```console\n$ {_PRESENT_COMMAND}\n{{}}\n? 3\n```\n"
+
+    assert _model_row_problems(tmp_path, monkeypatch, "cli/present.py", _PRESENT_COMMAND, ran) == []
+    assert any(
+        "never runs successful CLI command" in problem
+        for problem in _model_row_problems(
+            tmp_path, monkeypatch, "cli/present.py", _PRESENT_COMMAND, failed
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    ("owner", "command", "expected"),
+    [
+        # Only a module a mode owns, and only through that mode.
+        ("cli/serve.py", _PRESENT_COMMAND, "an owned model must name exactly one module"),
+        ("cli/present.py", "metab notes --walk --format json", "does not run the mode"),
+        ("cli/present.py", "metab notes --present --api /api/tree", "cannot be shown by --api"),
+    ],
+)
+def test_an_owned_model_cannot_be_credited_to_another_module_or_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    only_tree: None,
+    owner: str,
+    command: str,
+    expected: str,
+) -> None:
+    golden = f"```console\n$ {command}\n{{}}\n? 0\n```\n"
+
+    problems = _model_row_problems(tmp_path, monkeypatch, owner, command, golden)
+
+    assert any(expected in problem for problem in problems), problems
+
+
+def test_a_mode_that_owns_a_model_needs_a_row(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, only_tree: None
+) -> None:
+    # The fixture registry has no `owned-model` row, as the real one would with both
+    # `app.present-*` data rows deleted.
+    monkeypatch.setattr(check_parity, "_MODEL_MODES", {"--present": "cli/present.py"})
+    doc = _write_registry(tmp_path, "| `/api/tree` | exempt | — | streaming |")
+    monkeypatch.setattr(check_parity, "REGISTRY_DOC", doc)
+
+    problems = check_parity.check()
+
+    assert any(
+        "--present owns the model in 'cli/present.py'" in problem and "no 'owned-model'" in problem
+        for problem in problems
+    ), problems
