@@ -220,7 +220,12 @@ try {
     });
     return async () => {
       for (const requestId of pausedStacks.splice(0)) {
-        await send("Fetch.continueRequest", { requestId });
+        // A read the page has since stopped, as hiding the Pulls tab stops it, is not paused.
+        await send("Fetch.continueRequest", { requestId }).catch((error) => {
+          if (!error.message.includes("Invalid InterceptionId")) {
+            throw error;
+          }
+        });
       }
       await send("Fetch.disable");
     };
@@ -520,15 +525,30 @@ try {
 
   // 10. Quick Search for the pull request shown, after the Pulls tab's button returned to it
   // with the list as the reader left it: the reveal ends that kept place, and opens the
-  // stack the reader closed since.
+  // stack the reader closed since. The page's stacks are held past the list's first window
+  // until the reader is on Files, as a loaded machine can read them: the regroup they bring
+  // while the reader is away, or as the list returns, leaves #7 where its reveal put it,
+  // under its stack's row. A list that forgot that place on the way came back where #7 had
+  // stood in the flat list, with #7 regrouped far above the pane and its stack's row
+  // undrawn (CI on main at 5b1d2b055).
+  const releaseAway = await holdStacks();
   await load(`${base}/pull/7`);
   await revealed("a pull request's address, before its tab's button", pullRow(7), "pulls");
   await evaluate(`${tabButton("files")}.click()`);
   await waitFor(activeIs("files"), "the Files tab's button");
+  await releaseAway();
   await evaluate(`${tabButton("pulls")}.click()`);
   await waitFor(
     `${activeIs("pulls")} && location.pathname === "/pull/7"`,
     "the Pulls tab's button returns to #7",
+  );
+  await waitFor(`${level} === "2"`, "#7 is grouped under its stack after the tab's button");
+  await frames();
+  const returned = await evaluate(PANE(pullRow(7)));
+  check(
+    "the Pulls tab's button, stacks after the first window: #7 stays in view",
+    returned.row?.inView === true && returned.row?.selected === true,
+    JSON.stringify(returned),
   );
   await closeStack();
   await scrollAway();
