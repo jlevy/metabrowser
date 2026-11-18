@@ -343,8 +343,13 @@ links to a file of the head are that file’s `/view/` address, the same in ever
 which the page keeps only while its pin is the head and leaves as plain text otherwise.
 `pull_snapshot.py`’s docstring lists every outcome code.
 `GET pull-markdown` (`pull_markdown.py`) renders one text of the record through KPress
-in sanitized mode, then reduces it to the inert allowlist of `inert_html.py`; only
-KPress’s stylesheet manifest reaches the page, so no text chooses what loads.
+in sanitized mode, then reduces it to the inert allowlist of `inert_html.py`, both in
+the server’s Markdown child under its deadline, the same child as the projections, which
+a served page’s first `GET pull` starts; a text past the deadline answers `422`
+`render_deadline`, one that arrives while the child has as many renders as it takes
+answers `503` `renderer_busy`, and the page keeps its plain text with a line saying why,
+which it keeps for that text until the text renders.
+Only KPress’s stylesheet manifest reaches the page, so no text chooses what loads.
 The trust model behind that allowlist is in
 [Server and Content](arch-server-and-content.md).
 

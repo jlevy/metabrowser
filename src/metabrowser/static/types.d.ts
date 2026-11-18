@@ -2861,13 +2861,19 @@ type MetabrowserKeyboardHelpRuntime = Readonly<{
     snapshot: ReadonlyArray<MetabrowserShortcutGroupPresentation>,
     invoke: (commandId: string, context: Record<string, unknown>) => boolean,
     append?: (container: HTMLElement, presentation: MetabrowserBindingPresentation) => void,
-    options?: { actions?: boolean; bindings?: "all" | "preferred"; limit?: number },
+    options?: {
+      actions?: boolean;
+      bindings?: "all" | "preferred";
+      lead?: HTMLElement;
+      limit?: number;
+    },
   ): void;
   renderHelpGroups(
     body: HTMLElement,
     snapshot: ReadonlyArray<MetabrowserShortcutGroupPresentation>,
     append?: (container: HTMLElement, presentation: MetabrowserBindingPresentation) => void,
   ): void;
+  stripItemsThatFit(widths: ReadonlyArray<number>, available: number, gap: number): number;
 }>;
 
 type MetabrowserTreeMutationSnapshot = Readonly<{

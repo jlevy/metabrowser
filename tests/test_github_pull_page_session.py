@@ -719,6 +719,20 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "G: showed Changes",
             "disposed: keys none",
         ],
+        # A refused text on the mounted page (review A of #527, A6 and A8; review D, D8):
+        # one notice right after its plain text, which a rebuilt text element keeps, a
+        # later refusal replaces, and a render takes away.
+        "textRefusal": [
+            "refused past the deadline: plain, 1 notice right after it, a status: "
+            "This text took longer than 5 seconds to render, so it is shown as plain text.",
+            "rebuilt for another state, its Markdown not yet answered: plain, 1 notice "
+            "right after it, a status: This text took longer than 5 seconds to render, so "
+            "it is shown as plain text., new element",
+            "a newer record, the same text refused again as unavailable: plain, 1 notice "
+            "right after it, a status: The renderer could not start, so this text is shown "
+            "as plain text. Reload to try again., new element",
+            "a newer record whose Markdown renders: rendered rendered A, no notice, same element",
+        ],
         # Browse code's switch is the diff plugin's, in a module it loads on demand: the
         # plugin's assets or that module not loading is said as a failed request, and asks
         # the server nothing (A3 of review A on #511).
