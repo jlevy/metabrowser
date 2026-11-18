@@ -5,10 +5,11 @@ transcript is the same on every platform and nothing reaches a real app:
 
 - ``metabrowser.cli.present.bundle_lookup``, the LaunchServices lookup, answers from a
   table of fixture bundles, or raises :class:`~metabrowser.cli.present.AppLookupError` as
-  a sandbox makes it. ``HOME`` is the sandbox, so its ``Applications/Metabrowser.app`` is
-  an install location (``APP_INSTALL_LOCATIONS``): the current app is there, and so, under
-  homes of their own, are an older build without ``MetabrowserOpensURLs`` and a copy of
-  Terminal; a development build and Terminal itself are elsewhere; and
+  a sandbox makes it. ``install_locations``, which reads the account's home folder, names
+  the sandbox's ``Applications/Metabrowser.app`` as the user's install location
+  (``APP_INSTALL_LOCATIONS``): the current app is there, and so, in home folders of their
+  own, which a block names, are an older build without ``MetabrowserOpensURLs`` and a
+  copy of Terminal; a development build and Terminal itself are elsewhere; and
 - ``metabrowser.cli.present.open_executable``, ``/usr/bin/open``, is a stand-in that
   records its arguments and exits 0, or, under ``OPEN_STAND_IN_FAIL=1``, prints a line
   of the shape LaunchServices' failures take and exits 1. An ``open`` planted first on
@@ -76,7 +77,8 @@ class _Sandbox:
         (notes / "README.md").write_text("# Notes\n")
         (notes / "docs" / "guide.md").write_text("# Guide\n")
         (notes / "run-me.command").write_text("echo hi\n")
-        # `~/Applications/Metabrowser.app` with HOME at the sandbox, and in two other homes.
+        # `~/Applications/Metabrowser.app` with the sandbox as the home folder, and in two
+        # other home folders.
         self.current = _app(tmp_path / "Applications", "Metabrowser.app", {OPENS_URLS_KEY: True})
         self.older_home = tmp_path / "older-home"
         self.older = _app(self.older_home / "Applications", "Metabrowser.app", {})
@@ -100,7 +102,15 @@ class _Sandbox:
         monkeypatch.delenv("OPEN_STAND_IN_FAIL", raising=False)
         monkeypatch.delenv(present.BUNDLE_ID_ENV, raising=False)
         monkeypatch.delenv(present.ANY_APP_LOCATION_ENV, raising=False)
-        monkeypatch.setenv("HOME", str(tmp_path))
+        self.home = tmp_path
+        monkeypatch.setattr(
+            present,
+            "install_locations",
+            lambda: (
+                "/Applications/Metabrowser.app",
+                str(self.home / "Applications/Metabrowser.app"),
+            ),
+        )
         monkeypatch.setenv("METABROWSER_PLUGINS_DIRS", "")
         monkeypatch.setenv("TERM", "dumb")
         monkeypatch.chdir(tmp_path)
@@ -119,9 +129,12 @@ class _Sandbox:
 
         self._lookup = lookup
 
-    def run(self, args: list[str], *, env: dict[str, str] | None = None) -> str:
-        """Run one command and render its block, with what the stand-ins saw."""
+    def run(
+        self, args: list[str], *, env: dict[str, str] | None = None, home: Path | None = None
+    ) -> str:
+        """Run one command, with *home* as the account's home folder, and render its block."""
 
+        self.home = home or self.root
         self.looked_up.clear()
         self.log.write_text("")
         self.monkeypatch.setattr(present, "bundle_lookup", self._lookup if self.platform else None)
@@ -139,16 +152,25 @@ class _Sandbox:
         lookups = self.looked_up if self.platform else ["no LaunchServices on this platform"]
         prefix = "".join(f"{name}={value} " for name, value in (env or {}).items())
         command = prefix + "metab " + " ".join(quoted(argument) for argument in args)
-        return self._labelled(result, command, lookups, opened)
+        return self._labelled(result, command, lookups, opened, home=home)
 
     def _labelled(
-        self, result: Invocation, command: str, lookups: list[str], opened: list[str]
+        self,
+        result: Invocation,
+        command: str,
+        lookups: list[str],
+        opened: list[str],
+        *,
+        home: Path | None,
     ) -> str:
+        # A block run with another home folder names it, so its install location is read.
+        account = {"account_home": [str(home)]} if home else {}
         text = block(
             command,
             result.exit_code,
             result.stdout,
             result.stderr,
+            **account,
             launch_services=lookups,
             open=opened,
         )
@@ -205,14 +227,20 @@ def test_golden_present_hands_targets_to_the_app(
 
     # An older build without the marker, installed, would drop a URL, and is sent nothing.
     sandbox.apps = {DEV_BUNDLE_ID: sandbox.older}
-    older_home = {"HOME": str(sandbox.older_home)}
     blocks.append(
-        sandbox.run(["https://github.com/octo/demo", "--present", *as_json], env=older_home)
+        sandbox.run(
+            ["https://github.com/octo/demo", "--present", *as_json], home=sandbox.older_home
+        )
     )
-    blocks.append(sandbox.run(["notes", "--present"], env=older_home))
+    blocks.append(sandbox.run(["notes", "--present"], home=sandbox.older_home))
 
     # The release build wins over the development build when both are registered.
     sandbox.apps = {RELEASE_BUNDLE_ID: sandbox.current, DEV_BUNDLE_ID: sandbox.build}
+    blocks.append(sandbox.run(["notes", "--present", *as_json]))
+
+    # A stray registration of the release identifier, where it was built, does not hide
+    # an installed development build: each identifier's bundle is checked in turn.
+    sandbox.apps = {RELEASE_BUNDLE_ID: sandbox.build, DEV_BUNDLE_ID: sandbox.current}
     blocks.append(sandbox.run(["notes", "--present", *as_json]))
 
     # The flag, then the environment, names the one app to look for, which must still be
@@ -240,7 +268,7 @@ def test_golden_present_hands_targets_to_the_app(
     blocks.append(
         sandbox.run(
             ["notes/run-me.command", "--present", "--app-bundle-id", TERMINAL_BUNDLE_ID],
-            env={"HOME": str(sandbox.copy_home)},
+            home=sandbox.copy_home,
         )
     )
 

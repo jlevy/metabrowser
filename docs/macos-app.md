@@ -60,9 +60,10 @@ has the report, its codes, and `--dry-run`, which checks a target without sendin
   `app_not_marked`, rather than send what it would drop or run.
   [The command-line guide](command-line.md#handing-a-target-to-the-app---present) lists
   the checks and the developer setting that lifts the first.
-- **A file in its folder:** a file is handed over after its folder, so the app opens
-  that folder and shows the file in it, unless a folder inside it that holds the file is
-  open already, where the file then shows.
+- **A file:** a file named alone joins the most specific folder the app has open that
+  holds it, and otherwise opens in its own folder.
+  A file named with `--path` inside a folder opens in that folder, unless a folder
+  inside it that holds the file is open already, where the file then shows.
 - **A folder inside another:** the app opens each folder in a window of its own, so
   `--path` naming a folder is not sent; present that folder itself.
 - **No confirmation yet:** the app does not answer, so `--present` reports what

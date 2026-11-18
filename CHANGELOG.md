@@ -13,11 +13,12 @@ All notable changes to Metabrowser are documented here.
   its `root` (an absolute folder, or the repository’s canonical GitHub URL with no ref),
   its `page`, null where only the repository’s mirror knows it, the `handoff` that
   `open -b` is given, or a `refusal` with a code and a message.
-  A file is handed over after its folder, so the app opens the folder that is reported.
-  It exits 3 when ROOT cannot be presented, 4 when no app takes it, and 5 when
-  LaunchServices could not be asked or refused it, as in a sandbox; the report names the
-  case in `code`, and says `confirmed: false`, because the app does not answer yet.
-  It sends only to the installed app: a bundle at `/Applications/Metabrowser.app` or
+  A file named alone is handed over alone, for the app to place in the most specific
+  folder it has open; a file `--path` names is handed over after ROOT, so the app opens
+  the root named. It exits 3 when ROOT cannot be presented, 4 when no app takes it, and 5
+  when LaunchServices could not be asked or refused it, as in a sandbox; the report
+  names the case in `code`, and says `confirmed: false`, because the app does not answer
+  yet. It sends only to the installed app: a bundle at `/Applications/Metabrowser.app` or
   `~/Applications/Metabrowser.app` whose `Info.plist` names it Metabrowser and declares
   `MetabrowserOpensURLs` true, so an older build is never sent a URL it would drop,
   another app is never sent a file, and a build registered where it was built is refused

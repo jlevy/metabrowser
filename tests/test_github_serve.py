@@ -25,6 +25,7 @@ from metabrowser import server
 from metabrowser.cache.served_mirror import StoreMirror
 from metabrowser.cache.urls import GitSource
 from metabrowser.cli.main import _app
+from metabrowser.cli.present import Presentable, resolve_target
 from metabrowser.git.tree_source import GitPath
 from metabrowser.mirror_refresh import RefreshResult
 from metabrowser.source import reset_source_session
@@ -101,6 +102,31 @@ def test_a_blob_url_serves_its_branch_and_opens_at_the_file_and_lines(origin: Pa
         assert '"owner": "octo"' in context.group(1) and '"name": "demo"' in context.group(1)
         assert f'"revision": "{SECOND_COMMIT}"' in context.group(1)
         assert '"branch": "release/v1"' in context.group(1)
+
+
+@pytest.mark.parametrize("url", [f"{REPO}/blob/release/v1", f"{REPO}/blob/refs/heads/release/v1"])
+def test_a_blob_url_whose_two_segments_are_one_branch_opens_at_the_top(
+    origin: Path, url: str
+) -> None:
+    """`release/v1` is a branch here, so the blob names no file and opens at the top.
+
+    Only the mirror can tell that from `release` with a file `v1`, so `--present
+    --dry-run`, which reads no mirror, answers a null page, which the app reads as the
+    entry page of the server it starts: this one.
+    """
+
+    result = _serve(url)
+    assert result.exit_code == 0, result.output
+    assert _served_line(result.stdout).split()[:4] == [
+        "Serving",
+        REPO,
+        "at",
+        "http://127.0.0.1:8411/view/",
+    ]
+    assert f"Revision: {SECOND_COMMIT} (release/v1)\n" in result.stdout
+    target = resolve_target(url, "", local=False)
+    assert isinstance(target, Presentable)
+    assert target.page is None
 
 
 def test_a_pull_request_it_cannot_open_serves_the_default_branch_and_says_why(

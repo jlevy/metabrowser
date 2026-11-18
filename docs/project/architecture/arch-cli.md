@@ -154,8 +154,9 @@ imports the serve mode’s modules before a mode is chosen.
    ASCII, is what the app is handed, and its root is the repository URL with no ref.
    Its `page` is what `selection_view_href` (`cli/selection_href.py`) gives a pinned
    server where the URL leaves one reading, and `None` where only the mirror knows where
-   a ref ends or what an abbreviated commit ID names (`_source_page`). A local file’s
-   handoff is its root and then the file, which makes the app open that root.
+   a ref ends or what an abbreviated commit ID names (`_source_page`). A file named
+   alone is handed over alone, for the app to place as it places any file; a file
+   `--path` names is handed over after ROOT, which makes the app open the root named.
 2. **Find the app.** `bundle_lookup` asks LaunchServices through
    `LSCopyApplicationURLsForBundleIdentifier` for each identifier in turn, release
    first, and takes the bundle LaunchServices prefers, the one `open -b` opens.
@@ -164,14 +165,17 @@ imports the serve mode’s modules before a mode is chosen.
    Off macOS the lookup is `None` and nothing is sent.
    A lookup LaunchServices does not answer, as under a sandbox that denies its database,
    raises `AppLookupError` rather than reading as no app.
-3. **Check what the app takes.** A folder inside the root is refused, because the app
-   opens each folder in a window of its own.
-   Every other handoff passes `app_refusal`: the bundle is at one of
-   `APP_INSTALL_LOCATIONS` (unless `ANY_APP_LOCATION_ENV` is `1`), because
-   LaunchServices registers a bundle wherever it was opened; its `Info.plist`, read as a
-   bounded regular file, names it `APP_BUNDLE_NAME`; and it sets `OPENS_URLS_KEY` true,
-   because an older app drops a URL while `open` still succeeds and an app an override
-   names must not be handed a file it would run.
+3. **Check what the app takes.** A folder inside the root is refused before the lookup,
+   because the app opens each folder in a window of its own.
+   Every identifier’s bundle passes `app_refusal` or the next identifier is tried, so a
+   stray registration of one does not hide an installed build of the other: the bundle
+   is at one of `install_locations()` (unless `ANY_APP_LOCATION_ENV` is `1`), with `~`
+   read from the password database rather than `$HOME`, compared with its folder’s links
+   resolved and in one Unicode form, and not itself a link, because LaunchServices
+   registers a bundle wherever it was opened; its `Info.plist`, read as a bounded
+   regular file, names it `APP_BUNDLE_NAME`; and it sets `OPENS_URLS_KEY` true, because
+   an older app drops a URL while `open` still succeeds and an app an override names
+   must not be handed a file it would run.
    It is a path check, not a signature; a release’s team identifier is not checked.
 4. **Send.** `/usr/bin/open -b <bundle id> <handoff>`, by its absolute path
    (`open_executable`), bounded by `OPEN_TIMEOUT_S`. Exit 0 from `open` means
