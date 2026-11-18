@@ -1591,11 +1591,15 @@ function failGroupedTree(reason) {
  * A name too long for a narrow pane is cut short, and its tooltip then gives the whole
  * of it; while the name is whole the tooltip repeats it, so it does not show
  * (`tipAddsInformation`; docs/design-system.md, "Tooltips Add Information").
+ * A type group's name follows its category's icon, and an age group has none
+ * ("File-Type Category Icons"); a refresh rewrites a kept heading from here, so it keeps it.
  *
  * @param {MetabrowserPublicTreeSection} section
  */
 function treeSectionHeadingHtml(section) {
-  var label = `<span class="tree-section-label" data-tip-text="${esc(section.label)}">${esc(section.label)}</span>`;
+  var label =
+    (ICONS.withClass?.(section.icon, "category-icon") || "") +
+    `<span class="tree-section-label" data-tip-text="${esc(section.label)}">${esc(section.label)}</span>`;
   if (section.files === null) {
     return label;
   }
@@ -5761,6 +5765,7 @@ function filterTypePresetSections() {
     ...groups.map((group) => ({
       id: `families:${group.id}`,
       label: group.label,
+      icon: ICONS.withClass?.(group.icon, "category-icon"),
       presets: filterTypeFamilies(group.id),
     })),
   ];
@@ -6222,11 +6227,6 @@ function onFilterStateChange(state) {
 // those leaves before render. This pass only handles tree leaves inserted by
 // the live event stream. It must never infer membership from mounted folders:
 // collapsed and paged descendants are deliberately absent from the DOM.
-
-function _childContainerFor(row) {
-  var next = row.nextElementSibling;
-  return next?.classList.contains("tree-children") ? next : null;
-}
 
 function applyTreeFilters() {
   return _perf.measure("applyTreeFilters", applyTreeFiltersInner);

@@ -51,6 +51,7 @@ import yaml
 from markdown_it import MarkdownIt
 from markdown_it.token import Token
 
+from devtools.changelog import CHANGELOG, is_fragment
 from metabrowser.inert_html import ANCHOR_PREFIX, harden_document, heading_slug
 from tests.required_tools import require_git
 
@@ -300,8 +301,11 @@ def _target_problem(tree: _Tree, target: str, fragment: str) -> str | None:
 def _link_findings(tree: _Tree, sources: Iterable[str]) -> list[_Finding]:
     findings: list[_Finding] = []
     for source in sources:
+        # A changelog fragment's bullets land in CHANGELOG.md unchanged, so its links are
+        # written from there (devtools/changelog.py).
+        written_in = CHANGELOG if is_fragment(source) else source
         for line, href in tree.links(source):
-            resolved = _resolve(source, href)
+            resolved = _resolve(written_in, href)
             if resolved is None:
                 continue
             problem = _target_problem(tree, *resolved)
@@ -702,6 +706,17 @@ def test_the_link_check_sees_what_it_must() -> None:
         ("README.md:14", "docs/ref.md"),
     ]
     assert "closest: #usage" in findings[2].problem
+
+
+def test_a_changelog_fragment_links_from_the_changelog() -> None:
+    fragment = "- [usage](docs/guide.md#usage) [up](../docs/guide.md) [own](#changelog)\n"
+    tree = _sample(
+        {"CHANGELOG.md": "# Changelog\n", "docs/guide.md": GUIDE, "changelog.d/a.md": fragment},
+        "changelog.d/README.md",
+    )
+    assert [(f.where, f.subject) for f in _link_findings(tree, ["changelog.d/a.md"])] == [
+        ("changelog.d/a.md:1", "../docs/guide.md"),
+    ]
 
 
 def test_front_matter_is_not_a_heading() -> None:
