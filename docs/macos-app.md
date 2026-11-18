@@ -169,6 +169,10 @@ The app moves nothing itself.
 - The app does not pass state-location variables (`XDG_CACHE_HOME`,
   `METABROWSER_CACHE_DIR`, and the rest) to its servers, so they always use the default
   cache and configuration locations.
+- A folder opens as the folder named, even inside a Git repository, and the File menu
+  opens no URL. Opening the repository’s root instead, File > Open URL…, and an Open
+  Recent that also lists repositories opened by URL are planned in
+  [Open Modes](project/architecture/arch-open-modes.md#the-file-menu).
 - There is no updater and no URL scheme, and an agent cannot yet show you a page in the
   app; the
   [native macOS app plan](project/specs/active/plan-2026-11-10-native-macos-app.md) has
