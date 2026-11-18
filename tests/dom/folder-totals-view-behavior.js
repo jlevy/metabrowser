@@ -137,7 +137,14 @@ document.body = new Element("body");
     unignored_size: 300,
   });
   const container = new Element("div");
-  const view = module.mountFolderTotalsView(container, totals, mb, "size");
+  // Bars with a hover of their own, as every caller gives them one to share.
+  const view = module.mountFolderTotalsView(
+    container,
+    totals,
+    mb,
+    "size",
+    createDistributionHover(),
+  );
   const table = container.children[0].children[0];
   const body = table.children[2];
   const filesRow = body.children[0];

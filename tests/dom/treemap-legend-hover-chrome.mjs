@@ -110,7 +110,7 @@ const READ = `(async () => {
   const nameOf = (element) => {
     if (element.dataset.legendKey !== undefined) return "legend " + element.dataset.legendKey;
     if (element.dataset.segmentKey !== undefined) return element.closest("tr").querySelector("th").textContent + " " + element.dataset.segmentKey;
-    if (element.dataset.tmPath !== undefined) return "cell " + element.dataset.tmPath;
+    if (element.dataset.tmPath !== undefined) return "cell " + element.dataset.tmPath + " (" + element.dataset.hovered + ")";
     return "not a mark: " + element.className;
   };
   const marked = [...host.querySelectorAll("[data-hovered]")];
@@ -167,10 +167,15 @@ const READ = `(async () => {
     // Every cell painted the color of the first marked cell, the cells of one family.
     familyCells: (() => {
       const first = marked.find((element) => element.classList.contains("tm-cell"));
-      return first ? cells.filter((cell) => colorOf(cell) === colorOf(first)).map(nameOf) : [];
+      return first
+        ? cells
+            .filter((cell) => colorOf(cell) === colorOf(first))
+            .map((cell) => "cell " + cell.dataset.tmPath + " (family)")
+        : [];
     })(),
     cellStyle: marked.filter((element) => element.classList.contains("tm-cell")).map((cell) => ({
       ...style(cell),
+      marks: cell.dataset.hovered,
       sheenUnderLabel: getComputedStyle(cell, "::after").zIndex === "-1",
     })),
     cellsAtRest: cells.filter((cell) => !marked.includes(cell)).every((cell) => getComputedStyle(cell).filter === "none"),
@@ -211,13 +216,19 @@ try {
   });
   await chrome.send("Page.enable");
   await chrome.send("Page.navigate", { url: `${base}/view/` });
-  // The Treemap tab, by its own control.
+  // The Treemap tab, by its own control, once the folder's first view is in front with its
+  // legend drawn: while the Overview holds its first paint no tab is active, and a click
+  // then is overridden when the Overview paints.
+  const TABS = `[...document.querySelectorAll("#preview-pane > .tab-bar > .tab-btn")]`;
   await chrome.waitFor(
-    `[...document.querySelectorAll("button, [role=tab]")].some((tab) => tab.textContent.trim() === "Treemap")`,
+    `document.querySelector("#preview-pane > .tab-bar > .tab-btn.active") && document.querySelectorAll(".file-type-summary-legend-item").length > 0 && ${TABS}.some((tab) => tab.textContent.trim() === "Treemap")`,
     30000,
   );
-  await chrome.evaluate(
-    `[...document.querySelectorAll("button, [role=tab]")].find((tab) => tab.textContent.trim() === "Treemap").click()`,
+  await chrome.evaluate(`${TABS}.find((tab) => tab.textContent.trim() === "Treemap").click()`);
+  // A click the shell did not take fails here, by name, rather than as the next wait.
+  await chrome.waitFor(
+    `${TABS}.find((tab) => tab.textContent.trim() === "Treemap")?.classList.contains("active")`,
+    10000,
   );
   await chrome.waitFor(
     `document.querySelectorAll(".tm-legend .file-type-summary-legend-item").length > 0 && document.querySelectorAll(".tm-cell").length > 0 && document.querySelectorAll(".folder-totals .file-type-summary-ignored-row [data-segment-key]").length > 0`,

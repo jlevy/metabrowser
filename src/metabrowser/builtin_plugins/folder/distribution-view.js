@@ -101,7 +101,6 @@ export function mountDistributionView(
     table: /** @type {HTMLTableElement | null} */ (null),
     metricHeader: /** @type {HTMLTableCellElement | null} */ (null),
     caption: /** @type {HTMLElement | null} */ (null),
-    legend: /** @type {HTMLElement | null} */ (null),
     detailsToggle: /** @type {HTMLButtonElement | null} */ (null),
     metric: /** @type {"files" | "size"} */ ("files"),
     status: /** @type {HTMLElement | null} */ (null),
@@ -254,7 +253,6 @@ function resetBody(handle, mode) {
   handle.table = null;
   handle.metricHeader = null;
   handle.caption = null;
-  handle.legend = null;
   handle.detailsToggle = null;
   handle.status = null;
 }
@@ -357,7 +355,6 @@ function ensureDistributionBody(handle) {
   details.append(toggle, table);
 
   handle.caption = caption;
-  handle.legend = legend;
   handle.detailsToggle = toggle;
   handle.table = table;
   applyDetailsState(handle);
@@ -600,4 +597,4 @@ function updateRows(handle, rows, groupOrder, metric = "files") {
 /** @typedef {{tr: HTMLTableRowElement, icon: HTMLElement, label: HTMLElement, disclosure: HTMLButtonElement, disclosureLabel: HTMLElement, metricCell: HTMLTableCellElement, metricValue: HTMLElement, metricFill: HTMLElement, metricPercent: HTMLElement}} SummaryRowHandle */
 /** @typedef {import("./distribution-hover.js").DistributionHover} DistributionHover */
 /** @typedef {import("./distribution-legend.js").DistributionLegend} DistributionLegend */
-/** @typedef {{body: HTMLElement, container: HTMLElement, root: HTMLElement, palette: Palette, metricClasses: MetricClasses, fileTypeIcon: FileTypeIconResolver, hover: DistributionHover, legendView: DistributionLegend | null, hovered: Array<HTMLElement>, unsubscribeHover: () => void, idPrefix: string, rows: Map<string, SummaryRowHandle>, groups: Map<string, SummaryGroupHandle>, expandedFamilies: Set<string>, lastRows: ReadonlyArray<SummaryRow>, lastGroupOrder: ReadonlyArray<SummaryGroup>, table: HTMLTableElement | null, metricHeader: HTMLTableCellElement | null, caption: HTMLElement | null, legend: HTMLElement | null, detailsToggle: HTMLButtonElement | null, detailsExpanded: boolean, metric: "files" | "size", status: HTMLElement | null, mode: string}} DistributionHandle */
+/** @typedef {{body: HTMLElement, container: HTMLElement, root: HTMLElement, palette: Palette, metricClasses: MetricClasses, fileTypeIcon: FileTypeIconResolver, hover: DistributionHover, legendView: DistributionLegend | null, hovered: Array<HTMLElement>, unsubscribeHover: () => void, idPrefix: string, rows: Map<string, SummaryRowHandle>, groups: Map<string, SummaryGroupHandle>, expandedFamilies: Set<string>, lastRows: ReadonlyArray<SummaryRow>, lastGroupOrder: ReadonlyArray<SummaryGroup>, table: HTMLTableElement | null, metricHeader: HTMLTableCellElement | null, caption: HTMLElement | null, detailsToggle: HTMLButtonElement | null, detailsExpanded: boolean, metric: "files" | "size", status: HTMLElement | null, mode: string}} DistributionHandle */

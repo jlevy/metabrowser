@@ -244,8 +244,8 @@ function familyRow() {
     "the caption precedes the legend in the compact summary",
     share.className === "file-type-summary-share" &&
       share.children[0] === handle.caption &&
-      share.children[1] === handle.legend &&
-      handle.legend.tagName === "UL",
+      share.children[1] === handle.legendView.list &&
+      handle.legendView.list.tagName === "UL",
   );
   check(
     "the caption is for screen readers only",
@@ -255,7 +255,7 @@ function familyRow() {
   check(
     "the caption names the population for the legend and the table alike",
     handle.caption.id === "file-type-summary-1-caption" &&
-      handle.legend.attributes["aria-labelledby"] === handle.caption.id &&
+      handle.legendView.list.attributes["aria-labelledby"] === handle.caption.id &&
       handle.table.attributes["aria-labelledby"] === handle.caption.id,
   );
   check(
@@ -284,7 +284,7 @@ function familyRow() {
   check("summary has one selected metric column", handle.table.children[0].children.length === 2);
   check(
     "a model without a legend leaves the list empty and hidden",
-    handle.legend.children.length === 0 && handle.legend.hidden === true,
+    handle.legendView.list.children.length === 0 && handle.legendView.list.hidden === true,
   );
   check(
     "a hidden legend and a closed table are not displayed",
@@ -407,11 +407,11 @@ function familyRow() {
     ],
   };
   view.updateDistributionView(handle, legendModel);
-  const [pythonItem, otherItem] = handle.legend.children;
+  const [pythonItem, otherItem] = handle.legendView.list.children;
   check(
     "each legend entry is a dot, the type, and its share",
-    handle.legend.hidden === false &&
-      handle.legend.children.length === 2 &&
+    handle.legendView.list.hidden === false &&
+      handle.legendView.list.children.length === 2 &&
       pythonItem.tagName === "LI" &&
       pythonItem.dataset.legendKey === "family:python" &&
       pythonItem.children.map((child) => child.className).join(",") ===
@@ -495,10 +495,13 @@ function familyRow() {
     fileTypeIcon,
     countedHover,
   );
-  const [hoverPython, hoverOther] = hoverHandle.legend.children;
+  const [hoverPython, hoverOther] = hoverHandle.legendView.list.children;
   const pythonClassBefore = hoverPython.className;
   const marked = () =>
-    [...hoverHandle.legend.children, ...[...hoverHandle.rows.values()].map((r) => r.metricFill)]
+    [
+      ...hoverHandle.legendView.list.children,
+      ...[...hoverHandle.rows.values()].map((r) => r.metricFill),
+    ]
       .filter((element) => "hovered" in element.dataset)
       .map((element) =>
         element.dataset.legendKey !== undefined
@@ -524,7 +527,7 @@ function familyRow() {
   check(
     "Other answers no hover and no entry is a tab stop",
     Object.keys(hoverOther.listeners).length === 0 &&
-      hoverHandle.legend.children.every((item) => item.attributes.tabindex === undefined),
+      hoverHandle.legendView.list.children.every((item) => item.attributes.tabindex === undefined),
     JSON.stringify(Object.keys(hoverOther.listeners)),
   );
 
@@ -576,7 +579,7 @@ function familyRow() {
 
   hoverCalls.length = 0;
   view.updateDistributionView(hoverHandle, { ...hoverModel, showIgnored: false });
-  hoverHandle.legend.children[0].listeners.mouseenter();
+  hoverHandle.legendView.list.children[0].listeners.mouseenter();
   view.updateDistributionView(hoverHandle, { ...hoverModel, showIgnored: false });
   check(
     "without ignored files the entry names its Files segment, and a rebuild lets go of it",
@@ -592,12 +595,12 @@ function familyRow() {
   check(
     "a legend rebuilt under a segment's hover marks the family's new entry",
     JSON.stringify(rebuiltUnderSegment) === JSON.stringify(["legend family:python"]) &&
-      !("hovered" in hoverHandle.legend.children[0].dataset),
+      !("hovered" in hoverHandle.legendView.list.children[0].dataset),
     JSON.stringify(rebuiltUnderSegment),
   );
   hoverCalls.length = 0;
-  hoverHandle.legend.children[0].listeners.mouseenter();
-  const heldEntry = hoverHandle.legend.children[0];
+  hoverHandle.legendView.list.children[0].listeners.mouseenter();
+  const heldEntry = hoverHandle.legendView.list.children[0];
   const listeningBefore = viewListeners;
   view.disposeDistributionView(hoverHandle);
   legendHover.enter(fromSegment);
@@ -630,7 +633,7 @@ function familyRow() {
   view.updateDistributionView(handle, { state: "pending", rows: [] });
   check(
     "a skeleton takes the legend and Details with the rest of the body",
-    handle.legend === null && handle.detailsToggle === null && handle.table === null,
+    handle.legendView === null && handle.detailsToggle === null && handle.table === null,
   );
   view.updateDistributionView(handle, legendModel);
   check(
@@ -638,15 +641,15 @@ function familyRow() {
     handle.detailsToggle !== detailsToggleBeforeRescan &&
       handle.detailsToggle.attributes["aria-expanded"] === "true" &&
       handle.table.hidden === false &&
-      handle.legend.children.length === 2,
+      handle.legendView.list.children.length === 2,
   );
   handle.detailsToggle.listeners.click();
   check(
     "closing Details hides the table and keeps the compact summary",
     handle.detailsToggle.attributes["aria-expanded"] === "false" &&
       handle.table.hidden === true &&
-      handle.legend.hidden === false &&
-      handle.legend.children.length === 2,
+      handle.legendView.list.hidden === false &&
+      handle.legendView.list.children.length === 2,
   );
   handle.detailsToggle.listeners.click();
 
@@ -948,7 +951,7 @@ function familyRow() {
       disposed.expandedFamilies.size === 0 &&
       disposed.detailsExpanded === false &&
       disposed.table === null &&
-      disposed.legend === null &&
+      disposed.legendView === null &&
       disposed.detailsToggle === null &&
       disposed.lastRows.length === 0,
   );

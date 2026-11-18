@@ -3721,24 +3721,32 @@ color so labels retain contrast; the Overview’s data bars keep the full-streng
 Hover brightens the composed cell, including its type-derived surface and border, so
 their contrast and hue relationship remain intact.
 There is no separate label hover surface.
+It never changes stacking or display: nested folder containers and their descendant
+rectangles are flattened siblings, so raising a container would cover its children.
 
 Under the tally bars the Treemap shows File Overview’s legend, from the same builder
 (`distribution-legend.js` and `buildFileTypeLegendModel`), on a row one line tall that
-it holds while it has no entries, so the map does not move when they arrive.
-The map’s cells, its bars, and its legend share one hover (`distribution-hover.js`), as
-File Overview’s do ([Aggregate Distributions](#aggregate-distributions)). Pointing at an
-entry marks every cell painted its family’s color, the files of its types and the
-folders it is the dominant type of, its segment in every tally row, and the entry, with
-the entry’s counts tooltip.
-Pointing at a cell or a segment marks it and its family’s entry, and a cell keeps its
-own tooltip. A cell takes the lift and the shimmer, the sheen under its label, and not
-the growth
+it holds while it has no entries, so at a width that fits the entries the map does not
+move when they arrive.
+In a pane too narrow for them the entries wrap, the row takes the lines they need, and
+the map below moves down by those lines once and is measured again for the space left
+under it. The map’s cells, its bars, and its legend share one hover
+(`distribution-hover.js`), as File Overview’s do
+([Aggregate Distributions](#aggregate-distributions)). Pointing at an entry marks every
+cell painted its family’s color, the files of its types and the folders it is the
+dominant type of, its segment in every tally row, and the entry, with the entry’s counts
+tooltip. Pointing at a cell or a segment marks it and its family’s entry, and a cell
+keeps its own tooltip.
+Every marked cell lifts, and none grows
 ([Hover Styles the Thing Under the Pointer](#hover-styles-the-thing-under-the-pointer)).
+Only the cell under the pointer also shimmers, its sheen under its label: a family can
+hold every cell the map draws, and each shimmering cell is a layer and an animation of
+its own, so a family’s cells take the lift alone while the bars and the entry’s dot
+shimmer. The cost at the map’s cell limit is measured beside the rule in the folder
+plugin’s stylesheet.
 A layout replaces the cells: it lets go of a cell’s hover, which the browser enters
 again on the new cell, and draws an entry’s hover again on the new cells.
 `tests/test_treemap_legend_hover_chrome.py` measures it.
-It never changes stacking or display: nested folder containers and their descendant
-rectangles are flattened siblings, so raising a container would cover its children.
 
 The complete visible rectangle of every folder or file is its pointer target, including
 the uncovered header, gutter, and background of a nested folder.
@@ -4962,15 +4970,16 @@ toolbar wraps instead of cutting them
 ([Navigation Toolbars Wrap](#navigation-toolbars-wrap)), and the slot is as tall as the
 lines of the toolbar in front.
 There a tab switch can move the panel under the slot, and the Commits slot gains a line
-when its tally lands, if the tally is wider than the pane.
-Heights are in line units, or struts of the controls a row holds, never pixels measured
-in one engine, because WebKit’s font metrics differ from Chrome’s. Where a region’s size
-is its data’s and arrives a moment after the rest, as the File Overview’s first rollup
-does, the view holds its first paint for that data, briefly, with the previous view
-still shown.
-The server draws the tab an address lands on in front, a commit’s address on
-Commits, so a landing never shows one tab’s chrome and then swaps it; a toolbar that
-cannot load says so in its slot rather than pulsing.
+when its tally lands, if the tally is wider than the pane; the Treemap’s legend row
+likewise holds one line and takes as many as its entries wrap to
+([Folder Treemap](#folder-treemap)). Heights are in line units, or struts of the
+controls a row holds, never pixels measured in one engine, because WebKit’s font metrics
+differ from Chrome’s. Where a region’s size is its data’s and arrives a moment after the
+rest, as the File Overview’s first rollup does, the view holds its first paint for that
+data, briefly, with the previous view still shown.
+The server draws the tab an address lands on in front, a commit’s address on Commits, so
+a landing never shows one tab’s chrome and then swaps it; a toolbar that cannot load
+says so in its slot rather than pulsing.
 `tests/test_reserved_chrome.py` pins the rules.
 
 ### Loading Chrome

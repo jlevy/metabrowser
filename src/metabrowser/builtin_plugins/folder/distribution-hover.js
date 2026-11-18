@@ -1,5 +1,5 @@
-// One hover for File Overview's population bars, the legend under them, and the
-// Details table's rows.
+// One hover for the population bars, the legend under them, and the marks beside them:
+// File Overview's Details rows, or the Treemap's cells.
 //
 // A segment of a tally bar and the legend entry that names its family are two
 // handles on the bars, so they share one hover rather than each keeping its own
@@ -12,9 +12,14 @@
 // Details table while that is open. Either way there is one tooltip, one
 // segment's, anchored on the handle the pointer is on: for an entry, the family's
 // segment in the tally row the legend's shares are of. So the hover is a row, a
-// family, and what it marks, not a family alone. The bars and the Details table
-// draw the hover; the segments and the legend entries only say where the pointer
-// is.
+// family, and what it marks, not a family alone. The bars, the legend, and the
+// Details table draw the hover; the segments and the legend entries only say where
+// the pointer is.
+//
+// The Treemap shares the same store among its bars, its legend, and its cells
+// (treemap.js). A cell is a third handle: it names one value, as a segment does, so
+// it marks itself and its family's entry, and keeps a tooltip of its own; a legend
+// entry's hover marks every cell of its family as well.
 //
 // `enter` and `leave` are what the pointer says. `leave` lets go only of the
 // handle it names, so a leave that arrives after the pointer has already entered
@@ -25,17 +30,19 @@
 
 /** @typedef {"all" | "files" | "ignored"} DistributionPopulation */
 /**
- * What the hover marks: `self`, the one mark the pointer is on, as a segment is;
- * `family`, every mark of the family on screen, as a legend entry naming the family
- * does. Either way the family's legend entry is marked too.
+ * What the hover marks: `self`, the one mark the pointer is on, a bar segment or a
+ * Treemap cell; `family`, every mark of the family on screen, as a legend entry naming
+ * the family does. Either way the family's legend entry is marked too.
  *
  * @typedef {"self" | "family"} DistributionHoverMarks
  */
 /**
  * A family, the handle the pointer is on, and what the hover marks. *key* names the
- * family. For a legend entry, *population* names the tally row whose segment of the
- * family gives the tooltip, the row the legend's shares are of; for a segment, the row
- * it is in. The tooltip is anchored on *anchor*, so it sits by what the reader points at.
+ * family. *population* is read by the bars alone, for the tooltip they show: for a legend
+ * entry, the tally row whose segment of the family gives it, the row the legend's shares
+ * are of; for a segment, the row it is in. A Treemap cell shows its own tooltip, and its
+ * population is the map's. The bars' tooltip is anchored on *anchor*, so it sits by what
+ * the reader points at.
  *
  * @typedef {Readonly<{population: DistributionPopulation, key: string, anchor: Element, marks: DistributionHoverMarks}>} DistributionHoverTarget
  */

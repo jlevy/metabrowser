@@ -11,13 +11,14 @@ builder, and its cells, bars, and legend share one hover.
 This session mounts the production Treemap view, its bars, and its legend on a folder of
 three families with an ignored build folder, and prints each step’s legend, what is
 marked as hovered, the tooltip, and what it is anchored on.
-Pointing at a legend entry marks every cell of its family, the files of its type and the
-folder it is the dominant type of, the family’s segment in every tally row that has one,
-and the entry, with one tooltip: the counts of the family’s segment in the row the
-legend’s shares are of, anchored on the entry.
-Pointing at a cell marks the cell and its family’s entry and shows the cell’s own
-tooltip, and crossing the cell’s own label does not leave it.
-Pointing at a segment marks the segment and its family’s entry, and no cell.
+Pointing at a legend entry marks every cell of its family as `family`, the files of its
+type and the folder it is the dominant type of, the family’s segment in every tally row
+that has one, and the entry, with one tooltip: the counts of the family’s segment in the
+row the legend’s shares are of, anchored on the entry.
+Pointing at a cell marks the cell as `self`, the one cell that shimmers, and its
+family’s entry, and shows the cell’s own tooltip; crossing the cell’s own label does not
+leave it. Pointing at a segment marks the segment and its family’s entry, and no cell.
+The folder’s sums redrawing the bars under a cell or an entry keep the hover.
 A layout under an entry draws its hover again on the new cells, and a layout under a
 cell lets go of the cell’s hover until the browser enters the new cell.
 Show ignored, a refreshed rollup, or the view’s disposal under the pointer puts the
@@ -41,9 +42,9 @@ $ node tests/dom/treemap-legend-session.js
       "Ignored family:python",
       "Total family:python",
       "legend family:python",
-      "cell docs/c.py",
-      "cell docs/build",
-      "cell docs/build/d.py"
+      "cell docs/c.py (family)",
+      "cell docs/build (family)",
+      "cell docs/build/d.py (family)"
     ],
     "tooltip": "2 files · 600 B",
     "anchoredOn": "legend family:python"
@@ -60,17 +61,17 @@ $ node tests/dom/treemap-legend-session.js
     "legendName": "Share of Total (5 files)",
     "marked": [
       "legend family:python",
-      "cell docs/c.py"
+      "cell docs/c.py (self)"
     ],
     "tooltip": "docs/c.py / 1 file · 300 B / modified 2023-11-14",
-    "anchoredOn": "cell docs/c.py"
+    "anchoredOn": "cell docs/c.py (self)"
   },
   "pointer across the c.py cell's own label": {
     "legend": "Markdown 40% Python 40% JSON 20%",
     "legendName": "Share of Total (5 files)",
     "marked": [
       "legend family:python",
-      "cell docs/c.py"
+      "cell docs/c.py (self)"
     ],
     "tooltip": null,
     "anchoredOn": null
@@ -87,10 +88,35 @@ $ node tests/dom/treemap-legend-session.js
     "legendName": "Share of Total (5 files)",
     "marked": [
       "legend family:python",
-      "cell docs/build"
+      "cell docs/build (self)"
     ],
     "tooltip": "docs/build / 1 file · 300 B / gitignored",
-    "anchoredOn": "cell docs/build"
+    "anchoredOn": "cell docs/build (self)"
+  },
+  "the folder's sums redrew the bars under the c.py cell": {
+    "legend": "Markdown 40% Python 40% JSON 20%",
+    "legendName": "Share of Total (5 files)",
+    "marked": [
+      "legend family:python",
+      "cell docs/c.py (self)"
+    ],
+    "tooltip": "docs/c.py / 1 file · 300 B / modified 2023-11-14",
+    "anchoredOn": "cell docs/c.py (self)"
+  },
+  "the folder's sums redrew the bars under the Python entry": {
+    "legend": "Markdown 40% Python 40% JSON 20%",
+    "legendName": "Share of Total (5 files)",
+    "marked": [
+      "Files family:python",
+      "Ignored family:python",
+      "Total family:python",
+      "legend family:python",
+      "cell docs/c.py (family)",
+      "cell docs/build (family)",
+      "cell docs/build/d.py (family)"
+    ],
+    "tooltip": "2 files · 600 B",
+    "anchoredOn": "legend family:python"
   },
   "pointer on the Total row's Markdown segment": {
     "legend": "Markdown 40% Python 40% JSON 20%",
@@ -109,8 +135,8 @@ $ node tests/dom/treemap-legend-session.js
       "Files family:markdown",
       "Total family:markdown",
       "legend family:markdown",
-      "cell docs/a.md",
-      "cell docs/b.md"
+      "cell docs/a.md (family)",
+      "cell docs/b.md (family)"
     ],
     "tooltip": "2 files · 200 B",
     "anchoredOn": "legend family:markdown"
@@ -127,10 +153,10 @@ $ node tests/dom/treemap-legend-session.js
     "legendName": "Share of Total (5 files)",
     "marked": [
       "legend family:json",
-      "cell docs/e.json"
+      "cell docs/e.json (self)"
     ],
     "tooltip": "docs/e.json / 1 file · 50 B / modified 2023-11-14",
-    "anchoredOn": "cell docs/e.json"
+    "anchoredOn": "cell docs/e.json (self)"
   },
   "Show ignored turned off under the Python entry": {
     "legend": "Markdown 50% JSON 25% Python 25%",
@@ -147,7 +173,7 @@ $ node tests/dom/treemap-legend-session.js
       "Ignored family:python",
       "Total family:python",
       "legend family:python",
-      "cell docs/c.py"
+      "cell docs/c.py (family)"
     ],
     "tooltip": "1 file · 300 B",
     "anchoredOn": "legend family:python"
@@ -167,7 +193,7 @@ $ node tests/dom/treemap-legend-session.js
       "Ignored family:python",
       "Total family:python",
       "legend family:python",
-      "cell docs/c.py"
+      "cell docs/c.py (family)"
     ],
     "tooltip": "1 file · 300 B",
     "anchoredOn": "legend family:python"

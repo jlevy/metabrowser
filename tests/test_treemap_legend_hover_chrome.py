@@ -14,11 +14,14 @@ Python file's cell. This holds that:
 - the entry marks every cell painted Python's color, the folder of Python files among
   them, the family's segment in every tally row, and itself, and nothing else, with the
   family's counts in a tooltip under the entry;
-- a marked cell lifts and does not grow, since its area is its value, and its sheen sits
-  under its label; a marked bar grows twice over; the entry's dot lifts and its name reads
-  at 4.5:1 or better;
-- a cell marks itself and its family's entry alone, with its own tooltip;
-- every mark shimmers by opacity alone, and no layout box in the view moves.
+- a marked cell lifts and does not grow, since its area is its value; a marked bar grows
+  twice over; the entry's dot lifts and its name reads at 4.5:1 or better;
+- the entry's hover runs no cell's shimmer, only the bars' and the dot's, however many
+  cells the family has (the cost at maxCells is measured beside the rule in
+  builtin_plugins/folder/styles.css);
+- a cell marks itself and its family's entry alone, with its own tooltip, and it alone
+  of the cells shimmers, its sheen under its label;
+- every shimmer animates opacity alone, and no layout box in the view moves.
 
 Without Chrome this skips (``require_chrome`` in ``tests/required_tools.py``), and CI runs
 it. The session leads a process group of its own, which Chrome and the server join, and the
@@ -105,12 +108,13 @@ def _nothing(reading: dict[str, Any], label: str) -> None:
 
 
 def _cells_lifted(reading: dict[str, Any], label: str) -> None:
-    """Every marked cell lifted, not grown, with its sheen under its label."""
+    """Every marked cell lifted, not grown; the pointer's own cell's sheen under its label."""
 
     assert reading["cellStyle"], (label, reading)
     for style in reading["cellStyle"]:
         assert style["scaleY"] == 1 and style["scaleX"] == 1, (label, reading)
-        assert style["filter"] != "none" and style["sheenUnderLabel"], (label, reading)
+        assert style["filter"] != "none", (label, reading)
+        assert style["sheenUnderLabel"] == (style["marks"] == "self"), (label, reading)
     assert reading["cellsAtRest"], (label, reading)
 
 
@@ -147,7 +151,7 @@ def test_the_treemap_legend_hovers_its_familys_cells_in_chrome(
     _legend_in_place(entry, "the Python entry")
     cells = [mark for mark in entry["marked"] if mark.startswith("cell ")]
     # Every cell of the family's color, the folder of Python files among them, and no other.
-    assert cells == entry["familyCells"] and "cell lib" in cells, entry
+    assert cells == entry["familyCells"] and "cell lib (family)" in cells, entry
     assert entry["marked"] == [*_PYTHON_BARS, _PYTHON_ENTRY, *cells], entry
     _cells_lifted(entry, "the Python entry")
     assert entry["barStyle"] and all(
@@ -156,14 +160,15 @@ def test_the_treemap_legend_hovers_its_familys_cells_in_chrome(
     ), entry
     assert entry["barsAtRest"], entry
     _entry_marked(entry, "the Python entry")
-    assert sorted(entry["shimmer"]["on"]) == sorted(entry["marked"]), entry
+    # No cell shimmers: only the bars and the entry's dot, whatever the family's count.
+    assert sorted(entry["shimmer"]["on"]) == sorted([*_PYTHON_BARS, _PYTHON_ENTRY]), entry
     assert entry["shimmer"]["animates"] == ["opacity"], entry
     assert entry["tooltip"] == "9 files · 27 B" and entry["tooltipBelowEntry"], entry
     assert entry["layout"] == rest["layout"], "the Python entry moved the view"
     _nothing(measured["left"], "off the legend")
 
     cell = measured["cell"]
-    assert cell["marked"] == [_PYTHON_ENTRY, "cell f1.py"], cell
+    assert cell["marked"] == [_PYTHON_ENTRY, "cell f1.py (self)"], cell
     _cells_lifted(cell, "the f1.py cell")
     _entry_marked(cell, "the f1.py cell")
     assert sorted(cell["shimmer"]["on"]) == sorted(cell["marked"]), cell

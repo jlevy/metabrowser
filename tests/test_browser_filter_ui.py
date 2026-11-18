@@ -150,9 +150,11 @@ def test_treemap_hover_never_promotes_a_container_over_nested_cells() -> None:
     Hover may adjust the folder fill, but changing its stacking level would
     paint the folder over every descendant rectangle inside it. The hover is the
     attribute the map's shared hover marks a cell with, not `:hover`, since a legend
-    entry marks every cell of its family; the shimmer's sheen sits under the cell's
-    own label, inside the stacking context the lift's filter makes, and never lifts
-    the cell itself.
+    entry marks every cell of its family. The shimmer's sheen is the one cell's under
+    the pointer, never a family's, whose cells can number maxCells and would each be a
+    layer (measured beside the rule); it sits under the cell's own label, inside the
+    stacking context the lift's filter makes, and never lifts the cell itself. Reduced
+    motion drops the cell's easing and its sheen and keeps the lift.
     """
 
     folder_root = proc_browser.STATIC_DIR.parent / "builtin_plugins" / "folder"
@@ -172,10 +174,19 @@ def test_treemap_hover_never_promotes_a_container_over_nested_cells() -> None:
     assert "--viz-data-mark-hover-filter:" in shared_css[dark_start:]
     assert "z-index" not in hover_block
     assert "display:" not in hover_block
-    sheen_start = plugin_css.index(".tm-cell[data-hovered]::after {")
-    sheen_block = plugin_css[sheen_start : plugin_css.index("}", sheen_start)]
+    reduced_start = plugin_css.index("@media (prefers-reduced-motion: reduce)")
+    reduced_end = plugin_css.index("\n}\n", reduced_start)
+    moving, reduced = plugin_css[:reduced_start], plugin_css[reduced_start:reduced_end]
+    # The pointer's cell is the only one with a sheen.
+    assert re.findall(r"\.tm-cell[^{,]*::after", moving) == ['.tm-cell[data-hovered="self"]::after']
+    sheen_start = moving.index('.tm-cell[data-hovered="self"]::after {')
+    sheen_block = moving[sheen_start : moving.index("}", sheen_start)]
     assert "z-index: -1;" in sheen_block
     assert "animation: viz-hover-shimmer" in " ".join(sheen_block.split())
+    flattened = " ".join(reduced.split())
+    assert ".tm-cell { transition: none; }" in flattened
+    assert '.tm-cell[data-hovered="self"]::after { content: none; }' in flattened
+    assert "filter" not in flattened, "reduced motion keeps the lift"
 
 
 def test_treemap_pointer_hit_testing_uses_the_full_actionable_cell() -> None:

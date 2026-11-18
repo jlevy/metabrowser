@@ -97,7 +97,7 @@
    takes the family's ink, the family's color pulled toward the text ink by
    --mb-distribution-ink-share so it keeps 4.5:1 for every family in both themes
    (static/styles.css). Colour and a filter only, so nothing in the entry moves or
-   resizes. Other is never marked (distribution-view.js, drawHover). */
+   resizes. Other is never marked (distribution-legend.js, draw). */
 .file-type-summary-legend-item[data-hovered] .file-type-summary-legend-swatch {
   filter: var(--viz-data-mark-hover-filter);
 }

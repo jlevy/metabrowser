@@ -388,10 +388,12 @@ export function registerTreemap(mb, palette, rollupControls) {
     /**
      * Draw the hover on the map's cells: a legend entry's hover marks every cell of its
      * family, the files of its types and the folders it is the dominant type of, the cells
-     * it colors; a cell's own hover marks that cell. The legend marks its entry and the
-     * tally bars their segments (distribution-legend.js, folder-totals.js). Cells lift,
-     * and do not grow, since a cell's area is its value (docs/design-system.md, "Hover
-     * Styles the Thing Under the Pointer").
+     * it colors, as `family`; a cell's own hover marks that cell as `self`. The legend
+     * marks its entry and the tally bars their segments (distribution-legend.js,
+     * folder-totals.js). Every marked cell lifts, and none grows, since a cell's area is
+     * its value; only the cell under the pointer shimmers, because a family can hold
+     * every cell the map draws and each shimmering cell is a layer of its own
+     * (styles.css, beside the rule; docs/design-system.md, "Folder Treemap").
      */
     function drawCellHover() {
       for (const element of hoveredCells) {
@@ -405,7 +407,7 @@ export function registerTreemap(mb, palette, rollupControls) {
       if (target.marks === "self") {
         const own = cellElementFor(target.anchor);
         if (own === target.anchor && viewport.contains(own)) {
-          own.dataset.hovered = "";
+          own.dataset.hovered = "self";
           hoveredCells.push(own);
         }
         return;
@@ -415,7 +417,7 @@ export function registerTreemap(mb, palette, rollupControls) {
       )) {
         const cell = cells[Number(element.dataset.tmCell)];
         if (cell && cellPaletteKey(cell) === target.key) {
-          element.dataset.hovered = "";
+          element.dataset.hovered = "family";
           hoveredCells.push(element);
         }
       }
@@ -740,6 +742,13 @@ export function registerTreemap(mb, palette, rollupControls) {
         : null;
     if (resizeObserver) {
       resizeObserver.observe(viewport);
+      // The legend's row holds one line, and takes more in a pane too narrow for its
+      // entries, which moves the map's top edge: measured again, the map keeps to the
+      // space below it.
+      const legendRow = legendList.parentElement;
+      if (legendRow) {
+        resizeObserver.observe(legendRow);
+      }
     }
     // Window resize re-measures the available height; the observer
     // then relayouts off the height change (directly where there is

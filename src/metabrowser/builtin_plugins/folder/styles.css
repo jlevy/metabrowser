@@ -32,8 +32,10 @@
 }
 
 /* File Overview's legend, under the bars it keys, 12px below them as there. Its line is
-   held while it has no entries, so the map does not move when they arrive; at a width
-   where the entries wrap, the row grows by the lines they take. */
+   held while it has no entries, so at a width that fits them the map does not move when
+   they arrive. In a pane too narrow for them the entries wrap and the row grows by the
+   lines they take: the map moves down by those once, and treemap.js measures it again
+   when the row resizes. */
 .tm-legend-row {
   max-width: var(--tm-max-width);
   min-height: 1lh;
@@ -120,10 +122,29 @@
   filter: var(--viz-data-mark-hover-filter);
 }
 
-/* The hover shimmer a bar segment has (file_type_summary.css), behind the
-   cell's label: the sheen is the lowest thing the hovered cell paints, which
-   its filter makes a stacking context, so a label keeps its contrast. */
-.tm-cell[data-hovered]::after {
+/* The hover shimmer a bar segment has (file_type_summary.css), on the one cell
+   under the pointer, behind its label: the sheen is the lowest thing the
+   hovered cell paints, which its filter makes a stacking context, so a label
+   keeps its contrast.
+
+   Only that cell. A legend entry marks every cell of its family (treemap.js,
+   drawCellHover), and a family can hold every cell the map draws, up to
+   maxCells in treemap-layout.js; each shimmering cell is a layer of its own
+   and its own animation, so the cost grew with the family. Those cells take
+   the lift alone.
+
+   Measured in headless Chrome 152 at 1280 by 900 on a folder at maxCells,
+   800 cells, 790 of them Python's, holding the Python entry for 2.5 s, two
+   runs each at a load average near 30 (2026-11-18). With only the pointer's
+   cell shimmering: 16 composited layers, 3 shimmer animations (the two
+   Python segments and the entry's dot), the display drawing 87 to 90 frames
+   in 25 ms, and a page frame interval of 16.7 ms at the 95th percentile.
+   With every family cell shimmering, as this rule once let it: 1,629 layers,
+   793 animations, 35 to 41 frames in 570 to 650 ms, and 66.7 ms.
+   tests/test_treemap_legend_hover_chrome.py holds that an entry's hover runs
+   no cell's shimmer, and tests/test_browser_filter_ui.py that this is the
+   cells' only sheen. */
+.tm-cell[data-hovered="self"]::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -259,7 +280,7 @@
   .tm-cell {
     transition: none;
   }
-  .tm-cell[data-hovered]::after {
+  .tm-cell[data-hovered="self"]::after {
     content: none;
   }
 }

@@ -1,5 +1,3 @@
-import { createDistributionHover } from "./distribution-hover.js";
-
 /** @typedef {import("./distribution-hover.js").DistributionHover} DistributionHover */
 /** @typedef {import("./distribution-hover.js").DistributionHoverTarget} DistributionHoverTarget */
 /**
@@ -354,22 +352,15 @@ function totalsRow(label) {
  * @param {HTMLElement} container
  * @param {FolderTotals} totals
  * @param {MetabrowserPublicSdk} mb
- * @param {"files" | "size"} [initialMetric]
- * @param {DistributionHover | null} [sharedHover] The hover these bars share with a
- *   legend that names their segments, as File Overview's does. Bars with no legend
- *   beside them, as the Treemap's, keep one of their own.
+ * @param {"files" | "size"} initialMetric
+ * @param {DistributionHover} hover The hover these bars share with the legend that names
+ *   their segments and the marks beside them: File Overview's Details table, or the
+ *   Treemap's cells.
  */
-export function mountFolderTotalsView(
-  container,
-  totals,
-  mb,
-  initialMetric = "files",
-  sharedHover = null,
-) {
+export function mountFolderTotalsView(container, totals, mb, initialMetric, hover) {
   const root = document.createElement("div");
   root.className = "folder-totals";
   container.append(root);
-  const hover = sharedHover ?? createDistributionHover();
   // The segments on screen, by row and then by key, with each one's tooltip: what the
   // hover is drawn on. Replaced whole on every draw, as the segments are.
   /** @type {Map<"all" | "files" | "ignored", Map<string, DrawnSegment>>} */

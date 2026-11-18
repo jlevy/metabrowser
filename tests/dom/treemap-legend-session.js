@@ -419,10 +419,20 @@ const ROLLUP = {
   // Tooltip"); a hide with nothing puts away whatever is up.
   const tooltip = { html: null, anchor: null };
   let rollupAnswer = null;
+  let sumsListener = null;
   let render = null;
   const mb = {
     countClass: () => "",
-    directoryTotals: { subscribe: () => () => {} },
+    // The folder's sums from the directory index, which publishes them whenever a file under
+    // the folder changes; a step hands them to the view.
+    directoryTotals: {
+      subscribe(_path, listener) {
+        sumsListener = listener;
+        return () => {
+          sumsListener = null;
+        };
+      },
+    },
     escapeHtml: (value) =>
       String(value).replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;"),
     fileTypeIcon: () => ({ className: "", svg: "" }),
@@ -509,7 +519,11 @@ const ROLLUP = {
       return `${rowOf(element)} ${element.dataset.segmentKey}`;
     }
     if (element.dataset.tmPath !== undefined) {
-      return `cell ${element.dataset.tmPath}`;
+      // A cell says how it is marked: as one of the family an entry names, or as the cell
+      // under the pointer, which alone shimmers.
+      return "hovered" in element.dataset
+        ? `cell ${element.dataset.tmPath} (${element.dataset.hovered})`
+        : `cell ${element.dataset.tmPath}`;
     }
     return `not a mark: ${element.className}`;
   };
@@ -553,9 +567,9 @@ const ROLLUP = {
         "Ignored family:python",
         "Total family:python",
         "legend family:python",
-        "cell docs/c.py",
-        "cell docs/build",
-        "cell docs/build/d.py",
+        "cell docs/c.py (family)",
+        "cell docs/build (family)",
+        "cell docs/build/d.py (family)",
       ]) &&
       onEntry.tooltip === "2 files · 600 B" &&
       onEntry.anchoredOn === "legend family:python",
@@ -577,8 +591,9 @@ const ROLLUP = {
   const withinCell = read();
   label.emit("mouseover");
   assert(
-    JSON.stringify(onCell.marked) === JSON.stringify(["legend family:python", "cell docs/c.py"]) &&
-      onCell.anchoredOn === "cell docs/c.py" &&
+    JSON.stringify(onCell.marked) ===
+      JSON.stringify(["legend family:python", "cell docs/c.py (self)"]) &&
+      onCell.anchoredOn === "cell docs/c.py (self)" &&
       onCell.tooltip.startsWith("docs/c.py / 1 file · 300 B"),
     `the c.py cell: ${JSON.stringify(onCell)}`,
   );
@@ -595,8 +610,38 @@ const ROLLUP = {
   const onFolder = read();
   cell("docs/build").emit("mouseout", { relatedTarget: container });
   assert(
-    JSON.stringify(onFolder.marked) === JSON.stringify(["legend family:python", "cell docs/build"]),
+    JSON.stringify(onFolder.marked) ===
+      JSON.stringify(["legend family:python", "cell docs/build (self)"]),
     `the build folder: ${JSON.stringify(onFolder)}`,
+  );
+
+  // The folder's sums arrive whenever a file changes, and redraw the bars alone. A cell
+  // and an entry outlive that draw and hear nothing, so the bars enter their hover again.
+  const SUMS = {
+    total_files: 5,
+    total_size: 850,
+    unignored_files: 4,
+    unignored_size: 550,
+    state: "complete",
+  };
+  cell("docs/c.py").emit("mouseover");
+  const barBefore = segment("Total", "family:python");
+  sumsListener(SUMS);
+  const sumsUnderCell = read();
+  cell("docs/c.py").emit("mouseout", { relatedTarget: container });
+  assert(
+    segment("Total", "family:python") !== barBefore &&
+      JSON.stringify(sumsUnderCell.marked) === JSON.stringify(onCell.marked) &&
+      sumsUnderCell.anchoredOn === onCell.anchoredOn,
+    `the sums redrew the bars under a cell: ${JSON.stringify(sumsUnderCell)}`,
+  );
+  entry("Python").emit("mouseenter");
+  sumsListener(SUMS);
+  const sumsUnderEntry = read();
+  entry("Python").emit("mouseleave");
+  assert(
+    JSON.stringify(sumsUnderEntry) === JSON.stringify(onEntry),
+    `the sums redrew the bars under the entry: ${JSON.stringify(sumsUnderEntry)}`,
   );
 
   // A segment marks itself and its family's entry, and no cell.
@@ -624,8 +669,8 @@ const ROLLUP = {
           "Files family:markdown",
           "Total family:markdown",
           "legend family:markdown",
-          "cell docs/a.md",
-          "cell docs/b.md",
+          "cell docs/a.md (family)",
+          "cell docs/b.md (family)",
         ]),
     `a layout under the Markdown entry: ${JSON.stringify(relaidUnderEntry)}`,
   );
@@ -641,7 +686,7 @@ const ROLLUP = {
   const reenteredCell = read();
   assert(
     JSON.stringify(reenteredCell.marked) ===
-      JSON.stringify(["legend family:json", "cell docs/e.json"]),
+      JSON.stringify(["legend family:json", "cell docs/e.json (self)"]),
     `entering the redrawn cell: ${JSON.stringify(reenteredCell)}`,
   );
   cell("docs/e.json").emit("mouseout", { relatedTarget: container });
@@ -664,7 +709,7 @@ const ROLLUP = {
           "Ignored family:python",
           "Total family:python",
           "legend family:python",
-          "cell docs/c.py",
+          "cell docs/c.py (family)",
         ]) &&
       filesOnly.tooltip === "1 file · 300 B",
     `the Python entry without ignored files: ${JSON.stringify(filesOnly)}`,
@@ -696,6 +741,8 @@ const ROLLUP = {
     "pointer across the c.py cell's own label": withinCell,
     "left the cell": leftCell,
     "pointer on the build folder": onFolder,
+    "the folder's sums redrew the bars under the c.py cell": sumsUnderCell,
+    "the folder's sums redrew the bars under the Python entry": sumsUnderEntry,
     "pointer on the Total row's Markdown segment": onSegment,
     "the map laid out again under the Markdown entry": relaidUnderEntry,
     "the map laid out again under the e.json cell": relaidUnderCell,
