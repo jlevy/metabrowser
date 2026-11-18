@@ -9782,7 +9782,8 @@ function scrollIntoViewOnceOpen(travel, find, isCurrent) {
 /**
  * The end of the travel of every folder above *row* still opening, or null. An opening
  * folder's body clips its rows and can scroll: a row scrolled into view then was scrolled
- * within it, not the pane, and lay far below the pane once it opened (mb-551m).
+ * within it, not the pane, and lay far below the pane once it opened (mb-551m). An endless
+ * animation is not waited on: it would hold the scroll for good.
  *
  * @param {Element} row
  * @returns {Promise<unknown> | null}
@@ -9795,7 +9796,9 @@ function folderTravelAbove(row) {
     body;
     body = body.parentElement?.closest(".tree-children")
   ) {
-    travel.push(...body.getAnimations());
+    travel.push(
+      ...body.getAnimations().filter((a) => a.effect?.getComputedTiming().endTime !== Infinity),
+    );
   }
   return travel.length > 0
     ? Promise.allSettled(travel.map((animation) => animation.finished))
