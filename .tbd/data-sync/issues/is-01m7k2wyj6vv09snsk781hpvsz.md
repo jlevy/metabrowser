@@ -3,9 +3,9 @@ type: is
 id: is-01m7k2wyj6vv09snsk781hpvsz
 title: "macOS app: check before submitting, read the notary log, and fail on errors"
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 7
+version: 8
 spec_path: docs/project/specs/active/plan-2026-11-16-macos-app-publishing.md
 delegate: claude-code@vm
 labels: []
@@ -18,8 +18,12 @@ parent_id: is-01m7k1vctj6d370jg7hqdps4hk
 hold: null
 hold_until: null
 created_at: 2026-11-16T21:06:08.069Z
-updated_at: 2026-11-17T08:57:33.958Z
+updated_at: 2026-11-17T22:23:17.700Z
 started_at: 2026-11-17T07:36:57.592Z
+closed_at: 2026-11-17T22:23:17.700Z
+close_reason: "Landed in the macOS tooling stack #509+#510 (reviews A and B addressed, green incl. macOS CI), merged to main at b5e986d0b on 2026-11-17."
+resolution: null
+duplicate_of: null
 ---
 Phase 1 of the publishing plan. Before each submission, notarize.sh runs syspolicy_check notary-submission on the app, or on the app inside the image, and stops on a failure, so a rejection costs no round trip against the daily limit (PR #485 A19). After each submission it fetches the notary log, retrying, reads it with plutil, fails on any issue of severity error, prints each warning with its path, and prints one line with the submission ID, status and issue counts for the release record. Under NOTARIZE=1 a log it could not fetch or parse is fatal (PR #485 A8). Done when scripts/test-scripts.sh runs the reader on fixture logs: accepted with no issues, accepted with a warning, invalid with an error, and a missing and an unparsable log under NOTARIZE=1; the pre-submission check is proven by the first signed build.
 

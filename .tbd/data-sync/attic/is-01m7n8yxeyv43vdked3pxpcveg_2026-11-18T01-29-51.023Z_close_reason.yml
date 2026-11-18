@@ -1,0 +1,11 @@
+entity_id: is-01m7n8yxeyv43vdked3pxpcveg
+timestamp: 2026-11-18T01:29:51.023Z
+field: close_reason
+lost_value: '"Fixed by #523 (narrow audit exception for GHSA-fc5q-39xc-vjpf), merged 2026-11-17."'
+winner_source: local
+loser_source: remote
+context:
+  local_version: 2
+  remote_version: 2
+  local_updated_at: 2026-11-18T01:19:30.951Z
+  remote_updated_at: 2026-11-17T21:02:02.619Z
