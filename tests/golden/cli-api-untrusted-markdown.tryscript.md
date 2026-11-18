@@ -8,7 +8,9 @@ env:
   METABROWSER_PLUGINS_DIRS: ""
   METABROWSER_LOG_LEVEL: "WARNING"
 before: >-
-  cp -R "$TRYSCRIPT_TEST_DIR/../fixtures/untrusted-markdown" hostile
+  cp -R "$TRYSCRIPT_TEST_DIR/../fixtures/untrusted-markdown" hostile &&
+  mkdir slow && (printf '[%.0s' $(seq 1 100); head -c 61440 /dev/zero | tr '\0' '%')
+  > slow/slow.md
 ---
 # Golden Test: Markdown From an Untrusted Source
 
@@ -47,7 +49,20 @@ $ grep -E '^  "(type|html|profile|printable|toc|inert)":' inert.txt
   "profile": "document",
   "printable": true,
   "toc": false,
-  "inert": true
+  "inert": true,
+? 0
+```
+
+The render also names the version of the one repository image it embeds, by the `/raw`
+identity the page resolves it to, and the page puts it in that image’s address, so a
+replaced image is a new address.
+The outside images, links here, get none.
+
+```console
+$ grep -A2 '^  "raw_versions":' inert.txt
+  "raw_versions": {
+    "docs/diagram.png": "[..]"
+  }
 ? 0
 ```
 
@@ -66,6 +81,16 @@ $ grep -E '^        "(id|loading)":' inert.txt
         "loading": "stylesheet"
         "id": "css/print.css",
         "loading": "stylesheet"
+        "id": "css/print-fonts.css",
+        "loading": "stylesheet"
+        "id": "css/mono-planetaire-400-normal.css",
+        "loading": "stylesheet"
+        "id": "css/mono-planetaire-700-normal.css",
+        "loading": "stylesheet"
+        "id": "css/mono-planetaire-400-italic.css",
+        "loading": "stylesheet"
+        "id": "css/mono-planetaire-700-italic.css",
+        "loading": "stylesheet"
         "id": "fonts/pt-serif-latin-400-normal.woff2",
         "loading": "resource"
         "id": "fonts/pt-serif-latin-700-normal.woff2",
@@ -78,7 +103,71 @@ $ grep -E '^        "(id|loading)":' inert.txt
         "loading": "resource"
         "id": "fonts/source-sans-3-latin-wght-italic.woff2",
         "loading": "resource"
+        "id": "fonts/kpress-quotes.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-370-normal.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-400-normal.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-410-normal.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-550-normal.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-600-normal.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-650-normal.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-370-italic.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-400-italic.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-410-italic.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-550-italic.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-600-italic.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-650-italic.woff2",
+        "loading": "resource"
+        "id": "fonts/planetaire-mono-text-latin-400-normal.woff2",
+        "loading": "resource"
+        "id": "fonts/planetaire-mono-text-latin-700-normal.woff2",
+        "loading": "resource"
+        "id": "fonts/planetaire-mono-text-latin-400-italic.woff2",
+        "loading": "resource"
+        "id": "fonts/planetaire-mono-text-latin-700-italic.woff2",
+        "loading": "resource"
 ? 0
+```
+
+## Test: an untrusted document past the render deadline is refused
+
+Under the untrusted profile a document renders in the server’s Markdown child, under a
+deadline (`INERT_RENDER_DEADLINE_MS` in
+`src/metabrowser/diff/markdown_projection_worker.py`), and one that runs past it stops
+the child and is refused with a code, which the page answers by showing the document’s
+source (`cli-ui-markdown-render-refusal.tryscript.md`). `slow/slow.md` is 100 unpaired
+`[` before 60 KiB of `%`, which KPress takes seconds to render, so a deadline shortened
+to 250 ms through its environment variable refuses it on any machine.
+The server says on standard error which document it refused, by its path and the hash it
+keeps the refusal by, and after how long; `remembered` is false because this answer is
+the render’s own, not a refusal kept from an earlier one.
+
+```console
+$ METABROWSER_INERT_RENDER_DEADLINE_MS=250 metab slow --untrusted --api '/api/kpress/render?path=slow.md&view=document'
+[..] metabrowser.diff.markdown_projection_worker | Refused rendering 'slow.md' (sha256:6d547e03b6bb237dc4ebdb452e24980c5a74749b35eef82755adf7ab51270c30) after [..] s: render_deadline
+api: /api/kpress/render?path=slow.md&view=document
+status: 422
+{
+  "type": "kpress_render_refused",
+  "code": "render_deadline",
+  "error": "Rendering took longer than 0.25 seconds, so it was stopped",
+  "deadline_ms": 250,
+  "remembered": false,
+  "path": "slow.md"
+}
+Error: /api/kpress/render?path=slow.md&view=document returned HTTP 422
+? 1
 ```
 
 ## Test: a trusted folder keeps KPress’s rich render
@@ -111,6 +200,16 @@ $ grep -E '^        "(id|loading)":' rich.txt
         "loading": "stylesheet"
         "id": "css/print.css",
         "loading": "stylesheet"
+        "id": "css/print-fonts.css",
+        "loading": "stylesheet"
+        "id": "css/mono-planetaire-400-normal.css",
+        "loading": "stylesheet"
+        "id": "css/mono-planetaire-700-normal.css",
+        "loading": "stylesheet"
+        "id": "css/mono-planetaire-400-italic.css",
+        "loading": "stylesheet"
+        "id": "css/mono-planetaire-700-italic.css",
+        "loading": "stylesheet"
         "id": "js/runtime.js",
         "loading": "module"
         "id": "js/tooltips.js",
@@ -134,6 +233,40 @@ $ grep -E '^        "(id|loading)":' rich.txt
         "id": "fonts/source-sans-3-latin-wght-normal.woff2",
         "loading": "resource"
         "id": "fonts/source-sans-3-latin-wght-italic.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-quotes.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-370-normal.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-400-normal.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-410-normal.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-550-normal.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-600-normal.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-650-normal.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-370-italic.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-400-italic.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-410-italic.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-550-italic.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-600-italic.woff2",
+        "loading": "resource"
+        "id": "fonts/kpress-print-sans-latin-650-italic.woff2",
+        "loading": "resource"
+        "id": "fonts/planetaire-mono-text-latin-400-normal.woff2",
+        "loading": "resource"
+        "id": "fonts/planetaire-mono-text-latin-700-normal.woff2",
+        "loading": "resource"
+        "id": "fonts/planetaire-mono-text-latin-400-italic.woff2",
+        "loading": "resource"
+        "id": "fonts/planetaire-mono-text-latin-700-italic.woff2",
         "loading": "resource"
 ? 0
 ```

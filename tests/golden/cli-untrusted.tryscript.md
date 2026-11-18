@@ -81,6 +81,7 @@ status: 200
 
 Preview is the surface that executes a browsed document, so the conservative profile
 withdraws it and leaves Source as the only view, and therefore the default.
+A single view has no other tab to switch to, so Source is served without its key `S`.
 
 ```console
 $ metab trustroot --untrusted --show page.html
@@ -239,7 +240,7 @@ capability variables were cleared.
 ```console
 $ cd evilrepo && env -u METABROWSER_LOG_LEVEL -u METABROWSER_REQUEST_LOG metab . --api /api/git/repo
 [..]/evilrepo/.env: ignored METABROWSER_\x1b[31mRED\x1b[0m, METABROWSER_A\nFORGED: a line of its own, METABROWSER_DEBUG, METABROWSER_PLUGINS_DIRS, METAB_ALLOW_EDITS, METAB_UNTRUSTED — a dotenv file may only set METABROWSER_LOG_LEVEL, METABROWSER_REQUEST_LOG. Export the others in the environment instead; see SECURITY.md.
-[..] metabrowser.server | metabrowser request t=[..] -> [..] ([..] ms) method=GET path=/api/git/repo status=200 bytes=63
+[..] metabrowser.server | metabrowser request t=[..] -> [..] ([..] ms) method=GET path=/api/git/repo status=200 bytes=63 start_ms=[..] phases=git:[..]
 api: /api/git/repo
 status: 200
 {

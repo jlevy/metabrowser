@@ -1,4 +1,18 @@
-"""Catalog-admitted core batches, backed by durable lightweight private entries."""
+"""Catalog-admitted core batches, backed by durable lightweight private entries.
+
+``POST pull-cores-prepare`` takes a window identity and a batch of at most
+``MAX_CATALOG_MEMBERS`` numbers, admitted against the exact catalog generation, and answers
+one of the ``Preparation`` outcomes. A ready answer lists ``ready_numbers`` and
+``skipped_numbers``, a partial one adds ``retry_numbers`` and ``retry_at``, and the lists
+account for every member requested. A source runs one core job at a time: a ``visible``
+batch preempts a ``background`` one that reads none of the members it still needs,
+revoking its window, cancelling its job, and waiting for it to unwind. A failed batch holds
+later ones with the same outcome until another attempt is eligible, and
+``cores.refresh.json`` keeps provider holds across restarts. A refresh asked to wait for a
+core (``"wait_core": true``) waits at most ``CORE_WAIT_TIMEOUT_S``, and ``GET pull`` asked
+to wait for that preview's completion (``wait_full_after``) at most ``FULL_WAIT_TIMEOUT_S``,
+both in :mod:`.served_pull`, holding no network slot and starting nothing.
+"""
 
 from __future__ import annotations
 
@@ -62,6 +76,10 @@ type CoreAttempt = tuple[str, str, str, str, int, CatalogMember]
 type Preparation = Literal[
     "started", "joined", "ready", "released", "not_owner", "busy", "failed", "held", "partial"
 ]
+# Whose batch it is: the rows a reader is looking at, or the panel's walk through the rest.
+# A visible batch preempts a background one reading other rows (`request_preparation`).
+type CoreLane = Literal["visible", "background"]
+CORE_LANES: Final[tuple[CoreLane, ...]] = ("visible", "background")
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,6 +88,7 @@ class CoreRequest:
     owner: str
     generation: str
     numbers: tuple[int, ...]
+    lane: CoreLane = "background"
 
     def owns(self, other: CoreRequest) -> bool:
         return (self.state, self.owner, self.generation) == (
@@ -83,8 +102,11 @@ def core_request(body: Mapping[str, object]) -> CoreRequest:
     state = body.get("state")
     window = body.get("window")
     numbers = body.get("numbers")
-    if set(body) != {"state", "window", "numbers"} or state not in PULL_LIST_NAMES:
-        raise ValueError('expected "state", "window", and "numbers"')
+    lane = body.get("lane", "background")
+    if set(body) - {"lane"} != {"state", "window", "numbers"} or state not in PULL_LIST_NAMES:
+        raise ValueError('expected "state", "window", "numbers", and an optional "lane"')
+    if lane not in CORE_LANES:
+        raise ValueError('"lane" is "visible" or "background"')
     if not isinstance(window, dict) or set(window) != {"id", "generation"}:
         raise ValueError('"window" requires "id" and "generation"')
     owner, generation = window["id"], window["generation"]
@@ -102,7 +124,7 @@ def core_request(body: Mapping[str, object]) -> CoreRequest:
         or len(set(numbers)) != len(numbers)
     ):
         raise ValueError("expected at most eight distinct pull request numbers")
-    return CoreRequest(state, owner, generation, tuple(numbers))
+    return CoreRequest(state, owner, generation, tuple(numbers), lane)
 
 
 def _batch_query(count: int) -> str:
@@ -179,6 +201,9 @@ class CoreWindow:
     previews: dict[int, PreparedCore] | None = None
     checking_replacement: bool = False
     failure: PullRefreshStamp | None = None
+    # The members its job asks GitHub for, set before its read and kept while it
+    # publishes them; empty until the job has chosen them.
+    reading: tuple[int, ...] = ()
 
     def prepared(self, number: int) -> PreparedCore | None:
         return self.previews.get(number) if self.previews is not None else None
@@ -236,7 +261,11 @@ def _eligible(window: CoreWindow) -> tuple[CatalogState | None, dict[int, Catalo
 def cached_batch(
     pulls_set: ServedPulls, ask: CoreRequest
 ) -> tuple[tuple[int, ...], tuple[int, ...]] | None:
-    """Classify an exact catalog batch using local files only, before provider admission."""
+    """Classify an exact catalog batch using local files only, before provider admission.
+
+    Each core is checked against the catalog snapshot read here, so the catalog is opened
+    once per batch rather than once per core.
+    """
 
     catalog, members = catalog_members(pulls_set.home, pulls_set.slug, ask.state, ask.numbers)
     if (
@@ -252,7 +281,16 @@ def cached_batch(
     for number in ask.numbers:
         if not _record_path_missing(pulls_set.home, pulls_set.slug, number):
             skipped.append(number)
-        elif read_cached_core(pulls_set.home, pulls_set.slug, number, fresh_only=True) is not None:
+        elif (
+            read_cached_core(
+                pulls_set.home,
+                pulls_set.slug,
+                number,
+                fresh_only=True,
+                snapshot=(catalog, members),
+            )
+            is not None
+        ):
             ready.append(number)
     return tuple(ready), tuple(skipped)
 
@@ -339,6 +377,7 @@ async def _prepare(
             window.previews = {number: entry for number, (_member, entry) in carried.items()}
             return
         numbers = tuple(attempts)
+        window.reading = numbers
         window.admission = CoreAdmission(
             publication,
             window.source,
@@ -463,14 +502,22 @@ async def _prepare(
                     )
     except (OSError, PrivateStorageError, *READ_FAILURES, ValueError) as exc:
         if owns():
-            from metabrowser.builtin_plugins.github.gh_lists import utc_stamp
+            from metabrowser.builtin_plugins.github.gh_lists import cache_unwritable, utc_stamp
 
+            unwritable = (
+                cache_unwritable(
+                    "the pull-request previews",
+                    exc,
+                    source=window.source,
+                    checkout=isinstance(publication, ListedRepository) and publication.checkout,
+                )
+                if isinstance(exc, (OSError, PrivateStorageError))
+                else None
+            )
             window.failure = PullRefreshStamp(
-                outcome="cache_unwritable"
-                if isinstance(exc, (OSError, PrivateStorageError))
-                else "gh_failed",
-                message="The local pull-request cache could not be written"
-                if isinstance(exc, (OSError, PrivateStorageError))
+                outcome="cache_unwritable" if unwritable is not None else "gh_failed",
+                message=str(unwritable)[:1000]
+                if unwritable is not None
                 else "GitHub returned unreadable pull-request metadata",
                 at=utc_stamp(pulls.utc_now()),
                 reader=catalog.reader if catalog is not None else None,
@@ -564,23 +611,64 @@ async def request_preparation(
         return "partial"
     key = preparation_key(pulls_set.source)
 
-    def busy() -> bool:
-        return (
-            pulls_set.foreground_pending(running)
-            or coordinator.running(key)
-            or coordinator.slot().locked()
-            or (
-                pulls_set.core_hold_until is not None
-                and pulls.utc_now() < pulls_set.core_hold_until
-            )
+    def held_back() -> bool:
+        return pulls_set.foreground_pending(running) or (
+            pulls_set.core_hold_until is not None and pulls.utc_now() < pulls_set.core_hold_until
         )
 
-    if busy():
+    def busy() -> bool:
+        return held_back() or coordinator.running(key) or coordinator.slot().locked()
+
+    # A reader's rows do not wait for the walk's: a running background batch is preempted.
+    # The slot it may hold is freed by preempting it, so only what else holds work back
+    # is checked first.
+    background = (
+        current
+        if ask.lane == "visible"
+        and current is not None
+        and current.ask.lane == "background"
+        and current.key == key
+        and coordinator.running(key)
+        else None
+    )
+    if busy() if background is None else held_back():
         return "busy"
     window = CoreWindow(ask, coordinator, key, pulls_set.published, pulls_set.source)
     eligible = None
     carried: dict[int, tuple[CatalogMember, PreparedCore]] = {}
-    if current is not None:
+    if background is not None:
+        catalog, admitted = await asyncio.to_thread(_eligible, window)
+        if pulls_set.core_window is not background or pulls_set.published is not publication:
+            return "busy"
+        # The background job may have failed during that check. Its window stays owned, so
+        # its failure holds the source here as it would have before the check.
+        if _failure_held(pulls_set):
+            return "held"
+        if catalog is None:
+            return "not_owner"
+        uncovered = {number: member for number, member in admitted.items() if number not in ready}
+        if uncovered.keys() & set(background.reading):
+            # The background job is reading rows this one needs: it does the reader's work.
+            # Rows it asked for but left to a lease or the cache are not among them.
+            return "busy"
+        if not _attemptable(pulls_set, catalog, uncovered, running):
+            return "partial"
+        # Revoke its ownership first, as a release does, then wait for its job to unwind
+        # from its next await: its provider read is killed, a write already under way
+        # finishes, and its slot is free before this batch is admitted. Its attempt leases
+        # stand, so a read it may have sent is not repeated before they end.
+        pulls_set.core_window = None
+        preempted = background.cancel()
+        if preempted is not None:
+            await asyncio.wait((preempted,))
+        if pulls_set.core_window is not None or pulls_set.published is not publication or busy():
+            return "busy"
+        # The revoked job records no failure, but another request may have read one that
+        # another process persisted while this one waited.
+        if _failure_held(pulls_set):
+            return "held"
+        eligible = (catalog, admitted)
+    elif current is not None:
         # Keep a ready window while at most one competing token proves eligibility.
         if current.checking_replacement:
             return "busy"

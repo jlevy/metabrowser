@@ -25,6 +25,13 @@
   const SEGMENT_REBASE_PX = settings.GIT_HISTORY_SEGMENT_REBASE_PX || 8_000_000;
   const HOVER_DEBOUNCE_MS = settings.GIT_HOVER_DEBOUNCE_MS ?? 300;
   const DETAIL_CACHE_SIZE = settings.GIT_DETAIL_CACHE_SIZE || 200;
+  // Kept commit comparisons, bounded by the length of their JSON. See settings.py for the
+  // measurement the default is set from.
+  const COMPARISON_CACHE_BYTES = settings.GIT_COMPARISON_CACHE_BYTES || 16 * 1024 * 1024;
+  // A comparison larger than this is shown and not kept: one must not push out every other.
+  const COMPARISON_ENTRY_BYTES = Math.floor(COMPARISON_CACHE_BYTES / 4);
+  // A full SHA-1 or SHA-256 commit ID: the one revision that names the same commit later.
+  const FULL_COMMIT_ID = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/;
 
   // Distance from the bottom at which the next page is requested. One
   // row height would fetch too late to feel seamless; three viewport
@@ -113,6 +120,49 @@
   const detailCache = new Map();
   /** @type {Map<string, Promise<MetabrowserGitCommitDetail | null>>} */
   const detailInFlight = new Map();
+  /**
+   * Answered comparisons, least recently used first, by the request that asked for them.
+   * Only a comparison named by full commit IDs is kept, while a ref name or HEAD names
+   * whatever it points at now. A revisit then mounts the diff with no request, where the
+   * comparison route took 88 to 141 ms each time
+   * (research-2026-11-11-ui-apparent-performance.md).
+   *
+   * A kept answer is kept until Refresh, teardown, or a history walk found stale. Four
+   * inputs can change a served folder's answer for the same commit ID before then, and the
+   * page does not see them: the working tree's `.gitattributes`, `.git/config`, the
+   * reader's Git configuration (a diff driver), and a replace ref or graft that gives the
+   * commit another first parent. A store's answers read none of them.
+   *
+   * @type {Map<string, {raw: unknown, bytes: number}>}
+   */
+  const comparisonCache = new Map();
+  let comparisonCacheBytes = 0;
+  // Moved by every clear, so an answer requested before a clear is not kept after it.
+  let comparisonGeneration = 0;
+
+  // A commit's object id never changes, but its refs do as branches and tags move, so a
+  // detail's refs are true only for the history session they were read in: the
+  // `historyGeneration` every rebuild of the history advances. This records it per detail.
+  // A detail from an older session is not served from the cache, not stored by a request
+  // that outlives its session, and not drawn without being confirmed: by the current
+  // session's row for it (adoptRowRefs) or by reading it again. The record goes with the
+  // detail, so evicting a detail leaves nothing behind.
+  /** @type {WeakMap<MetabrowserGitCommitDetail, number>} */
+  const refsReadIn = new WeakMap();
+  // The selected commit's summary on screen and the session its refs were confirmed in,
+  // so its refs can be brought up to date in place without touching the diff under it.
+  // Released when that view is relinquished or disposed. `token` names the mount without
+  // holding its DOM, which is all a confirmation still on its way keeps.
+  /** @typedef {{token: number, revision: string, refs: string, generation: number, identity: Element}} MountedSummary */
+  /**
+   * What the repository gate answered: a repository, an answer that the root is not
+   * one, or no answer at all.
+   *
+   * @typedef {{status: "repo", info: MetabrowserGitRepoInfo} | {status: "not-repo"} | {status: "failed"}} RepoRead
+   */
+  /** @type {MountedSummary | null} */
+  let mountedSummary = null;
+  let summaryMounts = 0;
   // Commits the server answered `commit_not_found` for: the repository does not have
   // them, which is not a failed request. Bounded like the detail cache.
   /** @type {Set<string>} */
@@ -124,6 +174,24 @@
   // shows changes nothing.
   /** @type {{revision: string, claim: number} | null} */
   let lastSelection = null;
+  // The neutral Commits entry waiting for history to name its newest commit: the landing
+  // it belongs to and the claim it holds on the pane (landOnNewestCommit). `keyFocus` is
+  // where the Commits tab's key, `H`, put focus while it waited, if it did
+  // (focusCommitRow), and `rowReplaced` says a refresh removed a history row that held
+  // focus (refreshHistory).
+  /**
+   * @typedef {{landing: number, claim: number, keyFocus: "row" | "tab" | null,
+   *   rowReplaced: boolean}} NewestLanding
+   */
+  /** @type {NewestLanding | null} */
+  let newestLanding = null;
+  // A commit's address whose row waits for the page of history that holds it
+  // (revealWaitingCommit).
+  /** @type {string | null} */
+  let waitingReveal = null;
+  // How many commit selections have begun, so work that outlives one can tell that a
+  // later selection placed the list (recoverHistorySession).
+  let selectionCount = 0;
   /**
    * @typedef {object} RevisionPreparation
    * @property {string} revision
@@ -147,6 +215,13 @@
   /** @type {Promise<boolean> | null} */
   let viewHelpersPending = null;
   let refreshing = false;
+  // How many of ensureHistory's HEAD reads are on their way, by the history generation
+  // each began in. While one of the current generation is, its walk may be about to be
+  // replaced, so a waiting newest landing is not answered from it (selectNewestWhenReady).
+  // A read from an earlier generation holds nothing: a refresh replaced its walk, read
+  // HEAD itself, and answers the landing as it ends.
+  /** @type {Map<number, number>} */
+  const headReads = new Map();
   let recoveringSession = false;
   /** @type {{start: number, end: number} | null} */
   let wantedRange = null;
@@ -156,6 +231,17 @@
   let landingGeneration = 0;
   /** @type {{generation: number, pending: ReturnType<typeof readRepoInfo>} | null} */
   let repoInfoRead = null;
+  // Discovery asks again when the repository read fails, starting here and doubling to
+  // the cap: a refused or timed-out answer is not "no repository", and a page that
+  // gave up on it never showed Commits.
+  const REPO_RETRY_FIRST_MS = 1000;
+  const REPO_RETRY_MAX_MS = 30000;
+  let repoRetryMs = REPO_RETRY_FIRST_MS;
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let repoRetryTimer = null;
+  // Which discovery a scheduled retry belongs to. Teardown retires it, so a retry that
+  // fires anyway cannot register a panel the page has given up.
+  let discoveryGeneration = 0;
   let historyAbortController = new AbortController();
   /** @type {HTMLElement | null} */
   let scrollOwner = null;
@@ -226,45 +312,122 @@
   }
 
   /**
+   * A commit's file families in its hover card, in the Diff summary's order, added, deleted,
+   * then modified (changed-files-tree.js, `STATUS_ORDER`), each with its letter, the badge
+   * its rows carry, and its word. They are Git's, which the server counts before it bounds
+   * the commit's list of files: A holds added and copied files, D deleted ones, and M
+   * modified, renamed, and type-changed ones.
+   */
+  const COMMIT_FILE_FAMILIES = Object.freeze([
+    Object.freeze({ key: "files_added", status: "added", letter: "A", word: "added" }),
+    Object.freeze({ key: "files_deleted", status: "deleted", letter: "D", word: "deleted" }),
+    Object.freeze({ key: "files_modified", status: "modified", letter: "M", word: "modified" }),
+  ]);
+
+  /** The dot between the hover card's groups, muted and hidden, as the Diff summary's is. */
+  const COMMIT_CHANGE_SEPARATOR = Object.freeze({ separator: "·" });
+  /** The commit totals line's dot, which says a comma in its place, as a line has no name. */
+  const COMMIT_TOTALS_SEPARATOR = Object.freeze({ separator: "·", spoken: ", " });
+
+  /**
+   * A commit's changes in its hover card, in the Diff summary's words and paint
+   * (docs/design-system.md, "Git Commit Summary"): "32 files changed · 4 A, 28 M · +1,921
+   * −160", through the same parts (formatters.js, `changeSummary`) and painters
+   * (`countPartsHtml`, and `changeLineHtml` for the brief change line after the file
+   * count), so the file count is bold in the line's ink, each status count, "4 A", bold
+   * in its status's ink, number and letter alike, and the commas and dots muted. A family
+   * no file has is left out, and a count the commit does not know is "?". Each dot is one
+   * item with the group before it, so a line that wraps breaks after a dot. A screen reader
+   * is told the line in words, "32 files changed: 4 added, 28 modified; 1,921 lines added,
+   * 160 deleted", in place of its letters and marks.
+   *
    * @param {Record<string, unknown>} stats
    * @returns {string}
    */
   function renderCommitChangeStats(stats) {
-    const fileStatuses = [
-      [stats.files_modified ?? "?", "M", "modified", "git-commit-file-status-modified"],
-      [stats.files_added ?? "?", "A", "added", "git-commit-file-status-added"],
-      [stats.files_deleted ?? "?", "D", "deleted", "git-commit-file-status-deleted"],
-    ]
-      .filter(([count]) => count !== 0)
-      .map(([count, code, label, className]) => {
-        const fileLabel = count === 1 ? "file" : "files";
-        return (
-          `<span class="git-commit-file-status ${className}"` +
-          ` aria-label="${escapeHtml(String(count))} ${label} ${fileLabel}">` +
-          `${escapeHtml(String(count))} <span class="file-change-status" data-file-status="${label}">${code}</span></span>`
-        );
-      })
-      .join("");
-    const filesChanged = stats.files_changed ?? "?";
-    const fileUnit = filesChanged === 1 ? "file" : "files";
-    const additions = stats.additions ?? "?";
-    const deletions = stats.deletions ?? "?";
-    const lineTotal =
-      typeof additions === "number" && typeof deletions === "number" ? additions + deletions : null;
-    const lineUnit = lineTotal === 1 ? "line" : "lines";
+    const formatters = window.MetabrowserFormatters;
+    /** @param {unknown} value */
+    const known = (value) => (typeof value === "number" ? value : null);
+    const entries = COMMIT_FILE_FAMILIES.map(({ key, ...family }) => ({
+      ...family,
+      count: known(stats[key]),
+    })).filter((entry) => entry.count !== 0);
+    const said = formatters.changeSummary(
+      {
+        files: known(stats.files_changed),
+        additions: known(stats.additions),
+        deletions: known(stats.deletions),
+        exact: true,
+      },
+      entries,
+      formatters.formatInteger,
+    );
+    /** @param {string} className @param {MetabrowserCountParts} parts */
+    const group = (className, parts) =>
+      '<span class="git-commit-change-group">' +
+      `<span class="${className}">${formatters.countPartsHtml(parts)}</span>` +
+      `${formatters.countPartsHtml([COMMIT_CHANGE_SEPARATOR])}</span>`;
     return (
       '<div class="git-commit-change-stats">' +
-      '<div class="git-commit-file-statuses" aria-label="File changes">' +
-      `${fileStatuses}<span class="git-commit-stat-unit">${fileUnit}</span>` +
-      "</div>" +
-      '<div class="git-commit-line-stats" aria-label="Line changes">' +
-      `<span class="git-stat-add" aria-label="${escapeHtml(String(additions))} lines added">` +
-      `+${escapeHtml(String(additions))}</span>` +
-      `<span class="git-stat-del" aria-label="${escapeHtml(String(deletions))} lines deleted">` +
-      `−${escapeHtml(String(deletions))}</span>` +
-      `<span class="git-commit-stat-unit">${lineUnit}</span>` +
-      "</div>" +
-      "</div>"
+      `<span class="visually-hidden">${escapeHtml(said.label)}</span>` +
+      '<span class="git-commit-change-line" aria-hidden="true">' +
+      group("git-commit-change-files", said.filesParts) +
+      formatters.changeLineHtml(said.line) +
+      "</span></div>"
+    );
+  }
+
+  /**
+   * The commit's own totals, which the server counts over the whole commit before it caps its
+   * list of files (`git/detail.py`), or null where the detail has no count of files.
+   *
+   * @param {Partial<MetabrowserGitCommitStats>} stats
+   * @returns {{files: number, additions: number | null, deletions: number | null, exact: boolean} | null}
+   */
+  function commitTotals(stats) {
+    const files = stats.files_changed;
+    if (typeof files !== "number" || !Number.isInteger(files)) {
+      return null;
+    }
+    /** @param {unknown} value */
+    const lines = (value) => (typeof value === "number" && Number.isInteger(value) ? value : null);
+    return {
+      files,
+      additions: lines(stats.additions),
+      deletions: lines(stats.deletions),
+      exact: true,
+    };
+  }
+
+  /**
+   * The commit's totals as one line, "35 files changed · +1,234 −3,423", worded as a diff's line
+   * is where its tree of files did not load (`plainTotals`, builtin_plugins/diff/diff-model.js):
+   * what the Diff summary's place says until the commit's diff draws the summary there, and
+   * keeps saying where the diff is not drawn, as when the diff plugin is absent or the
+   * comparison fails, so the page always states its counts (A6 of review A on #470). Empty
+   * where the detail has no count of files, and the place then takes no room. Its words and
+   * paint are the Diff summary's line's, through the same parts (`changeSummary`) and painters
+   * (`countPartsHtml`, and `changeLineHtml` for the totals): the file count bold, and the dot
+   * muted, one item with the count before it, and said as a comma to a screen reader, as a
+   * line has no name in words. The spaces around the dot are written, so the line reads
+   * "35 files changed · +1,234 −3,423" without the diff plugin's stylesheet too, whose flex
+   * line renders none of them (B3 of review B on #479).
+   *
+   * @param {Partial<MetabrowserGitCommitStats>} stats
+   * @returns {string}
+   */
+  function renderCommitTotals(stats) {
+    const totals = commitTotals(stats);
+    if (totals === null) {
+      return "";
+    }
+    const formatters = window.MetabrowserFormatters;
+    const said = formatters.changeSummary(totals, [], formatters.formatInteger);
+    return (
+      '<div class="diff-summary"><span class="diff-summary-group">' +
+      `<span class="diff-summary-files">${formatters.countPartsHtml(said.filesParts)}</span> ` +
+      `${formatters.countPartsHtml([COMMIT_TOTALS_SEPARATOR])}</span> ` +
+      `${formatters.changeLineHtml(said.line)}</div>`
     );
   }
 
@@ -272,6 +435,12 @@
    * Render the complete commit summary as one component. The comparison,
    * out-of-root files, and bounds remain siblings because they describe the
    * rendered change rather than the commit's identity and message.
+   *
+   * The page's summary is a page header, as a pull request's is, in the same order and
+   * type (docs/design-system.md, "Page Headers"): the subject, then one line each for the
+   * author, the revision and its refs, where a pull request has its branches, and the age,
+   * where a pull request has its row of ages, then the Diff summary; every line under the
+   * subject is at the body size. The hover card keeps its one line of metadata.
    *
    * @param {MetabrowserGitCommitDetail} detail
    * @param {{compact?: boolean}} [options]
@@ -287,37 +456,61 @@
     const subjectTag = compact ? "div" : "h1";
     const subjectClass = compact ? "git-commit-subject" : "git-commit-subject page-heading";
     let html = `<section class="${summaryClass}" aria-label="Commit summary">`;
-    html += '<div class="git-commit-header">';
-    html += `<${subjectTag} class="${subjectClass}">${escapeHtml(commit.subject)}</${subjectTag}>`;
-    html += '<div class="git-commit-meta">';
-    html += '<span class="git-commit-identity">';
-    html += '<span class="git-commit-revision">';
-    html += `<span class="git-commit-sha">${escapeHtml(commit.short_id)}</span>`;
+    html += `<div class="git-commit-header${compact ? "" : " page-header"}">`;
+    // A conventional-commit prefix is regular and the rest bold (docs/design-system.md,
+    // "Titles").
+    html += `<${subjectTag} class="${subjectClass}">${subjectHtml(commit.subject)}</${subjectTag}>`;
+    // The revision and its refs, `.git-commit-identity`: the commit's own identity, not its
+    // author's, which is the shell's `.actor-identity` below.
+    let revisionGroup = '<span class="git-commit-identity">';
+    revisionGroup += '<span class="git-commit-revision">';
+    revisionGroup += `<span class="git-commit-sha">${escapeHtml(commit.short_id)}</span>`;
     if (compact) {
-      html +=
+      revisionGroup +=
         '<span class="git-commit-revision-copy-preview" aria-hidden="true">' +
         `${copyIcon()}</span>`;
     } else {
-      html +=
+      revisionGroup +=
         '<button class="icon-btn icon-btn-reveal git-commit-revision-copy" type="button"' +
         ` data-mb-copy="text" data-mb-copy-text="${escapeHtml(commit.id)}"` +
         (sdk()?.delegateOwnerAttribute() ?? "") +
         ' data-mb-copy-label="Copy revision" data-tip-text="Copy revision"' +
         ` aria-label="Copy revision">${copyIcon()}</button>`;
     }
-    html += "</span>";
+    revisionGroup += "</span>";
     if (commit.refs?.length) {
-      html += `<span class="git-commit-refs">${renderRefBadges(commit.refs, compact ? false : "inline")}</span>`;
+      revisionGroup += `<span class="git-commit-refs">${renderRefBadges(commit.refs, compact ? false : "inline")}</span>`;
     }
-    html += "</span>";
-    html += `<span class="actor-name git-commit-author">${escapeHtml(commit.author?.name || "")}</span>`;
-    html += `<span class="git-commit-age ${escapeHtml(ageClass(commit.committed_at))}">`;
-    html += `${escapeHtml(relativeAge(commit.committed_at, { style: "relative" }))}</span>`;
-    html += "</div>";
-    html += renderCommitChangeStats(stats);
+    revisionGroup += "</span>";
+    const author = commit.author?.name || "";
+    const age =
+      `<span class="git-commit-age ${escapeHtml(ageClass(commit.committed_at))}"` +
+      (compact ? "" : ` data-tip-text="${escapeHtml(exactTime(commit.committed_at))}"`) +
+      `>${escapeHtml(relativeAge(commit.committed_at, { style: "relative" }))}</span>`;
+    if (compact) {
+      html += `<div class="git-commit-meta">${revisionGroup}`;
+      html += `<span class="actor-name git-commit-author">${escapeHtml(author)}</span>${age}</div>`;
+    } else {
+      // The author as a pull request's header draws its author: the shell's identity, an
+      // avatar's box, then the bold name. A commit's author has no avatar here, so the box
+      // holds the person glyph, and the line is laid out as it would be with one.
+      html +=
+        '<div class="git-commit-byline page-header-line">' +
+        `${window.metabrowser.actorIdentityHtml(author, { nameClass: "git-commit-author" })}</div>`;
+      html += `<div class="git-commit-revision-line page-header-line">${revisionGroup}</div>`;
+      html += `<div class="git-commit-ages page-header-line">Committed ${age}</div>`;
+    }
+    // The page's Diff summary takes the change stats' place, under the identity (mb-pb35): the
+    // diff below draws it here, its header the commit's file and line totals and its tree
+    // the commit's files (`mountCommitDiff`). Until it does, and where it is not drawn, the
+    // place says the commit's totals. The hover summary says its changes itself, in the Diff
+    // summary's words and paint.
+    html += compact
+      ? renderCommitChangeStats(stats)
+      : `<div class="git-commit-diff-summary metabrowser-diff-host page-header-line">${renderCommitTotals(stats)}</div>`;
     html += "</div>";
     if (!compact && detail.body) {
-      html += `<pre class="git-commit-body page-card">${escapeHtml(detail.body)}</pre>`;
+      html += `<pre class="git-commit-body page-card chrome-prose">${escapeHtml(detail.body)}</pre>`;
     }
     html += "</section>";
     return html;
@@ -355,6 +548,29 @@
   }
 
   /**
+   * The exact time an age stands for, its tooltip, as a pull request's ages give theirs.
+   *
+   * @param {number} epochSeconds
+   * @returns {string}
+   */
+  function exactTime(epochSeconds) {
+    return sdk()?.formatTimestamp?.(epochSeconds) ?? "";
+  }
+
+  /**
+   * A commit's subject as escaped markup, from the shared title primitive, so a history
+   * row, the commit's page, and its tooltip draw a conventional-commit prefix as a pull
+   * request's title does: in `span.title-prefix`, at regular weight (docs/design-system.md,
+   * "Titles").
+   *
+   * @param {string} subject
+   * @returns {string}
+   */
+  function subjectHtml(subject) {
+    return window.MetabrowserFormatters.titleHtml(subject);
+  }
+
+  /**
    * @param {string} path
    * @param {Record<string, string>} [params]
    * @param {RequestInit} [options]
@@ -383,10 +599,11 @@
   // ── Data ───────────────────────────────────────────────────
 
   /**
-   * Fetch the repository gate. A failed request returns null so init or
-   * the visible panel can retry without registering a broken surface.
+   * Fetch the repository gate. `failed` is a request that got no answer (a refused or
+   * timed-out connection, an error status, an unreadable body), which init and the
+   * visible panel retry; only an answer that says so is `not-repo`.
    *
-   * @returns {Promise<MetabrowserGitRepoInfo | null>}
+   * @returns {Promise<RepoRead>}
    */
   function fetchRepoInfo() {
     const generation = historyGeneration;
@@ -402,16 +619,18 @@
     return pending;
   }
 
+  /** @returns {Promise<RepoRead>} */
   async function readRepoInfo() {
     try {
       const response = await apiFetch("/api/git/repo");
       if (!response.ok) {
-        return null;
+        return { status: "failed" };
       }
+      /** @type {MetabrowserGitRepoInfo | null} */
       const info = await response.json();
-      return info?.is_repo ? info : null;
+      return info?.is_repo ? { status: "repo", info } : { status: "not-repo" };
     } catch {
-      return null;
+      return { status: "failed" };
     }
   }
 
@@ -509,6 +728,10 @@
       previousCursor: wirePage.previous_cursor ?? null,
     });
     state.scopeFingerprint = fingerprint;
+    adoptRowRefs(commits);
+    if (!refreshing && !recoveringSession) {
+      void revalidateMountedSummary();
+    }
 
     if (pageNumber === state.nextPageNumber) {
       state.rowCount = startOrdinal + commits.length;
@@ -562,6 +785,9 @@
         recoverSession = failure === "recover";
         if (failure === "stale") {
           state.stale = true;
+          // The refs moved, and a replace ref or a graft among them changes a commit's
+          // first parent, so a kept comparison may no longer be the answer.
+          clearComparisonCache();
         }
         throw new Error(`HTTP ${response.status}`);
       }
@@ -610,6 +836,7 @@
         state.loading = false;
         state.loadingPage = null;
         renderPanel();
+        selectNewestWhenReady();
       }
     }
     if (recoverSession && requestGeneration === historyGeneration && state === requestState) {
@@ -764,6 +991,147 @@
   }
 
   /**
+   * A comparable key for a commit's refs: the same refs give the same key.
+   *
+   * @param {MetabrowserGitRef[] | undefined} refs
+   * @returns {string}
+   */
+  function refsKey(refs) {
+    return JSON.stringify(refs ?? []);
+  }
+
+  /**
+   * Take the refs of rows the current history session just served.
+   *
+   * The history page is the session's word on a commit's refs, so a cached detail of the
+   * same commit takes them, which is what its tooltip and summary draw, and the summary on
+   * screen for it replaces its refs in place. The rest of the detail, and the diff mounted
+   * under the summary, are left alone: recovery neither refetches nor redraws them.
+   *
+   * @param {MetabrowserGitCommit[]} commits
+   * @returns {void}
+   */
+  function adoptRowRefs(commits) {
+    for (const row of commits) {
+      const cached = detailCache.get(row.id);
+      if (cached) {
+        let confirmed = cached;
+        if (refsKey(cached.commit.refs) !== refsKey(row.refs)) {
+          const { refs: _stale, ...rest } = cached.commit;
+          confirmed = { ...cached, commit: row.refs?.length ? { ...rest, refs: row.refs } : rest };
+          // Map.set on a key it has keeps the key's place in the eviction order.
+          detailCache.set(row.id, confirmed);
+        }
+        refsReadIn.set(confirmed, historyGeneration);
+      }
+      if (mountedSummary?.revision === row.id) {
+        applySummaryRefs(mountedSummary, row.refs, historyGeneration);
+      }
+    }
+  }
+
+  /**
+   * Put a commit's current refs in the summary on screen for it, replacing only its refs
+   * group. A summary no longer on screen is released instead.
+   *
+   * @param {MountedSummary} mounted
+   * @param {MetabrowserGitRef[] | undefined} refs
+   * @param {number} generation The session the refs were confirmed in.
+   * @returns {void}
+   */
+  function applySummaryRefs(mounted, refs, generation) {
+    if (!mounted.identity.isConnected) {
+      releaseMountedSummary(mounted);
+      return;
+    }
+    const key = refsKey(refs);
+    if (mounted.refs !== key) {
+      mounted.identity.querySelector(".git-commit-refs")?.remove();
+      if (refs?.length) {
+        const group = document.createElement("span");
+        group.className = "git-commit-refs";
+        group.innerHTML = renderRefBadges(refs, "inline");
+        mounted.identity.append(group);
+      }
+      mounted.refs = key;
+    }
+    mounted.generation = generation;
+  }
+
+  /**
+   * Confirm the refs of the summary on screen in the current session. Its row, when the
+   * session serves it, does that; a summary whose row the session has not served, as a
+   * commit past recovery's replay depth or off a refreshed first page, or one staged in
+   * an older session, reads its commit again and takes only the refs.
+   *
+   * Refs from an older session are never shown: the summary drops them before it reads,
+   * and a read that fails or is not of this session leaves it with none, still
+   * unconfirmed, so the next page that arrives or the next showing of the panel tries
+   * again.
+   *
+   * @returns {Promise<void>}
+   */
+  function revalidateMountedSummary() {
+    const mounted = mountedSummary;
+    if (!mounted || mounted.generation === historyGeneration) {
+      return Promise.resolve();
+    }
+    if (!mounted.identity.isConnected) {
+      releaseMountedSummary(mounted);
+      return Promise.resolve();
+    }
+    dropSummaryRefs(mounted);
+    return confirmSummaryRefs(mounted.token, mounted.revision, historyGeneration);
+  }
+
+  /**
+   * Take the refs group out of a summary whose refs are not confirmed in this session.
+   *
+   * @param {MountedSummary} mounted
+   * @returns {void}
+   */
+  function dropSummaryRefs(mounted) {
+    mounted.identity.querySelector(".git-commit-refs")?.remove();
+    mounted.refs = "";
+  }
+
+  /**
+   * Read a commit and give its refs to the summary on screen, if that is still the mount
+   * *token* names and the session is still *generation*. It holds no DOM while it waits,
+   * so a summary disposed meanwhile is not kept alive by a slow or stalled read.
+   *
+   * @param {number} token
+   * @param {string} revision
+   * @param {number} generation
+   * @returns {Promise<void>}
+   */
+  async function confirmSummaryRefs(token, revision, generation) {
+    const detail = await fetchCommitDetail(revision);
+    const mounted = mountedSummary;
+    if (
+      mounted?.token === token &&
+      detail &&
+      generation === historyGeneration &&
+      refsReadIn.get(detail) === generation
+    ) {
+      applySummaryRefs(mounted, detail.commit.refs, generation);
+    }
+  }
+
+  /**
+   * Let go of the summary on screen. With *mounted*, only if it is still that one, so a
+   * retired view never releases the summary that replaced it.
+   *
+   * @param {MountedSummary | null} [mounted]
+   * @returns {void}
+   */
+  function releaseMountedSummary(mounted = mountedSummary) {
+    if (mountedSummary === mounted) {
+      mountedSummary = null;
+    }
+  }
+
+  /**
    * Fetch one commit's detail, through a bounded cache.
    *
    * The cache is what makes hovering a row and then clicking it a single
@@ -775,13 +1143,18 @@
    */
   async function fetchCommitDetail(revision, signal) {
     const cached = detailCache.get(revision);
-    if (cached) {
+    if (cached && refsReadIn.get(cached) === historyGeneration) {
       return cached;
+    }
+    if (cached) {
+      // Read in an older session: its refs may have moved since.
+      detailCache.delete(revision);
     }
     const existing = detailInFlight.get(revision);
     if (existing) {
       return existing;
     }
+    const generation = historyGeneration;
     const request = measureAsync(
       "gitRevision:detailData",
       async () => {
@@ -804,6 +1177,12 @@
             return null;
           }
           missingRevisions.delete(revision);
+          refsReadIn.set(detail, generation);
+          // A request that outlived its session answers its caller, who checks the
+          // generation, but does not put refs that may have moved into the cache.
+          if (generation !== historyGeneration) {
+            return detail;
+          }
           // Insertion-ordered eviction: Map preserves insertion order, so
           // the first key is the oldest entry.
           if (detailCache.size >= DETAIL_CACHE_SIZE) {
@@ -831,6 +1210,119 @@
   }
 
   /**
+   * The key a comparison request is kept under, or null when its answer can change.
+   *
+   * The key is the request's own query, so every option the request sends is part of it;
+   * what else the answer depends on, the served repository and the build, is the page's
+   * own and does not change while it is open.
+   *
+   * @param {Record<string, string>} params
+   * @returns {string | null}
+   */
+  function comparisonCacheKey(params) {
+    const revision = params.revision;
+    if (typeof revision !== "string" || !FULL_COMMIT_ID.test(revision)) {
+      return null;
+    }
+    const names = Object.keys(params).sort();
+    return new URLSearchParams(names.map((name) => [name, String(params[name])])).toString();
+  }
+
+  /**
+   * The kept answer for *key*, marked most recently used, or undefined.
+   *
+   * @param {string} key
+   */
+  function keptComparison(key) {
+    const kept = comparisonCache.get(key);
+    if (kept) {
+      comparisonCache.delete(key);
+      comparisonCache.set(key, kept);
+    }
+    return kept;
+  }
+
+  /**
+   * Keep *raw* under *key*, evicting the least recently used answers past the bound.
+   *
+   * The bound is on the answer's JSON length in characters; the parsed answer holds 0.97 to
+   * 1.66 times that in V8's heap (see settings.py). Measuring it costs 0.45 ms for a 197 KB
+   * answer and about 8 ms for a 3.3 MB one, so it runs in a task after the one that hands
+   * the answer to the diff (review B of #368, B3).
+   *
+   * @param {string} key
+   * @param {unknown} raw
+   */
+  function keepComparison(key, raw) {
+    let bytes;
+    try {
+      bytes = JSON.stringify(raw)?.length ?? 0;
+    } catch {
+      return;
+    }
+    const previous = comparisonCache.get(key);
+    if (previous) {
+      comparisonCache.delete(key);
+      comparisonCacheBytes -= previous.bytes;
+    }
+    if (bytes > COMPARISON_ENTRY_BYTES) {
+      return;
+    }
+    comparisonCache.set(key, { raw, bytes });
+    comparisonCacheBytes += bytes;
+    for (const [oldest, entry] of comparisonCache) {
+      if (comparisonCacheBytes <= COMPARISON_CACHE_BYTES) {
+        break;
+      }
+      comparisonCache.delete(oldest);
+      comparisonCacheBytes -= entry.bytes;
+    }
+  }
+
+  function clearComparisonCache() {
+    comparisonCache.clear();
+    comparisonCacheBytes = 0;
+    comparisonGeneration += 1;
+  }
+
+  /**
+   * One revision's comparison: the kept answer, or a request whose answer is kept.
+   *
+   * A kept answer resolves at once, and the caller's claim checks after each await still
+   * decide whether it is shown, exactly as for an answer that arrived over the network.
+   *
+   * @param {MetabrowserPublicSdk} pluginSdk
+   * @param {string} revision
+   * @param {AbortSignal | undefined} signal
+   * @returns {Promise<unknown>}
+   */
+  function fetchComparison(pluginSdk, revision, signal) {
+    const params = { revision };
+    const key = comparisonCacheKey(params);
+    const kept = key === null ? undefined : keptComparison(key);
+    return measureAsync(
+      "gitRevision:comparisonData",
+      () => {
+        if (kept) {
+          return Promise.resolve(kept.raw);
+        }
+        const generation = comparisonGeneration;
+        return pluginSdk.fetchPluginData("diff", "comparison", params, { signal }).then((raw) => {
+          if (key !== null) {
+            setTimeout(() => {
+              if (generation === comparisonGeneration) {
+                keepComparison(key, raw);
+              }
+            }, 0);
+          }
+          return raw;
+        });
+      },
+      { revision, kept: kept !== undefined },
+    );
+  }
+
+  /**
    * Start the independent diff work for one revision.
    *
    * @param {string} revision
@@ -843,19 +1335,10 @@
           revision,
         })
       : Promise.resolve();
-    const comparison = pluginSdk?.fetchPluginData
-      ? measureAsync(
-          "gitRevision:comparisonData",
-          () =>
-            pluginSdk.fetchPluginData(
-              "diff",
-              "comparison",
-              { revision },
-              { signal: controller?.signal },
-            ),
-          { revision },
-        )
-      : undefined;
+    const comparison =
+      typeof pluginSdk?.fetchPluginData === "function"
+        ? fetchComparison(pluginSdk, revision, controller?.signal)
+        : undefined;
     // Speculative work may be replaced before the diff view awaits it. Attach
     // a rejection handler immediately while preserving the original promise
     // for the view's existing error path. The assets can fail too: the diff
@@ -922,6 +1405,17 @@
 
   function panelElement() {
     return document.getElementById("tab-git");
+  }
+
+  /** The Commits tab's toolbar in the navigation's slot (main-tabs.js), if the shell has one. */
+  function historyToolbar() {
+    return document.getElementById("nav-toolbar-git");
+  }
+
+  /** Whether Commits is the panel in front: main-tabs.js hides every other panel. */
+  function panelInFront() {
+    const panel = panelElement();
+    return panel instanceof HTMLElement && panel.style.display !== "none";
   }
 
   /**
@@ -1136,6 +1630,81 @@
     }
   }
 
+  /**
+   * Give the history's roving row focus, as the Commits tab's key, `H`, does after it
+   * switches to the tab, so `↓` walks the history next. Reports whether a row took
+   * focus; before the first page there is none, and the tab button keeps it.
+   *
+   * A switch to Commits lands on the newest commit (landOnNewestCommit), so while that
+   * landing waits, the key's row is the newest, not the row the reader left: now when
+   * it is mounted, or once the landing reveals it (focusAwaitsNewest).
+   */
+  function focusCommitRow() {
+    const waiting = newestLanding;
+    const bridge = shell();
+    if (waiting && bridge && newestLandingHolds(waiting, bridge)) {
+      // The landing began from the newest row (landOnNewestCommit), but the reader may have
+      // focused another since, with Commits in front; that row, or a suspension that would
+      // hand it focus again when a render mounts it, is not the key's.
+      state.focusedOrdinal = 0;
+      state.focusSuspended = false;
+      waiting.keyFocus = focusNewestRow() ? "row" : "tab";
+      return waiting.keyFocus === "row";
+    }
+    const list = panelElement()?.querySelector(".git-graph-list");
+    const row =
+      list?.querySelector(".git-graph-row[data-roving-anchor]") ??
+      list?.querySelector(".git-graph-row");
+    if (!(row instanceof HTMLElement)) {
+      return false;
+    }
+    row.focus();
+    return true;
+  }
+
+  /**
+   * Focus the newest row, ordinal zero, and make it the list's Tab stop. Focus never scrolls
+   * the list: the switch to Commits puts it at its top, and the landing's reveal scrolls it
+   * there when it is not. False when the row is not mounted.
+   */
+  function focusNewestRow() {
+    const list = panelElement()?.querySelector(".git-graph-list");
+    const row = list?.querySelector('.git-graph-row[data-ordinal="0"]');
+    if (!(list instanceof HTMLElement) || !(row instanceof HTMLElement)) {
+      return false;
+    }
+    state.focusedOrdinal = 0;
+    state.focusSuspended = false;
+    setCommitRowAnchor(list, row);
+    row.focus({ preventScroll: true });
+    return true;
+  }
+
+  /**
+   * Whether focus is still where the Commits key left it while its landing waited, so the
+   * landing may move it to the newest row: on the tab, on the newest row, or on the
+   * scroller, where the panel parks focus when the reader scrolls the focused row away. A
+   * refresh forgets that parking, so the render that mounts the new rows hands nothing
+   * back, and the landing must. Nowhere counts only when a refresh removed the row that
+   * held focus (refreshHistory); focus a reader sent nowhere, by clicking text, stays.
+   * Anywhere else, the reader moved it, and it stays.
+   *
+   * @param {NewestLanding} waiting
+   */
+  function focusAwaitsNewest(waiting) {
+    const active = document.activeElement;
+    if (!(active instanceof HTMLElement) || active === document.body || !active.isConnected) {
+      return waiting.rowReplaced;
+    }
+    const list = panelElement()?.querySelector(".git-graph-list");
+    return (
+      (active.classList.contains("tab-btn") && active.dataset.tab === "git") ||
+      active === historyScroller() ||
+      (list instanceof HTMLElement &&
+        active === list.querySelector('.git-graph-row[data-ordinal="0"]'))
+    );
+  }
+
   /** @param {Event} event */
   function handleCommitListFocus(event) {
     const row = event.target;
@@ -1341,13 +1910,14 @@
    * @param {string} revision
    */
   function handleCommitRowKeydown(event, row, revision) {
+    // Shift never changes a row key, as in the shortcut registry; Ctrl, Alt,
+    // and Meta leave the chord to the browser.
     if (
       !event.defaultPrevented &&
       !event.isComposing &&
       !event.altKey &&
       !event.ctrlKey &&
-      !event.metaKey &&
-      !event.shiftKey
+      !event.metaKey
     ) {
       switch (commitRowKey(event)) {
         case "ArrowUp":
@@ -1390,6 +1960,11 @@
       return;
     }
     if (state.rowCount === 0 && (state.failed || viewHelpersFailed)) {
+      // The toolbar's tally settles too: it has no count to wait for.
+      const failed = document.createElement("div");
+      failed.className = "git-history-summary nav-metadata nav-metadata-note";
+      failed.textContent = "History unavailable";
+      historyToolbar()?.replaceChildren(failed);
       renderRefreshState(
         panel,
         viewHelpersFailed
@@ -1408,11 +1983,18 @@
     let list = panel.querySelector(".git-graph-list");
     if (!(list instanceof HTMLElement)) {
       const summary = document.createElement("div");
-      summary.className = "git-history-summary";
+      summary.className = "git-history-summary nav-metadata";
       list = document.createElement("div");
       list.className = "git-graph-list";
       list.addEventListener("focusin", handleCommitListFocus);
-      panel.replaceChildren(summary, list);
+      // The tally is the tab's toolbar, in the navigation's toolbar slot when the shell has one.
+      const toolbar = historyToolbar();
+      if (toolbar) {
+        toolbar.replaceChildren(summary);
+        panel.replaceChildren(list);
+      } else {
+        panel.replaceChildren(summary, list);
+      }
       invalidateHistoryOrigin();
       observeSummaryHeight(summary);
     }
@@ -1435,20 +2017,33 @@
    * @param {HTMLElement} panel
    */
   function renderHistorySummary(panel) {
-    const row = panel.querySelector(".git-history-summary");
+    const row = (historyToolbar() ?? panel).querySelector(".git-history-summary");
     if (!(row instanceof HTMLElement)) {
       return;
     }
+    row.classList.remove("nav-metadata-note");
     if (!state.summary) {
+      // In the count's own span, where the count will be, as the server ships it and as
+      // the Files totals hold theirs: a lone flex item would sit at the top of the line.
       const pending = document.createElement("span");
       pending.className = "count tally-pending";
-      row.replaceChildren(pending);
+      const countSpan = document.createElement("span");
+      countSpan.className = "git-history-summary-count";
+      countSpan.append(pending);
+      row.replaceChildren(countSpan);
       return;
     }
     const count = state.summary.commitCount;
     const countSpan = document.createElement("span");
     countSpan.className = "git-history-summary-count";
-    countSpan.textContent = `${count.toLocaleString()} ${count === 1 ? "commit" : "commits"}`;
+    // The number bold and its word in the line's weight, as every count summary reads
+    // (docs/design-system.md, "Count Summaries Bold Their Numbers").
+    countSpan.replaceChildren(
+      ...window.MetabrowserFormatters.countPartsNodes(document, [
+        { number: count.toLocaleString() },
+        count === 1 ? " commit" : " commits",
+      ]),
+    );
     const firstCommitAt = state.summary.firstCommitAt;
     const firstAge = firstCommitAt === null ? "" : relativeAge(firstCommitAt);
     if (!firstAge || firstCommitAt === null) {
@@ -1617,7 +2212,7 @@
     const refs = renderRefBadges(commit.refs || []);
     body.innerHTML =
       (refs ? `<span class="git-graph-refs">${refs}</span>` : "") +
-      `<span class="git-graph-subject">${escapeHtml(commit.subject)}</span>` +
+      `<span class="git-graph-subject">${subjectHtml(commit.subject)}</span>` +
       `<span class="git-graph-meta"><span class="actor-name">${escapeHtml(commit.author?.name || "")}</span>` +
       `<span class="git-graph-age ${escapeHtml(ageClass(commit.committed_at))}">` +
       `${escapeHtml(relativeAge(commit.committed_at))}</span></span>`;
@@ -1681,8 +2276,19 @@
         lastSelection?.revision === revision &&
         shell()?.isPreviewClaimCurrent(lastSelection.claim);
       const preparation = selectedHere ? null : prepareRevision(revision, true);
-      const detail = await (preparation?.detail ?? fetchCommitDetail(revision));
-      if (!detail) {
+      let detail = await (preparation?.detail ?? fetchCommitDetail(revision));
+      // The history was rebuilt while the detail was read: read it in this session, if
+      // the hover is still wanted. A hover cancelled meanwhile, as by teardown, asks
+      // nothing more.
+      if (
+        detail &&
+        refsReadIn.get(detail) !== historyGeneration &&
+        hoverRevision === revision &&
+        rowElement.isConnected
+      ) {
+        detail = await fetchCommitDetail(revision);
+      }
+      if (!detail || refsReadIn.get(detail) !== historyGeneration) {
         return;
       }
       if (hoverRevision !== revision || !rowElement.matches(":hover")) {
@@ -1697,7 +2303,9 @@
       clearTimeout(hoverTimer);
       hoverTimer = null;
     }
-    sdk()?.tooltip?.hide();
+    // The history's tooltip, and no other surface's: a rebuild of the panel must not take
+    // a Files row's from under the pointer (mb-alff).
+    sdk()?.tooltip?.hide(panelElement());
     hoverRevision = null;
   }
 
@@ -1719,14 +2327,30 @@
     }
   }
 
-  /** Stop work relinquished to another preview owner, retaining the useful DOM and history. */
+  /**
+   * Stop work relinquished to another preview owner, retaining the useful DOM and history.
+   *
+   * The commit diff stays on screen until that owner's content replaces it, so it is
+   * handed to the shell, which disposes it then as it does a retired pull-request page.
+   * Its own keys end with it: a diff left mounted would keep `L` in Help on every later
+   * page.
+   *
+   * @returns {(() => void) | null} Disposes the relinquished diff; null when none is mounted.
+   */
   function cancelPending() {
     landingGeneration += 1;
+    // Another owner has the pane: a commit's row that waited for history is not revealed
+    // over it (revealWaitingCommit).
+    waitingReveal = null;
     clearPendingState();
     cancelHover();
     abortPreparation(preparationSlot);
     preparationSlot = null;
-    commitDiffHandle?.cancelPending?.();
+    const relinquished = commitDiffHandle;
+    commitDiffHandle = null;
+    releaseMountedSummary();
+    relinquished?.cancelPending?.();
+    return relinquished ? () => relinquished.dispose?.() : null;
   }
 
   /** @returns {Promise<void>} */
@@ -1887,7 +2511,7 @@
 
   /**
    * @param {string} revision
-   * @param {{fromRoute?: boolean, cachedOnly?: boolean, rowElement?: HTMLElement}} [options]
+   * @param {{fromRoute?: boolean, rowElement?: HTMLElement}} [options]
    *   `fromRoute` when the URL is already this commit (restore on load), so
    *   the route is not rewritten. Pointer and keyboard paths pass their row
    *   so immediate feedback does not search the mounted history.
@@ -1897,6 +2521,7 @@
     if (!bridge) {
       return;
     }
+    selectionCount += 1;
     /** @type {number | null} */
     let selectionClaim = null;
     /** @type {HTMLElement | null} */
@@ -2017,20 +2642,7 @@
         }
         if (!detail) {
           disposeCommitDiff();
-          if (missingRevisions.has(revision) && options.cachedOnly) {
-            bridge.renderPreviewNode(
-              missingCommitNode(
-                {
-                  state: "not_found",
-                  title: "Commit not found",
-                  detail: "This commit is not available in the local repository.",
-                  retry: false,
-                },
-                null,
-              ),
-              previewClaim,
-            );
-          } else if (missingRevisions.has(revision)) {
+          if (missingRevisions.has(revision)) {
             // Waits for the first state only, so the pane stays busy until it shows
             // one; a mirror's fetch from the origin continues after it.
             await showMissingCommit(revision, previewClaim);
@@ -2057,14 +2669,13 @@
       },
       { revision },
     ).finally(() => {
-      if (
-        state.selectedId === revision &&
-        selectedRowForAnchor?.parentElement instanceof HTMLElement
-      ) {
+      // A render while the commit loaded replaced the row, and anchored the list's own; the
+      // replaced row keeps its old window as a parent, so only the document can say so.
+      if (state.selectedId === revision && selectedRowForAnchor?.isConnected === true) {
         measure(
           "gitRevision:rowAnchor",
           () => {
-            if (selectedRowForAnchor?.parentElement instanceof HTMLElement) {
+            if (selectedRowForAnchor?.isConnected === true) {
               const list = panelElement()?.querySelector(".git-graph-list");
               if (list instanceof HTMLElement) {
                 setCommitRowAnchor(list, selectedRowForAnchor);
@@ -2108,7 +2719,13 @@
     if (external.length) {
       html += '<div class="git-commit-files">';
       html += '<div class="git-commit-files-summary">';
-      html += `${external.length} file${external.length === 1 ? "" : "s"} outside this folder`;
+      // A count summary of the list under it: its number bold (docs/design-system.md,
+      // "Count Summaries Bold Their Numbers"), and the count and its words one item of the
+      // flex line, so its gap does not part them.
+      html += `<span>${window.MetabrowserFormatters.countPartsHtml([
+        { number: String(external.length) },
+        ` file${external.length === 1 ? "" : "s"} outside this folder`,
+      ])}</span>`;
       html += "</div>";
       html += external.map(renderFileRow).join("");
       html += "</div>";
@@ -2123,7 +2740,7 @@
     // The commit's diff is rendered by the diff plugin's own view over
     // this commit's first-parent comparison — the history view composes
     // the comparison layer instead of growing a diff surface of its own
-    // (arch-nav-containers.md, the general diff rendering plan).
+    // (arch-plugin-system.md, the general diff rendering plan).
     html += '<div class="git-commit-diff metabrowser-diff-host"></div>';
     html += "</div>";
 
@@ -2147,7 +2764,13 @@
       return;
     }
     try {
-      const nextHandle = await mountCommitDiff(stage, commit.id, diffPreparation, previewClaim);
+      const nextHandle = await mountCommitDiff(
+        stage,
+        commit.id,
+        diffPreparation,
+        previewClaim,
+        commitTotals(stats),
+      );
       if (state.selectedId !== commit.id || !bridge.isPreviewClaimCurrent(previewClaim)) {
         nextHandle?.dispose?.();
         return;
@@ -2162,6 +2785,21 @@
       const previousHandle = commitDiffHandle;
       commitDiffHandle = nextHandle || null;
       previousHandle?.dispose?.();
+      const identity = stage.querySelector(".git-commit-identity");
+      // A detail the cache did not hand out is the caller's, which vouches for it.
+      const generation = refsReadIn.get(detail) ?? historyGeneration;
+      mountedSummary = identity
+        ? {
+            token: ++summaryMounts,
+            revision: commit.id,
+            refs: refsKey(commit.refs),
+            generation,
+            identity,
+          }
+        : null;
+      // Staged in an older session, as when the history was rebuilt while the diff's
+      // assets loaded: confirm its refs now.
+      void revalidateMountedSummary();
     } finally {
       unstage();
     }
@@ -2189,9 +2827,12 @@
    * @param {string} revision
    * @param {{assets: Promise<void>, comparison?: Promise<unknown>}} preparation
    * @param {MetabrowserPreviewClaim} claim
+   * @param {ReturnType<typeof commitTotals>} [totals] The commit's own totals, which its Diff
+   *   summary says where the comparison's list of files is cut short at its bound (A3 of review
+   *   A on #470).
    * @returns {Promise<{cancelPending?: () => void, dispose?: () => void} | null>}
    */
-  async function mountCommitDiff(preview, revision, preparation, claim) {
+  async function mountCommitDiff(preview, revision, preparation, claim, totals = null) {
     const host = preview.querySelector(".git-commit-diff");
     const bridge = shell();
     if (!(host instanceof HTMLElement) || !bridge) {
@@ -2225,8 +2866,15 @@
           if (!current()) {
             return null;
           }
+          // The Diff summary at the page's top, under the commit's identity (mb-pb35).
+          const summaryHost = preview.querySelector(".git-commit-diff-summary");
           return /** @type {{cancelPending?: () => void, dispose?: () => void} | null} */ (
-            await view.render(host, { revision, raw })
+            await view.render(host, {
+              revision,
+              raw,
+              ...(summaryHost instanceof HTMLElement ? { summaryHost } : {}),
+              ...(totals === null ? {} : { summaryTotals: totals }),
+            })
           );
         },
         { revision },
@@ -2240,6 +2888,7 @@
   function disposeCommitDiff() {
     commitDiffHandle?.dispose?.();
     commitDiffHandle = null;
+    releaseMountedSummary();
   }
 
   /**
@@ -2311,6 +2960,12 @@
     historyAbortController.abort();
     historyAbortController = new AbortController();
     historyGeneration += 1;
+    // The summary on screen drops its refs the moment a new session begins, before any
+    // read that could fail: until that session's row or a read in it confirms them, it
+    // shows none (revalidateMountedSummary).
+    if (mountedSummary) {
+      dropSummaryRefs(mountedSummary);
+    }
     wantedRange = null;
     rangeLoadPromise = null;
   }
@@ -2332,21 +2987,52 @@
     recoveringSession = true;
     try {
       const selectedId = state.selectedId;
+      const selectionsBefore = selectionCount;
+      const landingsBefore = landingGeneration;
+      // A neutral Commits landing waiting on this walk wants the newest row, ordinal zero,
+      // not the position the expired session had (landOnNewestCommit).
+      const landing = newestLanding;
+      const forLanding = landing !== null;
       // The new walk replays its prefix one request per page, so the
       // restored position must be bounded: the cache retains at most
       // PAGE_CACHE_PAGES pages anyway, and at the measured 13-70 ms per
       // page request this cap costs well under a second. A deeper
       // pre-expiry position lands at the cap instead of issuing one
       // request per LOG_LIMIT rows of unbounded prefix.
-      const restoreOrdinal = Math.min(
-        Math.max(0, state.focusedOrdinal ?? state.mountedRange?.visibleStart ?? 0),
-        PAGE_CACHE_PAGES * LOG_LIMIT - 1,
-      );
+      const restoreOrdinal = forLanding
+        ? 0
+        : Math.min(
+            Math.max(0, state.focusedOrdinal ?? state.mountedRange?.visibleStart ?? 0),
+            PAGE_CACHE_PAGES * LOG_LIMIT - 1,
+          );
       await refreshHistory({ preserveDetail: true, selectedId });
-      while (state.rowCount <= restoreOrdinal && state.cursor && !state.failed) {
+      // Recovery may place the list only while nothing has placed it or taken it since it
+      // began. A selection made while the walk is rebuilt, the landing's newest or the
+      // reader's own, places the list and its Tab stop itself. Leaving Commits, or anything
+      // else that takes the pane, cancels pending Git work and the landing with it, and the
+      // scroller is shared: another tab owns its offset then. Either way the old position
+      // no longer applies, and no page is fetched to reach it.
+      const mayPlace = () =>
+        selectionCount === selectionsBefore &&
+        landingGeneration === landingsBefore &&
+        panelInFront() &&
+        (landing === null || shell()?.isPreviewClaimCurrent(landing.claim) === true);
+      while (mayPlace() && state.rowCount <= restoreOrdinal && state.cursor && !state.failed) {
         if (!(await loadNextPage(false))) {
           break;
         }
+      }
+      // The replay confirmed the refs of the rows it served; the summary on screen may
+      // be a commit it did not reach. Its refs are confirmed whether or not recovery may
+      // still place the list.
+      await revalidateMountedSummary();
+      if (!mayPlace()) {
+        return;
+      }
+      if (forLanding) {
+        revealNewestRow();
+        state.focusedOrdinal = 0;
+        return;
       }
       const scroller = historyScroller();
       if (scroller && state.rowCount > 0) {
@@ -2401,7 +3087,11 @@
   }
 
   /**
-   * @param {{preserveDetail?: boolean, selectedId?: string | null}} [options]
+   * `supersede` replaces the walk even while a page of it is on its way: HEAD moved, so
+   * that page is obsolete, and the reset below aborts it. Without it a page on its way
+   * defers the refresh to whoever reads HEAD next.
+   *
+   * @param {{preserveDetail?: boolean, selectedId?: string | null, supersede?: boolean}} [options]
    * @returns {Promise<void>}
    */
   async function refreshHistory(options = {}) {
@@ -2410,15 +3100,31 @@
     if ((!viewHelpersReady && !(await ensureViewHelpers())) || generation !== historyGeneration) {
       return;
     }
-    if (state.loading || refreshing) {
+    if ((state.loading && !options.supersede) || refreshing) {
       return;
     }
 
     refreshing = true;
     resetHistoryRequests();
-    clearPendingState();
+    // A selection's busy state is obsolete once its walk is replaced. A waiting newest
+    // landing's is not: the new walk is what it waits for, and the pane stays busy until
+    // the landing selects, says why it cannot, or loses the pane.
+    if (!waitingLandingOwnsPending()) {
+      clearPendingState();
+    }
     abortPreparation(preparationSlot);
     preparationSlot = null;
+    // The render below replaces every row, and a row that held focus takes it out of the
+    // document; a waiting landing gives it to the newest row (focusAwaitsNewest).
+    const active = document.activeElement;
+    if (
+      newestLanding !== null &&
+      active instanceof HTMLElement &&
+      active.isConnected &&
+      active.classList.contains("git-graph-row")
+    ) {
+      newestLanding.rowReplaced = true;
+    }
     disposeHistoryState(state);
     state = emptyState();
     state.selectedId = options.selectedId ?? null;
@@ -2426,20 +3132,31 @@
     // is not immutable: its refs move as branches and tags do. Keeping
     // the cache across a refresh would let the hover card and detail
     // view serve pre-refresh refs for a row the graph just redrew.
+    // A comparison names no refs, but a served folder's answer also
+    // reads its attributes, its configuration, and its replace refs and
+    // grafts, which this panel cannot see change; a refresh is the
+    // reader's way to ask again, so it asks again for both.
+    // Recovery keeps the cache, for the rest of a detail and the mounted diff, but not
+    // its refs: resetHistoryRequests began a new session, so a cached detail serves again
+    // only once that session's row confirms its refs (adoptRowRefs). A detail request
+    // already on its way belongs to the old session and is not joined.
+    detailInFlight.clear();
     if (!options.preserveDetail) {
       detailCache.clear();
       missingRevisions.clear();
+      clearComparisonCache();
     }
     state.loading = true;
     renderPanel();
     try {
-      const info = await fetchRepoInfo();
-      if (!info) {
+      const read = await fetchRepoInfo();
+      if (read.status !== "repo") {
         state.loading = false;
         state.failed = true;
         renderPanel();
         return;
       }
+      const info = read.info;
       state.headRevision = info.head?.revision ?? null;
       state.headRef = info.head?.ref ?? null;
 
@@ -2453,6 +3170,13 @@
       void loadHistorySummary();
     } finally {
       refreshing = false;
+      // The first page landed while the refresh still held the panel.
+      selectNewestWhenReady();
+    }
+    // Recovery confirms the summary after its replay; a full refresh does it here, for a
+    // summary whose commit the first page does not hold.
+    if (!options.preserveDetail) {
+      await revalidateMountedSummary();
     }
     if (restoreLanding) {
       await restoreCommitLanding();
@@ -2482,22 +3206,48 @@
     // cannot be repainted, only recomputed. Re-reading identity on every
     // activation is what catches that; the response is TTL-cached
     // server-side, so a tab switch that changes nothing costs nothing.
-    const info = await fetchRepoInfo();
+    headReads.set(generation, (headReads.get(generation) ?? 0) + 1);
+    /** @type {RepoRead} */
+    let read;
+    try {
+      read = await fetchRepoInfo();
+    } finally {
+      const left = (headReads.get(generation) ?? 1) - 1;
+      if (left > 0) {
+        headReads.set(generation, left);
+      } else {
+        headReads.delete(generation);
+      }
+    }
     if (generation !== historyGeneration) {
       return;
     }
-    if (!info) {
+    if (read.status === "not-repo") {
       // The served root stopped being a repository under us.
       teardown();
       return;
     }
+    if (read.status === "failed") {
+      // No answer is not "no repository": keep the tab and the rows already read, and
+      // check again the next time it shows. Tearing down here removed Commits from the
+      // page for good on one refused or timed-out request.
+      renderVirtualRows(true);
+      // Nor is it news that HEAD moved: the walk the panel holds answers a landing that a
+      // page settling during the read left to it, as it did before the read began.
+      selectNewestWhenReady();
+      return;
+    }
+    const info = read.info;
     if (
       (info.head?.revision ?? null) !== state.headRevision ||
       (info.head?.ref ?? null) !== state.headRef
     ) {
-      await refreshHistory();
+      // A page of the old walk that began during the read is obsolete with it.
+      await refreshHistory({ supersede: true });
       return;
     }
+    // A summary whose refs a read could not confirm tries again each time the panel shows.
+    void revalidateMountedSummary();
 
     if (state.failed) {
       if (state.failedPage !== null) {
@@ -2505,12 +3255,16 @@
       } else if (state.cursor) {
         await loadNextPage(false);
       }
-      return;
+    } else {
+      renderVirtualRows(true);
     }
-    renderVirtualRows(true);
+    // HEAD did not move, so the walk can answer a landing that a page settling during the
+    // read left to it.
+    selectNewestWhenReady();
   }
 
   function teardown() {
+    cancelDiscoveryRetry();
     resetHistoryRequests();
     clearPendingState();
     cancelHover();
@@ -2532,9 +3286,14 @@
     disposeHistoryState(state);
     state = emptyState();
     detailCache.clear();
+    detailInFlight.clear();
+    mountedSummary = null;
     missingRevisions.clear();
+    clearComparisonCache();
     refusedRevision = null;
     lastSelection = null;
+    newestLanding = null;
+    waitingReveal = null;
     refColors = new Map();
     started = false;
     viewHelpersReady = false;
@@ -2553,6 +3312,9 @@
    * such as a fragment, changes nothing. A failure is reported here rather than rejected, so
    * a bad revision in a shared link degrades to an ordinary empty panel.
    *
+   * The neutral Commits entry names no commit, and lands on the newest one
+   * (landOnNewestCommit). An address that names a commit always wins over the newest.
+   *
    * @returns {Promise<void>}
    */
   async function restoreCommitLanding() {
@@ -2561,7 +3323,13 @@
     const bridge = shell();
     const pathname = window.location?.pathname ?? "";
     const wanted = routes?.parseCommit?.(pathname)?.revision;
-    if (!wanted || !bridge) {
+    if (!bridge) {
+      return;
+    }
+    if (!wanted) {
+      if (started && bridge.isGitHistoryLanding()) {
+        await landOnNewestCommit(landing, bridge);
+      }
       return;
     }
     if (lastSelection?.revision === wanted && bridge.isPreviewClaimCurrent(lastSelection.claim)) {
@@ -2581,10 +3349,12 @@
         window.location.pathname === pathname &&
         !(lastSelection?.revision === wanted && bridge.isPreviewClaimCurrent(lastSelection.claim))
       ) {
-        await selectCommit(wanted, {
-          fromRoute: true,
-          cachedOnly: window.history.state?.cachedCommit === true,
-        });
+        // The selection marks the row as it begins, and the row is then revealed, now or
+        // when the page of history that holds it settles.
+        const selecting = selectCommit(wanted, { fromRoute: true });
+        waitingReveal = wanted;
+        revealWaitingCommit();
+        await selecting;
       }
     } catch (error) {
       console.error(
@@ -2593,6 +3363,249 @@
         error,
       );
     }
+  }
+
+  /**
+   * Switching to Commits names no commit: a tab click or its shortcut pushes the neutral
+   * history entry (main-tabs.js), and Back or Forward can step onto one. The panel selects
+   * the newest commit there, the top row, as soon as the first page of history is here,
+   * and the selection replaces the entry with that commit's address, as every selection in
+   * this panel does. A return to Commits after an older commit lands on the newest again.
+   *
+   * The pane is claimed now and keeps what it shows, marked busy, until the commit is
+   * ready, so the switch paints neither a prompt nor a blank frame. The newest row becomes
+   * the list's Tab stop, and the row the reader left gives up its claim on focus, so a
+   * render that mounts it again does not hand it focus. A click or a history step leaves
+   * focus where it was, on the tab for a click; the tab's key moves it to the newest row
+   * (focusCommitRow). An empty history selects nothing and the pane says so.
+   *
+   * @param {number} landing
+   * @param {MetabrowserShellRuntime} bridge
+   * @returns {Promise<void>}
+   */
+  async function landOnNewestCommit(landing, bridge) {
+    clearPendingState();
+    const claim = bridge.claimPreview("git");
+    if (bridge.beginPreviewNavigation(claim)) {
+      pendingPreviewClaim = claim;
+    }
+    newestLanding = { landing, claim, keyFocus: null, rowReplaced: false };
+    // The selection moves the Tab stop when it lands, so a landing that loses the pane
+    // leaves the row the reader left as the list's Tab stop.
+    state.focusSuspended = false;
+    try {
+      bridge.activateNavPanel("git");
+      if (viewHelpersReady || (await ensureViewHelpers())) {
+        await ensureHistory();
+      }
+    } catch (error) {
+      console.error("metabrowser git panel: landing on the newest commit failed", error);
+    }
+    selectNewestWhenReady();
+  }
+
+  /**
+   * Answer a waiting newest landing once history can. It runs when the landing has caught
+   * up, whenever a page of history settles, and as a HEAD read ends, so the first page
+   * selects the newest commit whichever arrives last, and nothing asks for history twice.
+   * While HEAD is being read it waits: a page of the walk that settles then must not answer
+   * from a walk the read may replace, or the refresh that follows would leave the list with
+   * no selection under the old newest commit. Anything that took the pane or the address
+   * since, a file, a pull request, or a commit's own address, ends the wait.
+   */
+  function selectNewestWhenReady() {
+    revealWaitingCommit();
+    const waiting = newestLanding;
+    const bridge = shell();
+    if (!waiting || !bridge) {
+      return;
+    }
+    if (!newestLandingHolds(waiting, bridge)) {
+      newestLanding = null;
+      return;
+    }
+    if (
+      refreshing ||
+      headReads.has(historyGeneration) ||
+      viewHelpersPending !== null ||
+      (state.rowCount === 0 && state.loading)
+    ) {
+      return;
+    }
+    if (state.rowCount === 0) {
+      // Still waiting: a refresh that finds commits, or a retry that loads them, selects one.
+      const message =
+        state.failed || viewHelpersFailed
+          ? "Could not load the commit history."
+          : state.endReached
+            ? "No commits yet."
+            : null;
+      if (message) {
+        bridge.renderPreviewHtml(`<div class="preview-empty">${message}</div>`, waiting.claim);
+        if (pendingPreviewClaim === waiting.claim) {
+          clearPendingState();
+        }
+      }
+      return;
+    }
+    revealNewestRow();
+    // An evicted first page is replayed by the window the reveal mounts, which comes back here.
+    const newest = state.pageCache.peek(0)?.commits[0]?.id;
+    if (!newest) {
+      return;
+    }
+    newestLanding = null;
+    // The key asked for the newest row, and the reveal has mounted it.
+    if (waiting.keyFocus !== null && focusAwaitsNewest(waiting)) {
+      focusNewestRow();
+    }
+    void selectCommit(newest);
+  }
+
+  /**
+   * Whether a newest landing still waits: no later landing replaced it, and nothing took the
+   * pane or the address since it began.
+   *
+   * @param {{landing: number, claim: number}} waiting
+   * @param {MetabrowserShellRuntime} bridge
+   */
+  function newestLandingHolds(waiting, bridge) {
+    return (
+      started &&
+      waiting.landing === landingGeneration &&
+      bridge.isPreviewClaimCurrent(waiting.claim) &&
+      bridge.isGitHistoryLanding()
+    );
+  }
+
+  /** Whether the pane's busy state is the waiting newest landing's own, and still current. */
+  function waitingLandingOwnsPending() {
+    return (
+      newestLanding !== null &&
+      pendingPreviewClaim === newestLanding.claim &&
+      shell()?.isPreviewClaimCurrent(newestLanding.claim) === true
+    );
+  }
+
+  /**
+   * Scroll a commit's row into view, mounting the window around it, when the history read
+   * so far holds it: a commit's address reveals its row, as a file's reveals the Files
+   * tree's (docs/design-system.md, "Navigation Reveals the Item"). A commit the history has
+   * not read, or one on no branch it walks, has no row: the list reads a page at a time
+   * from the newest and is not paged through for it, and the pane names the commit.
+   *
+   * @param {string} revision
+   * @returns {boolean} Whether its row is shown.
+   */
+  function revealCommitRow(revision) {
+    const ordinal = loadedOrdinalOf(revision);
+    const scroller = historyScroller();
+    const list = panelElement()?.querySelector(".git-graph-list");
+    if (ordinal === null || !scroller || !(list instanceof HTMLElement)) {
+      return false;
+    }
+    const rowAt = () => list.querySelector(`.git-graph-row[data-ordinal="${ordinal}"]`);
+    if (!(rowAt() instanceof HTMLElement)) {
+      scroller.scrollTop =
+        historyOrigin() +
+        state.virtualWindow.rebaseToOrdinal(ordinal, viewportHeight(scroller), "center");
+      state.mountedRange = null;
+      renderVirtualRows(true);
+    }
+    const row = rowAt();
+    if (!(row instanceof HTMLElement)) {
+      return false;
+    }
+    row.scrollIntoView({ block: "nearest" });
+    return true;
+  }
+
+  /**
+   * Reveal the row of a commit's address once the history holds it. It runs as the landing
+   * selects the commit and whenever a page of history settles (`selectNewestWhenReady`), and
+   * stops waiting once the first pages are read without it, or the reader moves on: the
+   * selection moves, the address names another commit or none, or another tab is in front,
+   * whose panel scrolls the same scroller.
+   */
+  function revealWaitingCommit() {
+    const waiting = waitingReveal;
+    if (waiting === null) {
+      return;
+    }
+    const addressed = window.MetabrowserNavigationRoute?.parseCommit?.(
+      window.location?.pathname ?? "",
+    )?.revision;
+    if (
+      state.selectedId !== waiting ||
+      addressed !== waiting ||
+      !panelInFront() ||
+      revealCommitRow(waiting)
+    ) {
+      waitingReveal = null;
+    } else if (!state.loading && !refreshing && state.rowCount > 0) {
+      waitingReveal = null;
+    }
+  }
+
+  /** Where *revision* sits in the history read so far, or null. @param {string} revision */
+  function loadedOrdinalOf(revision) {
+    for (const pageNumber of state.pageCache.keys()) {
+      const page = state.pageCache.peek(pageNumber);
+      const index = page ? page.commits.findIndex((commit) => commit.id === revision) : -1;
+      if (page && index >= 0) {
+        return page.startOrdinal + index;
+      }
+    }
+    return null;
+  }
+
+  /** Scroll the newest row into view when it is not, with the history tally above it. */
+  function revealNewestRow() {
+    const scroller = historyScroller();
+    if (!scroller) {
+      return;
+    }
+    // A window mounted from the first row, with the list at its top. A window from further
+    // down is redrawn even at the top: a switch resets the scroll before any render reads it.
+    const range = state.mountedRange;
+    if (
+      range?.segmentStart === 0 &&
+      range.start === 0 &&
+      (scroller.scrollTop || 0) <= historyOrigin()
+    ) {
+      return;
+    }
+    state.virtualWindow.rebaseToOrdinal(0, viewportHeight(scroller), "start");
+    scroller.scrollTop = 0;
+    state.mountedRange = null;
+    renderVirtualRows(true);
+  }
+
+  /** Ask whether the served root is a repository again, after a read that got no answer. */
+  function retryDiscovery() {
+    if (repoRetryTimer !== null) {
+      return;
+    }
+    const generation = discoveryGeneration;
+    const delay = repoRetryMs;
+    repoRetryMs = Math.min(repoRetryMs * 2, REPO_RETRY_MAX_MS);
+    repoRetryTimer = setTimeout(() => {
+      if (generation !== discoveryGeneration) {
+        return;
+      }
+      repoRetryTimer = null;
+      void init();
+    }, delay);
+  }
+
+  /** Cancel a scheduled discovery retry and retire any that fires anyway. */
+  function cancelDiscoveryRetry() {
+    discoveryGeneration += 1;
+    if (repoRetryTimer !== null) {
+      clearTimeout(repoRetryTimer);
+      repoRetryTimer = null;
+    }
+    repoRetryMs = REPO_RETRY_FIRST_MS;
   }
 
   /**
@@ -2612,10 +3625,13 @@
     started = true;
     const generation = historyGeneration;
 
-    const info = await fetchRepoInfo();
-    if (!info) {
+    const read = await fetchRepoInfo();
+    if (read.status !== "repo") {
       if (generation === historyGeneration) {
         started = false;
+        if (read.status === "failed") {
+          retryDiscovery();
+        }
       }
       return;
     }
@@ -2623,12 +3639,15 @@
     if (!started || generation !== historyGeneration) {
       return;
     }
+    repoRetryMs = REPO_RETRY_FIRST_MS;
+    const info = read.info;
     state.headRevision = info.head?.revision ?? null;
     state.headRef = info.head?.ref ?? null;
 
     bridge.registerNavPanel({
       id: "git",
       label: "Commits",
+      focusRow: focusCommitRow,
       onFirstShow: null,
       onShow: () => {
         void ensureHistory();
@@ -2651,9 +3670,18 @@
     // Exposed for tests, which drive the panel without a network.
     _internals: {
       appendPage,
+      beginDiffPreparation,
+      clearComparisonCache,
+      comparisonCacheKey,
+      comparisonCacheStats: () => ({
+        bytes: comparisonCacheBytes,
+        entries: comparisonCache.size,
+        keys: [...comparisonCache.keys()],
+      }),
       teardown,
       ensurePageLoaded,
       emptyState,
+      focusCommitRow,
       ageClass,
       relativeAge,
       renderCommitSummary,
@@ -2669,6 +3697,8 @@
       loadNextPage,
       retryFailedPage,
       selectCommit,
+      fetchCommitDetail,
+      mountedSummaryRevision: () => mountedSummary?.revision ?? null,
       wireCommitFileNavigation,
       setStateForTests: (/** @type {PanelState} */ next) => {
         if (state.pageCache !== next.pageCache) {

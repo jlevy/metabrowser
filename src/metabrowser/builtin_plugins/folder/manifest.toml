@@ -14,6 +14,7 @@ extra_styles = ["overview.css", "file_type_summary.css"]
 kind = "folder"
 id = "overview"
 label = "Overview"
+key = "o"
 default = true
 container_class = "content-body folder-overview-host"
 
@@ -21,4 +22,5 @@ container_class = "content-body folder-overview-host"
 kind = "folder"
 id = "treemap"
 label = "Treemap"
+key = "m"
 container_class = "content-body folder-treemap-host"

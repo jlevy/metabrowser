@@ -100,11 +100,22 @@ def test_tree_depth_query_is_always_bounded() -> None:
 
 
 def test_tree_cold_start_uses_bounded_provider_queries() -> None:
-    source = inspect.getsource(proc_browser._read_tree_from_provider)
-    assert "EntryQuery(" in source
-    assert "PriorityRequest(" in source
-    assert "runtime.config.budget.max_files" in source
-    assert "_dir_tree(" not in source
+    # The ungrouped tree and Group by's grouped tree (mb-navs) share one cold start,
+    # `_read_with_known_parent`: while the index cannot yet say whether the folder exists,
+    # it prioritizes that folder and reads again, for at most `_TREE_COLD_START_WAIT_S`.
+    for route in (
+        proc_browser._tree_payload_from_provider,
+        proc_browser._grouped_tree_from_provider,
+    ):
+        source = inspect.getsource(route)
+        assert "EntryQuery(" in source
+        assert "_read_with_known_parent(" in source
+        assert "runtime.config.budget.max_files" in source
+        assert "_dir_tree(" not in source
+    cold_start = inspect.getsource(proc_browser._read_with_known_parent)
+    assert "PriorityRequest(" in cold_start
+    assert "_TREE_COLD_START_WAIT_S" in cold_start
+    assert "_dir_tree(" not in cold_start
 
 
 def test_build_gitignore_check_no_repo_returns_noop(tmp_path: Path) -> None:

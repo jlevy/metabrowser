@@ -278,6 +278,18 @@ async def _encoded_response(request: Request, encoded: bytes, headers: dict[str,
     )
 
 
+def _reads_a_checkout() -> bool:
+    """Whether the served subject is a revision a folder's server shows of its own checkout."""
+
+    from metabrowser.checkout_revisions import checkout_revisions
+    from metabrowser.source import as_git_revision_subject, get_source_session
+
+    return (
+        as_git_revision_subject(get_source_session().subject) is not None
+        and checkout_revisions() is not None
+    )
+
+
 def _git_failure(exc: GitError, path: str) -> JSONResponse:
     """A Git failure with no command line in the body: its arguments spell every path asked
     for, hostile names included. The detail goes to the log."""
@@ -400,7 +412,9 @@ async def comparison_at(
             path=revision,
         )
 
-    source = GitDiffSource(context.command_location())
+    # A comparison this request lists prints its patch in the same run when the two fit, and
+    # the hydration below answers from it (H116). A caller's own loader lists without it.
+    source = GitDiffSource(context.command_location(), patch_with_listing=manifest_loader is None)
 
     async def listed() -> ResolvedManifest:
         if manifest_loader is not None and kept_key is not None:
@@ -458,11 +472,20 @@ async def comparison_at(
             if observed is not None:
                 if observed.state == "object_corrupt" and kept_key is not None:
                     _COMPARISONS.invalidate(kept_key)
-                message = (
-                    "An object in this comparison does not match its ID."
-                    if observed.state == "object_corrupt"
-                    else "An object in this comparison is missing. Repair the repository cache, then retry."
-                )
+                if observed.state == "object_corrupt":
+                    message = "An object in this comparison does not match its ID."
+                elif _reads_a_checkout():
+                    # A revision of the served checkout, read in place: a partial clone
+                    # names objects it does not hold, and nothing is fetched into it.
+                    message = (
+                        "An object in this comparison is not in the checkout, "
+                        "and nothing is fetched into it."
+                    )
+                else:
+                    message = (
+                        "An object in this comparison is missing. "
+                        "Repair the repository cache, then retry."
+                    )
                 return _error(observed.state, message, 409, path=revision)
         return _git_failure(exc, revision)
 

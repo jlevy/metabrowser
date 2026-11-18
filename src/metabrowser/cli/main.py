@@ -14,6 +14,7 @@ macOS. Every other operation is a mode flag on the same command:
     metab https://github.com/owner/repo/blob/main/README.md --show README.md
     metab https://github.com/owner/repo/pull/1 --checkout ~/src/repo  # borrow, not clone
     metab --remote example-host --path /srv/shared-files  # SSH-tunnel a remote host
+    metab ./notes --present            # hand a folder, file, or GitHub URL to the macOS app
     metab --plugins                    # what's discovered?
     metab --plugin example             # one plugin's manifest
     metab --doctor                     # validate all plugins
@@ -30,13 +31,18 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, TextIO, cast
+from typing import TYPE_CHECKING, NoReturn, TextIO, cast
 
 import typer
 
 from metabrowser import __version__
 from metabrowser.build_version import display_version_line
 from metabrowser.cli.common import PipeTrackingStream, silence_broken_pipe, validate_log_level
+from metabrowser.cli.exit_codes import (
+    PRESENT_BLOCKED_EXIT_CODE,
+    PRESENT_NO_APP_EXIT_CODE,
+    PRESENT_REFUSED_EXIT_CODE,
+)
 from metabrowser.cli.plugins import doctor_plugins, list_plugins, show_plugin
 from metabrowser.cli.remote import run_remote
 from metabrowser.cli.serve import run_serve
@@ -65,6 +71,7 @@ _PANEL_API = "API (--api ROUTE)"
 _PANEL_CHECK_API = "API check (--check-api)"
 _PANEL_REMOTE = "Remote (--remote)"
 _PANEL_PLUGINS = "Plugins (--plugins / --plugin / --doctor)"
+_PANEL_PRESENT = "Present (--present)"
 
 # Which explicitly-passed options each mode accepts, keyed by Click
 # parameter name. Options outside every set (ROOT, --version, the mode
@@ -83,6 +90,7 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
             "no_active_content",
             "allow_edits",
             "checkout",
+            "ref",
         }
     ),
     "walk": frozenset(
@@ -112,6 +120,7 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
             "no_active_content",
             "allow_edits",
             "checkout",
+            "ref",
         }
     ),
     "show": frozenset(
@@ -124,6 +133,7 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
             "no_active_content",
             "allow_edits",
             "checkout",
+            "ref",
         }
     ),
     "check-api": frozenset(
@@ -135,6 +145,7 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
             "no_active_content",
             "allow_edits",
             "checkout",
+            "ref",
         }
     ),
     "no-serve": frozenset({"log_level", "checkout"}),
@@ -142,6 +153,11 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
     "plugins": frozenset({"plugins_dir", "as_json"}),
     "plugin": frozenset({"plugins_dir", "as_json"}),
     "doctor": frozenset({"plugins_dir", "as_json"}),
+    "present": frozenset({"path", "fmt", "dry_run", "app_bundle_id"}),
+    "recent": frozenset({"as_json"}),
+    "recent-add": frozenset(),
+    "recent-forget": frozenset(),
+    "recent-clear": frozenset(),
 }
 
 _MODE_LABELS: dict[str, str] = {
@@ -156,6 +172,11 @@ _MODE_LABELS: dict[str, str] = {
     "plugins": "--plugins",
     "plugin": "--plugin",
     "doctor": "--doctor",
+    "present": "--present",
+    "recent": "--recent",
+    "recent-add": "--recent-add",
+    "recent-forget": "--recent-forget",
+    "recent-clear": "--recent-clear",
 }
 
 _OPTION_LABELS: dict[str, str] = {
@@ -189,6 +210,9 @@ _OPTION_LABELS: dict[str, str] = {
     "no_active_content": "--no-active-content",
     "allow_edits": "--allow-edits",
     "checkout": "--checkout",
+    "ref": "--ref",
+    "dry_run": "--dry-run",
+    "app_bundle_id": "--app-bundle-id",
 }
 
 
@@ -229,6 +253,11 @@ def _resolve_mode(
     plugins: bool,
     plugin: str | None,
     doctor: bool,
+    present: bool,
+    recent: bool,
+    recent_add: bool,
+    recent_forget: bool,
+    recent_clear: bool,
 ) -> str:
     """Pick the single mode for this invocation or reject conflicting flags."""
     selected = [
@@ -244,6 +273,11 @@ def _resolve_mode(
             ("--plugins", plugins),
             ("--plugin", plugin is not None),
             ("--doctor", doctor),
+            ("--present", present),
+            ("--recent", recent),
+            ("--recent-add", recent_add),
+            ("--recent-forget", recent_forget),
+            ("--recent-clear", recent_clear),
         )
         if on
     ]
@@ -261,6 +295,7 @@ def _resolve_mode(
 _MODE_FORMATS: dict[str, frozenset[str]] = {
     "api": frozenset({"json", "yaml"}),
     "show": frozenset({"text", "json"}),
+    "present": frozenset({"text", "json"}),
 }
 
 
@@ -351,20 +386,27 @@ def _local_root(ctx: typer.Context, value: str) -> Path:
     return Path(value)
 
 
+def _root_required(ctx: typer.Context, mode: str) -> NoReturn:
+    """Fail the invocation of *mode*, which needs ROOT, with an example of one."""
+    hints = {
+        "serve": "e.g. `metab .`",
+        "walk": "e.g. `metab . --walk`",
+        "api": "e.g. `metab . --api /api/tree`",
+        "show": "e.g. `metab . --show README.md`",
+        "check-api": "e.g. `metab . --check-api`",
+        "no-serve": "e.g. `metab file://repo.git --no-serve`",
+        "present": "e.g. `metab . --present`",
+        "recent-add": "e.g. `metab . --recent-add`",
+        "recent-forget": "e.g. `metab . --recent-forget`",
+    }
+    hint = hints.get(mode, "pass the required root")
+    ctx.fail(f"ROOT is required for {_MODE_LABELS[mode]}; {hint}")
+
+
 def _classified_root(ctx: typer.Context, root: str | None, mode: str) -> Path | GitSource:
     """Return a local path or a classified Git source, or fail the invocation."""
     if root is None:
-        hints = {
-            "serve": "e.g. `metab .`",
-            "walk": "e.g. `metab . --walk`",
-            "api": "e.g. `metab . --api /api/tree`",
-            "show": "e.g. `metab . --show README.md`",
-            "check-api": "e.g. `metab . --check-api`",
-            "no-serve": "e.g. `metab file://repo.git --no-serve`",
-        }
-        hint = hints.get(mode, "pass the required root")
-        ctx.fail(f"ROOT is required for {_MODE_LABELS[mode]}; {hint}")
-    assert root is not None
+        _root_required(ctx, mode)
     if _is_plain_local_root(root) or _names_existing_path(root):
         return _local_root(ctx, root)
     from metabrowser.cache.providers import url_reducers
@@ -411,6 +453,27 @@ def _refuse_checkout_on_folder(checkout: Path | None) -> None:
         )
 
 
+def _open_folder_on(ref: str | None) -> None:
+    """Open the folder on a branch or tag of its checkout, or on its files without one.
+
+    Said for every start of the application over a local path, so a ref a command named
+    is never left for the next one. The application's startup opens it and refuses a
+    root with no checkout, or a ref the checkout lacks (``checkout_revisions.py``).
+    """
+
+    from metabrowser.checkout_revisions import open_on_ref
+
+    open_on_ref(ref)
+
+
+def _refuse_ref_on_source(ref: str | None) -> None:
+    if ref is not None:
+        raise CLIError(
+            "--ref names a branch or tag of a local checkout, and ROOT is a Git source; "
+            "name the branch or tag in the URL"
+        )
+
+
 def _reject_root(ctx: typer.Context, root: str | None, mode: str) -> None:
     if root is not None:
         message = f"ROOT is not used with {_MODE_LABELS[mode]}"
@@ -435,6 +498,7 @@ _app = typer.Typer(add_completion=False)
         "metab file:///path/to/repo.git\n\n"
         "metab file:///path/to/repo.git --no-serve\n\n"
         "metab --remote example-host --path /srv/shared-files\n\n"
+        "metab ./notes/report.md --present\n\n"
         "metab --plugins\n\n"
         "Guide: https://github.com/jlevy/metabrowser/blob/main/docs/command-line.md"
     ),
@@ -472,6 +536,17 @@ def _metab(
         help="Borrow objects from this checkout of the Git source instead of cloning, so "
         "only what it lacks is fetched. Remembered from then on; never written to. "
         "Applies when serving, --api, --show, --check-api, and --no-serve on a Git source.",
+        rich_help_panel=_PANEL_SHARED,
+        show_default=False,
+    ),
+    ref: str | None = typer.Option(
+        None,
+        "--ref",
+        metavar="NAME",
+        help="Open a local checkout on this branch, tag, remote-tracking branch, or commit "
+        "ID, read from its Git objects, where it would open on its working tree. Nothing "
+        "is checked out or written. ROOT must be the repository's root. Applies when "
+        "serving and to --api, --show, and --check-api.",
         rich_help_panel=_PANEL_SHARED,
         show_default=False,
     ),
@@ -524,7 +599,8 @@ def _metab(
         None,
         "--data",
         metavar="FILE",
-        help="Send FILE as the request body, making the request a POST (--api only).",
+        help="Send FILE as the request body, making the request a POST (--api only). "
+        "- reads it from standard input.",
         rich_help_panel=_PANEL_API,
     ),
     check_api: bool = typer.Option(
@@ -568,11 +644,46 @@ def _metab(
         help="Validate every discovered plugin; exit non-zero on any problem.",
         rich_help_panel=_PANEL_MODES,
     ),
+    present: bool = typer.Option(
+        False,
+        "--present",
+        help="Hand ROOT, a folder, a file, or a GitHub URL, to the Metabrowser macOS app "
+        "through LaunchServices and report what was sent. Clones and serves nothing. "
+        f"Exit {PRESENT_REFUSED_EXIT_CODE} when ROOT cannot be presented, "
+        f"{PRESENT_NO_APP_EXIT_CODE} when no app takes it, "
+        f"{PRESENT_BLOCKED_EXIT_CODE} when LaunchServices could not be asked or refused it.",
+        rich_help_panel=_PANEL_MODES,
+    ),
+    recent: bool = typer.Option(
+        False,
+        "--recent",
+        help="List the recent targets: the folders and repositories opened lately, "
+        "most recent first. Every serve records its ROOT.",
+        rich_help_panel=_PANEL_MODES,
+    ),
+    recent_add: bool = typer.Option(
+        False,
+        "--recent-add",
+        help="Record ROOT as a recent target, as serving it would, without serving.",
+        rich_help_panel=_PANEL_MODES,
+    ),
+    recent_forget: bool = typer.Option(
+        False,
+        "--recent-forget",
+        help="Remove ROOT from the recent targets.",
+        rich_help_panel=_PANEL_MODES,
+    ),
+    recent_clear: bool = typer.Option(
+        False,
+        "--recent-clear",
+        help="Empty the list of recent targets.",
+        rich_help_panel=_PANEL_MODES,
+    ),
     # ── Shared options ─────────────────────────────────────────────
     path: str = typer.Option(
         "",
         "--path",
-        help="Serve: relative path from ROOT to select on launch. "
+        help="Serve and present: relative path from ROOT to select on launch. "
         "Walk: subtree for a JSON/YAML all-at-once tree envelope. "
         "Remote: remote directory to serve (required).",
         rich_help_panel=_PANEL_SHARED,
@@ -654,7 +765,9 @@ def _metab(
         False,
         "--exit-on-eof",
         help="Stop serving when stdin closes, as it does when the process that "
-        "started the server and holds its stdin exits, even by crashing.",
+        "started the server and holds its stdin exits, even by crashing. "
+        "It also marks the macOS app's start: on a loopback bind, outside a remote "
+        "session, a loopback client is then sent its answers uncompressed.",
         rich_help_panel=_PANEL_SERVE,
     ),
     # ── Walk options ───────────────────────────────────────────────
@@ -666,6 +779,7 @@ def _metab(
         help="Output format: text (human report) | json | yaml. "
         "Walk and diff: json/yaml dump the exact data the browser consumes. "
         "Show: json reports the four layers as an object. "
+        "Present: json prints the target or the report as one object. "
         "Api: json or yaml prints the envelope alone, so stdout parses; "
         "unset prints the route and status above it, as JSON.",
         rich_help_panel=_PANEL_SHARED,
@@ -783,8 +897,25 @@ def _metab(
     as_json: bool = typer.Option(
         False,
         "--json",
-        help="Emit structured JSON (plugin modes).",
+        help="Emit structured JSON (plugin modes and --recent).",
         rich_help_panel=_PANEL_PLUGINS,
+    ),
+    # ── Present options ────────────────────────────────────────────
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Resolve ROOT and print what --present would hand the app, without looking "
+        "for the app or sending anything.",
+        rich_help_panel=_PANEL_PRESENT,
+    ),
+    app_bundle_id: str | None = typer.Option(
+        None,
+        "--app-bundle-id",
+        metavar="ID",
+        help="The app to hand ROOT to, by bundle identifier, instead of the release build "
+        "and then the development build. Env: METABROWSER_APP_BUNDLE_ID.",
+        rich_help_panel=_PANEL_PRESENT,
+        show_default=False,
     ),
     # ── General ────────────────────────────────────────────────────
     show_version: bool = typer.Option(
@@ -808,7 +939,8 @@ def _metab(
     or checked at the commit it selects under the untrusted profile; --no-serve
     only acquires it into the cache. Diagnostics: --check-api, --plugins,
     --plugin, --doctor.
-    Remote serving: --remote.
+    Remote serving: --remote. The macOS app: --present hands it ROOT.
+    Recent targets: --recent, --recent-add, --recent-forget, --recent-clear.
     """
     for variable, directory in (
         ("METABROWSER_CACHE_DIR", cache_dir),
@@ -837,12 +969,21 @@ def _metab(
         plugins=plugins,
         plugin=plugin,
         doctor=doctor,
+        present=present,
+        recent=recent,
+        recent_add=recent_add,
+        recent_forget=recent_forget,
+        recent_clear=recent_clear,
     )
     explicit = _explicit_params(ctx)
     _check_option_applicability(ctx, mode, explicit)
     _check_format_applicability(ctx, mode, fmt, explicit)
 
     if mode == "serve":
+        # Only the macOS app's start, held by its stdin, says the client is on this machine;
+        # a browser metab opens can be a laptop's through $BROWSER, and every release's
+        # --remote starts the far server without it (metabrowser.delivery).
+        local_client = exit_on_eof
         if root is None and not explicit:
             typer.echo(ctx.get_help())
             raise typer.Exit()
@@ -855,12 +996,14 @@ def _metab(
         classified = _classified_root(ctx, root, mode)
         if isinstance(classified, Path):
             _refuse_checkout_on_folder(checkout)
+            _open_folder_on(ref)
             run_serve(
                 classified,
                 path=path,
                 port=port,
                 host=host,
                 no_open=no_open,
+                local_client=local_client,
                 plugins_dir=plugins_dir,
                 log_level=log_level,
                 untrusted=untrusted,
@@ -868,6 +1011,7 @@ def _metab(
                 allow_edits=allow_edits,
             )
         else:
+            _refuse_ref_on_source(ref)
             from metabrowser.cli.git_pin_cli import run_serve_pin
 
             run_serve_pin(
@@ -876,6 +1020,7 @@ def _metab(
                 port=port,
                 host=host,
                 no_open=no_open,
+                local_client=local_client,
                 plugins_dir=plugins_dir,
                 log_level=log_level,
                 no_active_content=no_active_content,
@@ -922,6 +1067,7 @@ def _metab(
         classified = _classified_root(ctx, root, mode)
         if isinstance(classified, Path):
             _refuse_checkout_on_folder(checkout)
+            _open_folder_on(ref)
             run_api(
                 classified,
                 route=api,
@@ -936,6 +1082,7 @@ def _metab(
                 allow_edits=allow_edits,
             )
         else:
+            _refuse_ref_on_source(ref)
             from metabrowser.cli.acquire_cli import is_cache_inspect_route, run_api_after_acquire
 
             if is_cache_inspect_route(api):
@@ -980,6 +1127,7 @@ def _metab(
         classified = _classified_root(ctx, root, mode)
         if isinstance(classified, Path):
             _refuse_checkout_on_folder(checkout)
+            _open_folder_on(ref)
             run_show(
                 classified,
                 path=show,
@@ -990,8 +1138,10 @@ def _metab(
                 untrusted=untrusted,
                 no_active_content=no_active_content,
                 allow_edits=allow_edits,
+                revision=ref is not None,
             )
         else:
+            _refuse_ref_on_source(ref)
             from metabrowser.cli.git_pin_cli import run_show_after_acquire
 
             run_show_after_acquire(
@@ -1009,6 +1159,7 @@ def _metab(
         classified = _classified_root(ctx, root, mode)
         if isinstance(classified, Path):
             _refuse_checkout_on_folder(checkout)
+            _open_folder_on(ref)
             from metabrowser.cli.check_api import run_api_check
 
             run_api_check(
@@ -1019,8 +1170,10 @@ def _metab(
                 untrusted=untrusted,
                 no_active_content=no_active_content,
                 allow_edits=allow_edits,
+                revision=ref is not None,
             )
         else:
+            _refuse_ref_on_source(ref)
             from metabrowser.cli.git_pin_cli import run_pin_api_check
 
             run_pin_api_check(
@@ -1032,6 +1185,21 @@ def _metab(
                 allow_edits=allow_edits,
                 checkout=checkout,
             )
+    elif mode == "present":
+        if dry_run and "app_bundle_id" in explicit:
+            ctx.fail("--app-bundle-id not valid with --present --dry-run, which looks for no app")
+        if root is None:
+            _root_required(ctx, mode)
+        from metabrowser.cli.present import run_present
+
+        run_present(
+            root,
+            local=_is_plain_local_root(root) or _names_existing_path(root),
+            path=path,
+            dry_run=dry_run,
+            as_json=fmt == "json",
+            app_bundle_id=app_bundle_id,
+        )
     elif remote is not None:
         _reject_root(ctx, root, mode)
         if not path:
@@ -1052,6 +1220,21 @@ def _metab(
     elif mode == "plugins":
         _reject_root(ctx, root, mode)
         list_plugins(plugins_dir, as_json=as_json)
+    elif mode in {"recent", "recent-add", "recent-forget", "recent-clear"}:
+        # Imported in its branch, as the other modes' modules are: owner-only storage is
+        # nothing `--version` or a data mode loads.
+        from metabrowser.cli import recent_cli
+
+        if mode == "recent":
+            _reject_root(ctx, root, mode)
+            recent_cli.list_recent(as_json=as_json)
+        elif mode == "recent-clear":
+            _reject_root(ctx, root, mode)
+            recent_cli.clear_recent()
+        elif mode == "recent-add":
+            recent_cli.add_recent(_classified_root(ctx, root, mode))
+        else:
+            recent_cli.forget_recent(_classified_root(ctx, root, mode))
     else:
         _reject_root(ctx, root, mode)
         doctor_plugins(plugins_dir, as_json=as_json)

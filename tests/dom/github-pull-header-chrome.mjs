@@ -1,0 +1,2441 @@
+// The pull request header's box, laid out by a real engine: the production page module
+// and its stylesheets, mounted on recorded records in headless Chrome.
+//
+//   CHROME_BIN=/path/to/chrome KPRESS_STATIC=/dir/with/css/and/fonts \
+//     CHROME_PROFILES=/dir/the/caller/removes \
+//     node tests/dom/github-pull-header-chrome.mjs [--part NAME]
+//
+// CHROME_PROFILES is where Chrome's profile goes (tests/dom/chrome-session.mjs);
+// tests/test_github_pull_header_chrome.py owns it and removes it.
+//
+// The session runs in parts, each its own browser and its own pytest case with its own
+// bound, since all of it ran past one test's 45 s on a CI runner. `launch` starts Chrome,
+// loads the page, and loads every face it declares, and nothing else, so the first Chrome
+// start of a CI job, the slowest there, has a case of its own. Then the header at its widest
+// two widths, its middle two, and its narrowest two (`header-wide`, `header-middle`,
+// `header-narrow`), the offers the status row draws (`offers`), the Pulls rows (`pulls`),
+// the run badge (`badges`), the label chips' colors in both themes (`labels`), the Diff
+// summary's row while its comparison is read, as it arrives, as it fails, and as the same
+// pull request is opened again in the document (`summary-wait`), and a page mounted with no
+// record in hand as its record lands (`cold-landing`). With no
+// part it runs every one. Each part writes how long
+// each of its steps took to stderr.
+//
+// KPRESS_STATIC holds KPress's style-tokens.css and the faces it names, which
+// tests/test_github_pull_header_chrome.py copies out of the installed package, so the
+// header is set in the faces the shell uses.
+//
+// The header is reserved at first paint, so a record that has not arrived and every
+// loaded record with labels and nothing to say on its status line lay out to one height on
+// every tab, row by row, and the tab bar under it starts at one place; a record with no
+// labels has no labels row, and lays out to that height less the row and its gap (mb-2u08).
+// The status line is there only while it has something to say, here an offer, and is then
+// a metadata line, as tall as the row of ages above it, one line and one gap more; a rate
+// limit's hold is said in the freshness note's place and adds none (mb-ne91). The note is
+// whole beside the author's sentence or out of view, and the sentence whole while it shows;
+// a hold is never out of view, cut short instead. That is layout, which no browserless DOM
+// can compute: the stylesheet text passed with a state badge whose first flex item was a
+// zero-height sizer, which hung the badge below the line and made the loaded header 5.6 px
+// taller than the empty one. And no record's row may end past the header: an offer kept
+// whole ran 262 px past it in a 360 px pane, and the pane scrolled sideways. The row
+// structure itself is pinned browserless in github-pull-page-mount-behavior.js.
+//
+// The session also lays out Pulls rows as their stack places arrive, and the file
+// header as a run's status badge changes its label in place (RUN_BADGE below).
+import fs from "node:fs";
+import http from "node:http";
+import path from "node:path";
+import { launchChrome } from "./chrome-session.mjs";
+
+const root = path.resolve(import.meta.dirname, "../..");
+const STATIC = path.join(root, "src/metabrowser/static");
+const GITHUB = path.join(root, "src/metabrowser/builtin_plugins/github");
+const DIFF = path.join(root, "src/metabrowser/builtin_plugins/diff");
+const FIXTURES = path.join(root, "tests/fixtures/github-pull-page-responses.json");
+const LABEL_COLORS = path.join(root, "tests/fixtures/github-label-colors.json");
+const KPRESS = process.env.KPRESS_STATIC ? path.resolve(process.env.KPRESS_STATIC) : null;
+const failures = [];
+let checks = 0;
+const check = (label, ok, detail = "") => {
+  checks += 1;
+  if (!ok) {
+    failures.push(`${label}${detail ? `: ${detail}` : ""}`);
+  }
+};
+
+// The scripts the SDK's ref helpers need, in the order tests/dom/sdk-sandbox.js loads them.
+const SDK = [
+  "request-error.js",
+  "formatters.js",
+  "inventory-scope.js",
+  "resource-context.js",
+  "view-state.js",
+  "navigation.js",
+  "plugin-sdk.js",
+  "plugin-sdk-views.js",
+];
+const PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>pull header</title>
+<link rel="stylesheet" href="/kpress/css/style-tokens.css">
+<link rel="stylesheet" href="/static/styles.css">
+<link rel="stylesheet" href="/github/styles.css">
+<link rel="stylesheet" href="/diff/styles.css">
+<script>
+  window.METABROWSER_SETTINGS = { SYNTAX_HIGHLIGHT_MAX_BYTES: 524288, SYNTAX_LANGUAGE_BY_BASENAME: {}, SYNTAX_LANGUAGE_BY_EXTENSION: {} };
+  window.MetabrowserIcons = { copy: '<svg data-icon="copy"></svg>' };
+</script>
+<script src="/static/changed-files-tree.js"></script>
+${SDK.map((name) => `<script src="/static/${name}"></script>`).join("\n")}
+</head><body><div id="preview-pane" class="preview-pane"></div></body></html>`;
+
+const TYPES = {
+  ".css": "text/css",
+  ".js": "text/javascript",
+  ".json": "application/json",
+  ".woff2": "font/woff2",
+};
+function serve() {
+  const server = http.createServer((request, response) => {
+    const url = new URL(request.url, "http://localhost");
+    let file = null;
+    if (url.pathname === "/" || url.pathname.startsWith("/pull/")) {
+      response.writeHead(200, { "content-type": "text/html" });
+      response.end(PAGE);
+      return;
+    }
+    if (url.pathname === "/fixtures.json") {
+      file = FIXTURES;
+    } else if (url.pathname.startsWith("/static/")) {
+      file = path.join(STATIC, url.pathname.slice(8));
+    } else if (url.pathname.startsWith("/github/")) {
+      file = path.join(GITHUB, url.pathname.slice(8));
+    } else if (url.pathname.startsWith("/diff/")) {
+      file = path.join(DIFF, url.pathname.slice(6));
+    } else if (KPRESS && url.pathname.startsWith("/kpress/")) {
+      file = path.join(KPRESS, url.pathname.slice(8));
+    }
+    const within = [root, KPRESS].filter(Boolean).some((dir) => file?.startsWith(dir));
+    if (!file || !within || !fs.existsSync(file)) {
+      response.writeHead(404);
+      response.end();
+      return;
+    }
+    response.writeHead(200, { "content-type": TYPES[path.extname(file)] ?? "text/plain" });
+    fs.createReadStream(file).pipe(response);
+  });
+  return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server)));
+}
+
+// In the page: a change set five folders deep, and a function that opens the Diff summary
+// drawn in a place and reads where its header and every row of its tree start, once its
+// travel is over (docs/design-system.md, "Diff Summary": the tree's first level starts one
+// --tree-indent in from the header, and each level one more).
+const NESTED_SUMMARY = `(() => {
+  const paths = ["top.py", "a/f.py", "a/b/f.py", "a/b/c/f.py", "a/b/c/d/f.py", "a/b/c/d/g.py"];
+  const files = paths.map((path) => ({ kind: "modified", old: { path }, new: { path }, additions: 1, deletions: 0 }));
+  return { manifest: { totals: { files: paths.length, additions: paths.length, deletions: 0, exact: true }, files } };
+})()`;
+const SUMMARY_INDENT = `async (place) => {
+  const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const toggle = place.querySelector(".diff-summary-toggle");
+  toggle.click();
+  const deadline = performance.now() + 10000;
+  const open = () => {
+    const body = place.querySelector(".diff-summary-body");
+    return body && !body.classList.contains("diff-summary-body-collapsed") && body.querySelector('[role="treeitem"]');
+  };
+  while (!open() && performance.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  // The box travels open in --transition-fast: wait for that travel itself, and for one that
+  // replaced it, as a travel retargeted when the box's height changes is.
+  const travels = () => place.querySelector(".diff-summary-body")?.getAnimations() ?? [];
+  while (travels().length > 0 && performance.now() < deadline) {
+    await Promise.allSettled(travels().map((travel) => travel.finished));
+  }
+  await frames();
+  const left = (node) => Math.round(node.getBoundingClientRect().left * 100) / 100;
+  return {
+    step: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tree-indent")),
+    chevron: left(toggle.querySelector(".diff-summary-chevron")),
+    words: left(toggle.querySelector(".diff-summary-files")),
+    rows: [...place.querySelectorAll('.diff-summary-body [role="treeitem"]')].map((row) => ({
+      id: row.dataset.id,
+      level: Number(row.getAttribute("aria-level")),
+      lead: left(row.children[0]),
+      name: left(row.children[1]),
+    })),
+  };
+}`;
+/** The rows of a measured tree that do not start one step per level in from its header. */
+const offStep = (indent) =>
+  indent === null
+    ? ["not measured"]
+    : indent.rows.filter(
+        (row) =>
+          Math.abs(row.lead - indent.chevron - indent.step * row.level) > 0.5 ||
+          Math.abs(row.name - indent.words - indent.step * row.level) > 0.5,
+      );
+
+// In the page: mount one record on one tab in a pane of one width and read the header's
+// rows. The page's API is the one github-pull-page-mount-behavior.js mounts with, its ref
+// helpers the production SDK's, and every request it makes answers 304.
+const MEASURE = `async (name, change, tab, width) => {
+  const recorded = window.__recorded ??= await (await fetch("/fixtures.json")).json();
+  const page = window.__page ??= await import("/github/pull-page.js");
+  const body = structuredClone(recorded[name].body);
+  for (const envelope of [body, body.pull]) {
+    const holder = envelope?.record?.same_as;
+    if (holder !== undefined) {
+      envelope.record = structuredClone(recorded[holder].body.record);
+    }
+  }
+  // A pin behind the pull request's head draws the offer to switch to it.
+  if (change.pinBehind) {
+    body.pin = "1".repeat(40);
+    body.pin_ref = "refs/pull/" + body.number + "/head";
+  }
+  // A checkout, which has no pin, at the pull request's head draws the offer to browse it.
+  if (change.checkoutAtHead) {
+    body.pin = null;
+    body.pin_ref = null;
+  }
+  // A title of two lines and more, cut short at two.
+  if (change.longTitle) {
+    body.record.pull.title = "Decide every region's box at first paint, so nothing that arrives later moves the tab bar, a stack, a label, or a Refresh";
+  }
+  if (change.lastRefresh) {
+    body.state = "stale";
+    body.last_refresh = change.lastRefresh;
+  }
+  // A hold that lifts in half an hour, today on most clocks, which the page says as a time of
+  // day; the other lifts in 2099, which it says as a short date and time.
+  if (change.liftSoon) {
+    body.last_refresh = { ...change.lastRefresh, reset_at: new Date(Date.now() + 30 * 60_000).toISOString() };
+  }
+  // A pull request with no labels, which has no labels row (mb-2u08).
+  if (change.noLabels) {
+    body.record.pull.labels = [];
+  }
+  // Labels of each color the label part checks, in the theme it names.
+  if (change.labels && body.record) {
+    body.record.pull.labels = change.labels;
+    body.repository_labels = change.repositoryLabels ?? [];
+  }
+  if (change.theme) {
+    document.documentElement.dataset.theme = change.theme;
+  }
+  // A long login and long branch names, the head in a fork: the author gives way to the
+  // merge, which stays whole.
+  if (change.longNames) {
+    const pull = body.record.pull;
+    pull.author = "a-thirty-nine-character-github-login-x";
+    pull.merged_by = "a-thirty-nine-character-github-login-y";
+    pull.head = { ...pull.head, ref: "feature/a-rather-long-branch-name-for-the-header-row", repository: "someorganization/demo" };
+    pull.base = { ...pull.base, ref: "release/2026-11-long-base-branch", repository: "octo/demo" };
+  }
+  window.fetch = async () => new Response(null, { status: 304 });
+  history.replaceState(null, "", "/pull/" + body.number + (tab ? "/" + tab : ""));
+  const pane = document.getElementById("preview-pane");
+  pane.style.width = width + "px";
+  const container = document.createElement("div");
+  pane.replaceChildren(container);
+  const mb = window.metabrowser;
+  const handle = page.mountPullPage(
+    container,
+    { number: body.number, tab, reader: { initial: { etag: null, body }, fetchAfterMs: 60000 } },
+    {
+      perf: { measure: (_label, work) => work(), measureAsync: (_label, work) => work() },
+      ensureAsset: async () => {},
+      whenIdle: mb.whenIdle,
+      ensureKindAssets: async () => {},
+      decorateExternalLink: mb.decorateExternalLink,
+      refChip: mb.refChip,
+      refChipHtml: mb.refChipHtml,
+      mergeRefs: mb.mergeRefs,
+      mountRefCopies: mb.mountRefCopies,
+      actorIdentity: mb.actorIdentity,
+      titleNodes: mb.titleNodes,
+      countPartsNodes: mb.countPartsNodes,
+      // Ages of the lengths a record's have, one per time in the order the page asks, so no
+      // two read the same and the row of ages is as long as a real one: "now" for all of them
+      // made a 275 px row, whole to 480 px, that never reached the links (B4 of review B on
+      // #506).
+      formatAge: (() => {
+        const labels = ["12d ago", "5h ago", "3d ago"];
+        const given = new Map();
+        return (seconds) => {
+          if (!given.has(seconds)) given.set(seconds, labels[given.size % labels.length]);
+          return { label: given.get(seconds), className: "age" };
+        };
+      })(),
+      formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
+      navigation: { href: () => "/view/" },
+      sourceKind: () => "filesystem",
+      repository: change.checkoutAtHead ? { revision: body.record?.pull?.head?.sha } : undefined,
+      icons: { toggle: "" },
+    },
+  );
+  await document.fonts.ready;
+  const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  await frames();
+  // An avatar in the box the shell's identity draws, in the person glyph's place, without a
+  // request: no fixture names an avatar the page may load, and most authors have one.
+  if (change.avatar) {
+    for (const box of container.querySelectorAll(".github-pull-meta .actor-avatar")) {
+      const image = document.createElement("img");
+      image.className = "actor-avatar-image";
+      image.alt = "";
+      image.width = 18;
+      image.height = 18;
+      box.replaceChildren(image);
+    }
+    await frames();
+  }
+  const header = container.querySelector(".github-pull-header");
+  const box = (node) => node?.getBoundingClientRect();
+  // How much of an element's width shows: what every box with an overflow between it and
+  // the header leaves of it, so a part a clipping box cuts away counts as not shown.
+  const shown = (node) => {
+    const own = box(node);
+    let left = own.left;
+    let right = own.right;
+    for (let up = node.parentElement; up && up !== header.parentElement; up = up.parentElement) {
+      if (getComputedStyle(up).overflowX !== "visible") {
+        left = Math.max(left, box(up).left);
+        right = Math.min(right, box(up).right);
+      }
+    }
+    return own.width > 0 ? Math.max(0, right - left) / own.width : 0;
+  };
+  const group = header.querySelector(".github-pull-branches .merge-refs");
+  const mergeShown = group
+    ? Math.min(
+        ...[".merge-refs-source", ".merge-refs-arrow", ".merge-refs-target"].map((part) =>
+          shown(group.querySelector(part)),
+        ),
+      )
+    : null;
+  // Where the state row's parts and the labels are, and every row's height.
+  const places = () => ({
+    parts: [".github-pull-badge", ".github-pull-action", ".github-pull-identity", ".merge-refs-source", ".merge-refs-arrow", ".merge-refs-target", ".github-pull-label"].flatMap((selector) =>
+      [...header.querySelectorAll(selector)].map((node) => [selector, Math.round(box(node).left * 100) / 100, Math.round(box(node).width * 100) / 100]),
+    ),
+    rows: [...header.children].map((row) => Math.round(box(row).height * 100) / 100),
+    tabBar: Math.round((box(container.querySelector(".tab-bar")).top - box(header).top) * 100) / 100,
+  });
+  // The pull request's Diff summary arrives with its comparison, in the header's last row,
+  // held from first paint (mb-pb35). It is drawn by the diff plugin's own mountDiffSummary,
+  // on a change set whose breakdown names three statuses, "35 files changed · 2 A, 3 D, 30 M
+  // · +1,234 −3,423": it moves nothing, keeps its row's height, and starts on the header's
+  // content edge. While its breakdown is cut short, its header's tooltip is its whole words,
+  // and while it is whole there is none (A7 of review A on #470). It is measured on every
+  // tab, by a flag of its own (A11 of review A on #470).
+  let summaryMoves = null;
+  const slot = header.querySelector(".github-pull-summary");
+  if (change.summary && slot !== null) {
+    const before = places();
+    const rowBefore = Math.round(box(slot).height * 100) / 100;
+    const diff = (window.__diff ??= await import("/diff/diff-view.js"));
+    const kinds = [
+      ...Array(2).fill("added"),
+      ...Array(3).fill("deleted"),
+      ...Array(30).fill("modified"),
+    ];
+    const files = kinds.map((kind, at) => ({
+      kind,
+      ...(kind === "added" ? {} : { old: { path: "src/f" + at + ".py" } }),
+      ...(kind === "deleted" ? {} : { new: { path: "src/f" + at + ".py" } }),
+      additions: 30,
+      deletions: 90,
+    }));
+    const summary = diff.mountDiffSummary(
+      slot,
+      { manifest: { totals: { files: 35, additions: 1234, deletions: 3423, exact: true }, files } },
+      mb,
+      { changedFiles: window.MetabrowserChangedFilesTree, openFile() {} },
+    );
+    await frames();
+    const after = places();
+    const rows = (shape) => JSON.stringify({ rows: shape.rows, tabBar: shape.tabBar });
+    const headerLeft = box(header).left + parseFloat(getComputedStyle(header).paddingLeft);
+    const toggle = slot.querySelector(".diff-summary");
+    const breakdown = slot.querySelector(".change-line-statuses");
+    toggle?.dispatchEvent(new Event("pointerenter"));
+    summaryMoves = {
+      moved: rows(before) === rows(after) ? null : { before, after },
+      rowBefore,
+      rowAfter: Math.round(box(slot).height * 100) / 100,
+      toggleHeight: toggle ? Math.round(box(toggle).height * 100) / 100 : null,
+      left: Math.round((box(slot).left - headerLeft) * 100) / 100,
+      text: toggle?.textContent ?? null,
+      cut: breakdown !== null && breakdown.scrollWidth > breakdown.clientWidth,
+      tip: toggle?.dataset.tipText ?? null,
+    };
+    summary.dispose();
+    // Once a width: a change set five folders deep, opened in the header's last row, where
+    // the tree steps in from its header one level at a time (mb-hi4l).
+    window.__summaryIndentWidths ??= new Set();
+    if (!window.__summaryIndentWidths.has(width)) {
+      window.__summaryIndentWidths.add(width);
+      const nested = diff.mountDiffSummary(slot, ${NESTED_SUMMARY}, mb, {
+        changedFiles: window.MetabrowserChangedFilesTree,
+        openFile() {},
+      });
+      await frames();
+      summaryMoves.indent = await (${SUMMARY_INDENT})(slot);
+      nested.dispose();
+    }
+  }
+  // A stack's chip arrives late, from its own answer, through the page's own builder, at
+  // the right end of the author's row (mb-cf0l): one stack, "⧉2/3", or two, "⧉286 4/4" and
+  // "⧉300 2/2", each named by its stack, as the page names a chip in more than one stack.
+  // Its Layers glyph is a bare svg at the glyph's size, so the chip is as wide as the page's.
+  // The strut that holds the author's row at a chip's height, read before a chip replaces it.
+  const heldBy = header.querySelector(".github-pull-meta .github-pull-stack-strut");
+  const strutHeight = heldBy ? Math.round(box(heldBy).height * 100) / 100 : null;
+  let chipMoves = null;
+  if (change.stackChip && group) {
+    const before = places();
+    const layers = () => document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    const stacks =
+      change.stackChip === 2
+        ? [
+            { number: 286, pulls: [body.number - 3, body.number - 2, body.number - 1, body.number] },
+            { number: 300, pulls: [body.number - 1, body.number] },
+          ]
+        : [{ number: 286, pulls: [body.number - 1, body.number, body.number + 1] }];
+    const menus = stacks.map((stack) =>
+      page.createStackMenu(stack, body.number, {
+        link: () => document.createElement("a"),
+        icon: layers(),
+        currentTitle: "",
+        named: change.stackChip === 2,
+        titleNodes: mb.titleNodes,
+        onOpen() {},
+      }),
+    );
+    const column = header.querySelector(".github-pull-stacks");
+    column.replaceChildren(...menus.map((menu) => menu.element));
+    await frames();
+    const after = places();
+    // Nothing moves: every part keeps its start, every row its height, the tab bar its place.
+    // The sentence alone, the author then the action, may give up width at its end where the
+    // row has none left: the action is cut first, to nothing, and then the author, so the
+    // sentence keeps its start and only the action's start, past a shorter name, moves.
+    const sentence = new Set([".github-pull-action", ".github-pull-identity"]);
+    const kept = (shape) => ({
+      parts: shape.parts.map(([selector, left, width]) => [
+        selector,
+        selector === ".github-pull-action" ? null : left,
+        sentence.has(selector) ? null : width,
+      ]),
+      rows: shape.rows,
+      tabBar: shape.tabBar,
+    });
+    const details = header.querySelector(".github-pull-meta-details");
+    const contentRight = box(header).right - parseFloat(getComputedStyle(header).paddingRight);
+    chipMoves = {
+      chips: stacks.length,
+      moved: JSON.stringify(kept(before)) === JSON.stringify(kept(after)) ? null : { before, after },
+      cut:
+        Math.round(
+          before.parts
+            .filter(([selector]) => sentence.has(selector))
+            .reduce((sum, [, , width], at) => sum + width - after.parts.filter(([s]) => sentence.has(s))[at][2], 0) *
+            100,
+        ) / 100,
+      chipShown: Math.min(...menus.map((menu) => shown(menu.element))),
+      overlap: Math.round((box(details).right - box(column).left) * 100) / 100,
+      rightEdge: Math.round((box(column).right - contentRight) * 100) / 100,
+      chipWidth: Math.round(box(column).width * 100) / 100,
+    };
+    // Its member menu heads its rows with the host's menu group, whose heading starts
+    // on the rows' inset (docs/design-system.md, "Groups in a Menu"). A second menu of
+    // the same stack is opened outside the header, through its disclosure, which
+    // populates it on its toggle event, and removed again: the header's own menu stays
+    // lazy, as the checks below expect.
+    const probe = page.createStackMenu(
+      { number: 286, pulls: [body.number - 1, body.number, body.number + 1] },
+      body.number,
+      { link: () => document.createElement("a"), icon: null, currentTitle: "", titleNodes: mb.titleNodes, onOpen() {} },
+    );
+    const holder = document.createElement("div");
+    holder.className = "github-pull-stacks";
+    holder.style.position = "relative";
+    document.body.append(holder);
+    holder.append(probe.element);
+    probe.element.open = true;
+    await frames();
+    const heading = probe.element.querySelector(".group-heading");
+    const member = probe.element.querySelector(".github-pull-stack-member");
+    const textLeft = (node) => {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      return range.getBoundingClientRect().left;
+    };
+    chipMoves.headingInset =
+      heading && member
+        ? Math.round(
+            (textLeft(heading) - box(member).left - parseFloat(getComputedStyle(member).paddingLeft)) * 100,
+          ) / 100
+        : null;
+    // A menu of one group: its heading names the menu, once, over its members.
+    const menuElement = probe.element.querySelector(".github-pull-stack-menu");
+    chipMoves.headingNamesMenu =
+      heading !== null &&
+      menuElement?.getAttribute("aria-labelledby") === heading.id &&
+      !menuElement.hasAttribute("aria-label") &&
+      !heading.parentElement.hasAttribute("role") &&
+      heading.parentElement.contains(member);
+    probe.dispose();
+    holder.remove();
+  }
+  const rows = [...header.children].map((row) => ({
+    row: row.tagName === "H1" ? "title" : [...row.classList].find((c) => c.startsWith("github-pull-")).slice(12),
+    height: Math.round(box(row).height * 100) / 100,
+  }));
+  const meta = header.querySelector(".github-pull-meta");
+  // The state badge leads the row of ages (mb-4ydo).
+  const opened = header.querySelector(".github-pull-opened");
+  const badge = opened?.querySelector(".github-pull-badge");
+  const centre = (r) => r.top + r.height / 2;
+  // The title's icon and text start at the header's left edge and its number ends on the
+  // right one, over the stack's slot that ends the author's row (mb-z416).
+  const heading = header.querySelector(".github-pull-title-with-state");
+  const edges = (() => {
+    if (!heading) return null;
+    const left = box(header).left + parseFloat(getComputedStyle(header).paddingLeft);
+    const right = box(header).right - parseFloat(getComputedStyle(header).paddingRight);
+    const icon = box(heading.querySelector(".github-pull-state-icon"));
+    const range = document.createRange();
+    range.selectNodeContents(heading.querySelector(".github-pull-title-text"));
+    const text = range.getBoundingClientRect();
+    const numberRange = document.createRange();
+    numberRange.selectNodeContents(heading.querySelector(".github-pull-number"));
+    const number = numberRange.getBoundingClientRect();
+    const slot = header.querySelector(".github-pull-meta .github-pull-stacks");
+    const r = (v) => Math.round(v * 100) / 100;
+    return {
+      iconLeft: r(icon.left - left),
+      textAfterIcon: r(text.left - icon.right),
+      gap: r(parseFloat(getComputedStyle(heading).columnGap)),
+      numberRight: r(number.right - right),
+      numberOverSlot: slot ? r(number.right - box(slot).right) : null,
+      numberBelowText: r(number.bottom - text.bottom),
+    };
+  })();
+  // Where each row shown starts and ends, from the header's top, and the header's one gap
+  // between rows: the status line, while it has something to say, is one of the metadata
+  // lines under the title, as tall as the row of ages and one gap under the row before it,
+  // with no empty labels row between (mb-2u08); with nothing to say it is not there (mb-ne91).
+  const lines = [...header.children]
+    .map((row, at) => ({
+      row: rows[at].row,
+      shown: !row.hidden,
+      top: Math.round((box(row).top - box(header).top) * 100) / 100,
+      bottom: Math.round((box(row).bottom - box(header).top) * 100) / 100,
+    }))
+    .filter((each) => each.shown)
+    .map(({ shown, ...each }) => each);
+  const r2 = (value) => Math.round(value * 100) / 100;
+  // Refresh's slot ends the row of ages, after View on GitHub and Browse code, so it is
+  // numbered after them (A1 of review A on #506).
+  const refresh = header.querySelector(".github-pull-opened > .github-pull-refresh");
+  const contentEdge = box(header).right - parseFloat(getComputedStyle(header).paddingRight);
+  // The freshness note ends the author's row's lead (mb-ne91). Its slot is as wide as its
+  // widest age, so the age ticking from "just now" to "59 min ago" changes its width not at
+  // all: the slot's width at each, then the note put back.
+  const lead = header.querySelector(".github-pull-meta-lead");
+  const note = header.querySelector(".github-pull-note");
+  const noteText = note?.querySelector(".github-pull-freshness") ?? null;
+  const ageWidens = (() => {
+    if (noteText === null || note.hidden || !/^Fetched .+ via GitHub CLI$/.test(noteText.textContent)) return null;
+    const slot = note.querySelector(".github-pull-freshness-slot");
+    const was = noteText.textContent;
+    const at = (text) => {
+      noteText.textContent = text;
+      return box(slot).width;
+    };
+    const widened = Math.abs(at("Fetched just now via GitHub CLI") - at("Fetched 59 min ago via GitHub CLI"));
+    noteText.textContent = was;
+    return r2(widened);
+  })();
+  // Beside the sentence the note is whole or out of view, dot and all, and while it is in
+  // view the login and the sentence keep their natural widths: the width each lays out to
+  // alone, at max-content, beside the width it has (A2 of review A on #506).
+  const natural = (node) => {
+    const probe = node.cloneNode(true);
+    probe.style.cssText = "position: absolute; visibility: hidden; width: max-content; min-width: 0; max-width: none";
+    node.parentElement.append(probe);
+    const width = box(probe).width;
+    probe.remove();
+    return r2(width);
+  };
+  const inView = (node) =>
+    node !== null && lead !== null && !node.hidden && box(node).height > 0 &&
+    box(node).top < box(lead).bottom - 0.5 && box(node).bottom > box(lead).top + 0.5 && shown(node) > 0;
+  const login = header.querySelector(".github-pull-meta-details .github-pull-author");
+  const action = header.querySelector(".github-pull-meta-details > .github-pull-action");
+  const sep = header.querySelector(".github-pull-note-sep");
+  const leadShape = lead === null ? null : {
+    said: noteText?.textContent ?? null,
+    held: noteText?.classList.contains("github-pull-freshness-held") ?? false,
+    // The width "GitHub rate limit" takes in the note's own type: a cut hold keeps at least
+    // that much of its text (C4 of review C on #506).
+    holdFloor: (() => {
+      if (noteText === null) return null;
+      const probe = noteText.cloneNode(false);
+      probe.style.cssText = "position: absolute; visibility: hidden; width: max-content";
+      probe.textContent = "GitHub rate limit";
+      noteText.parentElement.append(probe);
+      const width = box(probe).width;
+      probe.remove();
+      return r2(width);
+    })(),
+    inView: inView(note),
+    dotInView: sep !== null && inView(sep),
+    textWidth: noteText ? r2(box(noteText).width) : null,
+    cut: noteText !== null && noteText.scrollWidth > noteText.clientWidth,
+    tip: (() => {
+      if (noteText === null) return null;
+      noteText.dispatchEvent(new Event("pointerenter"));
+      return noteText.dataset.tipText ?? null;
+    })(),
+    sentence: action !== null && action.offsetParent !== null,
+    login: login ? { width: r2(box(login).width), natural: natural(login) } : null,
+    action: action ? { width: r2(box(action).width), natural: natural(action) } : null,
+  };
+  // The row of ages: its ages give way first, and View on GitHub and Browse code after them
+  // stay whole (B4 of review B on #506). How much of the links shows, and how wide the ages
+  // are drawn against their own width.
+  const agesText = header.querySelector(".github-pull-opened .github-pull-ages");
+  const agesLinks = header.querySelector(".github-pull-opened .github-pull-ages-links");
+  const agesRow = agesText === null
+    ? null
+    : {
+        linksShown: Math.round(shown(agesLinks) * 1000) / 1000,
+        links: [...agesLinks.querySelectorAll("a, button")].map((node) => node.textContent.trim()),
+        agesWidth: r2(box(agesText).width),
+        agesNatural: r2(agesText.scrollWidth),
+        text: agesText.textContent,
+      };
+  const result = {
+    edges,
+    agesRow,
+    header: Math.round(box(header).height * 100) / 100,
+    tabBar: Math.round(box(container.querySelector(".tab-bar")).top - box(header).top),
+    rows,
+    lines,
+    rowGap: parseFloat(getComputedStyle(header).rowGap),
+    // How many labels the record names, or null while there is no record.
+    recordLabels: body.record ? body.record.pull.labels.length : null,
+    refresh: refresh
+      ? { shown: !refresh.hidden, height: r2(box(refresh).height), rightEdge: r2(box(refresh).right - contentEdge) }
+      : null,
+    ageWidens,
+    lead: leadShape,
+    statusShown: !header.querySelector(".github-pull-status").hidden,
+    meta: meta ? Math.round(box(meta).height * 100) / 100 : null,
+    strut: strutHeight,
+    badgeOffset: badge ? Math.round((centre(box(badge)) - centre(box(opened))) * 100) / 100 : null,
+    // The offers drawn where a reader sees them: laid out, with some of each in view.
+    offers: [...header.querySelectorAll(".github-pull-offer")].filter(
+      (offer) => box(offer).height > 0 && shown(offer) > 0,
+    ).length,
+    mergeShown,
+    chipMoves,
+    summaryMoves,
+    // How far any of the header's content ends past its content box, where it is not
+    // clipped by a box that cuts it short, and which element it is; and the pane's own
+    // sideways scroll.
+    ...(() => {
+      const edge = box(header).right - parseFloat(getComputedStyle(header).paddingRight);
+      let past = 0;
+      let culprit = null;
+      for (const node of header.querySelectorAll("*")) {
+        let right = box(node).right;
+        for (let up = node.parentElement; up && up !== header; up = up.parentElement) {
+          if (getComputedStyle(up).overflowX !== "visible") {
+            right = Math.min(right, box(up).right);
+          }
+        }
+        if (right - edge > past) {
+          past = right - edge;
+          culprit = node.className || node.tagName;
+        }
+      }
+      return { pastHeader: Math.round(past * 100) / 100, culprit };
+    })(),
+    paneScrolls: pane.scrollWidth > pane.clientWidth,
+    // Each label chip's computed colors and box, and the neutral chip's tokens in this
+    // theme: --muted and --border, read from a probe that is painted with them.
+    labels: [...header.querySelectorAll(".github-pull-label")].map((chip) => {
+      const style = getComputedStyle(chip);
+      return {
+        name: chip.textContent,
+        color: chip.dataset.color ?? null,
+        properties: chip.getAttribute("style"),
+        tip: chip.getAttribute("data-tip-text"),
+        background: style.backgroundColor,
+        text: style.color,
+        border: style.borderTopColor,
+        box: [
+          style.fontSize, style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft,
+          style.borderTopWidth, style.borderTopLeftRadius, Math.round(box(chip).height * 100) / 100,
+        ].join(" "),
+        left: Math.round(box(chip).left * 100) / 100,
+        width: Math.round(box(chip).width * 100) / 100,
+      };
+    }),
+    neutral: (() => {
+      const probe = document.createElement("span");
+      probe.style.color = "var(--muted)";
+      probe.style.border = "1px solid var(--border)";
+      header.append(probe);
+      const style = getComputedStyle(probe);
+      const tokens = { text: style.color, border: style.borderTopColor };
+      probe.remove();
+      return tokens;
+    })(),
+  };
+  handle.dispose();
+  delete document.documentElement.dataset.theme;
+  return result;
+}`;
+
+// A record that has not arrived, records still loading, loaded, merged, closed, stale, with
+// the checkout on its head, with each offer the status row can draw, and held by a rate
+// limit, and a loaded one with no labels, as the merged record has none. A failure is let
+// wrap its status row, so it is not among them.
+const RATE_LIMITED = {
+  outcome: "rate_limited",
+  message: null,
+  reset_at: "2099-01-01T00:00:00Z",
+  at: "2026-09-17T12:30:00Z",
+};
+const RECORDS = [
+  ["absent", {}],
+  ["pending", {}],
+  ["current", {}],
+  ["merged", {}],
+  ["closed", {}],
+  ["stale", {}],
+  ["on_head", {}],
+  ["behind_head", {}],
+  ["current", { pinBehind: true }],
+  ["on_head", { checkoutAtHead: true }],
+  ["current", { lastRefresh: RATE_LIMITED }],
+  ["current", { lastRefresh: RATE_LIMITED, liftSoon: true }],
+  ["current", { avatar: true }],
+  ["current", { longTitle: true }],
+  ["current", { longNames: true }],
+  ["current", { longNames: true, avatar: true }],
+  ["merged", { longNames: true, avatar: true }],
+  ["current", { noLabels: true }],
+];
+// In the page: the Diff summary's row while the page waits for its comparison, and as it
+// arrives or fails (mb-onr2). The page is the production one, its diff view a stand-in whose
+// prefetch is a read the session answers and whose summary is the diff plugin's own
+// mountDiffSummary, as the plugin's summary draws it. The row holds the shell's pending
+// placeholder, `.tally-pending`, after the quiet period, and the summary takes its place
+// moving nothing; a read that fails leaves the row empty, at its height.
+const SUMMARY_WAIT = `async (width, theme, outcome, change = null) => {
+  const recorded = window.__recorded ??= await (await fetch("/fixtures.json")).json();
+  const page = window.__page ??= await import("/github/pull-page.js");
+  const diff = (window.__diff ??= await import("/diff/diff-view.js"));
+  const body = structuredClone(recorded.current.body);
+  // Each run reads a comparison of its own. The page keeps what it read of a comparison for
+  // the document, by its route (comparison-prefetch.js, documentComparisons), so a run
+  // under an earlier run's route would draw that run's summary at once, with no wait.
+  window.__summaryRuns = (window.__summaryRuns ?? 0) + 1;
+  body.comparison_route = "/summary-wait/" + window.__summaryRuns;
+  document.documentElement.dataset.theme = theme;
+  window.fetch = async () => new Response(null, { status: 304 });
+  history.replaceState(null, "", "/pull/" + body.number);
+  const pane = document.getElementById("preview-pane");
+  pane.style.width = width + "px";
+  const container = document.createElement("div");
+  pane.replaceChildren(container);
+  const mb = window.metabrowser;
+  let answer = null;
+  const read = new Promise((resolve, reject) => {
+    answer = { resolve, reject };
+  });
+  // The change set: by default, the reader's three statuses; *change* names others, as
+  // [[kind, files], ...] and its line totals.
+  const statuses = change?.kinds ?? [["added", 2], ["deleted", 3], ["modified", 30]];
+  const kinds = statuses.flatMap(([kind, many]) => Array(many).fill(kind));
+  const files = kinds.map((kind, at) => ({
+    kind,
+    ...(kind === "added" ? {} : { old: { path: "src/f" + at + ".py" } }),
+    ...(kind === "deleted" ? {} : { new: { path: "src/f" + at + ".py" } }),
+    additions: 30,
+    deletions: 90,
+  }));
+  const lines = change?.lines ?? [1234, 3423];
+  const comparison = { manifest: { totals: { files: kinds.length, additions: lines[0], deletions: lines[1], exact: true }, files } };
+  // For "brief", the cached changed-files list of the same change set, which the page draws
+  // as the brief line in the row while the comparison is read (mb-z8ea).
+  if (outcome === "brief") {
+    const summary = {
+      number: body.number,
+      state: "listed",
+      reason: null,
+      listing: false,
+      listed_from: "comparison",
+      generation: "brief-" + window.__summaryRuns,
+      head: body.record.comparison.head,
+      base: body.record.comparison.base,
+      base_ref: null,
+      files: kinds.length,
+      additions: lines[0],
+      deletions: lines[1],
+      exact: true,
+      // In a pull request's words, which the list is kept in: GitHub's "removed".
+      statuses: statuses.map(([status, count]) => ({ status: status === "deleted" ? "removed" : status, count })),
+    };
+    window.fetch = async (route) =>
+      String(route).startsWith("/api/plugin/github/pull-files-summary?")
+        ? new Response(JSON.stringify({ source: body.source, rows: [summary] }), { status: 200, headers: { "content-type": "application/json" } })
+        : new Response(null, { status: 304 });
+  }
+  const view = {
+    prefetch: () => read,
+    summary: async (slot, ctx) =>
+      diff.mountDiffSummary(slot, ctx.raw, mb, { changedFiles: window.MetabrowserChangedFilesTree, openFile() {} }),
+  };
+
+  // A revisit opens the pull request whose comparison last arrived again, in this document
+  // (mb-neg9): the page draws its summary from the comparison it kept, and reads nothing.
+  // Its summary waits for the shared tree as the diff plugin's own does, which a loaded
+  // bundle answers from a resolved promise (asset-loader.js, ensureAsset). Each frame from
+  // the mount until the record's title is painted says what the row held, and the row's
+  // mutations say whether the placeholder was put in it at all.
+  if (outcome === "arrives") {
+    window.__summaryArrived = body.comparison_route;
+  } else if (outcome === "revisit") {
+    body.comparison_route = window.__summaryArrived;
+    const drawSummary = view.summary;
+    view.summary = async (slot, ctx) => {
+      await Promise.resolve().then(() => window.MetabrowserChangedFilesTree);
+      return drawSummary(slot, ctx);
+    };
+  }
+  let reads = 0;
+  const readOnce = view.prefetch;
+  view.prefetch = () => {
+    reads += 1;
+    return readOnce();
+  };
+  let placeholderPlaced = false;
+  const placements = new MutationObserver((records) => {
+    for (const record of records) {
+      for (const node of record.addedNodes) {
+        if (node.nodeType === 1 && (node.matches(".github-pull-summary-pending, .tally-pending") || node.querySelector(".tally-pending"))) {
+          placeholderPlaced = true;
+        }
+      }
+    }
+  });
+  placements.observe(container, { childList: true, subtree: true });
+  const seenFrames = [];
+  const recordPainted = new Promise((resolve) => {
+    const look = () => {
+      const row = container.querySelector(".github-pull-summary");
+      const title = container.querySelector(".github-pull-header h1")?.textContent?.trim() ?? "";
+      seenFrames.push({
+        title: title !== "",
+        summary: row?.querySelector(".diff-summary") != null,
+        placeholder: row?.querySelector(".tally-pending") != null,
+      });
+      if (title !== "" || seenFrames.length >= 30) {
+        resolve(seenFrames);
+      } else {
+        requestAnimationFrame(look);
+      }
+    };
+    requestAnimationFrame(look);
+  });
+  const handle = page.mountPullPage(
+    container,
+    { number: body.number, tab: "", reader: { initial: { etag: null, body }, fetchAfterMs: 60000 } },
+    {
+      perf: { measure: (_label, work) => work(), measureAsync: (_label, work) => work() },
+      ensureAsset: async () => {},
+      whenIdle: (callback) => {
+        const id = setTimeout(callback, 0);
+        return () => clearTimeout(id);
+      },
+      ensureKindAssets: async () => {},
+      loadChangedFilesTree: async () => window.MetabrowserChangedFilesTree,
+      getRegisteredView: () => view,
+      decorateExternalLink: mb.decorateExternalLink,
+      refChip: mb.refChip,
+      refChipHtml: mb.refChipHtml,
+      mergeRefs: mb.mergeRefs,
+      mountRefCopies: mb.mountRefCopies,
+      actorIdentity: mb.actorIdentity,
+      titleNodes: mb.titleNodes,
+      countPartsNodes: mb.countPartsNodes,
+      changeLine: mb.changeLine,
+      changeLineNodes: mb.changeLineNodes,
+      formatInteger: mb.formatInteger,
+      formatAge: () => ({ label: "now", className: "age" }),
+      formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
+      navigation: { href: () => "/view/" },
+      sourceKind: () => "filesystem",
+      icons: { toggle: "" },
+    },
+  );
+  await Promise.resolve();
+  if (outcome === "revisit") {
+    const painted = await recordPainted;
+    placements.disconnect();
+    handle.dispose();
+    delete document.documentElement.dataset.theme;
+    return { revisit: { frames: painted, reads, placeholderPlaced } };
+  }
+  placements.disconnect();
+  const header = container.querySelector(".github-pull-header");
+  const row = header.querySelector(".github-pull-summary");
+  const round = (value) => Math.round(value * 100) / 100;
+  const box = (node) => node.getBoundingClientRect();
+  const wrapper = () => row.querySelector(".github-pull-summary-pending");
+  // The text a line shows: without the words only a screen reader is told.
+  const seenText = (node) => {
+    const copy = node.cloneNode(true);
+    for (const hidden of copy.querySelectorAll(".visually-hidden, .diff-summary-chevron")) hidden.remove();
+    return copy.textContent;
+  };
+  // Inside the quiet period: the placeholder is in the row and not yet seen.
+  const quiet = wrapper() ? getComputedStyle(wrapper()).visibility : null;
+  await document.fonts.ready;
+  const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const delay = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--loading-state-delay"));
+  await new Promise((resolve) => setTimeout(resolve, delay * 2));
+  await frames();
+  const contentLeft = box(header).left + parseFloat(getComputedStyle(header).paddingLeft);
+  const places = () => ({
+    rows: [...header.children].map((child) => [
+      child.tagName === "H1" ? "title" : [...child.classList].find((c) => c.startsWith("github-pull-")).slice(12),
+      round(box(child).top - box(header).top),
+      round(box(child).height),
+    ]),
+    tabBar: round(box(container.querySelector(".tab-bar")).top - box(header).top),
+  });
+  const block = row.querySelector(".tally-pending");
+  const probe = document.createElement("span");
+  probe.style.background = "var(--tally-skeleton-bg)";
+  header.append(probe);
+  const skeleton = getComputedStyle(probe).backgroundColor;
+  probe.remove();
+  const waiting = {
+    quiet,
+    shown: block ? getComputedStyle(block).visibility : null,
+    pulse: block ? getComputedStyle(block).animationName : null,
+    ground: block ? getComputedStyle(block).backgroundColor === skeleton : false,
+    left: block ? round(box(block).left - contentLeft) : null,
+    width: block ? round(box(block).width) : null,
+    height: block ? round(box(block).height) : null,
+    em: block ? round(parseFloat(getComputedStyle(block).fontSize)) : null,
+    centre: block ? round((box(block).top + box(block).bottom) / 2 - (box(row).top + box(row).bottom) / 2) : null,
+    row: round(box(row).height),
+    places: places(),
+    brief: (() => {
+      const line = row.querySelector(".github-pull-summary-brief");
+      const words = line?.querySelector(".diff-summary-files");
+      if (!line || !words) return null;
+      const range = document.createRange();
+      range.selectNodeContents(line);
+      return {
+        text: seenText(line),
+        wordsLeft: round(box(words).left - contentLeft),
+        wordsTop: round(box(words).top - box(row).top),
+        textRight: round(range.getBoundingClientRect().right - contentLeft),
+        em: round(parseFloat(getComputedStyle(line).fontSize)),
+      };
+    })(),
+  };
+  if (outcome === "fails") {
+    answer.reject(new Error("refused"));
+  } else {
+    answer.resolve(comparison);
+  }
+  const deadline = performance.now() + 5000;
+  const settled = () =>
+    outcome === "fails" ? row.querySelector(".tally-pending") === null : row.querySelector(".diff-summary") !== null;
+  while (!settled() && performance.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  await frames();
+  const summary = row.querySelector(".diff-summary");
+  const chevron = row.querySelector(".diff-summary-chevron svg, .diff-summary-chevron");
+  const words = row.querySelector(".diff-summary-files");
+  const arrived = {
+    placeholder: row.querySelector(".tally-pending") !== null,
+    summary: summary !== null,
+    children: row.children.length,
+    row: round(box(row).height),
+    places: places(),
+    toggleLeft: summary ? round(box(summary).left - contentLeft) : null,
+    chevronLeft: chevron ? round(box(chevron).left - contentLeft) : null,
+    wordsLeft: words ? round(box(words).left - contentLeft) : null,
+    wordsTop: words ? round(box(words).top - box(row).top) : null,
+    text: summary ? seenText(summary) : null,
+    width: summary ? round(box(summary).width) : null,
+    em: summary ? round(parseFloat(getComputedStyle(summary).fontSize)) : null,
+    label: summary ? summary.getAttribute("aria-label") : null,
+    textRight: (() => {
+      if (!summary) return null;
+      const range = document.createRange();
+      range.selectNodeContents(summary);
+      return round(range.getBoundingClientRect().right - contentLeft);
+    })(),
+  };
+  handle.dispose();
+  delete document.documentElement.dataset.theme;
+  return { waiting, arrived };
+}`;
+// Change sets of one status, from the shortest summary to a longer one, which the pending
+// placeholder is sized from (`.github-pull-summary-pending` in github/styles.css; mb-vb51).
+const ONE_STATUS = [
+  { kinds: [["modified", 1]], lines: [3, 1] },
+  { kinds: [["modified", 8]], lines: [120, 30] },
+];
+// The placeholder's width in em of its type, as its rule sets it, `min(100%, 14.5em)`.
+const PENDING_EM = 14.5;
+
+// In the page: a pull request page mounted with no record in hand, as a direct load or a
+// reload mounts it, whose pull read the session answers (docs/design-system.md, "Layout").
+// The quiet period is set long, so where it ends is the session's to say: it finishes the
+// hold's animation itself before the read for `slow`. For `held` the description's Markdown
+// never answers, so the conversation's first paint stays held while the header lands with
+// its record. Every frame from the mount to the landing is read: whether the header and the
+// tab column show, the cold header or the record's, where the tab bar is against the same
+// record mounted in hand, and what the Diff summary's row holds. Its placeholder's own
+// reveal, the same quiet period's (`.mb-delayed-loading`), ends with it.
+const COLD_LANDING = `async (width, labelled, outcome) => {
+  const recorded = window.__recorded ??= await (await fetch("/fixtures.json")).json();
+  const page = window.__page ??= await import("/github/pull-page.js");
+  const body = structuredClone(recorded.current.body);
+  const holder = body.record?.same_as;
+  if (holder !== undefined) {
+    body.record = structuredClone(recorded[holder].body.record);
+  }
+  if (!labelled) {
+    body.record.pull.labels = [];
+  }
+  const realFetch = window.__realFetch ??= window.fetch;
+  const pane = document.getElementById("preview-pane");
+  pane.style.width = width + "px";
+  const mb = window.metabrowser;
+  const deps = {
+    perf: { measure: (_label, work) => work(), measureAsync: (_label, work) => work() },
+    ensureAsset: async () => {},
+    whenIdle: mb.whenIdle,
+    ensureKindAssets: async () => {},
+    loadChangedFilesTree: async () => {},
+    getRegisteredView: () => null,
+    decorateExternalLink: mb.decorateExternalLink,
+    refChip: mb.refChip,
+    refChipHtml: mb.refChipHtml,
+    mergeRefs: mb.mergeRefs,
+    mountRefCopies: mb.mountRefCopies,
+    actorIdentity: mb.actorIdentity,
+    titleNodes: mb.titleNodes,
+    countPartsNodes: mb.countPartsNodes,
+    formatAge: () => ({ label: "now", className: "age" }),
+    formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
+    navigation: { href: () => "/view/" },
+    sourceKind: () => "filesystem",
+    icons: { toggle: "" },
+  };
+  const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const round = (value) => Math.round(value * 100) / 100;
+  const tabBarOf = (container) =>
+    round(container.querySelector(".tab-bar").getBoundingClientRect().top - container.getBoundingClientRect().top);
+  history.replaceState(null, "", "/pull/" + body.number);
+  window.fetch = async () => new Response(null, { status: 304 });
+  // The same record mounted in hand: where its tab bar is.
+  const inHand = document.createElement("div");
+  pane.replaceChildren(inHand);
+  const opened = page.mountPullPage(inHand, { number: body.number, tab: "", reader: { initial: { etag: null, body }, fetchAfterMs: 60000 } }, deps);
+  await document.fonts.ready;
+  await frames();
+  const landsAt = tabBarOf(inHand);
+  opened.dispose();
+  document.documentElement.style.setProperty("--loading-state-delay", "60s");
+  let answer = null;
+  const read = new Promise((resolve) => {
+    answer = resolve;
+  });
+  window.fetch = async (route) => {
+    const url = String(route);
+    if (url.startsWith("/api/plugin/github/pull?")) {
+      await read;
+      return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (outcome === "held" && url.startsWith("/api/plugin/github/pull-markdown")) {
+      return new Promise(() => {});
+    }
+    return new Response(null, { status: 304 });
+  };
+  const container = document.createElement("div");
+  pane.replaceChildren(container);
+  const handle = page.mountPullPage(container, { number: body.number, tab: "", reader: null }, deps);
+  const header = container.querySelector(".github-pull-header");
+  const column = () => container.querySelector(".tab-bar")?.parentElement ?? null;
+  const seen = [];
+  const look = (step) => {
+    const tabColumn = column();
+    const state = {
+      step,
+      header: getComputedStyle(header).opacity,
+      column: tabColumn ? getComputedStyle(tabColumn).opacity : null,
+      cold: (header.querySelector("h1")?.textContent ?? "").startsWith("Pull request #"),
+      tabBar: tabColumn ? tabBarOf(container) : null,
+      live: tabColumn ? [...tabColumn.querySelectorAll(".tab-btn")].map((link) => link.checkVisibility({ visibilityProperty: true }) && !link.closest("[inert]")) : [],
+      // The Diff summary's row: its pending placeholder from first paint (mb-30dz), and
+      // whether its quiet period is over.
+      pending: (() => {
+        const placeholder = header.querySelector(".github-pull-summary > .github-pull-summary-pending");
+        return placeholder === null ? "none" : getComputedStyle(placeholder).visibility;
+      })(),
+    };
+    seen.push(state);
+    return state;
+  };
+  // The quiet period's end: the hold's animation, run to its end.
+  const quietEnds = () => {
+    const placeholder = header.querySelector(".github-pull-summary-pending");
+    for (const part of [header, column(), placeholder]) {
+      for (const animation of part?.getAnimations() ?? []) {
+        animation.finish();
+      }
+    }
+  };
+  let sampling = true;
+  const sample = () => {
+    if (sampling) {
+      look("frame");
+      requestAnimationFrame(sample);
+    }
+  };
+  requestAnimationFrame(sample);
+  await frames();
+  const before = look("before the read");
+  if (outcome === "slow") {
+    quietEnds();
+    await frames();
+  }
+  const shownCold = look("the read on its way");
+  answer();
+  const deadline = performance.now() + 5000;
+  while (performance.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    if (!look("landing").cold) {
+      break;
+    }
+  }
+  await frames();
+  sampling = false;
+  const landed = look("landed");
+  // A held landing's conversation is still out of sight, waiting for its Markdown.
+  const bodyHeld =
+    container.querySelector(".github-pull-body")?.classList.contains("github-pull-body-holding") ?? null;
+  handle.dispose();
+  document.documentElement.style.removeProperty("--loading-state-delay");
+  window.fetch = realFetch;
+  return {
+    landsAt,
+    before,
+    shownCold,
+    landed,
+    bodyHeld,
+    coldShown: seen.filter((state) => state.cold && Number(state.header) > 0).length,
+    halfShown: seen.filter((state) => state.header !== state.column && state.column !== null).length,
+    tabBarsShown: [...new Set(seen.filter((state) => Number(state.header) > 0).map((state) => state.tabBar))],
+  };
+}`;
+// Pulls rows built as pulls-panel.js#buildRow and #rowMeta build them, whose order
+// github-pulls-panel-session.js pins: the row's link, the state icon, the title, the age,
+// and the number's line, which the stylesheet lays out as two lines (mb-lkkt): the icon in
+// the row's one slot and the title alone, from the text column to the row's end; then the
+// number's line, where a stack member's place comes before its number (mb-dzsi), and the
+// age. Under the link is the row's third line, its change line (mb-d0a3), which holds the
+// chevron in the same slot, under the icon (mb-3vil), here with no line yet. Each row is a
+// member, a level in under its stack's row.
+// The age, the chevron, the icon, and the title are read, from the row's top, before and
+// after each row's place arrives, the title's width with them: the place is on the number's
+// line, which stays one line, so nothing else moves, the link keeps its two lines (`grew`),
+// and the row its three (`itemGrew`).
+const PULLS_ROWS = `async (rows, width) => {
+  const page = window.__page ??= await import("/github/pull-page.js");
+  const state = window.__state ??= await import("/github/pull-state.js");
+  const h = (tag, attributes = {}, children = []) => {
+    const node = document.createElement(tag);
+    for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, value);
+    node.append(...children);
+    return node;
+  };
+  // The panel's own container, as pulls-panel.js#mountPullsPanel marks it. The avatar's size
+  // and gap are the shell's, --actor-avatar-size and --actor-identity-gap, on its root.
+  const nav = h("div", { class: "github-pulls" });
+  nav.style.width = width + "px";
+  const list = h("ul", { class: "github-pulls-list", role: "tree" });
+  nav.append(list);
+  document.getElementById("preview-pane").replaceChildren(nav);
+  const built = rows.map((row) => {
+    const identity = page.authorLabel(window.metabrowser, row.author, null, "github-pulls-author", {
+      placeholder: false,
+    });
+    if (row.avatar) {
+      // The box authorLabel draws for an avatar, with its image, without a request.
+      identity.prepend(
+        h("span", { class: "actor-avatar", "aria-hidden": "true" }, [
+          h("img", { class: "actor-avatar-image", alt: "", width: "18", height: "18" }),
+        ]),
+      );
+    }
+    const separator = () => h("span", { class: "github-pulls-sep" }, [" · "]);
+    const place = h("span", { class: "github-pulls-place", role: "img", hidden: "" });
+    const number = h("span", { class: "github-pulls-number" }, ["#" + row.number]);
+    const title = h("span", { class: "github-pulls-title" }, [row.title]);
+    const age = h("span", { class: "github-pulls-age" }, ["12mo"]);
+    // The registry's chevron is the shell's .toggle-chevron, which sizes it; its drawing is
+    // not read here.
+    const chevron = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    chevron.setAttribute("class", "toggle-chevron");
+    chevron.setAttribute("viewBox", "0 0 24 24");
+    const anchor = h("a", { class: "github-pulls-row", href: "#", role: "treeitem", "aria-expanded": "true" }, [
+      state.pullStateIcon("open"),
+      title,
+      age,
+      h("span", { class: "github-pulls-meta" }, [
+        h("span", { class: "github-pulls-line" }, [
+          h("span", { class: "github-pulls-id" }, [place, number]),
+          h("span", { class: "github-pulls-by" }, [separator(), identity]),
+        ]),
+      ]),
+    ]);
+    const toggle = h("span", { class: "github-pulls-toggle", "aria-hidden": "true" }, [chevron]);
+    const line = h("span", { class: "github-pulls-change-line" });
+    const change = h("div", { class: "github-pulls-change disclosure-toggle collapsed", role: "treeitem", "aria-expanded": "false" }, [toggle, line]);
+    const item = h("li", { class: "github-pulls-item", role: "none", "data-level": "2" }, [
+      anchor,
+      h("div", { class: "github-pulls-change-group", role: "group" }, [change]),
+    ]);
+    list.append(item);
+    return { item, anchor, change, toggle, line, place, number, title, age, row };
+  });
+  await document.fonts.ready;
+  const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  await frames();
+  // Each row's age and title line, the title's width with them, read from its row's top.
+  const titleLine = built.map(({ anchor, toggle, title, age }) => [toggle, anchor.querySelector(".github-pull-state-icon"), title, age]);
+  const read = () =>
+    titleLine.map((nodes, at) => {
+      const top = built[at].item.getBoundingClientRect().top;
+      return nodes.map((node) => {
+        const r = node.getBoundingClientRect();
+        return [r.left, r.top - top, r.width, r.height].map((value) => Math.round(value * 100) / 100);
+      });
+    });
+  const before = read();
+  const heights = built.map(({ anchor }) => anchor.getBoundingClientRect().height);
+  const itemHeights = built.map(({ item }) => item.getBoundingClientRect().height);
+  for (const { place, row } of built) {
+    place.hidden = false;
+    // As pulls-panel.js#paintPlace draws it: another stack is the Layers glyph before its
+    // number, written here as "#N", and a separator ends the place.
+    place.append(
+      h(
+        "span",
+        { class: "github-pull-stack-position" },
+        row.stack.split(" · ").flatMap((part, at) => {
+          const named = /^#([0-9]+) (.+)$/.exec(part);
+          return [
+            ...(at === 0 ? [] : [" · "]),
+            ...(named === null
+              ? [part]
+              : [
+                  h("span", { class: "github-pull-stack-other", "aria-hidden": "true" }),
+                  named[1] + " " + named[2],
+                ]),
+          ];
+        }),
+      ),
+      h("span", { class: "github-pulls-sep" }, [" · "]),
+    );
+  }
+  await frames();
+  const after = read();
+  return built.map(({ item, anchor, change, toggle, line, place, number, title, age, row }, at) => {
+    const moved = titleLine[at].flatMap((node, index) =>
+      JSON.stringify(before[at][index]) === JSON.stringify(after[at][index])
+        ? []
+        : [[node.className.baseVal ?? node.className, before[at][index], after[at][index]]],
+    );
+    const position = place.querySelector(".github-pull-stack-position");
+    const p = position.getBoundingClientRect();
+    const n = number.getBoundingClientRect();
+    const box = anchor.getBoundingClientRect();
+    const end = box.right - parseFloat(getComputedStyle(anchor).paddingRight) + 0.5;
+    const metaBox = anchor.querySelector(".github-pulls-meta");
+    const meta = metaBox.getBoundingClientRect();
+    const by = anchor.querySelector(".github-pulls-by");
+    const b = by.getBoundingClientRect();
+    const t = title.getBoundingClientRect();
+    const style = getComputedStyle(anchor);
+    const inset = box.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft);
+    const icon = anchor.querySelector(".github-pull-state-icon").getBoundingClientRect();
+    const chevron = toggle.getBoundingClientRect();
+    const third = change.getBoundingClientRect();
+    const middle = (r) => (r.top + r.bottom) / 2;
+    const round = (value) => Math.round(value * 100) / 100;
+    // The author's floor, from its parts rather than its own min-width, which a flex item
+    // never goes below: the separator, the avatar's size and the identity's gap when it has
+    // one, and 1.75 of its type's em of the name (styles.css, .github-pulls-by).
+    const panel = getComputedStyle(nav);
+    const floor =
+      by.querySelector(".github-pulls-sep").getBoundingClientRect().width +
+      (by.querySelector(".actor-avatar") === null
+        ? 0
+        : parseFloat(panel.getPropertyValue("--actor-avatar-size")) +
+          parseFloat(panel.getPropertyValue("--actor-identity-gap"))) +
+      1.75 * parseFloat(getComputedStyle(by).fontSize);
+    const name = by.querySelector(".github-pulls-author").getBoundingClientRect();
+    return {
+      number: row.number,
+      moved,
+      // Before the number, on its line, in its type: the same top in the same size.
+      before: p.width > 0 && place.getBoundingClientRect().right <= n.left + 0.5 && Math.abs(p.top - n.top) < 0.5,
+      // The number shows whole, inside the muted line's clip.
+      whole: n.left >= meta.left - 0.5 && n.right <= meta.right + 0.5 && number.scrollWidth <= Math.ceil(n.width),
+      // Nothing of the row ends past its padding box, and the pane does not scroll sideways.
+      inside: [age, number, place].every((node) => node.getBoundingClientRect().right <= end) && nav.scrollWidth <= nav.clientWidth,
+      cut: position.scrollWidth > position.clientWidth,
+      grew: Math.round((box.height - heights[at]) * 100) / 100,
+      itemGrew: Math.round((item.getBoundingClientRect().height - itemHeights[at]) * 100) / 100,
+      height: Math.round(box.height * 100) / 100,
+      // The row is three lines: the link's two, and the change line under the number's line.
+      threeLines: Math.abs(item.getBoundingClientRect().height - box.height - third.height) < 0.5 && third.top >= box.bottom - 0.5 && third.top >= meta.bottom - 0.5,
+      // The number's line is one line of the number's type.
+      oneLine: Math.abs(meta.height - parseFloat(getComputedStyle(metaBox).lineHeight)) < 0.5,
+      // The title runs to the row's end, over the age and the number's line.
+      titleEnd: Math.abs(t.right - (end - 0.5)) < 0.5 && t.bottom < age.getBoundingClientRect().top + 0.5 && t.bottom < meta.top + 0.5,
+      // The title starts in the text column, after the icon's one slot (mb-3vil).
+      titleFrom: round(t.left - inset),
+      textColumn: round(parseFloat(style.getPropertyValue("--tree-icon-slot")) + parseFloat(style.columnGap)),
+      // The icon is on the title's line, centered on it, in the slot on the row's inset; the
+      // chevron is on the change line, under the number's line, in the same slot (mb-d0a3), and
+      // the change line's values in the title's column (mb-3vil).
+      iconOff: round(middle(icon) - middle(t)),
+      iconWithTitle: icon.height > 0 && icon.top >= t.top - 0.5 && icon.bottom <= t.bottom + 0.5 && icon.bottom <= meta.top + 0.5,
+      iconFrom: round(icon.left - inset),
+      chevronOnThird: chevron.height > 0 && chevron.top >= third.top - 0.5 && chevron.bottom <= third.bottom + 0.5 && chevron.top >= meta.bottom - 0.5,
+      chevronFrom: round(chevron.left - inset),
+      lineFrom: round(line.getBoundingClientRect().left - inset),
+      // The author on the number's line, at its floor or wider and its name ending inside the
+      // line, or off it, whole.
+      author:
+        b.top < meta.bottom - 0.5
+          ? b.width + 0.5 >= floor && name.right <= meta.right + 0.5
+            ? "shown"
+            : "squeezed"
+          : "off",
+      authorWidth: Math.round(b.width * 10) / 10,
+      authorFloor: round(floor),
+      authorNameEnd: round(name.right - meta.right),
+      title: Math.round(t.width * 10) / 10,
+    };
+  });
+}`;
+// A pull request's number in the shell's two surfaces that show one, Quick Search's result
+// and the ref selector on a pull request's head, built as search-palette.js#appendPullResult
+// and source-ref-selector.js#paint build them, over the shell's own stylesheet: their
+// computed weights, and a stack's position's (mb-vrvs). The GitHub plugin's three surfaces
+// are read where they are drawn, in github-pulls-stacks-chrome.mjs.
+const NUMBERS = `(() => {
+  const h = (tag, attributes = {}, children = []) => {
+    const node = document.createElement(tag);
+    for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, value);
+    node.append(...children);
+    return node;
+  };
+  const palette = h("span", { class: "search-palette-pull-number" }, ["#455"]);
+  const selector = h("span", { class: "source-ref-selector-pull-number" }, ["#455"]);
+  const position = h("span", { class: "github-pull-stack-position" }, ["1/6"]);
+  document.getElementById("preview-pane").replaceChildren(
+    h("div", { class: "search-palette-option search-palette-option-pull" }, [
+      h("span", { class: "search-palette-option-text" }, [
+        h("span", { class: "search-palette-description" }, [palette, " · Open"]),
+      ]),
+    ]),
+    h("button", { class: "chip-menu-trigger source-ref-selector-toggle" }, [
+      h("span", { class: "source-ref-selector-label" }, ["Pull request: ", selector]),
+    ]),
+    position,
+  );
+  const weight = (node) => getComputedStyle(node).fontWeight;
+  return { palette: weight(palette), selector: weight(selector), position: weight(position) };
+})()`;
+const PULLS = [
+  {
+    number: 370,
+    title: "perf: decide every region's box at first paint",
+    author: "jlevy",
+    avatar: true,
+    stack: "2/3",
+  },
+  {
+    number: 12345,
+    title: "A five-digit pull request",
+    author: "a-thirty-nine-character-github-login-x",
+    avatar: true,
+    stack: "3/3 · #900 1/2",
+  },
+  {
+    number: 7,
+    title: "Short",
+    author: "octo",
+    avatar: false,
+    stack: "1/2",
+  },
+  // Two stacks and three: wider than a narrow pane's muted line, the place is cut short.
+  {
+    number: 4242,
+    title: "Two stacks, two digits each",
+    author: "octo",
+    avatar: true,
+    stack: "12/23 · #901 10/14",
+  },
+  {
+    number: 4243,
+    title: "Three stacks",
+    author: "octo",
+    avatar: false,
+    stack: "3/3 · #900 1/2 · #902 4/7",
+  },
+];
+const PULLS_WIDTHS = [420, 360, 300, 240, 180];
+// The file header of a run's log: renderBadges, RUN_STATUS_SIZERS, and flagRunEndedBadge
+// are app.js's own, read from the served file and run here with the two names they use.
+// The header is the one renderFile draws around them: the path, the badges, and the size.
+// A live run ends, and a running one turns live, as app.js
+// changes them in place (flagRunEndedBadge, and _mirrorActiveFromFsEntry's two lines), and
+// every box of the header is read before and after.
+const RUN_BADGE = `async (live, width) => {
+  // Read with XMLHttpRequest: the header's measurements stand in for window.fetch.
+  const source = await new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("GET", "/static/app.js");
+    request.onload = () => resolve(request.responseText);
+    request.onerror = reject;
+    request.send();
+  });
+  const take = (start, end) => {
+    const at = source.indexOf(start);
+    if (at < 0) {
+      throw new Error("app.js has no " + start);
+    }
+    return source.slice(at, source.indexOf(end, at) + end.length);
+  };
+  const code = [
+    take("const RUN_STATUS_SIZERS = ", '.join("");'),
+    take("function renderBadges(data) {", "\\n}\\n"),
+    take("function flagRunEndedBadge() {", "\\n}\\n"),
+  ].join("\\n");
+  const esc = (text) => String(text).replace(/[&<>"]/g, (c) => "&#" + c.charCodeAt(0) + ";");
+  const activeFiles = new Map(live ? [["logs/session.jsonl", {}]] : []);
+  const app = new Function("esc", "activeFiles", code + "\\nreturn { renderBadges, flagRunEndedBadge };")(esc, activeFiles);
+  const pane = document.getElementById("preview-pane");
+  pane.style.width = width + "px";
+  pane.innerHTML =
+    '<div class="file-header" data-kbd-badge-anchor><span class="file-header-path folder-breadcrumb">logs/session.jsonl</span>' +
+    app.renderBadges({ type: "jsonl", kind: "agent-log", path: "logs/session.jsonl", summary: { adapter: "claude", is_done: false } }) +
+    '<span class="size file-header-size">1.2 MB</span></div>';
+  await document.fonts.ready;
+  const frames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  await frames();
+  const header = pane.querySelector(".file-header");
+  const read = () =>
+    [header, ...header.querySelectorAll("*")].map((node) => {
+      const r = node.getBoundingClientRect();
+      return [node.className, ...[r.left, r.top, r.width, r.height].map((v) => Math.round(v * 100) / 100)];
+    });
+  const before = read();
+  const badge = pane.querySelector(".badge-live, .badge-running");
+  const labelBefore = badge.textContent;
+  if (live) {
+    app.flagRunEndedBadge();
+  } else {
+    // _mirrorActiveFromFsEntry, as a running log turns live.
+    const running = document.querySelector(".file-header-badge.badge-running");
+    running.className = "file-header-badge badge-live";
+    running.textContent = "Live";
+  }
+  await frames();
+  const after = read();
+  const moved = before.flatMap((box, at) =>
+    JSON.stringify(box.slice(1)) === JSON.stringify(after[at].slice(1)) ? [] : [[box, after[at]]],
+  );
+  return { from: labelBefore, to: badge.textContent, width: Math.round(badge.getBoundingClientRect().width * 10) / 10, moved };
+}`;
+// The records whose status row draws an offer: to switch to the head, and to browse it.
+const OFFER_RECORDS = [
+  ["behind_head", {}],
+  ["current", { pinBehind: true }],
+  ["on_head", { checkoutAtHead: true }],
+];
+// The same records by the labels the header parts give them.
+const OFFERED = new Set(
+  OFFER_RECORDS.map(
+    ([name, change]) =>
+      `${name}${Object.keys(change).length ? ` ${Object.keys(change).join(" ")}` : ""}`,
+  ),
+);
+const TABS = ["", "files", "checks"];
+const WIDTHS = [980, 760, 560, 420, 360, 320];
+// Each part's header widths; together they are WIDTHS. The offers are counted in the part
+// that lays out the widest pane.
+const HEADER_PARTS = {
+  "header-wide": [980, 760],
+  "header-middle": [560, 420],
+  "header-narrow": [360, 320],
+};
+// The label part's chips: a pale label with a description, a dark one, a very pale one
+// whose border shows, white in upper case, two more of github.com's colors, one GitHub gave
+// no color, and one whose color is not six hex digits; the last two are drawn neutral.
+// github.com's own stylesheet computed each of the six colors in both themes
+// (tests/fixtures/github-label-colors.json), and each chip is held to what it computed
+// and to the formula, worked out below apart from any stylesheet.
+const LABEL_CASES = [
+  { name: "pale", color: "a2eeef", description: "New feature or request" },
+  { name: "dark", color: "d73a4a", description: null },
+  { name: "very pale", color: "f4f6f8", description: null },
+  { name: "white", color: "FFFFFF", description: null },
+  { name: "indigo", color: "2700af", description: null },
+  { name: "gray", color: "ededed", description: null },
+  { name: "no color", color: null, description: "GitHub gave it none" },
+  { name: "not a color", color: "#d73a4", description: null },
+];
+// An hsl() color as sRGB channels, 0 to 255, its lightness clamped as CSS clamps it.
+const hslChannels = (hue, saturation, lightness) => {
+  const s = saturation / 100;
+  const l = Math.min(100, Math.max(0, lightness)) / 100;
+  const k = (n) => (n + hue / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
+  return [f(0), f(8), f(4)].map((value) => value * 255);
+};
+// GitHub's label formula (github/styles.css), as [red, green, blue, alpha] for the ground,
+// the text, and the border of a label of *hex* whose properties are *hsl*, in *theme*.
+const labelFormula = (hex, [hue, saturation, lightness], theme) => {
+  const [r, g, b] = [0, 2, 4].map((at) => Number.parseInt(hex.slice(at, at + 2), 16));
+  const perceived = (r * 0.2126 + g * 0.7152 + b * 0.0722) / 255;
+  if (theme === "light") {
+    return {
+      background: [r, g, b, 1],
+      text: perceived > 0.453 ? [0, 0, 0, 1] : [255, 255, 255, 1],
+      border: [
+        ...hslChannels(hue, saturation, lightness - 25),
+        Math.max(0, Math.min((perceived - 0.96) * 100, 1)),
+      ],
+    };
+  }
+  const lighten = perceived < 0.6 ? (0.6 - perceived) * 100 : 0;
+  const text = hslChannels(hue, saturation, lightness + lighten);
+  return { background: [r, g, b, 0.18], text: [...text, 1], border: [...text, 0.3] };
+};
+const channels = (value) => {
+  const found = /^rgba?\(([^)]+)\)$/.exec(value);
+  const parts = found ? found[1].split(",").map(Number) : [];
+  return parts.length === 3 ? [...parts, 1] : parts.length === 4 ? parts : null;
+};
+// A computed color within a unit of each channel the formula gives, and its alpha within
+// the half of a hundredth Chrome rounds an alpha to.
+const nearColor = (value, wanted) =>
+  channels(value)?.every(
+    (channel, at) => Math.abs(channel - wanted[at]) <= (at === 3 ? 0.005 : 1),
+  ) ?? false;
+const PARTS = [
+  "launch",
+  ...Object.keys(HEADER_PARTS),
+  "offers",
+  "pulls",
+  "badges",
+  "labels",
+  "summary-wait",
+  "cold-landing",
+];
+const PART = (() => {
+  const at = process.argv.indexOf("--part");
+  const name = at < 0 ? "all" : process.argv[at + 1];
+  if (name !== "all" && !PARTS.includes(name)) {
+    throw new Error(`--part takes one of ${PARTS.join(", ")}, not ${name}`);
+  }
+  return name;
+})();
+const runs = (part) => PART === "all" || PART === part;
+// How long each step of the part took, on stderr, so a CI log shows where its time went.
+const began = performance.now();
+let lapAt = began;
+const lap = (step) => {
+  const now = performance.now();
+  process.stderr.write(
+    `${PART}: ${step} in ${Math.round(now - lapAt)} ms (${Math.round(now - began)} ms in all)\n`,
+  );
+  lapAt = now;
+};
+
+async function main() {
+  const bin = process.env.CHROME_BIN;
+  if (!bin) {
+    throw new Error("CHROME_BIN names no Chrome");
+  }
+  if (!KPRESS || !fs.existsSync(path.join(KPRESS, "css/style-tokens.css"))) {
+    throw new Error("KPRESS_STATIC holds no css/style-tokens.css");
+  }
+  const profiles = process.env.CHROME_PROFILES;
+  if (!profiles) {
+    throw new Error("CHROME_PROFILES names no directory for Chrome's profile");
+  }
+  const server = await serve();
+  try {
+    const browser = await launchChrome(bin, { profiles });
+    lap("Chrome started");
+    try {
+      await browser.send("Page.enable");
+      await browser.send("Page.navigate", { url: `http://127.0.0.1:${server.address().port}/` });
+      await browser.waitFor(
+        `document.readyState === "complete" && Boolean(window.metabrowser?.refChip)`,
+      );
+      lap("the page loaded");
+      if (runs("launch")) {
+        // Every face the page declares, loaded before any part lays text out in it.
+        const faces = await browser.evaluate(`(async () => {
+          await Promise.all([...document.fonts].map((face) => face.load().catch(() => null)));
+          await document.fonts.ready;
+          return [...document.fonts].map((face) => face.status);
+        })()`);
+        check(
+          "the page, its SDK, and every face it declares load",
+          faces.length > 0 && faces.every((status) => status === "loaded" || status === "error"),
+          JSON.stringify(faces),
+        );
+        lap(`${faces.length} faces loaded`);
+      }
+      const offersDrawn = new Set();
+      const summaryWaits = [];
+      const revisits = [];
+      const briefs = [];
+      const widths = PART === "all" ? WIDTHS : (HEADER_PARTS[PART] ?? []);
+      for (const width of widths) {
+        const seen = {};
+        for (const [name, change] of RECORDS) {
+          const label = `${name}${Object.keys(change).length ? ` ${Object.keys(change).join(" ")}` : ""}`;
+          for (const tab of TABS) {
+            // The author's row is the same on every tab, so its stack chip arrives on one: one
+            // stack, and two for the records with an avatar, the longest rows.
+            // The Diff summary is the header's last row on every tab, so it is measured on each.
+            const measured = {
+              ...(tab === "" ? { ...change, stackChip: change.avatar ? 2 : 1 } : change),
+              summary: true,
+            };
+            const shape = await browser.evaluate(
+              `(${MEASURE})(${JSON.stringify(name)}, ${JSON.stringify(measured)}, ${JSON.stringify(tab)}, ${width})`,
+            );
+            const where = `${width} px, ${label} ${tab || "conversation"}`;
+            check(`${where}: the Diff summary is measured`, shape.summaryMoves !== null);
+            if (shape.mergeShown !== null) {
+              check(
+                `${where}: the merge's chips and arrow show whole on their line`,
+                shape.mergeShown >= 0.99,
+                String(shape.mergeShown),
+              );
+            }
+            if (shape.summaryMoves !== null) {
+              const moves = shape.summaryMoves;
+              check(
+                `${where}: the Diff summary arriving moves nothing in the header`,
+                moves.moved === null,
+                JSON.stringify(moves.moved),
+              );
+              check(
+                `${where}: the Diff summary keeps its row's height, on one line`,
+                Math.abs(moves.rowBefore - moves.rowAfter) <= 0.5 &&
+                  moves.toggleHeight !== null &&
+                  moves.toggleHeight <= moves.rowBefore + 0.5,
+                JSON.stringify(moves),
+              );
+              check(
+                `${where}: the Diff summary starts on the header's content edge`,
+                Math.abs(moves.left) <= 0.5,
+                JSON.stringify(moves),
+              );
+              check(
+                `${where}: the Diff summary's tooltip is its whole words only while cut short`,
+                moves.cut
+                  ? moves.tip === "35 files changed · 2 A, 3 D, 30 M · +1,234 −3,423"
+                  : moves.tip === null,
+                JSON.stringify({ cut: moves.cut, tip: moves.tip }),
+              );
+              if (width === 320) {
+                check(
+                  `${where}: at the narrowest width the breakdown is cut short`,
+                  moves.cut,
+                  JSON.stringify(moves),
+                );
+              }
+              if (moves.indent !== undefined) {
+                check(
+                  `${where}: the Diff summary's tree steps in from its header one level at a time`,
+                  offStep(moves.indent).length === 0 &&
+                    new Set(moves.indent.rows.map((row) => row.level)).size === 5,
+                  JSON.stringify(moves.indent),
+                );
+              }
+            }
+            if (shape.chipMoves !== null) {
+              check(
+                `${where}: a late stack chip moves nothing in the header`,
+                shape.chipMoves.moved === null,
+                JSON.stringify(shape.chipMoves.moved),
+              );
+              check(
+                `${where}: a late stack chip shows whole`,
+                shape.chipMoves.chipShown >= 0.99,
+                String(shape.chipMoves.chipShown),
+              );
+              check(
+                `${where}: the stack chip ends on the header's content edge`,
+                Math.abs(shape.chipMoves.rightEdge) <= 0.5,
+                String(shape.chipMoves.rightEdge),
+              );
+              check(
+                `${where}: the stack chip and the sentence do not overlap`,
+                shape.chipMoves.overlap <= 0.5,
+                String(shape.chipMoves.overlap),
+              );
+              check(
+                `${where}: the stack menu's heading starts on its rows' inset`,
+                shape.chipMoves.headingInset !== null &&
+                  Math.abs(shape.chipMoves.headingInset) <= 0.5,
+                String(shape.chipMoves.headingInset),
+              );
+              check(
+                `${where}: the stack menu's heading names the menu, once`,
+                shape.chipMoves.headingNamesMenu === true,
+                String(shape.chipMoves.headingNamesMenu),
+              );
+            }
+            seen[`${label} ${tab || "conversation"}`] = { ...shape, label };
+            if (shape.offers > 0) {
+              offersDrawn.add(label);
+            }
+            // The status line is there exactly while it has something to say, here an offer,
+            // each drawn where it is seen; a rate limit's hold is said in the note's place and
+            // adds no line (A3, A4 of review A on #506).
+            check(
+              `${where}: the status line is there exactly while it draws an offer`,
+              shape.statusShown === OFFERED.has(label) &&
+                shape.offers === (OFFERED.has(label) ? 1 : 0),
+              JSON.stringify({ statusShown: shape.statusShown, offers: shape.offers }),
+            );
+            const lead = shape.lead;
+            if (change.lastRefresh?.outcome === "rate_limited") {
+              // At every width: where it cannot be whole it is cut short, with its text as a
+              // tooltip, and never leaves the line as an age does; it is said in the page's
+              // own time form, a time of day today and a short date and time otherwise (B3 of
+              // review B on #506). Leaving the line, the page's whole timestamp put it out of
+              // view from 640 px down.
+              check(
+                `${where}: a rate limit's hold is said in the note's place, in the failure's ink, in view at every width`,
+                lead !== null &&
+                  /^GitHub rate limit · next check at /.test(lead.said) &&
+                  !/:\d\d:\d\d/.test(lead.said) &&
+                  lead.held &&
+                  lead.inView &&
+                  lead.textWidth >= lead.holdFloor - 0.5,
+                JSON.stringify(lead),
+              );
+            }
+            if (lead?.sentence && !lead.held) {
+              // Beside the sentence the note is whole or out of view, and while it is in view
+              // the login and the sentence keep their natural widths (A2 of review A on #506).
+              check(
+                `${where}: the note beside the sentence is whole or out of view, the login and the sentence whole while it shows`,
+                !lead.inView ||
+                  (!lead.cut &&
+                    (lead.login === null || lead.login.width >= lead.login.natural - 0.05) &&
+                    lead.action.width >= lead.action.natural - 0.05),
+                JSON.stringify(lead),
+              );
+              if (width >= 760 && !change.longNames) {
+                check(
+                  `${where}: in a wide pane the note shows whole`,
+                  lead.inView && !lead.cut,
+                  JSON.stringify(lead),
+                );
+              }
+            }
+            if (shape.agesRow !== null) {
+              // The ages give way first, cut short at their end, and the links after them stay
+              // whole while any of the ages shows (B4 of review B on #506).
+              check(
+                `${where}: the ages give way before View on GitHub and Browse code, which show whole while any age does`,
+                shape.agesRow.linksShown >= 0.99 || shape.agesRow.agesWidth < 1,
+                JSON.stringify(shape.agesRow),
+              );
+              if (width >= 420) {
+                check(
+                  `${where}: View on GitHub and Browse code show whole`,
+                  shape.agesRow.linksShown >= 0.99,
+                  JSON.stringify(shape.agesRow),
+                );
+              }
+            }
+            if (lead !== null) {
+              check(
+                `${where}: no dot shows beside a note of no width`,
+                !lead.dotInView || (lead.inView && lead.textWidth >= 1),
+                JSON.stringify(lead),
+              );
+              check(
+                `${where}: a note cut short carries its whole text as its tooltip, and only then`,
+                lead.cut ? lead.tip === lead.said : lead.tip === null,
+                JSON.stringify(lead),
+              );
+            }
+            if (shape.badgeOffset !== null) {
+              check(
+                `${where}: the state badge is centred on its row`,
+                Math.abs(shape.badgeOffset) <= 1,
+                String(shape.badgeOffset),
+              );
+            }
+            if (shape.edges !== null) {
+              const { iconLeft, textAfterIcon, gap, numberRight, numberOverSlot } = shape.edges;
+              check(
+                `${where}: the title's icon starts on the header's left edge, its text just after it`,
+                Math.abs(iconLeft) <= 0.5 && Math.abs(textAfterIcon - gap) <= 1,
+                JSON.stringify(shape.edges),
+              );
+              check(
+                `${where}: the title's number ends on the header's right edge, over the stack slot's end`,
+                Math.abs(numberRight) <= 0.5 &&
+                  numberOverSlot !== null &&
+                  Math.abs(numberOverSlot) <= 0.5,
+                JSON.stringify(shape.edges),
+              );
+            }
+            check(
+              `${where}: the state row is as tall as the stack strut`,
+              shape.strut !== null && Math.abs(shape.meta - shape.strut) <= 0.5,
+              JSON.stringify({ meta: shape.meta, strut: shape.strut }),
+            );
+            check(
+              `${where}: nothing ends past the header, and the pane does not scroll sideways`,
+              shape.pastHeader <= 0.5 && !shape.paneScrolls,
+              JSON.stringify({
+                culprit: shape.culprit,
+                pastHeader: shape.pastHeader,
+                paneScrolls: shape.paneScrolls,
+              }),
+            );
+            // The status line is one of the header's metadata lines (mb-2u08), there only
+            // while it has something to say: as tall as the row of ages above it, and every
+            // row one gap under the row before it. Refresh, shown or held, ends the row of
+            // ages (A1 of review A on #506), no taller than that row. As a bordered .btn,
+            // Refresh made its line 26 px against the row of ages' 18, and an empty labels row
+            // stood between them.
+            const line = (row) => shape.lines.find((each) => each.row === row);
+            const opened = line("opened");
+            const statusLine = line("status");
+            const tall = (each) => Math.round((each.bottom - each.top) * 100) / 100;
+            check(
+              `${where}: the status line, when there, is as tall as the row of ages`,
+              opened !== undefined &&
+                (statusLine === undefined || Math.abs(tall(statusLine) - tall(opened)) <= 0.5),
+              JSON.stringify(shape.lines),
+            );
+            check(
+              `${where}: the note's age ticking from "just now" to "59 min ago" widens its slot not at all`,
+              shape.ageWidens === null || shape.ageWidens <= 0.5,
+              JSON.stringify({ ageWidens: shape.ageWidens }),
+            );
+            check(
+              `${where}: Refresh's slot ends the row of ages at the header's content edge, no taller than it`,
+              shape.refresh !== null &&
+                opened !== undefined &&
+                shape.refresh.height <= tall(opened) + 0.5 &&
+                Math.abs(shape.refresh.rightEdge) <= 0.5,
+              JSON.stringify({ refresh: shape.refresh, lines: shape.lines }),
+            );
+            check(
+              `${where}: each row is the header's one gap under the row before it`,
+              shape.lines.every(
+                (each, at) =>
+                  at === 0 || Math.abs(each.top - shape.lines[at - 1].bottom - shape.rowGap) <= 0.5,
+              ),
+              JSON.stringify({ rowGap: shape.rowGap, lines: shape.lines }),
+            );
+            if (shape.recordLabels === 0) {
+              // The next row shown, the status line or the summary, is one gap under it.
+              const next = shape.lines[shape.lines.findIndex((each) => each.row === "opened") + 1];
+              check(
+                `${where}: a pull request with no labels has no labels row, the next row one gap under the row of ages`,
+                line("labels") === undefined &&
+                  opened !== undefined &&
+                  next !== undefined &&
+                  Math.abs(next.top - opened.bottom - shape.rowGap) <= 0.5,
+                JSON.stringify(shape.lines),
+              );
+            }
+          }
+        }
+        lap(`the header at ${width} px`);
+        // While the record is on its way the labels row is held, since the record may bring
+        // labels: a record with labels lands moving nothing, row by row. One with none lands
+        // without that row and the gap before it, and moves nothing above it (mb-2u08).
+        const reference = seen["absent conversation"];
+        const labelsRow = reference.rows.find((row) => row.row === "labels");
+        const labelsSpace = (labelsRow?.height ?? Number.NaN) + reference.rowGap;
+        const unlabelled = {
+          header: reference.header - labelsSpace,
+          tabBar: reference.tabBar - labelsSpace,
+          rows: reference.rows.filter((row) => row.row !== "labels"),
+        };
+        // The status line is there only while it has something to say (mb-ne91), here an
+        // offer: then it is one metadata line, as tall as the row of ages, and one gap more,
+        // and moves nothing above it. Without one it is not there, a hold included. The
+        // expectation is the empty record's row of ages, never the line measured (A4 of review A
+        // on #506).
+        const agesHeight = reference.rows.find((row) => row.row === "opened").height;
+        for (const [key, shape] of Object.entries(seen)) {
+          const none = shape.recordLabels === 0;
+          const base = none ? unlabelled : reference;
+          const offered = OFFERED.has(shape.label);
+          const extra = offered ? agesHeight + shape.rowGap : 0;
+          const expected = {
+            header: base.header + extra,
+            tabBar: base.tabBar + extra,
+            rows: base.rows.map((row) =>
+              row.row === "status" ? { ...row, height: offered ? agesHeight : 0 } : row,
+            ),
+          };
+          check(
+            `${width} px, ${key}: the header lays out to the empty record's height${none ? " less its labels row and that row's gap" : ""}${extra > 0 ? ", with its status line" : ""}, row by row`,
+            Math.abs(shape.header - expected.header) <= (none ? 0.5 : 0) &&
+              Math.abs(shape.tabBar - expected.tabBar) <= (none ? 0.5 : 0) &&
+              JSON.stringify(shape.rows) === JSON.stringify(expected.rows),
+            JSON.stringify({ expected, [key]: shape }),
+          );
+        }
+      }
+      for (const width of runs("badges") ? [980, 360] : []) {
+        for (const live of [true, false]) {
+          const run = await browser.evaluate(`(${RUN_BADGE})(${live}, ${width})`);
+          check(
+            `${width} px, a run's badge from ${run.from} to ${run.to}: nothing in the file header moves`,
+            run.moved.length === 0 && run.from !== run.to,
+            JSON.stringify(run),
+          );
+        }
+      }
+      if (runs("badges")) {
+        lap("the run badge");
+      }
+      if (runs("summary-wait")) {
+        for (const theme of ["light", "dark"]) {
+          for (const width of [560, 420, 360]) {
+            const where = `${theme}, ${width} px`;
+            const drawn = await browser.evaluate(
+              `(${SUMMARY_WAIT})(${width}, ${JSON.stringify(theme)}, "arrives")`,
+            );
+            const { waiting, arrived } = drawn;
+            check(
+              `${where}: while the comparison is read, the Diff summary's row holds the pending placeholder, unseen in the quiet period`,
+              waiting.quiet === "hidden" &&
+                waiting.shown === "visible" &&
+                waiting.pulse === "tally-pending-pulse" &&
+                waiting.ground === true,
+              JSON.stringify(waiting),
+            );
+            check(
+              `${where}: the placeholder is on the row's line, from the row's start, as wide as a summary of one status`,
+              waiting.left !== null &&
+                Math.abs(waiting.left) <= 0.5 &&
+                Math.abs(waiting.centre) <= 0.5 &&
+                Math.abs(waiting.width - PENDING_EM * waiting.em) <= 0.5 &&
+                Math.abs(waiting.height - 0.85 * waiting.em) <= 0.5 &&
+                Math.abs(waiting.row - 24) <= 0.5,
+              JSON.stringify(waiting),
+            );
+            check(
+              `${where}: the summary takes the placeholder's place, and nothing in the header or under it moves`,
+              !arrived.placeholder &&
+                arrived.summary &&
+                arrived.children === 1 &&
+                Math.abs(arrived.row - waiting.row) <= 0.5 &&
+                JSON.stringify(arrived.places) === JSON.stringify(waiting.places),
+              JSON.stringify({ waiting, arrived }),
+            );
+            // The cached list's brief line in the placeholder's place (mb-z8ea): the summary's
+            // words, where the summary's will be, which replaces it moving nothing.
+            const briefed = await browser.evaluate(
+              `(${SUMMARY_WAIT})(${width}, ${JSON.stringify(theme)}, "brief")`,
+            );
+            const { brief } = briefed.waiting;
+            check(
+              `${where}: while the comparison is read, the row holds the cached list's brief line, saying what the summary will`,
+              brief !== null &&
+                briefed.waiting.shown === null &&
+                brief.text === briefed.arrived.text &&
+                Math.abs(briefed.waiting.row - 24) <= 0.5,
+              JSON.stringify(briefed),
+            );
+            check(
+              `${where}: the summary replaces the brief line with its words in the same place, and nothing in the header or under it moves`,
+              brief !== null &&
+                briefed.arrived.summary &&
+                briefed.arrived.children === 1 &&
+                Math.abs(brief.wordsLeft - briefed.arrived.wordsLeft) <= 0.5 &&
+                Math.abs(brief.wordsTop - briefed.arrived.wordsTop) <= 0.5 &&
+                Math.abs(brief.textRight - briefed.arrived.textRight) <= 0.5 &&
+                Math.abs(briefed.arrived.row - briefed.waiting.row) <= 0.5 &&
+                JSON.stringify(briefed.arrived.places) === JSON.stringify(briefed.waiting.places),
+              JSON.stringify(briefed),
+            );
+            briefs.push({
+              where,
+              brief,
+              summary: [
+                briefed.arrived.wordsLeft,
+                briefed.arrived.wordsTop,
+                briefed.arrived.textRight,
+              ],
+              row: [briefed.waiting.row, briefed.arrived.row],
+            });
+            const failed = await browser.evaluate(
+              `(${SUMMARY_WAIT})(${width}, ${JSON.stringify(theme)}, "fails")`,
+            );
+            check(
+              `${where}: a read that fails leaves the row empty, at its height, and moves nothing`,
+              failed.waiting.shown === "visible" &&
+                !failed.arrived.placeholder &&
+                !failed.arrived.summary &&
+                failed.arrived.children === 0 &&
+                JSON.stringify(failed.arrived.places) === JSON.stringify(failed.waiting.places),
+              JSON.stringify(failed),
+            );
+            // The pull request whose comparison arrived, opened again in this document: its
+            // summary is in the first frame that paints its record, no frame shows the
+            // placeholder, and nothing is read (mb-neg9).
+            const { revisit } = await browser.evaluate(
+              `(${SUMMARY_WAIT})(${width}, ${JSON.stringify(theme)}, "revisit")`,
+            );
+            const painted = revisit.frames.at(-1);
+            check(
+              `${where}: opened again, the summary is drawn in the frame that paints the record, with no placeholder in any frame and no read`,
+              painted?.title === true &&
+                painted.summary &&
+                revisit.frames.every((frame) => !frame.placeholder) &&
+                revisit.reads === 0,
+              JSON.stringify(revisit),
+            );
+            revisits.push({ where, ...revisit });
+            summaryWaits.push({ where, waiting, arrived });
+          }
+        }
+        process.stderr.write(`summary-revisit: ${JSON.stringify(revisits)}\n`);
+        process.stderr.write(`summary-brief: ${JSON.stringify(briefs)}\n`);
+        process.stderr.write(
+          `summary-wait: ${JSON.stringify(summaryWaits.map(({ where, waiting, arrived }) => ({ where, block: [waiting.left, waiting.width, waiting.height, waiting.centre], row: [waiting.row, arrived.row], tabBar: [waiting.places.tabBar, arrived.places.tabBar], summary: [arrived.chevronLeft, arrived.wordsLeft, arrived.textRight] })))}\n`,
+        );
+        // The placeholder is as wide as a summary of one status, "1 file changed · 1 M · +3
+        // −1" to "8 files changed · 8 M · +120 −30", as each arrives in the row: it ends no
+        // sooner than the shortest one's text and no later than the longest one's header,
+        // from the row's start, in em of the header's type, in both themes (mb-vb51).
+        const sizes = [];
+        for (const theme of ["light", "dark"]) {
+          const arrivals = [];
+          for (const change of ONE_STATUS) {
+            arrivals.push(
+              await browser.evaluate(
+                `(${SUMMARY_WAIT})(560, ${JSON.stringify(theme)}, "arrives", ${JSON.stringify(change)})`,
+              ),
+            );
+          }
+          const em = (value, of) => Math.round((value / of) * 100) / 100;
+          const block = em(arrivals[0].waiting.width, arrivals[0].waiting.em);
+          const ends = arrivals.map(({ arrived }) => ({
+            label: arrived.label,
+            text: em(arrived.textRight, arrived.em),
+            header: em(arrived.toggleLeft + arrived.width, arrived.em),
+          }));
+          check(
+            `${theme}: the pending placeholder is as wide as a summary of one status`,
+            ends.length === ONE_STATUS.length &&
+              block >= Math.min(...ends.map((end) => end.text)) &&
+              block <= Math.max(...ends.map((end) => end.header)),
+            JSON.stringify({ block, ends }),
+          );
+          const three = summaryWaits.find(({ where }) => where.startsWith(theme))?.arrived;
+          sizes.push({
+            theme,
+            block,
+            ends,
+            three: three ? em(three.textRight, three.em) : null,
+          });
+        }
+        process.stderr.write(`summary-widths: ${JSON.stringify(sizes)}\n`);
+        lap("the Diff summary's wait");
+      }
+      if (runs("cold-landing")) {
+        const landings = [];
+        for (const width of [560, 360]) {
+          for (const labelled of [false, true]) {
+            const kind = labelled ? "a labelled pull request" : "an unlabelled pull request";
+            for (const outcome of ["quiet", "held", "slow"]) {
+              const where = `${width} px, ${kind}, ${outcome}`;
+              const run = await browser.evaluate(
+                `(${COLD_LANDING})(${width}, ${labelled}, ${JSON.stringify(outcome)})`,
+              );
+              landings.push({ where, run });
+              const { before, shownCold, landed } = run;
+              check(
+                `${where}: the cold page's Diff summary row holds the placeholder from first paint, in its quiet period`,
+                before.pending === "hidden",
+                JSON.stringify(before),
+              );
+              check(
+                `${where}: the cold page is held unseen in the quiet period, its tab keys live`,
+                before.cold &&
+                  before.header === "0" &&
+                  before.column === "0" &&
+                  before.live.length === 3 &&
+                  before.live.every(Boolean),
+                JSON.stringify(before),
+              );
+              check(
+                `${where}: the record lands where it lands in hand, the header and tab column shown together`,
+                !landed.cold &&
+                  landed.header === "1" &&
+                  landed.column === "1" &&
+                  landed.tabBar === run.landsAt &&
+                  run.halfShown === 0,
+                JSON.stringify({ landsAt: run.landsAt, landed, halfShown: run.halfShown }),
+              );
+              if (outcome === "slow") {
+                // A read slower than the quiet period shows the cold header, rows held: one
+                // with labels lands moving nothing, and one with none moves the tab bar up by
+                // the labels row and its gap as it lands, the one move left (mb-2u08).
+                check(
+                  `${where}: after the quiet period the cold header shows, rows held`,
+                  shownCold.cold && shownCold.header === "1" && shownCold.column === "1",
+                  JSON.stringify(shownCold),
+                );
+                check(
+                  `${where}: the placeholder shows with the cold header, so its row is never seen empty`,
+                  shownCold.pending === "visible",
+                  JSON.stringify(shownCold),
+                );
+                check(
+                  `${where}: ${labelled ? "the record lands moving nothing" : "the record lands moving the tab bar up by the labels row and its gap"}`,
+                  labelled ? shownCold.tabBar === landed.tabBar : shownCold.tabBar > landed.tabBar,
+                  JSON.stringify({ shownCold, landed }),
+                );
+              } else {
+                check(
+                  `${where}: the cold header never shows, so the tab bar never moves`,
+                  run.coldShown === 0 && run.tabBarsShown.length === 1,
+                  JSON.stringify({ coldShown: run.coldShown, tabBarsShown: run.tabBarsShown }),
+                );
+              }
+              if (outcome === "held") {
+                check(
+                  `${where}: a record that lands in the quiet period shows its header while the conversation still waits for its Markdown`,
+                  !landed.cold && landed.header === "1" && run.bodyHeld === true,
+                  JSON.stringify({ landed, bodyHeld: run.bodyHeld }),
+                );
+              }
+            }
+          }
+        }
+        process.stderr.write(
+          `cold-landing: ${JSON.stringify(landings.map(({ where, run }) => ({ where, landsAt: run.landsAt, cold: run.shownCold.tabBar, landed: run.landed.tabBar, coldShown: run.coldShown })))}\n`,
+        );
+        lap("the cold landings");
+      }
+      if (runs("labels")) {
+        const github = JSON.parse(fs.readFileSync(LABEL_COLORS, "utf8"));
+        for (const theme of ["light", "dark"]) {
+          const empty = await browser.evaluate(
+            `(${MEASURE})("absent", ${JSON.stringify({ theme })}, "", 980)`,
+          );
+          const shape = await browser.evaluate(
+            `(${MEASURE})("current", ${JSON.stringify({ labels: LABEL_CASES, theme })}, "", 980)`,
+          );
+          check(
+            `${theme}: every label is drawn, in order`,
+            JSON.stringify(shape.labels.map((chip) => chip.name)) ===
+              JSON.stringify(LABEL_CASES.map((label) => label.name)),
+            JSON.stringify(shape.labels),
+          );
+          const neutralBox = shape.labels.find((chip) => chip.name === "no color")?.box;
+          for (const chip of shape.labels) {
+            const label = LABEL_CASES.find((each) => each.name === chip.name);
+            const where = `${theme}, the ${chip.name} label`;
+            const hex = /^[0-9a-fA-F]{6}$/.test(label?.color ?? "")
+              ? label.color.toLowerCase()
+              : null;
+            check(
+              `${where}: carries GitHub's color, or none`,
+              chip.color === hex,
+              JSON.stringify(chip),
+            );
+            check(
+              `${where}: its description is its tooltip, and no description no tooltip`,
+              chip.tip === label?.description,
+              JSON.stringify(chip),
+            );
+            check(
+              `${where}: keeps the chip's font size, padding, border, corner, and height`,
+              neutralBox !== undefined && chip.box === neutralBox,
+              JSON.stringify({ chip: chip.box, neutral: neutralBox }),
+            );
+            if (hex === null) {
+              check(
+                `${where}: is the neutral chip, --muted on no ground in a --border box`,
+                chip.background === "rgba(0, 0, 0, 0)" &&
+                  chip.text === shape.neutral.text &&
+                  chip.border === shape.neutral.border &&
+                  chip.properties === null,
+                JSON.stringify({ chip, neutral: shape.neutral }),
+              );
+              continue;
+            }
+            const computed = github.computed[theme][hex];
+            const [r, g, b] = [0, 2, 4].map((at) => Number.parseInt(hex.slice(at, at + 2), 16));
+            const [h, s, l] = computed.properties;
+            check(
+              `${where}: carries the properties github.com gave this color`,
+              chip.properties ===
+                `--github-label-r:${r};--github-label-g:${g};--github-label-b:${b};--github-label-h:${h};--github-label-s:${s};--github-label-l:${l}`,
+              JSON.stringify(chip),
+            );
+            const formula = labelFormula(hex, computed.properties, theme);
+            check(
+              `${where}: its ground, text, and border are GitHub's formula's`,
+              nearColor(chip.background, formula.background) &&
+                nearColor(chip.text, formula.text) &&
+                nearColor(chip.border, formula.border),
+              JSON.stringify({ chip, formula }),
+            );
+            check(
+              `${where}: its ground, text, and border are what github.com computed for it`,
+              chip.background === computed.background &&
+                chip.text === computed.color &&
+                chip.border === computed.border,
+              JSON.stringify({ chip, github: computed }),
+            );
+          }
+          // A label an earlier cache names alone, without a color or a description, as a core
+          // or record cached before label colors draws it, until the record that colors it
+          // arrives: each chip starts and ends where the colored one does, and the rows hold.
+          const bare = await browser.evaluate(
+            `(${MEASURE})("current", ${JSON.stringify({
+              labels: LABEL_CASES.map(({ name }) => ({ name, color: null, description: null })),
+              theme,
+            })}, "", 980)`,
+          );
+          const places = (measured) =>
+            measured.labels.map((chip) => [chip.name, chip.left, chip.width]);
+          check(
+            `${theme}: a label's color and tooltip arriving move no chip and no row`,
+            bare.labels.every((chip) => chip.color === null && chip.tip === null) &&
+              JSON.stringify(places(bare)) === JSON.stringify(places(shape)) &&
+              JSON.stringify(bare.rows) === JSON.stringify(shape.rows) &&
+              bare.tabBar === shape.tabBar,
+            JSON.stringify({
+              bare: places(bare),
+              colored: places(shape),
+              rows: [bare.rows, shape.rows],
+            }),
+          );
+          // The same labels named alone, with the repository's cached set in the envelope, as
+          // a page first paints a record cached before label colors once the set is cached
+          // (mb-varu): every chip is colored and titled as the record's own colors draw it.
+          const known = await browser.evaluate(
+            `(${MEASURE})("current", ${JSON.stringify({
+              labels: LABEL_CASES.map(({ name }) => ({ name, color: null, description: null })),
+              repositoryLabels: LABEL_CASES.filter(({ color }) =>
+                /^[0-9a-fA-F]{6}$/.test(color ?? ""),
+              ).map(({ name, color, description }) => ({ name, color, description })),
+              theme,
+            })}, "", 980)`,
+          );
+          // A label the set holds is drawn as its own color draws it; one it does not hold, or
+          // holds without six hex digits, stays the neutral chip, with no tooltip.
+          const held = new Set(
+            LABEL_CASES.filter(({ color }) => /^[0-9a-fA-F]{6}$/.test(color ?? "")).map(
+              ({ name }) => name,
+            ),
+          );
+          const paint = (measured) =>
+            measured.labels
+              .filter((chip) => held.has(chip.name))
+              .map((chip) => [
+                chip.name,
+                chip.color,
+                chip.properties,
+                chip.tip,
+                chip.background,
+                chip.text,
+                chip.border,
+              ]);
+          check(
+            `${theme}: a label named alone takes the repository's color and tooltip on first paint`,
+            JSON.stringify(paint(known)) === JSON.stringify(paint(shape)) &&
+              paint(known).length === held.size &&
+              known.labels
+                .filter((chip) => !held.has(chip.name))
+                .every((chip) => chip.color === null && chip.tip === null),
+            JSON.stringify({ known: paint(known), own: paint(shape) }),
+          );
+          check(
+            `${theme}: a header with labels of every color lays out to the empty record's height, row by row`,
+            shape.header === empty.header &&
+              shape.tabBar === empty.tabBar &&
+              JSON.stringify(shape.rows) === JSON.stringify(empty.rows),
+            JSON.stringify({ empty: empty.rows, labels: shape.rows }),
+          );
+        }
+        lap("the labels in both themes");
+      }
+      if (runs("pulls")) {
+        const numbers = await browser.evaluate(NUMBERS);
+        check(
+          "a pull request's number is bold in Quick Search and the ref selector, as a stack's position is",
+          numbers.palette === "700" && numbers.selector === "700" && numbers.position === "700",
+          JSON.stringify(numbers),
+        );
+      }
+      for (const width of runs("pulls") ? PULLS_WIDTHS : []) {
+        const rows = await browser.evaluate(`(${PULLS_ROWS})(${JSON.stringify(PULLS)}, ${width})`);
+        for (const row of rows) {
+          const where = `${width} px, Pulls row #${row.number}`;
+          check(
+            `${where}: a late stack place moves nothing else in its row: not the age, the chevron, the icon, or the title`,
+            row.moved.length === 0,
+            JSON.stringify(row.moved),
+          );
+          check(
+            `${where}: the stack place sits before the number, on its line`,
+            row.before,
+            JSON.stringify(row),
+          );
+          check(`${where}: the number shows whole`, row.whole, JSON.stringify(row));
+          check(
+            `${where}: the place, the number, and the age end inside the row, and nothing scrolls sideways`,
+            row.inside,
+            JSON.stringify(row),
+          );
+          const oneStack = !PULLS.find((pull) => pull.number === row.number).stack.includes(" · ");
+          check(
+            `${where}: one stack's place shows whole`,
+            !row.cut || !oneStack,
+            JSON.stringify(row),
+          );
+          // The number's line is one line at every width, so the link is always two (mb-lkkt):
+          // before, three stacks took a third line at 300 px and one stack at 180 px. The
+          // row's third line is its change line (mb-d0a3), under the number's line.
+          check(
+            `${where}: the number's line stays one line, the link two, and the row three, its change line under the number's line and in the title's column`,
+            row.oneLine &&
+              row.grew === 0 &&
+              row.itemGrew === 0 &&
+              row.threeLines &&
+              Math.abs(row.lineFrom - row.textColumn) < 0.5,
+            JSON.stringify(row),
+          );
+          check(
+            `${where}: the title runs from the text column to the row's end, over the age`,
+            row.titleEnd && Math.abs(row.titleFrom - row.textColumn) < 0.5,
+            JSON.stringify(row),
+          );
+          // The icon leads the title's line, in its slot, since the title came first (2026-11-17);
+          // from mb-3cbf it led the number's line. A row in no stack is flush on the inset
+          // (mb-3vil). The chevron is on the change line (mb-d0a3), in the same slot, under the
+          // icon, and the line in the title's column; on the number's line it led the link.
+          check(
+            `${where}: the icon sits on the title's line, centered on it, on the row's inset, and the chevron on the change line under it`,
+            row.iconWithTitle &&
+              Math.abs(row.iconOff) < 0.5 &&
+              Math.abs(row.iconFrom) < 0.5 &&
+              row.chevronOnThird &&
+              Math.abs(row.chevronFrom) < 0.5 &&
+              Math.abs(row.lineFrom - row.textColumn) < 0.5,
+            JSON.stringify(row),
+          );
+          check(
+            `${where}: the author shows at its floor or wider, its name ending inside the line, or leaves the line whole`,
+            row.author !== "squeezed",
+            JSON.stringify(row),
+          );
+          check(
+            `${where}: the title keeps a share of its line`,
+            row.title >= 20,
+            JSON.stringify(row),
+          );
+        }
+        if (process.env.METABROWSER_PULLS_HEADER_MEASURE) {
+          console.error(JSON.stringify({ width, rows }));
+        }
+        lap(`the Pulls rows at ${width} px`);
+      }
+      // The records that carry an offer, mounted for the offers alone; in the header parts
+      // they are measured with every other record.
+      if (runs("offers")) {
+        for (const [name, change] of OFFER_RECORDS) {
+          const shape = await browser.evaluate(
+            `(${MEASURE})(${JSON.stringify(name)}, ${JSON.stringify(change)}, "", 980)`,
+          );
+          if (shape.offers > 0) {
+            offersDrawn.add(
+              `${name}${Object.keys(change).length ? ` ${Object.keys(change).join(" ")}` : ""}`,
+            );
+          }
+        }
+        check(
+          "both offers are drawn by the records that carry them",
+          offersDrawn.has("behind_head") &&
+            offersDrawn.has("current pinBehind") &&
+            offersDrawn.has("on_head checkoutAtHead"),
+          JSON.stringify([...offersDrawn]),
+        );
+        lap("the offers");
+      }
+    } finally {
+      await browser.close();
+    }
+    lap("Chrome closed");
+  } finally {
+    server.close();
+  }
+}
+
+main()
+  .catch((error) => {
+    failures.push(`pull header session threw: ${error?.stack || error}`);
+  })
+  .then(() => {
+    if (failures.length > 0) {
+      console.error(failures.join("\n"));
+      process.exitCode = 1;
+    } else {
+      console.log(`pull header in Chrome, ${PART}: ${checks} checks passed`);
+    }
+  });

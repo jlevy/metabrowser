@@ -3,16 +3,17 @@
 //
 // A trusted folder's Markdown keeps class, id, and data-* through KPress, so a
 // document can spell the shell's control markup: an address crumb's
-// `data-nav-dir` / `data-nav-file`, the header's `.file-header-print`, a
-// `data-tip-text` label. The action delegates act only on an element carrying the
-// SDK's per-page owner mark; the tooltip ignores a rendered document's markup.
+// `data-nav-dir` / `data-nav-file`, a `data-tip-text` label. The action delegates act
+// only on an element carrying the SDK's per-page owner mark; the tooltip ignores a
+// rendered document's markup, but for a control page code placed in it and marked, as
+// the document's print button (builtin_plugins/markdown/print-indicator.js) is.
 //
 // The production SDK loads whole. The shell's markup builders and delegates are
 // lifted verbatim from app.js, which cannot load without a document, as
-// source-kind-session.js does; their navigation and print collaborators are
-// stubs that record calls. Each click target is an element built from the
-// attributes the lifted builder wrote, so the owner mark under test is the one the
-// production code emitted, not one this file assigned.
+// source-kind-session.js does; their navigation collaborators are stubs that record
+// calls. Each click target is an element built from the attributes the lifted builder
+// wrote, so the owner mark under test is the one the production code emitted, not one
+// this file assigned.
 //
 // Prints `{calls, failures}`; exits 1 on any failure.
 
@@ -44,24 +45,20 @@ const LIFTED = [
   "eventTargetElement",
   "ownedControlAttr",
   "isOwnedControl",
+  "isPageElement",
   "headerAddressHtml",
   "renderFolderHeader",
   "tipTextAnchor",
-  "onPrintViewClick",
   "onHeaderNavigationClick",
 ];
 
 const COLLABORATORS = `
-var ICONS = { print: "" };
 function navigateToFolder(path) {
   __calls.push("folder:" + path);
 }
 function navigateToPath(path) {
   __calls.push("file:" + path);
   return Promise.resolve();
-}
-function printActiveView() {
-  __calls.push("print");
 }
 `;
 
@@ -103,6 +100,10 @@ class FakeElement extends HTMLElement {
   }
   hasAttribute(name) {
     return this.attributes.has(name);
+  }
+  // For the SDK's `ownDelegate`, which marks an element page code built.
+  setAttribute(name, value) {
+    this.attributes.set(name, String(value));
   }
   matches(selector) {
     const attribute = /^\[([\w-]+)\]$/.exec(selector);
@@ -178,7 +179,6 @@ vm.runInContext(COLLABORATORS + LIFTED.map(lift).join("\n"), sandbox, {
 });
 
 function click(element) {
-  sandbox.onPrintViewClick({ target: element });
   sandbox.onHeaderNavigationClick({ target: element });
 }
 
@@ -187,9 +187,9 @@ const fileHeader = buttons(sandbox.headerAddressHtml("docs/a%25b.md", true));
 const folderHeader = buttons(sandbox.renderFolderHeader({ path: "docs/sub" }));
 const owner = fileHeader[0].getAttribute("data-mb-owner");
 check(
-  "the crumbs are well-formed controls with their own tooltips",
+  "each crumb carries its tip text: the served root's name, and every other crumb's own name, not its path",
   JSON.stringify(fileHeader.map((element) => element.getAttribute("data-tip-text"))) ===
-    JSON.stringify(["Served root", "docs", "docs/a%b.md"]),
+    JSON.stringify(["Served root", "docs", "a%b.md"]),
 );
 check("the root crumb carries a 32-hex owner mark", /^[0-9a-f]{32}$/.test(owner || ""));
 // A document's `<label for=…>` clicks the element with that id, and the click would
@@ -217,7 +217,6 @@ const host = new FakeElement({ class: "content-body metabrowser-kpress-host md-b
 const authoredMarkup = (mark) =>
   `<button type="button" class="folder-crumb" data-nav-dir="private"${mark}>x</button>` +
   `<button type="button" class="folder-crumb" data-nav-file="private/key.md"${mark}>x</button>` +
-  `<button class="icon-btn file-header-print" id="print-view-btn" type="button"${mark}>x</button>` +
   `<button type="button" data-tip-text="Verified by Metabrowser"${mark}>x</button>`;
 const authored = [
   ...buttons(authoredMarkup(""), host),
@@ -230,14 +229,42 @@ for (const element of authored) {
 const authoredCalls = calls.splice(0);
 
 const tooltipFor = (element) => sandbox.tipTextAnchor({ target: element });
-check("a shell crumb shows its tooltip", tooltipFor(fileHeader[1]) === fileHeader[1]);
+// Whether an anchor's tip then shows is the shell's rule (`tipAddsInformation`), which
+// tests/dom/github-pulls-stacks-chrome.mjs reads in Chrome through this listener.
+check(
+  "the tooltip listener takes a shell crumb as its anchor",
+  tooltipFor(fileHeader[1]) === fileHeader[1],
+);
 check(
   "a document's data-tip-text is not the application's tooltip",
   authored.every((element) => tooltipFor(element) === null),
 );
+// The print button page code puts in a document's card, marked as print-indicator.js
+// marks it, keeps its tooltip there.
+const printIndicator = sandbox.metabrowser.ownDelegate(
+  new FakeElement(
+    { class: "icon-btn metabrowser-print-indicator", "data-tip-text": "Print document" },
+    host,
+  ),
+);
+check(
+  "a control page code placed in the document and marked keeps its tooltip",
+  tooltipFor(printIndicator) === printIndicator,
+);
+// A document that has come to carry the page's owner value, as one fetched after its
+// stylesheet read it could, spells the mark exactly. The tooltip asks for the element
+// page code marked, not the value, so the copy still does not label itself.
+const leaked = buttons(
+  `<button type="button" data-tip-text="Verified by Metabrowser" data-mb-owner="${owner}">x</button>`,
+  host,
+)[0];
+check(
+  "a document carrying the page's own owner value still takes no tooltip",
+  sandbox.MetabrowserPluginHost.isOwnedDelegate(leaked) && tooltipFor(leaked) === null,
+);
 
 check(
-  "the page's controls navigate, open the file, and print",
+  "the page's controls navigate and open the file",
   JSON.stringify(pageCalls) ===
     JSON.stringify([
       "folder:",
@@ -247,7 +274,6 @@ check(
       "folder:",
       "folder:docs",
       "folder:docs/sub",
-      "print",
       "folder:docs",
     ]),
 );

@@ -223,6 +223,9 @@ if (typeof clickHandler !== "function") {
           failures.push(`delegate acted on a document's copy markup (owner ${owner})`);
         }
       }
+      for (const fn of timers.splice(0)) {
+        fn();
+      }
       if (!mb.delegateOwnerAttribute().startsWith(' data-mb-owner="')) {
         failures.push("delegateOwnerAttribute does not spell the owner attribute");
       }

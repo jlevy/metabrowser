@@ -1,16 +1,22 @@
 # Inventory Provider Contract
 
-**Status:** Implemented for the Python reference provider; the fdu provider is planned.
+**Status:** Built: the contract in `inventory_engine/contract.py`, the coordinator, and
+one provider, the Python reference engine
+([Python Inventory Engine](arch-inventory-engine-python.md)). Planned: a native fdu
+provider behind this same contract
+([provider plan](../specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md),
+Phase 2).
 
 Metabrowser owns a sealed interface between application behavior and the engine that
 walks, retains, aggregates, and watches one served root.
-The interface lets the Python reference implementation and a future fdu-backed
-implementation answer the same requests without exposing either engine’s retained-index
-types or concurrency model.
+The interface lets any engine answer the same requests without exposing its
+retained-index types or concurrency model.
+This document states what every provider guarantees; everything that depends on one
+engine’s implementation is in that engine’s document.
 
 The provider is authoritative for filesystem facts and aggregate indexes.
-The application coordinator owns root selection, host-only decorations, response
-caching, browser event projection, and serialization.
+The application coordinator (`inventory_engine/coordinator.py`) owns root selection,
+host-only decorations, response caching, browser event projection, and serialization.
 Routes depend on the coordinator and cannot select or inspect a provider.
 
 ```text
@@ -19,15 +25,13 @@ routes and browser event projection
       InventoryCoordinator + overlay
                 |
           InventoryHandle
-          /             \
- _PythonInventoryStore  fdu-backed store (planned)
+                |
+       one provider per engine
 ```
 
-`InventoryHandle` is a structural protocol, not a wrapper class.
-The private Python store implements its five operations directly and also owns walking,
-watching, retained indexes, and projection execution.
-Those implementation helpers remain private without a forwarding object that duplicates
-the provider API.
+`InventoryHandle` is a structural protocol, not a wrapper class: a provider implements
+its five operations directly, and its helpers stay private without a forwarding object
+that duplicates the API.
 
 ## One Opened Root
 
@@ -42,9 +46,10 @@ runs. Its five operations are:
 - `prioritize(request)`, which changes discovery order without changing semantics
 - `close()`, which cancels and joins provider work before it returns
 
-The application constructs the backend in its lifespan composition root.
-A root change closes the old handle, invalidates host caches and cursors, opens the
-replacement, and then makes the new coordinator state visible.
+The application constructs the backend in its lifespan composition root
+(`inventory_engine/runtime.py`). A root change closes the old handle, invalidates host
+caches and cursors, opens the replacement, and then makes the new coordinator state
+visible.
 Tasks belonging to a closed session cannot publish into the replacement session.
 The provider session, scope fingerprint, and semantic fingerprint are immutable for the
 life of a handle. A read or refresh carrying different identity raises
@@ -52,10 +57,11 @@ life of a handle. A read or refresh carrying different identity raises
 failure and publishes a host reset so stream consumers recover coherently.
 Every concurrent `close()` caller joins the same shutdown before returning.
 
-`METABROWSER_INVENTORY_PROVIDER` selects the sealed in-tree factory entry.
-Phase 1 accepts only `python`; an unknown value fails explicitly.
-The performance harnesses use the same selection axis, so adding `fdu` does not require
-a second benchmark path.
+`METABROWSER_INVENTORY_PROVIDER` selects an entry of the sealed factory
+(`InventoryProvider` in `inventory_engine/factory.py`), which lists the providers this
+build ships. An unknown value fails at startup instead of falling back.
+The performance harnesses take the same selection as `--provider`, so a new provider
+needs no second benchmark path.
 
 ## Configuration and Identity
 
@@ -69,42 +75,35 @@ Configuration separates state identity from execution policy:
 | Observation | watch mode | Reported through source, freshness, and diagnostics |
 | Selection | depth, row, and work bounds carried by each query | Changes one answer without changing the opened root’s identity |
 
-`DiscoveryBudget.max_files` limits regular files, not directory rows.
 Query `max_rows` bounds each returned page independently, and complete directory-style
 consumers follow every continuation.
 Metabrowser route and initial-stream tree assembly use `INVENTORY_TREE_PAGE_ROWS` rather
-than reusing the `INVENTORY_MAX_FILES` discovery budget.
+than reusing the discovery budget.
 One `ReadRequest` contains at most `MAX_QUERIES_PER_READ` queries, which also bounds a
 dirty-path projection batch.
 The opened provider discovers without a depth limit.
-The walker and watcher both apply `hidden_allowlist`; a name that changes scope cannot
-be fingerprinted without also changing observation behavior.
+Discovery and observation both apply `hidden_allowlist`; a name that changes scope
+cannot be fingerprinted without also changing observation behavior.
 
 Traversal is breadth-first.
-The v1 contract names and validates one observation-compatible scope: hidden components
-are excluded except for the allowlist, symlinks are visible leaves and never followed,
+The contract names and validates one observation-compatible scope: hidden components are
+excluded except for the allowlist, symlinks are visible leaves and never followed,
 filesystem boundaries are crossed, and files, directories, and symlinks are admitted.
 An unsupported scope fails at config construction; providers cannot silently ignore
 inert options.
 
-The scope fingerprint is SHA-256 over the UTF-8 compact JSON array of sorted
-`[name, value]` string pairs.
-The payload includes the `inventory-scope-v2` schema identity.
-Structured values are compact canonical JSON strings within that outer array.
+Every provider computes the scope fingerprint with the application helper
+`inventory_scope_fingerprint`, whose docstring defines the portable encoding; none
+hashes a language-specific object representation.
 Discovery budget, query depth, registry content, queue capacity, and observation mode
-are intentionally absent.
-Every provider adapter uses the application helper that defines this encoding; it does
-not hash a language-specific object representation.
+are not part of it.
 
 An `EngineVersion` consists of a session identity, monotonic sequence, scope
 fingerprint, and semantic fingerprint.
 The semantic fingerprint changes when any non-scope rule or reducer that can change a
-complete answer changes.
-A provider with one native fingerprint returns it directly.
-A provider with several computes SHA-256 over the UTF-8 canonical JSON array of
-`[name, value]` string pairs sorted by name, with no insignificant whitespace.
-The Python provider’s current semantic component is the parsed File Rollup registry,
-while fdu also includes its reducer behavior.
+complete answer changes: the parsed File Rollup registry, and any reducer behavior of
+the provider’s own. A provider with several components hashes them in the same canonical
+`[name, value]` form.
 A caller never supplies a fingerprint as proof of different registry content.
 A `ChangeCursor` contains the same session and sequence at the read boundary.
 A provider may implement coherent reads with a lock, an immutable image, or
@@ -114,6 +113,8 @@ version-check-and-retry, provided that:
 2. the returned version and cursor describe the projection’s observation boundary; and
 3. a frequent or unbounded read cannot hold a writer indefinitely.
 
+### Version Pins
+
 A version-pinned request either returns that version or raises
 `VersionUnavailableError`. It never continues on a newer version.
 This rule lets the coordinator assemble complete paged catalogs and trees without
@@ -122,28 +123,39 @@ joining generations.
 while those pages assemble.
 It does not hold the coordinator lock across provider I/O; root replacement and shutdown
 wait on its operation lease.
-If the native engine stops retaining the pinned version, the whole bounded assembly
-restarts; cursors must advance and the final page must omit its continuation.
+If the provider stops retaining the pinned version, the whole bounded assembly restarts;
+cursors must advance and the final page must omit its continuation.
 Exhausted retries fail the request with `VersionUnavailableError`; a complete consumer
 never substitutes a partial first page.
+The protocol does not promise indefinite retention: a provider states its own eviction
+policy, and an unrelated old version-pinned request may expire.
 
-The Python provider also retains immutable continuation rows and their original state
-across ordinary filesystem updates.
-Retention is bounded by `_PAGE_MEMO_CAPACITY` and `MAX_ASSEMBLED_ROWS`; consuming a page
-advances its single-use cursor, and eviction raises `VersionUnavailableError`. This is
-query-local retention, not a historical copy of the whole inventory.
-Unrelated old version-pinned requests can still expire.
-The native provider adoption gate must demonstrate useful page completion under churn
-and an explicit eviction policy; the protocol does not promise indefinite retention.
-
-The Python provider retains the last coherent root-entry and navigation bundle while its
-revision is moving. A repeated root-summary read may return that earlier boundary until
-the cost-aware refresh cadence expires.
-Its version, cursor, state, and entry projection all remain from the retained boundary;
-only recency rows are evaluated at the query’s explicit `as_of_ns`. A settled unchanged
-revision reuses the exact memo without copying the index.
-A provider with incrementally maintained tallies may always return a newer exact
+A provider may answer a repeated root-summary read from an earlier coherent boundary
+while its version moves, provided the version, cursor, state, and entry projection all
+come from that boundary and only recency rows are evaluated at the query’s `as_of_ns`. A
+provider whose tallies are maintained incrementally may always return a newer exact
 boundary.
+
+## The Cap
+
+`DiscoveryBudget.max_files` limits how many regular files a provider discovers;
+directory rows do not count against it.
+The application sets it from `INVENTORY_MAX_FILES` in `settings.py`
+(`default_inventory_config` in `inventory_engine/runtime.py`), and that comment is where
+the value and its reason live.
+
+When discovery reaches the budget, a provider guarantees:
+
+- coverage is partial with reason `budget`, and the state carries a `resource_budget`
+  issue, which routes report as index status `truncated`;
+- what was discovered stays readable, and lookups outside it answer `unknown`, never
+  `absent`;
+- observation stops and the phase becomes `stopped`, because a provider must not claim
+  to watch a scope it can no longer expand (see
+  [State and Failures](#state-and-failures)).
+
+Browsing a tree larger than the cap, rather than stopping at it, is planned
+([load-time plan](../specs/active/plan-2026-08-21-load-time-performance.md)).
 
 ## Closed Query Algebra
 
@@ -163,33 +175,52 @@ must not traverse inventory entries or manufacture a diagnostics dependency.
 | `entry` | `EntryQuery` | One relative path | Present, absent, or unknown lookup plus filesystem facts |
 | `directory` | `DirectoryQuery` | Positive depth, page-row, and work bounds | Directory-first, canonical UTF-8 name-ordered rows and an opaque continuation |
 | `filtered_tree` | `FilteredTreeQuery` | Positive depth, page-row, and work bounds | Matching tree rows and selected scalar totals |
+| `grouped_tree` | `GroupedTreeQuery` | Positive depth, page-row, and work bounds; one to `MAX_TREE_GROUPS` groups | Each group’s filtered tree from one pass: its first page, totals, and a filtered-tree continuation |
 | `rollup` | `RollupQuery` | Nonnegative depth and ranking bounds; positive node and work bounds | Typed File Rollup Format record for one directory |
 | `navigation` | `NavigationQuery` | Positive tally-row and work bounds | Typed population, extension, family, preset, and recency record |
 | `recent` | `RecentQuery` | Positive row, count, and work bounds plus explicit observation time | Newest matching files and an exact-or-lower-bound product count; truncation is derived |
 | `catalog` | `CatalogQuery` | Positive page-row, count, and work bounds; optional terminal-extension, ancestor-name, and size predicates | Canonical UTF-8 path-ordered file identities, logical extensions, opaque continuation, and an exact-or-lower-bound product count |
 | `diagnostics` | `DiagnosticsQuery` | Fixed `ProviderDiagnostics` record | Provider identity, indexed counts, watch state, request count, and cumulative work |
 
+`tests/test_inventory_provider_contract.py` checks that this table names every
+registered query. The row orders above are total, and the module docstring of
+`contract.py` states them.
+
+A grouped tree is Group by’s read (`metabrowser/tree_groups.py`). It answers each group
+exactly as the `FilteredTreeQuery` that `GroupedTreeQuery.group_query` names, from one
+pass over the index: the shared filter is tested once per leaf, and each group adds only
+its type group and age band.
+A group whose rows outrun the page bound carries that filtered tree’s continuation at
+the grouped read’s version, so a caller completes every group from one engine version.
+A folder stands in every group that holds something under it, with that group’s totals,
+so grouped rows take no host decoration join.
+`/api/tree` admits one grouped assembly at a time per runtime
+(`InventoryRuntime.grouped_tree_admission`), so overlapping grouped reads take turns;
+the Python engine’s reason, its retained continuations, is in
+[Retained State](arch-inventory-engine-python.md#retained-state).
+
 Recency filters carry `as_of_ns`; an unchanged engine version does not freeze a
 time-dependent answer.
+Recent ranks ignored files last, then newest first, then by canonical path, and applies
+its row bound after that ranking, so a dependency install that writes thousands of files
+cannot crowd out the reader’s own work; the rows it keeps are then ordered newest first.
+The ranking holds whatever the match count.
 Recent returns `RecentRecord` rows containing path, extension, size, modification time,
 and ignored state. The name derives from the canonical path; directory aggregates and
-host preview/activity decorations are absent because the Recent response consumes
-neither. `test_browser_recent.py` checks the wire fields and absence of a coordinator
-decoration join, alongside filtering and ordering.
+host preview and activity decorations are absent because the Recent response consumes
+neither. `tests/test_browser_recent.py` checks the wire fields and the absence of a
+coordinator decoration join, alongside filtering and ordering.
 Providers may return `valid_until_ns` when the answer has a known expiry.
 The coordinator includes that time boundary in request fingerprints, validators, and
 retained-body keys. A caller assembling a time-dependent result from several
 version-pinned pages chooses one `as_of_ns` before the first page and reuses it for
 every page in that assembly.
 
-Catalog terminal extensions use the lowercase substring beginning at the final dot when
-that dot is neither the first nor final character.
-Thus `archive.tar.gz` has `.gz`, `..foo` has `.foo`, and `.gitignore` and `notes.` have
-no terminal suffix. This explicit rule keeps every provider independent of path-library
-versions. Predicate lists contain unique values.
+Catalog terminal extensions follow `catalog_terminal_suffix`, which spells the rule
+rather than leaving it to a path library, so `archive.tar.gz` has `.gz` and `.gitignore`
+has none. Predicate lists contain unique values.
 Ancestor names are nonempty, case-sensitive path components other than `.` and `..` and
 contain neither separator; `size_less_than` is an exclusive byte bound.
-These rules are provider semantics, not Python implementation details.
 
 Every potentially broad query carries `max_work`. A provider that cannot produce the
 complete bounded projection returns `QueryLimitProjection` with the query kind, bound,
@@ -208,40 +239,34 @@ implementing it in every production provider.
 ## Filesystem Records and Host Decorations
 
 `InventoryEntry` contains served-root-relative filesystem facts: lossless path identity,
-object type, logical extension, size, modification time, ignore state, and optional
+object type, logical extension (the bounded compound tail `fs_paths.derive_ext` defines,
+so `archive.tar.gz` has `.tar.gz`), size, modification time, ignore state, and optional
 directory aggregates.
 Path-bearing contract records use one canonical POSIX-relative grammar: the root is
 `""`, absolute paths, backslashes, nulls, `.` and `..` segments, duplicate separators,
 and trailing separators are rejected at construction.
 That grammar is **total**: every entry has a canonical path, because the form is derived
-by escaping rather than by requiring the platform name to already be representable.
-Bytes that are not valid UTF-8 become `%XX` with uppercase hexadecimal digits, and `%`
-itself becomes `%25` so two different names can never collide on one canonical form.
-On POSIX a backslash, a legal filename byte the grammar refuses, becomes `%5C`. Runs
-that are otherwise valid UTF-8 are preserved.
-
-Row projections once carried an optional issue instead, reporting how many native paths
-had been omitted with a bounded list of escaped examples, so a consumer had to treat a
-directory as two populations -- the entries it knew, and the entries it could name --
-with separate completeness for each.
-Totality removes the second population rather than describing it, so there is no
-omission to report. A lookup distinguishes:
+by escaping (`canonical_inventory_name`, which states the escapes) rather than by
+requiring the platform name to already be representable, and the escaping is injective,
+so two names never share a form.
+Because every name has a canonical form, a directory has one population, and a lookup
+distinguishes:
 
 - `present`: the entry is known and returned
 - `absent`: complete coverage proves it is not present
 - `unknown`: current coverage cannot prove either state
 
 Symlinks are visible leaves but do not contribute to regular-file totals.
-The contract does not expose special filesystem objects because the current browser wire
-cannot represent them; every provider must exclude them rather than reclassifying them
-as regular files. Hidden components outside the exact-name allowlist are pruned from
-scope. Gitignored visible entries remain in the `all` population and are excluded from
-the `unignored` population.
+The contract does not expose special filesystem objects because the browser wire cannot
+represent them; every provider excludes them rather than reclassifying them as regular
+files. Hidden components outside the exact-name allowlist are pruned from scope.
+Gitignored visible entries remain in the `all` population and are excluded from the
+`unignored` population.
 File Rollup classification and conservation follow the
 [File Rollup Format](file-rollup-format/file-rollup-format.md).
 
 Active state, process labels, preview selections, and plugin labels belong to a sparse
-application overlay keyed by the same path identity.
+application overlay (`inventory_engine/overlay.py`) keyed by the same path identity.
 They do not cross the provider contract, advance an engine version, or contribute to
 filesystem totals. The coordinator combines the engine version and overlay revision into
 the host version used for browser events and caches.
@@ -256,62 +281,40 @@ The activity tracker opts in; bulk Quick File delivery does not traverse the ove
 ## State and Failures
 
 State reports independent lifecycle, coverage, freshness, source, progress, and issue
-facts. A same-phase observation is always valid; cross-phase transitions are:
-
-| Current phase | Legal next phases |
-| --- | --- |
-| `opening` | `discovering`, `reconciling`, `ready`, `stopped`, `failed` |
-| `discovering` | `reconciling`, `ready`, `watching`, `stopped`, `failed` |
-| `reconciling` | `ready`, `watching`, `stopped`, `failed` |
-| `ready` | `reconciling`, `watching`, `stopped`, `failed` |
-| `watching` | `reconciling`, `ready`, `stopped`, `failed` |
-| `stopped` | none |
-| `failed` | `stopped` |
+facts. A same-phase observation is always valid; cross-phase transitions follow
+`ALLOWED_PHASE_TRANSITIONS` in `contract.py`, which
+`tests/test_inventory_provider_contract.py::test_lifecycle_transition_graph_is_explicit_and_terminal`
+checks: every live phase may stop or fail, `stopped` is terminal, and `failed` may only
+stop.
 
 `ready` means the handle is open and answering without discovery, reconciliation, or a
 live filesystem observer.
 `watching` requires a live observer; a provider configured with observation off, or one
 whose observer has failed while the retained index remains readable, reports `ready`.
 Resource-budget refusal remains readable but shuts down observation and reports
-`stopped`; it must not claim to watch a scope it can no longer expand.
-Refresh may still verify a retained file or symlink, including its removal, but rejects
-unknown paths and retained directories because either could expand the stopped scope.
-Priority hints are inert after this stop.
-`stopped` is terminal; `failed` may only transition to `stopped`.
+`stopped`. Refresh may still verify a retained file or symlink, including its removal,
+but rejects unknown paths and retained directories because either could expand the
+stopped scope. Priority hints are inert after this stop.
 
-Coverage is either complete with no reason or partial with one of `building`, `budget`,
-`cancelled`, `inaccessible`, or `failed`. Freshness is `fresh`, `reconciling`, `stale`,
-or `partial`. An observation gap makes freshness stale and adds a typed
-`observation_gap` issue; coverage changes only if reconciliation discovers or cannot
-resolve an enumeration hole.
-Typed issues also distinguish permission failures, disappearance, invalid metadata,
+Coverage is either complete with no reason or partial with a `CoverageReason`, and
+`Freshness` says whether answers are current.
+An observation gap makes freshness stale and adds a typed `observation_gap` issue;
+coverage changes only if reconciliation discovers or cannot resolve an enumeration hole.
+`IssueCode` also distinguishes permission failures, disappearance, invalid metadata,
 resource stops, and provider failures.
 Providers preserve the original path and cause when the current layer can handle them.
 `IndexState` contains at most `MAX_INVENTORY_ISSUES` records, and each issue detail is
-at most `MAX_ISSUE_DETAIL_BYTES` UTF-8 bytes.
-A provider coalesces or summarizes larger failure sets before constructing the state
-record.
-
-The fdu adapter maps every shared value exhaustively; it does not infer names at
-individual call sites:
-
-| Metabrowser fact | fdu fact |
-| --- | --- |
-| `LifecyclePhase.DISCOVERING` through `FAILED` | same named fdu lifecycle value |
-| `LifecyclePhase.OPENING` | host-owned pre-provider state; no fabricated fdu value |
-| every `CoverageReason`, `Freshness`, and `SourceKind` | same named fdu value |
-| every `IssueCode` | same named fdu issue kind |
-
-Zero progress is honest for a settled provider that did not expose progressive state; an
-adapter never invents progress, and fdu must expose real mid-discovery progress before
-it can satisfy the progressive-open adoption gate.
+at most `MAX_ISSUE_DETAIL_BYTES` UTF-8 bytes; a provider coalesces or summarizes larger
+failure sets before constructing the state record.
+Zero progress is honest for a provider that does not expose progressive state; a
+provider never invents progress.
 
 ## Change Delivery
 
 `changes()` yields `ChangeBatch`, not entry replicas or browser events.
 Each batch has a resulting version and cursor, state, work counters, and one of:
 
-- bounded dirty paths or query kinds
+- bounded dirty paths (at most `MAX_CHANGE_PATHS`) or query kinds
 - `all_dirty` when individual dirtiness exceeds its bound
 - `reset` when the requested cursor or consumer queue has a gap
 - a state-only transition
@@ -319,10 +322,11 @@ Each batch has a resulting version and cursor, state, work counters, and one of:
 Batches from one handle retain the opened scope and semantic fingerprints and have
 strictly increasing sequences.
 The coordinator rejects a mixed-identity or nonmonotonic group before it coalesces any
-dirtiness or work.
+dirtiness or work. A handle allows one active change iterator.
 
 The coordinator rereads the affected visible projections, resumes from the read’s
-cursor, and projects results into browser events.
+cursor, and projects results into browser events; see
+[Live Delivery](arch-live-delivery.md).
 A slow consumer causes a reset and coherent reread; it cannot block discovery or receive
 a suffix presented as complete.
 That consumer-side reset does not describe a provider observation gap.
@@ -342,56 +346,52 @@ A provider may publish coherent sub-batches while it works; the receipt is a com
 boundary, not a claim that the whole request was one transaction.
 An adapter cannot return before it can name that terminal version or fan a bounded
 request into untracked background work.
-The primary native-or-polling watcher belongs to the opened provider so baseline
-discovery, observation capture, reconciliation, and freshness share one lifecycle.
-The Python provider waits until that observer is installed or has failed explicitly
-before initial discovery begins, so no path can be scanned before the watch boundary
-exists. Shutdown signals the observer’s cooperative stop event and joins its worker
-before releasing the backend.
+
+The primary filesystem observer belongs to the opened provider, so baseline discovery,
+observation capture, reconciliation, and freshness share one lifecycle.
+A provider establishes its observation boundary before discovery scans a path, so a
+change made during discovery is either observed or scanned, and `close()` stops and
+joins the observer before releasing anything it uses.
 `refresh()` also accepts bounded external hints from activity probes or application
 writes; it is not a second watcher.
-If a watch batch cannot be submitted completely, the observer stops and reports a
-watcher gap. It never drops one failed chunk and continues while claiming freshness.
+If a batch of observations cannot be applied completely, observation stops and reports a
+gap. A provider never drops one failed chunk and continues while claiming freshness.
+
+## The Per-Entry Rule
+
+This contract is crossed by queries, which are few, not by every discovered entry, so an
+engine follows the
+[per-entry rule](../../engine-performance-model.md#the-per-entry-rule): nothing goes on
+the per-entry path without a measured reason.
+That is why the contract’s entry type is not what a walker yields, and why a provider
+keys its store by the canonical identity rather than escaping on every row of every
+read. Each engine states its unit costs against the rule in its own document.
 
 ## Work and Performance Evidence
 
-Every read and change reports the same semantic work vocabulary as fdu: producer
-observations and outcomes, retained rows visited and returned, maintained-index work,
-journal commits visited and returned, and filesystem directories, entries, files, and
-bytes visited. These values are deterministic charges with stable meanings across
-providers. `BoundaryMetrics` separately records binding bytes, lock wait, wall time, and
-exact CPU time when available; unavailable CPU time remains `None` rather than becoming
-zero. Diagnostics use the fixed `ProviderDiagnostics` record rather than a
-provider-defined mapping.
-They identify the selected provider and contract, indexed counts, watch state, read
-count, cumulative semantic work, and cumulative boundary metrics.
-The serving benchmark records the same identities so Python-before, Python-after, and
-fdu runs differ by a declared provider axis rather than by separate harnesses.
+Every read and change reports one semantic work vocabulary, `WorkCounters`:
+deterministic charges, such as rows visited and filesystem entries read, with the same
+meaning in every provider.
+`BoundaryMetrics` separately records binding bytes, lock wait, wall time, and exact CPU
+time when available; unavailable CPU time remains `None` rather than becoming zero.
+Diagnostics use the fixed `ProviderDiagnostics` record rather than a provider-defined
+mapping, and `/_debug/inventory` reports it when `METABROWSER_DEBUG` is set.
 
-The rule about what may run once per entry, and how to measure it, is
-[the engine performance model](../../engine-performance-model.md); this provider’s
-measured costs are [Python inventory cost](arch-python-inventory-cost.md).
-Together they are the reason this contract’s entry type is not what the walker yields,
-and the reason the store is keyed by the canonical identity rather than escaping on
-every row of every read.
-A native provider states its own costs against the same model.
-
-The common performance gate measures cold discovery, shallow usefulness, settled and
-concurrent rollups, tree reads, catalogs, retained bodies, validators, live convergence,
-event-loop delay, memory, CPU, I/O, and binding-copy cost.
-See the
-[end-to-end load-time plan](../specs/active/plan-2026-08-21-load-time-performance.md)
-and
-[inventory provider plan](../specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md).
+The serving benchmark records the same identities, so runs on two providers differ by a
+declared provider axis rather than by separate harnesses;
+[Scale Benchmark](../../scale-benchmark.md) says what it measures and how to run it.
+The performance gate shared by every provider is in the
+[load-time plan](../specs/active/plan-2026-08-21-load-time-performance.md) and the
+[provider plan](../specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md).
 
 ## Consumer Mapping
 
 | Consumer | Queries |
 | --- | --- |
-| `/api/tree` | Version-pinned `DirectoryQuery` or `FilteredTreeQuery` pages, with `NavigationQuery` at the same host boundary for root tallies |
+| `/api/tree` | Version-pinned `DirectoryQuery` or `FilteredTreeQuery` pages, with `NavigationQuery` at the same host boundary for root tallies; with `group_by`, one `GroupedTreeQuery` and its groups’ version-pinned continuations |
 | `/api/rollup` and folder hooks | `RollupQuery` |
 | `/api/recent` | `RecentQuery` |
-| Quick File catalog | Empty checkpoint read followed, on a cache miss, by version-pinned `CatalogQuery` pages; the default Python execution budget fits in one page bounded by `InventoryConfig.budget.max_files` |
+| Quick File catalog | Empty checkpoint read followed, on a cache miss, by version-pinned `CatalogQuery` pages of `budget.max_files` rows, so a catalog that fits the budget is one page |
 | `/api/file` folder facts | `EntryQuery` |
 | Initial browser stream | A lossless version-pinned snapshot assembled before atomic queue attachment; covered older changes are suppressed per connection |
 | Live browser stream | `changes()` plus coherent rereads |
@@ -405,15 +405,30 @@ Every provider implements flat filtered-tree and catalog continuations
 natively with the requested version and mandatory row bound.
 An adapter cannot materialize an unbounded result, retain a mirror solely to page it, or
 claim a truncated first page is terminal.
-The Python reference provider retains a small bounded table of coherent projections when
-it returns continuations.
-Continuations are opaque, one-shot, and version-pinned; table eviction reports
-unavailability rather than reconstructing cursor authority from caller data.
+Continuations are opaque, one-shot, and version-pinned; a provider that no longer holds
+one reports unavailability rather than reconstructing cursor authority from caller data.
 A typed work-limit result does not consume a continuation, so a caller can retry the
 same version and token with an adequate bound; a successfully returned page does.
-This avoids repeating a full Python subtree pass for every page without creating a
-coordinator cache or an fdu adapter index.
-The fdu provider uses its native cursor and indexes instead.
+
+## Adding a Provider
+
+Only the sealed factory imports a concrete provider; routes, browser-event projection,
+and activity tracking use the coordinator, and each provider owns its own observer.
+A new provider:
+
+1. adds its entry to `InventoryProvider` and its construction to
+   `create_inventory_backend` (`inventory_engine/factory.py`);
+2. joins `PROVIDER_FACTORIES` in `tests/test_inventory_provider_contract.py`, so every
+   case in the registry below runs against it;
+3. adds an engine document beside
+   [Python Inventory Engine](arch-inventory-engine-python.md) with its walker,
+   concurrency, observer, retained state, and unit costs; and
+4. reruns the serving benchmark with `--provider` and records the result in
+   [Scale Benchmark](../../scale-benchmark.md).
+
+Nothing above this contract changes, with one exception: `metab --walk` (`walk.py`)
+calls the Python walker’s `walk_tree` directly, to show what the walker yields, so it
+walks with the Python engine whichever provider serves.
 
 ## Provider Conformance Registry
 
@@ -432,6 +447,7 @@ verifies that every row resolves to a provider-parametrized test in
 | `test_provider_budget_stop_is_explicit_and_absence_remains_unknown` |
 | `test_directory_pages_are_lossless_when_directories_outnumber_file_budget` |
 | `test_filtered_tree_and_recent_share_filter_semantics_before_caps` |
+| `test_grouped_tree_answers_each_group_as_its_filtered_tree` |
 | `test_catalog_predicate_semantics_are_runtime_independent_and_exact` |
 | `test_catalog_pages_are_lossless_without_suffix_counts` |
 | `test_provider_applies_work_bounds_to_continuation_pages` |
@@ -447,7 +463,9 @@ verifies that every row resolves to a provider-parametrized test in
 
 ## References
 
-- [State and delivery](arch-state-and-delivery.md)
+- [Python Inventory Engine](arch-inventory-engine-python.md): the reference engine
+- [Live Delivery](arch-live-delivery.md): what the application does with `changes()`
+- [Engine Performance Model](../../engine-performance-model.md): measurement discipline
 - [Pluggable inventory engine](../specs/active/plan-2026-08-23-pluggable-inventory-engine.md)
 - [fdu and Metabrowser inventory-engine alignment](../research/research-2026-08-23-fdu-metabrowser-inventory-engine.md)
 

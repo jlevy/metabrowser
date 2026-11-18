@@ -61,6 +61,20 @@ export const SUBJECTS = {
   skimTarget: "README.md",
   // Three folders down, all collapsed in a fresh profile.
   revealFile: "src/metabrowser/static/formatters.js",
+  // The dwell sweep (H94, revision 6): a hover of each registered length over a cold
+  // Markdown file of 23 to 32 KB, then a click. Each length has its own subject, since a
+  // second visit would not be cold, so within one build the curve also carries the
+  // subjects' differences; a round compares each length across builds. The sizes are not
+  // in step with the lengths.
+  dwell: {
+    ms: [0, 100, 200, 450],
+    files: [
+      "docs/e2e-testing.md",
+      "docs/web-performance-framework.md",
+      "docs/reviewing-pull-requests.md",
+      "docs/large-content-rendering.md",
+    ],
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -141,6 +155,14 @@ const listReady = (tab, rowSelector, promptSelector) => `() => {
   const pane = document.getElementById("preview-pane");
   const prompt = pane && pane.querySelector(${J(promptSelector)});
   return !!prompt && window.__tr.rendered(prompt) && !window.__tr.hasPlaceholder(panel);
+}`;
+
+// A main tab's list on screen, whatever the preview shows.
+const listShown = (tab, rowSelector) => `() => {
+  const panel = document.querySelector('#tree-content > [data-tab-content="${tab}"]');
+  if (!panel || !window.__tr.rendered(panel)) { return false; }
+  if (panel.querySelectorAll(${J(rowSelector)}).length === 0 || !window.__tr.hasUseful(panel)) { return false; }
+  return ${activeNav} === ${J(tab)} && !window.__tr.hasPlaceholder(panel);
 }`;
 
 const listConverged = (tab, rowSelector, promptSelector, subjectSelector) => `() => {
@@ -238,6 +260,22 @@ const styledMarkdown = (p) => `() => {
   const links = Array.from(document.querySelectorAll('link[rel="stylesheet"][href*="/kpress-static/"]'));
   return ["/css/document.css", "/css/components.css", "/css/syntax.css"].every((n) => links.some((l) => l.href.includes(n) && l.sheet !== null));
 }`;
+// A source view's syntax highlighting complete (H101, revision 6), apart from painted
+// ready: the file is shown, every code block the shell highlights (`pre code` that is not
+// `.no-highlight`) carries highlight.js's own `hljs` mark, which it sets as it writes the
+// token markup, and the view holds a token span. A build that highlights another way must
+// set the same mark, or the milestone never arrives and compare names the gap. The cheap
+// tests run first, since the recorder evaluates this in every frame until it holds.
+const sourceHighlighted = (p) => `() => {
+  if (!(${onRoute(fileRoute(p, false))})) { return false; }
+  const pane = document.getElementById("preview-pane");
+  const a = pane && pane.dataset.renderedPath === ${J(p)} && pane.querySelector(':scope > [data-active-view="true"]');
+  if (!a) { return false; }
+  const codes = a.querySelectorAll("pre code:not(.no-highlight)");
+  if (codes.length === 0) { return false; }
+  for (const c of codes) { if (!c.classList.contains("hljs")) { return false; } }
+  return !!a.querySelector('pre code.hljs [class^="hljs-"]') && (${fileReady(p)})();
+}`;
 const onScreen = `(el) => { if (!el) { return false; } const r = el.getBoundingClientRect(); return r.height > 0 && r.bottom > 0 && r.top < innerHeight; }`;
 const pullHost = (n) => `(() => {
   if (!location.pathname.startsWith("/pull/${n}")) { return null; }
@@ -284,13 +322,23 @@ const commitRequest = (rev) => [
  * Wrap a driver so each measurement lands in `rows` with its journey name. A refused
  * transition stops the journey (the run is invalid from that point) unless
  * `options.keepGoing`, which a diagnostic run sets to see every refusal.
+ * `options.newestCommit` is the head of the server's git log, the commit a switch to
+ * Commits lands on in a build that selects the newest commit (null when it is unknown).
+ * `options.memoryAfter` names transitions after which retained memory is read, which
+ * changes what the journey measures after them (`--memory-after`).
  */
 function context(d, base, journey, rows, options) {
   const facts = options.facts ?? {};
+  const newestCommit = options.newestCommit ?? null;
+  const memoryAfter = new Set(options.memoryAfter ?? []);
   const measure = async (spec) => {
     const load1 = options.loadavg ? options.loadavg() : null;
-    const row = await d.measure({ journey, ...spec });
+    const row = await d.measure({ journey, ...spec, memory: memoryAfter.has(spec.id) });
     row.load1 = load1;
+    const landed = spec.subjectByLanding?.[row.landing];
+    if (landed) {
+      row.subject = landed;
+    }
     rows.push(row);
     if (options.log) {
       options.log(row);
@@ -366,7 +414,7 @@ function context(d, base, journey, rows, options) {
       };
     }
   };
-  return { d, base, measure, setupClick, land, requireRow, facts };
+  return { d, base, measure, setupClick, land, requireRow, facts, newestCommit };
 }
 
 // The scroll container of every navigation panel.
@@ -423,6 +471,9 @@ async function files(ctx) {
   await expandFolders(ctx, SUBJECTS.filesExpand);
   await ctx.setupClick(fileRow(F.markdown_small), fileReady(F.markdown_small), "README.md");
   await sleep(1500);
+  // The large source file declares its time to highlighted (revision 6).
+  const highlighted = (k) =>
+    k === "source_large" ? { milestones: { sourceHighlighted: sourceHighlighted(F[k]) } } : {};
   const visit = (id, p, input = click(fileRow(p)), extra = {}) =>
     ctx.measure({
       id,
@@ -443,10 +494,10 @@ async function files(ctx) {
     "image",
     "binary",
   ]) {
-    await visit(`files.cold.${k}`, F[k]);
+    await visit(`files.cold.${k}`, F[k], undefined, highlighted(k));
   }
   for (const k of ["source_large", "json", "markdown_small", "markdown_large"]) {
-    await visit(`files.revisit.${k}`, F[k]);
+    await visit(`files.revisit.${k}`, F[k], undefined, highlighted(k));
   }
   await visit("files.history_back", F.markdown_small, { kind: "history", delta: -1 });
   await visit("files.history_forward", F.markdown_large, { kind: "history", delta: 1 });
@@ -533,6 +584,21 @@ async function views(ctx) {
   await cycle("folder", folder, true);
 }
 
+// The Commits landing. Main's 19a36c5b (2026-11-13) made every switch to Commits select
+// the newest commit and show it. Before it, a switch showed the tab's prompt ("Select a
+// commit to preview") on a first visit and the last commit read after that. Revision 5
+// accepts either landing as the subject of a switch, and records which one it saw
+// (`landing`): `empty` for the prompt, `newest` for the newest commit, `restored` for the
+// commit read before. The newest commit is named by identity: the head of the server's
+// git log (`facts.git_log_head`), the first commit of the first page the panel selects.
+// Without it, only the prompt is accepted. A subject that is itself the newest commit
+// reads `newest` under either build.
+//
+// The landing that made a switch ready must be the one it converged on: a build that
+// paints the prompt and then the newest commit would otherwise be timed at the prompt
+// (review A of #417). The ready predicate keeps the branch that first held on the
+// recorder (`readyBranch`, cleared when a transition is armed), and `converged` refuses
+// a switch whose settled landing is another.
 const commitsList = listReady("git", ".git-graph-row", ":scope > .preview-empty");
 const commitsListConverged = listConverged(
   "git",
@@ -540,6 +606,68 @@ const commitsListConverged = listConverged(
   ":scope > .preview-empty",
   ".git-commit-view",
 );
+// The prompt on an address that names no commit. The newest landing's own failure, "Could
+// not load this commit.", is a `.preview-empty` on `/commit/<newest>`, and is not it.
+const emptyLanding = `() => !location.pathname.startsWith("/commit/") && (${commitsList})()`;
+// The list is shown and the newest commit is shown beside it, on its own address, as a
+// commit a click opened would be.
+const newestLanding = (newest) =>
+  `() => (${listShown("git", ".git-graph-row")})() && (${commitReady(newest)})()`;
+// Ready on the first branch, [name, ready, converged], to hold; the branch is kept.
+const eitherReady = (branches) => `() => {
+  const R = window.__tr;
+  ${branches.map(([name, ready]) => `if ((${ready})()) { if (R && R.readyBranch == null) { R.readyBranch = ${J(name)}; } return true; }`).join("\n  ")}
+  return false;
+}`;
+const eitherConverged = (branches, neither) => `() => {
+  const at = window.__tr ? window.__tr.readyBranch : null;
+  ${branches.map(([name, ready, converged]) => `if ((${ready})()) { const moved = at && at !== ${J(name)} ? "ready on " + at + ", converged on " + ${J(name)} : ""; return [moved, (${converged})()].filter(Boolean).join("; "); }`).join("\n  ")}
+  return ${J(neither)};
+}`;
+const listBranches = (newest) => [
+  ["empty", emptyLanding, commitsListConverged],
+  ...(newest ? [["newest", newestLanding(newest), commitConverged(newest)]] : []),
+];
+const commitsLanding = (newest) => eitherReady(listBranches(newest));
+const commitsLandingConverged = (newest) =>
+  eitherConverged(
+    listBranches(newest),
+    "neither the Commits prompt nor the newest commit is shown",
+  );
+// A switch back to Commits after a commit was read: that commit, or the newest.
+const subjectBranches = (rev, newest) => [
+  ["restored", commitReady(rev), commitConverged(rev)],
+  ...(newest ? [["newest", newestLanding(newest), commitConverged(newest)]] : []),
+];
+const commitSubjectLanding = (rev, newest) => eitherReady(subjectBranches(rev, newest));
+const commitSubjectLandingConverged = (rev, newest) =>
+  eitherConverged(
+    subjectBranches(rev, newest),
+    "neither the commit read before nor the newest commit is shown",
+  );
+const landingKind = (newest, restored = null) => `() => {
+  const pane = document.getElementById("preview-pane");
+  const prompt = pane && pane.querySelector(":scope > .preview-empty");
+  if (prompt) {
+    return location.pathname.startsWith("/commit/") ? "other " + location.pathname + ": " + prompt.textContent.trim().slice(0, 60) : "empty";
+  }
+  const v = pane && pane.querySelector(":scope > .git-commit-stage > .git-commit-view");
+  const rev = v ? v.dataset.revision : null;
+  if (rev && rev === ${J(newest)}) { return "newest"; }
+  if (rev && rev === ${J(restored)}) { return "restored"; }
+  return "other " + rev;
+}`;
+const newestRequests = (newest) => (newest ? commitRequest(newest) : []);
+
+/** The Commits landing predicates, for the instrument's own tests. */
+export const COMMITS_LANDING = {
+  prompt: commitsList,
+  ready: commitsLanding,
+  converged: commitsLandingConverged,
+  subjectReady: commitSubjectLanding,
+  subjectConverged: commitSubjectLandingConverged,
+  kind: landingKind,
+};
 const pullsList = listReady("pulls", "a.github-pulls-row", ":scope > .pull-request-list-host");
 const pullsListConverged = listConverged(
   "pulls",
@@ -566,6 +694,7 @@ async function mainTabs(ctx) {
   const file = SUBJECTS.mainTabsFile;
   const rev = SUBJECTS.mainTabsCommit;
   const pr = SUBJECTS.mainTabsPull;
+  const newest = ctx.newestCommit;
   await ctx.land(file);
   await ctx.requireRow(navTab("pulls"), "the Pulls tab");
   const toFiles = (id) =>
@@ -582,8 +711,10 @@ async function mainTabs(ctx) {
       id,
       subject: "Commits list",
       input: click(navTab("git")),
-      ready: commitsList,
-      converged: commitsListConverged,
+      ready: commitsLanding(newest),
+      converged: commitsLandingConverged(newest),
+      landing: landingKind(newest),
+      subjectRequest: newestRequests(newest),
       emptyState: true,
       settleMs,
       timeoutMs: 30000,
@@ -611,7 +742,7 @@ async function mainTabs(ctx) {
   await toFiles("main.pulls_to_files.again");
 
   // Give Commits and Pulls a selected subject, then repeat the round trip.
-  await ctx.setupClick(navTab("git"), commitsList, "Commits");
+  await ctx.setupClick(navTab("git"), commitsLanding(newest), "Commits");
   await ctx.requireRow(commitRow(rev), `commit ${rev.slice(0, 8)}`, NAV_SCROLLER);
   await ctx.setupClick(commitRow(rev), commitReady(rev), `commit ${rev.slice(0, 8)}`);
   await ctx.setupClick(navTab("pulls"), pullsList, "Pulls");
@@ -619,14 +750,18 @@ async function mainTabs(ctx) {
   await ctx.setupClick(pullRow(pr), pullReady(pr), `pull request #${pr}`, 60000);
   await sleep(1500);
   await ctx.setupClick(navTab("files"), fileReady(file), file);
+  // A build that selects the newest commit on every switch lands there, not on `rev`.
   const subjectCommit = (id) =>
     ctx.measure({
       id,
       subject: rev,
       input: click(navTab("git")),
-      ready: commitReady(rev),
-      converged: commitConverged(rev),
-      subjectRequest: commitRequest(rev),
+      ready: commitSubjectLanding(rev, newest),
+      converged: commitSubjectLandingConverged(rev, newest),
+      landing: landingKind(newest, rev),
+      // The subject a row names is the commit it landed on.
+      subjectByLanding: newest ? { newest } : null,
+      subjectRequest: [...commitRequest(rev), ...newestRequests(newest)],
       settleMs: 800,
       timeoutMs: 30000,
     });
@@ -653,14 +788,17 @@ async function mainTabs(ctx) {
 
 async function commits(ctx) {
   const C = SUBJECTS.commits;
+  const newest = ctx.newestCommit;
   await ctx.land(SUBJECTS.landing);
   await ctx.requireRow(navTab("git"), "the Commits tab");
   await ctx.measure({
     id: "commits.first_show",
     subject: "Commits list",
     input: click(navTab("git")),
-    ready: commitsList,
-    converged: commitsListConverged,
+    ready: commitsLanding(newest),
+    converged: commitsLandingConverged(newest),
+    landing: landingKind(newest),
+    subjectRequest: newestRequests(newest),
     emptyState: true,
     settleMs: 900,
     timeoutMs: 30000,
@@ -826,6 +964,32 @@ async function skim(ctx) {
   });
 }
 
+// Hover dwell swept over registered lengths (H94, revision 6): for each length in
+// SUBJECTS.dwell.ms, the pointer rests on a cold file's row that long, then presses. The
+// clock starts at the press, so the dwell is the time a build has to prepare the subject
+// before it; a build that shows the subject during the hover refuses
+// (`ready_before_input`).
+async function dwell(ctx) {
+  const D = SUBJECTS.dwell;
+  await ctx.land(SUBJECTS.landing);
+  await expandFolders(ctx, ["docs"]);
+  for (const p of D.files) {
+    await ctx.requireRow(fileRow(p), p);
+  }
+  await sleep(1000);
+  for (const [i, ms] of D.ms.entries()) {
+    const p = D.files[i];
+    await ctx.measure({
+      id: `dwell.hover_click.${ms}`,
+      subject: p,
+      input: hoverClick(fileRow(p), ms),
+      ready: fileReady(p),
+      converged: fileConverged(p),
+      subjectRequest: fileRequest(p),
+    });
+  }
+}
+
 async function reveal(ctx) {
   const p = SUBJECTS.revealFile;
   await ctx.measure({
@@ -852,7 +1016,11 @@ export const JOURNEYS = {
   palette,
   skim,
   reveal,
+  dwell,
 };
+
+/** In-page milestone predicates, for the instrument's own tests. */
+export const MILESTONES = { sourceHighlighted };
 
 /** Run one journey on an open browser; transition rows are appended to `rows`. */
 export async function runJourney(name, d, base, rows, options = {}) {

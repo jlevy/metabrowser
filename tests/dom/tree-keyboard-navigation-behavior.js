@@ -256,8 +256,30 @@ function group(document, id) {
   return value;
 }
 
+// A held key's walk settles on a timer. These stand in for the page's, and a
+// scenario runs them when it says that much time passed.
+const timers = new Map();
+let nextTimer = 1;
+function runTimers() {
+  const due = Array.from(timers.values());
+  timers.clear();
+  for (const callback of due) {
+    callback();
+  }
+}
+
 const document = new FakeDocument();
-const sandbox = { document, queueMicrotask };
+const sandbox = {
+  clearTimeout: (id) => timers.delete(id),
+  document,
+  queueMicrotask,
+  setTimeout: (callback) => {
+    const id = nextTimer;
+    nextTimer += 1;
+    timers.set(id, callback);
+    return id;
+  },
+};
 sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
@@ -401,21 +423,26 @@ check(
     navigationCalls.filter((id) => id === "folder:src").length === 1,
 );
 
-// A Mac laptop has no Home or End key, so without these the tree has no
-// jump-to-edge reachable on the keyboard most readers actually have.
-event = keyboardEvent("ArrowDown", folder, { shiftKey: true });
+event = keyboardEvent("End", folder);
 document.dispatch(event);
 check(
-  "Shift+Down jumps to the last visible row",
+  "End jumps to the last visible row",
   event.defaultPrevented && document.activeElement === page,
 );
-event = keyboardEvent("ArrowUp", page, { shiftKey: true });
+event = keyboardEvent("Home", page);
 document.dispatch(event);
 check(
-  "Shift+Up jumps to the first visible row",
+  "Home jumps to the first visible row",
   event.defaultPrevented && document.activeElement === folder,
 );
-// Plain arrows forbid modifiers, so the jump bindings cannot shadow movement.
+// Shift never changes a key: outside a text field, Shift+Arrow moves one row,
+// as the arrow does, and Home and End alone jump.
+event = keyboardEvent("ArrowDown", folder, { shiftKey: true });
+document.dispatch(event);
+check("Shift+Down steps by one", event.defaultPrevented && document.activeElement === empty);
+event = keyboardEvent("ArrowUp", empty, { shiftKey: true });
+document.dispatch(event);
+check("Shift+Up steps by one", event.defaultPrevented && document.activeElement === folder);
 event = keyboardEvent("ArrowDown", folder);
 document.dispatch(event);
 check("unmodified Down still steps by one", document.activeElement === empty);
@@ -438,10 +465,18 @@ check(
   "j opens the row it lands on",
   navigationCalls.length === beforeJ + 1 && navigationCalls.at(-1) === "folder:empty",
 );
+// Shift with J or K is the same command: it steps and opens, as J and K do.
+event = keyboardEvent("K", empty, { shiftKey: true });
+document.dispatch(event);
+check("Shift+K steps up like K", event.defaultPrevented && document.activeElement === folder);
+check("Shift+K opens the row it lands on", navigationCalls.at(-1) === "folder:src");
+event = keyboardEvent("J", folder, { shiftKey: true });
+document.dispatch(event);
+check("Shift+J steps down like J", event.defaultPrevented && document.activeElement === empty);
+check("Shift+J opens the row it lands on", navigationCalls.at(-1) === "folder:empty");
 const beforeLetterGuards = navigationCalls.length;
-for (const modifier of ["altKey", "ctrlKey", "metaKey", "shiftKey"]) {
-  for (const letter of ["j", "k"]) {
-    const key = modifier === "shiftKey" ? letter.toUpperCase() : letter;
+for (const modifier of ["altKey", "ctrlKey", "metaKey"]) {
+  for (const key of ["j", "k", "ArrowDown", "ArrowUp"]) {
     event = keyboardEvent(key, empty, { [modifier]: true });
     document.dispatch(event);
     check(`${modifier} with ${key} does not move`, !event.defaultPrevented);
@@ -471,29 +506,31 @@ check("k opens the row it lands on", navigationCalls.at(-1) === "folder:src");
 equal(
   "Next item presents Down or J",
   [
-    shortcuts.present("tree.next").bindings.visible.map((alternative) => alternative.keys),
+    shortcuts.present("tree.next").bindings.visible,
     shortcuts.present("tree.next").bindings.spoken,
     shortcuts.present("tree.next").bindings.ariaKeyshortcuts,
   ],
-  [[["↓"], ["J"]], "Down arrow or J", "ArrowDown J"],
+  [["↓", "J"], "Down arrow or J", "ArrowDown J"],
 );
 equal(
   "Previous item presents Up or K",
   [
-    shortcuts.present("tree.previous").bindings.visible.map((alternative) => alternative.keys),
+    shortcuts.present("tree.previous").bindings.visible,
     shortcuts.present("tree.previous").bindings.spoken,
     shortcuts.present("tree.previous").bindings.ariaKeyshortcuts,
   ],
-  [[["↑"], ["K"]], "Up arrow or K", "ArrowUp K"],
+  [["↑", "K"], "Up arrow or K", "ArrowUp K"],
 );
-// J and K step; they are not also first and last.
+// J and K step; they are not also first and last, and no Shift+Arrow is.
 equal(
-  "first and last keep only their jump bindings",
+  "first and last are Home and End alone",
   [
     shortcuts.present("tree.first").bindings.ariaKeyshortcuts,
+    shortcuts.present("tree.first").bindings.spoken,
     shortcuts.present("tree.last").bindings.ariaKeyshortcuts,
+    shortcuts.present("tree.last").bindings.spoken,
   ],
-  ["Shift+ArrowUp Home", "Shift+ArrowDown End"],
+  ["Home", "Home", "End", "End"],
 );
 
 const beforeExpand = navigationCalls.length;
@@ -607,6 +644,14 @@ event = keyboardEvent("PageDown", document.body);
 document.dispatch(event);
 check("native main-pane scrolling keys remain untouched", !event.defaultPrevented);
 
+// The Files tab's letter, `F`, hands focus to the row the reader left, the roving anchor.
+check("focusCurrent focuses the roving anchor", navigator.focusCurrent() === true);
+check(
+  "focusCurrent lands on the anchor row, not the first one",
+  document.activeElement === outside,
+  document.activeElement?.dataset?.treeId || document.activeElement?.tagName,
+);
+
 navigator.dispose();
 check("dispose removes tree commands", shortcuts.present("tree.next") === null);
 // The layer's own async continuations can still call synchronize after
@@ -686,9 +731,205 @@ for (const [label, focusedKey] of [
   earlyShortcuts.dispose();
 }
 
-if (failures.length > 0) {
-  console.error(failures.join("\n"));
-  process.exitCode = 1;
-} else {
-  console.log("OK tree keyboard navigation behavior");
+/** Whether *promise* has settled once pending callbacks ran. */
+async function settled(promise) {
+  let done = false;
+  void promise.then(() => {
+    done = true;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  return done;
 }
+
+// A held arrow key walks: every repeat selects its row and opens its address at
+// once, so the shell can update the selection and route, and only the row the
+// walk stops on is read and rendered. The shell's navigation waits on
+// walking(path) before it reads the file; a single press is never held.
+async function walkSession() {
+  const walkDocument = new FakeDocument();
+  const walkContainer = walkDocument.createElement("nav");
+  const walkRoot = walkDocument.createElement("div");
+  walkRoot.setAttribute("role", "tree");
+  walkContainer.append(walkRoot);
+  walkDocument.body.append(walkContainer);
+  const rows = ["a", "b", "c", "d", "e", "f", "g", "h"].map((name) =>
+    treeItem(walkDocument, "file", `file:${name}.md`, `${name}.md`),
+  );
+  walkRoot.append(...rows);
+  const walkShortcuts = sandbox.MetabrowserKeyboardShortcuts.create({ document: walkDocument });
+  /** Each open, with whether its navigation is held by a walk. */
+  const opened = [];
+  const walkNavigator = sandbox.MetabrowserTreeKeyboardNavigation.create({
+    activate: (row) => row,
+    container: walkContainer,
+    document: walkDocument,
+    navigate(row) {
+      opened.push([row.dataset.path, walkNavigator.walking(row.dataset.path) !== null]);
+    },
+    setFolderExpanded() {},
+    shortcuts: walkShortcuts,
+  });
+  rows[0].focus();
+  walkContainer.dispatch("focusin", { target: rows[0] });
+
+  const press = (repeat) => {
+    const keyEvent = keyboardEvent("ArrowDown", walkDocument.activeElement, { repeat });
+    walkDocument.dispatch(keyEvent);
+    return keyEvent.defaultPrevented;
+  };
+  check("a single press is handled", press(false));
+  equal("a single press opens its row at once", opened, [["b.md", false]]);
+  check("a single press leaves no timer", timers.size === 0);
+
+  for (let index = 0; index < 5; index += 1) {
+    press(true);
+  }
+  equal("each repeat opens its row's address, held by the walk", opened.slice(1), [
+    ["c.md", true],
+    ["d.md", true],
+    ["e.md", true],
+    ["f.md", true],
+    ["g.md", true],
+  ]);
+  check("the walk follows the selection", walkDocument.activeElement === rows[6]);
+  check("rows the walk passed are no longer held", walkNavigator.walking("d.md") === null);
+  const stopped = walkNavigator.walking("g.md");
+  check("the row the walk is on is held", stopped !== null);
+  check("the walk holds its row while the key repeats", !(await settled(stopped)));
+  check("one timer waits for the next repeat", timers.size === 1);
+  runTimers();
+  check("the walk opens its row once the repeats stop", await settled(stopped));
+  check("a settled walk holds nothing", walkNavigator.walking("g.md") === null);
+
+  // The key is still down: its repeat is slower than the settle, so walking would only
+  // make each row wait it out. The rest of the hold opens rows at once.
+  press(true);
+  equal("a repeat slower than the settle opens its row at once", opened.at(-1), ["h.md", false]);
+  check("a slow repeat starts no timer", timers.size === 0);
+  walkContainer.dispatch("keyup", { key: "ArrowDown", target: rows[7] });
+  walkDocument.dispatch(keyboardEvent("ArrowUp", walkDocument.activeElement, { repeat: true }));
+  const released = walkNavigator.walking("g.md");
+  check("after a release, a held key walks again", released !== null);
+  walkContainer.dispatch("keyup", { key: "ArrowUp", target: rows[6] });
+  check("releasing the key opens the row at once", await settled(released));
+  check("a release leaves no timer", timers.size === 0);
+  press(false);
+  equal("a press is never held", opened.at(-1), ["h.md", false]);
+
+  const upEvent = keyboardEvent("ArrowUp", walkDocument.activeElement, { repeat: true });
+  walkDocument.dispatch(upEvent);
+  const interrupted = walkNavigator.walking("g.md");
+  check("Up repeats walk too", interrupted !== null);
+  press(false);
+  check("a single press ends the walk it interrupts", await settled(interrupted));
+  equal("the interrupting press is not held", opened.at(-1), ["h.md", false]);
+
+  const upAgain = keyboardEvent("ArrowUp", walkDocument.activeElement, { repeat: true });
+  walkDocument.dispatch(upAgain);
+  const disposedWalk = walkNavigator.walking("g.md");
+  walkNavigator.dispose();
+  check("dispose ends the walk", await settled(disposedWalk));
+  check("dispose leaves no timer", timers.size === 0);
+  walkShortcuts.dispose();
+  check(
+    "the walk's settle period is the Pulls panel's",
+    sandbox.MetabrowserTreeKeyboardNavigation.WALK_SETTLE_MS === 120,
+  );
+}
+
+// Group by sections: the same folder stands in two sections, each its own tree. Its
+// rows take their identities from app.js's own treeItemAttributes, scoped to the section
+// being built, so a mutation that repairs the roving anchor keeps focus on the copy the
+// reader is in rather than the first one in the panel.
+{
+  const app = fs.readFileSync(path.join(repoRoot, "src/metabrowser/static/app.js"), "utf-8");
+  const lift = (name) => {
+    const match = app.match(new RegExp(`^function ${name}\\([\\s\\S]*?^}`, "m"));
+    if (!match) {
+      throw new Error(`${name} not found in app.js`);
+    }
+    return match[0];
+  };
+  const shell = { _treeIdScope: "" };
+  vm.createContext(shell);
+  vm.runInContext(`${lift("esc")}\n${lift("treeItemAttributes")}`, shell);
+  const identityIn = (scope, kind, pathName) => {
+    shell._treeIdScope = scope;
+    const attributes = vm.runInContext(
+      `treeItemAttributes({ kind: ${JSON.stringify(kind)}, path: ${JSON.stringify(pathName)}, level: 1, position: 1, setSize: 1, labelId: "label" })`,
+      shell,
+    );
+    shell._treeIdScope = "";
+    return /data-tree-id="([^"]*)"/.exec(attributes)[1];
+  };
+  const sections = new FakeDocument();
+  const panel = sections.createElement("nav");
+  sections.body.append(panel);
+  /** @type {Array<{folder: FakeElement, file: FakeElement}>} */
+  const copies = [];
+  for (const scope of ["type:docs", "type:code"]) {
+    const tree = sections.createElement("div");
+    tree.setAttribute("role", "tree");
+    const folderRow = treeItem(sections, "folder", identityIn(scope, "folder", "src"), "src");
+    folderRow.classList.add("expanded");
+    folderRow.setAttribute("aria-expanded", "true");
+    const rows = group(sections, `group-${scope}`);
+    const fileRow = treeItem(
+      sections,
+      "file",
+      identityIn(scope, "file", `src/${scope}`),
+      `src/${scope}`,
+    );
+    rows.append(fileRow);
+    tree.append(folderRow, rows);
+    panel.append(tree);
+    copies.push({ folder: folderRow, file: fileRow });
+  }
+  check(
+    "a folder in two sections has two identities",
+    copies[0].folder.dataset.treeId !== copies[1].folder.dataset.treeId,
+    copies.map((copy) => copy.folder.dataset.treeId).join(" "),
+  );
+  const sectionShortcuts = sandbox.MetabrowserKeyboardShortcuts.create({ document: sections });
+  const sectionNavigator = sandbox.MetabrowserTreeKeyboardNavigation.create({
+    activate: (row) => row,
+    container: panel,
+    document: sections,
+    navigate() {},
+    setFolderExpanded(row, expanded) {
+      row.setAttribute("aria-expanded", String(expanded));
+      row.classList.toggle("expanded", expanded);
+      row.classList.toggle("collapsed", !expanded);
+      row.nextElementSibling?.classList.toggle("tree-children-collapsed", !expanded);
+    },
+    shortcuts: sectionShortcuts,
+  });
+  const second = copies[1].folder;
+  second.focus();
+  panel.dispatch("focusin", { target: second });
+  // Collapsing the second section's copy is a mutation; the anchor is repaired after it.
+  const mutation = sectionNavigator.prepareForMutation();
+  second.setAttribute("aria-expanded", "false");
+  second.nextElementSibling.classList.add("tree-children-collapsed");
+  sectionNavigator.synchronize(mutation);
+  check(
+    "a mutation in the second section keeps focus on its copy of the folder",
+    sections.activeElement === second,
+    sections.activeElement?.dataset?.treeId,
+  );
+  sectionNavigator.dispose();
+  sectionShortcuts.dispose();
+}
+
+walkSession()
+  .catch((error) => {
+    failures.push(`walk session threw: ${error?.stack || error}`);
+  })
+  .then(() => {
+    if (failures.length > 0) {
+      console.error(failures.join("\n"));
+      process.exitCode = 1;
+    } else {
+      console.log("OK tree keyboard navigation behavior");
+    }
+  });

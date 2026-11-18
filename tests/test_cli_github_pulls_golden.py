@@ -17,8 +17,14 @@ show: a refresh that completes, the requests it made, and a list that is ``curre
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import io
 import json
 import os
+import sqlite3
+import sys
+import threading
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import timedelta
@@ -27,8 +33,14 @@ from typing import Any
 
 import pytest
 
-from metabrowser.builtin_plugins.github import gh, pull_list, pulls
-from metabrowser.builtin_plugins.github.pull_catalog import read_catalog
+from metabrowser.builtin_plugins.github import gh, pull_list, pull_list_route, pulls
+from metabrowser.builtin_plugins.github.pull_catalog import CATALOG_PROJECTION, read_catalog
+from metabrowser.builtin_plugins.github.pull_record import (
+    MAX_REFRESH_MESSAGE_CHARS,
+    PullRefreshStamp,
+    write_refresh_stamp,
+)
+from metabrowser.cache.paths import source_pull_list_refresh
 from metabrowser.cache.urls import GitSource
 from tests.github_pull_fixture import (
     ANOTHER_READER,
@@ -66,6 +78,7 @@ pytestmark = [
 PULLS = "/api/plugin/github/pulls"
 REFRESH = "/api/plugin/github/pulls-refresh"
 PREPARE = "/api/plugin/github/pull-cores-prepare"
+CLEAR = "/api/plugin/github/cache-clear"
 
 
 class _Session:
@@ -139,6 +152,13 @@ class _Session:
             project=_watch_summary if summarize else None,
             body=[text],
         )
+
+    def clear(self) -> Invocation:
+        """The command a cache failure names, its ``{}`` on standard input as pasted."""
+
+        with self.monkeypatch.context() as patched:
+            patched.setattr(sys, "stdin", io.TextIOWrapper(io.BytesIO(b"{}\n")))
+            return self._run(CANONICAL, "--api", CLEAR, "--data", "-", body=["{}"])
 
     def local(self, route: str) -> Invocation:
         """A route read from a local root, which opens no source and asks gh nothing."""
@@ -413,6 +433,26 @@ def test_golden_pull_lists_fetch_extend_refresh_and_refuse(
 
     cached = session.local(f"/api/cache/source/{origin_identity(CANONICAL).slug}")
     assert cached.exit_code == 0, cached.stderr
+
+    session.say(
+        "Clearing the repository's GitHub cache removes every file the plugin keeps for it, "
+        "and nothing of the source or its store; the list is then not cached until a "
+        "refresh fetches it again."
+    )
+    source = session.home / "sources" / origin_identity(CANONICAL).slug
+    kept = {path.name: path.read_bytes() for path in source.iterdir() if path.is_file()}
+    cleared = session.clear()
+    assert cleared.exit_code == 0, cleared.stderr
+    assert cleared.payload()["cleared"] > 0
+    assert list((source / "pulls").iterdir()) == []
+    assert {path.name: path.read_bytes() for path in source.iterdir() if path.is_file()} == kept
+    emptied = session.get("?limit=0").payload()
+    assert (emptied["state"], emptied["reason"]) == ("absent", "not_cached")
+    session.answer(online)
+    refetched = _after(session.post({}))
+    assert refetched["last_refresh"]["outcome"] == "succeeded"
+    assert refetched["catalog_fetched"] > 0
+
     rendered = label_home(session.labels.apply("".join(session.blocks)), session.home)
     assert str(tmp_path) not in rendered and str(session.home) not in rendered
     assert "file://" not in rendered
@@ -489,15 +529,63 @@ def test_golden_pull_list_failures(
 
     slug = origin_identity(CANONICAL).slug
     pulls_directory = session.home / "sources" / slug / "pulls"
+    command = f"`echo '{{}}' | metab {CANONICAL} --api {CLEAR} --data -`"
+    session.say("A cache that refuses a write says why, and the command that clears it.")
     pulls_directory.chmod(0o500)
     try:
         unwritable = session.post({"retry": True})
+        session.say("While the directory itself refuses writes, so does that command.")
+        refused_clear = session.clear()
     finally:
         pulls_directory.chmod(0o700)
     assert unwritable.exit_code == 1
-    assert _after(unwritable)["last_refresh"]["outcome"] == "cache_unwritable"
+    last = _after(unwritable)["last_refresh"]
+    assert last["outcome"] == "cache_unwritable"
+    assert command in last["message"]
+    assert refused_clear.exit_code == 1
+    assert refused_clear.payload()["code"] == "cache_unwritable"
     session.answer(online)
     assert _after(session.post({"retry": True}))["last_refresh"]["outcome"] == "succeeded"
+
+    session.say(
+        "A catalog a newer Metabrowser wrote is left as it is and named, before any page "
+        "is asked for; the command it names clears it, and the list is fetched again."
+    )
+    with sqlite3.connect(pulls_directory / "catalog.sqlite3") as db:
+        (value,) = db.execute("SELECT value FROM checkpoint").fetchone()
+        newer = json.loads(value) | {"projection_version": CATALOG_PROJECTION + 1}
+        db.execute("UPDATE checkpoint SET value=?", (json.dumps(newer | {"added": None}),))
+    refused_newer = session.post({"retry": True})
+    assert refused_newer.exit_code == 1
+    last = _after(refused_newer)["last_refresh"]
+    assert last["outcome"] == "newer_cache" and command in last["message"]
+    assert "gh api graphql" not in session.blocks[-1].rsplit("--- gh ---\n", 1)[1]
+    cleared = session.clear()
+    assert cleared.exit_code == 0 and cleared.payload()["cleared"] > 0
+    assert not (pulls_directory / "catalog.sqlite3").exists()
+    rebuilt = _after(session.post({"retry": True}))
+    assert rebuilt["last_refresh"]["outcome"] == "succeeded"
+    assert rebuilt["fetched"] == baseline["fetched"]
+
+    session.say(
+        "A catalog whose versions cannot be read, here a write-ahead-log database, which no "
+        "release writes, is left as it is and named the same way; the command clears it."
+    )
+    catalog = pulls_directory / "catalog.sqlite3"
+    with contextlib.closing(sqlite3.connect(catalog)) as db:
+        assert db.execute("PRAGMA journal_mode=WAL").fetchone() == ("wal",)
+    kept = catalog.read_bytes()
+    refused_unknown = session.post({"retry": True})
+    assert refused_unknown.exit_code == 1
+    last = _after(refused_unknown)["last_refresh"]
+    assert last["outcome"] == "unknown_cache" and command in last["message"]
+    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].strip() == ""
+    assert catalog.read_bytes() == kept
+    cleared = session.clear()
+    assert cleared.exit_code == 0 and cleared.payload()["cleared"] > 0
+    rebuilt = _after(session.post({"retry": True}))
+    assert rebuilt["last_refresh"]["outcome"] == "succeeded"
+    assert rebuilt["fetched"] == baseline["fetched"]
 
     session.say("An environment token cannot resolve its login while offline.")
     offline_account = {
@@ -529,3 +617,266 @@ def test_golden_pull_list_failures(
     assert str(tmp_path) not in rendered and str(session.home) not in rendered
     assert "file://" not in rendered
     check_golden("cli-github-pulls-failures.txt", rendered)
+
+
+def _budget(answers: dict[str, Any], remaining: int) -> dict[str, Any]:
+    """*answers* with every catalog page reporting *remaining* of 5,000 GraphQL points."""
+
+    api = {
+        key: {**entry, "headers": {**entry["headers"], "X-Ratelimit-Remaining": str(remaining)}}
+        if key.startswith("graphql:")
+        else entry
+        for key, entry in answers["api"].items()
+    }
+    return {**answers, "api": api}
+
+
+def _graphql(session: _Session) -> list[str]:
+    """The GraphQL requests the last command made, in order."""
+
+    calls = session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines()
+    return [call for call in calls if call.startswith("gh api graphql")]
+
+
+def _window_summary(result: Invocation) -> str:
+    """A window by its size, its ends, and where the next one starts."""
+
+    envelope = result.payload()
+    numbers = [row["number"] for row in envelope["rows"]]
+    header = result.stdout[: result.stdout.index("{")]
+    summary = {
+        "list": envelope["list"],
+        "total": envelope["total"],
+        "fetched": envelope["fetched"],
+        "complete": envelope["complete"],
+        "rows": len(numbers),
+        "first": numbers[0] if numbers else None,
+        "last": numbers[-1] if numbers else None,
+        "next_after": envelope["next_after"],
+    }
+    return header + json.dumps(summary) + "\n"
+
+
+def test_golden_pull_list_backfill_waits_for_the_budget_floor_and_pages_past_every_cap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    session = _Session(tmp_path, monkeypatch, pull_origin)
+    items = [
+        item if number % 10 == 0 else {**item, "state": "closed", "closed_at": item["created_at"]}
+        for number in range(1, 1206)
+        for item in (generated_item(number),)
+    ]
+    online = scenario(session.origin)
+    online = {**online, "api": {**online["api"], **catalog_entries(items)}}
+
+    session.say(
+        "GitHub reports 1,000 of 5,000 GraphQL points left, under the quarter that background "
+        "work leaves to the reader. The reader's 300 Closed rows are fetched; the backfill "
+        "past them waits, and the job ends without a failure."
+    )
+    session.answer(_budget(online, 1000))
+    held = session.post({"state": "closed", "target": 300}, summarize=True)
+    assert held.exit_code == 0, held.stderr
+    assert _graphql(session) == [
+        "gh api graphql catalog state=closed cursor=start",
+        "gh api graphql catalog state=closed cursor=closed-100",
+        "gh api graphql catalog state=closed cursor=closed-200",
+    ]
+    status = session.get("?state=closed&limit=0").payload()
+    assert (status["fetched"], status["total"], status["complete"]) == (300, 1085, False)
+    assert status["last_refresh"]["outcome"] == "succeeded"
+
+    session.say(
+        "A background ask the cached prefix answers starts nothing. Scrolling asks for the "
+        "reader's next page, which is fetched at any budget."
+    )
+    idle = session.post({"state": "closed", "target": 300, "background": True})
+    assert json.loads(idle.stdout.split("status: 200\n")[1])["refresh"] == "not_due"
+    scrolled = session.post({"state": "closed", "target": 400}, summarize=True)
+    assert scrolled.exit_code == 0, scrolled.stderr
+    assert _graphql(session) == ["gh api graphql catalog state=closed cursor=closed-300"]
+
+    session.advance(61)
+    session.say(
+        "The scan that keeps the list current observes 4,000 points left, and the backfill "
+        "resumes from the top to the oldest pull request in the same job."
+    )
+    session.answer(_budget(online, 4000))
+    resumed = session.post({"state": "closed", "target": 400}, summarize=True)
+    assert resumed.exit_code == 0, resumed.stderr
+    calls = _graphql(session)
+    assert calls[0] == "gh api graphql catalog state=updated cursor=start"
+    assert calls[1:] == [
+        f"gh api graphql catalog state=all cursor={'start' if not n else f'all-{n}'}"
+        for n in range(0, 1300, 100)
+    ]
+
+    session.say(
+        "Closed pages through every row in bounded windows, past 500, 600, and the "
+        "1,000-row window alike."
+    )
+    first = session.get("?state=closed&limit=1000", project=_window_summary).payload()
+    assert (len(first["rows"]), first["complete"], first["fetched"]) == (1000, True, 1085)
+    rest = session.get(
+        f"?state=closed&limit=1000&after={first['next_after']}", project=_window_summary
+    ).payload()
+    assert len(rest["rows"]) == 85 and rest["next_after"] is None
+    assert rest["rows"][-1]["number"] == 1
+
+    rendered = label_home(session.labels.apply("".join(session.blocks)), session.home)
+    assert str(tmp_path) not in rendered and str(session.home) not in rendered
+    check_golden("cli-github-pulls-backfill.txt", rendered)
+
+
+def test_a_long_invalid_version_keeps_the_clear_command_in_the_persisted_refusal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    """A stamp keeps 1,000 characters of a message, and what to do is always among them.
+
+    The checkpoint's projection is 1,200 characters of text: the refusal names its kind,
+    not the value, so the command that clears the cache survives what the route persists.
+    No transcript: the routes' answers are what is checked, and the value would bury it.
+    """
+
+    session = _Session(tmp_path, monkeypatch, pull_origin)
+    assert session.post({}).exit_code == 0
+    catalog = session.home / "sources" / origin_identity(CANONICAL).slug / "pulls/catalog.sqlite3"
+    with contextlib.closing(sqlite3.connect(catalog)) as db, db:
+        (value,) = db.execute("SELECT value FROM checkpoint").fetchone()
+        invalid = json.loads(value) | {"projection_version": "x" * 1200}
+        db.execute("UPDATE checkpoint SET value=?", (json.dumps(invalid),))
+    kept = catalog.read_bytes()
+    session.advance(61)
+    refused = session.post({"retry": True})
+    assert refused.exit_code == 1
+    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].strip() == ""
+    assert catalog.read_bytes() == kept
+    command = f"`echo '{{}}' | metab {CANONICAL} --api {CLEAR} --data -`"
+    for answer in (_after(refused), session.get("?limit=0").payload()):
+        last = answer["last_refresh"]
+        assert last["outcome"] == "unknown_cache"
+        assert command in last["message"], last["message"]
+        assert "gives its row projection as text" in last["message"]
+        assert "x" * 20 not in last["message"]
+        assert len(last["message"]) <= MAX_REFRESH_MESSAGE_CHARS
+
+
+def test_a_started_refresh_answers_with_the_list_as_its_job_found_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    """``pulls`` in the answer that starts a job is read before that job can write.
+
+    Here the job's stamp lands as it starts, the earliest it can. Without a ``gh`` the job
+    writes its ``gh_missing`` almost at once, as in ``test_golden_pull_list_failures``,
+    where a loop of that step under load showed it in 5 of 400 answers (mb-7pu0). Mutation
+    check: read ``pulls`` after the start, as the route did, and the job that is still
+    ``refreshing`` reports its own outcome as the last refresh.
+    """
+
+    session = _Session(tmp_path, monkeypatch, pull_origin)
+    assert session.post({}).exit_code == 0
+    session.advance(1)
+    before = session.get("?limit=0").payload()["last_refresh"]
+    real_start = pull_list_route.start_refresh
+    written: list[pull_list_route.ListRefreshStart] = []
+
+    def start_then_write(
+        view: pull_list_route.ListView, ask: pull_list_route.RefreshRequest, **kw: Any
+    ) -> pull_list_route.ListRefreshStart:
+        started = real_start(view, ask, **kw)
+        repository = view.repository
+        assert repository is not None
+        ended = PullRefreshStamp(outcome="gh_missing", at=f"{session.now:%Y-%m-%dT%H:%M:%SZ}")
+        # The stamp as the job's write leaves it on disk: its lock is a worker thread's.
+        relative = source_pull_list_refresh(repository.slug, "all")
+        write_refresh_stamp(repository.home, repository.slug, relative, ended)
+        written.append(started)
+        return started
+
+    monkeypatch.setattr(pull_list_route, "start_refresh", start_then_write)
+    monkeypatch.setattr(gh, "gh_executable", lambda: None)
+    missing = session.post({"retry": True})
+
+    # The route reaches the start through the module, so the write ran, once.
+    assert written == ["started"]
+    _, status, rest = missing.stdout.partition("status: 202\n")
+    assert status, missing.stdout
+    answer, _ = json.JSONDecoder().raw_decode(rest)
+    assert (answer["refresh"], answer["pulls"]["refreshing"]) == ("started", True)
+    assert before is not None and before["outcome"] != "gh_missing"
+    assert answer["pulls"]["last_refresh"] == before
+    assert _after(missing)["last_refresh"]["outcome"] == "gh_missing"
+
+
+def test_an_answer_that_starts_no_job_is_read_after_the_one_that_ended(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    """``pulls`` in an answer that says nothing is refreshing is read after nothing was.
+
+    A job another request started ends while this request reads ``pulls`` before its
+    start, and this request then starts none: ``not_due``, nothing refreshing. Read only
+    before the start, the answer showed the list as it was before that job ended,
+    ``current`` and ``succeeded``, which the panel holds as the list's state (review A1 on
+    #513). Mutation check: drop the read after the start, and it does.
+    """
+
+    session = _Session(tmp_path, monkeypatch, pull_origin)
+    assert session.post({}).exit_code == 0
+    session.advance(1)
+    real_view, real_read = pull_list_route.list_view, pull_list_route.read_catalog_window
+    ended = threading.Event()
+    releases: list[tuple[asyncio.AbstractEventLoop, asyncio.Event]] = []
+    reads: list[pull_list_route.ListFound | None] = []
+
+    def view_beside_a_job(app: Any, name: Any) -> pull_list_route.ListView:
+        view = real_view(app, name)
+        repository, coordinator = view.repository, view.coordinator
+        if releases or repository is None or coordinator is None:
+            return view
+        release = asyncio.Event()
+        changed = PullRefreshStamp(
+            outcome="account_changed", at=f"{session.now:%Y-%m-%dT%H:%M:%SZ}"
+        )
+        relative = source_pull_list_refresh(repository.slug, "all")
+
+        async def another_requests_job() -> None:
+            await release.wait()
+            await asyncio.to_thread(
+                write_refresh_stamp, repository.home, repository.slug, relative, changed
+            )
+
+        key = pull_list_route.catalog_job_key(repository.source)
+        assert coordinator.start(key, another_requests_job, network=False) == "started"
+        job = coordinator.job(key)
+        assert job is not None
+        job.add_done_callback(lambda _job: ended.set())
+        releases.append((asyncio.get_running_loop(), release))
+        return real_view(app, name)
+
+    def read_as_that_job_ends(
+        view: pull_list_route.ListView, window: pull_list_route.ListWindow
+    ) -> pull_list_route.ListFound | None:
+        found = real_read(view, window)
+        if not reads:
+            loop, release = releases[0]
+            loop.call_soon_threadsafe(release.set)
+            assert ended.wait(timeout=30)
+        reads.append(found)
+        return found
+
+    monkeypatch.setattr(pull_list_route, "list_view", view_beside_a_job)
+    monkeypatch.setattr(pull_list_route, "read_catalog_window", read_as_that_job_ends)
+    answered = session.post({})
+
+    # The job ran beside the request, and the first read was made before it ended.
+    assert len(releases) == 1 and ended.is_set()
+    first = reads[0]
+    assert first is not None and first.stamp is not None and first.stamp.outcome == "succeeded"
+    _, status, rest = answered.stdout.partition("status: 200\n")
+    assert status, answered.stdout
+    answer, _ = json.JSONDecoder().raw_decode(rest)
+    assert (answer["refresh"], answer["pulls"]["refreshing"]) == ("not_due", False)
+    assert answer["pulls"]["last_refresh"]["outcome"] == "account_changed"
+    assert answer["pulls"]["state"] == "stale"
+    listed = session.get("?limit=0").payload()
+    assert (listed["state"], listed["last_refresh"]["outcome"]) == ("stale", "account_changed")

@@ -12,23 +12,11 @@
 //     getRegisteredView(kindId, viewId)
 //     listViewsForKind(kindId)
 //
-//   View lifecycle contract:
-//     render(container, ctx)
-//       Called when the preview pane mounts this view. Plugin owns
-//       container's innerHTML and may attach DOM listeners, fetch data,
-//       paint charts. May return a Promise; the shell awaits it for
-//       error surfacing.
-//     dispose(container) [optional]
-//       Called when the preview pane is *replaced* — specifically when
-//       (1) a different file is opened, (2) the same file is reloaded
-//       after a file-change event, or (3) an error/loading state
-//       overwrites the pane. Use it to detach window-level listeners,
-//       abort in-flight fetches, clear timers/SSE streams, and destroy
-//       Chart.js instances or other resources that would otherwise
-//       outlive their container.
-//       dispose is *not* called on tab switches within the same file
-//       — those toggle CSS display only; the container's DOM persists,
-//       and so does any state the plugin captured in closures over it.
+//   View lifecycle ("Registration and Lifecycle" in docs/plugins.md):
+//     render(container, ctx)             — own container; may return a Promise, or a
+//                                          handle with ready and dispose()
+//     dispose(container)                 — the pane was replaced, never on a tab switch:
+//                                          release listeners, requests, and timers
 //
 //   Rendering:
 //     render(template, data)             — Mustache.render with auto-escape
@@ -62,6 +50,11 @@
 //     navigation.current()               — current path/query/fragment target or null
 //     fileCatalog.snapshot()              — immutable known-file inventory snapshot
 //     fileCatalog.subscribe(listener)     — invalidate when inventory coverage changes
+//     onInventoryChange(listener)         — each filesystem change the shell observes:
+//                                          listener(paths), the changed entries with
+//                                          their ancestors, or null when anything may
+//                                          have changed, as on every reconnect; returns
+//                                          an unsubscribe function
 //     sourceKind()                        — filesystem or git_revision served source
 //     repository                          — verified GitHub identity for the served tree
 //
@@ -69,6 +62,15 @@
 //     formatSize(bytes)                  — "1.5 KB" / "2.3 MB" / etc.
 //     formatAge(secondsSinceEpoch, opts?) — the age primitive: {label, className}
 //     formatTimestamp(secondsSinceEpoch) — local-time short form
+//     titleNodes(title)                  — a commit or PR title's nodes: a conventional-
+//                                          commit prefix in span.title-prefix, then the rest
+//     countPartsNodes(parts)             — a count summary's nodes, its numbers bold, its
+//                                          marks muted, and its status counts, "21 A",
+//                                          bold in their statuses' ink: the shell's one
+//                                          painter of them
+//     changeLine(change)                 — a brief change line, "10 A, 5 D, 4 M · +1,234
+//                                          −567", from statuses and line totals
+//     changeLineNodes(line, options?)    — its nodes, the shell's one component for it
 //     countClass(count)                   — shared file-count emphasis class
 //     sizeClass(bytes)                    — shared byte-count emphasis class
 //     sizeHtml(bytes, extraClass?)       — formatSize wrapped in <span class=size>
@@ -81,9 +83,22 @@
 //     icons.<name>                       — raw SVG strings for built-in icons
 //     icons.withClass(name, cls)         — returns SVG with extra class applied
 //     refChip/refChipHtml(name, opts?)    — structured refs with owned copy controls
+//     mergeRefs(source, target, opts?)    — a merge as source → target, left to right
 //     mountRefCopies(primary, host)       — sibling controls; caller owns returned disposer
+//     actorIdentity(name, opts?)          — a person: an avatar's box, then the bold name,
+//                                          the person glyph in the box without an avatar
+//     actorIdentityHtml(name, opts?)      — its markup, the box holding the glyph
 //     filterControls                      — shared filter markup and interaction
 //                                          helpers, installed before plugins load
+//     class="disclosure-toggle"           — on any control that shows or hides
+//                                          content: the host stylesheet keeps it from
+//                                          selecting text, even on a double or triple
+//                                          click
+//
+//   Keyboard ("Keyboard Shortcuts" in docs/plugins.md):
+//     shortcuts.attach(element, spec)     — a letter key and badge for a view's control,
+//                                          or with `numbered: true` a positional
+//                                          number; returns {retarget, detach}
 //
 //   Diagnostics:
 //     perf.measure(label, fn)            — contribute a synchronous named span
@@ -92,7 +107,8 @@
 //     debug                              — console-only shell troubleshooting helpers
 //
 // The helpers that build a view's markup -- renderSourceView, wrapWithCopy,
-// partialNoticeHtml, refChip/refChipHtml/mountRefCopies, ageBucket/ageLabelHtml,
+// partialNoticeHtml, refChip/refChipHtml/mergeRefs/mountRefCopies,
+// actorIdentity/actorIdentityHtml, ageBucket/ageLabelHtml,
 // renderTextTruncationWarning, renderTextLoadMoreFooter, langForPath
 // and langForExtension -- and the syntax service, highlightSyntax and
 // isLargeTextPreview, are defined in plugin-sdk-views.js, which is not a startup
@@ -159,6 +175,28 @@
       return _attachedFileCatalog?.subscribe(listener) || (() => {});
     },
   });
+  // Plugin keys until static/plugin-shortcuts.js loads and takes them: 252 bytes of
+  // startup transfer, by devtools/check_startup_scripts.py.
+  const _shortcutQueue = new Set();
+  function queueShortcut(element, options) {
+    const facade = global.MetabrowserPluginShortcuts;
+    if (facade) {
+      return facade.attachShortcut(element, options);
+    }
+    const queued = { element, options };
+    _shortcutQueue.add(queued);
+    options?.signal?.addEventListener?.("abort", () => _shortcutQueue.delete(queued));
+    return {
+      retarget(next) {
+        queued.element = next;
+        queued.handle?.retarget(next);
+      },
+      detach() {
+        _shortcutQueue.delete(queued);
+        queued.handle?.detach();
+      },
+    };
+  }
   const repository = normalizeRepositoryContext(global.METABROWSER_REPOSITORY_CONTEXT);
 
   /** @param {unknown} value */
@@ -366,8 +404,8 @@
     _loadMoreActions.set(name, action);
   }
 
-  // The document-wide delegates below (copy, Load more, and the shell's print and
-  // address controls) act only on an element application or plugin code created.
+  // The document-wide delegates below (copy, Load more, and the shell's address
+  // controls) act only on an element application or plugin code created.
   // No static marker can say so: a trusted folder's Markdown keeps class, id, and
   // data-* through KPress, so it could spell any attribute this code writes and turn
   // a click into a clipboard write or an application action. This value is drawn when
@@ -391,6 +429,14 @@
     return ` data-mb-owner="${_delegateOwner}"`;
   }
 
+  // The elements `ownDelegate` marked, by identity. The owner value is a string a
+  // trusted document's stylesheet can read and a document fetched later can then carry
+  // (docs/project/architecture/arch-server-and-content.md), so where a check need not
+  // admit markup page code wrote as text, as the tooltip inside a rendered document
+  // does not, it asks for the element itself (`ownsElement`).
+  /** @type {WeakSet<Element>} */
+  const _ownedElements = new WeakSet();
+
   /**
    * Mark an element page code created as a delegated control.
    * @template {Element} T
@@ -399,7 +445,16 @@
    */
   function ownDelegate(element) {
     element.setAttribute("data-mb-owner", _delegateOwner);
+    _ownedElements.add(element);
     return element;
+  }
+
+  /**
+   * Whether *element* is one `ownDelegate` marked: the element, not a copy of its mark.
+   * @param {Element | null | undefined} element
+   */
+  function ownsElement(element) {
+    return !!element && _ownedElements.has(element);
   }
 
   /** @param {Element | null | undefined} element */
@@ -416,7 +471,9 @@
     configureAssets,
     isOwnedDelegate,
     loadPluginsForKind,
+    ownsElement,
     registerLoadMoreAction,
+    shortcutQueue: _shortcutQueue,
   });
 
   function registerView(kindId, viewId, spec) {
@@ -735,13 +792,13 @@
   const fileTypes =
     global.MetabrowserFileTypeTaxonomy ||
     Object.freeze({
-      schema: "file-type-registry-v4",
-      schemaVersion: 4,
+      schema: "file-type-registry-v5",
+      schemaVersion: 5,
       revision: 0,
       fingerprint: "unavailable",
       maxExtensionComponents: 2,
       registryIdentity: Object.freeze({
-        schemaVersion: 4,
+        schemaVersion: 5,
         revision: 0,
         fingerprint: "unavailable",
       }),
@@ -852,6 +909,48 @@
     );
   }
 
+  /**
+   * Call *listener* with each filesystem change the shell observes.
+   *
+   * The paths are inventory paths: each changed entry with every ancestor whose totals it
+   * moved, down to the depth the shell watches, so a deeper change arrives as its deepest
+   * watched ancestor. Null means anything may have changed: the stream reconnected,
+   * whether or not its snapshot changed, or resynchronized, or the first crawl finished.
+   * Returns an unsubscribe function.
+   *
+   * A host with no event target, such as a page that is not the shell, has no inventory
+   * stream: the listener is never called, as the folder context's refresh is never
+   * scheduled there.
+   *
+   * @param {(paths: ReadonlyArray<string> | null) => void} listener
+   * @returns {() => void}
+   */
+  function onInventoryChange(listener) {
+    if (typeof listener !== "function") {
+      throw new TypeError("onInventoryChange: listener must be a function");
+    }
+    /** @param {Event} event */
+    const handleChange = (event) => {
+      const paths = /** @type {CustomEvent<{paths?: unknown}>} */ (event).detail?.paths;
+      listener(
+        Array.isArray(paths)
+          ? Object.freeze(paths.filter((path) => typeof path === "string"))
+          : null,
+      );
+    };
+    if (typeof global.addEventListener !== "function") {
+      return () => {};
+    }
+    global.addEventListener("metabrowser:inventory-change", handleChange);
+    let subscribed = true;
+    return () => {
+      if (subscribed) {
+        subscribed = false;
+        global.removeEventListener("metabrowser:inventory-change", handleChange);
+      }
+    };
+  }
+
   // Plugins can observe directory totals but cannot mutate the host-owned
   // inventory projection. The fallback keeps partial SDK harnesses usable
   // without weakening the production ownership boundary.
@@ -885,9 +984,15 @@
         global.MetabrowserTooltip.show(html, anchor);
       }
     },
-    hide() {
+    /**
+     * Put the tooltip away. With `within`, a tooltip anchored at or inside it, or one
+     * whose anchor has left the document, and never one shown with no anchor. With none,
+     * any tooltip but one anchored in the nav's header. See docs/design-system.md, "A
+     * Surface Puts Away Only Its Own Tooltip".
+     */
+    hide(within) {
       if (global.MetabrowserTooltip) {
-        global.MetabrowserTooltip.hide();
+        global.MetabrowserTooltip.hide(within);
       }
     },
   };
@@ -954,6 +1059,25 @@
     return pending;
   }
 
+  /**
+   * Whether the page itself links `url` as a stylesheet: a `<link>` the page was served
+   * with, not one this loader appended (those carry data-kpress-asset and are tracked in
+   * the loaded and loading sets).
+   * @param {string} url
+   * @returns {boolean}
+   */
+  function _pageLinksStylesheet(url) {
+    const doc = global.document;
+    if (typeof doc.querySelectorAll !== "function") {
+      return false;
+    }
+    const wanted = new URL(url, doc.baseURI).href;
+    const links = /** @type {NodeListOf<HTMLLinkElement>} */ (
+      doc.querySelectorAll('link[rel~="stylesheet"]:not([data-kpress-asset])')
+    );
+    return Array.from(links).some((link) => link.href === wanted);
+  }
+
   /** @param {string} url @returns {Promise<void>} */
   function _loadStylesheet(url) {
     if (!url || !global.document) {
@@ -962,6 +1086,14 @@
     const parent = _headOrBody();
     if (!parent || typeof global.document.createElement !== "function") {
       return Promise.resolve();
+    }
+    // A sheet the page already links is loaded, and a second link would move its rules
+    // later in the cascade. The shell's <head> links KPress's style-tokens.css before
+    // static/styles.css, so the shell's :root tokens outrank KPress's same-named ones
+    // (--font-sans, --font-mono, --kpress-print-page-margin). Linked again after
+    // styles.css, KPress's would win from the first rendered document on.
+    if (!_loadedKpressAssets.has(url) && _pageLinksStylesheet(url)) {
+      _loadedKpressAssets.add(url);
     }
     return _loadKpressAssetOnce(
       url,
@@ -1157,6 +1289,51 @@
     }
   }
 
+  // "Idle Work" in docs/project/architecture/arch-browser-shell.md.
+  const IDLE_INPUT_QUIET_MS = 250;
+  let _lastInput = -Infinity;
+  const _viewSettled = new Promise((resolve) =>
+    global.addEventListener?.("metabrowser:first-view-settled", resolve),
+  );
+  if (!global.requestIdleCallback) {
+    for (const type of ["pointerdown", "keydown", "wheel"]) {
+      global.addEventListener?.(type, () => (_lastInput = performance.now()), {
+        capture: true,
+        passive: true,
+      });
+    }
+  }
+  function whenIdle(callback, options) {
+    const timeout = options?.timeout;
+    if (global.requestIdleCallback) {
+      const id = global.requestIdleCallback(() => callback(), { timeout });
+      return () => global.cancelIdleCallback(id);
+    }
+    const deadline = performance.now() + (timeout ?? Infinity);
+    let waiting = true;
+    let timer;
+    const check = () => {
+      const now = performance.now();
+      const wait = Math.min(_lastInput + IDLE_INPUT_QUIET_MS - now, deadline - now);
+      timer = wait > 0 ? setTimeout(check, wait) : void callback();
+    };
+    const start = () => {
+      if (waiting) {
+        waiting = false;
+        clearTimeout(timer);
+        timer = setTimeout(check);
+      }
+    };
+    _viewSettled.then(start);
+    if (timeout !== undefined) {
+      timer = setTimeout(start, timeout);
+    }
+    return () => {
+      waiting = false;
+      clearTimeout(timer);
+    };
+  }
+
   // On-demand vendored libraries. asset-loader.js owns the loading; the SDK
   // only publishes it, so a plugin never reaches into a private global.
   // A consumer awaits this before touching the library's global: Chart.js is
@@ -1187,13 +1364,15 @@
   // Wire KPress's TOC for a freshly mounted document and return its disposer.
   // KPress's toc.js owns the behavior; the host's only jobs are to mark a scroll
   // element [data-kpress-viewport] (the preview pane) and call this on mount /
-  // dispose on unmount. Returns null if toc.js has not loaded yet.
-  function kpressInitToc(container) {
+  // dispose on unmount. Returns null if toc.js has not loaded yet. *config* is
+  // KPress's own per-binding configuration, such as the toggle's `visible` policy
+  // the Markdown plugin supplies (builtin_plugins/markdown/toc-toggle.js).
+  function kpressInitToc(container, config) {
     if (typeof _kpressInitTocFn !== "function" || !container) {
       return null;
     }
     try {
-      return _kpressInitTocFn(container);
+      return _kpressInitTocFn(container, config);
     } catch (err) {
       if (global.console?.warn) {
         global.console.warn("metabrowser: kpress toc init failed", err);
@@ -1408,6 +1587,37 @@
     return global.MetabrowserFormatters.age(Number(secondsSinceEpoch) || 0, options);
   }
 
+  // A commit's or pull request's title, for its element to hold: a conventional-commit
+  // prefix at regular weight in `span.title-prefix`, then the rest at the title's own weight
+  // (docs/design-system.md, "Titles"). The nodes belong to the page's document.
+  /** @param {string} title @returns {Array<Node | string>} */
+  function titleNodes(title) {
+    return global.MetabrowserFormatters.titleNodes(global.document, title);
+  }
+
+  // The shell's painters of a count summary and a brief change line, into the page's
+  // document (docs/design-system.md, "Count Summaries Bold Their Numbers", "Brief Change
+  // Line").
+  /** @param {MetabrowserCountParts} parts @returns {Array<Node | string>} */
+  function countPartsNodes(parts) {
+    return global.MetabrowserFormatters.countPartsNodes(global.document, parts);
+  }
+
+  /** @param {MetabrowserChangeLineInput} change @returns {MetabrowserChangeLine} */
+  function changeLine(change) {
+    const formatters = global.MetabrowserFormatters;
+    return formatters.changeLine(change, formatters.formatInteger);
+  }
+
+  /**
+   * @param {MetabrowserChangeLine} line
+   * @param {MetabrowserChangeLineOptions} [options]
+   * @returns {Array<Node | string>}
+   */
+  function changeLineNodes(line, options) {
+    return global.MetabrowserFormatters.changeLineNodes(global.document, line, options);
+  }
+
   function formatTimestamp(secondsSinceEpoch) {
     // Local-time short form; matches the file header / activity feed.
     if (!secondsSinceEpoch) {
@@ -1602,6 +1812,7 @@
     fetchText: fetchText,
     fetchRollup: fetchRollup,
     watchRollup: watchRollup,
+    onInventoryChange: onInventoryChange,
     errors: global.MetabrowserRequestErrors,
     folderContext: folderContext,
     directoryTotals: directoryTotals,
@@ -1611,6 +1822,7 @@
     fileTypeClass: fileTypeClass,
     fileTypeIcon: fileTypeIcon,
     fileCatalog: fileCatalog,
+    shortcuts: Object.freeze({ attach: queueShortcut }),
     navigation: global.MetabrowserNavigationRoute.navigation,
     sourceKind: sourceKind,
     repository: repository,
@@ -1618,6 +1830,7 @@
     loadKpressAssets: loadKpressAssets,
     ensureAsset: ensureAsset,
     ensureKindAssets: ensureKindAssets,
+    whenIdle: whenIdle,
     kpressInitToc: kpressInitToc,
     formatKpressError: formatKpressError,
     chart: chart,
@@ -1626,6 +1839,10 @@
     formatFileCount: formatFileCount,
     formatAge: formatAge,
     formatTimestamp: formatTimestamp,
+    titleNodes: titleNodes,
+    countPartsNodes: countPartsNodes,
+    changeLine: changeLine,
+    changeLineNodes: changeLineNodes,
     countClass: countClass,
     sizeClass: sizeClass,
     sizeHtml: sizeHtml,

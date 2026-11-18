@@ -956,7 +956,7 @@
   "refreshing": false,
   "last_refresh": {
    "outcome": "cache_unwritable",
-   "message": "the list of changed files could not be written to the cache",
+   "message": "the changed files of pull request #106 could not be written to the cache: An entry in the Metabrowser storage directory cannot be verified as private to the current user: permission was denied while creating it. Make sure the current user can write to the directory that holds it, or set the applicable override (METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) to a private directory you own. To clear the GitHub cache of octo/demo, run `echo '{}' | metab https://github.com/octo/demo --api /api/plugin/github/cache-clear --data -`, then retry",
    "reset_at": null,
    "at": "2026-09-17T12:14:07Z"
   },
@@ -986,7 +986,7 @@
   "refreshing": false,
   "last_refresh": {
    "outcome": "cache_unwritable",
-   "message": "the list of changed files could not be written to the cache",
+   "message": "the changed files of pull request #106 could not be written to the cache: An entry in the Metabrowser storage directory cannot be verified as private to the current user: permission was denied while creating it. Make sure the current user can write to the directory that holds it, or set the applicable override (METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) to a private directory you own. To clear the GitHub cache of octo/demo, run `echo '{}' | metab https://github.com/octo/demo --api /api/plugin/github/cache-clear --data -`, then retry",
    "reset_at": null,
    "at": "2026-09-17T12:14:07Z"
   },

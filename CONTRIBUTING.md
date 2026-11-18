@@ -30,8 +30,14 @@ Keep core generic. Consumer-specific schemas, renderers, endpoints, and styles b
 plugins. Add capabilities through the documented plugin SDK instead of exposing private
 shell state.
 
-Avoid breaking public CLI flags, Python plugin types, manifest fields, HTTP envelopes,
-or browser SDK methods without an explicit migration plan and release note.
+The server, browser shell, and built-in plugins ship as one artifact, so `/api/*`,
+`window.metabrowser`, `METABROWSER_SETTINGS`, and the plugin manifest are internal
+contracts: change one everywhere in one commit, and note the change in `CHANGELOG.md`
+when a user or plugin author can observe it.
+`PLUGIN_SDK_VERSION` is the gate for plugins built outside the repository: bump it on a
+break and update every built-in manifest in the same commit.
+Do not add compatibility layers for these;
+[AGENTS.md](AGENTS.md#compatibility-and-legacy-code) has the rule.
 
 ## Documentation and Tests
 

@@ -7,8 +7,8 @@
 //                      point: the renderer only ever sees documents the
 //                      conformance corpus vouches for.
 
-import { validateDocument } from "./diff-model.js";
-import { mountDiffView, setChangeLoader } from "./diff-view.js";
+import { validateDocument, validateManifest } from "./diff-model.js";
+import { mountDiffSummary, mountDiffView, setChangeLoader } from "./diff-view.js";
 
 const mb = window.metabrowser;
 if (!mb) {
@@ -26,11 +26,13 @@ setChangeLoader((revision, path, options) => fetchComparison(revision, options, 
 // neither spelling can be mistaken for a revision.
 
 /**
- * @typedef {{left: string, right: string, base_policy: "direct" | "merge_base", route?: string, snapshot_route?: string, rendered_route?: string}} Comparison
- *   *route* is the plugin route that answers the comparison, *snapshot_route* the one
- *   that opens a file at either end of it, and *rendered_route* the one that renders a
- *   changed Markdown file of it: all come from the server that issued them, so this plugin
- *   spells none.
+ * @typedef {{left: string, right: string, base_policy: "direct" | "merge_base", route?: string, image_route?: string, rendered_route?: string, branch?: {ref: string} | null}} Comparison
+ *   *route* is the plugin route that answers the comparison, *rendered_route* the one
+ *   that renders a changed Markdown file of it, and *image_route* the one that serves an
+ *   image that Markdown shows: all come from the server that issued them, so this plugin
+ *   spells none. *branch* is a pull request's: its head ref when the comparison shows the
+ *   pull request's head, which View on branch opens, and null when it shows another
+ *   commit, which nothing opens.
  */
 
 /** @param {Comparison} comparison */
@@ -117,7 +119,7 @@ function markdownLayer(comparison) {
 /**
  * Ask the server for the first screen's projections while the reader is still on another
  * tab, one at a time, so Changes finds them computed. The answers are the server's to
- * keep; a page leaving stops the rest.
+ * keep; *signal* is the page's, so a page leaving stops the rest.
  *
  * @param {NonNullable<ReturnType<typeof markdownLayer>>} markdown
  * @param {unknown} payload
@@ -169,71 +171,172 @@ function comparisonParams(key) {
 }
 
 /**
- * How this page opens a file at a commit, for the View file controls of a diff: its
- * `/view/` address for the commit the page shows, and the pin route for any other. The
- * server writes the commit a page shows into every page on a pinned revision and into
- * no other, so a served folder, which has no file at a commit to open, gets `null` and
- * no controls.
+ * The commit this page shows, which the server writes into every page on a pinned
+ * revision and into no other; null on a served folder.
  *
  * Three things here are the shell's and the server's rather than the plugin SDK's: the
  * page's pin (`METABROWSER_SOURCE_PIN`), the pin route, and the route codec's wire
- * encoder (`MetabrowserNavigationRoute`). The SDK has no accessor for the first two,
- * and the ref selector and the freshness row, which are shell code, read the global and
- * call the route directly as well; there is no host path to share. Adding one would be
- * a new public SDK surface, which the thin-mirror plan rules out for the alpha, and a
- * built-in plugin ships with the shell and the server as one artifact, so these are
- * internal contracts it may use, as the GitHub plugin posts to the pin route and the
- * image and folder plugins use the route codec.
+ * encoder (`MetabrowserGitPath`). The SDK has no accessor for the first two, and the ref
+ * selector and the freshness row, which are shell code, read the global and call the
+ * route directly as well; there is no host path to share. Adding one would be a new
+ * public SDK surface, which the thin-mirror plan rules out for the alpha, and a built-in
+ * plugin ships with the shell and the server as one artifact, so these are internal
+ * contracts it may use, as the image and folder plugins use the route codec.
  *
- * @returns {import("./diff-view-file.js").ViewFileHost | null}
+ * @returns {string | null}
  */
-function viewFileHost() {
+function pagePin() {
   const pin = window.METABROWSER_SOURCE_PIN?.pin;
-  if (typeof pin !== "string" || pin === "") {
+  return typeof pin === "string" && pin !== "" ? pin : null;
+}
+
+// Whether this page has heard that the server serves another pin than the one it shows
+// (static/source-pin-guard.js announces it), after which a `/view/` address it holds
+// opens that other pin. The plugin loads once per page, so one listener serves every diff.
+let pinChanged = false;
+/** @type {Set<() => void>} */
+const pinChangeListeners = new Set();
+window.addEventListener?.("metabrowser:pin-changed", () => {
+  pinChanged = true;
+  for (const listener of [...pinChangeListeners]) {
+    listener();
+  }
+});
+
+/** @param {() => void} changed @returns {() => void} */
+function onPinChanged(changed) {
+  if (pinChanged) {
+    changed();
+  }
+  pinChangeListeners.add(changed);
+  return () => {
+    pinChangeListeners.delete(changed);
+  };
+}
+
+/** @param {() => void} restored @returns {() => void} */
+function onRestored(restored) {
+  /** @param {PageTransitionEvent} event */
+  const shown = (event) => {
+    if (event.persisted) {
+      restored();
+    }
+  };
+  window.addEventListener("pageshow", shown);
+  return () => window.removeEventListener("pageshow", shown);
+}
+
+/**
+ * The ref selector's own request: a same-origin JSON POST, which content in a served page
+ * cannot make with a link, an image, or a form. The server answers any other content type
+ * with 415.
+ *
+ * @param {import("./diff-view-file.js").PinSelection} selection
+ */
+async function postPin(selection) {
+  const response = await fetch("/api/source/pin", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    cache: "no-store",
+    body: JSON.stringify(selection),
+  });
+  let decoded = null;
+  try {
+    decoded = await response.json();
+  } catch {
+    decoded = null;
+  }
+  return { status: response.status, body: decoded };
+}
+
+/**
+ * The page's one pin switch, made with diff-view-file.js the first time it loads.
+ *
+ * @type {import("./diff-view-file.js").PinSwitch | null}
+ */
+let pagePinSwitch = null;
+
+/** diff-view-file.js, loaded on demand (see `viewFileOpener` for the tier), and the switch. */
+async function viewFileModule() {
+  const module = await import("./diff-view-file.js");
+  pagePinSwitch ??= module.createPinSwitch({ post: postPin, onRestored });
+  return { module, pinSwitch: pagePinSwitch };
+}
+
+/**
+ * The address of a file in a checkout's working tree, for View on branch beside it: the
+ * path the diff shows is the repository's, and the served folder may be a folder inside
+ * it (`served_prefix`). Null for a path outside the served folder, and for a name that is
+ * not UTF-8, which no folder address here spells.
+ *
+ * @param {string | Uint8Array} path
+ * @param {string} prefix
+ * @returns {string | null}
+ */
+function checkoutHref(path, prefix) {
+  if (typeof path !== "string" || path === "") {
+    return null;
+  }
+  const within =
+    prefix === "" ? path : path.startsWith(`${prefix}/`) ? path.slice(prefix.length + 1) : null;
+  return within ? mb.navigation.href({ path: within }) : null;
+}
+
+/**
+ * The page a diff's controls open files on, or null when it has none: a pinned revision,
+ * which a commit's diff and a pull request's Changes both use; or, for a pull request
+ * beside a checkout, the checkout when its HEAD is the diff's head. A served folder's
+ * commit diffs, a patch file, and a pull request whose diff is not at its head have none.
+ *
+ * @param {Comparison | undefined} comparison
+ * @returns {Omit<import("./diff-view-file.js").ViewFileHost, "pinSwitch"> | null}
+ */
+function viewFileHost(comparison) {
+  const branch = comparison?.branch;
+  if (branch === null) {
+    return null;
+  }
+  const ref = branch === undefined ? null : branch.ref;
+  const pin = pagePin();
+  const navigate = (/** @type {string} */ href) => window.location.assign(href);
+  if (pin !== null) {
+    return {
+      kind: "pin",
+      pin,
+      branch: ref,
+      href(path) {
+        // No codec, no address: the control is not offered, never pointed elsewhere.
+        const wire = window.MetabrowserGitPath?.wire(path) ?? null;
+        return wire === null ? null : mb.navigation.href({ path: wire });
+      },
+      navigate,
+      onPinChanged,
+    };
+  }
+  // A checkout's page has no pin: what it shows is its working tree, which is the pull
+  // request's head only while its HEAD is that commit, as the page's header says.
+  const repository = mb.repository;
+  if (
+    ref === null ||
+    comparison === undefined ||
+    mb.sourceKind() !== "filesystem" ||
+    repository?.revision !== comparison.right
+  ) {
     return null;
   }
   return {
-    pin,
-    href(path) {
-      // No codec, no address: the control is not offered, never pointed elsewhere.
-      const wire = window.MetabrowserGitPath?.wire(path) ?? null;
-      return wire === null ? null : mb.navigation.href({ path: wire });
-    },
-    onRestored(restored) {
-      /** @param {PageTransitionEvent} event */
-      const shown = (event) => {
-        if (event.persisted) {
-          restored();
-        }
-      };
-      window.addEventListener("pageshow", shown);
-      return () => window.removeEventListener("pageshow", shown);
-    },
-    // The ref selector's own request: a same-origin JSON POST, which content in a
-    // served page cannot make with a link, an image, or a form. The server answers any
-    // other content type with 415.
-    async switchPin(body) {
-      const response = await fetch("/api/source/pin", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        cache: "no-store",
-        body: JSON.stringify(body),
-      });
-      let decoded = null;
-      try {
-        decoded = await response.json();
-      } catch {
-        decoded = null;
-      }
-      return { status: response.status, body: decoded };
-    },
-    navigate: (href) => window.location.assign(href),
+    kind: "checkout",
+    pin: repository.revision,
+    branch: ref,
+    href: (path) => checkoutHref(path, repository.served_prefix),
+    navigate,
+    onPinChanged: () => () => {},
   };
 }
 
 /**
  * What makes this page's View file opener, or null when nothing on the page can open a
- * file at a commit: no pin and no snapshot route.
+ * changed file (`viewFileHost`).
  *
  * diff-view-file.js loads here, for the first diff that has controls, and not with the
  * plugin's module tree: a served folder's commit diffs have none and never call it. As a
@@ -245,78 +348,47 @@ function viewFileHost() {
  * comparison did. Its controls still arrive with the mount. A failed import is the view's
  * to report: render says the diff did not load, and logs which request failed.
  *
- * A comparison that names a *snapshot_route*, as a pull request's does on a mirror and
- * beside a checkout, opens each side through it, and a page on a folder then loads the
- * route codec as well. A side at the commit a pinned page shows keeps its `/view/` link
- * (see diff-view-file.js).
- *
  * @param {Comparison | undefined} comparison
  * @returns {Promise<import("./diff-view-file.js").ViewFileOpenerFactory | null>}
  */
 async function viewFileOpener(comparison) {
-  const snapshots = snapshotHost(comparison);
-  const host = viewFileHost();
-  if (snapshots === null && host === null) {
+  const host = viewFileHost(comparison);
+  if (host === null) {
     return null;
   }
-  if (snapshots !== null && !window.MetabrowserGitPath) {
-    const codec = "/static/git-path.js";
-    await import(codec);
-  }
-  const { createViewFileOpener } = await import("./diff-view-file.js");
-  /** @type {import("./diff-view-file.js").ViewFileHost} */
-  const page = host ?? {
-    pin: "",
-    href: () => null,
-    onRestored: () => () => {},
-    switchPin: () => Promise.resolve({ status: 400, body: null }),
-    navigate: () => {},
-  };
-  return (options) =>
-    createViewFileOpener(snapshots === null ? page : { ...page, ...snapshots }, options);
+  const { module, pinSwitch } = await viewFileModule();
+  return (options) => module.createViewFileOpener({ ...host, pinSwitch }, options);
 }
 
 /**
- * How a comparison's sides open without changing the served pin, or null when the
- * comparison names no route for it. The server spells the route; this adds the side and
- * its path, and offers a side only at the commit the route itself names for that end, so
- * a control's label and the file it opens are at one commit.
- *
- * A route that is not a same-origin plugin route, or names no ends, gives no revision
- * links and is logged; the diff itself still renders.
+ * Whether a link in rendered Markdown to a file of the head may open at its `/view/`
+ * address: only while this page shows that head, the one commit at which the address
+ * names that file. The rendered answer is the same for every page (its cache key names no
+ * pin), so the page decides, and a link it does not keep is plain text.
  *
  * @param {Comparison | undefined} comparison
- * @returns {Pick<import("./diff-view-file.js").ViewFileHost, "snapshotHref"> | null}
+ * @returns {() => boolean}
  */
-function snapshotHost(comparison) {
-  const route = comparison?.snapshot_route;
-  if (typeof route !== "string") {
+function headLinksOpen(comparison) {
+  const pin = pagePin();
+  return () => pin !== null && pin === comparison?.right && !pinChanged;
+}
+
+/**
+ * The shared changed-files tree, the shell's `changed-files-tree` bundle, which the Pulls tab
+ * draws a pull request's files with too. A multi-file diff draws its Diff summary on it, and
+ * every diff shows its files' paths by its display rule. It is asked for beside the diff's
+ * own request, so it is in hand when the diff mounts: a cold load is one small local request.
+ * A diff whose tree does not load keeps its totals line and raw paths, and says why in the
+ * console.
+ *
+ * @returns {Promise<MetabrowserChangedFilesTree | null>}
+ */
+function changedFilesTree() {
+  return mb.loadChangedFilesTree().catch((error) => {
+    console.error("metabrowser diff: the Diff summary is unavailable", error);
     return null;
-  }
-  let params;
-  try {
-    ({ params } = pluginComparisonRoute(route));
-  } catch (error) {
-    console.error(
-      "metabrowser diff: revision links unavailable",
-      { hook: "diff/view-file" },
-      error,
-    );
-    return null;
-  }
-  if (typeof params.left !== "string" || typeof params.right !== "string") {
-    return null;
-  }
-  const ends = { base: params.left, head: params.right };
-  return {
-    snapshotHref(side) {
-      const path = window.MetabrowserGitPath?.wire(side.address);
-      if (side.commit !== ends[side.side] || !path) {
-        return null;
-      }
-      return `${route}&${new URLSearchParams({ side: side.side, path })}`;
-    },
-  };
+  });
 }
 
 /** @param {HTMLElement} container @param {string} message */
@@ -348,6 +420,8 @@ mb.registerView("diff", "diff", {
     const opener = viewFileOpener(ctx.comparison);
     void opener.catch(() => {});
     const markdown = markdownLayer(ctx.comparison);
+    // The tree the Diff summary is drawn on, whose display rule the file bars show paths by.
+    const summaryTree = changedFilesTree();
     let payload;
     try {
       payload = revision
@@ -425,22 +499,41 @@ mb.registerView("diff", "diff", {
     }
     const files = /** @type {{files: Record<string, unknown>[]}} */ (result.document.manifest)
       .files;
+    const changedFiles = await summaryTree;
+    if (signal?.aborted) {
+      return null;
+    }
     const rendered =
       markdown !== null &&
       markdownViews !== null &&
       files.some((file) => markdownViews.supportsMarkdownChange(file));
-    // A commit comparison already carries these totals beside its revision,
-    // author, and age. Direct diff documents and two-endpoint comparisons own
-    // their aggregate summary.
+    ctx.onDocument?.(result.document);
+    // A commit's page and a pull request's keep the Diff summary at their own top
+    // (mb-pb35): a commit's asks for it there (`summaryHost`), and a pull request's draws it
+    // itself and asks for none (`summary: false`). Direct diff documents and other
+    // comparisons lead their toolbar with it.
+    const summaryHost = ctx.summaryHost ?? null;
     return mountDiffView(container, result.document, mb, {
-      showSummary: !ctx.revision,
+      showSummary: ctx.summary !== false && (summaryHost !== null || !ctx.revision),
+      summaryHost,
+      // The commit's own totals, which the summary says where the list is cut short (A3 of
+      // review A on #470).
+      ...(ctx.summaryTotals === undefined ? {} : { summaryTotals: ctx.summaryTotals }),
+      changedFiles,
+      ...(typeof ctx.openFile === "function" ? { openFile: ctx.openFile } : {}),
       viewFile,
       ...(!rendered
         ? {}
         : {
             markdownViews,
             renderMarkdown: (fileId, signal) => markdown.load(fileId, signal),
-            isSnapshotTarget: markdownViews.snapshotTargets(ctx.comparison?.snapshot_route),
+            markdownTargets: markdownViews.markdownTargets(
+              ctx.comparison?.image_route,
+              headLinksOpen(ctx.comparison),
+            ),
+            ...(typeof ctx.markdownHoldMs === "number"
+              ? { markdownHoldMs: ctx.markdownHoldMs }
+              : {}),
           }),
     });
   },
@@ -450,22 +543,66 @@ mb.registerView("diff", "diff", {
    * `render` as `ctx.raw`, and a Back onto the page is answered by the browser's cache,
    * because this request's address is the one `render` would ask.
    *
-   * A comparison that names a rendered route also has its first screen's Markdown
-   * projections asked for, after the comparison answers and without holding it back.
+   * The comparison alone: a page that keeps the answer for later pages shares its request,
+   * so the first screen's Markdown is asked for apart from it (`prefetchMarkdown`).
    *
    * @param {Comparison} comparison
    * @param {AbortSignal} [signal]
    * @returns {Promise<unknown>}
    */
-  prefetch: (comparison, signal) => {
-    const options = signal === undefined ? undefined : { signal };
-    const answer = fetchComparison(comparisonKey(comparison), options);
+  prefetch: (comparison, signal) =>
+    fetchComparison(comparisonKey(comparison), signal === undefined ? undefined : { signal }),
+  /**
+   * The first screen's Markdown projections of a comparison a page shows, asked for while
+   * the reader is still on another tab, for the comparison *raw* is the answer to. Nothing
+   * for a comparison that names no rendered route. *signal* is the page's, so a page
+   * leaving stops the rest.
+   *
+   * @param {Comparison} comparison
+   * @param {unknown} raw
+   * @param {AbortSignal} signal
+   * @returns {Promise<void>}
+   */
+  prefetchMarkdown: async (comparison, raw, signal) => {
     const markdown = markdownLayer(comparison);
-    return markdown === null
-      ? answer
-      : answer.then((payload) => {
-          void prefetchMarkdown(markdown, payload, signal);
-          return payload;
-        });
+    if (markdown !== null && !signal.aborted) {
+      await prefetchMarkdown(markdown, raw, signal);
+    }
+  },
+  /**
+   * A comparison's Diff summary on its own, at the top of a page that keeps it while its diff
+   * comes and goes: a pull request's page, on every tab (mb-pb35). *raw* is the comparison
+   * `prefetch` or `render` read, of which only the manifest is read and validated; a file the
+   * summary opens goes to *openFile*. Null for a comparison whose manifest is not valid, which
+   * draws nothing.
+   *
+   * @param {HTMLElement} slot
+   * @param {{raw: unknown, openFile: (path: string) => void}} ctx
+   * @returns {Promise<{dispose: () => void} | null>}
+   */
+  summary: async (slot, ctx) => {
+    const result = validateManifest(ctx.raw);
+    if (!result.ok) {
+      return null;
+    }
+    const changedFiles = await changedFilesTree();
+    return mountDiffSummary(slot, { manifest: result.manifest }, mb, {
+      changedFiles,
+      openFile: ctx.openFile,
+    });
+  },
+  /**
+   * Switch the served pin through the page's one switch, which every diff's controls share:
+   * for a pull request's page, whose Browse code and offer of a newer head switch it too.
+   * The answer says what happened in the words a diff's control says it; going on is the
+   * caller's.
+   *
+   * @param {import("./diff-view-file.js").PinSelection} selection
+   * @param {() => boolean} [wanted]
+   * @returns {Promise<import("./diff-view-file.js").PinSwitchOutcome>}
+   */
+  switchPin: async (selection, wanted) => {
+    const { pinSwitch } = await viewFileModule();
+    return pinSwitch.switchTo(selection, wanted);
   },
 });

@@ -82,6 +82,7 @@ from tests.golden_harness import (
     run_session,
     settle,
 )
+from tests.loop_gate import held_until
 from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git
 
@@ -125,6 +126,7 @@ def _switch(response: Any) -> dict[str, Any]:
             "pin": status.get("pin"),
             "ref": status.get("ref"),
             "code": body.get("code"),
+            "view_href": body.get("view_href"),
         },
     }
 
@@ -257,8 +259,8 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             release = threading.Event()
 
             async def held() -> None:
-                # The test thread sets it; a worker thread waits, so the job runs until then.
-                await asyncio.to_thread(release.wait, 30)
+                # The test thread sets it; the job is held on the loop until then.
+                await held_until(release, 30)
                 await original()
 
             monkeypatch.setattr(served, "refresh", held)
@@ -288,13 +290,16 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             recorded["markdown missing"] = _answer(
                 client.get(_MARKDOWN, params={**read_7, "part": "issue_comment/1"})
             )
-            # The pin is a branch, so Browse code serves the head first; one the mirror
-            # lacks is refused, and the page says why.
+            # The pin is a branch, so Browse code serves the head first, by its commit and
+            # under the pull request's ref; one the mirror lacks is refused, and the page
+            # says why.
+            head = recorded["current"]["body"]["record"]["pull"]["head"]["sha"]
+            browse = {"under": "refs/pull/7/head", "view": "/view/"}
             recorded["switch_refused"] = _switch(
-                client.post(_PIN, json={"ref": "refs/pull/999/head"}, headers=JSON_BODY)
+                client.post(_PIN, json={"oid": "e" * 40, **browse}, headers=JSON_BODY)
             )
             recorded["switch_to_head"] = _switch(
-                client.post(_PIN, json={"ref": "refs/pull/7/head"}, headers=JSON_BODY)
+                client.post(_PIN, json={"oid": head, **browse}, headers=JSON_BODY)
             )
             recorded["on_head"] = _answer(client.get(_PULL, params=read_7))
 
@@ -404,7 +409,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             gate = threading.Event()
 
             async def waiting(_served: ServedPull) -> None:
-                await asyncio.to_thread(gate.wait, 30)
+                await held_until(gate, 30)
 
             monkeypatch.setattr(ServedPull, "refresh", waiting)
             for number in range(20, 20 + MAX_PULL_JOBS):
@@ -539,6 +544,16 @@ def test_what_the_session_would_insert_is_inside_the_allowlist() -> None:
     assert transcript["hunks"] and transcript["place"]
 
 
+# What the header's numbers ask for in the mount session: the pull request's page on
+# GitHub, and a refresh that recovers the comparison on screen.
+_PULL_URL = "https://github.com/octo/demo/pull/7"
+_REFRESH_BODY = (
+    '{"number":7,"retry":true,"recovery":'
+    '{"base":"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",'
+    '"head":"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a"}}'
+)
+
+
 def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
     """Asset and renderer failures recover without a dangling readiness rejection."""
 
@@ -556,6 +571,208 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
         "markdownOwnership": True,
         "checkRows": True,
         "headerAges": True,
+        "headerShape": True,
+        # The freshness note's slot is as wide as its widest age, "59 min ago"; an age wider
+        # still sizes its own (mb-ne91).
+        "widestNotes": {
+            "Fetched just now via GitHub CLI": "Fetched 59 min ago via GitHub CLI",
+            "Fetched 3 h ago via GitHub CLI": "Fetched 59 min ago via GitHub CLI",
+            "Offline · fetched 12 d ago via GitHub CLI": (
+                "Offline · fetched 59 min ago via GitHub CLI"
+            ),
+            "Description fetched 7 min ago via GitHub CLI": (
+                "Description fetched 59 min ago via GitHub CLI"
+            ),
+            "Fetched at an unknown time via GitHub CLI": (
+                "Fetched at an unknown time via GitHub CLI"
+            ),
+        },
+        # A hold's lift time in the short form, en-US in UTC: a time of day when it lifts
+        # today, a short date and time when not (B3 of review B on #506).
+        "holdLifts": {
+            "today": "2:05 PM",
+            "tomorrow": "9/18/26, 12:30 AM",
+            "next year": "1/2/27, 8:00 AM",
+        },
+        # The Diff summary is the header's last row on every tab (mb-pb35), and holds the
+        # shell's pending placeholder while a comparison is on its way and while it is read,
+        # on Changes the mounted diff's, and nothing once a read draws none, until a read of
+        # it starts again (mb-onr2), as one does at the page's next paint after a failure;
+        # from the first paint of a page whose read will bring a comparison (mb-30dz);
+        # a pull request opened again in the document is drawn from the kept comparison as
+        # it mounts, one first read on Changes too (mb-neg9).
+        "headerSummary": [
+            "Conversation, the comparison not yet read: the pending placeholder",
+            "the comparison read: the summary",
+            "Changes: the summary",
+            "Checks, the comparison not yet read: the pending placeholder",
+            "Checks, the comparison read: the summary",
+            "the same pull request again in this document, before any idle: the summary",
+            "opened on Changes, from what its diff read: the summary",
+            "opened again on Conversation after Changes, before any idle: the summary",
+            "a read that will fail, not yet answered: the pending placeholder",
+            "the read fails: nothing",
+            "a repaint after it failed, its read asked again: the pending placeholder",
+            "that read fails too: nothing",
+            "a comparison the summary draws nothing for: nothing",
+            "opened on Changes, whose diff reads no comparison: nothing",
+            "the record on its way: the pending placeholder",
+            "a direct link's page before its first answer: the pending placeholder",
+            "its first answer: not cached, its own fetch to be sent: the pending placeholder",
+            "its fetch's core preview: the pending placeholder",
+            "its record lands, the comparison not yet read: the pending placeholder",
+            "the comparison read: the summary",
+            "a direct link's first answer: not GitHub's: nothing",
+            "a direct link's first answer: a server with no store, its own fetch to be sent: nothing",
+            "a direct link's first answer: its refresh failed, nothing running: nothing",
+            "a direct link's first answer: a core, its refresh failed, nothing running: nothing",
+            "a record that names no comparison: nothing",
+            "a core preview whose read prepares its comparison: the pending placeholder",
+            "its record lands, the comparison not yet read: the pending placeholder",
+            "the comparison read: the summary",
+            "a core preview whose read prepares no comparison: nothing",
+            "a prepared core, the page's own fetch still to be sent: the pending placeholder",
+            "a core whose read ended, the page's own fetch still to be sent: the pending placeholder",
+            "a record whose comparison the page asked to prepare: the pending placeholder",
+            "the preparation ends with no comparison: nothing",
+            "a record whose comparison nothing prepares: nothing",
+            "Changes, its diff reads no comparison: nothing",
+            "a record with a moved head lands, offering the newer changes: nothing",
+            "the reader takes them, their diff not yet read: the pending placeholder",
+            "their diff reads the comparison: the summary",
+            "Changes, its diff throws: nothing",
+            "Retry, the diff not yet read: the pending placeholder",
+            "the diff reads the comparison: the summary",
+            "Changes, its diff still reading: the pending placeholder",
+            "the record then names no comparison: nothing",
+        ],
+        # The cached changed-files list's brief line holds the Diff summary's row while its
+        # comparison is on its way or read, once the page knows the head, for its head and
+        # base only, from the Pulls rows' memory when nothing said it changed, else one read
+        # at mount; the summary replaces it, a failed read keeps it, and a page that went
+        # draws nothing more (mb-z8ea).
+        "summaryBrief": [
+            "a direct link's page before its first answer, its head unknown: the pending placeholder; 1 reads",
+            'its core preview, of the list\'s head and base branch: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
+            'its record lands, the comparison not yet read: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
+            "the comparison read: the summary; 1 reads",
+            "a direct link's page, the list of an older head: the pending placeholder; 1 reads",
+            "its core preview, of a newer head: the pending placeholder; 1 reads",
+            "a record whose list was read for another base branch: the pending placeholder; 1 reads",
+            "a core preview, the local comparison's list, whose base the core cannot say: the pending placeholder; 1 reads",
+            'its record lands, naming the same comparison: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
+            "a record whose comparison has another base than the local list's: the pending placeholder; 1 reads",
+            'a record of the list\'s head, its comparison not yet read: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
+            'the comparison\'s read fails: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
+            "no list cached: the pending placeholder; 1 reads",
+            'opened from a Pulls row that drew its line: the brief line "1 file changed \u00b7 1 M \u00b7 +12 \u22124"; 0 reads',
+            'opened from a Pulls row whose line the lane marked out of date, read again: the brief line "3 files changed \u00b7 1 A, 2 M \u00b7 +12 \u22124"; 1 reads',
+            "a page that went before its read answered, its summary drawn: the summary; 1 reads",
+        ],
+        # A page mounted with no record in hand holds its cold header and tab column for the
+        # quiet period, and the first header with a record lifts it, also while the
+        # conversation's first paint still waits for its Markdown (exp-099).
+        "coldHold": [
+            "mounted with no record in hand: header github-pull-cold, tab column github-pull-cold",
+            "its record lands, the conversation waiting for its Markdown: header shown, tab column shown",
+            "the conversation's first paint, at its bound: header shown, tab column shown",
+            "on Changes, mounted with no record in hand: header github-pull-cold, tab column github-pull-cold",
+            "its record lands: header shown, tab column shown",
+            "mounted with its record in hand: header shown, tab column shown",
+        ],
+        # C, G, and E run the page's setTab through the shortcut facade, with or without
+        # Shift. H is the Commits tab's, so Checks is E. The header keeps the tab column
+        # unless its first read fails, so they are live from first paint, as the links
+        # are; they wait while the column is out after a failed first read, and while the
+        # page is staged inert. The links come back badged at once while Shift is held,
+        # which paintHeader's retarget does. The header's links and actions are numbered
+        # by their place, through the same facade, and a number runs what its place's
+        # control does in the paint on screen: View on GitHub opens the pull request on
+        # GitHub, Browse code asks to serve the head, by its commit and under its ref, and,
+        # once a refresh serves it, opens the code; Refresh asks for a refresh, and moves up
+        # to 2 when Browse code goes.
+        "tabKeys": [
+            "before the record, the tab column in the page: "
+            "Conversation C, Changes G, Checks E; live conversation files checks",
+            "C: showed Conversation",
+            "G: opened the files route",
+            "the record arrives and paintHeader keeps the column: "
+            "Conversation C, Changes G, Checks E",
+            "live: conversation files checks",
+            "numbered: 1 View on GitHub, 2 Browse code",
+            f"1: window.open {_PULL_URL} _blank noopener,noreferrer",
+            "2: POST /api/source/pin "
+            '{"oid":"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a","under":"refs/pull/7/head",'
+            '"view":"/view/"}',
+            "C: showed Conversation",
+            "G: opened the files route",
+            "the route arrives: Changes",
+            "numbered on Changes: 1 View on GitHub, 2 Browse code, 3 Refresh",
+            f"3: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
+            "numbered after a refresh serves the head: 1 View on GitHub, 2 Browse code, 3 Refresh",
+            "2: navigation.open /view/",
+            f"3: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
+            "numbered after a refresh with no pin: 1 View on GitHub, 2 Refresh",
+            f"2: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
+            "3: not handled",
+            # Code behind the head offers to switch to it, numbered after Refresh; while the
+            # refresh 3 asks for runs, Refresh waits, shown and disabled, and keeps 3, so the
+            # offer keeps 4 and a second 3 asks nothing (B2 of review B on #506).
+            f"2: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
+            "numbered with the code behind the head: "
+            "1 View on GitHub, 2 Browse code, 3 Refresh, 4 Switch to the head",
+            f"3: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
+            "numbered while that refresh runs: "
+            "1 View on GitHub, 2 Browse code, 3 Refresh, 4 Switch to the head",
+            "3: nothing asked",
+            # Once the refresh ends Refresh is offered again on Changes, and the offer keeps 4;
+            # on Conversation nothing is left to refresh, so Refresh is not shown and the offer
+            # takes 3 (C2 of review C on #506, accepted).
+            "numbered once the refresh ends: "
+            "1 View on GitHub, 2 Browse code, 3 Refresh, 4 Switch to the head",
+            "numbered on Conversation once the refresh ends: "
+            "1 View on GitHub, 2 Browse code, 3 Switch to the head",
+            "4: POST /api/source/pin "
+            '{"oid":"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a","under":"refs/pull/7/head"}',
+            "Shift+H: not handled",
+            "Shift+E: opened the checks route",
+            "Shift+C: opened the conversation route",
+            "Ctrl+G: not handled",
+            "staged inert: G: not handled",
+            "committed: G: opened the files route",
+            "disposed: Conversation none, Changes none, Checks none; keys none; G: not handled",
+            "a failed first read takes the column out: live none",
+            "G: not handled",
+            "on Changes, Shift held while it is out: badges none",
+            "the next read answers, and the returning tabs are badged: "
+            "Conversation C, Changes G, Checks E",
+            "the next read answers and paintHeader puts the column back: "
+            "Conversation C, Changes G, Checks E",
+            "live: conversation files checks",
+            "G: showed Changes",
+            "disposed: keys none",
+        ],
+        # A refused text on the mounted page (review A of #527, A6 and A8; review D, D8):
+        # one notice right after its plain text, which a rebuilt text element keeps, a
+        # later refusal replaces, and a render takes away.
+        "textRefusal": [
+            "refused past the deadline: plain, 1 notice right after it, a status: "
+            "This text took longer than 5 seconds to render, so it is shown as plain text.",
+            "rebuilt for another state, its Markdown not yet answered: plain, 1 notice "
+            "right after it, a status: This text took longer than 5 seconds to render, so "
+            "it is shown as plain text., new element",
+            "a newer record, the same text refused again as unavailable: plain, 1 notice "
+            "right after it, a status: The renderer could not start, so this text is shown "
+            "as plain text. Reload to try again., new element",
+            "a newer record whose Markdown renders: rendered rendered A, no notice, same element",
+        ],
+        # Browse code's switch is the diff plugin's, in a module it loads on demand: the
+        # plugin's assets or that module not loading is said as a failed request, and asks
+        # the server nothing (A3 of review A on #511).
+        "switchUnavailable": [
+            "the diff plugin's assets not loading: The switch request failed.; asked nothing",
+            "the switch module not loading: The switch request failed.; asked nothing",
+        ],
     }
 
 
@@ -596,6 +813,146 @@ def test_pending_file_selection_belongs_to_one_files_visit() -> None:
         "replacementRetainsSelection": True,
         "settledWalkJumpsOnce": True,
         "unsettledWalkShowsProgress": True,
+    }
+
+
+def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
+    """Plain text never paints first where a shown text's Markdown can.
+
+    The first paint of a full record waits, within ``DESCRIPTION_HOLD_MS``, for the Markdown
+    it asked for, and is not ready meanwhile, so a page it replaces stays on screen. A
+    revisit and a refreshed record with the same text paint the render kept for that text,
+    keeping the description's node. Past the bound the text paints plain and its Markdown
+    follows. The kept renders are bounded by count and by characters. The state badge's
+    first paint is the fresher of the cached record and the repository's list. Changes with
+    rendered Markdown shows its first screen only once that screen's Markdown is drawn.
+    """
+
+    assert run_session("github-pull-first-paint-behavior.js") == {
+        "firstVisit": "held, then final",
+        "refreshedSameText": "kept",
+        "revisit": "final at first paint",
+        "pastTheBound": "plain, then Markdown",
+        # The comments and reviews the first screen shows wait with the description, so none is
+        # plain at the paint that makes the page ready (review A6).
+        "comments": {"texts": 5, "asked": 5, "plainAtReady": 0},
+        # Each hold's span says how it ended (review B1).
+        "holdSpans": ["hidden met 1", "hidden bound 1"],
+        # A direct landing's loading blocks give way to the held conversation (review B5).
+        # The header paints the record at once and only the body waits (exp-099), which
+        # reverses review D1's change-once for the header.
+        "landing": {
+            "blocksBefore": True,
+            "whileHeld": {
+                "holding": True,
+                "blocks": False,
+                "heading": "Count to two in the app #7",
+            },
+            "final": True,
+            "heading": "Count to two in the app #7",
+        },
+        # Blocks that had shown stay, the same node, over the held conversation until it shows,
+        # so the body never blinks empty between them (review C2).
+        "landingAfterBlocksShowed": {
+            "whileHeld": {
+                "holding": True,
+                "sameBlocks": True,
+                "cover": True,
+                "heading": "Count to two in the app #7",
+            },
+            "shown": {
+                "blocks": False,
+                "holding": False,
+                "final": True,
+                "heading": "Count to two in the app #7",
+            },
+        },
+        # A page replaced during its hold stays out of sight; it never shows plain (review C7).
+        "cancelledWhileHeld": {"holding": True},
+        # The first screen is the page's own, from its top, whether the page it replaces is at
+        # its top or scrolled past the conversation; a text that comes into it as those above
+        # render is waited for too (review C1). Before, the second comment, or the first, was
+        # plain at ready.
+        "firstScreen": {
+            **{
+                scrolled: {
+                    "plainOnFirstScreenAtReady": [],
+                    "waitedFor": 3,
+                    "outcome": "met",
+                    "askedBeforeSecondAnswer": 3,
+                }
+                for scrolled in ("0", "5000")
+            },
+            # A text past the screen that fails leaves the hold met (review D4); before, it
+            # was unavailable.
+            "failsPastTheScreen": {
+                "plainOnFirstScreenAtReady": [],
+                "waitedFor": 2,
+                "outcome": "met",
+                "askedBeforeSecondAnswer": 4,
+            },
+            # Texts asked ahead of the screen take the cascade in 4 round trips, 6 before
+            # (review D2).
+            "cascade": {
+                "plainOnFirstScreenAtReady": [],
+                "waitedFor": 6,
+                "outcome": "met",
+                "rounds": 4,
+            },
+        },
+        # Kept cards tell their ages as of the paint, not as of when they were built (review A5).
+        "ages": ["186 min", "185 min", "4 min"],
+        # A stale record paints the list's state when the list saw a later update.
+        "listedState": {"newerList": "Merged", "olderList": "Open"},
+        # Changes with rendered Markdown is out of sight, and not ready, until its first
+        # screen's Markdown settles or CHANGES_FIRST_SCREEN_MS passes.
+        "changes": {
+            # The file the address names is landed on while the diff is still held (review B2).
+            ending: {
+                "asked": 200,
+                "held": True,
+                "readyWhileHeld": False,
+                "shown": True,
+                "ready": True,
+                "holdingAtJump": True,
+            }
+            for ending in ("settled", "bound")
+        }
+        # A page that goes while its diff waits keeps it out of sight and records the wait as
+        # cancelled (review E1); before, the diff was shown and the wait recorded as met.
+        | {"cancelled": {"held": True, "keptOutOfSight": True, "outcome": "cancelled"}},
+        "bounded": True,
+        # The header does not wait with the held body (exp-099), so all three tab keys, the
+        # stack menu, and the stack keys are live while it waits, as at release (review E2).
+        "tabKeysWhileHeld": {
+            "whileHeld": {
+                "holding": True,
+                "tabColumn": "live",
+                "live": ["conversation", "files", "checks"],
+                "badges": "Conversation C, Changes G, Checks E",
+                "g": "opened the files route",
+                "stackMenus": 1,
+                "stackKeys": "pulls.stack.top, pulls.stack.base",
+                "strip": "pulls.stack.top, pulls.stack.base",
+                "control-n": "opened #8",
+            },
+            "released": {
+                "holding": False,
+                "tabColumn": "live",
+                "live": ["conversation", "files", "checks"],
+                "badges": "Conversation C, Changes G, Checks E",
+                # Nothing went inert, so focus never left the Changes link to be given back.
+                "focus": "none",
+                "g": "opened the files route",
+                "stackMenus": 1,
+                "stackKeys": "pulls.stack.top, pulls.stack.base",
+                "strip": "pulls.stack.top, pulls.stack.base",
+                # Control-N and Control-P walk the stack (mb-lnqj); plain N is free.
+                "n": "not handled",
+                "control-n": "opened #8",
+                "control-p": "opened #6",
+            },
+        },
     }
 
 

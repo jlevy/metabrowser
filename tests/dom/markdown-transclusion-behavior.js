@@ -10,10 +10,14 @@ function check(name, condition, detail = "failed") {
   }
 }
 
+/** The document every element here belongs to. */
+const FAKE_DOCUMENT = { createElement: (tagName) => new FakeElement(tagName) };
+
 class FakeElement {
   constructor(tagName, textContent = "") {
     this.attributes = new Map();
     this.innerHTML = "";
+    this.ownerDocument = FAKE_DOCUMENT;
     this.parentElement = null;
     this.tagName = tagName.toUpperCase();
     this.textContent = textContent;
@@ -30,6 +34,15 @@ class FakeElement {
   // A trusted render is HTML text here, never parsed: no inert article to find.
   querySelector() {
     return null;
+  }
+
+  // It is placed through a template (place-rendered.js), whose content holds no image.
+  get content() {
+    return { innerHTML: this.innerHTML, querySelectorAll: () => [] };
+  }
+
+  replaceChildren(fragment) {
+    this.innerHTML = fragment.innerHTML;
   }
 
   replaceWith(replacement) {
@@ -100,11 +113,6 @@ async function loadModule() {
     "utf8",
   );
   const parserUrl = `data:text/javascript;base64,${Buffer.from(parserSource).toString("base64")}`;
-  const tocFallbackStub =
-    "export function initTocWithIntersectionFallback(init){" +
-    "globalThis.__transclusionTocFallbackCalls=(globalThis.__transclusionTocFallbackCalls||0)+1;" +
-    "return init()||(()=>{})}";
-  const tocFallbackUrl = `data:text/javascript;base64,${Buffer.from(tocFallbackStub).toString("base64")}`;
   const workerStub =
     `import {prepareTransclusionMarkdownSource} from ${JSON.stringify(parserUrl)};` +
     "export function acquireMarkdownWorkerClient(){return {dispose(){}," +
@@ -115,7 +123,6 @@ async function loadModule() {
       path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/transclusion.js"),
       "utf8",
     )
-    .replace('"./toc-intersection-fallback.js"', JSON.stringify(tocFallbackUrl))
     .replace(
       '"./place-rendered.js"',
       JSON.stringify(
@@ -124,7 +131,15 @@ async function loadModule() {
         ).href,
       ),
     )
-    .replace('"./markdown-worker-client.js"', JSON.stringify(workerUrl));
+    .replace('"./markdown-worker-client.js"', JSON.stringify(workerUrl))
+    .replace(
+      '"./toc-toggle.js"',
+      JSON.stringify(
+        require("node:url").pathToFileURL(
+          path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/toc-toggle.js"),
+        ).href,
+      ),
+    );
   const [transclusion, parser] = await Promise.all([
     import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`),
     import(parserUrl),
@@ -160,6 +175,17 @@ and second line ^block-id
   check("heading section selected", heading.status === "selected");
   check("heading includes descendants", heading.source.includes("### Details"));
   check("heading stops at sibling", !heading.source.includes("## Next"));
+  // A list item above a thematic break is no setext heading, so it ends no section.
+  const ruled = module.selectTransclusionSource(
+    "## Install\n- one\n- two\n---\nAfter the rule.\n\n## Next\n",
+    "obsidian-heading-Install",
+  );
+  check(
+    "a list above a thematic break stays in its section",
+    ruled.status === "selected" &&
+      ruled.source === "## Install\n- one\n- two\n---\nAfter the rule.\n\n",
+    JSON.stringify(ruled),
+  );
   const block = module.selectTransclusionSource(note, "obsidian-block-block-id");
   check("named block selected", block.status === "selected");
   check(
@@ -329,14 +355,28 @@ and second line ^block-id
   const container = new FakeContainer(source);
   let nestedDisposed = 0;
   let nestedSource = null;
+  let tocInits = 0;
   let tocDisposed = 0;
+  let tocTarget = null;
+  let tocConfig = null;
   const mb = {
     fetchKpressRender: async (_ctx, _view, options) => {
-      check("selected source sent through KPress", options.sourceText.includes("## Install"));
+      check(
+        "selected source sent through KPress",
+        /^## (?:<span class="metabrowser-wiki-heading" id="[^"]+"><\/span>)+Install$/m.test(
+          options.sourceText,
+        ),
+        options.sourceText,
+      );
       return { html: '<article class="kpress">Rendered</article>' };
     },
     fetchText: async () => note,
-    kpressInitToc: () => () => (tocDisposed += 1),
+    kpressInitToc: (target, config) => {
+      tocInits += 1;
+      tocTarget = target;
+      tocConfig = config;
+      return () => (tocDisposed += 1);
+    },
   };
   const handle = module.mountWikiTransclusion(
     container,
@@ -359,7 +399,24 @@ and second line ^block-id
     aside.getAttribute("data-metabrowser-transclusion-status") === "ready",
   );
   check("nested enhancement uses embedded source", nestedSource === "docs/note.md");
-  check("embedded TOC uses observer fallback", globalThis.__transclusionTocFallbackCalls === 1);
+  check("embedded TOC initialized by KPress", tocInits === 1);
+  // KPress gets the toggle policy every Metabrowser table of contents follows
+  // (toc-toggle.js), measured on the embed's own element: shown past the threshold while
+  // the embed spans the pane's top, hidden while the embed starts below it.
+  check("embedded TOC wired on the embed", tocTarget === aside);
+  const pane = { getBoundingClientRect: () => ({ top: 100 }) };
+  let embedTop = 50;
+  aside.closest = (selector) => (selector === "[data-kpress-viewport]" ? pane : null);
+  aside.getBoundingClientRect = () => ({ top: embedTop, bottom: embedTop + 500 });
+  const visible = tocConfig?.visible;
+  check("embedded TOC has the toggle policy", typeof visible === "function", String(visible));
+  if (typeof visible === "function") {
+    const at = (scrollTop) => visible({ scrollTop: () => scrollTop });
+    check("embedded toggle hidden within the threshold", at(100) === false);
+    check("embedded toggle shown once the embed spans the pane's top", at(400) === true);
+    embedTop = 300;
+    check("embedded toggle hidden above the embed", at(400) === false);
+  }
   handle.dispose();
   check("nested enhancement disposed", nestedDisposed === 1);
   check("embedded table of contents disposed", tocDisposed === 1);

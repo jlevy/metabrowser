@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { execFileSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 // transition-navigation/v1: the stateful-navigation scenario for UI transitions.
 //
 //   node explorations/performance-loop/transitions.mjs run --exp exp-058 \
@@ -14,16 +14,24 @@ import { execFileSync, spawn } from "node:child_process";
 // kept across its runs, so GitHub data is read from cache. A run that cannot prove it
 // measured the requested subjects is written with `valid: false` and its refusals, and
 // summarize and compare leave it out. See README.md, "Transition Navigation Scenario".
-import { createHash } from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
+import {
+  buildProvenance,
+  corpusProvenance,
+  getJson,
+  harnessProvenance,
+  provenanceChanges,
+  serverFacts,
+} from "./provenance.mjs";
 import { JOURNEYS, runJourney, SUBJECTS } from "./transitions-journeys.mjs";
 import { driver, launchBrowser, REGIONS, Refusal, sleep } from "./transitions-recorder.mjs";
 import {
   CompareRefusal,
+  commitsLandingOf,
   compareRuns,
   formatComparison,
   parseRows,
@@ -32,6 +40,7 @@ import {
   sampleRow,
   summarize,
   summarizeJson,
+  unmeasuredMemoryAfter,
 } from "./transitions-stats.mjs";
 
 const HERE = import.meta.dirname;
@@ -52,19 +61,6 @@ const REGIME = {
 };
 
 // --------------------------------------------------------------------------- utilities
-
-function git(cwd, ...args) {
-  try {
-    return execFileSync("git", ["-C", cwd, ...args], {
-      encoding: "utf8",
-      timeout: 20000,
-      maxBuffer: 256 * 1024 * 1024,
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-  } catch (_error) {
-    return null;
-  }
-}
 
 function loadavg() {
   return os.loadavg().map((v) => Math.round(v * 100) / 100);
@@ -97,118 +93,6 @@ for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
 }
 process.on("exit", killAll);
 
-// --------------------------------------------------------------------------- provenance
-
-/**
- * The content of a checkout's working tree beyond its commit: a hash of the diff against
- * HEAD and of every untracked, unignored file. Read-only: nothing is written to the
- * checkout or its object store.
- */
-function workingTreeContent(source) {
-  const diff = git(source, "--no-optional-locks", "diff", "HEAD", "--binary");
-  const untracked = git(
-    source,
-    "--no-optional-locks",
-    "ls-files",
-    "--others",
-    "--exclude-standard",
-    "-z",
-  );
-  if (diff === null || untracked === null) {
-    return null;
-  }
-  const h = createHash("sha256").update(diff);
-  for (const rel of untracked.split("\0").filter(Boolean).sort()) {
-    h.update(`\0${rel}\0`);
-    try {
-      h.update(fs.readFileSync(path.join(source, rel)));
-    } catch (_error) {
-      h.update("unreadable");
-    }
-  }
-  return `sha256:${h.digest("hex").slice(0, 16)}`;
-}
-
-/**
- * Identity of one `metab` build: its version line and, for an editable checkout, its
- * commit, whether it is dirty, and the content of a dirty tree, so two different
- * uncommitted states never pool as one build. A wheel install is identified by the hash
- * of its RECORD, which lists every installed file's own hash.
- */
-function buildProvenance(metab) {
-  const version = execFileSync(metab, ["--version"], {
-    encoding: "utf8",
-    timeout: 60000,
-    cwd: os.tmpdir(),
-  }).trim();
-  const venv = path.dirname(path.dirname(metab));
-  let source = null;
-  let editable = false;
-  let record = null;
-  const libs = path.join(venv, "lib");
-  if (fs.existsSync(libs)) {
-    for (const py of fs.readdirSync(libs)) {
-      const site = path.join(libs, py, "site-packages");
-      if (!fs.existsSync(site)) {
-        continue;
-      }
-      for (const entry of fs.readdirSync(site)) {
-        if (!/^metabrowser-.*\.dist-info$/.test(entry)) {
-          continue;
-        }
-        const direct = path.join(site, entry, "direct_url.json");
-        if (fs.existsSync(direct)) {
-          const info = JSON.parse(fs.readFileSync(direct, "utf8"));
-          editable = Boolean(info.dir_info?.editable);
-          if (editable && String(info.url).startsWith("file://")) {
-            source = decodeURIComponent(new URL(info.url).pathname);
-          }
-        }
-        const recordFile = path.join(site, entry, "RECORD");
-        if (fs.existsSync(recordFile)) {
-          record = createHash("sha256")
-            .update(fs.readFileSync(recordFile))
-            .digest("hex")
-            .slice(0, 16);
-        }
-      }
-    }
-  }
-  const commit = source ? git(source, "rev-parse", "HEAD") : null;
-  const status = source ? git(source, "--no-optional-locks", "status", "--porcelain") : null;
-  const dirty = status === null ? null : status.length > 0;
-  let content = null;
-  if (dirty) {
-    content = workingTreeContent(source);
-  } else if (!editable && record) {
-    content = `record:${record}`;
-  }
-  return { metab, version, editable, source, commit, dirty, content };
-}
-
-function corpusProvenance(corpus) {
-  const status = git(corpus, "--no-optional-locks", "status", "--porcelain");
-  return {
-    path: corpus,
-    commit: git(corpus, "rev-parse", "HEAD"),
-    dirty: status === null ? null : status.length > 0,
-    // The Commits list walks HEAD and the trunk refs; a standalone clone keeps them still.
-    trunk: git(corpus, "rev-parse", "--verify", "--quiet", "origin/main"),
-    refs: (() => {
-      const refs = git(corpus, "for-each-ref", "--format=%(objectname) %(refname)");
-      return refs === null ? null : createHash("sha256").update(refs).digest("hex").slice(0, 16);
-    })(),
-  };
-}
-
-function harnessProvenance() {
-  const status = git(REPO, "--no-optional-locks", "status", "--porcelain");
-  return {
-    commit: git(REPO, "rev-parse", "HEAD"),
-    dirty: status === null ? null : status.length > 0,
-  };
-}
-
 const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 // --------------------------------------------------------------------------- server
@@ -233,14 +117,6 @@ async function pickPort() {
     }
   }
   throw new Error(`no free port in ${PORTS[0]}-${PORTS[1]}`);
-}
-
-async function getJson(url, timeoutMs = 30000) {
-  const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
-  if (!response.ok) {
-    throw new Error(`${url}: HTTP ${response.status}`);
-  }
-  return response.json();
 }
 
 const unescapeHtml = (s) =>
@@ -285,7 +161,12 @@ async function startServer({ metab, corpus, home, logPath }) {
           cwd: home,
           detached: true,
           stdio: ["ignore", fd, fd],
-          env: { ...process.env, METABROWSER_CACHE_DIR: cache, METABROWSER_CONFIG_DIR: config },
+          env: {
+            ...process.env,
+            METABROWSER_CACHE_DIR: cache,
+            METABROWSER_CONFIG_DIR: config,
+            METABROWSER_RECORD_RECENT: "0",
+          },
         },
       ),
     );
@@ -360,29 +241,6 @@ async function stopServer(server) {
   }
 }
 
-/** Facts about the moving parts of the corpus, read from the server before measuring. */
-async function serverFacts(base) {
-  const facts = {};
-  try {
-    const log = await getJson(`${base}/api/git/log?limit=1`);
-    facts.git_log_head = log.commits?.[0]?.id ?? null;
-  } catch (error) {
-    facts.git_log_head = `error: ${error.message}`;
-  }
-  try {
-    const closed = await getJson(`${base}/api/plugin/github/pulls?state=closed&limit=1`);
-    facts.github = {
-      state: closed.state,
-      fetched_at: closed.fetched_at,
-      filter_totals: closed.filter_totals,
-      last_refresh: closed.last_refresh?.outcome ?? null,
-    };
-  } catch (error) {
-    facts.github = `error: ${error.message}`;
-  }
-  return facts;
-}
-
 // --------------------------------------------------------------------------- one run
 
 function logTransition(row) {
@@ -402,7 +260,18 @@ function logTransition(row) {
   );
 }
 
-async function pass({ base, journeys, headed, profileRoot, expectedVersion, quiet, keepGoing }) {
+async function pass({
+  base,
+  journeys,
+  headed,
+  profileRoot,
+  expectedVersion,
+  quiet,
+  keepGoing,
+  newestCommit,
+  memoryAfter = [],
+  memoryAtEnd = false,
+}) {
   const out = [];
   for (const name of journeys) {
     const rows = [];
@@ -418,8 +287,21 @@ async function pass({ base, journeys, headed, profileRoot, expectedVersion, quie
         log: quiet ? null : logTransition,
         keepGoing,
         facts,
+        newestCommit,
+        memoryAfter,
         loadavg: () => loadavg()[0],
       });
+      // Retained memory once the journey's last transition is done (revision 6): its
+      // garbage collection changes nothing measured. A reading that fails leaves the
+      // journey without one, which compare names as a gap.
+      if (memoryAtEnd) {
+        try {
+          journey.memory = await d.memory();
+        } catch (error) {
+          journey.memory = null;
+          journey.memoryError = String(error.message || error).slice(0, 300);
+        }
+      }
       const served = await d.evaluate(
         `(document.querySelector(".menu-version") || {}).textContent || null`,
       );
@@ -472,7 +354,7 @@ async function pass({ base, journeys, headed, profileRoot, expectedVersion, quie
 
 async function oneRun(options) {
   const { exp, series, condition, runIndex, pairIndex, corpus, journeys, headed, warmup } = options;
-  const { keepGoing, subset } = options;
+  const { keepGoing, subset, memoryAfter } = options;
   const expDir = path.join(BENCH, exp);
   const home = path.join(expDir, "state", condition.label);
   fs.mkdirSync(home, { recursive: true, mode: 0o700 });
@@ -485,7 +367,12 @@ async function oneRun(options) {
     // 3 redefined the clocks and the frame accounting (every frame read after its own
     // layout, painted ready at the ready frame's presentation, counts over the whole
     // window). 4 reads a worker's 304 as revalidated, takes a region's first rendered
-    // match, and skips hidden and off-screen subtrees when looking for content.
+    // match, and skips hidden and off-screen subtrees when looking for content. 5 accepts
+    // a switch to Commits that lands on the newest commit as well as on the prompt, and
+    // records which one each run saw (`commits_landing`). 6 places the input's own frame
+    // in its window, bounds and widens the content search, reads collapsed and parked
+    // surfaces as hidden, and adds the read cost, retained memory, time to highlighted,
+    // and the dwell journey (README, "Transition Navigation Scenario").
     // REVISION_NOTES in transitions-stats.mjs says what each older revision differs in.
     scenario_revision: SCENARIO_REVISION,
     exp,
@@ -505,7 +392,13 @@ async function oneRun(options) {
     },
     viewport: "1440x900",
     headed,
-    regime_flags: { headed, no_warmup: !warmup, journey_subset: subset, keep_going: keepGoing },
+    regime_flags: {
+      headed,
+      no_warmup: !warmup,
+      journey_subset: subset,
+      keep_going: keepGoing,
+      memory_after: memoryAfter,
+    },
     regime: REGIME,
     regions: Object.fromEntries(Object.entries(REGIONS).map(([k, v]) => [k, v.track])),
     journeys_requested: journeys,
@@ -539,6 +432,11 @@ async function oneRun(options) {
       row.refusals.push(["build_identity", "the server's serving line names another tree or port"]);
     }
     row.facts = await serverFacts(server.base);
+    // The commit a switch to Commits lands on in a build that selects the newest commit:
+    // the first commit of the history the panel asks for (transitions-journeys.mjs).
+    const head = row.facts.git_log_head;
+    const newestCommit =
+      typeof head === "string" && /^([0-9a-f]{40}|[0-9a-f]{64})$/.test(head) ? head : null;
     if (warmup && (keepGoing || row.refusals.length === 0)) {
       console.log("  warm-up pass (unrecorded)");
       const warm = await pass({
@@ -549,6 +447,7 @@ async function oneRun(options) {
         expectedVersion: row.build.version,
         quiet: true,
         keepGoing,
+        newestCommit,
       });
       row.warmup = warm.map((j) => ({
         name: j.name,
@@ -573,12 +472,24 @@ async function oneRun(options) {
         expectedVersion: row.build.version,
         quiet: false,
         keepGoing,
+        newestCommit,
+        memoryAfter,
+        memoryAtEnd: true,
       });
       row.chrome = row.journeys.find((j) => j.chrome)?.chrome ?? null;
+      // Which Commits landing this build has; compare pairs only runs that agree.
+      row.commits_landing = commitsLandingOf(row.journeys);
       for (const j of row.journeys) {
         for (const [guard, detail] of j.refusals) {
           row.refusals.push([guard, `${j.name}: ${detail}`]);
         }
+      }
+      // A name --memory-after gave that no transition carried read nothing (revision 6).
+      for (const id of unmeasuredMemoryAfter(memoryAfter, row.journeys)) {
+        row.refusals.push([
+          "memory_after",
+          `--memory-after names ${id}, which no transition measured`,
+        ]);
       }
     }
   } catch (error) {
@@ -590,22 +501,12 @@ async function oneRun(options) {
   // can be moved under the server, and either would make this run a mixture.
   row.build_end = buildProvenance(condition.metab);
   row.corpus_end = corpusProvenance(corpus);
-  for (const k of ["version", "commit", "dirty", "content"]) {
-    if (row.build_end[k] !== row.build[k]) {
-      row.refusals.push([
-        "build_changed",
-        `${k} was ${row.build[k]} at start, ${row.build_end[k]} at end`,
-      ]);
-    }
-  }
-  for (const k of ["commit", "dirty", "trunk", "refs"]) {
-    if (!sameJson(row.corpus_end[k], row.corpus[k])) {
-      row.refusals.push([
-        "corpus_changed",
-        `${k} was ${row.corpus[k]} at start, ${row.corpus_end[k]} at end`,
-      ]);
-    }
-  }
+  row.refusals.push(
+    ...provenanceChanges(
+      { build: row.build, corpus: row.corpus },
+      { build: row.build_end, corpus: row.corpus_end },
+    ),
+  );
   row.load_end = loadavg();
   row.finished_at = new Date().toISOString();
   row.valid = row.refusals.length === 0;
@@ -628,6 +529,7 @@ async function cmdRun(argv) {
       headed: { type: "boolean", default: false },
       "no-warmup": { type: "boolean", default: false },
       "keep-going": { type: "boolean", default: false },
+      "memory-after": { type: "string" },
       order: { type: "string", default: "alternate" },
     },
   });
@@ -677,8 +579,16 @@ async function cmdRun(argv) {
     }
   }
   const subset = !sameJson(journeys, Object.keys(JOURNEYS));
+  // Transitions after which retained memory is read; its garbage collection changes what
+  // each journey measures after them, so a run that names any is not the standard regime.
+  const memoryAfter = values["memory-after"] ? values["memory-after"].split(",") : [];
   // A diagnostic run writes beside the standard file, never into it, unless --out says so.
-  const standard = !subset && !values.headed && !values["no-warmup"] && !values["keep-going"];
+  const standard =
+    !subset &&
+    !values.headed &&
+    !values["no-warmup"] &&
+    !values["keep-going"] &&
+    memoryAfter.length === 0;
   const outFile = values.out
     ? path.resolve(values.out)
     : path.join(BENCH, values.exp, standard ? "runs.jsonl" : "diagnostic.jsonl");
@@ -689,7 +599,7 @@ async function cmdRun(argv) {
   );
   if (!standard) {
     console.log(
-      `NOT THE STANDARD REGIME: ${[subset && "a journey subset", values.headed && "headed", values["no-warmup"] && "no warm-up pass", values["keep-going"] && "keep going past refusals"].filter(Boolean).join(", ")}; compare notes it and refuses to mix it with standard runs`,
+      `NOT THE STANDARD REGIME: ${[subset && "a journey subset", values.headed && "headed", values["no-warmup"] && "no warm-up pass", values["keep-going"] && "keep going past refusals", memoryAfter.length && `memory read after ${memoryAfter.join(", ")}`].filter(Boolean).join(", ")}; compare notes it and refuses to mix it with standard runs`,
     );
   }
   let refused = 0;
@@ -719,6 +629,7 @@ async function cmdRun(argv) {
         warmup: !values["no-warmup"],
         keepGoing: values["keep-going"],
         subset,
+        memoryAfter,
       });
       fs.appendFileSync(outFile, `${JSON.stringify(row)}\n`);
       if (!row.valid) {
@@ -769,6 +680,7 @@ function cmdCompare(argv) {
       format: { type: "string", default: "markdown" },
       aa: { type: "string" },
       expect: { type: "string", multiple: true },
+      "allow-mixed-landing": { type: "boolean", default: false },
     },
   });
   if (positionals.length !== 1) {
@@ -780,6 +692,7 @@ function cmdCompare(argv) {
     aa: values.aa,
     tolerance: Number.parseFloat(values.tolerance),
     expect: values.expect ?? [],
+    mixedLanding: values["allow-mixed-landing"],
   });
   if (values.format === "json") {
     const { control, candidate, ...rest } = result;
@@ -818,14 +731,17 @@ const USAGE = `usage:
   transitions.mjs run --exp exp-NNN --corpus PATH --condition LABEL=PATH/TO/metab
                       [--condition LABEL=PATH/TO/metab] [--runs 5] [--journeys a,b]
                       [--headed] [--no-warmup] [--keep-going] [--order alternate|fixed]
-                      [--out FILE]
+                      [--memory-after TRANSITION,...] [--out FILE]
   transitions.mjs summarize RUNS.jsonl [--condition LABEL] [--format markdown|json]
   transitions.mjs compare RUNS.jsonl --control LABEL --candidate LABEL [--tolerance 1.3]
                       [--expect TRANSITION:METRIC:lower|higher]... [--format markdown|json]
+                      [--allow-mixed-landing]
   transitions.mjs compare RUNS.jsonl --aa LABEL      (odd against even runs of one build)
   transitions.mjs samples RUNS.jsonl --out FILE      (the fields summarize and compare read)
 compare exits 0 when complete with no wrong-way result, 1 on a wrong-way result, a gap, or
-an expectation not met (an A/A only on a gap), and 2 when it refuses.
+an expectation not met (an A/A only on a gap), and 2 when it refuses. run exits 2 when its
+arguments or its setup are refused. Any other error is a defect of the tool: it prints its
+stack and exits 3.
 journeys: ${Object.keys(JOURNEYS).join(", ")}
 subjects: ${JSON.stringify(SUBJECTS).slice(0, 120)}...`;
 
@@ -838,6 +754,14 @@ if (!commands[mode]) {
 try {
   process.exitCode = await commands[mode](rest);
 } catch (error) {
-  console.error(`transitions.mjs ${mode}: ${error.message}`);
-  process.exitCode = 2;
+  // A refusal exits 2. run refuses its arguments and setup with plain errors, so any error
+  // there does; in the reading commands only a CompareRefusal is one, and anything else (a
+  // TypeError in compare) is a defect, not a refusal.
+  if (error instanceof CompareRefusal || mode === "run") {
+    console.error(`transitions.mjs ${mode}: ${error.message}`);
+    process.exitCode = 2;
+  } else {
+    console.error(`transitions.mjs ${mode} failed: ${error.stack || error}`);
+    process.exitCode = 3;
+  }
 }

@@ -13,7 +13,8 @@ Discovery has three sources, in this order:
    each path in ``extra_dirs`` that contains a ``manifest.toml``. The
    CLI populates this list from the ``--plugins-dir`` flag (repeatable)
    and the ``METABROWSER_PLUGINS_DIRS`` env var (``os.pathsep``-separated
-   list, optionally loaded from ``.env`` / ``.env.local``).
+   list, read from the process environment only: a ``.env`` file cannot
+   supply it, see :mod:`metabrowser.dotenv`).
 
 **Trust model**: built-in and entry-point plugins are deliberately
 installed (they ship with the package or are pip-installed). Source 3
@@ -191,14 +192,16 @@ def discover_plugins(
     *extra_dirs* contains operator-supplied plugin parents — the CLI
     populates it from ``--plugins-dir`` flags (repeatable) plus the
     ``METABROWSER_PLUGINS_DIRS`` env var (``os.pathsep``-separated list,
-    optionally loaded from a ``.env`` / ``.env.local`` file). Each
-    parent directory's subdirectories are scanned for ``manifest.toml``.
-    Collisions with already-loaded plugin names are logged.
+    from the process environment only). Each parent directory's
+    subdirectories are scanned for ``manifest.toml``. A later plugin with
+    an already-loaded name replaces it, in its place in the order, and the
+    replacement is logged.
 
-    **Auto-discovery from the served root is not a source.** Project-
-    local and user-home plugin directories were trust-asymmetric (the
-    served data could opt itself into running JS in the metabrowser
-    page). The cut: trusted = built-in + entry-point + operator-named.
+    **Auto-discovery from the served root or the user's home is not a
+    source**: served data must not be able to opt itself into running JS
+    in the Metabrowser page. The trusted sources are built-in,
+    entry-point, and operator-named. See
+    ``docs/project/architecture/arch-plugin-system.md``.
     """
     candidates: list[LoadedPlugin | str] = []
     candidates.extend(_discover_builtin_plugins())

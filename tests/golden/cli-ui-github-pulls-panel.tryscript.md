@@ -11,10 +11,12 @@ The exact repository total is separate from the selected filter’s total, cache
 progress, and displayed rows.
 The visible panel watches the repository.
 An admitted lightweight catalog job can finish in the background after the panel hides.
-Opening the panel reads cache pages of 100 rows up to its initial display budget of 500.
-Scrolling within 240 pixels of the displayed tail requests another cache page.
-Fetch more increases the display budget by 500. Either action can prioritize matching
-metadata that the background walk has yet to cache.
+Opening the panel reads cache pages of 100 rows, the first 500 of them.
+Scrolling within 240 pixels of the displayed tail requests another cache page, with no
+end but the filter’s own, and can prioritize matching metadata that the background walk
+has yet to cache. No notice says how many rows are held.
+Below the last row, while a page is read or GitHub’s pages for the filter still arrive,
+the navigation’s scan indicator shows its spinner and “~N pull requests fetched”.
 
 A progress-only catalog update retains the displayed prefix and its row identity.
 A changed generation stages the displayed range in bounded cache pages and accepts it
@@ -119,21 +121,19 @@ $ node tests/dom/github-pulls-panel-session.js
         "status": "current",
         "listName": "Pull requests of octo/demo: 102 pull requests",
         "summary": "102 PRs on octo/demo",
-        "window": "Showing last 100",
         "connection": {
           "state": "connected",
           "text": "Updated just now",
           "reload": true
         },
-        "loadMore": "ready",
         "live": "Pull requests of octo/demo: 102 pull requests",
         "rowsHeld": 100,
         "rows": [
-          "[Open] Work item 106 | #106 · contributor · topic ← work-106 | /pull/106",
-          "[Open] Work item 105 | #105 · contributor · topic ← work-105 | /pull/105",
+          "[Open] Work item 106 | #106 · contributor | /pull/106",
+          "[Open] Work item 105 | #105 · contributor | /pull/105",
           "…",
-          "[Merged] Say more in the guide | #8 · maintainer · topic ← guide-more | /pull/8",
-          "[Open] Count to two in the app | #7 · forker · topic ← forker:count-to-two | /pull/7"
+          "[Merged] Say more in the guide | #8 · maintainer | /pull/8",
+          "[Open] Count to two in the app | #7 · forker | /pull/7"
         ]
       }
     },
@@ -157,11 +157,11 @@ $ node tests/dom/github-pulls-panel-session.js
         "live": "Pull requests of octo/demo: 102 pull requests",
         "rowsHeld": 102,
         "rows": [
-          "[Open] Work item 106 | #106 · contributor · topic ← work-106 | /pull/106",
-          "[Open] Work item 105 | #105 · contributor · topic ← work-105 | /pull/105",
+          "[Open] Work item 106 | #106 · contributor | /pull/106",
+          "[Open] Work item 105 | #105 · contributor | /pull/105",
           "…",
-          "[Open] Work item 6 | #6 · contributor · topic ← work-6 | /pull/6",
-          "[Open] Work item 5 | #5 · contributor · topic ← work-5 | /pull/5"
+          "[Open] Work item 6 | #6 · contributor | /pull/6",
+          "[Open] Work item 5 | #5 · contributor | /pull/5"
         ]
       }
     },
@@ -205,11 +205,11 @@ $ node tests/dom/github-pulls-panel-session.js
         "live": "Pull requests of octo/demo: 100 pull requests",
         "rowsHeld": 100,
         "rows": [
-          "[Open] Work item 106 | #106 · contributor · topic ← work-106 | /pull/106",
-          "[Open] Work item 105 | #105 · contributor · topic ← work-105 | /pull/105",
+          "[Open] Work item 106 | #106 · contributor | /pull/106",
+          "[Open] Work item 105 | #105 · contributor | /pull/105",
           "…",
-          "[Open] Work item 6 | #6 · contributor · topic ← work-6 | /pull/6",
-          "[Open] Work item 5 | #5 · contributor · topic ← work-5 | /pull/5"
+          "[Open] Work item 6 | #6 · contributor | /pull/6",
+          "[Open] Work item 5 | #5 · contributor | /pull/5"
         ]
       }
     },
@@ -251,22 +251,20 @@ $ node tests/dom/github-pulls-panel-session.js
         "status": "current",
         "listName": "Pull requests of octo/demo: 1,000 pull requests",
         "summary": "1,000 PRs on octo/demo",
-        "window": "Showing last 500",
         "connection": {
           "state": "connected",
           "text": "Updated just now",
           "reload": false,
           "refreshing": true
         },
-        "loadMore": "ready",
         "live": "Pull requests of octo/demo: 1,000 pull requests",
         "rowsHeld": 500,
         "rows": [
-          "[Closed] Work item 6000 | #6000 · contributor · topic ← work-6000 | /pull/6000",
-          "[Closed] Work item 5999 | #5999 · contributor · topic ← work-5999 | /pull/5999",
+          "[Closed] Work item 6000 | #6000 · contributor | /pull/6000",
+          "[Closed] Work item 5999 | #5999 · contributor | /pull/5999",
           "…",
-          "[Closed] Work item 5502 | #5502 · contributor · topic ← work-5502 | /pull/5502",
-          "[Closed] Work item 5501 | #5501 · contributor · topic ← work-5501 | /pull/5501"
+          "[Closed] Work item 5502 | #5502 · contributor | /pull/5502",
+          "[Closed] Work item 5501 | #5501 · contributor | /pull/5501"
         ]
       }
     },
@@ -282,64 +280,89 @@ $ node tests/dom/github-pulls-panel-session.js
         "status": "current",
         "listName": "Pull requests of octo/demo: 6,000 pull requests",
         "summary": "6,000 PRs on octo/demo",
-        "window": "Showing last 500",
         "connection": {
           "state": "connected",
           "text": "Updated just now",
           "reload": false,
           "refreshing": true
         },
-        "loadMore": "ready",
         "live": "Pull requests of octo/demo: 6,000 pull requests",
         "rowsHeld": 500,
         "rows": [
-          "[Closed] Work item 6000 | #6000 · contributor · topic ← work-6000 | /pull/6000",
-          "[Closed] Work item 5999 | #5999 · contributor · topic ← work-5999 | /pull/5999",
+          "[Closed] Work item 6000 | #6000 · contributor | /pull/6000",
+          "[Closed] Work item 5999 | #5999 · contributor | /pull/5999",
           "…",
-          "[Closed] Work item 5502 | #5502 · contributor · topic ← work-5502 | /pull/5502",
-          "[Closed] Work item 5501 | #5501 · contributor · topic ← work-5501 | /pull/5501"
+          "[Closed] Work item 5502 | #5502 · contributor | /pull/5502",
+          "[Closed] Work item 5501 | #5501 · contributor | /pull/5501"
         ]
       }
     },
     {
-      "step": "Fetch more displays another 500 cached rows without provider work",
+      "step": "nearing the tail reads the next cached page",
       "requests": [
-        "GET /api/plugin/github/pulls?state=closed&limit=100&after=5501",
+        "GET /api/plugin/github/pulls?state=closed&limit=100&after=5501"
+      ],
+      "timer": "fast",
+      "painted": 1,
+      "paint": {
+        "filter": "closed",
+        "status": "current",
+        "listName": "Pull requests of octo/demo: 6,000 pull requests",
+        "summary": "6,000 PRs on octo/demo",
+        "connection": {
+          "state": "connected",
+          "text": "Updated just now",
+          "reload": false,
+          "refreshing": true
+        },
+        "progress": "Fetching pull requests…",
+        "live": "Pull requests of octo/demo: 6,000 pull requests",
+        "rowsHeld": 500,
+        "rows": [
+          "[Closed] Work item 6000 | #6000 · contributor | /pull/6000",
+          "[Closed] Work item 5999 | #5999 · contributor | /pull/5999",
+          "…",
+          "[Closed] Work item 5502 | #5502 · contributor | /pull/5502",
+          "[Closed] Work item 5501 | #5501 · contributor | /pull/5501"
+        ]
+      }
+    },
+    {
+      "step": "scrolling to the tail five times reads 500 more cached rows without provider work",
+      "requests": [
         "GET /api/plugin/github/pulls?state=closed&limit=100&after=5401",
         "GET /api/plugin/github/pulls?state=closed&limit=100&after=5301",
         "GET /api/plugin/github/pulls?state=closed&limit=100&after=5201",
         "GET /api/plugin/github/pulls?state=closed&limit=100&after=5101"
       ],
       "timer": "fast",
-      "painted": 6,
+      "painted": 9,
       "paint": {
         "filter": "closed",
         "status": "current",
         "listName": "Pull requests of octo/demo: 6,000 pull requests",
         "summary": "6,000 PRs on octo/demo",
-        "window": "Showing last 1,000",
         "connection": {
           "state": "connected",
           "text": "Updated just now",
           "reload": false,
           "refreshing": true
         },
-        "loadMore": "ready",
         "live": "Pull requests of octo/demo: 6,000 pull requests",
         "rowsHeld": 1000,
         "rows": [
-          "[Closed] Work item 6000 | #6000 · contributor · topic ← work-6000 | /pull/6000",
-          "[Closed] Work item 5999 | #5999 · contributor · topic ← work-5999 | /pull/5999",
+          "[Closed] Work item 6000 | #6000 · contributor | /pull/6000",
+          "[Closed] Work item 5999 | #5999 · contributor | /pull/5999",
           "…",
-          "[Closed] Work item 5002 | #5002 · contributor · topic ← work-5002 | /pull/5002",
-          "[Closed] Work item 5001 | #5001 · contributor · topic ← work-5001 | /pull/5001"
+          "[Closed] Work item 5002 | #5002 · contributor | /pull/5002",
+          "[Closed] Work item 5001 | #5001 · contributor | /pull/5001"
         ]
       }
     },
     {
       "step": "a new PR revalidates the display through ten bounded cache pages",
       "requests": [
-        "GET /api/plugin/github/pulls?state=closed&limit=100 if-none-match \"pulls-32\"",
+        "GET /api/plugin/github/pulls?state=closed&limit=100 if-none-match \"pulls-34\"",
         "GET /api/plugin/github/pulls?state=closed&limit=100&after=5902",
         "GET /api/plugin/github/pulls?state=closed&limit=100&after=5802",
         "GET /api/plugin/github/pulls?state=closed&limit=100&after=5702",
@@ -357,22 +380,20 @@ $ node tests/dom/github-pulls-panel-session.js
         "status": "current",
         "listName": "Pull requests of octo/demo: 6,001 pull requests",
         "summary": "6,001 PRs on octo/demo",
-        "window": "Showing last 1,000",
         "connection": {
           "state": "connected",
           "text": "Updated just now",
           "reload": false,
           "refreshing": true
         },
-        "loadMore": "ready",
         "live": "Pull requests of octo/demo: 6,001 pull requests",
         "rowsHeld": 1000,
         "rows": [
-          "[Closed] Work item 6001 | #6001 · contributor · topic ← work-6001 | /pull/6001",
-          "[Closed] Work item 6000 | #6000 · contributor · topic ← work-6000 | /pull/6000",
+          "[Closed] Work item 6001 | #6001 · contributor | /pull/6001",
+          "[Closed] Work item 6000 | #6000 · contributor | /pull/6000",
           "…",
-          "[Closed] Work item 5003 | #5003 · contributor · topic ← work-5003 | /pull/5003",
-          "[Closed] Work item 5002 | #5002 · contributor · topic ← work-5002 | /pull/5002"
+          "[Closed] Work item 5003 | #5003 · contributor | /pull/5003",
+          "[Closed] Work item 5002 | #5002 · contributor | /pull/5002"
         ]
       }
     },
@@ -525,6 +546,10 @@ The landing pane gives the neutral selection instruction while the list owns sta
 `reader` follows a selected PR through its cache-only read and explicit detail fetch.
 `paint` checks tree roles, absolute positions, numeric-only emphasis, text-only titles,
 cached append behavior, and changed-file tree retention.
+`numbers` runs the production shortcut registry and plugin facade around the panel: the
+Open, Closed, and All chips and Reload take `1` to `4` in reading order, before the
+page’s numbered link, and each number asks for what its control’s click asks for.
+A hidden or disposed panel’s controls give up their numbers.
 
 ```console
 $ node tests/dom/github-pulls-panel-second-session.js
@@ -539,14 +564,32 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "gh api graphql catalog state=all cursor=start",
       "gh api graphql catalog state=all cursor=all-100"
     ],
-    "cached windows, filters, Fetch more and reopen": [],
+    "cached windows, filters, scrolling and reopen": [],
     "due metadata refresh": [
       "gh auth status",
       "gh api graphql catalog state=updated cursor=start"
     ],
-    "fresh cached revisit": []
+    "fresh cached revisit": [],
+    "refused newer_cache": [],
+    "refused unknown_cache": []
   },
   "failures": {
+    "newer_cache": {
+      "status": "absent",
+      "connection": {
+        "text": "The pull-request list in the cache was written by a newer Metabrowser (row projection 3, where this release reads up to 2), and this one leaves it as it is. Upgrade metab to read it, or run `echo '{}' | metab https://github.com/octo/demo --api /api/plugin/github/cache-clear --data -` to clear the GitHub cache of octo/demo and fetch it again with this one.",
+        "state": "paused",
+        "reload": true
+      }
+    },
+    "unknown_cache": {
+      "status": "absent",
+      "connection": {
+        "text": "The pull-request list in the cache cannot be checked for the Metabrowser that wrote it (the catalog is not in the rollback-journal mode this release writes), so this one leaves it as it is. Upgrade metab if a newer one wrote it, or run `echo '{}' | metab https://github.com/octo/demo --api /api/plugin/github/cache-clear --data -` to clear the GitHub cache of octo/demo and fetch it again with this one.",
+        "state": "paused",
+        "reload": true
+      }
+    },
     "not_logged_in": {
       "status": "current",
       "connection": {
@@ -630,14 +673,10 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "title": "<img src=x onerror=\"alert(1)\"> & \"quotes\"",
     "author": "ghost",
     "avatar": null,
-    "baseRef": "main",
-    "headRef": "<b>topic</b>",
-    "headLabel": "<b>topic</b> (deleted fork)",
     "updatedAt": "2026-09-17T12:00:00Z",
-    "refs": "main ← <b>topic</b> (deleted fork)",
-    "meta": "#7 · ghost · main ← <b>topic</b> (deleted fork)"
+    "meta": "#7 · ghost",
+    "head": null
   },
-  "spelled": "main ← topic",
   "reader": [
     {
       "name": "a visible cold direct link fills the cache",
@@ -848,9 +887,9 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "Closed 2",
       "All 102"
     ],
-    "the count and repository name are bold": [
+    "only the repository name is bold": [
       {
-        "node": "STRONG",
+        "node": "SPAN",
         "text": "102"
       },
       {
@@ -865,22 +904,24 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "the list": "ul .github-pulls-list role=\"tree\" aria-label=\"Pull requests of octo/demo: 102 pull requests\"",
     "a row": [
       "li .github-pulls-item role=\"none\"",
-      "a .github-pulls-row.collapsed href=\"/pull/106\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"false\" tabindex=\"-1\" aria-posinset=\"1\" aria-setsize=\"102\""
+      "a .github-pulls-row href=\"/pull/106\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"true\" aria-owns=\"github-pull-change-106\" tabindex=\"-1\" aria-posinset=\"1\" aria-setsize=\"102\""
     ],
-    "the row whose page is shown": "a .github-pulls-row.selected.expanded href=\"/pull/105\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"true\" tabindex=\"0\" aria-current=\"page\" aria-selected=\"true\" aria-posinset=\"2\" aria-setsize=\"102\" aria-owns=\"github-pull-files-105\"",
+    "the row whose page is shown": "a .github-pulls-row.selected href=\"/pull/105\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"true\" aria-owns=\"github-pull-change-105\" tabindex=\"0\" aria-current=\"page\" aria-selected=\"true\" aria-posinset=\"2\" aria-setsize=\"102\"",
     "its parts": [
-      "span .github-pulls-toggle aria-hidden=\"true\"",
       "span .github-pull-state-icon role=\"img\" aria-label=\"Open\"",
       "span .github-pulls-title",
       "span .github-pulls-age.age-hour",
       "span .github-pulls-meta"
     ],
+    "its text leads with its title": true,
     "a PR preview leaves its files expanded": false,
-    "Right opens its cached changed files": "/api/plugin/github/pull-files?number=105&offset=0",
+    "Right to its change line, and Right again, opens its cached changed files": "/api/plugin/github/pull-files?number=105&offset=0",
     "they hang under it as a group it owns": [
-      "a .github-pulls-row.selected.expanded href=\"/pull/105\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"true\" tabindex=\"0\" aria-current=\"page\" aria-selected=\"true\" aria-posinset=\"2\" aria-setsize=\"102\" aria-owns=\"github-pull-files-105\"",
+      "a .github-pulls-row.selected href=\"/pull/105\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"true\" aria-owns=\"github-pull-change-105\" tabindex=\"0\" aria-current=\"page\" aria-selected=\"true\" aria-posinset=\"2\" aria-setsize=\"102\"",
+      "div .github-pulls-change-group role=\"group\" id=\"github-pull-change-105\"",
       "div .tree-children.github-pull-files role=\"group\" id=\"github-pull-files-105\" aria-label=\"Changed files of #105: 2 files\""
     ],
+    "its change line, the row's child, owns them": "div .github-pulls-change.disclosure-toggle.expanded role=\"treeitem\" aria-level=\"2\" aria-posinset=\"1\" aria-setsize=\"1\" aria-expanded=\"true\" tabindex=\"-1\" aria-label=\"Changed files\" aria-owns=\"github-pull-files-105\"",
     "a title written as markup is one text node": [
       {
         "node": "#text",
@@ -903,6 +944,150 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "afterClosingAll": 9
     },
     "disposed: what is left in the tab": 0
+  },
+  "numbers": {
+    "the Pulls tab, loading": [
+      "1 Open",
+      "2 Closed",
+      "3 All",
+      "4 Reload",
+      "5 View on GitHub"
+    ],
+    "Reload waits": [
+      {
+        "what": "press 4",
+        "handled": true
+      },
+      {
+        "what": "click Reload"
+      }
+    ],
+    "the Pulls tab, settled": [
+      "1 Open",
+      "2 Closed",
+      "3 All",
+      "4 Reload",
+      "5 View on GitHub"
+    ],
+    "Reload": [
+      {
+        "what": "press 4",
+        "handled": true,
+        "asked": [
+          "POST /api/plugin/github/pulls-refresh {\"state\":\"all\",\"target\":500,\"retry\":true}"
+        ]
+      },
+      {
+        "what": "click Reload",
+        "asked": [
+          "POST /api/plugin/github/pulls-refresh {\"state\":\"all\",\"target\":500,\"retry\":true}"
+        ]
+      }
+    ],
+    "the state chips": [
+      {
+        "what": "press 1",
+        "handled": true,
+        "asked": [
+          "GET /api/plugin/github/pulls?state=open&limit=100"
+        ],
+        "list": "open",
+        "focused": "Open"
+      },
+      {
+        "what": "press 2",
+        "handled": true,
+        "asked": [
+          "GET /api/plugin/github/pulls?state=closed&limit=100"
+        ],
+        "list": "closed",
+        "focused": "Closed"
+      },
+      {
+        "what": "press 3",
+        "handled": true,
+        "asked": [
+          "GET /api/plugin/github/pulls?state=all&limit=100"
+        ],
+        "list": "all",
+        "focused": "All"
+      },
+      {
+        "what": "click Open",
+        "asked": [
+          "GET /api/plugin/github/pulls?state=open&limit=100"
+        ],
+        "list": "open"
+      },
+      {
+        "what": "click Closed",
+        "asked": [
+          "GET /api/plugin/github/pulls?state=closed&limit=100"
+        ],
+        "list": "closed"
+      },
+      {
+        "what": "click All",
+        "asked": [
+          "GET /api/plugin/github/pulls?state=all&limit=100"
+        ],
+        "list": "all"
+      },
+      {
+        "what": "press 3",
+        "handled": true
+      },
+      {
+        "what": "click All"
+      }
+    ],
+    "the keycaps while Shift is held": "Open 1, Closed 2, All 3, Reload 4, Modified within none, File type none, View on GitHub 5",
+    "the Files tab": [
+      "1 Modified within",
+      "2 File type",
+      "3 View on GitHub"
+    ],
+    "on the Files tab": [
+      {
+        "what": "press 1",
+        "handled": true,
+        "ran": [
+          "Modified within"
+        ]
+      },
+      {
+        "what": "press 3",
+        "handled": true,
+        "ran": [
+          "View on GitHub"
+        ]
+      },
+      {
+        "what": "press 4",
+        "handled": false
+      }
+    ],
+    "the Pulls tab, disposed": [
+      "1 View on GitHub"
+    ],
+    "after disposal": [
+      {
+        "what": "press 1",
+        "handled": true,
+        "ran": [
+          "View on GitHub"
+        ]
+      },
+      {
+        "what": "press 2",
+        "handled": false
+      }
+    ],
+    "the Files tab, after disposal": [
+      "1 Modified within",
+      "2 File type",
+      "3 View on GitHub"
+    ]
   }
 }
 ? 0
@@ -917,7 +1102,7 @@ overwrite a new owner.
 
 ```console
 $ node tests/dom/github-pull-stacks-behavior.js
-{"rowCaptions":{"single":{"text":"2/3","hint":"Stack #286, position 2 of 3"},"shared":{"text":"3/3 · 1/2","hint":"Stack #286, position 3 of 3; Stack #900, position 1 of 2"},"foreign":null},"authoritativeMembership":true,"multipleStacks":true,"identityGuard":true,"tabAndReaderIntent":true,"sharedRead":true,"failureRetention":true,"retryWindow":true,"disposal":true,"lateOwnerGuard":true,"initialFailureRetry":true}
+{"rowCaptions":{"single":{"text":"2/3","hint":"Stack #286, position 2 of 3","parts":[{"position":"2/3","stack":null}]},"shared":{"text":"3/3 · 900 1/2","hint":"Stack #286, position 3 of 3; Stack #900, position 1 of 2","parts":[{"position":"3/3","stack":null},{"position":"1/2","stack":900}]},"foreign":null},"authoritativeMembership":true,"multipleStacks":true,"identityGuard":true,"tabAndReaderIntent":true,"sharedRead":true,"failureRetention":true,"retryWindow":true,"disposal":true,"lateOwnerGuard":true,"initialFailureRetry":true}
 ? 0
 ```
 
@@ -994,13 +1179,16 @@ row is marked busy, and `beat` is the one start time the breaths are aligned to.
 
 ```console
 $ node tests/dom/github-pulls-viewport-behavior.js
-{"case":"viewport-height-increase","before":43,"after":113,"observedRoot":1,"gapStartsAt":null,"viewportHeight":3000,"oneVisibleFlash":true,"retainedReadingPlace":true,"titleBreathing":{"admitted":{"asked":[407,406,405],"breathing":[407,406,405],"busyRows":0},"settled":[],"moved":{"asked":[311,310,309,308],"breathing":[311,310,309,308]},"offline":[],"beat":[100,100,50,100]}}
+{"case":"viewport-height-increase","before":43,"after":90,"observedRoot":1,"gapStartsAt":null,"viewportHeight":3000,"oneVisibleFlash":true,"retainedReadingPlace":true,"titleBreathing":{"admitted":{"asked":[438,437,436,435],"breathing":[438,437,436,435],"busyRows":0},"settled":[],"moved":{"asked":[372,371,370],"breathing":[372,371,370]},"offline":[],"beat":[100,100,50,100]}}
 ? 0
 ```
 
 ## Test: Page Near the Pulls Tail
 
 The controller adds one page on a near-tail signal and keeps selection in place.
+Nothing caps it: approaches read past 500, 600, and 1,000 rows to the filter’s last row.
+A reader parked at the tail keeps reading as GitHub’s pages land, under the scan
+indicator, which leaves with the last row.
 It stops at the actual filter tail and reads cached rows after a provider failure.
 A late page cannot change the newly selected filter or consume its reconnect hint.
 Offline, rate limits, focus, external setup recovery, and Reload all use the same watch
@@ -1011,9 +1199,12 @@ $ node tests/dom/github-pulls-catalog-behavior.js
 {
   "defaultFilter": "open",
   "initialRows": 500,
-  "explicitRows": 1000,
+  "rateHeldScrollRows": 1000,
   "scrollRows": 600,
   "terminalRows": 645,
+  "uncappedScrollRows": 2500,
+  "parkedTailRows": 2000,
+  "countNotices": 0,
   "repeatedScrollSharesRequest": true,
   "keepsSelection": true,
   "cachedGrowthKeepsEveryRow": true,
@@ -1023,7 +1214,7 @@ $ node tests/dom/github-pulls-catalog-behavior.js
   "progressOnlyReads": 1,
   "generationPages": 10,
   "detailReads": 0,
-  "priorityTarget": 1000,
+  "priorityTarget": 600,
   "lateWindowRejected": true,
   "ownerTransferred": true,
   "mixedGenerationRejected": true,
@@ -1057,14 +1248,54 @@ selected. The whole measured viewport has priority over the remaining catalog.
 Eight is a transport batch size.
 A completed pass stops, ordinary busy work backs off without abandoning demand, and
 reconnect keeps its settled cursor.
+A batch left unanswered twice is passed over and revisited after the pass, never before
+its own 30 s, even when failures are staggered.
+A visible demand aborts the background batch on its way, as disposal, a pause, or a
+hidden page does before releasing its token, and each lane waits out a 6.5 s answer.
 These virtual-clock values describe scheduler behavior, not browser paint latency.
 
 ```console
 $ node tests/dom/github-pr-prefetch-behavior.js
-{"catalogRows":24,"settledOwnershipReleases":3,"prefixOwnership":{"retained":3,"revoked":4},"latePassReceipts":["ready","partial","failed","busy","not_owner","invalid"],"hiddenBatches":[8,8,8],"busyAttemptsMs":[0,1000,3000,7000],"allVisibleReadyMs":12000,"recoveredAfterLongBusyMs":91000,"cachedAfterColdStart":24,"recoveredRaceAndRevision":[24,25],"recoveredTransientAndPartial":[24,24],"cachedPastPartialCohort":24,"cachedAfterReconnect":24,"completedBeforeDisconnect":8,"backgroundRequestsAfterCompletion":17}
+{"catalogRows":24,"settledOwnershipReleases":3,"prefixOwnership":{"retained":3,"revoked":4},"latePassReceipts":["ready","partial","failed","busy","not_owner","invalid"],"hiddenBatches":[8,8,8],"busyAttemptsMs":[0,1000,3000,7000],"allVisibleReadyMs":12000,"recoveredAfterLongBusyMs":91000,"cachedAfterColdStart":24,"recoveredRaceAndRevision":[24,25],"recoveredTransientAndPartial":[24,24],"cachedPastPartialCohort":24,"cachedAfterReconnect":24,"completedBeforeDisconnect":8,"backgroundRequestsAfterCompletion":17,"passedOver":{"cached":16,"atMs":7000,"attempts":["open@3000","open@4000","all@9000","all@10000","all@41000"]},"preemption":{"visibleSentAfterMs":0,"backgroundAbortedAfterMs":0},"slowCoveredMs":51500,"giveUpMs":{"visible":10000,"background":30000},"tornDown":[{"exit":"dispose","abortedAfterMs":0,"released":1},{"exit":"pause","abortedAfterMs":0,"released":1},{"exit":"hide","abortedAfterMs":0,"released":1}],"staggeredFailures":[2,11,10]}
 ? 0
 ```
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->
+
+## A Selection Reads Its Record Once
+
+A click reads the selected record once.
+The production Pulls controller opens the production page controller, which joins the
+read the row’s peek started (`slowRead`) or takes an answer it gave within a fast poll
+(`fastRead`); the pointer resting on the clicked row reads nothing more.
+A record read ahead long before the click is read again with its tag (`oldReadAhead`).
+Another row’s peek does not take the joined read from the page (`hoverAway`), and a read
+handed to a page ends with that page when another replaces it (`superseded`).
+
+```console
+$ node tests/dom/github-pull-selection-read-behavior.js
+{
+  "slowRead": [
+    "panel"
+  ],
+  "fastRead": [
+    "panel"
+  ],
+  "oldReadAhead": [
+    "panel",
+    "page revalidates"
+  ],
+  "hoverAway": [
+    "panel",
+    "panel"
+  ],
+  "superseded": {
+    "reads": 4,
+    "inFlight": 1,
+    "afterLastPageWent": 0
+  }
+}
+? 0
+```

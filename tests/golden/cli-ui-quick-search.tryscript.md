@@ -5,7 +5,8 @@ sandbox: false
 # Golden Test for Quick Search
 
 The production search controller and palette display file matches while a PR title
-lookup is pending. The selected file stays selected when the PR arrives.
+lookup is pending. Pull requests are their own group after the files, so the PR that
+arrives later is appended below them and the selected file stays where it was.
 The result shows the title, number, and state and opens with Enter or a click.
 A title query shows cached PRs while the catalog refreshes and keeps the selected PR as
 more results arrive.
@@ -16,6 +17,9 @@ A lone `#` shows recent cached PRs across states.
 A title or number prefix after `#` searches PRs alone, and an exact PR number ranks
 first among its prefix matches.
 The selected PR survives when more prefix matches arrive.
+A title that starts with a conventional-commit prefix is drawn in two parts, the prefix
+in its `span.title-prefix`, and a word the query matches in both parts is marked in
+each, at its own place.
 Bare digits look up the exact PR alongside file matches.
 In a plain folder, a hash remains part of the filename query.
 File indexing leaves explicit PR searches alone and refreshes mixed results once they
@@ -34,16 +38,16 @@ $ node tests/dom/quick-search-pulls-session.js
   ],
   "mixed": [
     "render.js",
-    "Pull request #123, Fix <em>renderer</em>, Merged",
-    "src/renderer.js"
+    "src/renderer.js",
+    "Pull request #123, Fix <em>renderer</em>, Merged"
   ],
   "afterMerge": "src/renderer.js",
   "titleHighlight": "render",
   "details": "#123 · Merged",
   "grown": [
     "render.js",
-    "Pull request #124, Render the latest state, Closed",
     "src/renderer.js",
+    "Pull request #124, Render the latest state, Closed",
     "Pull request #123, Fix <em>renderer</em>, Merged"
   ],
   "selectedAfterGrowth": "Pull request #123, Fix <em>renderer</em>, Merged",
@@ -51,11 +55,11 @@ $ node tests/dom/quick-search-pulls-session.js
   "mixedKeptReading": true,
   "afterFileGrowth": [
     "render.js",
-    "Pull request #124, Render the latest state, Closed",
     "src/renderer.js",
-    "Pull request #123, Fix <em>renderer</em>, Merged",
     "z/render-guide.md",
-    "z/render-notes.md"
+    "z/render-notes.md",
+    "Pull request #124, Render the latest state, Closed",
+    "Pull request #123, Fix <em>renderer</em>, Merged"
   ],
   "selectedAfterFileGrowth": "Pull request #123, Fix <em>renderer</em>, Merged",
   "limitedStatus": "No matches in 5 indexed files. Scanning continues. No matching cached pull requests. Search by number for older pull requests.",
@@ -74,6 +78,25 @@ $ node tests/dom/quick-search-pulls-session.js
     "Pull request #123, Fix <em>renderer</em>, Merged"
   ],
   "explicitTitleHighlight": "Render",
+  "prefixedChoices": [
+    "Pull request #125, feat(chart): chart the strategies, Open"
+  ],
+  "prefixedTitle": [
+    {
+      "span.title-prefix": [
+        "feat(",
+        {
+          "mark": "chart"
+        },
+        "):"
+      ]
+    },
+    " ",
+    {
+      "mark": "chart"
+    },
+    " the strategies"
+  ],
   "hashFiles": [
     "new/#render.md",
     "notes/#render.md"
@@ -105,6 +128,7 @@ $ node tests/dom/quick-search-pulls-session.js
     "GET /api/plugin/github/pulls?q=%2312",
     "GET /api/plugin/github/pulls?q=%2312",
     "GET /api/plugin/github/pulls?q=%23render",
+    "GET /api/plugin/github/pulls?q=%23chart",
     "GET /api/plugin/github/pulls?q=%23123",
     "GET /api/plugin/github/pulls?q=123",
     "GET /api/plugin/github/pulls?q=%2377",

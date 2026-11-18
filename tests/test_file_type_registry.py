@@ -82,7 +82,7 @@ def test_packaged_registry_is_cached_ordered_and_self_describing() -> None:
         .is_file()
     )
     projection = registry.projection()
-    assert projection["schema"] == "file-type-registry-v4"
+    assert projection["schema"] == "file-type-registry-v5"
     assert projection["fingerprint"] == registry.fingerprint
 
 
@@ -169,6 +169,13 @@ def test_registry_rejects_each_structural_validation_class() -> None:
             "unsupported-schema-version",
         ),
         (
+            base.replace(
+                f"schema_version = {FILE_TYPE_REGISTRY_SCHEMA_VERSION}",
+                f"schema_version = {FILE_TYPE_REGISTRY_SCHEMA_VERSION - 1}",
+            ),
+            "unsupported-schema-version",
+        ),
+        (
             base.replace("max_extension_components = 2", "max_extension_components = 3"),
             "unsupported-extension-components",
         ),
@@ -211,6 +218,17 @@ def test_registry_rejects_each_structural_validation_class() -> None:
         ),
         (
             base.replace("hue = 246.50", 'hue = 246.50\ndeviation = "   "'),
+            "invalid-field",
+        ),
+        (
+            base.replace("hue = 246.50", "hue = 246.50\nchroma_ratio = 1.0"),
+            "undeclared-deviation",
+        ),
+        (
+            base.replace(
+                "hue = 246.50",
+                'hue = 246.50\nchroma_ratio = 1.5\ndeviation = "Wants more chroma."',
+            ),
             "invalid-field",
         ),
         (base.replace('extensions = ["py"]', "extensions = []"), "missing-evidence"),
@@ -257,10 +275,60 @@ def test_a_declared_deviation_overrides_the_rank_upstream_would_give() -> None:
     assert projected["lightness_rank"] == -0.5
 
 
+def test_a_declared_chroma_ratio_overrides_only_the_chroma_upstream_would_give() -> None:
+    """The chroma axis has the same override, for a family whose hue left its
+    upstream colour's and so has no saturation of its own left to take. It
+    replaces the ratio and nothing else, and it never leaves the band."""
+
+    text = _minimal_registry().replace(
+        "hue = 246.50",
+        'hue = 92.0\nchroma_ratio = 1.0\ndeviation = "Left its upstream colour."',
+    )
+    registry = load_file_type_registry_from_text(text)
+    family = registry.family("python")
+    assert family is not None
+    assert family.chroma_ratio == 1.0
+    assert family.lightness_rank is None
+
+    derived = band_positions([family.linguist_color])[0]
+    position = registry.tone_position("python")
+    assert position.chroma_ratio == 1.0
+    assert position.lightness_rank == derived.lightness_rank
+
+    families = registry.projection()["families"]
+    assert isinstance(families, tuple)
+    projected = next(
+        entry for entry in families if isinstance(entry, dict) and entry.get("id") == "python"
+    )
+    assert projected["chroma_ratio"] == 1.0
+    # A painted colour depends on it, so the registry's identity does too.
+    assert (
+        registry.fingerprint
+        != load_file_type_registry_from_text(
+            text.replace("chroma_ratio = 1.0", "chroma_ratio = 0.5")
+        ).fingerprint
+    )
+
+
+def test_the_registry_refuses_the_structure_before_chroma_ratio() -> None:
+    """Version 5 is the structure that has ``chroma_ratio``. A version-4 reader
+    handed it would ignore the field and paint a different palette under the
+    same number, so the number moved, and a version-4 registry is refused rather
+    than read: the server, browser and built-in plugins ship together, so there
+    is no older consumer to keep a reader for."""
+
+    assert FILE_TYPE_REGISTRY_SCHEMA_VERSION == 5
+    previous = _minimal_registry().replace(
+        f"schema_version = {FILE_TYPE_REGISTRY_SCHEMA_VERSION}", "schema_version = 4"
+    )
+    assert _error_code(previous) == "unsupported-schema-version"
+
+
 def test_a_family_that_does_not_deviate_carries_no_reason() -> None:
     registry = load_file_type_registry_from_text(_minimal_registry())
     family = registry.family("python")
     assert family is not None
     assert family.deviation is None
     assert family.lightness_rank is None
+    assert family.chroma_ratio is None
     assert 0.0 <= registry.tone_position("python").lightness_rank <= 1.0

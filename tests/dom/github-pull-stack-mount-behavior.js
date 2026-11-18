@@ -88,6 +88,9 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js")).href
   );
   const avatar = "https://avatars.githubusercontent.com/u/123?s=40";
+  // The shell's person glyph, Lucide's `circle-user-round`.
+  const PERSON_GLYPH =
+    /^<svg [^>]+><path d="M17\.925 20\.056a6 6 0 0 0-11\.851\.001"\/><circle cx="12" cy="11" r="4"\/><circle cx="12" cy="12" r="10"\/><\/svg>$/;
   for (const unsafe of [
     null,
     "",
@@ -106,8 +109,17 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     page.avatarUrl("https://avatars.githubusercontent.com/in/42?s=40"),
     "https://avatars.githubusercontent.com/in/42?s=40",
   );
-  const identity = page.authorLabel("octo", avatar);
-  const image = identity.children[0];
+  // An author is the shell's identity (docs/design-system.md, "Actor Identity"): the avatar's
+  // box, holding GitHub's avatar, then the bold name.
+  const sdk = require("./sdk-ref-fixture.js").refHelpers(document);
+  const identity = page.authorLabel(sdk, "octo", avatar);
+  assert.deepEqual([...identity.classes], ["actor-identity", "github-pull-identity"]);
+  const box = identity.children[0];
+  assert.ok(box.classes.has("actor-avatar") && box.getAttribute("aria-hidden") === "true");
+  const image = box.children[0];
+  assert.ok(image.classes.has("actor-avatar-image"));
+  assert.equal(identity.children[1].tag, "strong");
+  assert.deepEqual([...identity.children[1].classes], ["actor-name", "github-pull-author"]);
   assert.equal(identity.textContent, "octo");
   for (const [name, value] of Object.entries({
     alt: "",
@@ -127,11 +139,25 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     "src",
     "privacy/layout attributes precede the request",
   );
-  image.style = {};
+  // A failed image gives its box to the person glyph: the box stays, so nothing moves.
   image.events.get("error")();
-  assert.equal(image.style.visibility, "hidden");
-  assert.equal(identity.children.length, 2, "failed image retains its fixed slot");
-  assert.equal(page.authorLabel("ghost", "https://evil.example/track").children.length, 1);
+  assert.equal(box.children.length, 0, "the failed image leaves its box");
+  assert.match(box.innerHTML, PERSON_GLYPH, "the glyph takes the box");
+  assert.equal(identity.children.length, 2, "failed image retains its fixed box");
+  // An avatar that is not GitHub's is never asked for: the box holds the glyph instead.
+  const ghost = page.authorLabel(sdk, "ghost", "https://evil.example/track");
+  assert.equal(ghost.children.length, 2, "an author with no avatar keeps the box");
+  assert.equal(ghost.children[0].children.length, 0, "no image is made");
+  assert.match(ghost.children[0].innerHTML, PERSON_GLYPH);
+  // A Pulls row asks for no box for an author with no avatar; its row carries the avatar.
+  const row = page.authorLabel(sdk, "ghost", null, "github-pulls-author", {
+    placeholder: false,
+  });
+  assert.equal(row.children.length, 1, "a Pulls row's avatarless author has no box");
+  assert.deepEqual(
+    [...row.children[0].classes],
+    ["actor-name", "github-pull-author", "github-pulls-author"],
+  );
   const merged = structuredClone(recorded.current.body);
   merged.record.pull.merged = true;
   merged.record.pull.merged_by = "merger";
@@ -148,6 +174,7 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     ...require("./sdk-ref-fixture.js").refHelpers(document),
     perf,
     ensureAsset: async () => {},
+    whenIdle: require("./sdk-idle-fixture.js").whenIdle,
     ensureKindAssets: async () => {},
     getRegisteredView: () => ({ render: async () => ({ dispose() {} }) }),
     formatAge: () => ({ label: "now", className: "age" }),
@@ -198,8 +225,16 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     "cached refreshing page remains readable",
   );
   assert(warm.textContent.includes(current.body.record.pull.title));
-  const refreshing = warm.querySelector(".github-pull-status");
-  assert.match(refreshing.textContent, /^Fetched .+ via GitHub CLI$/);
+  // The freshness note ends the author's row (mb-ne91).
+  const refreshing = warm.querySelector(".github-pull-note");
+  assert.match(
+    refreshing.querySelector(".github-pull-freshness").textContent,
+    /^Fetched .+ via GitHub CLI$/,
+  );
+  // Refresh keeps its slot at the row of ages' end, held hidden while a refresh runs.
+  const refresh = warm.querySelector(".github-pull-opened").children.at(-1);
+  assert.ok(refresh.classes.has("github-pull-refresh"));
+  assert.equal(refresh.hidden, true);
   assert.equal(refreshing.querySelector(".spinner"), null, "nothing spins over the cached page");
   const age = refreshing.querySelector(".github-pull-freshness");
   assert(
@@ -215,12 +250,14 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   });
   await settle();
   assert(warm.textContent.includes("2/3"));
-  const trigger = warm.querySelector(".github-pull-stack-trigger");
+  const trigger = warm
+    .querySelector(".github-pull-stacks")
+    .querySelector(".github-pull-stack-trigger");
   assert.equal(trigger.getAttribute("aria-label"), "Navigate Stack #286, position 2 of 3");
   assert.equal(trigger.getAttribute("aria-haspopup"), "menu");
   assert(
-    warm.querySelector(".github-pull-meta").contains(trigger),
-    "stack control shares the state row",
+    warm.querySelector(".github-pull-meta").children.at(-1).contains(trigger),
+    "stack control ends the author's row (mb-cf0l)",
   );
   assert(warm.querySelector(".github-pull-author"), "page actor uses semantic username treatment");
   const disclosure = warm.querySelector(".github-pull-stack-disclosure");
@@ -232,6 +269,15 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     [...members.descendants()].filter((item) => item.tag === "a").map((item) => item.textContent),
     ["3/3 · Stack change 8 · #8", "✓2/3 · Stack change 7 · #7", "1/3 · Stack change 6 · #6"],
   );
+  // A menu of one group is named once, by the heading over its members: the host's group
+  // heading, in the stack's label class (docs/design-system.md, "Stacks").
+  const heading = [...members.descendants()].find(
+    (element) => element.getAttribute("class") === "group-heading github-pull-stack-label",
+  );
+  assert.equal(heading?.textContent, "Stack #286");
+  assert.equal(members.getAttribute("aria-labelledby"), heading.getAttribute("id"));
+  assert.equal(members.getAttribute("aria-label"), null, "the menu has no second name");
+  assert.equal(heading.parentElement?.getAttribute("role") ?? null, null, "no group role");
   const anchors = [...members.descendants()].filter((element) => element.tag === "a");
   anchors[0].focus();
   next.setTab("files");
@@ -306,10 +352,10 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     json: async () => differentOwner,
   });
   await settle();
-  assert.equal(
-    warm.querySelector(".github-pull-stacks").hidden,
-    true,
-    "identical visible data under another source hides old badges",
+  assert.deepEqual(
+    warm.querySelector(".github-pull-stacks").children.map((node) => node.getAttribute("class")),
+    ["btn github-pull-stack-trigger github-pull-stack-strut"],
+    "identical visible data under another source hides old badges, and keeps their slot",
   );
   next.dispose();
   assert.equal(timers.size, 0);
@@ -334,6 +380,7 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     link: (target) => page.h("a", { href: `/pull/${target}/checks` }),
     icon: null,
     currentTitle: "Current",
+    titleNodes: api.titleNodes,
     onOpen() {},
   });
   const menuHost = new Element("main");
@@ -345,9 +392,84 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
       preventDefault() {},
       stopPropagation() {},
     });
+  // A key held with Command, Control, or Option is the browser's: Command-R reloads,
+  // Command-Left goes back, and Command-Down scrolls to the end. The menu opens and moves
+  // only on unmodified keys.
+  const swallowed = [];
+  for (const name of ["r", "ArrowDown", "ArrowUp", "Home", "End", "Enter", " ", "Escape"]) {
+    for (const modifier of ["metaKey", "ctrlKey", "altKey"]) {
+      let prevented = false;
+      standalone.element.events.get("keydown")({
+        key: name,
+        [modifier]: true,
+        target: standalone.element.children[0],
+        preventDefault() {
+          prevented = true;
+        },
+        stopPropagation() {
+          prevented = true;
+        },
+      });
+      if (prevented || standalone.element.open) {
+        swallowed.push(`${modifier} ${name}`);
+      }
+    }
+  }
+  assert.deepEqual(swallowed, [], "the stack menu takes no key held with a modifier");
+  // On the trigger, Home and End are left alone, as on a filter's trigger; the menu stays
+  // closed (docs/design-system.md, "Keys in a Menu").
+  for (const name of ["Home", "End"]) {
+    let prevented = false;
+    standalone.element.events.get("keydown")({
+      key: name,
+      target: standalone.element.children[0],
+      preventDefault() {
+        prevented = true;
+      },
+      stopPropagation() {},
+    });
+    assert.equal(prevented || Boolean(standalone.element.open), false, `${name} opens nothing`);
+  }
+  // Every way the menu opens puts focus on the current member, #7, the row checked, whose
+  // place in the top-first list is second (mb-xlla).
   key("ArrowDown");
   const menuLinks = standalone.element.querySelectorAll("a[href]");
-  assert.equal(document.activeElement, menuLinks[0], "Down opens at the top stack member");
+  const currentMember = () =>
+    standalone.element
+      .querySelectorAll("a[href]")
+      .find((link) => link.getAttribute("aria-current") === "page");
+  assert.equal(currentMember(), menuLinks[1]);
+  assert.equal(document.activeElement, menuLinks[1], "Down opens at the current member");
+  key("ArrowDown");
+  assert.equal(document.activeElement, menuLinks[2], "Down then moves within the menu");
+  key("ArrowUp");
+  assert.equal(document.activeElement, menuLinks[1]);
+  key("ArrowUp");
+  assert.equal(document.activeElement, menuLinks[0]);
+  // With the menu open, Escape held with a modifier reaches the document's listeners, the
+  // one that closes the open menu among them, and none takes it or closes the menu.
+  const documentKeydowns = [...(documentEvents.get("keydown") ?? [])];
+  assert(documentKeydowns.length > 0, "the open menu listens for Escape on the document");
+  const escapes = [];
+  for (const modifier of ["metaKey", "ctrlKey", "altKey"]) {
+    for (const listener of documentKeydowns) {
+      let prevented = false;
+      listener({
+        key: "Escape",
+        [modifier]: true,
+        target: menuLinks[0],
+        preventDefault() {
+          prevented = true;
+        },
+        stopPropagation() {},
+      });
+      if (prevented || !standalone.element.open) {
+        escapes.push(modifier);
+      }
+    }
+  }
+  assert.deepEqual(escapes, [], "a modified Escape leaves the open stack menu open");
+  assert.equal(document.activeElement, menuLinks[0], "a modified Escape moves no focus");
   key("End");
   assert.equal(document.activeElement, menuLinks[2]);
   key("Home");
@@ -382,10 +504,57 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   assert.equal(standalone.element.open, false);
   assert.equal(document.activeElement, standalone.element.children[0], "Escape returns to trigger");
   key("Enter", standalone.element.children[0]);
-  assert.equal(document.activeElement, menuLinks[0], "Enter opens and focuses the first menu row");
+  assert.equal(document.activeElement, currentMember(), "Enter opens on the current member");
+  key("Escape");
+  assert.equal(document.activeElement, standalone.element.children[0], "and Escape gives it back");
+  key(" ", standalone.element.children[0]);
+  assert.equal(document.activeElement, currentMember(), "Space opens on the current member");
   key("Escape");
   key("ArrowUp");
-  assert.equal(document.activeElement, standalone.element.querySelectorAll("a[href]").at(-1));
+  assert.equal(document.activeElement, currentMember(), "Up opens on the current member");
+  key("Escape");
+  // A press: the details opens itself, with focus on the trigger, and its toggle event
+  // moves focus to the current member.
+  standalone.element.children[0].focus();
+  standalone.element.open = true;
+  standalone.element.events.get("toggle")();
+  assert.equal(document.activeElement, currentMember(), "a press opens on the current member");
+  // The toggle event a key's open sends after it leaves focus where the key put it.
+  key("ArrowDown");
+  const moved = document.activeElement;
+  standalone.element.events.get("toggle")();
+  assert.equal(document.activeElement, moved, "a later toggle event takes no focus back");
+  key("Escape");
+  assert.equal(document.activeElement, standalone.element.children[0], "Escape returns to trigger");
+  // A pull request in two stacks: each trigger names its stack before its position, as a
+  // Pulls row's place names another stack (mb-xlla); in one, the position is bare.
+  assert.equal(standalone.element.children[0].textContent, "3/4");
+  standalone.update(
+    { ...menuStack, pulls: [5, 6, 7, 8], titles: ["New base", "Base", "Current", "Top"] },
+    "Current",
+    true,
+  );
+  assert.equal(standalone.element.children[0].textContent, "90 3/4");
+  standalone.update(
+    { ...menuStack, pulls: [5, 6, 7, 8], titles: ["New base", "Base", "Current", "Top"] },
+    "Current",
+    false,
+  );
+  assert.equal(standalone.element.children[0].textContent, "3/4");
+  const named = page.createStackMenu(menuStack, 7, {
+    link: (target) => page.h("a", { href: `/pull/${target}` }),
+    icon: null,
+    currentTitle: "Current",
+    titleNodes: api.titleNodes,
+    named: true,
+    onOpen() {},
+  });
+  assert.equal(named.element.children[0].textContent, "90 2/3");
+  assert.equal(
+    named.element.children[0].getAttribute("aria-label"),
+    "Navigate Stack #90, position 2 of 3",
+  );
+  named.dispose();
   for (const listener of documentEvents.get("pointerdown")) {
     listener({ target: new Element("button") });
   }

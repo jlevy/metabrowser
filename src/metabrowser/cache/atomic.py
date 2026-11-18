@@ -10,7 +10,9 @@ Publication renames a staged directory or file to a path that must not exist. Th
 guarantee is the check under the owning lock: the caller holds the lock every writer of
 that path takes, the target is verified absent, and the rename uses the platform
 no-replace rename where there is one, so a violated lock discipline fails instead of
-silently replacing an entry.
+silently replacing an entry. Measured 2026-09-16
+(``explorations/repository-cache/README.md``): a plain ``os.rename`` replaced an empty
+directory.
 """
 
 from __future__ import annotations
@@ -28,9 +30,11 @@ from metabrowser.cache.contracts import (
 )
 from metabrowser.cache.locks import CacheLock, LockOrderError
 from metabrowser.home import (
+    MAX_READ_OPENS,
+    PrivateFileTooLargeError,
     SharedEntryPolicy,
     ensure_private_directory,
-    open_private_file,
+    read_private_file_bounded,
     rename_without_replacing,
     write_private_file_atomic,
 )
@@ -61,29 +65,18 @@ def read_bytes_bounded(
 ) -> bytes:
     """Read a private file of at most *max_bytes*; a missing file raises ``FileNotFoundError``.
 
-    *shared* is passed to :func:`~metabrowser.home.open_private_file`: a caller that must
-    change nothing, such as a read route, passes ``"refuse"`` so a shared record is
-    reported rather than tightened.
+    This is :func:`~metabrowser.home.read_private_file_bounded`, with a file over the
+    bound reported as a :class:`RecordError`: *shared* and the reopening of a record
+    republished while it is opened, up to :data:`~metabrowser.home.MAX_READ_OPENS`
+    times, are that function's.
     """
 
-    fd = open_private_file(home, relative_path, os.O_RDONLY | os.O_NONBLOCK, shared=shared)
     try:
-        if os.fstat(fd).st_size > max_bytes:
-            raise RecordError("the record is larger than any valid record", home / relative_path)
-        chunks: list[bytes] = []
-        remaining = max_bytes + 1
-        while remaining > 0:
-            chunk = os.read(fd, remaining)
-            if not chunk:
-                break
-            chunks.append(chunk)
-            remaining -= len(chunk)
-    finally:
-        os.close(fd)
-    data = b"".join(chunks)
-    if len(data) > max_bytes:
-        raise RecordError("the record is larger than any valid record", home / relative_path)
-    return data
+        return read_private_file_bounded(home, relative_path, max_bytes=max_bytes, shared=shared)
+    except PrivateFileTooLargeError as error:
+        raise RecordError(
+            "the record is larger than any valid record", home / relative_path
+        ) from error
 
 
 def parse_record(payload: bytes, contract_id: str, path: Path) -> BaseModel:
@@ -187,6 +180,7 @@ def _sync(directory: Path) -> None:
 
 
 __all__ = [
+    "MAX_READ_OPENS",
     "MAX_RECORD_BYTES",
     "RecordError",
     "parse_record",

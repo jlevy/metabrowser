@@ -3,6 +3,12 @@ import { localizeGithubUrl } from "./github-localizer.js";
 import { createTrustedStandardLinkResolutionContext, gitPathWireForDisplayPath } from "./links.js";
 import { acquireMarkdownWorkerClient } from "./markdown-worker-client.js";
 import {
+  holdImage,
+  isOutsideAddress,
+  loadHeldImageEagerly,
+  rememberHeldImage,
+} from "./place-rendered.js";
+import {
   createMarkdownEnhancementBudget,
   createMarkdownReconciliationCoordinator,
 } from "./reconciliation-coordinator.js";
@@ -23,10 +29,40 @@ const RESOURCE_ATTRIBUTES = Object.freeze([
 /**
  * Enhance the safe HTML emitted by KPress with Metabrowser navigation semantics.
  *
+ * The plugin decides what an authored link names, and the shell decides how that target is
+ * spelled as a `/view/` address. The resolvers do no I/O, so each decision is testable
+ * against a catalog snapshot, and a target passes through them in this order:
+ *
+ * 1. Scheme dispatch (`links.js`): `http`, `https`, `mailto`, and `tel` stay external, and
+ *    an unsafe scheme is disabled with a visible reason.
+ * 2. Exact resolution (`links.js`): relative, `./`, `../`, and leading-slash targets resolve
+ *    from the source document as GitHub resolves them. A missing target keeps its URL and
+ *    opens the ordinary not-found state; nothing guesses by basename. Media goes through
+ *    `/raw`.
+ * 3. GitHub localization (`github-localizer.js`): a `github.com` blob or tree URL opens
+ *    locally only when the served repository's identity, which `repository_context.py`
+ *    reads from Git metadata with bounded reads and no Git process, proves it names the
+ *    served tree: origin, branch or exact revision, and served subdirectory. Anything
+ *    unproven stays an outbound link.
+ * 4. Published-site routes (`project-adapters.js`): with an MkDocs, Docusaurus, or Jekyll
+ *    configuration at the served root, a published route such as `/guide/` maps to the
+ *    source document behind it; it stays inert until the pinned catalog pass decides.
+ * 5. Wiki links (`wiki-resolver.js`, through `wiki-enhancer.js`): `[[...]]` resolves to an
+ *    exact path, then the source directory, then a unique catalog match. An ambiguous or
+ *    missing note renders visibly with its candidates, and a name unique in an incomplete
+ *    catalog stays pending until the catalog is complete, so a target never depends on
+ *    walk order.
+ *
  * @param {HTMLElement} container
  * @param {string} sourcePath
  * @param {MetabrowserPublicSdk} mb
- * @param {{eventTarget?: Pick<Window, "addEventListener" | "removeEventListener">, schedule?: (callback: FrameRequestCallback) => number, cancel?: (handle: number) => void, signal?: AbortSignal, enhancementBudget?: ReturnType<typeof createMarkdownEnhancementBudget>, reconciliation?: ReturnType<typeof createMarkdownReconciliationCoordinator>, transclusionBudget?: ReturnType<typeof import("./transclusion.js").createTransclusionBudget>, transclusionChain?: ReadonlyArray<ReturnType<typeof import("./transclusion.js").transclusionKey>>, workerClient?: import("./markdown-worker-client.js").MarkdownWorkerRunner}=} options
+ * @param {{eventTarget?: Pick<Window, "addEventListener" | "removeEventListener">, schedule?: (callback: FrameRequestCallback) => number, cancel?: (handle: number) => void, signal?: AbortSignal, enhancementBudget?: ReturnType<typeof createMarkdownEnhancementBudget>, reconciliation?: ReturnType<typeof createMarkdownReconciliationCoordinator>, transclusionBudget?: ReturnType<typeof import("./transclusion.js").createTransclusionBudget>, transclusionChain?: ReadonlyArray<ReturnType<typeof import("./transclusion.js").transclusionKey>>, rawVersions?: unknown, pagePath?: string, workerClient?: import("./markdown-worker-client.js").MarkdownWorkerRunner}=} options
+ *   `rawVersions` is the render's `raw_versions`: the version of each served file it
+ *   embeds, by identity, which that file's address carries.
+ *   `pagePath` is the path of the page that shows this document as its own, when that is
+ *   not `sourcePath`: the folder whose Overview shows its README. A fragment-only link
+ *   names a place in this document, so it names that place on that page, and the page's
+ *   fragment scrolls to it. A transclusion is not its page's document and keeps its own.
  */
 export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
   const eventTarget = options.eventTarget ?? window;
@@ -36,12 +72,14 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
   const ownsWorkerClient = !options.workerClient;
   const workerClient = options.workerClient || acquireMarkdownWorkerClient();
   const sourceKind = mb.sourceKind?.() === "git_revision" ? "git_revision" : "filesystem";
+  const rawVersions = rawVersionsOf(options.rawVersions);
   const standardLinks = createTrustedStandardLinkResolutionContext(
     sourcePath,
     undefined,
     sourceKind,
   );
-  const preserveFragmentOnlyHrefs = isCurrentDocument(sourcePath, mb.navigation.current());
+  const pagePath = options.pagePath ?? sourcePath;
+  const preserveFragmentOnlyHrefs = isCurrentDocument(pagePath, mb.navigation.current());
   /** @type {WeakMap<Element, NavigationTarget>} */
   const internalTargets = new WeakMap();
   const ownsReconciliation = !options.reconciliation;
@@ -142,13 +180,13 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
       return;
     }
     const path = adapted?.status === "internal" ? adapted.path : resolved.path;
-    const target = navigationTarget({ ...resolved, path });
+    const documentTarget = navigationTarget({ ...resolved, path });
+    const sameDocument = isSameDocumentFragment(authoredTarget, documentTarget, sourcePath);
+    const target = sameDocument ? { ...documentTarget, path: pagePath } : documentTarget;
     clearDisabledTarget(anchor);
     anchor.setAttribute(
       "href",
-      preserveFragmentOnlyHrefs && isSameDocumentFragment(authoredTarget, target, sourcePath)
-        ? authoredTarget
-        : mb.navigation.href(target),
+      preserveFragmentOnlyHrefs && sameDocument ? authoredTarget : mb.navigation.href(target),
     );
     if (adapted?.status === "internal") {
       anchor.setAttribute("data-metabrowser-link-adapter", adapted.adapter);
@@ -182,8 +220,21 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
         },
         (resolved) => {
           if (resolved.status === "internal") {
-            resource.setAttribute(descriptor.attribute, rawResourceHref(resolved));
-          } else if (resolved.status !== "external") {
+            const version = rawVersions.get(normalizedFilePath(resolved.path));
+            const href = rawResourceHref(resolved, version);
+            // Held only at an address that names its bytes: a versioned one, or any on a
+            // pinned revision, whose files never change (place-rendered.js).
+            if (tagName === "img" && (version !== undefined || sourceKind === "git_revision")) {
+              loadHeldImageEagerly(resource, href);
+              holdImage(resource);
+            }
+            resource.setAttribute(descriptor.attribute, href);
+          } else if (resolved.status === "external") {
+            // Placement made it eager if the page holds it (place-rendered.js).
+            if (tagName === "img" && isOutsideAddress(authoredTarget)) {
+              holdImage(resource);
+            }
+          } else {
             disableTarget(resource, descriptor.attribute, resolved.status, resolved.reason);
           }
         },
@@ -219,6 +270,7 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
           signal: nestedOptions.signal,
           transclusionBudget: nestedOptions.budget,
           transclusionChain: nestedOptions.chain,
+          rawVersions: nestedOptions.rawVersions,
           workerClient,
         }),
     },
@@ -259,7 +311,7 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
 
   /** @param {NavigationTarget | null | undefined} target */
   function scheduleFragment(target) {
-    if (!target?.fragment || normalizedFilePath(target.path) !== normalizedFilePath(sourcePath)) {
+    if (!target?.fragment || normalizedFilePath(target.path) !== normalizedFilePath(pagePath)) {
       return;
     }
     const fragment = target.fragment;
@@ -272,7 +324,7 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
       if (
         disposed ||
         !current ||
-        normalizedFilePath(current.path) !== normalizedFilePath(sourcePath) ||
+        normalizedFilePath(current.path) !== normalizedFilePath(pagePath) ||
         current.fragment !== fragment
       ) {
         return;
@@ -289,6 +341,8 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
   }
 
   container.addEventListener("click", handleClick);
+  // A load does not bubble, so the container hears its images' in the capture phase.
+  container.addEventListener("load", rememberHeldImage, true);
   eventTarget.addEventListener("metabrowser:navigation-fragment", handleFragment);
   scheduleFragment(mb.navigation.current());
 
@@ -309,6 +363,7 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
         workerClient.dispose();
       }
       container.removeEventListener("click", handleClick);
+      container.removeEventListener("load", rememberHeldImage, true);
       eventTarget.removeEventListener("metabrowser:navigation-fragment", handleFragment);
       if (fragmentFrame) {
         cancel(fragmentFrame);
@@ -356,10 +411,37 @@ function navigationTarget(resolved) {
   return Object.freeze(target);
 }
 
-/** @param {{path: string, fragment?: string}} resolved */
-function rawResourceHref(resolved) {
+/**
+ * A served file's address, with the version the render gave it when it gave one.
+ *
+ * @param {{path: string, fragment?: string}} resolved
+ * @param {string | undefined} version
+ */
+function rawResourceHref(resolved, version) {
   const fragment = resolved.fragment ? `#${encodeURIComponent(resolved.fragment)}` : "";
-  return `/raw?path=${encodeURIComponent(normalizedFilePath(resolved.path))}${fragment}`;
+  const versioned = version === undefined ? "" : `&v=${encodeURIComponent(version)}`;
+  const path = encodeURIComponent(normalizedFilePath(resolved.path));
+  return `/raw?path=${path}${versioned}${fragment}`;
+}
+
+/**
+ * The render's `raw_versions` as a map, keeping only string versions under string
+ * identities; anything else versions nothing.
+ *
+ * @param {unknown} value
+ * @returns {ReadonlyMap<string, string>}
+ */
+function rawVersionsOf(value) {
+  /** @type {Map<string, string>} */
+  const versions = new Map();
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    for (const [identity, version] of Object.entries(value)) {
+      if (typeof version === "string" && version) {
+        versions.set(identity, version);
+      }
+    }
+  }
+  return versions;
 }
 
 /** @param {Element} element @param {string} attribute @param {string} status @param {string} reason */
@@ -447,15 +529,15 @@ function normalizedFilePath(path) {
   return path.endsWith("/") ? path.slice(0, -1) : path;
 }
 
-/** @param {string} sourcePath @param {NavigationTarget | null | undefined} current */
-function isCurrentDocument(sourcePath, current) {
-  return Boolean(current && normalizedFilePath(current.path) === normalizedFilePath(sourcePath));
+/** @param {string} pagePath @param {NavigationTarget | null | undefined} current */
+function isCurrentDocument(pagePath, current) {
+  return Boolean(current && normalizedFilePath(current.path) === normalizedFilePath(pagePath));
 }
 
 /**
  * KPress identifies the primary document's TOC entries from their fragment-only
- * hrefs. The caller separately verifies that the source is the current document;
- * embedded documents need canonical hrefs relative to their own source.
+ * hrefs. The caller separately verifies that the page showing the source is the
+ * current page; embedded documents need canonical hrefs relative to their own source.
  *
  * @param {string} authoredTarget
  * @param {NavigationTarget} target

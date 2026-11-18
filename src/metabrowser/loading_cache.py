@@ -6,8 +6,15 @@ and later callers join it. Cancelling a waiter cancels only that waiter: the loa
 for the others and finishes even when every waiter has gone. A failed or cancelled load
 keeps nothing, so the next call loads again.
 
+What is kept is bounded by a count and, given a *weigh* function, by a total weight too:
+the least recently used values go first, and a value heavier than the whole bound is
+returned to its callers and not kept. A value is weighed when its load finishes, so the
+loads in progress are not counted: while they run, the memory held can pass the bound
+by what they hold, until each one finishes and the oldest kept values are let go.
+
 Not specific to the repository cache: the GitHub plugin shares a comparison's manifest
-load this way, and a revision page's Markdown render.
+load this way; ``encoded_assets`` keeps the application's own assets in memory by their
+bytes.
 """
 
 from __future__ import annotations
@@ -19,12 +26,32 @@ from functools import partial
 
 
 class LoadingCache[K: Hashable, V]:
-    """Return a ready value or share one producer, keeping at most *max_values* values."""
+    """Return a ready value or share one producer, keeping at most *max_values* values.
 
-    def __init__(self, *, max_values: int) -> None:
+    With *weigh*, the kept values' weights also stay at or under *max_weight*.
+    """
+
+    def __init__(
+        self,
+        *,
+        max_values: int,
+        max_weight: int | None = None,
+        weigh: Callable[[V], int] | None = None,
+    ) -> None:
+        if (max_weight is None) != (weigh is None):
+            raise ValueError("max_weight and weigh are given together")
         self._max_values = max_values
+        self._max_weight = max_weight
+        self._weigh = weigh
         self._ready: OrderedDict[K, V] = OrderedDict()
+        self._weights: dict[K, int] = {}
+        self._weight = 0
         self._loading: dict[K, asyncio.Task[V]] = {}
+
+    @property
+    def weight(self) -> int:
+        """The total weight of the values kept now; 0 without *weigh*."""
+        return self._weight
 
     def kept(self, key: K) -> tuple[V] | None:
         """The value kept for *key*, in a tuple, or ``None`` when none is kept. Starts nothing."""
@@ -55,9 +82,18 @@ class LoadingCache[K: Hashable, V]:
         del self._loading[key]
         if task.cancelled() or task.exception() is not None:
             return
-        self._ready[key] = task.result()
-        if len(self._ready) > self._max_values:
-            self._ready.popitem(last=False)
+        value = task.result()
+        weight = 0 if self._weigh is None else self._weigh(value)
+        if self._max_weight is not None and weight > self._max_weight:
+            return
+        self._ready[key] = value
+        self._weights[key] = weight
+        self._weight += weight
+        while len(self._ready) > self._max_values or (
+            self._max_weight is not None and self._weight > self._max_weight
+        ):
+            evicted, _value = self._ready.popitem(last=False)
+            self._weight -= self._weights.pop(evicted)
 
 
 __all__ = ["LoadingCache"]

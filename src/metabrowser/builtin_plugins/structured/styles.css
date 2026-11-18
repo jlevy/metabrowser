@@ -77,7 +77,6 @@
 
 .srow-container {
   cursor: pointer;
-  user-select: var(--toggle-user-select);
 }
 
 .srow-container:hover {
@@ -144,11 +143,11 @@
 /* Chrome metadata in inline previews: the "(N more)" overflow markers
    shown inside collapsed-content stand-ins. Sans-serif body font +
    the design-system --muted gray, matching every other "gray metadata"
-   treatment in the shell. */
+   treatment in the shell, at the row's size, as metadata reads beside
+   its text (docs/design-system.md, "Type Scale"). */
 .tok-meta {
   font-family: var(--font-sans);
   color: var(--muted);
-  font-size: 0.9em;
 }
 
 /* Container-header tally: "{7 keys}" / "[3 items]" on expanded

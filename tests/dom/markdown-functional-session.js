@@ -162,6 +162,19 @@ class FakeElement {
     }
   }
 
+  // A template's content is the template itself here: its parsed elements.
+  get content() {
+    return this;
+  }
+
+  replaceChildren(fragment) {
+    this._innerHTML = fragment._innerHTML;
+    this.elements = fragment.elements;
+    for (const element of this.elements) {
+      element.parentElement = this;
+    }
+  }
+
   replaceWith(replacement) {
     const index = this.parentElement.elements.indexOf(this);
     this.parentElement.elements[index] = replacement;
@@ -366,6 +379,11 @@ function parseFakeHtml(html, document) {
   const taskListPreparation = wikiParser.preprocessObsidianWiki(
     "- [ ] Review [[Meeting Notes]] per [spec](https://example.com/spec)\n" +
       "  - [x] Follow up in [[Notes#Actions|actions]] and [the [[Hidden]] log](log.md)\n",
+  );
+  // A heading's anchors open its inline content, one per hierarchical name and
+  // each name once, and add no line; a list item above `---` is no heading.
+  const headingPreparation = wikiParser.preprocessObsidianWiki(
+    "# Guide\n## Setup\nUsage\n=====\n- step\n---\n## Setup\n",
   );
 
   const incompleteAdapter = adapters
@@ -604,6 +622,7 @@ function parseFakeHtml(html, document) {
           truncated: truncated.result,
         },
         wikiPreprocessing: {
+          headings: headingPreparation.source.split("\n"),
           taskList: {
             source: taskListPreparation.source.split("\n"),
             targetCount: taskListPreparation.targetCount,

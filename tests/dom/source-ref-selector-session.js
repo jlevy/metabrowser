@@ -11,6 +11,13 @@
 // are injected, and each request waits until the step answers it, so a step can answer
 // two requests out of order. Each step prints the requests the selector made, whether a
 // filter pause is pending, what it would paint, and where it navigated.
+//
+// The same module is a served checkout's selector, on the same two routes. `checkout` is
+// that conversation, recorded from a folder that is a repository's root in
+// tests/fixtures/source-ref-selector-checkout-responses.json: its working tree, its three
+// lists, a branch shown as a revision, the checked-out branch shown as its commit, the
+// way back to the working tree, and the reload it offers when the server shows something
+// else.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -20,6 +27,12 @@ const repoRoot = path.resolve(__dirname, "../..");
 const staticDir = path.join(repoRoot, "src/metabrowser/static");
 const recorded = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "tests/fixtures/source-ref-selector-responses.json"), "utf8"),
+);
+const recordedCheckout = JSON.parse(
+  fs.readFileSync(
+    path.join(repoRoot, "tests/fixtures/source-ref-selector-checkout-responses.json"),
+    "utf8",
+  ),
 );
 
 function assert(condition, message) {
@@ -47,6 +60,17 @@ function loadProductionModule() {
 
 const selectorRuntime = loadProductionModule();
 assert(selectorRuntime, "the production module did not install its runtime");
+
+// The pin guard, which a checkout's working-tree page takes with the selector's bundle.
+// Its window here has no `fetch`, so it defines its functions and guards nothing.
+function loadPinGuard() {
+  const context = { window: {}, URL, Headers, Request, Promise, Object };
+  context.window.window = context.window;
+  vm.createContext(context);
+  const file = path.join(staticDir, "source-pin-guard.js");
+  vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
+  return context.window.MetabrowserSourcePinGuard;
+}
 
 async function settle() {
   for (let turn = 0; turn < 20; turn += 1) {
@@ -138,26 +162,41 @@ function createPage(page) {
 }
 
 // What the selector would show, one line per row, so a transcript reads as the page does.
+// A checkout's selector adds what a mirror's has none of: the lists it offers, its
+// working-tree row, the checked-out branch's badge, each row's chip, and its offer to
+// reload. A mirror's paint is printed as it always was.
 function paintOf(model) {
   if (model === null) {
     return null;
   }
+  const checkout = model.workingTree !== null;
+  const stale = model.stale === null ? {} : { stale: `${model.stale} [Reload]` };
+  if (model.removed) {
+    return { removed: true };
+  }
   if (!model.open) {
-    return { button: model.button, open: false };
+    return { button: model.button, open: false, ...stale };
   }
   return {
     button: model.button,
     open: true,
+    ...(checkout
+      ? {
+          workingTree: `Working tree: ${model.workingTree.detail}${model.workingTree.current ? " [current]" : ""}`,
+          lists: model.kinds,
+        }
+      : {}),
     kind: model.kind,
     query: model.query,
     loading: model.loading,
     switching: model.switching,
     rows: model.rows.map(
       (row) =>
-        `${row.name} ${row.commit}${row.default ? " [default]" : ""}${row.current ? " [current]" : ""}`,
+        `${row.name} ${row.commit}${row.default ? " [default]" : ""}${row.checkedOut ? " [checked out]" : ""}${row.current ? " [current]" : ""}${checkout ? ` (${row.chip} chip)` : ""}`,
     ),
     note: model.note,
     error: model.error,
+    ...stale,
   };
 }
 
@@ -293,7 +332,12 @@ async function run() {
     { pin: branches.pin, ref: "refs/tags/v1" },
     { pin: branches.pin, ref: "refs/pull/7/head" },
     { pin: branches.pin, ref: null },
-  ].map((shown) => selectorRuntime.describe({ ...emptyState(), shown }).button);
+  ].map((shown) => {
+    // A pull request's number, which the button sets bold (docs/design-system.md, "Pull
+    // Request Numbers"), shown in brackets after the words.
+    const model = selectorRuntime.describe({ ...emptyState(), shown });
+    return model.pullNumber === null ? model.button : `${model.button} [bold ${model.pullNumber}]`;
+  });
 
   const copies = [
     "refs/remotes/origin/topic",
@@ -336,7 +380,170 @@ async function run() {
   }
   keys.push(`ArrowDown from -1 in an empty list: ${selectorRuntime.moveRow("ArrowDown", -1, 0)}`);
 
-  return { steps, labels, copies, keys };
+  return { steps, labels, copies, keys, checkout: await runCheckout() };
+}
+
+// A served checkout: a folder that is a repository's root.
+async function runCheckout() {
+  const steps = [];
+  const recording = recordedCheckout;
+  const onReadme = { view: recording.views.readme };
+  const options = (shown) => ({ shown, checkout: true });
+
+  // The folder opens on its working tree, showing README.md.
+  let page = createPage(onReadme);
+  let selector = selectorRuntime.createSelector(page.deps, options(null));
+  steps.push(page.observe("the button names the working tree"));
+
+  const opening = selector.open();
+  await page.answer(recording.branches);
+  await opening;
+  steps.push(page.observe("the working tree is listed above the branches, and is what is served"));
+
+  const remotes = selector.setKind("remote");
+  await page.answer(recording.remotes);
+  await remotes;
+  steps.push(page.observe("a checkout has a third list, its remote-tracking branches"));
+
+  const tags = selector.setKind("tag");
+  await page.answer(recording.tags);
+  await tags;
+  steps.push(page.observe("tags"));
+  const branches = selector.setKind("branch");
+  await page.answer(recording.branches);
+  await branches;
+  page.observe("back to branches");
+
+  const toFeature = selector.choose("refs/heads/feature");
+  steps.push(page.observe("a branch is asked for by its ref, with the folder's address"));
+  await page.answer(recording.switch_branch);
+  await toFeature;
+  steps.push(page.observe("the page goes to the same file in the revision"));
+  selector.dispose();
+
+  // The page reloaded on feature, at the revision's address.
+  const onRevisionReadme = { view: recording.views.readme_revision };
+  page = createPage(onRevisionReadme);
+  selector = selectorRuntime.createSelector(page.deps, options(shownOf(recording.switch_branch)));
+  steps.push(page.observe("the button names the branch shown"));
+  const reopened = selector.open();
+  await page.answer(recording.branches_on_revision);
+  await reopened;
+  steps.push(page.observe("the branch shown is current, and the working tree no longer is"));
+
+  // The checked-out branch is a ref like any other: it shows its commit.
+  const toCheckedOut = selector.choose("refs/heads/topic");
+  await page.answer(recording.switch_checked_out);
+  await toCheckedOut;
+  steps.push(page.observe("the checked-out branch opens its commit, not the working tree"));
+  selector.dispose();
+
+  page = createPage(onRevisionReadme);
+  selector = selectorRuntime.createSelector(
+    page.deps,
+    options(shownOf(recording.switch_checked_out)),
+  );
+  const toTree = selector.chooseWorkingTree();
+  steps.push(page.observe("the working tree is asked for by name, not by a ref"));
+  await page.answer(recording.switch_working_tree);
+  await toTree;
+  steps.push(page.observe("the page goes to the same file in the folder"));
+  selector.dispose();
+
+  // Back on the working tree.
+  page = createPage(onReadme);
+  selector = selectorRuntime.createSelector(page.deps, options(null));
+  const openedAgain = selector.open();
+  await page.answer(recording.branches);
+  await openedAgain;
+  page.observe("reopen");
+  const same = selector.chooseWorkingTree();
+  await page.answer(recording.switch_working_tree_same);
+  await same;
+  steps.push(page.observe("choosing the working tree while it is shown only closes"));
+
+  const reopenedForGone = selector.open();
+  await page.answer(recording.branches);
+  await reopenedForGone;
+  page.observe("reopen");
+  const missing = selector.choose("refs/heads/gone");
+  await page.answer(recording.switch_missing);
+  await missing;
+  steps.push(page.observe("a ref gone from the checkout says so, and nothing is fetched"));
+  selector.close();
+
+  // Another tab switched the server: this page's next data request was refused.
+  selector.servedChanged(recording.switch_branch.body.status.pin);
+  steps.push(page.observe("a working-tree page left behind offers a reload"));
+  selector.dispose();
+  page = createPage(onRevisionReadme);
+  selector = selectorRuntime.createSelector(page.deps, options(shownOf(recording.switch_branch)));
+  selector.servedChanged("");
+  steps.push(page.observe("a revision's page left behind offers one too"));
+  selector.dispose();
+
+  // A folder holding a `.git` that Git does not take for a repository's root: the server
+  // drew the row from the entry, and the listing's refusal takes it away again.
+  page = createPage(onReadme);
+  selector = selectorRuntime.createSelector(page.deps, options(null));
+  const hollow = selector.open();
+  await page.answer(recording.not_a_repository);
+  await hollow;
+  steps.push(page.observe("a folder Git does not take for a repository loses its row"));
+  selector.dispose();
+
+  // A Git too old to be trusted never to fetch into a checkout: the server's own words.
+  page = createPage(onReadme);
+  selector = selectorRuntime.createSelector(page.deps, options(null));
+  const refusedGit = selector.open();
+  await page.answer(recording.unsupported_git);
+  await refusedGit;
+  steps.push(page.observe("an older Git is refused in the server's words"));
+  selector.dispose();
+
+  // A mirror has no working tree to choose, and its freshness row makes that offer.
+  page = createPage(onRevisionReadme);
+  selector = selectorRuntime.createSelector(page.deps, {
+    shown: { pin: recorded.branches.body.pin, ref: recorded.branches.body.ref },
+  });
+  await selector.chooseWorkingTree();
+  selector.servedChanged("");
+  steps.push(page.observe("a mirror's selector asks for no working tree and offers no reload"));
+  selector.dispose();
+
+  const pin = recording.switch_branch.body.status.pin;
+  const labels = [
+    null,
+    { pin, ref: "refs/heads/feature" },
+    { pin, ref: "refs/remotes/origin/feature" },
+    { pin, ref: "refs/tags/v1" },
+    { pin, ref: null },
+  ].map((shown) => {
+    const model = selectorRuntime.describe({ ...emptyState(), shown, checkout: true });
+    const chip = model.selectedRef === null ? "" : ` (${model.selectedRef.kind} chip)`;
+    return `${model.button}${chip}`;
+  });
+
+  // What each kind of page names on its data requests, so a tab left behind is refused:
+  // a commit, the working tree's word, or nothing, for a page with nothing to guard.
+  const pinGuard = loadPinGuard();
+  const named = (page, source) => {
+    const shown = pinGuard.shownPin(page, source);
+    if (shown === undefined) {
+      return "nothing";
+    }
+    const token = shown ?? pinGuard.WORKING_TREE_PIN;
+    const elsewhere = pinGuard.servesAnother(shown, { pin: shown === null ? pin : null });
+    const here = pinGuard.servesAnother(shown, { pin: shown });
+    return `${token}; refused when another is served: ${elsewhere}; while its own is: ${here}`;
+  };
+  const guard = {
+    "a checkout's working tree": named(undefined, { working_tree: true }),
+    "a checkout's revision": named({ pin, ref: "refs/heads/feature" }, { working_tree: false }),
+    "a mirror's pin": named({ pin, ref: "refs/remotes/origin/feature" }, undefined),
+    "a plain folder": named(undefined, undefined),
+  };
+  return { steps, labels, guard };
 }
 
 function emptyState() {

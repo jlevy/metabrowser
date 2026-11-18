@@ -2,11 +2,16 @@
 
 **Status:** Overlay acquisition, bounded explicit recovery, and checkout-backed PR
 comparisons are implemented in [#283](https://github.com/jlevy/metabrowser/pull/283) and
-[#288](https://github.com/jlevy/metabrowser/pull/288) and are present on `main`.
-[Delivery](#delivery) maps the implemented scope; the
+[#288](https://github.com/jlevy/metabrowser/pull/288) and shipped in 0.12.0, published
+on 2026-11-09. The [shared loading contract](#shared-loading-contract-for-pr-review)
+landed after that release, in #346 to #349 on 2026-11-11. [Delivery](#delivery) maps the
+implemented scope; the
 [release-preparation record](../../qa/qa-2026-11-07-v012-release-preparation.md) records
-the current integrated candidate, installed artifact and remaining release gates.
+how the 0.12.0 candidate was qualified.
 Conversions and broader deepening remain future work.
+[Open Modes](#open-modes), added on 2026-11-18, records the owner’s decision on how a
+root is open, which [the open-modes design](../../architecture/arch-open-modes.md) now
+holds, and plans the indicator (`mb-wup3`).
 
 The design was proven by experiments on 2026-11-02 against a 1.2 GB private repository
 and small local replicas, reviewed the same day with the verdict *sound with changes*,
@@ -16,14 +21,14 @@ proofs from inferences.
 [Open Decisions for the User](#open-decisions-for-the-user) records the original
 decisions.
 
-This plan extends the [Pulls tab plan](plan-2026-10-01-github-pulls-tab.md) and the
-[thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md).
+This plan extends the [Pulls tab plan](../done/plan-2026-10-01-github-pulls-tab.md) and
+the [thin-mirror plan](../done/plan-2026-09-23-v012-thin-mirror.md).
 It revised the original
-[alternates decision](plan-2026-10-01-github-pulls-tab.md#local-checkouts), a Files
-changed case, and the store invariant; [The Rule This Changes](#the-rule-this-changes)
-records that design change.
+[alternates decision](../done/plan-2026-10-01-github-pulls-tab.md#local-checkouts), a
+Files changed case, and the store invariant;
+[The Rule This Changes](#the-rule-this-changes) records that design change.
 Current runtime contracts are in
-[Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md)
+[Repository Sources and Provider Mirrors](../../architecture/arch-mirror-acquisition-and-refresh.md)
 and [Views, Models, and Routes](../../architecture/arch-views-models-routes.md).
 
 ## Goal
@@ -96,7 +101,7 @@ The cache’s full mirror of the same repository holds 1,240 MB of objects
 | `git gc` in the store itself | Never runs (`gc.auto=0`); run by hand it passes `-l` to `repack`, so it neither copies the checkout’s objects in nor touches the checkout |
 | The checkout **moved** or **deleted** | Every read: `error: unable to normalize alternate object path` then `fatal: missing object`; a fetch fails too; with the alternates file removed, a fetch still fails because the store’s refs name objects it cannot read. Rewriting the alternates file restores every read; otherwise recovery is a new acquisition |
 | **No persistent store**: `GIT_ALTERNATE_OBJECT_DIRECTORIES` per process | Works per process; the next process without it answers `fatal: bad object`. Metabrowser scrubs this variable from every spawn (`git/process.py`, `_REPO_PINNING_GIT_VARS`) |
-| **Reading the checkout directly** with `--git-dir` | Same speed, but a commit the checkout lacks cannot be brought, and the checkout’s local configuration governs every read: on a replica whose configuration set `diff.external`, `git diff <tree> <tree>` under the isolated environment **ran the external command**, and `git status` ran `core.fsmonitor`. Through an overlay store neither ran. Metabrowser’s diff commands (`diff/adapters/git.py`, `git/detail.py`) pass neither `--no-ext-diff` nor `--no-textconv`, so this holds for them as written |
+| **Reading the checkout directly** with `--git-dir` | Same speed, but a commit the checkout lacks cannot be brought, and the checkout’s local configuration governs every read: on a replica whose configuration set `diff.external`, `git diff <tree> <tree>` under the isolated environment **ran the external command**, and `git status` ran `core.fsmonitor`. Through an overlay store neither ran. Metabrowser’s diff commands (`diff/adapters/git.py`, `git/detail.py`) pass no `--no-textconv` to the patch a page shows, so a checkout’s textconv drivers would run, and this holds for them as written; the adapter’s patch runs pass `--no-ext-diff`, and the comparison route’s listing run passes `--no-textconv` too |
 | **Reverse direction**: a full mirror exists and a checkout appears | A clonefile copy of the mirror (0.09 s) given the alternates file and `git repack -a -d -l` went from 1,241 MB to **896 KB in 6.3 s**, keeping the 110 objects the checkout lacks |
 | An overlay exists and the checkout is about to go | `git repack -a -d` in a store with a shallow boundary: **6.3 s and 346 MB** for the 204,345 objects its refs reach, then the alternates file is removed and `fsck` passes; `--unshallow` completes it for the 8.8 MB above. Without a boundary `repack -a` dies |
 | `git clone --reference <shallow checkout>` | Refuses: `reference repository … is shallow`. A manual alternates file is not checked |
@@ -240,7 +245,7 @@ without it is a full store, which is what absence means.
   `Mirror of <origin> at <commit>, stored in <location>, borrowing objects from <checkout>`.
 - `/api/source/status` carries `borrows`, null for a full store, beside `location`,
   under the same exception that admitted `location`
-  ([What a mirror’s page is called](../../architecture/arch-repository-sources-and-provider-mirrors.md#what-a-mirrors-page-is-called-and-where-it-says-it-is-kept)),
+  ([What a mirror’s page is called](../../architecture/arch-mirror-acquisition-and-refresh.md#what-a-mirrors-page-is-called)),
   and `shallow`, true when the store has a boundary.
   The path is the user’s own checkout, so the leak argument there applies unchanged;
   `tests/test_serve_pin.py` extends its path-leak check to it.
@@ -365,13 +370,20 @@ metab ~/src/repo --api '/api/plugin/github/pulls?state=open'
 
 ### Shared Loading Contract for PR Review
 
-**Status:** Implemented for checkouts; manifests and full-file documents share their
-loads, and idle preparation is limited as described below.
-The automatic Changes request can land independently.
+**Status:** Implemented in [#346](https://github.com/jlevy/metabrowser/pull/346) (the
+automatic Changes request), [#347](https://github.com/jlevy/metabrowser/pull/347) (exact
+revision files, since replaced by [View on branch](plan-2026-11-17-view-on-branch.md)),
+[#348](https://github.com/jlevy/metabrowser/pull/348) (shared loads and idle
+preparation) and [#349](https://github.com/jlevy/metabrowser/pull/349) (rendered
+Markdown redlines), merged on 2026-11-11 (`mb-a9ek`). Manifests share their loads, and
+idle preparation is limited as described below.
 The checkout’s **Files** tab continues to read live files and **Commits** continues to
 read local refs, including unpushed commits.
-In both source modes, PR comparisons and file views at a revision read through the same
-managed Git cache. A URL-backed session already has a managed store.
+In both source modes, PR comparisons and a pull request’s file views read through the
+same managed Git cache.
+A checkout’s own branches and tags are a different case, read from its Git directory in
+place ([Open Modes](../../architecture/arch-open-modes.md#views)). A URL-backed session
+already has a managed store.
 A checkout can reuse a healthy store or attach a lightweight store that borrows its
 eligible local objects and persists any missing remote objects it fetches.
 This does not copy the working tree, move the served pin, or change the borrowing-only
@@ -408,7 +420,7 @@ side-effect free, and validated preparation requests submit work to the loader.
 | Store and Git objects | Admitted repository and store identity, object format, and full object ID. Use the checkout as a lender, with validation and explicit repair when its identity or availability changes. |
 | Snapshot and comparison | Store binding, resolved immutable revisions, comparison policy, and exact path bytes where applicable. Bind the displayed comparison until the reader selects a newer one. |
 | Rendered projection | Snapshot or comparison identity, file side and path, renderer version, options, and trust profile. A bounded, recomputable projection can expire independently of Git objects. |
-| GitHub observations | Repository and provider authorization context, resource, and request variant. Refresh mutable metadata independently of immutable content. See [Coalescing GitHub Reads](plan-2026-10-01-github-pulls-tab.md#coalescing-github-reads). |
+| GitHub observations | Repository and provider authorization context, resource, and request variant. Refresh mutable metadata independently of immutable content. See [Coalescing GitHub Reads](../done/plan-2026-10-01-github-pulls-tab.md#coalescing-github-reads). |
 
 Reuse the refresh coordinator for in-process ownership and the existing source, store,
 and fetch locks for durable writes.
@@ -437,6 +449,61 @@ that finishes after a newer one.
 The
 [rendered file design](plan-2026-08-17-general-diff-rendering.md#rendered-diffs-and-revision-file-links)
 defines what the comparison’s immutable sides expose.
+
+### Open Modes
+
+**Status:** Decided 2026-11-18. The model is the open-modes design,
+[Open Modes](../../architecture/arch-open-modes.md), and this section does not restate
+it: the three modes (a plain folder, a repository folder, and a mirror), how a path
+resolves to its open root, what each view can do, and what is never written.
+Recent targets record each root with its mode, `folder` or `mirror`
+([Recent Targets](../../architecture/arch-recent-targets.md), `mb-40k4`). The indicator
+is planned (`mb-wup3`).
+
+The owner asked, on 2026-11-18:
+
+> “we should have clarity on the mode that something is opened in, either folder mode
+> (an existing checkout) or a mirror mode (metabrowser’s own cached copy).
+> In both cases, Metabrowser may maintain a cached copy, but some behaviors are
+> different. If we want to know that the actual files are changed, having two modes would
+> be best. And we could indicate with a small indicator which it is.”
+
+What this plan adds to the design:
+
+- **Open modes are not the [storage modes](#storage-modes) below.** `full` and `overlay`
+  say how a mirror’s store is filled; a mirror is in mirror mode either way, and
+  `--checkout` changes only where its objects come from.
+  A checkout in folder mode gets a store, borrowing from that checkout, when one of its
+  pull requests’ comparisons is prepared, so Metabrowser may keep a cached copy in
+  either mode.
+- **Notes for drawing the indicator** (`mb-wup3`). Where it sits and its fallback are
+  the design’s: with the root’s name, and the cloud alone when the badge does not read.
+  - **Data.** The mode is `kind` in `GET /api/identity`, which the shell’s `<title>` and
+    the app’s window title already read, so no route is added.
+    The server writes it into the navigation heading with the root’s name
+    (`data-served-root` on `.header-path`), so the indicator is in the first paint.
+  - **Icons.** A folder is the folder icon the tree already draws (`folder` in
+    `static/icons.js`, Lucide’s). A mirror is the GitHub mark the page ships for GitHub
+    links (`destinationGlyphs.github` in `static/plugin-sdk-views.js`, Primer Octicons’
+    `mark-github-16`), moved into the icon registry so core can draw it, with Lucide’s
+    `cloud` at its lower trailing corner, about half the slot wide, separated from the
+    mark by a one-pixel ring in the header’s ground color.
+    A mirror with no GitHub mark, such as a `file://` source, shows the cloud alone.
+    No icon library is added.
+  - **Placement.** In the page, inside the heading’s link before the root’s name, in the
+    icon slot the tree’s rows use (`--icon-glyph`) and the heading’s ink
+    (`--header-text`). In the app, before the name in the title-bar accessory
+    (`TitleAccessoryController`), dimmed with the title when the window is not main, and
+    as the image of each File > Open Recent item.
+  - **Words.** The icon carries `aria-label` “Folder” or “Mirror”, and its tooltip is
+    the mode’s name and then what the heading’s tooltip already says.
+    `KIND_LABELS` in `root_identity.py` keeps the app’s longer “Local folder” and
+    “Cached mirror”.
+  - **Contrast and parity.** Both icons are drawn in `currentColor` from a text token
+    and the ring in the ground token, and a real-browser check measures the ink against
+    the header in light and dark.
+    Which icon shows is data, pinned by the goldens of `/api/identity` behind
+    `shell.window-title`; how it is drawn is a `paint-exempt` row with a Chrome check.
 
 ### Storage Modes
 
@@ -556,14 +623,14 @@ That relaxation is item 1 of the decisions, which the owner accepted.
 Three written rules say an overlay is not allowed or read the checkout instead:
 
 - The Pulls tab plan,
-  [Local Checkouts](plan-2026-10-01-github-pulls-tab.md#local-checkouts): “The
+  [Local Checkouts](../done/plan-2026-10-01-github-pulls-tab.md#local-checkouts): “The
   alternates option … is left out at first: a `gc`, a repack, or a move of the user’s
   repository can remove objects the borrowing store depends on, which breaks the rule
   that no object Metabrowser showed is ever lost.”
 - The same section’s Files changed case: “The commits are in the checkout.
   The page checks for the base and head commits with a read-only Git command and shows
   the diff through the existing comparison route”, which reads the checkout directly.
-- [Shared Repository Store](../../architecture/arch-repository-sources-and-provider-mirrors.md#shared-repository-store):
+- [Shared Repository Store](../../architecture/arch-repository-cache.md#repository-stores):
   “repository content is self-contained: every object is present, and nothing depends on
   alternates into a user-owned checkout or on the origin after acquisition”.
 
@@ -586,8 +653,8 @@ The rejection was right about the mechanism and wrong about the consequence.
 The consequence is a typed state with a one-second repair, not a lost object, because
 the ref that names the object is the origin’s and the origin keeps it.
 The recommendation is to adopt the overlay for a checkout the reader names or serves,
-keep the full mirror as the default otherwise, read a checkout’s objects only through an
-overlay, and rewrite the three rules as [Docs](#docs) lists.
+keep the full mirror as the default otherwise, have a mirror read a checkout’s objects
+only through an overlay, and rewrite the three rules as [Docs](#docs) lists.
 The cost of not adopting it is the one the user named: 185 s and 1.2 GB duplicated for
 the measured repository, and more for larger ones, every time a reader wants a pull
 request beside a checkout they already have.
@@ -618,15 +685,28 @@ The same rules in both scenarios, and one boundary the review sharpened.
 - **Pull-request text is inert under both profiles.** Unchanged from the Pulls tab plan:
   the server allowlist and the page’s inert rebuild, with no branch on the profile, and
   the hostile corpus run under both.
-- **A pull request’s code always uses an immutable revision and the untrusted profile.**
-  Today the managed server opens a file by serving its pin.
-  On a folder server, Changes renders the diff over the overlay, and View file controls
-  are absent. An overlay is a `RepositoryStoreTarget` like a full store, read under
-  `STORE_READ_POLICY` with `GIT_NO_LAZY_FETCH=1`. The planned
-  [revision-scoped document view](plan-2026-08-17-general-diff-rendering.md#full-file-at-the-reviewed-revision)
-  keeps those same restrictions on either server, without switching its source.
-  **Planned:** a test of this restriction over every entry point to PR content on a
-  trusted folder server, the trust row of [Parity and Tests](#parity-and-tests).
+- **On a mirror, a pull request’s code always uses an immutable revision and the
+  untrusted profile.** Each changed file’s **View on branch** opens it at the pull
+  request’s head in the main UI ([View on branch](plan-2026-11-17-view-on-branch.md),
+  which deleted the inert revision page
+  [#347](https://github.com/jlevy/metabrowser/pull/347) added).
+  On a mirror it opens the file at the served pin when that is the head, else after
+  switching the pin to the head under `refs/pull/<n>/head`. A pin runs under the
+  untrusted profile, so its page renders a Markdown file inert, with fenced code as
+  plain text, in the server’s Markdown child under a deadline (`mb-273l`). On a folder
+  server, Changes renders the diff over the overlay.
+  Beside a checkout whose `HEAD` is the head, View on branch opens the reader’s own
+  working tree under the folder’s profile, as Browse the checkout already did: neither
+  an immutable revision nor the untrusted profile, and the reader’s files, not the
+  store’s. **Decided 2026-11-18, not built:** in a repository folder View on branch and
+  Browse code go to the pull request’s head as a revision view, under the untrusted
+  profile, and the working-tree copy becomes a separate, labelled action
+  ([Open Modes](../../architecture/arch-open-modes.md#pull-requests-in-a-repository-folder)).
+  An overlay is a `RepositoryStoreTarget` like a full store, read under
+  `STORE_READ_POLICY` with `GIT_NO_LAZY_FETCH=1`. **Planned:** a test of this
+  restriction over every entry point to PR content that a trusted folder server reads
+  from a store or an overlay, the trust row of [Parity and Tests](#parity-and-tests); it
+  does not hold the working tree that View on branch opens beside a checkout.
   Today `tests/test_checkout_overlay.py` checks only that borrowing cannot change the
   untrusted profile.
 - **The checkout’s configuration is never read.** Reading a borrowed object is a file
@@ -634,9 +714,10 @@ The same rules in both scenarios, and one boundary the review sharpened.
   configuration. The replica set `diff.external`, `core.fsmonitor`, `core.hooksPath`, and
   `core.sshCommand`: direct reads with `--git-dir=<checkout>` ran the external diff,
   while the same reads through the overlay ran nothing.
-  Metabrowser’s own diff commands pass neither `--no-ext-diff` nor `--no-textconv`, so
-  reading a checkout directly would honor its drivers; this is why Files changed on a
-  folder server reads the overlay too.
+  Metabrowser’s own diff commands pass no `--no-textconv` to the patch a page shows (the
+  adapter’s patch runs pass `--no-ext-diff`, and only the comparison route’s listing run
+  passes `--no-textconv`), so reading a checkout directly would honor its textconv
+  drivers; this is why Files changed on a folder server reads the overlay too.
 - **No Git runs inside the checkout, ever.** `core.alternateRefsCommand=true` makes
   Git’s alternate-refs read a no-op, the negotiation tips come from files, and the
   remote’s identity comes from the configuration file as `discover_repository_context`
@@ -686,6 +767,10 @@ Reuse, not a parallel path:
   clone is not. The plan’s decision 4 and its Files changed case point here.
 - **The page on a checkout** keeps the plan’s behavior: no pin, no Browse code; the
   working tree is not the pull request’s code.
+  The owner changed this on 2026-11-18: in the open-modes design a repository folder can
+  show the head as a revision, so Browse code has a target there
+  ([Open Modes](../../architecture/arch-open-modes.md#pull-requests-in-a-repository-folder));
+  it is not built.
 
 ### Conversions
 
@@ -718,7 +803,7 @@ state is reached by a transcript.
 | A shallow checkout: `certain`, `uncertain` then deepened, `base_uncertain` offline, an empty answer | `--api '/api/plugin/github/pull?number=<n>'` and the comparison route on the reviewer’s r2 graph at depth 3 and depth 1 | An in-process transcript over those fixtures: the state per round and the diff after; the mutation check breaks the `rev-list` filter and sees the wrong merge base served |
 | The sweep | A fixture store with a dangling branch ref, then `--api /api/source/refresh` | The in-process transcript: the swept names, then the refresh’s success |
 | A dangling pin: at open and in a session, after a prune and after a force-push | `metab <url> --api '/api/plugin/github/pull?number=<n>'` after the fixture prunes the objects; a served-session test | An in-process transcript using the replica scenarios: the typed state, the by-ID fetch, the ref fetch, the page after; and `commits_unavailable` when the stand-in origin lacks the commit |
-| The pull request’s page, Files changed, View file on an overlay | `--show /pull/<n>/files`, the comparison route | `cli-github-pull.tryscript.md` run over an overlay fixture as well as a full one, with identical model lines |
+| The pull request’s page, Files changed, View on branch on an overlay | `--show /pull/<n>/files`, the comparison route | `cli-github-pull.tryscript.md` run over an overlay fixture as well as a full one, with identical model lines |
 | Conversions | The two cache routes | A tryscript that converts both ways and reads the same pull request before and after; `fsck --connectivity-only` passes after dissociation |
 | Trust on a folder server with an overlay beside it | `metab <checkout> --api …` for every route | `tests/test_serve_pin.py`’s path-leak check extended to the lender path; a new test that no pull-request blob is served as a page under the trusted profile |
 | Blob verification | `--show` of a file whose object the fixture forged | An in-process transcript: `object_corrupt`, with the mutation check removing the hash |
@@ -757,13 +842,13 @@ state is reached by a transcript.
 
 ## Delivery
 
-The implemented scopes below are present on
-[`main` at da87bb13](https://github.com/jlevy/metabrowser/commit/da87bb13c4434324af576b554711278139621b6b).
-The
+Steps 1, 2, and 4 below were present on
+[`main` at da87bb13](https://github.com/jlevy/metabrowser/commit/da87bb13c4434324af576b554711278139621b6b)
+and shipped in 0.12.0. The
 [postlanding integration review](https://github.com/jlevy/metabrowser/pull/297#pullrequestreview-5770654024)
-records their current source and acceptance evidence.
-Conversions and broader deepening remain future work; merging the implemented subset
-does not complete those steps or publish a release.
+records their source and acceptance evidence.
+The shared loading contract followed in #346 to #349. Conversions and broader deepening
+remain future work.
 
 | Step | Implemented scope or remaining work | Owning evidence |
 | --- | --- | --- |
@@ -772,6 +857,7 @@ does not complete those steps or publish a release.
 | 3. Conversions | Full-store/overlay repack routes are not implemented | [Conversions](#conversions), future work |
 | 4. Overlay inside the folder server | Recognized main, linked, and subdirectory checkouts read shared metadata. Changes prepares a missing comparison without changing the folder root or its checkout | [#288](https://github.com/jlevy/metabrowser/pull/288) |
 | 5. Broader deepening | Unshallowing as an independent measured background feature remains outside the bounded certainty recovery path | `mb-dqvj`, future work |
+| [Shared loading contract](#shared-loading-contract-for-pr-review) | The automatic Changes request, exact revision files (since replaced by View on branch), shared loads and idle preparation, and rendered Markdown redlines, in both source modes | [#346](https://github.com/jlevy/metabrowser/pull/346) to [#349](https://github.com/jlevy/metabrowser/pull/349) (`mb-a9ek`), after 0.12.0 |
 
 Repair can still be unavailable: the origin may no longer serve an old object, missing
 ancestry may prevent negotiation, or a missing pinned root tree may prevent startup
@@ -819,27 +905,31 @@ For a documentation agent, after step 1 and again after step 2:
   commands above, `--checkout`, what `borrowing objects from` means, the shallow note
   with `base_uncertain`, the printed suggestion, and `borrows` and `shallow` in the
   status envelope’s field list.
-- `docs/project/architecture/arch-repository-sources-and-provider-mirrors.md`: the
-  self-contained invariant under “Shared Repository Store” rewritten for two modes; the
-  `lender` field in the cache record contracts table; the overlay’s acquisition, the
-  sweep, and the healing order in the acquisition and refresh state machines; `borrows`
-  and `shallow` under “What a mirror’s page is called”; the merge-base certainty rule
-  under “Pull-request records”; a note under “Read path and performance” that the diff
-  commands pass neither `--no-ext-diff` nor `--no-textconv`, and what that means for a
-  served checkout.
-- `docs/project/architecture/arch-views-models-routes.md`: parity rows for the new
-  fields, states, and routes, with their goldens.
-- `SECURITY.md`, Content Trust Model: a named checkout as a read-only object source
-  whose configuration is never consulted and whose bytes are trusted as a served
-  folder’s are, with blob verification once it exists.
-- `docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md`: already points here
+- `docs/project/architecture/arch-repository-cache.md`,
+  `arch-mirror-acquisition-and-refresh.md`, and `arch-github-pull-requests.md`, which
+  replaced the retired `arch-repository-sources-and-provider-mirrors.md` this list first
+  named (the sections below are that document’s): the self-contained invariant under
+  “Shared Repository Store” rewritten for two modes; the `lender` field in the cache
+  record contracts table; the overlay’s acquisition, the sweep, and the healing order in
+  the acquisition and refresh state machines; `borrows` and `shallow` under “What a
+  mirror’s page is called”; the merge-base certainty rule under “Pull-request records”;
+  a note under “Read path and performance” that the diff commands pass no
+  `--no-textconv` to the patch a page shows, which runs and which flags pass, and what
+  that means for a served checkout.
+- `docs/project/architecture/arch-parity-registry.md`: parity rows for the new fields,
+  states, and routes, with their goldens.
+- `docs/project/architecture/arch-server-and-content.md`, Content Trust Model (moved
+  there from `SECURITY.md`): a named checkout as a read-only object source whose
+  configuration is never consulted and whose bytes are trusted as a served folder’s are,
+  with blob verification once it exists.
+- `docs/project/specs/done/plan-2026-10-01-github-pulls-tab.md`: already points here
   from “The alternates option”, the Files changed case, and decision 4; its step 5 text
   is rewritten when step 4 above starts.
-- `docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md`: a one-line note under
+- `docs/project/specs/done/plan-2026-09-23-v012-thin-mirror.md`: a one-line note under
   Principles that “No Git object is deleted in v1” applies to Metabrowser’s own store
   and that this plan says what an overlay borrows.
-- `docs/qa-v012-repository-library.md`: a part for the checkout scenario, including a
-  linked worktree, a shallow clone, and a pruned pull request.
+- `docs/project/qa/qa-2026-09-19-v012-repository-library.md`: a part for the checkout
+  scenario, including a linked worktree, a shallow clone, and a pruned pull request.
 - `CHANGELOG.md` for each step.
 - `docs/project/README.md`: this plan in the active list, done with this document.
 
@@ -940,9 +1030,9 @@ weighed.
 
 ## References
 
-- [GitHub Pulls Tab for Mirrors and Local Checkouts](plan-2026-10-01-github-pulls-tab.md)
-- [v0.12 Thin Mirror for Git and GitHub Browsing](plan-2026-09-23-v012-thin-mirror.md)
-- [Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md)
+- [GitHub Pulls Tab for Mirrors and Local Checkouts](../done/plan-2026-10-01-github-pulls-tab.md)
+- [v0.12 Thin Mirror for Git and GitHub Browsing](../done/plan-2026-09-23-v012-thin-mirror.md)
+- [Repository Sources and Provider Mirrors](../../architecture/arch-mirror-acquisition-and-refresh.md)
 - [Views, Models, and Routes](../../architecture/arch-views-models-routes.md)
 - Git: `gitrepository-layout` (`objects/info/alternates`, `shallow`), `git-fetch`
   (`--negotiation-tip`, `--deepen`, `--unshallow`), `git-repack` (`-l`), `git-config`

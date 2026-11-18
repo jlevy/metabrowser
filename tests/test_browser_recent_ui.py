@@ -158,6 +158,9 @@ def test_index_template_versions_core_static_assets() -> None:
         "/static/keyboard-shortcuts.js",
         "/static/overlay-layer.js",
         "/static/keyboard-help.js",
+        "/static/key-reveal.js",
+        "/static/shell-keymap.js",
+        "/static/plugin-shortcuts.js",
         "/static/tree-keyboard-navigation.js",
         "/static/search-palette.js",
     )
@@ -171,8 +174,11 @@ def test_files_panel_owns_one_generated_tree_with_concise_row_names() -> None:
     tab_start = html.index('id="tab-files"')
     tab_tag = html[tab_start : html.index(">", tab_start)]
     assert 'role="tree"' not in tab_tag
-    assert 'role="tree" aria-label="Files"' in js
-    assert "return isRoot ? treeRootHtml(content) : content;" in js
+    # One "Files" tree, or under Group by one tree per section, named by its heading.
+    root = _function_source(js, "treeRootHtml")
+    assert 'role="tree" ${name}' in root
+    assert "'aria-label=\"Files\"'" in root
+    assert "return isRoot ? treeRootHtml(content, options.treeLabelledBy) : content;" in js
     assert 'role="group"' in js
     assert "aria-labelledby" in js
     assert "data-tree-level" in js
@@ -267,11 +273,16 @@ def test_switching_panels_hides_the_file_filter_bar() -> None:
     reload replaces #tab-files wholesale, and the bar has to survive that
     and stay put while the tree scrolls. Being outside means the
     visibility loop does not reach it, so a panel that is not Files would
-    otherwise show file filters above content they cannot filter."""
+    otherwise show file filters above content they cannot filter.
+
+    It is the Files tab's toolbar in a slot each tab fills with its own, at
+    one height: hidden alone, it moved the panel below it 37 px on every
+    switch to or from Files, and on a commit landing with no input."""
 
     activate_block = _function_source(_read_main_tabs_js(), "activateNavPanel")
-    assert 'getElementById("nav-filter-bar")' in activate_block
-    assert 'panelId === "files" ? "" : "none"' in activate_block
+    assert 'document.querySelectorAll("[data-nav-toolbar]")' in activate_block
+    assert ".dataset.navToolbar !== panelId" in activate_block
+    assert "filterBar.style.display" not in activate_block
 
 
 def test_the_scroll_shadow_follows_the_visible_chrome() -> None:
@@ -282,9 +293,12 @@ def test_the_scroll_shadow_follows_the_visible_chrome() -> None:
 
     js = _read_app_js()
     block = _function_source(js, "initNavScrollShadow")
-    assert "offsetParent !== null" in block
-    # The loser is cleared, so a tab switch cannot arm two shadows.
-    assert 'other?.classList.remove("scrolled")' in block
+    # The visible toolbar in the slot carries it, whichever tab's it is. The chrome is the
+    # pane's own children, so a scroll event visits those and not the whole document.
+    assert 'pane.querySelector(":scope > [data-nav-toolbar]:not([hidden])")' in block
+    assert "queryHtmlAll(" not in block and 'queryHtml("[data-nav-toolbar]' not in block
+    # The others are cleared, so a tab switch cannot arm two shadows.
+    assert 'chrome.classList.toggle("scrolled", chrome === target' in block
     # A tab switch fires no scroll event, so activation re-runs it.
     activate_block = _function_source(_read_main_tabs_js(), "activateNavPanel")
     assert "deps.scrollShadow()" in activate_block
@@ -717,7 +731,8 @@ def test_background_recent_failure_retries_with_visible_stale_state() -> None:
     assert 'note.setAttribute("role", "status")' in status
     assert "Recent files may be out of date; retrying…" in status
     assert "Change the filter or refresh to try again." in status
-    assert ".recent-stale-note" in _read_styles_css()
+    # A muted remark of the metadata band under the totals, as the filtered count is.
+    assert 'note.className = "recent-stale-note nav-metadata nav-metadata-note";' in status
 
 
 def test_recent_context_changes_cancel_retry_and_stale_state() -> None:
@@ -857,9 +872,11 @@ def test_set_selected_path_called_from_shared_activation_and_reveal() -> None:
     select_block = js[select_branch : select_branch + 500]
     assert "setSelectedPath(row.dataset.path)" in select_block
 
-    # revealInTree uses it.
+    # revealInTree uses it, through the scope it reveals in: the panel, or under Group by
+    # the section that holds the row.
     reveal_block = _function_source(js, "revealInTree")
-    assert "setSelectedPath(path)" in reveal_block
+    assert "revealWithin(" in reveal_block
+    assert "setSelectedPath(path)" in _function_source(js, "revealWithin")
 
 
 def test_folder_row_activation_selects_opens_and_toggles_the_folder() -> None:
@@ -941,7 +958,8 @@ def test_styles_css_keeps_tab_padding_compact() -> None:
 def test_styles_css_keeps_recency_list_states() -> None:
     css = _read_styles_css()
     assert ".recent-empty {" in css
-    assert ".recent-truncated-note {" in css
+    # The truncation note had no producer, so its rule went with it (review A2 on #493).
+    assert ".recent-truncated-note" not in css
     assert ".tab-bar.nav-tab-bar {" in css
 
 

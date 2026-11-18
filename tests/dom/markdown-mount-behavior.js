@@ -13,6 +13,9 @@ function check(name, condition, detail = "failed") {
 function makeContainer() {
   return {
     innerHTML: "",
+    get ownerDocument() {
+      return globalThis.document;
+    },
     prepended: [],
     classList: { add() {} },
     querySelector() {
@@ -20,6 +23,10 @@ function makeContainer() {
     },
     prepend(node) {
       this.prepended.push(node);
+    },
+    // A trusted render arrives parsed in a template (place-rendered.js).
+    replaceChildren(fragment) {
+      this.innerHTML = fragment.html;
     },
   };
 }
@@ -98,9 +105,12 @@ class FakeWorker {
   globalThis.document = {
     createElement() {
       return {
+        content: null,
         firstElementChild: null,
         set innerHTML(value) {
           this.firstElementChild = { html: value };
+          // A template's parsed content: the render holds no image the page holds.
+          this.content = { html: value, querySelectorAll: () => [] };
         },
       };
     },
@@ -110,11 +120,6 @@ class FakeWorker {
     "globalThis.__markdownEnhanceCalls.push({sourcePath,options});" +
     "return {dispose(){globalThis.__markdownEnhanceDisposals.push(container)}}}";
   const enhancerUrl = `data:text/javascript;base64,${Buffer.from(enhancerStub).toString("base64")}`;
-  const tocFallbackStub =
-    "export function initTocWithIntersectionFallback(init){" +
-    "globalThis.__markdownTocFallbackCalls=(globalThis.__markdownTocFallbackCalls||0)+1;" +
-    "return init()||(()=>{})}";
-  const tocFallbackUrl = `data:text/javascript;base64,${Buffer.from(tocFallbackStub).toString("base64")}`;
   // The production worker client owns sharing, cancellation, and recovery, so
   // the mount runs against it and only the Worker itself is a double.
   const workerClientUrl = pathToFileURL(
@@ -152,17 +157,37 @@ class FakeWorker {
   const placeRenderedUrl = `data:text/javascript;base64,${Buffer.from(placeRenderedSource).toString("base64")}`;
   globalThis.__markdownInertTocs = [];
   globalThis.__markdownInertTocDisposals = [];
+  // The production refusal module, which imports the Source view by file URL.
+  const refusalUrl = pathToFileURL(
+    path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/render-refusal.js"),
+  ).href;
   const importableSource = source
     .replace('"./link-enhancer.js"', JSON.stringify(enhancerUrl))
+    .replace('"./render-refusal.js"', JSON.stringify(refusalUrl))
     .replace('"./markdown-worker-client.js"', JSON.stringify(workerClientUrl))
-    .replace('"./toc-intersection-fallback.js"', JSON.stringify(tocFallbackUrl))
     .replace('"./place-rendered.js"', JSON.stringify(placeRenderedUrl))
-    .replace('"./transclusion.js"', JSON.stringify(transclusionUrl));
+    .replace('"./transclusion.js"', JSON.stringify(transclusionUrl))
+    .replace(
+      '"./print-indicator.js"',
+      JSON.stringify(
+        pathToFileURL(
+          path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/print-indicator.js"),
+        ).href,
+      ),
+    )
+    .replace(
+      '"./toc-toggle.js"',
+      JSON.stringify(
+        pathToFileURL(path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/toc-toggle.js"))
+          .href,
+      ),
+    );
   const module = await import(
     `data:text/javascript;base64,${Buffer.from(importableSource).toString("base64")}`
   );
   const requests = [];
   const completeTextRequests = [];
+  const tocInits = [];
   const tocDisposals = [];
   const mb = {
     escapeHtml: String,
@@ -175,6 +200,7 @@ class FakeWorker {
       return "[[wiki]]";
     },
     kpressInitToc(container) {
+      tocInits.push(container);
       return () => tocDisposals.push(container);
     },
   };
@@ -215,7 +241,7 @@ class FakeWorker {
   await Promise.all([firstMount.ready, secondMount.ready]);
   check("first painted", first.innerHTML.includes("first"), first.innerHTML);
   check("second painted", second.innerHTML.includes("second"), second.innerHTML);
-  check("TOC fallback wraps every mount", globalThis.__markdownTocFallbackCalls === 2);
+  check("KPress initializes every mount's table of contents", tocInits.length === 2);
   // A rendered document is its own transclusion ancestor. Without this seed a
   // note embedding itself renders one complete duplicate before the repeat is
   // caught one level down.
@@ -447,7 +473,7 @@ class FakeWorker {
     globalThis.__markdownInertImports === undefined,
     String(globalThis.__markdownInertImports),
   );
-  const fallbackCallsBeforeInert = globalThis.__markdownTocFallbackCalls;
+  const tocInitsBeforeInert = tocInits.length;
   const kpressTocDisposalsBeforeInert = tocDisposals.length;
   const inertContainers = [makeContainer(), makeContainer()];
   const inertMounts = inertContainers.map((container, index) =>
@@ -483,8 +509,8 @@ class FakeWorker {
     globalThis.__markdownInertTocs.length === 2 &&
       globalThis.__markdownInertTocs[0].article.of === inertContainers[0] &&
       typeof globalThis.__markdownInertTocs[0].options.open === "function" &&
-      globalThis.__markdownTocFallbackCalls === fallbackCallsBeforeInert,
-    JSON.stringify([globalThis.__markdownInertTocs.length, globalThis.__markdownTocFallbackCalls]),
+      tocInits.length === tocInitsBeforeInert,
+    JSON.stringify([globalThis.__markdownInertTocs.length, tocInits.length]),
   );
   inertMounts[0].dispose();
   inertMounts[0].dispose();

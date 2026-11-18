@@ -133,8 +133,15 @@ def run_remote(
         ssh_options=ssh_options,
     )
 
+    # The far host may run another release, so this names no flag an older metab cannot
+    # parse. Started --no-open, without --exit-on-eof, the far server compresses what
+    # crosses the tunnel whatever its version (metabrowser.delivery);
+    # tests/test_delivery.py runs this exact command line through the CLI.
+    # A remote serve is not an open on the far host: that account did not open the folder
+    # to read it there, so the far server records no recent target. A far metab from
+    # before the list ignores the variable.
     inner_cmd = (
-        'export PATH="$HOME/.local/bin:$PATH" && '
+        'export PATH="$HOME/.local/bin:$PATH" METABROWSER_RECORD_RECENT=0 && '
         f"metab {shlex.quote(path)}"
         f" --port {remote_port} --host 127.0.0.1 --no-open"
     )

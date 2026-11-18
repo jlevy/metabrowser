@@ -139,7 +139,7 @@ def test_one_walk_pages_are_contiguous_and_replayable(tmp_path: Path) -> None:
             assert replayed_second_checkpoint == second_checkpoint
             assert second_checkpoint is not None
             assert second_checkpoint["prior_swimlanes"] == [
-                {"id": second["commits"][0]["id"], "color": "var(--git-ref-local)"}
+                {"id": second["commits"][0]["id"], "color": "var(--git-ref-remote)"}
             ]
         finally:
             await registry.close_all()
@@ -168,7 +168,7 @@ def test_merge_page_checkpoint_preserves_converging_lane_colors(tmp_path: Path) 
             assert checkpoint is not None
             boundary_revision = second["commits"][0]["id"]
             assert checkpoint["prior_swimlanes"] == [
-                {"id": boundary_revision, "color": "var(--git-ref-local)"},
+                {"id": boundary_revision, "color": "var(--git-ref-remote)"},
                 {"id": boundary_revision, "color": "var(--git-lane-2)"},
             ]
             assert checkpoint["color_index"] == 1
@@ -286,12 +286,15 @@ def test_walk_eviction_drains_a_full_stdout_pipe_before_reaping(tmp_path: Path) 
             # Starting another walk evicts the first while Git still has far
             # more than one pipe buffer of history left to write. The second
             # page must not wait forever for the killed producer to be reaped.
+            # Another page size, because the same first page under the same
+            # refs replays the first walk instead of starting another.
             second = await asyncio.wait_for(
-                registry.read_page(root, wants_all=True, limit=2, cursor=None),
+                registry.read_page(root, wants_all=True, limit=3, cursor=None),
                 timeout=5,
             )
-            assert len(second["commits"]) == 2
+            assert len(second["commits"]) == 3
             assert registry.session_count == 1
+            assert registry._sessions.get(decoded.session_id) is None
         finally:
             await registry.close_all()
 
@@ -616,8 +619,10 @@ def test_reaping_survives_a_session_whose_cleanup_fails(tmp_path: Path) -> None:
         nonlocal now
         registry = HistorySessionRegistry(idle_ttl_s=5, clock=clock)
         try:
+            # Two page sizes, because a first page asked for again under the same refs
+            # replays the session that answered it instead of starting another.
             await registry.read_page(root, wants_all=True, limit=2, cursor=None)
-            await registry.read_page(root, wants_all=True, limit=2, cursor=None)
+            await registry.read_page(root, wants_all=True, limit=3, cursor=None)
             sessions = list(registry._sessions.values())
             assert len(sessions) == 2
 

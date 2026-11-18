@@ -272,6 +272,79 @@ function validateResolved(raw, where) {
 }
 
 /**
+ * A document's own keys, schema, and version.
+ *
+ * @param {unknown} raw
+ * @returns {Record<string, unknown>}
+ */
+function checkEnvelope(raw) {
+  const document = asObject(raw, "document");
+  forbidExtras(
+    document,
+    ["schema", "schema_version", "resolved", "manifest", "patches"],
+    "document",
+  );
+  require(document.schema === "file-diff-v1", "document: schema must be file-diff-v1");
+  require(document.schema_version === 1, "document: unsupported schema_version");
+  return document;
+}
+
+/**
+ * A document's manifest: its changes, totals, and bound.
+ *
+ * @param {unknown} value
+ * @returns {{manifest: Record<string, unknown>, ids: Set<string>}}
+ */
+function checkManifest(value) {
+  const manifest = asObject(value, "manifest");
+  forbidExtras(manifest, ["files", "totals", "truncated", "cursor"], "manifest");
+  const files = manifest.files;
+  require(Array.isArray(files), "manifest: files required");
+  /** @type {Set<string>} */
+  const ids = new Set();
+  for (const [index, change] of files.entries()) {
+    validateFileChange(change, `manifest.files[${index}]`);
+    const id = String(asObject(change, "change").id);
+    require(!ids.has(id), `manifest.files[${index}]: duplicate id ${id}`);
+    ids.add(id);
+  }
+  const totals = asObject(manifest.totals, "manifest.totals");
+  forbidExtras(totals, ["files", "additions", "deletions", "exact"], "manifest.totals");
+  requireInt(totals.files, "manifest.totals.files");
+  nullableCount(totals.additions, "manifest.totals.additions");
+  nullableCount(totals.deletions, "manifest.totals.deletions");
+  require("additions" in totals && "deletions" in totals, "manifest.totals: counts required");
+  require(typeof totals.exact === "boolean", "manifest.totals.exact: boolean");
+  require(typeof manifest.truncated === "boolean", "manifest.truncated: boolean");
+  const cursor = manifest.cursor === undefined ? null : manifest.cursor;
+  require(cursor === null || typeof cursor === "string", "manifest.cursor: null or string");
+  require((cursor !== null) === Boolean(manifest.truncated), "manifest: cursor iff truncated");
+  return { manifest, ids };
+}
+
+/**
+ * Validate a ChangeSetDocument's envelope and manifest, and not what it resolved or its
+ * patches, for a reader of the manifest alone: a page's Diff summary, which reads its list of
+ * files and totals from a comparison whose patches the route bounds at 8 MiB. Validating the
+ * whole of one, patches included, took a median of 16 ms on a 7.9 MB document in Node 24 at
+ * a load average of 19 (A5 of review A on #470).
+ *
+ * @param {unknown} raw
+ * @returns {{ok: true, manifest: Record<string, unknown>} | {ok: false, error: string}}
+ */
+export function validateManifest(raw) {
+  try {
+    const document = checkEnvelope(raw);
+    return { ok: true, manifest: checkManifest(document.manifest).manifest };
+  } catch (error) {
+    if (error instanceof FormatError) {
+      return { ok: false, error: error.message };
+    }
+    throw error;
+  }
+}
+
+/**
  * Validate a full ChangeSetDocument.
  *
  * @param {unknown} raw
@@ -279,37 +352,9 @@ function validateResolved(raw, where) {
  */
 export function validateDocument(raw) {
   try {
-    const document = asObject(raw, "document");
-    forbidExtras(
-      document,
-      ["schema", "schema_version", "resolved", "manifest", "patches"],
-      "document",
-    );
-    require(document.schema === "file-diff-v1", "document: schema must be file-diff-v1");
-    require(document.schema_version === 1, "document: unsupported schema_version");
+    const document = checkEnvelope(raw);
     validateResolved(document.resolved, "resolved");
-    const manifest = asObject(document.manifest, "manifest");
-    forbidExtras(manifest, ["files", "totals", "truncated", "cursor"], "manifest");
-    const files = manifest.files;
-    require(Array.isArray(files), "manifest: files required");
-    const ids = new Set();
-    for (const [index, change] of files.entries()) {
-      validateFileChange(change, `manifest.files[${index}]`);
-      const id = String(asObject(change, "change").id);
-      require(!ids.has(id), `manifest.files[${index}]: duplicate id ${id}`);
-      ids.add(id);
-    }
-    const totals = asObject(manifest.totals, "manifest.totals");
-    forbidExtras(totals, ["files", "additions", "deletions", "exact"], "manifest.totals");
-    requireInt(totals.files, "manifest.totals.files");
-    nullableCount(totals.additions, "manifest.totals.additions");
-    nullableCount(totals.deletions, "manifest.totals.deletions");
-    require("additions" in totals && "deletions" in totals, "manifest.totals: counts required");
-    require(typeof totals.exact === "boolean", "manifest.totals.exact: boolean");
-    require(typeof manifest.truncated === "boolean", "manifest.truncated: boolean");
-    const cursor = manifest.cursor === undefined ? null : manifest.cursor;
-    require(cursor === null || typeof cursor === "string", "manifest.cursor: null or string");
-    require((cursor !== null) === Boolean(manifest.truncated), "manifest: cursor iff truncated");
+    const { ids } = checkManifest(document.manifest);
     const patches = asObject(document.patches, "patches");
     for (const [fileId, patch] of Object.entries(patches)) {
       validateFilePatch(patch, `patches.${fileId}`);
@@ -337,13 +382,141 @@ const KIND_LETTERS = /** @type {Record<string, string>} */ ({
 });
 
 /**
+ * What a change set's tree calls each change kind: the statuses of the shell's changed-files
+ * tree (static/changed-files-tree.js), which are GitHub's, so a diff's Diff summary and the
+ * Pulls tab's tree of a pull request's files read alike.
+ */
+const SUMMARY_STATUSES = /** @type {Record<string, string>} */ ({
+  added: "added",
+  deleted: "removed",
+  modified: "modified",
+  renamed: "renamed",
+  copied: "copied",
+  type_changed: "changed",
+  unmerged: "unmerged",
+});
+
+/**
+ * One change as a row of its change set's tree: the path it has now, or had, for a file the
+ * change deleted, which is the path the diff's jump finds it by; the path it came from, for a
+ * rename or a copy; its status in the tree's words; and its line counts, null where the
+ * change has none, as a binary file's. A path is whoever made the change's text, so what is
+ * shown of it is *display*'s: the server's rule, `displayPath` of the shared changed-files
+ * tree, which shows a control, format, or invisible character as U+FFFD.
+ *
+ * @param {Record<string, unknown>} change A validated change.
+ * @param {(path: string) => string} display
+ * @returns {MetabrowserChangedFileRow}
+ */
+export function changeSummaryRow(change, display) {
+  const kind = String(change.kind);
+  const oldSide = /** @type {{path?: unknown} | null | undefined} */ (change.old);
+  const newSide = /** @type {{path?: unknown} | null | undefined} */ (change.new);
+  const path = String((newSide ?? oldSide)?.path ?? "");
+  const previous =
+    (kind === "renamed" || kind === "copied") && oldSide ? String(oldSide.path ?? "") : null;
+  /** @param {unknown} count */
+  const lines = (count) => (typeof count === "number" ? count : null);
+  return {
+    path,
+    previous_path: previous,
+    status: SUMMARY_STATUSES[kind] ?? kind,
+    additions: lines(change.additions),
+    deletions: lines(change.deletions),
+    display: display(path),
+    previous_display: previous === null ? null : display(previous),
+  };
+}
+
+/**
+ * A change set's Diff summary, as a diff's toolbar draws it: its files as rows of the shared
+ * changed-files tree, each shown by the server's display rule, and its header's words from
+ * the manifest's totals and the statuses of the files it lists. Pure, so
+ * tests/dom/diff-summary-session.js runs the call `renderDiffSummary` makes.
+ *
+ * *whole* is the whole change set's totals, for a list cut short at its bound where the page
+ * knows more than the list, as a commit's page does from the commit's own stats (A3 of review
+ * A on #470). The header then says those, with no breakdown, which would count only the
+ * files listed, and how many files are listed (`listed`, null for a whole list).
+ *
+ * @param {Record<string, unknown>} totals The manifest's totals.
+ * @param {ReadonlyArray<Record<string, unknown>>} files The manifest's validated changes.
+ * @param {MetabrowserChangedFilesTree} model
+ * @param {(count: number) => string} formatCount The shell's number format.
+ * @param {{files: number, additions: number | null, deletions: number | null, exact: boolean} | null} [whole]
+ */
+export function diffSummaryOf(totals, files, model, formatCount, whole = null) {
+  const rows = files.map((change) => changeSummaryRow(change, model.displayPath));
+  if (whole !== null) {
+    const said = model.describeChanges(whole, [], formatCount);
+    const listed = formatCount(rows.length);
+    return {
+      rows,
+      said: {
+        ...said,
+        text: `${said.text} (${listed} listed)`,
+        label: `${said.label}; ${listed} listed`,
+      },
+      listed,
+    };
+  }
+  /** @param {unknown} value */
+  const lines = (value) => (typeof value === "number" ? value : null);
+  const said = model.describeChanges(
+    {
+      files: Number(totals.files),
+      additions: lines(totals.additions),
+      deletions: lines(totals.deletions),
+      exact: totals.exact === true,
+    },
+    rows.map((row) => row.status),
+    formatCount,
+  );
+  return { rows, said, listed: null };
+}
+
+/**
+ * A change set's totals as one line, for a diff whose shared changed-files tree did not
+ * load: the Diff summary's header without its statuses, which only the tree's model names,
+ * "41 files changed · +6,526 −555", in the shell's number format, with "(estimated)" for
+ * totals that are not exact. `filesParts` is "41 files changed" in a count summary's parts,
+ * its number bold where it is painted, as the Diff summary's is, and `change` is what the
+ * brief change line after it is built from, its line totals and no statuses
+ * (`metabrowser.changeLine`), so the line sets the totals apart with the summary's muted
+ * " · " and paints them as the summary does. Pure.
+ *
+ * @param {Record<string, unknown>} totals
+ * @param {(count: number) => string} formatCount
+ * @returns {{filesParts: MetabrowserCountParts, change: MetabrowserChangeLineInput, estimated: boolean}}
+ */
+export function plainTotals(totals, formatCount) {
+  const files = Number(totals.files);
+  /** @param {unknown} value */
+  const lines = (value) => (typeof value === "number" ? value : null);
+  return {
+    filesParts: [{ number: formatCount(files) }, ` ${files === 1 ? "file" : "files"} changed`],
+    change: {
+      statuses: [],
+      additions: lines(totals.additions),
+      deletions: lines(totals.deletions),
+    },
+    estimated: totals.exact !== true,
+  };
+}
+
+/**
  * The tree/list indicator for one change: letter, similarity, and the
  * transition notes GitHub-style badges are built from.
  *
+ * The label shows each path through *display*: the server's display rule
+ * (`displayPath` of the shared changed-files tree) where a page has it, so a control,
+ * format, or invisible character a path's author put there shows as U+FFFD.
+ *
  * @param {Record<string, unknown>} change
+ * @param {(path: string) => string} [display]
  * @returns {{letter: string, label: string, notes: string[]}}
  */
-export function fileChangeLabel(change) {
+export function fileChangeLabel(change, display = (path) => path) {
   const kind = String(change.kind);
   let letter = KIND_LETTERS[kind] || "?";
   if (change.similarity !== undefined && change.similarity !== null) {
@@ -357,8 +530,8 @@ export function fileChangeLabel(change) {
   );
   const label =
     (kind === "renamed" || kind === "copied") && oldSide && newSide
-      ? `${oldSide.path} → ${newSide.path}`
-      : String((newSide || oldSide || { path: "?" }).path);
+      ? `${display(String(oldSide.path))} → ${display(String(newSide.path))}`
+      : display(String((newSide || oldSide || { path: "?" }).path));
   const notes = [];
   if (oldSide && newSide && oldSide.mode !== newSide.mode) {
     notes.push(`${oldSide.mode}→${newSide.mode}`);

@@ -54,5 +54,8 @@ def test_markdown_metadata_disclosures_start_closed() -> None:
     src = MARKDOWN_PLUGIN_JS.read_text(encoding="utf-8")
 
     diagnostics = src.split("return `<details", maxsplit=1)[1].split("`;", maxsplit=1)[0]
-    assert '<summary class="section-disclosure-trigger">Diagnostics</summary>' in diagnostics
+    assert (
+        '<summary class="section-disclosure-trigger disclosure-toggle">Diagnostics</summary>'
+        in diagnostics
+    )
     assert " open" not in diagnostics

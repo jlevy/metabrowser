@@ -17,13 +17,13 @@ import signal
 import subprocess
 import threading
 import time
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import Awaitable, Callable, Generator, Iterator
 from dataclasses import dataclass, replace
 from dataclasses import field as dataclass_field
 from datetime import UTC, datetime, timedelta
 from functools import partial
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Final, Literal
 from unittest.mock import patch
 
 import pytest
@@ -47,6 +47,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     MAX_BODY_BYTES,
     MAX_DIFF_HUNK_BYTES,
     MAX_PULL_COMMITS,
+    PULL_RECORD_PROJECTION,
     PullRecord,
     PullRefreshStamp,
     PullRequest,
@@ -109,6 +110,7 @@ from tests.github_pull_fixture import (
     scenario,
 )
 from tests.golden_harness import read_recording, settle
+from tests.loop_gate import held_until
 from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git
 
@@ -586,6 +588,40 @@ def test_route_states_follow_age_and_refresh(stand: _Stand) -> None:
 def pinned_pull(stand: _Stand) -> Iterator[tuple[_Stand, TestClient]]:
     """Pull request 7 cached, its head pinned, and served beside the mirror as the CLI does."""
 
+    with _serving_pinned(stand) as client:
+        yield stand, client
+
+
+@pytest.fixture
+def pinned_pull_on_one_worker(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[tuple[_Stand, TestClient]]:
+    """``pinned_pull`` on a server whose default executor runs one thread.
+
+    On it, a step that keeps a worker thread while it waits for work that needs one waits
+    forever, which on the production pool only CPython's miscount makes possible (see
+    ``tests/loop_gate.py``).
+    """
+
+    from metabrowser import events_route
+
+    monkeypatch.setattr(events_route, "DEFAULT_EXECUTOR_WORKERS", 1)
+    with _serving_pinned(stand) as client:
+        # The patch reaches the pool only while the lifespan reads that global. Were the
+        # size to come from elsewhere, the server would run its full pool and the tests on
+        # this fixture would pass whatever production keeps a worker for, so check it.
+        assert client.portal is not None
+
+        async def pool_size() -> int:
+            loop: Any = asyncio.get_running_loop()
+            return loop._default_executor._max_workers
+
+        assert client.portal.call(pool_size) == 1, "the server's pool is not one thread"
+        yield stand, client
+
+
+@contextlib.contextmanager
+def _serving_pinned(stand: _Stand) -> Generator[TestClient]:
     stand.refresh(7)
     selected = replace(SOURCE, selection=RepositorySelection(kind="pull_request", pull_request=7))
     published = replace(stand.published, source=selected)
@@ -610,7 +646,7 @@ def pinned_pull(stand: _Stand) -> Iterator[tuple[_Stand, TestClient]]:
     git_repo.clear_repo_cache()
     try:
         with TestClient(app) as client:
-            yield stand, client
+            yield client
     finally:
         serve_mirror(None)
         git_repo.clear_repo_cache()
@@ -679,6 +715,61 @@ def test_the_pull_route_answers_an_unchanged_record_with_a_304(
     assert aged.headers["etag"] != etag
 
 
+def test_labels_pending_holds_while_the_label_job_runs_and_the_set_lacks_a_shown_label(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A record cached before label colors names its labels alone (``mb-varu``).
+
+    The pull route reads the set from the cache alone. Only ``labels-refresh`` starts its
+    job, and while that job runs and the set does not hold a label the record names,
+    ``labels_pending`` says so, which makes the page poll fast. Once the job has published,
+    the label the set holds has its entry, and one it does not hold leaves nothing pending.
+    """
+
+    from metabrowser.builtin_plugins.github import pull_labels
+
+    stand, client = pinned_pull
+    path = stand.published.home / source_pull_record(stand.published.slug, 7)
+    old = json.loads(path.read_bytes())
+    old["projection_version"] = 1
+    old["pull"]["labels"] = ["enhancement", "deleted-on-github"]
+    path.write_text(json.dumps(old))
+    stand.calls()
+    bare = _read(client, 7).json()
+    assert (bare["repository_labels"], bare["labels_pending"]) == ([], False)
+    # A read is cache-only: it asked GitHub for nothing, the label set included.
+    assert stand.calls() == []
+    release = threading.Event()
+    real = pull_labels.gh_api
+
+    async def held(path: str, *, etag: str | None = None) -> GhResponse:
+        await held_until(release, 30)
+        return await real(path, etag=etag)
+
+    monkeypatch.setattr(pull_labels, "gh_api", held)
+    started = client.post("/api/plugin/github/labels-refresh", json={})
+    assert (started.status_code, started.json()["refresh"]) == (202, "started")
+    assert client.post("/api/plugin/github/labels-refresh", json={}).json()["refresh"] == "joined"
+    running = _read(client, 7, etag=None).json()
+    assert (running["repository_labels"], running["labels_pending"]) == ([], True)
+    release.set()
+    deadline = time.monotonic() + 30
+    while client.get("/api/plugin/github/labels").json()["refreshing"]:
+        assert time.monotonic() < deadline, "the label job did not end"
+        time.sleep(0.05)
+    colored = _read(client, 7).json()
+    assert colored["repository_labels"] == [
+        {
+            "name": "enhancement",
+            "color": "2700af",
+            "description": "A label's description is its chip's tooltip",
+        }
+    ]
+    # The set does not hold the other label, and no job runs: nothing is pending.
+    assert colored["labels_pending"] is False
+    assert [label["color"] for label in colored["record"]["pull"]["labels"]] == [None, None]
+
+
 @pytest.mark.parametrize(
     ("part", "answer"),
     [
@@ -698,7 +789,7 @@ def test_the_markdown_route_names_a_part_before_it_reads_anything(
     part: str, answer: tuple[int, str]
 ) -> None:
     nothing = PullView(number=7, host=None, pin=None, pin_ref=None, refreshing=False, kept=None)
-    status, body = render_part(nothing, part)
+    status, body = asyncio.run(render_part(nothing, part))
     assert (status, body["code"]) == answer
 
 
@@ -734,21 +825,26 @@ def test_the_markdown_route_drops_the_kpress_icon_sprite(
     from metabrowser import kpress_adapter
 
     # KPress puts its icon sprite (several KB of SVG symbols) in every render. A long
-    # conversation must not carry one copy per text, so the route answers none.
-    raw: list[str] = []
-    render = kpress_adapter.render_kpress_view
-
-    def spy(**kwargs: Any) -> dict[str, Any]:
-        rendered = render(**kwargs)
-        raw.append(str(rendered["html"]))
-        return rendered
-
-    monkeypatch.setattr(kpress_adapter, "render_kpress_view", spy)
-    _stand, client = pinned_pull
+    # conversation must not carry one copy per text, so the route answers none. The route
+    # renders in the Markdown child, so KPress's own render of the text is made here.
+    stand, client = pinned_pull
+    record = stand.record(7)
+    assert isinstance(record, PullRecord)
+    raw = kpress_adapter.render_kpress_view(
+        source_text=record.pull.body or "",
+        source_path="pull-7-body.md",
+        kind="markdown",
+        view="document",
+        ext=".md",
+        mtime_hash="sprite",
+        size=0,
+        include_toc="off",
+        plain_code=True,
+    )
+    assert "<symbol" in str(raw["html"])
     html = client.get(
         "/api/plugin/github/pull-markdown", params={"number": 7, "part": "body"}
     ).json()["html"]
-    assert len(raw) == 1 and "<symbol" in raw[0]
     for gone in ("<svg", "<symbol", "<use"):
         assert gone not in html, gone
 
@@ -1248,6 +1344,96 @@ def test_a_commit_is_pinned_under_the_head_of_any_pull_request_it_is_the_tip_of(
     assert asyncio.run(resolve_pin(target, oid=stand.origin["topic"])).ref is None
 
 
+def test_a_switch_by_commit_is_served_under_the_ref_it_names(
+    pinned_pull: tuple[_Stand, TestClient],
+) -> None:
+    """View on branch switches by commit ID and names its pull request's head ref, so of two
+    pull requests that share a head the page's own is the one served. A ref the commit is
+    not the tip of is refused, as is a name no pin could be under."""
+
+    stand, client = pinned_pull
+    merged = stand.origin["merged_head"]
+    stand.refresh(8)
+    subprocess.run(
+        [
+            "git",
+            "--git-dir",
+            str(stand.published.git_dir),
+            "update-ref",
+            "refs/pull/12/head",
+            merged,
+        ],
+        check=True,
+    )
+
+    def switch(body: dict[str, str]) -> Any:
+        return client.post("/api/source/pin", json=body, headers=_JSON)
+
+    newest = switch({"oid": merged})
+    assert newest.status_code == 200, newest.text
+    assert newest.json()["status"]["ref"] == "refs/pull/12/head"
+    named = switch({"oid": merged, "under": "refs/pull/8/head", "view": "/view/"})
+    assert named.status_code == 200, named.text
+    assert (named.json()["changed"], named.json()["status"]["ref"]) == (True, "refs/pull/8/head")
+    assert named.json()["view_href"] == "/view/"
+    # The pull request's ref is elsewhere: the commit is the tip of pull request 7's head,
+    # which the server would otherwise serve it under, and nothing is switched.
+    elsewhere = switch({"oid": stand.origin["fork_head"], "under": "refs/pull/8/head"})
+    assert (elsewhere.status_code, elsewhere.json()["code"]) == (409, "ref_moved")
+    served = client.get("/api/source/status").json()
+    assert (served["pin"], served["ref"]) == (merged, "refs/pull/8/head")
+    for body in (
+        {"ref": "refs/pull/8/head", "under": "refs/pull/8/head"},
+        {"oid": merged, "under": "refs/pull/8/merge"},
+        {"oid": merged, "under": "refs/heads/topic"},
+        {"oid": merged, "under": 8},
+    ):
+        refused = client.post("/api/source/pin", json=body, headers=_JSON)
+        assert refused.status_code == 400, (body, refused.text)
+        assert refused.json()["code"] == "invalid_selection"
+
+
+def test_a_switch_under_a_pull_requests_head_that_moved_on_switches_nothing(
+    pinned_pull: tuple[_Stand, TestClient],
+) -> None:
+    """Review M1 on #511: a Changes diff drawn for an earlier head keeps View on branch.
+
+    Its switch, and Browse code on a page whose record is as old, names that earlier head
+    under ``refs/pull/7/head``, which is now at the newer one. Served under no ref, the
+    page would land on a bare commit under a tooltip that called it this pull request's
+    head; the route refuses with ``ref_moved``, says why in words, and the pin stays.
+    """
+
+    stand, client = pinned_pull
+    earlier, head = stand.origin["fork_earlier"], stand.origin["fork_head"]
+    away = client.post("/api/source/pin", json={"oid": stand.origin["topic"]}, headers=_JSON)
+    assert away.status_code == 200, away.text
+    before = client.get("/api/source/status").json()
+
+    refused = client.post(
+        "/api/source/pin",
+        json={"oid": earlier, "under": "refs/pull/7/head", "view": "/view/"},
+        headers=_JSON,
+    )
+    assert refused.status_code == 409, refused.text
+    assert refused.json() == {
+        "error": "refs/pull/7/head is no longer at that commit",
+        "code": "ref_moved",
+    }
+    after = client.get("/api/source/status").json()
+    assert (after["generation"], after["pin"], after["ref"]) == (
+        before["generation"],
+        stand.origin["topic"],
+        before["ref"],
+    )
+    # The head the ref is at now is the pull request's, and is served under it.
+    current = client.post(
+        "/api/source/pin", json={"oid": head, "under": "refs/pull/7/head"}, headers=_JSON
+    )
+    assert current.status_code == 200, current.text
+    assert current.json()["status"]["ref"] == "refs/pull/7/head"
+
+
 def test_the_refresh_route_starts_or_joins_one_job(
     pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1260,8 +1446,8 @@ def test_the_refresh_route_starts_or_joins_one_job(
 
     async def held() -> None:
         runs.append(7)
-        # The test thread sets it; a worker thread waits so the job stays running.
-        await asyncio.to_thread(release.wait, 30)
+        # The job stays running until the test thread sets it.
+        await held_until(release, 30)
 
     monkeypatch.setattr(served, "refresh", held)
     first = client.post(_REFRESH_ROUTE, json=_ASK_7, headers=_JSON)
@@ -1612,7 +1798,7 @@ def test_past_the_bound_on_jobs_a_request_is_refused_and_starts_nothing(
 
     async def waiting(served: ServedPull) -> None:
         ran.append(served.number)
-        await asyncio.to_thread(gate.wait, 30)
+        await held_until(gate, 30)
 
     monkeypatch.setattr(ServedPull, "refresh", waiting)
 
@@ -1663,13 +1849,13 @@ def test_on_a_real_session_a_queue_of_pull_requests_delays_neither_the_mirror_no
 
     async def waiting(served: ServedPull) -> None:
         ran.append(served.number)
-        await asyncio.to_thread(release.acquire, True, 30)
+        await held_until(release, 30)
 
     original = StoreMirror.refresh
 
     async def recording(self: StoreMirror) -> Any:
         ran.append("mirror")
-        await asyncio.to_thread(release.acquire, True, 30)
+        await held_until(release, 30)
         return await original(self)
 
     monkeypatch.setattr(ServedPull, "refresh", waiting)
@@ -1717,7 +1903,7 @@ def test_the_attended_pull_request_may_run_one_over_the_bound_and_no_more(
 
     async def waiting(served: ServedPull) -> None:
         ran.append(served.number)
-        await asyncio.to_thread(gate.wait, 30)
+        await held_until(gate, 30)
 
     monkeypatch.setattr(ServedPull, "refresh", waiting)
 
@@ -1813,11 +1999,15 @@ def test_gh_runs_in_a_group_the_stop_path_can_kill(
 ) -> None:
     """A gh that is still answering when the server stops is killed, and then forgotten."""
 
+    pid_file = tmp_path / "gh-pid"
     started = tmp_path / "gh-started"
     gh = tmp_path / "bin" / "gh"
     gh.parent.mkdir()
+    # Only shell builtins before the exec, so the group never holds a second process. An
+    # external `mv` here was still running when the stop came, and killed as an orphan it
+    # stayed in the group until init reaped it, so the group outlived the stop on CI.
     gh.write_text(
-        f'#!/bin/sh\necho $$ > "{started}.new"\nmv "{started}.new" "{started}"\nexec sleep 50\n',
+        f'#!/bin/sh\necho $$ > "{pid_file}"\n: > "{started}"\nexec sleep 50\n',
         encoding="utf-8",
     )
     gh.chmod(0o755)
@@ -1829,7 +2019,14 @@ def test_gh_runs_in_a_group_the_stop_path_can_kill(
         while not started.exists():
             assert time.monotonic() < deadline, "gh did not start"
             await asyncio.sleep(0.01)
-        pid = int(started.read_text(encoding="utf-8"))
+        pid = int(pid_file.read_text(encoding="utf-8"))
+        # gh can start before its spawn returns and registers the group, and a stop in
+        # that window is stop_process_groups' case, which kill_live_process_groups leaves
+        # alone: stopped then, gh ran on to its own deadline, as it did on 3.14t in CI run
+        # 44032890807. This test is of a gh still answering, so it waits for the group.
+        while pid not in git_process._LIVE_PROCESS_GROUPS:
+            assert time.monotonic() < deadline, "gh's group was never registered"
+            await asyncio.sleep(0.01)
         try:
             # The leader of a group of its own, so the kill cannot reach this process.
             assert os.getpgid(pid) == pid != os.getpgid(0)
@@ -2199,7 +2396,7 @@ def test_pull_record_publications_serialize_both_writer_orderings(
         )  # pyright: ignore[reportPrivateUsage]
         second = None
         try:
-            assert await asyncio.to_thread(entered.wait, 5)
+            assert await held_until(entered, 5)
             with (
                 pytest.raises(LockBusyError),
                 source_alias_lock(stand.published.home, stand.published.slug, blocking=False),
@@ -2209,7 +2406,7 @@ def test_pull_record_publications_serialize_both_writer_orderings(
             second = asyncio.create_task(
                 pulls._write(stand.published if metadata_first else listed, second_record)
             )  # pyright: ignore[reportPrivateUsage]
-            assert await asyncio.to_thread(second_validated.wait, 5)
+            assert await held_until(second_validated, 5)
             assert not second.done(), "the other canonical writer bypassed the source lock"
             release.set()
             await asyncio.wait_for(first, 5)
@@ -2261,7 +2458,7 @@ def test_cancelled_pull_publication_does_not_write_after_its_lock_is_released(
 
         async def cancel() -> None:
             job = asyncio.create_task(pulls._write(published, changed))  # pyright: ignore[reportPrivateUsage]
-            assert await asyncio.to_thread(entered.wait, 5)
+            assert await held_until(entered, 5)
             assert not job.done()
             job.cancel()
             with pytest.raises(asyncio.CancelledError):
@@ -2316,7 +2513,13 @@ def test_metadata_publication_refits_after_merge_and_preserves_record_on_rename_
     with pytest.raises(PullDataError) as error:
         asyncio.run(pulls._write(listed, metadata))  # pyright: ignore[reportPrivateUsage]
     assert error.value.state == "cache_unwritable"
-    assert str(error.value) == "its record could not be written to the cache"
+    assert str(error.value) == (
+        "the record of pull request #7 could not be written to the cache: the file system "
+        "refused it. To clear the GitHub cache of octo/demo, run `echo '{}' | metab "
+        "https://github.com/octo/demo --api /api/plugin/github/cache-clear --data -`, "
+        "then retry"
+    )
+    assert "private path detail" not in str(error.value)
     assert stand.record(7) == merged
 
 
@@ -2367,16 +2570,56 @@ def test_author_and_merger_avatars_come_from_existing_detail_responses(stand: _S
     stand.calls()
     stand.answer(answers)
     upgraded = stand.refresh(7)
-    assert upgraded.projection_version == 1 and upgraded.pull.author_avatar_url == wanted
+    assert upgraded.projection_version == PULL_RECORD_PROJECTION
+    assert upgraded.pull.author_avatar_url == wanted
     assert all(item.author_avatar_url == wanted for item in upgraded.issue_comments)
     sent = [call["args"] for call in stand.calls() if call["args"][0] == "api"]
     assert sent and not any(arg.startswith("If-None-Match: ") for args in sent for arg in args)
     assert not any("users/" in str(args) for args in sent)
     warm = stand.refresh(7)
-    assert warm.pull.author_avatar_url == wanted and warm.projection_version == 1
+    assert warm.pull.author_avatar_url == wanted
+    assert warm.projection_version == PULL_RECORD_PROJECTION
     reused = [call["args"] for call in stand.calls() if call["args"][0] == "api"]
     assert len(reused) == len(sent) == 6
     assert all(any(arg.startswith("If-None-Match: ") for arg in args) for args in reused)
+
+
+def test_a_record_of_bare_label_names_is_shown_neutral_until_its_refresh_colors_it(
+    stand: _Stand,
+) -> None:
+    """A record of projection 1, as 0.12.0 and the builds since wrote it, names its labels.
+
+    It is read as it is, each label without a color or a description, so its chips are
+    neutral and nothing is asked of GitHub. Its next refresh asks for every part without an
+    ETag, since a 304 would keep the names alone, and colors them.
+    """
+
+    stand.answer(scenario(stand.origin))
+    record = stand.refresh(7)
+    assert [label.model_dump() for label in record.pull.labels] == [
+        {
+            "name": "enhancement",
+            "color": "2700af",
+            "description": "A label's description is its chip's tooltip",
+        }
+    ]
+    stand.calls()
+    path = stand.published.home / source_pull_record(stand.published.slug, 7)
+    old = json.loads(path.read_bytes())
+    old["projection_version"] = 1
+    old["pull"]["labels"] = ["enhancement"]
+    path.write_text(json.dumps(old))
+    cached = stand.record(7)
+    assert isinstance(cached, PullRecord) and cached.projection_version == 1
+    assert [label.model_dump() for label in cached.pull.labels] == [
+        {"name": "enhancement", "color": None, "description": None}
+    ]
+    assert stand.calls() == []
+    upgraded = stand.refresh(7)
+    assert upgraded.projection_version == PULL_RECORD_PROJECTION
+    assert upgraded.pull.labels == record.pull.labels
+    sent = [call["args"] for call in stand.calls() if call["args"][0] == "api"]
+    assert sent and not any(arg.startswith("If-None-Match: ") for args in sent for arg in args)
 
 
 def test_markdown_revision_tracks_content_not_refresh_metadata(
@@ -2447,7 +2690,7 @@ def test_markdown_response_keeps_the_record_it_actually_rendered(
     pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A replacement during rendering cannot pair old text with a newer revision."""
-    from metabrowser import kpress_adapter
+    from metabrowser.diff.markdown_projection_worker import InertRender, ProjectionWorker
 
     stand, client = pinned_pull
     first = _read(client, 7).json()
@@ -2460,18 +2703,22 @@ def test_markdown_response_keeps_the_record_it_actually_rendered(
             )
         }
     )
-    render = kpress_adapter.render_kpress_view
+    render = ProjectionWorker.render_inert
     replaced = False
 
-    def replace_during_render(**kwargs: Any) -> dict[str, Any]:
+    async def replace_during_render(
+        worker: ProjectionWorker, request: InertRender
+    ) -> dict[str, Any]:
         nonlocal replaced
         if not replaced:
             replaced = True
-            assert kwargs["source_text"] == record.pull.body
-            write_pull_record(stand.published.home, stand.published.slug, newer)
-        return render(**kwargs)
+            assert request.source_text == record.pull.body
+            await asyncio.to_thread(
+                write_pull_record, stand.published.home, stand.published.slug, newer
+            )
+        return await render(worker, request)
 
-    monkeypatch.setattr(kpress_adapter, "render_kpress_view", replace_during_render)
+    monkeypatch.setattr(ProjectionWorker, "render_inert", replace_during_render)
     old = client.get(
         "/api/plugin/github/pull-markdown", params={"number": 7, "part": "body"}
     ).json()
@@ -2484,6 +2731,88 @@ def test_markdown_response_keeps_the_record_it_actually_rendered(
     ).json()
     assert fresh["record_revision"] == current["record_revision"]
     assert "A replacement published while rendering." in fresh["html"]
+
+
+# A text past a shortened deadline: the shape the review of mb-273l timed at 23.1 s for 239 KB
+# takes seconds at the text bound, far past 0.2 s.
+_SLOW_TEXT = "[" * 100 + "%" * (60 * 1024)
+REFUSED_TEXT_FIXTURE = (
+    Path(__file__).resolve().parent / "fixtures" / "github-pull-text-refusal.json"
+)
+
+
+def test_a_text_past_the_render_deadline_is_refused_and_refused_again_at_once(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pull request text renders in the Markdown child; one past its deadline is refused.
+
+    The answer is the one ``tests/dom/github-pull-text-refusal-session.js`` gives the page,
+    from ``tests/fixtures/github-pull-text-refusal.json``, which this pins to the route.
+    The refusal is kept by the text, so asking again renders nothing.
+    """
+    from metabrowser.diff import markdown_projection_worker as worker_module
+    from metabrowser.diff.markdown_projection_worker import ProjectionWorker
+
+    monkeypatch.setattr(worker_module, "_RENDER_DEADLINE_S", 0.2)
+    exchanges: list[int] = []
+    exchange = ProjectionWorker._exchange_render  # pyright: ignore[reportPrivateUsage]
+
+    async def counted(
+        self: ProjectionWorker, process: asyncio.subprocess.Process, frame: bytes
+    ) -> object:
+        exchanges.append(process.pid)
+        return await exchange(self, process, frame)
+
+    monkeypatch.setattr(ProjectionWorker, "_exchange_render", counted)
+    stand, client = pinned_pull
+    record = stand.record(7)
+    assert isinstance(record, PullRecord)
+    slow = record.model_copy(update={"pull": record.pull.model_copy(update={"body": _SLOW_TEXT})})
+    write_pull_record(stand.published.home, stand.published.slug, slow)
+    params = {"number": 7, "part": "body"}
+    refused = client.get("/api/plugin/github/pull-markdown", params=params)
+    again = client.get("/api/plugin/github/pull-markdown", params=params)
+    body: dict[str, Any] = refused.json()
+    answer = {"status": refused.status_code, "body": body}
+    assert answer == {
+        "status": 422,
+        "body": {
+            "code": "render_deadline",
+            "error": "Rendering took longer than 0.2 seconds, so it was stopped",
+            "deadline_ms": 200,
+            "remembered": False,
+            "number": 7,
+            "part": "body",
+        },
+    }
+    assert (again.status_code, again.json()) == (422, {**body, "remembered": True})
+    assert len(exchanges) == 1, "the kept refusal renders nothing"
+    assert json.loads(REFUSED_TEXT_FIXTURE.read_text(encoding="utf-8")) == answer
+
+
+def test_a_pull_read_starts_the_markdown_child_its_texts_will_need(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A served page's first read starts the child, so its first text does not wait for a
+    start; a one-shot read, as `--api` makes, starts none (review A of #527, A16)."""
+    from metabrowser.diff import markdown_projection_worker as worker_module
+    from metabrowser.diff.markdown_projection_worker import shared_worker
+
+    _stand, client = pinned_pull
+
+    def starting() -> bool:
+        worker = shared_worker()
+        return worker._process is not None or worker._starting is not None  # pyright: ignore[reportPrivateUsage]
+
+    # A worker no request has used yet: the one these reads reach, which the server's
+    # lifespan stops as it ends.
+    shared_worker.cache_clear()
+    _read(client, 7)
+    one_shot = starting()
+    monkeypatch.setattr(worker_module._SERVING, "pages", True)  # pyright: ignore[reportPrivateUsage]
+    _read(client, 7)
+    assert one_shot is False
+    assert starting() is True
 
 
 def test_an_uncacheable_read_keeps_its_parsed_record_revision(
@@ -2530,13 +2859,82 @@ def test_h82_selected_publication_during_snapshot(
     _exercise_selected_core_wait(pinned_pull, monkeypatch, settle_in_get="captured_snapshot")
 
 
+# How long the selected-core scenario's five reads stay held when nothing opens them, as
+# this module's refresh stubs are bounded. A hold that gives up lets its read go on, so a
+# stall at the scenario's POST fails that one test instead of ending the run at the
+# suite's timeout, as it did in mb-xorh.
+CORE_HOLD_S: Final = 30.0
+# How long the one-thread scenario below may take before it counts as stuck: its five held
+# reads and its requests took 0.3 to 0.4 s on 3.14t (2026-11-17). Stuck, it waits until
+# its holds give up, so the bound has to sit well past a loaded run and under CORE_HOLD_S.
+ONE_WORKER_SCENARIO_S: Final = 20.0
+
+
+@pytest.mark.parametrize(
+    ("revoke_in_thread", "settle_in_get"),
+    [(False, None), (True, None), (False, "same_pin"), (False, "switch_pin")],
+    ids=["core", "revoked", "same_pin", "switch_pin"],
+)
+def test_a_selected_core_wait_and_its_settlement_run_on_one_worker_thread(
+    pinned_pull_on_one_worker: tuple[_Stand, TestClient],
+    monkeypatch: pytest.MonkeyPatch,
+    revoke_in_thread: bool,
+    settle_in_get: Literal["same_pin", "switch_pin"] | None,
+) -> None:
+    """The selected-core scenarios answer while their five reads are held, on one thread.
+
+    The hold is a read in flight, as GitHub's slow answer is, and nothing in the refresh,
+    its ``wait_core`` request, or the reads that settle it may keep a worker thread while
+    it waits for work that needs one. The production pool starts a thread for each job it
+    has none idle for, so only CPython's miscount (``tests/loop_gate.py``) brings it to the
+    state a one-thread pool is always in: every live thread busy, the next job queued.
+    A hold kept in a worker thread then queues the request's own next step behind it, as
+    ``asyncio.to_thread(release.wait)`` did in mb-xorh. The snapshot scenario keeps one
+    worker in its captured read on purpose, so it is not run here.
+    """
+
+    assert ONE_WORKER_SCENARIO_S < CORE_HOLD_S, "a stuck scenario would end before it counts"
+    release = threading.Event()
+    failures: list[BaseException] = []
+
+    def exercise() -> None:
+        try:
+            _exercise_selected_core_wait(
+                pinned_pull_on_one_worker,
+                monkeypatch,
+                revoke_in_thread=revoke_in_thread,
+                settle_in_get=settle_in_get,
+                release=release,
+            )
+        except BaseException as exc:
+            failures.append(exc)
+
+    thread = threading.Thread(target=exercise, name="one-worker-scenario", daemon=True)
+    thread.start()
+    thread.join(ONE_WORKER_SCENARIO_S)
+    stuck = thread.is_alive()
+    # Open the holds either way, so a stuck scenario unwinds before the server stops.
+    release.set()
+    thread.join(ONE_WORKER_SCENARIO_S)
+    assert not stuck, "a request waited on the one worker thread its own held reads kept"
+    if failures:
+        raise failures[0]
+
+
 def _exercise_selected_core_wait(
     pinned_pull: tuple[_Stand, TestClient],
     monkeypatch: pytest.MonkeyPatch,
     *,
     revoke_in_thread: bool = False,
     settle_in_get: Literal["same_pin", "switch_pin", "captured_snapshot"] | None = None,
+    release: threading.Event | None = None,
 ) -> None:
+    """Hold pull request 8's five reads while its core is staged, then settle it.
+
+    *release* opens the holds; a caller that bounds the scenario passes its own, to open
+    them when the bound passes.
+    """
+
     stand, client = pinned_pull
     answers = scenario(stand.origin)
     answers["api"]["repos/octo/demo/pulls/8"]["body"]["body"] = "Early **core** description"
@@ -2544,19 +2942,23 @@ def _exercise_selected_core_wait(
         answers["api"]["repos/octo/demo/pulls/8"]["body"]
     )
     stand.answer(answers)
-    release = threading.Event()
+    release = threading.Event() if release is None else release
     started: set[str] = set()
+    gave_up: list[str] = []
     read_list, get = pulls._read_list, pulls._get  # pyright: ignore[reportPrivateUsage]
 
-    async def held_list(path: str, **kwargs: Any) -> Any:
+    async def hold(path: str) -> None:
         started.add(path)
-        await asyncio.to_thread(release.wait)
+        if not await held_until(release, CORE_HOLD_S):
+            gave_up.append(path)
+
+    async def held_list(path: str, **kwargs: Any) -> Any:
+        await hold(path)
         return await read_list(path, **kwargs)
 
     async def held_get(path: str, **kwargs: Any) -> Any:
         if "/status?" in path:
-            started.add(path)
-            await asyncio.to_thread(release.wait)
+            await hold(path)
         return await get(path, **kwargs)
 
     monkeypatch.setattr(pulls, "_read_list", held_list)
@@ -2670,6 +3072,9 @@ def _exercise_selected_core_wait(
         time.sleep(0.005)
     assert not final["refreshing"] and final["core_preview"] is None
     assert final["record"] is not None and isinstance(stand.record(8), PullRecord)
+    # A read that gave up went on, so a stalled request answered late and the rest may
+    # have passed: the stall is the failure.
+    assert not gave_up, f"held reads gave up before the test opened them: {sorted(gave_up)}"
 
 
 def _assert_full_after_captured_snapshot(
@@ -2906,7 +3311,7 @@ def test_selected_core_account_change_revokes_and_drains_without_publication(
             assert held.core_preview["reader"] == f"gh:{READER}"
             gate.release.set()
         try:
-            assert await asyncio.to_thread(entered.wait, 5)
+            assert await held_until(entered, 5)
             assert held.core_preview is None
         finally:
             release_stamp.set()
@@ -3321,6 +3726,7 @@ def _visible_core_fixture(
     provider_stamp: str | None = None,
     untrustworthy: bool = False,
     hold_batch: Callable[[], Awaitable[None]] | None = None,
+    lane: Literal["visible", "background"] | None = None,
 ) -> tuple[dict[str, Any], dict[int, dict[str, Any]], list[tuple[int, ...]]]:
     from metabrowser.builtin_plugins.github import pull_cores
     from metabrowser.builtin_plugins.github.pull_list import ListedRepository
@@ -3359,7 +3765,9 @@ def _visible_core_fixture(
 
     monkeypatch.setattr(pull_cores, "gh_graphql", graph)
     owner = {"id": "visible-8", "generation": catalog.generation("all")}
-    ask = {"state": "all", "window": owner, "numbers": list(visible or numbers)}
+    ask: dict[str, Any] = {"state": "all", "window": owner, "numbers": list(visible or numbers)}
+    if lane is not None:
+        ask["lane"] = lane
     started = client.post(_PREPARE_CORES, json=ask)
     assert started.status_code == 202
     assert started.json() == {
@@ -3417,7 +3825,7 @@ def test_visible_core_running_window_survives_second_tab(
 
     async def hold_batch() -> None:
         entered.set()
-        assert await asyncio.to_thread(release.wait, 5)
+        assert await held_until(release, 5)
 
     first, _rest, calls = _visible_core_fixture(pinned_pull, monkeypatch, hold_batch=hold_batch)
     second = {**first, "window": {**first["window"], "id": "second-tab"}}
@@ -3433,6 +3841,295 @@ def test_visible_core_running_window_survives_second_tab(
         release.set()
     _drain_visible_cores(client)
     assert _read(client, 8).json()["core_preview"]["number"] == 8 and calls == [(8,)]
+
+
+def _core_job_state() -> tuple[bool, object]:
+    """Whether a core job runs for the served source, and the window that owns its cores."""
+    from metabrowser.builtin_plugins.github.pull_cores import preparation_key
+    from metabrowser.builtin_plugins.github.pull_route import pull_host
+
+    host = pull_host(app)
+    assert host is not None and host.coordinator is not None
+    window = host.pulls.core_window
+    running = host.coordinator.running(preparation_key(host.pulls.source))
+    return running, window.ask.owner if window is not None else None
+
+
+def test_visible_core_preempts_a_running_background_batch(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _stand, client = pinned_pull
+    entered, release, cancelled = threading.Event(), threading.Event(), threading.Event()
+    batches = 0
+
+    async def hold_background_batch() -> None:
+        nonlocal batches
+        batches += 1
+        if batches > 1:
+            return
+        entered.set()
+        try:
+            assert await held_until(release, 5)
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    background, _rest, calls = _visible_core_fixture(
+        pinned_pull,
+        monkeypatch,
+        sibling=True,
+        visible=(8,),
+        hold_batch=hold_background_batch,
+        lane="background",
+    )
+    visible = {
+        **background,
+        "window": {**background["window"], "id": "viewport"},
+        "numbers": [9],
+        "lane": "visible",
+    }
+    assert client.portal is not None
+    try:
+        assert entered.wait(5)
+        assert client.portal.call(_core_job_state) == (True, "visible-8")
+        # The reader's rows are admitted at once, not after the walk's batch.
+        response = client.post(_PREPARE_CORES, json=visible)
+        assert response.status_code == 202 and response.json() == {
+            "preparation": "started",
+            "status_route": "/api/plugin/github/pull?number=9",
+        }
+        # The background job ended before the visible one started: its read was cancelled
+        # and its window revoked, so its owner neither joins nor releases another's window.
+        assert cancelled.is_set()
+        assert client.post(_PREPARE_CORES, json={**background, "numbers": []}).json() == {
+            "preparation": "not_owner"
+        }
+    finally:
+        release.set()
+    _drain_visible_cores(client)
+    assert calls == [(8,), (9,)]
+    assert _read(client, 9).json()["core_preview"]["number"] == 9
+    assert _read(client, 8).json()["core_preview"] is None
+    # The cancelled read keeps its attempt lease, so the walk's next ask does not read 8
+    # again before the lease ends.
+    walk = {**background, "window": {**background["window"], "id": "walk-again"}}
+    again = client.post(_PREPARE_CORES, json=walk).json()
+    assert again["preparation"] == "partial" and again["retry_numbers"] == [8]
+    assert calls == [(8,), (9,)]
+    # Nothing is left running, and only the visible owner releases its window.
+    assert client.portal.call(_core_job_state) == (False, "viewport")
+    assert client.post(_PREPARE_CORES, json={**walk, "numbers": []}).json() == {
+        "preparation": "not_owner"
+    }
+    assert client.post(_PREPARE_CORES, json={**visible, "numbers": []}).json() == {
+        "preparation": "released"
+    }
+    assert client.portal.call(_core_job_state) == (False, None)
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "numbers"),
+    [
+        # A background batch already reading a visible row is doing the reader's work.
+        ("background", "visible", [8, 9]),
+        # Only the reader's own demand preempts, and never another reader's.
+        ("visible", "background", [9]),
+        ("visible", "visible", [9]),
+    ],
+)
+def test_visible_core_preempts_only_a_background_batch_reading_other_rows(
+    pinned_pull: tuple[_Stand, TestClient],
+    monkeypatch: pytest.MonkeyPatch,
+    first: Literal["visible", "background"],
+    second: Literal["visible", "background"],
+    numbers: list[int],
+) -> None:
+    _stand, client = pinned_pull
+    entered, release, cancelled = threading.Event(), threading.Event(), threading.Event()
+
+    async def hold_batch() -> None:
+        entered.set()
+        try:
+            assert await held_until(release, 5)
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    running, _rest, calls = _visible_core_fixture(
+        pinned_pull, monkeypatch, sibling=True, visible=(8,), hold_batch=hold_batch, lane=first
+    )
+    competitor = {
+        **running,
+        "window": {**running["window"], "id": "competitor"},
+        "numbers": numbers,
+        "lane": second,
+    }
+    try:
+        assert entered.wait(5)
+        response = client.post(_PREPARE_CORES, json=competitor)
+        assert response.status_code == 200 and response.json() == {"preparation": "busy"}
+        assert not cancelled.is_set()
+        assert client.post(_PREPARE_CORES, json=running).json()["preparation"] == "joined"
+    finally:
+        release.set()
+    _drain_visible_cores(client)
+    assert not cancelled.is_set() and calls == [(8,)]
+    assert _read(client, 8).json()["core_preview"]["number"] == 8
+
+
+def test_visible_core_preemption_honors_a_failure_recorded_during_its_checks(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.builtin_plugins.github import pull_cores
+
+    _stand, client = pinned_pull
+    entered, fail = threading.Event(), threading.Event()
+
+    async def fail_batch() -> None:
+        entered.set()
+        assert await held_until(fail, 5)
+        raise GhError("GitHub did not answer", state="network_error")
+
+    background, _rest, calls = _visible_core_fixture(
+        pinned_pull,
+        monkeypatch,
+        sibling=True,
+        visible=(8,),
+        hold_batch=fail_batch,
+        lane="background",
+    )
+    visible = {
+        **background,
+        "window": {**background["window"], "id": "viewport"},
+        "numbers": [9],
+        "lane": "visible",
+    }
+    eligible = pull_cores._eligible  # pyright: ignore[reportPrivateUsage]
+    checking, resume = threading.Event(), threading.Event()
+
+    def paused(window: Any) -> Any:
+        if window.ask.lane == "visible":
+            checking.set()
+            assert resume.wait(5)
+        return eligible(window)
+
+    monkeypatch.setattr(pull_cores, "_eligible", paused)
+    replies: list[Any] = []
+    sending = threading.Thread(
+        target=lambda: replies.append(client.post(_PREPARE_CORES, json=visible))
+    )
+    assert client.portal is not None
+    try:
+        assert entered.wait(5)
+        sending.start()
+        # The visible batch is checking its rows when the background read fails.
+        assert checking.wait(5)
+        fail.set()
+        deadline = time.monotonic() + 5
+        while client.portal.call(_core_job_state)[0] and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert client.portal.call(_core_job_state) == (False, "visible-8")
+    finally:
+        fail.set()
+        resume.set()
+        sending.join(10)
+    assert not sending.is_alive() and len(replies) == 1
+    answer = replies[0].json()
+    assert answer["preparation"] == "held"
+    assert answer["failure"]["outcome"] == "network_error"
+    # The source-wide failure hold covers the visible batch: no second provider read.
+    _drain_visible_cores(client)
+    assert calls == [(8,)]
+
+
+def test_visible_core_preempts_a_background_batch_that_reads_none_of_its_rows(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.builtin_plugins.github import pull_cores
+    from metabrowser.builtin_plugins.github.pull_list import ListedRepository
+    from tests.github_pull_fixture import seed_catalog
+
+    stand, client = pinned_pull
+    entries = scenario(stand.origin)["api"]
+    rest = {n: entries[f"repos/octo/demo/pulls/{n}"]["body"] for n in (10, 9, 8, 7)}
+    repository = ListedRepository(stand.published.home, stand.published.slug, "octo", "demo")
+    catalog = seed_catalog(repository, list(rest.values()), reader=READER)
+    entered, release, cancelled = threading.Event(), threading.Event(), threading.Event()
+    calls: list[tuple[int, ...]] = []
+
+    async def graph(_query: str, variables: dict[str, str | int], **_kwargs: Any) -> dict[str, Any]:
+        numbers = tuple(int(v) for k, v in variables.items() if k.startswith("n") and k != "name")
+        calls.append(numbers)
+        if numbers == (9,):
+            entered.set()
+            try:
+                assert await held_until(release, 5)
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+        result = graph_core_data(rest[8])
+        repo = result["repository"]
+        repo.pop("pull")
+        for i, number in enumerate(numbers):
+            # GitHub has no answer for 8, which keeps its attempt lease.
+            repo[f"p{i}"] = (
+                None if number == 8 else graph_core_data(rest[number])["repository"]["pull"]
+            )
+        return result
+
+    monkeypatch.setattr(pull_cores, "gh_graphql", graph)
+
+    def ask(owner: str, numbers: list[int], lane: str) -> dict[str, Any]:
+        return {
+            "state": "all",
+            "window": {"id": owner, "generation": catalog.generation("all")},
+            "numbers": numbers,
+            "lane": lane,
+        }
+
+    assert client.post(_PREPARE_CORES, json=ask("lease", [8], "background")).status_code == 202
+    _drain_visible_cores(client)
+    assert calls == [(8,)]
+    # The walk asks for 8 and 9, but reads only 9: 8 is leased.
+    walk = ask("walk", [8, 9], "background")
+    visible = ask("viewport", [8, 10], "visible")
+    assert client.portal is not None
+    try:
+        assert client.post(_PREPARE_CORES, json=walk).status_code == 202
+        assert entered.wait(5) and calls == [(8,), (9,)]
+        # The visible batch also asks for 8, which the walk is not reading, so it does not
+        # wait for the walk: it preempts it and reads 10.
+        response = client.post(_PREPARE_CORES, json=visible)
+        assert (response.status_code, response.json()["preparation"]) == (202, "started")
+        assert cancelled.is_set()
+    finally:
+        release.set()
+    _drain_visible_cores(client)
+    assert calls == [(8,), (9,), (10,)]
+    assert client.portal.call(_core_job_state) == (False, "viewport")
+    assert client.post(_PREPARE_CORES, json={**visible, "numbers": []}).json() == {
+        "preparation": "released"
+    }
+    settled = client.post(_PREPARE_CORES, json=visible).json()
+    assert settled["preparation"] == "partial"
+    assert settled["ready_numbers"] == [10] and settled["retry_numbers"] == [8]
+    assert calls == [(8,), (9,), (10,)], "8 keeps its lease"
+    assert client.portal.call(_core_job_state) == (False, None)
+
+
+def test_core_request_lane_is_visible_or_background(
+    pinned_pull: tuple[_Stand, TestClient],
+) -> None:
+    _stand, client = pinned_pull
+    ask = {"state": "all", "window": {"id": "lane", "generation": "g"}, "numbers": []}
+    for lane in ("viewport", None, 1):
+        refused = client.post(_PREPARE_CORES, json={**ask, "lane": lane})
+        assert refused.status_code == 400
+        assert refused.json()["code"] == "invalid_request"
+    for lane in ("visible", "background"):
+        assert client.post(_PREPARE_CORES, json={**ask, "lane": lane}).json() == {
+            "preparation": "not_owner"
+        }
 
 
 def test_visible_core_attempt_cooldown_ignores_owner_and_filter(
@@ -3577,7 +4274,7 @@ def test_visible_core_release_during_last_worker_prevents_adoption(
 
     async def fresh(_query: str, _variables: Any, **_kwargs: Any) -> dict[str, Any]:
         fresh_entered.set()
-        assert await asyncio.to_thread(fresh_release.wait, 5)
+        assert await held_until(fresh_release, 5)
         return graph_core_data(rest[8])
 
     monkeypatch.setattr(pull_cores.CoreWindow, "catalog_matches", held_check)
@@ -3751,7 +4448,7 @@ def test_visible_core_revokes_staged_reader_while_failure_stamp_is_held(
             return READER
         assert accounts == 2
         final_entered.set()
-        assert await asyncio.to_thread(final_release.wait, 5)
+        assert await held_until(final_release, 5)
         return "changed"
 
     async def graph(_query: str, _variables: Any, **_kwargs: Any) -> dict[str, Any]:
@@ -3805,7 +4502,7 @@ def test_visible_core_batch_keeps_unchanged_member_after_sibling_update(
 
     async def hold_batch() -> None:
         entered.set()
-        assert await asyncio.to_thread(release.wait, 5)
+        assert await held_until(release, 5)
 
     ask, rest, calls = _visible_core_fixture(
         pinned_pull, monkeypatch, sibling=True, hold_batch=hold_batch
@@ -3861,7 +4558,7 @@ def test_visible_core_adopted_display_keeps_stale_cache_until_selected_refresh(
 
     async def fresh(_query: str, _variables: Any, **_kwargs: Any) -> dict[str, Any]:
         fresh_entered.set()
-        assert await asyncio.to_thread(fresh_release.wait, 5)
+        assert await held_until(fresh_release, 5)
         return graph_core_data(new_body)
 
     monkeypatch.setattr(pulls, "gh_graphql", fresh)
@@ -3933,7 +4630,7 @@ def test_visible_core_competitor_waits_for_selected_acquisition_to_settle(
         accounts += 1
         if accounts == 2:
             final_entered.set()
-            assert await asyncio.to_thread(final_release.wait, 5)
+            assert await held_until(final_release, 5)
         return READER
 
     async def graph(_query: str, variables: Any, **_kwargs: Any) -> dict[str, Any]:
@@ -4000,7 +4697,7 @@ def test_visible_core_running_batch_drains_before_selected_refresh(
             await asyncio.Future()
         except asyncio.CancelledError:
             cleanup_entered.set()
-            assert await asyncio.to_thread(cleanup_release.wait, 5)
+            assert await held_until(cleanup_release, 5)
             raise
 
     ask, rest, calls = _visible_core_fixture(pinned_pull, monkeypatch, hold_batch=hold_batch)
@@ -4011,7 +4708,7 @@ def test_visible_core_running_batch_drains_before_selected_refresh(
     async def fresh(_query: str, variables: Any, **_kwargs: Any) -> dict[str, Any]:
         assert variables["number"] == number
         fresh_entered.set()
-        assert await asyncio.to_thread(fresh_release.wait, 5)
+        assert await held_until(fresh_release, 5)
         return graph_core_data(fresh_rest)
 
     monkeypatch.setattr(pulls, "gh_graphql", fresh)
@@ -4603,6 +5300,137 @@ def test_core_ready_receipt_rechecks_complete_cache_coverage(
     assert checks == 2 and calls == [(8,)]
 
 
+def test_core_ready_receipt_opens_the_catalog_the_same_number_of_times_for_any_batch(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Once for the checkpoint and once per coverage check, never once per core.
+
+    Every catalog open verifies the catalog and its three journal files as private files.
+    When each core reopened the catalog to check itself, a receipt for eight cached cores
+    opened it 19 times, and a busy server spent seconds on it in thread switches.
+    """
+    from metabrowser.builtin_plugins.github import pull_catalog
+    from metabrowser.builtin_plugins.github.pull_catalog import catalog_members
+    from metabrowser.builtin_plugins.github.pull_core_cache import write_cached_cores
+    from metabrowser.builtin_plugins.github.pull_list import ListedRepository
+    from tests.github_pull_fixture import generated_item, seed_catalog
+
+    stand, client = pinned_pull
+    home, slug = stand.published.home, stand.published.slug
+    items = [generated_item(number) for number in range(11, 19)]
+    catalog = seed_catalog(ListedRepository(home, slug, "octo", "demo"), items, reader=READER)
+    numbers = [item["number"] for item in items]
+    _, members = catalog_members(home, slug, "all", tuple(numbers))
+    cores = {
+        item["number"]: pulls._graph_pull(  # pyright: ignore[reportPrivateUsage]
+            graph_core_data(item)["repository"]["pull"], item["number"]
+        )
+        for item in items
+    }
+    written = write_cached_cores(home, slug, catalog, members, cores, FETCHED_AT)
+    assert sorted(written) == numbers
+    database = pull_catalog._database  # pyright: ignore[reportPrivateUsage]
+    opened = 0
+
+    def counted(*args: Any, **kwargs: Any) -> Any:
+        nonlocal opened
+        opened += 1
+        return database(*args, **kwargs)
+
+    monkeypatch.setattr(pull_catalog, "_database", counted)
+    receipts: dict[int, tuple[Any, int]] = {}
+    for size in (1, 8):
+        opened = 0
+        owner = {"id": f"batch-{size}", "generation": catalog.generation("all")}
+        ask = {"state": "all", "window": owner, "numbers": numbers[:size]}
+        receipts[size] = (client.post(_PREPARE_CORES, json=ask).json(), opened)
+    assert receipts == {
+        size: (
+            {"preparation": "ready", "ready_numbers": numbers[:size], "skipped_numbers": []},
+            3,
+        )
+        for size in (1, 8)
+    }
+
+
+def test_core_batch_whose_client_left_starts_no_provider_read(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The panel abandons a batch it scrolled past or waited on too long; the server stops.
+
+    The client leaves during the batch's first cache check, in a worker thread. That check
+    runs to its end, but nothing after it does: no provider read, and no window owned.
+    """
+    from starlette.requests import Request
+    from starlette.responses import Response
+    from starlette.types import Message
+
+    from metabrowser.builtin_plugins.github import pull_cores
+    from metabrowser.builtin_plugins.github.pull_list import ListedRepository
+    from metabrowser.builtin_plugins.github.sidekick import pull_cores_prepare_handler
+    from tests.github_pull_fixture import seed_catalog
+
+    stand, client = pinned_pull
+    entries = scenario(stand.origin)["api"]
+    rest = {number: entries[f"repos/octo/demo/pulls/{number}"]["body"] for number in (8, 7)}
+    repository = ListedRepository(stand.published.home, stand.published.slug, "octo", "demo")
+    catalog = seed_catalog(repository, list(rest.values()), reader=READER)
+    calls: list[tuple[int, ...]] = []
+
+    async def graph(_query: str, variables: dict[str, Any], **_kwargs: Any) -> dict[str, Any]:
+        calls.append((int(variables["n0"]),))
+        data = graph_core_data(rest[8])
+        data["repository"]["p0"] = data["repository"].pop("pull")
+        return data
+
+    entered, left = threading.Event(), threading.Event()
+    check = pull_cores.cached_batch
+
+    def checked_while_leaving(pulls_set: ServedPulls, request: pull_cores.CoreRequest) -> Any:
+        entered.set()
+        # A server that never listens for the client goes on after this wait.
+        left.wait(1)
+        return check(pulls_set, request)
+
+    owner = {"id": "scrolled-past", "generation": catalog.generation("all")}
+    ask = {"state": "all", "window": owner, "numbers": [8]}
+
+    async def abandoned_batch() -> Response:
+        delivered = False
+
+        async def leave_during_the_check() -> Message:
+            nonlocal delivered
+            if not delivered:
+                delivered = True
+                return {"type": "http.request", "body": json.dumps(ask).encode()}
+            await held_until(entered, 5)
+            left.set()
+            return {"type": "http.disconnect"}
+
+        # The handler itself, on the served app's loop, where its coordinator runs.
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": _PREPARE_CORES,
+            "query_string": b"",
+            "headers": [(b"content-type", b"application/json")],
+            "app": app,
+        }
+        return await pull_cores_prepare_handler(Request(scope, leave_during_the_check))
+
+    monkeypatch.setattr(pull_cores, "gh_graphql", graph)
+    monkeypatch.setattr(pull_cores, "cached_batch", checked_while_leaving)
+    assert client.portal is not None
+    abandoned = client.portal.call(abandoned_batch)
+    _drain_visible_cores(client)
+    assert (abandoned.status_code, calls) == (499, [])
+    # A client that stays is admitted as before, and its batch is read.
+    monkeypatch.setattr(pull_cores, "cached_batch", check)
+    assert client.post(_PREPARE_CORES, json=ask).json()["preparation"] == "started"
+    _drain_visible_cores(client)
+    assert calls == [(8,)]
+
+
 def test_core_transient_capacity_does_not_claim_unattempted_rows(
     pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -4776,6 +5604,8 @@ def test_disk_core_revocation_after_worker_check_is_rejected_on_loop(
         )
         body = client.post("/api/plugin/github/pull-refresh", json={"number": 8}).json()["pull"]
     assert revoked and body["core_preview"] is None
+    # Nor the label entries or the fast poll that only the dropped core asked for.
+    assert (body["repository_labels"], body["labels_pending"]) == ([], False)
 
 
 def test_unavailable_member_does_not_block_later_cohorts_or_lose_ready_siblings(
@@ -4891,7 +5721,7 @@ def test_same_window_admitted_during_preflight_is_joined_without_revocation(
 
     async def graph(_query: str, _variables: Any, **_kwargs: Any) -> Any:
         provider.set()
-        assert await asyncio.to_thread(release_provider.wait, 5)
+        assert await held_until(release_provider, 5)
         data = graph_core_data(rest[9])
         data["repository"]["p0"] = data["repository"].pop("pull")
         return data

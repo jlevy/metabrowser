@@ -40,7 +40,7 @@ status: 202
     "verified_by": "fetch",
     "head_moved": false,
     "checks_pending": true,
-    "record_revision": "5f6cee1af17443e959e58c06e78d075f2aa143c66d86e9b0b3a6d9858bd55e29",
+    "record_revision": "07eb0c3ec47a9c84c4d0b69ddfca32245cdede7023567fa7d179789783e8d66b",
     "fresh_for_s": 60.0,
     "refreshing": true,
     "last_refresh": {
@@ -50,17 +50,17 @@ status: 202
       "at": "2026-09-17T12:00:00Z"
     },
     "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
-    "snapshot_route": "/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
+    "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
     "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&store=<STORE>",
     "record": {
       "schema_version": 2,
-      "projection_version": 1,
+      "projection_version": 2,
       "source": "<PATH>",
       "number": 7,
       "fetched_at": "2026-09-17T12:00:00Z",
       "reader": "gh:octo-reader",
       "etags": {
-        "repos/octo/demo/pulls/7": "W/\"f9a5f87d7f2672e1b7757f36509de5ce7f8731429fe6cbfc7f672b160f1edb2b\"",
+        "repos/octo/demo/pulls/7": "W/\"369a52b442c8b956f7bb9bd28a3ae75f06b540c1781d3c8eacc7e3afc4da232f\"",
         "repos/octo/demo/issues/7/comments?per_page=100&page=1": "W/\"129ba5d41c7ad9dc46b0ecc3d92124b83747ed95e5ff5422603eb05b99399608\"",
         "repos/octo/demo/pulls/7/reviews?per_page=100&page=1": "W/\"553dbffc68c21141af1083cb13e8be39e4138e90d4011da721d679e7853c5e9d\"",
         "repos/octo/demo/pulls/7/comments?per_page=100&page=1": "W/\"b4ca741eae91bcff3445421bd4f16ee7b2ae05d25fa979346f04a378ee3bd6cc\"",
@@ -81,7 +81,11 @@ status: 202
         "merge_commit_sha": null,
         "mergeable": "mergeable",
         "labels": [
-          "enhancement"
+          {
+            "name": "enhancement",
+            "color": "2700af",
+            "description": "A label's description is its chip's tooltip"
+          }
         ],
         "author": "forker",
         "author_avatar_url": null,
@@ -223,7 +227,9 @@ status: 202
       },
       "unavailable": {}
     },
-    "core_preview": null
+    "core_preview": null,
+    "repository_labels": [],
+    "labels_pending": false
   },
   "status_route": "/api/plugin/github/pull?number=7"
 }
@@ -241,7 +247,7 @@ status: 200
   "verified_by": "fetch",
   "head_moved": false,
   "checks_pending": false,
-  "record_revision": "dee53cb38d5e3405d39a60740787def824e015de9cb230aab10ed018c42578d1",
+  "record_revision": "b1fa26f1c4e6743bb45c6498e53d1c013eabf5266df19d69acd8e9c3f9ba57ca",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -251,17 +257,17 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=33e7810f4188efa2734a80a37188f67877ace69d&base_policy=merge_base&build=<BUILD>&store=<STORE>",
-  "snapshot_route": "/api/plugin/github/pull-snapshot?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=33e7810f4188efa2734a80a37188f67877ace69d&store=<STORE>",
+  "image_route": "/api/plugin/github/pull-image?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=33e7810f4188efa2734a80a37188f67877ace69d&store=<STORE>",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=33e7810f4188efa2734a80a37188f67877ace69d&store=<STORE>",
   "record": {
     "schema_version": 2,
-    "projection_version": 1,
+    "projection_version": 2,
     "source": "<PATH>",
     "number": 7,
     "fetched_at": "2026-09-17T12:00:00Z",
     "reader": "gh:octo-reader",
     "etags": {
-      "repos/octo/demo/pulls/7": "W/\"b7997587febc09e7bfe607e2d19344ec6ab069c7f810068fb4f83fa05dee01c4\"",
+      "repos/octo/demo/pulls/7": "W/\"c7efbeabf23f563409047533a207ec0aea27fc1436eb11e06114f5620729ccdb\"",
       "repos/octo/demo/issues/7/comments?per_page=100&page=1": "W/\"129ba5d41c7ad9dc46b0ecc3d92124b83747ed95e5ff5422603eb05b99399608\"",
       "repos/octo/demo/pulls/7/reviews?per_page=100&page=1": "W/\"553dbffc68c21141af1083cb13e8be39e4138e90d4011da721d679e7853c5e9d\"",
       "repos/octo/demo/pulls/7/comments?per_page=100&page=1": "W/\"b4ca741eae91bcff3445421bd4f16ee7b2ae05d25fa979346f04a378ee3bd6cc\"",
@@ -282,7 +288,11 @@ status: 200
       "merge_commit_sha": null,
       "mergeable": "mergeable",
       "labels": [
-        "enhancement"
+        {
+          "name": "enhancement",
+          "color": "2700af",
+          "description": "A label's description is its chip's tooltip"
+        }
       ],
       "author": "forker",
       "author_avatar_url": null,
@@ -400,7 +410,9 @@ status: 200
     },
     "unavailable": {}
   },
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 --- stderr ---
 selection: pull_request
@@ -447,9 +459,9 @@ status: 200
         "path": "css/style-tokens.css",
         "mode": "hosted",
         "media_type": "text/css",
-        "content_hash": "8aeaaafb77d8ec54",
+        "content_hash": "8efb2fa07a0a0370",
         "output_path": "css/style-tokens.css",
-        "public_url": "/kpress-static/v0.3.5/css/style-tokens.css",
+        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/style-tokens.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -461,7 +473,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "807cf5be35b5a8dd",
         "output_path": "css/syntax.css",
-        "public_url": "/kpress-static/v0.3.5/css/syntax.css",
+        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/syntax.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -471,9 +483,9 @@ status: 200
         "path": "css/document.css",
         "mode": "hosted",
         "media_type": "text/css",
-        "content_hash": "49d55a2dbac06488",
+        "content_hash": "bc14c4d38a7a4d65",
         "output_path": "css/document.css",
-        "public_url": "/kpress-static/v0.3.5/css/document.css",
+        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/document.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -483,9 +495,9 @@ status: 200
         "path": "css/components.css",
         "mode": "hosted",
         "media_type": "text/css",
-        "content_hash": "3899b614d6672436",
+        "content_hash": "b60a31e9efc56142",
         "output_path": "css/components.css",
-        "public_url": "/kpress-static/v0.3.5/css/components.css",
+        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/components.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -495,9 +507,69 @@ status: 200
         "path": "css/print.css",
         "mode": "hosted",
         "media_type": "text/css",
-        "content_hash": "86c6396bc77060cd",
+        "content_hash": "8a8f7b928ad6be2f",
         "output_path": "css/print.css",
-        "public_url": "/kpress-static/v0.3.5/css/print.css",
+        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/print.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/print-fonts.css",
+        "kind": "package",
+        "path": "css/print-fonts.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "f4a0751b8416f372",
+        "output_path": "css/print-fonts.css",
+        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/print-fonts.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-400-normal.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-400-normal.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "9a5f82ca54019902",
+        "output_path": "css/mono-planetaire-400-normal.css",
+        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/mono-planetaire-400-normal.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-700-normal.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-700-normal.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "c5232ad5d38dc5a6",
+        "output_path": "css/mono-planetaire-700-normal.css",
+        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/mono-planetaire-700-normal.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-400-italic.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-400-italic.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "34bd1d5b7aa5a794",
+        "output_path": "css/mono-planetaire-400-italic.css",
+        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/mono-planetaire-400-italic.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-700-italic.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-700-italic.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8fe04148a6caac2d",
+        "output_path": "css/mono-planetaire-700-italic.css",
+        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/mono-planetaire-700-italic.css",
         "entry_point": true,
         "loading": "stylesheet"
       }
@@ -535,9 +607,9 @@ status: 200
         "path": "css/style-tokens.css",
         "mode": "hosted",
         "media_type": "text/css",
-        "content_hash": "8aeaaafb77d8ec54",
+        "content_hash": "8efb2fa07a0a0370",
         "output_path": "css/style-tokens.css",
-        "public_url": "/kpress-static/v0.3.5/css/style-tokens.css",
+        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/style-tokens.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -549,7 +621,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "807cf5be35b5a8dd",
         "output_path": "css/syntax.css",
-        "public_url": "/kpress-static/v0.3.5/css/syntax.css",
+        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/syntax.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -559,9 +631,9 @@ status: 200
         "path": "css/document.css",
         "mode": "hosted",
         "media_type": "text/css",
-        "content_hash": "49d55a2dbac06488",
+        "content_hash": "bc14c4d38a7a4d65",
         "output_path": "css/document.css",
-        "public_url": "/kpress-static/v0.3.5/css/document.css",
+        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/document.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -571,9 +643,9 @@ status: 200
         "path": "css/components.css",
         "mode": "hosted",
         "media_type": "text/css",
-        "content_hash": "3899b614d6672436",
+        "content_hash": "b60a31e9efc56142",
         "output_path": "css/components.css",
-        "public_url": "/kpress-static/v0.3.5/css/components.css",
+        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/components.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -583,9 +655,69 @@ status: 200
         "path": "css/print.css",
         "mode": "hosted",
         "media_type": "text/css",
-        "content_hash": "86c6396bc77060cd",
+        "content_hash": "8a8f7b928ad6be2f",
         "output_path": "css/print.css",
-        "public_url": "/kpress-static/v0.3.5/css/print.css",
+        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/print.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/print-fonts.css",
+        "kind": "package",
+        "path": "css/print-fonts.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "f4a0751b8416f372",
+        "output_path": "css/print-fonts.css",
+        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/print-fonts.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-400-normal.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-400-normal.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "9a5f82ca54019902",
+        "output_path": "css/mono-planetaire-400-normal.css",
+        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/mono-planetaire-400-normal.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-700-normal.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-700-normal.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "c5232ad5d38dc5a6",
+        "output_path": "css/mono-planetaire-700-normal.css",
+        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/mono-planetaire-700-normal.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-400-italic.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-400-italic.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "34bd1d5b7aa5a794",
+        "output_path": "css/mono-planetaire-400-italic.css",
+        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/mono-planetaire-400-italic.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-700-italic.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-700-italic.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8fe04148a6caac2d",
+        "output_path": "css/mono-planetaire-700-italic.css",
+        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/mono-planetaire-700-italic.css",
         "entry_point": true,
         "loading": "stylesheet"
       }

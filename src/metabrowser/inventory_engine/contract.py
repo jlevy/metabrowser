@@ -80,7 +80,7 @@ import json
 import os
 import string
 from collections.abc import AsyncIterator, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from typing import Literal, Protocol, runtime_checkable
@@ -94,9 +94,20 @@ from metabrowser.file_type_registry import (
 from metabrowser.fs_paths import derive_ext
 from metabrowser.wire_models import NavigationTallies, RollupResult
 
+# Dirty paths one `ChangeBatch` may name; past it a batch is `all_dirty` instead.
 MAX_CHANGE_PATHS = 1_024
+# Paths one refresh or priority request may carry.
 MAX_COMMAND_PATHS = 1_024
+# Queries one `ReadRequest` may bundle, which also bounds a dirty-path projection batch.
 MAX_QUERIES_PER_READ = 1_024
+# Group by sends at most six groups (metabrowser/tree_groups.py); eight leaves headroom.
+# A grouped pass costs about the number of groups times the leaves each keeps, and
+# `max_work` charges it once, for the entries visited, so the bound is on groups. On
+# 260,000 files in 111,500 folders, one warm pass at the provider took 0.27-0.33 s for
+# Group by's six groups or eight bands that partition mtimes, 0.46 s for eight nested
+# windows that each keep most leaves, and 1.7-1.8 s for 32 nested windows, the bound
+# before; each peaked at 9-11 MB (measured 2026-11-15).
+MAX_TREE_GROUPS = 8
 # Bound host-side materialization even when a provider returns endlessly advancing cursors.
 MAX_ASSEMBLED_PAGES = 4_096
 MAX_ASSEMBLED_ROWS = 1_000_000
@@ -104,8 +115,12 @@ MAX_ASSEMBLED_ROWS = 1_000_000
 MAX_INVENTORY_ISSUES = MAX_CHANGE_PATHS
 # Bound provider-supplied diagnostic text before it crosses an FFI boundary.
 MAX_ISSUE_DETAIL_BYTES = 4_096
+# The contract's default discovery budget, for a config built without one. The
+# application always passes ``settings.INVENTORY_MAX_FILES`` (``runtime.py``).
 DEFAULT_DISCOVERY_MAX_FILES = 500_000
+# Default work bound for a broad query that does not name its own.
 DEFAULT_QUERY_MAX_WORK = 1_000_000
+# Default and largest `count_cap`: past it a count is a proven lower bound, not exact.
 DEFAULT_COUNT_CAP = 10_000
 MAX_COUNT_CAP = 1_000_000
 INVENTORY_SCOPE_IDENTITY_SCHEMA = "inventory-scope-v2"
@@ -923,6 +938,7 @@ class QueryKind(StrEnum):
     ENTRY = "entry"
     DIRECTORY = "directory"
     FILTERED_TREE = "filtered_tree"
+    GROUPED_TREE = "grouped_tree"
     ROLLUP = "rollup"
     NAVIGATION = "navigation"
     RECENT = "recent"
@@ -966,16 +982,30 @@ class InventoryFilter:
     filenames: tuple[str, ...] = ()
     type_families: tuple[str, ...] = ()
     recency_seconds: float | None = None
+    # A Group by group, which places every entry it keeps, symlinks included, where the
+    # filter fields above drop symlinks. An age band: entries modified within
+    # `band_within_seconds` of `as_of_ns` and at least `older_than_seconds` before it.
+    band_within_seconds: float | None = None
+    older_than_seconds: float | None = None
+    # A type group: the files the registry classifies into this display group, `other`
+    # taking every file it does not recognize, and every symlink.
+    type_group: str | None = None
     minimum_size: int | None = None
     include_ignored: bool = True
     as_of_ns: int | None = None
 
     def __post_init__(self) -> None:
-        if self.recency_seconds is not None and self.recency_seconds <= 0:
-            raise ValueError("recency_seconds must be positive")
+        for name in ("recency_seconds", "band_within_seconds", "older_than_seconds"):
+            seconds = getattr(self, name)
+            if seconds is not None and seconds <= 0:
+                raise ValueError(f"{name} must be positive")
         if self.minimum_size is not None:
             _require_nonnegative(self.minimum_size, "minimum_size")
-        if self.recency_seconds is not None and self.as_of_ns is None:
+        if (
+            self.recency_seconds is not None
+            or self.band_within_seconds is not None
+            or self.older_than_seconds is not None
+        ) and self.as_of_ns is None:
             raise ValueError("a recency filter requires as_of_ns")
         if self.as_of_ns is not None:
             _require_positive(self.as_of_ns, "as_of_ns")
@@ -998,6 +1028,99 @@ class FilteredTreeQuery:
         _require_positive(self.max_depth, "max_depth")
         _require_positive(self.max_rows, "max_rows")
         _require_query_max_work(self.max_work)
+
+
+@dataclass(frozen=True, slots=True)
+class TreeGroupFilter:
+    """One group of a grouped tree, named by *key*: the entries a filtered tree keeps
+    with these Group by fields set on its filter (`InventoryFilter.type_group` and the
+    age band)."""
+
+    key: str
+    type_group: str | None = None
+    band_within_seconds: float | None = None
+    older_than_seconds: float | None = None
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.key, "key")
+        if self.type_group is not None:
+            _require_nonempty(self.type_group, "type_group")
+        for name in ("band_within_seconds", "older_than_seconds"):
+            seconds = getattr(self, name)
+            if seconds is not None and seconds <= 0:
+                raise ValueError(f"{name} must be positive")
+        if (
+            self.type_group is None
+            and self.band_within_seconds is None
+            and self.older_than_seconds is None
+        ):
+            raise ValueError("a tree group selects by type group or by age band")
+
+    @property
+    def timed(self) -> bool:
+        return self.band_within_seconds is not None or self.older_than_seconds is not None
+
+
+@dataclass(frozen=True, slots=True)
+class GroupedTreeQuery:
+    """Every group's filtered tree under one shared filter, from one pass over the index.
+
+    Each group's answer is exactly the `FilteredTreeQuery` that `group_query` names: the
+    same rows, totals, and page bound. A group whose rows outrun `max_rows` carries a
+    continuation for that filtered tree at this read's version, so the first read returns
+    at most `max_rows` rows per group.
+    """
+
+    query_id: str
+    groups: tuple[TreeGroupFilter, ...]
+    path: str = ""
+    max_depth: int = 2
+    max_rows: int = 10_000
+    max_work: int = DEFAULT_QUERY_MAX_WORK
+    filter: InventoryFilter = field(default_factory=InventoryFilter)
+    kind: Literal[QueryKind.GROUPED_TREE] = field(init=False, default=QueryKind.GROUPED_TREE)
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.query_id, "query_id")
+        require_canonical_inventory_path(self.path, "path", allow_root=True)
+        _require_positive(self.max_depth, "max_depth")
+        _require_positive(self.max_rows, "max_rows")
+        _require_query_max_work(self.max_work)
+        if not self.groups:
+            raise ValueError("a grouped tree names at least one group")
+        if len(self.groups) > MAX_TREE_GROUPS:
+            raise ValueError(f"a grouped tree accepts at most {MAX_TREE_GROUPS} groups")
+        keys = [group.key for group in self.groups]
+        if len(keys) != len(set(keys)):
+            raise ValueError("tree group keys must be unique within a grouped tree")
+        shared = self.filter
+        if (
+            shared.type_group is not None
+            or shared.band_within_seconds is not None
+            or shared.older_than_seconds is not None
+        ):
+            raise ValueError("a grouped tree's shared filter names no group")
+        if any(group.timed for group in self.groups) and shared.as_of_ns is None:
+            raise ValueError("an age group requires the shared filter's as_of_ns")
+
+    def group_query(self, group: TreeGroupFilter, *, after: str | None = None) -> FilteredTreeQuery:
+        """The filtered tree *group*'s answer equals, and its continuation continues."""
+
+        return FilteredTreeQuery(
+            query_id=f"{self.query_id}:{group.key}",
+            path=self.path,
+            max_depth=self.max_depth,
+            max_rows=self.max_rows,
+            max_work=self.max_work,
+            after=after,
+            # The shared filter, every field of it, with the group's own set.
+            filter=replace(
+                self.filter,
+                type_group=group.type_group,
+                band_within_seconds=group.band_within_seconds,
+                older_than_seconds=group.older_than_seconds,
+            ),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1123,6 +1246,7 @@ type ReadQuery = (
     EntryQuery
     | DirectoryQuery
     | FilteredTreeQuery
+    | GroupedTreeQuery
     | RollupQuery
     | NavigationQuery
     | RecentQuery
@@ -1134,6 +1258,7 @@ REGISTERED_QUERY_TYPES: tuple[type[ReadQuery], ...] = (
     EntryQuery,
     DirectoryQuery,
     FilteredTreeQuery,
+    GroupedTreeQuery,
     RollupQuery,
     NavigationQuery,
     RecentQuery,
@@ -1145,6 +1270,7 @@ QUERY_TYPE_BY_KIND: Mapping[str, type[ReadQuery]] = {
     QueryKind.ENTRY.value: EntryQuery,
     QueryKind.DIRECTORY.value: DirectoryQuery,
     QueryKind.FILTERED_TREE.value: FilteredTreeQuery,
+    QueryKind.GROUPED_TREE.value: GroupedTreeQuery,
     QueryKind.ROLLUP.value: RollupQuery,
     QueryKind.NAVIGATION.value: NavigationQuery,
     QueryKind.RECENT.value: RecentQuery,
@@ -1231,6 +1357,50 @@ class FilteredTreeProjection:
             _require_nonempty(self.next_page, "next_page")
             if not self.entries:
                 raise ValueError("a tree continuation requires a nonempty page")
+
+
+@dataclass(frozen=True, slots=True)
+class TreeGroupProjection:
+    """One group of a grouped tree: its filtered tree's first page and totals.
+
+    `next_page` continues that filtered tree (`GroupedTreeQuery.group_query`) at the
+    grouped read's version.
+    """
+
+    key: str
+    entries: tuple[InventoryEntry, ...]
+    matching_leaves: int
+    matching_files: int
+    matching_bytes: int
+    next_page: str | None = None
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.key, "key")
+        _require_nonnegative(self.matching_leaves, "matching_leaves")
+        _require_nonnegative(self.matching_files, "matching_files")
+        _require_nonnegative(self.matching_bytes, "matching_bytes")
+        if self.next_page is not None:
+            _require_nonempty(self.next_page, "next_page")
+            if not self.entries:
+                raise ValueError("a tree continuation requires a nonempty page")
+
+
+@dataclass(frozen=True, slots=True)
+class GroupedTreeProjection:
+    """Every group a `GroupedTreeQuery` names, in its order, the empty ones included.
+
+    A folder stands in each group that holds something under it, with that group's
+    totals, so its rows differ between groups; they take no host decoration join.
+    """
+
+    query_id: str
+    groups: tuple[TreeGroupProjection, ...]
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.query_id, "query_id")
+        keys = [group.key for group in self.groups]
+        if len(keys) != len(set(keys)):
+            raise ValueError("tree group keys must be unique within a grouped projection")
 
 
 @dataclass(frozen=True, slots=True)
@@ -1376,6 +1546,7 @@ type CompletedProjectionResult = (
     EntryProjection
     | DirectoryProjection
     | FilteredTreeProjection
+    | GroupedTreeProjection
     | RollupProjection
     | NavigationProjection
     | RecentProjection

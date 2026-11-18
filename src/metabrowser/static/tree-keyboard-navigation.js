@@ -1,6 +1,90 @@
 // Accessible roving focus and command handling for Metabrowser file trees.
 
 (() => {
+  // How long a held key's walk waits for its next repeat before the row it reached
+  // opens. A release opens it at once, so this is only for a release the tree does not
+  // hear, and for a repeat slower than this. It is past macOS's default repeat of 90 ms,
+  // so a held key at that rate never waits it out, and it is the Pulls panel's
+  // WALK_SETTLE_MS for the same reason. Reasoned from that default, not measured in a
+  // browser under load; a repeat that does wait it out is handled in createWalk.
+  const WALK_SETTLE_MS = 120;
+
+  /**
+   * A held arrow key walks the tree. Each repeat selects its row and replaces the
+   * address at once, and only the row the walk stops on opens: the shell's navigation
+   * waits on `walking(path)` before it reads and renders the file. A press that is not
+   * a repeat is a single press, which ends any walk and opens at once, as before.
+   * Before this, a skim of six ArrowDowns 60 ms apart read and rendered every row it
+   * passed: 14 requests and 28 pane replacements in Chrome 152.
+   *
+   * A repeat slower than WALK_SETTLE_MS outlasts each walk, so walking saved it nothing
+   * and opened every row 125 ms late. Once the settle ends a walk with the
+   * key still down, the rest of that hold opens each row at once, as single presses do,
+   * until the key is released or pressed anew.
+   */
+  function createWalk() {
+    /** @type {{path: string | null, settle: () => void, settled: Promise<void>, timer: ReturnType<typeof setTimeout> | undefined} | null} */
+    let walk = null;
+    let slowRepeat = false;
+
+    function finish() {
+      if (walk) {
+        window.clearTimeout(walk.timer);
+        walk.settle();
+        walk = null;
+      }
+    }
+
+    /** A release, a new press, or disposal: the hold is over. */
+    function end() {
+      slowRepeat = false;
+      finish();
+    }
+
+    return Object.freeze({
+      end,
+      /**
+       * A key moved the selection to *path*. A repeat continues the walk there.
+       *
+       * @param {string | null} path
+       * @param {boolean} repeat
+       */
+      step(path, repeat) {
+        if (!repeat) {
+          end();
+          return;
+        }
+        if (slowRepeat) {
+          return;
+        }
+        if (!walk) {
+          /** @type {() => void} */
+          let settle = () => {};
+          const settled = new Promise((resolve) => {
+            settle = () => resolve(undefined);
+          });
+          walk = { path, settle, settled, timer: undefined };
+        }
+        window.clearTimeout(walk.timer);
+        walk.path = path;
+        walk.timer = window.setTimeout(() => {
+          finish();
+          slowRepeat = true;
+        }, WALK_SETTLE_MS);
+      },
+      /**
+       * What a navigation to *path* waits on before it opens the row: the walk that is
+       * on it, or nothing.
+       *
+       * @param {string} path
+       * @returns {Promise<void> | null}
+       */
+      walking(path) {
+        return walk !== null && walk.path === path ? walk.settled : null;
+      },
+    });
+  }
+
   /**
    * @typedef {object} TreeMutationSnapshot
    * @property {string | null} anchor
@@ -169,6 +253,7 @@
     /** @type {TreeMutationSnapshot | null} */
     let mutation = null;
     let disposed = false;
+    const walk = createWalk();
 
     function activateTreeScope() {
       // Async continuations can repair after dispose; an activation then
@@ -370,6 +455,18 @@
       );
     }
 
+    /**
+     * Give the roving anchor row focus, the row the reader left or else the
+     * first visible one, as the Files tab's letter does after switching to the
+     * tab. Reports whether a row took focus, so the caller can fall back to the
+     * tab button while the tree has no rows yet.
+     */
+    function focusCurrent() {
+      const anchor = focusedRow();
+      const row = anchor?.isConnected ? anchor : (ensureVisibleRows()[0] ?? null);
+      return row !== null && setAnchor(row, true) !== null;
+    }
+
     function ensureVisibleRows() {
       const current = readVisibleRows(container);
       if (
@@ -386,34 +483,38 @@
      * gesture, so landing on a row opens it rather than waiting for a second
      * keypress. Re-entering the row that already has focus is skipped, so an
      * arrow clamped at either end does not reopen what is already showing.
+     * A key's repeat walks: see createWalk.
      *
      * @param {HTMLElement} row
+     * @param {Record<string, unknown>} [context]
      */
-    function focusAndOpen(row) {
+    function focusAndOpen(row, context) {
       const changed = row !== focusedRow();
       setAnchor(row, true);
       if (changed) {
+        const event = /** @type {{repeat?: unknown} | undefined} */ (context?.event);
+        walk.step(row.dataset.path || null, event?.repeat === true);
         options.navigate(row);
       }
     }
 
-    /** @param {number} index */
-    function focusIndex(index) {
+    /** @param {number} index @param {Record<string, unknown>} [context] */
+    function focusIndex(index, context) {
       const rows = ensureVisibleRows();
       if (rows.length === 0) {
         return false;
       }
       const bounded = Math.max(0, Math.min(index, rows.length - 1));
-      focusAndOpen(rows[bounded]);
+      focusAndOpen(rows[bounded], context);
       return true;
     }
 
-    /** @param {number} delta */
-    function move(delta) {
+    /** @param {number} delta @param {Record<string, unknown>} [context] */
+    function move(delta, context) {
       const rows = ensureVisibleRows();
       const current = focusedRow();
       const index = current ? rows.indexOf(current) : -1;
-      return focusIndex(index < 0 ? (delta > 0 ? 0 : rows.length - 1) : index + delta);
+      return focusIndex(index < 0 ? (delta > 0 ? 0 : rows.length - 1) : index + delta, context);
     }
 
     /** @param {HTMLElement} row @param {boolean} expanded */
@@ -435,7 +536,8 @@
       return rowKind(row) === "folder" || row.dataset.containerChildren !== undefined;
     }
 
-    function parentOrCollapse() {
+    /** @param {Record<string, unknown>} [context] */
+    function parentOrCollapse(context) {
       const row = focusedRow();
       if (!row) {
         return false;
@@ -446,12 +548,13 @@
       }
       const parent = parentRow(row);
       if (parent) {
-        focusAndOpen(parent);
+        focusAndOpen(parent, context);
       }
       return true;
     }
 
-    function childOrExpand() {
+    /** @param {Record<string, unknown>} [context] */
+    function childOrExpand(context) {
       const row = focusedRow();
       if (!row) {
         return false;
@@ -465,7 +568,7 @@
       }
       const child = firstChildRow(row);
       if (child) {
-        focusAndOpen(child);
+        focusAndOpen(child, context);
       }
       return true;
     }
@@ -501,9 +604,9 @@
       return [
         options.shortcuts.register({
           // K and J are the home-row Up and Down. The arrow leads, so a
-          // surface with room for one key names the one everyone knows. A
-          // letter binding forbids modifiers, and the registry leaves text
-          // fields alone, so K and J still type.
+          // surface with room for one key names the one everyone knows. Shift
+          // changes neither; Ctrl, Alt, and Meta disqualify both, and the
+          // registry leaves text fields alone, so K and J still type.
           bindings: [{ key: "ArrowUp" }, { key: "k" }],
           copy: {
             action: "Previous item",
@@ -511,7 +614,7 @@
             hint: "Browse",
           },
           group: "navigation",
-          handler: () => move(-1),
+          handler: (context) => move(-1, context),
           id: "tree.previous",
           order: 10,
           repeat: true,
@@ -526,7 +629,7 @@
             hint: "Browse",
           },
           group: "navigation",
-          handler: () => move(1),
+          handler: (context) => move(1, context),
           id: "tree.next",
           order: 20,
           repeat: true,
@@ -564,19 +667,17 @@
           surfaces: { help: "always" },
         }),
         options.shortcuts.register({
-          // Shift+Arrow leads because a Mac laptop has no Home key: reaching
-          // it means fn+Left, which is not a shortcut a reader will find.
-          // Home stays bound for the keyboards that have it, and because the
-          // ARIA tree pattern specifies it. Plain ArrowUp forbids modifiers by
-          // default, so the two never collide.
-          bindings: [{ key: "ArrowUp", modifiers: { shift: "require" } }, { key: "Home" }],
+          // Home and End, as the ARIA tree pattern specifies. Shift never
+          // changes a key, so Shift+Arrow moves one row, as the arrow does; on
+          // a Mac laptop these are fn+Left and fn+Right.
+          bindings: [{ key: "Home" }],
           copy: {
             action: "First item",
             description: "Open the first visible item in the file tree.",
             hint: "First",
           },
           group: "navigation",
-          handler: () => focusIndex(0),
+          handler: (context) => focusIndex(0, context),
           id: "tree.first",
           order: 50,
           repeat: true,
@@ -584,14 +685,14 @@
           surfaces: { help: "always" },
         }),
         options.shortcuts.register({
-          bindings: [{ key: "ArrowDown", modifiers: { shift: "require" } }, { key: "End" }],
+          bindings: [{ key: "End" }],
           copy: {
             action: "Last item",
             description: "Open the last visible item in the file tree.",
             hint: "Last",
           },
           group: "navigation",
-          handler: () => focusIndex(ensureVisibleRows().length - 1),
+          handler: (context) => focusIndex(ensureVisibleRows().length - 1, context),
           id: "tree.last",
           order: 60,
           repeat: true,
@@ -640,6 +741,7 @@
     }
 
     const unregisterCommands = registerCommands();
+    container.addEventListener("keyup", walk.end);
     container.addEventListener("focusin", handleFocusIn);
     container.addEventListener("focusout", handleFocusOut);
     container.addEventListener("click", handleClick);
@@ -657,6 +759,8 @@
       }
       disposed = true;
       deactivateTreeScope();
+      walk.end();
+      container.removeEventListener("keyup", walk.end);
       container.removeEventListener("focusin", handleFocusIn);
       container.removeEventListener("focusout", handleFocusOut);
       container.removeEventListener("click", handleClick);
@@ -669,17 +773,21 @@
 
     return Object.freeze({
       dispose,
+      focusCurrent,
       focusedRow,
       prepareForMutation,
       setAnchor,
       setSelectedPath,
       synchronize,
       visibleRows: () => visible.slice(),
+      walking: walk.walking,
     });
   }
 
   window.MetabrowserTreeKeyboardNavigation = Object.freeze({
+    WALK_SETTLE_MS,
     create,
+    createWalk,
     firstChildRow,
     parentRow,
     readVisibleRows,

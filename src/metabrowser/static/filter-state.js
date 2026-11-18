@@ -1,12 +1,13 @@
 // Shared filter state — the one vocabulary behind the navigation
 // filter bar and any future filtering surface. See
-// docs/project/specs/active/plan-2026-08-09-nav-filter-controls.md.
+// docs/project/specs/done/plan-2026-08-09-nav-filter-controls.md.
 //
 // State shape (v1):
 //   { recency: "all"|"live"|"1h"|"24h"|"7d"|"30d",
 //     types: string[]|null,   // ft-* families; null means any
 //     size: "all"|"s"|"m"|"l",
-//     showIgnored: boolean }  // gitignored entries visible (dimmed)
+//     showIgnored: boolean,   // gitignored entries visible (dimmed)
+//     group: "none"|"age"|"type" }  // Group by; a view choice, not a filter
 //
 // Recency is one axis, not two: "live" is the shortest server-owned
 // mtime window, so it is a value here rather than a separate boolean.
@@ -52,6 +53,11 @@
     "1g": 1024 * 1024 * 1024,
   };
   const SIZE_VALUES = ["all", "100k", "1m", "10m", "100m", "1g"];
+  // Group by is not a filter: it removes nothing, and splits what the filter keeps into
+  // sections (tree-filter-model.js, "Group by"). It lives here because it is the same
+  // kind of transient view state, starts from its default on every page as the filters
+  // do, and a change to it reloads the tree as theirs does.
+  const GROUP_VALUES = ["none", "age", "type"];
   const DEFAULTS = Object.freeze({
     recency: "all",
     /** @type {string[] | null} */
@@ -60,9 +66,10 @@
     // Gitignored entries are present but dimmed, which is what the
     // tree has always done; unchecking removes them entirely.
     showIgnored: true,
+    group: "none",
   });
 
-  /** @typedef {{recency: string, types: string[] | null, size: string, showIgnored: boolean}} FilterSnapshot */
+  /** @typedef {{recency: string, types: string[] | null, size: string, showIgnored: boolean, group: string}} FilterSnapshot */
 
   /** @type {FilterSnapshot | null} */
   let state = null;
@@ -89,6 +96,7 @@
       types: DEFAULTS.types,
       size: DEFAULTS.size,
       showIgnored: DEFAULTS.showIgnored,
+      group: DEFAULTS.group,
     };
     if (raw && typeof raw === "object") {
       const r = /** @type {Record<string, unknown>} */ (raw);
@@ -106,6 +114,9 @@
       }
       if (typeof r.showIgnored === "boolean") {
         out.showIgnored = r.showIgnored;
+      }
+      if (typeof r.group === "string" && GROUP_VALUES.includes(r.group)) {
+        out.group = r.group;
       }
     }
     return out;
@@ -130,6 +141,7 @@
       types: s.types ? s.types.slice() : null,
       size: s.size,
       showIgnored: s.showIgnored,
+      group: s.group,
     };
   }
 
@@ -155,9 +167,10 @@
     }
   }
 
-  /** Reset every dimension, including the ones behind the drawer. */
+  /** Reset every filter, including the ones behind the drawer. The grouping stays: it
+   * is not a filter, and Clear undoes what the filters removed. */
   function clear() {
-    set(Object.assign({}, DEFAULTS));
+    set(Object.assign({}, DEFAULTS, { group: get().group }));
   }
 
   /** @param {(s: FilterSnapshot) => void} listener @returns {() => void} */
@@ -316,6 +329,7 @@
     DEFAULTS,
     RECENCY_VALUES: RECENCY_VALUES.slice(),
     SIZE_VALUES: SIZE_VALUES.slice(),
+    GROUP_VALUES: GROUP_VALUES.slice(),
     SIZE_MIN_BYTES,
     get,
     set,

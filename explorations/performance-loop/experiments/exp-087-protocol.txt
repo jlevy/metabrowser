@@ -1,0 +1,87 @@
+Pre-registration for exp-087, H87 (clause 3 of exp-083). Written 2026-11-13, before any exp-087
+measurement.
+
+Why: exp-083 left H87 unresolved on ten wrong-way results:
+- files.cold.json, five (one frame later in every pair);
+- files.cold.image, four;
+- files.revisit.markdown_large, one (frames to ready, overlapping ranges).
+The diagnostic diag083 (12 traces, control 09903292, candidate 10d659ae, and a Server-Timing-off
+variant, Low Power Mode on) found the extra frame in all three builds: a frame-quantization race
+between the view's render task and the next frame. This round tests whether the candidate lands on
+the later frame more often than the control.
+
+Id: exp-087. exp-085 and exp-086 are taken. On 2026-11-13 no file or mention of exp-087 was found on
+any remote branch (git grep over every origin/* ref) or in the local lane worktrees
+(metabrowser-perf-{caches,layout,prpage,wkprobe,delivery}).
+
+Builds:
+  candidate: $WORKTREES/metabrowser-perf-delivery/.venv/bin/metab, editable, the worktree
+             checked out at 10d659ae (detached), clean for the whole series. The version line reads
+             "metab 0.12.1.dev692+91bf42b3 (+181 commits, 10d659aee)": the venv metadata was re-synced
+             after exp-083, and the code and dependencies are those of 10d659ae.
+  control:   $WORKTREES/metabrowser-perf-control/.venv/bin/metab, 09903292, clean.
+Corpus:  $WORKTREES/metabrowser-perf-corpus-v2 (7a02fed4), clean.
+Harness: $WORKTREES/metabrowser-perf-harness-v4 (5031dc16), scenario revision 4.
+
+Series:
+- transitions.mjs run --exp exp-087 --runs 1 --journeys files
+  --out .bench/transitions/exp-087/files.jsonl, one back-to-back pair per invocation.
+- Control leads odd attempts and the candidate leads even ones.
+- The state directories are fresh for exp-087 (.bench/transitions/exp-087/state/<label>).
+Pacing: a pair starts only after the one-minute load has stayed under 12 for 60 s and no other
+  transitions.mjs run is in progress.
+Lock: series.lock.d, by atomic mkdir with an owner file naming exp-087. Taken by the same gate,
+  after layout's exp-085 and before the caches sweep. Held through every timed run and released when
+  the series ends, however it ends.
+Target: 10 judged pairs in one power mode. At most 24 attempts. No pair starts after a deadline
+  10 hours after the series starts.
+
+What counts:
+- Load rule (unchanged, exp-060-062-load-filter.mjs): a pair is excluded if any run in it saw a
+  one-minute load above 12 at its start or at any measured transition's start, or if it is
+  incomplete (a run refused, or a condition missing).
+- Power rule: before and after each pair, the driver records `pmset -g` lowpowermode and the
+  `pmset -g batt` power source. A pair has a power mode only if all four readings agree
+  (lowpowermode and source); otherwise it is excluded.
+- Judged pairs: those that pass the load rule and have a power mode.
+- Judged mode: the first power mode to reach 10 judged pairs. If the series ends with no mode at 10,
+  it is the mode with the most judged pairs, provided it has at least 6; with fewer, the round is
+  reported and not decided. Pairs in other modes are kept in the samples, unjudged. Modes are never
+  pooled.
+
+Deciding question (clause 3 for H87). For each view V in files.cold.json, files.cold.image and
+files.revisit.markdown_large:
+- M(V) is the modal framesToReady over all judged runs of both builds for V; a tie takes the smaller
+  count.
+- A run lands on the later frame when framesToReady > M(V).
+- Build the 2x2 table: candidate later or not, against control later or not.
+- Compute the two-sided Fisher exact p-value: the sum of the hypergeometric probabilities of every
+  table with the observed margins whose probability is at most the observed table's, with a
+  relative tolerance of 1e-7.
+- A view differs beyond chance when p < 0.05. There is no correction for testing three views.
+files.revisit.markdown_large is added to the two views named in the request, so that all ten of
+exp-083's wrong-way results are covered.
+Decision:
+- If no view differs beyond chance, exp-083's wrong-way results on these views (5, 4, and 1) are
+  accounted for as frame-quantization flips, and H87 is accepted on exp-083's metric and guard (43
+  to 1 conditional requests per reload; reload painted-ready 158.1 to 124.7 ms).
+- If any view differs, H87 stays unresolved, and the record gives each view's rates (later/judged
+  per build) and p.
+
+Also reported, not judged:
+- Painted ready per build and view: overall median and range, and median and range within each
+  frames-to-ready count.
+- The per-request server time difference from diag083's DevTools capture (candidate srv about
+  0.2-0.5 ms above the control's on the cold JSON chain). It is restated and not re-measured:
+  exp-087's servers run without verbose logging.
+- compare's output on the judged pairs (control against candidate), without a decision.
+
+Known limits, recorded:
+- exp-087 does not re-measure exp-083's metric (revalidated requests on reload) or its guard; the
+  files journey has no reload.
+- WebKit relaunch: as in exp-083.
+- Low Power Mode: the judged mode is named in the record.
+
+Record: explorations/performance-loop/experiments/exp-087-<slug>.md on claude/perf-delivery, with
+the samples, the power log, and the analysis output. The worktree goes back to claude/perf-delivery
+(git pull --no-rebase) before anything is committed. report.md is not touched.

@@ -14,7 +14,8 @@ import { buildFileTypeSummaryModel, normalizeRollupEnvelope } from "./file-type-
  * @param {SummaryPalette} palette
  * @param {{acquire(path: string): {publish(value: unknown): void, release(): void}}} projectionPool
  * @param {{mount: (container: HTMLElement) => () => void, get: () => {metric: "size" | "files", includeIgnored: boolean}, subscribe: (listener: (state: {metric: "size" | "files", includeIgnored: boolean}) => void) => () => void}} rollupControls
- * @param {{signal?: AbortSignal, onNoTotals?: () => void, onTotalsPending?: () => void}} options
+ * @param {{signal?: AbortSignal, hover: import("./distribution-hover.js").DistributionHover, onNoTotals?: () => void, onTotalsPending?: () => void}} options
+ *   `hover` is the one the legend shares with the population bars that draw it.
  *   `onNoTotals` is called when the rollup answers or fails without totals and this body says
  *   why, so a sibling can stop waiting for them. `onTotalsPending` is called when an answer
  *   says they are still on their way and this body shows its skeleton, so the sibling waits too.
@@ -38,6 +39,13 @@ export function mountFileTypeSummary(
   // The last request failed with nothing to show. Its message stays until a
   // rollup answers: a control change must not bring the loading skeleton back.
   let loadFailed = false;
+  /** @type {() => void} */
+  let answered = () => {};
+  // The first answer, whatever it says, or the end of the mount.
+  /** @type {Promise<void>} */
+  const firstAnswer = new Promise((resolve) => {
+    answered = () => resolve(undefined);
+  });
   const formatters = {
     formatFileCount: mb.formatFileCount,
     formatInteger: mb.formatInteger,
@@ -54,7 +62,14 @@ export function mountFileTypeSummary(
     countClass: mb.countClass,
     sizeClass: mb.sizeClass,
   };
-  const view = mountDistributionView(container, model, palette, metricClasses, mb.fileTypeIcon);
+  const view = mountDistributionView(
+    container,
+    model,
+    palette,
+    metricClasses,
+    mb.fileTypeIcon,
+    options.hover,
+  );
 
   function render() {
     if (loadFailed) {
@@ -98,6 +113,7 @@ export function mountFileTypeSummary(
     } else {
       options.onNoTotals?.();
     }
+    answered();
   }
 
   const watch = mb.watchRollup(
@@ -135,6 +151,7 @@ export function mountFileTypeSummary(
         });
         loadFailed = true;
         options.onNoTotals?.();
+        answered();
       },
     },
     applyEnvelope,
@@ -163,6 +180,7 @@ export function mountFileTypeSummary(
       return;
     }
     disposed = true;
+    answered();
     options.signal?.removeEventListener("abort", abort);
     watch.dispose();
     unsubscribeControls();
@@ -172,5 +190,6 @@ export function mountFileTypeSummary(
   }
   return Object.freeze({
     dispose,
+    ready: firstAnswer,
   });
 }

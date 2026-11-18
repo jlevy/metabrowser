@@ -1,7 +1,8 @@
 import { enhanceRenderedLinks } from "./link-enhancer.js";
 import { acquireMarkdownWorkerClient } from "./markdown-worker-client.js";
 import { placeRendered } from "./place-rendered.js";
-import { initTocWithIntersectionFallback } from "./toc-intersection-fallback.js";
+import { mountPrintIndicator } from "./print-indicator.js";
+import { kpressTocConfig } from "./toc-toggle.js";
 import { transclusionKey } from "./transclusion.js";
 
 let mountSequence = 0;
@@ -42,7 +43,7 @@ export function renderKpressDiagnosticsHtml(diagnostics, escapeHtml) {
         .join("");
     })
     .join("");
-  return `<details class="kpress-frontmatter metabrowser-kpress-diagnostics kpress-no-print"><summary class="section-disclosure-trigger">Diagnostics</summary><dl>${rows}</dl></details>`;
+  return `<details class="kpress-frontmatter metabrowser-kpress-diagnostics kpress-no-print"><summary class="section-disclosure-trigger disclosure-toggle">Diagnostics</summary><dl>${rows}</dl></details>`;
 }
 
 /** @param {Array<unknown>} diagnostics @param {MetabrowserPublicSdk} mb */
@@ -96,10 +97,35 @@ export function renderKpressError(error, mb) {
 }
 
 /**
+ * Whether *error*, a rejection of `fetchKpressRender`, carries the server's refusal of an
+ * untrusted document's render (`render-refusal.js` reads it), checked before that module
+ * is loaded for it.
+ *
+ * @param {unknown} error
+ */
+function isRefusal(error) {
+  const payload =
+    error && typeof error === "object"
+      ? /** @type {{payload?: unknown}} */ (error).payload
+      : undefined;
+  return (
+    !!payload &&
+    typeof payload === "object" &&
+    /** @type {Record<string, unknown>} */ (payload).type === "kpress_render_refused"
+  );
+}
+
+/**
  * @param {HTMLElement} container
  * @param {{path?: string, raw?: unknown}} ctx
  * @param {MetabrowserPublicSdk} mb
- * @param {{signal?: AbortSignal, includeToc?: "auto" | "on" | "off", workerClient?: import("./markdown-worker-client.js").MarkdownWorkerRunner}} [options]
+ * @param {{signal?: AbortSignal, includeToc?: "auto" | "on" | "off", pagePath?: string, printIndicator?: boolean, workerClient?: import("./markdown-worker-client.js").MarkdownWorkerRunner}} [options]
+ *   `pagePath` is the path of the page that shows this document as its own, when that is
+ *   not the document's: the folder whose Overview shows its README. Its fragments are the
+ *   document's headings, so a table-of-contents entry or a link to one of them moves within
+ *   that page (link-enhancer.js). `printIndicator: true` puts a print button in the corner
+ *   of the document's card (print-indicator.js), for a host whose view prints the document
+ *   itself; it is off unless the host asks.
  */
 export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
   const controller = new AbortController();
@@ -119,6 +145,8 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
   let disposeToc = null;
   /** @type {(() => void) | null} */
   let disposeLinks = null;
+  /** @type {(() => void) | null} */
+  let disposePrintIndicator = null;
   const dispose = () => {
     if (disposed) {
       return;
@@ -133,6 +161,8 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
     disposeLinks = null;
     disposeToc?.();
     disposeToc = null;
+    disposePrintIndicator?.();
+    disposePrintIndicator = null;
   };
 
   container.classList.add("metabrowser-kpress-host", "metabrowser-markdown-document");
@@ -184,6 +214,7 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
         return;
       }
       const path = ctx.path;
+      const pagePath = options.pagePath ?? path;
       const { enhanced: links, inert: inertRender } = await placeRendered(
         container,
         rendered,
@@ -191,6 +222,8 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
         path
           ? (root) =>
               enhanceRenderedLinks(root, path, mb, {
+                pagePath,
+                rawVersions: rendered.raw_versions,
                 signal: controller.signal,
                 workerClient,
                 // The rendered document is its own ancestor, so a note that embeds
@@ -221,16 +254,44 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
         inertRender && inert
           ? inertRender.wireInertToc(inert, {
               open: (fragment) => {
-                if (path) {
-                  void mb.navigation.open({ path, fragment }).catch((error) => {
+                if (path && pagePath !== undefined) {
+                  void mb.navigation.open({ path: pagePath, fragment }).catch((error) => {
                     console.warn("Could not open the table of contents entry", error);
                   });
                 }
               },
             })
-          : initTocWithIntersectionFallback(() => mb.kpressInitToc(container));
+          : mb.kpressInitToc(container, kpressTocConfig(container));
+      if (options.printIndicator === true) {
+        disposePrintIndicator = mountPrintIndicator(container, mb);
+      }
     } catch (error) {
-      if (!disposed && !mb.errors.isAbortError(error)) {
+      if (disposed || mb.errors.isAbortError(error)) {
+        return;
+      }
+      // A render the server refused is a readable document: its source, and why. What
+      // draws it loads only for a refusal, which only an untrusted document's render can
+      // be: 6,729 bytes, 2,548 gzipped (2026-11-17). Any other failure keeps the error box.
+      if (isRefusal(error)) {
+        try {
+          const { mountRefusedSource, renderRefusal } = await import("./render-refusal.js");
+          const refusal = renderRefusal(error);
+          if (refusal !== null) {
+            await mountRefusedSource(container, ctx, refusal, mb, { signal: controller.signal });
+            return;
+          }
+        } catch (sourceError) {
+          if (disposed || mb.errors.isAbortError(sourceError)) {
+            return;
+          }
+          // The refusal's own error box follows; say why its source is not shown instead.
+          console.warn(
+            "metabrowser markdown: the refused document's source could not be read",
+            sourceError,
+          );
+        }
+      }
+      if (!disposed) {
         container.innerHTML = renderKpressError(error, mb);
       }
     }

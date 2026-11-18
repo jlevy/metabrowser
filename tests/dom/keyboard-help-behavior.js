@@ -30,7 +30,16 @@ class FakeElement {
     return false;
   }
 
-  append(...children) {
+  append(...values) {
+    // A string becomes a text node, as in the DOM, here an element named "#text".
+    const children = values.map((value) => {
+      if (typeof value !== "string") {
+        return value;
+      }
+      const text = new FakeElement("#text", this.ownerDocument);
+      text.textContent = value;
+      return text;
+    });
     for (const child of children) {
       if (child.parentNode) {
         child.parentNode.children = child.parentNode.children.filter((node) => node !== child);
@@ -223,6 +232,47 @@ const help = sandbox.MetabrowserKeyboardHelp.create({
 });
 
 check("Help creation does not load view helpers", viewLoads.length === 0);
+
+// Help renders its groups when it opens and, while open, on a registration;
+// the strip reconciles only on the registry events it displays. Counting each
+// renderer's one write says how often it ran.
+const groupsHost = body.querySelector(".help-shortcut-groups");
+check("Help does not render while closed", groupsHost.children.length === 0);
+let helpRenders = 0;
+const replaceGroups = groupsHost.replaceChildren.bind(groupsHost);
+groupsHost.replaceChildren = (...children) => {
+  helpRenders += 1;
+  replaceGroups(...children);
+};
+let stripReconciles = 0;
+const appendHints = hintHost.append.bind(hintHost);
+hintHost.append = (...children) => {
+  stripReconciles += 1;
+  appendHints(...children);
+};
+function keydown(values) {
+  const event = {
+    altKey: false,
+    ctrlKey: false,
+    defaultPrevented: false,
+    isComposing: false,
+    metaKey: false,
+    repeat: false,
+    shiftKey: false,
+    target: document.body,
+    preventDefault() {
+      this.defaultPrevented = true;
+    },
+    ...values,
+  };
+  for (const entry of document.listeners.get("keydown") || []) {
+    entry.listener(event);
+  }
+  return event;
+}
+function headings() {
+  return body.querySelectorAll("h4").map((element) => element.textContent);
+}
 const paragraphs = body.querySelectorAll("p").map((element) => element.textContent);
 check(
   "approved three-sentence description",
@@ -262,8 +312,47 @@ check(
   helpButton?.getAttribute("data-modal-control") === "true",
 );
 check("punctuation shortcut has no guessed ARIA", !helpButton.hasAttribute("aria-keyshortcuts"));
+// Shift leads the strip, ahead of Help: the one key that shows all the others. It is no
+// command, so it is a reminder, hidden from assistive technology as the reveal it calls
+// up is, its keycap the single-key entry point's.
+const revealHint = hintHost.children[0];
+check(
+  "Shift leads the strip, ahead of Help",
+  hintHost.children.length === 2 && hintHost.children[1] === helpButton,
+  JSON.stringify(hintHost.children.map((child) => child.textContent || child.className)),
+);
+check(
+  "the Shift lead is a hidden reminder: a Shift keycap and Reveal keys",
+  JSON.stringify([
+    revealHint?.tagName,
+    revealHint?.className,
+    revealHint?.getAttribute("aria-hidden"),
+    revealHint?.querySelectorAll("kbd").map((keycap) => keycap.textContent),
+    revealHint?.querySelector(".nav-shortcut-label")?.textContent,
+  ]) === JSON.stringify(["SPAN", "nav-shortcut-hint", "true", ["Shift"], "Reveal keys"]),
+);
+// The resting strip is one row: its items show from the start as far as their widths and
+// gaps fit, so the last drops first, and the lead shows even where it alone does not fit.
+const fits = sandbox.MetabrowserKeyboardHelp.stripItemsThatFit;
+check(
+  "the strip's fit drops items from the end and never the lead",
+  JSON.stringify(
+    [300, 247.9, 247.8, 155.2, 155.1, 100, 0].map((available) =>
+      fits([105.7, 43.5, 86.7], available, 6),
+    ),
+  ) === JSON.stringify([3, 3, 2, 2, 1, 1, 1]),
+);
+check(
+  "the strip's fit shows a lone lead and an empty strip as they are",
+  fits([105.7], 10, 6) === 1 && fits([], 10, 6) === 0,
+);
 helpButton.dispatchEvent({ type: "click" });
 check("pointer trigger reaches modal", modalOpen && openedTrigger === helpButton);
+check(
+  "opening Help renders it once, though opening also changes the scope",
+  helpRenders === 1 && JSON.stringify(headings()) === JSON.stringify(["Anywhere", "Help"]),
+  JSON.stringify({ headings: headings(), helpRenders }),
+);
 shortcuts.invoke("help.close");
 check("Help close descriptor reaches modal", closeCount === 1);
 
@@ -316,6 +405,48 @@ check(
 );
 hintButtons[1].dispatchEvent({ type: "click" });
 check("Quick File button invokes registry", quickOpenCount === 1);
+check("a registration while Help is closed does not render it", helpRenders === 1);
+
+// A handled key publishes nothing, so at rest it costs the strip no work.
+const stripBeforeKey = stripReconciles;
+const quickKey = keydown({ key: "t" });
+check(
+  "a handled key at rest does no strip work",
+  quickKey.defaultPrevented && quickOpenCount === 2 && stripReconciles === stripBeforeKey,
+);
+
+// A batch of registrations reconciles the strip once.
+const stripBeforeBatch = stripReconciles;
+shortcuts.batch(() => {
+  const releaseFirst = shortcuts.register({
+    bindings: [{ key: "x" }],
+    copy: { action: "First", description: "Do the first thing.", hint: "First" },
+    group: "anywhere",
+    handler: () => true,
+    id: "test.first",
+    order: 30,
+    scope: "global",
+    surfaces: { help: "always", nav: "always" },
+  });
+  shortcuts.register({
+    bindings: [{ key: "y" }],
+    copy: { action: "Second", description: "Do the second thing.", hint: "Second" },
+    group: "anywhere",
+    handler: () => true,
+    id: "test.second",
+    order: 40,
+    scope: "global",
+    surfaces: { help: "always" },
+  })();
+  releaseFirst();
+});
+check(
+  "a batch reconciles the strip once",
+  stripReconciles === stripBeforeBatch + 1 && hintHost.children.length === 3,
+  JSON.stringify({ added: stripReconciles - stripBeforeBatch }),
+);
+check("a reconcile keeps the Shift lead's node first", hintHost.children[0] === revealHint);
+check("a batch while Help is closed does not render it", helpRenders === 1);
 
 shortcuts.register({
   bindings: [{ key: "Enter" }, { key: " " }],
@@ -333,19 +464,29 @@ shortcuts.register({
 });
 check(
   "inactive tree hint is absent",
-  hintHost.querySelectorAll("button").length === 2 && hintHost.children.length === 2,
+  hintHost.querySelectorAll("button").length === 2 && hintHost.children.length === 3,
 );
 const deactivateTree = shortcuts.activateScope("tree");
-check("active tree hint appears", hintHost.children.length === 3);
-check("scope reconciliation keeps Help trigger", hintHost.children[0] === originalHelpButton);
+check("active tree hint appears", hintHost.children.length === 4);
+check(
+  "scope reconciliation keeps the Shift lead and the Help trigger",
+  hintHost.children[0] === revealHint && hintHost.children[1] === originalHelpButton,
+);
 deactivateTree();
-check("tree hint disappears", hintHost.children.length === 2);
+check("tree hint disappears", hintHost.children.length === 3);
+check(
+  "scope changes reconcile the strip and leave closed Help alone",
+  helpRenders === 1 && JSON.stringify(headings()) === JSON.stringify(["Anywhere", "Help"]),
+);
 
-const headings = body.querySelectorAll("h4").map((element) => element.textContent);
+check("Help reuses the first open load", viewLoads.length === 1);
+// The earlier shortcut open started one load; repeated opens share it.
+help.open(helpButton);
+check("reopening Help renders what changed while it was closed", helpRenders === 2);
 check(
   "full Help preserves group order",
-  JSON.stringify(headings) === JSON.stringify(["Anywhere", "Navigation", "Help"]),
-  JSON.stringify(headings),
+  JSON.stringify(headings()) === JSON.stringify(["Anywhere", "Navigation", "Help"]),
+  JSON.stringify(headings()),
 );
 check(
   "Help copy comes from descriptors",
@@ -353,13 +494,125 @@ check(
     .querySelectorAll(".help-command-description")
     .some((element) => element.textContent.includes("Find and open a file")),
 );
-
-check("Help reuses the first open load", viewLoads.length === 1);
-// The earlier shortcut open started one load; repeated opens share it.
-help.open(helpButton);
+shortcuts.batch(() => {
+  shortcuts.register({
+    bindings: [{ key: "z" }],
+    copy: { action: "Later", description: "Do a later thing.", hint: "Later" },
+    group: "navigation",
+    handler: () => true,
+    id: "test.later",
+    order: 80,
+    scope: "tree",
+    surfaces: { help: "always" },
+  })();
+});
+check("open Help renders a batch of registrations once", helpRenders === 3);
 viewLoads[0].resolve();
 shortcuts.invoke("help.close");
 check("Help can reopen and close", closeCount === 2);
+help.open(helpButton);
+check("reopening Help with nothing changed does not render it again", helpRenders === 3);
+shortcuts.invoke("help.close");
+
+// Help ends with one note, its Shift a keycap from the single-key entry point.
+const shiftNote = body.querySelector(".help-shortcut-note");
+check(
+  "Help ends with the Shift note, after the groups",
+  shiftNote?.parentNode?.children.at(-1) === shiftNote &&
+    shiftNote.parentNode.children.at(-2)?.className === "help-shortcut-groups",
+);
+check(
+  "the note's Shift is a keycap in a sentence",
+  JSON.stringify(shiftNote?.children.map((child) => [child.tagName, child.textContent])) ===
+    JSON.stringify([
+      ["#TEXT", "Press "],
+      ["KBD", "Shift"],
+      ["#TEXT", " to see relevant shortcut reminders."],
+    ]),
+  JSON.stringify(shiftNote?.children.map((child) => [child.tagName, child.textContent])),
+);
+
+// While Shift reveals the keys, a second layer lists the live `reveal` surface,
+// reminders only, every binding of a coalesced item; the resting strip stays as it is.
+// The stack keys are Control chords, bound on a Mac and written as it writes them.
+sandbox.navigator = { platform: "MacIntel" };
+const stackKeys = [
+  ["n", "test.stack.top", 10],
+  ["p", "test.stack.base", 20],
+].map(([key, id, order]) =>
+  shortcuts.register({
+    bindings: [{ control: true, key }],
+    copy: { action: id, description: "Walk the stack.", hint: "Stack" },
+    group: "pull-stack",
+    handler: () => true,
+    id,
+    order,
+    scope: "global",
+    surfaces: { help: "always", reveal: "always" },
+  }),
+);
+delete sandbox.navigator;
+const restingButtons = hintHost.querySelectorAll("button");
+let stripBeforeReveal = stripReconciles;
+shortcuts.register({
+  bindings: [{ key: "u" }],
+  copy: { action: "Up", description: "Open the parent folder.", hint: "Up" },
+  group: "controls",
+  handler: () => true,
+  id: "test.targeted",
+  order: 10,
+  scope: "global",
+  surfaces: { help: "always", reveal: "always" },
+  targeted: true,
+})();
+stripBeforeReveal = stripReconciles;
+check("no reveal layer at rest", hintHost.querySelector(".nav-shortcut-reveal") === null);
+shortcuts.setRevealed(true);
+const revealLayer = hintHost.querySelector(".nav-shortcut-reveal");
+check(
+  "revealing adds one hidden reveal layer",
+  revealLayer?.getAttribute("aria-hidden") === "true" && stripReconciles === stripBeforeReveal + 1,
+);
+check(
+  "the reveal layer is reminders, listing live commands only, with every coalesced key",
+  JSON.stringify(
+    revealLayer?.children.map((item) => [
+      item.tagName,
+      item.querySelectorAll("kbd").map((keycap) => keycap.textContent),
+      item.querySelector(".nav-shortcut-label")?.textContent,
+    ]),
+  ) ===
+    JSON.stringify([
+      ["SPAN", ["?"], "Help"],
+      ["SPAN", ["⌃N", "⌃P"], "Stack"],
+    ]),
+  JSON.stringify(
+    revealLayer?.children.map((item) => [
+      item.tagName,
+      item.querySelectorAll("kbd").map((keycap) => keycap.textContent),
+    ]),
+  ),
+);
+check(
+  "the resting strip keeps its Shift lead and its buttons while revealed",
+  hintHost.children[0] === revealHint &&
+    hintHost.querySelectorAll("button").length === restingButtons.length &&
+    hintHost.querySelectorAll("button").every((button, index) => button === restingButtons[index]),
+);
+shortcuts.setRevealed(false);
+check(
+  "ending the reveal removes its layer",
+  hintHost.querySelector(".nav-shortcut-reveal") === null,
+);
+const stripBeforeRest = stripReconciles;
+shortcuts.refreshBadges();
+const tagged = document.createElement("button");
+document.body.append(tagged);
+shortcuts.attachTarget("test.targeted", tagged).detach();
+check("target events at rest do no strip work", stripReconciles === stripBeforeRest);
+for (const release of stackKeys) {
+  release();
+}
 
 // The tree's own registrations, rendered as Help renders them: a movement row
 // lists its arrow and its letter alias as one "or" group with one spoken phrase.
@@ -407,6 +660,52 @@ check(
 );
 treeNavigator.dispose();
 treeShortcuts.dispose();
+
+// A Control chord in Help is one keycap, ⌃N, as macOS writes it (mb-lnqj). A screen
+// reader may name ⌃ by its Unicode name, so the row speaks the chord as its phrase,
+// "Control N", with the keycap hidden from assistive technology, as alternatives are.
+sandbox.navigator = { platform: "MacIntel" };
+const chordShortcuts = sandbox.MetabrowserKeyboardShortcuts.create({ document });
+chordShortcuts.register({
+  bindings: [{ control: true, key: "n" }],
+  copy: {
+    action: "Next in stack",
+    description: "Open the next pull request toward the top of the stack.",
+    hint: "Stack",
+  },
+  group: "pull-stack",
+  handler: () => true,
+  id: "test.chord.next",
+  order: 10,
+  scope: "global",
+  surfaces: { help: "always" },
+});
+delete sandbox.navigator;
+const chordHelp = document.createElement("div");
+sandbox.MetabrowserKeyboardHelp.renderHelpGroups(
+  chordHelp,
+  chordShortcuts.snapshot("help", { includeInactive: true }),
+  chordShortcuts.appendBinding,
+);
+const chordBinding = chordHelp
+  .querySelectorAll(".help-command-row")
+  .find((row) => row.querySelector(".help-command-label").textContent === "Next in stack")
+  ?.querySelector(".help-command-binding");
+const chordRendered = {
+  keys: chordBinding?.querySelectorAll("kbd").map((element) => element.textContent),
+  separators: chordBinding?.querySelectorAll(".shortcut-binding-separator").length,
+  spoken: chordBinding?.querySelector(".visually-hidden")?.textContent ?? null,
+  hidden: chordBinding
+    ?.querySelectorAll("kbd")
+    .map((element) => element.getAttribute("aria-hidden")),
+};
+check(
+  "Help lists a Control chord as one keycap, ⌃N, spoken Control N with the glyph hidden",
+  JSON.stringify(chordRendered) ===
+    JSON.stringify({ keys: ["⌃N"], separators: 0, spoken: "Control N", hidden: ["true"] }),
+  JSON.stringify(chordRendered),
+);
+chordShortcuts.dispose();
 (async () => {
   await Promise.resolve();
   await Promise.resolve();

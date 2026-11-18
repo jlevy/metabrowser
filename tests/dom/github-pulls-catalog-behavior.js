@@ -175,7 +175,9 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
   assert.equal(page.model().countNumber, "9,000");
   assert.equal(page.model().countSuffix, " PRs on ");
   assert.equal(page.model().repository, "jlevy/metabrowser");
-  assert.equal(page.model().window, "Showing last 500");
+  // No notice says how many rows are held: below them, the crawl's progress, in its words.
+  assert.equal(page.model().progress, "~6,000 pull requests fetched");
+  assert.doesNotMatch(JSON.stringify(page.model()), /Showing last|cached|Fetch more/u);
   const version = page.model().rowsVersion;
   page.state.cached = 7000;
   page.requests.length = 0;
@@ -194,12 +196,17 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
   page.controller.onVisibilityChange();
   await settle();
   page.requests.length = 0;
-  const expansion = page.controller.loadMore();
-  assert.equal(page.model().connection.state, "paused");
-  assert.match(page.model().connection.text, /rate limit/);
-  await expansion;
+  // Under a rate hold, each approach to the tail still reads one cached page, and no more.
+  for (let approach = 0; approach < 5; approach += 1) {
+    const expansion = page.controller.reachedEnd();
+    assert.equal(page.model().connection.state, "paused");
+    assert.match(page.model().connection.text, /rate limit/);
+    assert.equal(page.model().progress, "Fetching pull requests…", "a cached page is on its way");
+    await expansion;
+  }
   assert.equal(page.model().connection.state, "paused");
   assert.equal(page.controller.snapshot().rows, 1000);
+  assert.equal(page.model().progress, null, "nothing is fetched while GitHub holds the list");
   assert.equal(page.requests.length, 5);
   assert(
     page.requests.every((request) => request.method === "GET"),
@@ -247,10 +254,9 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
   const terminalRows = tail.controller.snapshot().rows;
   assert.equal(terminalRows, 645);
   assert.match(tail.requests[1].route, /limit=45&after=7401$/u);
-  assert.equal(tail.model().loadMore, null);
-  assert.equal(tail.model().window, null);
+  assert.equal(tail.model().progress, null);
   await tail.controller.reachedEnd();
-  await tail.controller.loadMore();
+  await tail.controller.reachedEnd();
   assert.equal(tail.requests.length, 2, "the real filter tail is idle");
   assert(tail.requests.every((request) => request.method === "GET"));
   tail.dispose();
@@ -285,6 +291,55 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
     Array.from({ length: 200 }, (_, index) => 7500 - index),
   );
   growingTail.dispose();
+
+  // No cap: past 500, 600 and the 1,000-row window alike, each approach to the tail adds one
+  // cached page until the filter's last row, and nothing ever says how many are held.
+  const endless = rig(panel, { cached: 2500 });
+  Object.assign(endless.state, { complete: true, refreshing: false, total: 2500 });
+  await endless.controller.start({ shown: true });
+  assert.equal(endless.controller.snapshot().rows, 500);
+  endless.requests.length = 0;
+  const notices = new Set();
+  for (let approach = 0; approach < 25; approach += 1) {
+    await endless.controller.reachedEnd();
+    notices.add(JSON.stringify([endless.model().progress, endless.model().connection.text]));
+    assert.doesNotMatch(JSON.stringify(endless.model()), /Showing last|cached|Fetch more/u);
+  }
+  assert.equal(endless.controller.snapshot().rows, 2500);
+  assert.equal(endless.model().rows.at(-1).number, 5501);
+  assert.equal(endless.requests.length, 20, "one bounded page an approach, none past the end");
+  assert(
+    endless.requests.every(({ method, route }) => method === "GET" && /limit=100&/u.test(route)),
+  );
+  assert.deepEqual([...notices], [JSON.stringify([null, "Updated just now"])]);
+  endless.dispose();
+
+  // A reader parked at the tail while GitHub's pages arrive: progress in the crawl's words
+  // while the list waits, and the rows continue on their own as each page lands.
+  const parked = rig(panel, { cached: 500 });
+  parked.state.total = 2000;
+  await parked.controller.start({ shown: true });
+  parked.requests.length = 0;
+  await parked.controller.reachedEnd();
+  parked.state.tailNear = true;
+  assert.deepEqual(
+    parked.requests.map((request) => request.body),
+    [{ state: "open", target: 600 }],
+    "the reader's next page is asked of GitHub ahead of the backfill",
+  );
+  assert.equal(parked.controller.snapshot().rows, 500);
+  assert.equal(parked.model().progress, "~500 pull requests fetched");
+  parked.state.cached = 1200;
+  parked.controller.onVisibilityChange();
+  await settle();
+  assert.equal(parked.controller.snapshot().rows, 1200, "a parked tail keeps reading");
+  assert.equal(parked.model().progress, "~1,200 pull requests fetched");
+  Object.assign(parked.state, { cached: 2000, complete: true, refreshing: false });
+  parked.controller.onVisibilityChange();
+  await settle();
+  assert.equal(parked.controller.snapshot().rows, 2000);
+  assert.equal(parked.model().progress, null, "the indicator leaves with the last row");
+  parked.dispose();
 
   // The top poll can learn about older cache rows before the reader widens the budget.
   const cachedAhead = rig(panel, { cached: 500 });
@@ -321,24 +376,27 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
   assert.match(replacedTail.requests.at(-1).route, /after=7502$/u);
   replacedTail.dispose();
 
-  // A refused tail read keeps automatic scrolling idle and restores the button.
+  // A refused tail read keeps scrolling idle, with no progress, until a poll answers again.
   const refusedTail = rig(panel);
   await refusedTail.controller.start({ shown: true });
   refusedTail.state.automatic = false;
   const refused = refusedTail.controller.reachedEnd();
   await settle();
-  assert.equal(refusedTail.model().loadMore, "loading");
+  assert.equal(refusedTail.model().progress, "~6,000 pull requests fetched");
   await refusedTail.respond(0, { status: 503, etag: null, body: null });
   await refused;
   assert.equal(refusedTail.controller.snapshot().rows, 500);
-  assert.equal(refusedTail.model().loadMore, "ready");
+  assert.equal(refusedTail.model().progress, null);
   assert.match(refusedTail.model().connection.text, /HTTP 503/u);
   refusedTail.requests.length = 0;
   await refusedTail.controller.reachedEnd();
   assert.equal(refusedTail.requests.length, 0);
   refusedTail.state.automatic = true;
-  await refusedTail.controller.loadMore();
-  assert.equal(refusedTail.controller.snapshot().rows, 1100);
+  refusedTail.controller.onVisibilityChange();
+  await settle();
+  assert.equal(refusedTail.controller.snapshot().rows, 600, "the poll fills the asked page");
+  await refusedTail.controller.reachedEnd();
+  assert.equal(refusedTail.controller.snapshot().rows, 700);
   assert.notEqual(refusedTail.model().connection.state, "unavailable");
   assert(refusedTail.requests.every((request) => request.method === "GET"));
   refusedTail.dispose();
@@ -415,9 +473,11 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
     partial.requests.filter((request) => request.method === "POST").map((request) => request.body),
     [{ state: "open", target: 500 }],
   );
-  await partial.controller.loadMore();
-  assert.equal(partial.controller.snapshot().displayLimit, 1000);
-  assert.deepEqual(partial.requests.at(-1).body, { state: "open", target: 1000 });
+  // Rows already asked for are not asked for again from the tail.
+  partial.requests.length = 0;
+  await partial.controller.reachedEnd();
+  assert.equal(partial.controller.snapshot().displayLimit, 500);
+  assert.equal(partial.requests.length, 0);
   partial.dispose();
 
   const priorityFilter = rig(panel, { cached: 100 });
@@ -509,7 +569,7 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
   const refreshRace = rig(panel);
   refreshRace.state.refreshing = false;
   await refreshRace.controller.start({ shown: true });
-  assert.match(refreshRace.model().connection.text, /Fetching pull requests|Catalog paused/u);
+  assert.match(refreshRace.model().connection.text, /Fetching pull requests|Updated /u);
   const oldVersion = refreshRace.model().rowsVersion;
   refreshRace.state.automatic = false;
   refreshRace.state.generation = "two";
@@ -815,9 +875,12 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
       {
         defaultFilter: "open",
         initialRows: 500,
-        explicitRows: 1000,
+        rateHeldScrollRows: 1000,
         scrollRows,
         terminalRows,
+        uncappedScrollRows: 2500,
+        parkedTailRows: 2000,
+        countNotices: 0,
         repeatedScrollSharesRequest: true,
         keepsSelection: true,
         cachedGrowthKeepsEveryRow: true,
@@ -827,7 +890,7 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
         progressOnlyReads: 1,
         generationPages: 10,
         detailReads: 0,
-        priorityTarget: 1000,
+        priorityTarget: 600,
         lateWindowRejected: true,
         ownerTransferred: true,
         mixedGenerationRejected: true,

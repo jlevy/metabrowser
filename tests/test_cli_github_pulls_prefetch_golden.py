@@ -31,6 +31,7 @@ import pytest
 
 from metabrowser.builtin_plugins.github import gh_budget, pull_list, pulls
 from metabrowser.builtin_plugins.github.pull_catalog import read_catalog
+from metabrowser.cache import pull_refs
 from metabrowser.cache.urls import GitSource
 from tests.github_pull_fixture import (
     CANONICAL,
@@ -273,20 +274,21 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
     )
 
     session.say(
-        "A visible page asks for 7, 8, and 10 and for 8's changed files: only 7's checks are "
-        "due, which its own page reads; 8 is current; 10 has no record, so it is read; 8's "
-        "files come from the store's comparison, with no request to GitHub."
+        "A visible page asks for 7, 8, and 10 and for 8's changed files. The store gives 8's "
+        "list from its record's comparison, with no request to GitHub, so it goes first; then "
+        "the records: only 7's checks are due, which its own page reads; 8 is current; 10 has "
+        "no record, so it is read."
     )
     prefetch = session.run(
         CANONICAL, "--api", PREFETCH, body={"records": [7, 8, 10], "files": [8]}, full=True
     )
     assert prefetch.exit_code == 0, prefetch.stderr
     report = json.loads(prefetch.stdout[prefetch.stdout.rindex("status: 200\n{") + 12 :])
-    assert [(entry["number"], entry["outcome"]) for entry in report["recent"]] == [
-        (7, "skipped:checks"),
-        (8, "skipped:current"),
-        (10, "refreshed"),
-        (8, "refreshed"),
+    assert [(entry["kind"], entry["number"], entry["outcome"]) for entry in report["recent"]] == [
+        ("files", 8, "refreshed"),
+        ("record", 7, "skipped:checks"),
+        ("record", 8, "skipped:current"),
+        ("record", 10, "refreshed"),
     ]
     assert (report["records"]["hour_used"], report["files"]["hour_used"]) == (1, 0)
 
@@ -304,7 +306,8 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
     session.say(
         "Pull request 7 is force-pushed back to its earlier commit, where CI has finished. The "
         "next scan shows the row newer with another head: the record is stale and its head "
-        "moved, and a prefetch of 7 reads it and lists its files from the new comparison."
+        "moved. A prefetch of 7 lists its files first, from the new head the row names against "
+        "the mirror's base branch, then reads the record."
     )
     session.advance(61)
     pushed_at = _stamp(session.now - timedelta(seconds=30))
@@ -373,3 +376,110 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
     )
     assert str(tmp_path) not in rendered and "file://" not in rendered
     check_golden("cli-github-pulls-prefetch.txt", rendered)
+
+
+def test_golden_open_pull_requests_are_listed_from_one_head_fetch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    session = _Session(tmp_path, monkeypatch, pull_origin)
+    origin = session.origin
+    # Merged 8 is still open in this catalog, as a catalog read before the merge is.
+    stale = {8: {"state": "open", "merged_at": None, "closed_at": None}}
+    session.answer(_with_catalog(scenario(origin), _catalog(origin, stale)))
+
+    session.say(
+        "The catalog is read. Each open pull request's row names its head and base branch, and "
+        "none has a record, so none has a comparison. It still calls 8 open, merged since."
+    )
+    assert session.run(CANONICAL, "--api", PULLS_REFRESH, body={}).exit_code == 0
+
+    fetches: list[list[str]] = []
+    fetch = pull_refs.fetch_into_store
+
+    async def counted(published: Any, specs: list[str], **options: Any) -> str | None:
+        fetches.append(list(specs))
+        return await fetch(published, specs, **options)
+
+    monkeypatch.setattr(pull_refs, "fetch_into_store", counted)
+    topic = "+refs/heads/topic:refs/remotes/origin/topic"
+
+    session.say(
+        "A visible page asks for open 10's changed files. Its head is on the mirrored `wip`, so "
+        "the one fetch brings only its base branch, `topic`, as the origin has it now, and the "
+        "list is the store's comparison of the head with it: no request goes to GitHub, and the "
+        "hour's cap of lists is not charged."
+    )
+    first = session.run(CANONICAL, "--api", PREFETCH, body={"files": [10]}, full=True)
+    assert first.exit_code == 0, first.stderr
+    report = json.loads(first.stdout[first.stdout.rindex("status: 200\n{") + 12 :])
+    assert [(entry["kind"], entry["number"], entry["outcome"]) for entry in report["recent"]] == [
+        ("files", 10, "refreshed"),
+    ]
+    assert report["files"]["hour_used"] == 0
+    assert not session.blocks[-1].rsplit("--- gh ---\n", 1)[1].strip()
+    assert fetches == [[topic]]
+
+    session.say(
+        "It asks for open 7's too. 10's list is current, so it is left out; 7's head, from a "
+        "fork, is not in the store, and one fetch brings it with its base branch."
+    )
+    fetches.clear()
+    second = session.run(CANONICAL, "--api", PREFETCH, body={"files": [7, 10]}, full=True)
+    report = json.loads(second.stdout[second.stdout.rindex("status: 200\n{") + 12 :])
+    assert [(entry["kind"], entry["number"], entry["outcome"]) for entry in report["recent"]] == [
+        ("files", 7, "refreshed"),
+        ("files", 10, "skipped:not_due"),
+    ]
+    assert not session.blocks[-1].rsplit("--- gh ---\n", 1)[1].strip()
+    assert fetches == [["+refs/pull/7/head:refs/pull/7/head", topic]]
+
+    session.say(
+        "Each list names the head and base branch it was listed for, which the row still names: "
+        "current."
+    )
+    for number, head in ((7, origin["fork_head"]), (10, origin["draft_head"])):
+        listed = session.run(
+            CANONICAL, "--api", f"/api/plugin/github/pull-files?number={number}&limit=0"
+        ).payload()
+        assert (listed["state"], listed["listed_from"], listed["head"], listed["base_ref"]) == (
+            "current",
+            "comparison",
+            head,
+            "topic",
+        )
+        # Each refresh's generation is minted at random; the summary below names it.
+        session.labels.add(listed["generation"], f"<GENERATION_{number}>")
+    summary = session.run(
+        CANONICAL, "--api", "/api/plugin/github/pull-files-summary?numbers=7,10", full=True
+    )
+    assert [row["state"] for row in summary.payload()["rows"]] == ["listed", "listed"]
+
+    session.say(
+        "It asks for 8's. `topic` already holds 8's head, so their merge base is the head and "
+        "the store would list nothing. 8's list is asked of GitHub instead, which this "
+        "stand-in does not answer."
+    )
+    fetches.clear()
+    merged = session.run(CANONICAL, "--api", PREFETCH, body={"files": [8]}, full=True)
+    report = json.loads(merged.stdout[merged.stdout.rindex("status: 200\n{") + 12 :])
+    assert report["files"]["hour_used"] == 1
+    assert fetches == [[topic]]
+    listed = session.run(CANONICAL, "--api", "/api/plugin/github/pull-files?number=8&limit=0")
+    assert listed.payload().get("listed_from") != "comparison"
+
+    session.say("Asked again for 7 and 10, both lists are current: nothing is fetched or asked.")
+    fetches.clear()
+    again = session.run(CANONICAL, "--api", PREFETCH, body={"files": [7, 10]}, full=True)
+    report = json.loads(again.stdout[again.stdout.rindex("status: 200\n{") + 12 :])
+    assert [(entry["number"], entry["outcome"]) for entry in report["recent"]] == [
+        (7, "skipped:not_due"),
+        (10, "skipped:not_due"),
+    ]
+    assert not session.blocks[-1].rsplit("--- gh ---\n", 1)[1].strip()
+    assert fetches == []
+
+    rendered = normalize_pull_comparison_scopes(
+        label_home(session.labels.apply("".join(session.blocks)), session.home)
+    )
+    assert str(tmp_path) not in rendered and "file://" not in rendered
+    check_golden("cli-github-pulls-prefetch-local-lists.txt", rendered)

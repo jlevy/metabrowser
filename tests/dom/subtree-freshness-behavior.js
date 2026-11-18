@@ -33,6 +33,9 @@ const context = vm.createContext({
   TREE_SUBTREE_FETCH_DEPTH: 2,
   treeFilterKey: () => "",
   treeUrl: (folder) => folder,
+  // Ungrouped: no Group by sections, so no section refresh.
+  filesPanelUsesGroupedSource: () => false,
+  groupsPrefetch: { markChanged() {} },
   fetch: (folder) =>
     new Promise((resolve) => {
       requests.push({

@@ -674,10 +674,16 @@ later change is measured in `WKWebView` as well as Chrome.
   [instant transitions and stable layout](../specs/active/plan-2026-11-11-ui-apparent-performance.md),
   with hypotheses H86–H106 in
   [the load-time plan](../specs/active/plan-2026-08-21-load-time-performance.md#apparent-speed-and-layout-stability)
-- [ ] Add a transition scenario to `explorations/performance-loop` that records the
+- [x] Add a transition scenario to `explorations/performance-loop` that records the
   counts above (blank frames, region movement, revisit requests) in Chrome (`mb-4z4u`)
-- [ ] Commit a `WKWebView` measurement probe beside it, an instrument rather than app
+- [x] Commit a `WKWebView` measurement probe beside it, an instrument rather than app
   code, for the rows that must be read in WebKit (`mb-fevz`)
+
+**Addendum, 2026-11-14.** Phase 1 of the ranking is measured and closed:
+[exp-079](../../../explorations/performance-loop/experiments/exp-079-every-accepted-change-at-final-main.md#final-performance-update)
+judged every accepted change together at final `main` against the campaign control.
+Phases 2 and 3, and the measurement work that gates them, are ordered in
+[the campaign plan](../specs/active/plan-2026-11-14-performance-campaigns.md).
 
 ## Methodology
 
@@ -740,8 +746,8 @@ figure below it is an observation, and a recommendation resting on one says so.
 - [Design system](../../design-system.md), principle 6 and Motion
 - [Web performance framework](../../web-performance-framework.md), stateful navigation
 - [Rendering large content](../../large-content-rendering.md)
-- [Asset loading tiers](../../development.md#asset-loading-tiers)
-- [State and delivery](../architecture/arch-state-and-delivery.md)
+- [Asset loading tiers](../architecture/arch-browser-shell.md#asset-loading-tiers)
+- [State and delivery](../architecture/arch-live-delivery.md)
 - [Native app server topology](research-2026-11-10-native-app-server-topology.md)
 - [macOS app packaging](research-2026-11-08-macos-app-packaging.md)
 - [Native macOS app plan](../specs/active/plan-2026-11-10-native-macos-app.md)

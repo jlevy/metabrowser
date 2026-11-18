@@ -207,7 +207,7 @@ async function main() {
     appendBlocks,
     createMarkdownViews,
     firstScreenMarkdown,
-    snapshotTargets,
+    markdownTargets,
     supportsMarkdownChange,
   } = await import(pathToFileURL(path.join(plugin, "diff-markdown.js")));
   const md = { entry_type: "file", path: "docs/readme.MD" };
@@ -222,28 +222,38 @@ async function main() {
     false,
   );
 
-  // Snapshot addresses are the comparison's own route, which the server names, completed
-  // with a side, a path and, for an image, its mode.
-  const route = `/api/plugin/github/pull-snapshot?${new URLSearchParams({
+  // An image opens on the comparison's own image route, which the server names, completed
+  // with a path; a link to a file of the head is its `/view/` address, kept only while the
+  // page shows that head.
+  const route = `/api/plugin/github/pull-image?${new URLSearchParams({
     number: "346",
     left: "1".repeat(40),
     right: "2".repeat(40),
     store: "3".repeat(16),
   })}`;
-  const isSnapshotTarget = snapshotTargets(route);
-  const href = `${route}&side=head&path=g1-ZG9jcw%2Fg1-UkVBRE1FLm1k`;
-  assert.equal(isSnapshotTarget(href, false), true);
-  assert.equal(isSnapshotTarget(`${href}&mode=document`, false), true);
-  assert.equal(isSnapshotTarget(`${href}&mode=image`, true), true);
-  assert.equal(isSnapshotTarget(`${href}&mode=image`, false), false);
-  assert.equal(isSnapshotTarget(`${href}&mode=source`, false), false);
-  assert.equal(isSnapshotTarget(`${href}&side=base`, false), false, "a repeated name");
-  assert.equal(isSnapshotTarget(`${href}&offset=9`, false), false);
-  assert.equal(isSnapshotTarget(`https://example.org${href}`, false), false);
-  assert.equal(isSnapshotTarget(href.replace("left=1", "left=0"), false), false);
-  assert.equal(isSnapshotTarget("/raw?path=README.md", true), false);
-  assert.equal(isSnapshotTarget(href.replace("g1-ZG9jcw", ".."), false), false);
-  assert.equal(snapshotTargets(undefined)(href, false), false, "no route opens nothing");
+  let showsHead = true;
+  const isTarget = markdownTargets(route, () => showsHead);
+  const image = `${route}&path=g1-ZG9jcw%2Fg1-UkVBRE1FLm1k`;
+  const link = "/view/g1-ZG9jcw/g1-UkVBRE1FLm1k";
+  assert.equal(isTarget(image, true), true);
+  assert.equal(isTarget(image, false), false, "an image's address is no link");
+  assert.equal(isTarget(`${image}&mode=image`, true), false);
+  assert.equal(isTarget(`${image}&path=g1-eA`, true), false, "a repeated name");
+  assert.equal(isTarget(`https://example.org${image}`, true), false);
+  assert.equal(isTarget(image.replace("left=1", "left=0"), true), false);
+  assert.equal(isTarget("/raw?path=README.md", true), false);
+  assert.equal(isTarget(image.replace("g1-ZG9jcw", ".."), true), false);
+  assert.equal(isTarget(link, false), true);
+  assert.equal(isTarget(`${link}#user-content-setup`, false), true);
+  assert.equal(isTarget(`${link}#a"b`, false), false, "a fragment the server never spells");
+  assert.equal(isTarget(`${link}?plain=1`, false), false);
+  assert.equal(isTarget(link, true), false, "a link's address is no image");
+  assert.equal(isTarget("/view/README.md", false), false, "not a pin's address");
+  assert.equal(isTarget("/view/g1-ZG9jcw/../g1-UkVBRE1FLm1k", false), false);
+  showsHead = false;
+  assert.equal(isTarget(link, false), false, "a page on another commit keeps no link");
+  assert.equal(isTarget(image, true), true, "and keeps its images");
+  assert.equal(markdownTargets(undefined, () => true)(image, true), false, "no route, no image");
 
   // The first screen's Markdown files, asked for ahead of Changes.
   const entry = (id, path, availability = "ready") => ({
@@ -293,9 +303,13 @@ async function main() {
     [0, 1, 6, 7].map((n) => context(n).html).concat(["<p>flagged</p>", "<p>new</p>"]),
   );
   const flagged = fragment.children.at(-1);
-  assert.ok(flagged.classList.contains("diff-markdown-source-only"));
-  assert.ok(texts(flagged).includes("Source shows changes not shown here."));
   assert.ok(texts(flagged).includes("Added: "));
+  assert.equal(
+    flagged.children.length,
+    2,
+    "a block whose source says more draws its label and its content, and no note",
+  );
+  assert.ok(!texts(flagged).some((text) => /Source/.test(text)));
   assert.deepEqual(
     [...folds.keys()],
     [2, 3, 4, 5].map((n) => `user-content-x-${n}`),
@@ -309,6 +323,8 @@ async function main() {
   const calls = [];
   let assets = 0;
   let mutations = 0;
+  /** @type {string[][]} */
+  const styled = [];
   const inert = {
     sanitizeNodes: () => [],
     kpressProse: () => make("div"),
@@ -333,7 +349,9 @@ async function main() {
       assets += 1;
       return inert;
     },
-    async loadStyles() {},
+    async loadStyles(manifest) {
+      styled.push(manifest.assets.map((asset) => asset.public_url));
+    },
     mutate(change) {
       mutations += 1;
       change();
@@ -354,7 +372,8 @@ async function main() {
     const toggle = make("button");
     bar.append(...(lead ? [make("span"), toggle] : [toggle]));
     const state = view.add({ section, bar, toggle, source, id });
-    const [, fallback, rendered] = section.children;
+    assert.equal(section.children.length, 3, "Rendered is all that goes beside Source");
+    const [, rendered] = section.children;
     const at = bar.children.indexOf(toggle);
     const [control, progress] = bar.children.slice(at + 1, at + 3);
     return {
@@ -363,7 +382,6 @@ async function main() {
       source,
       rendered,
       progress,
-      fallback,
       state,
       control,
       toggle,
@@ -422,8 +440,28 @@ async function main() {
       { kind: "added", side: "new", html: "<p>Edited <ins>word</ins></p>", source_only: false },
     ],
   };
-  calls[0].resolve(ready);
+  // The server names KPress's stylesheets under the package's asset stamp
+  // (metabrowser.asset_stamps); only same-origin KPress CSS is kept.
+  const stamped = "/kpress-static/@0123456789abcdef/v0.3.5/css/document.css";
+  calls[0].resolve({
+    ...ready,
+    assets: {
+      schema_version: "kpress-asset-manifest-v2",
+      import_map: {},
+      assets: [
+        { loading: "stylesheet", public_url: stamped },
+        { loading: "stylesheet", public_url: "/kpress-static/v0.3.5/css/print.css" },
+        { loading: "stylesheet", public_url: "https://elsewhere.example/kpress-static/x.css" },
+        { loading: "module", public_url: "/kpress-static/@0123456789abcdef/v0.3.5/js/toc.js" },
+      ],
+    },
+  });
   await new Promise(setImmediate);
+  assert.deepEqual(
+    styled,
+    [[stamped, "/kpress-static/v0.3.5/css/print.css"]],
+    "a stamped KPress stylesheet loads; another origin's and a script do not",
+  );
   assert.deepEqual(
     calls.map(({ id }) => id),
     ["a", "b"],
@@ -437,7 +475,6 @@ async function main() {
   calls[1].reject(busy);
   await new Promise(setImmediate);
   assert.equal(b.renderedChoice.attributes.get("aria-checked"), "true");
-  assert.equal(b.fallback.textContent, "");
   assert.equal(b.control.hidden, false, "a busy server keeps the chooser");
   assert.equal(calls.length, 2);
   time.advance(99);
@@ -475,15 +512,17 @@ async function main() {
     "its bar lays out as any other file's",
   );
   assert.equal(document.activeElement, c.toggle, "a removed chooser returns focus to the file");
-  assert.equal(c.fallback.hidden, false);
+  assert.equal(c.source.hidden, false, "it shows Source");
+  assert.equal(c.rendered.hidden, true);
+  assert.equal(c.section.children.length, 3, "and adds nothing to say so");
 
   await a.renderedChoice.click();
   assert.equal(calls.length, 4, "the answer that arrived after Source was chosen is reused");
   assert.equal(a.rendered.hidden, false);
   assert.equal(a.source.hidden, true);
   const [shown] = a.rendered.children;
-  assert.equal(shown.children.length, 2, "the notice and the one block");
-  assert.equal(shown.children[0].textContent, "Source shows additional changes.");
+  assert.equal(shown.children.length, 1, "the one block, with no note about Source above it");
+  assert.ok(shown.children[0].className.startsWith("diff-markdown-block"));
   assert.equal(assets, 1);
   await a.sourceChoice.click();
   assert.equal(a.source.hidden, false);
@@ -493,17 +532,24 @@ async function main() {
 
   observer.notify([arrival(d)]);
   assert.equal(calls.length, 5);
+  const warned = [];
+  const warn = console.warn;
+  console.warn = (...args) => warned.push(args);
   calls[4].reject(new Error("Server is broken"));
   await new Promise(setImmediate);
+  console.warn = warn;
+  assert.equal(warned.length, 1, "a failed render is logged to the console");
+  assert.equal(warned[0][1].message, "Server is broken");
   assert.equal(d.sourceChoice.attributes.get("aria-checked"), "true");
   assert.equal(d.renderedChoice.disabled, false, "a transport error allows another attempt");
   assert.equal(d.control.hidden, false, "a retryable failure keeps the chooser");
   assert.equal(d.progress.hidden, false);
   assert.ok(d.bar.classList.contains("diff-file-bar-markdown"));
-  assert.match(d.fallback.textContent, /retry/);
+  assert.equal(d.source.hidden, false, "a failed render shows Source");
+  assert.equal(d.section.children.length, 3, "and says nothing about it");
   await d.renderedChoice.click();
-  assert.equal(calls.length, 6);
-  assert.equal(d.fallback.hidden, true);
+  assert.equal(calls.length, 6, "choosing Rendered asks again");
+  assert.equal(d.source.hidden, false, "Source stays until the answer arrives");
   view.dispose();
   assert.equal(calls[5].signal.aborted, true, "disposal stops the request in flight");
   assert.equal(observer.observed.size, 0);
@@ -513,8 +559,13 @@ async function main() {
   await new Promise(setImmediate);
   assert.equal(d.rendered.hidden, true);
 
-  // A sanitizer that loaded nothing, or whose load failed, is loaded again by the retry
-  // its message offers.
+  // A sanitizer that loaded nothing, or whose load failed, is loaded again when Rendered
+  // is chosen again. Each failure is logged, not shown.
+  const warn2 = console.warn;
+  let warnings = 0;
+  console.warn = () => {
+    warnings += 1;
+  };
   let attempts = 0;
   const retried = [];
   const root2 = make("div");
@@ -550,19 +601,20 @@ async function main() {
   bar2.append(toggle2);
   view2.add({ section: section2, bar: bar2, toggle: toggle2, source: source2, id: "e" });
   const [, control2] = bar2.children;
-  const [, fallback2, rendered2] = section2.children;
+  const [, rendered2] = section2.children;
   view2.observe(root2, null);
   observer.notify([{ target: section2, isIntersecting: true }]);
   retried[0].resolve(ready);
   await new Promise(setImmediate);
-  assert.match(fallback2.textContent, /retry/);
+  assert.equal(rendered2.hidden, true);
+  assert.equal(source2.hidden, false);
   assert.equal(control2.hidden, false, "an empty sanitizer load keeps the chooser");
   await control2.children[0].click();
   assert.equal(retried.length, 2);
   retried[1].resolve(ready);
   await new Promise(setImmediate);
   assert.equal(attempts, 2, "the empty load was not kept");
-  assert.match(fallback2.textContent, /retry/);
+  assert.equal(source2.hidden, false);
   assert.equal(control2.hidden, false, "a failed sanitizer load keeps the chooser");
   assert.equal(rendered2.hidden, true);
   await control2.children[0].click();
@@ -571,7 +623,62 @@ async function main() {
   await new Promise(setImmediate);
   assert.equal(attempts, 3, "the failed load was not kept");
   assert.equal(rendered2.hidden, false);
+  console.warn = warn2;
+  assert.equal(warnings, 2, "both sanitizer failures were logged");
+  assert.equal(section2.children.length, 3, "and none was shown");
   view2.dispose();
+
+  // The first screen settles once none of its files waits: here when both are Rendered,
+  // well inside a page's longer wait; and at the wait's end for one that never answers.
+  for (const answered of [true, false]) {
+    const loads = [];
+    const root3 = make("div");
+    const view3 = createMarkdownViews({
+      controls: { groupHtml: (spec) => spec, bind: () => () => {} },
+      load: (id) => new Promise((resolve) => loads.push({ id, resolve })),
+      ensureInert: async () => inert,
+      async loadStyles() {},
+      mutate: (change) => change(),
+      now: time.now,
+      later: time.later,
+      cancel: time.cancel,
+      holdMs: 200,
+    });
+    const sections = ["f", "g"].map((id) => {
+      const section = make("section");
+      root3.append(section);
+      const bar = make("div");
+      const source = make("div");
+      source.id = id;
+      section.append(bar, source);
+      const toggle = make("button");
+      bar.append(toggle);
+      view3.add({ section, bar, toggle, source, id });
+      return section;
+    });
+    let settled = false;
+    void view3.firstScreen.then(() => {
+      settled = true;
+    });
+    view3.observe(root3, null);
+    observer.notify(sections.map((target) => ({ target, isIntersecting: true })));
+    time.advance(50);
+    await new Promise(setImmediate);
+    assert.equal(settled, false, "the page's longer wait outlasts the app's loading delay");
+    if (answered) {
+      loads[0].resolve(ready);
+      await new Promise(setImmediate);
+      assert.equal(settled, false, "one file still waits");
+      loads[1].resolve(ready);
+      await new Promise(setImmediate);
+      assert.equal(settled, true, "both drawn Rendered: the first screen is final");
+    } else {
+      time.advance(150);
+      await new Promise(setImmediate);
+      assert.equal(settled, true, "the wait's end settles it, Source shown");
+    }
+    view3.dispose();
+  }
   console.log("diff Markdown view OK");
 }
 

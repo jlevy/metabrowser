@@ -31,6 +31,7 @@ from metabrowser.http_caching import BUILD_TAG, store_tag
 from tests.diff_fixture_repo import build_diff_fixture, git
 from tests.git_pin_harness import pinned_client
 from tests.golden_harness import check_golden
+from tests.loop_gate import held_until
 from tests.required_tools import needs_git
 
 pytestmark = needs_git
@@ -517,8 +518,11 @@ def test_the_routes_gzip_test_is_the_middlewares(tmp_path: Path) -> None:
 
     assert sidekick.middleware_sends_gzip("gzip;q=0")
     assert not sidekick.middleware_sends_gzip("identity")
+    # The application's is Starlette's, timed (metabrowser.server_timing), which keeps
+    # Starlette's choice of when to compress.
     assert any(
-        isinstance(m.cls, type) and m.cls is GZipMiddleware for m in server.app.user_middleware
+        isinstance(m.cls, type) and issubclass(m.cls, GZipMiddleware)
+        for m in server.app.user_middleware
     )
     store, base, target = _store(tmp_path)
     two = (("left", base), ("right", target), ("base_policy", "merge_base"))
@@ -785,7 +789,7 @@ def test_late_route_work_cannot_publish_a_body_after_invalidation(
 
         async def paused_async(*args: Any, **kwargs: Any) -> Any:
             entered.set()
-            assert await asyncio.to_thread(release.wait, 10), "request barrier timed out"
+            assert await held_until(release, 10), "request barrier timed out"
             return await original(*args, **kwargs)
 
         def paused_thread(*args: Any, **kwargs: Any) -> Any:

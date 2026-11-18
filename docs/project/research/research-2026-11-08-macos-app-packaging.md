@@ -11,7 +11,7 @@ WebKit measurement gate was run, and failed, in the
 [2026-11-11 addendum](#2026-11-11-addendum-the-webkit-measurement-gate)
 
 Supersedes, for macOS,
-[Desktop App Packaging for Metabrowser](research-2026-08-16-desktop-app-packaging.md)
+[Desktop App Packaging for Metabrowser](archive/research-2026-08-16-desktop-app-packaging.md)
 (2026-08-16), which covered three platforms and recommended Electron.
 
 ## Overview
@@ -140,8 +140,8 @@ of non-vendored JavaScript, still with no Node build step.
   carries neither `Origin` nor `Sec-Fetch-Site`, so any local process can call every
   route. [SECURITY.md](../../../SECURITY.md) defines Metabrowser as a
   trusted-local-client tool, and the
-  [VS Code host draft](../architecture/arch-vscode-extension-host.md) keeps standalone
-  behavior unchanged unless a host enables session authentication.
+  [VS Code host draft](archive/research-2026-07-17-vscode-extension-host.md) keeps
+  standalone behavior unchanged unless a host enables session authentication.
 - **`/raw` is a separate surface.** Every `/raw` response is sandboxed with an opaque
   origin, and `/raw` sits outside the origin check (`server.py`), so any authentication
   must work for requests made by sandboxed documents.
@@ -181,7 +181,7 @@ of non-vendored JavaScript, still with no Node build step.
 - **Browser APIs.** The UI uses no Chromium-only API. A shell must handle
   `target=_blank` links, modifier-click “open in new tab”, Back and Forward over
   `pushState`, `window.print()`, `navigator.clipboard.writeText`, and one SSE stream per
-  window. The UI binds plain keys and ⌘1–⌘3, leaving ⌘L, ⌘K, ⌘F, ⌘P, and ⌘[ ⌘] free for
+  window. The UI binds only plain keys, leaving ⌘1–⌘3, ⌘L, ⌘K, ⌘F, ⌘P, and ⌘[ ⌘] free for
   the shell.
 - **Engine evidence is Chromium-only.** Every large-content bound was measured in Chrome
   151 and 152 over CDP ([rendering large content](../../large-content-rendering.md)).
@@ -436,7 +436,7 @@ the command line.
 | **Shells** | platform behavior only | unit tests with injected process factories; a QA playbook for the exemptions | VS Code host drafted |
 
 Every shell speaks one contract: the macOS app, the drafted
-[VS Code host](../architecture/arch-vscode-extension-host.md) (bead `mb-x4y5`), a
+[VS Code host](archive/research-2026-07-17-vscode-extension-host.md) (bead `mb-x4y5`), a
 browser app window, and any later Windows or Linux shell.
 The layering costs nothing at run time, because the page talks to the server directly
 over HTTP and SSE and the shell never sits on the request path.
@@ -1306,7 +1306,7 @@ What it adds to this brief:
 
 Recommendation 4’s gate was run in the app’s web view, in back-to-back pairs against
 Chrome, and recorded in
-[Measured in WebKit](../../large-content-rendering.md#measured-in-webkit) with its
+[Measured in WebKit](../architecture/arch-macos-app.md#measured-in-webkit) with its
 method, machine, and versions.
 What it changes here:
 
@@ -1334,7 +1334,7 @@ page’s Print button now reaches File > Print’s path (`mb-j3eu`), and a dropp
 opens at its page (`mb-3h2m`). A later check run, with the app’s print bridge in the
 gate’s driver, found the Print request reaching that path and a dropped file handed to
 the app’s open path
-([`window.print()` and Drag and Drop](../../large-content-rendering.md#windowprint-and-drag-and-drop)).
+([`window.print()` and Drag and Drop](../qa/qa-2026-11-11-webkit-measurement-gate.md#windowprint-and-drag-and-drop)).
 
 ## 2026-11-12 Addendum: Plugin Sources
 
@@ -1352,7 +1352,7 @@ changes. What the section says about the signed bundle holding no plugins still 
 ## References
 
 - Metabrowser: [Views, Models, and Routes](../architecture/arch-views-models-routes.md),
-  [VS Code Extension Host](../architecture/arch-vscode-extension-host.md),
+  [VS Code Extension Host](archive/research-2026-07-17-vscode-extension-host.md),
   [Plugin Authoring](../../plugins.md), [command line](../../command-line.md),
   [rendering large content](../../large-content-rendering.md),
   [Installation](../../installation.md), [Publishing](../../publishing.md),
@@ -1360,7 +1360,7 @@ changes. What the section says about the signed bundle holding no plugins still 
   [SECURITY.md](../../../SECURITY.md), and
   [supply-chain policy](../../../SUPPLY-CHAIN-SECURITY.md)
 - Prior research:
-  [Desktop App Packaging for Metabrowser](research-2026-08-16-desktop-app-packaging.md)
+  [Desktop App Packaging for Metabrowser](archive/research-2026-08-16-desktop-app-packaging.md)
 - tbd guidelines: `electron-app-development-patterns`, `tauri-app-development-patterns`,
   `electrobun-app-development-patterns`, `supply-chain-hardening`
 - Apple:

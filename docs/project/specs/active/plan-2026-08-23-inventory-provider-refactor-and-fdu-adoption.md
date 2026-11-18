@@ -1,10 +1,13 @@
 # Feature: Inventory Provider Refactor and fdu Adoption
 
-**Date:** 2026-08-23 (last updated 2026-08-26)
+**Date:** 2026-08-23 (last updated 2026-11-14)
 
 **Author:** Metabrowser maintainers with OpenAI Codex planning assistance
 
-**Status:** Phase 1 implemented; Phase 2A measured; Phase 2B in progress
+**Status:** Phase 1 and Checkpoint 2B shipped in v0.10.0 through #74, #99, and #101;
+Checkpoint 2A was measured.
+Checkpoints 2C and 2D (`mb-hej8`) have not started: Python is the only provider the
+factory builds.
 
 ## Overview
 
@@ -567,7 +570,7 @@ Two Phase 2 optimizations remain measurement-gated:
 
 - [Pluggable inventory engine](plan-2026-08-23-pluggable-inventory-engine.md)
 - [fdu and Metabrowser inventory-engine alignment](../../research/research-2026-08-23-fdu-metabrowser-inventory-engine.md)
-- [State and delivery](../../architecture/arch-state-and-delivery.md)
+- [State and delivery](../../architecture/arch-live-delivery.md)
 - [File Rollup Format](../../architecture/file-rollup-format/file-rollup-format.md)
 - [End-to-end load time](plan-2026-08-21-load-time-performance.md)
 - [Metabrowser performance loop](../../../../explorations/performance-loop/README.md)

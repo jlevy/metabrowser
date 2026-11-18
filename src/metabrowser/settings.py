@@ -19,16 +19,18 @@ from __future__ import annotations
 
 from typing import Any
 
-from metabrowser.capabilities import get_capabilities
+from metabrowser.capabilities import Capabilities, get_capabilities
 from metabrowser.file_extensions import (
     SYNTAX_LANGUAGE_BY_BASENAME,
     SYNTAX_LANGUAGE_BY_EXTENSION,
 )
 from metabrowser.file_type_filters import (
+    FILE_TYPE_GROUP_DISPLAY_ORDER,
     FILTER_TYPE_PRESETS,
     serialize_distribution_colors,
     serialize_file_type_registry,
 )
+from metabrowser.keymap import serialize_reserved_shell_keys
 
 # ── Server port ──────────────────────────────────────────────
 
@@ -92,25 +94,27 @@ SYNTAX_HIGHLIGHT_MAX_BYTES = 512 * 1024
 
 # ── Inventory provider walker ────────────────────────────────
 
+# Deepest directory level a depth-bounded read descends to by default: an event
+# snapshot at a scope other than root-depth-2, and ``walk_tree`` and the ``walk``
+# library when no depth is given. The opened provider itself discovers without a
+# depth limit.
 INVENTORY_MAX_DEPTH = 20
-# Hard ceiling on files indexed by the BFS walker at startup. The
-# walker streams entries as it discovers them so /api/tree responds
-# from a partial index immediately; this cap is just the point at
-# which it stops. Tune up for large monorepos, down for memory-
-# constrained hosts. Approx wall-clock at the cap on a local SSD
-# is N/7 000 seconds (500k -> ~70 s on Linux ext4, longer on FUSE
-# / NFS mounts). On truncation, partially-walked dirs still emit
-# their accumulated totals so the UI shows usable numbers rather
-# than skeletons.
+# The discovery budget: the most regular files the inventory discovers for one served
+# root (``DiscoveryBudget.max_files``). It bounds the memory the retained index holds
+# and the time a first walk takes. Discovery streams entries as it finds them, so
+# routes answer from a partial index at once; this is where it stops. At the cap the
+# provider reports partial coverage with a resource-budget issue, keeps what it found
+# readable, and stops observing the tree; see "The Cap" in
+# docs/project/architecture/arch-inventory-provider.md. docs/scale-benchmark.md measures
+# walk times.
 INVENTORY_MAX_FILES = 500_000
 # One provider read may materialize this many tree rows. Complete route and event
 # snapshots follow version-pinned pages, so this bounds individual projection work
 # without truncating the response. It is deliberately separate from ``max_files``:
 # the latter is a discovery coverage budget and can be two orders of magnitude larger.
 INVENTORY_TREE_PAGE_ROWS = 4_096
-# Refresh-TTL: re-walk an entry older than this on the walker's
-# next idle pass. Bounds staleness when the active-tracker /
-# watcher backends miss a change.
+# Not read by anything: ``walker.py`` re-exports it as ``DEFAULT_REFRESH_TTL_S``,
+# and no idle re-walk of old entries exists.
 INVENTORY_REFRESH_TTL_S = 600.0
 
 # Walker-emit batch size. The initial scan generates one upsert
@@ -123,9 +127,9 @@ INVENTORY_WALKER_EMIT_BATCH = 256
 
 # ── /api/events SSE transport ────────────────────────────────
 
-# Ring buffer holds ~5 minutes of typical write traffic. Resume
-# below the head signals a gap and the client falls back to a
-# fresh snapshot.
+# The event bus's ring buffer assigns process-wide event ids and keeps this many
+# recent envelopes for diagnostics. It is never replayed: every connection, a
+# reconnect included, starts from a fresh coherent snapshot.
 SSE_RING_BUFFER_CAPACITY = 5_000
 
 # Per-connection bounded queue. Overflow replaces stale deltas with
@@ -134,23 +138,25 @@ SSE_RING_BUFFER_CAPACITY = 5_000
 # delivery across connections.
 SSE_PER_CONNECTION_QUEUE_SIZE = 1_024
 
-# The event bus subscribes to the inventory once and fans out to
-# all connections. The walker batches its upserts, but large roots
-# and watcher bursts can still fill this bounded queue. Overflow
-# replaces stale deltas with one resync marker so browsers refresh
-# from authoritative snapshots without losing live updates silently.
+# The inventory's change-queue size (``InventoryConfig.change_queue_size``): it bounds
+# the provider's change history and subscriber queue and the coordinator's relay queue
+# and history, which the event bus reads once and fans out to every connection. The
+# walker batches its upserts, but large roots and watcher bursts can still fill a
+# queue. Overflow becomes one reset, so browsers refresh from authoritative snapshots
+# rather than lose live updates silently.
 SSE_BUS_INVENTORY_QUEUE_SIZE = 4_096
 
 # Heartbeat cadence — long enough to keep proxies alive; short
 # enough that a stalled producer is noticed quickly client-side.
 SSE_HEARTBEAT_INTERVAL_S = 15.0
 
-# Worker-pool size for asyncio's default executor. Cache-served
-# /api/tree and /api/recent calls run via asyncio.to_thread; the
-# default pool (~12) queues them behind activity stat storms.
+# Worker-pool size for asyncio's default executor. Provider reads and cache-served
+# /api/tree and /api/recent calls run via asyncio.to_thread; the default pool (~12)
+# queues them behind activity stat storms. Under the GIL more workers buy queueing,
+# not parallelism.
 DEFAULT_EXECUTOR_WORKERS = 64
 
-# ── Active-file tracker (replaces /api/activity polling) ─────
+# ── Active-file tracker ──────────────────────────────────────
 
 # Cadence at which the active-file tracker walks .logs/.state
 # entries to refresh their fingerprint. The live stream and
@@ -200,7 +206,7 @@ RECENT_DEFAULT_WINDOW = "24h"
 # thread idle most of the time; 10 000 spends nearly half of it and
 # the payload starts to matter. The cap also stopped being the thing
 # that hides a user's own work once truncation learned to drop
-# gitignored files first (see ``collect_recent_entries``) — it now
+# gitignored files first (see the Python provider's ``_recent_projection``) — it now
 # only bounds how much build output rides along, so headroom here
 # buys a large monorepo room for its *tracked* churn rather than more
 # ``node_modules``.
@@ -338,6 +344,20 @@ GIT_COMMIT_MAX_FILES = 1_000
 # cache so the first commit appears immediately.
 GIT_REPO_INFO_TTL_S = 5.0
 
+# Past the TTL an identity is kept while the refs' state (``git/ref_state.py``) is
+# unchanged, which covers HEAD, the refs, the repository's configuration files, the
+# ``.git`` entry, and the owners of the served root, ``.git`` and the Git directory. It
+# is kept this way only for a repository the reader owns; any other keeps the TTL. The
+# state does not cover the Git installation or the reader's global and system
+# configuration, so an identity this old is rediscovered in the background, off the
+# request that found it. Requests keep the old identity until that discovery ends, so
+# such a change shows within this age plus one TTL plus one discovery, about 65 s. A
+# correctness bound rather than a cost bound: the rediscovery is three Git processes,
+# which cost a request about 55 ms at the server when it paid them inline (exp-081 and
+# the contention sweep after it). It is also how long a repository past the state's
+# entry bound is not walked again (``MAX_REF_ENTRIES``).
+GIT_REPO_INFO_MAX_AGE_S = 60.0
+
 # Client-side pacing for the hover card. The card is backed by the same
 # commit-detail request the detail view uses, so a slow drag across the
 # graph must not issue one request per row.
@@ -347,12 +367,24 @@ GIT_HOVER_DEBOUNCE_MS = 300
 # the detail view so hovering then selecting a row is one request.
 GIT_DETAIL_CACHE_SIZE = 200
 
+# Characters of comparison JSON the Commits panel keeps, so a revisited
+# commit's diff mounts with no request. Measured 2026-11-11 over this
+# repository's last 200 commits, merges included: 28 KB at the median,
+# 203 KB at the 90th percentile, and 3.3 MB at the largest, 28 MB in all.
+# The parsed answer holds 0.97 to 1.66 times its JSON length in V8's heap
+# (five answers from 28 KB to 3.3 MB, here and in review B of #368), so the
+# heap this bounds is up to about 27 MiB. It keeps about eighty
+# 90th-percentile commits, and one answer may take a quarter of it.
+GIT_COMPARISON_CACHE_BYTES = 16 * 1024 * 1024
+
 
 # ── Client settings export ───────────────────────────────────
 
 
 def client_settings_dict(
-    *, syntax_highlight_max_bytes: int = SYNTAX_HIGHLIGHT_MAX_BYTES
+    *,
+    syntax_highlight_max_bytes: int = SYNTAX_HIGHLIGHT_MAX_BYTES,
+    capabilities: Capabilities | None = None,
 ) -> dict[str, Any]:
     """The subset of settings injected into the client via the
     index template. Reading from a single dict keeps the JS
@@ -367,6 +399,7 @@ def client_settings_dict(
         "FILE_TYPE_REGISTRY": serialize_file_type_registry(),
         "DISTRIBUTION_COLORS": serialize_distribution_colors(),
         "FILTER_TYPE_PRESETS": FILTER_TYPE_PRESETS,
+        "FILE_TYPE_GROUP_ORDER": FILE_TYPE_GROUP_DISPLAY_ORDER,
         "DOC_MAX_CHARS_DEFAULT": DOC_MAX_CHARS_DEFAULT,
         "RECENT_DEFAULT_WINDOW": RECENT_DEFAULT_WINDOW,
         "RECENT_LIMIT": RECENT_DEFAULT_LIMIT,
@@ -386,6 +419,7 @@ def client_settings_dict(
         "GIT_HISTORY_SEGMENT_REBASE_PX": GIT_HISTORY_SEGMENT_REBASE_PX,
         "GIT_HOVER_DEBOUNCE_MS": GIT_HOVER_DEBOUNCE_MS,
         "GIT_DETAIL_CACHE_SIZE": GIT_DETAIL_CACHE_SIZE,
+        "GIT_COMPARISON_CACHE_BYTES": GIT_COMPARISON_CACHE_BYTES,
         "ROLLUP_DEFAULT_DEPTH": ROLLUP_DEFAULT_DEPTH,
         "ROLLUP_DEFAULT_TOP": ROLLUP_DEFAULT_TOP,
         "ROLLUP_DEFAULT_EXT_TOP": ROLLUP_DEFAULT_EXT_TOP,
@@ -400,7 +434,11 @@ def client_settings_dict(
         "SYNTAX_LANGUAGE_BY_EXTENSION": dict(SYNTAX_LANGUAGE_BY_EXTENSION),
         "TEXT_PREVIEW_CHUNK_BYTES": TEXT_PREVIEW_CHUNK_BYTES,
         "TEXT_PREVIEW_MAX_CHUNK_BYTES": TEXT_PREVIEW_MAX_CHUNK_BYTES,
-        "CAPABILITIES": get_capabilities().as_wire(),
+        # The page's subject's block when its shell names one: a pin's is never the
+        # process's (capabilities.capabilities_for).
+        "CAPABILITIES": (capabilities or get_capabilities()).as_wire(),
+        # The plugin shortcut facade refuses these, as the manifest loader does.
+        "RESERVED_SHELL_KEYS": serialize_reserved_shell_keys(),
     }
 
 
@@ -412,6 +450,7 @@ __all__ = [
     "DOC_MAX_CHARS_DEFAULT",
     "FOLDER_DISCOVERY_MAX_ENTRIES",
     "GIT_COMMIT_MAX_FILES",
+    "GIT_COMPARISON_CACHE_BYTES",
     "GIT_DETAIL_CACHE_SIZE",
     "GIT_HISTORY_PAGE_CACHE_PAGES",
     "GIT_HISTORY_SEGMENT_REBASE_PX",
@@ -425,6 +464,7 @@ __all__ = [
     "GIT_HOVER_DEBOUNCE_MS",
     "GIT_LOG_DEFAULT_LIMIT",
     "GIT_LOG_MAX_LIMIT",
+    "GIT_REPO_INFO_MAX_AGE_S",
     "GIT_REPO_INFO_TTL_S",
     "GIT_SUBPROCESS_MAX_BYTES",
     "GIT_SUBPROCESS_TIMEOUT_S",

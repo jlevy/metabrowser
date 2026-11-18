@@ -16,8 +16,13 @@ nonisolated enum AppLog {
 /// App lifecycle: the runtime, the folder sessions, the menus, and quitting.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settings = RuntimeSettings()
-    private lazy var recentFolders = RecentFoldersMenu { [weak self] in self?.request($0) }
+    private lazy var recentFolders = RecentTargetsMenu(
+        setup: { [weak self] in self?.operations.launchableSetup() }, open: { [weak self] in self?.request($0) })
     private let launchGate = LaunchGate()
+    /// The repositories' lane (`LaunchLane`), whose servers walk ports apart from a
+    /// folder's, so they start behind a gate of their own, and a first clone holds up no
+    /// folder (`gate(for:)`).
+    private let repositoryLaunchGate = LaunchGate()
     private let runtimeModel = RuntimeModel()
     /// The runtime, and the folders waiting for one. `runtimeModel` only mirrors it.
     private lazy var selection = RuntimeSelection(settings: settings, setup: settings.usable())
@@ -46,8 +51,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         return operations
     }()
-    /// Open folders by canonical path (one session, and so one server, per root), plus
-    /// the sessions of closed windows whose servers are still stopping.
+    /// Open folders by canonical path and repositories by canonical URL
+    /// (`SessionRoot.key`: one session, and so one server, per root), plus the sessions of
+    /// closed windows whose servers are still stopping.
     private let sessions = ServerFleet()
     private lazy var folderWindows = FolderWindows(
         store: SessionStore(directory: appIdentity.supportDirectory()),
@@ -61,6 +67,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var signalSources: [any DispatchSourceSignal] = []
     private var showPanelAfterDiscovery = false
     private var isTerminating = false
+    /// Set once a quit has begun stopping the servers, so a link that `metab` resolves
+    /// after that starts none.
+    private var isQuitting = false
+    /// The GitHub links waiting for `metab` to resolve them, one at a time.
+    private var links = LinkQueue()
+    /// The repositories a link may clone, and the questions about the rest, which wait
+    /// beside the queue.
+    private var clones = CloneQuestions()
+    /// What the links since the last alert could not open, said once the burst has ended.
+    private var linkProblems = LinkProblems()
+    /// Whether a clone question or the problems alert is up: one at a time.
+    private var isShowingLinkModal = false
+    /// File > Open URL…, made the first time it is chosen and kept: it starts empty each
+    /// time it comes on screen.
+    private lazy var openURLWindow = OpenURLWindowController(
+        onOpen: { [weak self] in self?.checkEnteredLink($0) },
+        onDrop: { [weak self] in self?.stopCheckingEnteredLink($0) })
+    /// The dry run for the link File > Open URL… awaits, and the task that applies its
+    /// answer: at most one, since the panel awaits one answer and stops this one when it
+    /// drops it (`stopCheckingEnteredLink`).
+    private var enteredLinkCheck: (link: URL, task: Task<Void, Never>)?
     /// The runtime's file, or where `metab` may appear while there is none.
     private var watch: SetupWatch?
     private var watchedRuntime: Runtime?
@@ -106,13 +133,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Coming back from Terminal, where an install or upgrade most likely ran.
     func applicationDidBecomeActive(_ notification: Notification) {
         lookForRuntimeChanges()
+        // And where `metab` may have served a folder, which File > Open Recent then lists.
+        recentFolders.refresh()
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { true }
 
-    /// Folders dropped on the Dock icon, opened with Open With, or passed to `open -a`.
+    /// Folders dropped on the Dock icon, opened with Open With, or passed to `open -a`, and
+    /// links sent with `open -b`, as `metab LINK --present` sends them.
     func application(_ application: NSApplication, open urls: [URL]) {
         urls.forEach(request)
+    }
+
+    /// The Dock icon's menu: the recent targets, as File > Open Recent lists them.
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        recentFolders.dockMenu()
     }
 
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { true }
@@ -120,7 +155,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// A launch or reopen with nothing to show offers the Open panel.
     func applicationOpenUntitledFile(_ sender: NSApplication) -> Bool {
         if selection.setup != nil {
-            if sessions.openServers.isEmpty && selection.waitingFolders.isEmpty { openFolder(nil) }
+            if sessions.openServers.isEmpty && selection.waitingFolders.isEmpty && linksAreIdle { openFolder(nil) }
         } else {
             showPanelAfterDiscovery = true
         }
@@ -132,6 +167,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Stops every server, each with SIGTERM to its group, a bounded wait, then SIGKILL,
     /// before the app exits.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        isQuitting = true
         folderWindows.saveForQuit()
         guard !sessions.isEmpty else { return .terminateNow }
         AppLog.app.info(
@@ -220,11 +256,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Opens `url`: a folder in its own server and window or tab, or a file at its page
     /// inside the open folder that holds it, else inside its own folder (`OpenTarget`). A
-    /// folder already open brings its window forward.
+    /// folder already open brings its window forward. A GitHub link opens as `requestLink`
+    /// says.
     func request(_ url: URL) {
-        guard url.isFileURL else { return }
+        guard url.isFileURL else { return requestLink(url) }
         let path = FileChecks.canonicalPath(url.path(percentEncoded: false))
-        let openRoots = sessions.openServers.compactMap { ($0 as? FolderSession)?.path }
+        let openRoots = folderSessions.filter(\.isLocal).map(\.path)
         guard let target = OpenTarget.resolve(path, kind: OpenTarget.Kind(of: path), openRoots: openRoots) else {
             return refuse(
                 "Metabrowser opens folders and files",
@@ -234,7 +271,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let reason = CLIServeLaunch.unservableReason(root) {
             return refuse("Metabrowser cannot open this folder", "\(root.lastPathComponent) cannot be served: \(reason).")
         }
-        RecentFoldersMenu.noteOpened(root)
+        recentFolders.noteOpened(root, isOpen: sessions[root.path(percentEncoded: false)] != nil)
         if let session = sessions[root.path(percentEncoded: false)] as? FolderSession {
             session.showFrontWindow(page: target.page)
             return
@@ -244,38 +281,354 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             beginRecheck()
         }
         // A request waiting for a runtime is resolved again when one is found.
-        guard selection.setupForOpening(URL(filePath: path)) != nil, let session = session(for: root) else {
+        guard selection.setupForOpening(URL(filePath: path)) != nil, let session = session(for: .folder(root)) else {
             if !selection.isBusy { showSettings(nil) }
             return
         }
         folderWindows.place(session.makeWindow(page: target.page))
-        Task { await session.startServer() }
+        Task {
+            await session.startServer()
+            self.recentFolders.refreshAfterOpen()
+        }
+    }
+
+    /// Opens a GitHub link. `metab` resolves each (`PresentDryRun`), one at a time
+    /// (`LinkQueue`), to its repository and the canonical link to serve it with. A
+    /// repository with a window starts its server again on that link, so the window shows
+    /// the revision and page the link names (`FolderSession.open(link:)`). Otherwise a new
+    /// session starts its server on the link, after asking first when `metab`'s cache does
+    /// not hold the repository, a question that waits beside the queue (`CloneQuestions`).
+    /// The links a burst could not open are said in one alert once the burst has ended. A
+    /// link waits for a runtime as a folder does. A repository's windows are not saved with
+    /// the session (`FolderWindows.snapshot`).
+    private func requestLink(_ url: URL) {
+        guard GitHubLink.accepts(url) else {
+            return noteLinkProblem(LinkAlert(
+                message: "Metabrowser opens folders, files, and GitHub links",
+                detail: "\(GitHubLink.shown(url)) is not a folder, a file, or an https link to GitHub."))
+        }
+        if let current = selection.setup?.runtime, !selection.isUnverified,
+           !current.isCurrent(fingerprint: FileFingerprint.of(current.executable)) {
+            beginRecheck()
+        }
+        guard selection.setupForOpening(url) != nil else {
+            if selection.droppedLinks > 0 { showNextLinkModal() }
+            if !selection.isBusy { showSettings(nil) }
+            return
+        }
+        switch links.offer(url) {
+        case .queued:
+            break
+        case .repeated:
+            AppLog.app.info("a link already waiting was sent again; it opens once")
+        case .dropped:
+            AppLog.app.error("\(LinkQueue.limit) links are waiting to be resolved; one more was dropped")
+        }
+        resolveNextLink()
+    }
+
+    /// Resolves the next waiting link, unless one is being resolved; once none waits, the
+    /// burst may have ended (`showNextLinkModal`).
+    private func resolveNextLink() {
+        guard let url = links.next() else {
+            if links.isIdle { showNextLinkModal() }
+            return
+        }
+        Task {
+            await resolveLink(url)
+            links.finish()
+            resolveNextLink()
+        }
+    }
+
+    /// The link itself is logged private: it is what a sender wrote, which can carry a
+    /// token that `metab` drops. The repository it resolves to is canonical and carries none.
+    private func resolveLink(_ url: URL) async {
+        guard !isQuitting else { return }
+        guard let setup = operations.launchableSetup() else {
+            // Refused at this moment and being checked again: the link waits for that check.
+            _ = selection.setupForOpening(url)
+            return
+        }
+        let answer = await askMetab(about: url, with: setup)
+        guard !isQuitting else { return }
+        let link = url.absoluteString
+        switch answer {
+        case .plan(let plan):
+            AppLog.app.info(
+                "\(link, privacy: .private) resolves to \(plan.kind.rawValue, privacy: .public) in \(plan.repository.absoluteString, privacy: .public)")
+            await open(plan, with: setup)
+        case .refused(let refusal):
+            AppLog.app.info("metab refused \(link, privacy: .private): \(refusal.code, privacy: .public)")
+        case .unreadable(let reason, _):
+            AppLog.app.error("could not resolve \(link, privacy: .private): metab \(reason, privacy: .public)")
+        }
+        if let alert = answer.alert(link: url, metab: Self.describe(setup)) {
+            noteLinkProblem(alert)
+        }
+    }
+
+    /// What `metab LINK --present --dry-run --format json` says `url` opens: the one
+    /// command a link sent to the app and a link typed into File > Open URL… are both
+    /// resolved with.
+    private func askMetab(about url: URL, with setup: RuntimeSetup) async -> PresentAnswer {
+        let spec = PresentDryRun.spec(
+            for: url, with: setup, inherited: ProcessInfo.processInfo.environment, home: NSHomeDirectory())
+        return PresentDryRun.answer(await CommandRunner.run(spec, timeout: PresentDryRun.timeout))
+    }
+
+    /// The `metab` an alert or the Open URL… panel names when it could not read its answer.
+    private static func describe(_ setup: RuntimeSetup) -> String {
+        "metab \(setup.runtime.version) at \(setup.runtime.executable)"
+    }
+
+    /// File > Open URL…: one field for a full GitHub URL, which opens as a link sent to
+    /// the app does, in the repository's mirror and never a checkout of it
+    /// (`OpenURLPanel`). The panel asks `metab` itself, with the command `resolveLink`
+    /// runs, so a refusal is said in the panel, which stays open to fix the text, and not
+    /// in the alert at the end of a burst.
+    @objc func showOpenURL(_ sender: Any?) {
+        openURLWindow.show()
+    }
+
+    /// Asks `metab` about a link typed into File > Open URL…, and opens its plan as a
+    /// link sent to the app opens (`open(_:with:)`). With no `metab` the app can run now,
+    /// as while it finds or checks one, the link goes to the link queue instead, which
+    /// waits for one as it waits for any link (`requestLink`): the panel closes, and a
+    /// refusal comes as the alert at the end of the burst.
+    private func checkEnteredLink(_ link: URL) {
+        if let current = selection.setup?.runtime, !selection.isUnverified,
+           !current.isCurrent(fingerprint: FileFingerprint.of(current.executable)) {
+            beginRecheck()
+        }
+        guard let setup = operations.launchableSetup() else {
+            if let waiting = openURLWindow.handOff() { requestLink(waiting) }
+            return
+        }
+        enteredLinkCheck?.task.cancel()
+        let task = Task {
+            let answer = await askMetab(about: link, with: setup)
+            // Dropped by an edit, Cancel, or closing the panel, which cancelled this task
+            // and so killed the dry run (`CommandRunner.finish`): its answer is moot.
+            guard !Task.isCancelled else { return }
+            enteredLinkCheck = nil
+            let text = link.absoluteString
+            switch answer {
+            case .plan(let plan):
+                AppLog.app.info(
+                    "Open URL…: \(text, privacy: .private) resolves to \(plan.kind.rawValue, privacy: .public) in \(plan.repository.absoluteString, privacy: .public)")
+            case .refused(let refusal):
+                AppLog.app.info("Open URL…: metab refused \(text, privacy: .private): \(refusal.code, privacy: .public)")
+            case .unreadable(let reason, let output):
+                AppLog.app.error(
+                    "Open URL…: could not resolve \(text, privacy: .private): metab \(reason, privacy: .public); its last output: \(output.suffix(PresentDryRun.shownLines).joined(separator: " | "), privacy: .private)")
+            }
+            guard !isQuitting,
+                  let plan = openURLWindow.answered(answer, for: link, metab: Self.describe(setup))
+            else { return }
+            await open(plan, with: setup)
+            showNextLinkModal()
+        }
+        enteredLinkCheck = (link, task)
+    }
+
+    /// The Open URL… panel no longer awaits the answer about `link`: cancelling its task
+    /// kills the dry run's process group at once (`CommandRunner.finish`), so an edit,
+    /// Cancel, or a closed panel leaves no `metab` running for it.
+    private func stopCheckingEnteredLink(_ link: URL) {
+        guard let check = enteredLinkCheck, check.link == link else { return }
+        check.task.cancel()
+        enteredLinkCheck = nil
+    }
+
+    /// Shows `plan` in its repository's window, or in a new session whose server starts on
+    /// `plan.link`. A new window loads its server's entry page, which the server resolves
+    /// from the link against its mirror, so a ref with a `/` in it opens the right page.
+    ///
+    /// A repository nobody has said may be cloned is looked up in `metab`'s cache in the
+    /// link's turn; one the cache does not hold asks, and its question, with any later
+    /// links into it, waits beside the queue, so the links behind it go on (`CloneQuestions`).
+    private func open(_ plan: PresentPlan, with setup: RuntimeSetup) async {
+        let root = SessionRoot.repository(plan.repository)
+        if let session = sessions[root.key] as? FolderSession {
+            recentFolders.noteOpened(root.url, isOpen: true)
+            return session.open(link: plan.link)
+        }
+        let name = root.identity().fullName
+        switch clones.arrive(plan.link, into: root) {
+        case .open:
+            openRepository(root, on: plan.link)
+        case .waits:
+            AppLog.app.info("\(name, privacy: .public): a link waits for the answer about cloning it")
+        case .declined:
+            AppLog.app.info("\(name, privacy: .public): a link was not opened, since cloning it was declined")
+        case .dropped:
+            AppLog.app.error(
+                "\(CloneQuestions.limit) repositories wait for an answer about cloning them; a link into \(name, privacy: .public) was dropped")
+        case .lookUp:
+            if await isCached(root, with: setup) {
+                if let link = clones.found(root), !isQuitting { openRepository(root, on: link) }
+            } else {
+                clones.ask(root)
+                showNextLinkModal()
+            }
+        }
+    }
+
+    /// Whether `metab`'s cache holds `root` (`RepositoryCache`); an answer the app cannot
+    /// read is no, so the user is asked.
+    private func isCached(_ root: SessionRoot, with setup: RuntimeSetup) async -> Bool {
+        let folder = appIdentity.supportDirectory()
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let answer = await RepositoryCache.lookUp(
+            root.url, folder: folder.path(percentEncoded: false), with: setup,
+            inherited: ProcessInfo.processInfo.environment)
+        switch answer {
+        case .cached:
+            return true
+        case .notCached:
+            return false
+        case .unknown(let reason):
+            AppLog.app.error(
+                "could not ask metab whether it has \(root.key, privacy: .public): \(reason, privacy: .public); asking before it clones")
+            return false
+        }
+    }
+
+    /// The repository's window, whose server starts again on `link`, or a new session whose
+    /// server starts on it. Without a runtime accepted now, the link waits for one, and is
+    /// resolved again.
+    ///
+    /// Either is an open, so the repository moves to the front of the recent targets: a
+    /// new session's server records it as it starts, and the app records one already open
+    /// itself, since starting its server again on a link records nothing
+    /// (`FolderServer.restart`).
+    private func openRepository(_ root: SessionRoot, on link: URL) {
+        if let session = sessions[root.key] as? FolderSession {
+            recentFolders.noteOpened(root.url, isOpen: true)
+            return session.open(link: link)
+        }
+        guard selection.setupForOpening(link) != nil, let session = session(for: root, link: link) else {
+            if !selection.isBusy { showSettings(nil) }
+            return
+        }
+        folderWindows.place(session.makeWindow())
+        Task {
+            await session.startServer()
+            self.recentFolders.refreshAfterOpen()
+        }
+    }
+
+    private func noteLinkProblem(_ alert: LinkAlert) {
+        linkProblems.note(alert)
+        showNextLinkModal()
+    }
+
+    /// Whether no link waits or is being resolved, and no repository waits for the cache or
+    /// a question: the end of a burst, and what the app checks before it offers the Open
+    /// panel, since a link under way is about to open a window.
+    private var linksAreIdle: Bool { links.isIdle && clones.isIdle }
+
+    /// Asks the next clone question, or once the burst has ended, says in one alert what
+    /// its links could not open. One modal at a time, from the run loop (`onRunLoop`):
+    /// what gathers while one is up is shown when it closes (review C9 on #539).
+    private func showNextLinkModal() {
+        onRunLoop { [weak self] in self?.raiseNextLinkModal() }
+    }
+
+    private func raiseNextLinkModal() {
+        guard !isShowingLinkModal, !isQuitting else { return }
+        if let root = clones.nextQuestion() {
+            isShowingLinkModal = true
+            let clone = askToClone(root)
+            isShowingLinkModal = false
+            if let link = clones.answer(root, clone: clone), !isQuitting { openRepository(root, on: link) }
+        } else {
+            guard linksAreIdle else { return }
+            linkProblems.noteTurnedAway(links.takeDropped(), .queueFull)
+            linkProblems.noteTurnedAway(clones.takeDropped(), .questionsFull)
+            linkProblems.noteTurnedAway(selection.takeDroppedLinks(), .runtimeWaitFull)
+            for (root, count) in clones.endBurst().sorted(by: { $0.key.key < $1.key.key }) {
+                linkProblems.note(LinkAlert.declined(root.identity().fullName, count: count))
+            }
+            guard let alert = linkProblems.take() else { return }
+            isShowingLinkModal = true
+            refuse(alert.message, alert.detail)
+            isShowingLinkModal = false
+        }
+        showNextLinkModal()
+    }
+
+    /// Asks whether to clone `root`, which its links wait for. Cancel is the default
+    /// button, so a Return typed into another app as this one comes forward declines
+    /// (review C7 on #539). A quit for a signal aborts the alert, which declines.
+    private func askToClone(_ root: SessionRoot) -> Bool {
+        let name = root.identity().fullName
+        let alert = NSAlert()
+        alert.messageText = "Clone \(name)?"
+        alert.informativeText =
+            "Metabrowser has no copy of \(name) yet. Opening this link clones the repository into metab’s cache, and reads it and its pull requests with your gh sign-in."
+        alert.addButton(withTitle: "Cancel")  // the first button is the default
+        alert.addButton(withTitle: "Clone and Open")
+        let clone = alert.runModal() == .alertSecondButtonReturn
+        AppLog.app.info("\(name, privacy: .public): clone \(clone ? "confirmed" : "declined", privacy: .public)")
+        return clone
     }
 
     /// The open session for `root`, or a new one with no window and no server yet; nil
     /// without a runtime or for a folder that cannot be served.
     private func session(for root: URL) -> FolderSession? {
-        let key = root.path(percentEncoded: false)
+        session(for: .folder(root))
+    }
+
+    /// The open session for `root`, or a new one, which starts its server with `link` when
+    /// one is given (`FolderSession.init`).
+    private func session(for root: SessionRoot, link: URL? = nil) -> FolderSession? {
+        let key = root.key
         if let open = sessions[key] as? FolderSession { return open }
-        guard let setup = selection.setup, CLIServeLaunch.unservableReason(root) == nil else { return nil }
+        guard let setup = selection.setup, CLIServeLaunch.unservableReason(root.url) == nil else { return nil }
         let session = FolderSession(
-            root: root, setup: setup, gate: launchGate,
+            root: root, link: link, setup: setup, gate: gate(for: root.lane),
             accepted: { [weak self] in self?.operations.launchableSetup() })
         session.onWaitingForRuntime = { [weak self] in
             // A search, recheck, or choice that is running settles it, and opens Settings if it finds nothing.
             if self?.selection.isBusy == false { self?.showSettings(nil) }
         }
         session.onRootRefused = { [weak self] refused in self?.folderWindows.rootRefused(refused) }
+        session.onLinkSelectionMissing = { [weak self] missing, link, outcome in
+            let name = missing.served.identity().fullName
+            if let alert = LinkAlert.selectionMissing(outcome, link: link, repository: name) { self?.noteLinkProblem(alert) }
+        }
         session.onAllWindowsClosed = { [weak self] closed in
             self?.sessions.retire(closed)
             self?.folderWindows.folderClosed(closed)
+            self?.retitleWindows()
         }
+        session.onTitleChange = { [weak self] _ in self?.retitleWindows() }
         session.onWindowShown = { [weak self] folder, controller in
             self?.folderWindows.windowShown(controller, of: folder)
         }
         session.onLayoutChange = { [weak self] in self?.folderWindows.scheduleSave() }
         sessions.insert(session, for: key)
+        retitleWindows()
         return session
+    }
+
+    /// The launch gate of `lane`'s servers: one per lane, whose port walks do not meet.
+    private func gate(for lane: LaunchLane) -> LaunchGate {
+        switch lane {
+        case .folders: launchGate
+        case .repositories: repositoryLaunchGate
+        }
+    }
+
+    /// Gives every open folder's windows their `window.title`: the short name, or the full
+    /// name while another open folder shares the short name (`WindowTitle.windowTitles`).
+    private func retitleWindows() {
+        let open = folderSessions
+        for (session, title) in zip(open, WindowTitle.windowTitles(open.map(\.title))) {
+            session.windowTitle = title
+        }
     }
 
     private func restoreLastSession() {
@@ -287,6 +640,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.messageText = message
         alert.informativeText = detail
         alert.runModal()
+    }
+
+    /// Runs `body` from the run loop rather than inside a main-actor job. A modal loop
+    /// entered from a main-actor job stops every other main-actor job, quitting included,
+    /// until the alert closes (see `offerRestart`), so an alert a task raises runs from the
+    /// run loop instead, as the quit for a signal does (`installTerminationSignals`).
+    private func onRunLoop(_ body: @escaping () -> Void) {
+        let main = CFRunLoopGetMain()
+        CFRunLoopPerformBlock(main, CFRunLoopMode.commonModes.rawValue) {
+            MainActor.assumeIsolated { body() }
+        }
+        CFRunLoopWakeUp(main)
     }
 
     private func openPendingFolders() {
@@ -332,7 +697,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             adopted(found, opening: finish.released)
             switch finish.operation {
             case .search:
-                if showPanelAfterDiscovery, sessions.openServers.isEmpty, selection.waitingFolders.isEmpty {
+                if showPanelAfterDiscovery, sessions.openServers.isEmpty, selection.waitingFolders.isEmpty, linksAreIdle {
                     openFolder(nil)
                 }
                 showPanelAfterDiscovery = false
@@ -620,6 +985,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func openDocumentation(_ sender: Any?) {
-        NSWorkspace.shared.open(URL(string: "https://github.com/jlevy/metabrowser#readme")!)
+        NSWorkspace.shared.open(ProjectLinks.readme)
     }
 }

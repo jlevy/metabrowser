@@ -276,12 +276,21 @@ def test_tree_tooltips_omit_duplicative_name() -> None:
     assert "includeName === false" in js
 
     listener_start = js.index('treePane.addEventListener(\n  "mouseenter"')
-    listener_block = js[listener_start : listener_start + 1400]
-    # Every tree row already shows its name, so the hover tooltip omits it and
-    # shows size + date only (never duplicative).
+    listener_block = js[listener_start : listener_start + 2000]
+    # Every tree row already shows its name and a size or count, so the hover tooltip
+    # omits the name and what the chip shows exactly, and gives the exact date, a folder's
+    # other total, and the exact size behind one the chip rounds (mb-8mpo, mb-qg4z);
+    # tests/dom/files-tab-chrome.mjs reads it in Chrome.
     assert "var includeName = false" in listener_block
     assert "folderTooltipHtml(" in listener_block
     assert "fileTooltipHtml(" in listener_block
+    assert 'shows === "count" ? undefined : parseTipNumber(d.tipFiles)' in listener_block
+    assert 'typeof size === "number" && size >= 1024' in listener_block
+    assert 'shows === "size" && !chipRoundsSize ? undefined : size' in listener_block
+    # The folder's tooltip and the file's take that one size.
+    assert listener_block.count("tipSize,") == 2
+    assert "fileTooltipHtml(d.tipName, tipSize," in listener_block
+    assert listener_block.count("parseTipNumber(d.tipSize)") == 1
 
 
 def test_apply_cell_patch_targets_data_path_rows_in_dom() -> None:
@@ -406,8 +415,11 @@ def test_root_entry_refreshes_summary_and_tooltip_before_row_guard() -> None:
     assert 'queryHtml(".tree-summary-count")' in helper_block
     assert 'queryHtml(".tree-summary-size")' in helper_block
     assert 'queryHtml(".header-path")' in helper_block
-    assert "countHtml(totalFiles)" in helper_block
-    assert "sizeHtml(totalSize)" in helper_block
+    # The fallback's own words, "4 files (38 B)", which the split row says too: the
+    # line's figures are navigation.js's (tests/dom/tree-summary-line-session.js).
+    assert "window.MetabrowserNavigationRoute.treeSummaryCountHtml(" in helper_block
+    assert "window.MetabrowserNavigationRoute.treeSummarySizeHtml(" in helper_block
+    assert "totalFiles," in helper_block and "totalSize," in helper_block
     assert "pathEl.dataset.tipFiles" in helper_block
     assert "pathEl.dataset.tipSize" in helper_block
 
@@ -512,15 +524,23 @@ def test_load_tree_renders_single_file_tally() -> None:
     summary_block = js[
         summary_start : js.index("function scheduleRootSummaryRefresh", summary_start)
     ]
-    # The single tally lives in the tree-summary row.
+    # The single tally lives in the tree-summary row, drawn from the root's totals the
+    # page already has, since a row request carries none, and never from a provisional
+    # tally, which the reducer does not take (createRootTotals; mb-h3hc).
+    assert "rootTotals().fromSummary(data.summary, data.tally_cache_status);" in fn_block
+    assert "var stableSummary = rootTotals().totals();" in fn_block
     assert (
-        'var stableSummary = data.tally_cache_status === "scanning" ? null : data.summary;'
+        "treeSummaryHtml(\n        stableSummary,\n        holding ? null : summaryFiles,"
         in fn_block
     )
-    assert "treeSummaryHtml(stableSummary, summaryFiles, summarySize)" in fn_block
-    assert '"tree-summary"' in summary_block
-    assert "tree-summary-count" in summary_block
-    assert "tree-summary-size" in summary_block
+    # The line's markup is navigation.js's, which app.js hands its text helpers.
+    assert "window.MetabrowserNavigationRoute.treeSummaryHtml(" in summary_block
+    navigation = proc_browser.STATIC_DIR.joinpath("navigation.js").read_text(encoding="utf-8")
+    line = navigation[navigation.index("  function treeSummaryHtml(") :]
+    line = line[: line.index("\n  }\n")]
+    assert '"tree-summary nav-metadata"' in line
+    assert "tree-summary-count" in line
+    assert "tree-summary-size" in line
     # The duplicate header tally must not come back.
     assert "updateHeaderStats" not in js
     assert "header-stats" not in js
@@ -581,8 +601,11 @@ def test_plugin_mount_schedules_scoped_post_paint_highlighting() -> None:
     assert "root !== document && !root.isConnected" in js
     assert 'rawLogHost.closest(".log-event.expanded")' in js
 
+    # The whole of renderFile, bounded by the function that follows it: a fixed
+    # character window broke whenever code or comments grew above the last assertion.
     render_start = js.index("async function renderFile(data, preferredViewId, claim, options = {})")
-    render_block = js[render_start : render_start + 12_000]
+    render_end = js.index("\nfunction toggleEvent(header)", render_start)
+    render_block = js[render_start:render_end]
     assert "viewComposition.composition.mount(" in render_block
     assert "afterMount: scheduleHighlightCode" in render_block
     assert "const mount = (" in render_block
@@ -607,7 +630,7 @@ def test_user_visible_strings_dropped_crawling_label() -> None:
 
     # The scanning gate lives in fetchSubtree, which owns the request shared by
     # an expansion and the idle prefetch; loadSubtree owns what the reader sees.
-    fetch_start = js.index("function fetchSubtree(path)")
+    fetch_start = js.index("function fetchSubtree(path, group)")
     fetch_block = js[fetch_start : js.index("async function loadSubtree(")]
     assert 'data.tally_cache_status === "scanning"' in fetch_block
     # Caching an empty subtree because the scan has not reached it yet would
@@ -648,7 +671,7 @@ def test_every_lazy_stub_lookup_is_scoped_to_direct_children() -> None:
 
 def test_lazy_subtree_reports_failures_without_plain_failed_load() -> None:
     js = _read_app_js()
-    fetch_start = js.index("function fetchSubtree(path)")
+    fetch_start = js.index("function fetchSubtree(path, group)")
     fetch_block = js[fetch_start : js.index("async function loadSubtree(")]
     assert "if (!resp.ok)" in fetch_block
     assert "throw new Error(`HTTP ${resp.status}`)" in fetch_block
@@ -672,7 +695,7 @@ def test_snapshot_entries_already_in_a_deferred_page_stay_deferred() -> None:
     js = _read_app_js()
     helper_start = js.index("function _updateDeferredTreePageEntry(container, entry)")
     helper_block = js[helper_start : helper_start + 1000]
-    assert "_deferredTreePageForContainer(container)" in helper_block
+    assert "_deferredTreePageForContainer(container, entry.path)" in helper_block
     assert "node.path === entry.path" in helper_block
     assert "deferred.page.nodes[index]" in helper_block
     assert "current.type !== entry.type" in helper_block
@@ -754,10 +777,13 @@ def test_main_view_address_dims_the_root_and_leaves_no_dead_segment() -> None:
     # A narrow pane ellipsizes the crumbs, so each one names its whole
     # component on hover rather than only the head of it — through the app's
     # own tooltip, because the browser's would be a second one on the same
-    # surface. See devtools/check_tooltips.py.
-    assert (
-        'data-tip-text="${esc(window.MetabrowserNavigationRoute.displayPath(walked))}"' in fn_block
-    )
+    # surface. See devtools/check_tooltips.py. The tip is the crumb's own name,
+    # which the shell shows only while the crumb is cut short: the trail already
+    # shows the path (mb-8mpo, "Tooltips Add Information"). One name is the tip
+    # and the text, so they cannot drift apart (mb-ex5r).
+    assert "var name = esc(window.MetabrowserNavigationRoute.displayPath(segments[i]));" in fn_block
+    assert 'data-tip-text="${name}">${name}</button>' in fn_block
+    assert "displayPath(walked)" not in fn_block
     assert "title=" not in fn_block
 
 
@@ -847,8 +873,9 @@ def test_a_mirrors_note_takes_nothing_from_the_address_and_is_whole_or_absent() 
     assert "direction" not in note + text
     assert "direction: ltr;" in block(".mirror-source .file-header-root")
     assert "direction: rtl;" in block(".file-header-root")
-    # In the design's tokens: muted, at the summary's size, and no color of its own.
-    assert "color: var(--muted);" in note and "font-size: var(--ui-small-font-size);" in note
+    # In the design's tokens: muted, at the header's size, which it inherits as the header's
+    # other metadata does, and no color of its own (docs/design-system.md, "Type Scale").
+    assert "color: var(--muted);" in note and "font-size" not in note
     assert not re.search(r"#[0-9a-fA-F]{3,8}\b|rgb\(|oklch\(", note + text)
 
     # In the navigation heading the ref narrows before the name, and the commit never.
@@ -905,7 +932,14 @@ def test_navigation_heading_shows_only_the_root_name() -> None:
     # keeps the ref and commit the server rendered; tests/dom/source-kind-session.js
     # runs both branches.
     heading_start = js.index("function renderServedRootHeading(pathEl, root)")
-    assert "pathEl.innerHTML = pathBaseHtml(root)" in js[heading_start : heading_start + 400]
+    heading = js[heading_start : heading_start + 700]
+    # Home draws the tree again: the same name is not written again under the pointer. The
+    # name's text is compared, so a name with a quote, which the markup escapes and the
+    # element's serialization does not, is the same name too (source-kind-session.js).
+    assert (
+        "if (pathEl.textContent !== pathBaseName(root)) {\n"
+        "    pathEl.innerHTML = pathBaseHtml(root);"
+    ) in heading
     tree_start = js.index("renderServedRootHeading(pathEl, data.root)")
     assert "setServedRoot" not in js
     assert (
@@ -1242,15 +1276,19 @@ def test_summary_refresh_is_not_gated_on_the_row_it_installs() -> None:
     """
 
     js = _read_app_js()
-    start = js.index("function scheduleRootSummaryRefresh()")
-    block = js[start : js.index("\nfunction ", start + 1)]
-    guard = block[: block.index("_summaryRefreshHandle = setTimeout")]
+    start = js.index("function rootSummaryWanted()")
+    guard = js[start : js.index("\nfunction ", start + 1)]
     assert '.querySelector(".tree-summary")' in guard, (
         "the refresh must run for either summary row, not only the split one"
     )
     assert '.querySelector(".tree-summary-split")' not in guard, (
         "gating on the split row makes the refresh unreachable from the fallback row"
     )
+    start = js.index("async function fetchRootSummary()")
+    block = js[start : js.index("\nfunction ", start + 1)]
+    assert "paintTreeSummary(" in block
+    start = js.index("function paintTreeSummary(html)")
+    block = js[start : js.index("\n}\n", start)]
     # The cached chrome is rewritten by regex; if it only matches the split
     # spelling, the cache keeps a stale summary after the live row is replaced.
     assert "tree-summary(?: tree-summary-split)?" in block, (

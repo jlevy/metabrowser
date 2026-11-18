@@ -40,6 +40,11 @@ async function run() {
   const { FAST_POLL_MS, mountPullPage } = await import(
     pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js")).href
   );
+  // What each diff the page mounts is given, and the routes the page asks the shell to open.
+  const rendered = [];
+  const opened = [];
+  // How each Diff summary the page draws opens a file.
+  const summaryOpens = [];
   const mount = (
     initial,
     assets,
@@ -50,14 +55,30 @@ async function run() {
   ) =>
     mountPullPage(
       container,
-      { number: 7, tab, reader: { initial, fetchAfterMs: 0 } },
+      {
+        number: 7,
+        tab,
+        reader: { initial, fetchAfterMs: 0 },
+        // The route opener as pull-route.js's `open` answers: a route whose file it cannot
+        // spell, as one with a backslash, is refused.
+        open: (route) => {
+          opened.push(route);
+          return route.file?.includes("\\")
+            ? Promise.reject(new Error("the route cannot spell this path"))
+            : Promise.resolve({ status: "opened" });
+        },
+      },
       {
         perf,
         ensureAsset: async () => {},
+        whenIdle: require("./sdk-idle-fixture.js").whenIdle,
         ensureKindAssets: () => assets,
         getRegisteredView: () => ({
-          async render() {
+          async render(_host, context) {
+            rendered.push(context);
             await renderReady;
+            // What the diff read, for the page's Diff summary at its top (mb-pb35).
+            context.onDocument?.({ read: true });
             return {
               scrollToFile(file) {
                 jumps.push(file);
@@ -65,6 +86,10 @@ async function run() {
               },
               dispose() {},
             };
+          },
+          async summary(_slot, context) {
+            summaryOpens.push(context.openFile);
+            return { dispose() {} };
           },
         }),
         ...require("./sdk-ref-fixture.js").refHelpers(document),
@@ -83,7 +108,9 @@ async function run() {
   const rendering = deferred();
   const page = mount(recorded.current, assets.promise, abandoned, loading, rendering.promise);
   await settle();
-  const pending = () => loading.querySelector(".mb-delayed-loading");
+  // The diff's own spinner, not the header's Diff summary placeholder, which waits on the
+  // same read from the header (mb-onr2).
+  const pending = () => loading.querySelector(".github-pull-diff-loading");
   assert.equal(pending()?.getAttribute("aria-label"), "Loading changes");
   assert.ok(pending().querySelector(".spinner"));
   assert.equal(page.showFile("src/app.txt").kind, "no_diff");
@@ -99,7 +126,30 @@ async function run() {
   rendering.resolve();
   await page.whenFilesReady();
   assert.equal(pending(), null, "the diff owns progress after its initial render");
+  // A file the page's Diff summary opens takes the route a press on it in the Pulls tab's tree
+  // takes (`tab.open` in pulls-panel.js), so the address names it, `/pull/7/files/<path>`. The
+  // diff draws no summary of its own, so it is given no way to a file's address (A9 of review A
+  // on #470).
+  await settle();
+  assert.equal(rendered.at(-1)?.openFile, undefined, "Changes draws no summary of its own");
+  const openFile = summaryOpens.at(-1);
+  assert.equal(typeof openFile, "function", "the page's summary opens a file at its address");
+  openFile("src/app.txt");
+  assert.deepEqual(opened.at(-1), {
+    number: 7,
+    tab: "files",
+    file: "src/app.txt",
+    replace: false,
+    jumped: false,
+  });
   assert.deepEqual(abandoned, [], "a fileless visit must not consume the abandoned file");
+  // A path the route cannot spell has no address, so the diff goes to it in place (A6 of
+  // review A on #448).
+  openFile("docs\\notes.md");
+  await settle();
+  assert.equal(opened.at(-1).file, "docs\\notes.md");
+  assert.deepEqual(abandoned, ["docs\\notes.md"], "an unaddressable file is jumped to in place");
+  abandoned.length = 0;
   page.dispose();
 
   const timers = setup();
@@ -173,6 +223,7 @@ async function run() {
     {
       perf,
       ensureAsset: async () => {},
+      whenIdle: require("./sdk-idle-fixture.js").whenIdle,
       ensureKindAssets: () => oldAssets.promise,
       getRegisteredView: () => ({
         render: async () => ({
@@ -253,8 +304,9 @@ async function run() {
     setup();
     window.location.pathname = "/pull/10";
     const posts = [];
-    globalThis.fetch = async (_route, options = {}) => {
-      if (options.method === "POST") {
+    globalThis.fetch = async (route, options = {}) => {
+      // A commit timeline read is not the refresh this counts.
+      if (options.method === "POST" && !route.includes("pull-timeline")) {
         posts.push(JSON.parse(options.body));
       }
       const answer = options.method === "POST" ? checkout.started : checkout.before;
@@ -267,6 +319,7 @@ async function run() {
       {
         perf,
         ensureAsset: async () => {},
+        whenIdle: require("./sdk-idle-fixture.js").whenIdle,
         ensureKindAssets: async () => {},
         getRegisteredView: () => {
           throw new Error("no comparison exists before acquisition");

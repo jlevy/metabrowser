@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock, patch
@@ -136,25 +137,27 @@ def test_asset_config_deduplicates_the_default_stylesheet(tmp_path: Path) -> Non
     )
 
     with patch.object(server, "_LOADED_PLUGINS", [fake]):
-        config = server._build_plugin_asset_config_block()
+        config = server._build_plugin_asset_config_block(server._plugin_asset_prefixes())
 
     assert config.count("/plugin-static/fixture/styles.css") == 1
     assert config.count("/plugin-static/fixture/theme.css") == 1
 
 
 def test_image_asset_config_includes_its_on_demand_stylesheet() -> None:
-    config = server._build_plugin_asset_config_block()
+    config = server._build_plugin_asset_config_block(server._plugin_asset_prefixes())
     prefix = "<script>window.MetabrowserPluginHost.configureAssets("
     assets = json.loads(config.removeprefix(prefix).removesuffix(");</script>"))
 
-    assert assets["image"] == [
-        {
-            "name": "image",
-            "module": "/plugin-static/image/index.js",
-            "scripts": [],
-            "styles": ["/plugin-static/image/styles.css"],
-        }
-    ]
+    # Every URL is under the plugin's content stamp (tests/test_asset_stamps.py).
+    [image] = assets["image"]
+    prefix = image["module"].removesuffix("/index.js")
+    assert re.fullmatch(r"/plugin-static/image/@[0-9a-f]{16}", prefix)
+    assert image == {
+        "name": "image",
+        "module": f"{prefix}/index.js",
+        "scripts": [],
+        "styles": [f"{prefix}/styles.css"],
+    }
 
 
 def test_file_render_waits_for_the_selected_kind_plugin() -> None:

@@ -9,9 +9,12 @@ env:
 Expanding a row of the Pulls tab shows the pull request’s changed files as a tree, built
 from the list `GET /api/plugin/github/pull-files` answers and never from hydrated diff
 documents. This browserless session loads the production
-`builtin_plugins/github/pull-files-tree.js`, with `pulls-panel.js` for the words a
-failed refresh is given, and plays answers the route gave while a fake `gh` replayed
-full-size pages, recorded in `tests/fixtures/github-pull-files-responses.json`.
+`builtin_plugins/github/pull-files-tree.js` over the shell’s changed-files tree
+(`static/changed-files-tree.js`), which a diff’s Diff summary draws too, with
+`pulls-panel.js` for the words a failed refresh is given, and plays answers the route
+gave while a fake `gh` replayed full-size pages, recorded in
+`tests/fixtures/github-pull-files-responses.json`. A folder row ends with the line
+counts of every file under it, rolled up, whether it is open or closed.
 
 `a list fills page by page` is pull request 106’s first list, read between its pages:
 each step says the window the tree asked for, which is past the rows it holds while the
@@ -76,12 +79,12 @@ $ node tests/dom/github-pull-files-tree-session.js
         "failure": null,
         "says": null,
         "rows": [
-          "v assets/ (1)",
+          "v assets/ (1) +0 -0",
           "  M logo.png +0 -0",
-          "v docs/ (2)",
+          "v docs/ (2) +3 -12",
           "  R guide.md (from docs/old-guide.md) +3 -0",
           "  D removed.md +0 -12",
-          "v src/app/plugins/github/ (96)",
+          "v src/app/plugins/github/ (96) +384 -192",
           "  M mod_000.py +4 -2",
           "  M mod_001.py +4 -2",
           "  M mod_002.py +4 -2",
@@ -104,12 +107,12 @@ $ node tests/dom/github-pull-files-tree-session.js
         "failure": null,
         "says": null,
         "rows": [
-          "v assets/ (1)",
+          "v assets/ (1) +0 -0",
           "  M logo.png +0 -0",
-          "v docs/ (2)",
+          "v docs/ (2) +3 -12",
           "  R guide.md (from docs/old-guide.md) +3 -0",
           "  D removed.md +0 -12",
-          "v src/app/plugins/github/ (196)",
+          "v src/app/plugins/github/ (196) +784 -392",
           "  M mod_000.py +4 -2",
           "  M mod_001.py +4 -2",
           "  M mod_002.py +4 -2",
@@ -132,25 +135,25 @@ $ node tests/dom/github-pull-files-tree-session.js
         "failure": null,
         "says": null,
         "rows": [
-          "v assets/ (1)",
+          "v assets/ (1) +0 -0",
           "  M logo.png +0 -0",
-          "v docs/ (2)",
+          "v docs/ (2) +3 -12",
           "  R guide.md (from docs/old-guide.md) +3 -0",
           "  D removed.md +0 -12",
-          "v src/app/ (242)",
-          "  v plugins/github/ (240)",
+          "v src/app/ (242) +1086 -479",
+          "  v plugins/github/ (240) +1076 -478",
           "    M mod_000.py +4 -2",
           "    M mod_001.py +4 -2",
           "    M mod_002.py +4 -2",
           "    … 235 more",
           "    M mod_238.py +4 -2",
           "    A pull_files.py +120 -0",
-          "  v views/ (2)",
+          "  v views/ (2) +10 -1",
           "    M one.py +1 -1",
           "    A two.py +9 -0",
-          "v tools/new/ (1)",
+          "v tools/new/ (1) +0 -0",
           "  R script.sh (from scripts/script.sh) +0 -0",
-          "v weird/ (2)",
+          "v weird/ (2) +2 -1",
           "  A bell�name.txt +1 -0",
           "  M zero�width.md +1 -1",
           "M README.md +2 -1"
@@ -202,44 +205,44 @@ $ node tests/dom/github-pull-files-tree-session.js
     ],
     "a chain row toggles as one": {
       "closed": [
-        "v assets/ (1)",
+        "v assets/ (1) +0 -0",
         "  M logo.png +0 -0",
-        "v docs/ (2)",
+        "v docs/ (2) +3 -12",
         "  R guide.md (from docs/old-guide.md) +3 -0",
         "  D removed.md +0 -12",
-        "> src/app/ (242)",
-        "v tools/new/ (1)",
+        "> src/app/ (242) +1086 -479",
+        "v tools/new/ (1) +0 -0",
         "  R script.sh (from scripts/script.sh) +0 -0",
-        "v weird/ (2)",
+        "v weird/ (2) +2 -1",
         "  A bell�name.txt +1 -0",
         "  M zero�width.md +1 -1",
         "M README.md +2 -1"
       ],
       "reopened": [
-        "v assets/ (1)",
+        "v assets/ (1) +0 -0",
         "  M logo.png +0 -0",
-        "v docs/ (2)",
+        "v docs/ (2) +3 -12",
         "  R guide.md (from docs/old-guide.md) +3 -0",
         "  D removed.md +0 -12",
-        "v src/app/ (242)",
-        "  v plugins/github/ (240)",
+        "v src/app/ (242) +1086 -479",
+        "  v plugins/github/ (240) +1076 -478",
         "    M mod_000.py +4 -2"
       ]
     },
     "past the threshold only the top level shows": [
-      "> assets/ (1)",
-      "> docs/ (2)",
-      "> src/app/ (242)",
-      "> tools/new/ (1)",
-      "> weird/ (2)",
+      "> assets/ (1) +0 -0",
+      "> docs/ (2) +3 -12",
+      "> src/app/ (242) +1086 -479",
+      "> tools/new/ (1) +0 -0",
+      "> weird/ (2) +2 -1",
       "M README.md +2 -1"
     ],
     "the file a page shows is revealed and current": [
-      "> assets/ (1)",
-      "> docs/ (2)",
-      "> src/app/ (242)",
-      "> tools/new/ (1)",
-      "v weird/ (2)",
+      "> assets/ (1) +0 -0",
+      "> docs/ (2) +3 -12",
+      "> src/app/ (242) +1086 -479",
+      "> tools/new/ (1) +0 -0",
+      "v weird/ (2) +2 -1",
       "  A bell�name.txt +1 -0  <- current",
       "  M zero�width.md +1 -1",
       "M README.md +2 -1"
@@ -268,9 +271,9 @@ $ node tests/dom/github-pull-files-tree-session.js
       "failure": null,
       "says": null,
       "rows": [
-        "v docs/ (1)",
+        "v docs/ (1) +1 -0",
         "  A new.md +1 -0",
-        "v src/ (1)",
+        "v src/ (1) +1 -0",
         "  M app.txt +1 -0"
       ]
     },
@@ -308,7 +311,7 @@ $ node tests/dom/github-pull-files-tree-session.js
       "capped": false,
       "truncated": false,
       "failure": "cache_unwritable",
-      "says": "The list of changed files could not be written to the cache."
+      "says": "The changed files of pull request #106 could not be written to the cache: An entry in the Metabrowser storage directory cannot be verified as private to the current user: permission was denied while creating it. Make sure the current user can write to the directory that holds it, or set the applicable override (METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) to a private directory you own. To clear the GitHub cache of octo/demo, run `echo '{}' | metab https://github.com/octo/demo --api /api/plugin/github/cache-clear --data -`, then retry."
     },
     "a stale list's rows are never covered by progress": {
       "its refresh about to be asked for": {
@@ -425,7 +428,7 @@ $ node tests/dom/github-pull-files-tree-session.js
         "capped": false,
         "truncated": false,
         "failure": "cache_unwritable",
-        "says": "The list of changed files could not be written to the cache."
+        "says": "The changed files of pull request #106 could not be written to the cache: An entry in the Metabrowser storage directory cannot be verified as private to the current user: permission was denied while creating it. Make sure the current user can write to the directory that holds it, or set the applicable override (METABROWSER_CACHE_DIR or METABROWSER_CONFIG_DIR) to a private directory you own. To clear the GitHub cache of octo/demo, run `echo '{}' | metab https://github.com/octo/demo --api /api/plugin/github/cache-clear --data -`, then retry."
       }
     },
     "an answer for another read starts again at 0": {
@@ -568,8 +571,416 @@ $ node tests/dom/github-pull-files-tree-session.js
     "filled rows are the list's rows": true,
     "no single-child folder is its own row": true,
     "each folder counts the files under it": true,
+    "each folder's lines are the sum of its files' lines": true,
     "every name is the server's display": true,
     "a list for another read starts again at 0": true
+  }
+}
+? 0
+```
+
+## A Tree Opens Once and Never Grows Without Input
+
+A row’s tree waits `FILES_OPEN_HOLD_MS` for the cached list it reads at once, so a list
+the cache holds opens in one step (`cached`), as does a tree opened again on a list
+GitHub returned while it was closed (`reopenedFilled`). An expanded tree with no rows
+drawn shows its loading line, or its notice, until its first rows come, and then draws
+them however late: a list GitHub returns seconds after the click (`lateRows`), a cached
+read slower than `LATE_ROWS_MS` (`slowCachedRead`), the poll after a failed first read
+(`afterFailedRead`), a tree opened again (`reopened`) or shown again (`shownAgain`), one
+a read emptied (`refreshEmptied`), a landing (`landing`), and a list’s first page
+(`fill`). A refresh that answers not due, because another request listed the files,
+carries none of its rows, so the tree reads them at once and shows its loading line in
+between (`refreshNotDue`, `refreshNotDueLate`, with when the rows were drawn).
+When every read after that answer fails, the error and its Retry stand, and the tree
+reads again once a freshness window rather than every second, until Retry draws the rows
+(`refreshNotDueFailing`, with when each read was asked for).
+Only a change to rows already drawn that comes `LATE_ROWS_MS` after the reader’s last
+press or key, or after the tree’s opening on a landing, is offered rather than drawn: a
+list’s further pages on its line (`fill`), and a refreshed complete list over the tree’s
+top, floating (`refreshed`), which opening the tree again draws (`refreshedReopened`).
+Rows inside the input’s window are drawn as before (`promptRows`). A refresh that would
+draw the same rows is drawn in place, since it moves nothing (`unchangedRefresh`), and
+an offer hides none of the tree’s line or notices (`offerKeepsNotices`). An offer that a
+later answer makes empty, by bringing back the rows drawn, is withdrawn
+(`offerWithdrawn`). A refresh that lists no files at all is offered as well, and the
+drawn rows keep no line that says there are none until the reader asks for the empty
+list (`refreshListsNone`), whether a read past the rows held brings it, at the offset it
+asked for, or a refresh answering not due (`refreshNotDueListsNone`). A read that
+answers that the server no longer holds the list is offered as well, while the drawn
+rows breathe as the list is listed again (`listGone`, `listGoneWhileAsked`), and its
+notice and Retry join the offer when the list stays unavailable (`listGoneUnavailable`).
+A refresh that says the list is gone is offered the same way (`listGoneOnRefresh`), and
+the offer stands across a refresh’s answer that carries no rows until a read brings
+them, which withdraws it when they are the same files (`listGoneThenListed`); a read
+that fails leaves it standing with its error (`listGoneThenListedFailing`). Each hold’s
+span says how long it held and why it ended, an offer included when the reader presses
+it or the tree closes on it, and a first read that fails as failed (`spans`).
+`invariants` holds, across every model the stories rendered, their refresh answering
+started or not due, that an expanded tree with no rows drawn never offers, that once
+open it shows progress, a notice, or its line, that drawn rows never stand under the
+line of a list with no files, that a change held back from drawn rows is always offered,
+and that drawn rows never sit under progress.
+
+```console
+$ node tests/dom/github-pull-files-opening-behavior.js
+{
+  "cached": [
+    "closed",
+    "4 rows"
+  ],
+  "lateRows": [
+    "closed",
+    "loading line",
+    "4 rows"
+  ],
+  "slowCachedRead": [
+    "closed",
+    "loading line",
+    "4 rows"
+  ],
+  "afterFailedRead": [
+    "closed",
+    "notice: The server did not answer.",
+    "4 rows"
+  ],
+  "reopened": [
+    "closed",
+    "loading line",
+    "closed",
+    "loading line",
+    "4 rows"
+  ],
+  "reopenedFilled": [
+    "closed",
+    "loading line",
+    "closed",
+    "4 rows"
+  ],
+  "shownAgain": [
+    "closed",
+    "loading line",
+    "4 rows"
+  ],
+  "refreshEmptied": [
+    "closed",
+    "4 rows",
+    "loading line",
+    "4 rows"
+  ],
+  "refreshNotDue": {
+    "painted": [
+      "closed",
+      "loading line",
+      "4 rows"
+    ],
+    "betweenReplies": {
+      "loading": true,
+      "line": null,
+      "rows": 0
+    },
+    "drawnAt": 0
+  },
+  "refreshNotDueLate": {
+    "painted": [
+      "closed",
+      "loading line",
+      "4 rows"
+    ],
+    "drawnAt": 700
+  },
+  "refreshNotDueFailing": {
+    "readsAt": [
+      0,
+      0,
+      60000,
+      120000,
+      121000
+    ],
+    "readsBy10s": 2,
+    "readsByTwoWindows": 4,
+    "notice": {
+      "text": "The server did not answer.",
+      "action": "retry"
+    },
+    "painted": [
+      "closed",
+      "loading line",
+      "notice: The server did not answer.",
+      "loading line",
+      "4 rows"
+    ],
+    "drawnAt": 121000
+  },
+  "promptRows": [
+    "closed",
+    "loading line",
+    "4 rows"
+  ],
+  "fill": {
+    "painted": [
+      "closed",
+      "loading line",
+      "103 rows",
+      "103 rows, offer: Show 100 more files",
+      "103 rows, offer: Show 149 more files",
+      "256 rows"
+    ],
+    "drawnFirst": 103,
+    "drawnWhileIdle": 103,
+    "drawnAfterPress": 256
+  },
+  "landing": [
+    "closed",
+    "loading line",
+    "4 rows"
+  ],
+  "refreshed": {
+    "painted": [
+      "closed",
+      "4 rows",
+      "4 rows, offer: Show 1 more file"
+    ],
+    "floats": true
+  },
+  "refreshedReopened": "5 rows",
+  "offerWithdrawn": {
+    "painted": [
+      "closed",
+      "4 rows",
+      "4 rows, offer: Show 1 more file",
+      "4 rows"
+    ],
+    "spans": [
+      "opening met 0 ms",
+      "lateRows withdrawn 60000 ms"
+    ]
+  },
+  "refreshListsNone": {
+    "painted": [
+      "closed",
+      "4 rows",
+      "4 rows, offer: Show the updated list (no files)",
+      "empty"
+    ],
+    "offered": {
+      "rows": 4,
+      "line": null,
+      "offer": "Show the updated list (no files)",
+      "floats": true
+    },
+    "shown": {
+      "rows": 0,
+      "line": "No changed files.",
+      "offer": null
+    },
+    "reads": [
+      "/api/plugin/github/pull-files?number=7&offset=0",
+      "/api/plugin/github/pull-files?number=7&offset=2"
+    ],
+    "spans": [
+      "opening met 0 ms",
+      "lateRows reader 400 ms"
+    ]
+  },
+  "refreshNotDueListsNone": {
+    "painted": [
+      "closed",
+      "4 rows",
+      "4 rows, offer: Show the updated list (no files)"
+    ],
+    "offered": {
+      "rows": 4,
+      "line": null,
+      "offer": "Show the updated list (no files)",
+      "floats": true
+    },
+    "reads": [
+      "/api/plugin/github/pull-files?number=7&offset=0",
+      "/api/plugin/github/pull-files?number=7&offset=2"
+    ]
+  },
+  "listGone": {
+    "painted": [
+      "closed",
+      "4 rows",
+      "4 rows, offer: Show the updated list (not listed)",
+      "4 rows"
+    ],
+    "whileListing": {
+      "rows": 4,
+      "line": null,
+      "loading": false,
+      "refreshing": true,
+      "notice": null,
+      "offer": "Show the updated list (not listed)",
+      "floats": true
+    },
+    "spans": [
+      "opening met 0 ms",
+      "lateRows withdrawn 2000 ms"
+    ]
+  },
+  "listGoneUnavailable": {
+    "painted": [
+      "closed",
+      "4 rows",
+      "4 rows, offer: Show the updated list (not listed)",
+      "notice: The list of changed files is unavailable."
+    ],
+    "offered": {
+      "rows": 4,
+      "line": null,
+      "loading": false,
+      "refreshing": false,
+      "notice": "The list of changed files is unavailable.",
+      "offer": "Show the updated list (not listed)",
+      "floats": true
+    },
+    "shown": {
+      "rows": 0,
+      "line": null,
+      "loading": false,
+      "refreshing": false,
+      "notice": "The list of changed files is unavailable.",
+      "offer": null,
+      "floats": false
+    }
+  },
+  "listGoneWhileAsked": {
+    "painted": [
+      "closed",
+      "4 rows",
+      "4 rows, offer: Show the updated list (not listed)"
+    ],
+    "offered": {
+      "rows": 4,
+      "line": null,
+      "loading": false,
+      "refreshing": true,
+      "notice": null,
+      "offer": "Show the updated list (not listed)",
+      "floats": true
+    }
+  },
+  "listGoneThenListed": {
+    "painted": [
+      "closed",
+      "4 rows",
+      "4 rows, offer: Show the updated list (not listed)",
+      "4 rows"
+    ],
+    "offers": [
+      "Show the updated list (not listed)",
+      "Show the updated list (not listed)",
+      null
+    ],
+    "reads": 3,
+    "spans": [
+      "opening met 0 ms",
+      "lateRows withdrawn 2000 ms"
+    ]
+  },
+  "listGoneThenListedFailing": {
+    "painted": [
+      "closed",
+      "4 rows",
+      "4 rows, offer: Show the updated list (not listed)"
+    ],
+    "shown": {
+      "rows": 4,
+      "line": null,
+      "loading": false,
+      "refreshing": false,
+      "notice": "The server did not answer.",
+      "offer": "Show the updated list (not listed)",
+      "floats": true
+    }
+  },
+  "listGoneOnRefresh": {
+    "painted": [
+      "closed",
+      "4 rows",
+      "4 rows, offer: Show the updated list (not listed)"
+    ],
+    "answered": {
+      "rows": 4,
+      "line": null,
+      "loading": false,
+      "refreshing": true,
+      "notice": null,
+      "offer": "Show the updated list (not listed)",
+      "floats": true
+    },
+    "whileReading": {
+      "rows": 4,
+      "line": null,
+      "loading": false,
+      "refreshing": true,
+      "notice": null,
+      "offer": "Show the updated list (not listed)",
+      "floats": true
+    }
+  },
+  "unchangedRefresh": {
+    "painted": [
+      "closed",
+      "4 rows"
+    ],
+    "reads": 3,
+    "offer": null
+  },
+  "offerKeepsNotices": {
+    "stopped": {
+      "line": "200 files so far, 2 of 3 pages",
+      "notice": "GitHub's rate limit lifts at 2026-09-23T16:46:00Z. No automatic attempt runs before then.",
+      "offer": "Show 5 more files"
+    },
+    "failedPoll": {
+      "notice": "The server did not answer.",
+      "action": "retry",
+      "offer": "Show 1 more file"
+    }
+  },
+  "slowRead": [
+    "closed",
+    "loading line"
+  ],
+  "spans": {
+    "cached": [
+      "opening met 0 ms"
+    ],
+    "lateRows": [
+      "opening met 0 ms"
+    ],
+    "slowCachedRead": [
+      "opening bound 150 ms"
+    ],
+    "reopened": [
+      "opening met 0 ms",
+      "opening met 0 ms"
+    ],
+    "fill": [
+      "opening met 0 ms",
+      "lateRows reader 3100 ms"
+    ],
+    "offerClosed": [
+      "opening met 0 ms",
+      "lateRows closed 400 ms"
+    ],
+    "failedRead": [
+      "opening failed 0 ms"
+    ],
+    "slowRead": [
+      "opening bound 150 ms"
+    ]
+  },
+  "invariants": {
+    "an expanded tree with no rows drawn never offers": true,
+    "an open tree with no rows drawn shows progress, a notice, or its line": true,
+    "rows drawn never stand under the line of a list with no files": true,
+    "a change held back from rows drawn is always offered": true,
+    "rows drawn never sit under progress": true
   }
 }
 ? 0

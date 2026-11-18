@@ -74,7 +74,7 @@ import logging
 import mimetypes
 from collections import Counter
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Literal
 
@@ -82,8 +82,16 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 
 from metabrowser import kpress_adapter
-from metabrowser.capabilities import get_capabilities
+from metabrowser.capabilities import UNTRUSTED_CAPABILITIES
+from metabrowser.client_disconnect import CLIENT_CLOSED, unless_disconnected
 from metabrowser.content_sniff import SNIFF_PREFIX_BYTES, ContentClass, classify_prefix
+from metabrowser.diff.markdown_projection_worker import (
+    InertRender,
+    InertRenderRefused,
+    kpress_refusal_payload,
+    shared_worker,
+    text_identity,
+)
 from metabrowser.file_extensions import (
     BROWSER_IMAGE_EXTS,
     BROWSER_TEXT_EXTS,
@@ -117,6 +125,8 @@ from metabrowser.gz_io import ArtifactPath
 from metabrowser.inventory_engine.contract import ascii_casefold
 from metabrowser.inventory_rollup import RollupOptions, build_rollup, group_rollup_children
 from metabrowser.invisible_chars import display_segment
+from metabrowser.keymap import live_view_keys
+from metabrowser.plugin_loader.classify import CONTENT_PREDICATE_MAX_BYTES
 from metabrowser.settings import (
     FOLDER_DISCOVERY_MAX_ENTRIES,
     INVENTORY_MAX_FILES,
@@ -127,6 +137,7 @@ from metabrowser.settings import (
 from metabrowser.source import MAX_CONTAINER_INNER_DEPTH, UnsupportedSourceCapabilityError
 from metabrowser.tree import _tree_depth_from_query
 from metabrowser.tree_filter import TreeFilter
+from metabrowser.tree_groups import GroupBy, group_row, groups_for, groups_payload
 from metabrowser.view_routes import decode_view_logical_path
 
 log = logging.getLogger(__name__)
@@ -305,11 +316,19 @@ def _git_blob_content_predicates(
     return json_top, yaml_top, frontmatter, frontmatter_error
 
 
-def _json_safe_git_frontmatter(value: dict[str, Any]) -> dict[str, Any]:
-    from metabrowser.server import _json_safe_frontmatter
+# The extensions `_git_blob_content_predicates` parses anything for.
+_CONTENT_PREDICATE_EXTS = frozenset({".json", ".yaml", ".yml", ".md"})
 
-    safe = _json_safe_frontmatter(value)
-    return safe if isinstance(safe, dict) else {}
+
+async def _blob_predicates_off_loop(
+    ext: str, body: bytes
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, Any] | None, str | None]:
+    """The predicates on a worker thread, where a parse of a bounded prefix can take
+    seconds; a blob no predicate reads skips the thread."""
+
+    if ext not in _CONTENT_PREDICATE_EXTS:
+        return None, None, None, None
+    return await asyncio.to_thread(_git_blob_content_predicates, ext, body)
 
 
 def _git_frontmatter_envelope(
@@ -317,19 +336,27 @@ def _git_frontmatter_envelope(
     mapping: dict[str, Any] | None,
     error: str | None,
 ) -> dict[str, Any]:
+    # parse_frontmatter_bytes answers the bounded, JSON-safe copy
+    # (metabrowser.frontmatter_yaml), so the mapping goes on the wire as it is.
     fields: dict[str, Any] = {}
     if mapping is not None:
-        fields["frontmatter"] = _json_safe_git_frontmatter(mapping)
+        fields["frontmatter"] = mapping
     if error is not None:
         fields["frontmatter_error"] = error
     return fields
+
+
+# A pinned revision is never trusted, whatever the process's block: every route here was
+# handed the pin its request resolved, so the profile is fixed before anything is awaited
+# (capabilities.capabilities_for).
+_PIN_CAPABILITIES = UNTRUSTED_CAPABILITIES
 
 
 def _views_for_kind(kind: str) -> list[dict[str, Any]]:
     # Plugin kinds such as diff live in manifests, not VIEW_REGISTRY.
     from metabrowser.server import _views_for_kind as merged_views_for_kind
 
-    return merged_views_for_kind(kind)
+    return merged_views_for_kind(kind, active_content=_PIN_CAPABILITIES.active_content)
 
 
 def _passes_min_size(entry: GitTreeEntry, floor: int) -> bool:
@@ -362,7 +389,31 @@ def _matches_types(
 
 
 def _git_filter_active(tree_filter: TreeFilter) -> bool:
-    return bool(tree_filter.types or tree_filter.min_size)
+    return bool(tree_filter.types or tree_filter.min_size or tree_filter.group is not None)
+
+
+def _git_type_group(name: str, ext: str, by_extension: dict[str, str]) -> str:
+    """The display group a blob classifies into, as the inventory provider decides it: by
+    its name when the registry knows the name, else by its extension, once per extension."""
+
+    registry = load_file_type_registry()
+    if registry.classifies_by_name(name):
+        return registry.classify(name, ext).group_id
+    group = by_extension.get(ext)
+    if group is None:
+        group = registry.classify("", ext).group_id
+        by_extension[ext] = group
+    return group
+
+
+def _git_group_keeps(name: str, ext: str, tree_filter: TreeFilter, memo: dict[str, str]) -> bool:
+    """Whether a blob is a member of the filter's Group by group. A Git revision has no
+    mtime, so only type groups reach here (`require_filter_capabilities`)."""
+
+    group = tree_filter.group
+    if group is None:
+        return True
+    return group.by == "type" and _git_type_group(name, ext, memo) == group.id
 
 
 def _blob_display_name(rel: bytes) -> str:
@@ -398,6 +449,7 @@ def _git_filter_tallies(
     suffix_tokens = tuple(token for token in ext_tokens if token in semantic)
     ext_verdicts: dict[str, bool] = {}
     floor = tree_filter.min_size
+    group_memo: dict[str, str] = {}
     matches = bytearray(len(index.blobs))
     for position, ((rel, oid), ext) in enumerate(zip(index.blobs, exts, strict=True)):
         keep = True
@@ -411,6 +463,8 @@ def _git_filter_tallies(
             keep = verdict or (
                 bool(name_tokens) and ascii_casefold(_blob_display_name(rel)) in name_tokens
             )
+        if keep and tree_filter.group is not None:
+            keep = _git_group_keeps(_blob_display_name(rel), ext, tree_filter, group_memo)
         if keep and floor:
             size = index.sizes.get(oid)
             keep = size is not None and size >= floor
@@ -445,7 +499,13 @@ async def _git_tally_view(
         return _GitTallyView(index, index.tallies)
     exts = await source.derived(("blob-exts", tree_oid), lambda: _git_blob_exts(index))
     tallies = await source.derived(
-        ("filter-tallies", tree_oid, tree_filter.types, tree_filter.min_size),
+        (
+            "filter-tallies",
+            tree_oid,
+            tree_filter.types,
+            tree_filter.min_size,
+            tree_filter.group.key if tree_filter.group is not None else None,
+        ),
         lambda: _git_filter_tallies(index, exts, tree_filter, semantic),
     )
     return _GitTallyView(index, tallies)
@@ -469,6 +529,10 @@ def _git_entry_visible(
         prefix = _join_git_prefix(index_prefix, entry.path.segments[-1])
         return view.tally(prefix).total_files > 0
     if tree_filter.types and not _matches_types(entry.path, tree_filter.types, semantic=semantic):
+        return False
+    if not _git_group_keeps(
+        _display_basename(entry.path), _filter_tail_ext(entry.path), tree_filter, {}
+    ):
         return False
     if tree_filter.min_size:
         return _passes_min_size(entry, tree_filter.min_size)
@@ -1138,7 +1202,7 @@ async def git_revision_capabilities(subject: GitRevisionSubject) -> JSONResponse
                 "contract": _GIT_INDEX_CONTRACT,
             },
             "events": {"stream": "off", "reason": "git-revision-no-watcher"},
-            "capabilities": get_capabilities().as_wire(),
+            "capabilities": _PIN_CAPABILITIES.as_wire(),
         }
     )
 
@@ -1151,15 +1215,49 @@ async def git_revision_tree(
 ) -> JSONResponse:
     """List one Git tree. ``entries`` are Git facts; ``tree`` is the SPA nav."""
 
+    payload, status = await _git_revision_tree_payload(request, subject, tree_filter)
+    return _json(payload, status_code=status)
+
+
+@_typed_git_failures
+async def git_revision_tree_groups(
+    request: Request,
+    subject: GitRevisionSubject,
+    tree_filter: TreeFilter,
+    group_by: GroupBy,
+) -> JSONResponse:
+    """`group_by` on a Git revision: each group's tree, as `git_revision_tree` lists it."""
+
+    groups: list[dict[str, Any]] = []
+    envelope: dict[str, Any] | None = None
+    for group in groups_for(group_by):
+        payload, status = await _git_revision_tree_payload(
+            request, subject, replace(tree_filter, group=group)
+        )
+        if status != 200:
+            return _json(payload, status_code=status)
+        envelope = envelope or payload
+        groups.append(group_row(group, payload))
+    grouped = groups_payload(group_by, groups, envelope)
+    # A revision has no served root folder; its envelope names the path it lists.
+    grouped["root"] = envelope.get("display") if envelope is not None else None
+    return _json(grouped)
+
+
+async def _git_revision_tree_payload(
+    request: Request,
+    subject: GitRevisionSubject,
+    tree_filter: TreeFilter,
+) -> tuple[dict[str, Any], int]:
     remaining_depth = _tree_depth_from_query(request.query_params.get("depth", ""))
     try:
         path = _git_path_from_query(request)
     except GitPathError:
-        return _json(_NOT_FOUND, status_code=404)
+        return dict(_NOT_FOUND), 404
     try:
         located = await subject.tree_source.resolve_path(path)
         if located is None or not located.is_tree:
-            return _json(_NOT_FOUND, status_code=404)
+            return dict(_NOT_FOUND), 404
         source = subject.tree_source
         index = await source.blob_index(path)
         semantic = _semantic_extension_tokens(tree_filter.types)
@@ -1186,7 +1284,7 @@ async def git_revision_tree(
             )
         root_index = index if not path.segments else await source.blob_index()
     except GitObjectUnavailableError as exc:
-        return _json(_object_unavailable_payload(exc), status_code=404)
+        return (_object_unavailable_payload(exc), 404)
     assert located is not None
     chrome = await _git_root_index_chrome(subject, root_index)
     filtered = _git_tree_filtered(view, tree_filter)
@@ -1200,9 +1298,15 @@ async def git_revision_tree(
         "tree": tree_nodes,
         **chrome,
     }
+    if filtered is None and tree_filter.group is not None:
+        # A group's answer always says what it holds: its files when blob sizes are
+        # incomplete, and nothing it cannot count when the index is truncated, so the
+        # grouped answer keeps every group that shows anything (tree_groups.groups_payload).
+        counted = view.tally().total_files if view is not None else None
+        filtered = {"files": counted, "size": None, "entries": counted}
     if filtered is not None:
         payload["filtered"] = filtered
-    return _json(payload)
+    return payload, 200
 
 
 async def _git_root_index_chrome(
@@ -1236,7 +1340,10 @@ def _git_readme_child(
 
 
 def _folder_views(*, readme: bool, tally: GitTreeTally | None) -> list[dict[str, Any]]:
-    """Overview when a README or complete tally exists; treemap needs sizes."""
+    """Overview when a README or complete tally exists; treemap needs sizes.
+
+    Overview alone has no other tab to switch to, so it is served without its key.
+    """
 
     complete = tally is not None and tally.total_size is not None
     wanted: set[str] = set()
@@ -1244,7 +1351,7 @@ def _folder_views(*, readme: bool, tally: GitTreeTally | None) -> list[dict[str,
         wanted.add("overview")
     if complete:
         wanted.add("treemap")
-    return [view for view in _views_for_kind("folder") if view.get("id") in wanted]
+    return live_view_keys([view for view in _views_for_kind("folder") if view.get("id") in wanted])
 
 
 def _dir_tally_payload(tally: GitTreeTally | None) -> dict[str, Any]:
@@ -1351,7 +1458,7 @@ async def _blob_file_payload(entry: GitTreeEntry, body: bytes, request: Request)
             }
         )
         return payload
-    json_top, yaml_top, frontmatter, frontmatter_error = _git_blob_content_predicates(ext, body)
+    json_top, yaml_top, frontmatter, frontmatter_error = await _blob_predicates_off_loop(ext, body)
     kind = _plugin_kind_for_git_path(
         entry.path,
         json_top_level=json_top,
@@ -1370,10 +1477,11 @@ async def _blob_file_payload(entry: GitTreeEntry, body: bytes, request: Request)
     return payload
 
 
-# Every content predicate reads a bounded prefix: a JSON mapping is refused past 256 KiB,
-# YAML reads 16 KiB, and frontmatter 256 KiB. One byte past the largest gives each the
-# answer the whole blob would.
-_PREDICATE_PREFIX_BYTES = 256 * 1024 + 1
+# Every content predicate reads a bounded prefix (`CONTENT_PREDICATE_MAX_BYTES`). One
+# byte past the largest gives each the answer the whole blob would: a JSON document past
+# its cap is refused, and a front-matter fence it does not close is reported as not
+# closed within the bound.
+_PREDICATE_PREFIX_BYTES = CONTENT_PREDICATE_MAX_BYTES + 1
 
 
 async def _windowed_blob_file_response(
@@ -1428,7 +1536,7 @@ async def _windowed_blob_file_response(
             },
             status_code=416,
         )
-    json_top, yaml_top, frontmatter, frontmatter_error = _git_blob_content_predicates(
+    json_top, yaml_top, frontmatter, frontmatter_error = await _blob_predicates_off_loop(
         ext, head[:_PREDICATE_PREFIX_BYTES]
     )
     kind = _plugin_kind_for_git_path(
@@ -1569,6 +1677,7 @@ async def git_revision_file(request: Request, subject: GitRevisionSubject) -> JS
 async def git_revision_kpress_render(
     subject: GitRevisionSubject,
     *,
+    request: Request,
     subpath: str,
     view: str,
     profile: str | None,
@@ -1637,23 +1746,47 @@ async def git_revision_kpress_render(
     frontmatter_error = None
     if ext == ".md":
         parse_source = source_override.encode() if source_override is not None else body
-        _, _, frontmatter, frontmatter_error = _git_blob_content_predicates(ext, parse_source)
+        _, _, frontmatter, frontmatter_error = await asyncio.to_thread(
+            _git_blob_content_predicates, ext, parse_source
+        )
     envelope = _git_frontmatter_envelope(mapping=frontmatter, error=frontmatter_error)
     try:
-        rendered = await asyncio.to_thread(
-            kpress_adapter.render_kpress_view,
-            source_text=content,
-            # Display text is not a route identity; wiki rewrite must stay on the wire.
-            source_path=entry.path.to_wire(),
-            kind=kind,
-            view=view,
-            ext=ext,
-            mtime_hash=entry.oid,
-            size=logical_size,
-            frontmatter=envelope.get("frontmatter"),
-            frontmatter_error=envelope.get("frontmatter_error"),
-            profile=profile,
-            include_toc=include_toc,
+        # A pin is never trusted (_PIN_CAPABILITIES), so its document renders inert, in the
+        # Markdown child under its deadline, and is known by its blob, or by the text a
+        # page sent in its place; display text is not a route identity, so the source path
+        # stays on the wire. A client that goes away leaves the render to no one, and an
+        # abandoned render must not hold the child. The child raises KPress's errors too.
+        rendered = await unless_disconnected(
+            request,
+            shared_worker().render_inert(
+                InertRender(
+                    source_text=content,
+                    source_path=entry.path.to_wire(),
+                    display_path=entry.path.display(),
+                    identity=(
+                        f"blob:{entry.oid}"
+                        if source_override is None
+                        else await asyncio.to_thread(text_identity, source_override)
+                    ),
+                    kind=kind,
+                    view=view,
+                    ext=ext,
+                    mtime_hash=entry.oid,
+                    size=logical_size,
+                    frontmatter=envelope.get("frontmatter"),
+                    frontmatter_error=envelope.get("frontmatter_error"),
+                    profile=profile,
+                    include_toc=include_toc,
+                )
+            ),
+        )
+        if rendered is None:
+            return JSONResponse({}, status_code=CLIENT_CLOSED)
+    except InertRenderRefused as refused:
+        return JSONResponse(
+            kpress_refusal_payload(refused, path.to_wire()),
+            status_code=refused.http_status,
+            headers={"cache-control": "no-cache"},
         )
     except kpress_adapter.KPressInvalidRequestError as exc:
         return JSONResponse(
@@ -1675,8 +1808,6 @@ async def git_revision_kpress_render(
             },
             status_code=502,
         )
-    if not get_capabilities().active_content:
-        rendered = kpress_adapter.inert_render(rendered)
     return JSONResponse(rendered, headers={"cache-control": "no-cache"})
 
 

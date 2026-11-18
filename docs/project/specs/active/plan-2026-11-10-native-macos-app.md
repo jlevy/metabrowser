@@ -1,11 +1,16 @@
 # Plan for the Native macOS App
 
-**Date:** 2026-11-10 (last updated 2026-11-12)
+**Date:** 2026-11-10 (last updated 2026-11-18)
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Draft. Epic `mb-1apq` tracks every item below as a bead.
-Phase 1 is in progress, and the v1 milestone (`mb-s4y1`, below) is under way.
+**Status:** Partly implemented.
+Epic `mb-1apq` tracks every item below as a bead.
+The app is on `main`: the spike and the v1 stack merged on 2026-11-13. The v1 milestone
+(`mb-s4y1`, below) waits on its end-to-end check (`mb-hwxu`); the WebKit gate failed,
+and what follows from that is the owner’s decision (`mb-gvtw`). Of Phase 3, only
+`--exit-on-eof` has shipped (jlevy/metabrowser#366). Of Phase 4, recent targets are
+built (`mb-40k4`); the rest of it and Phase 6 have not started.
 
 ## Overview
 
@@ -56,11 +61,9 @@ What fits is adapted to a modern native toolchain; nothing names or ships that a
 
 ## Background
 
-The spike in `apps/macos/` (branch `claude/macos-app-spike`, jlevy/metabrowser#341)
-discovers a CLI install of `metab`, runs one server per folder as a child process, and
-shows each folder in a native window.
-It is verified end to end on fresh launches, and it is not to be merged until the user
-decides; core `metab` changes land on `main` through their own pull requests.
+The app in `apps/macos/` began as a spike (jlevy/metabrowser#341) that discovers a CLI
+install of `metab`, runs one server per folder as a child process, and shows each folder
+in a native window. It merged to `main` on 2026-11-13, with the v1 stack above it.
 
 Two problems prompted this plan.
 Every window is titled “Metabrowser”, because the served page’s title never names its
@@ -105,6 +108,9 @@ through `metab --api`:
   is the repository name; `full_name` is the origin abbreviated to `host/owner/repo@ref`
   (or `@` and 12 hex digits for a commit pin), never the path in the cache; `kind_label`
   is “Cached mirror”.
+- **A repository folder showing a revision** keeps `kind: folder` and adds `@<ref>` to
+  `full_name`, by the design in
+  [Open Modes](../../architecture/arch-open-modes.md#views); it is not built.
 - **Title:** the short name, a bullet (U+2022), and “Metabrowser”.
   The served page uses it as its `<title>`, so browser tabs show it too.
 - Phase 3 extends the same route with the process id, boot id, and version that host
@@ -112,15 +118,25 @@ through `metab --api`:
 
 ### Window and Tab Titles
 
-- The visible title shows the short name prominent and bold, then a small bullet and
-  “Metabrowser” in a lighter secondary style.
-  AppKit cannot style part of a system title, so the app hides the system title and
-  draws a native-looking attributed title in the title bar.
-- The window’s plain title is the same text, for the Window menu, Mission Control, the
-  Dock, and accessibility.
+- The visible title shows the folder’s short name alone, bold; the app icon’s mark at
+  the title bar’s trailing end carries the app’s name (`mb-9xbp`). AppKit draws a system
+  title in one style, so the app hides it and draws its own in the title bar.
+- The window’s title is the short name too, for the Window menu, Mission Control, the
+  window switcher, and accessibility, or the full name while another open folder shares
+  the short name. The served page keeps “short name • Metabrowser” as its `<title>`, for
+  a browser’s tab.
 - A native tab shows only the short name; its tooltip shows the full name.
+- The title bar’s trailing end holds the app’s logo, in every window: the app icon’s
+  mark alone, the colored M and B without the icon’s squircle, drawn from the icon
+  masters’ own outlines (`mb-ndym`, `mb-8cbn`). The light title bar draws deeper tints
+  of the mark’s two hues, so each reads at 4:1 or more.
+  The mark is 13 points tall (`mb-6bfu`), centered on the window buttons’ row, about 14
+  points from the window’s trailing edge (`mb-2x8f`), and a link: a click opens the
+  project on GitHub, under a gentle hover with square corners, as the web page’s hovers
+  have (`mb-j441`, `mb-2x8f`).
 - The full name and kind appear as the subtitle or tooltip, and a local folder sets the
-  window’s represented URL, so the proxy icon and Command-click path menu work.
+  window’s represented URL, so Command-click, right-click, or VoiceOver’s Show Menu on
+  the title opens the path menu.
 
 ### Icon and Brand
 
@@ -213,20 +229,20 @@ One command produces a downloadable release, adapted from the sister app’s pip
 - **Distribution:** a draft GitHub release that a person publishes, marked not latest so
   it never displaces the `metab` releases, and a generated cask for a personal Homebrew
   tap.
-- **CI:** a drafted `macos-app` workflow builds the dev variant on pull requests and
-  `main`, and on a `macos-v*` tag signs, notarizes, and drafts the release from secrets
-  held in a protected environment.
-  The user approved the build, test, and ad hoc release-rehearsal workflow and the gate
-  that keeps the existing `publish.yml` to the Python package’s `v<version>` tags, so a
-  macOS tag never triggers a PyPI publish, for the v1 milestone (`mb-x4fy`). The signing
-  and notarizing release job still waits for the user’s approval and the credentials
-  (Open Questions).
+- **CI:** the `macos-app` workflow builds and tests the dev variant and rehearses the
+  release with an ad hoc signature on pull requests and `main` pushes that touch the
+  app, and `publish.yml` runs only for the Python package’s `v<version>` tags, so a
+  macOS tag never triggers a PyPI publish.
+  The user approved both for the v1 milestone (`mb-x4fy`). A release job that, on a
+  `macos-v*` tag, signs, notarizes, and drafts the release from secrets held in a
+  protected environment still waits for the user’s approval and the credentials (Open
+  Questions).
 - **What a downloader needs:** the app uses a `metab` CLI install and shows the install
   command when it finds none; Phase 5 adds a first-run flow that makes that install for
   the user.
-- **Status:** built and tested end to end with ad-hoc signing on
-  `claude/macos-release-build`. This Mac has no Developer ID identity, so the first real
-  release needs one installed, plus notary credentials.
+- **Status:** on `main` since jlevy/metabrowser#341, and tested end to end only with an
+  ad hoc signature. The build Mac has no Developer ID identity, so the first real release
+  needs one installed, plus notary credentials (`mb-e9fm`).
 
 ### Servers, Switching, and Agents
 
@@ -249,20 +265,27 @@ The server-topology brief’s recommendations, in brief:
 ## Implementation Plan
 
 Each phase is a pull-request boundary.
-Core `metab` work goes to `main`; native app work stays on the spike branch until the
-user decides to merge it.
+Core `metab` work and native app work both go to `main`, each through its own pull
+requests.
 
 ### Milestone: v1, a Usable App
 
 On 2026-11-11 the user asked for the spike to become a full, usable app that meets the
 tbd coding guidelines.
 `mb-s4y1` tracks that milestone.
-It draws its items from Phases 1, 2, and 5. Its work lands as a native GitHub stack on
-the spike, each layer a pull request whose base is the layer below:
-jlevy/metabrowser#341 (the spike, with CI and the review fixes), jlevy/metabrowser#359
-(everyday use), jlevy/metabrowser#361 (setup), jlevy/metabrowser#362 (guidelines and
-robustness), and jlevy/metabrowser#363 (the engine gate’s record).
-None of it merges until the user says.
+It draws its items from Phases 1, 2, and 5. Its work landed as a native GitHub stack,
+each layer a pull request whose base was the layer below: jlevy/metabrowser#341 (the
+spike, with CI and the review fixes), jlevy/metabrowser#359 (everyday use),
+jlevy/metabrowser#361 (setup), jlevy/metabrowser#362 (guidelines and robustness),
+jlevy/metabrowser#363 (the engine gate’s record), jlevy/metabrowser#377 (the final
+review’s fixes), and the window layers jlevy/metabrowser#384 and jlevy/metabrowser#388.
+The stack merged to `main` on 2026-11-13. Steps 1 to 8 below have merged, though step
+5’s gate ran and failed and what follows is open (`mb-gvtw`, `mb-76nv`). Step 9 is under
+way: on 2026-11-14 the check ran on `main` at c098e6a8. Flow 1 from PyPI waits on a
+published 0.12.1, because the app refuses 0.12.0 by design.
+The checks that need the owner’s clicks are scripted locally, as `mb-hwxu`’s notes
+record, and wait for the owner.
+The stale setup-flow stand-ins it found were fixed in jlevy/metabrowser#436 (`mb-jeb5`).
 
 The steps run in this order, which the beads record as dependencies:
 
@@ -284,9 +307,9 @@ The steps run in this order, which the beads record as dependencies:
    host mode’s stdin-EOF exit (`mb-qzny`) replaced that.
    Review on jlevy/metabrowser#362 showed that a reaper cannot tie a recorded process id
    to the process it later signals, so the stdin-EOF exit came first:
-   `metab --exit-on-eof`, a serve-mode flag, stops the server when its stdin closes, and
-   the app starts every server with it and holds the pipe, so the kernel ends each
-   server however the app ends.
+   `metab --exit-on-eof` (jlevy/metabrowser#366), a serve-mode flag, stops the server
+   when its stdin closes, and the app starts every server with it and holds the pipe, so
+   the kernel ends each server however the app ends.
    Host mode keeps its other parts in Phase 3.
 
 5. **Engine gate** (`mb-gvtw`): the WebKit measurement gate the packaging brief sets
@@ -298,28 +321,36 @@ The steps run in this order, which the beads record as dependencies:
    A failure goes back to the brief’s fallback, Electron, before steps 6 and 7.
 
    The gate ran on 2026-11-11 and failed; the numbers and method are in
-   [rendering large content](../../../large-content-rendering.md#measured-in-webkit).
+   [the app’s architecture](../../architecture/arch-macos-app.md#measured-in-webkit).
    Its largest failure, the source view’s Load more at 4.5 to 5.8 times Chrome, has a
-   measured cause and a core fix (`mb-551q`, its own pull request to `main`), and the
-   gate reruns under normal conditions after that fix (`mb-76nv`). The binary view’s
-   forced layout is tracked separately (`mb-pzy2`). The gate’s checks also found that
-   the page’s Print button and a dropped file did nothing; jlevy/metabrowser#359 fixed
-   both (`mb-j3eu`, `mb-3h2m`). Steps 6 and 7 went ahead meanwhile; whether the failures
-   that remain after the rerun call for the fallback is the owner’s decision.
+   measured cause and a core fix (`mb-551q`, merged in jlevy/metabrowser#367). After it,
+   the gate’s Load more row still measured 2.25 to 2.46 times Chrome (the
+   jlevy/metabrowser#367 record), and the first-click probe 2.45 to 2.51 times
+   ([rendering large content](../../../large-content-rendering.md)), because the column
+   is laid out again when the gutter gains a digit (`mb-dl7d`). The gate reruns under
+   normal conditions (`mb-76nv`). The binary view’s forced layout is tracked separately
+   (`mb-pzy2`). The gate’s checks also found that the page’s Print button and a dropped
+   file did nothing; jlevy/metabrowser#359 fixed both (`mb-j3eu`, `mb-3h2m`). Steps 6
+   and 7 went ahead meanwhile; whether the failures that remain after the rerun call for
+   the fallback is the owner’s decision.
 
 6. **Setup:** the first run without `metab` (`mb-su30`), the version policy (`mb-895s`),
    and the disk-image notice (`mb-3n79`), as Phase 5 describes, and both flows in the
    installation guide (`mb-2hqz`).
 
 7. **Everyday use:** opening a file (`mb-tssz`), recents (`mb-cqxd`), native tabs
-   (`mb-ssed`), and lazy session restore (`mb-lc8c`). Recents are the list macOS keeps
-   through `NSDocumentController`, behind the Dock menu and File > Open Recent; it
-   replaces the app’s own list in `UserDefaults`, so the app owns no membership or
-   order. Recent roots persisted in `metab` and the switcher over them stay in Phase 4.
+   (`mb-ssed`), and lazy session restore (`mb-lc8c`). Recents were the list macOS keeps
+   through `NSDocumentController`, behind the Dock menu and File > Open Recent, which
+   replaced the app’s own list in `UserDefaults`. **Superseded on 2026-11-18 for File >
+   Open Recent:** it now lists `metab`’s recent targets
+   ([Phase 4](#phase-4-recent-targets-the-switcher-and-the-mcp-adapter)), and only the
+   Dock menu is still macOS’s list.
 
 8. **Independent review** (`mb-niod`): the strong tier reviews the upgraded app (senior,
    security, and correctness), and every finding is addressed, with follow-up rounds
    until a round finds nothing new.
+   Done: reviews C, D, and E on jlevy/metabrowser#363 covered the whole app and were
+   addressed in jlevy/metabrowser#377, whose own follow-up rounds ended with approvals.
 
 9. **End to end** (`mb-hwxu`): the dev and release-rehearsal builds are rebuilt and,
    with fresh app settings on the build Mac, run through both setup flows, an old
@@ -343,25 +374,35 @@ Outside the milestone, each for a stated reason:
   jlevy/metabrowser#353.
 - [x] The page title is `<short name> • Metabrowser` (`mb-2agt`), in the same pull
   request.
-- [ ] Native window title, tab title, subtitle, and proxy icon (`mb-wgl7`).
-- [ ] App icon in the sister app’s style, from its vector originals (`mb-mpm3`).
-- [ ] Adopt the sister app’s build, signing, and download pipeline for the Swift app
-  (`mb-nnhs`).
-- [ ] Developer ID signing, notarization, a DMG, and a Homebrew cask (`mb-e9fm`).
-- [ ] Development builds with their own bundle id, scheme, and icon (`mb-9xl0`).
-- [ ] A macOS CI job (`mb-x4fy`), approved for the v1 milestone; a signed release
-  workflow comes later.
+- [x] Native window title, tab title, subtitle, and proxy icon (`mb-wgl7`), merged in
+  jlevy/metabrowser#341; the title shows the short name alone since
+  jlevy/metabrowser#391 (`mb-9xbp`).
+- [x] App icon in the sister app’s style, from its vector originals, merged in
+  jlevy/metabrowser#341.
+- [ ] Hand-tuned 16 and 32 px icon masters, if review shows they are needed (`mb-mpm3`).
+- [x] Adopt the sister app’s build, signing, and download pipeline for the Swift app
+  (`mb-nnhs`), merged in jlevy/metabrowser#341.
+- [ ] Developer ID signing, notarization, a DMG, and a Homebrew cask (`mb-e9fm`): the
+  pipeline is merged, and the first signed release waits on the owner’s certificate.
+  The [publishing plan](plan-2026-11-16-macos-app-publishing.md) details what remains,
+  under `mb-hl2i`.
+- [x] Development builds with their own bundle id, scheme, and icon (`mb-9xl0`), merged
+  in jlevy/metabrowser#362.
+- [x] A macOS CI job (`mb-x4fy`), approved for the v1 milestone and merged in
+  jlevy/metabrowser#341; a signed release workflow comes later.
 - [ ] tbd desktop guideline updates from what that pipeline teaches (`mb-s5ay`).
 
 ### Phase 2: Warm Switching in the Shell
 
 - [ ] Fix the activity tracker’s idle cost first (`mb-z46o`).
 - [ ] Keep folders warm after their windows close (`mb-e7im`).
-- [ ] Native tabs across folders with a tabs-or-windows preference (`mb-ssed`).
-- [ ] Lazy session restore (`mb-lc8c`).
-- [ ] Open a file from `open -a` and select it inside its folder (`mb-tssz`).
-- [ ] Health-check servers before attaching; send stderr straight to the log
-  (`mb-1poj`).
+- [x] Native tabs across folders with a tabs-or-windows preference (`mb-ssed`), merged
+  in jlevy/metabrowser#359.
+- [x] Lazy session restore (`mb-lc8c`), merged in jlevy/metabrowser#359.
+- [x] Open a file from `open -a` and select it inside its folder (`mb-tssz`), merged in
+  jlevy/metabrowser#359.
+- [x] Health-check servers before attaching; send stderr straight to the log
+  (`mb-1poj`), merged in jlevy/metabrowser#362.
 
 ### Phase 3: Host Mode, the Registry, and the Agent Front Door
 
@@ -372,10 +413,11 @@ one with a live server the app can attach to.
 For any other root, the app starts a server as its own child only after the user
 confirms that root in the app.
 
-- [ ] Host mode: a ready line after bind, sticky ports, a stdin token, stdin-EOF exit,
-  and idle exit (`mb-qzny`), generalizing the VS Code host design (`mb-x4y5`). No
-  client’s credential, the app’s web views included, is a cookie, since a page can send
-  a cookie to every port on its host whatever its data store or host name.
+- [ ] Host mode: a ready line after bind, sticky ports, a stdin token, and idle exit
+  (`mb-qzny`), generalizing the VS Code host design (`mb-x4y5`); its stdin-EOF exit
+  already ships as `metab --exit-on-eof` (jlevy/metabrowser#366). No client’s
+  credential, the app’s web views included, is a cookie, since a page can send a cookie
+  to every port on its host whatever its data store or host name.
   The credential is a token in the `Authorization` header that one shell helper adds
   only to requests for the page’s own origin, with redirects refused; host mode also
   gates the first page load and the event stream (the topology brief’s Tokens across
@@ -390,14 +432,145 @@ confirms that root in the app.
   confirmation (`mb-rtgh`).
 - [ ] The skill uses the front door and documents sandbox settings (`mb-ko5d`).
 
-### Phase 4: Roots as State, the Switcher, and the MCP Adapter
+### Phase 4: Recent Targets, the Switcher, and the MCP Adapter
 
-- [ ] Persist recent and added roots in `metab`, served by a roots route; the chosen
-  security model decides which of them skip Phase 3’s confirmation (`mb-a5ru`).
-- [ ] Quick folder switcher, listing the roots route’s roots with live servers from the
-  registry (`mb-9lf4`). The switcher’s membership and order come from `metab`, so it
-  needs no shell-only exemption.
-  Dock and File menu recents, which macOS keeps, are v1’s `mb-cqxd`.
+#### Recent Targets
+
+**Status:** Built (`mb-40k4`), except the items unchecked below.
+[Recent Targets](../../architecture/arch-recent-targets.md) is the design and holds the
+format; this section records what was decided and why.
+
+The owner asked, on 2026-11-18:
+
+> “Why do I not see all the recent folders in Open recent in the menu on the macos app?
+> Can we save these in our configurations somewhere?
+> It should be compatible with both the CLI and the native app so that the logic can be
+> reused, e.g. for other shells in the future, around the CLI, or for features in the
+> CLI where recently open folders are useful, even if right now it will primarily be a
+> native app feature.”
+
+**Why folders were missing.** File > Open Recent drew macOS’s recent-documents list
+(`NSDocumentController`), and four things kept folders out of it:
+
+- macOS caps the list at the length System Settings gives recent documents, which is 10
+  unless it was changed; `NSDocumentController.maximumRecentDocumentCount` answered 10
+  on the owner’s Mac on 2026-11-18.
+- Only a folder the app itself was asked to open was registered.
+  A folder served by `metab` in Terminal never reached the list.
+- A folder restored with the last session was not registered again, so a folder that
+  stayed open across launches fell off as ten others were opened.
+- macOS keeps the list per bundle identifier, so a development build and a release each
+  had their own.
+
+**Decisions:**
+
+1. **`metab` keeps the list, and every shell reads it through `metab`.** Membership,
+   order, and the cap are data semantics, which the
+   [parity rule](../../../../AGENTS.md#cli-and-functional-ui-parity) gives to `metab`
+   and a golden, and a second shell or a CLI feature then gets the same list for free.
+   The app runs `metab --recent --json` and draws what it answers.
+2. **The store holds recent targets, not only folders.** An entry is a root and the
+   [mode](../../architecture/arch-open-modes.md#the-three-modes) it was opened in,
+   `folder` or `mirror`: a folder by its open root, or a repository by its address.
+   The modes, roots, and views are those of
+   [Open Modes](../../architecture/arch-open-modes.md).
+   An entry never records a view, so a recent folder reopens on its working tree, and it
+   may record where the open pointed, its `target`, beside the key.
+   The owner’s File menu, specified on 2026-11-18, needs both (`mb-387v`):
+   - **Open Folder…** opens a folder, a checkout of a GitHub repository included.
+   - **Open URL…** opens a supported GitHub URL (`mb-m4mg`).
+   - **Open Recent** opens any recent item, folders and GitHub targets alike.
+3. **An entry’s key is the app’s session key.** `mode` and `root` together are
+   `SessionRoot.key` (jlevy/metabrowser#539): a folder’s resolved path, or exactly
+   `https://github.com/<owner>/<repo>`, never a ref, a pull request, or a pin.
+   One entry is therefore one window, and reopening one that is open brings it forward.
+4. **A serve records itself, and only an open changes the order.** `metab ROOT` records
+   its root just before its `Serving` line, so the command line and the app record
+   through the one server start they share.
+   The app adds one call, `metab FOLDER --recent-add`, for a folder the user opens while
+   it is already open, where no server starts.
+   The owner decided on 2026-11-18 that a restore is not an open: the windows brought
+   back at launch, Retry, Restart Server, and an upgrade’s restart do not record, so the
+   app starts those servers with `METABROWSER_RECORD_RECENT=0`. The same variable keeps
+   benchmark, test, and development servers out of the list, also the owner’s decision.
+5. **Repository windows are recent targets.** jlevy/metabrowser#539 kept them out of
+   Open Recent because the app registered only folders with macOS. The server it starts
+   for a link now records the repository, with no code in the app, so that rule is
+   dropped. The app lists a repository entry once its build opens links, which it knows
+   from `MetabrowserOpensURLs` in its `Info.plist`, the key that pull request adds.
+   Repository windows still stay out of the saved session, which names folders by path.
+6. **The list lives in the configuration directory**, in a file of its own beside
+   `config.yml`: `recent-targets.yml`. The owner decided this on 2026-11-18. It is
+   history the user would miss, which rules out the cache, and the configuration
+   directory is the one durable place `metab` already has, with its override, its
+   owner-only checks, and its test isolation.
+   The alternative weighed was the XDG state directory, the conventional home for such a
+   file, at the cost of a third storage root.
+7. **Nothing looks at a listed folder.** Listing never checks whether a folder still
+   exists, because a look can raise a macOS privacy prompt or hang on a dead volume.
+   A folder that is gone is forgotten when the reader tries to open it.
+8. **The Dock menu lists the same targets.** The owner decided on 2026-11-18 that the
+   Dock icon’s menu and File > Open Recent list the same items while the app runs, so
+   `applicationDockMenu` draws from the same answer and the app no longer registers
+   folders with `NSDocumentController`. The first version of this decision, on the pull
+   request, kept macOS’s own list in the Dock; it is superseded.
+9. **The file is YAML with a format string.** The owner asked, on 2026-11-18, for
+   configuration files that a person can read and that carry “a very simple format
+   string … that is self-describing but simple”, updated only “when a new incompatible
+   format arises”. The list is YAML, as `config.yml` is, and its `format` follows the
+   application home’s convention in `cache/layout.py`: an append-only history, a
+   migration from each format to the next, and a refusal of a newer one.
+   Metabrowser’s strings are `mfNN`, to tell them from tbd’s `fNN`, and this file starts
+   at `mf01`. A new field on an entry keeps the string, since every reader keeps a field
+   it does not know; a new mode or key raises the number, and a file holding one a
+   reader does not know is left alone as a newer release’s. Applying the spelling to
+   `layout.yml` and `config.yml`, which are `f01`, is `mb-3x6y`.
+10. **No route serves the list yet.** The owner decided this on 2026-11-18: only
+    `metab --recent --json` reads it, until the switcher’s design says what a page may
+    learn of the user’s other roots.
+
+**Work:**
+
+- [x] The store, its bounds, and its concurrency (`recent_targets.py`), with
+  `metab --recent`, `--recent-add`, `--recent-forget`, and `--recent-clear`, and a
+  golden (`mb-40k4`).
+- [x] Every serve records its root, in both modes (`mb-40k4`).
+- [x] File > Open Recent lists `metab --recent --json` (`mb-40k4`).
+- [x] An entry’s optional `target`, where its open pointed, outside the key: a folder
+  writes the file or the `--path` named inside it, and every entry’s is checked to lie
+  inside its root (`mb-40k4`). The newest open’s target replaces the entry’s last one.
+- [x] One function decides a folder’s open root for both a serve and `--recent-add`:
+  `resolve_local_open` in `cli/common.py`, which today serves the folder named or a
+  file’s folder (`mb-40k4`).
+- [ ] Record the resolved root: the open-modes resolver (`mb-2wfk`) replaces
+  `resolve_local_open`’s body, and the list then records the repository’s root with the
+  path named as its `target`. Nothing in the store changes.
+- [ ] Write a mirror’s `target`, the canonical web URL of a pull request, a ref, a
+  commit, or a file, from `ProviderUrlReducer.web_url` (jlevy/metabrowser#540), so Open
+  Recent reopens a pull request and not only its repository, and Open URL… can offer
+  recent GitHub targets (`mb-m4mg`). This release already reads and keeps one
+  (`mb-8bds`). Until then Open URL… offers the recent entries whose mode is `mirror`.
+- [ ] Record a checkout’s repository with a folder entry, a new field that keeps `mf01`,
+  so Open URL… can offer the checkout beside the mirror, as
+  [the File Menu](../../architecture/arch-open-modes.md#the-file-menu) of the open-modes
+  design says.
+- [ ] The owner’s File menu: rename Open… to Open Folder…, and add Open URL… (`mb-m4mg`,
+  after jlevy/metabrowser#539), beside the Open Recent built here (`mb-387v`).
+- [ ] Restore repository windows with the saved session, which needs a saved tab to name
+  a `SessionRoot` rather than a path.
+
+This replaces the “persist recent and added roots in `metab`” half of `mb-a5ru`. What is
+left of that bead is the route below and which roots skip Phase 3’s confirmation.
+
+#### The Switcher and the MCP Adapter
+
+- [ ] A route that serves recent targets to a page, for a switcher in the browser, once
+  the security model says what a page may learn of the user’s other roots: a route would
+  give every page of every served root their names, over a loopback port that asks for
+  no credential (`mb-a5ru`).
+- [ ] Quick folder switcher, listing recent targets with live servers from the registry
+  (`mb-9lf4`). The switcher’s membership and order come from `metab`, so it needs no
+  shell-only exemption.
 - [ ] An optional MCP stdio adapter over registered routes (`mb-5lgp`).
 
 ### Phase 5: Setup, Runtime, and Updates
@@ -413,19 +586,21 @@ The two standard setup flows come first; see the
   reach a running server before the app notices; the setup brief records that gap.
   Any upgrade the app runs itself waits as Reinstall and Remove do (below).
   The app also flags a launch from the disk image (`mb-3n79`). The installation guide
-  covers both flows (`mb-2hqz`).
+  covers both flows (`mb-2hqz`). The version policy, the notice, and the guide merged in
+  jlevy/metabrowser#361; the check on clean accounts is `mb-5fp7`.
 - [ ] Flow 2, app first with no CLI: copyable commands for only the missing steps,
   continuing by itself when `metab` appears; then an “Install for me” button that runs
   the user’s uv, or a signed uv inside the app, to make Flow 1’s CLI install (`mb-su30`,
-  then `mb-34oi`). Its Reinstall and Remove stop the app’s servers on that install, then
-  change nothing while the registry lists another server using it: the app names each
-  one and its owner, asks the user to stop it, and checks again, and it never signals a
-  server it did not start.
+  merged in jlevy/metabrowser#361, then `mb-34oi`). Its Reinstall and Remove stop the
+  app’s servers on that install, then change nothing while the registry lists another
+  server using it: the app names each one and its owner, asks the user to stop it, and
+  checks again, and it never signals a server it did not start.
 - [ ] Narrowed: an optional app-private runtime from a bundled uv and a hash-pinned
   `pylock.toml`, for offline, managed, or hash-pinned setups, built only on demand
   (`mb-lrcd`).
 - [ ] The WebKit measurement gate against the Chrome-measured bounds, run in v1
-  (`mb-gvtw`); the broader owner acceptance stays `mb-etqi`.
+  (`mb-gvtw`): it ran on 2026-11-11 and failed (jlevy/metabrowser#363), and it reruns
+  under normal conditions (`mb-76nv`); the broader owner acceptance stays `mb-etqi`.
 - [ ] Updates: cask upgrades and an in-app notice, Sparkle later (`mb-fl72`). Each
   installed copy has one updater, and an update replaces the bundle whole.
 - [ ] A clean-account matrix for both flows, on macOS 26 and later, admin and standard
@@ -472,18 +647,24 @@ The two standard setup flows come first; see the
 
 - Core pull requests merge to `main` after review and CI, and ship with the next `metab`
   release.
-- The app stays on the spike branch until the user decides to merge native code.
-- CI builds and tests the app once `mb-x4fy` lands.
-  Signed releases are built locally until a release workflow is approved, and published
-  only on the user’s explicit go-ahead: notarizing and publishing reach Apple and
-  GitHub.
+- Native app pull requests merge to `main` the same way, at the user’s word; the first
+  of them, the v1 stack, merged on 2026-11-13.
+- The `macos-app` workflow builds, tests, and rehearses the app (`mb-x4fy`). Signed
+  releases are built locally until a release workflow is approved, and published only on
+  the user’s explicit go-ahead: notarizing and publishing reach Apple and GitHub.
 
 ## Open Questions
 
-- Which Developer ID certificate and notarization credentials should releases use?
-  None is installed on the build Mac yet.
-- Should a signed release workflow be added under `.github/`? The build-and-test
-  workflow is approved; signing and notarizing in CI need the credentials above.
+- Which Developer ID certificate and notarization credentials should releases use, and
+  should a signed release workflow be added under `.github/`? Answered on 2026-11-16 in
+  the [publishing plan](plan-2026-11-16-macos-app-publishing.md#open-questions), Q1 and
+  Q2: an App Store Connect team API key stored as a keychain profile, 0.1.0 signed on
+  the owner’s Mac, and a tag-triggered release workflow for the next release.
+- Once the WebKit gate reruns (`mb-76nv`), do its remaining failures call for the
+  brief’s Electron fallback, or do engine-specific fixes (`mb-dl7d`, `mb-pzy2`) suffice?
+  The owner decides (`mb-gvtw`).
+- Should `ExecutableTrust` trust an executable the `admin` group can change, as in a
+  standard Homebrew prefix (`mb-6d4r`)? Today it refuses one.
 
 ## References
 
@@ -497,8 +678,12 @@ The two standard setup flows come first; see the
   `electron-app-development-patterns`
 - Pull requests: jlevy/metabrowser#341 (spike), jlevy/metabrowser#352 (research and this
   plan), jlevy/metabrowser#353 (folder identity), jlevy/metabrowser#357 (the v1
-  milestone), and the v1 stack above the spike: jlevy/metabrowser#359,
-  jlevy/metabrowser#361, jlevy/metabrowser#362, and jlevy/metabrowser#363
+  milestone), the v1 stack above the spike: jlevy/metabrowser#359,
+  jlevy/metabrowser#361, jlevy/metabrowser#362, jlevy/metabrowser#363,
+  jlevy/metabrowser#377, jlevy/metabrowser#384, and jlevy/metabrowser#388, the core
+  changes it needed: jlevy/metabrowser#366 (`--exit-on-eof`) and jlevy/metabrowser#367
+  (`mb-551q`), and the title-bar follow-ups: jlevy/metabrowser#391,
+  jlevy/metabrowser#398, and jlevy/metabrowser#403
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

@@ -2,8 +2,9 @@
 
 :func:`refresh_pull_files` is the whole job. It has two sources for one list:
 
-- **The local comparison**, when the caller names one: the store holds both of the record's
-  comparison commits, so the list is the comparison's manifest, ``git diff --raw`` and
+- **The local comparison**, when the caller names one: the store holds both of a
+  comparison's commits, the record's or one the prefetch computed from a head and base
+  branch (``LocalComparison``), so the list is the comparison's manifest, ``git diff --raw`` and
   ``--numstat`` through :class:`GitDiffSource`, with no patch and no network. A manifest
   cut at ``MAX_MANIFEST_FILES``, or one Git cannot list, falls through to GitHub's.
 - **GitHub's list**, which runs no Git: the active account, then one ``gh api
@@ -46,6 +47,7 @@ from metabrowser.builtin_plugins.github.gh_lists import (
     UnreadableItemError,
     active_account,
     as_dict,
+    cache_unwritable,
     read_list,
     readable_items,
     utc_stamp,
@@ -255,8 +257,11 @@ async def _write(repository: ListedRepository, listed: PullFileList) -> None:
         await asyncio.to_thread(write_pull_files, repository.home, repository.slug, listed)
     except (RecordTooLargeError, PrivateStorageError, OSError) as exc:
         log.debug("could not write the list of changed files: %s", exc)
-        raise PullDataError(
-            "cache_unwritable", "the list of changed files could not be written to the cache"
+        raise cache_unwritable(
+            f"the changed files of pull request #{listed.number}",
+            exc,
+            source=repository.source,
+            checkout=repository.checkout,
         ) from exc
 
 
@@ -391,6 +396,7 @@ async def _from_comparison(
             reader=None,
             head=local.head,
             base=local.base,
+            base_ref=local.base_ref,
             pages=0,
             last_page=None,
             complete=True,
@@ -413,8 +419,8 @@ async def refresh_pull_files(
 ) -> PullFileList:
     """List pull request *number*'s changed files and cache them; see the module.
 
-    *local* names the store and commits of the record's comparison, when the store holds
-    both. *slot* is one of the coordinator's network slots, held for one ``gh`` request at a
+    *local* names the store and commits of a comparison, the record's or the prefetch's,
+    when the store holds both. *slot* is one of the coordinator's network slots, held for one ``gh`` request at a
     time. *known_head* reads, blocking, the head and base branch the pull request has as last
     known, which GitHub's list then names. Raises only :class:`PullDataError`; how it ended
     is kept beside the list either way.

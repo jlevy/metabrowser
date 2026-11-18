@@ -162,8 +162,9 @@ class GitRepoInfo(TypedDict):
     """
 
     is_repo: bool
-    # Always "" for a positive response because the feature is enabled
-    # only when the served root is the repository root; None otherwise.
+    # Always "" for a positive response, because a folder is Git-capable
+    # only at its repository's root and a pinned revision has no root;
+    # None otherwise.
     root: str | None
     head: GitHead | None
     # Conditional: why is_repo is false, as a stable machine-readable
@@ -318,6 +319,9 @@ def validate_git_ref(ref: Mapping[str, Any], *, _where: str = "") -> None:
     )
     if "is_head" in ref:
         assert isinstance(ref["is_head"], bool), f"ref.is_head not bool at {_where!r}"
+    if "is_trunk" in ref:
+        assert isinstance(ref["is_trunk"], bool), f"ref.is_trunk not bool at {_where!r}"
+        assert ref["kind"] != "tag", f"a tag is never trunk, at {_where!r}"
     if "remote" in ref:
         assert ref["kind"] == "remote", (
             f"ref.remote present on kind={ref['kind']!r} at {_where!r} — "

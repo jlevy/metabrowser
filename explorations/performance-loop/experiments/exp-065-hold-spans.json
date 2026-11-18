@@ -1,0 +1,299 @@
+[
+  {
+    "run": 1,
+    "numbers": ["353", "351", "349", "348"],
+    "scrolledBeforeClickPx": [1500, 1500, 1500, 1500],
+    "holds": [
+      {
+        "label": "githubPulls:openingHold",
+        "number": 353,
+        "heldMs": 37,
+        "outcome": "met"
+      },
+      {
+        "label": "githubPull:firstPaintHold",
+        "number": 353,
+        "heldMs": 151,
+        "outcome": "met",
+        "mode": "hidden",
+        "parts": 1
+      },
+      {
+        "label": "githubPull:changesHold",
+        "number": 353,
+        "heldMs": 39,
+        "outcome": "met"
+      },
+      {
+        "label": "githubPull:firstPaintHold",
+        "number": 351,
+        "heldMs": 38,
+        "outcome": "met",
+        "mode": "hidden",
+        "parts": 1
+      },
+      {
+        "label": "githubPulls:openingHold",
+        "number": 351,
+        "heldMs": 48,
+        "outcome": "met"
+      },
+      {
+        "label": "githubPull:changesHold",
+        "number": 351,
+        "heldMs": 73,
+        "outcome": "met"
+      },
+      {
+        "label": "githubPulls:openingHold",
+        "number": 349,
+        "heldMs": 36,
+        "outcome": "met"
+      },
+      {
+        "label": "githubPull:firstPaintHold",
+        "number": 349,
+        "heldMs": 40,
+        "outcome": "met",
+        "mode": "hidden",
+        "parts": 1
+      },
+      {
+        "label": "githubPull:changesHold",
+        "number": 349,
+        "heldMs": 32,
+        "outcome": "met"
+      },
+      {
+        "label": "githubPulls:openingHold",
+        "number": 348,
+        "heldMs": 43,
+        "outcome": "met"
+      },
+      {
+        "label": "githubPull:firstPaintHold",
+        "number": 348,
+        "heldMs": 47,
+        "outcome": "met",
+        "mode": "hidden",
+        "parts": 1
+      },
+      {
+        "label": "githubPull:changesHold",
+        "number": 348,
+        "heldMs": 62,
+        "outcome": "met"
+      },
+      {
+        "label": "githubPull:changesHold",
+        "number": 348,
+        "heldMs": 59,
+        "outcome": "met"
+      },
+      {
+        "label": "githubPull:changesHold",
+        "number": 348,
+        "heldMs": 59,
+        "outcome": "met"
+      }
+    ]
+  },
+  {
+    "run": 2,
+    "numbers": ["353", "351", "349", "348"],
+    "scrolledBeforeClickPx": [1500, 1500, 1500, 1500],
+    "holds": [
+      {
+        "label": "githubPulls:openingHold",
+        "number": 353,
+        "heldMs": 34,
+        "outcome": "met"
+      },
+      {
+        "label": "githubPull:firstPaintHold",
+        "number": 353,
+        "heldMs": 95,
+        "outcome": "met",
+        "mode": "hidden",
+        "parts": 1
+      },
+      {
+        "label": "githubPull:changesHold",
+        "number": 353,
+        "heldMs": 41,
+        "outcome": "met"
+      },
+      {
+        "label": "githubPull:firstPaintHold",
+        "number": 351,
+        "heldMs": 25,
+        "outcome": "met",
+        "mode": "hidden",
+        "parts": 1
+      },
+      {
+        "label": "githubPulls:openingHold",
+        "number": 351,
+        "heldMs": 35,
+        "outcome": "met"
+      },
+      {
+        "label": "githubPull:changesHold",
+        "number": 351,
+        "heldMs": 63,
+        "outcome": "met"
+      },
+      {
+        "label": "githubPull:firstPaintHold",
+        "number": 349,
+        "heldMs": 36,
+        "outcome": "met",
+        "mode": "hidden",
+        "parts": 1
+      },
+      {
+        "label": "githubPulls:openingHold",
+        "number": 349,
+        "heldMs": 60,
+        "outcome": "met"
+      },
+      {
+        "label": "githubPull:changesHold",
+        "number": 349,
+        "heldMs": 31,
+        "outcome": "met"
+      },
+      {
+        "label": "githubPull:firstPaintHold",
+        "number": 348,
+        "heldMs": 43,
+        "outcome": "met",
+        "mode": "hidden",
+        "parts": 1
+      },
+      {
+        "label": "githubPulls:openingHold",
+        "number": 348,
+        "heldMs": 68,
+        "outcome": "met"
+      },
+      {
+        "label": "githubPull:changesHold",
+        "number": 348,
+        "heldMs": 74,
+        "outcome": "met"
+      },
+      {
+        "label": "githubPull:changesHold",
+        "number": 348,
+        "heldMs": 52,
+        "outcome": "met"
+      },
+      {
+        "label": "githubPull:changesHold",
+        "number": 348,
+        "heldMs": 60,
+        "outcome": "met"
+      }
+    ]
+  },
+  {
+    "run": 3,
+    "numbers": ["353", "351", "349", "348"],
+    "scrolledBeforeClickPx": [1500, 1500, 1500, 1500],
+    "holds": [
+      {
+        "label": "githubPulls:openingHold",
+        "number": 353,
+        "heldMs": 34,
+        "outcome": "met"
+      },
+      {
+        "label": "githubPull:firstPaintHold",
+        "number": 353,
+        "heldMs": 98,
+        "outcome": "met",
+        "mode": "hidden",
+        "parts": 1
+      },
+      {
+        "label": "githubPull:changesHold",
+        "number": 353,
+        "heldMs": 43,
+        "outcome": "met"
+      },
+      {
+        "label": "githubPull:firstPaintHold",
+        "number": 351,
+        "heldMs": 25,
+        "outcome": "met",
+        "mode": "hidden",
+        "parts": 1
+      },
+      {
+        "label": "githubPulls:openingHold",
+        "number": 351,
+        "heldMs": 36,
+        "outcome": "met"
+      },
+      {
+        "label": "githubPull:changesHold",
+        "number": 351,
+        "heldMs": 64,
+        "outcome": "met"
+      },
+      {
+        "label": "githubPull:firstPaintHold",
+        "number": 349,
+        "heldMs": 38,
+        "outcome": "met",
+        "mode": "hidden",
+        "parts": 1
+      },
+      {
+        "label": "githubPulls:openingHold",
+        "number": 349,
+        "heldMs": 66,
+        "outcome": "met"
+      },
+      {
+        "label": "githubPull:changesHold",
+        "number": 349,
+        "heldMs": 34,
+        "outcome": "met"
+      },
+      {
+        "label": "githubPull:firstPaintHold",
+        "number": 348,
+        "heldMs": 43,
+        "outcome": "met",
+        "mode": "hidden",
+        "parts": 1
+      },
+      {
+        "label": "githubPulls:openingHold",
+        "number": 348,
+        "heldMs": 67,
+        "outcome": "met"
+      },
+      {
+        "label": "githubPull:changesHold",
+        "number": 348,
+        "heldMs": 73,
+        "outcome": "met"
+      },
+      {
+        "label": "githubPull:changesHold",
+        "number": 348,
+        "heldMs": 57,
+        "outcome": "met"
+      },
+      {
+        "label": "githubPull:changesHold",
+        "number": 348,
+        "heldMs": 57,
+        "outcome": "met"
+      }
+    ]
+  }
+]

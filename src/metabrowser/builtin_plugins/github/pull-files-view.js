@@ -5,12 +5,16 @@
 // and hands back what a reader does to them.
 //
 // The group follows the Files tree's row contract (docs/design-system.md, "Container Rows"):
-// one `.tree-children[role="group"]` after the pull request's row, folders that lead with the
-// registry's chevron in the 16 px box and file rows with the change letter a patch's children
-// carry in place of an icon, the tree's indent and row height, and the inline change stats. It
-// takes none of `.tree-item`, `[data-tree-id]`, or the Files tree's keyboard, which the shell
-// keeps for the Files tab: these rows are the plugin's, and their keys come from the Pulls
-// tab's host.
+// one `.tree-children[role="group"]` after the pull request's change line, the row's third
+// line and the item that owns the group (pulls-panel.js), folders that lead with the
+// registry's chevron in the tree's icon slot and file rows with the change letter a patch's
+// children carry in place of an icon, the tree's indent and row height, and the inline change
+// stats: a file's own, and a folder's rolled up from every file under it, open or closed, as
+// a Files folder keeps its size whichever way it is turned. Its rows are the shell's
+// `.changed-file-row` class set (static/styles.css), the Diff summary's too, so the two trees
+// of changed files draw one row. It takes none of `.tree-item`, `[data-tree-id]`, or the
+// Files tree's keyboard, which the shell keeps for the Files tab: these rows are the
+// plugin's, and their keys come from the Pulls tab's host.
 //
 // The rows are one flat list in the group, each with its level, place, and set size, as a
 // tree drawn a window at a time is: a list at GitHub's cap is 3,346 rows, and only those in
@@ -27,7 +31,7 @@
 // usable, so nothing marks them busy; the live region says what changed. The spinner is only
 // for a list with no rows yet.
 
-import { createFileTreeController, LISTING_FILES, windowRange } from "./pull-files-tree.js";
+import { createFileTreeController, LISTING_FILES } from "./pull-files-tree.js";
 import { alignRefreshing, h, isPlainClick } from "./pull-page.js";
 
 // Rows drawn past the view each way. Chrome 152, 2026-11-03, with a 700px nav pane:
@@ -70,6 +74,10 @@ export const FILE_ROWS_OVERSCAN = 40;
  *   open: (route: {file: string, replace: boolean, jumped: boolean}) => void,
  *   leave: () => void,
  *   focusedIn: () => void,
+ *   lastInput?: () => number | null,
+ *   held?: (hold: "opening" | "lateRows", heldMs: number, outcome: string) => void,
+ *   tree: MetabrowserChangedFilesTree | (() => PromiseLike<MetabrowserChangedFilesTree>),
+ *   formatCount: (count: number) => string,
  * }} host
  */
 export function mountFileTree(host) {
@@ -83,13 +91,20 @@ export function mountFileTree(host) {
     h("span", { class: "spinner spinner-sm" }),
   ]);
   const lineText = h("span");
-  const line = h("p", { class: "github-pull-files-line" }, [spinner, lineText]);
+  // A change to drawn rows that came with no recent input, offered at no cost in height
+  // (LATE_ROWS_MS): on the line when it is shown, and over the tree's top, floating, when it
+  // is not. A tree with no rows drawn draws its first rows and never shows it.
+  const offer = h("button", { type: "button", class: "github-pull-text-action", hidden: "" });
+  /** Whether the offer was last pressed from the keyboard, which scrolls to where focus goes. */
+  let offerByKey = false;
+  const line = h("p", { class: "github-pull-files-line" }, [spinner, lineText, offer]);
   const notice = h("div", { class: "github-pull-files-notice-host" });
   const list = h("div", { class: "github-pull-files-rows" });
   const live = h("span", { class: "sr-only", "aria-live": "polite" });
   group.replaceChildren(line, notice, list, live);
 
-  /** @type {HTMLAnchorElement | null} */
+  /** The item the tree hangs from: the pull request's change line (pulls-panel.js). */
+  /** @type {HTMLElement | null} */
   let owner = null;
   /** @type {FileTreeModel | null} */
   let model = null;
@@ -114,10 +129,16 @@ export function mountFileTree(host) {
     return rowHeight;
   }
 
+  /** The level of the change line the tree hangs from, a level under its pull request's row. */
+  function ownerLevel() {
+    const level = Number(owner?.getAttribute("aria-level"));
+    return Number.isInteger(level) && level > 0 ? level : 1;
+  }
+
   /** @param {TreeRow} row */
   function contentOf(row) {
     return row.kind === "folder"
-      ? row.name
+      ? JSON.stringify([row.name, row.additions, row.deletions])
       : JSON.stringify([
           row.name,
           row.badge,
@@ -129,52 +150,64 @@ export function mountFileTree(host) {
   }
 
   /**
+   * A row's `+A −D`, its own or a folder's rolled up, or nothing for a row that knows no
+   * counts.
+   *
+   * @param {TreeRow} row
+   * @returns {Node[]}
+   */
+  function statsOf(row) {
+    const stats = controller.tree()?.changeStats(row, host.formatCount) ?? null;
+    return stats === null
+      ? []
+      : [
+          h("span", { class: "changed-file-stats github-pull-file-stats", "aria-hidden": "true" }, [
+            h("span", { class: "diff-stat-add" }, [stats.additions]),
+            h("span", { class: "diff-stat-del" }, [stats.deletions]),
+          ]),
+        ];
+  }
+
+  /**
    * A row's parts, which are only text and the shell's chevron.
    *
    * @param {TreeRow} row
    * @returns {Node[]}
    */
   function partsOf(row) {
-    const name = h("span", { class: "github-pull-file-name mb-refreshing-text" }, [row.name]);
+    const name = h(
+      "span",
+      { class: "changed-file-name github-pull-file-name mb-refreshing-text" },
+      [row.name],
+    );
     if (row.kind === "folder") {
       return [
-        h("span", { class: "github-pull-files-toggle", "aria-hidden": "true" }, [host.chevron()]),
+        h("span", { class: "changed-file-toggle", "aria-hidden": "true" }, [host.chevron()]),
         name,
+        ...statsOf(row),
       ];
     }
     const badge = h(
       "span",
       {
-        class: "tree-container-badge github-pull-file-badge file-change-status",
+        class: "tree-container-badge file-change-status",
         "data-file-status": row.status,
         "aria-hidden": "true",
       },
       [row.badge],
     );
-    const parts = [badge, name];
-    if (row.additions !== null || row.deletions !== null) {
-      parts.push(
-        h("span", { class: "github-pull-file-stats", "aria-hidden": "true" }, [
-          h("span", { class: "diff-stat-add" }, [`+${row.additions ?? "?"}`]),
-          h("span", { class: "diff-stat-del" }, [`−${row.deletions ?? "?"}`]),
-        ]),
-      );
-    }
-    return parts;
+    return [badge, name, ...statsOf(row)];
   }
 
   /**
-   * What a file row is called, for a screen reader: its name, its change, and its lines.
+   * What a row is called, for a screen reader, as every tree of changed files names its
+   * rows (`rowLabel`): set wherever the row is placed, so a row whose files or counts a
+   * later page changes is named as it now is.
    *
-   * @param {TreeRow & {kind: "file"}} row
+   * @param {TreeRow} row
    */
-  function nameOf(row) {
-    const lines =
-      row.additions === null && row.deletions === null
-        ? ""
-        : `, ${row.additions ?? "unknown"} added, ${row.deletions ?? "unknown"} deleted`;
-    const from = row.previousName === null ? "" : `, from ${row.previousName}`;
-    return `${row.name}, ${row.statusLabel.toLowerCase()}${from}${lines}`;
+  function labelOf(row) {
+    return controller.tree()?.rowLabel(row, host.formatCount) ?? row.name;
   }
 
   /**
@@ -188,10 +221,22 @@ export function mountFileTree(host) {
     element.style.top = `${at * heightOfRow()}px`;
     element.style.setProperty("--github-pull-file-depth", String(row.depth + 1));
     element.setAttribute("tabindex", row.id === controller.anchor() ? "0" : "-1");
-    element.setAttribute("aria-level", String(row.depth + 2));
+    // A level under the change line, which is a level under the pull request's row, itself a
+    // level under a stack's row while the list is grouped by stack (pulls-panel.js).
+    element.setAttribute("aria-level", String(row.depth + 1 + ownerLevel()));
     element.setAttribute("aria-posinset", String(row.position));
     element.setAttribute("aria-setsize", String(row.setSize));
+    element.setAttribute("aria-label", labelOf(row));
     if (row.kind === "folder") {
+      // The tooltip says what the folder's sums leave out, the counts alone, as its
+      // accessible name does, and nothing when they leave nothing out: its name is on the row
+      // already (docs/design-system.md, "Tooltips Add Information").
+      const missing = controller.tree()?.missingCounts(row, host.formatCount) ?? "";
+      if (missing === "") {
+        delete element.dataset.tipText;
+      } else {
+        element.dataset.tipText = missing;
+      }
       element.classList.toggle("expanded", row.expanded);
       element.classList.toggle("collapsed", !row.expanded);
       element.setAttribute("aria-expanded", String(row.expanded));
@@ -218,7 +263,10 @@ export function mountFileTree(host) {
       h(
         row.kind === "file" && href !== null ? "a" : "div",
         {
-          class: row.kind === "folder" ? "github-pull-folder-row" : "github-pull-file-row",
+          class:
+            row.kind === "folder"
+              ? "changed-file-row github-pull-folder-row disclosure-toggle"
+              : "changed-file-row github-pull-file-row",
           role: "treeitem",
           tabindex: "-1",
           ...(href === null ? {} : { href }),
@@ -227,11 +275,6 @@ export function mountFileTree(host) {
       )
     );
     element.dataset.id = row.id;
-    if (row.kind === "file") {
-      element.setAttribute("aria-label", nameOf(row));
-    } else {
-      element.dataset.tipText = row.name;
-    }
     place(element, row, at);
     return { element, at, content: contentOf(row), folder: row.kind === "folder" };
   }
@@ -246,7 +289,7 @@ export function mountFileTree(host) {
     }
     const rows = model.rows;
     // A closed tree keeps what it drew, so it opens again as it was.
-    if (!model.expanded) {
+    if (!model.expanded || model.opening) {
       return;
     }
     const height = host.scrollRoot === null ? 0 : heightOfRow();
@@ -258,9 +301,13 @@ export function mountFileTree(host) {
       drawn.clear();
       return;
     }
+    const shared = controller.tree();
+    if (shared === null) {
+      return;
+    }
     const view = host.scrollRoot.getBoundingClientRect();
     const top = list.getBoundingClientRect().top;
-    const { start, end } = windowRange({
+    const { start, end } = shared.windowRange({
       count: rows.length,
       rowHeight: height,
       viewTop: view.top,
@@ -312,9 +359,6 @@ export function mountFileTree(host) {
       const content = contentOf(row);
       if (entry.content !== content) {
         entry.element.replaceChildren(...partsOf(row));
-        if (row.kind === "file") {
-          entry.element.setAttribute("aria-label", nameOf(row));
-        }
         entry.content = content;
         built += 1;
       }
@@ -333,6 +377,7 @@ export function mountFileTree(host) {
   /** @param {FileTreeModel} next */
   function paint(next) {
     const focusedRetry = retryButton !== null && retryButton === document.activeElement;
+    const focusedOffer = offer === document.activeElement;
     const focused =
       removedFocus ??
       (focusedRetry ? retryButton : null) ??
@@ -344,7 +389,8 @@ export function mountFileTree(host) {
     if (changedRows) {
       index = new Map(next.rows.map((row, at) => [row.id, at]));
     }
-    group.classList.toggle("tree-children-collapsed", !next.expanded);
+    // An opening tree stays closed for its first read, so it opens once, at its height.
+    group.classList.toggle("tree-children-collapsed", !next.expanded || next.opening);
     group.setAttribute("aria-label", next.label);
     if (owner !== null) {
       owner.setAttribute("aria-expanded", String(next.expanded));
@@ -352,7 +398,14 @@ export function mountFileTree(host) {
       owner.classList.toggle("collapsed", !next.expanded);
     }
     lineText.textContent = next.line ?? (next.loading ? LISTING_FILES : "");
-    line.hidden = next.line === null && !next.loading;
+    offer.textContent = next.offer ?? "";
+    offer.hidden = next.offer === null;
+    offer.classList.toggle("github-pull-files-offer-floating", next.offerFloats);
+    const offerHome = next.offerFloats ? group : line;
+    if (offer.parentNode !== offerHome) {
+      offerHome.append(offer);
+    }
+    line.hidden = next.line === null && !next.loading && (next.offer === null || next.offerFloats);
     spinner.hidden = !next.loading;
     // The names breathe as paint; the rows stay fully usable, so the group is not marked busy.
     group.classList.toggle("mb-refreshing-group", next.refreshing);
@@ -391,6 +444,21 @@ export function mountFileTree(host) {
       live.textContent = next.live;
     }
     paintWindow();
+    // A pressed offer goes as its rows are drawn: focus moves to the tree's anchor, as Right
+    // takes it, and to the change line the tree hangs from when the tree has none.
+    if (focusedOffer && offer.hidden) {
+      const anchor = controller.anchor();
+      const arriving = anchor === null ? null : drawnElement(anchor);
+      if (arriving === null) {
+        host.leave();
+      } else {
+        arriving.focus({ preventScroll: true });
+        // A pointer pressed the offer where it is; only a key may have moved the reader away.
+        if (offerByKey) {
+          arriving.scrollIntoView({ block: "nearest" });
+        }
+      }
+    }
     // Transfer only focus this replacement removed; an unrelated control keeps its focus.
     // The settled anchor is drawn even when it was outside the previous row window.
     if (focused !== null && !focused.isConnected && document.activeElement === document.body) {
@@ -456,6 +524,9 @@ export function mountFileTree(host) {
       open: host.open,
       routable: (path) => host.href(path) !== null,
       leave: host.leave,
+      ...(host.lastInput === undefined ? {} : { lastInput: host.lastInput }),
+      ...(host.held === undefined ? {} : { held: host.held }),
+      tree: host.tree,
     },
     {
       number: host.number,
@@ -467,6 +538,15 @@ export function mountFileTree(host) {
 
   const listening = new AbortController();
   const { signal } = listening;
+  offer.addEventListener(
+    "click",
+    (event) => {
+      // A click from Enter or Space has no pointer press to count.
+      offerByKey = event.detail === 0;
+      controller.reveal();
+    },
+    { signal },
+  );
   /** @param {EventTarget | null} target */
   const rowOf = (target) =>
     target instanceof Element
@@ -521,10 +601,11 @@ export function mountFileTree(host) {
     group,
     controller,
     /**
-     * Hang the tree under a pull request's row, which a repaint of the list may build again.
+     * Hang the tree under a pull request's change line, the item that owns it, which a
+     * repaint of the list may build again.
      *
      * @param {HTMLElement} item
-     * @param {HTMLAnchorElement} row
+     * @param {HTMLElement} row
      */
     attach(item, row) {
       owner = row;

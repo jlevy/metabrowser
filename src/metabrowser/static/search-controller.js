@@ -25,6 +25,20 @@
   const LOCAL_FILE_PROVIDER_PRIORITY = 10;
   /** Keep a small overflow before pruning so insertion does not sort every match. */
   const RETAINED_RESULT_MULTIPLIER = 2;
+  /**
+   * Results are grouped by kind, in this order. Files answer from memory and pull
+   * requests from the server about 110 ms later, so the later group is appended
+   * below the rows already painted rather than ranked in among them, where it
+   * replaced the rows under the reader's selection.
+   */
+  const RESULT_KINDS = /** @type {const} */ (["file", "pull"]);
+  /**
+   * Files keep the whole cap, and pull requests have this many rows of their own after
+   * them. Being below the files, a late group moves no file row whatever the file count
+   * is, so it needs no share of the files' cap: halving the cap for it cut a file query
+   * to 50 of 100 rows even where no pull request matched.
+   */
+  const PULL_RESULT_LIMIT = 20;
 
   /** @param {string} path */
   function knownFileDisplayPath(path) {
@@ -574,7 +588,7 @@
    *   provider: MetabrowserSearchProvider,
    *   priority: number,
    * }>} registrations
-   * @param {number} maxResults
+   * @param {number} maxResults The files' cap; pull requests have PULL_RESULT_LIMIT more.
    */
   function composeResults(batches, registrations, maxResults) {
     /** @type {Map<string, MetabrowserSearchResult>} */
@@ -624,10 +638,14 @@
         codeUnitCompare(left.providerId, right.providerId)
       );
     });
-    return {
-      resultLimitTruncated: allResults.length > maxResults,
-      results: Object.freeze(allResults.slice(0, maxResults)),
-    };
+    let resultLimitTruncated = false;
+    const results = RESULT_KINDS.flatMap((kind) => {
+      const limit = kind === "file" ? maxResults : Math.min(maxResults, PULL_RESULT_LIMIT);
+      const group = allResults.filter((result) => result.kind === kind);
+      resultLimitTruncated ||= group.length > limit;
+      return group.slice(0, limit);
+    });
+    return { resultLimitTruncated, results: Object.freeze(results) };
   }
 
   /** @param {{maxResults?: number}} [options] */
@@ -904,6 +922,7 @@
   }
 
   window.MetabrowserSearch = Object.freeze({
+    PULL_RESULT_LIMIT,
     createController,
     createLocalFileProvider,
     createPullProvider,

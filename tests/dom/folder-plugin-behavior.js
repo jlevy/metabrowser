@@ -57,7 +57,15 @@ function makeElement() {
       if (selector === ".tm-parent-nav") {
         return el.parentNav;
       }
+      if (selector === ".tm-legend") {
+        el.legend ??= makeElement();
+        return el.legend;
+      }
       return null;
+    },
+    children: [],
+    replaceChildren(...children) {
+      el.children = children;
     },
     querySelectorAll() {
       return [];
@@ -133,6 +141,10 @@ const sandbox = {
 };
 let pendingTimers = [];
 sandbox.window = sandbox;
+// The shell's tooltip, recording what each hide is given: the map's disposal puts away only
+// its own tooltip, never another surface's (mb-alff).
+const tooltipHides = [];
+sandbox.MetabrowserTooltip = { show() {}, hide: (within) => tooltipHides.push(within) };
 sandbox.globalThis = sandbox;
 sandbox.MetabrowserFileTypeTaxonomy = {
   groups: [],
@@ -247,7 +259,11 @@ for (const relative of [
   const source = fs.readFileSync(path.join(repoRoot, relative), "utf8");
   vm.runInContext(source, sandbox, { filename: relative });
 }
+// In dependency order, since each runs in the one sandbox with its imports taken out:
+// folder-totals.js and the treemap import the hover they share, and the treemap the legend.
 const moduleSources = [
+  "src/metabrowser/builtin_plugins/folder/distribution-hover.js",
+  "src/metabrowser/builtin_plugins/folder/distribution-legend.js",
   "src/metabrowser/builtin_plugins/folder/folder-totals.js",
   "src/metabrowser/builtin_plugins/folder/treemap-layout.js",
   "src/metabrowser/builtin_plugins/folder/treemap-model.js",
@@ -256,6 +272,7 @@ const moduleSources = [
 for (const relative of moduleSources) {
   const source = fs
     .readFileSync(path.join(repoRoot, relative), "utf8")
+    .replace(/^import\s[^;]*;$/gm, "")
     .replace(/^export\s*\{[^}]*\};$/gm, "")
     .replace(/^export\s+/gm, "");
   vm.runInContext(source, sandbox, { filename: relative });
@@ -277,6 +294,7 @@ vm.runInContext(
      if (!raw || typeof raw !== "object") { throw new TypeError("bad envelope"); }
      return { registry: {revision: 1}, totals: {}, breakdown: raw.file_type_breakdown };
    }
+   function buildFileTypeLegendModel() { return { legend: [], caption: "" }; }
    function buildFolderTotalsComposition(envelope, _fileTypes, metric) {
      return envelope
        ? {metric, all: {segments: []}, files: {segments: []}, ignored: {segments: []}}
@@ -288,6 +306,7 @@ vm.runInContext(
      container.composition = undefined;
      container.compositionPalette = undefined;
      return {
+       dispose() { container.disposed = true; },
        resumeLoading() { container.stoppedLoading = false; },
        stopLoading() { container.stoppedLoading = true; },
        update(next) { container.value = next; },
@@ -645,6 +664,60 @@ sandbox.MetabrowserNavigationRoute.attachController({
     );
   }
 
+  // A key held with Command, Control, or Option is the browser's: Command-R reloads,
+  // Command-Left goes back in Chrome and Alt-Left elsewhere, Command-Up scrolls to the top.
+  // The map's keys act only unmodified.
+  const cellKeydown = container.viewport.listeners.keydown?.[0];
+  check("cell keydown handler bound", typeof cellKeydown === "function");
+  if (cellKeydown) {
+    const navigationsBefore = navigationCalls.length;
+    const swallowed = [];
+    for (const key of [
+      "r",
+      "Enter",
+      " ",
+      "ArrowRight",
+      "ArrowDown",
+      "ArrowLeft",
+      "ArrowUp",
+      "Backspace",
+    ]) {
+      for (const modifier of ["metaKey", "ctrlKey", "altKey"]) {
+        const event = {
+          key,
+          [modifier]: true,
+          defaultPrevented: false,
+          preventDefault() {
+            this.defaultPrevented = true;
+          },
+        };
+        cellKeydown(event);
+        if (event.defaultPrevented) {
+          swallowed.push(`${modifier} ${key}`);
+        }
+      }
+    }
+    check(
+      "the map takes no key held with a modifier",
+      swallowed.length === 0,
+      swallowed.join(", "),
+    );
+    check(
+      "a modified Enter or Backspace navigates nowhere",
+      navigationCalls.length === navigationsBefore,
+      JSON.stringify(navigationCalls.slice(navigationsBefore)),
+    );
+    const plain = {
+      key: "ArrowRight",
+      defaultPrevented: false,
+      preventDefault() {
+        this.defaultPrevented = true;
+      },
+    };
+    cellKeydown(plain);
+    check("a plain arrow still moves within the map", plain.defaultPrevented);
+  }
+
   // Viewport height is measured, not the CSS calc: innerHeight 1000
   // minus rect.top 120 minus the 64px bottom reserve.
   check(
@@ -798,11 +871,17 @@ sandbox.MetabrowserNavigationRoute.attachController({
   // Dispose detaches the inventory-change and window-resize listeners.
   const listenerCount = (windowListeners["metabrowser:inventory-change"] || []).length;
   const resizeCount = (windowListeners.resize || []).length;
+  const hidesBeforeDispose = tooltipHides.length;
   mounted.dispose();
   const afterDispose = (windowListeners["metabrowser:inventory-change"] || []).length;
   check("dispose detaches listener", afterDispose === listenerCount - 1, `${afterDispose}`);
   const resizeAfter = (windowListeners.resize || []).length;
   check("dispose detaches resize listener", resizeAfter === resizeCount - 1, `${resizeAfter}`);
+  check(
+    "dispose hides only the map's own tooltip",
+    tooltipHides.length === hidesBeforeDispose + 1 && tooltipHides.at(-1) === container,
+    `${tooltipHides.length - hidesBeforeDispose}`,
+  );
 
   // A nested Treemap identifies its enclosing folder and navigates to
   // that path without dropping back to the folder's default Overview.
@@ -849,11 +928,17 @@ sandbox.MetabrowserNavigationRoute.attachController({
     );
   }
   const parentClickListeners = nestedContainer.parentNav.listeners.click?.length || 0;
+  const hidesBeforeNestedDispose = tooltipHides.length;
   nestedMounted.dispose();
   check(
     "parent navigation listener is disposed",
     (nestedContainer.parentNav.listeners.click?.length || 0) === parentClickListeners - 1,
     `${nestedContainer.parentNav.listeners.click?.length || 0}`,
+  );
+  check(
+    "a nested map's dispose hides only its own tooltip",
+    tooltipHides.length === hidesBeforeNestedDispose + 1 && tooltipHides.at(-1) === nestedContainer,
+    `${tooltipHides.length - hidesBeforeNestedDispose}`,
   );
 
   // ── watchRollup active-gate: hidden views spend no fetches ──────

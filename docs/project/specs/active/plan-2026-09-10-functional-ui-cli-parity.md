@@ -1,6 +1,6 @@
 # Feature: Functional UI and CLI Parity
 
-**Date:** 2026-09-10 (last updated 2026-09-14)
+**Date:** 2026-09-10 (last updated 2026-11-14)
 
 **Author:** Joshua Levy (with LLM assistance)
 
@@ -151,6 +151,8 @@ When the host lacks `IntersectionObserver`, a scoped adapter supplies only the m
 observation signal while KPress initializes, then restores the global runtime.
 The fallback coalesces scroll bursts through animation frames, selects headings with
 logarithmic geometry reads, and removes every listener and pending frame on disposal.
+KPress 0.3.8 ships this fallback in its own `toc.js`, so the adapter was removed with
+that upgrade and the mount calls KPress directly.
 
 ### Checked evidence registry
 
@@ -207,7 +209,8 @@ responsible for declaring the smaller set of observable aspects within each surf
 
 - [x] Preserve primary-document fragment links while retaining delegated navigation;
   give embedded-document fragments their canonical source-aware links.
-- [x] Add a scoped observation fallback for hosts without `IntersectionObserver`.
+- [x] Add a scoped observation fallback for hosts without `IntersectionObserver`
+  (removed when KPress 0.3.8 shipped its own).
 - [x] Run the link enhancer and KPress’s exact production TOC module over the same
   anchors in one browserless long-document session.
 - [x] Pin active-section changes, expand-all state, frame coalescing, native-observer
@@ -228,6 +231,11 @@ responsible for declaring the smaller set of observable aspects within each surf
   APIs, image decoding, printing, and performance timing.
 
 The migration is tracked by `mb-n9xg` and its children.
+Feature work has registered rows for the surfaces it changed: preview states and
+Markdown by v0.10.0, then Git history, the pull-request pages, diff, the folder
+Overview, and the shell.
+Each child starts by reading the functional table for what is already covered.
+The Phase 4 items themselves remain open.
 The first three phases establish an enforced release gate for changed behavior; they do
 not retroactively prove every legacy interaction.
 Until Phase 4 is complete, documentation and release notes must call the functional
@@ -261,7 +269,8 @@ installed KPress TOC module through the production observation fallback.
 It records the enhanced href and delegated target, active sections at the top, at a
 heading, through the middle of a long section, and after a scroll burst.
 It then proves that native observation is left untouched and disposal removes scheduled
-work and listeners.
+work and listeners. Since KPress 0.3.8 the session drives KPress’s own fallback and
+viewport helpers instead of the adapter, and adds a pane resize.
 
 Focused tests remain beside the golden so a failure says whether parsing, provider
 selection, clustering, or interaction changed.

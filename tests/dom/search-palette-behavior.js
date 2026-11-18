@@ -325,6 +325,7 @@ sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
 for (const filename of [
+  "formatters.js",
   "navigation.js",
   "file-fuzzy-match.js",
   "known-file-catalog.js",
@@ -449,6 +450,16 @@ async function main() {
   const destination = document.createElement("button");
   document.body.append(destination);
   const shortcuts = sandbox.MetabrowserKeyboardShortcuts.create({ document });
+  // The palette gets the real registry with its subscription recorded, so the
+  // hint-row checks can also deliver an event kind the row does not display.
+  const paletteSubscribers = [];
+  const paletteShortcuts = Object.freeze({
+    ...shortcuts,
+    subscribe(listener) {
+      paletteSubscribers.push(listener);
+      return shortcuts.subscribe(listener);
+    },
+  });
   // Everything the palette asked the classifier to describe. Only a thrown
   // open is unclassified; a settled outcome already carries its message.
   const describedFailures = [];
@@ -505,7 +516,7 @@ async function main() {
       return { focusTarget: destination, status: "opened" };
     },
     resolveFocusFallback: () => initialFocus,
-    shortcuts,
+    shortcuts: paletteShortcuts,
   });
 
   const overlay = document.body.querySelector(".search-palette-overlay");
@@ -547,6 +558,59 @@ async function main() {
   );
   palette.close(false);
 
+  // The hint row rebuilds only on the registry events it displays, the
+  // strip's rule: a registration, or a scope change that shows or hides the
+  // active commands. Any other kind rebuilds nothing; `target` stands in for
+  // one. Counting the row's one write says how often it rebuilt.
+  check(
+    "the palette subscribes to the registry once",
+    paletteSubscribers.length === 1,
+    String(paletteSubscribers.length),
+  );
+  let hintRebuilds = 0;
+  const replaceHint = hint.replaceChildren.bind(hint);
+  hint.replaceChildren = (...children) => {
+    hintRebuilds += 1;
+    replaceHint(...children);
+  };
+  const deliverToPalette = (event) => {
+    for (const listener of paletteSubscribers) {
+      listener(Object.freeze(event));
+    }
+  };
+  deliverToPalette({ kind: "target" });
+  deliverToPalette({ kind: "batch", kinds: Object.freeze(["target"]) });
+  check(
+    "an event the hint row does not display rebuilds nothing",
+    hintRebuilds === 0,
+    String(hintRebuilds),
+  );
+  deliverToPalette({ kind: "batch", kinds: Object.freeze(["target", "scope"]) });
+  check("a batch with a scope change rebuilds the row once", hintRebuilds === 1);
+  shortcuts.batch(() => {
+    shortcuts.register({
+      bindings: [{ key: "x" }],
+      copy: { action: "Probe", description: "Probe the hint row.", hint: "Probe" },
+      group: "anywhere",
+      handler: () => true,
+      id: "test.hint-probe",
+      order: 90,
+      scope: "global",
+      surfaces: { help: "always" },
+    })();
+  });
+  check("a batch of registrations rebuilds the row once", hintRebuilds === 2);
+  palette.open();
+  check(
+    "opening rebuilds the row for its active commands",
+    hintRebuilds > 2 && hint.querySelectorAll("kbd").length === 4,
+    String(hintRebuilds),
+  );
+  const rebuildsWhileOpen = hintRebuilds;
+  palette.close(false);
+  check("closing rebuilds the row", hintRebuilds > rebuildsWhileOpen);
+  hint.replaceChildren = replaceHint;
+
   const editableTargets = ["input", "textarea", "select"].map((tag) => document.createElement(tag));
   const contentEditable = document.createElement("div");
   contentEditable.isContentEditable = true;
@@ -555,7 +619,6 @@ async function main() {
     fakeEvent("keydown", { key, altKey: true }),
     fakeEvent("keydown", { key, ctrlKey: true }),
     fakeEvent("keydown", { key, metaKey: true }),
-    fakeEvent("keydown", { key, shiftKey: true }),
     fakeEvent("keydown", { key, isComposing: true }),
     ...editableTargets.map((target) => fakeEvent("keydown", { key, target })),
     fakeEvent("keydown", { key, target: contentEditable }),
@@ -565,14 +628,23 @@ async function main() {
   }
   check("open-key guards leave the palette closed", overlay.hidden === true);
 
-  // `?` is shift+slash and `T` is shift+t; neither may open the palette.
-  for (const event of [
-    fakeEvent("keydown", { key: "?", target: initialFocus }),
-    fakeEvent("keydown", { key: "T", shiftKey: true, target: initialFocus }),
+  // `?` is the character Shift+/ types on a US layout. Punctuation matches the
+  // character typed, so it is Help's key, never Quick Search's.
+  const question = fakeEvent("keydown", { key: "?", shiftKey: true, target: initialFocus });
+  document.dispatchEvent(question);
+  check("? leaves the palette closed", overlay.hidden === true && !question.defaultPrevented);
+
+  // Shift never changes a key: Shift+T is T, and a slash typed with Shift, as
+  // on a German layout, is a slash.
+  for (const [label, values] of [
+    ["Shift+T opens the palette", { key: "T", shiftKey: true }],
+    ["a slash typed with Shift opens the palette", { code: "Digit7", key: "/", shiftKey: true }],
   ]) {
-    document.dispatchEvent(event);
+    const shifted = fakeEvent("keydown", { ...values, target: initialFocus });
+    document.dispatchEvent(shifted);
+    check(label, !overlay.hidden && shifted.defaultPrevented);
+    palette.close(false);
   }
-  check("shifted open keys stay closed", overlay.hidden === true);
 
   const slash = fakeEvent("keydown", { key: "/", target: initialFocus });
   document.dispatchEvent(slash);
@@ -683,6 +755,22 @@ async function main() {
     listbox.children[2].getAttribute("aria-selected") === "true",
   );
 
+  // Inside the query, Shift with a selection key belongs to the field:
+  // Shift+Up and Shift+Down extend the text selection, as in any single-line
+  // field, and leave the active result where it is. Shift+Enter and
+  // Shift+Escape are not selection keys, so they still act: Shift+Enter is
+  // checked beside Enter below, and Shift+Escape beside Escape.
+  for (const key of ["ArrowUp", "ArrowDown"]) {
+    const shifted = fakeEvent("keydown", { key, shiftKey: true, target: input });
+    input.dispatchEvent(shifted);
+    check(
+      `Shift+${key} in the query keeps its text editing`,
+      !shifted.defaultPrevented &&
+        listbox.children[2].getAttribute("aria-selected") === "true" &&
+        !overlay.hidden,
+    );
+  }
+
   // The query box is an editable combobox, so Home and End belong to its
   // caret. Claiming them would take line-start and line-end away from the
   // field, and the wrapping arrows already reach both ends of the list.
@@ -710,6 +798,32 @@ async function main() {
   check("Enter delegates navigation", openedPaths.length === 1, JSON.stringify(openedPaths));
   check("successful navigation closes the palette", overlay.hidden === true);
   check("successful navigation focuses its destination", document.activeElement === destination);
+
+  // Shift+Enter selects no text, so in the query it opens the active result
+  // exactly as Enter does.
+  initialFocus.focus();
+  palette.open();
+  input.value = "app";
+  input.dispatchEvent(fakeEvent("input", { target: input }));
+  await settle();
+  const activeRowText =
+    Array.from(listbox.children).find((row) => row.getAttribute("aria-selected") === "true")
+      ?.textContent ?? "";
+  const openedBeforeShiftEnter = openedPaths.length;
+  const shiftedEnter = fakeEvent("keydown", { key: "Enter", shiftKey: true, target: input });
+  input.dispatchEvent(shiftedEnter);
+  await settle();
+  check(
+    "Shift+Enter opens the active result",
+    shiftedEnter.defaultPrevented &&
+      openedPaths.length === openedBeforeShiftEnter + 1 &&
+      activeRowText.includes(String(openedPaths.at(-1)).split("/").pop()),
+    JSON.stringify({ activeRowText, opened: openedPaths.slice(openedBeforeShiftEnter) }),
+  );
+  check(
+    "Shift+Enter closes the palette and focuses its destination",
+    overlay.hidden === true && document.activeElement === destination,
+  );
 
   initialFocus.focus();
   palette.open();
@@ -809,6 +923,16 @@ async function main() {
   check(
     "Escape closes and restores focus",
     overlay.hidden && document.activeElement === initialFocus,
+  );
+
+  // Shift+Escape selects no text, so it closes the palette too.
+  initialFocus.focus();
+  palette.open();
+  const shiftedEscape = fakeEvent("keydown", { key: "Escape", shiftKey: true, target: input });
+  input.dispatchEvent(shiftedEscape);
+  check(
+    "Shift+Escape closes and restores focus",
+    shiftedEscape.defaultPrevented && overlay.hidden && document.activeElement === initialFocus,
   );
   check("closing cancels active work", cancelCalls > 0, String(cancelCalls));
 
@@ -1082,6 +1206,8 @@ async function pullSearchSession() {
   const requests = [];
   const readyPull = { number: 123, title: "Fix <em>renderer</em>", state: "merged" };
   const newerPull = { number: 124, title: "Render the latest state", state: "closed" };
+  // A conventional-commit prefix, with the query's word in it and in the rest.
+  const prefixedPull = { number: 125, title: "feat(chart): chart the strategies", state: "open" };
   const reply = (rows, flags = {}) => ({
     ok: true,
     json: async () => ({
@@ -1160,6 +1286,9 @@ async function pullSearchSession() {
         }
         if (url.endsWith("?q=%23render")) {
           return Promise.resolve(reply([newerPull, readyPull]));
+        }
+        if (url.endsWith("?q=%23chart")) {
+          return Promise.resolve(reply([prefixedPull]));
         }
         if (url.endsWith("?q=%23123") || url.endsWith("?q=123")) {
           return Promise.resolve(reply([readyPull]));
@@ -1252,10 +1381,15 @@ async function pullSearchSession() {
   ]);
   key("ArrowDown");
   const beforeMerge = currentChoice();
-  let selectedAfterInsertion = null;
+  const selectedIndexBeforeMerge = listbox.children.findIndex(
+    (row) => row.getAttribute("aria-selected") === "true",
+  );
+  let selectedIndexAfterInsertion = null;
   const unsubscribe = controller.subscribe((state) => {
     if (state.phase === "searching" && state.results.some((result) => result.kind === "pull")) {
-      selectedAfterInsertion = listbox.children[2];
+      selectedIndexAfterInsertion = listbox.children.findIndex(
+        (row) => row.getAttribute("aria-selected") === "true",
+      );
     }
   });
   delayed.resolve(reply([readyPull], { complete: false, refreshing: true }));
@@ -1268,11 +1402,15 @@ async function pullSearchSession() {
   const mixed = choices();
   const afterMerge = currentChoice();
   equal("a late PR preserves the selected file", afterMerge, beforeMerge);
-  equal("one file and one PR of the same rank both stay near the top", mixed, [
+  // Pull requests are their own group after the files, so the PR that answers
+  // later is appended below the painted file rows and never moves one.
+  equal("a late PR is appended after the file rows", mixed, [
     "render.js",
-    "Pull request #123, Fix <em>renderer</em>, Merged",
     "src/renderer.js",
+    "Pull request #123, Fix <em>renderer</em>, Merged",
   ]);
+  equal("a late PR leaves every painted file row in place", mixed.slice(0, 2), firstPaint);
+  const mixedPull = mixed[2];
   const pullOption = listbox.querySelector(".search-palette-option-pull");
   check(
     "the title renders as text, even with tag-like content",
@@ -1280,10 +1418,14 @@ async function pullSearchSession() {
   );
   const titleHighlight = pullOption.querySelector("mark").textContent;
   const details = pullOption.querySelector(".search-palette-description").textContent;
-  check("a late insertion keeps the selected row in view", selectedAfterInsertion?.scrollCalls > 0);
+  equal(
+    "a late PR leaves the selected file row where it was",
+    selectedIndexAfterInsertion,
+    selectedIndexBeforeMerge,
+  );
 
-  key("ArrowUp");
-  equal("the first cached PR can be selected during backfill", currentChoice(), mixed[1]);
+  key("ArrowDown");
+  equal("the first cached PR can be selected during backfill", currentChoice(), mixedPull);
   catalog.observeRecent([{ path: "z/render-guide.md", type: "file" }]);
   catalog.observeRecent([{ path: "z/render-notes.md", type: "file" }]);
   await waitMs(220);
@@ -1300,11 +1442,12 @@ async function pullSearchSession() {
   const truncatedStatus = progress.textContent;
   equal("newly cached PRs update the standing title query", grown, [
     "render.js",
-    "Pull request #124, Render the latest state, Closed",
     "src/renderer.js",
-    mixed[1],
+    "Pull request #124, Render the latest state, Closed",
+    mixedPull,
   ]);
-  equal("refresh preserves the chosen PR as its rank changes", selectedAfterGrowth, mixed[1]);
+  const grownPull = grown[2];
+  equal("refresh preserves the chosen PR as its rank changes", selectedAfterGrowth, mixedPull);
   check(
     "the API result cap reaches the palette independently of its scan scope",
     truncatedStatus.includes("Showing the top matches.") && !truncatedStatus.includes("older"),
@@ -1319,7 +1462,7 @@ async function pullSearchSession() {
     "the deferred refresh finds newly indexed files",
     afterFileGrowth.includes("z/render-guide.md") && afterFileGrowth.includes("z/render-notes.md"),
   );
-  equal("file growth preserves the selected PR", selectedAfterFileGrowth, mixed[1]);
+  equal("file growth preserves the selected PR", selectedAfterFileGrowth, mixedPull);
 
   const limitedComplete = searchCompletes();
   type("older");
@@ -1335,7 +1478,7 @@ async function pullSearchSession() {
   type("#");
   const recentsSignal = await recentsRecheckStarted.promise;
   const recents = choices();
-  equal("a lone hash immediately shows the recent cached PRs", recents, [grown[1], mixed[1]]);
+  equal("a lone hash immediately shows the recent cached PRs", recents, [grownPull, mixedPull]);
   check("the lone hash does not highlight the title", listbox.querySelector("mark") === null);
 
   const prefixComplete = searchCompletes();
@@ -1343,12 +1486,12 @@ async function pullSearchSession() {
   key("Enter");
   equal("an obsolete row cannot open while the query changes", opened, []);
   const prefixSignal = await prefixRecheckStarted.promise;
-  equal("the numeric prefix shows cached matches while refreshing", choices(), [mixed[1]]);
+  equal("the numeric prefix shows cached matches while refreshing", choices(), [mixedPull]);
   const staleRequestAborted = recentsSignal.aborted;
   check("typing a prefix aborts the recent PR read", staleRequestAborted);
   recentsRecheck.resolve(reply([{ number: 999, title: "Obsolete result", state: "open" }]));
   await settle();
-  equal("a superseded result cannot repaint the palette", choices(), [mixed[1]]);
+  equal("a superseded result cannot repaint the palette", choices(), [mixedPull]);
   prefixRecheck.resolve(
     reply([{ number: 12, title: "Exact number", state: "draft" }, newerPull, readyPull]),
   );
@@ -1357,10 +1500,10 @@ async function pullSearchSession() {
   const selectedAfterPrefixGrowth = currentChoice();
   equal("the exact PR precedes the other numeric prefix matches", prefix, [
     "Pull request #12, Exact number, Draft",
-    grown[1],
-    mixed[1],
+    grownPull,
+    mixedPull,
   ]);
-  equal("prefix growth keeps the same selected PR", selectedAfterPrefixGrowth, mixed[1]);
+  equal("prefix growth keeps the same selected PR", selectedAfterPrefixGrowth, mixedPull);
   check("number queries do not highlight titles", listbox.querySelector("mark") === null);
   check("the active prefix was not aborted", !prefixSignal.aborted);
 
@@ -1380,11 +1523,40 @@ async function pullSearchSession() {
     beforeTitleFileGrowth,
   );
 
+  // A title with a conventional-commit prefix is drawn in two parts, the prefix in its
+  // span (docs/design-system.md, "Titles"), and each part marks its own matches from where
+  // it starts in the title: the word in the prefix, and the same word in the rest at its
+  // own place, not at the prefix's.
+  const prefixedComplete = searchCompletes();
+  type("#chart");
+  await prefixedComplete;
+  /** A node as text, or as its tag and classes over its children's shapes. */
+  const shape = (node) =>
+    node instanceof FakeElement
+      ? {
+          [[node.tagName.toLowerCase(), ...node.className.split(/\s+/).filter(Boolean)].join(".")]:
+            node.children.length > 0 ? node.children.map(shape) : node.textContent,
+        }
+      : node.textContent;
+  const prefixedChoices = choices();
+  const prefixedTitle = shape(listbox.querySelector(".search-palette-label"))[
+    "span.search-palette-label"
+  ];
+  equal("a prefixed title is one pull request", prefixedChoices, [
+    "Pull request #125, feat(chart): chart the strategies, Open",
+  ]);
+  equal("each part of a prefixed title marks its own match", prefixedTitle, [
+    { "span.title-prefix": ["feat(", { mark: "chart" }, "):"] },
+    " ",
+    { mark: "chart" },
+    " the strategies",
+  ]);
+
   const numberComplete = searchCompletes();
   type("#123");
   await numberComplete;
   const exact = choices();
-  equal("a hash number limits the search to PRs", exact, [mixed[1]]);
+  equal("a hash number limits the search to PRs", exact, [mixedPull]);
   key("Enter");
   await settle();
   check(
@@ -1397,7 +1569,10 @@ async function pullSearchSession() {
   type("123");
   await bareComplete;
   const bare = choices();
-  equal("bare digits keep file matches and include the exact PR", bare, ["notes/123.md", mixed[1]]);
+  equal("bare digits keep file matches and include the exact PR", bare, [
+    "notes/123.md",
+    mixedPull,
+  ]);
   const barePull = listbox.querySelector(".search-palette-option-pull");
   barePull.dispatchEvent(fakeEvent("click", { target: barePull }));
   await settle();
@@ -1461,6 +1636,8 @@ async function pullSearchSession() {
     selectedAfterPrefixGrowth,
     explicitTitle,
     explicitTitleHighlight,
+    prefixedChoices,
+    prefixedTitle,
     hashFiles,
     exact,
     staleRequestAborted,

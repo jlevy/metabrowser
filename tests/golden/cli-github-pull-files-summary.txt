@@ -1,0 +1,363 @@
+## Nothing is cached: no pull request named has a list, and none asks GitHub.
+# metab https://github.com/octo/demo --api '/api/plugin/github/pull-files-summary?numbers=106,7'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-files-summary?numbers=106,7
+status: 200
+{
+  "source": "https://github.com/octo/demo",
+  "rows": [
+    {
+      "number": 106,
+      "state": "absent",
+      "reason": "not_cached",
+      "listing": false,
+      "listed_from": null,
+      "generation": null,
+      "head": null,
+      "base": null,
+      "base_ref": null,
+      "files": null,
+      "additions": null,
+      "deletions": null,
+      "exact": false,
+      "statuses": []
+    },
+    {
+      "number": 7,
+      "state": "absent",
+      "reason": "not_cached",
+      "listing": false,
+      "listed_from": null,
+      "generation": null,
+      "head": null,
+      "base": null,
+      "base_ref": null,
+      "files": null,
+      "additions": null,
+      "deletions": null,
+      "exact": false,
+      "statuses": []
+    }
+  ]
+}
+--- stderr ---
+cloning https://github.com/octo/demo into <HOME>
+cloned https://github.com/octo/demo in 0.0 s
+--- gh ---
+gh api repos/octo/demo --jq .size
+## 106's list read from GitHub's pages, the one step here that asks.
+# metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-files-refresh
+status: 202
+{
+  "refresh": "started",
+  "files": {
+    "state": "pending",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "number": 106,
+    "listed_from": null,
+    "fetched_at": null,
+    "generation": null,
+    "reader": null,
+    "head": null,
+    "base": null,
+    "base_ref": null,
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": null,
+    "fetched": 0,
+    "pages": 0,
+    "last_page": null,
+    "complete": false,
+    "capped": false,
+    "truncated": false,
+    "offset": 0,
+    "limit": 0,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pull-files?number=106&limit=0"
+}
+after: /api/plugin/github/pull-files?number=106&limit=0
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 106,
+  "listed_from": "github",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "generation": "00000000000000000000000000000001",
+  "reader": "gh:octo-reader",
+  "head": null,
+  "base": null,
+  "base_ref": null,
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "fetched": 249,
+  "pages": 3,
+  "last_page": 3,
+  "complete": true,
+  "capped": false,
+  "truncated": false,
+  "offset": 0,
+  "limit": 0,
+  "rows": []
+}
+--- stderr ---
+--- body ---
+{"number": 106}
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/106/files?per_page=100&page=1
+gh auth status
+gh api repos/octo/demo/pulls/106/files?per_page=100&page=2
+gh auth status
+gh api repos/octo/demo/pulls/106/files?per_page=100&page=3
+gh auth status
+## Summed from the cache: 106's files by GitHub's status words, and its lines; 7 has no list yet.
+# metab https://github.com/octo/demo --api '/api/plugin/github/pull-files-summary?numbers=106,7'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-files-summary?numbers=106,7
+status: 200
+{
+  "source": "https://github.com/octo/demo",
+  "rows": [
+    {
+      "number": 106,
+      "state": "listed",
+      "reason": null,
+      "listing": false,
+      "listed_from": "github",
+      "generation": "00000000000000000000000000000001",
+      "head": null,
+      "base": null,
+      "base_ref": null,
+      "files": 249,
+      "additions": 1093,
+      "deletions": 493,
+      "exact": true,
+      "statuses": [
+        {
+          "status": "added",
+          "count": 3
+        },
+        {
+          "status": "modified",
+          "count": 243
+        },
+        {
+          "status": "removed",
+          "count": 1
+        },
+        {
+          "status": "renamed",
+          "count": 2
+        }
+      ]
+    },
+    {
+      "number": 7,
+      "state": "absent",
+      "reason": "not_cached",
+      "listing": false,
+      "listed_from": null,
+      "generation": null,
+      "head": null,
+      "base": null,
+      "base_ref": null,
+      "files": null,
+      "additions": null,
+      "deletions": null,
+      "exact": false,
+      "statuses": []
+    }
+  ]
+}
+--- stderr ---
+--- gh ---
+## 7's record fetched, its list is the local comparison's, which names its head.
+# metab https://github.com/octo/demo/pull/7 --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: c691256511d05858850bc7684ae062fea0d41132
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/7
+gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1
+gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1
+gh api repos/octo/demo/issues/7/comments?per_page=100&page=1
+gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1
+gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1
+gh auth status
+# metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-files-refresh
+status: 202
+{
+  "refresh": "started",
+  "files": {
+    "state": "pending",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "number": 7,
+    "listed_from": null,
+    "fetched_at": null,
+    "generation": null,
+    "reader": null,
+    "head": null,
+    "base": null,
+    "base_ref": null,
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": null,
+    "fetched": 0,
+    "pages": 0,
+    "last_page": null,
+    "complete": false,
+    "capped": false,
+    "truncated": false,
+    "offset": 0,
+    "limit": 0,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pull-files?number=7&limit=0"
+}
+after: /api/plugin/github/pull-files?number=7&limit=0
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 7,
+  "listed_from": "comparison",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "generation": "00000000000000000000000000000002",
+  "reader": null,
+  "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+  "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
+  "base_ref": null,
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "fetched": 2,
+  "pages": 0,
+  "last_page": null,
+  "complete": true,
+  "capped": false,
+  "truncated": false,
+  "offset": 0,
+  "limit": 0,
+  "rows": []
+}
+--- stderr ---
+--- body ---
+{"number": 7}
+--- gh ---
+# metab https://github.com/octo/demo --api '/api/plugin/github/pull-files-summary?numbers=7,106'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-files-summary?numbers=7,106
+status: 200
+{
+  "source": "https://github.com/octo/demo",
+  "rows": [
+    {
+      "number": 7,
+      "state": "listed",
+      "reason": null,
+      "listing": false,
+      "listed_from": "comparison",
+      "generation": "00000000000000000000000000000002",
+      "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+      "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
+      "base_ref": null,
+      "files": 2,
+      "additions": 2,
+      "deletions": 0,
+      "exact": true,
+      "statuses": [
+        {
+          "status": "added",
+          "count": 1
+        },
+        {
+          "status": "modified",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "number": 106,
+      "state": "listed",
+      "reason": null,
+      "listing": false,
+      "listed_from": "github",
+      "generation": "00000000000000000000000000000001",
+      "head": null,
+      "base": null,
+      "base_ref": null,
+      "files": 249,
+      "additions": 1093,
+      "deletions": 493,
+      "exact": true,
+      "statuses": [
+        {
+          "status": "added",
+          "count": 3
+        },
+        {
+          "status": "modified",
+          "count": 243
+        },
+        {
+          "status": "removed",
+          "count": 1
+        },
+        {
+          "status": "renamed",
+          "count": 2
+        }
+      ]
+    }
+  ]
+}
+--- stderr ---
+--- gh ---
+## A request that names anything but the pull requests' numbers is refused.
+# metab https://github.com/octo/demo --api '/api/plugin/github/pull-files-summary?numbers=106&extra=1'
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pull-files-summary?numbers=106&extra=1
+status: 400
+{
+  "error": "a summary names its pull requests by \"numbers\" alone",
+  "code": "invalid_request"
+}
+--- stderr ---
+Error: /api/plugin/github/pull-files-summary?numbers=106&extra=1 returned HTTP 400
+--- gh ---

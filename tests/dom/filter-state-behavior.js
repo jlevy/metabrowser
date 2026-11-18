@@ -98,6 +98,7 @@ function makeSandbox(options) {
     types: null,
     size: "all",
     showIgnored: true,
+    group: "none",
   });
   assertEqual("a clean state counts as zero active filters", state.activeCount(), 0);
 }
@@ -118,6 +119,7 @@ function makeSandbox(options) {
     types: null,
     size: "all",
     showIgnored: true,
+    group: "none",
   });
 }
 
@@ -142,6 +144,21 @@ function makeSandbox(options) {
   state.clear();
   assertEqual("clear resets every dimension", state.activeCount(), 0);
   assertEqual("clear restores gitignored visibility", state.get().showIgnored, true);
+}
+
+// Group by is not a filter: the badge does not count it, Clear keeps it, and only its
+// three values are taken.
+{
+  const { state } = makeSandbox();
+  state.set({ group: "type" });
+  assertEqual("a grouping is taken", state.get().group, "type");
+  assertEqual("a grouping is not an active filter", state.activeCount(), 0);
+  state.set({ recency: "7d" });
+  state.clear();
+  assertEqual("clear keeps the grouping", state.get().group, "type");
+  assertEqual("clear still resets the filters", state.get().recency, "all");
+  state.set({ group: "size" });
+  assertEqual("an unknown grouping falls back to none", state.get().group, "none");
 }
 
 // get() must not hand out a reference into internal state.

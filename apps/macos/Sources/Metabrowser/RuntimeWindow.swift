@@ -134,7 +134,7 @@ struct RuntimeView: View {
             SetupGuideView(guide: guide)
             Link(
                 "Installation guide",
-                destination: URL(string: "https://github.com/jlevy/metabrowser/blob/main/docs/installation.md")!)
+                destination: ProjectLinks.installationGuide)
         }
     }
 

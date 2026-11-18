@@ -84,8 +84,22 @@ class Element {
   focus() {
     document.activeElement = this;
   }
-  scrollIntoView() {}
+  scrollIntoView() {
+    scrolled.push(this);
+  }
+  // A browser blurs an element that is hidden while it has focus.
+  get hidden() {
+    return this._hidden === true;
+  }
+  set hidden(value) {
+    this._hidden = value === true || value === "";
+    if (this._hidden && document.activeElement === this) {
+      document.activeElement = document.body;
+    }
+  }
 }
+/** The elements scrolled into view, in order. @type {Element[]} */
+const scrolled = [];
 async function settle() {
   await new Promise((resolve) => setImmediate(resolve));
 }
@@ -134,6 +148,8 @@ async function run() {
     const view = mountFileTree({
       decorateExternalLink:
         require("./sdk-ref-fixture.js").refHelpers(document).decorateExternalLink,
+      tree: require("./changed-files-tree-fixture.js").changedFilesTree(),
+      formatCount: (count) => count.toLocaleString("en-US"),
       number: 7,
       autoExpandFiles: 3000,
       current: null,
@@ -240,7 +256,10 @@ async function run() {
     assert.ok(selected, "the anchor is retained outside the visible row window");
     (scenario.endsWith("other focus") ? elsewhere : selected).focus();
     generation = 1;
-    for (const delay of [60000, 0]) {
+    // A replacement read past the rows held is read again from its start, except a list of
+    // no files: it is the whole list from any offset, so it is taken where it was read
+    // (review A1).
+    for (const delay of scenario === "empty" ? [60000] : [60000, 0]) {
       const entry = [...timers].find(([, timer]) => timer.delay === delay);
       assert.ok(entry, "the replacement is read from its start");
       timers.delete(entry[0]);
@@ -270,7 +289,160 @@ async function run() {
   }
   await walkClaims(mountFileTree);
   results.push({ scenario: "refreshing", paints: await refreshingPaint(mountFileTree) });
+  results.push({ scenario: "offer pressed", ...(await offerFocus(mountFileTree, 0)) });
+  results.push({ scenario: "offer clicked", ...(await offerFocus(mountFileTree, 1)) });
   return results;
+}
+
+/**
+ * A list's first page comes late into the expanded, empty tree and is drawn, with no offer
+ * painted; its second page comes late too and is offered on the tree's line, since rows are
+ * drawn now. Pressing the offer draws them and leaves focus on the tree's anchor, never on the
+ * document body. Only a press from the keyboard, a click whose `detail` is 0, scrolls to the
+ * anchor: a pointer pressed the offer where it is.
+ *
+ * @param {Function} mountFileTree
+ * @param {number} detail The click's count of pointer presses.
+ */
+async function offerFocus(mountFileTree, detail) {
+  const realNow = Date.now;
+  let now = 0;
+  Date.now = () => now;
+  const timers = new Map();
+  try {
+    globalThis.window = {
+      setTimeout(callback, delay) {
+        const id = Symbol();
+        timers.set(id, { callback, delay });
+        return id;
+      },
+      clearTimeout: (id) => timers.delete(id),
+      requestAnimationFrame: () => 1,
+      cancelAnimationFrame() {},
+    };
+    document.body = new Element("body");
+    document.activeElement = document.body;
+    const parent = new Element("li");
+    const owner = new Element("a");
+    owner.dataset.id = "owner";
+    document.body.append(parent);
+    parent.append(owner);
+    /** The reads of the list not yet answered, oldest first. */
+    const reads = [];
+    const view = mountFileTree({
+      decorateExternalLink:
+        require("./sdk-ref-fixture.js").refHelpers(document).decorateExternalLink,
+      tree: require("./changed-files-tree-fixture.js").changedFilesTree(),
+      formatCount: (count) => count.toLocaleString("en-US"),
+      number: 7,
+      autoExpandFiles: 3000,
+      current: null,
+      shown: true,
+      scrollRoot: document.body,
+      chevron: () => null,
+      href: (file) => `/${file}`,
+      request: () =>
+        new Promise((resolve) => {
+          reads.push(resolve);
+        }),
+      formatTime: (value) => value,
+      page: () => null,
+      open() {},
+      leave: () => owner.focus(),
+      focusedIn() {},
+      lastInput: () => 0,
+    });
+    /**
+     * One page of a two-page list GitHub fills.
+     *
+     * @param {string[]} files
+     * @param {number} offset
+     */
+    const page = (files, offset) => {
+      const complete = offset > 0;
+      return {
+        status: 200,
+        etag: null,
+        body: {
+          state: "current",
+          reason: null,
+          number: 7,
+          listed_from: "github",
+          source: "https://github.com/octo/demo",
+          generation: "0".repeat(32),
+          fetched_at: "2026-11-03T00:00:00Z",
+          reader: "gh:test",
+          head: null,
+          base: null,
+          fresh_for_s: 60,
+          refreshing: !complete,
+          last_refresh: null,
+          fetched: offset + files.length,
+          pages: complete ? 2 : 1,
+          last_page: 2,
+          complete,
+          capped: false,
+          truncated: false,
+          offset,
+          limit: 3000,
+          rows: files.map((file) => ({
+            path: file,
+            display: file,
+            previous_path: null,
+            previous_display: null,
+            status: "modified",
+            additions: 1,
+            deletions: 0,
+          })),
+        },
+      };
+    };
+    view.attach(parent, owner);
+    view.controller.expand();
+    await settle();
+    // The opening's bound passes: the tree opens on its loading line, and the list comes late.
+    now = 150;
+    for (const [id, timer] of [...timers]) {
+      timers.delete(id);
+      timer.callback();
+    }
+    const line = view.group.children.find(
+      (element) => element.getAttribute("class") === "github-pull-files-line",
+    );
+    const offer = () =>
+      view.group.children.concat(line.children).find((each) => each.tagName === "BUTTON");
+    const drawnNames = () =>
+      view.group.children
+        .find((element) => element.getAttribute("class") === "github-pull-files-rows")
+        .children.map((row) => row.dataset.id);
+    now = 2000;
+    reads.shift()(page(["a.py", "b.py"], 0));
+    await settle();
+    const first = { drawn: drawnNames(), offer: offer().hidden ? null : offer().textContent };
+    // The next poll, a second later with no input since, brings the second page.
+    now = 3000;
+    for (const [id, timer] of [...timers]) {
+      timers.delete(id);
+      timer.callback();
+    }
+    await settle();
+    reads.shift()(page(["c.py"], 2));
+    await settle();
+    assert.equal(offer().hidden, false, "a late change to drawn rows is offered");
+    const offered = offer().textContent;
+    offer().focus();
+    scrolled.length = 0;
+    offer().listeners.get("click")({ detail });
+    await settle();
+    assert.notEqual(document.activeElement, document.body, "focus stays in the tree");
+    const focused = document.activeElement.dataset.id;
+    const scrolls = scrolled.length;
+    const drawn = drawnNames();
+    view.dispose();
+    return { first, offered, focus: focused, scrolls, drawn };
+  } finally {
+    Date.now = realNow;
+  }
 }
 
 /**
@@ -368,6 +540,8 @@ async function refreshingPaint(mountFileTree) {
   let answerAsk = () => {};
   const view = mountFileTree({
     decorateExternalLink: require("./sdk-ref-fixture.js").refHelpers(document).decorateExternalLink,
+    tree: require("./changed-files-tree-fixture.js").changedFilesTree(),
+    formatCount: (count) => count.toLocaleString("en-US"),
     number: 7,
     autoExpandFiles: 3000,
     current: null,
@@ -407,6 +581,16 @@ async function refreshingPaint(mountFileTree) {
     };
   };
   const asked = painted();
+  // A folder row ends with the line counts of its files, rolled up, in the shell's number
+  // format, and says them to a screen reader (mb-epw2).
+  const folder = list.children.find((row) => row.dataset.id === "src/");
+  const stats = folder?.children.find((part) => part.classes.has("github-pull-file-stats"));
+  assert.deepEqual(
+    stats?.children.map((part) => part.children.map((text) => text.textContent).join("")),
+    ["+2", "\u22120"],
+    "a folder row shows its files' line counts rolled up",
+  );
+  assert.equal(folder?.getAttribute("aria-label"), "src, 2 files, 2 added, 0 deleted");
   answerAsk({ status: 202, etag: null, body: { files: listing("stale", true, false) } });
   await settle();
   const running = painted();
@@ -444,6 +628,8 @@ async function walkClaims(mountFileTree) {
   const claims = [];
   const view = mountFileTree({
     decorateExternalLink: require("./sdk-ref-fixture.js").refHelpers(document).decorateExternalLink,
+    tree: require("./changed-files-tree-fixture.js").changedFilesTree(),
+    formatCount: (count) => count.toLocaleString("en-US"),
     number: 7,
     autoExpandFiles: 3000,
     current: null,

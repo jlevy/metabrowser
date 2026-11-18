@@ -4,7 +4,8 @@ Drives ``metab --plugins / --plugin NAME / --doctor`` via Typer's
 CliRunner. Confirms the discovered set, the JSON output shape, and the
 doctor's exit-code contract on broken plugins and a damaged cache contract.
 ``tests/golden/cli-plugins.tryscript.md`` records the doctor's whole answer, text and
-JSON, on a clean installation.
+JSON, on a clean installation, and ``tests/golden/cli-plugins-view-keys.tryscript.md``
+its view key report on operator plugins.
 """
 
 from __future__ import annotations
@@ -194,6 +195,101 @@ sidekick = "nonexistent.module:nope"
     assert payload["ok"] is False
     assert any("JavaScript-only" in problem for problem in payload["problems"])
     assert "Logging error" not in json_result.stderr
+
+
+def _write_plugin(root: Path, name: str, manifest: str) -> None:
+    pdir = root / name
+    pdir.mkdir()
+    (pdir / "manifest.toml").write_text(manifest)
+    (pdir / "index.js").write_text("// stub\n")
+
+
+def test_plugins_doctor_reports_a_duplicate_view_key_across_manifests(tmp_path: Path) -> None:
+    """The first view keeps the letter; the second manifest's view is the one reported."""
+    _write_plugin(
+        tmp_path,
+        "alpha",
+        """
+[plugin]
+name = "alpha"
+sdk_version = "0.7"
+
+[[kind]]
+id = "myk"
+match = { ext = ".myk" }
+
+[[view]]
+kind = "myk"
+id = "main"
+label = "Main"
+default = true
+key = "m"
+""",
+    )
+    _write_plugin(
+        tmp_path,
+        "beta",
+        """
+[plugin]
+name = "beta"
+sdk_version = "0.7"
+
+[[view]]
+kind = "myk"
+id = "alt"
+label = "Alt"
+key = "M"
+""",
+    )
+
+    result = _runner.invoke(_app, ["--doctor", "--plugins-dir", str(tmp_path)])
+
+    assert result.exit_code == 1
+    assert result.stdout == ""
+    [problem] = [line for line in result.stderr.splitlines() if "key" in line]
+    assert "plugin 'beta'" in problem
+    assert "view 'alt' of kind 'myk'" in problem
+    assert "view 'main' (plugin 'alpha') already holds it" in problem
+
+    json_result = _runner.invoke(_app, ["--doctor", "--json", "--plugins-dir", str(tmp_path)])
+    assert json_result.exit_code == 1
+    payload = json.loads(json_result.stdout)
+    assert [p for p in payload["problems"] if "key" in p] == [problem.removeprefix("  • ")]
+
+
+def test_plugins_doctor_names_the_override_that_takes_a_built_in_views_key(
+    tmp_path: Path,
+) -> None:
+    """An operator plugin that overrides Markdown's Document view with ``S`` holds the key.
+
+    Source, the built-in markdown plugin's view, is the one served without a key, and the
+    report names both plugins: the one whose view lost the key, and the override that holds
+    it, not the built-in plugin whose Document entry it replaced.
+    """
+    _write_plugin(
+        tmp_path,
+        "steal",
+        """
+[plugin]
+name = "steal"
+sdk_version = "0.7"
+
+[[view]]
+kind = "markdown"
+id = "rendered"
+label = "Document"
+key = "s"
+default = true
+""",
+    )
+
+    result = _runner.invoke(_app, ["--doctor", "--plugins-dir", str(tmp_path)])
+
+    assert result.exit_code == 1
+    assert [line for line in result.stderr.splitlines() if "key" in line] == [
+        "  • plugin 'markdown': view 'source' of kind 'markdown' declares key 's', but view"
+        " 'rendered' (plugin 'steal') already holds it; the view is served without a key"
+    ]
 
 
 def test_plugins_diagnostics_do_not_advertise_disabled_local_hooks(tmp_path: Path) -> None:

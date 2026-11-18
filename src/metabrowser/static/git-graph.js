@@ -12,7 +12,7 @@
 //
 // The port is deliberately faithful. Lane geometry, path commands, and
 // assignment order match upstream so a future layout fix can be diffed
-// against this file rather than reverse-engineered. Four changes were
+// against this file rather than reverse-engineered. Five changes were
 // made, each noted at its site:
 //
 //   1. Colors are design tokens (`var(--git-lane-N)`) instead of VS Code
@@ -75,8 +75,11 @@
 
   // The lane color for the branch HEAD is on. Upstream calls this
   // `historyItemRefColor`; it is also the fallback when a lane's color
-  // cannot be determined.
-  const HEAD_LANE_COLOR = "var(--git-ref-local)";
+  // cannot be determined. It is the branch blue, the remote chip's
+  // color, and not the local chip's blue-green: a lane has to stay apart
+  // from the five above, and that hue sits beside lane 4's teal.
+  // history.py's `_HEAD_LANE_COLOR` is the same value.
+  const HEAD_LANE_COLOR = "var(--git-ref-remote)";
 
   /**
    * Positive modulo. `-1 % 5` is `-1` in JavaScript, which would index

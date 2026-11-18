@@ -2,7 +2,7 @@
 //
 // The module scenarios call the pane lifecycle and failure classifiers in
 // navigation.js directly. The `shell` scenarios run the app.js functions that
-// compose them (selectFile, applyNavigationTarget, navigateToPath,
+// compose them (selectFile, applyNavigationTarget, navigateToPath, openTreeRow,
 // activateNavPanel, the inventory stream's onopen, and the startup settle),
 // extracted verbatim and executed with the real navigation module and
 // controller, so that wiring cannot regress behind a source-string assertion.
@@ -321,6 +321,28 @@ function failures() {
 
 // ── Shell scenarios: the real app.js wiring ───────────────────
 
+/**
+ * How a tree drawn for Home is drawn: as a fresh load of /view/ draws it, with the folders
+ * app.js's `homeTreeExpansion` opens on each kind of page, a folder's, which paints the
+ * root's rows itself, and a pin's, which does not and leaves them to the planner.
+ */
+function homeTreeDraw(sandbox) {
+  const opens = (expansion) =>
+    expansion === undefined
+      ? "the planner's folders"
+      : expansion.defaultExpandedPaths.size === 0
+        ? "no folder"
+        : [...expansion.defaultExpandedPaths].join(", ");
+  return (
+    "drawn as a fresh load of /view/ draws it: " +
+    `${opens(sandbox.homeTreeExpansion(true, true))} open on a folder's page, ` +
+    `${opens(sandbox.homeTreeExpansion(true, false))} on a pin's`
+  );
+}
+const HOME_TREE_DRAW =
+  "drawn as a fresh load of /view/ draws it: no folder open on a folder's page, " +
+  "the planner's folders on a pin's";
+
 /** One app.js declaration, bounded by its closing line at column zero. */
 function appDeclaration(pattern, label) {
   const match = appSource.match(pattern);
@@ -348,8 +370,16 @@ const SHELL_FUNCTIONS = [
   "createFilePreviewStage",
   "isGitHistoryLanding",
   "cancelMainTabPreview",
+  "resumeRootSummaryRefresh",
+  "closeFilterMenu",
   "attachMainTabs",
   "initNavTabs",
+  "initHomeHeading",
+  "onHomeHeadingClick",
+  "goHome",
+  "openHomeRoot",
+  "resetFilesTab",
+  "homeTreeExpansion",
   "fileSelectionFailureOutcome",
   "beginViewCompositionLoad",
   "selectFile",
@@ -368,10 +398,15 @@ const SHELL_FUNCTIONS = [
   "openQuickSearchPull",
   "showPullPageLoadFailure",
   "pullPageHostDeps",
+  "revealPullAddress",
   "applyPullHistoryLanding",
   "addressedView",
+  "addressedFilePath",
+  "revealFileRow",
+  "revealAddressedItem",
   "applyNavigationTarget",
   "navigateToPath",
+  "openTreeRow",
 ];
 
 const shellSource = [
@@ -383,6 +418,19 @@ const shellSource = [
   appDeclaration(/^var pullPageHost = null;$/m, "pull-request page host"),
   appDeclaration(/^var retainedPullPageDispose = null;$/m, "retained pull-request finalizer"),
   appDeclaration(/^var pluginViewLifecycle = null;$/m, "plugin view lifecycle"),
+  // Showing Files resumes a root summary that waited; none of these states asks for one.
+  appDeclaration(/^var _rootSummaryRefresh = null;$/m, "root summary refresh"),
+  // Nor does any of them group the Files tree.
+  appDeclaration(/^var _groupedRefresh = null;$/m, "Group by section refresh"),
+
+  // Leaving Files closes an open filter menu; none of these states opens one but going
+  // home's, which opens the drawer and a menu, and sets filters, to see Home reset them.
+  appDeclaration(/^var filterOpenMenu = null;$/m, "open filter menu"),
+  appDeclaration(/^var filterDrawerOpen = false;$/m, "filter drawer"),
+  // static/filter-state.js's, when a scenario's shell runs it as a startup script.
+  appDeclaration(/^var filterState = [^\n]*;$/m, "filter state"),
+  // Whether the tree load a reset begins draws the tree as a fresh load does.
+  appDeclaration(/^let _homeTreeDraw = false;$/m, "Home's tree draw"),
   appDeclaration(/^var navigationController = [\s\S]*?^\}\);$/m, "navigation controller"),
   ...SHELL_FUNCTIONS.map((name) =>
     appDeclaration(
@@ -391,6 +439,13 @@ const shellSource = [
     ),
   ),
 ].join("\n\n");
+
+// What makes a stand-in element a live shortcut target to the registry.
+const LIVE_TARGET = Object.freeze({
+  checkVisibility: () => true,
+  isConnected: true,
+  parentElement: null,
+});
 
 function fakeElement(fields = {}) {
   const attributes = new Map();
@@ -464,41 +519,97 @@ function createShell(pathname, network, options = {}) {
   const refused = options.refused ?? new Set();
   /** @type {string[]} */
   const renderedViews = [];
-  // The shown file's Source tab; a click selects it, as initTabs does.
+  /** What the Files tab was asked to draw: its filter bar and its tree. @type {string[]} */
+  const filesDrawn = [];
+  // The shown file's Source tab, in its bar; selecting it is the tab's own path,
+  // selectPreviewTab, which a click and a key share.
   /** @type {string[]} */
   const tabClicks = [];
-  const sourceTab = fakeElement({
-    click() {
-      tabClicks.push(`${preview.dataset.renderedPath}: source`);
-      sourceTab.classList.add("active");
-    },
-  });
+  const tabBar = fakeElement();
+  const sourceTab = fakeElement({ parentElement: tabBar });
   const preview = fakeElement();
   const elements = new Map([
     ["preview-pane", preview],
     ["nav-filter-bar", fakeElement()],
   ]);
   const scroller = options.scroller ?? fakeElement({ scrollTop: 0 });
+  // In the shell's order: Files, Pulls, then Commits.
   const panelIds = ["files"];
-  if (!options.withoutGit) {
-    panelIds.push("git");
-  }
   if (options.pulls) {
     panelIds.push("pulls");
   }
-  const tabButtons = panelIds.map((tab) => fakeElement({ dataset: { tab }, focus() {} }));
-  const tabPanels = panelIds.map((tab) => fakeElement({ dataset: { tabContent: tab } }));
-  scroller.querySelector = () => ({});
+  // `gitDrawn` is the Commits tab the server draws at a repository's root, which
+  // discovery has not registered.
+  if (!options.withoutGit || options.gitDrawn) {
+    panelIds.push("git");
+  }
+  // A tab button is its letter's target, which the registry reads as live: connected,
+  // outside any inert subtree, and visible.
+  const tabButtons = panelIds.map((tab) =>
+    fakeElement({
+      dataset: { tab },
+      focus() {},
+      remove() {
+        tabButtons.splice(tabButtons.indexOf(this), 1);
+      },
+      ...LIVE_TARGET,
+    }),
+  );
+  // The tab the server draws in front: Pulls at its addresses, Commits at a commit's.
+  const initialPanel =
+    options.pulls && pathname.startsWith("/pull")
+      ? "pulls"
+      : pathname.startsWith("/commit/") && panelIds.includes("git")
+        ? "git"
+        : "files";
+  const tabPanels = panelIds.map((tab) =>
+    fakeElement({
+      dataset: { tabContent: tab },
+      style: { display: tab === initialPanel ? "" : "none" },
+    }),
+  );
+  // The navigation's toolbar slot: one toolbar per tab the server draws, the one in front shown.
+  const toolbars = panelIds.map((tab) =>
+    fakeElement({ dataset: { navToolbar: tab }, hidden: tab !== initialPanel }),
+  );
+  /** @param {any} toolbar The Files bar has its own id; every other toolbar is `nav-toolbar-<tab>`. */
+  const slotToolbar = (toolbar) => {
+    const id = toolbar.id || `nav-toolbar-${toolbar.dataset.navToolbar}`;
+    if (toolbar.dataset.navToolbar !== "files") {
+      elements.set(id, toolbar);
+    }
+    toolbar.remove = () => {
+      toolbars.splice(toolbars.indexOf(toolbar), 1);
+      elements.delete(id);
+    };
+  };
+  for (const toolbar of toolbars) {
+    slotToolbar(toolbar);
+  }
+  scroller.querySelector = () => ({ remove() {} });
+  // A toolbar main-tabs.js adds for a tab the server did not draw goes into the slot.
+  scroller.before = (toolbar) => {
+    toolbars.push(toolbar);
+    slotToolbar(toolbar);
+  };
   scroller.querySelectorAll = () => tabPanels;
   elements.set("tree-content", scroller);
   const previewTab = fakeElement({ dataset: { tabContent: "source" }, style: { display: "" } });
-  const initialPanel = options.pulls && pathname.startsWith("/pull") ? "pulls" : "files";
   for (const button of tabButtons) {
     button.setAttribute("data-tab", button.dataset.tab);
     button.classList.toggle("active", button.dataset.tab === initialPanel);
     button.closest = () => button;
   }
   let tabClick;
+  // The heading at the top of the nav, the link server.py writes to /view/.
+  let homeClick;
+  const heading = fakeElement({
+    addEventListener(type, listener) {
+      if (type === "click") {
+        homeClick = listener;
+      }
+    },
+  });
   const navBar = fakeElement({
     insertBefore(button, next) {
       tabButtons.splice(next ? tabButtons.indexOf(next) : tabButtons.length, 0, button);
@@ -600,11 +711,18 @@ function createShell(pathname, network, options = {}) {
       },
       body: { append() {} },
       cookie: "",
-      createElement: () => fakeElement({ focus() {}, remove() {} }),
+      createElement: (tag) =>
+        fakeElement({ focus() {}, remove() {}, ...(tag === "button" ? LIVE_TARGET : {}) }),
       documentElement: { getAttribute: () => null },
       getElementById: (id) => elements.get(id) ?? null,
-      querySelector: (selector) => (selector === ".nav-tab-bar" ? navBar : null),
-      querySelectorAll: () => [...tabPanels, previewTab],
+      querySelector: (selector) =>
+        selector === ".nav-tab-bar"
+          ? navBar
+          : (toolbars.find(
+              (toolbar) => selector === `[data-nav-toolbar="${toolbar.dataset.navToolbar}"]`,
+            ) ?? null),
+      querySelectorAll: (selector) =>
+        selector === "[data-nav-toolbar]" ? toolbars : [...tabPanels, previewTab],
       head: { append() {}, appendChild: requestScript },
     },
     DOMException,
@@ -631,14 +749,18 @@ function createShell(pathname, network, options = {}) {
     },
     mainTabs: null,
     mainTabIntent: 0,
+    // The shell keymap is created with the registry; these scenarios have neither.
+    shellKeymap: null,
     pullHistoryGeneration: 0,
     navScrollShadowUpdate: null,
     queryHtml: (selector) =>
       selector === ".nav-tab-bar"
         ? navBar
-        : selector === '#preview-pane > .tab-bar > .tab-btn[data-tab="source"]'
-          ? sourceTab
-          : null,
+        : selector === ".header-path"
+          ? heading
+          : selector === '#preview-pane > .tab-bar > .tab-btn[data-tab="source"]'
+            ? sourceTab
+            : null,
     queryHtmlAll: (selector) =>
       selector === ".tab-btn" ? tabButtons : selector === "[data-tab-content]" ? tabPanels : [],
     treePane: fakeElement(),
@@ -692,6 +814,31 @@ function createShell(pathname, network, options = {}) {
     },
     resetTextChunkGrowth() {},
     responsePerfMeta: () => ({}),
+    // The Files tab's own drawing, which Home asks for (resetFilesTab): the filter bar,
+    // from the menu and drawer state app.js holds, and the tree, drawn again from the
+    // server's answer with the folders a first paint opens (loadTree). A change of filter
+    // reaches app.js's onFilterStateChange, which a scenario stands in for.
+    renderNavFilterBar() {
+      filesDrawn.push(
+        `the filter bar: drawer ${sandbox.filterDrawerOpen ? "open" : "closed"}, ` +
+          `menu ${sandbox.filterOpenMenu ?? "none"}`,
+      );
+    },
+    loadTree: async (treeOptions = {}) => {
+      filesDrawn.push(
+        treeOptions.asHome
+          ? `the tree, from the server's answer, ${homeTreeDraw(sandbox)}`
+          : "the tree, from the server's answer",
+      );
+      return true;
+    },
+    selectPreviewTab(bar, tabId) {
+      if (bar === tabBar) {
+        tabClicks.push(`${preview.dataset.renderedPath}: ${tabId}`);
+        sourceTab.classList.add("active");
+      }
+      return bar === tabBar;
+    },
     revealInTree: options.revealInTree ?? (async () => false),
     setSelectedPath() {},
     settleHoverPrefetchForSelection: async () => {},
@@ -711,6 +858,9 @@ function createShell(pathname, network, options = {}) {
     catalogFeedCanStart: false,
     inventoryEventSource: null,
     pageConnections: { suspended: () => false },
+    // The Files tree's keyboard layer, which only the held-key and main-tab digit
+    // scenarios install.
+    treeKeyboard: null,
     lastInventorySnapshot: null,
     quickFileCatalogFeed: {
       release() {},
@@ -747,6 +897,7 @@ function createShell(pathname, network, options = {}) {
     }
   }
   sandbox.initNavTabs();
+  sandbox.initHomeHeading();
   // What server.py ships in the pane before any script runs.
   preview.innerHTML = sandbox.previewPlaceholderHtml(sandbox.previewPane.placeholder(0));
 
@@ -788,6 +939,28 @@ function createShell(pathname, network, options = {}) {
       return consumed;
     },
     clickTab: (panel) => tabClick({ target: tabButtons.find((btn) => btn.dataset.tab === panel) }),
+    /**
+     * Activate the heading as a browser dispatches it: a primary click, or Enter on the
+     * focused link, which arrives as the same click. Returns whether the shell kept it.
+     */
+    clickHome(fields = {}) {
+      let kept = false;
+      const event = {
+        altKey: false,
+        button: 0,
+        ctrlKey: false,
+        defaultPrevented: false,
+        metaKey: false,
+        shiftKey: false,
+        ...fields,
+        preventDefault() {
+          kept = true;
+          event.defaultPrevented = true;
+        },
+      };
+      homeClick(event);
+      return kept;
+    },
     /** Let the loading-indicator delay elapse. */
     elapseLoadingDelay() {
       for (const [index, callback] of timers.entries()) {
@@ -796,6 +969,7 @@ function createShell(pathname, network, options = {}) {
       }
     },
     fetches: (requested) => fetched.filter((entry) => entry === requested).length,
+    filesDrawn,
     outcome,
     pane,
     panelShows,
@@ -810,10 +984,19 @@ function createShell(pathname, network, options = {}) {
     refused,
     renderedViews,
     scriptRequests,
+    /** The view the pane shows: the Source tab a reader chose, or the file's default. */
+    shownView: () => (sourceTab.classList.contains("active") ? "source" : "default view"),
+    /** Choose the Source tab of what the pane shows, by its own path. */
+    chooseSource: () => sandbox.selectPreviewTab(tabBar, "source"),
     tabClicks,
     sandbox,
     sources,
     tabs: () => tabPanels.map((panel) => `${panel.dataset.tabContent}:${panel.style.display}`),
+    /** The toolbars in the navigation's slot, shown or not. */
+    toolbarsPresent: () => toolbars.map((toolbar) => toolbar.dataset.navToolbar),
+    /** The toolbars shown in the navigation's slot: exactly the active tab's. */
+    toolbarsShown: () =>
+      toolbars.filter((toolbar) => !toolbar.hidden).map((toolbar) => toolbar.dataset.navToolbar),
   };
 }
 
@@ -883,39 +1066,324 @@ async function mainTabShortcuts() {
   const shortcuts = sandbox.MetabrowserKeyboardShortcuts.create({ document: sandbox.document });
   sandbox.mainTabs.bindShortcuts(shortcuts);
   const press = (key, options) => shell.pressTabShortcut(key, options);
-  assert.equal(press("2", { metaKey: true }), false, "absent Git leaves Command-2 alone");
-  assert.equal(press("3", { metaKey: true }), true, "Pulls keeps Command-3 while Git is absent");
+  // F for Files, P for Pulls, H for commit History ("Keyboard Shortcuts" in
+  // docs/design-system.md). A digit names no main tab, and neither does R (mb-6rfu).
+  assert.equal(press("h", { code: "KeyH" }), false, "absent Git leaves H alone");
+  assert.equal(press("r", { code: "KeyR", metaKey: true }), false, "Command-R is the browser's");
+  assert.equal(press("r", { code: "KeyR", ctrlKey: true }), false, "Ctrl-R is the browser's");
+  assert.equal(press("3", { code: "Digit3" }), false, "3 is no main tab's");
+  assert.equal(press("r", { code: "KeyR" }), false, "R is no main tab's");
+  assert.equal(press("p", { code: "KeyP", ctrlKey: true }), false, "Control-P is no main tab's");
+  assert.equal(sandbox.mainTabs.active(), "files");
+  assert.equal(press("p", { code: "KeyP" }), true, "Pulls is P while Git is absent");
   assert.equal(sandbox.mainTabs.active(), "pulls");
+  assert.equal(press("P", { code: "KeyP", shiftKey: true }), true, "Shift does not change P");
   await settle();
 
   sandbox.mainTabs.register({ id: "git", label: "Commits", onFirstShow: null });
   assert.deepEqual(
     tabButtons.map((button) => button.dataset.tab),
-    ["files", "git", "pulls"],
+    ["files", "pulls", "git"],
+    "Commits arrives after Pulls: the order is Files, Pulls, Commits",
   );
-  assert.equal(press("2", { metaKey: true, target: { tagName: "INPUT" } }), false);
-  assert.equal(press("2", { metaKey: true, shiftKey: true }), false);
+  assert.equal(press("h", { code: "KeyH", target: { tagName: "INPUT" } }), false);
+  assert.equal(press("h", { code: "KeyH", metaKey: true }), false, "Command-H is the browser's");
   const closeModal = shortcuts.activateScope("help", { exclusive: true });
-  assert.equal(press("2", { metaKey: true }), false, "modal scopes own their keys");
+  assert.equal(press("h", { code: "KeyH" }), false, "modal scopes own their keys");
   closeModal();
-  assert.equal(press("2", { metaKey: true }), true);
+  assert.equal(press("H", { code: "KeyH", shiftKey: true }), true, "Shift+H opens Commits");
   assert.equal(sandbox.mainTabs.active(), "git");
   await settle();
-  assert.equal(press("1", {}), true, "a plain number is the browser fallback");
+  // The letter hands focus to the panel's roving row, the tree's for Files.
+  const focusedRows = [];
+  sandbox.treeKeyboard = {
+    focusCurrent() {
+      focusedRows.push("files");
+      return true;
+    },
+  };
+  assert.equal(press("F", { code: "KeyF", shiftKey: true }), true, "Shift+F opens Files");
   assert.equal(sandbox.mainTabs.active(), "files");
+  assert.deepEqual(focusedRows, ["files"], "the Files letter focuses the tree's roving row");
+  sandbox.treeKeyboard = null;
   await settle();
 
   const help = shortcuts.snapshot("help").find((group) => group.id === "main-tabs");
-  assert.deepEqual(plain(help.commands.map((command) => command.bindings.spoken)), [
-    "Command plus 1 or 1",
-    "Command plus 2 or 2",
-    "Command plus 3 or 3",
-  ]);
+  assert.equal(help.context, "Available outside text fields.");
+  assert.deepEqual(plain(help.commands.map((command) => command.bindings.spoken)), ["F", "P", "H"]);
   return {
     tabOrder: tabButtons.map((button) => button.dataset.tab),
     ariaKeys: tabButtons.map((button) => button.getAttribute("aria-keyshortcuts")),
     keyboardRoutes: shell.writes,
   };
+}
+
+async function goingHome() {
+  // The folder's name at the top of the nav goes home, as `0` does: the served folder's
+  // home view as a fresh load of /view/ shows it, from any tab, in the page
+  // (docs/design-system.md, "Home"). Files comes to the front at the root, drawn again at
+  // its default view; every tab forgets where it was, so Pulls next opens its list; and
+  // the Files tab's filters, Group by, drawer, menu, and open folders are a fresh load's.
+  // It used to be a plain link that loaded /view/ again, and a browser that reloads the
+  // neutral Commits entry, which has that address, keeps the entry's state, so the page
+  // came back as Commits.
+  const read = (path) =>
+    Promise.resolve(jsonResponse({ kind: path === "" ? "folder" : "text", path }));
+  const scroller = fakeElement({ scrollTop: 0 });
+  const shell = createShell("/view/notes.md", read, {
+    scroller,
+    pulls: true,
+    startupScripts: ["filter-state.js"],
+  });
+  const { sandbox } = shell;
+  const filters = sandbox.filterState;
+  assert.ok(filters, "the shell runs static/filter-state.js");
+  // app.js's onFilterStateChange, which a change of filter reaches: it draws the bar, and
+  // the tree for the new filters, as a fresh load of /view/ draws it when Home's reset
+  // asked for that (_homeTreeDraw, which it reads and clears).
+  filters.subscribe((state) => {
+    const changed = Object.keys(filters.DEFAULTS).filter(
+      (key) => JSON.stringify(state[key]) !== JSON.stringify(filters.DEFAULTS[key]),
+    );
+    const asHome = vm.runInContext("_homeTreeDraw", sandbox);
+    shell.filesDrawn.push(
+      `the filter bar and the tree, for ${
+        changed.length === 0
+          ? "the default filters"
+          : changed.map((key) => `${key} ${JSON.stringify(state[key])}`).join(", ")
+      }${asHome ? `, ${homeTreeDraw(sandbox)}` : ""}`,
+    );
+  });
+  const older = "b".repeat(40);
+  sandbox.addEventListener("popstate", sandbox.applyPullHistoryLanding);
+  sandbox.MetabrowserPullsNav = { routeChanged() {} };
+  // The Pulls tab's host registers its panel with a `home` of its own (pulls-nav.js), run
+  // by github-pulls-stack-groups-session.js. Here a stand-in records each call, so a step
+  // shows the tab controller ran every panel's reset; the Files panel's is resetFilesTab,
+  // whose drawing `filesDrawn` shows. Commits keeps nothing across a switch, and has none.
+  /** @type {string[]} */
+  const panelsHomed = [];
+  sandbox.mainTabs.register({
+    id: "pulls",
+    label: "Pulls",
+    onFirstShow: null,
+    home: () => panelsHomed.push("pulls"),
+  });
+  sandbox.MetabrowserGitPanel = {
+    cancelPending() {},
+    // The panel's own listener, after the shell's: a commit's address shows the commit.
+    // It selects nothing on the neutral entry, as for an empty history or a first page
+    // still on its way, which is where going home used to come back to Commits.
+    async restoreCommitLanding() {
+      const parsed = sandbox.MetabrowserNavigationRoute.parseCommit(sandbox.location.pathname);
+      if (parsed) {
+        shell.claimGit(parsed.revision);
+      }
+    },
+  };
+  await sandbox.navigationController.start();
+  sandbox.addEventListener("popstate", () => sandbox.MetabrowserGitPanel.restoreCommitLanding());
+  await settle();
+
+  /** Where the reader is: the address, the tab in front, the pane, and Files' offset. */
+  function at() {
+    const { pathname, search, hash } = sandbox.location;
+    const pane = shell.pane();
+    return {
+      address: pathname + search + hash,
+      state: plain(sandbox.history.state),
+      tab: sandbox.mainTabs?.active() ?? "files",
+      pane: pane.owner === "file" ? `${pane.owner} ${JSON.stringify(pane.path)}` : pane.owner,
+      scroll: scroller.scrollTop,
+      pushes: shell.writes.length,
+    };
+  }
+  /** The Files tab's own state: its filters, Group by, drawer, and open menu. */
+  function filesTab() {
+    return {
+      filters: plain(filters.get()),
+      drawer: sandbox.filterDrawerOpen ? "open" : "closed",
+      menu: sandbox.filterOpenMenu,
+    };
+  }
+  const freshFiles = {
+    filters: plain(filters.DEFAULTS),
+    drawer: "closed",
+    menu: null,
+  };
+  async function home(fields) {
+    shell.filesDrawn.length = 0;
+    panelsHomed.length = 0;
+    const renders = shell.renderedViews.length;
+    const kept = shell.clickHome(fields);
+    await settle();
+    return {
+      kept,
+      ...at(),
+      view: shell.shownView(),
+      drawn: shell.renderedViews.slice(renders),
+      files: filesTab(),
+      filesDrawn: shell.filesDrawn.slice(),
+      panelsHomed: panelsHomed.slice(),
+    };
+  }
+
+  const steps = {};
+  scroller.scrollTop = 240;
+  // The reader groups the tree, filters it, and leaves the drawer and a menu open.
+  filters.set({ group: "type", size: "100k" });
+  sandbox.filterDrawerOpen = true;
+  sandbox.filterOpenMenu = "types";
+  steps["the page opens on a file, its tree scrolled, grouped, and filtered"] = {
+    ...at(),
+    files: filesTab(),
+  };
+  shell.clickTab("git");
+  await settle();
+  const commits = at();
+  steps["Commits, before a commit is selected"] = commits;
+  steps["home from Commits"] = await home();
+  assert.equal(steps["home from Commits"].kept, true, "a plain click stays in the page");
+  assert.equal(steps["home from Commits"].tab, "files");
+  assert.equal(steps["home from Commits"].address, "/view/");
+  assert.equal(steps["home from Commits"].state, null, "home is not the neutral Commits entry");
+  assert.equal(steps["home from Commits"].pane, 'file ""', "home opens the served root");
+  assert.deepEqual(steps["home from Commits"].drawn, [": default view"], "at its default view");
+  assert.equal(steps["home from Commits"].scroll, 0, "Files starts from the top");
+  assert.equal(steps["home from Commits"].pushes, commits.pushes + 1, "home pushes one entry");
+  assert.deepEqual(steps["home from Commits"].files, freshFiles, "the Files tab is a fresh load's");
+  assert.deepEqual(steps["home from Commits"].panelsHomed, ["pulls"], "every panel's home runs");
+  assert.deepEqual(steps["home from Commits"].filesDrawn, [
+    `the filter bar and the tree, for the default filters, ${HOME_TREE_DRAW}`,
+  ]);
+
+  shell.pop(commits.address, commits.state);
+  await settle();
+  steps["Back from home"] = at();
+  assert.equal(steps["Back from home"].tab, "git", "Back returns to the tab the reader left");
+
+  shell.pop(`/commit/${older}`);
+  await settle();
+  steps["a commit's entry"] = at();
+  steps["home from a commit"] = await home();
+  assert.equal(steps["home from a commit"].tab, "files");
+  assert.equal(steps["home from a commit"].pane, 'file ""');
+
+  shell.clickTab("pulls");
+  await settle();
+  steps.Pulls = at();
+  steps["home from Pulls"] = await home();
+  assert.equal(steps["home from Pulls"].tab, "files");
+  assert.equal(steps["home from Pulls"].address, "/view/");
+
+  // The root it shows, at the view the reader chose and with the tree scrolled: Home draws
+  // it again at its default view, and the tree from the server's answer, as a fresh load.
+  scroller.scrollTop = 500;
+  shell.chooseSource();
+  assert.equal(shell.shownView(), "source");
+  steps["home on the root it shows, at its Source view"] = await home();
+  const rootShown = steps["home on the root it shows, at its Source view"];
+  assert.equal(
+    rootShown.pushes,
+    steps["home from Pulls"].pushes,
+    "home on the root pushes nothing",
+  );
+  assert.equal(rootShown.scroll, 0);
+  assert.equal(rootShown.view, "default view", "the root is drawn again at its default view");
+  assert.deepEqual(rootShown.drawn, [": default view"]);
+  assert.deepEqual(rootShown.filesDrawn, [`the tree, from the server's answer, ${HOME_TREE_DRAW}`]);
+
+  // A pull request's Changes tab, its list scrolled: Home, then Pulls, opens the list at
+  // its top, as a fresh load's Pulls does, not the pull request at the tab the reader left.
+  shell.pop("/pull/7/files");
+  await settle();
+  scroller.scrollTop = 300;
+  steps["a pull request's Changes tab"] = at();
+  assert.equal(steps["a pull request's Changes tab"].tab, "pulls");
+  steps["home from a pull request's Changes tab"] = await home();
+  assert.equal(steps["home from a pull request's Changes tab"].tab, "files");
+  assert.equal(steps["home from a pull request's Changes tab"].address, "/view/");
+  shell.clickTab("pulls");
+  await settle();
+  steps["Pulls, after home"] = at();
+  assert.equal(steps["Pulls, after home"].address, "/pulls", "Pulls opens its list");
+  assert.equal(steps["Pulls, after home"].scroll, 0, "at the list's top");
+  await home();
+
+  const before = at();
+  const modified = {};
+  for (const [name, fields] of [
+    ["Command", { metaKey: true }],
+    ["Control", { ctrlKey: true }],
+    ["Shift", { shiftKey: true }],
+    ["Option", { altKey: true }],
+    ["middle button", { button: 1 }],
+    ["already handled", { defaultPrevented: true }],
+  ]) {
+    const after = await home(fields);
+    modified[name] = after.kept ? "kept by the page" : "left to the browser";
+    const {
+      kept: _kept,
+      view: _view,
+      drawn,
+      files: _files,
+      filesDrawn,
+      panelsHomed: homed,
+      ...where
+    } = after;
+    assert.deepEqual(where, before, name);
+    assert.deepEqual([drawn, filesDrawn, homed], [[], [], []], `${name} draws nothing`);
+  }
+  steps["a click the browser keeps"] = modified;
+
+  // Before the tab controller has loaded: Files in front opens the root at once with the
+  // tree at its top, on the root already shown too, and a pull request's page fetches the
+  // controller first, as a tab click does.
+  const early = {};
+  const earlyScroller = fakeElement({ scrollTop: 0 });
+  const filesFirst = createShell("/view/notes.md", read, {
+    pulls: true,
+    deferTabs: true,
+    scroller: earlyScroller,
+  });
+  await filesFirst.sandbox.navigationController.start();
+  earlyScroller.scrollTop = 300;
+  assert.equal(filesFirst.clickHome(), true);
+  await settle();
+  const fromFile = earlyScroller.scrollTop;
+  assert.equal(fromFile, 0, "home before the tab controller leaves the tree scrolled");
+  const pushesOnRoot = filesFirst.writes.length;
+  earlyScroller.scrollTop = 180;
+  assert.equal(filesFirst.clickHome(), true);
+  await settle();
+  const onRoot = earlyScroller.scrollTop;
+  assert.equal(onRoot, 0, "home on the root before the tab controller leaves the tree scrolled");
+  assert.equal(filesFirst.writes.length, pushesOnRoot, "home on the root pushes nothing");
+  early["Files in front"] = {
+    address: filesFirst.sandbox.location.pathname,
+    scrollAfterHome: { "from 300": fromFile, "on the root, from 180": onRoot },
+    tabScript: filesFirst.scriptRequests.filter((name) => name === "main-tabs.js").length,
+  };
+  const pullFirst = createShell("/pull/7", read, { pulls: true, deferTabs: true });
+  await pullFirst.sandbox.navigationController.start();
+  assert.equal(pullFirst.sandbox.mainTabs, null, "the tab controller is not loaded yet");
+  assert.equal(pullFirst.clickHome(), true);
+  await settle();
+  early["a pull request in front"] = {
+    address: pullFirst.sandbox.location.pathname,
+    tab: pullFirst.sandbox.mainTabs?.active() ?? null,
+    tabScript: pullFirst.scriptRequests.filter((name) => name === "main-tabs.js").length,
+  };
+  assert.equal(early["a pull request in front"].tab, "files");
+  const superseded = createShell("/pull/7", read, { pulls: true, deferTabs: true });
+  await superseded.sandbox.navigationController.start();
+  superseded.clickHome();
+  await superseded.sandbox.navigateToPath("notes.md");
+  await settle();
+  early["a later open while it loads"] = superseded.sandbox.location.pathname;
+  assert.equal(early["a later open while it loads"], "/view/notes.md", "the later open wins");
+  steps["before the tab controller loads"] = early;
+  return steps;
 }
 
 async function quickSearchPullRoute() {
@@ -990,17 +1458,28 @@ async function independentMainTabs() {
       }
     },
   };
+  const newest = "c".repeat(40);
   const commitLandings = [];
+  // The panel's contract, which git-commit-history-session.js runs on the production
+  // panel: a commit's address shows that commit, and the neutral Commits entry lands on
+  // the newest commit, whose address replaces the entry. It listens to history itself.
   sandbox.MetabrowserGitPanel = {
     cancelPending() {},
     async restoreCommitLanding() {
       const parsed = sandbox.MetabrowserNavigationRoute.parseCommit(sandbox.location.pathname);
-      commitLandings.push(parsed.revision);
-      shell.claimGit(parsed.revision);
+      if (parsed) {
+        commitLandings.push(parsed.revision.slice(0, 7));
+        shell.claimGit(parsed.revision);
+      } else if (sandbox.isGitHistoryLanding()) {
+        commitLandings.push("newest");
+        sandbox.history.replaceState(null, "", `/commit/${newest}`);
+        shell.claimGit(newest);
+      }
     },
   };
   sandbox.history.replaceState(null, "", selectedFile);
   const initial = sandbox.navigationController.start();
+  sandbox.addEventListener("popstate", () => sandbox.MetabrowserGitPanel.restoreCommitLanding());
   await settle();
 
   function snapshot() {
@@ -1036,11 +1515,18 @@ async function independentMainTabs() {
   shell.pop("/pulls?state=closed");
   await settle();
   scroller.scrollTop = 80;
+  const landingWrites = shell.writes.length;
   await open("git");
-  assert.equal(selections.at(-1).address, "/view/");
-  assert.equal(sandbox.history.state.gitLanding, true);
-  assert.match(shell.pane().shows, /Select a commit to preview/);
-  assert.deepEqual(commitLandings, [], "a first Git visit does not open commit detail");
+  assert.deepEqual(
+    shell.writes.slice(landingWrites),
+    ["/view/"],
+    "a switch to Commits pushes the neutral entry",
+  );
+  assert.equal(selections.at(-1).address, `/commit/${newest}`);
+  assert.equal(sandbox.history.state, null, "the newest commit replaced the neutral entry");
+  assert.deepEqual(commitLandings, ["newest"], "a first Commits visit lands on the newest");
+  assert.doesNotMatch(shell.pane().shows, /Select a commit to preview/);
+  // The reader selects an older commit, and one of its files.
   sandbox.history.replaceState(null, "", commit);
   sandbox.mainTabs.remember();
   scroller.scrollTop = 120;
@@ -1057,10 +1543,13 @@ async function independentMainTabs() {
   assert.equal(scroller.scrollTop, 80, "revealing the PR must not replace the saved offset");
   assert.deepEqual(sandbox.history.state, place);
   await open("git");
-  assert.equal(selections.at(-1).address, commit);
-  assert.equal(sandbox.history.state.cachedCommit, true);
-  assert.deepEqual(commitLandings, [older]);
-  assert.equal(scroller.scrollTop, 120);
+  assert.equal(
+    selections.at(-1).address,
+    `/commit/${newest}`,
+    "a return to Commits lands on the newest, not the older commit",
+  );
+  assert.deepEqual(commitLandings, ["newest", "newest"]);
+  assert.equal(scroller.scrollTop, 0, "Commits starts from its top, where the newest is");
   const still = shell.pane().claim;
   const pushed = shell.writes.length;
   shell.clickTab("git");
@@ -1087,19 +1576,23 @@ async function independentMainTabs() {
     "the first Files visit opens its root",
   );
   const activeAfterHistory = sandbox.mainTabs.active();
+  // A history step onto the neutral entry is a switch with no commit named: the panel
+  // lands on the newest, and the shell paints no prompt over it.
   shell.pop("/view/", { gitLanding: true });
   await settle();
   assert.equal(sandbox.mainTabs.active(), "git");
-  assert.match(shell.pane().shows, /Select a commit to preview/);
+  assert.equal(sandbox.location.pathname, `/commit/${newest}`);
+  assert.doesNotMatch(shell.pane().shows, /Select a commit to preview/);
   shell.pop("/view/");
   await settle();
   assert.equal(sandbox.mainTabs.active(), "files", "Files and neutral Git can share a pathname");
   assert.equal(shell.pane().owner, "file");
 
+  // A reload onto the neutral entry leaves the shell's loading placeholder for the panel.
   const reloaded = createShell("/view/", read);
   reloaded.sandbox.history.replaceState({ gitLanding: true, other: 1 }, "", "/view/");
   await reloaded.sandbox.navigationController.start();
-  assert.match(reloaded.pane().shows, /Select a commit to preview/);
+  assert.equal(reloaded.pane().phase, "starting", "startup paints nothing over the entry");
   await reloaded.sandbox.mainTabs.finishGitDiscovery();
   assert.equal(reloaded.sandbox.mainTabs.active(), "git", "deferred registration restores Git");
   const unavailable = createShell("/view/", read, { withoutGit: true });
@@ -1129,7 +1622,106 @@ async function independentMainTabs() {
   pendingGit.sandbox.mainTabs.register({ id: "git", label: "Commits", onFirstShow: null });
   await pendingGit.sandbox.mainTabs.finishGitDiscovery();
   assert.equal(pendingGit.sandbox.mainTabs.active(), "git");
-  assert.match(pendingGit.pane().shows, /Select a commit to preview/);
+  assert.doesNotMatch(pendingGit.pane().shows, /Select a commit to preview/);
+
+  // The server draws Commits at a repository's root, before Git discovery registers it,
+  // so Pulls beside it never moves. A press before registration waits for it and opens
+  // Commits once it is registered; discovery that registers it keeps it, and discovery
+  // that does not removes it, with its toolbar, and forgets the press.
+  const drawnGit = createShell("/view/", read, { gitDrawn: true, withoutGit: true });
+  await drawnGit.sandbox.navigationController.start();
+  drawnGit.clickTab("git");
+  await settle();
+  assert.equal(drawnGit.sandbox.mainTabs.active(), "files", "an unregistered Commits tab waits");
+  assert.equal(drawnGit.sandbox.location.pathname, "/view/");
+  await drawnGit.sandbox.mainTabs.finishGitDiscovery();
+  assert.deepEqual(
+    drawnGit.tabButtons.map((button) => button.dataset.tab),
+    ["files"],
+    "discovery that finds no repository removes the drawn tab",
+  );
+  assert.deepEqual(
+    drawnGit.toolbarsPresent(),
+    ["files"],
+    "a removed tab takes its toolbar with it, so the slot keeps no stale tally",
+  );
+  assert.equal(drawnGit.sandbox.mainTabs.active(), "files", "a forgotten press opens nothing");
+  const drawnLate = createShell("/view/", read, { gitDrawn: true, withoutGit: true });
+  await drawnLate.sandbox.navigationController.start();
+  drawnLate.clickTab("git");
+  await settle();
+  assert.equal(drawnLate.sandbox.mainTabs.active(), "files", "Commits waits for registration");
+  drawnLate.sandbox.mainTabs.register({ id: "git", label: "Commits", onFirstShow: null });
+  await settle();
+  assert.equal(
+    drawnLate.sandbox.mainTabs.active(),
+    "git",
+    "a press before registration opens Commits once it is registered",
+  );
+  const drawnReplaced = createShell("/view/", read, { gitDrawn: true, withoutGit: true });
+  await drawnReplaced.sandbox.navigationController.start();
+  drawnReplaced.clickTab("git");
+  drawnReplaced.clickTab("files");
+  await settle();
+  drawnReplaced.sandbox.mainTabs.register({ id: "git", label: "Commits", onFirstShow: null });
+  await settle();
+  assert.equal(
+    drawnReplaced.sandbox.mainTabs.active(),
+    "files",
+    "a press on another tab replaces a pending Commits press",
+  );
+  assert.deepEqual(
+    reloaded.tabButtons.map((button) => button.dataset.tab),
+    ["files", "git"],
+    "discovery that registers Commits keeps the drawn tab",
+  );
+
+  // The navigation's toolbar slot shows exactly the tab in front's toolbar, so the slot
+  // is never empty and what is under it starts at one y on every tab.
+  const slotted = createShell("/view/", read, { pulls: true });
+  await slotted.sandbox.navigationController.start();
+  const slots = { landing: slotted.toolbarsShown() };
+  for (const panel of ["git", "pulls", "files"]) {
+    slotted.sandbox.mainTabs.activate(panel);
+    slots[panel] = slotted.toolbarsShown();
+  }
+  assert.deepEqual(
+    slots,
+    { landing: ["files"], git: ["git"], pulls: ["pulls"], files: ["files"] },
+    "each tab shows its own toolbar, and only it",
+  );
+  const pullsLanding = createShell("/pulls", read, { pulls: true });
+  assert.deepEqual(
+    pullsLanding.toolbarsShown(),
+    ["pulls"],
+    "the server draws the landing's toolbar",
+  );
+  assert.deepEqual(
+    pendingGit.toolbarsShown(),
+    ["git"],
+    "a toolbar added for a late panel shows with it",
+  );
+
+  // A commit's address is drawn with Commits in front, and the page keeps it in front from
+  // its first script on: the Files toolbar and tree are never shown and then swapped.
+  const commitLanding = createShell(`/commit/${"c".repeat(40)}`, read);
+  const landed = {
+    active: commitLanding.sandbox.mainTabs.active(),
+    toolbars: commitLanding.toolbarsShown(),
+    panels: commitLanding.tabs(),
+  };
+  await commitLanding.sandbox.navigationController.start();
+  await settle();
+  assert.deepEqual(
+    landed,
+    { active: "git", toolbars: ["git"], panels: ["files:none", "git:"] },
+    "a commit landing starts on Commits",
+  );
+  assert.deepEqual(
+    [commitLanding.sandbox.mainTabs.active(), commitLanding.toolbarsShown()],
+    ["git", ["git"]],
+    "and stays there once the address is applied",
+  );
 
   const early = createShell("/view/", read, { pulls: true, deferTabs: true });
   assert.equal(early.sandbox.mainTabs, null, "plain startup does not fetch main tabs");
@@ -1183,7 +1775,7 @@ async function independentMainTabs() {
     selections,
     historyPushes: shell.writes.length,
     activeAfterHistory,
-    neutralGitDetailOpens: commitLandings.length - 1,
+    commitLandings,
   };
 }
 
@@ -1608,6 +2200,64 @@ async function onDemandCodeRefused() {
   };
 }
 
+async function heldKeyWalk() {
+  // A held arrow key moves the selection and replaces the address on every
+  // repeat, and the file the walk stops on is the only one read and rendered:
+  // when the repeats stop, or at once when the key is let go. A single press
+  // opens at once. The walk is tree-keyboard-navigation.js's, and each key does
+  // what its focusAndOpen does: step the walk, then open the row.
+  const shell = createShell("/view/", (requested) =>
+    Promise.resolve(jsonResponse({ kind: "text", path: requested })),
+  );
+  await shell.sandbox.navigationController.start();
+  await settle();
+  const scriptPath = path.join(staticDir, "tree-keyboard-navigation.js");
+  vm.runInContext(fs.readFileSync(scriptPath, "utf8"), shell.sandbox, { filename: scriptPath });
+  const walk = shell.sandbox.MetabrowserTreeKeyboardNavigation.createWalk();
+  shell.sandbox.treeKeyboard = { walking: walk.walking };
+
+  async function key(pathName, repeat) {
+    walk.step(pathName, repeat);
+    shell.sandbox.openTreeRow({ dataset: { path: pathName } });
+    await settle();
+    return `${repeat ? "repeat" : "press"} ${pathName}: address ${shell.sandbox.location.pathname}`;
+  }
+  const renderedBefore = shell.renderedViews.length;
+  const keys = [await key("a.md", false)];
+  const afterPress = shell.renderedViews.slice(renderedBefore);
+  for (const name of ["b.md", "c.md", "d.md", "e.md", "f.md"]) {
+    keys.push(await key(name, true));
+  }
+  const whileHeld = shell.renderedViews.slice(renderedBefore);
+  // The quiet period after the last repeat elapses.
+  shell.elapseLoadingDelay();
+  await settle();
+  const afterSettle = shell.renderedViews.slice(renderedBefore);
+  // The key is let go and held again: a hold that outlasted the quiet period with the key
+  // still down is a slow repeat, whose rows open as single presses do.
+  walk.end();
+  const releaseKeys = [await key("g.md", true), await key("h.md", true)];
+  const beforeRelease = shell.renderedViews.slice(renderedBefore);
+  // Letting the key go is what the tree's keyup does.
+  walk.end();
+  await settle();
+  return {
+    afterPress,
+    afterRelease: shell.renderedViews.slice(renderedBefore),
+    afterSettle,
+    beforeRelease,
+    fetches: Object.fromEntries(
+      ["a.md", "b.md", "c.md", "d.md", "e.md", "f.md", "g.md", "h.md"].map((name) => [
+        name,
+        shell.fetches(name),
+      ]),
+    ),
+    keys,
+    releaseKeys,
+    whileHeld,
+  };
+}
+
 async function shell() {
   const pulls = createShell("/pulls", refusedFetch);
   const preview = pulls.sandbox.document.getElementById("preview-pane");
@@ -1634,6 +2284,7 @@ async function shell() {
     navPanelsKeepTheirPlace: navPanelsKeepTheirPlace(),
     independentMainTabs: await independentMainTabs(),
     mainTabShortcuts: await mainTabShortcuts(),
+    goingHome: await goingHome(),
     quickSearchPullRoute: await quickSearchPullRoute(),
     reselectAfterFailure: await reselectAfterFailure(),
     bodyReadFailure: await bodyReadFailure(),
@@ -1643,6 +2294,7 @@ async function shell() {
     coldAnchoredAddress: await coldAnchoredAddress(),
     pullRouteLoadsOnDemand: await pullRouteLoadsOnDemand(),
     onDemandCodeRefused: await onDemandCodeRefused(),
+    heldKeyWalk: await heldKeyWalk(),
   };
 }
 

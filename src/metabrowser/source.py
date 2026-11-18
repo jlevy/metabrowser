@@ -9,8 +9,8 @@ pin in-process, and serve mode hands the server an opener through
 :func:`serve_subject_opener` so the application lifespan opens the pin in its own
 event loop and closes it at shutdown. Within one repository,
 :func:`replace_owned_subject` switches the served pin to another commit: it attaches the
-new subject under a new generation and closes the one it replaced. Opening https/ssh
-stays later.
+new subject under a new generation and closes the one it replaced. Acquiring a
+``file://`` or ``https://`` source is ``cache.acquire``'s.
 """
 
 from __future__ import annotations
@@ -450,6 +450,15 @@ class FilesystemContentSource:
             # any syscall. That is the same answer as traversal: there is no
             # such file under this root, so it is a refusal, not a crash.
             return None
+        except RuntimeError as error:
+            # Python 3.12's `resolve` raises this for a symbolic link that loops, with the
+            # ELOOP error as its context; 3.13 returns the path, and opening it fails with
+            # that error. Either way the link names no file, which is the answer to give:
+            # a document embedding such a link still renders, and its image is a 404. Any
+            # other RuntimeError is not this, and goes on with its cause.
+            if not str(error).startswith("Symlink loop"):
+                raise
+            return None
         if not _is_within(target, self._root):
             return None
         return ContentHandle.from_path(identity, target)
@@ -581,11 +590,33 @@ async def replace_owned_subject(subject: ClosableRepositorySubject) -> SourceSes
     under the new generation. Closing the old one releases only its share of the
     per-store reader pool: a request still reading the old pin from the same store
     finishes on readers the new pin keeps alive.
+
+    A folder's server owns no subject until it shows a revision of its checkout, so the
+    first such switch replaces the folder, which is not closed: its files are not this
+    process's to close, and it is served again by :func:`restore_filesystem_subject`.
     """
 
     previous = _owned_subject
     session = attach_owned_subject(subject)
     if previous is not None and previous is not subject:
+        await previous.aclose()
+    return session
+
+
+async def restore_filesystem_subject(root: Path) -> SourceSession:
+    """Serve the folder at *root* in place of the owned subject, then close that subject.
+
+    How a folder's server returns to its working tree from a revision of its checkout.
+    The folder is attached first, under a new generation, so every request that starts
+    afterwards reads the files on disk, under the folder's own trust profile, which is a
+    subject's and not a flag's (:func:`metabrowser.capabilities.capabilities_for`); the
+    revision's batch readers are closed after it.
+    """
+
+    global _owned_subject
+    previous, _owned_subject = _owned_subject, None
+    session = attach_subject(AttachedFilesystemSubject(root))
+    if previous is not None:
         await previous.aclose()
     return session
 
@@ -670,6 +701,19 @@ def subject_open_failure() -> SubjectOpenError | None:
     return _open_failure
 
 
+def fail_subject_open(message: str) -> SubjectOpenError:
+    """Record that what a command asked to be served could not be, and return the error.
+
+    For a failure found at startup outside :func:`lifespan_subject`, as a folder asked to
+    open on a ref its checkout lacks is: the caller raises what this returns, and the
+    command prints *message*, which names no path, in place of a traceback.
+    """
+
+    global _open_failure
+    _open_failure = SubjectOpenError(message)
+    return _open_failure
+
+
 @asynccontextmanager
 async def lifespan_subject() -> AsyncGenerator[SourceSession | None]:
     """Open, attach, and at exit close the served subject, when one is configured.
@@ -684,6 +728,9 @@ async def lifespan_subject() -> AsyncGenerator[SourceSession | None]:
     global _open_failure
     opener = _subject_opener
     if opener is None:
+        # A folder's startup has its own way to fail (:func:`fail_subject_open`), and
+        # starts with none recorded.
+        _open_failure = None
         yield None
         return
     _open_failure = None
@@ -852,6 +899,7 @@ __all__ = [
     "attach_owned_subject",
     "attach_subject",
     "close_owned_subject",
+    "fail_subject_open",
     "get_source_session",
     "lifespan_subject",
     "open_content",
@@ -865,6 +913,7 @@ __all__ = [
     "resolve_content",
     "resolve_content_container",
     "resolve_session_identity",
+    "restore_filesystem_subject",
     "serve_subject_opener",
     "session_filesystem_root",
     "source_capabilities",

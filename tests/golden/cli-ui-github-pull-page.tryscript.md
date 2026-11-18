@@ -41,16 +41,15 @@ and a refresh that brought one more comment, and what it answered of other numbe
 `tests/test_github_pull_page_session.py` replays that story and fails when the recording
 drifts. Timers, the clock, visibility, and paint are injected; the browser’s visibility
 observer is played by asking for parts in reading order.
-`states` is the header in github.com’s words and the checks as GitHub counts them for
-the open pull request and for the stand-in’s merged and closed ones, which the same
-server answered: “wants to merge” with the commit count until it is merged, then the
-account that merged it, or no one when the record names no merger, and skipped checks
-apart from neutral ones.
-Pull requests 7 and 9 come from forks, so both sides carry their owner, as in
-github.com’s “into cli:trunk from 00200200:fix/…”; pull request 8 is from the same
-repository, so both sides are bare branch names.
-The last lines show which links a rendered text keeps (made absolute against the pull
-request’s github.com page, http and https only), and the `/view/` address a review
+`states` is the header, in github.com’s verbs with the branches as head → base, and the
+checks as GitHub counts them for the open pull request and for the stand-in’s merged and
+closed ones, which the same server answered: “wants to merge” with the commit count
+until it is merged, then the account that merged it, or no one when the record names no
+merger, and skipped checks apart from neutral ones.
+Pull requests 7 and 9 come from forks, so both sides carry their owner, as github.com’s
+header does; pull request 8 is from the same repository, so both sides are bare branch
+names. The last lines show which links a rendered text keeps (made absolute against the
+pull request’s github.com page, http and https only), and the `/view/` address a review
 comment’s file opens at.
 `checkActions` is where each check’s link opens, for the recorded checks and six the
 session adds: a GitHub Actions run says **View action on GitHub**, another page on a
@@ -72,6 +71,8 @@ Back onto an entry waits for its page and puts the pane at that block, and back 
 each time the page changes height, until the reader moves it or the page has been still.
 A reader who moved first keeps the pane where they took it, and an address with a
 fragment is left alone.
+A place in the header goes no further than the first block, since a page opened again
+draws its header closed, and an open Diff summary made it far taller.
 It asserts, and so prints nothing for, that no pace of moves writes a place more often
 than Safari’s limit on `history.replaceState`, and that only a key that can move the
 pane ends a hold.
@@ -157,13 +158,13 @@ $ node tests/dom/github-pull-page-session.js
         "canRefresh": false,
         "freshness": "Fetched just now via GitHub CLI",
         "failure": null,
-        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
+        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits: forker:count-to-two → octo:topic",
         "labels": [
-          "enhancement"
+          "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
-          "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
+          "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
           "review maintainer [approved] 2026-09-16T17:36:02Z review/3279967139"
         ],
@@ -252,24 +253,24 @@ $ node tests/dom/github-pull-page-session.js
     {
       "step": "Browse code that the server refuses says why and stays",
       "requests": [
-        "POST /api/source/pin {\"ref\":\"refs/pull/7/head\"}"
+        "POST /api/source/pin {\"oid\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\",\"under\":\"refs/pull/7/head\",\"view\":\"/view/\"}"
       ],
       "timer": "slow",
       "paints": 1,
       "paint": {
         "status": "current",
         "tab": "conversation",
-        "message": "Could not switch to the head (selection_not_found).",
+        "message": "Commit 85fcb2fa9e77 is not in the mirror, and its origin does not have it.",
         "canRefresh": false,
         "freshness": "Fetched just now via GitHub CLI",
         "failure": null,
-        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
+        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits: forker:count-to-two → octo:topic",
         "labels": [
-          "enhancement"
+          "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
-          "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
+          "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
           "review maintainer [approved] 2026-09-16T17:36:02Z review/3279967139"
         ],
@@ -299,7 +300,7 @@ $ node tests/dom/github-pull-page-session.js
     {
       "step": "Browse code serves the head and opens the root",
       "requests": [
-        "POST /api/source/pin {\"ref\":\"refs/pull/7/head\"}"
+        "POST /api/source/pin {\"oid\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\",\"under\":\"refs/pull/7/head\",\"view\":\"/view/\"}"
       ],
       "timer": "slow",
       "paints": 0,
@@ -322,13 +323,13 @@ $ node tests/dom/github-pull-page-session.js
         "canRefresh": false,
         "freshness": "Fetched just now via GitHub CLI",
         "failure": null,
-        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
+        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits: forker:count-to-two → octo:topic",
         "labels": [
-          "enhancement"
+          "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
-          "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
+          "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
           "review maintainer [approved] 2026-09-16T17:36:02Z review/3279967139"
         ],
@@ -374,13 +375,13 @@ $ node tests/dom/github-pull-page-session.js
         "canRefresh": true,
         "freshness": "Fetched just now via GitHub CLI",
         "failure": null,
-        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
+        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits: forker:count-to-two → octo:topic",
         "labels": [
-          "enhancement"
+          "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
-          "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
+          "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
           "review maintainer [approved] 2026-09-16T17:36:02Z review/3279967139"
         ],
@@ -418,13 +419,13 @@ $ node tests/dom/github-pull-page-session.js
         "canRefresh": false,
         "freshness": "Fetched just now via GitHub CLI",
         "failure": null,
-        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
+        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits: forker:count-to-two → octo:topic",
         "labels": [
-          "enhancement"
+          "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
-          "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
+          "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
           "review maintainer [approved] 2026-09-16T17:36:02Z review/3279967139"
         ],
@@ -467,13 +468,13 @@ $ node tests/dom/github-pull-page-session.js
         "freshness": "Fetched 5 min ago via GitHub CLI",
         "revalidating": true,
         "failure": null,
-        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
+        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits: forker:count-to-two → octo:topic",
         "labels": [
-          "enhancement"
+          "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
-          "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
+          "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
           "review maintainer [approved] 2026-09-16T17:36:02Z review/3279967139"
         ],
@@ -515,13 +516,13 @@ $ node tests/dom/github-pull-page-session.js
         "freshness": "Fetched 5 min ago via GitHub CLI",
         "revalidating": true,
         "failure": null,
-        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
+        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits: forker:count-to-two → octo:topic",
         "labels": [
-          "enhancement"
+          "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
-          "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
+          "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
           "review maintainer [approved] 2026-09-16T17:36:02Z review/3279967139"
         ],
@@ -571,13 +572,13 @@ $ node tests/dom/github-pull-page-session.js
         "canRefresh": false,
         "freshness": "Fetched just now via GitHub CLI",
         "failure": null,
-        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
+        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits: forker:count-to-two → octo:topic",
         "labels": [
-          "enhancement"
+          "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
-          "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
+          "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
           "review maintainer [approved] 2026-09-16T17:36:02Z review/3279967139"
         ],
@@ -627,13 +628,13 @@ $ node tests/dom/github-pull-page-session.js
         "canRefresh": false,
         "freshness": "Fetched just now via GitHub CLI",
         "failure": null,
-        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
+        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits: forker:count-to-two → octo:topic",
         "labels": [
-          "enhancement"
+          "enhancement #2700af --github-label-r:39;--github-label-g:0;--github-label-b:175;--github-label-h:253;--github-label-s:100;--github-label-l:34 tip: A label's description is its chip's tooltip"
         ],
         "merge": "No conflicts with the base branch.",
         "timeline": [
-          "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
+          "review maintainer 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
           "review maintainer [approved] 2026-09-16T17:36:02Z review/3279967139",
           "comment forker 2026-09-17T12:03:00Z issue_comment/3341937856"
@@ -802,7 +803,7 @@ $ node tests/dom/github-pull-page-session.js
     {
       "step": "taking the offer reloads",
       "requests": [
-        "POST /api/source/pin {\"ref\":\"refs/pull/7/head\"}"
+        "POST /api/source/pin {\"oid\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\",\"under\":\"refs/pull/7/head\"}"
       ],
       "timer": "slow",
       "paints": 0,
@@ -900,28 +901,28 @@ $ node tests/dom/github-pull-page-session.js
   ],
   "states": {
     "open": {
-      "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
+      "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits: forker:count-to-two → octo:topic",
       "checks": {
         "success": 2,
         "pending": 1
       }
     },
     "merged": {
-      "header": "Say more in the guide #8 [Merged] octo merged 1 commit into topic from guide-more",
+      "header": "Say more in the guide #8 [Merged] octo merged 1 commit: guide-more → topic",
       "checks": {
         "success": 2,
         "skipped": 1
       }
     },
     "closed": {
-      "header": "spam #9 [Closed] ghost wants to merge 1 commit into octo:topic from spam (deleted fork)",
+      "header": "spam #9 [Closed] ghost wants to merge 1 commit: spam (deleted fork) → octo:topic",
       "checks": {
         "success": 2,
         "pending": 1
       }
     },
     "merged_unattributed": {
-      "header": "Say more in the guide #8 [Merged] merged 1 commit into topic from guide-more",
+      "header": "Say more in the guide #8 [Merged] merged 1 commit: guide-more → topic",
       "checks": {
         "success": 2,
         "skipped": 1
@@ -1192,7 +1193,7 @@ $ node tests/dom/github-pull-page-second-session.js
         "message": null,
         "canRefresh": false,
         "freshness": "Fetched 5 min ago via GitHub CLI",
-        "failure": "GitHub rate limit · next check at 2026-09-17T12:06:32Z",
+        "failure": "GitHub rate limit · next check at 12:06 PM",
         "browse": "link to the root",
         "headOffer": null
       },
@@ -1211,7 +1212,7 @@ $ node tests/dom/github-pull-page-second-session.js
         "message": null,
         "canRefresh": false,
         "freshness": "Fetched 6 min ago via GitHub CLI",
-        "failure": "GitHub rate limit · next check at 2026-09-17T12:06:32Z",
+        "failure": "GitHub rate limit · next check at 12:06 PM",
         "browse": "link to the root",
         "headOffer": null
       },
@@ -1231,7 +1232,7 @@ $ node tests/dom/github-pull-page-second-session.js
         "canRefresh": false,
         "freshness": "Fetched 6 min ago via GitHub CLI",
         "revalidating": true,
-        "failure": "GitHub rate limit · next check at 2026-09-17T12:06:32Z",
+        "failure": "GitHub rate limit · next check at 12:06 PM",
         "browse": "link to the root",
         "headOffer": null
       },
@@ -1610,6 +1611,7 @@ $ node tests/dom/github-pull-page-second-session.js
     "back and forward between tabs: this tab's place": "pane at 1430; entry {\"block\":2,\"offset\":10,\"top\":900}; 0 written; holding, settling",
     "a write still waiting when history moves is dropped with the old entry": "pane at 1025; entry {\"block\":1,\"offset\":5,\"top\":400}; 0 written; holding, settling",
     "a page with fewer blocks than the place shows its last": "pane at 430; entry {\"block\":40,\"offset\":10,\"top\":90000}; 0 written; holding, settling",
+    "a place in a header now shorter shows the first block": "pane at 120; entry {\"block\":-1,\"offset\":0,\"top\":30000}; 0 written; holding, settling",
     "what is not a place is no place: {\"block\":\"1\",\"offset\":0,\"top\":0}": "pane at 0; entry {\"block\":\"1\",\"offset\":0,\"top\":0}; 0 written; nothing running",
     "what is not a place is no place: {\"block\":1}": "pane at 0; entry {\"block\":1}; 0 written; nothing running",
     "what is not a place is no place: \"nonsense\"": "pane at 0; entry \"nonsense\"; 0 written; nothing running",
@@ -1639,11 +1641,76 @@ and remounts it once after success even if metadata has advanced to another head
 Pending and disposed controls cannot issue duplicate requests.
 Asset and render failures retain their local Retry action.
 Opening Changes beside a checkout starts an acquisition and offers Retry changes after a
-refusal.
+refusal. The header has the same rows in the same order for every pull request and tab,
+and while its record is on its way, but for the labels row, which a pull request with no
+labels does not have, and the status line, which is there only for a failure, a message,
+or an offer, and says it: a rate limit’s hold, and a server with no GitHub repository,
+are said in the freshness note’s place, which ends the author’s row.
+The state row holds a chip’s height with a strut, a stack has its slot at the end of the
+author’s row, and Refresh, a text action, at the end of the row of ages.
+The freshness note’s slot is as wide as its widest age: each age is put at “59 min ago”
+for the copy that sizes it, and an unknown age sizes its own (`widestNotes`). A rate
+limit’s hold says when it lifts as a time of day when that is today, and as a short date
+and time when not (`holdLifts`). A comparison’s refusal is said in the Changes body, so
+the header’s rows are the same on every tab while it stands.
+The header’s last row, its Diff summary, holds the shell’s pending placeholder, the
+navigation tally’s block after the quiet period, while a comparison is on its way and
+while it is read: from the first paint of a page whose read will bring one, before its
+first answer and through the absence its own fetch fills (mb-30dz), from a core preview
+whose read prepares it, the same node through its record to the read, and from a record
+whose comparison the page asked to prepare, on Conversation and on Checks, and on
+Changes the mounted diff’s; the summary takes its place, and once the browser is idle
+again the page asks for the first screen’s rendered Markdown itself, under a signal its
+leaving aborts. While the comparison is on its way or read, the row holds the cached
+changed-files list’s brief line in the placeholder’s place, the Pulls row’s sums with
+the file count, once the page knows the head, and only a list of that head and its base,
+the record’s comparison’s base commit or the base branch (mb-z8ea): from the Pulls rows’
+memory with no read when nothing said the row’s list changed, else one read as the page
+mounts; the summary replaces it, a read that fails keeps it, a list of another head or
+base is not drawn, so the placeholder waits, and a page that went draws nothing more.
+The same pull request opened again in the document draws its summary from the kept
+comparison as the page mounts, with no read and no placeholder, and so does one first
+opened on Changes, whose diff read through the same keep (mb-neg9). A read that fails, a
+comparison the summary draws nothing for, a Changes diff that reads no comparison, a
+pull request that is not GitHub’s, a refresh that failed with nothing running, a record
+that names no comparison and has none coming, a core preview whose read prepares none,
+and a preparation that ended with none leave the row empty; so does a newer comparison
+on Changes until the reader takes it, and a Retry, the offer, or the page’s next paint
+after a read that failed starts the wait again; a record that then names no comparison
+takes Changes’ diff away, and its wait with it (`headerSummary`). A page mounted with no
+record in hand holds its header and tab column for the quiet period, the first header
+with a record lifts the hold, a record that lands while the header waits for the
+conversation’s held first paint keeps them unseen until that paint, and a page with its
+record in hand holds nothing (`coldHold`). The tabs answer to `C`, `G`, and `E` through
+the production shortcut registry and plugin shortcut facade, with or without Shift and
+never with Ctrl: a tab the address does not show opens through the route, as a click on
+its link does. `H` is the Commits tab’s, so it does nothing here.
+The header keeps the tab column unless its first read fails: while the record is on its
+way, and for an absent record nothing is fetching, such as a server with no GitHub
+repository. So the keys are live from first paint, as the links are, and a key asks for
+the route a click on its link asks for.
+The header’s links and actions are numbered by their place through the same facade, in
+document order, which the stand-in DOM keeps as a page does, so Refresh, ending the row
+of ages, comes after View on GitHub and Browse code; each number runs what its control
+does in the paint on screen, recorded as what the page asked for: `1` opens the pull
+request on GitHub, `2` asks to serve the head for Browse code, and on Changes `3` asks
+for a refresh. A refresh that serves the head repaints Browse code as a link, and `2`
+then opens the code instead; one with no pin drops Browse code, Refresh moves up to `2`,
+and `3` reaches nothing.
+Code served behind the pull request’s head offers to switch to it on the status line,
+numbered after Refresh: while the refresh `3` asks for runs, Refresh waits, shown and
+disabled, and keeps `3`, so the offer keeps `4` and a second `3` asks nothing.
+Once the refresh ends Refresh is offered again on Changes, and the offer keeps `4`; on
+Conversation, where nothing is left to refresh, Refresh is not shown, and the offer
+takes `3`. The tab keys wait while the column is out of the page after a failed first
+read; they return when the header puts it back, badged at once while Shift is held, wait
+while the page is staged inert, and end with the page.
+The failed first read here is followed on Changes, which holds no first paint, so it is
+paintHeader’s own retarget that badges the returning links.
 
 ```console
 $ node tests/dom/github-pull-page-mount-behavior.js
-{"titleStateAndTextBadge":true,"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsAutomatic":true,"displayedComparisonRepair":true,"bridgeAfterPaint":true,"bridgeFramesOwned":true,"hiddenReadiness":true,"markdownOwnership":true,"checkRows":true,"headerAges":true}
+{"titleStateAndTextBadge":true,"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsAutomatic":true,"displayedComparisonRepair":true,"bridgeAfterPaint":true,"bridgeFramesOwned":true,"hiddenReadiness":true,"markdownOwnership":true,"checkRows":true,"headerAges":true,"headerShape":true,"widestNotes":{"Fetched just now via GitHub CLI":"Fetched 59 min ago via GitHub CLI","Fetched 3 h ago via GitHub CLI":"Fetched 59 min ago via GitHub CLI","Offline · fetched 12 d ago via GitHub CLI":"Offline · fetched 59 min ago via GitHub CLI","Description fetched 7 min ago via GitHub CLI":"Description fetched 59 min ago via GitHub CLI","Fetched at an unknown time via GitHub CLI":"Fetched at an unknown time via GitHub CLI"},"holdLifts":{"today":"2:05 PM","tomorrow":"9/18/26, 12:30 AM","next year":"1/2/27, 8:00 AM"},"headerSummary":["Conversation, the comparison not yet read: the pending placeholder","the comparison read: the summary","Changes: the summary","Checks, the comparison not yet read: the pending placeholder","Checks, the comparison read: the summary","the same pull request again in this document, before any idle: the summary","opened on Changes, from what its diff read: the summary","opened again on Conversation after Changes, before any idle: the summary","a read that will fail, not yet answered: the pending placeholder","the read fails: nothing","a repaint after it failed, its read asked again: the pending placeholder","that read fails too: nothing","a comparison the summary draws nothing for: nothing","opened on Changes, whose diff reads no comparison: nothing","the record on its way: the pending placeholder","a direct link's page before its first answer: the pending placeholder","its first answer: not cached, its own fetch to be sent: the pending placeholder","its fetch's core preview: the pending placeholder","its record lands, the comparison not yet read: the pending placeholder","the comparison read: the summary","a direct link's first answer: not GitHub's: nothing","a direct link's first answer: a server with no store, its own fetch to be sent: nothing","a direct link's first answer: its refresh failed, nothing running: nothing","a direct link's first answer: a core, its refresh failed, nothing running: nothing","a record that names no comparison: nothing","a core preview whose read prepares its comparison: the pending placeholder","its record lands, the comparison not yet read: the pending placeholder","the comparison read: the summary","a core preview whose read prepares no comparison: nothing","a prepared core, the page's own fetch still to be sent: the pending placeholder","a core whose read ended, the page's own fetch still to be sent: the pending placeholder","a record whose comparison the page asked to prepare: the pending placeholder","the preparation ends with no comparison: nothing","a record whose comparison nothing prepares: nothing","Changes, its diff reads no comparison: nothing","a record with a moved head lands, offering the newer changes: nothing","the reader takes them, their diff not yet read: the pending placeholder","their diff reads the comparison: the summary","Changes, its diff throws: nothing","Retry, the diff not yet read: the pending placeholder","the diff reads the comparison: the summary","Changes, its diff still reading: the pending placeholder","the record then names no comparison: nothing"],"summaryBrief":["a direct link's page before its first answer, its head unknown: the pending placeholder; 1 reads","its core preview, of the list's head and base branch: the brief line \"3 files changed · 1 A, 2 M · +12 −4\"; 1 reads","its record lands, the comparison not yet read: the brief line \"3 files changed · 1 A, 2 M · +12 −4\"; 1 reads","the comparison read: the summary; 1 reads","a direct link's page, the list of an older head: the pending placeholder; 1 reads","its core preview, of a newer head: the pending placeholder; 1 reads","a record whose list was read for another base branch: the pending placeholder; 1 reads","a core preview, the local comparison's list, whose base the core cannot say: the pending placeholder; 1 reads","its record lands, naming the same comparison: the brief line \"3 files changed · 1 A, 2 M · +12 −4\"; 1 reads","a record whose comparison has another base than the local list's: the pending placeholder; 1 reads","a record of the list's head, its comparison not yet read: the brief line \"3 files changed · 1 A, 2 M · +12 −4\"; 1 reads","the comparison's read fails: the brief line \"3 files changed · 1 A, 2 M · +12 −4\"; 1 reads","no list cached: the pending placeholder; 1 reads","opened from a Pulls row that drew its line: the brief line \"1 file changed · 1 M · +12 −4\"; 0 reads","opened from a Pulls row whose line the lane marked out of date, read again: the brief line \"3 files changed · 1 A, 2 M · +12 −4\"; 1 reads","a page that went before its read answered, its summary drawn: the summary; 1 reads"],"coldHold":["mounted with no record in hand: header github-pull-cold, tab column github-pull-cold","its record lands, the conversation waiting for its Markdown: header shown, tab column shown","the conversation's first paint, at its bound: header shown, tab column shown","on Changes, mounted with no record in hand: header github-pull-cold, tab column github-pull-cold","its record lands: header shown, tab column shown","mounted with its record in hand: header shown, tab column shown"],"tabKeys":["before the record, the tab column in the page: Conversation C, Changes G, Checks E; live conversation files checks","C: showed Conversation","G: opened the files route","the record arrives and paintHeader keeps the column: Conversation C, Changes G, Checks E","live: conversation files checks","numbered: 1 View on GitHub, 2 Browse code","1: window.open https://github.com/octo/demo/pull/7 _blank noopener,noreferrer","2: POST /api/source/pin {\"oid\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\",\"under\":\"refs/pull/7/head\",\"view\":\"/view/\"}","C: showed Conversation","G: opened the files route","the route arrives: Changes","numbered on Changes: 1 View on GitHub, 2 Browse code, 3 Refresh","3: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","numbered after a refresh serves the head: 1 View on GitHub, 2 Browse code, 3 Refresh","2: navigation.open /view/","3: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","numbered after a refresh with no pin: 1 View on GitHub, 2 Refresh","2: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","3: not handled","2: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","numbered with the code behind the head: 1 View on GitHub, 2 Browse code, 3 Refresh, 4 Switch to the head","3: POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"recovery\":{\"base\":\"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b\",\"head\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\"}}","numbered while that refresh runs: 1 View on GitHub, 2 Browse code, 3 Refresh, 4 Switch to the head","3: nothing asked","numbered once the refresh ends: 1 View on GitHub, 2 Browse code, 3 Refresh, 4 Switch to the head","numbered on Conversation once the refresh ends: 1 View on GitHub, 2 Browse code, 3 Switch to the head","4: POST /api/source/pin {\"oid\":\"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a\",\"under\":\"refs/pull/7/head\"}","Shift+H: not handled","Shift+E: opened the checks route","Shift+C: opened the conversation route","Ctrl+G: not handled","staged inert: G: not handled","committed: G: opened the files route","disposed: Conversation none, Changes none, Checks none; keys none; G: not handled","a failed first read takes the column out: live none","G: not handled","on Changes, Shift held while it is out: badges none","the next read answers, and the returning tabs are badged: Conversation C, Changes G, Checks E","the next read answers and paintHeader puts the column back: Conversation C, Changes G, Checks E","live: conversation files checks","G: showed Changes","disposed: keys none"],"textRefusal":["refused past the deadline: plain, 1 notice right after it, a status: This text took longer than 5 seconds to render, so it is shown as plain text.","rebuilt for another state, its Markdown not yet answered: plain, 1 notice right after it, a status: This text took longer than 5 seconds to render, so it is shown as plain text., new element","a newer record, the same text refused again as unavailable: plain, 1 notice right after it, a status: The renderer could not start, so this text is shown as plain text. Reload to try again., new element","a newer record whose Markdown renders: rendered rendered A, no notice, same element"],"switchUnavailable":["the diff plugin's assets not loading: The switch request failed.; asked nothing","the switch module not loading: The switch request failed.; asked nothing"]}
 ? 0
 ```
 
@@ -1659,19 +1726,45 @@ $ node tests/dom/github-pull-core-preview-behavior.js
 ? 0
 ```
 
+A record cached before label colors names its labels alone.
+On the first read that shows one the envelope has no entry for, the page asks for the
+repository’s label set at once, and the job that starts makes its next read a fast poll.
+It keeps polling fast while the envelope says the job runs.
+Once the set is cached, the label it holds takes its color and tooltip, a label GitHub
+no longer has stays neutral, and nothing else the page paints changes.
+A page whose set is already being read asks for nothing.
+One the server finds not due asks once and stays on its slow poll, and labels with their
+own colors never ask.
+
+```console
+$ node tests/dom/github-pull-labels-behavior.js
+{"labelsPending":[{"step":"a first read of labels named alone","requests":["GET /api/plugin/github/pull?number=7","POST /api/plugin/github/labels-refresh {}"],"poll":"fast","labels":["enhancement neutral no tip","deleted-on-github neutral no tip"]},{"step":"the set's job runs","requests":["GET /api/plugin/github/pull?number=7 (If-None-Match)"],"poll":"fast","labels":"unchanged"},{"step":"the set is cached","requests":["GET /api/plugin/github/pull?number=7 (If-None-Match)"],"poll":"slow","labels":["enhancement #2700af tip","deleted-on-github neutral no tip"]},{"step":"nothing changes","requests":["GET /api/plugin/github/pull?number=7 (If-None-Match)"],"poll":"slow","labels":"unchanged"},{"step":"a first read while the job runs","requests":["GET /api/plugin/github/pull?number=7"],"poll":"fast","labels":["enhancement neutral no tip","deleted-on-github neutral no tip"]},{"step":"a label the set does not hold","requests":["GET /api/plugin/github/pull?number=7","POST /api/plugin/github/labels-refresh {}"],"poll":"slow","labels":["enhancement #2700af tip","deleted-on-github neutral no tip"]},{"step":"the next poll","requests":["GET /api/plugin/github/pull?number=7 (If-None-Match)"],"poll":"slow","labels":"unchanged"},{"step":"labels with their own colors","requests":["GET /api/plugin/github/pull?number=7"],"poll":"slow","labels":["enhancement #2700af tip"]}]}
+? 0
+```
+
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->
 
-Conversation paints before its commit timeline request.
-A later partial timeline interleaves commit summaries with existing cards in provider
-order, keeps unmatched and pending discussion, and retains the rendered Markdown and
-focus. The pending request breathes the header’s age line and marks it busy; nothing
-spins. A stale page can show a held timeline before its metadata refresh.
+Conversation paints before its commit timeline request, which waits for nothing.
+The timeline that answers once it has painted goes after everything painted, in its
+order, moving no painted node and keeping the rendered Markdown and focus (`appended`).
+A later first paint with that projection held, here the Conversation shown again after
+another tab, places its commit summaries among the cards in provider order, keeping
+unmatched and pending discussion (`interleaved`). The provider request breathes the
+header’s age line and marks it busy; nothing spins.
+A refreshed record keeps the rows it shows until its own timeline answers, and retires
+them when that timeline answers with nothing (`supersededRowsRetired`). A kept commit
+row tells its age as of each paint (`keptCommitRowsRetellAges`). A stale page can show a
+held timeline before its metadata refresh.
 A cache miss waits for metadata settlement before asking the provider, and an old
 response cannot publish after a revision change or a tab switch.
 An explicitly retryable provider failure can try again once while the reader stays.
 A partial timeline and its focused commit link remain in place during the retry.
+Every review’s heading is its author, “reviewed”, and its age, with a chip after the age
+only for a state the verb does not say: Approved, Changes requested, and Dismissed, and
+a state GitHub adds later as itself, even one named as an `Object.prototype` property
+is. A plain review and a pending one have no chip (`reviewHeadings`).
 
 ```console
 $ node tests/dom/github-pull-timeline-session.js
@@ -1686,14 +1779,198 @@ $ node tests/dom/github-pull-timeline-session.js
     "review/15",
     "Some commits may be missing."
   ],
+  "appended": [
+    "<img> First commit",
+    "Last commit",
+    "Some commits may be missing."
+  ],
   "destination": "https://github.com/octo/demo/pull/7/commits/0123456789012345678901234567890123456789",
   "heldMarkdownAndFocus": true,
+  "lateCommitsMoveNothing": true,
   "staleCacheHitBeforeMetadata": true,
   "staleCacheMissWaited": true,
   "supersededReadAborted": true,
   "departedReadAborted": true,
   "unavailableKeepsDiscussion": true,
-  "transientRetryIsBoundedAndKeepsPartial": true
+  "transientRetryIsBoundedAndKeepsPartial": true,
+  "supersededRowsRetired": true,
+  "keptCommitRowsRetellAges": true,
+  "reviewHeadings": {
+    "review/9007199254740993": "maintainer reviewed 1d ago",
+    "review/16": "maintainer reviewed 1d ago [Changes requested]",
+    "review/17": "maintainer reviewed 1d ago [Dismissed]",
+    "review/18": "maintainer reviewed 1d ago [Escalated]",
+    "review/19": "maintainer reviewed 1d ago [Constructor]",
+    "review/3279967139": "maintainer reviewed 1d ago [Approved]",
+    "review/15": "maintainer reviewed (pending)"
+  }
+}
+? 0
+```
+
+## Conversation and Changes First Paints
+
+The conversation’s first paint of a full record is laid out out of sight until the
+Markdown of every text its first screen shows can be inserted, within
+`DESCRIPTION_HOLD_MS`, and the page is not ready meanwhile (`firstVisit`, `comments`).
+The first screen is the page’s own, measured from its top, not the view of a scrolled
+page it replaces, and a text that comes into it as those above render is waited for too,
+the next few past it asked for at once (`firstScreen`); a text it never waited for that
+fails leaves the hold met.
+Over the loading page only the body waits: the header paints the record at once, and any
+loading blocks that had shown stay over the held body until it shows (`landing`,
+`landingAfterBlocksShowed`), and a page replaced while held stays out of sight
+(`cancelledWhileHeld`). A revisit and a refreshed record with the same text paint the
+render kept for that text at once, keeping its node (`revisit`, `refreshedSameText`).
+Past the bound the text shows plain and its Markdown follows (`pastTheBound`). The state
+badge’s first paint is the fresher of the cached record and the repository’s list
+(`listedState`). Changes with rendered Markdown stays out of sight until its first
+screen settles or `CHANGES_FIRST_SCREEN_MS` passes, and a page that goes while it waits
+keeps it out of sight and records the wait as cancelled (`changes`). The kept renders
+are bounded by count and by characters, descriptions apart from other parts (`bounded`).
+Under a held first paint over the loading page the header does not wait: its tab column
+is live and badged while Shift is held, all three keys act, and a link that has focus
+keeps it, as at release (`tabKeysWhileHeld`). A stack that arrives during the hold
+paints its menu at once, and Control-N and Control-P are live and in the Shift strip and
+walk the stack, while N alone opens nothing.
+
+```console
+$ node tests/dom/github-pull-first-paint-behavior.js
+{
+  "firstVisit": "held, then final",
+  "refreshedSameText": "kept",
+  "revisit": "final at first paint",
+  "pastTheBound": "plain, then Markdown",
+  "comments": {
+    "texts": 5,
+    "asked": 5,
+    "plainAtReady": 0
+  },
+  "holdSpans": [
+    "hidden met 1",
+    "hidden bound 1"
+  ],
+  "landing": {
+    "blocksBefore": true,
+    "whileHeld": {
+      "holding": true,
+      "blocks": false,
+      "heading": "Count to two in the app #7"
+    },
+    "final": true,
+    "heading": "Count to two in the app #7"
+  },
+  "landingAfterBlocksShowed": {
+    "whileHeld": {
+      "holding": true,
+      "sameBlocks": true,
+      "cover": true,
+      "heading": "Count to two in the app #7"
+    },
+    "shown": {
+      "blocks": false,
+      "holding": false,
+      "final": true,
+      "heading": "Count to two in the app #7"
+    }
+  },
+  "cancelledWhileHeld": {
+    "holding": true
+  },
+  "firstScreen": {
+    "0": {
+      "plainOnFirstScreenAtReady": [],
+      "waitedFor": 3,
+      "outcome": "met",
+      "askedBeforeSecondAnswer": 3
+    },
+    "5000": {
+      "plainOnFirstScreenAtReady": [],
+      "waitedFor": 3,
+      "outcome": "met",
+      "askedBeforeSecondAnswer": 3
+    },
+    "failsPastTheScreen": {
+      "plainOnFirstScreenAtReady": [],
+      "waitedFor": 2,
+      "outcome": "met",
+      "askedBeforeSecondAnswer": 4
+    },
+    "cascade": {
+      "plainOnFirstScreenAtReady": [],
+      "waitedFor": 6,
+      "outcome": "met",
+      "rounds": 4
+    }
+  },
+  "ages": [
+    "186 min",
+    "185 min",
+    "4 min"
+  ],
+  "listedState": {
+    "newerList": "Merged",
+    "olderList": "Open"
+  },
+  "changes": {
+    "settled": {
+      "asked": 200,
+      "held": true,
+      "readyWhileHeld": false,
+      "shown": true,
+      "ready": true,
+      "holdingAtJump": true
+    },
+    "bound": {
+      "asked": 200,
+      "held": true,
+      "readyWhileHeld": false,
+      "shown": true,
+      "ready": true,
+      "holdingAtJump": true
+    },
+    "cancelled": {
+      "held": true,
+      "keptOutOfSight": true,
+      "outcome": "cancelled"
+    }
+  },
+  "bounded": true,
+  "tabKeysWhileHeld": {
+    "whileHeld": {
+      "holding": true,
+      "tabColumn": "live",
+      "live": [
+        "conversation",
+        "files",
+        "checks"
+      ],
+      "badges": "Conversation C, Changes G, Checks E",
+      "g": "opened the files route",
+      "stackMenus": 1,
+      "stackKeys": "pulls.stack.top, pulls.stack.base",
+      "strip": "pulls.stack.top, pulls.stack.base",
+      "control-n": "opened #8"
+    },
+    "released": {
+      "holding": false,
+      "tabColumn": "live",
+      "live": [
+        "conversation",
+        "files",
+        "checks"
+      ],
+      "badges": "Conversation C, Changes G, Checks E",
+      "focus": "none",
+      "g": "opened the files route",
+      "stackMenus": 1,
+      "stackKeys": "pulls.stack.top, pulls.stack.base",
+      "strip": "pulls.stack.top, pulls.stack.base",
+      "n": "not handled",
+      "control-n": "opened #8",
+      "control-p": "opened #6"
+    }
+  }
 }
 ? 0
 ```

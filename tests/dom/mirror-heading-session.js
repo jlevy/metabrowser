@@ -59,6 +59,7 @@ const LIFTED = [
   "sizeClass",
   "isPendingNumber",
   "parseTipNumber",
+  "formatCountParts",
   "formatCount",
   "formatTimestamp",
   "formatExactSize",
@@ -78,7 +79,6 @@ const TOOLTIP_BLOCK = /\n\/\/ Header hover tooltip[\s\S]*?\n\}\);\n/;
 // What the lifted code calls that does not branch on the subject. The tooltip is the
 // application's one tooltip, which mirror-heading.js reaches as plugins do.
 const COLLABORATORS = `
-var ICONS = { print: "" };
 function showTooltip(html, anchor) {
   __shown.push({ html: html, anchor: anchor });
 }
@@ -423,9 +423,8 @@ async function main() {
     `a folder's address reads ${folder.mainHeading.file.text}`,
   );
   assert(
-    folder.tooltips.navigationHeading.served === `${folderRoot} Jump to root` &&
-      folder.tooltips.navigationHeading.afterTreeLoad ===
-        `${folderRoot} 3 files 140 bytes Jump to root`,
+    folder.tooltips.navigationHeading.served === `${folderRoot}` &&
+      folder.tooltips.navigationHeading.afterTreeLoad === `${folderRoot} 3 files 140 bytes`,
     "a folder's tooltip changed",
   );
   assert(
@@ -471,9 +470,9 @@ async function main() {
     assert(page.tooltips.rootName === sentence, `${page.subject}: the name's tooltip is wrong`);
     assert(page.tooltips.note === sentence, `${page.subject}: the note's tooltip is wrong`);
     const { served: before, afterTreeLoad: after } = page.tooltips.navigationHeading;
-    assert(before === `${name} ${sentence} Jump to root`, `${page.subject}: tooltip: ${before}`);
+    assert(before === `${name} ${sentence}`, `${page.subject}: tooltip: ${before}`);
     assert(
-      after === `${name} 3 files 140 bytes ${sentence} Jump to root`,
+      after === `${name} 3 files 140 bytes ${sentence}`,
       `${page.subject}: tooltip after the tree loads: ${after}`,
     );
     // The mirror's line of a tooltip is the one that wraps.

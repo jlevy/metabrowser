@@ -111,7 +111,7 @@ def test_projections_move_to_the_child_once_it_is_ready() -> None:
             assert await worker.prepare(old=OLD, new=NEW, patch=patch, namespace="n") == expected
             assert worker._process is process  # pyright: ignore[reportPrivateUsage]
         finally:
-            worker.stop()
+            await worker.aclose()
 
     asyncio.run(run())
 
@@ -141,7 +141,7 @@ def test_a_child_that_exits_mid_projection_is_stopped_and_refuses_that_input() -
             assert not worker.ready
             assert worker._process is None  # pyright: ignore[reportPrivateUsage]
         finally:
-            worker.stop()
+            await worker.aclose()
 
     asyncio.run(run())
 
@@ -187,7 +187,7 @@ def test_the_child_runs_only_installed_code_wherever_the_server_started(
             answer = await worker.prepare(old=OLD, new=NEW, patch=_patch(OLD, NEW), namespace="n")
             assert answer.projection["status"] == "ready"
         finally:
-            worker.stop()
+            await worker.aclose()
 
     asyncio.run(run())
     assert not marker.exists(), "the child imported a module from the working directory"
@@ -213,7 +213,7 @@ def test_a_child_that_died_while_idle_answers_from_a_thread_and_starts_again() -
             async with asyncio.timeout(60):
                 assert await worker.started(), "the next projection starts a child again"
         finally:
-            worker.stop()
+            await worker.aclose()
 
     asyncio.run(run())
 
@@ -252,7 +252,7 @@ def test_an_overrunning_child_is_stopped_and_refuses_that_input(
             assert await process.wait() is not None
             assert worker._process is None  # pyright: ignore[reportPrivateUsage]
         finally:
-            worker.stop()
+            await worker.aclose()
 
     asyncio.run(run())
 
@@ -277,7 +277,7 @@ def test_a_cancelled_exchange_stops_the_child_so_no_answer_is_left_behind() -> N
             assert await process.wait() is not None
             assert worker._process is None  # pyright: ignore[reportPrivateUsage]
         finally:
-            worker.stop()
+            await worker.aclose()
 
     asyncio.run(run())
 
@@ -304,7 +304,7 @@ def test_a_new_event_loop_replaces_the_child_the_old_loop_started() -> None:
             process = worker._process  # pyright: ignore[reportPrivateUsage]
             assert process is not None and process.pid != pids[0]
         finally:
-            worker.stop()
+            await worker.aclose()
 
     asyncio.run(first())
     asyncio.run(second())
@@ -340,7 +340,7 @@ def test_an_idle_child_is_stopped_and_the_next_projection_starts_another(
             async with asyncio.timeout(60):
                 assert await worker.started()
         finally:
-            worker.stop()
+            await worker.aclose()
 
     asyncio.run(run())
 
@@ -366,6 +366,6 @@ def test_a_child_no_projection_reaches_is_stopped_when_idle(
                 assert worker._process is None, "a child nothing used was stopped"  # pyright: ignore[reportPrivateUsage]
                 assert await process.wait() is not None
         finally:
-            worker.stop()
+            await worker.aclose()
 
     asyncio.run(run())

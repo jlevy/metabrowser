@@ -15,8 +15,10 @@ Whatever a block's source says that its render does not show -- a link or image
 destination, a title, alt text under a shown image, an HTML comment, an attribute or a
 fence's info string -- is its *hidden* signature. A changed block whose hidden signature
 differs from the other side's carries ``source_only``, and so does the whole projection
-when any source change has no visible counterpart, so the Rendered view never presents
-a change as complete while the source says more.
+when any source change has no visible counterpart, a whitespace-only or rewrap edit
+included. Both flags are metadata for the page: a flagged block is kept out of a fold of
+unchanged blocks, and the Rendered view draws no note about either, so a change with no
+visible counterpart shows only in the Source view.
 """
 
 from __future__ import annotations

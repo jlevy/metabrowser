@@ -194,7 +194,9 @@ global.window = { METABROWSER_SETTINGS: {} };
     markdownMount?.container === readmeContainer &&
       markdownMount?.context?.kind === "markdown" &&
       markdownMount?.context?.path === "README.md" &&
-      markdownMount?.options?.includeToc === "off" &&
+      markdownMount?.options?.includeToc === undefined &&
+      markdownMount?.options?.pagePath === "" &&
+      markdownMount?.options?.printIndicator === true &&
       typeof readmeHandle?.dispose === "function",
     JSON.stringify(markdownMount),
   );
@@ -471,6 +473,8 @@ global.window = { METABROWSER_SETTINGS: {} };
       printStates.push(state);
     },
   };
+  /** @type {() => void} */
+  let releaseDetails = () => {};
   const descriptors = [
     {
       id: "folder.file-overview",
@@ -511,6 +515,13 @@ global.window = { METABROWSER_SETTINGS: {} };
       resolve: (context) => ({ key: context.path, data: "breakdown" }),
       mount(container) {
         container.innerHTML = "breakdown";
+        // Its data comes a moment later, and it holds the Overview's first paint for it.
+        return {
+          dispose() {},
+          ready: new Promise((resolve) => {
+            releaseDetails = resolve;
+          }),
+        };
       },
     },
     {
@@ -542,6 +553,15 @@ global.window = { METABROWSER_SETTINGS: {} };
     listPanels: () => descriptors,
   });
   check("overview declares initial readiness", handle.ready instanceof Promise);
+  let overviewReady = false;
+  void handle.ready.then(() => {
+    overviewReady = true;
+  });
+  for (let turn = 0; turn < 10; turn += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  check("the Overview's first paint waits for a panel that holds it", overviewReady === false);
+  releaseDetails();
   await handle.ready;
   const stack = container.children[0];
   check(

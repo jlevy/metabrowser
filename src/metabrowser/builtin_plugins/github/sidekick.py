@@ -1,7 +1,11 @@
-"""The pull routes: one pull request's, ``pull`` and ``pull-refresh``, the lists', ``pulls``
-and ``pulls-refresh``, a pull request's changed files, ``pull-files`` and
-``pull-files-refresh``, and background prefetch, ``pulls-prefetch``, all under
-``/api/plugin/github/``.
+"""The plugin's data routes, every one the manifest names, all under ``/api/plugin/github/``:
+one pull request's (``pull``, ``pull-refresh``, and the routes of its texts, timeline,
+comparison, rendered diffs, and their images), the catalog's (``pulls``, ``pulls-refresh``,
+``pull-cores-prepare``), changed files (``pull-files``, ``pull-files-refresh``), stacks
+(``stacks``, ``stacks-refresh``), background prefetch (``pulls-prefetch``), and
+``cache-clear``, which discards all of a repository's. The table in
+``docs/project/architecture/arch-github-pull-requests.md``, checked against the manifest
+by ``tests/test_github_route_table.py``, names each one.
 
 :mod:`metabrowser.builtin_plugins.github.pull_route`,
 :mod:`metabrowser.builtin_plugins.github.pull_list_route`, and
@@ -30,6 +34,8 @@ from typing import TYPE_CHECKING, Any, Final
 
 from starlette.responses import JSONResponse, Response
 
+from metabrowser.client_disconnect import CLIENT_CLOSED, unless_disconnected
+from metabrowser.diff.markdown_projection_worker import start_for_pages
 from metabrowser.http_caching import matches_if_none_match
 from metabrowser.source import get_source_session
 from metabrowser.source_routes import PIN_HEADER, pin_changed_response
@@ -37,8 +43,9 @@ from metabrowser.source_routes import PIN_HEADER, pin_changed_response
 if TYPE_CHECKING:
     from starlette.requests import Request
 
+    from metabrowser.builtin_plugins.github.pull_cores import CoreRequest
     from metabrowser.builtin_plugins.github.pull_freshness import RecordFreshness
-    from metabrowser.builtin_plugins.github.pull_route import PullView
+    from metabrowser.builtin_plugins.github.pull_route import PullEnvelope, PullView
     from metabrowser.builtin_plugins.github.served_pull import PullCorePreview
 
 # The answer changes as the record ages and as a refresh replaces it.
@@ -86,6 +93,15 @@ def _without_store(envelope: Any) -> bool:
     return isinstance(unavailable, dict) and unavailable.get("comparison") == "no_store"
 
 
+def _drop_core_preview(envelope: PullEnvelope) -> None:
+    """Drop a revoked core preview, and the label entries and fast poll it alone asked for."""
+
+    envelope["core_preview"] = None
+    if envelope["record"] is None:
+        envelope["repository_labels"] = []
+        envelope["labels_pending"] = False
+
+
 async def _preview_current(view: PullView, preview: PullCorePreview | None) -> bool:
     """Finish revocation checks on the loop after bounded disk validation."""
     from metabrowser.builtin_plugins.github.pull_route import (
@@ -122,10 +138,12 @@ async def pull_handler(request: Request) -> Response:
     ``fetched_at``, and the verdict's time, which a ``304`` carries in
     ``x-metabrowser-verified``. A matching ``wait_full_after`` revision may hold the cache read
     briefly until its already-running selected refresh settles or revokes the preview.
+    ``warm=1`` marks a read the Pulls tab sends to warm a comparison ahead of a click, which
+    is not a view: it is answered the same, and is left out of the numbers a prefetch's
+    ``changed`` adds (``pull_prefetch.note_viewed``).
     """
 
     from metabrowser.builtin_plugins.github.pull_route import (
-        PullEnvelope,
         PullRequestError,
         envelope_etag,
         note_full_record,
@@ -144,6 +162,9 @@ async def pull_handler(request: Request) -> Response:
     wait_after = request.query_params.get("wait_full_after")
     if wait_after is not None and re.fullmatch(r"[0-9a-f]{64}", wait_after) is None:
         return _invalid_request('"wait_full_after" is a core preview revision')
+    warm = request.query_params.get("warm")
+    if warm not in (None, "1"):
+        return _invalid_request('"warm" is 1')
     claimed_pin = request.headers.get(PIN_HEADER) if wait_after is not None else None
     pinned_subject = None
     if claimed_pin is not None:
@@ -163,6 +184,16 @@ async def pull_handler(request: Request) -> Response:
         return view, stamp, envelope, freshness
 
     view, stamp, envelope, freshness = await snapshot()
+    if view.host is not None:
+        # The page asks for its texts' Markdown next, which renders in the Markdown child
+        # alone (pull_markdown.py), and a first paint over a core preview waits for the
+        # description's: start the child at the page's first read, which is often a core
+        # preview, so that wait is not spent on the child's start. A warm read is a page
+        # about to open. Measured in tests/test_type_scale_chrome.py's page, 2026-11-17: a
+        # cold child put the full record's paint 170 to 200 ms after its read, the hold's
+        # whole bound, where an in-thread render had met it. Only a served page follows a
+        # read: a one-shot `--api` read of this route starts nothing.
+        start_for_pages()
     preview = envelope["core_preview"]
     # Prepared and adopted observations carry catalog admission. A captured live preview
     # may already have settled while the worker was building its first envelope.
@@ -180,17 +211,18 @@ async def pull_handler(request: Request) -> Response:
         if waited or kept.core_preview is not preview:
             view, stamp, envelope, freshness = await snapshot()
     if not await _preview_current(view, envelope["core_preview"]):
-        envelope["core_preview"] = None
+        _drop_core_preview(envelope)
     if envelope["record"] is not None:
         note_full_record(view)
     if view.kept is not None:
         view.kept.saw_record(
             envelope["fetched_at"], without_store=_without_store(envelope), freshness=freshness
         )
-    if view.host is not None:
+    if view.host is not None and warm is None:
         from metabrowser.builtin_plugins.github.pull_prefetch import note_viewed
 
-        # What a prefetch's ``changed`` adds: the numbers this server answered last.
+        # What a prefetch's ``changed`` adds: the numbers this server answered last, for a
+        # reader. A warm reads a record the reader has not opened.
         note_viewed(view.host.pulls, number)
     comparison = (envelope.get("record") or {}).get("comparison")
     if view.host is not None and isinstance(comparison, dict):
@@ -209,7 +241,7 @@ async def pull_handler(request: Request) -> Response:
     return JSONResponse(dict(envelope), headers=headers)
 
 
-async def pull_markdown_handler(request: Request) -> JSONResponse:
+async def pull_markdown_handler(request: Request) -> Response:
     """``GET /api/plugin/github/pull-markdown?number=<n>&part=<part>`` — see :mod:`.pull_markdown`."""
 
     from metabrowser.builtin_plugins.github.pull_markdown import render_part
@@ -226,18 +258,24 @@ async def pull_markdown_handler(request: Request) -> JSONResponse:
         return _invalid_request(str(exc))
     await _resolve(request)
     view = pull_view(pull_host(request.app), get_source_session().subject, number)
-    status_code, body = await asyncio.to_thread(
-        render_part, view, request.query_params.get("part", "")
+    # A page that goes away, or scrolls past a text, leaves the render to no one, and an
+    # abandoned render must not hold the Markdown child.
+    answer = await unless_disconnected(
+        request, render_part(view, request.query_params.get("part", ""))
     )
+    if answer is None:
+        return Response(status_code=CLIENT_CLOSED, headers=_NO_STORE)
+    status_code, body = answer
     return JSONResponse(body, status_code=status_code, headers=_NO_STORE)
 
 
-async def pull_snapshot_handler(request: Request) -> Response:
+async def pull_image_handler(request: Request) -> Response:
+    """An image at the head of an admitted comparison, for its rendered Markdown."""
     from metabrowser.builtin_plugins.github.pull_snapshot import (
-        pull_snapshot_handler as read_snapshot,
+        pull_image_handler as read_image,
     )
 
-    return await read_snapshot(request)
+    return await read_image(request)
 
 
 async def pull_rendered_diff_handler(request: Request) -> Response:
@@ -323,7 +361,7 @@ async def pull_comparison_handler(request: Request) -> Response:
         request,
         GitLocation.revision(target, right),
         max_initial_files=INITIAL_PULL_FILES,
-        manifest_loader=partial(load_pull_manifest, published),
+        manifest_loader=partial(load_pull_manifest, published, number),
     )
 
     if response.status_code == 409 and any(
@@ -331,7 +369,7 @@ async def pull_comparison_handler(request: Request) -> Response:
         for failure in observed_object_failures.pending(target, (left, right))
     ):
         try:
-            await asyncio.to_thread(invalidate_pull_manifest, published, (left, right))
+            await asyncio.to_thread(invalidate_pull_manifest, published, number, (left, right))
         except (OSError, PrivateStorageError):
             return JSONResponse(
                 {
@@ -424,7 +462,7 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
     view = pull_view(host, get_source_session().subject, ask.number)
     envelope, freshness = await asyncio.to_thread(pull_answer, view)
     if not await _preview_current(view, envelope["core_preview"]):
-        envelope["core_preview"] = None
+        _drop_core_preview(envelope)
     if envelope["record"] is not None:
         note_full_record(view)
     if view.kept is not None:
@@ -470,35 +508,23 @@ async def pull_timeline_handler(request: Request) -> JSONResponse:
         gate = getattr(request.app.state, "github_pull_timeline_gate", None)
         if gate is None:
             gate = request.app.state.github_pull_timeline_gate = asyncio.Lock()
-
-        async def disconnected() -> None:
-            while (await request.receive())["type"] != "http.disconnect":
-                pass
-
-        async with asyncio.TaskGroup() as group:
-            reading = group.create_task(read_timeline(host.pulls, ask, gate))
-            disconnect = group.create_task(disconnected())
-            finished, _ = await asyncio.wait(
-                (reading, disconnect), return_when=asyncio.FIRST_COMPLETED
-            )
-            if disconnect in finished:
-                reading.cancel()
-            else:
-                answer = reading.result()
-            disconnect.cancel()
+        read = await unless_disconnected(request, read_timeline(host.pulls, ask, gate))
+        if read is not None:
+            answer = read
     if (refusal := pin_changed_response(request.headers.get(PIN_HEADER))) is not None:
         return refusal
     return JSONResponse(answer.model_dump(mode="json"), headers=_NO_STORE)
 
 
-async def pull_cores_prepare_handler(request: Request) -> JSONResponse:
-    """Schedule or release a source-owned visible core window."""
-    from metabrowser.builtin_plugins.github.pull_cores import (
-        cached_batch,
-        core_request,
-        request_preparation,
-    )
-    from metabrowser.builtin_plugins.github.pull_route import pull_host, status_route
+async def pull_cores_prepare_handler(request: Request) -> Response:
+    """Schedule or release a source-owned visible core window.
+
+    A batch stops at its next thread hop once its client has gone: the panel abandons a
+    batch a reader scrolled past, and one that has waited past its timeout. It starts no
+    provider read for it then. A release always runs to its end, so ownership is never
+    left behind.
+    """
+    from metabrowser.builtin_plugins.github.pull_cores import core_request
 
     body = await _json_body(request)
     if isinstance(body, tuple):
@@ -507,6 +533,19 @@ async def pull_cores_prepare_handler(request: Request) -> JSONResponse:
         ask = core_request(body)
     except ValueError as exc:
         return _invalid_request(str(exc))
+    if not ask.numbers:
+        return await _core_window_answer(request, ask)
+    answer = await unless_disconnected(request, _core_window_answer(request, ask))
+    if answer is None:
+        # Nobody reads it; the status names an abandoned batch in the slow-request log.
+        return Response(status_code=CLIENT_CLOSED, headers=_NO_STORE)
+    return answer
+
+
+async def _core_window_answer(request: Request, ask: CoreRequest) -> JSONResponse:
+    from metabrowser.builtin_plugins.github.pull_cores import cached_batch, request_preparation
+    from metabrowser.builtin_plugins.github.pull_route import pull_host, status_route
+
     await _resolve(request)
     host = pull_host(request.app)
     if host is None or host.coordinator is None:
@@ -611,14 +650,18 @@ async def pulls_refresh_handler(request: Request) -> JSONResponse:
     The default state is open and target is 500. The background worker continues to
     all metadata after that prefix. A background or reconnect ask joins without
     reprioritizing. Reconnect can retry one recent network failure early.
-    Retry and reconnect honor rate-limit holds.
+    Retry and reconnect honor rate-limit holds. ``pulls`` is the envelope without its
+    rows, with ``refreshing`` as of the start. When a job runs after the start, ``pulls``
+    was read before it, so a job this request started has not changed it; when none runs,
+    it is read after ``refreshing``, as ``GET`` reads it.
     """
 
     from metabrowser.builtin_plugins.github.pull_list_route import (
         ListRequestError,
         ListWindow,
+        list_envelope,
         list_view,
-        pull_list_envelope,
+        read_catalog_window,
         refresh_request,
         refresh_wanted,
         start_refresh,
@@ -640,10 +683,19 @@ async def pulls_refresh_handler(request: Request) -> JSONResponse:
             status_code=409,
         )
     wanted = await asyncio.to_thread(refresh_wanted, view, ask)
+    # Read before the start, as the file list's refresh does: a job with no gh to run
+    # writes its stamp at once, and an answer read after the start would race that write.
+    window = ListWindow(ask.name, limit=0)
+    found = await asyncio.to_thread(read_catalog_window, view, window)
     started = start_refresh(view, ask, wanted=wanted)
-    # Read after the start, on the loop: the job is running, whatever it does next.
+    # Nothing is awaited from the start to here, so a job this request started has done
+    # nothing yet. One it joined may have, and the answer says it is still refreshing.
     after = list_view(request.app, ask.name)
-    envelope = await asyncio.to_thread(pull_list_envelope, after, ListWindow(ask.name, limit=0))
+    if not after.refreshing:
+        # No job runs, but one may have ended during that read: read again, after
+        # refreshing, so an answer that says nothing is refreshing shows how it ended.
+        found = await asyncio.to_thread(read_catalog_window, after, window)
+    envelope = list_envelope(after, found, window)
     answer = {"refresh": started, "pulls": dict(envelope), "status_route": status_route(ask.name)}
     return JSONResponse(answer, status_code=200 if started == "not_due" else 202, headers=_NO_STORE)
 
@@ -719,6 +771,31 @@ async def stacks_handler(request: Request) -> Response:
     return JSONResponse(dict(envelope), headers=headers)
 
 
+async def stack_change_handler(request: Request) -> Response:
+    """``GET /api/plugin/github/stack-change?number=<stack>`` — a stack's combined change.
+
+    Its members' own changed files accumulated, each file once and their lines summed, from
+    the cache alone (:mod:`.pull_stack_change`): no GitHub call, no fetch, and no Git.
+    """
+    from metabrowser.builtin_plugins.github.pull_list_route import served_repository
+    from metabrowser.builtin_plugins.github.pull_route import PullRequestError, requested_number
+    from metabrowser.builtin_plugins.github.pull_stack_change import envelope_etag, stack_change
+
+    if set(request.query_params) != {"number"}:
+        return _invalid_request('a stack change names its stack by "number" alone')
+    try:
+        number = requested_number(request.query_params)
+    except PullRequestError:
+        return _invalid_request('"number" is a native stack number')
+    await _resolve(request)
+    envelope = await stack_change(served_repository(request.app), number)
+    etag = envelope_etag(envelope)
+    headers = {**_NO_STORE, "etag": etag}
+    if matches_if_none_match(request, etag):
+        return Response(status_code=304, headers=headers)
+    return JSONResponse(dict(envelope), headers=headers)
+
+
 async def stacks_refresh_handler(request: Request) -> Response:
     """Start or join optional stack work; core PR/catalog outcomes stay independent."""
     from metabrowser.builtin_plugins.github.pull_stacks import refresh_wanted
@@ -752,6 +829,108 @@ async def stacks_refresh_handler(request: Request) -> Response:
     )
 
 
+async def labels_handler(request: Request) -> Response:
+    """``GET /api/plugin/github/labels`` — the repository's cached label set, cache only."""
+
+    from metabrowser.builtin_plugins.github.pull_labels_route import (
+        envelope_etag,
+        label_envelope,
+        label_view,
+    )
+
+    if request.query_params:
+        return _invalid_request("a label set has no query parameters")
+    await _resolve(request)
+    envelope = await asyncio.to_thread(label_envelope, label_view(request.app))
+    etag = envelope_etag(envelope)
+    headers = {**_NO_STORE, "etag": etag}
+    if matches_if_none_match(request, etag):
+        return Response(status_code=304, headers=headers)
+    return JSONResponse(dict(envelope), headers=headers)
+
+
+async def labels_refresh_handler(request: Request) -> Response:
+    """``POST /api/plugin/github/labels-refresh`` — start or join the label set's refresh.
+
+    The body may name only a boolean ``retry``, a reader's own ask past the set's age.
+    ``202`` started or joined the job, ``200`` says it was ``not_due``.
+    """
+
+    from metabrowser.builtin_plugins.github.pull_labels import refresh_wanted
+    from metabrowser.builtin_plugins.github.pull_labels_route import (
+        LABELS_ROUTE,
+        label_envelope,
+        label_view,
+        start_refresh,
+    )
+
+    body = await _json_body(request)
+    if isinstance(body, tuple):
+        return _invalid_request(*body)
+    retry = body.get("retry", False)
+    if set(body) - {"retry"} or not isinstance(retry, bool):
+        return _invalid_request('a label refresh accepts only optional boolean "retry"')
+    await _resolve(request)
+    view = label_view(request.app)
+    if view.repository is None or view.coordinator is None:
+        return JSONResponse(
+            {"error": "this server serves no GitHub repository", "code": "not_github"},
+            status_code=409,
+        )
+    wanted = await asyncio.to_thread(refresh_wanted, view.repository, retry=retry)
+    started = start_refresh(view, retry=retry, wanted=wanted)
+    envelope = await asyncio.to_thread(label_envelope, label_view(request.app))
+    return JSONResponse(
+        {"refresh": started, "labels": dict(envelope), "status_route": LABELS_ROUTE},
+        status_code=200 if started == "not_due" else 202,
+        headers=_NO_STORE,
+    )
+
+
+async def cache_clear_handler(request: Request) -> JSONResponse:
+    """``POST /api/plugin/github/cache-clear`` — discard the served repository's GitHub cache.
+
+    The body is an empty JSON object. Everything this plugin keeps for the repository
+    goes, under the lock its writers take (:func:`.pull_record.clear_pulls`), and is
+    fetched again when it is next wanted: ``cleared`` counts the files removed. The
+    repository's source and Git store stay. A cache that refuses answers ``409`` with
+    ``cache_unwritable`` and why. The failures that name this route say what to paste.
+    """
+
+    from metabrowser.builtin_plugins.github.gh_lists import cache_failure_reason
+    from metabrowser.builtin_plugins.github.pull_list_route import served_repository
+    from metabrowser.builtin_plugins.github.pull_record import clear_pulls
+    from metabrowser.cache.locks import run_lock_section
+    from metabrowser.home import PrivateStorageError
+
+    body = await _json_body(request)
+    if isinstance(body, tuple):
+        return _invalid_request(*body)
+    if body:
+        return _invalid_request("a cache clear names no fields")
+    await _resolve(request)
+    repository = served_repository(request.app)
+    if repository is None:
+        return JSONResponse(
+            {"error": "this server serves no GitHub repository", "code": "not_github"},
+            status_code=409,
+        )
+    try:
+        cleared = await run_lock_section(partial(clear_pulls, repository.home, repository.slug))
+    except (PrivateStorageError, OSError) as exc:
+        name = repository.source.removeprefix("https://github.com/")
+        return JSONResponse(
+            {
+                "error": f"the GitHub cache of {name} could not be cleared: "
+                f"{cache_failure_reason(exc)}",
+                "code": "cache_unwritable",
+            },
+            status_code=409,
+            headers=_NO_STORE,
+        )
+    return JSONResponse({"cleared": cleared, "source": repository.source}, headers=_NO_STORE)
+
+
 async def pull_files_handler(request: Request) -> Response:
     """``GET /api/plugin/github/pull-files?number=<n>&offset=&limit=`` — see :mod:`.pull_files_route`.
 
@@ -783,6 +962,39 @@ async def pull_files_handler(request: Request) -> Response:
     return JSONResponse(dict(envelope), headers=headers)
 
 
+async def pull_files_summary_handler(request: Request) -> Response:
+    """``GET /api/plugin/github/pull-files-summary?numbers=<n>,<n>`` — see :mod:`.pull_files_summary`.
+
+    What each named pull request's cached changed-files list sums to, for its Pulls row's
+    brief change line: from the cache alone, with no gh and no Git.
+    """
+
+    from metabrowser.builtin_plugins.github.pull_files_summary import (
+        SummaryRequestError,
+        envelope_etag,
+        files_summary,
+        listing_numbers,
+        summary_numbers,
+    )
+    from metabrowser.builtin_plugins.github.pull_list_route import served_repository
+
+    # A repeated parameter would be read as its last value alone: refused, as any other shape.
+    if len(request.query_params.getlist("numbers")) > 1:
+        return _invalid_request('"numbers" is named once')
+    try:
+        numbers = summary_numbers(request.query_params)
+    except SummaryRequestError as exc:
+        return _invalid_request(str(exc))
+    await _resolve(request)
+    listing = listing_numbers(request.app, numbers)
+    envelope = await files_summary(served_repository(request.app), listing, numbers)
+    etag = envelope_etag(envelope)
+    headers = {**_NO_STORE, "etag": etag}
+    if matches_if_none_match(request, etag):
+        return Response(status_code=304, headers=headers)
+    return JSONResponse(dict(envelope), headers=headers)
+
+
 async def pull_files_refresh_handler(request: Request) -> JSONResponse:
     """``POST /api/plugin/github/pull-files-refresh`` — start or join one file list's refresh.
 
@@ -790,17 +1002,20 @@ async def pull_files_refresh_handler(request: Request) -> JSONResponse:
     says whether this request ``started`` the job or ``joined`` one that was running,
     answered ``202``; that it is ``not_due``, answered ``200``: the list is whole and
     current, it was tried within the window, or GitHub's limit holds; or, past the bound on
-    jobs, ``too_many``, answered ``429``, starting nothing. ``files`` is the envelope as of
-    that moment without its rows.
+    jobs, ``too_many``, answered ``429``, starting nothing. ``files`` is the envelope
+    without its rows, with ``refreshing`` as of the start. When a job runs after the start,
+    ``files`` was read before it, so a job this request started has not changed it; when
+    none runs, it is read after ``refreshing``, as ``GET`` reads it.
     """
 
     from metabrowser.builtin_plugins.github.pull_files_route import (
         FilesRequestError,
         FilesWindow,
+        files_envelope,
         files_refresh_request,
         files_refresh_wanted,
         files_view,
-        pull_files_envelope,
+        read_files,
         start_files_refresh,
         status_route,
     )
@@ -820,10 +1035,18 @@ async def pull_files_refresh_handler(request: Request) -> JSONResponse:
             status_code=409,
         )
     wanted, local = await asyncio.to_thread(files_refresh_wanted, view, ask)
+    # Read before the start: a job this request starts may write at once, as one with no gh
+    # to run writes its stamp, and an answer read after the start would race that write.
+    found = await asyncio.to_thread(read_files, view)
     started = start_files_refresh(view, ask, wanted=wanted, local=local)
-    # Read after the start, on the loop: the job is running, whatever it does next.
+    # Nothing is awaited from the start to here, so a job this request started has done
+    # nothing yet. One it joined may have, and the answer says it is still refreshing.
     after = files_view(request.app, ask.number)
-    envelope = await asyncio.to_thread(pull_files_envelope, after, FilesWindow(ask.number, limit=0))
+    if not after.refreshing:
+        # No job runs, but one may have ended during that read: read again, after
+        # refreshing, so an answer that says nothing is refreshing shows how it ended.
+        found = await asyncio.to_thread(read_files, after)
+    envelope = files_envelope(after, found, FilesWindow(ask.number, limit=0))
     answer: dict[str, Any] = {
         "refresh": started,
         "files": dict(envelope),
@@ -837,6 +1060,7 @@ async def pull_files_refresh_handler(request: Request) -> JSONResponse:
 __all__ = [
     "MAX_REFRESH_REQUEST_BYTES",
     "pull_files_handler",
+    "pull_files_summary_handler",
     "pull_files_refresh_handler",
     "pull_handler",
     "pull_markdown_handler",
@@ -845,7 +1069,10 @@ __all__ = [
     "pull_rendered_diff_handler",
     "pulls_handler",
     "pulls_prefetch_handler",
+    "stack_change_handler",
     "stacks_handler",
     "stacks_refresh_handler",
+    "labels_handler",
+    "labels_refresh_handler",
     "pulls_refresh_handler",
 ]

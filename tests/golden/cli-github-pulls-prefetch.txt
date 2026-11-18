@@ -172,7 +172,7 @@ status: 200
 }
 --- stderr ---
 --- gh ---
-## A visible page asks for 7, 8, and 10 and for 8's changed files: only 7's checks are due, which its own page reads; 8 is current; 10 has no record, so it is read; 8's files come from the store's comparison, with no request to GitHub.
+## A visible page asks for 7, 8, and 10 and for 8's changed files. The store gives 8's list from its record's comparison, with no request to GitHub, so it goes first; then the records: only 7's checks are due, which its own page reads; 8 is current; 10 has no record, so it is read.
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-prefetch --data request.json
 exit: 0
 --- stdout ---
@@ -197,7 +197,7 @@ status: 200
     "hour_used": 1
   },
   "files": {
-    "per_hour": 20,
+    "per_hour": 100,
     "hour_used": 0
   },
   "governor": {
@@ -215,6 +215,12 @@ status: 200
   },
   "recent": [
     {
+      "kind": "files",
+      "number": 8,
+      "outcome": "refreshed",
+      "at": "2026-09-17T14:00:00Z"
+    },
+    {
       "kind": "record",
       "number": 7,
       "outcome": "skipped:checks",
@@ -229,12 +235,6 @@ status: 200
     {
       "kind": "record",
       "number": 10,
-      "outcome": "refreshed",
-      "at": "2026-09-17T14:00:00Z"
-    },
-    {
-      "kind": "files",
-      "number": 8,
       "outcome": "refreshed",
       "at": "2026-09-17T14:00:00Z"
     }
@@ -307,7 +307,7 @@ status: 200
 }
 --- stderr ---
 --- gh ---
-## Pull request 7 is force-pushed back to its earlier commit, where CI has finished. The next scan shows the row newer with another head: the record is stale and its head moved, and a prefetch of 7 reads it and lists its files from the new comparison.
+## Pull request 7 is force-pushed back to its earlier commit, where CI has finished. The next scan shows the row newer with another head: the record is stale and its head moved. A prefetch of 7 lists its files first, from the new head the row names against the mirror's base branch, then reads the record.
 ## The clock moves on 61 s, to 2026-09-17T14:01:01Z.
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 0
@@ -382,7 +382,7 @@ status: 200
     "hour_used": 1
   },
   "files": {
-    "per_hour": 20,
+    "per_hour": 100,
     "hour_used": 0
   },
   "governor": {
@@ -400,13 +400,13 @@ status: 200
   },
   "recent": [
     {
-      "kind": "record",
+      "kind": "files",
       "number": 7,
       "outcome": "refreshed",
       "at": "2026-09-17T14:01:01Z"
     },
     {
-      "kind": "files",
+      "kind": "record",
       "number": 7,
       "outcome": "refreshed",
       "at": "2026-09-17T14:01:01Z"
@@ -451,7 +451,7 @@ status: 200
   "state": "current",
   "listed_from": "comparison",
   "head": "f7c5a9918657080d6aeb455902615b6e17df760a",
-  "base_ref": null,
+  "base_ref": "topic",
   "fetched": 1
 }
 --- stderr ---
@@ -481,7 +481,7 @@ status: 200
     "hour_used": 1
   },
   "files": {
-    "per_hour": 20,
+    "per_hour": 100,
     "hour_used": 0
   },
   "governor": {

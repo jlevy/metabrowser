@@ -13,13 +13,14 @@ from __future__ import annotations
 
 import contextlib
 import errno
+import json
 import logging
 import os
 import stat
 import subprocess
 import sys
 import threading
-from collections.abc import Callable, Generator
+from collections.abc import Callable, Generator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,6 +29,7 @@ from typing import Any
 import pytest
 
 from metabrowser import home as home_module
+from metabrowser.cache.listing import list_private_directory
 from metabrowser.home import (
     PRIVATE_DIRECTORY_MODE,
     PRIVATE_FILE_MODE,
@@ -37,6 +39,8 @@ from metabrowser.home import (
     SharedEntryPolicy,
     ensure_private_directory,
     open_private_file,
+    private_directory,
+    private_directory_is_writable,
     validate_private_home,
 )
 from tests.required_tools import needs_git
@@ -854,6 +858,17 @@ def test_a_fifo_is_refused_without_blocking(home: Path, flags: int) -> None:
 
 
 # ── TOCTOU ─────────────────────────────────────────────────────────
+#
+# These races are staged against the full walk, which opens each directory by name and
+# compares the opened descriptor with the stat before it. A directory already held from
+# an earlier call is not opened by name again, so each test that races a directory starts
+# with nothing held; the held walk has its own race tests below.
+
+
+def _forget_held_directories() -> None:
+    """Close every held directory, so the next call opens and verifies each one."""
+
+    home_module._HELD_DIRECTORIES.clear()  # pyright: ignore[reportPrivateUsage]
 
 
 def _swap_after_nofollow_stat(
@@ -898,6 +913,7 @@ def test_a_directory_swapped_for_a_symlink_mid_check_is_refused(
         staging.rmdir()
         staging.symlink_to(outside, target_is_directory=True)
 
+    _forget_held_directories()
     _swap_after_nofollow_stat(monkeypatch, "staging", replace)
     error = _refusal(lambda: ensure_private_directory(home, "cache/staging/job"))
     monkeypatch.undo()
@@ -919,6 +935,7 @@ def test_a_directory_replaced_mid_check_is_unverifiable(
         staging.rename(home / "cache" / "moved-aside")
         _private_dir(staging)
 
+    _forget_held_directories()
     _swap_after_nofollow_stat(monkeypatch, "staging", replace)
     error = _refusal(lambda: ensure_private_directory(home, "cache/staging/job"))
     monkeypatch.undo()
@@ -1763,3 +1780,1076 @@ def test_private_directory_write_admission_observes_owner_deny_acl(home: Path) -
     assert not home_module.private_directory_is_writable(home, "bank")
     assert _mode(directory) == 0o700
     assert _acl_lines(directory) == before
+
+
+# ── Held directories ───────────────────────────────────────────────
+#
+# A directory verified once stays open, and a later call reuses its descriptor only when
+# a no-follow stat of its name, taken on that call, shows the same directory still
+# plainly private. Each change below is made to a tree whose directories a call has just
+# left held, and the next call must answer exactly as a call with nothing held does, which
+# is the walk every directory gets the first time: the same refusal or result, the same
+# repairs logged, and the same tree afterwards. Two identical trees are built for each
+# case, one answered warm and one cold, and both are compared whole.
+
+_STAGING = "cache/staging"
+_HELD_RECORD = f"{_STAGING}/record.json"
+
+
+def _held_tree(root: Path) -> Path:
+    """Build ``root/link/home`` through a relative link the user owns; return the home."""
+
+    above = root / "above"
+    above.mkdir()
+    above.chmod(0o755)
+    (root / "link").symlink_to("above", target_is_directory=True)
+    home = root / "link" / "home"
+    ensure_private_directory(home, "cache/staging")
+    _write_file(home, _HELD_RECORD, b"record\n")
+    return home
+
+
+def _decoy_home(root: Path, mode: int) -> None:
+    """Point the link above the home at a directory holding another private home."""
+
+    decoy = root / "decoy"
+    decoy.mkdir()
+    ensure_private_directory(decoy / "home", "cache/staging")
+    _write_file(decoy / "home", _HELD_RECORD, b"decoy\n")
+    decoy.chmod(mode)
+    (root / "link").unlink()
+    (root / "link").symlink_to("decoy", target_is_directory=True)
+
+
+def _replace(path: Path, mode: int | None = None, *, link: bool = False) -> None:
+    """Rename *path* aside and put a new directory, or a link to the old one, in its place."""
+
+    path.rename(path.with_name(f"{path.name}-old"))
+    if link:
+        path.symlink_to(f"{path.name}-old", target_is_directory=True)
+    elif mode is not None:
+        path.mkdir()
+        path.chmod(mode)
+
+
+@dataclass(frozen=True, slots=True)
+class _Change:
+    """A change made after a call, and how a read that refuses must answer it."""
+
+    name: str
+    apply: Callable[[Path, Path, pytest.MonkeyPatch], object]
+    expected: tuple[object, ...]
+    darwin: bool = False
+    needs_non_root: bool = False
+
+
+_R = "refused"
+_HELD_CHANGES: tuple[_Change, ...] = (
+    _Change(
+        "ancestor world-writable",
+        lambda root, _home, _mp: (root / "above").chmod(0o777),
+        (_R, _V.PERMISSIVE, _L.HOME_ANCESTOR),
+    ),
+    _Change(
+        "ancestor group-writable",
+        lambda root, _home, _mp: (root / "above").chmod(0o775),
+        (_R, _V.PERMISSIVE, _L.HOME_ANCESTOR),
+    ),
+    _Change(
+        "ancestor ACL grants others write",
+        lambda root, _home, _mp: _add_acl(root / "above", "group:everyone allow add_subdirectory"),
+        (_R, _V.PERMISSIVE, _L.HOME_ANCESTOR),
+        darwin=True,
+    ),
+    _Change(
+        "ancestor link swapped to a writable directory",
+        lambda root, _home, _mp: _decoy_home(root, 0o777),
+        (_R, _V.PERMISSIVE, _L.HOME_ANCESTOR),
+    ),
+    _Change(
+        "ancestor link swapped to another private home",
+        lambda root, _home, _mp: _decoy_home(root, 0o755),
+        ("ok", b"decoy\n"),
+    ),
+    _Change(
+        "ancestor owned by another user",
+        lambda root, _home, mp: _disguise_owner(mp, root / "above", _another_uid()),
+        (_R, _V.FOREIGN_OWNER, _L.HOME_ANCESTOR),
+    ),
+    _Change(
+        "home group-readable",
+        lambda _root, home, _mp: home.chmod(0o750),
+        (_R, _V.PERMISSIVE, _L.HOME),
+    ),
+    _Change(
+        "home ACL grants others",
+        lambda _root, home, _mp: _add_acl(home, "group:everyone allow list"),
+        (_R, _V.PERMISSIVE, _L.HOME),
+        darwin=True,
+    ),
+    _Change(
+        "home replaced by a new private directory",
+        lambda _root, home, _mp: _replace(home, 0o700),
+        ("error", "FileNotFoundError"),
+    ),
+    _Change(
+        "home replaced by a link",
+        lambda _root, home, _mp: _replace(home, link=True),
+        (_R, _V.SYMLINK, _L.HOME),
+    ),
+    _Change(
+        "directory group-readable",
+        lambda _root, home, _mp: (home / "cache").chmod(0o750),
+        (_R, _V.PERMISSIVE, _L.ENTRY),
+    ),
+    _Change(
+        "directory world-writable",
+        lambda _root, home, _mp: (home / "cache" / "staging").chmod(0o777),
+        (_R, _V.PERMISSIVE, _L.ENTRY),
+    ),
+    _Change(
+        "directory ACL grants others",
+        lambda _root, home, _mp: _add_acl(home / "cache", "group:everyone allow list"),
+        (_R, _V.PERMISSIVE, _L.ENTRY),
+        darwin=True,
+    ),
+    _Change(
+        "directory ACL denies its owner",
+        lambda _root, home, _mp: _add_acl(
+            home / "cache" / "staging", f"user:{_current_user_name()} deny list"
+        ),
+        (_R, _V.UNVERIFIABLE, _L.ENTRY),
+        darwin=True,
+    ),
+    _Change(
+        "directory without owner read",
+        lambda _root, home, _mp: (home / "cache" / "staging").chmod(0o300),
+        (_R, _V.UNVERIFIABLE, _L.ENTRY),
+        needs_non_root=True,
+    ),
+    _Change(
+        "directory owned by another user",
+        lambda _root, home, mp: _disguise_owner(mp, home / "cache", _another_uid()),
+        (_R, _V.FOREIGN_OWNER, _L.ENTRY),
+    ),
+    _Change(
+        "directory replaced by a new private one",
+        lambda _root, home, _mp: _replace(home / "cache" / "staging", 0o700),
+        ("error", "FileNotFoundError"),
+    ),
+    _Change(
+        "directory replaced by a shared one",
+        lambda _root, home, _mp: _replace(home / "cache" / "staging", 0o755),
+        (_R, _V.PERMISSIVE, _L.ENTRY),
+    ),
+    _Change(
+        "directory swapped for a link",
+        lambda _root, home, _mp: _replace(home / "cache", link=True),
+        (_R, _V.SYMLINK, _L.ENTRY),
+    ),
+    _Change(
+        "directory removed",
+        lambda _root, home, _mp: _replace(home / "cache" / "staging"),
+        ("error", "FileNotFoundError"),
+    ),
+    _Change(
+        "file group-readable",
+        lambda _root, home, _mp: (home / _HELD_RECORD).chmod(0o640),
+        (_R, _V.PERMISSIVE, _L.ENTRY),
+    ),
+    _Change(
+        "file hard-linked from outside",
+        lambda root, home, _mp: os.link(home / _HELD_RECORD, root / "outside.json"),
+        (_R, _V.HARD_LINK, _L.ENTRY),
+    ),
+)
+
+
+def _read_and_close(fd: int) -> bytes:
+    with os.fdopen(fd, "rb") as handle:
+        return handle.read()
+
+
+def _batch_read(home: Path) -> tuple[bytes, ...]:
+    with private_directory(home, "cache/staging", shared="refuse") as directory:
+        record = _read_and_close(directory.open("record.json", os.O_RDONLY))
+        try:
+            os.close(directory.open("record.json-journal", os.O_RDONLY))
+        except FileNotFoundError:
+            return (record,)
+        return (record, b"journal")
+
+
+_HELD_CALLS: tuple[_Call, ...] = (
+    _Call(
+        "read refuse",
+        lambda home: _read_and_close(
+            open_private_file(home, _HELD_RECORD, os.O_RDONLY, shared="refuse")
+        ),
+    ),
+    _Call("read repair", lambda home: _read_and_close(open_private_file(home, _HELD_RECORD, 0))),
+    _Call(
+        "read keep",
+        lambda home: _read_and_close(open_private_file(home, _HELD_RECORD, 0, shared="keep")),
+    ),
+    _Call("read batch", _batch_read),
+    _Call(
+        "write new file",
+        lambda home: os.close(
+            open_private_file(home, "cache/staging/new.json", os.O_WRONLY | os.O_CREAT)
+        ),
+    ),
+    _Call("ensure", lambda home: ensure_private_directory(home, "cache/staging/job").name),
+    _Call("list", lambda home: list_private_directory(home, "cache/staging", max_entries=10)),
+    _Call("writable", lambda home: private_directory_is_writable(home, "cache/staging")),
+    _Call("validate", validate_private_home),
+)
+
+
+def _held_outcome(call: _Call, home: Path, root: Path) -> tuple[object, ...]:
+    try:
+        result = call.run(home)
+    except PrivateStorageError as error:
+        where = error.path.relative_to(root) if error.path.is_relative_to(root) else error.path
+        return (_R, error.violation, error.location, error.mode, str(where))
+    except OSError as error:
+        return ("error", type(error).__name__)
+    return ("ok", result)
+
+
+def _held_snapshot(root: Path) -> dict[str, tuple[int, int, bytes, int]]:
+    """Every entry below *root*: mode, link count, content or link target, and ACL entries."""
+
+    entries: dict[str, tuple[int, int, bytes, int]] = {}
+    for directory, names, files in os.walk(root):
+        for name in [*names, *files]:
+            path = Path(directory) / name
+            status = os.lstat(path)
+            content = b""
+            if stat.S_ISLNK(status.st_mode):
+                content = os.readlink(path).encode()
+            elif stat.S_ISREG(status.st_mode) and status.st_mode & stat.S_IRUSR:
+                content = path.read_bytes()
+            acl = 0
+            if home_module._EXTENDED_ACLS:  # pyright: ignore[reportPrivateUsage]
+                acl = len(home_module._read_acl(None, path))  # pyright: ignore[reportPrivateUsage]
+            regular = stat.S_ISREG(status.st_mode)
+            entries[str(path.relative_to(root))] = (
+                status.st_mode,
+                status.st_nlink if regular else 0,
+                content,
+                acl,
+            )
+    return entries
+
+
+def _restore_owner_access(root: Path) -> None:
+    """Give the owner back every directory a change locked them out of, for cleanup."""
+
+    pending = [root]
+    while pending:
+        directory = pending.pop()
+        directory.chmod(stat.S_IMODE(os.lstat(directory).st_mode) | stat.S_IRWXU)
+        # An ACL that denies the owner is removed by remove_test_acls.
+        with contextlib.suppress(PermissionError):
+            # Path.is_dir takes follow_symlinks only from Python 3.13.
+            pending += [
+                entry for entry in directory.iterdir() if stat.S_ISDIR(os.lstat(entry).st_mode)
+            ]
+
+
+def _held_cases() -> list[Any]:
+    cases: list[Any] = []
+    for change in _HELD_CHANGES:
+        marks: list[Any] = []
+        if change.darwin:
+            marks += [pytest.mark.macos_tier, _skip_off_darwin]
+        if change.needs_non_root:
+            marks.append(skip_as_root)
+        cases += [
+            pytest.param(change, call, marks=marks, id=f"{change.name} | {call.name}")
+            for call in _HELD_CALLS
+        ]
+    return cases
+
+
+@pytest.mark.parametrize(("change", "call"), _held_cases())
+def test_a_change_after_a_call_is_answered_as_if_nothing_were_held(
+    change: _Change,
+    call: _Call,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    answers: dict[str, tuple[object, ...]] = {}
+    trees: dict[str, dict[str, tuple[int, int, bytes, int]]] = {}
+    logged: dict[str, list[str]] = {}
+    for run in ("warm", "cold"):
+        root = _private_dir(tmp_path / run)
+        home = _held_tree(root)
+        _forget_held_directories()
+        if run == "warm":
+            # Leaves the home, cache, and cache/staging held.
+            _read_and_close(open_private_file(home, _HELD_RECORD, os.O_RDONLY, shared="refuse"))
+            held = home_module._HELD_DIRECTORIES._held  # pyright: ignore[reportPrivateUsage]
+            assert {key[1] for key in held if key[0] == str(home)} == {"", "cache", _STAGING}
+        change.apply(root, home, monkeypatch)
+        if run == "cold":
+            _forget_held_directories()
+        caplog.clear()
+        with caplog.at_level(logging.WARNING, logger="metabrowser.home"):
+            answers[run] = _held_outcome(call, home, root)
+        logged[run] = [
+            record.getMessage().replace(str(root), "<root>") for record in caplog.records
+        ]
+        monkeypatch.undo()
+        trees[run] = _held_snapshot(root)
+        _restore_owner_access(root)
+
+    assert answers["warm"] == answers["cold"]
+    assert logged["warm"] == logged["cold"]
+    assert trees["warm"] == trees["cold"]
+    if call.name == "read refuse":
+        # The case is not vacuous: the read that refuses answers as recorded.
+        assert answers["cold"][: len(change.expected)] == change.expected
+
+
+# The races of the full walk, staged against a held one. A held directory is not opened
+# by name, so there is no inspection-then-open window to refuse; what must hold is that a
+# swap right after its last look at the name never sends the operation through the link
+# or into the replacement, and that the next call answers the changed tree as a cold one
+# would. The last look at a name is its mount identity, so the swap follows that.
+
+
+def _swap_after_mount_lookup(
+    monkeypatch: pytest.MonkeyPatch, name: str, replace: Callable[[], None]
+) -> None:
+    """Run *replace* right after the held walk last looks at *name*."""
+
+    real = home_module._mount_identity  # pyright: ignore[reportPrivateUsage]
+    swapped: list[bool] = []
+
+    def racing_lookup(dir_fd: int | None, looked_up: str | Path) -> tuple[int, int] | None:
+        try:
+            return real(dir_fd, looked_up)
+        finally:
+            if looked_up == name and dir_fd is not None and not swapped:
+                swapped.append(True)
+                replace()
+
+    monkeypatch.setattr(home_module, "_mount_identity", racing_lookup)
+
+
+def test_a_held_directory_swapped_for_a_symlink_after_its_check_is_never_followed(
+    home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    outside.chmod(0o755)
+    ensure_private_directory(home, "cache/staging")
+    staging = home / "cache" / "staging"
+
+    def replace() -> None:
+        staging.rmdir()
+        staging.symlink_to(outside, target_is_directory=True)
+
+    _swap_after_mount_lookup(monkeypatch, "staging", replace)
+    with pytest.raises(FileNotFoundError):
+        ensure_private_directory(home, "cache/staging/job")
+    monkeypatch.undo()
+
+    assert list(outside.iterdir()) == []
+    assert _mode(outside) == 0o755
+    error = _refusal(lambda: ensure_private_directory(home, "cache/staging/job"))
+    assert error.violation is PrivateStorageViolation.SYMLINK
+    assert list(outside.iterdir()) == []
+
+
+def test_a_held_directory_replaced_after_its_check_keeps_the_replacement_untouched(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ensure_private_directory(home, "cache/staging")
+    staging = home / "cache" / "staging"
+
+    def replace() -> None:
+        staging.rename(home / "cache" / "moved-aside")
+        staging.mkdir()
+        staging.chmod(0o755)
+
+    _swap_after_mount_lookup(monkeypatch, "staging", replace)
+    ensure_private_directory(home, "cache/staging/job")
+    monkeypatch.undo()
+
+    # The job went into the directory that was checked, wherever it now is.
+    assert (home / "cache" / "moved-aside" / "job").is_dir()
+    assert list(staging.iterdir()) == []
+    assert _mode(staging) == 0o755
+    error = _refusal(
+        lambda: open_private_file(home, "cache/staging/x", os.O_RDONLY, shared="refuse")
+    )
+    assert (error.violation, error.mode) == (PrivateStorageViolation.PERMISSIVE, 0o755)
+
+
+# ── Held directories: mounts ───────────────────────────────────────
+#
+# Device and inode name a directory, not the mount it is reached through. A held
+# directory is reused only while its name reaches it through the mount its descriptor
+# was opened through; a platform that cannot tell holds nothing.
+
+
+def _counting_opens(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    opened: list[str] = []
+    real_open = os.open
+
+    def counting_open(path: Any, *args: Any, **kwargs: Any) -> int:
+        opened.append(Path(path).name if isinstance(path, Path) else str(path))
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", counting_open)
+    return opened
+
+
+def test_a_directory_reached_through_another_mount_is_opened_again(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ensure_private_directory(home, "cache/staging")
+    _write_file(home, "cache/staging/record.json", b"record\n")
+    _forget_held_directories()
+    _read_and_close(open_private_file(home, "cache/staging/record.json", os.O_RDONLY))
+    real = home_module._mount_identity  # pyright: ignore[reportPrivateUsage]
+
+    def another_mount(dir_fd: int | None, name: str | Path) -> tuple[int, int] | None:
+        found = real(dir_fd, name)
+        if found is None or name != "staging":
+            return found
+        return found[0], found[1] + 1
+
+    monkeypatch.setattr(home_module, "_mount_identity", another_mount)
+    opened = _counting_opens(monkeypatch)
+    _read_and_close(open_private_file(home, "cache/staging/record.json", os.O_RDONLY))
+    assert opened == ["staging", "record.json"]
+
+
+def test_without_a_mount_identity_nothing_is_held(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ensure_private_directory(home, "cache/staging")
+    _write_file(home, "cache/staging/record.json", b"record\n")
+    _forget_held_directories()
+    monkeypatch.setattr(home_module, "_descriptor_mount_identity", lambda _fd: None)
+    before = _open_descriptors()
+    opened = _counting_opens(monkeypatch)
+    for _ in range(2):
+        _read_and_close(open_private_file(home, "cache/staging/record.json", os.O_RDONLY))
+    assert opened == [home.name, "cache", "staging", "record.json"] * 2
+    assert _held()._held == {}  # pyright: ignore[reportPrivateUsage]
+    assert _open_descriptors() == before
+
+
+@darwin_only
+def test_darwin_mount_lookups_ask_for_each_volumes_own_file_system_id(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Both attribute calls pass FSOPT_RETURN_REALDEV, and the name lookup FSOPT_NOFOLLOW."""
+
+    ensure_private_directory(home, "cache")
+    real = home_module._mount_functions()  # pyright: ignore[reportPrivateUsage]
+    assert real is not None
+    options: dict[str, list[int]] = {"named": [], "held": []}
+
+    def named(*arguments: Any) -> int:
+        options["named"].append(arguments[-1])
+        return real[0](*arguments)
+
+    def held(*arguments: Any) -> int:
+        options["held"].append(arguments[-1])
+        return real[1](*arguments)
+
+    monkeypatch.setattr(home_module, "_mount_functions", lambda: (named, held))
+    _forget_held_directories()
+    for _ in range(2):
+        ensure_private_directory(home, "cache")
+    realdev = home_module._FSOPT_RETURN_REALDEV  # pyright: ignore[reportPrivateUsage]
+    nofollow = home_module._FSOPT_NOFOLLOW  # pyright: ignore[reportPrivateUsage]
+    assert options["held"] and all(option == realdev for option in options["held"])
+    assert options["named"] and all(option == realdev | nofollow for option in options["named"])
+
+
+@darwin_only
+def test_the_volumes_of_a_volume_group_have_different_mount_identities() -> None:
+    """The system and data volumes of the startup disk share one logical file system ID."""
+
+    system, data = Path("/"), Path("/System/Volumes/Data")
+    # Since macOS 11 the startup disk is such a group, so this tier always has one.
+    assert os.lstat(system).st_dev == os.lstat(data).st_dev, "no APFS volume group at /"
+    named = home_module._mount_identity  # pyright: ignore[reportPrivateUsage]
+    held = home_module._descriptor_mount_identity  # pyright: ignore[reportPrivateUsage]
+    # The mount half alone tells the volumes apart, whatever the inode numbers.
+    system_identity, data_identity = named(None, system), named(None, data)
+    assert system_identity is not None and data_identity is not None
+    assert system_identity[1] != data_identity[1]
+    descriptors = [os.open(path, os.O_RDONLY | os.O_DIRECTORY) for path in (system, data)]
+    try:
+        assert held(descriptors[0]) == named(None, system)
+        assert held(descriptors[1]) == named(None, data)
+    finally:
+        for fd in descriptors:
+            os.close(fd)
+
+
+# Run as root, or as root of a new user namespace, in a private mount namespace: build a
+# home, leave its directories held (or not), bind-mount cache/staging over itself and
+# make that mount read-only, then ask whether cache/staging is writable and create a file
+# there. "unchecked" reports the held mount for the name, which is what reuse did before
+# it compared mounts, and shows the bind mount is a real hazard on this kernel.
+_BIND_MOUNT_SCRIPT = r"""
+import errno, json, os, shutil, subprocess, sys, tempfile
+from pathlib import Path
+from metabrowser import home as H
+
+route = sys.argv[1]
+if route == "userns":
+    # Root's directories above the home show here as an unmapped owner, which the
+    # ancestor walk refuses; that walk is not what this test is about, and every
+    # variant skips it alike.
+    H._verify_home_ancestors = lambda home: None
+base = Path(tempfile.mkdtemp(prefix="mb-bind-", dir="/tmp"))
+mounted = []
+real_lookup = H._mount_identity
+
+def variant(name):
+    root = base / name
+    root.mkdir(mode=0o700)
+    home = root / "home"
+    H.ensure_private_directory(home, "cache/staging")
+    H._HELD_DIRECTORIES.clear()
+    os.close(H.open_private_file(home, "cache/staging/before.json", os.O_WRONLY | os.O_CREAT))
+    staging = str(home / "cache" / "staging")
+    held = H._HELD_DIRECTORIES._held.get((str(home), "cache/staging"))
+    if held is None:
+        print(json.dumps({"unavailable": "this kernel reports no mount ID, so nothing is held"}))
+        raise SystemExit(77)
+    for command in (["mount", "--bind", staging, staging],
+                    ["mount", "-o", "remount,bind,ro", staging]):
+        done = subprocess.run(command, capture_output=True, text=True)
+        if done.returncode:
+            print(json.dumps({"unavailable": done.stderr.strip()}))
+            raise SystemExit(77)
+        if command[1] == "--bind":
+            mounted.append(staging)
+    if name == "cold":
+        H._HELD_DIRECTORIES.clear()
+    if name == "unchecked":
+        H._mount_identity = lambda dir_fd, looked_up: (
+            held.mount if looked_up == "staging" else real_lookup(dir_fd, looked_up))
+    try:
+        answer = {"writable": H.private_directory_is_writable(home, "cache/staging")}
+        try:
+            os.close(H.open_private_file(home, "cache/staging/new.json", os.O_WRONLY | os.O_CREAT))
+            answer["create"] = "created"
+        except OSError as error:
+            answer["create"] = errno.errorcode.get(error.errno, str(error.errno))
+    finally:
+        H._mount_identity = real_lookup
+    return answer
+
+try:
+    results = {name: variant(name) for name in ("warm", "cold", "unchecked")}
+    print(json.dumps({"route": route, "results": results}))
+finally:
+    H._HELD_DIRECTORIES.clear()
+    for staging in reversed(mounted):
+        subprocess.run(["umount", staging], check=False)
+    shutil.rmtree(base, ignore_errors=True)
+"""
+
+
+# The privileged route runs this project's interpreter, its startup hooks, and every
+# module it imports as host root: a private mount namespace confines mounts, not root. So
+# it is taken only on a machine that is thrown away after the run: a GitHub-hosted runner,
+# which GitHub itself marks with GITHUB_ACTIONS=true and RUNNER_ENVIRONMENT=github-hosted,
+# or a machine whose owner sets METABROWSER_TEST_PRIVILEGED_MOUNT=1 to say it is one.
+# ``sudo -n`` never asks for a password. Everywhere else the test uses an unprivileged
+# user namespace or skips, which strict mode turns into a failure only in CI.
+PRIVILEGED_MOUNT_ENV = "METABROWSER_TEST_PRIVILEGED_MOUNT"
+
+
+def _privileged_mount_allowed(environ: Mapping[str, str]) -> bool:
+    """Whether this run may take the bind-mount test's route through ``sudo -n``."""
+
+    if environ.get(PRIVILEGED_MOUNT_ENV) == "1":
+        return True
+    return (
+        sys.platform.startswith("linux")
+        and environ.get("GITHUB_ACTIONS") == "true"
+        and environ.get("RUNNER_ENVIRONMENT") == "github-hosted"
+    )
+
+
+@pytest.mark.parametrize(
+    ("environ", "allowed"),
+    [
+        ({}, False),
+        ({"CI": "true"}, False),
+        ({"GITHUB_ACTIONS": "true"}, False),
+        ({"GITHUB_ACTIONS": "true", "RUNNER_ENVIRONMENT": "self-hosted"}, False),
+        ({"GITHUB_ACTIONS": "true", "RUNNER_ENVIRONMENT": "github-hosted"}, None),
+        ({PRIVILEGED_MOUNT_ENV: "0"}, False),
+        ({PRIVILEGED_MOUNT_ENV: "1"}, True),
+    ],
+)
+def test_only_a_disposable_runner_runs_the_bind_mount_test_as_root(
+    environ: dict[str, str], allowed: bool | None
+) -> None:
+    """A developer machine never runs project code as host root unless its owner opts in."""
+
+    expected = sys.platform.startswith("linux") if allowed is None else allowed
+    assert _privileged_mount_allowed(environ) is expected
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="bind mounts are a Linux mount namespace's"
+)
+def test_a_read_only_bind_mount_over_a_held_directory_is_honored(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A cold walk reaches the read-only bind mount; a warm one must too.
+
+    It needs a private mount namespace: as root of a new user namespace where the kernel
+    allows one, or, on a disposable runner only, as host root through ``sudo -n``, which
+    is how CI runs it on GitHub's Ubuntu runners. With neither it skips, which the strict
+    skip gate turns into a failure in CI.
+    """
+
+    routes = [
+        ("userns", ["unshare", "--user", "--map-root-user", "--mount", "--propagation", "private"])
+    ]
+    tried: list[str] = []
+    if _privileged_mount_allowed(os.environ):
+        routes.append(("root", ["sudo", "-n", "unshare", "--mount", "--propagation", "private"]))
+    else:
+        tried.append(
+            "root: not taken, since it runs this project's interpreter as host root; a "
+            f"GitHub-hosted runner takes it, and {PRIVILEGED_MOUNT_ENV}=1 opts a disposable "
+            "machine in"
+        )
+    for route, launcher in routes:
+        done = subprocess.run(
+            [*launcher, sys.executable, "-B", "-c", _BIND_MOUNT_SCRIPT, route],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+        lines = [line for line in done.stdout.splitlines() if line.startswith("{")]
+        if not lines:
+            assert "Traceback" not in done.stderr, done.stderr
+            tried.append(f"{route}: {done.stderr.strip()[-200:]}")
+            continue
+        report = json.loads(lines[-1])
+        if "unavailable" in report:
+            tried.append(f"{route}: {report['unavailable']}")
+            continue
+        results = report["results"]
+        refused = {"writable": False, "create": "EROFS"}
+        # Without the mount comparison the warm walk wrote through the old mount.
+        assert results["unchecked"] == {"writable": True, "create": "created"}, report
+        assert results["cold"] == refused, report
+        assert results["warm"] == refused, report
+        with capsys.disabled():
+            # Which namespace this ran in, for a reader of the CI log.
+            print(f"\nbind-mount test ran as {route}: {' '.join(launcher)}")
+        return
+    pytest.skip(f"no private mount namespace could be made: {'; '.join(tried)}")
+
+
+# ── Held directories: lifetime and cost ────────────────────────────
+
+
+def _held() -> home_module._HeldDirectories:  # pyright: ignore[reportPrivateUsage]
+    return home_module._HELD_DIRECTORIES  # pyright: ignore[reportPrivateUsage]
+
+
+def _open_descriptors() -> int:
+    return len(os.listdir("/dev/fd"))
+
+
+def test_a_warm_open_opens_only_the_file(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The cost this exists for: no directory is opened again, and nothing else changes."""
+
+    ensure_private_directory(home, "cache/staging")
+    _write_file(home, "cache/staging/record.json", b"record\n")
+    _forget_held_directories()
+    opened = _counting_opens(monkeypatch)
+    _read_and_close(open_private_file(home, "cache/staging/record.json", os.O_RDONLY))
+    assert opened == [home.name, "cache", "staging", "record.json"]
+    opened.clear()
+    _read_and_close(open_private_file(home, "cache/staging/record.json", os.O_RDONLY))
+    assert opened == ["record.json"]
+
+
+def test_a_directory_handle_verifies_once_for_several_files(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ensure_private_directory(home, "db")
+    for name in ("catalog", "catalog-journal"):
+        _write_file(home, f"db/{name}", name.encode())
+    walks: list[Path] = []
+    real_walk = home_module._verify_home_ancestors  # pyright: ignore[reportPrivateUsage]
+
+    def counting_walk(target: Path) -> None:
+        walks.append(target)
+        real_walk(target)
+
+    monkeypatch.setattr(home_module, "_verify_home_ancestors", counting_walk)
+    with private_directory(home, "db", shared="refuse") as directory:
+        contents = [
+            _read_and_close(directory.open(name, os.O_RDONLY))
+            for name in ("catalog", "catalog-journal")
+        ]
+        with pytest.raises(FileNotFoundError):
+            directory.open("catalog-wal", os.O_RDONLY)
+    assert contents == [b"catalog", b"catalog-journal"]
+    assert walks == [home]
+    with pytest.raises(ValueError, match="after its block ended"):
+        directory.open("catalog", os.O_RDONLY)
+
+
+def test_a_directory_handle_opens_only_its_own_entries(home: Path) -> None:
+    ensure_private_directory(home, "db/inner")
+    _write_file(home, "db/inner/x", b"x")
+    with private_directory(home, "db") as directory:
+        for name in ("inner/x", "..", ".", ""):
+            with pytest.raises(ValueError):
+                directory.open(name, os.O_RDONLY)
+        with pytest.raises(ValueError):
+            directory.open("inner", os.O_RDONLY | os.O_DIRECTORY)
+    with pytest.raises(FileNotFoundError) as missing, private_directory(home, "db/absent"):
+        pass
+    assert not (home / "db" / "absent").exists()
+    assert "absent" not in str(missing.value)
+    with pytest.raises(FileNotFoundError) as above, private_directory(home / "nowhere", "db"):
+        pass
+    assert "nowhere" not in str(above.value)
+
+
+def test_held_directories_are_bounded_and_closed_when_dropped(home: Path) -> None:
+    limit = home_module._HELD_DIRECTORY_LIMIT  # pyright: ignore[reportPrivateUsage]
+    _forget_held_directories()
+    before = _open_descriptors()
+    for index in range(limit * 2):
+        ensure_private_directory(home, f"d{index}")
+    held = _held()._held  # pyright: ignore[reportPrivateUsage]
+    assert len(held) == limit
+    # The most recently used are the ones kept.
+    assert (str(home), f"d{limit * 2 - 1}") in held
+    assert _open_descriptors() - before == limit
+    _forget_held_directories()
+    assert _open_descriptors() == before
+
+
+def test_a_block_borrows_only_its_own_directory_until_its_last_user_releases_it(
+    home: Path,
+) -> None:
+    limit = home_module._HELD_DIRECTORY_LIMIT  # pyright: ignore[reportPrivateUsage]
+    ensure_private_directory(home, "a/b/db")
+    _write_file(home, "a/b/db/record", b"kept")
+    _forget_held_directories()
+    before = _open_descriptors()
+    with private_directory(home, "a/b/db") as directory:
+        # Every held directory is evicted and forgotten while the block still borrows its
+        # own, and only its own: the home, a, and a/b were released on the way down.
+        for index in range(limit + 1):
+            ensure_private_directory(home, f"other{index}")
+        _forget_held_directories()
+        assert _open_descriptors() == before + 1
+        assert _read_and_close(directory.open("record", os.O_RDONLY)) == b"kept"
+    assert _open_descriptors() == before
+
+
+def test_a_held_directory_that_fails_its_check_is_closed_once_reopened(home: Path) -> None:
+    """A rejected held directory is released before the full check opens it again."""
+
+    ensure_private_directory(home, "cache/staging")
+    _write_file(home, "cache/staging/record.json", b"record\n")
+    _forget_held_directories()
+    before = _open_descriptors()
+    _read_and_close(open_private_file(home, "cache/staging/record.json", os.O_RDONLY))
+    (home / "cache").chmod(0o750)
+    _read_and_close(open_private_file(home, "cache/staging/record.json", os.O_RDONLY))
+    assert _mode(home / "cache") == PRIVATE_DIRECTORY_MODE
+    assert _open_descriptors() == before + 3
+    _forget_held_directories()
+    assert _open_descriptors() == before
+
+
+def test_held_directories_survive_concurrent_use_and_eviction(home: Path) -> None:
+    """Threads open files across more directories than are held, evicting each other's."""
+
+    limit = home_module._HELD_DIRECTORY_LIMIT  # pyright: ignore[reportPrivateUsage]
+    names = [f"d{index}" for index in range(limit + 8)]
+    for name in names:
+        ensure_private_directory(home, f"{name}/inner")
+        _write_file(home, f"{name}/inner/record", name.encode())
+    _forget_held_directories()
+    before = _open_descriptors()
+    failures: list[BaseException] = []
+
+    def work(offset: int) -> None:
+        try:
+            for step in range(150):
+                name = names[(offset + step * 7) % len(names)]
+                fd = open_private_file(home, f"{name}/inner/record", os.O_RDONLY, shared="refuse")
+                assert _read_and_close(fd) == name.encode()
+                if step % 25 == 0:
+                    _forget_held_directories()
+        except BaseException as error:
+            failures.append(error)
+
+    threads = [threading.Thread(target=work, args=(offset,)) for offset in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(30.0)
+    assert failures == []
+    assert len(_held()._held) <= limit  # pyright: ignore[reportPrivateUsage]
+    _forget_held_directories()
+    assert _open_descriptors() == before
+
+
+def _run_script(script: str, *arguments: object) -> dict[str, Any]:
+    """Run *script* in a fresh interpreter and return the JSON object it prints last."""
+
+    done = subprocess.run(
+        [sys.executable, "-B", "-c", script, *map(str, arguments)],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    lines = [line for line in done.stdout.splitlines() if line.startswith("{")]
+    assert done.returncode == 0 and lines, done.stderr
+    return json.loads(lines[-1])
+
+
+# A walk 120 directories deep, opened cold and then warm with the descriptor limit just
+# above what the process already uses plus every directory it may hold for reuse.
+_DEEP_WALK_SCRIPT = r"""
+import json, os, resource, sys
+from pathlib import Path
+from metabrowser import home as H
+
+home, depth = Path(sys.argv[1]), int(sys.argv[2])
+relative = "/".join(f"d{index}" for index in range(depth))
+H.ensure_private_directory(home, relative)
+os.close(H.open_private_file(home, relative + "/f", os.O_WRONLY | os.O_CREAT))
+H._HELD_DIRECTORIES.clear()
+highest = max(int(name) for name in os.listdir("/dev/fd"))
+limit = highest + H._HELD_DIRECTORY_LIMIT + 8
+soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+resource.setrlimit(resource.RLIMIT_NOFILE, (limit, hard))
+answers = []
+for _ in ("cold", "warm"):
+    try:
+        os.close(H.open_private_file(home, relative + "/f", os.O_RDONLY))
+        answers.append("opened")
+    except OSError as error:
+        answers.append(os.strerror(error.errno))
+print(json.dumps({"limit": limit, "depth": depth, "answers": answers}))
+"""
+
+
+def test_a_deep_walk_fits_under_a_small_descriptor_limit(home: Path) -> None:
+    """A walk borrows one directory at a time, as the walk before held descriptors did."""
+
+    report = _run_script(_DEEP_WALK_SCRIPT, home, 120)
+    assert report["answers"] == ["opened", "opened"], report
+
+
+# A fork inside two private_directory blocks: the outer one's directory has been evicted
+# while borrowed, the inner one's is held, and another thread borrows a third, also
+# evicted. The child reuses both blocks' descriptor numbers for a decoy directory and
+# reports what it can reach.
+_FORK_SCRIPT = r"""
+import errno, json, os, sys, threading
+from pathlib import Path
+from metabrowser import home as H
+
+home, decoy = Path(sys.argv[1]), Path(sys.argv[2])
+for name in ("db", "outer", "evicted"):
+    H.ensure_private_directory(home, name)
+    fd = H.open_private_file(home, f"{name}/record", os.O_WRONLY | os.O_CREAT)
+    os.write(fd, b"private")
+    os.close(fd)
+decoy.mkdir()
+(decoy / "record").write_bytes(b"decoy")
+H._HELD_DIRECTORIES.clear()
+
+borrowing, finish = threading.Event(), threading.Event()
+evicted = {}
+
+def borrower():
+    with H.private_directory(home, "evicted") as directory:
+        evicted["fd"] = directory._fd
+        borrowing.set()
+        finish.wait(30)
+
+def state(fd):
+    try:
+        os.fstat(fd)
+        return "open"
+    except OSError as error:
+        return errno.errorcode[error.errno]
+
+thread = threading.Thread(target=borrower)
+thread.start()
+borrowing.wait(30)
+read, write = os.pipe()
+with H.private_directory(home, "outer") as outer:
+    # Evict both borrowed directories: each now closes on its last release.
+    for index in range(H._HELD_DIRECTORY_LIMIT + 1):
+        H.ensure_private_directory(home, f"other{index}")
+    with H.private_directory(home, "db") as inner:
+        numbers = {"outer": outer._fd, "inner": inner._fd}
+        pid = os.fork()
+        if pid == 0:
+            os.close(read)
+            child = {"evicted_borrow": state(evicted["fd"])}
+            # Open the decoy until it gets each block's descriptor number back.
+            others, reused = [], {}
+            for _ in range(256):
+                fd = os.open(decoy, os.O_RDONLY | os.O_DIRECTORY)
+                label = next((key for key, value in numbers.items() if value == fd), None)
+                if label is None:
+                    others.append(fd)
+                else:
+                    reused[label] = fd
+                if len(reused) == len(numbers):
+                    break
+            for fd in others:
+                os.close(fd)
+            child["reused"] = sorted(reused)
+            for label, directory in (("outer", outer), ("inner", inner)):
+                try:
+                    fd = directory.open("record", os.O_RDONLY)
+                    child[label] = os.read(fd, 100).decode()
+                except ValueError as error:
+                    child[label] = str(error)
+if pid == 0:
+    child["after_blocks"] = {label: state(fd) for label, fd in sorted(reused.items())}
+    os.write(write, json.dumps(child).encode())
+    os._exit(0)
+os.close(write)
+os.waitpid(pid, 0)
+finish.set()
+thread.join(30)
+with os.fdopen(read) as pipe:
+    print(json.dumps({"child": json.loads(pipe.read())}))
+"""
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="the platform cannot fork")
+def test_a_forked_child_cannot_reach_its_parents_descriptors(home: Path, tmp_path: Path) -> None:
+    """A fork closes everything the parent owned and voids every lease taken before it.
+
+    Neither block may open the decoy's file through a reused number, leaving the blocks
+    must not close the child's descriptors, and the directory another thread borrowed
+    after its eviction must be closed too.
+    """
+
+    child = _run_script(_FORK_SCRIPT, home, tmp_path / "decoy")["child"]
+    refused = "the private directory was verified before this process forked"
+    assert child == {
+        "evicted_borrow": "EBADF",
+        "reused": ["inner", "outer"],
+        "outer": refused,
+        "inner": refused,
+        "after_blocks": {"inner": "open", "outer": "open"},
+    }
+
+
+# A fork from one thread while another is between two steps that must look like one to a
+# fork: a directory opened but not yet registered as the cache's, and one dropped from the
+# cache but not yet closed. Each step is paused at that point, the fork comes from the
+# main thread, and the pause is lifted a moment later; the child reports whether the
+# descriptor in flight is still open.
+_FORK_TRANSITIONS_SCRIPT = r"""
+import errno, json, os, sys, threading
+from pathlib import Path
+from metabrowser import home as H
+
+home = Path(sys.argv[1])
+H.ensure_private_directory(home, "retired")
+H._HELD_DIRECTORIES.clear()
+
+def state(fd):
+    try:
+        os.fstat(fd)
+        return "open"
+    except OSError as error:
+        return errno.errorcode[error.errno]
+
+def fork_during(install, work):
+    paused, release, seen = threading.Event(), threading.Event(), {}
+    restore = install(paused, release, seen)
+    worker = threading.Thread(target=work)
+    worker.start()
+    try:
+        if not paused.wait(10):
+            raise SystemExit("the worker never reached its pause")
+        threading.Timer(0.5, release.set).start()
+        read, write = os.pipe()
+        pid = os.fork()
+        if pid == 0:
+            os.close(read)
+            os.write(write, json.dumps(state(seen["fd"])).encode())
+            os._exit(0)
+        os.close(write)
+        os.waitpid(pid, 0)
+        with os.fdopen(read) as pipe:
+            return json.loads(pipe.read())
+    finally:
+        release.set()
+        worker.join(10)
+        restore()
+
+def before_registration(paused, release, seen):
+    real = H._descriptor_mount_identity
+
+    def pausing(fd):
+        if "fd" not in seen:
+            seen["fd"] = fd
+            paused.set()
+            release.wait(10)
+        return real(fd)
+
+    H._descriptor_mount_identity = pausing
+    return lambda: setattr(H, "_descriptor_mount_identity", real)
+
+def before_close(paused, release, seen):
+    real = os.close
+    target = H._HELD_DIRECTORIES._held[(str(home), "retired")].fd
+
+    def pausing(fd):
+        if fd == target and "fd" not in seen:
+            seen["fd"] = fd
+            paused.set()
+            release.wait(10)
+        return real(fd)
+
+    os.close = pausing
+    return lambda: setattr(os, "close", real)
+
+results = {"registering": fork_during(before_registration, lambda: H.ensure_private_directory(home, "opened"))}
+H.ensure_private_directory(home, "retired")
+results["closing"] = fork_during(before_close, H._HELD_DIRECTORIES.clear)
+print(json.dumps(results))
+"""
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="the platform cannot fork")
+def test_a_fork_waits_out_a_directory_being_registered_or_closed(home: Path) -> None:
+    """No descriptor of the cache is ever outside what a forked child closes."""
+
+    results = _run_script(_FORK_TRANSITIONS_SCRIPT, home)
+    assert results == {"registering": "EBADF", "closing": "EBADF"}

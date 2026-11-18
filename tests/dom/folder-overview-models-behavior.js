@@ -72,6 +72,12 @@ async function importSource(relative) {
       { id: "docs", label: "Documentation" },
       { id: "other", label: "Other" },
     ],
+    // The order a view lists groups in; the same as the registry's here.
+    displayGroups: [
+      { id: "code", label: "Code" },
+      { id: "docs", label: "Documentation" },
+      { id: "other", label: "Other" },
+    ],
     families: [
       { id: "python", label: "Python", groupId: "code", extensions: [".py"] },
       { id: "markdown", label: "Markdown", groupId: "docs", extensions: [".md"] },
@@ -162,6 +168,11 @@ async function importSource(relative) {
     revision: 7,
     fingerprint: "registry-seven",
     groups: [
+      { id: "media", label: "Media" },
+      { id: "other", label: "Other" },
+    ],
+    // The order a view lists groups in; the same as the registry's here.
+    displayGroups: [
       { id: "media", label: "Media" },
       { id: "other", label: "Other" },
     ],
@@ -316,6 +327,8 @@ async function importSource(relative) {
     revision: 7,
     fingerprint: "registry-seven",
     groups: [{ id: "code", label: "Code" }],
+    // The order a view lists groups in; the same as the registry's here.
+    displayGroups: [{ id: "code", label: "Code" }],
     families: Array.from({ length: 12 }, (_, index) => ({
       id: `family-${index}`,
       label: `Family ${index}`,
@@ -587,6 +600,8 @@ async function importSource(relative) {
         fingerprint: "registry-seven",
         // The special rollups live in the "other" group, so it has to exist.
         groups: [{ id: "other", label: "Other" }],
+        // The order a view lists groups in; the same as the registry's here.
+        displayGroups: [{ id: "other", label: "Other" }],
         families: [],
         groupForFile: () => "other",
       })
@@ -644,6 +659,13 @@ async function importSource(relative) {
     revision: 1,
     fingerprint: "session",
     groups: [
+      { id: "code", label: "Code" },
+      { id: "docs", label: "Documentation" },
+      { id: "data", label: "Data" },
+      { id: "other", label: "Other" },
+    ],
+    // The order a view lists groups in; the same as the registry's here.
+    displayGroups: [
       { id: "code", label: "Code" },
       { id: "docs", label: "Documentation" },
       { id: "data", label: "Data" },

@@ -1,7 +1,10 @@
 """Bounded ``git`` subprocess execution.
 
-The single place in the package that spawns a process. Every
-``/api/git/`` handler runs on a request path, so each invocation is
+The one place that starts a ``git`` process for serving, reading a store,
+and acquisition. The only other is ``build_version.py``, which asks a
+source checkout for its version once per process and never reads a
+served repository; ``tests/test_git_arch_doc.py`` holds that list.
+Every ``/api/git/`` handler runs on a request path, so each invocation is
 bounded on both axes that can hurt the server: wall clock, and how much
 output we are willing to buffer.
 
@@ -48,6 +51,7 @@ from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Literal
 
+from metabrowser import server_timing
 from metabrowser.content_errors import ContentReadError
 from metabrowser.git.children import child_pids, executable, prepare_child_listing
 from metabrowser.settings import GIT_SUBPROCESS_MAX_BYTES, GIT_SUBPROCESS_TIMEOUT_S
@@ -61,6 +65,13 @@ log = logging.getLogger(__name__)
 # log page is a handful of reads, small enough that the cap check fires
 # well before the process can hand us an unbounded buffer.
 _READ_CHUNK_BYTES = 64 * 1024
+
+
+def read_chunk_bytes() -> int:
+    """The most one read of a Git process's stdout holds, so how far past a cap the read
+    that crosses it can reach."""
+    return _READ_CHUNK_BYTES
+
 
 # stderr is only ever logged, so it needs far less headroom than stdout.
 # Git diagnostics are a few lines; anything beyond this is truncated.
@@ -77,13 +88,56 @@ _STDERR_MAX_BYTES = 64 * 1024
 # unescaped in each parser.
 GIT_COMMON_ARGS: tuple[str, ...] = ("--no-optional-locks", "-c", "core.quotepath=false")
 
-# Store reads must not apply the operator's mailmap to acquired objects.
+# Store reads must not apply the operator's mailmap to acquired objects. Measured
+# 2026-09-16 (explorations/repository-cache/README.md): with Git's defaults, history reads
+# loaded ``HEAD:.mailmap``, and with lazy fetch off they printed an error and exited 0.
 GIT_DISABLE_MAILMAP_ARGS: Final[tuple[str, ...]] = (
     "-c",
     "mailmap.blob=",
     "-c",
     "mailmap.file=",
 )
+
+# No read verifies a signature: ``log.showSignature`` makes ``log`` and ``show`` run the
+# program ``gpg.program``, ``gpg.ssh.program``, or ``gpg.x509.program`` names for every
+# signed commit, and print its lines into the output the parsers read, where a signed
+# commit then vanished from the history and its commit view answered not found. The key is
+# read from a repository's local configuration, which no policy isolates, so it is turned
+# off on the command line for every location: a served folder's Commits tab, which runs
+# under the reader's own configuration, and a store target, which can be a checkout's own
+# Git directory. Reproduced 2026-11-18 with Git 2.50.1 (review A1 on #559): the program
+# ran for ``/api/git/log`` and ``/api/git/commit/<oid>`` at both, and not with this.
+GIT_NO_SIGNATURE_ARGS: Final[tuple[str, ...]] = ("-c", "log.showSignature=false")
+# No read diffs a submodule's own files. ``diff.submodule=diff`` makes ``git diff -p`` diff
+# each changed submodule in a child ``git diff`` in the submodule's Git directory, which
+# honors that directory's configuration and ``info/attributes`` whatever the parent run
+# passes, and caches a textconv driver's output there. Set on the command line, the value
+# reaches that child too (``GIT_CONFIG_PARAMETERS``); ``short`` is Git's default, so a
+# store Metabrowser made reads the same. Reproduced 2026-11-18 with Git 2.50.1 through a
+# revision's comparison of a superproject, which ran the submodule's driver and wrote 19
+# entries under ``.git/modules/sub`` (review B1 on #559).
+GIT_NO_SUBMODULE_DIFF_ARGS: Final[tuple[str, ...]] = ("-c", "diff.submodule=short")
+# No ``show`` or ``log`` reads its format from configuration. ``format.pretty`` names the
+# format a ``show`` or ``log`` without one prints, and it can hold ``%G?``, which verifies
+# a signature whatever ``log.showSignature`` says. ``medium`` is Git's default. Every such
+# read passes a format of its own, so this changes nothing it prints. Reproduced
+# 2026-11-18 with Git 2.50.1 (review C1 on #559): ``show -s`` ran ``gpg.program`` at a
+# checkout's Git directory whose ``format.pretty`` was ``%G?``, and not with this.
+GIT_NO_CONFIGURED_FORMAT_ARGS: Final[tuple[str, ...]] = ("-c", "format.pretty=medium")
+# No read starts a program a checkout's configuration names for its index or its refs:
+# ``core.fsmonitor`` runs when a read names an index path (``cat-file -p :<path>``), and a
+# hook in ``core.hooksPath`` runs for a ref written. A store Metabrowser made sets
+# neither. Reproduced with Git 2.50.1 in review C1 on #559, where each ran from a
+# checkout's Git directory.
+GIT_NO_HOOK_ARGS: Final[tuple[str, ...]] = (
+    "-c",
+    "core.fsmonitor=false",
+    "-c",
+    f"core.hooksPath={os.devnull}",
+)
+# What every ``diff``, ``show``, and ``log`` takes at a store target; see
+# :attr:`GitLocation.diff_driver_args`.
+GIT_NO_DRIVER_ARGS: Final[tuple[str, ...]] = ("--no-textconv", "--no-ext-diff")
 
 # Acquisition has no measured low-speed stall bound yet.
 # This wall-clock cap is only so a forgotten child cannot live forever; user
@@ -117,6 +171,8 @@ class GitProcessPolicy:
     timeout_s: float
     max_bytes: int
     stdin: Literal["inherit", "devnull", "pipe"]
+    # ``0o077`` for every spawn that writes a store: under umask ``022``, measured
+    # 2026-09-16, Git wrote store files other users could read.
     child_umask: int | None
     isolate_user_config: bool
     no_lazy_fetch: bool
@@ -314,7 +370,38 @@ class GitLocation:
 
     @property
     def config_args(self) -> tuple[str, ...]:
-        return GIT_DISABLE_MAILMAP_ARGS if self.target is not None else ()
+        """What precedes every command here: no signature program, and at a store no
+        mailmap, no submodule diffed in a Git of its own, no format from configuration,
+        and no fsmonitor or hook."""
+
+        if self.target is not None:
+            return (
+                *GIT_DISABLE_MAILMAP_ARGS,
+                *GIT_NO_SIGNATURE_ARGS,
+                *GIT_NO_SUBMODULE_DIFF_ARGS,
+                *GIT_NO_CONFIGURED_FORMAT_ARGS,
+                *GIT_NO_HOOK_ARGS,
+            )
+        return GIT_NO_SIGNATURE_ARGS
+
+    @property
+    def diff_driver_args(self) -> tuple[str, ...]:
+        """What every ``diff``, ``show``, and ``log`` takes at a store target, so it runs no
+        driver.
+
+        A pinned revision's diff is Git's own, for every reader. A store Metabrowser made
+        names no textconv or external diff driver, so for a mirror these change nothing.
+        They matter where the target is a checkout's own Git directory, which a folder's
+        server reads to show one of its revisions: the store policies isolate the reader's
+        user and system configuration, not that repository's local one, and a driver its
+        configuration names, selected by its ``info/attributes`` or a local
+        ``core.attributesFile``, would run a program, and with ``cachetextconv`` write a
+        ``refs/notes/textconv/`` ref into the reader's ``.git``. Measured 2026-11-18 with
+        Git 2.50.1: both ran and wrote before these options, and neither after. A served
+        folder's own Commits tab keeps honoring its drivers, as before.
+        """
+
+        return GIT_NO_DRIVER_ARGS if self.target is not None else ()
 
 
 def as_location(value: Path | GitLocation) -> GitLocation:
@@ -380,6 +467,17 @@ class GitTimeoutError(GitError):
 
 class GitOutputTooLargeError(GitError):
     """``git`` produced more than :data:`GIT_SUBPROCESS_MAX_BYTES` on stdout."""
+
+
+class GitOutputCutError(GitOutputTooLargeError):
+    """A run was stopped once it had printed what its caller can use.
+
+    *prefix* is what it printed until then, the read that ended it included.
+    """
+
+    def __init__(self, message: str, prefix: bytes) -> None:
+        super().__init__(message)
+        self.prefix = prefix
 
 
 class UnsupportedGitVersionError(GitError):
@@ -471,6 +569,207 @@ def _default_policy(target: GitCommandTarget | None) -> GitProcessPolicy:
     """
 
     return STORE_READ_POLICY if isinstance(target, RepositoryStoreTarget) else READ_POLICY
+
+
+# Git's options before the command that take their value as the next word. The
+# ``--name=value`` spelling of each is one word, which starts with ``-``.
+_VALUED_GLOBAL_OPTIONS: Final = frozenset(
+    {
+        "-c",
+        "-C",
+        "--git-dir",
+        "--work-tree",
+        "--namespace",
+        "--config-env",
+        "--attr-source",
+        "--shallow-file",
+    }
+)
+# The commands a read of a store starts, under ``STORE_READ_POLICY`` or
+# ``BATCH_OBJECT_POLICY`` at a ``RepositoryStoreTarget``: surveyed 2026-11-18 by logging
+# every such spawn across the Git, cache, mirror, checkout, diff, source, and pull-request
+# tests, and by reading the source. A store read can be a checkout's own Git directory,
+# whose configuration names programs for commands such as ``blame`` and ``grep``, so any
+# other command is refused there until it is added on purpose (review B4 on #559).
+_STORE_READ_COMMANDS: Final = frozenset(
+    {
+        "cat-file",
+        "config",
+        "diff",
+        "for-each-ref",
+        "hash-object",
+        "log",
+        "ls-tree",
+        "merge-base",
+        "rev-list",
+        "rev-parse",
+        "show",
+        "show-ref",
+        "symbolic-ref",
+        "var",
+    }
+)
+# The commands that can print a diff or verify a signature. Each passes the driver
+# options after the command, which is where Git reads them, and the signature, submodule,
+# and format settings before it, whatever else it asks for.
+_DIFF_COMMANDS: Final = frozenset({"diff", "show", "log"})
+# The settings a store read may give only the value ``GitLocation.config_args`` gives:
+# another value, a later ``-c``, or a ``--config-env`` would turn a program back on.
+_HELD_SETTINGS: Final = {
+    "log.showsignature": "false",
+    "diff.submodule": "short",
+    "format.pretty": "medium",
+    "core.fsmonitor": "false",
+    "core.hookspath": os.devnull,
+}
+# What a ``config`` that only reads says, and what one that writes says.
+_CONFIG_READS: Final = frozenset(
+    {"--get", "--get-all", "--get-regexp", "--get-urlmatch", "--list", "-l"}
+)
+_CONFIG_WRITES: Final = frozenset(
+    {"--add", "--unset", "--unset-all", "--replace-all", "--rename-section", "--remove-section"}
+)
+
+
+def _command_index(args: Sequence[str]) -> int | None:
+    """Where in *args* the Git command is: the first word that is no option or its value."""
+
+    skip = False
+    for index, arg in enumerate(args):
+        if skip:
+            skip = False
+        elif arg in _VALUED_GLOBAL_OPTIONS:
+            skip = True
+        elif not arg.startswith("-"):
+            return index
+    return None
+
+
+def _subcommand(args: Sequence[str]) -> str | None:
+    """The Git command *args* run, or ``None``."""
+
+    index = _command_index(args)
+    return None if index is None else args[index]
+
+
+def _sets(options: Sequence[str], pair: tuple[str, ...]) -> bool:
+    """Whether *options* hold the ``-c`` *pair* as two adjacent words."""
+
+    return any(tuple(options[at : at + len(pair)]) == pair for at in range(len(options)))
+
+
+def _configured_program_refusal(args: Sequence[str], policy: GitProcessPolicy) -> str | None:
+    """Why a store read of *args* could run a program its configuration names, or ``None``."""
+
+    index = _command_index(args)
+    if index is None:
+        return None
+    command = args[index]
+    before = args[:index]
+    after = list(args[index + 1 :])
+    if "--" in after:
+        after = after[: after.index("--")]
+    if policy.name != ACQUISITION_POLICY.name and command not in _STORE_READ_COMMANDS:
+        return f"git {command} is not a read of a repository store"
+    if command in _DIFF_COMMANDS:
+        if not all(option in after for option in GIT_NO_DRIVER_ARGS):
+            return f"git {command} at a repository store must pass {' '.join(GIT_NO_DRIVER_ARGS)}"
+        for pair in (
+            GIT_NO_SIGNATURE_ARGS,
+            GIT_NO_SUBMODULE_DIFF_ARGS,
+            GIT_NO_CONFIGURED_FORMAT_ARGS,
+        ):
+            if not _sets(before, pair):
+                return f"git {command} at a repository store must set {' '.join(pair)} first"
+    # Nothing later turns a held setting back. A bare ``-c log.showSignature`` sets it true.
+    for setting in before:
+        lowered = setting.lower().removeprefix("--config-env=")
+        name = lowered.partition("=")[0]
+        if name in _HELD_SETTINGS and lowered != f"{name}={_HELD_SETTINGS[name]}":
+            return f"git {command} at a repository store must not set {setting}"
+    for at, option in enumerate(after):
+        # The refs an alternate's ``core.alternateRefsCommand`` lists.
+        if option == "--alternate-refs":
+            return f"git {command} at a repository store must not pass --alternate-refs"
+        # Sorting refs by signature verifies each.
+        if option.startswith("--sort"):
+            key = option if "=" in option else (after[at + 1] if at + 1 < len(after) else "")
+            if "signature" in key:
+                return f"git {command} at a repository store must not sort by signature"
+        # A format with no ``%`` is a format's name, which ``pretty.<name>`` can define.
+        if option.startswith(("--format=", "--pretty=")) and "%" not in option:
+            return f"git {command} at a repository store must not name a format: {option}"
+        if option == "--show-signature":
+            return f"git {command} at a repository store must not pass --show-signature"
+        if option.startswith("--submodule") and option != "--submodule=short":
+            return f"git {command} at a repository store must not pass {option}"
+        # A signature's atoms verify it, whatever log.showSignature says: %G in a log
+        # format, %(signature...) in a ref's.
+        if option.startswith(("--format", "--pretty")):
+            shown = option if "=" in option else (after[at + 1] if at + 1 < len(after) else "")
+            if "%G" in shown or "%(signature" in shown:
+                return f"git {command} at a repository store must not verify a signature"
+        # Git takes the last of ``--no-textconv`` and ``--textconv``.
+        if command in _DIFF_COMMANDS and option in {"--textconv", "--ext-diff"}:
+            return f"git {command} at a repository store must not pass {option}"
+    if command == "cat-file" and any(option in {"--textconv", "--filters"} for option in after):
+        return "git cat-file at a repository store must not run a configured filter"
+    # A file hashed as a blob goes through the clean filter its attributes name.
+    if command == "hash-object" and "--no-filters" not in after:
+        return "git hash-object at a repository store must pass --no-filters"
+    if command == "config" and any(option in {"-e", "--edit"} for option in after):
+        return "git config at a repository store must not start an editor"
+    if policy.name != ACQUISITION_POLICY.name:
+        # A read writes no ref: a ref written runs the ``reference-transaction`` hook.
+        operands = [option for option in after if not option.startswith("-")]
+        if command == "symbolic-ref" and (
+            len(operands) > 1 or any(option in {"-d", "--delete", "-m"} for option in after)
+        ):
+            return "git symbolic-ref at a repository store must only read"
+        # A read writes no configuration.
+        if command == "config" and (
+            not any(option in _CONFIG_READS for option in after)
+            or any(option in _CONFIG_WRITES for option in after)
+        ):
+            return "git config at a repository store must only read"
+    if command == "rev-list" and any(
+        option.startswith(("-S", "-G", "--pickaxe", "--find-object")) for option in after
+    ):
+        return "git rev-list at a repository store must not search content with a driver"
+    return None
+
+
+def _require_no_configured_program(
+    target: GitCommandTarget | None, args: Sequence[str], policy: GitProcessPolicy
+) -> None:
+    """Refuse a store read whose arguments would start a program its configuration names.
+
+    A store target's local configuration is in effect under every policy, and it can be a
+    checkout's own. The shapes refused here, by :func:`_configured_program_refusal`:
+    - a ``diff``, ``show``, or ``log`` without :data:`GIT_NO_DRIVER_ARGS` after the
+      command, or without :data:`GIT_NO_SIGNATURE_ARGS`, :data:`GIT_NO_SUBMODULE_DIFF_ARGS`,
+      and :data:`GIT_NO_CONFIGURED_FORMAT_ARGS` before it;
+    - another value for a setting :data:`_HELD_SETTINGS` holds;
+    - ``--show-signature``, ``--textconv``, ``--ext-diff``, ``--alternate-refs``, a
+      ``--submodule`` other than ``short``, a signature in a format or a sort, and a format
+      given by name;
+    - a ``cat-file`` filter, a ``hash-object`` without ``--no-filters``, ``config --edit``,
+      and a ``rev-list`` content search;
+    - under the read policies, a command outside :data:`_STORE_READ_COMMANDS`, and a
+      ``symbolic-ref`` or ``config`` that writes.
+
+    It reads arguments, not what a batch reads from its input, and not an index path, for
+    which ``core.fsmonitor`` runs: a read through a :class:`GitLocation` turns that and
+    the hooks off (:data:`GIT_NO_HOOK_ARGS`). Checking here, where every store spawn
+    passes, holds these for a caller that forgets them, as :func:`_require_no_lazy_fetch`
+    does for lazy fetch.
+    """
+
+    if not isinstance(target, RepositoryStoreTarget):
+        return
+    refusal = _configured_program_refusal(args, policy)
+    if refusal is not None:
+        raise ValueError(refusal)
 
 
 def _require_no_lazy_fetch(target: GitCommandTarget | None, policy: GitProcessPolicy) -> None:
@@ -922,6 +1221,42 @@ async def _read_capped(stream: asyncio.StreamReader | None, max_bytes: int) -> t
     return b"".join(chunks), overflowed
 
 
+async def _read_until(
+    stream: asyncio.StreamReader | None,
+    max_bytes: int,
+    stop_when: Callable[[bytes], bool],
+    stop: Callable[[], None],
+) -> tuple[bytes, bool, bool]:
+    """Drain *stream* as :func:`_read_capped` does, and end the producer early.
+
+    *stop_when* sees each read in turn and says when enough has been printed; that read is
+    kept, *stop* is called once, and the rest is drained without being kept, as it is past
+    the cap, which calls *stop* too. Returns ``(data, overflowed, stopped)``.
+    """
+    if stream is None:
+        return b"", False, False
+
+    chunks: list[bytes] = []
+    total = 0
+    overflowed = stopped = False
+    while True:
+        chunk = await stream.read(_READ_CHUNK_BYTES)
+        if not chunk:
+            break
+        if overflowed or stopped:
+            continue
+        total += len(chunk)
+        if total > max_bytes:
+            overflowed = True
+            stop()
+            continue
+        chunks.append(chunk)
+        if stop_when(chunk):
+            stopped = True
+            stop()
+    return b"".join(chunks), overflowed, stopped
+
+
 async def _read_stderr(
     stream: asyncio.StreamReader | None,
     on_progress: Callable[[GitProgress], None] | None,
@@ -957,6 +1292,7 @@ async def run_git(
     pass_fds: Sequence[int] = (),
     stdin_bytes: bytes | None = None,
     on_progress: Callable[[GitProgress], None] | None = None,
+    stop_when: Callable[[bytes], bool] | None = None,
 ) -> bytes:
     """Run ``git`` with *args* in *cwd* and return raw stdout.
 
@@ -974,10 +1310,46 @@ async def run_git(
     *on_progress* is called, on the event loop, with each progress record a command
     run with ``--progress`` writes to stderr. It changes nothing else: the deadline,
     the output cap, and what a cancellation kills are the same with or without it.
+    *stop_when* is for a caller that can use a prefix and would otherwise wait for Git
+    to print what it then throws away: it sees each read of stdout, and once it says
+    enough, Git is stopped (:class:`_Stop`) and :class:`GitOutputCutError` carries
+    what it printed. A run given it is stopped at the cap too, rather than drained.
 
     Raises :class:`GitUnavailableError`, :class:`GitTimeoutError`,
-    :class:`GitOutputTooLargeError`, or :class:`GitCommandError`.
+    :class:`GitOutputTooLargeError` (:class:`GitOutputCutError` once *stop_when* said
+    enough), or :class:`GitCommandError`.
+
+    The time it takes is the request's ``git`` phase in ``Server-Timing``
+    (:mod:`metabrowser.server_timing`).
     """
+    with server_timing.phase("git"):
+        return await _run_git(
+            args,
+            cwd=cwd,
+            target=target,
+            policy=policy,
+            timeout_s=timeout_s,
+            max_bytes=max_bytes,
+            pass_fds=pass_fds,
+            stdin_bytes=stdin_bytes,
+            on_progress=on_progress,
+            stop_when=stop_when,
+        )
+
+
+async def _run_git(
+    args: Sequence[str],
+    *,
+    cwd: Path | None,
+    target: GitCommandTarget | None,
+    policy: GitProcessPolicy | None,
+    timeout_s: float | None,
+    max_bytes: int | None,
+    pass_fds: Sequence[int],
+    stdin_bytes: bytes | None,
+    on_progress: Callable[[GitProgress], None] | None,
+    stop_when: Callable[[bytes], bool] | None,
+) -> bytes:
     chosen = policy if policy is not None else _default_policy(target)
     proc = await spawn_git_process(
         args,
@@ -990,10 +1362,18 @@ async def run_git(
     timeout = chosen.timeout_s if timeout_s is None else timeout_s
     max_bytes = chosen.max_bytes if max_bytes is None else max_bytes
 
+    stopper = None if stop_when is None else _Stop(proc)
+
+    async def read_stdout() -> tuple[bytes, bool, bool]:
+        if stop_when is None or stopper is None:
+            data, over = await _read_capped(proc.stdout, max_bytes)
+            return data, over, False
+        return await _read_until(proc.stdout, max_bytes, stop_when, stopper)
+
     # stdout and stderr are drained concurrently. Reading them in
     # sequence deadlocks as soon as git fills the pipe we are not
     # reading, which a repository with a lot of output will do.
-    stdout_task = asyncio.ensure_future(_read_capped(proc.stdout, max_bytes))
+    stdout_task = asyncio.ensure_future(read_stdout())
     stderr_task = asyncio.ensure_future(_read_stderr(proc.stderr, on_progress))
 
     async def feed_stdin() -> None:
@@ -1006,7 +1386,7 @@ async def run_git(
         proc.stdin.close()
 
     try:
-        _fed, (stdout, overflowed), (stderr, _), returncode = await asyncio.wait_for(
+        _fed, (stdout, overflowed, stopped), (stderr, _), returncode = await asyncio.wait_for(
             asyncio.gather(feed_stdin(), stdout_task, stderr_task, proc.wait()),
             timeout=timeout,
         )
@@ -1028,10 +1408,17 @@ async def run_git(
         stderr_task.cancel()
         await terminate_git_process(proc)
         raise
+    finally:
+        if stopper is not None:
+            stopper.cancel()
 
     if overflowed:
         raise GitOutputTooLargeError(
             f"git {' '.join(args)} produced more than {max_bytes} bytes on stdout"
+        )
+    if stopped:
+        raise GitOutputCutError(
+            f"git {' '.join(args)} was stopped after {len(stdout)} bytes", stdout
         )
 
     if returncode != 0:
@@ -1092,6 +1479,7 @@ async def spawn_git_process(
 
     chosen = policy if policy is not None else _default_policy(target)
     _require_no_lazy_fetch(target, chosen)
+    _require_no_configured_program(target, args, chosen)
     exe = git_executable()
     if exe is None:
         raise GitUnavailableError("git executable not found on PATH")
@@ -1116,7 +1504,7 @@ async def spawn_git_process(
     own_group = chosen.own_process_group and os.name == "posix"
 
     async def spawn() -> asyncio.subprocess.Process:
-        return await asyncio.create_subprocess_exec(
+        proc = await asyncio.create_subprocess_exec(
             *argv,
             cwd=work_cwd,
             stdin=_stdin_for_policy(chosen, pipe_stdin=pipe_stdin),
@@ -1127,6 +1515,9 @@ async def spawn_git_process(
             start_new_session=own_group,
             pass_fds=tuple(pass_fds),
         )
+        # Every process the request started, a spawn its cancellation then kills included.
+        server_timing.git_process_started()
+        return proc
 
     # A group is registered as soon as it exists, so a stop that cannot unwind kills it
     # too, and a stop that begins while it is starting waits for it.
@@ -1166,8 +1557,13 @@ async def run_git_at(
     policy: GitProcessPolicy | None = None,
     timeout_s: float | None = None,
     max_bytes: int | None = None,
+    stdin_bytes: bytes | None = None,
+    stop_when: Callable[[bytes], bool] | None = None,
 ) -> bytes:
-    """Run ``git`` at *location*, applying store isolation when it is a pin."""
+    """Run ``git`` at *location*, applying store isolation when it is a pin.
+
+    *stdin_bytes* and *stop_when* are as :func:`run_git` takes them.
+    """
 
     return await run_git(
         [*location.config_args, *args],
@@ -1176,6 +1572,8 @@ async def run_git_at(
         policy=policy if policy is not None else location.read_policy,
         timeout_s=timeout_s,
         max_bytes=max_bytes,
+        stdin_bytes=stdin_bytes,
+        stop_when=stop_when,
     )
 
 
@@ -1206,18 +1604,65 @@ async def terminate_git_process(proc: asyncio.subprocess.Process) -> None:
     if proc.returncode is not None:
         _reaped(proc)
         return
-    # The process may exit between the returncode check and the signal.
-    with contextlib.suppress(ProcessLookupError):
-        if _leads_its_own_group(proc.pid):
-            os.killpg(proc.pid, signal.SIGKILL)
-        else:
-            proc.kill()
+    _kill(proc)
     # The request may be cancelled again while reaping. The child is
     # already signalled by then, and re-raising here would replace the
     # original failure with a cancellation from the cleanup path.
     with contextlib.suppress(asyncio.CancelledError):
         await proc.wait()
     _reaped(proc)
+
+
+def _kill(proc: asyncio.subprocess.Process) -> None:
+    """Send *proc*, or the group it leads, SIGKILL; reaping it is the caller's."""
+    _signal(proc, signal.SIGKILL)
+
+
+def _signal(proc: asyncio.subprocess.Process, signum: int) -> None:
+    if proc.returncode is not None:
+        return
+    # The process may exit between the returncode check and the signal.
+    with contextlib.suppress(ProcessLookupError):
+        if _leads_its_own_group(proc.pid):
+            os.killpg(proc.pid, signum)
+        else:
+            proc.send_signal(signum)
+
+
+# How long a run stopped early has to exit on SIGTERM before it is sent SIGKILL. Git's
+# handlers for SIGTERM and SIGPIPE remove the lock files it holds and exit; SIGKILL leaves
+# them, as a textconv cache's notes ref lock showed in review (fixed in 1f251b068).
+_STOP_GRACE_S: Final[float] = 0.5
+_STOP_SIGNAL: Final[int] = signal.SIGTERM
+
+
+class _Stop:
+    """Stop a run that has printed enough: SIGTERM, then SIGKILL if it outlives the grace.
+
+    A process that leads its own group is killed with its group at once, as a timeout kills
+    it, because once a leader exits on SIGTERM its group can no longer be named by it.
+    """
+
+    __slots__ = ("_later", "_proc", "_sent")
+
+    def __init__(self, proc: asyncio.subprocess.Process) -> None:
+        self._proc = proc
+        self._sent = False
+        self._later: asyncio.TimerHandle | None = None
+
+    def __call__(self) -> None:
+        if self._sent:
+            return
+        self._sent = True
+        if _leads_its_own_group(self._proc.pid):
+            _kill(self._proc)
+            return
+        _signal(self._proc, _STOP_SIGNAL)
+        self._later = asyncio.get_running_loop().call_later(_STOP_GRACE_S, _kill, self._proc)
+
+    def cancel(self) -> None:
+        if self._later is not None:
+            self._later.cancel()
 
 
 def _leads_its_own_group(pid: int) -> bool:
@@ -1335,9 +1780,15 @@ __all__ = [
     "BATCH_OBJECT_POLICY",
     "GIT_ACQUISITION_TIMEOUT_S",
     "GIT_DISABLE_MAILMAP_ARGS",
+    "GIT_NO_DRIVER_ARGS",
+    "GIT_NO_SIGNATURE_ARGS",
+    "GIT_NO_SUBMODULE_DIFF_ARGS",
+    "GIT_NO_CONFIGURED_FORMAT_ARGS",
+    "GIT_NO_HOOK_ARGS",
     "GitCommandError",
     "GitError",
     "GitLocation",
+    "GitOutputCutError",
     "GitOutputTooLargeError",
     "GitProcessPolicy",
     "GitTimeoutError",
@@ -1364,6 +1815,7 @@ __all__ = [
     "loggable",
     "parse_git_version",
     "parsed_git_version_as_fixture",
+    "read_chunk_bytes",
     "repository_store_target",
     "require_acquisition_git",
     "run_git",

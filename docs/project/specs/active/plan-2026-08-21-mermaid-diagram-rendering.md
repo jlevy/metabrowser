@@ -1,10 +1,14 @@
 # Feature: Mermaid Diagram Rendering
 
-**Date:** 2026-08-21
+**Date:** 2026-08-21 (last updated 2026-11-14)
 
 **Author:** Metabrowser maintainers
 
-**Status:** Draft
+**Status:** Draft; not started.
+The on-demand loading tier it uses is implemented: `static/asset-loader.js`
+(`ensureAsset`) and `on_demand_script_bundles` in `server.py`. That loader injects
+classic scripts only, so the Mermaid ESM entry needs a dynamic import or a module entry
+in `asset-loader.js` (`mb-y7zh`). Tracked by `mb-qz51`.
 
 ## Overview
 
@@ -20,7 +24,7 @@ It returns on its first line, because it asks the host for `globalThis.mermaid` 
 Metabrowser never defines it.
 
 The missing inputs are a vendored library and a per-mount call.
-The library is 3.5 MB, which is why this plan depends on the on-demand loading tier from
+The library is 3.5 MB, which is why this plan uses the on-demand loading tier from
 [end-to-end load time](plan-2026-08-21-load-time-performance.md) rather than defining
 one of its own. Mermaid is that tier’s largest consumer and its clearest test.
 
@@ -44,10 +48,10 @@ one of its own. Mermaid is that tier’s largest consumer and its clearest test.
 ## Background
 
 Rendering a Mermaid fence through `kpress_adapter.render_kpress_view` against the pinned
-`kpress==0.3.3` produces a figure that carries its own source and status:
+`kpress==0.3.5` produces a figure that carries its own source and status:
 
 ```html
-<figure class="kpress-diagram kpress-mermaid kpress-figure"
+<figure class="kpress-diagram kpress-mermaid"
   data-kpress-diagram="mermaid" data-kpress-diagram-provider="mermaid"
   data-kpress-diagram-status="source">
   <pre class="kpress-diagram-source"><code class="language-mermaid">…</code></pre>
@@ -121,30 +125,38 @@ and takes part in selection and copy, none of which GitHub’s isolation allows.
 
 ## Implementation Plan
 
-Depends on the on-demand asset tier landing in
-[end-to-end load time](plan-2026-08-21-load-time-performance.md) Phase 1.
+The on-demand asset tier from
+[end-to-end load time](plan-2026-08-21-load-time-performance.md) is on `main`, but
+`asset-loader.js` injects classic scripts only, so the Mermaid ESM entry needs a dynamic
+import or a module entry in `asset-loader.js` ([Open Questions](#open-questions)).
 
 ### Phase 1: Diagrams That Render
 
 - [ ] Extend `devtools/vendor_assets.py` with a directory entry, raise `TOTAL_CAP_BYTES`
   with the measurement recorded beside it, and leave `PER_FILE_CAP_BYTES` alone
+  (`mb-98mi`)
 - [ ] Vendor Mermaid at an exact pin, add the `package.json` pin and the `NOTICE.md`
-  entry, and check the manifest into `static/vendor/manifest.json`
-- [ ] Register Mermaid as an on-demand asset and add `kpressInitDiagrams` to
-  `plugin-sdk.js` and `static/types.d.ts`
+  entry, and check the manifest into `static/vendor/manifest.json` (`mb-98mi`)
+- [ ] Load Mermaid on demand (a dynamic import, or a module entry in `asset-loader.js`)
+  and add `kpressInitDiagrams` to `plugin-sdk.js` and `static/types.d.ts` (`mb-y7zh`)
 - [ ] Call it from `rendered.js`, gated on the figure being present, with disposal
+  (`mb-fzm7`)
 - [ ] Confirm through the load-time harness that a document with no diagram requests
   nothing new
+- [ ] Cover lazy mount, replacement, disposal, and theme change in `tests/dom`
+  (`mb-xm9c`)
 
 ### Phase 2: Parity and the States Around the Diagram
 
 - [ ] Drive the Mermaid theme from `data-theme` and re-render diagrams on theme change
+  (`mb-19sr`)
 - [ ] Add a copy button to the diagram figure, which KPress does not add because the
-  figure carries `kpress-diagram-source` rather than `kpress-code`
+  figure carries `kpress-diagram-source` rather than `kpress-code` (`mb-e9vy`)
 - [ ] Surface a legible parse error: KPress already sets
   `data-kpress-diagram-status="error"` and restores the source, so the host supplies the
-  message
+  message (`mb-e9vy`)
 - [ ] Surface the `maxTextSize` and `maxEdges` failures visibly rather than silently
+  (`mb-e9vy`)
 - [ ] Note the change in `CHANGELOG.md`
 
 ## Testing Strategy
@@ -167,15 +179,21 @@ Server, shell, and built-in plugins ship as one artifact, so both phases land as
 ordinary commits with no flag.
 Phase 1 is independently shippable; Phase 2 is polish on a working feature.
 
-The one deliberate cost is the wheel, which roughly doubles: `src/metabrowser` is
-948,476 bytes zipped today and the Mermaid tree adds 1,018,858 bytes zipped.
+The one deliberate cost is the wheel: the Mermaid tree adds 1,018,858 bytes zipped.
+`git archive --format=zip` of `src/metabrowser` measures 886,342 bytes at this plan’s
+commit (`602b78d5`) and 2,142,620 bytes at `c098e6a8`, so a tree that roughly doubled
+the package then adds about half again now.
 That trade is recorded here and beside the size cap.
 
 ## Open Questions
 
+- `asset-loader.js` loads classic scripts only, and the Mermaid entry is an ES module.
+  Either the loader gains a module entry, or `kpressInitDiagrams` imports the entry
+  directly the way `_loadKpressTocModule` in `plugin-sdk.js` imports KPress’s TOC
+  module, which is what `mb-y7zh` describes.
 - Should a diagram-using repository prefetch Mermaid after the first diagram is seen, on
   the theory that it has more?
-  Measurable once the tier exists, not before.
+  Measurable once Mermaid loads through the tier, not before.
 - Does a large diagram want an expand or zoom affordance?
   A 500-node flowchart measures 771,427 bytes of SVG and 7,038 nodes, so the question is
   real, but it is separate from rendering.
@@ -186,7 +204,8 @@ That trade is recorded here and beside the size cap.
   — the research behind this plan
 - [End-to-end load time](plan-2026-08-21-load-time-performance.md) — the loading tier
   this depends on
-- [Asset loading tiers](../../../development.md#asset-loading-tiers) — the policy
+- [Asset loading tiers](../../architecture/arch-browser-shell.md#asset-loading-tiers) —
+  the policy
 - [Rendering large content](../../../large-content-rendering.md) — the cost model
 - [Mermaid](https://github.com/mermaid-js/mermaid) — upstream project, MIT licensed
 

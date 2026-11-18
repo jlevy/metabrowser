@@ -1,33 +1,34 @@
 # Feature: Repository Library and Open from a Git URL
 
-**Date:** 2026-08-11 (rewritten 2026-08-26; refreshed 2026-09-22)
+**Date:** 2026-08-11 (rewritten 2026-08-26; refreshed 2026-09-22; status updated
+2026-11-14; recent targets addendum 2026-11-18)
 
 **Author:** Joshua Levy (with LLM assistance)
 
 **Superseded in part (2026-09-23):** the remaining v0.12 phases follow
-[Thin Mirror for Git and GitHub Browsing](plan-2026-09-23-v012-thin-mirror.md), which
-replaces this plan wherever they disagree.
+[Thin Mirror for Git and GitHub Browsing](../done/plan-2026-09-23-v012-thin-mirror.md),
+which replaces this plan wherever they disagree.
 The built foundation and its record below stay as background.
 Its Simplify step then changed part of that foundation; the
 [Phase 1B addendum](#phase-1b-generic-git-cache-and-repository-url-open) lists what it
 replaced.
 
 **Status:** Phases 0 through 1B were built on the v0.12 stack,
-[#218](https://github.com/jlevy/metabrowser/stack/218), which has landed on `main` and
-first ships in 0.12.0, not yet tagged; their acceptance closed with foundation
-stabilization in [#226](https://github.com/jlevy/metabrowser/pull/226). The thin-mirror
-Simplify step then changed part of that foundation, and
+[#218](https://github.com/jlevy/metabrowser/stack/218), which landed on `main` and first
+shipped in 0.12.0, tagged `v0.12.0` at `87b8ec81` and published 2026-11-09; their
+acceptance closed with foundation stabilization in
+[#226](https://github.com/jlevy/metabrowser/pull/226). The thin-mirror Simplify step
+then changed part of that foundation, and
 [#246](https://github.com/jlevy/metabrowser/pull/246) removed the cache’s reservations
 for a provider store.
 Phases 2A through 2C are superseded: the thin-mirror plan’s
-[Delivery](plan-2026-09-23-v012-thin-mirror.md#delivery) section names the pull requests
-that open, serve, refresh, and re-pin a repository URL in their place, so the unchecked
-items in those phases will not be done as written.
-SSH acquisition is deferred (`mb-bi2c`). The later phases remain open work: the catalog
-(`mb-0ybg`), the chooser (`mb-vmzy`), and very large repositories (`mb-dqvj`). The
-release is `mb-4bd2` and requires the user’s explicit approval; the
-[alpha test plan](plan-2026-09-22-v012-alpha-testing.md#landing-status) lists what
-remains before it.
+[Delivery](../done/plan-2026-09-23-v012-thin-mirror.md#delivery) section names the pull
+requests that open, serve, refresh, and re-pin a repository URL in their place, so the
+unchecked items in those phases will not be done as written.
+SSH acquisition is deferred (`mb-bi2c`). The later phases remain open work under epic
+`mb-k7zy`: the catalog (`mb-0ybg`), Windows owner-only storage (`mb-pyqf`), and very
+large repositories (`mb-dqvj`). The chooser (`mb-vmzy`) is tracked by the native macOS
+app epic, `mb-1apq`.
 
 ## Vision
 
@@ -65,14 +66,14 @@ Provider records describe hosted state and refer to immutable Git object IDs; th
 not replace the object database.
 
 The
-[repository-cache research](../../research/research-2026-08-11-repo-cache-and-git-url-open.md)
+[repository-cache research](../../research/archive/research-2026-08-11-repo-cache-and-git-url-open.md)
 contains the acquisition measurements and prior-art survey.
 Its 2026-08-26 addendum separates dated evidence from the current design after Git diff
 and revision navigation shipped; the 2026-09-14 refresh rebases the plan on the v0.10.0
 inventory, identity, lifecycle, and parity contracts.
 The 2026-09-16 correction replaces the pinned-checkout and detached-worktree proposal
 with the shared repository-subject and provider-mirror architecture in
-[Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md).
+[Repository Sources and Provider Mirrors](../../architecture/arch-mirror-acquisition-and-refresh.md).
 The
 [design review](../../reviews/review-2026-08-26-repository-library-and-github-model.md)
 records the changes that produced this phased plan.
@@ -103,7 +104,7 @@ It includes Phase 0, Phase 1A, generic acquisition, repository URL opening, immu
 revision subjects, the narrow provider job and selected-ref foundation in `mb-jlon`, the
 bounded `gh api` transport and auth work in `mb-p4sw`, the broker-pinned Git credential
 bridge in `mb-s123`, and the common hosted-review and GitHub work in the
-[provider plan](plan-2026-08-27-github-provider-and-pull-requests.md).
+[provider plan](../done/plan-2026-08-27-github-provider-and-pull-requests.md).
 
 Full generic cache management, the in-app chooser, GitHub issues, stacked pull requests,
 and very-large-repository acquisition remain in their existing later phases.
@@ -285,6 +286,8 @@ answers.
 - `ensure_private_directory(home, relative_path)` creates or verifies a directory.
 - `open_private_file(home, relative_path, flags)` opens or creates a file and returns a
   descriptor.
+- `private_directory(home, relative_path)` verifies a directory once and opens several
+  files in it.
 - `validate_private_home(home)` checks the home and its ancestors without changing
   anything.
 
@@ -352,6 +355,93 @@ be read or interpreted, and a platform without descriptor-relative, no-follow op
 all fail closed. Windows is such a platform today: every call refuses as `unverifiable`
 until current-user-only ACL enforcement lands in `mb-pyqf`.
 
+**Every call checks again; only descriptors are reused.** Each call re-establishes every
+guarantee above against the storage as it is at that moment, so a change made after one
+call is refused by the next in exactly the cases a first call would refuse it.
+Re-establishing it does not require opening every directory again.
+A directory below the ancestors that has been opened and verified is kept open, and a
+later call reuses its descriptor only when all of this holds on that call:
+
+- A no-follow stat of its name, taken through the descriptor this call verified for its
+  parent (or by path, for the home), shows the held device and inode.
+  The held descriptor pins that inode, so its number cannot have been reused, and the
+  name refers to the held directory itself, not a replacement or a link.
+- The name reaches that directory through the mount the held descriptor was opened
+  through. Device and inode name a directory, not the mount: a Linux bind mount shows the
+  same directory, same device and inode, under its own flags, such as read-only.
+  On Linux the mount is `statx(2)`’s `STATX_MNT_ID`. On macOS it is the file system ID
+  of the vnode’s volume, from `getattrlistat(2)` `ATTR_CMN_FSID` with
+  `FSOPT_RETURN_REALDEV`; without that option the volumes of a volume group, such as the
+  sealed system volume at `/` and the data volume beside it, all report the group’s one
+  logical ID, as `st_dev` does.
+  With it every mounted volume has its own.
+  macOS has no bind mount that shows one directory through two mounts; were one added,
+  its own file system ID would still tell them apart.
+  Where a platform cannot tell the mount, or the lookup fails, nothing is held for
+  reuse.
+- That stat shows a directory the current user owns and may read, with no group or other
+  mode bits.
+- Its ACL, read through the held descriptor on this call, has no entries at all.
+
+That is a state in which a fresh open would succeed, reach the same directory through
+the same mount, and leave every `shared` policy accepting it without a change or a
+warning, so reuse changes no answer.
+Anything else, including an error, opens and verifies the directory as if nothing were
+held. What each check defends against stays where it was:
+
+| Threat | Where it is checked on every call |
+| --- | --- |
+| A writable, foreign, or linked ancestor that could replace the home | The ancestors are walked and judged by path, as before; none is held |
+| Another principal reading the home or a directory below it | Owner and mode from the fresh stat; the ACL read again |
+| A directory replaced, or swapped for a link, after verification | Device and inode from the fresh stat must be the held ones |
+| The same directory reached through another mount, such as a read-only bind mount | The name’s mount identity must be the held descriptor’s |
+| The owner’s own access withdrawn, by mode or by a deny entry | Owner read in the fresh mode; any ACL entry defers to the full check |
+| A file that is shared, linked, or not regular | Every file is opened and judged afresh |
+
+`test_a_change_after_a_call_is_answered_as_if_nothing_were_held` in
+`tests/test_cache_permissions.py` makes each of those changes, and more, after a call
+has left every directory held, and requires the same answer, the same logged repairs,
+and the same tree afterwards as a call that holds nothing.
+`test_a_read_only_bind_mount_over_a_held_directory_is_honored` does the same for a
+read-only bind mount in a private Linux mount namespace.
+It runs as root of a user namespace where the kernel lets one mount.
+Otherwise it runs as host root through `sudo -n unshare --mount`, which runs this
+project’s interpreter and every module it imports as root, so it takes that route only
+on a disposable machine: a GitHub-hosted runner, which is how CI runs it, or one whose
+owner sets `METABROWSER_TEST_PRIVILEGED_MOUNT=1`. Elsewhere it skips;
+[the test tiers](../../../e2e-testing.md#skips) say when.
+
+Nothing about privacy is remembered between calls, only descriptors.
+`_HELD_DIRECTORY_LIMIT` (`home.py` records the measurement behind it) bounds the
+directories a process keeps open for reuse; it evicts the least recently used and closes
+a descriptor only once no call is borrowing it.
+Calls in progress add their own descriptors on top: a walk borrows one directory at a
+time, releasing each parent once its child is confirmed or opened, so it needs at most
+two at once whatever its depth, and a block keeps only its own directory.
+A held descriptor is never read from, because a directory’s read offset is shared by
+every holder: a listing opens its own descriptor on the directory.
+A held directory also keeps its volume in use until it is evicted or the process exits.
+
+A forked child closes every descriptor its parent owned, those held for reuse and those
+still borrowed alike, and starts a new generation.
+No descriptor of the cache is ever outside that set at a fork: one is opened and
+registered while a fork from another thread waits, and one is dropped and closed in a
+single step under the lock a fork takes.
+A lease or a `PrivateDirectory` from before the fork is void there: using it is refused,
+and releasing it closes nothing, so neither can reach a descriptor number the child has
+reused for something else.
+These rules run in `os.register_at_fork` hooks, so they hold for a fork made through
+Python’s `os.fork`, or by native code that calls `PyOS_BeforeFork` and
+`PyOS_AfterFork_Child` around it; a native extension that forks without those calls
+bypasses them. Nothing in Metabrowser forks that way.
+`subprocess` forks and runs a new program at once, and every held descriptor is
+close-on-exec.
+
+`private_directory(home, relative_path, shared=…)` verifies a directory once for several
+files opened together, such as the pull-request catalog and its three journal files.
+Each file is still opened and judged afresh; a change to the directories made while the
+block runs is noticed by the next call.
+
 On Linux only mode bits are inspected, which is enough for POSIX ACLs: an object’s
 group-class bits are its ACL mask, which bounds every named user and group entry, and a
 mode without group or other bits clears both the mask and the `other` entry.
@@ -415,7 +505,7 @@ and referring aliases.
 `tests/fixtures/repository-cache/state-machines.json` freezes this order, the side
 locks, and the startup sweep’s state machine.
 The acquisition and refresh machines are tables in
-[Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md#acquisition-and-refresh-state-machines).
+[Repository Sources and Provider Mirrors](../../architecture/arch-mirror-acquisition-and-refresh.md#acquisition).
 The reclamation, lease, maintenance, purge, quarantine, and repointing machines went
 with the operations they described, which the thin-mirror Simplify step removed.
 Purge and quarantine move the alias before the store, under the alias and store locks.
@@ -455,7 +545,7 @@ The implementation’s concurrent refresh/read/purge/reclaim tests replay those 
 The approved v0.12 layout separates cache and configuration, following uv and fdu on
 both macOS and Linux.
 Resolution, lifecycle, and safety rules are specified in
-[Cache and Configuration Directories](../../architecture/arch-repository-sources-and-provider-mirrors.md#cache-and-configuration-directories).
+[Cache and Configuration Directories](../../architecture/arch-repository-cache.md#cache-and-configuration-directories).
 
 ```text
 ~/.config/metabrowser/
@@ -1044,7 +1134,7 @@ classify source
 ```
 
 The acquisition machine in
-[Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md#acquisition-and-refresh-state-machines)
+[Repository Sources and Provider Mirrors](../../architecture/arch-mirror-acquisition-and-refresh.md#acquisition)
 names each step’s locks, network work, visibility, and crash recovery.
 A remote that ignores the filter produces a store with every reachable object, recorded
 as strategy full and object state complete, never as partial.
@@ -1073,7 +1163,7 @@ Background convergence is the one piece that may want the streaming seam, and if
 takes it, the lifecycle rules that continuous history established apply in full: bound
 the count, bound the storage, expire on idle, release on shutdown, and drain output
 before reaping. See
-[Git and comparison sources](../../architecture/arch-git-and-comparison-sources.md#long-lived-walks).
+[Git and comparison sources](../../architecture/arch-git.md#history-sessions).
 Every policy retains fixed arguments, no shell, bounded output, cancellation cleanup,
 and scrubbed repository-pinning environment variables.
 Acquisition also sets `stdin=DEVNULL`, disables terminal and credential-manager prompts,
@@ -1356,10 +1446,11 @@ size, last open, last fetch, integrity, attachments, and any quarantine state.
 
 Provider-neutral hosted-review modeling, GitHub acquisition, snapshot storage, plugin
 views, virtual PR navigation, and stacked-change projections moved to
-[the hosted-review and GitHub provider plan](plan-2026-08-27-github-provider-and-pull-requests.md).
+[the hosted-review and GitHub provider plan](../done/plan-2026-08-27-github-provider-and-pull-requests.md).
 That document and the
-[hosted-review architecture](../../architecture/arch-hosted-review-model.md) own the
-record families, storage layout, provider port, activity projection, and view boundary.
+[hosted-review architecture](https://github.com/jlevy/metabrowser/blob/reference/v012-hosted-review-2026-09-30/docs/project/architecture/arch-hosted-review-model.md)
+own the record families, storage layout, provider port, activity projection, and view
+boundary.
 
 What stays here is the part the generic cache owes a provider, and it is deliberately
 small: a stable source attachment, an optional shared repository store, atomic
@@ -1370,9 +1461,9 @@ provider-specific — it does not import a provider schema, branch on a provider
 kind, or let provider state redefine generic source identity.
 
 The one thing that is not deferred is the boundary itself, which is recorded in
-[Git and comparison sources](../../architecture/arch-git-and-comparison-sources.md): Git
-stays authoritative for content, history, and diffs, and provider records refer to
-immutable Git object ids rather than replacing them.
+[Git and comparison sources](../../architecture/arch-git.md#providers): Git stays
+authoritative for content, history, and diffs, and provider records refer to immutable
+Git object ids rather than replacing them.
 
 ## Security and Trust
 
@@ -1520,7 +1611,7 @@ replay against production functions when they land.
 | Version floors | One acquisition floor, which is both the security floor and the lazy-fetch floor; [Git version gates](#git-version-gates) and `git-version-gates.json` | Upstream release notes, and `promisor-remote.c` and `diffcore-rename.c` read at each relevant tag; only 2.50.1 was available to run |
 | URL grammar | `url-grammar.json` | Git’s HTTP client sent the same request with and without a trailing slash, and sent `//`, `%72`, and path case verbatim |
 | Source and store identity, aliases, slugs | `source-identity.json` | The home filesystem folded case and Unicode normalization, and `NAME_MAX` was 255 bytes |
-| Locks and state machines | `state-machines.json` for the lock order, the side locks, and the startup sweep, and the tables in [Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md#acquisition-and-refresh-state-machines) for acquisition and refresh; publication verifies absence under the owning lock, with a platform no-replace rename as defense in depth | `flock` released 2.8 ms after its holder was killed; `lockf` vanished when an unrelated descriptor closed; `os.rename` replaced an empty directory and `renamex_np(RENAME_EXCL)` refused it. The interleaving check found the store-to-alias reclamation race in the previous design and none in this one |
+| Locks and state machines | `state-machines.json` for the lock order, the side locks, and the startup sweep, and the tables in [Repository Sources and Provider Mirrors](../../architecture/arch-mirror-acquisition-and-refresh.md#acquisition) for acquisition and refresh; publication verifies absence under the owning lock, with a platform no-replace rename as defense in depth | `flock` released 2.8 ms after its holder was killed; `lockf` vanished when an unrelated descriptor closed; `os.rename` replaced an empty directory and `renamex_np(RENAME_EXCL)` refused it. The interleaving check found the store-to-alias reclamation race in the previous design and none in this one |
 | Catalog layout | Flat `sources/` and `repository-stores/` directories | Scanning 10,000 flat entries and reading each record took 262 ms |
 
 Store and alias rules follow from those identities.
@@ -1647,7 +1738,7 @@ for reasons that have nothing to do with this plan.
 
 `metab --api` (`mb-ian3`) and the persisted-state parity clause have landed, so this
 phase uses them directly rather than building a parallel inspection harness.
-See [CLI-first delivery](plan-2026-08-28-cli-first-delivery-map.md).
+See [CLI-first delivery](../done/plan-2026-08-28-cli-first-delivery-map.md).
 
 #### Phase 1A implementation decisions
 
@@ -1731,8 +1822,8 @@ detail.
 The foundation has acquisition, content-source and immutable-revision slices; #216
 consolidates the latter two.
 Their remaining acceptance closed in #226. The pull requests above it are named in the
-alpha test plan’s [Delivery](plan-2026-09-22-v012-alpha-testing.md#delivery) section,
-and the stabilized stack landed together.
+alpha test plan’s [Delivery](../done/plan-2026-09-22-v012-alpha-testing.md#delivery)
+section, and the stabilized stack landed together.
 
 **Addendum (2026-09-23, thin-mirror Simplify step):** the checklists below record what
 was built; the Simplify step replaced part of it.
@@ -1875,9 +1966,10 @@ Its acceptance and independent review are completed in
   invalid-UTF-8, and newline-name behavior with focused source and route tests in
   `tests/test_git_tree_source.py` and `tests/test_git_revision_content_routes.py`.
 - [x] Complete installed-CLI acceptance for immutable Git content, including the
-  minimum-Git evidence in the [alpha test plan](plan-2026-09-22-v012-alpha-testing.md):
-  the T0 walkthrough in [#226](https://github.com/jlevy/metabrowser/pull/226) and the
-  `admitted-git` job. URL-serving browser acceptance belongs to Phase 2A.
+  minimum-Git evidence in the
+  [alpha test plan](../done/plan-2026-09-22-v012-alpha-testing.md): the T0 walkthrough
+  in [#226](https://github.com/jlevy/metabrowser/pull/226) and the `admitted-git` job.
+  URL-serving browser acceptance belongs to Phase 2A.
 - [x] Prove two processes share one object store while browsing different OIDs without a
   checkout, index, local branch, or working-tree mutation.
 - [x] Independently review and publish through `mb-hoae` before any URL route claims it
@@ -1887,7 +1979,7 @@ Its acceptance and independent review are completed in
 #### Phase 2A: Open repository and hosted web URLs (`mb-12cz`, `mb-s1lt`, `mb-ew38`, `mb-innz`)
 
 **Addendum (2026-09-30):** superseded by the
-[thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md).
+[thin-mirror plan](../done/plan-2026-09-23-v012-thin-mirror.md).
 Its GitHub URL open step (#231, `mb-bgs7`) opens repository and GitHub web URLs over
 HTTPS through the built-in reducer, with no public reducer SDK; the unchecked items
 below will not be done as written.
@@ -1923,7 +2015,7 @@ below will not be done as written.
 #### Phase 2B: Provider jobs, selected refs, and convergence (`mb-jlon`, `mb-bgn8`, `mb-bf94`)
 
 **Addendum (2026-09-30):** retired by the
-[thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md), with no replacement.
+[thin-mirror plan](../done/plan-2026-09-23-v012-thin-mirror.md), with no replacement.
 Stores are full clones and a refresh is one `git fetch`, so the unchecked items below
 will not be done.
 
@@ -1967,7 +2059,7 @@ will not be done.
   valid lease fails with `git_credentials_unavailable` before Git starts, so no ambient
   credential can be used.
   The broker and projection arrive in Phase 3A under the isolation rules in
-  [Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md#fetch-and-credentials).
+  [Repository Sources and Provider Mirrors](../../architecture/arch-mirror-acquisition-and-refresh.md#transports-and-credentials).
 - [ ] Persist a non-secret `StagedFetch` job record, take the store lease with no
   ordered lock held, verify the configuration snapshot, and fetch from a promisor remote
   recorded in it — never a URL — directly into the store under
@@ -1997,7 +2089,7 @@ will not be done.
 #### Phase 2C: Open any selected branch as an immutable revision (`mb-2xq7`, `mb-9aku`)
 
 **Addendum (2026-09-30):** superseded by the
-[thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md).
+[thin-mirror plan](../done/plan-2026-09-23-v012-thin-mirror.md).
 Its GitHub URL open step (#231) splits a ref and path against the mirror, and the branch
 and tag selector (#236) switches the served pin; the unchecked items below will not be
 done as written.
@@ -2022,6 +2114,12 @@ done as written.
 
 ### Later: Generic catalog, refresh, and cache management
 
+**Addendum (2026-11-14):** Phase 2B was superseded, and the thin-mirror Simplify step
+([#228](https://github.com/jlevy/metabrowser/pull/228)) removed convergence, subject
+refs, leases, and store reclamation.
+The read-only `/api/cache/` routes already report layout, sources, and stores.
+Re-plan the items below against the thin-mirror plan before starting `mb-0ybg`.
+
 Phase 2B ships the provider-facing job lifecycle and selected-ref fetching needed for
 v0.12.0. The operations below build on that service but remain outside the initial
 vertical slice.
@@ -2039,6 +2137,21 @@ vertical slice.
   blobless stores; `gc --prune=now`, `repack -a -d`, and `prune --expire=now` keep them.
 
 ### Later: Repository chooser and session switching
+
+[Open Modes](../../architecture/arch-open-modes.md) now holds the model a chooser builds
+on: what a root is, the mode it opens in, and the
+[records that key on it](../../architecture/arch-open-modes.md#what-keys-on-the-root),
+recent targets among them.
+
+**Addendum (2026-11-18):** “recent” below is now a store of its own.
+`metab` records every root it serves, a repository opened from a URL among them, as a
+[recent target](../../architecture/arch-recent-targets.md) with the
+[mode](../../architecture/arch-open-modes.md#the-three-modes) it was opened in, and
+`metab --recent` lists them (`mb-40k4`). A chooser reads that list for recency and the
+catalog for what the cache holds.
+The cache’s own `last_opened_at`, in a source’s `state.yml`, is not that list: every
+acquisition sets it, a data mode’s included, and clearing the cache removes it.
+The macOS app’s File > Open URL… (`mb-m4mg`) is the first chooser over it.
 
 - [ ] Add a chooser over the generic catalog with recent, favorite, offline, partial,
   dirty, and refresh states.
@@ -2086,10 +2199,10 @@ is on `main`. URL serving in 2A and 2C must verify it on the new entry points; f
 acquisition, and immutable-source tests can proceed independently.
 
 **Outbound, depending on the extracted Phase 2B selected-ref foundation:**
-[the GitHub provider plan](plan-2026-08-27-github-provider-and-pull-requests.md) needs a
-stable source attachment, shared repository-store service when content is requested,
-atomic publication, the documented lock hierarchy, owner-only storage, job progress and
-cancellation, and core-side ref fetching.
+[the GitHub provider plan](../done/plan-2026-08-27-github-provider-and-pull-requests.md)
+needs a stable source attachment, shared repository-store service when content is
+requested, atomic publication, the documented lock hierarchy, owner-only storage, job
+progress and cancellation, and core-side ref fetching.
 Provider metadata for a user-owned checkout does **not** require a published Git store,
 catalog, chooser, purge, or size accounting.
 That extracted Phase 2B service is `mb-jlon`; the full generic catalog and management
@@ -2203,8 +2316,8 @@ above.
   convergence, and recorded the evidence it could not supply and who owns it, in
   [Phase 0 decisions](#phase-0-decisions).
 - Snapshot sharding and transport selection moved with
-  [the provider plan](plan-2026-08-27-github-provider-and-pull-requests.md) and are
-  deferred there rather than here.
+  [the provider plan](../done/plan-2026-08-27-github-provider-and-pull-requests.md) and
+  are deferred there rather than here.
 - Automatic eviction waits for measured size data from later cache operations and
   remains absent unless a defensible default follows.
 - A live session retains its immutable subject until explicit navigation; background
@@ -2242,7 +2355,7 @@ The first usable repository URL and branch phases are complete when:
 
 ## References
 
-- [Repository cache and open from a Git URL](../../research/research-2026-08-11-repo-cache-and-git-url-open.md)
+- [Repository cache and open from a Git URL](../../research/archive/research-2026-08-11-repo-cache-and-git-url-open.md)
   — acquisition measurements, prior art, and the dated research record
 - [Repository-library and GitHub-model design review](../../reviews/review-2026-08-26-repository-library-and-github-model.md)
   — findings resolved by this rewrite
@@ -2251,7 +2364,7 @@ The first usable repository URL and branch phases are complete when:
 - [General diff rendering](plan-2026-08-17-general-diff-rendering.md) — shared
   comparison pipeline and its boundaries with durable acquisition and immutable revision
   subjects
-- [Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md)
+- [Repository Sources and Provider Mirrors](../../architecture/arch-repository-cache.md)
   — shared Git store, attached checkout, provider mirror, and multi-client contract
 - [Git revision navigation performance](../done/plan-2026-08-25-git-revision-navigation-performance.md)
   — current revision loading and comparison behavior

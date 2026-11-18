@@ -123,7 +123,8 @@ $ node tests/dom/page-connections-session.js
         "step": "stream 2 opens and sends its snapshot",
         "did": [
           "timer 2: set for 10000 ms",
-          "request: GET /api/catalog"
+          "request: GET /api/catalog",
+          "event: metabrowser:inventory-change snapshot anything may have changed"
         ],
         "after": {
           "streams": [

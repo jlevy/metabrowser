@@ -242,7 +242,47 @@ def _state(listed: CatalogState, stamp: PullRefreshStamp | None) -> ListState:
     return "current" if fresh and not other else "stale"
 
 
+@dataclass(frozen=True, slots=True)
+class ListFound:
+    """What one envelope is built from, as :func:`read_catalog_window` read it from the cache."""
+
+    stamp: PullRefreshStamp | None
+    listed: CatalogState | None
+    rows: list[dict[str, Any]]
+    following: int | None
+
+
+def read_catalog_window(view: ListView, window: ListWindow) -> ListFound | None:
+    """What *view*'s envelope for *window* is built from, or ``None`` with no repository.
+
+    Blocking and bounded: the stamp and one indexed window of the catalog.
+    """
+
+    repository = view.repository
+    if repository is None:
+        return None
+    stamp = read_list_refresh(repository.home, repository.slug, "all")
+    listed, rows, following = catalog_window(
+        repository.home, repository.slug, window.name, limit=window.limit, after=window.after
+    )
+    if listed is not None and listed.source != repository.source:
+        listed, rows, following = None, [], None
+    return ListFound(stamp, listed, rows, following)
+
+
 def pull_list_envelope(view: ListView, window: ListWindow) -> PullListEnvelope:
+    """The envelope for one window of the catalog. Blocking and bounded."""
+
+    return list_envelope(view, read_catalog_window(view, window), window)
+
+
+def list_envelope(view: ListView, found: ListFound | None, window: ListWindow) -> PullListEnvelope:
+    """The envelope for *window* of what *found* holds, as *view* is. Reads no file.
+
+    ``refreshing`` is *view*'s, which may be newer than *found*: the refresh route reads
+    what a job finds before it starts the job.
+    """
+
     empty = PullListEnvelope(
         state="absent",
         reason="not_github",
@@ -267,14 +307,9 @@ def pull_list_envelope(view: ListView, window: ListWindow) -> PullListEnvelope:
         rows=[],
     )
     repository = view.repository
-    if repository is None:
+    if repository is None or found is None:
         return empty
-    stamp = read_list_refresh(repository.home, repository.slug, "all")
-    listed, rows, following = catalog_window(
-        repository.home, repository.slug, window.name, limit=window.limit, after=window.after
-    )
-    if listed is not None and listed.source != repository.source:
-        listed, rows, following = None, [], None
+    stamp, listed = found.stamp, found.listed
     empty.update(
         source=repository.source,
         last_refresh=LastRefresh(
@@ -304,8 +339,8 @@ def pull_list_envelope(view: ListView, window: ListWindow) -> PullListEnvelope:
         "fetched": listed.cached[window.name],
         "complete": listed.done["all"],
         "truncated": listed.truncated,
-        "next_after": following,
-        "rows": rows,
+        "next_after": found.following,
+        "rows": found.rows,
     }
 
 
@@ -393,7 +428,17 @@ def refresh_wanted(view: ListView, ask: RefreshRequest) -> ListRefreshWanted:
             return True
         return "reconnect" if ask.reconnect and stamp.outcome == "network_error" else False
     listed = read_catalog(repository.home, repository.slug)
-    return listed is None or not listed.done["all"] or refresh_is_due(stamp, now=now)
+    if listed is None or refresh_is_due(stamp, now=now):
+        return True
+    if listed.done["all"]:
+        return False
+    from metabrowser.builtin_plugins.github.pull_list_refresh import (
+        backfill_admitted,
+        prefix_wanted,
+    )
+
+    # Past the asked prefix the backfill is background work, which the budget may pause.
+    return prefix_wanted(listed, ask.name, ask.target) or backfill_admitted()
 
 
 def start_refresh(

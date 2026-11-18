@@ -1,22 +1,46 @@
 // Shared command dispatch and presentation for application keyboard shortcuts.
 
 (() => {
-  /** @typedef {"alt" | "control" | "meta" | "shift"} ModifierName */
-  /** @typedef {"allow" | "forbid" | "require"} ModifierPolicy */
   /**
+   * One key, or Control with one of the letters `CONTROL_CHORD_KEYS` names, registered
+   * only where `controlReachesPage()`. A binding states no other modifier policy
+   * (docs/design-system.md, "Binding Grammar and Accessibility" and "Control Chords").
+   *
    * @typedef {object} ShortcutBinding
    * @property {string} key
-   * @property {Partial<Record<ModifierName, ModifierPolicy>>} [modifiers]
+   * @property {true} [control] Control is held with the key, and Alt and Meta are not.
    */
+  /** @typedef {"digit" | "letter" | "named" | "punctuation"} KeyClass */
+  /** @typedef {Readonly<{kind: string, commandId?: string, kinds?: readonly string[], scope?: string}>} ShortcutEvent */
   /**
    * @typedef {object} BindingPresentation
    * @property {string} ariaKeyshortcuts
    * @property {BindingPresentation} [preferred]
+   * @property {boolean} [range] The keycaps are the ends of a run of keys, as the
+   *   numbers 1 to 9 are, rather than alternatives.
    * @property {string} spoken
-   * @property {readonly Readonly<{keys: readonly string[], separators: readonly string[]}>[]} visible
+   * @property {readonly string[]} visible One keycap label per alternative.
    */
   /** @typedef {{connect: (element: HTMLElement) => () => void}} ShortcutControlBinding */
   /**
+   * The descriptor contract. Every presented command declares a stable `id` and `scope`;
+   * semantic `bindings`, each one key with no modifier policy, and an explicit `repeat`
+   * policy; a `group` whose heading, context sentence, and order come from
+   * GROUP_DEFINITIONS; `copy` with a sentence-case action label and no terminal
+   * punctuation, an active-voice Help description ending in a period, and a compact hint
+   * of one to three words; and the `surfaces` where it appears and when they may show it.
+   * A command rendered as a control that opens a managed surface also supplies a
+   * `control` binding, which connects the trigger to its controlled element's ID, popup
+   * role, and expanded state and restores any prior state when disconnected, so no call
+   * site hand-writes the controls, popup, or expanded ARIA attributes; pointer
+   * invocation carries the trigger so an overlay can restore focus. The key formatter,
+   * not the descriptor, supplies abbreviations and glyphs. The registry rejects duplicate
+   * normalized bindings within a scope and incomplete copy for a requested surface;
+   * equivalent keys are aliases in one descriptor, and adjacent commands that share a
+   * compact hint are coalesced with "or". Full Help lists contextual commands even while
+   * their scope is inactive; compact hints list only the commands selected for that
+   * surface, and they leave, rather than look disabled, when their scope does.
+   *
    * @typedef {object} ShortcutCommand
    * @property {boolean} [allowInEditable]
    * @property {readonly ShortcutBinding[]} bindings
@@ -29,7 +53,37 @@
    * @property {boolean} [repeat]
    * @property {string} scope
    * @property {Readonly<Record<string, "active" | "always">>} surfaces
+   * @property {boolean} [targeted]
+   * @property {boolean} [situational] Its bindings are positional, a run of numbers no
+   *   control owns, so it is presented as that run rather than as alternatives.
    * @property {(context: Record<string, unknown>) => boolean} [available]
+   */
+  /** @typedef {"beside" | "inline-end"} BadgePlacement */
+  /**
+   * One element a command acts on, and the badge it carries while revealed.
+   *
+   * @typedef {object} ShortcutTargetRecord
+   * @property {HTMLElement | null} badge
+   * @property {string} commandId
+   * @property {HTMLElement} element
+   * @property {BadgePlacement} placement
+   * @property {number} rank Lower first among live targets, then document order.
+   */
+  /**
+   * @typedef {object} ShortcutTargetHandle
+   * @property {() => void} detach
+   * @property {(element: HTMLElement) => void} retarget
+   */
+  /**
+   * One situational control the numbers reach: a link or an action that depends on
+   * what the screen shows. Its number is its place among the live ones, so it has none
+   * of its own.
+   *
+   * @typedef {object} NumberedRecord
+   * @property {() => unknown} activate
+   * @property {HTMLElement | null} badge
+   * @property {HTMLElement} element
+   * @property {BadgePlacement} placement
    */
   /**
    * @typedef {object} ShortcutPresentation
@@ -49,22 +103,27 @@
    * @property {Readonly<ShortcutPresentation>} presentation
    */
 
-  /** @type {readonly ModifierName[]} */
-  const MODIFIER_ORDER = Object.freeze(["control", "alt", "shift", "meta"]);
-  /** @type {Readonly<Record<ModifierName, keyof KeyboardEvent>>} */
-  const MODIFIER_EVENT_FIELDS = Object.freeze({
-    alt: "altKey",
-    control: "ctrlKey",
-    meta: "metaKey",
-    shift: "shiftKey",
-  });
-  /** @type {Readonly<Record<ModifierName, Readonly<{aria: string, spoken: string, visible: string}>>>} */
-  const MODIFIER_DEFINITIONS = Object.freeze({
-    alt: Object.freeze({ aria: "Alt", spoken: "Alt", visible: "Alt" }),
-    control: Object.freeze({ aria: "Control", spoken: "Control", visible: "Ctrl" }),
-    meta: Object.freeze({ aria: "Meta", spoken: "Command", visible: "⌘" }),
-    shift: Object.freeze({ aria: "Shift", spoken: "Shift", visible: "⇧" }),
-  });
+  // A key event with any of these held never matches a single-key binding: the chords
+  // belong to the browser and the platform. Shift is ignored instead, so
+  // holding it never changes what a key means. AltGr reports Ctrl and Alt, so
+  // punctuation typed with it stays outside the shortcuts too.
+  /** @type {readonly ("altKey" | "ctrlKey" | "metaKey")[]} */
+  const DISQUALIFYING_MODIFIERS = Object.freeze(["altKey", "ctrlKey", "metaKey"]);
+  // The letters a binding may hold with Control, the one chord the registry binds: N and
+  // P, next and previous, as in Emacs, readline, and the macOS text system. A chord is
+  // bound only where it reaches the page, macOS and iOS (`controlReachesPage`), where
+  // no browser or app command is Control with a letter; elsewhere Control is the
+  // browser's command key, Ctrl+N a new window and Ctrl+P Print, and stays the browser's
+  // (docs/design-system.md, "Control Chords"). Adding a letter is a design decision,
+  // made there first.
+  /** @type {readonly string[]} */
+  const CONTROL_CHORD_KEYS = Object.freeze(["n", "p"]);
+  // How a Control chord is written, `⌃N`, as macOS and iOS write it: the only platforms
+  // where one is bound.
+  const CONTROL_GLYPH = "⌃";
+  // Scopes that are always active below the activated ones, in order. `plugin` holds the
+  // keys plugin views attach through static/plugin-shortcuts.js, below every shell key.
+  const PERMANENT_SCOPES = Object.freeze(["global", "view-tabs", "plugin"]);
 
   /** @type {Readonly<Record<string, Readonly<{aria: string, spoken: string, visible: string}>>>} */
   const KEY_DEFINITIONS = Object.freeze({
@@ -83,6 +142,18 @@
     Home: Object.freeze({ aria: "Home", spoken: "Home", visible: "Home" }),
   });
 
+  // Keys that Shift turns into text selection inside a field: a command never
+  // takes Shift+Arrow, Shift+Home, or Shift+End from a text field, even one
+  // that opted in with allowInEditable.
+  const TEXT_SELECTION_KEYS = new Set([
+    "ArrowDown",
+    "ArrowLeft",
+    "ArrowRight",
+    "ArrowUp",
+    "End",
+    "Home",
+  ]);
+
   /** @type {Readonly<Record<string, Readonly<{context: string, label: string, order: number}>>>} */
   const GROUP_DEFINITIONS = Object.freeze({
     anywhere: Object.freeze({
@@ -91,14 +162,37 @@
       order: 10,
     }),
     "main-tabs": Object.freeze({
-      context: "Use the number alone if your browser reserves Command and numbers.",
+      context: "Available outside text fields.",
       label: "Main tabs",
       order: 15,
+    }),
+    "view-tabs": Object.freeze({
+      context: "Available while the tabs are shown.",
+      label: "View tabs",
+      order: 16,
+    }),
+    controls: Object.freeze({
+      context: "Available while the control is shown.",
+      label: "Controls",
+      order: 18,
+    }),
+    // The numbers are positional, so Help gives them one row and never a fixed meaning.
+    numbered: Object.freeze({
+      context: "The numbers are not fixed: each screen numbers its own links and actions.",
+      label: "On this screen",
+      order: 19,
     }),
     navigation: Object.freeze({
       context: "Available while a file-tree row has focus.",
       label: "Navigation",
       order: 20,
+    }),
+    // A menu's row letters, each live only in its open menu (docs/design-system.md, "Keys
+    // in a Menu").
+    menus: Object.freeze({
+      context: "Available while the menu is open and has focus.",
+      label: "Menus",
+      order: 21,
     }),
     "pull-requests": Object.freeze({
       context: "Available while a pull-request row has focus.",
@@ -122,6 +216,26 @@
     }),
   });
 
+  // The situational numbers: links and actions that depend on what the screen shows take
+  // 1, 2, 3, and on in reading order, which is document order in the shell's layout (the
+  // navigation pane before the main pane, top to bottom), up to 9. A tenth and later get
+  // no key: no 0, no letter, and no wrap-around (docs/design-system.md, "Keyboard
+  // Shortcuts").
+  const NUMBERED_LIMIT = 9;
+  const NUMBERED_COMMAND_ID = "numbered";
+  /** @type {readonly ShortcutBinding[]} */
+  const NUMBERED_BINDINGS = Object.freeze(
+    Array.from({ length: NUMBERED_LIMIT }, (_, index) => Object.freeze({ key: String(index + 1) })),
+  );
+
+  // Keys that are named but never bound: the single-key entry point renders
+  // them, as the Shift in Help's closing note, and the binding validator
+  // refuses them.
+  /** @type {Readonly<Record<string, Readonly<{aria: string, spoken: string, visible: string}>>>} */
+  const STANDALONE_KEY_DEFINITIONS = Object.freeze({
+    Shift: Object.freeze({ aria: "Shift", spoken: "Shift", visible: "Shift" }),
+  });
+
   /** @param {string} key */
   function keyDefinition(key) {
     const known = KEY_DEFINITIONS[key];
@@ -135,50 +249,154 @@
     throw new TypeError(`Unsupported shortcut key: ${key}`);
   }
 
+  /**
+   * How a normalized binding key matches an event: a letter in either case, a
+   * digit by the character and then by its digit-row key, punctuation by the
+   * character typed, and a named key by its name.
+   *
+   * @param {string} key
+   * @returns {KeyClass}
+   */
+  function keyClass(key) {
+    if (/^[a-z]$/.test(key)) {
+      return "letter";
+    }
+    if (isDigitKey(key)) {
+      return "digit";
+    }
+    return key === "?" || key === "/" ? "punctuation" : "named";
+  }
+
   /** @param {ShortcutBinding} binding @returns {Readonly<ShortcutBinding>} */
   function normalizeBinding(binding) {
     if (!binding || typeof binding.key !== "string") {
       throw new TypeError("Shortcut bindings require a key");
     }
+    if (/** @type {{modifiers?: unknown}} */ (binding).modifiers !== undefined) {
+      // A policy here would let one command at a time reintroduce a chord, or a
+      // key whose meaning Shift changes.
+      throw new TypeError(`Shortcut bindings state no modifier policy: ${binding.key}`);
+    }
     // Rejects any key the vocabulary cannot name; the definition itself is
     // resolved again at presentation time.
     keyDefinition(binding.key);
     const key = /^[a-z]$/i.test(binding.key) ? binding.key.toLowerCase() : binding.key;
-    const sourceModifiers = binding.modifiers || {};
-    const modifiers = /** @type {Record<ModifierName, ModifierPolicy>} */ ({});
-    for (const name of MODIFIER_ORDER) {
-      const policy = sourceModifiers[name] || "forbid";
-      if (!["allow", "forbid", "require"].includes(policy)) {
-        throw new TypeError(`Unsupported ${name} modifier policy: ${policy}`);
-      }
-      modifiers[name] = policy;
+    const control = /** @type {{control?: unknown}} */ (binding).control;
+    if (control === undefined) {
+      return Object.freeze({ key });
     }
-    return Object.freeze({ key, modifiers: Object.freeze(modifiers) });
+    // Control is declared, never implied, and only with the letters the rule names.
+    if (control !== true || !CONTROL_CHORD_KEYS.includes(key)) {
+      const letters = CONTROL_CHORD_KEYS.map((letter) => letter.toUpperCase()).join(" or ");
+      throw new TypeError(`Shortcut bindings take Control only with ${letters}: ${binding.key}`);
+    }
+    return Object.freeze({ control: true, key });
   }
 
   /** @param {ShortcutBinding} binding */
   function bindingSignature(binding) {
     const normalized = normalizeBinding(binding);
-    return `${normalized.key}|${MODIFIER_ORDER.map(
-      (name) => `${name}:${normalized.modifiers?.[name]}`,
-    ).join("|")}`;
+    return normalized.control ? `Control+${normalized.key}` : normalized.key;
   }
 
-  /** @param {KeyboardEvent} event @param {ShortcutBinding} binding */
-  function eventMatchesBinding(event, binding) {
+  /**
+   * Whether a Control chord reaches the page: on macOS and iOS, where Command is the
+   * command key and no browser or app command is Control with a letter. Elsewhere Control
+   * is the browser's command key, so no chord is bound there. Read from the page's
+   * navigator, client hints first; without one, as in a browserless session, it is false.
+   */
+  function controlReachesPage() {
+    const navigator =
+      /** @type {{platform?: unknown, userAgentData?: {platform?: unknown}} | undefined} */ (
+        window.navigator
+      );
+    const platform = navigator?.userAgentData?.platform || navigator?.platform;
+    return typeof platform === "string" && /^(mac|iphone|ipad|ipod)/i.test(platform);
+  }
+
+  /**
+   * A binding's names: its key's, or for a Control chord `⌃N`, as macOS and iOS write it,
+   * spoken "Control N", and `Control+N` for `aria-keyshortcuts`.
+   *
+   * @param {ShortcutBinding} binding
+   * @returns {Readonly<{aria: string, spoken: string, visible: string}>}
+   */
+  function bindingDefinition(binding) {
     const normalized = normalizeBinding(binding);
+    const key = keyDefinition(normalized.key);
+    if (!normalized.control) {
+      return key;
+    }
+    return Object.freeze({
+      aria: `Control+${key.aria}`,
+      spoken: `Control ${key.spoken}`,
+      visible: `${CONTROL_GLYPH}${key.visible}`,
+    });
+  }
+
+  /** @param {string} key */
+  function isDigitKey(key) {
+    return /^[0-9]$/.test(key);
+  }
+
+  /**
+   * Whether an event is this binding's key. Shift is ignored for every key
+   * class, except that inside a text field Shift with a selection key (an
+   * arrow, Home, or End) belongs to the field, where it extends the text
+   * selection. Shift+Enter and Shift+Escape still act. Ctrl, Alt, and Meta
+   * disqualify the event for a single-key binding.
+   *
+   * A Control chord matches its letter with Control held and neither Alt nor
+   * Meta: AltGr reports Control and Alt, so the character it types stays text.
+   * It never matches in a text field, even for a command that opted in, since
+   * macOS moves the caret with Control+N and Control+P there.
+   *
+   * The physical pass matches a digit binding by its digit-row key, for an
+   * event whose character is not a digit: US Shift+1 types `!` and Shift+0 `)`,
+   * and AZERTY's unshifted digit row types `&é"'(` and `à`. The dispatcher takes
+   * it only after the character matched nothing, so German Shift+7, which types
+   * `/`, stays `/`.
+   * Numpad digits match by character.
+   *
+   * @param {KeyboardEvent} event
+   * @param {ShortcutBinding} binding
+   * @param {{physical?: boolean}} [matchOptions]
+   */
+  function eventMatchesBinding(event, binding, matchOptions = {}) {
+    const normalized = normalizeBinding(binding);
+    if (normalized.control) {
+      return (
+        event.ctrlKey &&
+        !event.altKey &&
+        !event.metaKey &&
+        !matchOptions.physical &&
+        typeof event.key === "string" &&
+        event.key.toLowerCase() === normalized.key &&
+        !isEditableTarget(event.target)
+      );
+    }
+    if (DISQUALIFYING_MODIFIERS.some((field) => event[field])) {
+      return false;
+    }
+    const bindingClass = keyClass(normalized.key);
+    if (matchOptions.physical) {
+      return (
+        bindingClass === "digit" &&
+        // Digit0 through Digit9: the situational numbers' keys, and Home's `0`.
+        !isDigitKey(event.key) &&
+        event.code === `Digit${normalized.key}`
+      );
+    }
     const eventKey = /^[a-z]$/i.test(event.key) ? event.key.toLowerCase() : event.key;
     if (eventKey !== normalized.key) {
       return false;
     }
-    for (const name of MODIFIER_ORDER) {
-      const pressed = Boolean(event[MODIFIER_EVENT_FIELDS[name]]);
-      const policy = normalized.modifiers?.[name];
-      if ((policy === "require" && !pressed) || (policy === "forbid" && pressed)) {
-        return false;
-      }
-    }
-    return true;
+    return !(
+      bindingClass === "named" &&
+      event.shiftKey &&
+      TEXT_SELECTION_KEYS.has(normalized.key) &&
+      isEditableTarget(event.target)
+    );
   }
 
   /** @param {EventTarget | null} target */
@@ -196,38 +414,72 @@
     );
   }
 
+  // Where a badge sits: inside its target over the inline-end padding, or `beside`:
+  // over the target's own inline end but positioned through the nearest badge anchor,
+  // for an icon button or a target in a container that clips, so the badge covers its
+  // own control rather than the text after it (docs/design-system.md, "Keyboard
+  // Commands and Help"). The styles are the `── Keyboard keys ──` blocks of styles.css.
+  /** @type {ReadonlySet<string>} */
+  const BADGE_PLACEMENTS = new Set(["beside", "inline-end"]);
+  const BADGE_ANCHOR_SELECTOR = "[data-kbd-badge-anchor]";
+  // Node.DOCUMENT_POSITION_FOLLOWING, spelled out so the registry needs no Node global.
+  const DOCUMENT_POSITION_FOLLOWING = 4;
+
+  /**
+   * Whether a target can take its key now: connected, not `disabled`, outside any
+   * `inert` subtree, and visible. Read at dispatch rather than tracked, because the
+   * shell hides whole panels through a style change no target hears about.
+   *
+   * `checkVisibility()` ignores `inert`, so a view staged in the shell's inert,
+   * transparent stage would otherwise count beside the one on screen; the inert walk
+   * runs on both paths. Without `checkVisibility()`, no ancestor may compute
+   * `display: none` and the target may not compute `visibility: hidden`, which it
+   * inherits from an ancestor unless it overrides it.
+   *
+   * @param {HTMLElement} element
+   */
+  function isTargetLive(element) {
+    if (
+      !element.isConnected ||
+      element.hasAttribute("disabled") ||
+      /** @type {{disabled?: unknown}} */ (element).disabled === true
+    ) {
+      return false;
+    }
+    for (let node = /** @type {HTMLElement | null} */ (element); node; node = node.parentElement) {
+      if (node.inert) {
+        return false;
+      }
+    }
+    if (typeof element.checkVisibility === "function") {
+      return element.checkVisibility({ visibilityProperty: true });
+    }
+    const view = element.ownerDocument.defaultView;
+    if (!view) {
+      return true;
+    }
+    for (let node = /** @type {HTMLElement | null} */ (element); node; node = node.parentElement) {
+      if (view.getComputedStyle(node).display === "none") {
+        return false;
+      }
+    }
+    return view.getComputedStyle(element).visibility !== "hidden";
+  }
+
+  /** @param {HTMLElement} left @param {HTMLElement} right */
+  function precedesInDocument(left, right) {
+    return (
+      typeof left.compareDocumentPosition === "function" &&
+      (left.compareDocumentPosition(right) & DOCUMENT_POSITION_FOLLOWING) !== 0
+    );
+  }
+
   /** @param {readonly ShortcutBinding[]} bindings @returns {BindingPresentation} */
   function describeBindings(bindings) {
     if (!Array.isArray(bindings) || bindings.length === 0) {
       throw new TypeError("Presented commands require at least one binding");
     }
-    const alternatives = bindings.map((binding) => {
-      const normalized = normalizeBinding(binding);
-      const definition = keyDefinition(normalized.key);
-      const requiredModifiers = MODIFIER_ORDER.filter(
-        (name) => normalized.modifiers?.[name] === "require",
-      );
-      const keys = [
-        ...requiredModifiers.map((name) => MODIFIER_DEFINITIONS[name].visible),
-        definition.visible,
-      ];
-      const spoken = [
-        ...requiredModifiers.map((name) => MODIFIER_DEFINITIONS[name].spoken),
-        definition.spoken,
-      ].join(" plus ");
-      const ariaKeys = [
-        ...requiredModifiers.map((name) => MODIFIER_DEFINITIONS[name].aria),
-        definition.aria,
-      ];
-      return Object.freeze({
-        aria: definition.aria ? ariaKeys.join("+") : "",
-        spoken,
-        visible: Object.freeze({
-          keys: Object.freeze(keys),
-          separators: Object.freeze(keys.slice(1).map(() => "+")),
-        }),
-      });
-    });
+    const alternatives = bindings.map((binding) => bindingDefinition(binding));
     const preferred = alternatives[0];
     return Object.freeze({
       ariaKeyshortcuts: alternatives
@@ -248,49 +500,95 @@
   }
 
   /**
+   * The situational numbers as one run, written by its ends: `1` to `9`. No number has
+   * a fixed meaning, so no surface lists one alone, and none names a control in
+   * `aria-keyshortcuts`; each is announced only through the run's spoken form.
+   *
+   * @param {readonly ShortcutBinding[]} bindings
+   * @returns {BindingPresentation}
+   */
+  function describeRange(bindings) {
+    const ends = [bindings[0], bindings[bindings.length - 1]].map((binding) =>
+      bindingDefinition(binding),
+    );
+    const visible = Object.freeze(ends.map((end) => end.visible));
+    const spoken = `${ends[0].spoken} to ${ends[1].spoken}`;
+    const run = { ariaKeyshortcuts: "", range: true, spoken, visible };
+    return Object.freeze({ ...run, preferred: Object.freeze({ ...run }) });
+  }
+
+  /**
+   * One keycap per alternative, joined by "or", or a run's two ends joined by a dash.
+   * An alternative is one keycap, a Control chord's included, `⌃N`; a group of them is
+   * spoken as one visually hidden phrase, such as "T or slash" or "1 to 9", with its
+   * keycaps and separators hidden. A chord alone is spoken so too, "Control N", since a
+   * screen reader may name `⌃` by its Unicode name rather than as Control.
+   *
    * @param {Document} hostDocument
    * @param {HTMLElement} container
    * @param {BindingPresentation} presentation
    */
   function appendBinding(hostDocument, container, presentation) {
-    const complex =
-      presentation.visible.length > 1 ||
-      presentation.visible.some((alternative) => alternative.keys.length > 1);
-    if (complex) {
+    const alternatives = presentation.visible.length > 1;
+    const phrased =
+      alternatives || presentation.visible.some((label) => label.startsWith(CONTROL_GLYPH));
+    if (phrased) {
       const spoken = hostDocument.createElement("span");
       spoken.className = "visually-hidden";
       spoken.textContent = presentation.spoken;
       container.append(spoken);
     }
-    presentation.visible.forEach((alternative, alternativeIndex) => {
-      if (alternativeIndex > 0) {
+    presentation.visible.forEach((label, index) => {
+      if (index > 0) {
         const separator = hostDocument.createElement("span");
         separator.className = "shortcut-binding-separator";
-        separator.textContent = "or";
-        if (complex) {
-          separator.setAttribute("aria-hidden", "true");
-        }
+        separator.textContent = presentation.range ? "–" : "or";
+        separator.setAttribute("aria-hidden", "true");
         container.append(separator);
       }
-      alternative.keys.forEach((key, keyIndex) => {
-        if (keyIndex > 0) {
-          const separator = hostDocument.createElement("span");
-          separator.className = "shortcut-binding-separator";
-          separator.textContent = alternative.separators[keyIndex - 1] || "+";
-          if (complex) {
-            separator.setAttribute("aria-hidden", "true");
-          }
-          container.append(separator);
-        }
-        const keycap = hostDocument.createElement("kbd");
-        keycap.className = "kbd";
-        keycap.textContent = key;
-        if (complex) {
-          keycap.setAttribute("aria-hidden", "true");
-        }
-        container.append(keycap);
-      });
+      const keycap = createKeycap(hostDocument, label);
+      if (phrased) {
+        keycap.setAttribute("aria-hidden", "true");
+      }
+      container.append(keycap);
     });
+  }
+
+  /** @param {Document} hostDocument @param {string} label */
+  function createKeycap(hostDocument, label) {
+    const keycap = hostDocument.createElement("kbd");
+    keycap.className = "kbd";
+    keycap.textContent = label;
+    return keycap;
+  }
+
+  /**
+   * One key that is not a binding: a binding key, or a standalone name such
+   * as `Shift`, which reads as its name.
+   *
+   * @param {string} key
+   */
+  function describeKey(key) {
+    if (typeof key !== "string") {
+      throw new TypeError("A described key must be a string");
+    }
+    return Object.hasOwn(STANDALONE_KEY_DEFINITIONS, key)
+      ? STANDALONE_KEY_DEFINITIONS[key]
+      : keyDefinition(normalizeBinding({ key }).key);
+  }
+
+  /**
+   * Render one key as one keycap and return it, so a caller can mark it, as a
+   * badge marks its keycap hidden from assistive technology.
+   *
+   * @param {Document} hostDocument
+   * @param {HTMLElement} container
+   * @param {string} key
+   */
+  function appendKey(hostDocument, container, key) {
+    const keycap = createKeycap(hostDocument, describeKey(key).visible);
+    container.append(keycap);
+    return keycap;
   }
 
   /** @param {unknown} value @param {string} label */
@@ -338,6 +636,12 @@
     if (descriptor.control !== undefined && typeof descriptor.control.connect !== "function") {
       throw new TypeError("Shortcut control binding requires connect()");
     }
+    if (descriptor.targeted !== undefined && typeof descriptor.targeted !== "boolean") {
+      throw new TypeError("Shortcut command targeted must be a boolean");
+    }
+    if (descriptor.situational !== undefined && typeof descriptor.situational !== "boolean") {
+      throw new TypeError("Shortcut command situational must be a boolean");
+    }
     return true;
   }
 
@@ -353,17 +657,87 @@
     const commands = new Map();
     /** @type {Array<{exclusive: boolean, scope: string, token: symbol}>} */
     const activations = [];
-    /** @type {Set<(event: Readonly<{kind: string, scope?: string, commandId?: string}>) => void>} */
+    /** @type {Set<(event: ShortcutEvent) => void>} */
     const subscribers = new Set();
     let disposed = false;
+    let batchDepth = 0;
+    /** @type {ShortcutEvent[]} */
+    let batchedEvents = [];
+    // Whether a change inside the current batch left the badges to move, once, as it ends.
+    let badgesStale = false;
+    /** Each command's attached targets, kept apart from registration: a command
+     * re-registered with new copy keeps the elements it acts on.
+     * @type {Map<string, ShortcutTargetRecord[]>} */
+    const targets = new Map();
+    /** @type {Set<(event: KeyboardEvent, handled: boolean) => void>} */
+    const keyObservers = new Set();
+    // Whether the key reveal shows: badges exist only then (static/key-reveal.js).
+    let revealed = false;
+    /** The situational controls, in the order they were attached; their numbers come
+     * from where they are on screen, read when a number is pressed or shown.
+     * @type {NumberedRecord[]} */
+    const numbered = [];
+    /** Releases the numbers' one command, registered while any control is numbered.
+     * @type {(() => void) | null} */
+    let releaseNumbered = null;
 
-    /** @param {Readonly<{kind: string, scope?: string, commandId?: string}>} event */
-    function publish(event) {
+    /** @param {ShortcutEvent} event */
+    function deliver(event) {
       for (const listener of subscribers) {
         listener(event);
       }
     }
 
+    /** @param {ShortcutEvent} event */
+    function publish(event) {
+      if (batchDepth > 0) {
+        batchedEvents.push(event);
+      } else {
+        deliver(event);
+      }
+    }
+
+    /**
+     * Run `work` and publish what it changed once, when the outermost batch
+     * ends: one event of its own when it changed one thing, otherwise a `batch`
+     * event naming each kind it contained. While revealed, the badges move once
+     * then too, before the publication, however many changes the batch held.
+     * What a failed batch changed is still published.
+     *
+     * @template T
+     * @param {() => T} work
+     * @returns {T}
+     */
+    function batch(work) {
+      batchDepth += 1;
+      try {
+        return work();
+      } finally {
+        batchDepth -= 1;
+        if (batchDepth === 0 && badgesStale) {
+          badgesStale = false;
+          followBadges();
+        }
+        if (batchDepth === 0 && batchedEvents.length > 0) {
+          const events = batchedEvents;
+          batchedEvents = [];
+          deliver(
+            events.length === 1
+              ? events[0]
+              : Object.freeze({
+                  kind: "batch",
+                  kinds: Object.freeze([...new Set(events.map((event) => event.kind))]),
+                }),
+          );
+        }
+      }
+    }
+
+    // From highest to lowest: activated scopes, most recent first, until an
+    // exclusive modal; then `global`; then the permanent scopes below it. A
+    // permanent scope lets a letter mean one thing in `global` while that
+    // command is available and fall through to another otherwise, and a shell
+    // key outrank a plugin key on the same letter.
     function activeLayers() {
       /** @type {string[]} */
       const layers = [];
@@ -376,7 +750,11 @@
           return layers;
         }
       }
-      layers.push("global");
+      for (const scope of PERMANENT_SCOPES) {
+        if (!layers.includes(scope)) {
+          layers.push(scope);
+        }
+      }
       return layers;
     }
 
@@ -386,6 +764,14 @@
         throw new Error("Shortcut registry is disposed");
       }
       validateCommand(descriptor);
+      // A chord is bound only where it reaches the page; elsewhere it stays the browser's,
+      // and its caller registers none (`controlReachesPage`).
+      if (
+        descriptor.bindings.some((binding) => normalizeBinding(binding).control) &&
+        !controlReachesPage()
+      ) {
+        throw new TypeError(`Control chords are bound only on macOS and iOS: ${descriptor.id}`);
+      }
       if (commands.has(descriptor.id)) {
         throw new TypeError(`Duplicate shortcut command id: ${descriptor.id}`);
       }
@@ -412,7 +798,7 @@
         : undefined;
       /** @type {Readonly<ShortcutPresentation>} */
       const presentation = Object.freeze({
-        bindings: describeBindings(bindings),
+        bindings: descriptor.situational ? describeRange(bindings) : describeBindings(bindings),
         commandIds: Object.freeze([descriptor.id]),
         control,
         copy: Object.freeze({ ...descriptor.copy }),
@@ -426,6 +812,10 @@
         order: descriptor.order,
         presentation,
       });
+      for (const record of targets.get(descriptor.id) || []) {
+        writeTargetShortcut(record);
+      }
+      followBadges();
       publish(Object.freeze({ commandId: descriptor.id, kind: "registration" }));
       let active = true;
       return () => {
@@ -434,19 +824,512 @@
         }
         active = false;
         commands.delete(descriptor.id);
+        for (const record of targets.get(descriptor.id) || []) {
+          writeTargetShortcut(record);
+        }
+        followBadges();
         publish(Object.freeze({ commandId: descriptor.id, kind: "registration" }));
       };
+    }
+
+    /**
+     * A target carries its command's `aria-keyshortcuts` for as long as both exist,
+     * so the key is announced at rest and not only while revealed.
+     *
+     * @param {ShortcutTargetRecord} record
+     */
+    function writeTargetShortcut(record) {
+      const aria = commands.get(record.commandId)?.presentation.bindings.ariaKeyshortcuts;
+      if (aria) {
+        record.element.setAttribute("aria-keyshortcuts", aria);
+      } else {
+        record.element.removeAttribute("aria-keyshortcuts");
+      }
+    }
+
+    /**
+     * The first live target of a command, by rank and then in document order: the one
+     * a key runs and the one that carries the badge. The others keep their
+     * `aria-keyshortcuts` and wait their turn. Shell targets all rank 0; the plugin
+     * facade ranks a letter's targets by which plugin attached it first.
+     *
+     * @param {string} commandId
+     */
+    function firstLiveTarget(commandId) {
+      /** @type {ShortcutTargetRecord | null} */
+      let first = null;
+      for (const record of targets.get(commandId) || []) {
+        if (
+          isTargetLive(record.element) &&
+          (!first ||
+            record.rank < first.rank ||
+            (record.rank === first.rank && precedesInDocument(record.element, first.element)))
+        ) {
+          first = record;
+        }
+      }
+      return first;
+    }
+
+    /**
+     * Whether a command would run now, as far as anything but the key can say: its
+     * scope is active, its `available()` holds, and a targeted command has a live
+     * target. A targeted command with no target at all is not live.
+     *
+     * @param {ShortcutEntry} entry
+     * @param {ReadonlySet<string>} activeScopes
+     */
+    function entryIsLive(entry, activeScopes) {
+      return (
+        entryIsReady(entry, activeScopes) &&
+        (!entry.descriptor.targeted || firstLiveTarget(entry.descriptor.id) !== null)
+      );
+    }
+
+    /**
+     * Whether a command would run now apart from its targets: its scope is active and
+     * its `available()` holds.
+     *
+     * @param {ShortcutEntry} entry
+     * @param {ReadonlySet<string>} activeScopes
+     */
+    function entryIsReady(entry, activeScopes) {
+      const descriptor = entry.descriptor;
+      return (
+        activeScopes.has(descriptor.scope) &&
+        (typeof descriptor.available !== "function" || descriptor.available({}))
+      );
+    }
+
+    /**
+     * Badges follow targets: while revealed, each live command's first live target
+     * carries one keycap, and every other target carries none. At rest no target
+     * carries one, so nothing about a target's text or layout changes then. Each
+     * target's liveness is read once a pass: a ready command's first live target is
+     * both what makes it live and the one its badge goes on. A badge names a key that
+     * reaches its command now (`reachableBindings`), as the strip does: a key a live
+     * command in a layer above holds is that one's, so a view tab's A goes unbadged
+     * while an open menu's A is live.
+     */
+    function reconcileBadges() {
+      const activeScopes = new Set(activeLayers());
+      for (const [commandId, records] of targets) {
+        const entry = commands.get(commandId);
+        const binding =
+          revealed && entry && entryIsReady(entry, activeScopes)
+            ? reachableBindings(entry)[0]
+            : undefined;
+        const chosen = binding ? firstLiveTarget(commandId) : null;
+        for (const record of records) {
+          if (record === chosen && binding) {
+            mountBadge(record, binding);
+          } else {
+            unmountBadge(record);
+          }
+        }
+      }
+      // The numbers go to the live situational controls in reading order, the first nine,
+      // while their command's scope is active: never behind Help or Quick Search.
+      const numbers = commands.get(NUMBERED_COMMAND_ID);
+      const shown =
+        revealed && numbers && activeScopes.has(numbers.descriptor.scope) ? liveNumbered() : [];
+      for (const [index, record] of shown.entries()) {
+        mountBadge(record, { key: String(index + 1) });
+      }
+      for (const record of numbered) {
+        if (!shown.includes(record)) {
+          unmountBadge(record);
+        }
+      }
+    }
+
+    /**
+     * The live situational controls in reading order, at most nine: the one a number
+     * reaches is at that place. Ordered first, so the liveness reads stop at the ninth.
+     */
+    function liveNumbered() {
+      const ordered = [...numbered].sort((left, right) =>
+        left.element === right.element
+          ? 0
+          : precedesInDocument(left.element, right.element)
+            ? -1
+            : 1,
+      );
+      /** @type {NumberedRecord[]} */
+      const live = [];
+      for (const record of ordered) {
+        if (live.length === NUMBERED_LIMIT) {
+          break;
+        }
+        if (isTargetLive(record.element)) {
+          live.push(record);
+        }
+      }
+      return live;
+    }
+
+    /**
+     * A change while revealed moves the badges at once, or inside a batch once as the
+     * batch ends; at rest there are none to move.
+     */
+    function followBadges() {
+      if (!revealed) {
+        return;
+      }
+      if (batchDepth > 0) {
+        badgesStale = true;
+      } else {
+        reconcileBadges();
+      }
+    }
+
+    /**
+     * One `kbd.kbd.kbd-badge`, hidden from assistive technology, which reads the
+     * target's `aria-keyshortcuts` instead. `inline-end` puts it inside the target,
+     * which becomes its containing block through `.kbd-badge-host`; `beside` puts it
+     * in the nearest badge anchor, at the target's inline end and vertical center,
+     * measured once as it mounts. A badge already in place keeps its node, so it does
+     * not fade in again when the badges move after a key.
+     *
+     * @param {{badge: HTMLElement | null, element: HTMLElement, placement: BadgePlacement}} record
+     * @param {ShortcutBinding} binding
+     */
+    function mountBadge(record, binding) {
+      const label = bindingDefinition(binding).visible;
+      const anchor =
+        record.placement === "beside"
+          ? /** @type {HTMLElement | null} */ (record.element.closest(BADGE_ANCHOR_SELECTOR)) ||
+            record.element.parentElement
+          : record.element;
+      if (!anchor) {
+        unmountBadge(record);
+        return;
+      }
+      if (
+        record.badge?.isConnected &&
+        record.badge.parentElement === anchor &&
+        record.badge.textContent === label
+      ) {
+        return;
+      }
+      unmountBadge(record);
+      const badge = createKeycap(hostDocument, label);
+      anchor.append(badge);
+      badge.className = "kbd kbd-badge";
+      badge.setAttribute("aria-hidden", "true");
+      badge.dataset.kbdPlacement = record.placement;
+      if (record.placement === "beside") {
+        const anchorBox = anchor.getBoundingClientRect();
+        const box = record.element.getBoundingClientRect();
+        const rtl = hostDocument.defaultView?.getComputedStyle(record.element).direction === "rtl";
+        const inline = rtl ? anchorBox.right - box.left : box.right - anchorBox.left;
+        badge.style.setProperty("--kbd-badge-inline", `${Math.round(inline)}px`);
+        badge.style.setProperty(
+          "--kbd-badge-block",
+          `${Math.round(box.top + box.height / 2 - anchorBox.top)}px`,
+        );
+      } else {
+        record.element.classList.add("kbd-badge-host");
+      }
+      record.badge = badge;
+    }
+
+    /** @param {{badge: HTMLElement | null, element: HTMLElement}} record */
+    function unmountBadge(record) {
+      if (!record.badge) {
+        return;
+      }
+      record.badge.remove();
+      record.badge = null;
+      record.element.classList.remove("kbd-badge-host");
+    }
+
+    /**
+     * Record `element` as a target of `commandId`: what its key acts on and where its
+     * badge goes. The element carries the command's `aria-keyshortcuts` while
+     * attached. A component that rebuilds its markup calls `retarget()` with the new
+     * element; `detach()` removes the attribute, any badge, and the record, and is
+     * idempotent. During a reveal the badge follows at once. A lower `rank` goes
+     * first among the command's live targets, ahead of document order.
+     *
+     * @param {string} commandId
+     * @param {HTMLElement} element
+     * @param {{placement?: BadgePlacement, rank?: number}} [targetOptions]
+     * @returns {Readonly<ShortcutTargetHandle>}
+     */
+    function attachTarget(commandId, element, targetOptions = {}) {
+      if (disposed) {
+        throw new Error("Shortcut registry is disposed");
+      }
+      requireNonemptyString(commandId, "a target command id");
+      requireTargetElement(element);
+      const placement = targetOptions.placement ?? "inline-end";
+      if (!BADGE_PLACEMENTS.has(placement)) {
+        throw new TypeError(`Unknown badge placement: ${placement}`);
+      }
+      const rank = targetOptions.rank ?? 0;
+      if (typeof rank !== "number" || !Number.isFinite(rank)) {
+        throw new TypeError("A shortcut target's rank must be a finite number");
+      }
+      /** @type {ShortcutTargetRecord} */
+      const record = { badge: null, commandId, element, placement, rank };
+      const records = targets.get(commandId) || [];
+      records.push(record);
+      targets.set(commandId, records);
+      writeTargetShortcut(record);
+      followBadges();
+      publish(Object.freeze({ commandId, kind: "target" }));
+      let attached = true;
+      return Object.freeze({
+        /** @param {HTMLElement} next */
+        retarget(next) {
+          requireTargetElement(next);
+          if (!attached || next === record.element) {
+            return;
+          }
+          unmountBadge(record);
+          record.element.removeAttribute("aria-keyshortcuts");
+          record.element = next;
+          writeTargetShortcut(record);
+          followBadges();
+          publish(Object.freeze({ commandId, kind: "target" }));
+        },
+        detach() {
+          if (!attached) {
+            return;
+          }
+          attached = false;
+          unmountBadge(record);
+          record.element.removeAttribute("aria-keyshortcuts");
+          const remaining = (targets.get(commandId) || []).filter((value) => value !== record);
+          if (remaining.length > 0) {
+            targets.set(commandId, remaining);
+          } else {
+            targets.delete(commandId);
+          }
+          followBadges();
+          publish(Object.freeze({ commandId, kind: "target" }));
+        },
+      });
+    }
+
+    /**
+     * Number a situational control: a link or an action that depends on what the screen
+     * shows. Its number is its place among the live numbered controls in reading order,
+     * 1 to 9, read when a number is pressed or shown, so the same number reaches
+     * different controls on different screens and a tenth control has none. The shell
+     * and the plugin facade both number through this one call, so no surface picks its
+     * own digits. A numbered control carries no `aria-keyshortcuts`, because its number
+     * is not its own; Help describes the numbers once. `retarget()` follows a rebuilt
+     * control and `detach()` is idempotent, as for `attachTarget()`.
+     *
+     * @param {HTMLElement} element
+     * @param {{activate: () => unknown, placement?: BadgePlacement}} numberOptions
+     * @returns {Readonly<ShortcutTargetHandle>}
+     */
+    function attachNumbered(element, numberOptions) {
+      if (disposed) {
+        throw new Error("Shortcut registry is disposed");
+      }
+      requireTargetElement(element);
+      const activate = numberOptions?.activate;
+      if (typeof activate !== "function") {
+        throw new TypeError("A numbered control requires an activate function");
+      }
+      const placement = numberOptions.placement ?? "inline-end";
+      if (!BADGE_PLACEMENTS.has(placement)) {
+        throw new TypeError(`Unknown badge placement: ${placement}`);
+      }
+      /** @type {NumberedRecord} */
+      const record = { activate, badge: null, element, placement };
+      batch(() => {
+        numbered.push(record);
+        if (!releaseNumbered) {
+          releaseNumbered = register(numberedCommand());
+        }
+        followBadges();
+        publish(Object.freeze({ commandId: NUMBERED_COMMAND_ID, kind: "target" }));
+      });
+      let attached = true;
+      return Object.freeze({
+        /** @param {HTMLElement} next */
+        retarget(next) {
+          requireTargetElement(next);
+          if (!attached || next === record.element) {
+            return;
+          }
+          unmountBadge(record);
+          record.element = next;
+          followBadges();
+          publish(Object.freeze({ commandId: NUMBERED_COMMAND_ID, kind: "target" }));
+        },
+        detach() {
+          if (!attached) {
+            return;
+          }
+          attached = false;
+          batch(() => {
+            unmountBadge(record);
+            numbered.splice(numbered.indexOf(record), 1);
+            if (numbered.length === 0 && releaseNumbered) {
+              const release = releaseNumbered;
+              releaseNumbered = null;
+              release();
+            }
+            followBadges();
+            publish(Object.freeze({ commandId: NUMBERED_COMMAND_ID, kind: "target" }));
+          });
+        },
+      });
+    }
+
+    /**
+     * The numbers' one command: `1` to `9` in `global`, presented as one run, which Help
+     * lists in its own group as positional. A number reaches the control at its place.
+     *
+     * @returns {ShortcutCommand}
+     */
+    function numberedCommand() {
+      return {
+        // Live while one numbered control is, so a number with nothing to reach leaves the
+        // key to the browser.
+        available: () => liveNumbered().length > 0,
+        bindings: NUMBERED_BINDINGS,
+        copy: {
+          action: "Numbered links and actions",
+          description: "Hold Shift to see what each number opens or runs on this screen.",
+          hint: "Numbered",
+        },
+        group: "numbered",
+        handler: (context) => {
+          const place = numberOf(context);
+          const record = place === null ? undefined : liveNumbered()[place - 1];
+          return record !== undefined && record.activate() !== false;
+        },
+        id: NUMBERED_COMMAND_ID,
+        order: 10,
+        scope: "global",
+        situational: true,
+        surfaces: { help: "always" },
+      };
+    }
+
+    /**
+     * Which number a key pressed: the digit typed, or else its digit-row key, as Shift+1
+     * types `!` on a US layout. `context.number` names one for `invoke()`.
+     *
+     * @param {Record<string, unknown>} context
+     * @returns {number | null}
+     */
+    function numberOf(context) {
+      if (typeof context.number === "number") {
+        return context.number;
+      }
+      const event = /** @type {{key?: unknown, code?: unknown} | undefined} */ (context.event);
+      const typed = typeof event?.key === "string" ? event.key : "";
+      const physical = typeof event?.code === "string" ? /^Digit([1-9])$/.exec(event.code) : null;
+      const digit = /^[1-9]$/.test(typed) ? typed : physical?.[1];
+      return digit === undefined ? null : Number(digit);
+    }
+
+    /** @param {unknown} element */
+    function requireTargetElement(element) {
+      if (
+        !element ||
+        typeof (/** @type {{setAttribute?: unknown}} */ (element).setAttribute) !== "function"
+      ) {
+        throw new TypeError("A shortcut target must be an element");
+      }
+    }
+
+    /**
+     * Show or hide every badge, for the key reveal, and publish the change so the
+     * strip can show the reveal surface.
+     *
+     * @param {boolean} next
+     */
+    function setRevealed(next) {
+      if (disposed || revealed === Boolean(next)) {
+        return;
+      }
+      revealed = Boolean(next);
+      reconcileBadges();
+      publish(Object.freeze({ kind: "reveal" }));
+    }
+
+    /**
+     * Read every attached target's liveness again and move the badges, after a key
+     * the registry handled while revealed: a handler can show or hide a target
+     * through a style change that publishes nothing, as the Files tab's `F` shows
+     * the filter bar. Publishes a `dispatch` event so the revealed strip follows.
+     */
+    function refreshBadges() {
+      if (disposed || !revealed) {
+        return;
+      }
+      reconcileBadges();
+      publish(Object.freeze({ kind: "dispatch" }));
+    }
+
+    /**
+     * Hear every key after the dispatch loop has decided it, as `(event, handled)`,
+     * whichever module registered first: the reveal learns of a key only once its
+     * handler has returned. While an observer is registered the registry also hears
+     * each `keyup`, passively, and passes it through as unhandled; it dispatches none.
+     *
+     * @param {(event: KeyboardEvent, handled: boolean) => void} observer
+     */
+    function observeKeys(observer) {
+      if (disposed) {
+        throw new Error("Shortcut registry is disposed");
+      }
+      if (typeof observer !== "function") {
+        throw new TypeError("A key observer must be a function");
+      }
+      keyObservers.add(observer);
+      if (keyObservers.size === 1) {
+        hostDocument.addEventListener("keyup", handleKeyup, { capture: true, passive: true });
+      }
+      let observing = true;
+      return () => {
+        if (!observing) {
+          return;
+        }
+        observing = false;
+        keyObservers.delete(observer);
+        if (keyObservers.size === 0) {
+          hostDocument.removeEventListener("keyup", handleKeyup, true);
+        }
+      };
+    }
+
+    /** @param {KeyboardEvent} event @param {boolean} handled */
+    function notifyKeyObservers(event, handled) {
+      for (const observer of Array.from(keyObservers)) {
+        observer(event, handled);
+      }
+    }
+
+    /** @param {KeyboardEvent} event */
+    function handleKeyup(event) {
+      notifyKeyObservers(event, false);
     }
 
     /** @param {string} scope @param {{exclusive?: boolean}} [activationOptions] */
     function activateScope(scope, activationOptions = {}) {
       requireNonemptyString(scope, "an activation scope");
+      if (PERMANENT_SCOPES.includes(scope)) {
+        // Always active already, in a fixed order: activating one would lift it above
+        // `global`, so a view tab's or a plugin's key would outrank the shell's.
+        throw new TypeError(`A permanent scope cannot be activated: ${scope}`);
+      }
       const activation = {
         exclusive: Boolean(activationOptions.exclusive),
         scope,
         token: Symbol(scope),
       };
       activations.push(activation);
+      followBadges();
       publish(Object.freeze({ kind: "scope", scope }));
       let active = true;
       return () => {
@@ -457,6 +1340,7 @@
         const index = activations.findIndex((candidate) => candidate.token === activation.token);
         if (index >= 0) {
           activations.splice(index, 1);
+          followBadges();
           publish(Object.freeze({ kind: "scope", scope }));
         }
       };
@@ -470,36 +1354,87 @@
       return descriptor.handler(context) === true;
     }
 
+    /**
+     * What a command acts on now, for its handler's `context.target`: its first live
+     * target, or null. Undefined for a targeted command with none, which does not run.
+     *
+     * @param {ShortcutCommand} descriptor
+     * @returns {HTMLElement | null | undefined}
+     */
+    function targetFor(descriptor) {
+      const target = targets.has(descriptor.id) ? firstLiveTarget(descriptor.id) : null;
+      return descriptor.targeted && !target ? undefined : (target?.element ?? null);
+    }
+
     /** @param {string} commandId @param {Record<string, unknown>} [context] */
     function invoke(commandId, context = {}) {
       const entry = commands.get(commandId);
       if (!entry || !activeLayers().includes(entry.descriptor.scope)) {
         return false;
       }
-      return runDescriptor(entry.descriptor, context);
+      const target = targetFor(entry.descriptor);
+      if (target === undefined) {
+        return false;
+      }
+      return runDescriptor(entry.descriptor, { target, ...context });
     }
 
-    /** @param {KeyboardEvent} event */
-    function handleKeydown(event) {
-      if (event.defaultPrevented || event.isComposing) {
-        return;
-      }
+    /**
+     * One dispatch pass over the active layers, highest first. A descriptor
+     * whose handler declines leaves the event to the next match, and a targeted
+     * descriptor with no live target does not match at all. Returns whether a
+     * handler acted, whether a live binding matched but every handler declined, or
+     * whether nothing matched.
+     *
+     * @param {KeyboardEvent} event
+     * @param {{physical?: boolean}} matchOptions
+     * @returns {"handled" | "matched" | "none"}
+     */
+    function dispatch(event, matchOptions) {
+      const editable = isEditableTarget(event.target);
+      let matched = false;
       for (const scope of activeLayers()) {
         for (const entry of commands.values()) {
           const descriptor = entry.descriptor;
           if (
             descriptor.scope !== scope ||
             (event.repeat && descriptor.repeat !== true) ||
-            (isEditableTarget(event.target) && descriptor.allowInEditable !== true) ||
-            !descriptor.bindings.some((binding) => eventMatchesBinding(event, binding))
+            (editable && descriptor.allowInEditable !== true) ||
+            !descriptor.bindings.some((binding) =>
+              eventMatchesBinding(event, binding, matchOptions),
+            )
           ) {
             continue;
           }
-          if (runDescriptor(descriptor, { event, trigger: null })) {
+          // Visibility is read here, for the one command whose key matched.
+          const target = targetFor(descriptor);
+          if (target === undefined) {
+            continue;
+          }
+          matched = true;
+          if (runDescriptor(descriptor, { event, target, trigger: null })) {
             event.preventDefault();
-            return;
+            return "handled";
           }
         }
+      }
+      return matched ? "matched" : "none";
+    }
+
+    /** @param {KeyboardEvent} event */
+    function handleKeydown(event) {
+      let outcome = "none";
+      if (!event.defaultPrevented && !event.isComposing) {
+        // The character typed decides first. Only a character that matched
+        // nothing, and is not itself a digit, falls back to its digit-row key.
+        outcome = dispatch(event, {});
+        if (outcome === "none" && !isDigitKey(event.key)) {
+          outcome = dispatch(event, { physical: true });
+        }
+      }
+      // Observers hear the key once its handler has returned, handled or not.
+      if (keyObservers.size > 0) {
+        notifyKeyObservers(event, outcome === "handled");
       }
     }
 
@@ -508,32 +1443,134 @@
       return commands.get(commandId)?.presentation || null;
     }
 
-    /** @param {string} surface @param {{includeInactive?: boolean}} [snapshotOptions] */
+    /**
+     * Whether a registered command would run now; see `entryIsLive`.
+     *
+     * @param {string} commandId
+     */
+    function isLive(commandId) {
+      const entry = commands.get(commandId);
+      return entry !== undefined && entryIsLive(entry, new Set(activeLayers()));
+    }
+
+    /**
+     * The element a command would act on now, its first live target, or null.
+     *
+     * @param {string} commandId
+     */
+    function liveTarget(commandId) {
+      return firstLiveTarget(commandId)?.element ?? null;
+    }
+
+    /**
+     * Whether a live command in an active layer above `scope` is bound to `key` alone, so
+     * the key would reach that command first. The plugin facade asks it, so that a shell
+     * key outranks a plugin key on the badges and the strip as it does at dispatch. A
+     * Control chord on the same letter is another key and holds nothing.
+     *
+     * @param {string} scope
+     * @param {string} key
+     */
+    function heldAbove(scope, key) {
+      const layers = activeLayers();
+      const at = layers.indexOf(scope);
+      const above = new Set(at < 0 ? layers : layers.slice(0, at));
+      const wanted = normalizeBinding({ key }).key;
+      for (const entry of commands.values()) {
+        if (
+          above.has(entry.descriptor.scope) &&
+          entry.descriptor.bindings.some(
+            (binding) => binding.key === wanted && binding.control !== true,
+          ) &&
+          entryIsLive(entry, above)
+        ) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    /**
+     * The bindings that reach a command now: its own, less any key a live command in an
+     * active layer above holds (`heldAbove`). A situational command's numbers are
+     * positional and keep every binding. A Control chord is another key than its letter
+     * alone, so a menu's N never hides Control+N. The strip and the badges both read it,
+     * so neither names a key that would run something else.
+     *
+     * @param {ShortcutEntry} entry
+     * @returns {readonly Readonly<ShortcutBinding>[]}
+     */
+    function reachableBindings(entry) {
+      const own = entry.descriptor.bindings;
+      if (entry.descriptor.situational) {
+        return own;
+      }
+      return own.filter(
+        (binding) => binding.control === true || !heldAbove(entry.descriptor.scope, binding.key),
+      );
+    }
+
+    /**
+     * A surface's commands by group. `live` keeps only the commands that would run
+     * now (`isLive`), which the `reveal` surface always does: it shows what the keys
+     * under a held Shift reach, so a key a live command above holds (`heldAbove`) is
+     * left off the command it does not reach. Help never reads live, because opening it
+     * makes every target behind it `inert`.
+     *
+     * @param {string} surface
+     * @param {{includeInactive?: boolean, live?: boolean}} [snapshotOptions]
+     */
     function snapshot(surface, snapshotOptions = {}) {
       const activeScopes = new Set(activeLayers());
+      const live = snapshotOptions.live === true || surface === "reveal";
       /** @type {Map<string, ShortcutEntry[]>} */
       const grouped = new Map();
+      /** The bindings a live surface shows for each command, where they are fewer than
+       * its own. @type {Map<string, readonly Readonly<ShortcutBinding>[]>} */
+      const reached = new Map();
       for (const entry of commands.values()) {
         const mode = entry.presentation.surfaces[surface];
         if (
           !mode ||
           (!snapshotOptions.includeInactive &&
             mode === "active" &&
-            !activeScopes.has(entry.descriptor.scope))
+            !activeScopes.has(entry.descriptor.scope)) ||
+          (live && !entryIsLive(entry, activeScopes))
         ) {
           continue;
+        }
+        // A live surface shows what each key reaches now: a key a live command in a layer
+        // above holds reaches that one, as an open menu's letters do the shell's, so this
+        // command shows without it, and a command left with none is not shown.
+        if (live && !entry.descriptor.situational) {
+          const own = entry.descriptor.bindings;
+          const reachable = reachableBindings(entry);
+          if (reachable.length === 0) {
+            continue;
+          }
+          if (reachable.length < own.length) {
+            reached.set(entry.descriptor.id, reachable);
+          }
         }
         const values = grouped.get(entry.descriptor.group) || [];
         values.push(entry);
         grouped.set(entry.descriptor.group, values);
       }
+      /** @param {string} commandId */
+      const shownBindings = (commandId) =>
+        reached.get(commandId) || commands.get(commandId)?.descriptor.bindings || [];
       return Object.freeze(
         Array.from(grouped.entries())
           .sort(([left], [right]) => GROUP_DEFINITIONS[left].order - GROUP_DEFINITIONS[right].order)
           .map(([groupId, entries]) => {
             const presentations = entries
               .sort((left, right) => left.order - right.order)
-              .map((entry) => entry.presentation);
+              .map((entry) => {
+                const bindings = reached.get(entry.descriptor.id);
+                return bindings
+                  ? Object.freeze({ ...entry.presentation, bindings: describeBindings(bindings) })
+                  : entry.presentation;
+              });
             /** @type {Readonly<ShortcutPresentation>[]} */
             const rendered = [];
             for (const presentation of presentations) {
@@ -543,17 +1580,15 @@
                 previous &&
                 !previous.control &&
                 !presentation.control &&
+                !previous.bindings.range &&
+                !presentation.bindings.range &&
                 previous.copy.hint === presentation.copy.hint
               ) {
                 rendered[rendered.length - 1] = Object.freeze({
                   ...previous,
                   bindings: describeBindings([
-                    ...previous.commandIds.flatMap(
-                      (commandId) => commands.get(commandId)?.descriptor.bindings || [],
-                    ),
-                    ...presentation.commandIds.flatMap(
-                      (commandId) => commands.get(commandId)?.descriptor.bindings || [],
-                    ),
+                    ...previous.commandIds.flatMap(shownBindings),
+                    ...presentation.commandIds.flatMap(shownBindings),
                   ]),
                   commandIds: Object.freeze([...previous.commandIds, ...presentation.commandIds]),
                 });
@@ -571,7 +1606,7 @@
       );
     }
 
-    /** @param {(event: Readonly<{kind: string, scope?: string, commandId?: string}>) => void} listener */
+    /** @param {(event: ShortcutEvent) => void} listener */
     function subscribe(listener) {
       subscribers.add(listener);
       return () => subscribers.delete(listener);
@@ -585,6 +1620,23 @@
       }
       disposed = true;
       hostDocument.removeEventListener("keydown", handleKeydown, true);
+      if (keyObservers.size > 0) {
+        hostDocument.removeEventListener("keyup", handleKeyup, true);
+      }
+      keyObservers.clear();
+      revealed = false;
+      for (const records of targets.values()) {
+        for (const record of records) {
+          unmountBadge(record);
+          record.element.removeAttribute("aria-keyshortcuts");
+        }
+      }
+      targets.clear();
+      for (const record of numbered) {
+        unmountBadge(record);
+      }
+      numbered.length = 0;
+      releaseNumbered = null;
       commands.clear();
       activations.length = 0;
       subscribers.clear();
@@ -595,23 +1647,46 @@
       /** @param {HTMLElement} container @param {BindingPresentation} presentation */
       appendBinding: (container, presentation) =>
         appendBinding(hostDocument, container, presentation),
+      /** @param {HTMLElement} container @param {string} key */
+      appendKey: (container, key) => appendKey(hostDocument, container, key),
+      attachNumbered,
+      attachTarget,
+      batch,
+      controlReachesPage,
       describeBindings,
+      describeKey,
       dispose,
+      heldAbove,
       invoke,
+      isLive,
+      isRevealed: () => revealed,
+      /** @param {HTMLElement} element */
+      isTargetLive: (element) => isTargetLive(element),
+      /** The controls the numbers reach now, in order: 1 is the first. */
+      liveNumbers: () => Object.freeze(liveNumbered().map((record) => record.element)),
+      liveTarget,
+      observeKeys,
       present,
+      refreshBadges,
       register,
+      setRevealed,
       snapshot,
       subscribe,
     });
   }
 
   window.MetabrowserKeyboardShortcuts = Object.freeze({
+    CONTROL_CHORD_KEYS,
     GROUP_DEFINITIONS,
     KEY_DEFINITIONS,
+    NUMBERED_LIMIT,
     appendBinding,
+    appendKey,
     bindingSignature,
+    controlReachesPage,
     create,
     describeBindings,
+    describeKey,
     eventMatchesBinding,
     isEditableTarget,
     normalizeBinding,

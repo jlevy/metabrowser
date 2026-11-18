@@ -17,12 +17,26 @@
 // lifecycles — the breakdown owns the rollup fetch and projects its result to
 // the totals (see rollup-projection.js) — and merging their code would have
 // entangled that for the sake of a heading.
+//
+// They share one hover. The breakdown's legend names the families of one of
+// the totals' bars, so pointing at an entry lifts that bar's segment: the
+// section holds the hover, the totals draw it, and both say where the pointer
+// is (distribution-hover.js).
 
+import { createDistributionHover } from "./distribution-hover.js";
 import { mountFileTotalsPanel } from "./file-totals-panel.js";
 import { mountFileTypeSummary } from "./file-type-summary.js";
 import { notIndexedStatement } from "./folder-totals.js";
 
 /** @typedef {{mount: (container: HTMLElement) => () => void, get: () => {metric: "size" | "files", includeIgnored: boolean}, subscribe: (listener: (state: {metric: "size" | "files", includeIgnored: boolean}) => void) => () => void}} FolderRollupControls */
+
+// The breakdown's first rollup answers a frame or two after it is asked for, and it grew
+// this section 143 to 437 px one frame after the Overview painted, on 5 of 7 opens
+// (Chrome 152). The section holds the Overview's first paint for that answer, so it paints
+// at the height it keeps; past this wait it paints its pending state and the answer lands
+// as before. It is the Pulls tab's OPEN_WAIT_MS, for the same reason: the folder shown
+// before stays until this one can paint.
+export const FIRST_ROLLUP_WAIT_MS = 100;
 
 /**
  * @param {HTMLElement} container
@@ -58,6 +72,7 @@ export function mountFileOverviewPanel(
   // This row is both halves of the rollup controls, which is the whole point
   // of the section.
   const unmountControls = rollupControls.mount(controls);
+  const hover = createDistributionHover();
 
   // Totals first, then the breakdown that refines them — the same order a
   // reader asks the two questions in. The breakdown mounts second but drives
@@ -69,7 +84,7 @@ export function mountFileOverviewPanel(
     palette,
     projectionPool,
     rollupControls,
-    options,
+    { ...options, hover },
   );
   const breakdown = mountFileTypeSummary(
     breakdownContainer,
@@ -80,10 +95,22 @@ export function mountFileOverviewPanel(
     rollupControls,
     {
       ...options,
+      hover,
       onNoTotals: () => totals.stopLoading(),
       onTotalsPending: () => totals.resumeLoading(),
     },
   );
+
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let waiting;
+  const ready = Promise.race([
+    breakdown.ready,
+    new Promise((resolve) => {
+      waiting = setTimeout(resolve, FIRST_ROLLUP_WAIT_MS);
+    }),
+  ]).then(() => {
+    clearTimeout(waiting);
+  });
 
   let disposed = false;
   function dispose() {
@@ -91,12 +118,14 @@ export function mountFileOverviewPanel(
       return;
     }
     disposed = true;
-    // Bodies first, then the controls they subscribe to.
+    clearTimeout(waiting);
+    // Bodies first, then the controls they subscribe to. Each body lets go of the hover
+    // it shares as it goes, so nothing is left holding or hearing it.
     breakdown.dispose();
     totals.dispose();
     unmountControls();
   }
-  return Object.freeze({ dispose });
+  return Object.freeze({ dispose, ready });
 }
 
 /**

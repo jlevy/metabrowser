@@ -78,9 +78,13 @@
   }
 
   /** @param {unknown} rawRegistry */
-  function createRuntime(rawRegistry) {
+  /**
+   * @param {unknown} rawRegistry
+   * @param {unknown} [displayOrder] group ids in the order the app lists groups for a reader
+   */
+  function createRuntime(rawRegistry, displayOrder) {
     const raw = objectValue(rawRegistry, "FILE_TYPE_REGISTRY");
-    if (raw.schema !== "file-type-registry-v4" || raw.schema_version !== 4) {
+    if (raw.schema !== "file-type-registry-v5" || raw.schema_version !== 5) {
       throw new TypeError("unsupported file-type registry schema");
     }
     const revision = integerValue(raw.revision, "file-type registry revision");
@@ -366,15 +370,26 @@
     }
 
     const frozenGroups = Object.freeze(groups);
+    // The order the app lists groups in for a reader, Documentation first: the server's
+    // FILE_TYPE_GROUP_DISPLAY_ORDER (file_type_filters.py). `groups` keeps the registry's
+    // order, which is the File Rollup Format's; a group the display order does not name
+    // keeps its registry place after the ones it does.
+    const order = Array.isArray(displayOrder) ? displayOrder : [];
+    const displayRank = (/** @type {{id: string}} */ group) =>
+      order.includes(group.id) ? order.indexOf(group.id) : order.length;
+    const displayGroups = Object.freeze(
+      groups.slice().sort((left, right) => displayRank(left) - displayRank(right)),
+    );
     const frozenFamilies = Object.freeze(families);
     return Object.freeze({
-      schema: "file-type-registry-v4",
-      schemaVersion: 4,
+      schema: "file-type-registry-v5",
+      schemaVersion: 5,
       revision,
       fingerprint,
       maxExtensionComponents,
-      registryIdentity: Object.freeze({ schemaVersion: 4, revision, fingerprint }),
+      registryIdentity: Object.freeze({ schemaVersion: 5, revision, fingerprint }),
       groups: frozenGroups,
+      displayGroups,
       families: frozenFamilies,
       kinds: Object.freeze(kinds),
       classify,
@@ -389,5 +404,6 @@
 
   global.MetabrowserFileTypeTaxonomy = createRuntime(
     global.METABROWSER_SETTINGS?.FILE_TYPE_REGISTRY,
+    global.METABROWSER_SETTINGS?.FILE_TYPE_GROUP_ORDER,
   );
 })(window);

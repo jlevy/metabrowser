@@ -3,6 +3,10 @@
 (() => {
   /** Default DOM cap for the transient result list. */
   const DEFAULT_MAX_ROWS = 100;
+  // The registry events that change what the hint row shows, the rule the
+  // navigation strip in keyboard-help.js follows: a registration adds or drops
+  // a command, and a scope change shows or hides the active ones.
+  const HINT_EVENT_KINDS = new Set(["registration", "scope"]);
   let paletteSerial = 0;
 
   /** @typedef {ReturnType<ReturnType<Window["MetabrowserSearch"]["createController"]>["state"]>["results"][number]} PaletteResult */
@@ -45,14 +49,16 @@
   }
 
   /**
-   * Append text and matching marks without interpreting result strings as markup.
+   * Text and matching marks, as nodes, without interpreting result strings as markup.
    * @param {Document} hostDocument
-   * @param {HTMLElement} container
    * @param {string} text
    * @param {readonly Readonly<{start: number, end: number}>[]} ranges
    * @param {number} pathOffset
+   * @returns {Node[]}
    */
-  function appendHighlightedText(hostDocument, container, text, ranges, pathOffset) {
+  function highlightedNodes(hostDocument, text, ranges, pathOffset) {
+    /** @type {Node[]} */
+    const nodes = [];
     let cursor = 0;
     for (const range of ranges) {
       const start = Math.max(0, range.start - pathOffset);
@@ -62,18 +68,31 @@
       }
       const boundedStart = Math.max(cursor, start);
       if (boundedStart > cursor) {
-        container.append(hostDocument.createTextNode(text.slice(cursor, boundedStart)));
+        nodes.push(hostDocument.createTextNode(text.slice(cursor, boundedStart)));
       }
       if (end > boundedStart) {
         const mark = hostDocument.createElement("mark");
         mark.textContent = text.slice(boundedStart, end);
-        container.append(mark);
+        nodes.push(mark);
         cursor = end;
       }
     }
     if (cursor < text.length) {
-      container.append(hostDocument.createTextNode(text.slice(cursor)));
+      nodes.push(hostDocument.createTextNode(text.slice(cursor)));
     }
+    return nodes;
+  }
+
+  /**
+   * Append text and matching marks without interpreting result strings as markup.
+   * @param {Document} hostDocument
+   * @param {HTMLElement} container
+   * @param {string} text
+   * @param {readonly Readonly<{start: number, end: number}>[]} ranges
+   * @param {number} pathOffset
+   */
+  function appendHighlightedText(hostDocument, container, text, ranges, pathOffset) {
+    container.append(...highlightedNodes(hostDocument, text, ranges, pathOffset));
   }
 
   /**
@@ -460,7 +479,13 @@
       text.className = "search-palette-option-text";
       const label = hostDocument.createElement("span");
       label.className = "search-palette-label";
-      appendHighlightedText(hostDocument, label, result.label, result.matchRanges, 0);
+      // The title: a conventional-commit prefix is regular and the rest bold, and each part
+      // keeps its matches (docs/design-system.md, "Titles").
+      label.append(
+        ...window.MetabrowserFormatters.titleNodes(hostDocument, result.label, (text, start) =>
+          highlightedNodes(hostDocument, text, result.matchRanges, start),
+        ),
+      );
       const description = hostDocument.createElement("span");
       description.className = "search-palette-description";
       const identifier = hostDocument.createElement("span");
@@ -538,8 +563,9 @@
       renderResults();
       listbox.scrollTop = scrollTop;
       if (previousIndex >= 0 && activeIndex !== previousIndex) {
-        // A late provider can rank ahead of a selected row. Keep the same
-        // result selected and in view as its position changes.
+        // A late group is appended after the file rows, but a file catalog
+        // refresh can grow the files ahead of a selected pull request. Keep
+        // the same result selected and in view as its position changes.
         syncActiveOption(true);
       }
       renderStatus();
@@ -765,7 +791,7 @@
           id: "quick-file.open",
           order: 20,
           scope: "global",
-          surfaces: { help: "always", nav: "always" },
+          surfaces: { help: "always", nav: "always", reveal: "always" },
         }),
         options.shortcuts.register({
           allowInEditable: true,
@@ -838,7 +864,12 @@
     const unsubscribe = options.controller.subscribe(consumeState);
     const unsubscribeCatalog = options.subscribeCatalog?.(onCatalogChanged) || (() => {});
     const unregisterCommands = registerCommands();
-    const unsubscribeHints = options.shortcuts.subscribe(renderShortcutHints);
+    const unsubscribeHints = options.shortcuts.subscribe((event) => {
+      const kinds = event.kind === "batch" ? event.kinds || [] : [event.kind];
+      if (kinds.some((kind) => HINT_EVENT_KINDS.has(kind))) {
+        renderShortcutHints();
+      }
+    });
     renderShortcutHints();
     // Tab belongs to the shared modal focus trap, which cycles the query box
     // and the dialog's Close control in both directions. A palette-local Tab

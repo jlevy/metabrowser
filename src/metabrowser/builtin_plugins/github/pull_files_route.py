@@ -10,9 +10,13 @@ never waits on the network. It answers one of:
 - ``current``: a list of the pull request as it is now, by the freshness rule below;
 - ``stale``: an older list, still shown.
 
-**Freshness.** A local list belongs to both resolved comparison endpoints, ``base`` and
-``head``, and is current only while the record names that exact comparison. An older local
-list without a saved base, or a record with no comparison, is stale. GitHub-derived lists
+**Freshness.** A local list from a record's comparison belongs to both resolved comparison
+endpoints, ``base`` and ``head``, and is current only while the record names that exact
+comparison. An older local list without a saved base, or a record with no comparison, is
+stale. A local list the prefetch computed from an open pull request's head and base branch
+(:mod:`.pull_prefetch`) names that branch (``base_ref``) as GitHub's list does, and is
+current while the head and base branch are the newest known and the pull request is still
+open. GitHub-derived lists
 do not depend on locally resolved endpoints: discovering a comparison later leaves their
 freshness on the provider's head, ``updated_at``, and account rules. A GitHub list names
 the head commit and base branch it was read for (``head``, ``base_ref``), and is current
@@ -280,7 +284,10 @@ _PARSED_LOCK: Final = threading.Lock()
 _MAX_PARSED: Final = 16
 
 
-def _file_stamp(home: Path, slug: str, number: int) -> tuple[int, int, int] | None:
+def list_file_stamp(home: Path, slug: str, number: int) -> tuple[int, int, int] | None:
+    """The cached list file's inode, modification time in nanoseconds, and size, which an
+    atomic replacement changes, or ``None`` with no regular file. One stat."""
+
     try:
         status = os.lstat(home / source_pull_files(slug, number))
     except OSError:
@@ -294,7 +301,7 @@ def _cached_files(
     home: Path, slug: str, number: int
 ) -> tuple[PullFileList | RecordAbsence, list[FileRowWire]]:
     key = (str(home), slug, number)
-    stamp = _file_stamp(home, slug, number)
+    stamp = list_file_stamp(home, slug, number)
     with _PARSED_LOCK:
         hit = _PARSED.get(key)
     if hit is not None and stamp is not None and hit.stamp == stamp:
@@ -323,6 +330,8 @@ class _Facts:
     record: PullRecord | None
     head: str | None = None
     base_ref: str | None = None
+    # Whether the newer of the two says the pull request is open.
+    open: bool | None = None
 
     @property
     def known_head(self) -> KnownHead:
@@ -333,11 +342,18 @@ def _facts(home: Path, slug: str, number: int) -> _Facts:
     record, _dumped, _revision = cached_pull_record(home, slug, number)
     held = record if isinstance(record, PullRecord) else None
     row = cached_list_row(home, slug, number)
-    known: list[tuple[str, str | None, str | None]] = []
+    known: list[tuple[str, str | None, str | None, bool]] = []
     if held is not None:
-        known.append((held.pull.updated_at, held.pull.head.sha, held.pull.base.ref))
+        known.append(
+            (
+                held.pull.updated_at,
+                held.pull.head.sha,
+                held.pull.base.ref,
+                held.pull.state == "open",
+            )
+        )
     if row is not None:
-        known.append((row.updated_at, row.head_oid, row.base_ref))
+        known.append((row.updated_at, row.head_oid, row.base_ref, row.state == "open"))
     # On a tie the record, which always names its head, is the one taken, unless the row
     # names another: a push within the second the record was read leaves the times equal.
     newest = max(
@@ -347,7 +363,9 @@ def _facts(home: Path, slug: str, number: int) -> _Facts:
     )
     if newest is None:
         return _Facts(updated_at=None, record=held)
-    return _Facts(updated_at=newest[0], record=held, head=newest[1], base_ref=newest[2])
+    return _Facts(
+        updated_at=newest[0], record=held, head=newest[1], base_ref=newest[2], open=newest[3]
+    )
 
 
 def known_head(home: Path, slug: str, number: int) -> KnownHead:
@@ -378,6 +396,12 @@ def _head_moved(listed: PullFileList, facts: _Facts) -> bool | None:
 
 def _state(listed: PullFileList, stamp: PullRefreshStamp | None, facts: _Facts) -> FilesState:
     if listed.listed_from == "comparison":
+        if listed.base_ref is not None:
+            # Listed from an open pull request's head and base branch as the list of pull
+            # requests named them, not from a record's comparison: current while those are
+            # still the newest known and it is still open, since a merge moves its base.
+            current = (listed.head, listed.base_ref) == facts.known_head and facts.open is True
+            return "current" if current else "stale"
         comparison = facts.record.comparison if facts.record is not None else None
         current = (
             comparison is not None
@@ -398,6 +422,22 @@ def _state(listed: PullFileList, stamp: PullRefreshStamp | None, facts: _Facts) 
     return "current" if fresh else "stale"
 
 
+def list_settled(home: Path, slug: str, listed: PullFileList) -> bool:
+    """Whether *listed*, pull request *listed.number*'s cached list, is ``current`` by this
+    route's freshness rule, so that nothing would refresh it. Blocking and bounded: the
+    list's refresh stamp, and the record and the catalog row through their parse caches.
+
+    A list from the local comparison is current while the record names the same comparison,
+    whatever head the catalog has seen since; one listed from the newest known head and base
+    branch before the record had a comparison, and a list from GitHub, while it was read for
+    those; a stack's change line waits on the same rule
+    (:mod:`.pull_stack_change`).
+    """
+
+    stamp = read_files_refresh(home, slug, listed.number)
+    return _state(listed, stamp, _facts(home, slug, listed.number)) == "current"
+
+
 def _last_refresh(stamp: PullRefreshStamp | None) -> LastRefresh | None:
     if stamp is None:
         return None
@@ -406,8 +446,47 @@ def _last_refresh(stamp: PullRefreshStamp | None) -> LastRefresh | None:
     )
 
 
+@dataclass(frozen=True, slots=True)
+class FilesFound:
+    """What one envelope is built from, as :func:`read_files` read it from the cache.
+
+    ``facts`` are read only with a list, whose state they judge.
+    """
+
+    stamp: PullRefreshStamp | None
+    listed: PullFileList | RecordAbsence
+    rows: list[FileRowWire]
+    facts: _Facts | None
+
+
+def read_files(view: FilesView) -> FilesFound | None:
+    """What *view*'s envelope is built from, or ``None`` with no repository. Blocking and
+    bounded: the stamp, the list through its parse cache, and the facts."""
+
+    repository = view.repository
+    if repository is None:
+        return None
+    home, slug = repository.home, repository.slug
+    stamp = read_files_refresh(home, slug, view.number)
+    listed, rows = _cached_files(home, slug, view.number)
+    facts = _facts(home, slug, view.number) if isinstance(listed, PullFileList) else None
+    return FilesFound(stamp, listed, rows, facts)
+
+
 def pull_files_envelope(view: FilesView, window: FilesWindow) -> PullFilesEnvelope:
     """The envelope for one window of a pull request's files. Blocking and bounded."""
+
+    return files_envelope(view, read_files(view), window)
+
+
+def files_envelope(
+    view: FilesView, found: FilesFound | None, window: FilesWindow
+) -> PullFilesEnvelope:
+    """The envelope for one window of what *found* holds, as *view* is. Reads no file.
+
+    ``refreshing`` is *view*'s, which may be newer than *found*: the refresh route reads
+    what a job finds before it starts the job.
+    """
 
     empty = PullFilesEnvelope(
         state="absent",
@@ -435,12 +514,10 @@ def pull_files_envelope(view: FilesView, window: FilesWindow) -> PullFilesEnvelo
         rows=[],
     )
     repository = view.repository
-    if repository is None:
+    if repository is None or found is None:
         return empty
-    home, slug = repository.home, repository.slug
-    stamp = read_files_refresh(home, slug, view.number)
-    listed, rows = _cached_files(home, slug, view.number)
-    last_refresh = _last_refresh(stamp)
+    listed = found.listed
+    last_refresh = _last_refresh(found.stamp)
     if not isinstance(listed, PullFileList):
         return {
             **empty,
@@ -449,9 +526,10 @@ def pull_files_envelope(view: FilesView, window: FilesWindow) -> PullFilesEnvelo
             "source": repository.source,
             "last_refresh": last_refresh,
         }
+    assert found.facts is not None
     return {
         **empty,
-        "state": _state(listed, stamp, _facts(home, slug, view.number)),
+        "state": _state(listed, found.stamp, found.facts),
         "reason": None,
         "source": listed.source,
         "listed_from": listed.listed_from,
@@ -468,7 +546,7 @@ def pull_files_envelope(view: FilesView, window: FilesWindow) -> PullFilesEnvelo
         "complete": listed.complete,
         "capped": listed.capped,
         "truncated": listed.truncated,
-        "rows": rows[window.offset : window.offset + window.limit],
+        "rows": found.rows[window.offset : window.offset + window.limit],
     }
 
 
@@ -478,7 +556,7 @@ def files_file_stamp(view: FilesView) -> tuple[int, int, int] | None:
     repository = view.repository
     if repository is None:
         return None
-    return _file_stamp(repository.home, repository.slug, view.number)
+    return list_file_stamp(repository.home, repository.slug, view.number)
 
 
 def envelope_etag(envelope: PullFilesEnvelope, stamp: tuple[int, int, int] | None) -> str:
@@ -499,10 +577,48 @@ def _local(view: FilesView, facts: _Facts) -> LocalComparison | None:
     return LocalComparison(view.git_dir, record.comparison.base, record.comparison.head)
 
 
+def _still_known(prepared: LocalComparison, facts: _Facts) -> bool:
+    return (prepared.head, prepared.base_ref) == facts.known_head
+
+
+def list_source(home: Path, slug: str, number: int) -> Literal["record"] | tuple[str, str] | None:
+    """Where the store would list *number*'s changed files from. Blocking and bounded: the
+    record and the catalog row through their parse caches.
+
+    ``None`` when its cached list is whole and current, so there is nothing to list;
+    ``"record"`` when the record's comparison is of the newest known head; otherwise, for a
+    pull request whose newest known source says it is open and names its head and base
+    branch, those two, which the prefetch fetches together for many pull requests, with the
+    base branches, and lists each from the mirror's base branch (:mod:`.pull_prefetch`);
+    ``None`` when none of these holds.
+    """
+
+    facts = _facts(home, slug, number)
+    listed, _rows = _cached_files(home, slug, number)
+    if (
+        isinstance(listed, PullFileList)
+        and listed.complete
+        and _state(listed, read_files_refresh(home, slug, number), facts) == "current"
+    ):
+        # Nothing to list: the lane's item will find it not due.
+        return None
+    head, base_ref = facts.known_head
+    comparison = facts.record.comparison if facts.record is not None else None
+    if comparison is not None and comparison.head == head:
+        return "record"
+    if head is None or base_ref is None or facts.open is not True:
+        return None
+    return head, base_ref
+
+
 def files_refresh_wanted(
-    view: FilesView, ask: FilesRefreshRequest
+    view: FilesView, ask: FilesRefreshRequest, prepared: LocalComparison | None = None
 ) -> tuple[bool, LocalComparison | None]:
     """Whether *ask* may start a refresh, and the local comparison it would list. Blocking.
+
+    The comparison is the record's, unless the record's is of an older head than the newest
+    known and *prepared*, one the prefetch computed from a head and base branch
+    (:func:`list_source`), is of the newest known head and base branch.
 
     A list the local comparison can give needs no GitHub, so GitHub's limit does not hold
     it. Otherwise, while that limit holds nothing may start, a reader's **Retry** included,
@@ -518,6 +634,12 @@ def files_refresh_wanted(
     home, slug = repository.home, repository.slug
     facts = _facts(home, slug, view.number)
     local = _local(view, facts)
+    if (
+        prepared is not None
+        and _still_known(prepared, facts)
+        and (local is None or local.head != facts.head)
+    ):
+        local = prepared
     now = pull_list.utc_now()
     stamp = read_files_refresh(home, slug, view.number)
     if local is None and rate_limit_holds(stamp, now=now):
@@ -646,6 +768,7 @@ __all__ = [
     "NUMBER_REQUIRED",
     "PULL_FILES_ROUTE",
     "FileRowWire",
+    "FilesFound",
     "FilesRefreshRequest",
     "FilesRefreshStart",
     "FilesRequestError",
@@ -655,13 +778,18 @@ __all__ = [
     "PullFilesEnvelope",
     "display_path",
     "envelope_etag",
+    "files_envelope",
     "files_file_stamp",
     "files_job_key",
     "files_refresh_request",
     "files_refresh_wanted",
     "files_view",
     "files_window",
+    "list_file_stamp",
+    "list_settled",
+    "list_source",
     "pull_files_envelope",
+    "read_files",
     "start_files_refresh",
     "status_route",
 ]

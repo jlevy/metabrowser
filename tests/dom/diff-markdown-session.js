@@ -11,18 +11,42 @@
 // clock this advances by hand, so the loading delay and a refused request's wait are
 // steps of the story rather than races.
 //
+// Which addresses a block keeps is the plugin's rule, not this session's:
+// builtin_plugins/diff/index.js loads whole, as the shell loads it, and mounts a pull
+// request's comparison on pages the shell rendered (pinned at the head, pinned at the
+// merge base, and beside a checkout, which has no pin), handing the diff, here the stand-in
+// for diff-view.js, the `markdownTargets` this session draws with. The pin guard's
+// `metabrowser:pin-changed` is played on the window as static/source-pin-guard.js sends it.
+// The comparison mounted is the conformance corpus's added Markdown file, which the plugin
+// validates; only the routes the session's own recording names decide anything here.
+//
 // Each step prints the requests the page made, and for each file whose state the step
 // changed: its chooser (`*` marks the chosen format, and `none` for a file that can show
 // only Source), what its body shows (`rendered`,
 // `source`, or `nothing` while it waits within the loading delay), whether its progress
-// mark is counting down to visible, any message under its bar, and the rendered rows:
-// each block's kind and text, `[note]` when its source says more than its render, and
-// a fold as `[N unchanged blocks]`, open or closed.
+// mark is counting down to visible, and the rendered rows: each block's kind and text,
+// and a fold as `[N unchanged blocks]`, open or closed.
 
 const fs = require("node:fs");
+const { registerHooks } = require("node:module");
 const path = require("node:path");
 const vm = require("node:vm");
 const { pathToFileURL } = require("node:url");
+
+// The diff's layout is a stand-in: the plugin mounts it with the options it records.
+registerHooks({
+  load(url, context, nextLoad) {
+    if (url.endsWith("/builtin_plugins/diff/diff-view.js")) {
+      return {
+        format: "module",
+        shortCircuit: true,
+        source:
+          "export const setChangeLoader = () => {}; export const mountDiffView = (_host, _document, _api, options) => ({ options, dispose() {} }); export const mountDiffSummary = () => ({ dispose() {} });",
+      };
+    }
+    return nextLoad(url, context);
+  },
+});
 
 const repoRoot = path.resolve(__dirname, "../..");
 const recorded = JSON.parse(
@@ -208,7 +232,9 @@ class PageElement {
             : selector === "a[href], img[src]"
               ? (tag === "A" && child.getAttribute("href") !== null) ||
                 (tag === "IMG" && child.getAttribute("src") !== null)
-              : tag === selector.toUpperCase();
+              : selector === 'a[href^="/view/"]'
+                ? tag === "A" && (child.getAttribute("href") ?? "").startsWith("/view/")
+                : tag === selector.toUpperCase();
         if (wanted) {
           found.push(child);
         }
@@ -270,7 +296,44 @@ const page = {
   },
 };
 globalThis.document = page;
-globalThis.window = { location: { origin: ORIGIN } };
+
+// What the page's window holds for the plugin: the SDK functions it calls here, the block
+// the shell writes for a pin (`METABROWSER_SOURCE_PIN`), and its listeners.
+const windowListeners = new Map();
+/** The plugin's registered view, once index.js has loaded. */
+let plugin = null;
+/** What the page knows of its source: a pin's page is a Git revision, a checkout's a folder. */
+const pageSource = { kind: "git_revision", repository: null };
+globalThis.window = {
+  location: { origin: ORIGIN },
+  addEventListener(type, handler) {
+    windowListeners.set(type, [...(windowListeners.get(type) ?? []), handler]);
+  },
+  removeEventListener(type, handler) {
+    windowListeners.set(
+      type,
+      (windowListeners.get(type) ?? []).filter((candidate) => candidate !== handler),
+    );
+  },
+  metabrowser: {
+    registerView(kind, view, spec) {
+      assert(kind === "diff" && view === "diff", "the plugin registers its one view");
+      plugin = spec;
+    },
+    loadChangedFilesTree: async () => null,
+    sourceKind: () => pageSource.kind,
+    get repository() {
+      return pageSource.repository;
+    },
+  },
+};
+
+/** What the pin guard announces when a data request finds the server serves another pin. */
+function pinChanged(served) {
+  for (const handler of windowListeners.get("metabrowser:pin-changed") ?? []) {
+    handler({ detail: { pin: served } });
+  }
+}
 
 let observer;
 globalThis.IntersectionObserver = class {
@@ -344,9 +407,7 @@ function answer(fileId, how = "recorded") {
 function rows(article) {
   const shown = [];
   for (const node of article.childNodes) {
-    if (node.tagName === "P") {
-      shown.push(`notice: ${node.textContent}`);
-    } else if (node.tagName === "DETAILS") {
+    if (node.tagName === "DETAILS") {
       const [summary, ...inner] = node.childNodes;
       shown.push(`[${summary.textContent}${node.open ? ", open" : ""}]`);
       for (const row of inner) {
@@ -359,11 +420,20 @@ function rows(article) {
   return shown;
 }
 
+// The Rendered body holds blocks and folds and nothing that talks about them: a row is its
+// screen-reader label and its content, and no note says that Source shows more.
 function row_(row) {
+  assert(
+    row.className.startsWith("diff-markdown-block diff-markdown-"),
+    `a Rendered body holds only blocks and folds, not ${row.tagName} ${row.className}`,
+  );
   const kind = row.className.replace("diff-markdown-block diff-markdown-", "").split(" ")[0];
-  const note = row.classList.contains("diff-markdown-source-only") ? " [note]" : "";
-  const prose = row.childNodes.find((node) => node.className === "kpress-prose");
-  return `${kind}${note}: ${serialize(prose?.childNodes ?? [])}`;
+  const parts = row.childNodes.filter((node) => node.className !== "sr-only");
+  assert(
+    parts.length === 1 && parts[0].className === "kpress-prose",
+    `a ${kind} row draws a note beside its content`,
+  );
+  return `${kind}: ${serialize(parts[0].childNodes)}`;
 }
 
 function serialize(nodes) {
@@ -398,11 +468,13 @@ function describe(file) {
     file.progress.hidden &&
     !file.bar.classList.contains("diff-file-bar-markdown");
   assert(chooserless === file.control.hidden, `${file.name}: the chooser and its bar disagree`);
+  // Showing Source instead of Rendered is a behavior, never a message: nothing but the
+  // Rendered body goes beside Source.
+  assert(file.section.childNodes.length === 3, `${file.name}: something announces the format`);
   return {
     chooser: file.control.hidden ? "none" : chips.join(" | "),
     shows,
     ...(file.progress.classList.contains("mb-delayed-loading") ? { progress: "counting" } : {}),
-    ...(file.fallback.textContent ? { message: file.fallback.textContent } : {}),
     ...(file.rendered.childNodes.length > 0 ? { rows: rows(file.rendered) } : {}),
   };
 }
@@ -437,22 +509,72 @@ async function main() {
 
   const supported = recorded.manifest.filter((entry) => markdown.supportsMarkdownChange(entry));
   const ahead = markdown.firstScreenMarkdown(recorded.manifest);
-  const isSnapshotTarget = markdown.snapshotTargets(recorded.snapshot_route);
-  const route = recorded.snapshot_route;
+
+  // The plugin mounts the pull request's comparison, as its Changes does, on each page, and
+  // hands the diff the rule for which addresses open there.
+  await import(
+    pathToFileURL(path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/index.js")).href
+  );
+  assert(plugin !== null, "the diff plugin registered its view");
+  const routes = new URL(recorded.rendered_route, ORIGIN).searchParams;
+  const base = routes.get("left");
+  const head = routes.get("right");
+  const corpus = JSON.parse(
+    fs.readFileSync(
+      path.join(repoRoot, "src/metabrowser/data/file-diff-format/file-diff-conformance.json"),
+      "utf8",
+    ),
+  );
+  const added = corpus.cases.find((entry) => entry.name === "added-text-file").document;
+  const comparison = {
+    left: base,
+    right: head,
+    base_policy: "merge_base",
+    rendered_route: recorded.rendered_route,
+    image_route: recorded.image_route,
+    branch: { ref: "refs/pull/7/head" },
+  };
+  /** The rule the plugin mounts the diff with on a page pinned at *pin*, or with no pin. */
+  async function targetsOn(pin) {
+    if (pin === null) {
+      delete globalThis.window.METABROWSER_SOURCE_PIN;
+      Object.assign(pageSource, {
+        kind: "filesystem",
+        repository: { revision: head, served_prefix: "" },
+      });
+    } else {
+      globalThis.window.METABROWSER_SOURCE_PIN = { pin, ref: null };
+      Object.assign(pageSource, { kind: "git_revision", repository: null });
+    }
+    const mounted = await plugin.render({}, { comparison, raw: structuredClone(added) });
+    assert(typeof mounted?.options?.markdownTargets === "function", "the diff has a rule");
+    return mounted.options.markdownTargets;
+  }
+  const isTarget = await targetsOn(head);
+  const atBase = await targetsOn(base);
+  const beside = await targetsOn(null);
+  const headLink = "/view/g1-ZG9jcw/g1-c2V0dXAubWQ";
+  const route = recorded.image_route;
   const links = {
     route,
+    // A link to a file of the head opens only where its address names that file: on a page
+    // that shows the head. The same link on the other pages stays plain text.
+    pages: {
+      "pinned at the comparison's head": isTarget(headLink, false),
+      "pinned at the merge base": atBase(headLink, false),
+      "beside a checkout at the head, which has no pin": beside(headLink, false),
+    },
+    // On the page that shows the head.
     opens: Object.fromEntries(
       [
-        [`${route}&side=head&path=g1-ZG9jcw%2Fg1-c2V0dXAubWQ&mode=document`, false],
-        [`${route}&side=head&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc&mode=image`, true],
-        [`${route}&side=head&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc&mode=image`, false],
-        [`${route}&side=head&path=g1-ZG9jcw%2Fg1-c2V0dXAubWQ&offset=4`, false],
-        [route.replace("left=a", "left=0"), false],
+        ["/view/g1-ZG9jcw/g1-c2V0dXAubWQ", false],
+        ["/view/g1-ZG9jcw/g1-c2V0dXAubWQ#user-content-setup", false],
+        [`${route}&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc`, true],
+        [`${route}&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc`, false],
+        [`${route}&side=head&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc`, true],
+        [route.replace("left=a", "left=0"), true],
         ["/api/tree?path=docs", false],
-      ].map(([href, image]) => [
-        `${image ? "image" : "link"} ${href}`,
-        isSnapshotTarget(href, image),
-      ]),
+      ].map(([href, image]) => [`${image ? "image" : "link"} ${href}`, isTarget(href, image)]),
     ),
   };
 
@@ -482,7 +604,7 @@ async function main() {
     ensureInert: async () => inert,
     loadStyles: async () => {},
     mutate: (change) => change(),
-    isSnapshotTarget,
+    isTarget,
     now: clock.now,
     later: clock.later,
     cancel: clock.cancel,
@@ -499,7 +621,7 @@ async function main() {
     root.append(section);
     const state = views.add({ section, bar, toggle, source, id: entry.id });
     const [, control, progress] = bar.childNodes;
-    const [, fallback, rendered] = section.childNodes;
+    const [, rendered] = section.childNodes;
     return {
       name: `${entry.id} ${(entry.new ?? entry.old).path}`,
       id: entry.id,
@@ -508,7 +630,6 @@ async function main() {
       source,
       control,
       progress,
-      fallback,
       rendered,
       state,
     };
@@ -583,6 +704,20 @@ async function main() {
   await choose(byId.f1, "rendered");
   near("f1");
   step("switching formats asks for nothing", [byId.f1]);
+
+  // Another tab switched the server's pin: a link to a file of the head would open that
+  // path at the other pin, so every one drawn becomes plain text, and so does any drawn
+  // later; images stay on the comparison's own route. The pin guard says so once, and the
+  // page that showed the head keeps no such link from then on. The diff's own call when it
+  // hears this is diff-view.js's (tests/dom/diff-view-behavior.js); here the session makes
+  // it, as the diff's stand-in.
+  pinChanged(base);
+  links.pages["pinned at the comparison's head, after another tab changed the pin"] = isTarget(
+    headLink,
+    false,
+  );
+  views.closeHeadLinks();
+  step("a page that learns another pin is served keeps no link to a file", [byId.f1]);
 
   views.dispose();
   step("disposal unbinds the chooser and stops every timer", files);

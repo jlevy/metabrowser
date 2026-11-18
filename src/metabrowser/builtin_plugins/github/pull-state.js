@@ -50,6 +50,77 @@ export function displayState(pull) {
   return "closed";
 }
 
+/**
+ * What the repository's list of pull requests last said of each row, by source and number:
+ * its state and when GitHub last updated it. The Pulls tab writes it as rows arrive; a page
+ * reads it, so a cached record older than the list paints the list's state at once.
+ *
+ * @type {Map<string, Map<number, {state: PullState, updatedAt: string}>>}
+ */
+const listedStates = new Map();
+// A source is a served repository: a page has one, and a few at most across a session.
+const LISTED_SOURCES = 4;
+
+/**
+ * Note the list's rows for *source*, replacing what an older list said of them.
+ *
+ * @param {string} source
+ * @param {{number: number, state: PullState, updatedAt: string | null}[]} rows
+ */
+export function noteListed(source, rows) {
+  let held = listedStates.get(source);
+  if (held === undefined) {
+    held = new Map();
+    listedStates.set(source, held);
+    for (const oldest of listedStates.keys()) {
+      if (listedStates.size <= LISTED_SOURCES) {
+        break;
+      }
+      listedStates.delete(oldest);
+    }
+  }
+  for (const row of rows) {
+    if (row.updatedAt !== null) {
+      held.set(row.number, { state: row.state, updatedAt: row.updatedAt });
+    }
+  }
+}
+
+/**
+ * What the list said of *number*, or null.
+ *
+ * @param {string | null} source
+ * @param {number} number
+ */
+export function listedState(source, number) {
+  return source === null ? null : (listedStates.get(source)?.get(number) ?? null);
+}
+
+/**
+ * *pull* with the list's state when the list saw a later update than *pull* did, so the
+ * state shown is the fresher of the two. GitHub's `updated_at` and the list's
+ * `updatedAt` are the same timestamp (pull_freshness.py). Pure.
+ *
+ * @param {Record<string, any>} pull
+ * @param {{state: PullState, updatedAt: string} | null | undefined} listed
+ * @returns {Record<string, any>}
+ */
+export function withListedState(pull, listed) {
+  if (
+    listed == null ||
+    typeof pull.updated_at !== "string" ||
+    !(listed.updatedAt > pull.updated_at)
+  ) {
+    return pull;
+  }
+  return {
+    ...pull,
+    state: listed.state === "open" || listed.state === "draft" ? "open" : "closed",
+    draft: listed.state === "draft",
+    merged: listed.state === "merged",
+  };
+}
+
 /** The glyphs, each parsed once: a list has a thousand rows and four shapes. */
 /** @type {Map<string, Element | null>} */
 const glyphs = new Map();
@@ -68,8 +139,9 @@ function glyph(state) {
 /**
  * The state's icon: this module's constant, not the pull request's text. Browser only.
  *
- * Named by default, for a row, where nothing else says the state. A badge passes
- * `named: false`, as its own text is the name.
+ * Named by default, for a row, where nothing else says the state: its accessible name, and
+ * no tooltip, since the Pulls column has none (docs/design-system.md, "Tooltips Add
+ * Information"). A badge passes `named: false`, as its own text is the name.
  *
  * @param {PullState} state
  * @param {{named?: boolean}} [options]
@@ -83,7 +155,6 @@ export function pullStateIcon(state, options = {}) {
   } else {
     icon.setAttribute("role", "img");
     icon.setAttribute("aria-label", PULL_STATES[state].label);
-    icon.dataset.tipText = PULL_STATES[state].label;
   }
   const shape = glyph(state);
   if (shape !== null) {

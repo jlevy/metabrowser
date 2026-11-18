@@ -13,14 +13,59 @@ Now each entry restores its own view, a step within the commit shown loads nothi
 stepping on before a commit answers leaves the later entry in the pane.
 A step taken before the panel is ready ends on the entry the reader stepped to, and a
 landing that outlives the panel paints nothing.
+Only an answer that the root is no longer a repository removes the panel: a repository
+read that gets no answer keeps it, and the landing shows its commit.
 An address with a short commit ID says it needs the full lowercase one, a panel that
 went away and came back starts over, and a folder that is not a repository has no Git
-panel listening.
+panel listening. A commit opened again, from its row or by Back, shows its diff from the
+comparison kept for its commit ID, so each commit’s comparison is asked for once.
+
+Switching to Commits names no commit, so it lands on the newest one, the top row.
+While the first page of history is on its way the pane keeps what it showed, busy
+through the refresh that replaces the walk, and no commit is asked for; then the newest
+commit’s address replaces the tab’s entry, and history is asked for once.
+A click back to Commits after an older commit lands on the newest again, from the cached
+page and detail, with the list scrolled back to its top and focus where it was.
+Back steps over each switch to where the reader was, and an entry that names a commit
+still shows that commit.
+An entry the reader left before history arrived takes nothing when it does, and lands on
+the newest when Back reaches it, as a reload onto it does.
+An empty history selects nothing and says so; a failed one says so, and the retry that
+loads it lands on the newest.
+A page of history that settles while the panel checks whether HEAD moved leaves the
+landing to that check: an unmoved HEAD, or a check that gets no answer, lands as the
+check ends, and a moved one on the newest commit of the walk the refresh lays out, not
+on the old walk’s, even with a page of the old walk still on its way.
+A walk that recovery rebuilt meanwhile read HEAD itself and lands at once, and the older
+check changes nothing when it ends.
+The busy state ends when the commit shows, when a failure is shown, or when the reader
+moves on.
+
+A commit’s address reveals its row once the history read holds it
+([Navigation Reveals the Item](../../docs/design-system.md#navigation-reveals-the-item)),
+over a first page of 250 commits with more after them, drawn in the Commits panel’s own
+rows. A commit in that page has its row mounted, selected, and scrolled to.
+A commit past the pages read is shown with no row, and no page is read for it.
+A reader who moves on before the first page arrives, to another commit or by Forward to
+a file, is not scrolled back to it, and the Files tree, which shares the scroller, keeps
+its place.
 
 The panel’s loading session holds paint callbacks and diff assets independently.
 Its initial spinner preserves the connected diff stage, and deferred paint preserves the
 ready commit. An older selection’s paint callback preserves the newer selection’s busy
 state. A missing commit’s delayed freshness lookup preserves it too.
+On the neutral Commits entry the newest row is selected and is the list’s Tab stop, a
+scrolled list comes back to its top, and an address that is not the neutral entry
+selects nothing. A click leaves focus on the tab, even when focus last parked on the
+scroller for a row the landing mounts again.
+The tab’s key, `H`, focuses the newest row instead of the older row the reader left,
+without scrolling, so `↓` opens the next commit: at once when the row is mounted, or
+when the landing reveals it, unless the reader has moved focus by then; the same holds
+with Commits in front, and with a page on its way.
+A refresh that replaces the focused newest row, or forgets that its focus parked on the
+scroller, gives focus to the new one, and focus the reader sends nowhere stays there.
+A landing that lost the pane or its address moves neither focus nor the Tab stop, and a
+selection whose row a render replaced leaves the Tab stop on the live row.
 
 ```console
 $ node tests/dom/git-commit-history-session.js
@@ -223,9 +268,9 @@ $ node tests/dom/git-commit-history-session.js
   },
   "a landing when the repository gate failed once": {
     "url": "/commit/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    "pane": "file src/a.py",
-    "owner": "file",
-    "navPanel": "files",
+    "pane": "commit aaaaaaa",
+    "owner": "git",
+    "navPanel": "git",
     "requests": []
   },
   "a panel that came back starts over": {
@@ -254,6 +299,249 @@ $ node tests/dom/git-commit-history-session.js
     "owner": "file",
     "navPanel": "files",
     "requests": []
+  },
+  "a commit opened again": {
+    "reselected": {
+      "url": "/commit/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "pane": "commit aaaaaaa",
+      "owner": "git",
+      "navPanel": "git",
+      "requests": [
+        "GET /api/git/commit/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "GET /api/git/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      ]
+    },
+    "back": {
+      "url": "/commit/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "pane": "commit aaaaaaa",
+      "owner": "git",
+      "navPanel": "git",
+      "requests": []
+    },
+    "comparisons": [
+      "comparison aaaaaaa",
+      "comparison bbbbbbb"
+    ]
+  },
+  "switching to Commits": {
+    "the page opens on a file": {
+      "url": "/view/README.md",
+      "pane": "file README.md",
+      "owner": "file",
+      "navPanel": "files",
+      "requests": []
+    },
+    "Commits, while the first page of history loads": {
+      "url": "/view/",
+      "pane": "file README.md",
+      "owner": "git",
+      "navPanel": "git",
+      "requests": [],
+      "entries": 2,
+      "historyReads": 1,
+      "focusMoves": 0,
+      "busy": true,
+      "scrollTop": 0
+    },
+    "the newest commit, once history arrives": {
+      "url": "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "pane": "commit bbbbbbb",
+      "owner": "git",
+      "navPanel": "git",
+      "requests": [
+        "GET /api/git/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      ],
+      "entries": 2,
+      "historyReads": 1,
+      "focusMoves": 0,
+      "busy": false,
+      "scrollTop": 0
+    },
+    "an older commit": {
+      "url": "/commit/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "pane": "commit aaaaaaa",
+      "owner": "git",
+      "navPanel": "git",
+      "requests": [
+        "GET /api/git/commit/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ]
+    },
+    "a file": {
+      "url": "/view/src/a.py",
+      "pane": "file src/a.py",
+      "owner": "file",
+      "navPanel": "files",
+      "requests": []
+    },
+    "Commits again": {
+      "url": "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "pane": "commit bbbbbbb",
+      "owner": "git",
+      "navPanel": "git",
+      "requests": [],
+      "entries": 4,
+      "historyReads": 1,
+      "focusMoves": 0,
+      "busy": false,
+      "scrollTop": 0
+    },
+    "Back": {
+      "url": "/view/src/a.py",
+      "pane": "file src/a.py",
+      "owner": "file",
+      "navPanel": "files",
+      "requests": []
+    },
+    "Back onto the older commit's entry": {
+      "url": "/commit/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "pane": "commit aaaaaaa",
+      "owner": "git",
+      "navPanel": "git",
+      "requests": []
+    }
+  },
+  "an entry left before history arrived": {
+    "movedOn": {
+      "url": "/view/src/a.py",
+      "pane": "file src/a.py",
+      "owner": "file",
+      "navPanel": "files",
+      "requests": []
+    },
+    "back": {
+      "url": "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "pane": "commit bbbbbbb",
+      "owner": "git",
+      "navPanel": "git",
+      "requests": [
+        "GET /api/git/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      ],
+      "entries": 3,
+      "historyReads": 1,
+      "focusMoves": 0,
+      "busy": false
+    }
+  },
+  "a reload onto the tab's entry": {
+    "url": "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "pane": "commit bbbbbbb",
+    "owner": "git",
+    "navPanel": "git",
+    "requests": [
+      "GET /api/git/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    ]
+  },
+  "a commit's address reveals its row": {
+    "a commit in the first page: its row is mounted, selected, and scrolled to": {
+      "url": "/commit/c0000000000000000000000000000000000000c8",
+      "pane": "commit c000000",
+      "owner": "git",
+      "navPanel": "git",
+      "requests": [
+        "GET /api/git/commit/c0000000000000000000000000000000000000c8"
+      ],
+      "mounted": true,
+      "selected": true,
+      "scrolledIntoView": [
+        "c000000"
+      ],
+      "scrollTop": 4191,
+      "historyReads": 1
+    },
+    "a commit past the pages read: shown, with no row, and no page read for it": {
+      "url": "/commit/dddddddddddddddddddddddddddddddddddddddd",
+      "pane": "commit ddddddd",
+      "owner": "git",
+      "navPanel": "git",
+      "requests": [
+        "GET /api/git/commit/dddddddddddddddddddddddddddddddddddddddd"
+      ],
+      "mounted": false,
+      "selected": false,
+      "scrolledIntoView": [],
+      "scrollTop": 0,
+      "historyReads": 1
+    },
+    "Back to a commit's address while the first page loads": {
+      "url": "/commit/c0000000000000000000000000000000000000c8",
+      "pane": "commit c000000",
+      "owner": "git",
+      "navPanel": "git",
+      "requests": [
+        "GET /api/git/commit/c0000000000000000000000000000000000000c8"
+      ],
+      "mounted": false,
+      "selected": false,
+      "scrolledIntoView": [],
+      "scrollTop": 0,
+      "historyReads": 1
+    },
+    "another commit selected before the page arrives: no scroll to the first": {
+      "url": "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "pane": "commit bbbbbbb",
+      "owner": "git",
+      "navPanel": "git",
+      "requests": [
+        "GET /api/git/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      ],
+      "mounted": false,
+      "selected": false,
+      "scrolledIntoView": [],
+      "scrollTop": 0,
+      "historyReads": 1
+    },
+    "Back to it again, while the first page loads": {
+      "url": "/commit/c0000000000000000000000000000000000000c8",
+      "pane": "commit c000000",
+      "owner": "git",
+      "navPanel": "git",
+      "requests": [
+        "GET /api/git/commit/c0000000000000000000000000000000000000c8"
+      ],
+      "mounted": false,
+      "selected": false,
+      "scrolledIntoView": [],
+      "scrollTop": 0,
+      "historyReads": 1
+    },
+    "Forward to a file before the page arrives: the Files tree is not scrolled": {
+      "url": "/view/README.md",
+      "pane": "file README.md",
+      "owner": "file",
+      "navPanel": "files",
+      "requests": [],
+      "mounted": false,
+      "selected": false,
+      "scrolledIntoView": [],
+      "scrollTop": 123,
+      "historyReads": 1
+    }
+  },
+  "an empty or failed history": {
+    "empty": {
+      "url": "/view/",
+      "pane": "No commits yet.",
+      "owner": "git",
+      "navPanel": "git",
+      "requests": []
+    },
+    "failed": {
+      "url": "/view/",
+      "pane": "Could not load the commit history.",
+      "owner": "git",
+      "navPanel": "git",
+      "requests": [],
+      "busy": false
+    },
+    "retried": {
+      "url": "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "pane": "commit bbbbbbb",
+      "owner": "git",
+      "navPanel": "git",
+      "requests": [
+        "GET /api/git/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      ]
+    }
   }
 }
 ? 0

@@ -62,7 +62,10 @@ _HOSTILE = "a<b>&\u202ex.git"
 _HOSTILE_HOME = 'odd"<&>home'
 
 _TITLE = re.compile(r"<title>(.*?)</title>")
-_PAGE_PIN = re.compile(r"<script>window\.METABROWSER_SOURCE_PIN=(\{[^<]*\});</script>")
+# A pin's shell is never trusted, so each of its inline scripts carries the page's nonce.
+_PAGE_PIN = re.compile(
+    r'<script(?: nonce="[^"]*")?>window\.METABROWSER_SOURCE_PIN=(\{[^<]*\});</script>'
+)
 _MAIN_CLASS = re.compile(r'<main class="([^"]*)">')
 _MIRROR_MODULE = (server.STATIC_DIR / "mirror-heading.js").read_text(encoding="utf-8")
 _HEADING = re.compile(r'<a href="/view/" class="header-path"[^>]*>(.*?)</a>', re.S)
@@ -110,7 +113,7 @@ def _page(client: TestClient, kind: str) -> dict[str, Any]:
         "pagePin": json.loads(page_pin[0]) if page_pin else None,
         # Whether the shell carries the module that draws a mirror's headings, whole
         # and inline. The session runs it for exactly the pages that had it.
-        "mirrorModule": f"<script>{_MIRROR_MODULE}</script>" in shell.text,
+        "mirrorModule": f">{_MIRROR_MODULE}</script>" in shell.text,
         "mainClass": _MAIN_CLASS.findall(shell.text),
         "status": {key: status[key] for key in ("name", "origin", "location", "pin", "ref_name")},
     }
@@ -261,8 +264,8 @@ def test_the_session_names_a_mirror_and_says_where_it_is_kept() -> None:
     assert mirror["mainHeading"]["root"] == f"\u2191 squares / mirror in {location}"
     assert mirror["tooltips"] == {
         "navigationHeading": {
-            "served": f"squares {sentence} Jump to root",
-            "afterTreeLoad": f"squares 3 files 140 bytes {sentence} Jump to root",
+            "served": f"squares {sentence}",
+            "afterTreeLoad": f"squares 3 files 140 bytes {sentence}",
         },
         "rootName": sentence,
         "note": sentence,

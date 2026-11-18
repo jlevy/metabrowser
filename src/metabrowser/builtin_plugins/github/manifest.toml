@@ -34,10 +34,10 @@ route = "pull-comparison"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_comparison_handler"
 methods = ["GET"]
 
-# Open an admitted comparison side without changing the served pin.
+# An image at an admitted comparison's head, which its rendered Markdown shows.
 [[data_hook]]
-route = "pull-snapshot"
-sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_snapshot_handler"
+route = "pull-image"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_image_handler"
 methods = ["GET"]
 
 # One changed Markdown file of an admitted comparison as a bounded rendered redline.
@@ -85,12 +85,40 @@ route = "stacks-refresh"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:stacks_refresh_handler"
 methods = ["POST"]
 
+# A native stack's combined change, its bottom's base against its top's head, summed for
+# the brief change line its Pulls heading shows. Reads never contact GitHub or fetch; the
+# store lists a comparison not yet summed.
+[[data_hook]]
+route = "stack-change"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:stack_change_handler"
+methods = ["GET"]
+
+# The repository's whole label set, cached, which colors a label a record names alone.
+# Reads never contact GitHub. Only labels-refresh asks for it, which a pull request's page
+# sends when it shows a label named alone that its envelope has no entry for.
+[[data_hook]]
+route = "labels"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:labels_handler"
+methods = ["GET"]
+
+[[data_hook]]
+route = "labels-refresh"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:labels_refresh_handler"
+methods = ["POST"]
+
 # One pull request's changed files, from the local comparison or GitHub's list, with a
 # typed absent, pending, current, or stale state and an honest count while it fills.
 # Answers from the cache alone; only a refresh lists them.
 [[data_hook]]
 route = "pull-files"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_files_handler"
+methods = ["GET"]
+
+# What each named pull request's cached changed-files list sums to, by status and in lines,
+# for the brief change line its Pulls row shows. From the cache alone: no gh and no Git.
+[[data_hook]]
+route = "pull-files-summary"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_files_summary_handler"
 methods = ["GET"]
 
 # Start or join that list's refresh in the refresh coordinator. A POST with a JSON object
@@ -107,6 +135,13 @@ methods = ["POST"]
 route = "pulls-prefetch"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:pulls_prefetch_handler"
 methods = ["GET", "POST"]
+
+# Discard everything this plugin caches for the served repository, to be fetched again.
+# A same-origin POST with an empty JSON object; the source and its Git store stay.
+[[data_hook]]
+route = "cache-clear"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:cache_clear_handler"
+methods = ["POST"]
 
 # A pull request's page at /pull/<n>[/files]. No file is ever this kind: the
 # shell selects it for the pull-request route and mounts this view there.

@@ -1,0 +1,54 @@
+Pre-registration for exp-060 (H87) and exp-062 (H89), written 2026-11-12T15:36:54Z, before any measurement.
+
+Candidate: $WORKTREES/metabrowser-perf-delivery/.venv/bin/metab, editable, d0fe9618, clean.
+Control:   $WORKTREES/metabrowser-perf-control/.venv/bin/metab, 09903292.
+Corpus:    $WORKTREES/metabrowser-perf-corpus-v2 (7a02fed4), clean.
+Harness:   $WORKTREES/metabrowser-perf-harness-v4 (5031dc16), scenario revision 4.
+
+One transition series serves both rounds: every journey, standard regime, 4 runs per condition,
+alternating (control leads odd pairs). Its servers use the harness's fixed ports 8890-8899
+(not configurable in the frozen harness; the series lock gives exclusive use).
+The levels probe (exp-062 only): 4 interleaved pairs, port 8920.
+
+exp-060 (H87)
+  Decides: revalidated (conditional) requests on landing.reload, all route families summed, as the
+           harness's cache disposition counts them. Predicted lower. Judged on ranges (a count).
+  Guard:   painted_ready_ms.landing.reload, by compare's back-to-back pair rule at tolerance 1.3.
+  Also shown: per-family revalidated counts on landing.reload; total requests on landing.reload.
+
+exp-062 (H89)
+  Decides (all three must move lower, ranges apart):
+    1. levels_shell_tools (probe): dependent request levels to the last shell-tools script.
+    2. levels_kpress (probe): dependent request levels to the last KPress stylesheet or script.
+    3. shellToolsReady milestone on landing.cold_markdown (transition series), lower, with
+       compare's pair rule.
+  Guard: painted_ready_ms.landing.cold_markdown (cold Markdown painted-ready), pair rule at 1.3.
+         If it moves the wrong way, say so; a preload cap or low priority is then a follow-up.
+
+Both: the accept rule (median in the predicted direction, ranges apart at n>=3, nothing else
+wrong-way unaccounted, the complexity judgment). Known side effects to account for: /raw now
+revalidates (a revisited image costs one 304); raf_frame_gaps readings are not comparable with
+640e008d's; the candidate carries both hypotheses' changes, so each round attributes a movement
+to the head, not to its hypothesis alone.
+
+Amendment 1, written 2026-11-12T21:34:53Z, before any result of either round was read.
+
+Load rule (set 2026-11-12 ~17:40Z, before any result was read): a back-to-back pair is
+excluded when any run in it saw a one-minute load above 12 at its start or at any measured
+transition (or probe landing) start; incomplete pairs are excluded too. Applied by
+exp-060-062-load-filter.mjs. Replacement pairs start only after the load has been under
+12 for 120 s.
+
+Journeys: the transition series now runs only --journeys landing,files for both builds,
+with --out naming its own rows file (.bench/transitions/exp-060/landing-files.jsonl), so
+the rows are official, not diagnostic. landing holds every criterion and guard
+(landing.reload and landing.cold_markdown); files is kept to account for the known /raw
+side effect and other file-view movement. Reason: machine time. A full run of 11
+journeys takes about 8 minutes, two journeys about 2, so a 4-pair round fits a 15-20
+minute quiet window. The full-scenario pairs already recorded (all excluded under the
+load rule) stay recorded and are not judged; compare refuses to mix the two journey
+lists, so only the landing,files pairs are judged.
+
+Unchanged: the criteria, the guards, the levels probe (run first), n of at least 3 valid
+pairs with a target of the pre-registered 4, the load gate, the mechanical exclusion, and
+the lock. Deadline for starting a pair: 2026-11-13T06:45:36Z.

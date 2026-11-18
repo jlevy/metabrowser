@@ -20,10 +20,10 @@ list marked incomplete; an optional field that cannot be read, such as an ``http
 link, is left empty. Everything else that fails raises :class:`PullDataError`, and
 nothing else escapes.
 
-Its integration point is the background refresh coordinator: a job keyed by the store
-and the pull-request number that ``POST`` routes start or join. Until that lands, the
-CLI is its only caller: the first ``--show`` or ``--api`` of a pull-request URL runs it
-when no usable record is cached, and ``--no-serve`` runs it every time.
+It runs as a refresh-coordinator job keyed by the store and the pull-request number
+(:mod:`.served_pull`), which ``POST`` routes start or join. The one-shot CLI also runs it:
+the first ``--show`` or ``--api`` of a pull-request URL when no usable record is cached,
+and ``--no-serve`` every time.
 
 ``gh api`` refuses every request while gh is signed out (checked 2026-09-23 with gh
 2.98.0, which exits 4 and asks for ``gh auth login``), so a record is always read by a
@@ -55,6 +55,7 @@ from metabrowser.builtin_plugins.github.gh_lists import (
     UnreadableItemError,
     active_account,
     as_dict,
+    cache_unwritable,
     get_response,
     login_of,
     read_list,
@@ -84,6 +85,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     CommitStatus,
     Comparison,
     IssueComment,
+    PullLabel,
     PullObservationSuperseded,
     PullRecord,
     PullRefreshStamp,
@@ -97,6 +99,8 @@ from metabrowser.builtin_plugins.github.pull_record import (
     UnavailablePart,
     cut_text,
     fit_record,
+    label_color,
+    label_description,
     read_pull_record,
     read_pull_refresh,
     write_pull_record,
@@ -145,7 +149,7 @@ _CORE_FIELDS: Final = """
       headRefName headRefOid headRepository { nameWithOwner }
       mergeable mergeCommit { oid } potentialMergeCommit { oid }
       commits(first:1) { totalCount }
-      labels(first:100) { nodes { name } }"""
+      labels(first:100) { nodes { name color description } }"""
 _CORE_QUERY: Final = (
     """query PullCore($owner:String!,$name:String!,$number:Int!) {
   viewer { login }
@@ -222,6 +226,23 @@ def _side(value: object) -> PullSide:
     )
 
 
+def _label(value: object) -> PullLabel | None:
+    """A label of the REST or GraphQL answer, or ``None`` for one without a name.
+
+    A color that is not six hex digits is left out, and the label is drawn neutral.
+    """
+
+    label = as_dict(value)
+    name = _short(label.get("name"))
+    if name is None:
+        return None
+    return PullLabel(
+        name=name,
+        color=label_color(label.get("color")),
+        description=label_description(_short(label.get("description"))),
+    )
+
+
 def _pull(value: object, number: int) -> PullRequest:
     item = as_dict(value)
     if item.get("number") != number:
@@ -229,11 +250,8 @@ def _pull(value: object, number: int) -> PullRequest:
     body, body_cut = _text(item.get("body"))
     title, _cut = _text(item.get("title"), MAX_TITLE_BYTES)
     labels = item.get("labels")
-    names = (
-        [_short(as_dict(label).get("name")) for label in labels[:MAX_LABELS]]
-        if isinstance(labels, list)
-        else []
-    )  # pyright: ignore[reportUnknownArgumentType, reportUnknownVariableType]
+    listed: list[object] = labels[:MAX_LABELS] if isinstance(labels, list) else []  # pyright: ignore[reportUnknownVariableType]
+    read = [_label(label) for label in listed]
     mergeable = item.get("mergeable")
     return PullRequest(
         number=number,
@@ -252,7 +270,7 @@ def _pull(value: object, number: int) -> PullRequest:
         else "conflicting"
         if mergeable is False
         else "unknown",
-        labels=tuple(name for name in names if name is not None),
+        labels=tuple(label for label in read if label is not None),
         author=login_of(item.get("user")),
         author_avatar_url=avatar_of(item.get("user")),
         created_at=item["created_at"],
@@ -854,8 +872,12 @@ async def _write(
         raise PullDataError("record_too_large", str(exc)) from exc
     except (PrivateStorageError, OSError) as exc:
         log.debug("could not write pull request %s: %s", record.number, exc)
-        raise PullDataError(
-            "cache_unwritable", "its record could not be written to the cache"
+        owner, repo = _owner_and_repo(published)
+        raise cache_unwritable(
+            f"the record of pull request #{record.number}",
+            exc,
+            source=f"https://github.com/{owner}/{repo}",
+            checkout=isinstance(published, ListedRepository) and published.checkout,
         ) from exc
 
 
@@ -1093,7 +1115,7 @@ async def _recover_comparison(
     failures = observed_object_failures.pending(target, pair)
     if any(failure.state == "object_corrupt" for failure in failures):
         try:
-            await asyncio.to_thread(invalidate_pull_manifest, published, pair)
+            await asyncio.to_thread(invalidate_pull_manifest, published, number, pair)
         except (OSError, PrivateStorageError) as exc:
             raise PullDataError(
                 "cache_unwritable", "the comparison cache could not discard damaged metadata"

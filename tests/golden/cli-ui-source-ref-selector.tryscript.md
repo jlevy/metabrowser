@@ -21,9 +21,30 @@ in-process application answered for a real mirror’s listings and switches.
 drifts. Timers and paint are injected, and each request waits for the step to answer it;
 each step records the requests the selector made, whether a filter pause is pending,
 what it would paint, and where it navigated.
-`labels` is what the button says for a page on a tag, a pull request’s head, and a
-commit with no ref; `keys` is where an arrow, Home, or End key moves focus in a list of
-three rows, `-1` being the filter box and `null` a key the list leaves alone.
+`labels` is what the button says for a page on a tag, a pull request’s head, with its
+number set bold in brackets, and a commit with no ref; `keys` is where an arrow, Home,
+or End key moves focus in a list of three rows, `-1` being the filter box and `null` a
+key the list leaves alone.
+
+`checkout` is the same module as a served checkout’s selector: a folder that is a
+repository’s root, recorded in
+`tests/fixtures/source-ref-selector-checkout-responses.json` from the checkout
+`tests/source_checkout_fixture.py` builds.
+Its panel begins with the working tree, which is what a folder opens on and the one
+choice that is not a ref, and has a third list, the remote-tracking branches.
+A branch is shown as a pinned revision, at the revision’s address for the page’s file.
+The checked-out branch is badged and is a ref like any other, so choosing it shows its
+commit; only the working-tree row asks the pin route for the working tree.
+A page left behind by a switch elsewhere offers a reload, which a mirror’s freshness row
+does for a mirror. A checkout’s rows say which chip each name is drawn as, and its
+`labels` are the button on the working tree, a branch, a remote-tracking branch, a tag,
+and a commit. A folder holding a `.git` that Git does not take for a repository’s root
+loses its row when the listing says so, and a Git older than the one a checkout’s
+revisions are read with is refused in the server’s own words.
+`guard` is what each kind of page names on its data requests
+(`static/source-pin-guard.js`), which is how a tab left behind is refused: a revision
+its commit, a checkout’s working tree the word `working-tree`, and a plain folder
+nothing, since its server can serve nothing else.
 
 ```console
 $ node tests/dom/source-ref-selector-session.js
@@ -349,7 +370,7 @@ $ node tests/dom/source-ref-selector-session.js
   ],
   "labels": [
     "Tag: v1",
-    "Pull request: #7",
+    "Pull request: #7 [bold #7]",
     "Commit: 42382ea2303b"
   ],
   "copies": [
@@ -381,7 +402,365 @@ $ node tests/dom/source-ref-selector-session.js
     "End from 0: 2",
     "Enter from 1: null",
     "ArrowDown from -1 in an empty list: null"
-  ]
+  ],
+  "checkout": {
+    "steps": [
+      {
+        "step": "the button names the working tree",
+        "requests": [],
+        "filterPending": false,
+        "paint": {
+          "button": "Working tree",
+          "open": false
+        }
+      },
+      {
+        "step": "the working tree is listed above the branches, and is what is served",
+        "requests": [
+          "GET /api/source/refs?kind=branch"
+        ],
+        "filterPending": false,
+        "paint": {
+          "button": "Working tree",
+          "open": true,
+          "workingTree": "Working tree: Live local files, on topic [current]",
+          "lists": [
+            "branch",
+            "tag",
+            "remote"
+          ],
+          "kind": "branch",
+          "query": "",
+          "loading": false,
+          "switching": false,
+          "rows": [
+            "topic 42382ea2303b [checked out] (local chip)",
+            "feature c7ae2a331f54 (local chip)",
+            "local-work 25e0a2a76ab4 (local chip)"
+          ],
+          "note": "",
+          "error": null
+        }
+      },
+      {
+        "step": "a checkout has a third list, its remote-tracking branches",
+        "requests": [
+          "GET /api/source/refs?kind=remote"
+        ],
+        "filterPending": false,
+        "paint": {
+          "button": "Working tree",
+          "open": true,
+          "workingTree": "Working tree: Live local files, on topic [current]",
+          "lists": [
+            "branch",
+            "tag",
+            "remote"
+          ],
+          "kind": "remote",
+          "query": "",
+          "loading": false,
+          "switching": false,
+          "rows": [
+            "origin/feature c7ae2a331f54 (remote chip)",
+            "origin/topic 42382ea2303b (remote chip)"
+          ],
+          "note": "",
+          "error": null
+        }
+      },
+      {
+        "step": "tags",
+        "requests": [
+          "GET /api/source/refs?kind=tag"
+        ],
+        "filterPending": false,
+        "paint": {
+          "button": "Working tree",
+          "open": true,
+          "workingTree": "Working tree: Live local files, on topic [current]",
+          "lists": [
+            "branch",
+            "tag",
+            "remote"
+          ],
+          "kind": "tag",
+          "query": "",
+          "loading": false,
+          "switching": false,
+          "rows": [
+            "local-tag c7ae2a331f54 (tag chip)",
+            "v1 fcb9d63c3c85 (tag chip)"
+          ],
+          "note": "",
+          "error": null
+        }
+      },
+      {
+        "step": "a branch is asked for by its ref, with the folder's address",
+        "requests": [
+          "POST /api/source/pin {\"ref\":\"refs/heads/feature\",\"view\":\"/view/README.md\"}"
+        ],
+        "filterPending": false,
+        "paint": {
+          "button": "Working tree",
+          "open": true,
+          "workingTree": "Working tree: Live local files, on topic [current]",
+          "lists": [
+            "branch",
+            "tag",
+            "remote"
+          ],
+          "kind": "branch",
+          "query": "",
+          "loading": false,
+          "switching": true,
+          "rows": [
+            "topic 42382ea2303b [checked out] (local chip)",
+            "feature c7ae2a331f54 (local chip)",
+            "local-work 25e0a2a76ab4 (local chip)"
+          ],
+          "note": "",
+          "error": null
+        }
+      },
+      {
+        "step": "the page goes to the same file in the revision",
+        "requests": [],
+        "filterPending": false,
+        "paint": {
+          "button": "Working tree",
+          "open": true,
+          "workingTree": "Working tree: Live local files, on topic [current]",
+          "lists": [
+            "branch",
+            "tag",
+            "remote"
+          ],
+          "kind": "branch",
+          "query": "",
+          "loading": false,
+          "switching": true,
+          "rows": [
+            "topic 42382ea2303b [checked out] (local chip)",
+            "feature c7ae2a331f54 (local chip)",
+            "local-work 25e0a2a76ab4 (local chip)"
+          ],
+          "note": "",
+          "error": null
+        },
+        "navigated": [
+          "/view/g1-UkVBRE1FLm1k"
+        ]
+      },
+      {
+        "step": "the button names the branch shown",
+        "requests": [],
+        "filterPending": false,
+        "paint": {
+          "button": "Branch: feature",
+          "open": false
+        }
+      },
+      {
+        "step": "the branch shown is current, and the working tree no longer is",
+        "requests": [
+          "GET /api/source/refs?kind=branch"
+        ],
+        "filterPending": false,
+        "paint": {
+          "button": "Branch: feature",
+          "open": true,
+          "workingTree": "Working tree: Live local files, on topic",
+          "lists": [
+            "branch",
+            "tag",
+            "remote"
+          ],
+          "kind": "branch",
+          "query": "",
+          "loading": false,
+          "switching": false,
+          "rows": [
+            "topic 42382ea2303b [checked out] (local chip)",
+            "feature c7ae2a331f54 [current] (local chip)",
+            "local-work 25e0a2a76ab4 (local chip)"
+          ],
+          "note": "",
+          "error": null
+        }
+      },
+      {
+        "step": "the checked-out branch opens its commit, not the working tree",
+        "requests": [
+          "POST /api/source/pin {\"ref\":\"refs/heads/topic\",\"view\":\"/view/g1-UkVBRE1FLm1k\"}"
+        ],
+        "filterPending": false,
+        "paint": {
+          "button": "Branch: feature",
+          "open": true,
+          "workingTree": "Working tree: Live local files, on topic",
+          "lists": [
+            "branch",
+            "tag",
+            "remote"
+          ],
+          "kind": "branch",
+          "query": "",
+          "loading": false,
+          "switching": true,
+          "rows": [
+            "topic 42382ea2303b [checked out] (local chip)",
+            "feature c7ae2a331f54 [current] (local chip)",
+            "local-work 25e0a2a76ab4 (local chip)"
+          ],
+          "note": "",
+          "error": null
+        },
+        "navigated": [
+          "/view/g1-UkVBRE1FLm1k"
+        ]
+      },
+      {
+        "step": "the working tree is asked for by name, not by a ref",
+        "requests": [
+          "POST /api/source/pin {\"working_tree\":true,\"view\":\"/view/g1-UkVBRE1FLm1k\"}"
+        ],
+        "filterPending": false,
+        "paint": {
+          "button": "Branch: topic",
+          "open": false
+        }
+      },
+      {
+        "step": "the page goes to the same file in the folder",
+        "requests": [],
+        "filterPending": false,
+        "paint": {
+          "button": "Branch: topic",
+          "open": false
+        },
+        "navigated": [
+          "/view/README.md"
+        ]
+      },
+      {
+        "step": "choosing the working tree while it is shown only closes",
+        "requests": [
+          "POST /api/source/pin {\"working_tree\":true,\"view\":\"/view/README.md\"}"
+        ],
+        "filterPending": false,
+        "paint": {
+          "button": "Working tree",
+          "open": false
+        }
+      },
+      {
+        "step": "a ref gone from the checkout says so, and nothing is fetched",
+        "requests": [
+          "POST /api/source/pin {\"ref\":\"refs/heads/gone\",\"view\":\"/view/README.md\"}"
+        ],
+        "filterPending": false,
+        "paint": {
+          "button": "Working tree",
+          "open": true,
+          "workingTree": "Working tree: Live local files, on topic [current]",
+          "lists": [
+            "branch",
+            "tag",
+            "remote"
+          ],
+          "kind": "branch",
+          "query": "",
+          "loading": false,
+          "switching": false,
+          "rows": [
+            "topic 42382ea2303b [checked out] (local chip)",
+            "feature c7ae2a331f54 (local chip)",
+            "local-work 25e0a2a76ab4 (local chip)"
+          ],
+          "note": "",
+          "error": "That ref is no longer in the checkout."
+        }
+      },
+      {
+        "step": "a working-tree page left behind offers a reload",
+        "requests": [],
+        "filterPending": false,
+        "paint": {
+          "button": "Working tree",
+          "open": false,
+          "stale": "The server now shows another revision [Reload]"
+        }
+      },
+      {
+        "step": "a revision's page left behind offers one too",
+        "requests": [],
+        "filterPending": false,
+        "paint": {
+          "button": "Branch: feature",
+          "open": false,
+          "stale": "The server now shows the working tree [Reload]"
+        }
+      },
+      {
+        "step": "a folder Git does not take for a repository loses its row",
+        "requests": [
+          "GET /api/source/refs?kind=branch"
+        ],
+        "filterPending": false,
+        "paint": {
+          "removed": true
+        }
+      },
+      {
+        "step": "an older Git is refused in the server's words",
+        "requests": [
+          "GET /api/source/refs?kind=branch"
+        ],
+        "filterPending": false,
+        "paint": {
+          "button": "Working tree",
+          "open": true,
+          "workingTree": "Working tree: Live local files [current]",
+          "lists": [
+            "branch",
+            "tag",
+            "remote"
+          ],
+          "kind": "branch",
+          "query": "",
+          "loading": false,
+          "switching": false,
+          "rows": [],
+          "note": "",
+          "error": "showing a branch or tag of a checkout needs Git 2.43.7 or newer, which is known never to fetch into it; this is git version 2.39.2"
+        }
+      },
+      {
+        "step": "a mirror's selector asks for no working tree and offers no reload",
+        "requests": [],
+        "filterPending": false,
+        "paint": {
+          "button": "Branch: topic",
+          "open": false
+        }
+      }
+    ],
+    "labels": [
+      "Working tree",
+      "Branch: feature (local chip)",
+      "Remote branch: origin/feature (remote chip)",
+      "Tag: v1 (tag chip)",
+      "Commit: c7ae2a331f54"
+    ],
+    "guard": {
+      "a checkout's working tree": "working-tree; refused when another is served: true; while its own is: false",
+      "a checkout's revision": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b; refused when another is served: true; while its own is: false",
+      "a mirror's pin": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b; refused when another is served: true; while its own is: false",
+      "a plain folder": "nothing"
+    }
+  }
 }
 ? 0
 ```

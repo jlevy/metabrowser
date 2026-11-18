@@ -67,10 +67,11 @@
    *   location(): {pathname: string, search: string},
    *   pushHref(href: string): void,
    *   activeTab(): string | null,
-   *   registerPanel(panel: {id: string, label: string, onFirstShow: null, onShow: () => void, onHide: () => void}): void,
+   *   registerPanel(panel: {id: string, label: string, focusRow: () => boolean, onFirstShow: null, onShow: () => void, onHide: () => void, reveal: (how: {scroll: "nearest" | "keep", again?: boolean}) => void, home: () => void}): void,
    *   activate(panelId: string): void,
    *   loadView(kind: string): Promise<MetabrowserPublicViewSpec | null | undefined>,
    *   container(): HTMLElement | null,
+   *   toolbar?(): HTMLElement | null,
    *   scrollRoot(): HTMLElement | null,
    *   openPull(route: {number: number, tab: string, file?: string, jumped?: boolean, reader?: unknown, replace?: boolean}): Promise<unknown>,
    *   pageFor(number: number): unknown,
@@ -139,6 +140,8 @@
                 // repository modes. Details use the shared bounded background scheduler.
                 refreshAhead: true,
                 checkout,
+                // The tab's toolbar in the navigation's slot, which its filters fill.
+                toolbar: deps.toolbar?.() ?? null,
                 scrollRoot: deps.scrollRoot(),
                 open: (
                   /** @type {{number: number, tab: string, file?: string, jumped?: boolean, reader?: unknown, replace?: boolean}} */ route,
@@ -213,6 +216,24 @@
     }
 
     /**
+     * Give the list's roving row focus, the selected pull request's when it has one, as
+     * the Pulls tab's letter does after it switches to the tab. Reports whether a row took
+     * focus; before the list has rows, the tab button keeps it.
+     */
+    function focusRow() {
+      const container = deps.container();
+      // A pull request's row, or a stack's while the list is grouped by stack.
+      const row =
+        container?.querySelector('.github-pulls-row[tabindex="0"]') ??
+        container?.querySelector(".github-pulls-row");
+      if (!(row instanceof HTMLElement)) {
+        return false;
+      }
+      row.focus();
+      return true;
+    }
+
+    /**
      * What of an address can move a tab: its path, and at the list's address its filter too,
      * which is part of that address. A fragment or a file's query is a step within one place.
      *
@@ -228,8 +249,15 @@
      * The address changed, by history or in the page: which tab, and what the panel marks.
      * A step that stays in one place, such as a fragment in a file, moves no tab.
      * Back from one filter of the list to another shows the list.
+     *
+     * *preserveScroll* is a tab's landing: the list stays where the reader left it until
+     * the address moves on or a reveal asks for the row, and a view that mounts after the
+     * landing is told so then. *reveal* is the shell's reveal, which ends that kept scroll.
+     * *again* is its one-shot intent for an open of the pull request shown: the row is
+     * revealed although the address names the current one (docs/design-system.md,
+     * "Navigation Reveals the Item").
      */
-    /** @param {{preserveScroll?: boolean}} [options] */
+    /** @param {{preserveScroll?: boolean, reveal?: boolean, again?: boolean}} [options] */
     function routeChanged(options = {}) {
       if (disposed) {
         return;
@@ -245,13 +273,48 @@
         }
       } else if (options.preserveScroll) {
         preserveScroll = true;
+      } else if (options.reveal === true) {
+        // The reader asked for the item, which a tab's landing kept the list away from.
+        preserveScroll = false;
       }
       const here = address();
       if (handle !== null) {
-        handle.setCurrent(here?.page ?? null, here?.file ?? null, { preserveScroll });
+        handle.setCurrent(here?.page ?? null, here?.file ?? null, {
+          preserveScroll,
+          ...(options.again === true ? { again: true } : {}),
+        });
         if (here?.filter) {
           handle.setFilter(here.filter);
         }
+      }
+    }
+
+    /**
+     * The Pulls panel's reveal (main-tabs.js, `reveal`): the pull request the address names
+     * is marked, its closed stack opens, and its row scrolls into view unless the tab's
+     * own landing keeps the list where the reader left it. The pull request already
+     * current is revealed only *again*, by an open of it.
+     *
+     * @param {{scroll: "nearest" | "keep", again?: boolean}} how
+     */
+    function reveal(how) {
+      routeChanged(
+        how.scroll === "keep"
+          ? { preserveScroll: true }
+          : { reveal: true, ...(how.again === true ? { again: true } : {}) },
+      );
+    }
+
+    /**
+     * The Pulls panel's Home (main-tabs.js, `goHome`): the mounted list puts back what a
+     * fresh load draws, from the rows it holds. A list not mounted yet draws that already.
+     * What the address decides follows the addresses (`routeChanged`): the current pull
+     * request the `/view/` Home opens, and the filter the list's address the tab's next
+     * open lands on.
+     */
+    function home() {
+      if (!disposed) {
+        handle?.home?.();
       }
     }
 
@@ -278,7 +341,16 @@
     return Object.freeze({
       /** Register the tab, show it where the address asks, and read ahead where it does not. */
       start() {
-        deps.registerPanel({ id: PANEL_ID, label: "Pulls", onFirstShow: null, onShow, onHide });
+        deps.registerPanel({
+          id: PANEL_ID,
+          label: "Pulls",
+          focusRow,
+          onFirstShow: null,
+          onShow,
+          onHide,
+          reveal,
+          home,
+        });
         const { pathname, search } = deps.location();
         lastPlace = place(pathname, search);
         if (deps.activeTab() === PANEL_ID) {
@@ -307,6 +379,8 @@
       activateAnchor: () => handle?.activateAnchor() ?? false,
       /** @param {number} number */
       toggleFiles: (number) => handle?.toggleFiles(number) ?? false,
+      /** @param {number} number */
+      toggleStack: (number) => handle?.toggleStack(number) ?? false,
       hasStack: () => stackPage() !== null,
       /** @param {-1 | 1} delta */
       moveStack: (delta) => stackPage()?.moveStack(delta) ?? false,
@@ -339,44 +413,57 @@
   function registerKeys(nav, shortcuts) {
     /** @param {Record<string, unknown>} context */
     const repeating = (context) => /** @type {{event?: KeyboardEvent}} */ (context).event?.repeat;
+    // Control-N and Control-P, next and previous as in Emacs and the macOS text system,
+    // walk the stack, so N stays free and P opens the Pulls tab. They are global, so a
+    // focused Pulls row keeps J and K, and Shift changes neither pair; a text field keeps
+    // them. They are bound only where Control reaches the page, macOS and iOS: elsewhere
+    // Ctrl+N and Ctrl+P are the browser's, a new window and Print, and the stack menu
+    // walks the stack (docs/design-system.md, "Control Chords"). A held chord walks once
+    // and its repeats are consumed, so none falls through to the browser.
+    const stackKeys = shortcuts.controlReachesPage()
+      ? [
+          shortcuts.register({
+            bindings: [{ key: "n", control: true }],
+            available: () => nav.hasStack(),
+            copy: {
+              action: "Next in stack",
+              description: "Open the next pull request toward the top of the stack.",
+              hint: "Stack",
+            },
+            group: "pull-stack",
+            handler: (context) => repeating(context) === true || nav.moveStack(1),
+            id: "pulls.stack.top",
+            order: 10,
+            repeat: true,
+            scope: "global",
+            surfaces: { help: "always", reveal: "always" },
+          }),
+          shortcuts.register({
+            bindings: [{ key: "p", control: true }],
+            available: () => nav.hasStack(),
+            copy: {
+              action: "Previous in stack",
+              description: "Open the previous pull request toward the stack base.",
+              hint: "Stack",
+            },
+            group: "pull-stack",
+            handler: (context) => repeating(context) === true || nav.moveStack(-1),
+            id: "pulls.stack.base",
+            order: 20,
+            repeat: true,
+            scope: "global",
+            surfaces: { help: "always", reveal: "always" },
+          }),
+        ]
+      : [];
     return [
-      shortcuts.register({
-        bindings: [{ key: "j", modifiers: { shift: "require" } }],
-        available: () => nav.hasStack(),
-        copy: {
-          action: "Toward stack base",
-          description: "Open the adjacent pull request toward the stack base.",
-          hint: "Stack",
-        },
-        group: "pull-stack",
-        handler: () => nav.moveStack(-1),
-        id: "pulls.stack.base",
-        order: 10,
-        repeat: false,
-        scope: "global",
-        surfaces: { help: "always" },
-      }),
-      shortcuts.register({
-        bindings: [{ key: "k", modifiers: { shift: "require" } }],
-        available: () => nav.hasStack(),
-        copy: {
-          action: "Toward stack top",
-          description: "Open the adjacent pull request toward the stack top.",
-          hint: "Stack",
-        },
-        group: "pull-stack",
-        handler: () => nav.moveStack(1),
-        id: "pulls.stack.top",
-        order: 20,
-        repeat: false,
-        scope: "global",
-        surfaces: { help: "always" },
-      }),
+      ...stackKeys,
       shortcuts.register({
         bindings: [{ key: "ArrowUp" }, { key: "k" }],
         copy: {
           action: "Previous pull request",
-          description: "Open the previous pull request in the list.",
+          description:
+            "Open the previous pull request in the list, or go to a stack's row; from a change line, go back to its pull request.",
           hint: "Browse",
         },
         group: "pull-requests",
@@ -391,7 +478,8 @@
         bindings: [{ key: "ArrowDown" }, { key: "j" }],
         copy: {
           action: "Next pull request",
-          description: "Open the next pull request in the list.",
+          description:
+            "Open the next pull request in the list, or go to a stack's row; from a change line, into its open changed files.",
           hint: "Browse",
         },
         group: "pull-requests",
@@ -406,7 +494,8 @@
         bindings: [{ key: "Enter" }],
         copy: {
           action: "Open pull request",
-          description: "Open the focused pull request.",
+          description:
+            "Open the focused pull request; on its change line, show or hide its changed files; on a stack, open or close it.",
           hint: "Open",
         },
         group: "pull-requests",
@@ -420,20 +509,29 @@
         bindings: [{ key: " " }],
         copy: {
           action: "Toggle changed files",
-          description: "Expand or collapse the focused pull request's changed files.",
+          description:
+            "Expand or collapse the changed files of the focused change line, or the focused stack.",
           hint: "Changes",
         },
         group: "pull-requests",
         handler(context) {
           const event = /** @type {{event?: KeyboardEvent}} */ (context).event;
           const target = event?.target;
-          // Consume held Space without toggling again. The row's actual focus can
-          // outlast a catalog update that changes the tab stop.
-          return (
-            target instanceof HTMLElement &&
-            target.matches("a.github-pulls-row") &&
-            (event?.repeat === true || nav.toggleFiles(Number(target.dataset.number)))
-          );
+          // Consume held Space without toggling again. The element's actual focus can
+          // outlast a catalog update that changes the tab stop. A pull request's change
+          // line and a stack's row carry their numbers. A pull request's own row toggles
+          // nothing, and Space there is consumed all the same, as every row collection's
+          // is, so it does not scroll the list a page from under the focused row.
+          if (!(target instanceof HTMLElement)) {
+            return false;
+          }
+          if (target.matches(".github-pulls-change")) {
+            return event?.repeat === true || nav.toggleFiles(Number(target.dataset.number));
+          }
+          if (target.matches(".github-pulls-stack-row")) {
+            return event?.repeat === true || nav.toggleStack(Number(target.dataset.stack));
+          }
+          return target.matches(".github-pulls-row");
         },
         id: "pulls.toggle-files",
         order: 35,
@@ -445,7 +543,8 @@
         bindings: [{ key: "ArrowRight" }],
         copy: {
           action: "Show changed files",
-          description: "Show the focused pull request's changed files, or go to the first.",
+          description:
+            "Go to the focused pull request's change line; there, show its changed files or go to the first; on a stack, its pull requests.",
           hint: "Changes",
         },
         group: "pull-requests",
@@ -459,7 +558,8 @@
         bindings: [{ key: "ArrowLeft" }],
         copy: {
           action: "Hide changed files",
-          description: "Hide the focused pull request's changed files.",
+          description:
+            "On a change line, hide its changed files or go back to its pull request; on a pull request, go to its stack; on a stack, close it.",
           hint: "Changes",
         },
         group: "pull-requests",
@@ -564,15 +664,16 @@
   let activeScope = null;
 
   /**
-   * Which keys a focused element takes: a pull request's row's, a changed file's row's, or
-   * none.
+   * Which keys a focused element takes: a pull request's row's, which its change line shares, a
+   * changed file's row's, or none.
    *
    * @param {EventTarget | null} target
    */
   const scopeOf = (target) =>
     !(target instanceof Element)
       ? null
-      : target.closest("a.github-pulls-row") !== null
+      : target.closest(".github-pulls-row") !== null ||
+          target.closest(".github-pulls-change") !== null
         ? KEY_SCOPE
         : target.closest(".github-pull-file-row, .github-pull-folder-row") !== null
           ? FILE_KEY_SCOPE
@@ -643,6 +744,7 @@
         return sdk.getRegisteredView(kind, kind);
       },
       container: () => document.getElementById("tab-pulls"),
+      toolbar: () => document.getElementById("nav-toolbar-pulls"),
       scrollRoot: () => document.getElementById("tree-content"),
       openPull: (route) =>
         shell.openPullRequest(route).catch((error) => {
@@ -650,17 +752,8 @@
         }),
       // The page host the shell made, which pull-route.js keeps for what sits beside the pane.
       pageFor: (number) => routes.attachedHost()?.pageFor(number) ?? null,
-      schedulePrefetch: (callback) =>
-        typeof window.requestIdleCallback === "function"
-          ? window.requestIdleCallback(callback, { timeout: PREFETCH_IDLE_TIMEOUT_MS })
-          : window.setTimeout(callback, PREFETCH_IDLE_TIMEOUT_MS),
-      cancelPrefetch: (handle) => {
-        if (typeof window.cancelIdleCallback === "function") {
-          window.cancelIdleCallback(/** @type {number} */ (handle));
-        } else {
-          window.clearTimeout(/** @type {number} */ (handle));
-        }
-      },
+      schedulePrefetch: (callback) => sdk.whenIdle(callback, { timeout: PREFETCH_IDLE_TIMEOUT_MS }),
+      cancelPrefetch: (cancel) => /** @type {() => void} */ (cancel)(),
       showFailure(container) {
         const said = document.createElement("p");
         said.className = "github-pulls-empty";

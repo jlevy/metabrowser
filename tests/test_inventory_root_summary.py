@@ -13,6 +13,8 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from metabrowser.events import FsEntry
 from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
 from metabrowser.inventory_engine.providers.python_inventory import (
@@ -328,3 +330,68 @@ def test_root_summary_is_zero_for_an_empty_root(tmp_path: Path) -> None:
         index.clear()
 
     assert summary == {"files": 0, "size": 0, "ignored_files": 0, "ignored_size": 0}
+
+
+def test_a_pass_classifies_each_extension_once_and_names_as_before(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Classifying per distinct extension gives the per-file answers exactly.
+
+    Classifying every file twice was four fifths of the pass: 1.7 s of a
+    300,000-file pass (``explorations/tree-summary-storm/README.md``). A name decides
+    its own classification only when the registry lists it, as ``Makefile`` and
+    ``README`` are, so every other file classifies as its extension does. The
+    reference here classifies every file by name, as the pass did before.
+    """
+
+    entries = [
+        FsEntry.for_observed_file(
+            path=name, parent="", name=name, size=index + 1, mtime_ns=1, gitignored=index % 3 == 0
+        )
+        for index, name in enumerate(
+            [
+                "Makefile",
+                "README",
+                "LICENSE.md",
+                "readme.md",
+                "Dockerfile",
+                "dockerfile.dev",
+                "app.min.js",
+                "App.JS",
+                "types.d.ts",
+                "notes.md",
+                "data.json",
+                "no-extension",
+                "script.py",
+                "image.PNG",
+            ]
+        )
+    ]
+    presets = [
+        (str(preset["id"]), tuple(str(value) for value in preset["values"]))
+        for preset in FILTER_TYPE_PRESETS
+    ]
+    index = PythonInventoryStore()
+    registry = index._registry  # pyright: ignore[reportPrivateUsage]
+    assert registry.classifies_by_name("Makefile")
+    assert registry.classifies_by_name("README")
+    assert not registry.classifies_by_name("readme.md")
+
+    memoized = index._compute_navigation_tallies(presets, 200, entries)  # pyright: ignore[reportPrivateUsage]
+    calls = 0
+    real_classify = type(registry).classify
+
+    def counting_classify(self: Any, name: str, extension: str) -> Any:
+        nonlocal calls
+        calls += 1
+        return real_classify(self, name, extension)
+
+    monkeypatch.setattr(type(registry), "classify", counting_classify)
+    index._compute_navigation_tallies(presets, 200, entries)  # pyright: ignore[reportPrivateUsage]
+    distinct_extensions = len({entry.ext.lower() for entry in entries})
+    named = sum(registry.classifies_by_name(entry.name) for entry in entries)
+    assert calls == distinct_extensions + named, "a pass classified a file more than once"
+
+    monkeypatch.setattr(type(registry), "classifies_by_name", lambda _self, _name: True)
+    per_file = index._compute_navigation_tallies(presets, 200, entries)  # pyright: ignore[reportPrivateUsage]
+    assert memoized == per_file

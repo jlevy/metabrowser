@@ -41,22 +41,13 @@ function assertNotContains(label, haystack, needle) {
   }
 }
 
-// Counts are accessible labels; status identity and visible letters are separate
-// semantics. Attribute order and incidental span whitespace are not the contract.
-function assertFileStatus(label, html, status, count) {
-  const token = `data-file-status="${status}"`;
-  if (count === 0) {
-    assertNotContains(label, html, token);
-    return;
-  }
-  const unit = count === 1 ? "file" : "files";
-  assertContains(`${label}: accessible count`, html, `aria-label="${count} ${status} ${unit}"`);
-  assertContains(`${label}: status identity`, html, token);
-  const letter = { modified: "M", added: "A", deleted: "D" }[status];
-  const text = String(html)
-    .replace(/<[^>]*>/g, "")
-    .replace(/\s+/g, " ");
-  assertContains(`${label}: visible count and letter`, text, `${count} ${letter}`);
+// A hover card's change line, as a reader sees it: its markup's text, without the words a
+// screen reader is told in its place.
+function changeLineText(html) {
+  const line = String(html).match(
+    /<span class="git-commit-change-line" aria-hidden="true">(.*?)<\/div>/s,
+  );
+  return line === null ? null : line[1].replace(/<[^>]*>/g, "");
 }
 
 // ── Fake DOM ─────────────────────────────────────────────────
@@ -115,6 +106,9 @@ class FakeElement {
     this._html = "";
     this._hovered = false;
     this.scrollCalls = [];
+    // The options of each focus() call, so a test can tell focus that scrolls from focus
+    // that does not.
+    this.focusCalls = [];
     // Layout the panel actually reads. The Git panel converts between the
     // scroller's coordinate space and the virtualized list's by summing
     // the heights of the chrome above the list, so a fake DOM reporting
@@ -160,10 +154,36 @@ class FakeElement {
       loading.className = "loading mb-delayed-loading";
       this.appendChild(loading);
     }
+    // The place the commit's Diff summary is drawn in, at the summary's top (mb-pb35).
+    if (
+      this._html.includes(
+        '<div class="git-commit-diff-summary metabrowser-diff-host page-header-line">',
+      )
+    ) {
+      const summaryHost = new FakeElement("div", this.ownerDocument);
+      summaryHost.className = "git-commit-diff-summary metabrowser-diff-host page-header-line";
+      this.appendChild(summaryHost);
+    }
     if (this._html.includes("git-commit-diff")) {
       const diffHost = new FakeElement("div", this.ownerDocument);
       diffHost.className = "git-commit-diff";
       this.appendChild(diffHost);
+    }
+    // The full summary's identity group and its refs, so a test can watch the refs of a
+    // summary on screen replaced in place.
+    if (this._html.includes('<span class="git-commit-identity">')) {
+      const identity = new FakeElement("span", this.ownerDocument);
+      identity.className = "git-commit-identity";
+      const refs = this._html.match(
+        /<span class="git-commit-refs">([\s\S]*?)<\/span><\/span><\/div><div class="git-commit-ages /,
+      );
+      if (refs) {
+        const group = new FakeElement("span", this.ownerDocument);
+        group.className = "git-commit-refs";
+        group.innerHTML = refs[1];
+        identity.appendChild(group);
+      }
+      this.appendChild(identity);
     }
     for (const match of this._html.matchAll(
       /class="[^"]*git-commit-file[^"]*"[^>]*data-path="([^"]+)"/g,
@@ -212,9 +232,16 @@ class FakeElement {
     this.children.push(child);
     return child;
   }
+  /** Text appended as a string, as `Element.append` takes it, is a text node of its own. */
   append(...nodes) {
     for (const node of nodes) {
-      this.appendChild(node);
+      if (typeof node === "string") {
+        const text = new FakeElement("#text", this.ownerDocument);
+        text.textContent = node;
+        this.appendChild(text);
+      } else {
+        this.appendChild(node);
+      }
     }
   }
   replaceChildren(...nodes) {
@@ -250,7 +277,8 @@ class FakeElement {
       handler(event);
     }
   }
-  focus() {
+  focus(options) {
+    this.focusCalls.push(options ?? null);
     const previous = this.ownerDocument.activeElement;
     if (previous === this) {
       return;
@@ -347,6 +375,7 @@ class FakeDocument {
     return this.root.querySelector(selector);
   }
   addEventListener() {}
+  removeEventListener() {}
 }
 
 // ── Sandbox ──────────────────────────────────────────────────
@@ -379,6 +408,8 @@ sandbox.METABROWSER_SETTINGS = {
   GIT_HISTORY_SEGMENT_REBASE_PX: 220,
   GIT_HOVER_DEBOUNCE_MS: 5,
   GIT_DETAIL_CACHE_SIZE: 3,
+  // Four answers of about 930 bytes fit and a fifth evicts; one over 1,000 bytes is not kept.
+  GIT_COMPARISON_CACHE_BYTES: 4000,
 };
 
 const openedPaths = [];
@@ -401,9 +432,13 @@ sandbox.MetabrowserNavigationRoute = {
 };
 /** @type {string[]} Routes the panel replaced, newest last. */
 const replacedRoutes = [];
+// Whether the address is the neutral Commits entry, which a switch to Commits pushes. A
+// replaced entry is a commit's address, so it is the neutral entry no longer.
+let neutralLanding = false;
 sandbox.history = {
   replaceState: (_state, _title, url) => {
     replacedRoutes.push(String(url));
+    neutralLanding = false;
   },
 };
 
@@ -421,6 +456,7 @@ const removedPanels = [];
 let registeredPanel = null;
 sandbox.MetabrowserShell = {
   rememberMainTabAddress() {},
+  isGitHistoryLanding: () => neutralLanding,
   claimPreview: () => {
     pendingStageCleanup?.();
     previewClaim += 1;
@@ -511,6 +547,13 @@ const comparisonFetches = [];
 const shownTooltips = [];
 const measuredLabels = [];
 let tooltipHideCount = 0;
+// What each hide was given. The panel puts away only its own tooltip, so a rebuild or a
+// claimed preview never takes a Files row's from under the pointer (mb-alff).
+const tooltipHidesWithin = [];
+/** Whether every hide since `since` was given the panel itself, the `#tab-git` stand-in. */
+const hidWithinPanel = (since) =>
+  tooltipHidesWithin.length > since &&
+  tooltipHidesWithin.slice(since).every((within) => within === document.getElementById("tab-git"));
 let comparisonResponder = async (revision) => ({ comparison_id: revision });
 sandbox.metabrowser = {
   ...require("./sdk-ref-fixture.js").refHelpers(document),
@@ -518,8 +561,9 @@ sandbox.metabrowser = {
   delegateOwnerAttribute: () => ' data-mb-owner="page-owner"',
   tooltip: {
     show: (html, anchor) => shownTooltips.push({ html, anchor }),
-    hide: () => {
+    hide: (within) => {
       tooltipHideCount += 1;
+      tooltipHidesWithin.push(within);
     },
   },
   ensureAsset: async () => {},
@@ -535,7 +579,14 @@ sandbox.metabrowser = {
       render: async (host, context) => {
         renderedDiffConnections.push(host.isConnected);
         renderedDiffRevisions.push(context.revision);
-        renderedDiffContexts.push(context);
+        // What the view was given, but not the page's place for its summary itself: holding
+        // that element would hold the whole staged page, which C2 checks is let go.
+        renderedDiffContexts.push({
+          ...context,
+          summaryHost: context.summaryHost
+            ? { className: context.summaryHost.className }
+            : undefined,
+        });
         await context.raw;
         return {
           cancelPending: () => canceledDiffRevisions.push(context.revision),
@@ -602,6 +653,9 @@ for (const file of [
 
 const panel = sandbox.MetabrowserGitPanel;
 const internals = panel._internals;
+// The shared changed-files model, as its bundle installs it: what a Diff summary says of a
+// change set, which a commit's hover card says of its own in the same words.
+const sharedTree = require("./changed-files-tree-fixture.js").changedFilesTree();
 
 const SHA_A = "a".repeat(40);
 const SHA_B = "b".repeat(40);
@@ -640,7 +694,7 @@ function historyPage(page, commits, total, headRevision) {
     scope_fingerprint: "deep-scope",
     graph_checkpoint: {
       version: 1,
-      prior_swimlanes: page > 0 ? [{ id: commits[0].id, color: "var(--git-ref-local)" }] : [],
+      prior_swimlanes: page > 0 ? [{ id: commits[0].id, color: "var(--git-ref-remote)" }] : [],
       color_index: -1,
       head_revision: headRevision,
       scope_fingerprint: "deep-scope",
@@ -862,25 +916,65 @@ async function run() {
         html.indexOf("git-commit-revision", identityStart) < identityEnd &&
         html.indexOf("git-commit-refs", identityStart) < identityEnd,
     );
-    assertFileStatus("tooltip: modified files", html, "modified", 28);
-    assertFileStatus("tooltip: added files", html, "added", 4);
-    assertFileStatus("tooltip: zero deleted files are omitted", html, "deleted", 0);
-    assertContains("tooltip: file unit", html, 'git-commit-stat-unit">files');
-    assertContains("tooltip: additions", html, "+1921");
-    assertContains("tooltip: deletions", html, "−160");
-    assertContains("tooltip: line unit", html, 'git-commit-stat-unit">lines');
+    // The hover card says a commit's changes in the Diff summary's words and paint, through
+    // its parts and painter (formatters.js, `changeSummary` and `countPartsHtml`): the
+    // summary's order, A, D, M, the file count bold in the line's ink, each status count,
+    // number and letter, one span that is the status primitive and bold (mb-8iwn), and the
+    // commas and dots muted, each dot one item with the group before it (mb-khm6).
+    const format = sandbox.MetabrowserFormatters.formatInteger;
+    assertEqual(
+      "tooltip: the change line reads as the Diff summary's header",
+      changeLineText(html),
+      `32 files changed·4 A, 28 M·+${format(1921)}−160`,
+    );
+    assertContains(
+      "tooltip: the change line, painted",
+      html,
+      '<span class="git-commit-change-line" aria-hidden="true">' +
+        '<span class="git-commit-change-group"><span class="git-commit-change-files">' +
+        '<span class="summary-number">32</span> files changed</span>' +
+        '<span class="summary-punctuation" aria-hidden="true">·</span></span>' +
+        // The brief change line, the one component for "4 A, 28 M · +1,921 −160" (mb-9ekj).
+        '<span class="change-line"><span class="change-line-group"><span class="change-line-statuses">' +
+        '<span class="summary-status-count file-change-status" data-file-status="added">' +
+        '<span class="summary-number">4</span> A</span>' +
+        '<span class="summary-punctuation">,</span> ' +
+        '<span class="summary-status-count file-change-status" data-file-status="modified">' +
+        '<span class="summary-number">28</span> M</span></span>' +
+        '<span class="summary-punctuation" aria-hidden="true">·</span></span>' +
+        '<span class="change-line-stats">' +
+        `<span class="diff-stat-add">+${format(1921)}</span>` +
+        '<span class="diff-stat-del">−160</span></span></span></span></div>',
+    );
+    assertNotContains(
+      "tooltip: zero deleted files are omitted",
+      html,
+      'data-file-status="deleted"',
+    );
+    assertContains(
+      "tooltip: a screen reader is told the change line in words",
+      html,
+      `<span class="visually-hidden">32 files changed: 4 added, 28 modified; ${format(1921)} lines added, 160 deleted</span>`,
+    );
+    // The same counts as the Diff summary says them, from the shared changed-files model.
+    const said = sharedTree.describeChanges(
+      { files: 32, additions: 1921, deletions: 160, exact: true },
+      [...Array(4).fill("added"), ...Array(28).fill("modified")],
+      format,
+    );
+    assertEqual(
+      "tooltip: the change line is the Diff summary's, word for word",
+      [changeLineText(html), html.includes(`>${said.label}</span>`)],
+      [said.text.replaceAll(" · ", "·").replace(" \u2212", "\u2212"), true],
+    );
+    assertNotContains("tooltip: no old per-status tint", html, "git-commit-file-status-");
+    assertNotContains("tooltip: no old units", html, "git-commit-stat-unit");
     const metaStart = html.indexOf('<div class="git-commit-meta">');
     const metaEnd = html.indexOf("</div>", metaStart);
     const statsStart = html.indexOf('<div class="git-commit-change-stats">');
-    const fileStatsStart = html.indexOf('<div class="git-commit-file-statuses"', statsStart);
-    const lineStatsStart = html.indexOf('<div class="git-commit-line-stats"', statsStart);
     assertTrue(
-      "tooltip: change statistics are two rows below identity metadata",
-      metaStart >= 0 &&
-        metaEnd > metaStart &&
-        statsStart > metaEnd &&
-        fileStatsStart > statsStart &&
-        lineStatsStart > fileStatsStart,
+      "tooltip: the change line is below the identity metadata",
+      metaStart >= 0 && metaEnd > metaStart && statsStart > metaEnd,
     );
     assertNotContains("tooltip: omits long body", html, "long body");
     assertNotContains("tooltip: has no interactive copy button", html, "<button");
@@ -891,11 +985,45 @@ async function run() {
       stats: {},
       files_truncated: true,
     });
-    assertFileStatus("tooltip: unknown modified count stays unknown", unknown, "modified", "?");
-    assertFileStatus("tooltip: unknown added count stays unknown", unknown, "added", "?");
-    assertFileStatus("tooltip: unknown deleted count stays unknown", unknown, "deleted", "?");
-    assertContains("tooltip: unknown additions stay unknown", unknown, "+?");
-    assertContains("tooltip: unknown deletions stay unknown", unknown, "−?");
+    assertEqual(
+      "tooltip: unknown counts stay unknown, each family kept",
+      changeLineText(unknown),
+      "? files changed·? A, ? D, ? M·+?−?",
+    );
+    assertContains(
+      "tooltip: unknown counts are said as unknown",
+      unknown,
+      '<span class="visually-hidden">? files changed: ? added, ? deleted, ? modified; line counts unknown</span>',
+    );
+    const one = internals.renderCommitTooltip({
+      ...detail,
+      stats: {
+        files_changed: 1,
+        files_modified: 0,
+        files_added: 0,
+        files_deleted: 1,
+        additions: 0,
+        deletions: 1,
+      },
+    });
+    assertEqual("tooltip: one file", changeLineText(one), "1 file changed·1 D·+0−1");
+    assertContains(
+      "tooltip: one file, in words",
+      one,
+      "1 file changed: 1 deleted; 0 lines added, 1 deleted</span>",
+    );
+    const empty = internals.renderCommitTooltip({
+      ...detail,
+      stats: {
+        files_changed: 0,
+        files_modified: 0,
+        files_added: 0,
+        files_deleted: 0,
+        additions: 0,
+        deletions: 0,
+      },
+    });
+    assertEqual("tooltip: no files", changeLineText(empty), "0 files changed·+0−0");
   }
   internals.setStateForTests({ ...internals.emptyState(), selectedId: SHA_A });
   await internals.renderCommitDetail({
@@ -958,16 +1086,30 @@ async function run() {
     previewHtml,
     '<section class="git-commit-summary page-reading-column"',
   );
+  // The page's Diff summary takes the change stats' place (mb-pb35): the summary holds the
+  // place, the diff below draws it there, and no counts of the panel's own are drawn. Until
+  // it does, and where it is not drawn, the place says the commit's totals in one line, worded
+  // and painted as the diff's line is (A6 of review A on #470), through the same parts and
+  // painter: its dot one item with the count before it, and said as a comma (A5 of review A
+  // on #479); the spaces around the dot are written, so it reads as one line without the
+  // diff plugin's stylesheet too (B3 of review B on #479).
   assertContains(
-    "detail: summary gives change stats their own child",
+    "detail: summary holds the Diff summary's place, with the commit's totals",
+    previewHtml,
+    '<div class="git-commit-diff-summary metabrowser-diff-host page-header-line">' +
+      '<div class="diff-summary">' +
+      '<span class="diff-summary-group"><span class="diff-summary-files">' +
+      '<span class="summary-number">2</span> files changed</span> ' +
+      '<span class="summary-punctuation" aria-hidden="true">·</span>' +
+      '<span class="visually-hidden">, </span></span> ' +
+      '<span class="change-line"><span class="change-line-stats"><span class="diff-stat-add">+5</span>' +
+      '<span class="diff-stat-del">−1</span></span></span></div></div>',
+  );
+  assertNotContains(
+    "detail: summary draws no change stats of its own",
     previewHtml,
     "git-commit-change-stats",
   );
-  assertFileStatus("detail: summary counts modified files", previewHtml, "modified", 1);
-  assertFileStatus("detail: summary counts added files", previewHtml, "added", 1);
-  assertFileStatus("detail: summary omits zero deleted files", previewHtml, "deleted", 0);
-  assertContains("detail: summary counts additions", previewHtml, "+5");
-  assertContains("detail: summary counts deletions", previewHtml, "−1");
   assertContains(
     "detail: uses the shared page heading",
     previewHtml,
@@ -980,10 +1122,49 @@ async function run() {
   assertTrue(
     "detail: component owns subject, metadata, refs, and description",
     summaryStart >= 0 &&
-      previewHtml.indexOf("git-commit-subject", summaryStart) < summaryEnd &&
-      previewHtml.indexOf("git-commit-meta", summaryStart) < summaryEnd &&
-      previewHtml.indexOf("git-commit-refs", summaryStart) < summaryEnd &&
-      previewHtml.indexOf("git-commit-body", summaryStart) < summaryEnd,
+      [
+        "git-commit-subject",
+        "git-commit-byline",
+        "git-commit-refs",
+        "git-commit-ages",
+        "git-commit-body",
+      ].every((part) => {
+        const at = previewHtml.indexOf(part, summaryStart);
+        return at >= 0 && at < summaryEnd;
+      }),
+  );
+  // The page's header is a pull request's, in its order (docs/design-system.md, "Page
+  // Headers"): the subject, then one line each for the author, drawn by the shell's identity
+  // with the person glyph in its avatar's box, the revision and its refs, where a pull request
+  // has its branches, and the age, where it has its row of ages; then the Diff summary. The
+  // hover card keeps its one line of metadata.
+  assertContains(
+    "detail: the summary's header is a page header",
+    previewHtml,
+    '<div class="git-commit-header page-header">',
+  );
+  const lines = [
+    '<h1 class="git-commit-subject page-heading">',
+    '<div class="git-commit-byline page-header-line"><span class="actor-identity">' +
+      '<span class="actor-avatar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"',
+    '<div class="git-commit-revision-line page-header-line"><span class="git-commit-identity">' +
+      '<span class="git-commit-revision"><span class="git-commit-sha">',
+    '<div class="git-commit-ages page-header-line">Committed <span class="git-commit-age ',
+    '<div class="git-commit-diff-summary metabrowser-diff-host page-header-line">',
+  ].map((line) => previewHtml.indexOf(line, summaryStart));
+  assertTrue(
+    "detail: the header's lines are the author, the revision, the age, then the Diff summary",
+    lines.every((at, index) => at >= 0 && (index === 0 || at > lines[index - 1])),
+  );
+  assertContains(
+    "detail: the author's name follows the person glyph in its box, bold",
+    previewHtml,
+    '<circle cx="12" cy="12" r="10"/></svg></span><strong class="actor-name git-commit-author">',
+  );
+  assertNotContains(
+    "detail: the page's header has no hover card's line of metadata",
+    previewHtml.slice(summaryStart, summaryEnd),
+    "git-commit-meta",
   );
   // The commit's files are presented by the diff view mounted below, so
   // the panel keeps only what that view cannot show: a host for it, the
@@ -1002,6 +1183,24 @@ async function run() {
   assertEqual("detail: prepared comparison reaches the view", await renderedDiffContexts[0].raw, {
     comparison_id: SHA_A,
   });
+  assertTrue(
+    "detail: the diff draws its Diff summary in the summary's place",
+    String(renderedDiffContexts[0].summaryHost?.className ?? "").includes(
+      "git-commit-diff-summary",
+    ),
+  );
+  // The commit's own totals go to the diff, whose summary says them where the comparison's
+  // list is cut short at its bound (A3 of review A on #470).
+  assertEqual(
+    "detail: the diff is given the commit's totals",
+    renderedDiffContexts[0].summaryTotals,
+    {
+      files: 2,
+      additions: 5,
+      deletions: 1,
+      exact: true,
+    },
+  );
   assertNotContains("detail: no truncation note", previewHtml, "the diff below is bounded");
   await internals.renderCommitDetail({
     is_repo: true,
@@ -1017,6 +1216,11 @@ async function run() {
   // Files the server cannot open are still reported; hiding them would
   // misreport what the commit changed.
   assertContains("detail: names files outside the folder", previewHtml, "outside this folder");
+  assertContains(
+    "detail: the count of files outside the folder is a bold number",
+    previewHtml,
+    '<div class="git-commit-files-summary"><span><span class="summary-number">1</span> file outside this folder</span></div>',
+  );
   assertContains("detail: lists the outside file", previewHtml, "outside.js");
   assertNotContains("detail: does not relist inside files", previewHtml, "inside.js");
   await internals.renderCommitDetail({
@@ -1031,6 +1235,38 @@ async function run() {
   // failure — so the bound has to be stated, with the real total.
   assertContains("detail: truncation is stated", previewHtml, "the diff below is bounded");
   assertContains("detail: truncation names the total", previewHtml, "900");
+  // A commit past the diff's bound on files: its summary is handed the whole commit's
+  // totals, which the server counts before it caps the list, not the list's own (A3 of
+  // review A on #470).
+  assertEqual(
+    "detail: a truncated commit's diff is given the whole commit's totals",
+    renderedDiffContexts.at(-1).summaryTotals,
+    { files: 900, additions: 1, deletions: 1, exact: true },
+  );
+  assertContains(
+    "detail: a truncated commit's place says the whole commit's totals",
+    previewHtml,
+    '<span class="diff-summary-files"><span class="summary-number">900</span> files changed</span>',
+  );
+  // A detail with no count of files has no line, and its empty place takes no room.
+  await internals.renderCommitDetail({
+    is_repo: true,
+    commit: commit(SHA_A, [], "uncounted commit"),
+    body: "",
+    stats: {},
+    files: [],
+    files_truncated: false,
+  });
+  assertContains(
+    "detail: an uncounted commit's place is empty",
+    previewHtml,
+    '<div class="git-commit-diff-summary metabrowser-diff-host page-header-line"></div>',
+  );
+  assertEqual(
+    "detail: an uncounted commit's diff is given no totals",
+    renderedDiffContexts.at(-1).summaryTotals,
+    undefined,
+  );
 
   // ── Paging appends and keeps lanes continuous ──────────────
   {
@@ -1296,6 +1532,88 @@ async function run() {
     container.scrollTop = 0;
   }
 
+  // ── The tally is the Commits tab's toolbar, in the navigation's slot ──
+  //
+  // With the shell's toolbar slot, the tally fills it, so the slot is never
+  // empty and the list starts at the panel's top, where the Files tree starts.
+  {
+    const container = document.getElementById("tab-git");
+    const toolbar = document.register("nav-toolbar-git", document.createElement("div"));
+    // As the server ships it (server.py): a navigation metadata line holding the pending
+    // tally in the count's own span.
+    const shipped = document.createElement("div");
+    shipped.className = "git-history-summary nav-metadata";
+    toolbar.appendChild(shipped);
+    const revisions = [SHA_A, SHA_B];
+    const fresh = internals.emptyState();
+    fresh.pageCache.put({
+      page: 0,
+      startOrdinal: 0,
+      commits: [commit(SHA_A, [SHA_B], "second"), commit(SHA_B, [], "first")],
+      checkpoint: {
+        version: 1,
+        priorSwimlanes: [],
+        colorIndex: -1,
+        headRevision: revisions[0],
+        scopeFingerprint: "scope",
+      },
+      pageCursor: "page-0",
+      nextCursor: null,
+      previousCursor: null,
+    });
+    fresh.rowCount = 2;
+    fresh.virtualWindow.setRowCount(2);
+    fresh.scopeFingerprint = "scope";
+    // The list is in, the count is not: the pending tally sits in the count's own span,
+    // where the count will be, as the Files totals hold theirs. A lone flex item sat at
+    // the top of the line instead (review A1 on #435).
+    internals.setStateForTests(fresh);
+    container.replaceChildren();
+    internals.renderPanel();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const pendingLine = toolbar.querySelector(".git-history-summary");
+    const pendingCount = toolbar.querySelector(".git-history-summary-count");
+    assertTrue(
+      "toolbar: a pending tally sits in the count's own span of a metadata line",
+      pendingLine?.classNames.has("nav-metadata") &&
+        pendingLine.children.length === 1 &&
+        pendingLine.children[0] === pendingCount &&
+        pendingCount.children.length === 1 &&
+        pendingCount.children[0].classNames.has("tally-pending"),
+    );
+    fresh.summary = { commitCount: 2, firstCommitAt: null };
+    internals.setStateForTests(fresh);
+    // A panel showing its first list: the earlier scenarios left one mounted.
+    container.replaceChildren();
+    internals.renderPanel();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const tally = toolbar.querySelector(".git-history-summary");
+    assertTrue("toolbar: the tally fills the slot", tally?.textContent === "2 commits");
+    assertTrue(
+      "toolbar: the list starts at the panel's top",
+      container.querySelector(".git-history-summary") === null &&
+        container.children[0]?.className === "git-graph-list",
+    );
+    assertEqual("toolbar: nothing above the list shifts it", internals.historyOrigin(), 0);
+    // History that cannot load settles the toolbar at its height, rather than leaving the
+    // pending tally pulsing over a failure.
+    const failedState = internals.emptyState();
+    failedState.failed = true;
+    internals.setStateForTests(failedState);
+    container.replaceChildren();
+    internals.renderPanel();
+    assertTrue(
+      "toolbar: a failed history settles the tally",
+      toolbar.textContent === "History unavailable" &&
+        toolbar.querySelector(".tally-pending") === null &&
+        toolbar.querySelector(".git-history-summary")?.classNames.has("nav-metadata-note"),
+    );
+    document.byId.delete("nav-toolbar-git");
+    toolbar.remove();
+    internals.setStateForTests(internals.emptyState());
+    internals.renderPanel();
+  }
+
   // ── The panel mounts a logical window, not its decoded working set ──
   {
     const container = document.getElementById("tab-git");
@@ -1492,6 +1810,10 @@ async function run() {
       "tooltip lifecycle: pointer leave dismisses despite keyboard focus",
       tooltipHideCount > hidesBeforePointerLeave,
     );
+    assertTrue(
+      "tooltip lifecycle: pointer leave hides only the panel's own tooltip",
+      hidWithinPanel(hidesBeforePointerLeave),
+    );
 
     let resolveDelayedTooltip;
     responses.set(
@@ -1512,6 +1834,10 @@ async function run() {
       "tooltip lifecycle: keyboard selection dismisses immediately",
       tooltipHideCount > hidesBeforeKeyboardSelection,
     );
+    assertTrue(
+      "tooltip lifecycle: keyboard selection hides only the panel's own tooltip",
+      hidWithinPanel(hidesBeforeKeyboardSelection),
+    );
     resolveDelayedTooltip({
       is_repo: true,
       commit: commit(SHA_F, [], "tooltip-only commit"),
@@ -1528,6 +1854,10 @@ async function run() {
     );
     rows[2]._hovered = false;
     assertTrue("tooltip lifecycle: dismissal remains observable", tooltipHideCount > hidesBefore);
+    assertTrue(
+      "tooltip lifecycle: every dismissal hides only the panel's own tooltip",
+      hidWithinPanel(hidesBefore),
+    );
   }
 
   // ── Selection and stale-response handling ──────────────────
@@ -1682,6 +2012,7 @@ async function run() {
     rows[0].dispatch("keydown", j);
     rows[0]._hovered = false;
     assertTrue("keyboard: j dismisses the hover tooltip", tooltipHideCount > hidesBeforeJ);
+    assertTrue("keyboard: j hides only the panel's own tooltip", hidWithinPanel(hidesBeforeJ));
     assertTrue("keyboard: repeated j is handled", j.defaultPrevented);
     assertTrue("keyboard: j focuses the next commit", document.activeElement === rows[1]);
     assertEqual("keyboard: j opens the next commit", internals.stateForTests().selectedId, SHA_B);
@@ -1707,9 +2038,8 @@ async function run() {
     );
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    for (const modifier of ["altKey", "ctrlKey", "metaKey", "shiftKey"]) {
-      for (const letter of ["j", "k"]) {
-        const key = modifier === "shiftKey" ? letter.toUpperCase() : letter;
+    for (const modifier of ["altKey", "ctrlKey", "metaKey"]) {
+      for (const key of ["j", "k"]) {
         const chord = keyboardEvent(key, { [modifier]: true });
         rows[1].dispatch("keydown", chord);
         assertTrue(`keyboard: ${modifier} with ${key} is ignored`, !chord.defaultPrevented);
@@ -1721,15 +2051,44 @@ async function run() {
       internals.stateForTests().selectedId,
       SHA_B,
     );
-    // Let the final focus-following selection release its single active
-    // preparation slot before the next independent preparation case.
-    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Shift never changes a row key: Shift with K, J, or an arrow moves and
+    // opens, as without it.
+    for (const [key, from, to, revision] of [
+      ["K", 1, 0, SHA_A],
+      ["J", 0, 1, SHA_B],
+      ["ArrowUp", 1, 0, SHA_A],
+      ["ArrowDown", 0, 1, SHA_B],
+    ]) {
+      const shifted = keyboardEvent(key, { shiftKey: true });
+      rows[from].dispatch("keydown", shifted);
+      assertTrue(`keyboard: Shift with ${key} is handled`, shifted.defaultPrevented);
+      assertTrue(`keyboard: Shift with ${key} moves focus`, document.activeElement === rows[to]);
+      assertEqual(
+        `keyboard: Shift with ${key} opens the commit`,
+        internals.stateForTests().selectedId,
+        revision,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    // With Commits already in front and no landing waiting, the Commits tab's key, `H`, only
+    // moves focus, back to the row the reader left. A switch to Commits lands on the newest
+    // row instead ("The Commits key lands on the newest row", below).
+    document.activeElement = null;
+    assertTrue("focusRow: the roving row takes focus", internals.focusCommitRow());
+    assertTrue(
+      "focusRow: in front, focus lands on the row left",
+      document.activeElement === rows[1],
+    );
   }
 
   // ── Preparation overlaps and reuses pointer intent ─────────
   {
     internals.setStateForTests(internals.emptyState());
     responses.clear();
+    // This block counts preparation requests, so it starts with no comparison kept from
+    // the commits earlier blocks opened.
+    internals.clearComparisonCache();
     const container = document.getElementById("tab-git");
     appendTestPage(
       [commit(SHA_E, [], "prepared first"), commit(SHA_B, [], "prepared second")],
@@ -1902,23 +2261,29 @@ async function run() {
     rows[2].dispatch("mouseleave");
 
     // A file claiming the pane leaves selectedId intact, but its claim
-    // invalidates the Git selection. Returning must prepare and reopen it.
+    // invalidates the Git selection. Returning must prepare and reopen it,
+    // and the comparison it prepares is the one kept for the commit ID.
     sandbox.MetabrowserShell.claimPreview("file");
     const reopenComparisons = comparisonFetches.length;
     const reopenMounts = renderedDiffRevisions.length;
+    const reopenLabels = measuredLabels.length;
     rows[0]._hovered = true;
     rows[0].dispatch("mouseenter");
     await new Promise((resolve) => setTimeout(resolve, 10));
-    assertEqual(
+    assertTrue(
       "prepare: another preview owner permits the same selected revision to prepare",
+      measuredLabels.slice(reopenLabels).includes("gitRevision:comparisonData"),
+    );
+    assertEqual(
+      "prepare: that preparation reads the kept comparison instead of asking again",
       comparisonFetches.length,
-      reopenComparisons + 1,
+      reopenComparisons,
     );
     await internals.selectCommit(SHA_E);
     assertEqual(
-      "prepare: reopening joins the comparison prepared after another owner",
+      "prepare: reopening joins the preparation made after another owner",
       comparisonFetches.length,
-      reopenComparisons + 1,
+      reopenComparisons,
     );
     assertEqual(
       "prepare: reopening mounts the selected revision",
@@ -2441,6 +2806,8 @@ async function run() {
     const mountedRevision = "91".repeat(20);
     responses.set(`/api/git/commit/${mountedRevision}`, detail(mountedRevision));
     await internals.selectCommit(mountedRevision);
+    // A comparison is kept in the task after the one that handed it to the diff.
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const retained = previewNode;
     const history = internals.stateForTests().pageCache;
     hydration.add("old-active", 0);
@@ -2473,11 +2840,17 @@ async function run() {
     );
     sandbox.metabrowser.getRegisteredView = originalView;
     const comparisonsBefore = comparisonFetches.length;
+    const mountsBefore = renderedDiffRevisions.length;
     await internals.selectCommit(mountedRevision);
     assertEqual(
-      "cross-owner: returning same selected Git revision prepares again",
+      "cross-owner: returning same selected Git revision mounts its diff again",
+      renderedDiffRevisions.length,
+      mountsBefore + 1,
+    );
+    assertEqual(
+      "cross-owner: the remount reads the comparison kept for the commit ID",
       comparisonFetches.length,
-      comparisonsBefore + 1,
+      comparisonsBefore,
     );
     assertContains(
       "cross-owner: returning Git renders its commit",
@@ -2491,6 +2864,177 @@ async function run() {
     );
     hydration.dispose();
     sandbox.MetabrowserShell.claimPreview = originalClaim;
+  }
+
+  // The commit diff another owner takes the pane from ends when that owner's content
+  // replaces it, and its `L` with it. The shell's claim and install functions are lifted
+  // from app.js; the registry and the plugin shortcut facade are production; the diff
+  // stands in for diff-view.js, which attaches `L` on its layout chip and detaches it in
+  // `dispose()` (tests/dom/diff-layout-fit-session.js pins that half).
+  {
+    const shell = sandbox.MetabrowserShell;
+    const originals = {
+      claimPreview: shell.claimPreview,
+      renderPreviewHtml: shell.renderPreviewHtml,
+      renderPreviewNode: shell.renderPreviewNode,
+      view: sandbox.metabrowser.getRegisteredView,
+    };
+    const app = fs.readFileSync(path.join(repoRoot, "src/metabrowser/static/app.js"), "utf8");
+    const lifted = [
+      "claimPreview(owner, selection)",
+      "finishRetainedPullPage()",
+      "renderPreviewHtml(html, claim)",
+      "renderPreviewNode(node, claim)",
+    ].map((signature) => {
+      const pattern = new RegExp(
+        `\\nfunction ${signature.replace(/[()]/g, "\\$&")} \\{[\\s\\S]*?\\n\\}`,
+      );
+      const source = app.match(pattern)?.[0];
+      assertTrue(`relinquished diff: app.js has ${signature}`, Boolean(source));
+      return source ?? "";
+    });
+    sandbox.cancelPendingFilePreviewStage = () => pendingStageCleanup?.();
+    sandbox.pullPageHost = null;
+    sandbox.retainedPullPageDispose = null;
+    sandbox.shellKeymap = null;
+    sandbox.clearPreviewNavigationState = (pane) => {
+      pane.classList.remove("preview-navigation-pending");
+      pane.removeAttribute("aria-busy");
+      pane.removeAttribute("data-preview-pending-claim");
+    };
+    sandbox.previewPane = {
+      claim: () => {
+        previewClaim += 1;
+        return previewClaim;
+      },
+    };
+    sandbox.isPreviewClaimCurrent = (claim) => claim === previewClaim;
+    sandbox.disposeActivePluginViews = () => {};
+    sandbox.animatePreviewContentArrival = () => {};
+    vm.runInContext(lifted.join("\n"), sandbox, { filename: "app.js (lifted)" });
+    shell.claimPreview = sandbox.claimPreview;
+    shell.renderPreviewHtml = sandbox.renderPreviewHtml;
+    shell.renderPreviewNode = sandbox.renderPreviewNode;
+
+    for (const name of ["keyboard-shortcuts.js", "plugin-shortcuts.js"]) {
+      const filename = path.join(repoRoot, "src/metabrowser/static", name);
+      vm.runInContext(fs.readFileSync(filename, "utf8"), sandbox, { filename });
+    }
+    const registry = sandbox.MetabrowserKeyboardShortcuts.create({ document });
+    const facade = sandbox.MetabrowserPluginShortcuts;
+    const detachRegistry = facade.attachShortcutRegistry(registry);
+    /** What Help lists of the plugin keys: it lists a command with an attachment, live or not. */
+    const helpKeys = () =>
+      registry
+        .snapshot("help", { includeInactive: true })
+        .flatMap((group) => group.commands)
+        .filter((command) => command.scope === "plugin")
+        .map((command) => `${command.bindings.visible.join("")} ${command.copy.action}`);
+    const mounts = [];
+    sandbox.metabrowser.getRegisteredView = () => ({
+      render: async (host, context) => {
+        const root = document.createElement("div");
+        const chip = document.createElement("button");
+        root.appendChild(chip);
+        host.appendChild(root);
+        const layoutKey = facade.attachShortcut(chip, {
+          activate: () => {},
+          copy: {
+            action: "Toggle diff layout",
+            description: "Switch the diff between Split and Unified.",
+            hint: "Layout",
+          },
+          group: "controls",
+          id: "diff.layout",
+          key: "l",
+          order: 40,
+        });
+        const mount = { revision: context.revision, chip, canceled: 0, disposed: 0 };
+        mounts.push(mount);
+        return {
+          cancelPending: () => {
+            mount.canceled += 1;
+          },
+          dispose: () => {
+            mount.disposed += 1;
+            layoutKey.detach();
+            root.remove();
+          },
+        };
+      },
+    });
+    const revision = "92".repeat(20);
+    responses.set(`/api/git/commit/${revision}`, {
+      is_repo: true,
+      commit: commit(revision, [], "relinquished commit"),
+      body: "",
+      stats: { files_changed: 0, additions: 0, deletions: 0 },
+      files: [],
+      files_truncated: false,
+    });
+
+    await internals.selectCommit(revision);
+    const [first] = mounts;
+    assertEqual("relinquished diff: the commit view mounts one diff", mounts.length, 1);
+    assertEqual("relinquished diff: Help lists the diff's L", helpKeys(), ["L Toggle diff layout"]);
+
+    shell.claimPreview("file", { folder: false, path: "after-commit.txt" });
+    assertEqual("relinquished diff: a file claim cancels the diff's work", first.canceled, 1);
+    assertEqual("relinquished diff: the diff waits for the file's content", first.disposed, 0);
+    assertTrue("relinquished diff: the commit view stays on screen", first.chip.isConnected);
+    assertEqual("relinquished diff: L stays while the diff is shown", helpKeys(), [
+      "L Toggle diff layout",
+    ]);
+    // A second claim before the first one's content arrives keeps the one handoff.
+    const fileClaim = shell.claimPreview("file", { folder: false, path: "later.txt" });
+    assertEqual("relinquished diff: a second claim keeps the handoff", first.disposed, 0);
+
+    shell.renderPreviewHtml('<div class="file-view">later.txt</div>', fileClaim);
+    assertEqual("relinquished diff: the file's content disposes the diff", first.disposed, 1);
+    assertEqual("relinquished diff: Help no longer lists L", helpKeys(), []);
+    assertEqual(
+      "relinquished diff: the chip keeps no aria-keyshortcuts",
+      first.chip.getAttribute("aria-keyshortcuts"),
+      null,
+    );
+
+    await internals.selectCommit(revision);
+    const second = mounts[1];
+    assertEqual("relinquished diff: showing the commit again mounts a diff", mounts.length, 2);
+    assertEqual("relinquished diff: the earlier diff is disposed once", first.disposed, 1);
+    assertEqual("relinquished diff: the new diff stays mounted", second?.disposed, 0);
+    assertEqual("relinquished diff: Help lists L again", helpKeys(), ["L Toggle diff layout"]);
+    assertEqual(
+      "relinquished diff: L is on the new diff's chip",
+      second?.chip.getAttribute("aria-keyshortcuts"),
+      "L",
+    );
+
+    // The commit view's own replacement still disposes the diff it replaces.
+    const replacement = "93".repeat(20);
+    responses.set(`/api/git/commit/${replacement}`, {
+      is_repo: true,
+      commit: commit(replacement, [], "replacing commit"),
+      body: "",
+      stats: { files_changed: 0, additions: 0, deletions: 0 },
+      files: [],
+      files_truncated: false,
+    });
+    await internals.selectCommit(replacement);
+    assertEqual("relinquished diff: the next commit disposes the shown diff", second?.disposed, 1);
+    assertEqual("relinquished diff: one L for the shown commit", helpKeys(), [
+      "L Toggle diff layout",
+    ]);
+
+    detachRegistry();
+    registry.dispose();
+    Object.assign(shell, {
+      claimPreview: originals.claimPreview,
+      renderPreviewHtml: originals.renderPreviewHtml,
+      renderPreviewNode: originals.renderPreviewNode,
+    });
+    sandbox.metabrowser.getRegisteredView = originals.view;
+    sandbox.retainedPullPageDispose = null;
   }
 
   // ── Changed files navigate through the shell ───────────────
@@ -2516,10 +3060,93 @@ async function run() {
     viewAssets.push(name);
     return new Promise((resolve, reject) => assetWaits.push({ resolve, reject }));
   };
+  // Discovery's retries, held here so the test fires them rather than waiting them out.
+  const discoveryRetries = [];
+  let nextRetryId = 0;
+  const realSetTimeout = sandbox.setTimeout;
+  const realClearTimeout = sandbox.clearTimeout;
+  sandbox.setTimeout = (callback, ms) => {
+    nextRetryId += 1;
+    discoveryRetries.push({ id: nextRetryId, callback, ms });
+    return nextRetryId;
+  };
+  sandbox.clearTimeout = (id) => {
+    const index = discoveryRetries.findIndex((retry) => retry.id === id);
+    if (index >= 0) {
+      discoveryRetries.splice(index, 1);
+    }
+  };
+  const repositoryReads = () =>
+    fetchRequests.filter(({ url }) => String(url).startsWith("/api/git/repo")).length;
   responses.set("/api/git/repo", { is_repo: false, reason: "not_a_repo" });
   await panel.init();
   assertEqual("gate: a plain folder never asks for view helpers", viewAssets, []);
   assertEqual("gate: no tab outside a repository", registeredPanel, null);
+  assertEqual("gate: an answer that the root is no repository is final", discoveryRetries, []);
+
+  // A gate that gets no answer is asked again, at a doubling interval, until one comes.
+  // A page that gave up on its first refused or timed-out read never showed Commits.
+  responses.set("/api/git/repo", { httpStatus: 503, body: { error: "unavailable" } });
+  await panel.init();
+  assertEqual("gate: a failed read registers nothing", registeredPanel, null);
+  assertEqual(
+    "gate: a failed read is asked again",
+    discoveryRetries.map(({ ms }) => ms),
+    [1000],
+  );
+  discoveryRetries.shift()?.callback();
+  await new Promise(setImmediate);
+  assertEqual(
+    "gate: each failure in a row waits twice as long",
+    discoveryRetries.map(({ ms }) => ms),
+    [2000],
+  );
+
+  // A teardown while a retry waits cancels it, and a retry that fires anyway belongs to
+  // a discovery the teardown retired: it asks nothing and registers nothing, though the
+  // repository would now answer. The next failure starts the backoff over.
+  {
+    const waiting = discoveryRetries[0];
+    responses.set("/api/git/repo", {
+      is_repo: true,
+      root: "",
+      head: { ref: "refs/heads/main", revision: SHA_A, detached: false, unborn: false },
+    });
+    responses.set("/api/git/refs", { is_repo: true, refs: [] });
+    const readsBefore = repositoryReads();
+    internals.teardown();
+    assertEqual("teardown: a waiting discovery retry is cancelled", discoveryRetries, []);
+    // Time passes: every timer still scheduled fires, and so does the one torn down.
+    for (const retry of [...discoveryRetries.splice(0), waiting]) {
+      retry?.callback();
+    }
+    await new Promise(setImmediate);
+    assertEqual("teardown: a retired retry reads nothing", repositoryReads(), readsBefore);
+    assertEqual("teardown: a retired retry registers nothing", registeredPanel, null);
+    responses.set("/api/git/repo", { httpStatus: 503, body: { error: "unavailable" } });
+    await panel.init();
+    assertEqual(
+      "teardown: the next failure starts the backoff over",
+      discoveryRetries.map(({ ms }) => ms),
+      [1000],
+    );
+  }
+
+  responses.set("/api/git/repo", {
+    is_repo: true,
+    root: "",
+    head: { ref: "refs/heads/main", revision: SHA_A, detached: false, unborn: false },
+  });
+  responses.set("/api/git/refs", { is_repo: true, refs: [] });
+  discoveryRetries.shift()?.callback();
+  await new Promise(setImmediate);
+  sandbox.setTimeout = realSetTimeout;
+  sandbox.clearTimeout = realClearTimeout;
+  assertTrue("gate: the retry that gets an answer registers Commits", registeredPanel !== null);
+  assertEqual("gate: an answer ends the retries", discoveryRetries, []);
+  internals.teardown();
+  registeredPanel = null;
+  responses.set("/api/git/repo", { is_repo: false, reason: "not_a_repo" });
 
   responses.set("/api/git/repo", {
     is_repo: true,
@@ -2531,6 +3158,10 @@ async function run() {
   assertTrue(
     "gate: a repository registers its real Git tab before helper loading",
     registeredPanel !== null,
+  );
+  assertTrue(
+    "gate: the Commits tab hands its key's focus to the history",
+    registeredPanel.focusRow === internals.focusCommitRow,
   );
   assertEqual("gate: an unopened Git tab does not load the view helpers", viewAssets, []);
   registeredPanel.onShow();
@@ -2784,6 +3415,1154 @@ async function run() {
   await internals.selectCommit(SHA_B);
   assertTrue("head: a refresh clears the detail cache", fetchCount > afterRefresh);
 
+  // ── Switching to Commits lands on the newest commit ────────
+  //
+  // The neutral Commits entry selects the top row once history is here, an older selection
+  // notwithstanding. The newest row is selected and is the list's Tab stop, focus stays on
+  // the tab the switch left it on, a scrolled list comes back to its top, and a return
+  // with history loaded asks only whether HEAD moved, never for history again.
+  {
+    responses.set(`/api/git/commit/${SHA_C}`, {
+      is_repo: true,
+      commit: commit(SHA_C, [], "after checkout"),
+      body: "",
+      stats: { files_changed: 0, additions: 0, deletions: 0 },
+      files: [],
+      files_truncated: false,
+    });
+    const container = document.getElementById("tab-git");
+    const tab = document.createElement("button");
+    tab.focus();
+    container.scrollTop = 500;
+    const requestsBefore = fetchRequests.length;
+    neutralLanding = true;
+    await panel.restoreCommitLanding();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const asked = fetchRequests.slice(requestsBefore).map((request) => request.url);
+    assertEqual("newest: the top row is selected", internals.stateForTests().selectedId, SHA_C);
+    assertEqual(
+      "newest: its address replaces the entry",
+      replacedRoutes.at(-1),
+      `/commit/${SHA_C}`,
+    );
+    const newestRow = container.querySelector('.git-graph-row[data-ordinal="0"]');
+    assertTrue("newest: the row is marked", newestRow?.classList.contains("selected") === true);
+    assertEqual("newest: the row is the Tab stop", newestRow?.getAttribute("tabindex"), "0");
+    assertTrue("newest: focus stays on the tab", document.activeElement === tab);
+    assertEqual("newest: the list is back at its top", container.scrollTop, 0);
+    assertEqual("newest: history is not asked for again", asked, [
+      "/api/git/repo",
+      `/api/git/commit/${SHA_C}`,
+    ]);
+    // An address that names a commit wins: the entry is not the neutral one.
+    await internals.selectCommit(SHA_B);
+    const landedBefore = replacedRoutes.length;
+    await panel.restoreCommitLanding();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assertEqual(
+      "newest: a non-neutral address selects nothing",
+      replacedRoutes.length,
+      landedBefore,
+    );
+    assertEqual("newest: the older commit stays", internals.stateForTests().selectedId, SHA_B);
+  }
+
+  // ── The Commits key lands on the newest row ──────────────
+  //
+  // The key switches to Commits and then asks the panel for its row (main-tabs.js), before
+  // the landing has selected anything. That row is the newest, not the older one the reader
+  // left: focused without scrolling the list and made its Tab stop, so `↓` opens the next
+  // commit. A newest row the list has not mounted takes focus when the landing reveals it,
+  // unless the reader has moved focus by then, and a refresh that replaces the focused row
+  // gives focus back to the new one. A click on the tab leaves focus on the tab, and a
+  // landing that lost the pane or the address steers nothing.
+  {
+    const container = document.getElementById("tab-git");
+    const tab = document.register("commits-tab", document.createElement("button"));
+    tab.className = "tab-btn";
+    tab.dataset.tab = "git";
+    const filesRow = document.register("files-row", document.createElement("div"));
+    const filter = document.register("files-filter", document.createElement("input"));
+    const rowAt = (ordinal) => container.querySelector(`.git-graph-row[data-ordinal="${ordinal}"]`);
+    const settle = async () => {
+      for (let tick = 0; tick < 50; tick += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+    };
+    const detail = (revision) => ({
+      is_repo: true,
+      commit: commit(revision, [], "key detail"),
+      body: "",
+      stats: { files_changed: 0, additions: 0, deletions: 0 },
+      files: [],
+      files_truncated: false,
+    });
+    // What the key does from another tab (main-tabs.js bindShortcuts and openMainTab): it
+    // gives up the pane, pushes the neutral entry, and asks the panel to land; the landing
+    // shows the panel (activateNavPanel, below). Then it asks the panel for its row, or
+    // focuses the tab while the panel has none.
+    const pressCommitsDigit = () => {
+      sandbox.MetabrowserShell.claimPreview("none");
+      neutralLanding = true;
+      const landing = panel.restoreCommitLanding();
+      const took = registeredPanel.focusRow();
+      if (!took) {
+        tab.focus();
+      }
+      return { landing, took };
+    };
+    // A click on the tab: the button takes focus, and the switch is the key's, without the
+    // request for a row.
+    const clickCommitsTab = () => {
+      tab.focus();
+      sandbox.MetabrowserShell.claimPreview("none");
+      neutralLanding = true;
+      return panel.restoreCommitLanding();
+    };
+    // The key with Commits in front: openMainTab only shows the panel again, with no
+    // landing of its own, and then asks for the row.
+    const pressDigitWithCommitsShown = () => {
+      registeredPanel.onShow();
+      const took = registeredPanel.focusRow();
+      if (!took) {
+        tab.focus();
+      }
+      return took;
+    };
+    // Showing the panel from another tab puts its list at the top, and its onShow checks
+    // history, which renders the rows at that top unless a page is on its way.
+    const shellActivate = sandbox.MetabrowserShell.activateNavPanel;
+    sandbox.MetabrowserShell.activateNavPanel = (id) => {
+      if (id === "git") {
+        container.scrollTop = 0;
+        registeredPanel.onShow();
+      }
+    };
+    // A held answer for the repository read that each landing and onShow make first.
+    const holdRepo = (answer) => {
+      let release = () => {};
+      const held = new Promise((resolve) => (release = resolve));
+      responses.set("/api/git/repo", async () => {
+        await held;
+        return answer;
+      });
+      return () => {
+        release();
+        responses.set("/api/git/repo", answer);
+      };
+    };
+    const repoAt = (revision, ref = "refs/heads/main") => ({
+      is_repo: true,
+      root: "",
+      head: { ref, revision, detached: false, unborn: false },
+    });
+
+    // Mounted: the reader left the older commit at ordinal 1 for Files.
+    {
+      filesRow.focus();
+      const { landing, took } = pressCommitsDigit();
+      const newest = rowAt(0);
+      assertTrue(
+        "H: the newest row takes focus at once",
+        took && document.activeElement === newest,
+      );
+      assertEqual("H: focus does not scroll the list", newest?.focusCalls.at(-1), {
+        preventScroll: true,
+      });
+      assertEqual("H: the newest row is the Tab stop", newest?.getAttribute("tabindex"), "0");
+      assertEqual("H: the row left is not", rowAt(1)?.getAttribute("tabindex"), "-1");
+      await landing;
+      await settle();
+      assertEqual("H: the newest is selected", internals.stateForTests().selectedId, SHA_C);
+      assertTrue("H: focus stays on the newest row", document.activeElement === rowAt(0));
+      assertEqual("H: it stays the Tab stop", rowAt(0)?.getAttribute("tabindex"), "0");
+      assertEqual("H: the list stays at its top", container.scrollTop, 0);
+      const down = keyboardEvent("ArrowDown");
+      document.activeElement.dispatch("keydown", down);
+      assertTrue("H: ↓ is handled", down.defaultPrevented);
+      assertEqual("H: ↓ opens the next commit", internals.stateForTests().selectedId, SHA_B);
+      assertTrue("H: ↓ focuses its row", document.activeElement === rowAt(1));
+      await settle();
+    }
+    filesRow.focus();
+    await clickCommitsTab();
+    await settle();
+    assertEqual("click: the newest is selected", internals.stateForTests().selectedId, SHA_C);
+    assertEqual("click: the newest row is the Tab stop", rowAt(0)?.getAttribute("tabindex"), "0");
+    assertTrue("click: focus stays on the tab", document.activeElement === tab);
+
+    // HEAD moved while Commits was hidden. The landing's refresh replaces the rows, the
+    // focused newest among them, and a browser then drops focus to the body; the landing
+    // gives it to the new newest row.
+    {
+      filesRow.focus();
+      responses.set(`/api/git/commit/${SHA_D}`, detail(SHA_D));
+      responses.set("/api/git/repo", {
+        is_repo: true,
+        root: "",
+        head: { ref: "refs/heads/other", revision: SHA_D, detached: false, unborn: false },
+      });
+      let releasePage = () => {};
+      const pageHeld = new Promise((resolve) => (releasePage = resolve));
+      let pageAsked = false;
+      responses.set("/api/git/log", async () => {
+        pageAsked = true;
+        await pageHeld;
+        return historyPage(
+          0,
+          [commit(SHA_D, [SHA_C], "moved head"), commit(SHA_C, [], "after checkout")],
+          2,
+          SHA_D,
+        );
+      });
+      const { landing, took } = pressCommitsDigit();
+      assertTrue(
+        "H, refresh: the newest row takes focus",
+        took && document.activeElement === rowAt(0),
+      );
+      for (let tick = 0; tick < 50 && !pageAsked; tick += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      assertTrue("H, refresh: the refresh asks for history", pageAsked);
+      assertEqual("H, refresh: the refresh replaced the rows", rowAt(0), null);
+      // What a browser does when the focused element leaves the document.
+      document.activeElement = null;
+      releasePage();
+      await landing;
+      await settle();
+      assertEqual(
+        "H, refresh: the new newest is selected",
+        internals.stateForTests().selectedId,
+        SHA_D,
+      );
+      assertTrue(
+        "H, refresh: focus returns to the newest row",
+        document.activeElement === rowAt(0),
+      );
+      assertEqual("H, refresh: without scrolling", rowAt(0)?.focusCalls.at(-1), {
+        preventScroll: true,
+      });
+    }
+
+    // The reader clicks text in the preview while the landing reads HEAD, which moved back:
+    // focus goes nowhere before the refresh replaces the rows, and the landing leaves it
+    // there. Only a row the refresh removed hands focus back.
+    {
+      filesRow.focus();
+      responses.set(
+        "/api/git/log",
+        historyPage(
+          0,
+          [commit(SHA_C, [SHA_B], "checked out again"), commit(SHA_B, [], "older")],
+          2,
+          SHA_C,
+        ),
+      );
+      const releaseRepo = holdRepo(repoAt(SHA_C));
+      const { landing, took } = pressCommitsDigit();
+      assertTrue(
+        "H, text click: the newest row takes focus",
+        took && document.activeElement === rowAt(0),
+      );
+      // A click on text no one can focus: the browser reports the body.
+      document.activeElement = null;
+      releaseRepo();
+      await landing;
+      await settle();
+      assertEqual(
+        "H, text click: the newest is selected",
+        internals.stateForTests().selectedId,
+        SHA_C,
+      );
+      assertTrue("H, text click: focus stays nowhere", document.activeElement === null);
+    }
+
+    // The reader scrolls the key's row away while the landing reads HEAD, which moved
+    // again: focus parks on the scroller, and the refresh that replaces the rows forgets the
+    // parking, so no render hands focus back. The landing gives it to the new newest row.
+    {
+      filesRow.focus();
+      responses.set(
+        "/api/git/log",
+        historyPage(
+          0,
+          [commit(SHA_D, [SHA_C], "moved again"), commit(SHA_C, [], "before the move")],
+          2,
+          SHA_D,
+        ),
+      );
+      const releaseRepo = holdRepo(repoAt(SHA_D));
+      const { landing, took } = pressCommitsDigit();
+      assertTrue(
+        "H, parked refresh: the newest row takes focus",
+        took && document.activeElement === rowAt(0),
+      );
+      // Where renderVirtualRows parks focus when the focused row leaves the window.
+      container.focus();
+      releaseRepo();
+      await landing;
+      await settle();
+      assertEqual(
+        "H, parked refresh: the new newest is selected",
+        internals.stateForTests().selectedId,
+        SHA_D,
+      );
+      assertTrue(
+        "H, parked refresh: focus returns to the newest row",
+        document.activeElement === rowAt(0),
+      );
+    }
+
+    // A page of the old walk settles while a click's landing reads HEAD, which moved. The
+    // landing waits for the read, so the walk the refresh lays out answers it, not the old
+    // one: the list and the pane both show the new newest commit.
+    {
+      const oldWalk = [
+        commit(SHA_D, [SHA_C], "old newest"),
+        commit(SHA_C, [SHA_B], "old second"),
+        commit(SHA_B, [], "old third"),
+      ];
+      const old = internals.emptyState();
+      old.headRevision = SHA_D;
+      old.headRef = "refs/heads/main";
+      internals.setStateForTests(old);
+      const firstPage = historyPage(0, oldWalk.slice(0, 2), 3, SHA_D);
+      internals.appendPage(oldWalk.slice(0, 2), firstPage.cursor, firstPage);
+      internals.renderPanel();
+      await settle();
+      responses.set(`/api/git/commit/${SHA_D}`, detail(SHA_D));
+      responses.set(`/api/git/commit/${SHA_E}`, detail(SHA_E));
+      responses.set("/api/git/log", async (url) => {
+        const cursor = new URL(`http://metabrowser.invalid${url}`).searchParams.get("cursor");
+        return cursor === "history:1"
+          ? historyPage(1, oldWalk.slice(2), 3, SHA_D)
+          : historyPage(
+              0,
+              [commit(SHA_E, [SHA_D], "moved during the read"), commit(SHA_D, [], "under it")],
+              2,
+              SHA_E,
+            );
+      });
+      const releaseRepo = holdRepo(repoAt(SHA_E));
+      filesRow.focus();
+      const routesBefore = replacedRoutes.length;
+      const landing = clickCommitsTab();
+      await settle();
+      // The reader scrolls, and the old walk's next page settles while HEAD is read.
+      assertTrue("read: the old walk's next page loads", await internals.loadNextPage(false));
+      await settle();
+      assertEqual("read: the landing waits for HEAD", replacedRoutes.length, routesBefore);
+      releaseRepo();
+      await landing;
+      await settle();
+      assertEqual("read: the new newest is selected", internals.stateForTests().selectedId, SHA_E);
+      assertEqual(
+        "read: its address replaces the entry",
+        replacedRoutes.at(-1),
+        `/commit/${SHA_E}`,
+      );
+      assertTrue(
+        "read: the new newest row is marked",
+        rowAt(0)?.classList.contains("selected") === true,
+      );
+      assertTrue("read: focus stays on the tab", document.activeElement === tab);
+    }
+
+    // HEAD did not move. The panel was showing and reading HEAD when the reader scrolled a
+    // page into loading and clicked the tab: the landing skips its own read behind the page,
+    // the page settles during the panel's read and leaves the landing to it, and the read
+    // answers it as it ends.
+    {
+      const walk = [
+        commit(SHA_D, [SHA_C], "still newest"),
+        commit(SHA_C, [SHA_B], "still second"),
+        commit(SHA_B, [], "still third"),
+      ];
+      const kept = internals.emptyState();
+      kept.headRevision = SHA_D;
+      kept.headRef = "refs/heads/main";
+      internals.setStateForTests(kept);
+      const firstPage = historyPage(0, walk.slice(0, 2), 3, SHA_D);
+      internals.appendPage(walk.slice(0, 2), firstPage.cursor, firstPage);
+      internals.renderPanel();
+      await settle();
+      let releasePage = () => {};
+      const pageHeld = new Promise((resolve) => (releasePage = resolve));
+      responses.set("/api/git/log", async () => {
+        await pageHeld;
+        return historyPage(1, walk.slice(2), 3, SHA_D);
+      });
+      const releaseRepo = holdRepo(repoAt(SHA_D));
+      registeredPanel.onShow();
+      await settle();
+      const page = internals.loadNextPage(false);
+      filesRow.focus();
+      const routesBefore = replacedRoutes.length;
+      const landing = clickCommitsTab();
+      releasePage();
+      assertTrue("unmoved: the next page loads", await page);
+      await landing;
+      await settle();
+      assertEqual(
+        "unmoved: the landing waits for the panel's read",
+        replacedRoutes.length,
+        routesBefore,
+      );
+      releaseRepo();
+      await settle();
+      assertEqual(
+        "unmoved: the read answers the landing",
+        internals.stateForTests().selectedId,
+        SHA_D,
+      );
+      assertEqual(
+        "unmoved: its address replaces the entry",
+        replacedRoutes.at(-1),
+        `/commit/${SHA_D}`,
+      );
+    }
+
+    // As above, but the panel's read gets no answer. No answer is no news that HEAD moved,
+    // so the walk the panel holds answers the landing as the read ends, and it does not
+    // wait for the next time the panel shows.
+    {
+      const walk = [
+        commit(SHA_D, [SHA_C], "unconfirmed newest"),
+        commit(SHA_C, [SHA_B], "unconfirmed second"),
+        commit(SHA_B, [], "unconfirmed third"),
+      ];
+      const kept = internals.emptyState();
+      kept.headRevision = SHA_D;
+      kept.headRef = "refs/heads/main";
+      internals.setStateForTests(kept);
+      const firstPage = historyPage(0, walk.slice(0, 2), 3, SHA_D);
+      internals.appendPage(walk.slice(0, 2), firstPage.cursor, firstPage);
+      internals.renderPanel();
+      await settle();
+      let releasePage = () => {};
+      const pageHeld = new Promise((resolve) => (releasePage = resolve));
+      responses.set("/api/git/log", async () => {
+        await pageHeld;
+        return historyPage(1, walk.slice(2), 3, SHA_D);
+      });
+      const releaseRepo = holdRepo({ httpStatus: 503, body: { error: "unavailable" } });
+      registeredPanel.onShow();
+      await settle();
+      const page = internals.loadNextPage(false);
+      filesRow.focus();
+      const routesBefore = replacedRoutes.length;
+      const removedBefore = removedPanels.length;
+      const landing = clickCommitsTab();
+      releasePage();
+      assertTrue("no answer: the next page loads", await page);
+      await landing;
+      await settle();
+      assertEqual(
+        "no answer: the landing waits for the panel's read",
+        replacedRoutes.length,
+        routesBefore,
+      );
+      releaseRepo();
+      await settle();
+      assertEqual(
+        "no answer: the walk answers the landing",
+        internals.stateForTests().selectedId,
+        SHA_D,
+      );
+      // The case before left the same address last, so only the routes this one added count.
+      const added = replacedRoutes.slice(routesBefore);
+      assertTrue(
+        "no answer: its address replaces the entry",
+        added.length > 0 && added.every((route) => route === `/commit/${SHA_D}`),
+      );
+      // The shell stub records a removed tab and keeps the registration, so the record is
+      // what tells.
+      assertEqual("no answer: the panel keeps its tab", removedPanels.length, removedBefore);
+      responses.set("/api/git/repo", repoAt(SHA_D));
+    }
+
+    // As above, but the page answers that the history session expired, and recovery rebuilds
+    // the walk while the panel's read is still on its way. Recovery read HEAD itself, so the
+    // rebuilt walk answers the landing at once, and the older read, whose answer is for a
+    // walk that is gone, holds nothing and changes nothing when it ends.
+    {
+      const walk = [
+        commit(SHA_D, [SHA_C], "rebuilt newest"),
+        commit(SHA_C, [SHA_B], "rebuilt second"),
+        commit(SHA_B, [], "rebuilt third"),
+      ];
+      const expiring = internals.emptyState();
+      expiring.headRevision = SHA_D;
+      expiring.headRef = "refs/heads/main";
+      internals.setStateForTests(expiring);
+      const firstPage = historyPage(0, walk.slice(0, 2), 3, SHA_D);
+      internals.appendPage(walk.slice(0, 2), firstPage.cursor, firstPage);
+      internals.renderPanel();
+      await settle();
+      let releasePage = () => {};
+      const pageHeld = new Promise((resolve) => (releasePage = resolve));
+      responses.set("/api/git/log", async (url) => {
+        const cursor = new URL(`http://metabrowser.invalid${url}`).searchParams.get("cursor");
+        if (cursor === "history:1") {
+          await pageHeld;
+          return { httpStatus: 410 };
+        }
+        return historyPage(0, walk.slice(0, 2), 3, SHA_D);
+      });
+      // Only the panel's read waits; recovery's own read answers at once.
+      let releaseRead = () => {};
+      const readHeld = new Promise((resolve) => (releaseRead = resolve));
+      let reads = 0;
+      responses.set("/api/git/repo", async () => {
+        reads += 1;
+        if (reads === 1) {
+          await readHeld;
+        }
+        return repoAt(SHA_D);
+      });
+      registeredPanel.onShow();
+      await settle();
+      const page = internals.loadNextPage(false);
+      filesRow.focus();
+      const routesBefore = replacedRoutes.length;
+      const landing = clickCommitsTab();
+      releasePage();
+      await page;
+      await landing;
+      await settle();
+      assertEqual("expired: recovery read HEAD again", reads, 2);
+      assertEqual(
+        "expired: the rebuilt walk answers the landing",
+        internals.stateForTests().selectedId,
+        SHA_D,
+      );
+      const answered = replacedRoutes.length;
+      assertTrue(
+        "expired: its address replaces the entry",
+        answered > routesBefore &&
+          replacedRoutes.slice(routesBefore).every((route) => route === `/commit/${SHA_D}`),
+      );
+      releaseRead();
+      await settle();
+      assertEqual("expired: the older read changes nothing", replacedRoutes.length, answered);
+      assertEqual(
+        "expired: the newest stays selected",
+        internals.stateForTests().selectedId,
+        SHA_D,
+      );
+      responses.set("/api/git/repo", repoAt(SHA_D));
+    }
+
+    // HEAD moved, and the reader scrolled a page of the old walk into loading while HEAD was
+    // read. The page is still on its way when the read ends: it is obsolete with its walk,
+    // so the refresh replaces the walk anyway, and the landing selects the new newest commit.
+    {
+      const oldWalk = [
+        commit(SHA_D, [SHA_C], "before the move"),
+        commit(SHA_C, [SHA_B], "second before"),
+        commit(SHA_B, [], "third before"),
+      ];
+      const old = internals.emptyState();
+      old.headRevision = SHA_D;
+      old.headRef = "refs/heads/main";
+      internals.setStateForTests(old);
+      const firstPage = historyPage(0, oldWalk.slice(0, 2), 3, SHA_D);
+      internals.appendPage(oldWalk.slice(0, 2), firstPage.cursor, firstPage);
+      internals.renderPanel();
+      await settle();
+      let releasePage = () => {};
+      const pageHeld = new Promise((resolve) => (releasePage = resolve));
+      responses.set("/api/git/log", async (url) => {
+        const cursor = new URL(`http://metabrowser.invalid${url}`).searchParams.get("cursor");
+        if (cursor === "history:1") {
+          await pageHeld;
+          return historyPage(1, oldWalk.slice(2), 3, SHA_D);
+        }
+        return historyPage(
+          0,
+          [commit(SHA_E, [SHA_D], "after the move"), commit(SHA_D, [], "under it")],
+          2,
+          SHA_E,
+        );
+      });
+      const releaseRepo = holdRepo(repoAt(SHA_E));
+      filesRow.focus();
+      const routesBefore = replacedRoutes.length;
+      const landing = clickCommitsTab();
+      await settle();
+      const page = internals.loadNextPage(false);
+      releaseRepo();
+      await landing;
+      await settle();
+      assertEqual(
+        "moved, page loading: the new newest is selected",
+        internals.stateForTests().selectedId,
+        SHA_E,
+      );
+      assertTrue(
+        "moved, page loading: only its address replaces the entry",
+        replacedRoutes.length > routesBefore &&
+          replacedRoutes.slice(routesBefore).every((route) => route === `/commit/${SHA_E}`),
+      );
+      assertEqual(
+        "moved, page loading: the walk is the new one",
+        internals.stateForTests().headRevision,
+        SHA_E,
+      );
+      releasePage();
+      assertTrue("moved, page loading: the obsolete page lands nothing", !(await page));
+      await settle();
+      assertEqual(
+        "moved, page loading: the newest stays selected",
+        internals.stateForTests().selectedId,
+        SHA_E,
+      );
+    }
+
+    // Not mounted: the reader left a commit far down a history deep enough to evict its first
+    // page. The tab holds focus while the landing replays that page, and the reveal hands it
+    // to the newest row; the row left never takes it, so the list stays at its top.
+    {
+      const total = 8;
+      const revisions = Array.from({ length: total }, (_value, index) =>
+        (index + 8000).toString(16).padStart(40, "0"),
+      );
+      const walk = revisions.map((revision, index) =>
+        commit(revision, index + 1 < total ? [revisions[index + 1]] : [], `key commit ${index}`),
+      );
+      responses.set("/api/git/repo", {
+        is_repo: true,
+        root: "",
+        head: { ref: "refs/heads/main", revision: revisions[0], detached: false, unborn: false },
+      });
+      let holdFirstPage = null;
+      let firstPageAsked = false;
+      responses.set("/api/git/log", async (url) => {
+        const cursor = new URL(`http://metabrowser.invalid${url}`).searchParams.get("cursor");
+        const page = Number(cursor?.split(":")[1] ?? 0);
+        if (page === 0) {
+          firstPageAsked = true;
+          await holdFirstPage;
+        }
+        return historyPage(page, walk.slice(page * 2, page * 2 + 2), total, revisions[0]);
+      });
+      for (const revision of revisions) {
+        responses.set(`/api/git/commit/${revision}`, detail(revision));
+      }
+      const deep = internals.emptyState();
+      deep.headRevision = revisions[0];
+      deep.headRef = "refs/heads/main";
+      internals.setStateForTests(deep);
+      for (let page = 0; page < 4; page += 1) {
+        const pageCommits = walk.slice(page * 2, page * 2 + 2);
+        const wire = historyPage(page, pageCommits, total, revisions[0]);
+        internals.appendPage(pageCommits, wire.cursor, wire);
+      }
+      container.clientHeight = 44;
+      // The reader scrolls down to an older commit, selects it, and leaves for Files.
+      const leaveFromFarDown = async () => {
+        container.scrollTop = 132;
+        internals.renderPanel();
+        await settle();
+        await internals.selectCommit(revisions[6]);
+        filesRow.focus();
+      };
+
+      await leaveFromFarDown();
+      const left = rowAt(6);
+      assertEqual(
+        "H, unmounted: the row left is the Tab stop",
+        left?.getAttribute("tabindex"),
+        "0",
+      );
+      assertEqual("H, unmounted: the newest row is not mounted", rowAt(0), null);
+      const { landing, took } = pressCommitsDigit();
+      assertTrue("H, unmounted: no row takes focus yet", !took);
+      assertTrue("H, unmounted: the tab holds focus", document.activeElement === tab);
+      assertEqual("H, unmounted: the row left is not focused", left?.focusCalls, []);
+      await landing;
+      await settle();
+      const newest = rowAt(0);
+      assertEqual(
+        "H, unmounted: the newest is selected",
+        internals.stateForTests().selectedId,
+        revisions[0],
+      );
+      assertTrue(
+        "H, unmounted: the newest row takes focus once revealed",
+        newest !== null && document.activeElement === newest,
+      );
+      assertEqual("H, unmounted: without scrolling", newest?.focusCalls.at(-1), {
+        preventScroll: true,
+      });
+      assertEqual("H, unmounted: the list stays at its top", container.scrollTop, 0);
+      assertEqual(
+        "H, unmounted: the newest row is the Tab stop",
+        newest?.getAttribute("tabindex"),
+        "0",
+      );
+      const down = keyboardEvent("ArrowDown");
+      newest?.dispatch("keydown", down);
+      assertEqual(
+        "H, unmounted: ↓ opens the next commit",
+        internals.stateForTests().selectedId,
+        revisions[1],
+      );
+      assertTrue("H, unmounted: ↓ focuses its row", document.activeElement === rowAt(1));
+      await settle();
+
+      // The reader moves focus while the landing waits for the first page: it stays there.
+      // Scrolling the focused row away parked focus on the scroller first, and that
+      // suspension, stale once the reader left for Files, does not take focus back either.
+      await leaveFromFarDown();
+      let releaseFirstPage = () => {};
+      holdFirstPage = new Promise((resolve) => (releaseFirstPage = resolve));
+      firstPageAsked = false;
+      const moved = pressCommitsDigit();
+      assertTrue("H, moved: the tab holds focus", !moved.took && document.activeElement === tab);
+      for (let tick = 0; tick < 50 && !firstPageAsked; tick += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      assertTrue("H, moved: the landing waits for the first page", firstPageAsked);
+      filter.focus();
+      releaseFirstPage();
+      await moved.landing;
+      await settle();
+      assertEqual(
+        "H, moved: the newest is still selected",
+        internals.stateForTests().selectedId,
+        revisions[0],
+      );
+      assertTrue(
+        "H, moved: focus stays where the reader put it",
+        document.activeElement === filter,
+      );
+
+      // The reader clicks text while the tab holds focus: focus goes nowhere, and the landing
+      // leaves it there; nowhere is not the tab.
+      await leaveFromFarDown();
+      const nowhere = pressCommitsDigit();
+      assertTrue(
+        "H, text click on the tab: the tab holds focus",
+        !nowhere.took && document.activeElement === tab,
+      );
+      document.activeElement = null;
+      await nowhere.landing;
+      await settle();
+      assertEqual(
+        "H, text click on the tab: the newest is selected",
+        internals.stateForTests().selectedId,
+        revisions[0],
+      );
+      assertTrue("H, text click on the tab: focus stays nowhere", document.activeElement === null);
+
+      // A click after focus last parked on the scroller: the reader focused a row, scrolled it
+      // away, and left for Files. The landing's reveal mounts that row again, and it does not
+      // take focus back from the tab.
+      container.scrollTop = 0;
+      internals.renderPanel();
+      await settle();
+      rowAt(1)?.focus();
+      container.scrollTop = 132;
+      internals.renderPanel();
+      await settle();
+      assertTrue(
+        "click, parked: focus parks on the scroller",
+        document.activeElement === container && internals.stateForTests().focusSuspended,
+      );
+      filesRow.focus();
+      await clickCommitsTab();
+      await settle();
+      assertEqual(
+        "click, parked: the newest is selected",
+        internals.stateForTests().selectedId,
+        revisions[0],
+      );
+      assertTrue("click, parked: the row left is mounted again", rowAt(1) !== null);
+      assertTrue("click, parked: focus stays on the tab", document.activeElement === tab);
+
+      // The key with Commits in front while a click's landing waits on HEAD. The reader
+      // focused a row since and scrolled it away, so focus parked on the scroller; the
+      // key's row is still the newest, and a render that mounts the row left at the top
+      // gives it neither focus nor the Tab stop. Page reads wait too, so nothing settles
+      // until both answers come.
+      filesRow.focus();
+      let releaseRepo = holdRepo(repoAt(revisions[0]));
+      const pageLog = responses.get("/api/git/log");
+      let releasePages = () => {};
+      const pagesHeld = new Promise((resolve) => (releasePages = resolve));
+      responses.set("/api/git/log", async (url) => {
+        await pagesHeld;
+        return pageLog(url);
+      });
+      const waiting = clickCommitsTab();
+      rowAt(1)?.focus();
+      container.scrollTop = 132;
+      internals.renderPanel();
+      assertTrue("in front: focus parks on the scroller", document.activeElement === container);
+      assertTrue("in front: the newest row is not mounted", rowAt(0) === null);
+      const rowTaken = pressDigitWithCommitsShown();
+      assertTrue("in front: the tab holds focus", !rowTaken && document.activeElement === tab);
+      container.scrollTop = 0;
+      internals.renderPanel();
+      assertTrue("in front: the row left is mounted again", rowAt(1) !== null);
+      assertTrue("in front: it does not take focus", document.activeElement === tab);
+      assertEqual(
+        "in front: the newest row is the Tab stop",
+        rowAt(0)?.getAttribute("tabindex"),
+        "0",
+      );
+      responses.set("/api/git/log", pageLog);
+      releasePages();
+      releaseRepo();
+      await waiting;
+      await settle();
+      assertEqual(
+        "in front: the newest is selected",
+        internals.stateForTests().selectedId,
+        revisions[0],
+      );
+      assertTrue("in front: the newest row takes focus", document.activeElement === rowAt(0));
+
+      // A landing that lost the pane steers nothing: a file takes it while the click's landing
+      // waits, HEAD answers and the list renders, and the key with Commits in front then
+      // hands focus to the row the reader left, as with no landing. That row is still the
+      // Tab stop, and the landing selects nothing.
+      await internals.selectCommit(revisions[1]);
+      await settle();
+      filesRow.focus();
+      releaseRepo = holdRepo(repoAt(revisions[0]));
+      const lost = clickCommitsTab();
+      panel.cancelPending();
+      sandbox.MetabrowserShell.claimPreview("file");
+      neutralLanding = false;
+      releaseRepo();
+      await lost;
+      await settle();
+      assertEqual(
+        "lost: the landing selects nothing",
+        internals.stateForTests().selectedId,
+        revisions[1],
+      );
+      assertEqual(
+        "lost: the row left is still the Tab stop",
+        rowAt(1)?.getAttribute("tabindex"),
+        "0",
+      );
+      assertTrue("lost: a row takes focus", pressDigitWithCommitsShown());
+      assertTrue("lost: it is the row the reader left", document.activeElement === rowAt(1));
+
+      // Back during the key's wait: the address is no longer the neutral entry, and the
+      // landing neither selects nor moves focus when HEAD answers.
+      await leaveFromFarDown();
+      releaseRepo = holdRepo(repoAt(revisions[0]));
+      const back = pressCommitsDigit();
+      assertTrue("back: the tab holds focus", !back.took && document.activeElement === tab);
+      neutralLanding = false;
+      await panel.restoreCommitLanding();
+      releaseRepo();
+      await back.landing;
+      await settle();
+      assertEqual(
+        "back: the landing selects nothing",
+        internals.stateForTests().selectedId,
+        revisions[6],
+      );
+      assertTrue("back: focus stays on the tab", document.activeElement === tab);
+
+      // A file takes the pane during the key's wait, and the reader moves to it: the
+      // landing ends without selecting or moving focus.
+      await leaveFromFarDown();
+      releaseRepo = holdRepo(repoAt(revisions[0]));
+      const file = pressCommitsDigit();
+      panel.cancelPending();
+      sandbox.MetabrowserShell.claimPreview("file");
+      neutralLanding = false;
+      filesRow.focus();
+      releaseRepo();
+      await file.landing;
+      await settle();
+      assertEqual(
+        "file: the landing selects nothing",
+        internals.stateForTests().selectedId,
+        revisions[6],
+      );
+      assertTrue("file: focus stays with the file", document.activeElement === filesRow);
+      delete container.clientHeight;
+      container.scrollTop = 0;
+    }
+
+    // A page on its way when the key switches: onShow's history check waits for it and
+    // renders nothing, so the window mounted further down is the last one drawn, though the
+    // switch put the list at its top. The landing's reveal redraws it from the newest row,
+    // which then takes focus.
+    {
+      const total = 4;
+      const revisions = Array.from({ length: total }, (_value, index) =>
+        (index + 9000).toString(16).padStart(40, "0"),
+      );
+      const walk = revisions.map((revision, index) =>
+        commit(revision, index + 1 < total ? [revisions[index + 1]] : [], `in flight ${index}`),
+      );
+      responses.set("/api/git/repo", repoAt(revisions[0]));
+      for (const revision of revisions) {
+        responses.set(`/api/git/commit/${revision}`, detail(revision));
+      }
+      const small = internals.emptyState();
+      small.headRevision = revisions[0];
+      small.headRef = "refs/heads/main";
+      internals.setStateForTests(small);
+      for (let page = 0; page < 2; page += 1) {
+        const pageCommits = walk.slice(page * 2, page * 2 + 2);
+        const wire = historyPage(page, pageCommits, total, revisions[0]);
+        internals.appendPage(pageCommits, wire.cursor, wire);
+      }
+      container.clientHeight = 44;
+      let windowFound = false;
+      for (const top of [44, 55, 66, 77, 88]) {
+        container.scrollTop = top;
+        internals.renderPanel();
+        await settle();
+        if (rowAt(0) === null && rowAt(2) !== null) {
+          windowFound = true;
+          break;
+        }
+      }
+      assertTrue("in flight: a window without the newest row", windowFound);
+      assertEqual(
+        "in flight: the window is in the first segment",
+        internals.stateForTests().mountedRange?.segmentStart,
+        0,
+      );
+      filesRow.focus();
+      const live = { ...internals.stateForTests() };
+      delete live.rows;
+      delete live.commits;
+      live.loading = true;
+      internals.setStateForTests(live);
+      const inFlight = pressCommitsDigit();
+      assertTrue(
+        "in flight: the tab holds focus",
+        !inFlight.took && document.activeElement === tab,
+      );
+      await inFlight.landing;
+      await settle();
+      assertEqual(
+        "in flight: the newest is selected",
+        internals.stateForTests().selectedId,
+        revisions[0],
+      );
+      assertTrue(
+        "in flight: the newest row takes focus",
+        rowAt(0) !== null && document.activeElement === rowAt(0),
+      );
+      live.loading = false;
+      internals.renderPanel();
+      await settle();
+      assertTrue("in flight: it keeps focus", document.activeElement === rowAt(0));
+
+      // A render while a selected commit loads replaces its row. The selection's own anchor
+      // write, when the commit is ready, must not land on the replaced row: the live row
+      // stays the list's Tab stop.
+      filesRow.focus();
+      let releaseDetail = () => {};
+      const detailHeld = new Promise((resolve) => (releaseDetail = resolve));
+      responses.set(`/api/git/commit/${revisions[1]}`, async () => {
+        await detailHeld;
+        return detail(revisions[1]);
+      });
+      const selecting = internals.selectCommit(revisions[1]);
+      await settle();
+      const replacedRow = rowAt(1);
+      assertTrue(
+        "replaced: the row shows the selection",
+        replacedRow?.classList.contains("selected") === true,
+      );
+      internals.renderPanel();
+      assertTrue("replaced: the render replaced the row", rowAt(1) !== replacedRow);
+      releaseDetail();
+      await selecting;
+      await settle();
+      assertEqual(
+        "replaced: the live row is the Tab stop",
+        rowAt(1)?.getAttribute("tabindex"),
+        "0",
+      );
+      assertEqual("replaced: the replaced row is not", replacedRow?.getAttribute("tabindex"), "-1");
+      delete container.clientHeight;
+      container.scrollTop = 0;
+    }
+
+    sandbox.MetabrowserShell.activateNavPanel = shellActivate;
+    neutralLanding = false;
+    document.activeElement = null;
+    for (const [id, element] of [
+      ["commits-tab", tab],
+      ["files-row", filesRow],
+      ["files-filter", filter],
+    ]) {
+      element.remove();
+      document.byId.delete(id);
+    }
+  }
+
+  // ── A newest landing outlives a session recovery ───────────
+  //
+  // An older commit deep enough to evict page zero, then a return to Commits after the
+  // server's history session expired: the landing's reveal replays page zero, the replay
+  // answers 410, and recovery rebuilds the walk. Recovery used to restore the older
+  // position after the landing had selected the newest commit, leaving its row offscreen
+  // and an older row as the list's Tab stop.
+  {
+    const total = 12;
+    const revisions = Array.from({ length: total }, (_value, index) =>
+      (index + 5000).toString(16).padStart(40, "0"),
+    );
+    const deepCommits = revisions.map((revision, index) =>
+      commit(revision, index + 1 < total ? [revisions[index + 1]] : [], `deep commit ${index}`),
+    );
+    const container = document.getElementById("tab-git");
+    const deep = internals.emptyState();
+    deep.headRevision = revisions[0];
+    deep.headRef = "refs/heads/main";
+    internals.setStateForTests(deep);
+    for (let page = 0; page < 4; page += 1) {
+      appendTestPage(deepCommits.slice(page * 2, page * 2 + 2), `history:${page + 1}`);
+    }
+    const older = internals.stateForTests();
+    assertEqual("recovered landing: page zero was evicted", older.pageCache.peek(0), null);
+    older.selectedId = revisions[6];
+    older.focusedOrdinal = 6;
+    delete older.rows;
+    delete older.commits;
+    internals.setStateForTests(older);
+    container.clientHeight = 44;
+    container.scrollTop = 132;
+    responses.set("/api/git/repo", {
+      is_repo: true,
+      root: "",
+      head: { ref: "refs/heads/main", revision: revisions[0], detached: false, unborn: false },
+    });
+    responses.set("/api/git/refs", { is_repo: true, refs: [] });
+    responses.set("/api/git/summary", { is_repo: true, commit_count: total });
+    let replays = 0;
+    responses.set("/api/git/log", (url) => {
+      const cursor = new URL(`http://metabrowser.invalid${url}`).searchParams.get("cursor");
+      if (cursor?.startsWith("test:")) {
+        replays += 1;
+        return { httpStatus: 410 };
+      }
+      const page = cursor ? Number(cursor.split(":")[1]) : 0;
+      return historyPage(page, deepCommits.slice(page * 2, page * 2 + 2), total, revisions[0]);
+    });
+    for (const revision of revisions.slice(0, 1)) {
+      responses.set(`/api/git/commit/${revision}`, {
+        is_repo: true,
+        commit: commit(revision, [], "newest after recovery"),
+        body: "",
+        stats: { files_changed: 0, additions: 0, deletions: 0 },
+        files: [],
+        files_truncated: false,
+      });
+    }
+    neutralLanding = true;
+    await panel.restoreCommitLanding();
+    for (let tick = 0; tick < 50; tick += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    const landed = internals.stateForTests();
+    const anchor = container.querySelector(".git-graph-row[data-roving-anchor]");
+    assertEqual("recovered landing: the replay expired once", replays, 1);
+    assertEqual("recovered landing: the newest is selected", landed.selectedId, revisions[0]);
+    assertEqual("recovered landing: the list is at its top", container.scrollTop, 0);
+    assertEqual("recovered landing: the newest row is focused", landed.focusedOrdinal, 0);
+    assertEqual("recovered landing: the newest row is the Tab stop", anchor?.dataset.ordinal, "0");
+    delete container.clientHeight;
+    container.scrollTop = 0;
+    neutralLanding = false;
+  }
+
+  // ── A recovery the reader left places nothing ──────────────
+  //
+  // The same expired landing, but the reader switches to Files while recovery's first page
+  // is on its way. The scroller is shared, so a recovery that went on to reveal the newest
+  // row wrote over the offset Files had put back. Leaving Commits cancels the landing, and
+  // recovery now places nothing once Commits is not in front or another owner holds the pane.
+  {
+    const total = 12;
+    const revisions = Array.from({ length: total }, (_value, index) =>
+      (index + 7000).toString(16).padStart(40, "0"),
+    );
+    const deepCommits = revisions.map((revision, index) =>
+      commit(revision, index + 1 < total ? [revisions[index + 1]] : [], `left commit ${index}`),
+    );
+    const container = document.getElementById("tab-git");
+    const deep = internals.emptyState();
+    deep.headRevision = revisions[0];
+    deep.headRef = "refs/heads/main";
+    internals.setStateForTests(deep);
+    for (let page = 0; page < 4; page += 1) {
+      appendTestPage(deepCommits.slice(page * 2, page * 2 + 2), `history:${page + 1}`);
+    }
+    const older = internals.stateForTests();
+    older.selectedId = revisions[6];
+    older.focusedOrdinal = 6;
+    delete older.rows;
+    delete older.commits;
+    internals.setStateForTests(older);
+    container.clientHeight = 44;
+    container.scrollTop = 132;
+    responses.set("/api/git/repo", {
+      is_repo: true,
+      root: "",
+      head: { ref: "refs/heads/main", revision: revisions[0], detached: false, unborn: false },
+    });
+    let releaseFirstPage = () => {};
+    const firstPageHeld = new Promise((resolve) => (releaseFirstPage = resolve));
+    let firstPageAsked = false;
+    responses.set("/api/git/log", async (url) => {
+      const cursor = new URL(`http://metabrowser.invalid${url}`).searchParams.get("cursor");
+      if (cursor?.startsWith("test:")) {
+        return { httpStatus: 410 };
+      }
+      const page = cursor ? Number(cursor.split(":")[1]) : 0;
+      if (page === 0) {
+        firstPageAsked = true;
+        await firstPageHeld;
+      }
+      return historyPage(page, deepCommits.slice(page * 2, page * 2 + 2), total, revisions[0]);
+    });
+    neutralLanding = true;
+    void panel.restoreCommitLanding();
+    for (let tick = 0; tick < 50 && !firstPageAsked; tick += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    assertTrue("left recovery: recovery's first page is held", firstPageAsked);
+    // The reader switches to Files: the shell gives up the pane, which cancels Git's pending
+    // work, hides the Commits panel, and puts back the offset Files had in the shared scroller.
+    panel.cancelPending();
+    sandbox.MetabrowserShell.claimPreview("none");
+    neutralLanding = false;
+    container.style.display = "none";
+    container.scrollTop = 250;
+    previewHtml = '<div class="file-view">Files preview</div>';
+    const routesBefore = replacedRoutes.length;
+    releaseFirstPage();
+    for (let tick = 0; tick < 50; tick += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    assertEqual("left recovery: Files keeps its offset", container.scrollTop, 250);
+    assertEqual(
+      "left recovery: the Files preview stays",
+      previewHtml,
+      '<div class="file-view">Files preview</div>',
+    );
+    assertEqual("left recovery: no commit takes the address", replacedRoutes.length, routesBefore);
+    delete container.style.display;
+    delete container.clientHeight;
+    container.scrollTop = 0;
+  }
+
   // ── Bounded session recovery ───────────────────────────────
   //
   // A reaped session replays its prefix one request per page against a
@@ -2845,6 +4624,700 @@ async function run() {
     assertTrue("recovery: the rebuilt session is not failed", !recovered.failed);
   }
 
+  // A selection the reader makes while recovery rebuilds the walk keeps its place: recovery
+  // gives up restoring the expired position, and asks for no pages to reach it.
+  {
+    const total = 8;
+    const revisions = Array.from({ length: total }, (_value, index) =>
+      (index + 6000).toString(16).padStart(40, "0"),
+    );
+    const walk = revisions.map((revision, index) =>
+      commit(revision, index + 1 < total ? [revisions[index + 1]] : [], `rebuilt ${index}`),
+    );
+    const container = document.getElementById("tab-git");
+    document.activeElement = null;
+    container.clientHeight = 44;
+    responses.set("/api/git/repo", {
+      is_repo: true,
+      root: "",
+      head: { ref: "refs/heads/main", revision: revisions[0], detached: false, unborn: false },
+    });
+    responses.set(`/api/git/commit/${revisions[1]}`, {
+      is_repo: true,
+      commit: commit(revisions[1], [], "chosen during recovery"),
+      body: "",
+      stats: { files_changed: 0, additions: 0, deletions: 0 },
+      files: [],
+      files_truncated: false,
+    });
+    let logCalls = 0;
+    responses.set("/api/git/log", (url) => {
+      logCalls += 1;
+      if (logCalls === 1) {
+        return { httpStatus: 410 };
+      }
+      const cursor = new URL(`http://metabrowser.invalid${url}`).searchParams.get("cursor");
+      const page = cursor ? Number(cursor.split(":")[1]) : 0;
+      if (page === 0) {
+        // The reader picks a commit while the rebuilt walk's first page is on its way.
+        void internals.selectCommit(revisions[1]);
+      }
+      return historyPage(page, walk.slice(page * 2, page * 2 + 2), total, revisions[0]);
+    });
+    const expired = internals.emptyState();
+    expired.headRevision = revisions[0];
+    expired.cursor = "history:3";
+    expired.nextPageNumber = 3;
+    expired.rowCount = 6;
+    expired.focusedOrdinal = 5;
+    internals.setStateForTests(expired);
+    await internals.loadNextPage(false);
+    for (let tick = 0; tick < 20; tick += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    const kept = internals.stateForTests();
+    const anchor = container.querySelector(".git-graph-row[data-roving-anchor]");
+    assertEqual("recovery: the reader's selection stands", kept.selectedId, revisions[1]);
+    assertEqual("recovery: no page is asked for to restore the old place", logCalls, 2);
+    assertEqual("recovery: the reader's row is the Tab stop", anchor?.dataset.ordinal, "1");
+    delete container.clientHeight;
+    container.scrollTop = 0;
+  }
+
+  // ── Recovery takes the rebuilt rows' refs ────────────────
+  //
+  // A commit's detail carries its refs, which move while its id does not. Expired-session
+  // recovery keeps the detail cache so the summary and diff on screen are not redrawn, so a
+  // cached detail takes the refs of the rebuilt row: the row, its tooltip, and the summary
+  // agree. A cached detail whose row the rebuilt session has not served is fetched again.
+  {
+    const container = document.getElementById("tab-git");
+    const total = 8;
+    const revisions = Array.from({ length: total }, (_value, index) =>
+      (index + 5000).toString(16).padStart(40, "0"),
+    );
+    const tagged = revisions[0];
+    const deep = revisions[4];
+    const ref = (revision, name, kind, extra = {}) => ({
+      id: kind === "tag" ? `refs/tags/${name}` : `refs/heads/${name}`,
+      name,
+      kind,
+      revision,
+      ...extra,
+    });
+    let moved = false;
+    const refsOf = (revision) => {
+      if (revision === tagged) {
+        return moved
+          ? [
+              ref(tagged, "main", "branch", { is_head: true, is_trunk: true }),
+              ref(tagged, "moved-tag", "tag"),
+            ]
+          : [
+              ref(tagged, "main", "branch", { is_head: true, is_trunk: true }),
+              ref(tagged, "gone-tag", "tag"),
+            ];
+      }
+      if (revision === deep) {
+        return [ref(deep, moved ? "deep-now" : "deep-before", "branch")];
+      }
+      return undefined;
+    };
+    const commitAt = (index) =>
+      commit(
+        revisions[index],
+        index + 1 < total ? [revisions[index + 1]] : [],
+        `ref move commit ${index}`,
+        refsOf(revisions[index]),
+      );
+    document.activeElement = null;
+    responses.set("/api/git/repo", {
+      is_repo: true,
+      root: "",
+      head: { ref: "refs/heads/main", revision: tagged, detached: false, unborn: false },
+    });
+    responses.set("/api/git/refs", { is_repo: true, refs: [] });
+    let expire = false;
+    responses.set("/api/git/log", (url) => {
+      if (expire) {
+        expire = false;
+        return { httpStatus: 410 };
+      }
+      const cursor = new URL(`http://metabrowser.invalid${url}`).searchParams.get("cursor");
+      const page = cursor ? Number(cursor.split(":")[1]) : 0;
+      return historyPage(page, [commitAt(page * 2), commitAt(page * 2 + 1)], total, tagged);
+    });
+    for (const revision of [tagged, deep]) {
+      responses.set(`/api/git/commit/${revision}`, () => ({
+        is_repo: true,
+        commit: commit(revision, [], "ref move detail", refsOf(revision)),
+        body: "",
+        stats: { files_changed: 1, additions: 1, deletions: 0 },
+        files: [],
+        files_truncated: false,
+      }));
+    }
+    const detailFetches = (revision) =>
+      fetchRequests.filter((request) => request.url.startsWith(`/api/git/commit/${revision}`))
+        .length;
+    const rowHtml = (revision) =>
+      container.querySelectorAll(".git-graph-row").find((row) => row.dataset.revision === revision)
+        ?.innerHTML ?? "";
+    const hoverTooltip = async (revision) => {
+      const row = container
+        .querySelectorAll(".git-graph-row")
+        .find((candidate) => candidate.dataset.revision === revision);
+      shownTooltips.length = 0;
+      row._hovered = true;
+      row.dispatch("mouseenter");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      row._hovered = false;
+      row.dispatch("mouseleave");
+      return shownTooltips.at(-1)?.html ?? "";
+    };
+    const mountedRefs = () =>
+      document.getElementById("preview-pane").querySelector(".git-commit-refs")?.innerHTML ?? "";
+
+    const fresh = internals.emptyState();
+    fresh.headRevision = tagged;
+    internals.setStateForTests(fresh);
+    await internals.loadNextPage(true);
+    await internals.loadNextPage(false);
+    await internals.loadNextPage(false);
+    internals.renderPanel();
+    // Both details cached; the tagged commit's summary is the one on screen.
+    await internals.selectCommit(deep);
+    await internals.selectCommit(tagged);
+    assertContains("ref move: the row starts with the old tag", rowHtml(tagged), "gone-tag");
+    assertContains("ref move: the summary starts with the old tag", mountedRefs(), "gone-tag");
+    const taggedFetches = detailFetches(tagged);
+    const deepFetches = detailFetches(deep);
+    const diffRenders = renderedDiffRevisions.length;
+
+    // The session expires and the tag moves to another name; the next page answers 410.
+    moved = true;
+    expire = true;
+    await internals.loadNextPage(false);
+    internals.renderPanel();
+    const tooltip = await hoverTooltip(tagged);
+    assertContains("ref move: the rebuilt row shows the moved tag", rowHtml(tagged), "moved-tag");
+    assertNotContains("ref move: the rebuilt row drops the old tag", rowHtml(tagged), "gone-tag");
+    assertContains("ref move: the tooltip agrees with its row", tooltip, "moved-tag");
+    assertNotContains("ref move: the tooltip drops the old tag", tooltip, "gone-tag");
+    assertContains(
+      "ref move: the summary on screen agrees with its row",
+      mountedRefs(),
+      "moved-tag",
+    );
+    assertNotContains("ref move: the summary drops the old tag", mountedRefs(), "gone-tag");
+    assertContains("ref move: the summary keeps its other refs", mountedRefs(), "git-ref-head");
+    assertEqual(
+      "ref move: the rebuilt row's detail is not fetched again",
+      detailFetches(tagged),
+      taggedFetches,
+    );
+    assertEqual(
+      "ref move: recovery does not redraw the diff",
+      renderedDiffRevisions.length,
+      diffRenders,
+    );
+
+    // The deep commit's row is past the replay depth, so its cached refs are unconfirmed:
+    // selecting it asks again, and draws the refs the server has now.
+    await internals.selectCommit(deep);
+    assertEqual(
+      "ref move: an unconfirmed detail is fetched again",
+      detailFetches(deep),
+      deepFetches + 1,
+    );
+    assertContains("ref move: the refetched summary has the current refs", previewHtml, "deep-now");
+    assertNotContains(
+      "ref move: the refetched summary drops the old refs",
+      previewHtml,
+      "deep-before",
+    );
+  }
+
+  // ── Refs stay current through every rebuild ───────────────
+  //
+  // A detail's refs are true for the history session they were read in. Each case below
+  // fails without the session stamp on details and the summary on screen: a selected
+  // commit recovery does not replay (B1), work that outlives a rebuild (B2), a refetched
+  // detail after eviction (B3), and the summary record after its view goes (B4).
+  {
+    const container = document.getElementById("tab-git");
+    const total = 8;
+    const revisions = Array.from({ length: total }, (_value, index) =>
+      (index + 6000).toString(16).padStart(40, "0"),
+    );
+    const at = (index) => revisions[index];
+    let moved = false;
+    let headRef = "refs/heads/main";
+    let expire = false;
+    // Each commit carries one branch whose name says whether the refs have moved yet.
+    const refsOf = (revision) => {
+      const name = `b${revisions.indexOf(revision)}-${moved ? "now" : "old"}`;
+      return [{ id: `refs/heads/${name}`, name, kind: "branch", revision }];
+    };
+    const detailFor = (revision) => ({
+      is_repo: true,
+      commit: commit(revision, [], "session stamp detail", refsOf(revision)),
+      body: "",
+      stats: { files_changed: 1, additions: 1, deletions: 0 },
+      files: [],
+      files_truncated: false,
+    });
+    const serveDetail = (revision) =>
+      responses.set(`/api/git/commit/${revision}`, () => detailFor(revision));
+    const serveAll = () => {
+      responses.set("/api/git/repo", () => ({
+        is_repo: true,
+        root: "",
+        head: { ref: headRef, revision: at(0), detached: false, unborn: false },
+      }));
+      responses.set("/api/git/refs", { is_repo: true, refs: [] });
+      responses.set("/api/git/log", (url) => {
+        if (expire) {
+          expire = false;
+          return { httpStatus: 410 };
+        }
+        const cursor = new URL(`http://metabrowser.invalid${url}`).searchParams.get("cursor");
+        const page = cursor ? Number(cursor.split(":")[1]) : 0;
+        const commits = [page * 2, page * 2 + 1].map((index) =>
+          commit(
+            at(index),
+            index + 1 < total ? [at(index + 1)] : [],
+            `stamp ${index}`,
+            refsOf(at(index)),
+          ),
+        );
+        return historyPage(page, commits, total, at(0));
+      });
+      for (const revision of revisions) {
+        serveDetail(revision);
+      }
+    };
+    const detailFetches = (revision) =>
+      fetchRequests.filter((request) => request.url.startsWith(`/api/git/commit/${revision}`))
+        .length;
+    const mountedRefs = () =>
+      document.getElementById("preview-pane").querySelector(".git-commit-refs")?.innerHTML ?? "";
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 10));
+    // Rows 0..5 loaded and a cursor left for page 3, so the next page request can expire.
+    // Recovery replays at most rows 0..3, so row 4 is past its depth.
+    const freshSession = async () => {
+      moved = false;
+      headRef = "refs/heads/main";
+      expire = false;
+      serveAll();
+      document.activeElement = null;
+      const fresh = internals.emptyState();
+      fresh.headRevision = at(0);
+      fresh.headRef = headRef;
+      internals.setStateForTests(fresh);
+      await internals.loadNextPage(true);
+      await internals.loadNextPage(false);
+      await internals.loadNextPage(false);
+      internals.renderPanel();
+    };
+    const expireAndRecover = async () => {
+      moved = true;
+      expire = true;
+      await internals.loadNextPage(false);
+      internals.renderPanel();
+    };
+    const rowFor = (revision) =>
+      container.querySelectorAll(".git-graph-row").find((row) => row.dataset.revision === revision);
+
+    // B1: the selected commit is past the replay depth, so no rebuilt row confirms its
+    // refs; recovery reads them again and replaces only the refs group.
+    await freshSession();
+    await internals.selectCommit(at(4));
+    assertContains("B1 recovery: the summary starts with the old branch", mountedRefs(), "b4-old");
+    let diffRenders = renderedDiffRevisions.length;
+    let comparisons = comparisonFetches.length;
+    await expireAndRecover();
+    assertContains(
+      "B1 recovery: an unreplayed selection takes its current refs",
+      mountedRefs(),
+      "b4-now",
+    );
+    assertNotContains(
+      "B1 recovery: an unreplayed selection drops its old refs",
+      mountedRefs(),
+      "b4-old",
+    );
+    assertEqual(
+      "B1 recovery: the diff is not drawn again",
+      renderedDiffRevisions.length,
+      diffRenders,
+    );
+    assertEqual(
+      "B1 recovery: the comparison is not fetched again",
+      comparisonFetches.length,
+      comparisons,
+    );
+
+    // B1: a full refresh whose first page does not hold the commit on screen.
+    await freshSession();
+    await internals.selectCommit(at(4));
+    assertContains("B1 refresh: the summary starts with the old branch", mountedRefs(), "b4-old");
+    diffRenders = renderedDiffRevisions.length;
+    comparisons = comparisonFetches.length;
+    moved = true;
+    headRef = "refs/heads/other";
+    registeredPanel.onShow();
+    for (let attempt = 0; attempt < 10 && !mountedRefs().includes("b4-now"); attempt += 1) {
+      await tick();
+    }
+    assertContains(
+      "B1 refresh: a summary off the first page takes its current refs",
+      mountedRefs(),
+      "b4-now",
+    );
+    assertEqual(
+      "B1 refresh: the diff is not drawn again",
+      renderedDiffRevisions.length,
+      diffRenders,
+    );
+    assertEqual(
+      "B1 refresh: the comparison is not fetched again",
+      comparisonFetches.length,
+      comparisons,
+    );
+
+    // B2: a selection staged with old refs waits for the diff's assets while the history
+    // is rebuilt; it installs with the refs the rebuilt session confirmed.
+    await freshSession();
+    const ensureKindAssets = sandbox.metabrowser.ensureKindAssets;
+    let releaseAssets = () => {};
+    sandbox.metabrowser.ensureKindAssets = () =>
+      new Promise((resolve) => {
+        releaseAssets = resolve;
+      });
+    const staging = internals.selectCommit(at(0));
+    await tick();
+    await expireAndRecover();
+    releaseAssets();
+    await staging;
+    await tick();
+    sandbox.metabrowser.ensureKindAssets = ensureKindAssets;
+    assertContains(
+      "B2 staged: the installed summary has the current refs",
+      mountedRefs(),
+      "b0-now",
+    );
+    assertNotContains(
+      "B2 staged: the installed summary drops the old refs",
+      mountedRefs(),
+      "b0-old",
+    );
+
+    // B2: the selected row's detail was evicted, so hovering it reads the detail without a
+    // preparation; that read answers after the rebuild with the old refs, and must not put
+    // them back in the cache or on the tooltip.
+    await freshSession();
+    await internals.selectCommit(at(0));
+    for (const index of [1, 2, 3]) {
+      await internals.fetchCommitDetail(at(index));
+    }
+    const oldDetail = detailFor(at(0));
+    let answerHover = () => {};
+    responses.set(
+      `/api/git/commit/${at(0)}`,
+      () =>
+        new Promise((resolve) => {
+          answerHover = () => resolve(oldDetail);
+        }),
+    );
+    const hovered = rowFor(at(0));
+    shownTooltips.length = 0;
+    hovered._hovered = true;
+    hovered.dispatch("mouseenter");
+    await tick();
+    await expireAndRecover();
+    serveDetail(at(0));
+    answerHover();
+    await tick();
+    hovered._hovered = false;
+    hovered.dispatch("mouseleave");
+    const afterHover = await internals.fetchCommitDetail(at(0));
+    assertEqual(
+      "B2 hover: a read that outlived its session leaves no old refs in the cache",
+      afterHover?.commit.refs?.map((ref) => ref.name),
+      ["b0-now"],
+    );
+    assertTrue(
+      "B2 hover: the tooltip never shows the old refs",
+      !shownTooltips.some((tip) => tip.html.includes("b0-old")),
+    );
+
+    // B3: a detail cached before recovery, past its replay depth, is evicted; reading it
+    // twice afterward fetches it once. Twice over, for repeated recovery and eviction.
+    for (const round of [1, 2]) {
+      await freshSession();
+      for (const index of [0, 1, 4]) {
+        await internals.fetchCommitDetail(at(index));
+      }
+      await expireAndRecover();
+      for (const index of [2, 3, 5]) {
+        await internals.fetchCommitDetail(at(index));
+      }
+      const before = detailFetches(at(4));
+      await internals.fetchCommitDetail(at(4));
+      await internals.fetchCommitDetail(at(4));
+      assertEqual(
+        `B3 round ${round}: an evicted, refetched detail is read from the cache the second time`,
+        detailFetches(at(4)),
+        before + 1,
+      );
+    }
+
+    // B4: the summary record goes with its view: when another owner takes the preview,
+    // when a selection fails, and never when a retired view is disposed after a newer one.
+    await freshSession();
+    await internals.selectCommit(at(0));
+    assertEqual("B4: the summary on screen is recorded", internals.mountedSummaryRevision(), at(0));
+    const handoff = panel.cancelPending();
+    assertEqual(
+      "B4: a relinquished view releases its summary",
+      internals.mountedSummaryRevision(),
+      null,
+    );
+    await internals.selectCommit(at(1));
+    assertEqual("B4: the next view records its summary", internals.mountedSummaryRevision(), at(1));
+    handoff?.();
+    assertEqual(
+      "B4: disposing the retired view keeps the newer summary",
+      internals.mountedSummaryRevision(),
+      at(1),
+    );
+    responses.set(`/api/git/commit/${at(5)}`, {
+      httpStatus: 404,
+      body: { error: "commit not found", code: "commit_not_found" },
+    });
+    await internals.selectCommit(at(5));
+    assertEqual(
+      "B4: a failed selection releases the summary",
+      internals.mountedSummaryRevision(),
+      null,
+    );
+
+    // C1: a read that would confirm the refs of the summary on screen fails. The summary
+    // shows no refs rather than the old session's, and the diff is left alone; the next
+    // page to arrive tries again. Through recovery, a full refresh, and a staged install.
+    const failDetail = (revision) =>
+      responses.set(`/api/git/commit/${revision}`, {
+        httpStatus: 500,
+        body: { error: "boom", code: "internal" },
+      });
+    await freshSession();
+    await internals.selectCommit(at(4));
+    diffRenders = renderedDiffRevisions.length;
+    comparisons = comparisonFetches.length;
+    failDetail(at(4));
+    await expireAndRecover();
+    assertNotContains("C1 recovery: a failed read shows no old refs", mountedRefs(), "b4-old");
+    assertEqual("C1 recovery: the summary shows no refs", mountedRefs(), "");
+    assertEqual(
+      "C1 recovery: the diff is not drawn again",
+      renderedDiffRevisions.length,
+      diffRenders,
+    );
+    assertEqual(
+      "C1 recovery: the comparison is not fetched again",
+      comparisonFetches.length,
+      comparisons,
+    );
+    serveDetail(at(4));
+    await internals.loadNextPage(false);
+    await tick();
+    assertContains(
+      "C1 recovery: the next page to arrive confirms the refs",
+      mountedRefs(),
+      "b4-now",
+    );
+
+    await freshSession();
+    await internals.selectCommit(at(4));
+    failDetail(at(4));
+    moved = true;
+    headRef = "refs/heads/other";
+    registeredPanel.onShow();
+    for (let attempt = 0; attempt < 10 && mountedRefs().includes("b4-old"); attempt += 1) {
+      await tick();
+    }
+    await tick();
+    assertNotContains("C1 refresh: a failed read shows no old refs", mountedRefs(), "b4-old");
+    serveDetail(at(4));
+    registeredPanel.onShow();
+    for (let attempt = 0; attempt < 10 && !mountedRefs().includes("b4-now"); attempt += 1) {
+      await tick();
+    }
+    assertContains(
+      "C1 refresh: showing the panel again confirms the refs",
+      mountedRefs(),
+      "b4-now",
+    );
+
+    await freshSession();
+    sandbox.metabrowser.ensureKindAssets = () =>
+      new Promise((resolve) => {
+        releaseAssets = resolve;
+      });
+    const stagingDeep = internals.selectCommit(at(4));
+    await tick();
+    failDetail(at(4));
+    await expireAndRecover();
+    releaseAssets();
+    await stagingDeep;
+    await tick();
+    sandbox.metabrowser.ensureKindAssets = ensureKindAssets;
+    assertNotContains("C1 staged: a failed read installs no old refs", mountedRefs(), "b4-old");
+    serveDetail(at(4));
+
+    // C2: a confirmation still waiting on its read does not keep a summary that was taken
+    // off the screen alive.
+    const v8 = require("node:v8");
+    v8.setFlagsFromString("--expose-gc");
+    const collect = vm.runInNewContext("gc");
+    await freshSession();
+    await internals.selectCommit(at(4));
+    let answerDeep = () => {};
+    responses.set(
+      `/api/git/commit/${at(4)}`,
+      () =>
+        new Promise((resolve) => {
+          answerDeep = () => resolve(detailFor(at(4)));
+        }),
+    );
+    const identityRef = new WeakRef(
+      document.getElementById("preview-pane").querySelector(".git-commit-identity"),
+    );
+    const recovering = expireAndRecover();
+    await tick();
+    panel.cancelPending();
+    sandbox.MetabrowserShell.renderPreviewHtml(
+      "<div>elsewhere</div>",
+      sandbox.MetabrowserShell.claimPreview("file"),
+    );
+    stagedPreviewNodes.length = 0;
+    previewNode = null;
+    await tick();
+    collect();
+    await tick();
+    collect();
+    assertTrue(
+      "C2: a pending confirmation does not keep a disposed summary alive",
+      identityRef.deref() === undefined,
+    );
+    answerDeep();
+    await recovering;
+    serveDetail(at(4));
+
+    // D1: Reload history after the refs moved, and the repository request fails, with a
+    // 500 and with a rejection. The summary shows none of the old session's refs, its
+    // diff stays, and the refresh that succeeds confirms the refs.
+    for (const failure of ["500", "rejection"]) {
+      await freshSession();
+      await internals.selectCommit(at(0));
+      assertContains(
+        `D1 ${failure}: the summary starts with the old branch`,
+        mountedRefs(),
+        "b0-old",
+      );
+      diffRenders = renderedDiffRevisions.length;
+      comparisons = comparisonFetches.length;
+      // The next page says the history changed, which offers Reload history.
+      responses.set("/api/git/log", {
+        httpStatus: 409,
+        body: { error: "git history changed; refresh required", code: "history_stale" },
+      });
+      await internals.loadNextPage(false);
+      const reload = container
+        .querySelector(".git-history-stale")
+        ?.querySelector(".git-history-reload");
+      assertTrue(`D1 ${failure}: Reload history is offered`, reload);
+      moved = true;
+      responses.set(
+        "/api/git/repo",
+        failure === "500"
+          ? { httpStatus: 500, body: {} }
+          : () => {
+              throw new Error("the network went away");
+            },
+      );
+      reload?.dispatch("click");
+      for (let attempt = 0; attempt < 20 && !internals.stateForTests().failed; attempt += 1) {
+        await tick();
+      }
+      assertTrue(`D1 ${failure}: the refresh failed`, internals.stateForTests().failed);
+      assertEqual(`D1 ${failure}: the summary shows no refs`, mountedRefs(), "");
+      assertEqual(
+        `D1 ${failure}: the diff is not drawn again`,
+        renderedDiffRevisions.length,
+        diffRenders,
+      );
+      assertEqual(
+        `D1 ${failure}: the comparison is not fetched again`,
+        comparisonFetches.length,
+        comparisons,
+      );
+      serveAll();
+      container.querySelector(".git-panel-refresh")?.dispatch("click");
+      for (let attempt = 0; attempt < 20 && !mountedRefs().includes("b0-now"); attempt += 1) {
+        await tick();
+      }
+      assertContains(
+        `D1 ${failure}: the refresh that succeeds confirms the refs`,
+        mountedRefs(),
+        "b0-now",
+      );
+      assertEqual(
+        `D1 ${failure}: the diff stays through the retry`,
+        renderedDiffRevisions.length,
+        diffRenders,
+      );
+    }
+
+    // C3: the selected row's evicted detail is read on hover without a preparation, and
+    // the panel is torn down before it answers. The late answer starts no further read
+    // and puts nothing in the cleared cache.
+    await freshSession();
+    await internals.selectCommit(at(0));
+    for (const index of [1, 2, 3]) {
+      await internals.fetchCommitDetail(at(index));
+    }
+    let answerLate = () => {};
+    const lateDetail = detailFor(at(0));
+    responses.set(
+      `/api/git/commit/${at(0)}`,
+      () =>
+        new Promise((resolve) => {
+          answerLate = () => resolve(lateDetail);
+        }),
+    );
+    const lateRow = rowFor(at(0));
+    lateRow._hovered = true;
+    lateRow.dispatch("mouseenter");
+    await tick();
+    internals.teardown();
+    serveDetail(at(0));
+    const beforeLate = detailFetches(at(0));
+    answerLate();
+    await tick();
+    await tick();
+    lateRow._hovered = false;
+    const afterLate = detailFetches(at(0));
+    assertEqual("C3: a hover answered after teardown reads nothing more", afterLate, beforeLate);
+    await internals.fetchCommitDetail(at(0));
+    assertEqual("C3: the cleared cache stays empty", detailFetches(at(0)), afterLate + 1);
+    // Put the panel back for the cases after this one.
+    await panel.init();
+    registeredPanel.onShow();
+    await tick();
+  }
+
   // ── A stale cursor is a typed state with a reload action ───
   //
   // `history_stale` means the refs the walk was fingerprinted by moved, as
@@ -2873,7 +5346,17 @@ async function run() {
     appendTestPage([commit(SHA_A, [SHA_B], "on screen")], "history:1");
     const before = internals.stateForTests();
     assertEqual("stale: one row on screen before the next page", before.rowCount, 1);
+    // A replace ref or a graft among the moved refs can change a kept comparison's answer.
+    internals.clearComparisonCache();
+    await internals.beginDiffPreparation("5a".repeat(20), null).comparison;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assertEqual("stale: a comparison is kept before", internals.comparisonCacheStats().entries, 1);
     await internals.loadNextPage(false);
+    assertEqual(
+      "stale: a stale walk forgets kept comparisons",
+      internals.comparisonCacheStats().entries,
+      0,
+    );
     const stale = internals.stateForTests();
     assertEqual("stale: one request, no silent replay", staleCalls, 1);
     assertTrue("stale: the state is typed stale", stale.stale);
@@ -2957,6 +5440,17 @@ async function run() {
     assertTrue("tally: the summary loads on its own request", summaryRequested);
     const container = document.getElementById("tab-git");
     assertContains("tally: commit count renders", container.textContent, "10,345 commits");
+    // The count is a count summary's bold number, its word in the line's weight
+    // (docs/design-system.md, "Count Summaries Bold Their Numbers").
+    const tallyCount = container.querySelector(".git-history-summary-count");
+    assertEqual(
+      "tally: the count is the bold number, apart from its word",
+      tallyCount?.children.map((node) => [node.className, node.textContent]),
+      [
+        ["summary-number", "10,345"],
+        ["", " commits"],
+      ],
+    );
     assertContains("tally: begun wording renders", container.textContent, "begun");
     const tallyAge = container.querySelector(".git-history-summary-age");
     assertTrue("tally: age value is present", tallyAge !== null);
@@ -3000,37 +5494,6 @@ async function run() {
       null,
     );
     assertEqual("missing commit: state on the element", previewNode.dataset.state, "not_found");
-
-    const cachedMissing = "9".repeat(40);
-    let askedForFreshness = false;
-    freshnessController = {
-      fetchMissing() {
-        askedForFreshness = true;
-        throw new Error("tab restoration must not start source refresh");
-      },
-    };
-    responses.set(`/api/git/commit/${cachedMissing}`, notFound);
-    const originalLocation = sandbox.location;
-    const originalParse = sandbox.MetabrowserNavigationRoute.parseCommit;
-    sandbox.location = { pathname: `/commit/${cachedMissing}` };
-    sandbox.MetabrowserNavigationRoute.parseCommit = () => ({ revision: cachedMissing });
-    sandbox.history.state = { cachedCommit: true };
-    responses.set("/api/git/repo", {
-      is_repo: true,
-      root: "",
-      head: { ref: "refs/heads/main", revision: SHA_A, detached: false, unborn: false },
-    });
-    await panel.init();
-    internals.teardown();
-    sandbox.location = originalLocation;
-    sandbox.MetabrowserNavigationRoute.parseCommit = originalParse;
-    delete sandbox.history.state;
-    assertEqual("missing cached selection: no refresh", askedForFreshness, false);
-    assertContains(
-      "missing cached selection: names the local miss",
-      previewHtml,
-      "not available in the local repository",
-    );
 
     // A request that failed is still a load failure, not a missing commit.
     responses.set(`/api/git/commit/${SHA_BROKEN}`, {
@@ -3252,6 +5715,202 @@ async function run() {
     await tick();
     assertContains("left commit: the newer preview stays", previewHtml, "the reader moved on");
     freshnessController = null;
+  }
+
+  // ── Kept comparisons ───────────────────────────────────────
+  // A comparison named by a full commit ID cannot change, so a revisit mounts its diff
+  // from the kept answer and asks for nothing. Any other name is asked for every time,
+  // the bound is on bytes, a kept answer still waits on the pane's claim, and a clear
+  // keeps nothing that was in flight when it ran.
+  {
+    internals.setStateForTests(internals.emptyState());
+    internals.clearComparisonCache();
+    const keyOf = internals.comparisonCacheKey;
+    const kept = () => internals.comparisonCacheStats();
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+    assertEqual(
+      "kept: a full SHA-1 commit ID is a key",
+      keyOf({ revision: SHA_A }),
+      `revision=${SHA_A}`,
+    );
+    assertTrue("kept: a full SHA-256 commit ID is a key", keyOf({ revision: "ab".repeat(32) }));
+    for (const name of [
+      "HEAD",
+      "main",
+      "refs/heads/main",
+      SHA_A.slice(0, 7),
+      SHA_A.toUpperCase(),
+      `${SHA_A}^`,
+      "",
+    ]) {
+      assertEqual(
+        `kept: ${JSON.stringify(name)} names what it points at now, so it is no key`,
+        keyOf({ revision: name }),
+        null,
+      );
+    }
+    assertEqual(
+      "kept: every option the request sends is in its key",
+      keyOf({ revision: SHA_A, file: "a.txt" }),
+      `file=a.txt&revision=${SHA_A}`,
+    );
+
+    const revisitA = "71".repeat(20);
+    const revisitB = "72".repeat(20);
+    for (const revision of [revisitA, revisitB]) {
+      responses.set(`/api/git/commit/${revision}`, {
+        is_repo: true,
+        commit: commit(revision, [], `kept ${revision.slice(0, 2)}`),
+        body: "",
+        stats: { files_changed: 0, additions: 0, deletions: 0 },
+        files: [],
+        files_truncated: false,
+      });
+    }
+    comparisonResponder = async (revision) => ({ comparison_id: revision, answer: {} });
+    const askedBefore = comparisonFetches.length;
+    await internals.selectCommit(revisitA);
+    await tick();
+    const firstAnswer = renderedDiffContexts.at(-1)?.raw;
+    await internals.selectCommit(revisitB);
+    await tick();
+    await internals.selectCommit(revisitA);
+    assertEqual(
+      "kept: two commits and a revisit ask for two comparisons",
+      comparisonFetches.length,
+      askedBefore + 2,
+    );
+    assertEqual("kept: the revisit mounts its commit", renderedDiffRevisions.at(-1), revisitA);
+    assertTrue(
+      "kept: the revisit mounts the answer kept for it",
+      renderedDiffContexts.at(-1)?.raw === firstAnswer && firstAnswer !== undefined,
+    );
+    assertContains("kept: the revisit shows its commit", previewHtml, "kept 71");
+
+    const symbolicBefore = comparisonFetches.length;
+    await internals.beginDiffPreparation("HEAD", null).comparison;
+    await internals.beginDiffPreparation("HEAD", null).comparison;
+    assertEqual("kept: HEAD is asked for every time", comparisonFetches.length, symbolicBefore + 2);
+    assertEqual(
+      "kept: nothing is kept for HEAD",
+      kept().keys.some((key) => key.includes("HEAD")),
+      false,
+    );
+
+    // A kept answer resolves at once, but the claim still decides what is shown: a file
+    // taking the pane while the diff renderer loads leaves the file on screen.
+    const originalAssets = sandbox.metabrowser.ensureKindAssets;
+    /** @type {() => void} */
+    let releaseAssets = () => {};
+    sandbox.metabrowser.ensureKindAssets = () =>
+      new Promise((resolve) => {
+        releaseAssets = () => resolve(undefined);
+      });
+    const mountsBefore = renderedDiffRevisions.length;
+    const askedBeforeSuperseded = comparisonFetches.length;
+    const superseded = internals.selectCommit(revisitB);
+    for (let turn = 0; turn < 4; turn += 1) {
+      await tick();
+    }
+    const fileClaim = sandbox.MetabrowserShell.claimPreview("file");
+    sandbox.MetabrowserShell.renderPreviewHtml("<div>a file took the pane</div>", fileClaim);
+    releaseAssets();
+    await superseded;
+    sandbox.metabrowser.ensureKindAssets = originalAssets;
+    assertEqual(
+      "kept: a superseded selection mounts no diff",
+      renderedDiffRevisions.length,
+      mountsBefore,
+    );
+    assertContains("kept: the newer owner's pane stays", previewHtml, "a file took the pane");
+    assertEqual(
+      "kept: the superseded selection asked for nothing",
+      comparisonFetches.length,
+      askedBeforeSuperseded,
+    );
+
+    // The bound is bytes. Four answers of about 930 bytes fit in 4,000; a fifth evicts the
+    // least recently used, which a read refreshes; one over a quarter is shown, not kept.
+    internals.clearComparisonCache();
+    const padded = new Map();
+    comparisonResponder = async (revision) => ({
+      comparison_id: "x",
+      padding: "p".repeat(padded.get(revision) ?? 0),
+    });
+    const sized = [1, 2, 3, 4, 5, 6].map((index) => `8${index}`.repeat(20));
+    for (const revision of sized) {
+      padded.set(revision, 900);
+    }
+    const large = "89".repeat(20);
+    padded.set(large, 1200);
+    // Sizing an answer serializes it, so it waits for the task after the one that hands the
+    // answer to the diff (review B of #368, B3).
+    await internals.beginDiffPreparation(sized[0], null).comparison;
+    assertEqual("kept: an answer is not sized in the task that delivers it", kept().entries, 0);
+    await tick();
+    assertEqual("kept: it is kept in the next task", kept().entries, 1);
+    for (const revision of sized.slice(0, 4)) {
+      await internals.beginDiffPreparation(revision, null).comparison;
+      await tick();
+    }
+    assertEqual("kept: four answers fit", kept().entries, 4);
+    assertTrue("kept: their bytes are counted", kept().bytes > 3600 && kept().bytes <= 4000);
+    const readBefore = comparisonFetches.length;
+    await internals.beginDiffPreparation(sized[0], null).comparison;
+    await tick();
+    assertEqual("kept: a kept answer is read, not asked for", comparisonFetches.length, readBefore);
+    await internals.beginDiffPreparation(sized[4], null).comparison;
+    await tick();
+    assertEqual("kept: a fifth answer keeps the bound", kept().entries, 4);
+    assertTrue(
+      "kept: the least recently used answer is the one evicted",
+      !kept().keys.includes(`revision=${sized[1]}`) && kept().keys.includes(`revision=${sized[0]}`),
+      JSON.stringify(kept().keys),
+    );
+    assertTrue("kept: the total stays within the bound", kept().bytes <= 4000);
+    const largeBefore = comparisonFetches.length;
+    await internals.beginDiffPreparation(large, null).comparison;
+    await tick();
+    await internals.beginDiffPreparation(large, null).comparison;
+    await tick();
+    assertEqual(
+      "kept: an answer over a quarter of the bound is asked for each time",
+      comparisonFetches.length,
+      largeBefore + 2,
+    );
+    assertEqual("kept: and it pushes nothing out", kept().entries, 4);
+
+    // A failed request keeps nothing.
+    comparisonResponder = () => Promise.reject(new Error("comparison failed"));
+    const failedRevision = "8a".repeat(20);
+    const failed = internals.beginDiffPreparation(failedRevision, null).comparison;
+    await failed?.catch(() => {});
+    comparisonResponder = async (revision) => ({ comparison_id: revision });
+    const afterFailure = comparisonFetches.length;
+    await internals.beginDiffPreparation(failedRevision, null).comparison;
+    await tick();
+    assertEqual(
+      "kept: a failed request is asked for again",
+      comparisonFetches.length,
+      afterFailure + 1,
+    );
+
+    // Teardown forgets every kept answer, and one that was in flight when it ran is not
+    // kept when it lands.
+    /** @type {(value: unknown) => void} */
+    let land = () => {};
+    comparisonResponder = () =>
+      new Promise((resolve) => {
+        land = resolve;
+      });
+    const inFlight = "8b".repeat(20);
+    const landing = internals.beginDiffPreparation(inFlight, null).comparison;
+    internals.teardown();
+    assertEqual("kept: teardown forgets every answer", kept().entries, 0);
+    land({ comparison_id: inFlight });
+    await landing;
+    assertEqual("kept: an answer requested before teardown is not kept", kept().entries, 0);
+    comparisonResponder = async (revision) => ({ comparison_id: revision });
   }
 
   // ── Relative age ───────────────────────────────────────────

@@ -10,10 +10,14 @@ function check(name, condition, detail = "failed") {
   }
 }
 
+/** The document every element here belongs to. */
+const FAKE_DOCUMENT = { createElement: (tagName) => new FakeElement(tagName) };
+
 class FakeElement {
   constructor(tagName, attributes = {}, textContent = "") {
     this.attributes = new Map(Object.entries(attributes));
     this.innerHTML = "";
+    this.ownerDocument = FAKE_DOCUMENT;
     this.parentElement = null;
     this.tagName = tagName.toUpperCase();
     this.textContent = textContent;
@@ -34,6 +38,15 @@ class FakeElement {
   // A trusted render is HTML text here, never parsed: no inert article to find.
   querySelector() {
     return null;
+  }
+
+  // It is placed through a template (place-rendered.js), whose content holds no image.
+  get content() {
+    return { innerHTML: this.innerHTML, querySelectorAll: () => [] };
+  }
+
+  replaceChildren(fragment) {
+    this.innerHTML = fragment.innerHTML;
   }
 
   replaceWith(replacement) {
@@ -110,15 +123,11 @@ async function loadModule() {
     "utf8",
   );
   const traversalUrl = `data:text/javascript;base64,${Buffer.from(traversalSource).toString("base64")}`;
-  const tocFallbackStub =
-    "export function initTocWithIntersectionFallback(init){return init()||(()=>{})}";
-  const tocFallbackUrl = `data:text/javascript;base64,${Buffer.from(tocFallbackStub).toString("base64")}`;
   const transclusionSource = fs
     .readFileSync(
       path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/transclusion.js"),
       "utf8",
     )
-    .replace('"./toc-intersection-fallback.js"', JSON.stringify(tocFallbackUrl))
     .replace(
       '"./place-rendered.js"',
       JSON.stringify(
@@ -128,7 +137,15 @@ async function loadModule() {
       ),
     )
     .replace('"./markdown-worker-client.js"', JSON.stringify(workerUrl))
-    .replace('"./wiki-parser.js"', JSON.stringify(parserUrl));
+    .replace('"./wiki-parser.js"', JSON.stringify(parserUrl))
+    .replace(
+      '"./toc-toggle.js"',
+      JSON.stringify(
+        require("node:url").pathToFileURL(
+          path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/toc-toggle.js"),
+        ).href,
+      ),
+    );
   const transclusionUrl = `data:text/javascript;base64,${Buffer.from(transclusionSource).toString("base64")}`;
   const resolverSource = fs.readFileSync(
     path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/wiki-resolver.js"),

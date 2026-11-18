@@ -686,11 +686,15 @@ const untruncatedDeepUpsert = {
   event: deepUpsertChange,
   recentEffect: deepUpsertEffect,
   recentPaths: Array.from(deepUpsertEntries.keys()),
-  tally: model.recentFilteredTallyText(deepUpsertEffect.retainedLowerBound ?? 0, {
-    totalMatching: deepUpsertEffect.retainedLowerBound ?? 0,
-    totalMatchingExact: false,
-    truncated: false,
-  }),
+  // The remark as it reads: its parts joined.
+  tally: model
+    .filteredTallyParts(deepUpsertEffect.retainedLowerBound ?? 0, {
+      totalMatching: deepUpsertEffect.retainedLowerBound ?? 0,
+      totalMatchingExact: false,
+      truncated: false,
+    })
+    .map((part) => (typeof part === "string" ? part : part.number))
+    .join(""),
 };
 
 const lateRecomputeCallbacks = new Map();

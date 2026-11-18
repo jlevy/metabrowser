@@ -61,6 +61,23 @@ def _tabs(html: str) -> dict[str, bool]:
     return tabs
 
 
+def _toolbars(html: str) -> dict[str, bool]:
+    """Each toolbar in the navigation's slot, and whether it is shown; one per tab, never empty."""
+
+    toolbars: dict[str, bool] = {}
+    for opening, body in re.findall(
+        r'(<div [^>]*data-nav-toolbar="[a-z]+"[^>]*>)(.*?)</div>', html
+    ):
+        name = re.search(r'data-nav-toolbar="([a-z]+)"', opening)
+        assert name is not None
+        toolbars[name.group(1)] = " hidden" not in opening
+        # Each ships the pending tally until its script fills it.
+        assert "tally-pending" in body, opening
+    assert list(toolbars.values()).count(True) == 1, toolbars
+    assert set(toolbars) == set(_tabs(html)), (toolbars, _tabs(html))
+    return toolbars
+
+
 def _shell_tools(html: str) -> list[str]:
     bundles = re.search(r"window\.METABROWSER_ASSET_BUNDLES=(\{.*?\});</script>", html)
     assert bundles is not None
@@ -166,14 +183,16 @@ def test_a_mirror_of_github_draws_the_tab_and_puts_it_in_front_at_its_addresses(
     try:
         with TestClient(app) as client:
             elsewhere = client.get("/view/").text
-            assert _tabs(elsewhere) == {"files": True, "pulls": False}
+            # A pin is a repository, so Commits is drawn at first paint, after Pulls.
+            assert _tabs(elsewhere) == {"files": True, "git": False, "pulls": False}
+            assert list(_tabs(elsewhere)) == ["files", "pulls", "git"]
             # Fetched with the shell's tools, after the first tree: no startup script.
             assert "/static/pulls-nav.js" in _shell_tools(elsewhere)
             assert "/static/pulls-nav.js" not in _startup_scripts(elsewhere)
             assert '<div id="tab-pulls" data-tab-content="pulls" style="display: none"></div>' in (
                 elsewhere
             )
-            assert 'id="nav-filter-bar"></div>' in elsewhere
+            assert _toolbars(elsewhere) == {"files": True, "git": False, "pulls": False}
 
             for route in (
                 "/pull/7",
@@ -183,10 +202,11 @@ def test_a_mirror_of_github_draws_the_tab_and_puts_it_in_front_at_its_addresses(
                 "/pulls?state=closed",
             ):
                 html = client.get(route).text
-                assert _tabs(html) == {"files": False, "pulls": True}, route
-                # The Files tree and its filters are behind the Pulls tab from first paint.
+                assert _tabs(html) == {"files": False, "git": False, "pulls": True}, route
+                # The Files tree is behind the Pulls tab from first paint, and the toolbar
+                # slot holds the Pulls toolbar in its filters' place, never empty.
                 assert 'id="tab-files" data-tab-content="files" style="display: none"' in html
-                assert 'id="nav-filter-bar" style="display: none"' in html
+                assert _toolbars(html) == {"files": False, "git": False, "pulls": True}, route
                 sidebar = html.split('id="tab-pulls"', 1)[1].split('id="preview-pane"', 1)[0]
                 assert sidebar.count('class="spinner spinner-sm"') == 1
                 assert sidebar.count("Fetching pull requests…") == 1
@@ -213,7 +233,7 @@ def test_a_mirror_of_anything_else_draws_no_tab(
         with TestClient(app) as client:
             for route in ("/view/", "/pull/7", "/pulls"):
                 html = client.get(route).text
-                assert _tabs(html) == {"files": True}, route
+                assert _tabs(html) == {"files": True, "git": False}, route
                 assert "/static/pulls-nav.js" not in _shell_tools(html), route
     finally:
         serve_mirror(None)
@@ -251,10 +271,21 @@ def test_a_github_checkout_draws_the_tab_and_puts_it_in_front_at_its_addresses(
     with TestClient(app) as client:
         elsewhere = client.get("/view/").text
         assert _tabs(elsewhere)["pulls"] is False
+        # Commits is drawn at first paint at the repository's root only, the one root Git
+        # discovery accepts, and always after Pulls.
+        assert ("git" in _tabs(elsewhere)) is (served == "")
+        assert list(_tabs(elsewhere))[1] == "pulls"
         assert "/static/pulls-nav.js" in _shell_tools(elsewhere)
         assert "/static/pulls-nav.js" not in _startup_scripts(elsewhere)
         for route in ("/pull/7", "/pulls"):
             assert _tabs(client.get(route).text)["pulls"] is True, route
+        # A cold page shows its own loading state, header rows and tab bar over a body
+        # skeleton, at once: the shell's placeholder is nothing to keep on screen while
+        # the page is staged, so the page is not staged behind it.
+        placeholder = re.search(
+            r'<div class="pull-request-placeholder[^>]*>', client.get("/pull/7").text
+        )
+        assert placeholder is not None and "data-preview-empty" in placeholder.group(0)
     reset_source_session()
 
 
@@ -273,7 +304,52 @@ def test_a_checkout_of_anything_else_draws_no_tab(tmp_path: Path, pull_origin: O
         for route in ("/view/", "/pull/7", "/pulls"):
             html = client.get(route).text
             assert "pulls" not in _tabs(html), route
+            # Any repository at the root has Commits from first paint, GitHub or not.
+            assert _tabs(html)["git"] is False, route
             assert "/static/pulls-nav.js" not in _shell_tools(html), route
+    reset_source_session()
+
+
+@needs_git
+def test_a_commits_address_lands_on_commits_from_first_paint(
+    tmp_path: Path, pull_origin: Origin
+) -> None:
+    """A commit's address draws Commits in front: its tab, its toolbar, and its panel's
+    container, so the landing never shows the Files tree and toolbar and then swaps them."""
+
+    reset_source_session()
+    from metabrowser import server
+
+    checkout = clone_checkout(
+        pull_origin, tmp_path / "checkout", remote="https://gitlab.example/octo/demo.git"
+    )
+    server._set_root_dir(checkout)  # pyright: ignore[reportPrivateUsage]
+    with TestClient(app) as client:
+        html = client.get("/commit/" + "a" * 40).text
+        assert _tabs(html) == {"files": False, "git": True}
+        assert _toolbars(html) == {"files": False, "git": True}
+        assert 'id="tab-files" data-tab-content="files" style="display: none"' in html
+        assert '<div id="tab-git" data-tab-content="git"><div class="loading' in html
+        # Elsewhere Files is in front, and the Commits panel's container is the page's to make.
+        elsewhere = client.get("/view/").text
+        assert _tabs(elsewhere) == {"files": True, "git": False}
+        assert _toolbars(elsewhere) == {"files": True, "git": False}
+        assert 'id="tab-git"' not in elsewhere
+    reset_source_session()
+
+
+def test_a_commits_address_in_a_folder_draws_no_commits(tmp_path: Path) -> None:
+    """With no repository there is no Commits tab to put in front: Files stays."""
+
+    reset_source_session()
+    from metabrowser import server
+
+    (tmp_path / "README.md").write_text("# Local\n")
+    server._set_root_dir(tmp_path)  # pyright: ignore[reportPrivateUsage]
+    with TestClient(app) as client:
+        html = client.get("/commit/" + "a" * 40).text
+        assert _tabs(html) == {"files": True}
+        assert _toolbars(html) == {"files": True}
     reset_source_session()
 
 
@@ -302,7 +378,42 @@ def test_stack_shortcuts_follow_active_pr_and_preserve_registry_guards() -> None
     """Public page capability owns stack direction; shared scopes retain native input."""
 
     result = run_session("pulls-nav-session.js")["stack keys"]
+    # Control-P toward the base and Control-N toward the top, and Shift changes neither
+    # (mb-lnqj).
     assert result["directions"] == [-1, 1]
+    assert result["shiftedDirections"] == [-1, 1]
+    # The letters alone are free, AltGr (Control and Alt) types its character, Command
+    # stays the browser's, and a text field keeps both chords for its caret.
+    assert result["plainLettersWalkNothing"] == [False, False, False]
+    assert set(result["otherChordsWalkNothing"].values()) == {False}
+    assert "Control-Alt-N, as AltGr" in result["otherChordsWalkNothing"]
+    assert result["textFieldsKeepTheChords"] == [False, False, False]
+    # A held chord walks once and its repeats are consumed, so none reaches the browser.
+    assert result["repeatConsumedWithoutWalking"] is True
+    assert [entry["keys"] for entry in result["help"]] == ["Control N", "Control P"]
+    # The chords are bound only where Control reaches the page, a Mac here; on Windows and
+    # Linux, and with no navigator, Ctrl+N and Ctrl+P stay the browser's: no binding, no
+    # Help row, no Shift strip entry, and nothing cancelled.
+    platforms = result["platforms"]
+    assert platforms.pop("macOS") == {
+        "bound": ["pulls.stack.top", "pulls.stack.base"],
+        "help": True,
+        "strip": True,
+        "cancelled": [True, True, True],
+        "walked": [1, -1],
+    }
+    assert {"Windows", "Linux"} < set(platforms)
+    for platform, record in platforms.items():
+        assert record == {
+            "bound": [],
+            "help": False,
+            "strip": False,
+            "cancelled": [False, False, False],
+            "walked": [],
+        }, platform
     assert result["endpointConsumed"] is True
     assert result["plainJRemainsRowNavigation"] is True
+    # A focused row keeps J and K with Shift held; they never reach the stack.
+    assert result["shiftedRowKeysMoveTheRow"]["handled"] == [True, True]
+    assert result["shiftedFileKeysMoveTheFile"]["handled"] == [True, True]
     assert result["cleanup"] is True

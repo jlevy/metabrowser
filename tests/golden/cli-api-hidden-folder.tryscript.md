@@ -45,6 +45,7 @@ status: 200
     {
       "id": "overview",
       "label": "Overview",
+      "key": "o",
       "default": true,
       "container_class": "content-body folder-overview-host",
       "printable": false,
@@ -54,6 +55,7 @@ status: 200
     {
       "id": "treemap",
       "label": "Treemap",
+      "key": "m",
       "default": false,
       "container_class": "content-body folder-treemap-host",
       "printable": false,
@@ -92,6 +94,7 @@ status: 200
     {
       "id": "overview",
       "label": "Overview",
+      "key": "o",
       "default": true,
       "container_class": "content-body folder-overview-host",
       "printable": false,
@@ -101,6 +104,7 @@ status: 200
     {
       "id": "treemap",
       "label": "Treemap",
+      "key": "m",
       "default": false,
       "container_class": "content-body folder-treemap-host",
       "printable": false,
@@ -163,6 +167,7 @@ status: 200
     {
       "id": "overview",
       "label": "Overview",
+      "key": "o",
       "default": true,
       "container_class": "content-body folder-overview-host",
       "printable": false,
@@ -172,6 +177,7 @@ status: 200
     {
       "id": "treemap",
       "label": "Treemap",
+      "key": "m",
       "default": false,
       "container_class": "content-body folder-treemap-host",
       "printable": false,
@@ -208,6 +214,7 @@ status: 200
     {
       "id": "overview",
       "label": "Overview",
+      "key": "o",
       "default": true,
       "container_class": "content-body folder-overview-host",
       "printable": false,
@@ -217,6 +224,7 @@ status: 200
     {
       "id": "treemap",
       "label": "Treemap",
+      "key": "m",
       "default": false,
       "container_class": "content-body folder-treemap-host",
       "printable": false,
@@ -302,6 +310,7 @@ status: 200
     {
       "id": "overview",
       "label": "Overview",
+      "key": "o",
       "default": true,
       "container_class": "content-body folder-overview-host",
       "printable": false,
@@ -311,6 +320,7 @@ status: 200
     {
       "id": "treemap",
       "label": "Treemap",
+      "key": "m",
       "default": false,
       "container_class": "content-body folder-treemap-host",
       "printable": false,

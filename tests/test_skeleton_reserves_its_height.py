@@ -7,12 +7,19 @@ numbers from a later request. Measured at 1280x900 on the 246,282-file corpus:
 24 px and 43 px of downward movement, on every load and every reload.
 
 Each reservation holds one line box. That settles the filter bar outright and
-takes the tally row from 43 px to 23, the remainder being a split row wrapping
-to a second line in a narrow pane -- H54, which wants the pending row shaped
-like the settled one rather than a taller floor. These tests assert the
-reservations exist, stay derived, and stay off the one state whose box they
-were not derived from; the pixels are in
-explorations/performance-loop/experiments/exp-009.
+took the tally row from 43 px to 23, the remainder being a split row wrapping
+to a second line in a narrow pane (H54). The ignored count is now a line of its
+own, which the shell draws from the root's totals it inlines and holds pending
+while they are unknown, so the tally row's height is decided at first paint
+(mb-h3hc). These tests assert the reservations exist, stay derived, and hold in
+the joined state too; the pixels of that history are in
+explorations/performance-loop/experiments/exp-009, the heights the line keeps
+are measured by tests/test_nav_metadata_chrome.py, and that nothing moves from
+first paint to settled by tests/test_files_totals_stable_chrome.py.
+
+The tally row is a navigation metadata line (`.nav-metadata`), the component
+the Commits tally and the Pulls lines share, so its reservation is that
+component's: its own line box, in its content box.
 """
 
 from __future__ import annotations
@@ -24,13 +31,12 @@ from metabrowser import server
 
 STATIC = Path(server.__file__).resolve().parent / "static"
 
-# The tally row's floor is derived from a box that carries this row's own
-# bottom padding and border. The rule below drops both so the totals and the
-# filtered count read as one band, and the floor must not reach that state.
-TALLY_RESERVATION = (
-    ".tree-summary:not(:has(+ .tree-summary-filtered)):not(:has(+ .tree-selection-note))"
-)
-TALLY_JOINED = ".tree-summary:has(+ .tree-selection-note)"
+# The tally row's floor is the metadata line's: one line box in its content box,
+# whatever padding and border the line keeps. The joined rule drops the bottom
+# padding and border of a line followed by another, so the totals and the filtered
+# count read as one band, and a floor that counted them would hold that gap open.
+TALLY_RESERVATION = ".nav-metadata"
+TALLY_JOINED = ".nav-metadata:has(+ .nav-metadata)"
 
 
 def _rule(css: str, selector: str) -> str:
@@ -74,29 +80,34 @@ def test_the_tally_row_reserves_a_line_box_before_its_counts_arrive() -> None:
     )
 
 
-def test_the_tally_reservation_stays_off_the_state_it_was_not_derived_from() -> None:
-    """The floor counts this row's bottom padding and border. Where the joined
-    state removes them, the same floor holds that much empty space open between
-    the totals and the filtered count -- the gap that rule exists to close."""
+def test_the_tally_reservation_holds_in_the_joined_state() -> None:
+    """A floor that counted the row's bottom padding and border held that much
+    empty space open between the totals and the filtered count, where the joined
+    state removes both -- the gap that rule exists to close. The floor is the
+    line box alone, in the content box, so it is right in either state."""
     css = (STATIC / "styles.css").read_text(encoding="utf-8")
     joined = _rule(css, TALLY_JOINED)
     assert "border-bottom: none" in joined and "padding-bottom: 0" in joined, (
         "this test guards the joined state against the reservation; the state has changed"
     )
-    assert "min-height" not in _rule(css, ".tree-summary"), (
-        "the reservation must be scoped, not on the base rule, or it reaches the joined state"
+    line = _rule(css, TALLY_RESERVATION)
+    assert "box-sizing: content-box" in line, (
+        "a border-box floor counts the padding and border the joined state removes"
     )
+    assert "min-height" not in joined
 
 
 def test_both_reservations_derive_from_the_type_they_hold() -> None:
     """A hardcoded pixel height drifts the first time the font set changes, and
     this shell offers the reader a choice of font sets."""
     css = (STATIC / "styles.css").read_text(encoding="utf-8")
-    for selector in (".nav-filter-bar", TALLY_RESERVATION):
-        reservation = _declaration(_rule(css, selector), "min-height")
-        assert "var(--" in reservation, (
-            f"{selector} reserves a fixed height rather than deriving it: {reservation}"
-        )
+    reservation = _declaration(_rule(css, ".nav-filter-bar"), "min-height")
+    assert "var(--" in reservation, (
+        f".nav-filter-bar reserves a fixed height rather than deriving it: {reservation}"
+    )
+    # `1lh` is the line box of the line's own type, whichever font set is chosen.
+    reservation = _declaration(_rule(css, TALLY_RESERVATION), "min-height")
+    assert reservation == "min-height: 1lh;", reservation
 
 
 def test_the_chip_box_has_one_source() -> None:
@@ -120,10 +131,12 @@ def test_the_chip_box_has_one_source() -> None:
 
 def test_the_inline_render_emits_the_tally_row_rather_than_omitting_it() -> None:
     """Reserving the height in CSS only helps if the element is there to hold
-    it. The inline path used to pass an empty chrome string."""
+    it. The inline path used to pass an empty chrome string. It draws the line
+    from the root's totals the shell inlined, pending without them (mb-h3hc)."""
     app = (STATIC / "app.js").read_text(encoding="utf-8")
     block = _function_source(app, "function renderInitialTreeRows()")
-    assert "treeSummaryHtml(null, null, null)" in block
+    assert "treeSummaryHtml(rootTotals().totals(), null, null)" in block
+    assert "shell: window.METABROWSER_INITIAL_TREE?.summary ?? null," in app
 
 
 def test_the_inline_span_is_recorded_around_the_paint_not_around_the_decision() -> None:

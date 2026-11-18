@@ -16,8 +16,8 @@ from typing import Any, Literal, cast
 
 from metabrowser.color_oklch import BAND_CENTER, TonePosition, band_positions
 
-FILE_TYPE_REGISTRY_SCHEMA = "file-type-registry-v4"
-FILE_TYPE_REGISTRY_SCHEMA_VERSION = 4
+FILE_TYPE_REGISTRY_SCHEMA = "file-type-registry-v5"
+FILE_TYPE_REGISTRY_SCHEMA_VERSION = 5
 FILE_TYPE_REGISTRY_RESOURCE = "data/file-rollup-format/recommended-file-types.toml"
 FILE_TYPE_FAMILY_KEY_PREFIX = "family:"
 FILE_TYPE_NO_EXTENSION_KEY = "(none)"
@@ -112,11 +112,11 @@ class FileTypeFamily:
     """Why this family does not paint where its upstream colour says it should.
 
     Present exactly when the family leaves GitHub's placement deliberately —
-    a ``hue`` that is not ``linguist_color``'s, a ``lightness_rank`` of its
-    own, or both. It is prose because the reason is the point: a deviation is
-    a judgement someone made, and the next reader needs it to tell a decision
-    from a mistake. ``linguist`` and ``linguist_color`` stay either way, so
-    provenance survives the deviation."""
+    a ``hue`` that is not ``linguist_color``'s, a ``lightness_rank`` or
+    ``chroma_ratio`` of its own, or any of them together. It is prose because
+    the reason is the point: a deviation is a judgement someone made, and the
+    next reader needs it to tell a decision from a mistake. ``linguist`` and
+    ``linguist_color`` stay either way, so provenance survives the deviation."""
     lightness_rank: float | None
     """Where in the band the family sits, overriding its upstream rank.
 
@@ -125,6 +125,17 @@ class FileTypeFamily:
     one way to leave it, and only with a ``deviation`` saying why, because the
     band is what bounds how much a stacked-bar segment can read heavier than
     its size."""
+    chroma_ratio: float | None
+    """Where in the chroma band the family sits, overriding its upstream ratio.
+
+    Normally ``None`` and derived from ``linguist_color`` like the rank. A
+    declared value must lie in ``[0, 1]``: unlike lightness, chroma has no use
+    for a way out of its band, because the band's top is already past what
+    sRGB holds at most hues and the pullback in ``ToneBand.at`` would take a
+    higher target straight back. It needs a ``deviation`` for the same reason
+    the rank does, and the usual one is a family whose hue left its upstream
+    colour's, so that the saturation it would inherit was a different
+    colour's."""
     icon: str | None
     """This family's own shape, or ``None`` to take the group's.
 
@@ -190,6 +201,7 @@ class _FamilyDeclaration:
     linguist_color: str | None
     deviation: str | None
     lightness_rank: float | None
+    chroma_ratio: float | None
     icon: str | None
 
 
@@ -249,18 +261,22 @@ class FileTypeRegistry:
         # Derived here, once, because a position is relative to the whole set:
         # a family's rank among upstream lightnesses is not a property of that
         # family alone, so it cannot be declared beside one. A family that
-        # declares its own rank overrides only that axis, and keeps the chroma
-        # its upstream colour earned.
+        # declares its own rank or ratio overrides only that axis, and keeps
+        # the other one its upstream colour earned. The family keeps its
+        # upstream colour either way, so every other family's place is the
+        # same whether or not one of them deviates.
         derived = band_positions([family.linguist_color for family in self.families])
         positions: dict[str, TonePosition] = {}
         for family, position in zip(self.families, derived, strict=True):
-            positions[family.id] = (
-                position
-                if family.lightness_rank is None
-                else TonePosition(
-                    lightness_rank=family.lightness_rank,
-                    chroma_ratio=position.chroma_ratio,
-                )
+            positions[family.id] = TonePosition(
+                lightness_rank=(
+                    position.lightness_rank
+                    if family.lightness_rank is None
+                    else family.lightness_rank
+                ),
+                chroma_ratio=(
+                    position.chroma_ratio if family.chroma_ratio is None else family.chroma_ratio
+                ),
             )
         object.__setattr__(self, "_tone_positions", MappingProxyType(positions))
 
@@ -287,8 +303,7 @@ class FileTypeRegistry:
     def match(self, name: str, logical_extension: str) -> FileTypeMatch | None:
         """Select basename, exact-extension, then longest-suffix evidence."""
 
-        basename = name.replace("\\", "/").rsplit("/", maxsplit=1)[-1].lower()
-        basename_kind = self._filenames.get(basename)
+        basename_kind = self._filenames.get(_match_basename(name))
         if basename_kind is not None:
             return FileTypeMatch(basename_kind, None, "basename", "exact")
         extension = normalize_logical_extension(logical_extension)
@@ -301,6 +316,27 @@ class FileTypeRegistry:
             if extension.endswith(suffix):
                 return FileTypeMatch(kind, suffix, "suffix", "suffix")
         return None
+
+    def classifies_by_name(self, name: str) -> bool:
+        """Whether *name* alone decides :meth:`classify`, ahead of its extension.
+
+        Any other name classifies exactly as its extension does, so a pass over many
+        files can classify each distinct extension once instead of every file.
+        """
+
+        return _match_basename(name) in self._filenames
+
+    def name_group_id(self, name: str) -> str | None:
+        """The display group *name* alone classifies into, or None when it classifies as
+        its extension does (:meth:`classifies_by_name`).
+
+        A pass that groups every file in an index asks this once per file, so a plain
+        name, which has no separator to split on, skips the basename normalization.
+        """
+
+        basename = name.lower() if "/" not in name and "\\" not in name else _match_basename(name)
+        kind = self._filenames.get(basename)
+        return kind.group_id if kind is not None else None
 
     def classify(self, name: str, logical_extension: str) -> FileTypeClassification:
         """Return stable classification fields without presentation state."""
@@ -359,6 +395,7 @@ class FileTypeRegistry:
                     "icon": family.icon,
                     "deviation": family.deviation,
                     "lightness_rank": family.lightness_rank,
+                    "chroma_ratio": family.chroma_ratio,
                 }
                 for family in self.families
             ),
@@ -376,6 +413,12 @@ class FileTypeRegistry:
                 for kind in self.kinds
             ),
         }
+
+
+def _match_basename(name: str) -> str:
+    """The basename :meth:`FileTypeRegistry.match` looks up as filename evidence."""
+
+    return name.replace("\\", "/").rsplit("/", maxsplit=1)[-1].lower()
 
 
 def normalize_logical_extension(extension: str) -> str:
@@ -546,16 +589,18 @@ def _parse_linguist(raw: Mapping[str, Any], table_id: str) -> tuple[str | None, 
     return name.strip(), color.lower()
 
 
-def _parse_deviation(raw: Mapping[str, Any], table_id: str) -> tuple[str | None, float | None]:
+def _parse_deviation(
+    raw: Mapping[str, Any], table_id: str
+) -> tuple[str | None, float | None, float | None]:
     """Read the deliberate departure from where upstream would put a family.
 
-    ``lightness_rank`` requires a ``deviation``, and not the other way round: a
-    hue can leave GitHub's on its own, but leaving the band is never something
-    that should be readable as a typo.
+    ``lightness_rank`` and ``chroma_ratio`` each require a ``deviation``, and
+    not the other way round: a hue can leave GitHub's on its own, but moving a
+    family's place in the band is never something that should be readable as a
+    typo.
     """
 
     deviation = raw.get("deviation")
-    rank = raw.get("lightness_rank")
     if deviation is not None and (not isinstance(deviation, str) or not deviation.strip()):
         raise FileTypeRegistryError(
             "invalid-field",
@@ -564,28 +609,45 @@ def _parse_deviation(raw: Mapping[str, Any], table_id: str) -> tuple[str | None,
             field_name="deviation",
             value=deviation,
         )
-    if rank is not None:
-        if isinstance(rank, bool) or not isinstance(rank, int | float):
-            raise FileTypeRegistryError(
-                "invalid-field",
-                "expected a number",
-                table_id=table_id,
-                field_name="lightness_rank",
-                value=rank,
-            )
-        if deviation is None:
-            raise FileTypeRegistryError(
-                "undeclared-deviation",
-                "family lightness_rank needs a deviation recording why it leaves "
-                "the rank its upstream colour gives it",
-                table_id=table_id,
-                field_name="lightness_rank",
-                value=rank,
-            )
-    return (
-        deviation.strip() if isinstance(deviation, str) else None,
-        float(rank) if rank is not None else None,
-    )
+    rank = _declared_position(raw, "lightness_rank", "rank", table_id, deviation)
+    ratio = _declared_position(raw, "chroma_ratio", "chroma ratio", table_id, deviation)
+    if ratio is not None and not 0.0 <= ratio <= 1.0:
+        raise FileTypeRegistryError(
+            "invalid-field",
+            "family chroma_ratio must be in [0, 1]; chroma has no way out of its band",
+            table_id=table_id,
+            field_name="chroma_ratio",
+            value=ratio,
+        )
+    return (deviation.strip() if isinstance(deviation, str) else None, rank, ratio)
+
+
+def _declared_position(
+    raw: Mapping[str, Any], field_name: str, noun: str, table_id: str, deviation: object
+) -> float | None:
+    """One declared place in the band, which only a family saying why may hold."""
+
+    value = raw.get(field_name)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise FileTypeRegistryError(
+            "invalid-field",
+            "expected a number",
+            table_id=table_id,
+            field_name=field_name,
+            value=value,
+        )
+    if deviation is None:
+        raise FileTypeRegistryError(
+            "undeclared-deviation",
+            f"family {field_name} needs a deviation recording why it leaves "
+            f"the {noun} its upstream colour gives it",
+            table_id=table_id,
+            field_name=field_name,
+            value=value,
+        )
+    return float(value)
 
 
 def _required_hue(raw: Mapping[str, Any], table_id: str) -> float:
@@ -686,7 +748,7 @@ def _parse_families(
             )
         hue = _required_hue(raw, family_id)
         linguist, linguist_color = _parse_linguist(raw, family_id)
-        deviation, lightness_rank = _parse_deviation(raw, family_id)
+        deviation, lightness_rank, chroma_ratio = _parse_deviation(raw, family_id)
         raw_icon = raw.get("icon")
         if raw_icon is not None and (not isinstance(raw_icon, str) or not raw_icon.strip()):
             raise FileTypeRegistryError(
@@ -710,6 +772,7 @@ def _parse_families(
                 linguist_color,
                 deviation,
                 lightness_rank,
+                chroma_ratio,
                 icon,
             )
         )
@@ -897,6 +960,7 @@ def _materialize_families(
                 declaration.linguist_color,
                 declaration.deviation,
                 declaration.lightness_rank,
+                declaration.chroma_ratio,
                 declaration.icon,
             )
         )
@@ -937,6 +1001,7 @@ def _registry_fingerprint(
                 "linguist_color": family.linguist_color,
                 "deviation": family.deviation,
                 "lightness_rank": family.lightness_rank,
+                "chroma_ratio": family.chroma_ratio,
             }
             for family in families
         ],

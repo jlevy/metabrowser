@@ -24,8 +24,10 @@ the recording and then the transcript.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
+import sqlite3
 import threading
 import time
 from collections.abc import Awaitable, Callable
@@ -40,6 +42,7 @@ from starlette.testclient import TestClient
 from metabrowser import server
 from metabrowser.builtin_plugins.github import gh, pull_list, pull_list_refresh, pulls
 from metabrowser.builtin_plugins.github.gh_lists import utc_stamp
+from metabrowser.builtin_plugins.github.pull_catalog import CATALOG_PROJECTION
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository, write_list_refresh
 from metabrowser.builtin_plugins.github.pull_record import PullRefreshStamp
 from metabrowser.builtin_plugins.github.served_pull import ServedPulls
@@ -65,6 +68,7 @@ from tests.github_pull_fixture import (
     seed_catalog,
 )
 from tests.golden_harness import JSON_BODY, check_recording, read_recording, run_session
+from tests.loop_gate import held_until
 from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git
 
@@ -183,8 +187,8 @@ def _record(
     original: Callable[..., Awaitable[Any]] = pull_list_refresh.refresh_pull_list
 
     async def held(*args: Any, **kwargs: Any) -> Any:
-        # The test thread sets it; a worker thread waits, so the job runs until then.
-        await asyncio.to_thread(gate.wait, 30)
+        # The test thread sets it; the job is held on the loop until then.
+        await held_until(gate, 30)
         return await original(*args, **kwargs)
 
     monkeypatch.setattr(pull_list_refresh, "refresh_pull_list", held)
@@ -229,7 +233,7 @@ def _record(
             recorded["not_due"] = ask(state="all", target=500)
             assert ask(state="all", target=1000)["body"]["refresh"] == "not_due"
             assert read() == recorded["current"]
-            provider_calls["cached windows, filters, Fetch more and reopen"] = logged_gh_calls(
+            provider_calls["cached windows, filters, scrolling and reopen"] = logged_gh_calls(
                 tmp_path
             )
             recorded["pin_changed"] = _answer(
@@ -246,6 +250,32 @@ def _record(
             provider_calls["due metadata refresh"] = logged_gh_calls(tmp_path)
             assert read() == recorded["refreshed"]
             provider_calls["fresh cached revisit"] = logged_gh_calls(tmp_path)
+
+            # Two refusals the real worker reaches before asking GitHub anything: a catalog a
+            # newer release wrote, and one whose versions cannot be read. Each is asked for
+            # through the refresh route, read back through the list route, and the catalog
+            # put back as it was for the story that follows.
+            catalog = home / "sources" / published.slug / "pulls" / "catalog.sqlite3"
+            saved = catalog.read_bytes()
+
+            def newer(db: sqlite3.Connection) -> None:
+                (value,) = db.execute("SELECT value FROM checkpoint").fetchone()
+                declared = json.loads(value) | {"projection_version": CATALOG_PROJECTION + 1}
+                db.execute("UPDATE checkpoint SET value=?", (json.dumps(declared),))
+                db.commit()
+
+            def write_ahead_log(db: sqlite3.Connection) -> None:
+                assert db.execute("PRAGMA journal_mode=WAL").fetchone() == ("wal",)
+
+            for name, change in (("newer_cache", newer), ("unknown_cache", write_ahead_log)):
+                with contextlib.closing(sqlite3.connect(catalog)) as db:
+                    change(db)
+                refused = ask(state="all", target=500, retry=True)
+                assert refused["status"] == 202, refused
+                settled()
+                recorded[f"failed {name}"] = read()
+                provider_calls[f"refused {name}"] = logged_gh_calls(tmp_path)
+                catalog.write_bytes(saved)
 
             # Actual persisted failure stamps, read through the production cache-only route.
             # Worker/network classification is covered by the catalog backend's own cases.
@@ -432,6 +462,18 @@ def test_recording_is_what_a_served_mirror_answers(
     ):
         envelope = recorded[f"failed {name}"]["body"]
         assert envelope["last_refresh"]["outcome"] == name and envelope["fetched"] == 102
+    clear = "`echo '{}' | metab https://github.com/octo/demo --api /api/plugin/github/cache-clear --data -`"
+    for name in ("newer_cache", "unknown_cache"):
+        # A catalog left as it is reads as none, and its refusal names the clear.
+        envelope = recorded[f"failed {name}"]["body"]
+        assert envelope["last_refresh"]["outcome"] == name
+        assert clear in envelope["last_refresh"]["message"]
+        assert (envelope["state"], envelope["reason"], envelope["fetched"]) == (
+            "absent",
+            "not_cached",
+            0,
+        )
+        assert provider_calls[f"refused {name}"] == []
     assert recorded["another_reader"]["body"]["reader"] == f"gh:{ANOTHER_READER}"
     assert recorded["another_reader"]["body"]["state"] == "stale"
     assert (
@@ -506,6 +548,8 @@ def test_the_recording_holds_every_failure_the_plan_names() -> None:
         "account_changed",
         "gh_failed",
         "cache_unwritable",
+        "newer_cache",
+        "unknown_cache",
     ):
         assert f"failed {name}" in recording, name
 
@@ -520,9 +564,12 @@ def test_catalog_windows_and_late_request_ownership() -> None:
     assert run_session("github-pulls-catalog-behavior.js") == {
         "defaultFilter": "open",
         "initialRows": 500,
-        "explicitRows": 1000,
+        "rateHeldScrollRows": 1000,
         "scrollRows": 600,
         "terminalRows": 645,
+        "uncappedScrollRows": 2500,
+        "parkedTailRows": 2000,
+        "countNotices": 0,
         "repeatedScrollSharesRequest": True,
         "keepsSelection": True,
         "cachedGrowthKeepsEveryRow": True,
@@ -532,7 +579,7 @@ def test_catalog_windows_and_late_request_ownership() -> None:
         "progressOnlyReads": 1,
         "generationPages": 10,
         "detailReads": 0,
-        "priorityTarget": 1000,
+        "priorityTarget": 600,
         "lateWindowRejected": True,
         "ownerTransferred": True,
         "mixedGenerationRejected": True,
@@ -573,7 +620,7 @@ def test_viewport_resize_and_distant_focus_keep_the_mounted_window_complete() ->
     assert result == {
         "case": "viewport-height-increase",
         "before": 43,
-        "after": 113,
+        "after": 90,
         "observedRoot": 1,
         "gapStartsAt": None,
         "viewportHeight": 3000,
@@ -583,9 +630,13 @@ def test_viewport_resize_and_distant_focus_keep_the_mounted_window_complete() ->
         # receipt, a new window, or going offline ends it; `beat` is alignRefreshing's one
         # start time ("Refreshing Content" in docs/design-system.md; review A on #354).
         "titleBreathing": {
-            "admitted": {"asked": [407, 406, 405], "breathing": [407, 406, 405], "busyRows": 0},
+            "admitted": {
+                "asked": [438, 437, 436, 435],
+                "breathing": [438, 437, 436, 435],
+                "busyRows": 0,
+            },
             "settled": [],
-            "moved": {"asked": [311, 310, 309, 308], "breathing": [311, 310, 309, 308]},
+            "moved": {"asked": [372, 371, 370], "breathing": [372, 371, 370]},
             "offline": [],
             "beat": [100, 100, 50, 100],
         },
@@ -607,10 +658,15 @@ def test_setup_guidance_retains_cached_content_and_failure_distinctions() -> Non
 def test_optional_native_stack_state_is_shared_and_owned() -> None:
     assert run_session("github-pull-stacks-behavior.js") == {
         "rowCaptions": {
-            "single": {"text": "2/3", "hint": "Stack #286, position 2 of 3"},
+            "single": {
+                "text": "2/3",
+                "hint": "Stack #286, position 2 of 3",
+                "parts": [{"position": "2/3", "stack": None}],
+            },
             "shared": {
-                "text": "3/3 · 1/2",
+                "text": "3/3 · 900 1/2",
                 "hint": "Stack #286, position 3 of 3; Stack #900, position 1 of 2",
+                "parts": [{"position": "3/3", "stack": None}, {"position": "1/2", "stack": 900}],
             },
             "foreign": None,
         },
@@ -739,6 +795,32 @@ def test_recording_optional_stack_metadata_answers_real_routes(
         refresh()
         empty = read("empty")
         assert empty["complete"] and empty["stacks"] == [] and empty["state"] == "current"
+        # Two stacks that share pull request 8, which the Pulls tab's stack groups place
+        # once (tests/dom/github-pulls-stack-groups-session.js). Recorded last, so the
+        # answers above keep their tags.
+        clock[0] += timedelta(seconds=301)
+        answers["api"][endpoint] = ok(
+            endpoint,
+            [
+                {
+                    "number": number,
+                    "url": f"https://api.github.com/repos/octo/demo/stacks/{number}",
+                    "base": {"ref": "main"},
+                    "open": True,
+                    "pull_requests": [{"number": n} for n in pulls],
+                }
+                for number, pulls in ((286, (6, 7, 8)), (290, (8, 9, 10)))
+            ],
+        )
+        seed_catalog(
+            repository,
+            [generated_item(n) | {"title": f"Stack change {n}"} for n in range(6, 11)],
+            fetched_at=utc_stamp(clock[0]),
+        )
+        install()
+        refresh()
+        shared = read("shared")
+        assert [stack["pulls"] for stack in shared["stacks"]] == [[6, 7, 8], [8, 9, 10]]
     check_recording(
         "github-stacks-responses.json",
         _session_tags(recorded),
@@ -769,8 +851,34 @@ def test_real_page_history_owns_file_selection_separately_from_retained_cursor()
     }
 
 
+def test_a_selection_reads_its_record_once() -> None:
+    """A click reads the record once: the page joins the peek's read or takes its answer.
+
+    The mousedown's peek starts the read before the click, and the open waits only so long
+    for it. A read still on its way is the page's first read; one that answered within a fast
+    poll counts as it; the pointer resting on the clicked row reads nothing more. Only a
+    record read ahead long before the click is asked again, with its tag. Before the page
+    joined, the same stories read two and three times.
+    """
+
+    assert run_session("github-pull-selection-read-behavior.js") == {
+        "slowRead": ["panel"],
+        "fastRead": ["panel"],
+        "oldReadAhead": ["panel", "page revalidates"],
+        # The second read is the other row's own peek; the page's read is the first.
+        "hoverAway": ["panel", "panel"],
+        # Four rows clicked 300 ms apart on a server that answers nothing: each read handed to
+        # a page ends with the page that replaced it, and the last with its own (review B3).
+        "superseded": {"reads": 4, "inFlight": 1, "afterLastPageWent": 0},
+    }
+
+
 def test_background_core_warming_covers_viewport_and_catalog_without_stranding_reconnect() -> None:
-    """Transport batches never cap coverage, and recovery keeps the settled cursor."""
+    """Transport batches never cap coverage, and recovery keeps the settled cursor.
+
+    No batch stalls the walk: one left unanswered is passed over, and none holds up what
+    the reader sees.
+    """
 
     assert run_session("github-pr-prefetch-behavior.js") == {
         "catalogRows": 24,
@@ -788,10 +896,75 @@ def test_background_core_warming_covers_viewport_and_catalog_without_stranding_r
         "cachedAfterReconnect": 24,
         "completedBeforeDisconnect": 8,
         "backgroundRequestsAfterCompletion": 17,
+        # A batch no answer ever comes for: each lane passes over it after two attempts,
+        # 1 s apart, which once stalled at 8 of 24 rows. The walk returns to it after its
+        # pass once its 30 s have passed: at 41 s, not at the visible lane's 34 s.
+        "passedOver": {
+            "cached": 16,
+            "atMs": 7000,
+            "attempts": ["open@3000", "open@4000", "all@9000", "all@10000", "all@41000"],
+        },
+        # A visible demand aborts the background batch on its way instead of waiting for it.
+        "preemption": {"visibleSentAfterMs": 0, "backgroundAbortedAfterMs": 0},
+        # Every answer taking 6.5 s, the slowest logged, still covers the catalog.
+        "slowCoveredMs": 51500,
+        "giveUpMs": {"visible": 10000, "background": 30000},
+        # Disposal, a pause, or a hidden page aborts the batch on its way at once, and the
+        # token the server admitted for it is released.
+        "tornDown": [
+            {"exit": exit, "abortedAfterMs": 0, "released": 1}
+            for exit in ("dispose", "pause", "hide")
+        ],
+        # Failures per batch in five virtual minutes, none retried before its deadline.
+        "staggeredFailures": [2, 11, 10],
     }
 
 
-def test_background_freshness_asks_only_while_visible_and_says_how_old_each_part_is() -> None:
+def test_rows_likely_to_be_expanded_have_their_files_listed_behind_the_reader() -> None:
+    """The rows in view and a row rested on are listed first; a later expansion reads the
+    cache. Nothing is asked below the floor, during a walk, or while the rows' own metadata
+    is read or its admission unanswered, including by a files ask that waited behind
+    another; an unanswered ask holds up none of the reader's reads."""
+
+    facts = run_session("github-pulls-files-prefetch-behavior.js")
+    assert facts["asksBeforeDwell"] == 0
+    # A drawn stack's members whose lists its change line waits for take the last places,
+    # and each list the lane refreshes reaches the stack lines (review B of #484, B1, B2).
+    assert facts["stackAsk"][-4:] == [9001, 9002, 9003, 9004]
+    assert sorted(facts["listedForStacks"]) == sorted(facts["stackAsk"])
+    assert facts["visibleAsk"]["afterMs"] == 500
+    assert len(facts["visibleAsk"]["files"]) == 16
+    assert facts["restedAsk"] == {"afterMs": 0, "first": 89}
+    assert all(entry.endswith(" by prefetch") for entry in facts["listed"])
+    assert facts["expandedAfterPrefetch"] == {
+        "drawnAfterMs": 0,
+        "rows": 4,
+        "refreshAsks": 0,
+        "githubReads": [],
+    }
+    assert facts["expandedOutOfView"] == {
+        "drawnAfterMs": 2000,
+        "rows": 4,
+        "refreshAsks": 1,
+        "githubReads": ["reader"],
+    }
+    assert facts["belowFloor"] == {"asks": 1, "githubReads": 0}
+    assert facts["afterFloor"] == {"asks": 1, "firstRead": 97}
+    behind = facts["behindMetadata"]
+    assert behind["filesAskedMs"] >= behind["metadataSettledMs"]
+    assert behind["listsBeforeSettled"] == 0
+    assert (facts["asksDuringWalk"], facts["asksOnceStopped"]) == (0, 1)
+    assert facts["readerReadsWhileAskHeld"] == ["pull-files +0 ms", "pull +0 ms"]
+    # Review A1: a files ask that waited behind another is checked again when sent.
+    assert facts["pendingThenWalk"] == {"sentWhile": 0, "sentAfter": 1}
+    assert facts["pendingThenMetadata"] == {"sentWhile": 0, "sentAfter": 1}
+    assert facts["pendingThenDeferred"] == {"sentWhile": 0, "sentAfter": 0}
+    # Review A2: a metadata admission whose answer is on its way is reader work.
+    assert facts["admissionHeld"] == {"asks": 0}
+    assert facts["admissionAnswered"] == {"askedAfterMs": 3000, "first": 104}
+
+
+def test_background_freshness_asks_only_while_visible_and_names_one_fetch_age() -> None:
     """The prefetch policy and the page's catalog ask; the transcript shows the rest."""
 
     facts = run_session("github-pulls-prefetch-behavior.js")
@@ -809,7 +982,8 @@ def test_background_freshness_asks_only_while_visible_and_says_how_old_each_part
         "GET /api/plugin/github/pull?number=7",
     ]
     assert facts["withinWindow"] == ["GET /api/plugin/github/pull?number=7"]
-    assert facts["checked"].startswith("Checked ") and " · fetched 3 h ago" in facts["checked"]
+    # One time, never two (mb-ne91): a record the catalog checked since still says its fetch.
+    assert facts["checked"] == "Fetched 3 h ago via GitHub CLI"
     assert facts["pendingChecks"][-1] == "POST /api/plugin/github/pull-refresh"
     assert facts["pendingFreshness"].startswith("Fetched ")
     assert facts["headMoved"] == "New commits were pushed; updating."

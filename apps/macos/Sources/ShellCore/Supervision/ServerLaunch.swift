@@ -26,7 +26,8 @@ public nonisolated enum WebAuthorization: Equatable, Sendable {
 ///
 /// The supervisor and the windows depend only on this, so the brief's host mode (port
 /// 0, a JSON ready line, a stdin token, `/healthz`, a session cookie) replaces
-/// `CLIServeLaunch` without touching either. See README.md, "Gaps to Close".
+/// `CLIServeLaunch` without touching either. See "Planned" in
+/// `docs/project/architecture/arch-macos-app.md`.
 public nonisolated protocol ServerLaunch: Sendable {
     /// The arguments after the executable that serve `root`.
     func arguments(serving root: URL) -> [String]
@@ -48,7 +49,20 @@ public nonisolated protocol ServerLaunch: Sendable {
 /// rejected), and prints `Serving <root> at http://127.0.0.1:<port>/view/…` to stdout
 /// before its socket listens, which is why readiness also polls for a 2xx.
 public nonisolated struct CLIServeLaunch: ServerLaunch {
+    /// Where the port walk starts: `metab`'s own default, `DEFAULT_BROWSER_PORT` in
+    /// `src/metabrowser/settings.py`.
     public static let defaultBasePort = 8411
+    /// How many ports `metab`'s walk tries, `DEFAULT_PORT_SEARCH_COUNT` in
+    /// `src/metabrowser/server_utils.py`.
+    public static let portSearchCount = 32
+    /// Where a repository's servers walk from: a whole walk past every port a folder's walk
+    /// can reach, 8475 to 8506 today. The two ranges do not meet, so each kind starts behind
+    /// a `LaunchGate` of its own (`LaunchLane`), and a repository's start, which can clone
+    /// for minutes before it walks, holds up no folder's. The range just past the folders'
+    /// would begin at 8443, the conventional alternate HTTPS port: `metab` binds loopback
+    /// with `SO_REUSEADDR`, so a service of the user's on `*:8443` would stop answering on
+    /// `127.0.0.1` while a repository's window is open, and the two would share an origin.
+    public static let repositoryBasePort = defaultBasePort + 2 * portSearchCount
     public static let host = "127.0.0.1"
     /// The flag that ends a server when its stdin closes. `RuntimeDiscovery.validate`
     /// passes it with `--version`, so setup refuses a `metab` built before the flag rather
@@ -61,8 +75,22 @@ public nonisolated struct CLIServeLaunch: ServerLaunch {
         self.basePort = basePort
     }
 
+    /// A folder by its path, and a repository by its URL, which `metab` clones or finds in
+    /// its cache and pins as the URL selects.
     public func arguments(serving root: URL) -> [String] {
-        [root.path(percentEncoded: false), "--no-open", Self.exitOnEOF, "--host", Self.host, "--port", String(basePort)]
+        [Self.argument(serving: root), "--no-open", Self.exitOnEOF, "--host", Self.host, "--port", String(basePort)]
+    }
+
+    /// ROOT as `metab` takes it: a file URL's path, or any other URL as written.
+    public static func argument(serving root: URL) -> String {
+        root.isFileURL ? root.path(percentEncoded: false) : root.absoluteString
+    }
+
+    /// The folder a server runs in, where `metab` looks upward for `.env` files: the
+    /// folder it serves, as `metab .` in Terminal does, or for a URL the home folder, where
+    /// `metab URL` in a new Terminal window runs.
+    public static func workingDirectory(serving root: URL, home: String) -> String {
+        root.isFileURL ? root.path(percentEncoded: false) : home
     }
 
     public var stdinLine: String? { nil }
@@ -115,16 +143,17 @@ public nonisolated struct CLIServeLaunch: ServerLaunch {
 extension ServerLaunch {
     /// The command that serves `root` with `setup`'s `metab`: its arguments and stdin line,
     /// the allowlisted environment with `setup`'s tool directories first on `PATH`, and
-    /// the folder as the working directory, since `metab .` run from Terminal reads
-    /// `.env` files upward from the folder.
+    /// the working directory `CLIServeLaunch.workingDirectory` names, since `metab .` run
+    /// from Terminal reads `.env` files upward from the folder.
     public func spec(
-        serving root: URL, with setup: RuntimeSetup, inherited: [String: String], logURL: URL?
+        serving root: URL, with setup: RuntimeSetup, inherited: [String: String], logURL: URL?,
+        home: String = NSHomeDirectory()
     ) -> LaunchSpec {
         LaunchSpec(
             executable: setup.runtime.executable,
             arguments: arguments(serving: root),
             environment: ChildEnvironment.build(inherited: inherited, toolDirectories: setup.tools.directories),
-            workingDirectory: root.path(percentEncoded: false),
+            workingDirectory: CLIServeLaunch.workingDirectory(serving: root, home: home),
             stdinLine: stdinLine,
             logURL: logURL)
     }

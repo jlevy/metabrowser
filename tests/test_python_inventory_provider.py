@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import asyncio
 import inspect
+import logging
 import os
 from collections.abc import AsyncIterator
 from dataclasses import replace
@@ -13,6 +14,7 @@ from threading import Event
 from typing import Any, cast
 
 import pytest
+from watchfiles import Change
 
 from metabrowser import inventory_rollup, walker
 from metabrowser.fs_record import FsEntry
@@ -58,6 +60,7 @@ from metabrowser.inventory_engine.providers.python_inventory import (
 from metabrowser.inventory_engine.providers.python_inventory import (
     _PythonInventoryStore as PythonInventoryStore,
 )
+from tests.loop_gate import held_until
 
 
 async def _open_settled(
@@ -584,6 +587,78 @@ def test_resource_budget_stop_and_close_both_join_the_watcher(
     asyncio.run(run())
 
 
+def test_close_drains_a_watcher_batch_that_races_the_stop_quietly(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A batch the backend delivers after close asks it to stop is not an error.
+
+    ``close`` refuses public calls at once but joins the watcher afterwards, and a
+    backend can still hand over the batch it had collected when the stop arrived.
+    That batch used to reach the closed public ``refresh`` and log an
+    ``InventoryClosedError`` traceback twice at shutdown. It is applied before the
+    inventory closes.
+    """
+
+    import metabrowser.watch_backends as watch_backends
+
+    async def run() -> tuple[list[dict[str, object]], FsEntry | None]:
+        loop_errors: list[dict[str, object]] = []
+        asyncio.get_running_loop().set_exception_handler(
+            lambda _loop, context: loop_errors.append(context)
+        )
+        saw_stop = asyncio.Event()
+        permit_late_batch = asyncio.Event()
+
+        async def late_batch_awatch(
+            root: str,
+            *_args: object,
+            stop_event: asyncio.Event | None = None,
+            **_kwargs: object,
+        ) -> AsyncIterator[set[tuple[Change, str]]]:
+            assert stop_event is not None
+            await stop_event.wait()
+            saw_stop.set()
+            await permit_late_batch.wait()
+            yield {(Change.added, str(Path(root) / "late.txt"))}
+
+        monkeypatch.setattr(watch_backends, "awatch", late_batch_awatch)
+        store = await _open_settled(tmp_path, InventoryConfig(watch_mode="native"))
+        # Created after discovery, so only the late batch can put it in the index.
+        assert store.get("late.txt") is None
+        (tmp_path / "late.txt").write_text("late", encoding="utf-8")
+        close_task = asyncio.create_task(store.close())
+        try:
+            await asyncio.wait_for(saw_stop.wait(), timeout=1.0)
+            # The handle is closed to its callers while the watcher drains.
+            with pytest.raises(InventoryClosedError):
+                await store.refresh(
+                    RefreshRequest(observations=(RefreshObservation(path="late.txt"),))
+                )
+            permit_late_batch.set()
+            await asyncio.wait_for(close_task, timeout=2.0)
+        finally:
+            permit_late_batch.set()
+            await asyncio.gather(close_task, return_exceptions=True)
+        assert not any(
+            task.get_name() == "metabrowser-watchfiles-consumer"
+            for task in asyncio.all_tasks()
+            if task is not asyncio.current_task()
+        )
+        return loop_errors, store.get("late.txt")
+
+    with caplog.at_level(logging.DEBUG):
+        loop_errors, late_entry = asyncio.run(run())
+    # The batch was applied, not dropped, before the inventory closed.
+    assert late_entry is not None
+    assert (late_entry.type, late_entry.size) == ("file", len("late"))
+    assert [str(context.get("message")) for context in loop_errors] == []
+    assert [
+        record.getMessage() for record in caplog.records if record.levelno >= logging.WARNING
+    ] == []
+
+
 def test_configured_hidden_allowlist_defines_provider_scope(tmp_path: Path) -> None:
     asyncio.run(_configured_hidden_allowlist_defines_provider_scope(tmp_path))
 
@@ -627,7 +702,7 @@ def test_rollup_collision_retries_once_and_reports_discarded_work(
             handle.read(ReadRequest(queries=(RollupQuery(query_id="rollup"),)))
         )
         try:
-            assert await asyncio.to_thread(build_started.wait, 1.0)
+            assert await held_until(build_started, 1.0)
             (tmp_path / "b.txt").write_text("b", encoding="utf-8")
             await handle.refresh(RefreshRequest(observations=(RefreshObservation(path="b.txt"),)))
             after_entries = len(handle._entries)
@@ -1074,7 +1149,7 @@ def test_concurrent_refresh_cannot_replace_a_newer_observation(
         request = RefreshRequest(observations=(RefreshObservation(path=target.name),))
         older = asyncio.create_task(handle.refresh(request))
         try:
-            assert await asyncio.to_thread(observed.wait, 5)
+            assert await held_until(observed, 5)
             target.write_text("the newer observation")
             newer = await handle.refresh(request)
             release.set()
@@ -1229,10 +1304,36 @@ def test_evicted_continuation_fails_explicitly(
             assert isinstance(page, CatalogProjection)
             assert page.next_page is not None
             await handle.read(ReadRequest(queries=(query,)))
-            with pytest.raises(VersionUnavailableError, match="cursor is unavailable"):
+            # The error says the page was evicted, not that the files changed.
+            with pytest.raises(
+                VersionUnavailableError,
+                match="cursor is unavailable: its page was evicted, as the provider retains "
+                "at most 1 continuations",
+            ):
                 await handle.read(
                     ReadRequest(
                         queries=(replace(query, after=page.next_page),), at_version=first.version
+                    )
+                )
+            # Evicted to keep the retained rows within their bound, it says that instead.
+            monkeypatch.setattr(python_provider, "_PAGE_MEMO_CAPACITY", 64)
+            monkeypatch.setattr(python_provider, "MAX_ASSEMBLED_ROWS", 3)
+            first = await handle.read(ReadRequest(queries=(query,)))
+            page = first.projection("page")
+            assert isinstance(page, CatalogProjection)
+            assert page.next_page is not None
+            await handle.read(ReadRequest(queries=(query,)))
+            with pytest.raises(VersionUnavailableError, match="continuations reached 3 rows"):
+                await handle.read(
+                    ReadRequest(
+                        queries=(replace(query, after=page.next_page),), at_version=first.version
+                    )
+                )
+            # A cursor that was never issued is only unavailable.
+            with pytest.raises(VersionUnavailableError, match="cursor is unavailable$"):
+                await handle.read(
+                    ReadRequest(
+                        queries=(replace(query, after="unknown"),), at_version=first.version
                     )
                 )
         finally:

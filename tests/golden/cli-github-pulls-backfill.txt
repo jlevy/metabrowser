@@ -1,0 +1,156 @@
+## GitHub reports 1,000 of 5,000 GraphQL points left, under the quarter that background work leaves to the reader. The reader's 300 Closed rows are fetched; the backfill past them waits, and the job ends without a failure.
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 0
+--- stdout ---
+status: 202 started
+status: 200 succeeded, 300 cached PRs
+--- stderr ---
+cloning https://github.com/octo/demo into <HOME>
+cloned https://github.com/octo/demo in 0.0 s
+--- body ---
+{"state": "closed", "target": 300}
+--- gh ---
+gh api repos/octo/demo --jq .size
+gh auth status
+gh api graphql catalog state=closed cursor=start
+gh api graphql catalog state=closed cursor=closed-100
+gh api graphql catalog state=closed cursor=closed-200
+# metab https://github.com/octo/demo --api '/api/plugin/github/pulls?state=closed&limit=0'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls?state=closed&limit=0
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "list": "closed",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "reader": "gh:octo-reader",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "total": 1085,
+  "repository_total": 1205,
+  "filter_totals": {
+    "all": 1205,
+    "open": 120,
+    "closed": 1085
+  },
+  "count_at": "2026-09-17T12:00:00Z",
+  "catalog_fetched": 300,
+  "generation": "<CATALOG_EPOCH_1>:0",
+  "fetched": 300,
+  "complete": false,
+  "truncated": false,
+  "limit": 0,
+  "next_after": null,
+  "rows": []
+}
+--- stderr ---
+--- gh ---
+## A background ask the cached prefix answers starts nothing. Scrolling asks for the reader's next page, which is fetched at any budget.
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls-refresh
+status: 200
+{
+  "refresh": "not_due",
+  "pulls": {
+    "state": "current",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "list": "closed",
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "reader": "gh:octo-reader",
+    "fresh_for_s": 60.0,
+    "refreshing": false,
+    "last_refresh": {
+      "outcome": "succeeded",
+      "message": null,
+      "reset_at": null,
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "total": 1085,
+    "repository_total": 1205,
+    "filter_totals": {
+      "all": 1205,
+      "open": 120,
+      "closed": 1085
+    },
+    "count_at": "2026-09-17T12:00:00Z",
+    "catalog_fetched": 300,
+    "generation": "<CATALOG_EPOCH_1>:0",
+    "fetched": 300,
+    "complete": false,
+    "truncated": false,
+    "limit": 0,
+    "next_after": null,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pulls?state=closed&limit=0"
+}
+--- stderr ---
+--- body ---
+{"state": "closed", "target": 300, "background": true}
+--- gh ---
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 0
+--- stdout ---
+status: 202 started
+status: 200 succeeded, 400 cached PRs
+--- stderr ---
+--- body ---
+{"state": "closed", "target": 400}
+--- gh ---
+gh auth status
+gh api graphql catalog state=closed cursor=closed-300
+## The clock moves on 61 s, to 2026-09-17T12:01:01Z.
+## The scan that keeps the list current observes 4,000 points left, and the backfill resumes from the top to the oldest pull request in the same job.
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 0
+--- stdout ---
+status: 202 started
+status: 200 succeeded, 1085 cached PRs
+--- stderr ---
+--- body ---
+{"state": "closed", "target": 400}
+--- gh ---
+gh auth status
+gh api graphql catalog state=updated cursor=start
+gh api graphql catalog state=all cursor=start
+gh api graphql catalog state=all cursor=all-100
+gh api graphql catalog state=all cursor=all-200
+gh api graphql catalog state=all cursor=all-300
+gh api graphql catalog state=all cursor=all-400
+gh api graphql catalog state=all cursor=all-500
+gh api graphql catalog state=all cursor=all-600
+gh api graphql catalog state=all cursor=all-700
+gh api graphql catalog state=all cursor=all-800
+gh api graphql catalog state=all cursor=all-900
+gh api graphql catalog state=all cursor=all-1000
+gh api graphql catalog state=all cursor=all-1100
+gh api graphql catalog state=all cursor=all-1200
+## Closed pages through every row in bounded windows, past 500, 600, and the 1,000-row window alike.
+# metab https://github.com/octo/demo --api '/api/plugin/github/pulls?state=closed&limit=1000'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls?state=closed&limit=1000
+status: 200
+{"list": "closed", "total": 1085, "fetched": 1085, "complete": true, "rows": 1000, "first": 1205, "last": 95, "next_after": 95}
+--- stderr ---
+--- gh ---
+# metab https://github.com/octo/demo --api '/api/plugin/github/pulls?state=closed&limit=1000&after=95'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls?state=closed&limit=1000&after=95
+status: 200
+{"list": "closed", "total": 1085, "fetched": 1085, "complete": true, "rows": 85, "first": 94, "last": 1, "next_after": null}
+--- stderr ---
+--- gh ---

@@ -138,13 +138,19 @@
     return text.endsWith("\n") ? lines : lines + 1;
   }
 
-  /** @param {number} lines */
-  function gutterText(lines) {
-    const numbers = new Array(lines);
-    for (let line = 0; line < lines; line++) {
-      numbers[line] = line + 1;
+  /**
+   * The gutter's numbers for lines `from + 1` through `lines`, each on its own line.
+   * After line `from`, the text starts with the newline that ends that line.
+   *
+   * @param {number} lines
+   * @param {number} [from]
+   */
+  function gutterText(lines, from = 0) {
+    const numbers = new Array(Math.max(0, lines - from));
+    for (let index = 0; index < numbers.length; index++) {
+      numbers[index] = from + index + 1;
     }
-    return numbers.join("\n");
+    return (from > 0 && numbers.length > 0 ? "\n" : "") + numbers.join("\n");
   }
 
   /** @param {number} value */
@@ -665,6 +671,30 @@
   }
 
   /**
+   * Number the lines Load more appended to a view. An append only adds lines (a view
+   * rendered again is a new view), so the numbers after the ones the gutter shows are
+   * appended as the text is, in text nodes of at most 64 KiB (source-append.js, which
+   * Load more loads before it refreshes). Writing every number into the gutter's first
+   * text node instead cost a node of millions of characters per click, which WebKit
+   * lays out slowly, and in WebKit left the rest of the nodes its HTML parser had split
+   * the gutter into on screen after the new numbers.
+   *
+   * @param {View} view
+   * @param {number} lines
+   */
+  function appendNumbers(view, lines) {
+    const { gutter } = view;
+    const owner = gutter.ownerDocument;
+    const fragment = owner.createDocumentFragment();
+    const added = gutterText(lines, view.loaded.lines);
+    for (const piece of global.MetabrowserSourceAppend.textPieces(added)) {
+      fragment.appendChild(owner.createTextNode(piece));
+    }
+    // Before the scroll target, which follows the numbers it is placed over.
+    gutter.insertBefore(fragment, view.target?.parentNode === gutter ? view.target : null);
+  }
+
+  /**
    * Bring the views under `root` in line with what Load more loaded, whether it
    * appended to the view or rendered it again: renumber the gutter and reapply the
    * anchor, scrolling to it if it has just been reached.
@@ -679,13 +709,8 @@
         continue;
       }
       const lines = layoutParts(view.pre);
-      if (lines !== view.loaded.lines) {
-        const numbers = view.gutter.firstChild;
-        if (numbers && numbers.nodeType === 3) {
-          numbers.nodeValue = gutterText(lines);
-        } else {
-          view.gutter.prepend(view.pre.ownerDocument.createTextNode(gutterText(lines)));
-        }
+      if (lines > view.loaded.lines) {
+        appendNumbers(view, lines);
       }
       view.loaded = Object.freeze({ lines, truncated: !!loaded.content_truncated });
       const reached = awaiting?.path === filePath(view.path) && awaiting.fragment === view.applied;
@@ -828,6 +853,50 @@
     return chip;
   }
 
+  /** What the arrow between a merge's two branches is called: a reader hears "wip merges
+   * into topic". */
+  const MERGE_ARROW_NAME = "merges into";
+
+  /**
+   * A merge, in the one notation every surface uses: the source branch, an arrow, then the
+   * target branch, left to right (docs/design-system.md, "Merge Direction"). For a pull
+   * request the source is its head and the target its base. Each side is a `refChip`, and
+   * `options` applies to both.
+   *
+   * The group is a left-to-right island (`dir="ltr"`), as a path is, so the arrow points
+   * from the source to the target in a right-to-left page too, and its order in the
+   * document, source first, is the order a screen reader reads.
+   *
+   * @param {{name: string, label?: string}} source The branch whose commits merge.
+   * @param {{name: string, label?: string}} target The branch they merge into.
+   * @param {{kind?: string, copy?: "inline"|"sibling"|false}} [options]
+   * @returns {HTMLElement}
+   */
+  function mergeRefs(source, target, options = {}) {
+    /** @param {{name: string, label?: string}} side @param {string} role */
+    const chip = (side, role) => {
+      const element = refChip(side.name, {
+        ...options,
+        ...(side.label === undefined ? {} : { label: side.label }),
+      });
+      element.classList.add(role);
+      return element;
+    };
+    const arrow = document.createElement("span");
+    arrow.className = "merge-refs-arrow";
+    arrow.setAttribute("role", "img");
+    arrow.setAttribute("aria-label", MERGE_ARROW_NAME);
+    // No tooltip: it would restate the two names beside it, and a chip cut short carries
+    // its own (docs/design-system.md, "Tooltips Add Information").
+    // The spaces are text, so a copied selection reads "wip → topic".
+    arrow.textContent = " → ";
+    const group = document.createElement("span");
+    group.className = "merge-refs";
+    group.setAttribute("dir", "ltr");
+    group.append(chip(source, "merge-refs-source"), arrow, chip(target, "merge-refs-target"));
+    return group;
+  }
+
   /** Put secondary copy controls outside a primary row link/button. Each mounted row
    * owns its controls and disposer; active global hide listeners are released on hide/dispose.
    * Geometry is read only on entry. A scroll/resize while focus stays hides controls;
@@ -944,6 +1013,118 @@
       host.removeEventListener("focusout", leave);
       layer.remove();
     };
+  }
+
+  /**
+   * The neutral person in an avatar's box where there is no avatar: Lucide 1.17.0's
+   * `circle-user-round.svg`, at upstream commit 896aba0d195a4fec38ad7c4a90d00cb3389ebfea, as
+   * the icon registry's glyphs are Lucide's (icons.js), drawn in the box's muted ink. Its ISC
+   * copyright and license are the Lucide notice beside `destinationGlyphs` below, and
+   * NOTICE.md lists it. It is here, beside the one component that draws it, in this view
+   * bundle, and not in the registry, a startup script every folder's first paint fetches,
+   * where it cost 92 compressed bytes (devtools/check_startup_scripts.py, 2026-11-16).
+   */
+  const PERSON_GLYPH = // Lucide `circle-user-round`
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"' +
+    ' stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M17.925 20.056a6 6 0 0 0-11.851.001"/><circle cx="12" cy="11" r="4"/>' +
+    '<circle cx="12" cy="12" r="10"/></svg>';
+
+  function personGlyph() {
+    return PERSON_GLYPH;
+  }
+
+  /**
+   * A person, as every page draws one (docs/design-system.md, "Actor Identity"): an
+   * avatar's box, then the bold name in the shell's person-name primitive, `.actor-name`.
+   * The box is `--actor-avatar-size` square from first paint whatever it holds, so the name
+   * starts in one place with an avatar or without one, and an avatar that arrives later or
+   * fails moves nothing. It holds the avatar where the caller has one, and the shell's
+   * neutral person glyph where it has none; an avatar that fails to load gives its box to
+   * the glyph.
+   *
+   * `avatar` is an https address the caller vouches for, as the GitHub plugin vouches for
+   * GitHub's avatars (`avatarUrl` in its pull-page.js); anything else draws the glyph. The
+   * image says nothing the name beside it does not, so its text is empty, and it sends no
+   * referrer and no credentials, its size and privacy attributes set before its `src`.
+   * Requested in anonymous CORS mode, it loads only from a host that sends
+   * `Access-Control-Allow-Origin`, and in a folder served untrusted only from GitHub's
+   * avatar host, which the page's policy admits (capabilities.py, `untrusted_shell_csp`);
+   * any other image shows the glyph.
+   * When it loads is its placement's, lazy unless the caller asks for eager
+   * (docs/design-system.md, "A Repaint Keeps Its Images"). `placeholder: false` draws no box
+   * for a person with no avatar, for a dense list row whose avatar comes with its row.
+   *
+   * @param {string} name
+   * @param {{avatar?: string | null, loading?: "lazy" | "eager", className?: string,
+   *   nameClass?: string, placeholder?: boolean}} [options]
+   * @returns {HTMLElement}
+   */
+  function actorIdentity(name, options = {}) {
+    const identity = document.createElement("span");
+    identity.className = `actor-identity${options.className ? ` ${options.className}` : ""}`;
+    const avatar =
+      typeof options.avatar === "string" && options.avatar.startsWith("https://")
+        ? options.avatar
+        : null;
+    if (avatar !== null || options.placeholder !== false) {
+      const box = document.createElement("span");
+      box.className = "actor-avatar";
+      box.setAttribute("aria-hidden", "true");
+      if (avatar === null) {
+        box.innerHTML = personGlyph();
+      } else {
+        const image = document.createElement("img");
+        image.className = "actor-avatar-image";
+        for (const [attribute, value] of Object.entries({
+          alt: "",
+          width: "18",
+          height: "18",
+          loading: options.loading === "eager" ? "eager" : "lazy",
+          decoding: "async",
+          fetchpriority: "low",
+          crossorigin: "anonymous",
+          referrerpolicy: "no-referrer",
+        })) {
+          image.setAttribute(attribute, value);
+        }
+        image.addEventListener(
+          "error",
+          () => {
+            box.replaceChildren();
+            box.innerHTML = personGlyph();
+          },
+          { once: true },
+        );
+        image.setAttribute("src", avatar);
+        box.append(image);
+      }
+      identity.append(box);
+    }
+    const label = document.createElement("strong");
+    label.className = `actor-name${options.nameClass ? ` ${options.nameClass}` : ""}`;
+    label.textContent = name;
+    identity.append(label);
+    return identity;
+  }
+
+  /**
+   * The same identity as markup, for a view that writes its markup as text, as the Git
+   * panel's commit summary does: the box with the person glyph, then the bold name. A view
+   * with an avatar to show builds `actorIdentity`, whose image can give its box back to the
+   * glyph if it fails.
+   *
+   * @param {string} name
+   * @param {{className?: string, nameClass?: string}} [options]
+   * @returns {string}
+   */
+  function actorIdentityHtml(name, options = {}) {
+    return (
+      `<span class="actor-identity${options.className ? ` ${escapeHtml(options.className)}` : ""}">` +
+      `<span class="actor-avatar" aria-hidden="true">${personGlyph()}</span>` +
+      `<strong class="actor-name${options.nameClass ? ` ${escapeHtml(options.nameClass)}` : ""}">` +
+      `${escapeHtml(name)}</strong></span>`
+    );
   }
 
   // Age buckets shared with the shell's tree column. The thresholds
@@ -1315,7 +1496,7 @@
     const handler = action === null ? "" : ` data-mb-load-more="${escapeHtml(named)}"`;
     return (
       `<button class="btn metabrowser-load-more" type="button" data-position="${position}"` +
-      `${handler}${delegateOwnerAttribute()} data-tip-text="Load more of this file">` +
+      `${handler}${delegateOwnerAttribute()}>` +
       "Load more</button>"
     );
   }
@@ -1602,7 +1783,8 @@
   const destinationGlyphs = {
     github:
       '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M6.766 11.328c-2.063-.25-3.516-1.734-3.516-3.656 0-.781.281-1.625.75-2.188-.203-.515-.172-1.609.063-2.062.625-.078 1.468.25 1.968.703.594-.187 1.219-.281 1.985-.281.765 0 1.39.094 1.953.265.484-.437 1.344-.765 1.969-.687.218.422.25 1.515.046 2.047.5.593.766 1.39.766 2.203 0 1.922-1.453 3.375-3.547 3.64.531.344.89 1.094.89 1.954v1.625c0 .468.391.734.86.547C13.781 14.359 16 11.53 16 8.03 16 3.61 12.406 0 7.984 0 3.563 0 0 3.61 0 8.031a7.88 7.88 0 0 0 5.172 7.422c.422.156.828-.125.828-.547v-1.25c-.219.094-.5.156-.75.156-1.031 0-1.64-.562-2.078-1.609-.172-.422-.36-.672-.719-.719-.187-.015-.25-.093-.25-.187 0-.188.313-.328.625-.328.453 0 .844.281 1.25.86.313.452.64.655 1.031.655s.641-.14 1-.5c.266-.265.47-.5.657-.656"/></svg>',
-    /* Lucide 1.17.0: circle-dot.svg and git-pull-request.svg, neutral entity marks.
+    /* Lucide 1.17.0: circle-dot.svg and git-pull-request.svg, neutral entity marks, and
+     * circle-user-round.svg, the person in an actor identity's box (PERSON_GLYPH above).
      * https://github.com/lucide-icons/lucide/tree/896aba0d195a4fec38ad7c4a90d00cb3389ebfea/icons
      * ISC License
      * Copyright (c) 2026 Lucide Icons and Contributors
@@ -1672,10 +1854,32 @@
     return anchor;
   }
 
+  /**
+   * The tree of a change set's files, which the Pulls tab and a diff's Diff summary both
+   * draw: static/changed-files-tree.js, the `changed-files-tree` on-demand bundle. Loaded
+   * the first time a plugin asks, and once; a failed load rejects, and the next call tries
+   * again.
+   *
+   * @returns {Promise<MetabrowserChangedFilesTree>}
+   */
+  function loadChangedFilesTree() {
+    return mb.ensureAsset("changed-files-tree").then(() => {
+      const tree = global.MetabrowserChangedFilesTree;
+      if (tree === undefined) {
+        throw new Error("metabrowser.loadChangedFilesTree: the bundle installed no tree");
+      }
+      return tree;
+    });
+  }
+
   Object.assign(mb, {
+    actorIdentity,
+    actorIdentityHtml,
     decorateExternalLink,
+    loadChangedFilesTree,
     refChipHtml,
     refChip,
+    mergeRefs,
     mountRefCopies,
     ageBucket,
     ageLabelHtml,

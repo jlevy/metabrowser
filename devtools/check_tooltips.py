@@ -14,11 +14,23 @@ into the app's tooltip from a delegated listener, or ``mb.tooltip.show`` for
 rich content.
 
 **And one tooltip size.** The app's tooltip reads at ``--tooltip-font-size``,
-which is body size, and its subordinate lines at ``--tooltip-detail-font-size``.
-Neither may be spelled as some other token or as a literal: pointing a tooltip
-at ``--ui-small-font-size`` is what made its size a side effect of a decision
-about chips and counts. KPress's own tooltip inside an embedded document is not
+which is body size, and its subordinate lines set no size, so they read at the
+tooltip's. Neither may be spelled as some other token or as a literal: pointing a
+tooltip at ``--ui-small-font-size`` is what made its size a side effect of a
+decision about chips and counts. KPress's own tooltip inside an embedded document is not
 ours and is left alone.
+
+**And a tooltip adds information.** A tooltip says something the reader cannot
+already see (docs/design-system.md, "Tooltips Add Information"). One whose literal
+text is its element's literal text, in one line of markup, repeats what the element
+shows, and fails here. It reads two forms: an HTML string's double-quoted
+``data-tip-text="Copy">Copy<``, its quotes escaped or not and with any attributes
+after it, and h()'s ``"data-tip-text": "Copy"`` with any other attributes in the same
+object literal, before or after it, and ``["Copy"]`` its children. It does not read a
+single-quoted attribute, a ``dataset.tipText`` or ``setAttribute`` assignment, or a
+tip computed at run time. The shell holds those: app.js shows a tip equal to its
+element's text, or to the text of a box inside it, only while that text is cut short.
+``tests/test_check_tooltips.py`` pins what it finds and what it does not.
 
 **What this is not.** It is not a rule about accessible names. ``aria-label``
 is untouched and still required wherever it was: a screen reader does not read
@@ -98,14 +110,23 @@ ALLOWED_LINES: tuple[tuple[str, str, str], ...] = (
     ),
 )
 
+# A tip whose literal text is its element's literal text, in one line: an HTML string's
+# `data-tip-text="X" ...>X<`, and h()'s `{ ... "data-tip-text": "X" ... }, ["X"]`, where
+# what follows the tip up to the object's close may hold `${...}` but no other brace.
+_REPEAT_HTML = re.compile(r"""data-tip-text=\\?"([^"\\$<>]+)\\?"[^<>]*>\s*\1\s*<""")
+_REPEAT_H = re.compile(
+    r""""data-tip-text":\s*"([^"]+)"(?:\$\{[^{}]*\}|[^{}])*}\s*,\s*\[\s*"\1"\s*\]"""
+)
+
 # A document's <title> is the tab's name, not a tooltip.
 _DOCUMENT_TITLE = re.compile(r"<title>|</title>|<title\s")
 
 
-# The rules that own a tooltip's type size, and the only values they may take.
-TOOLTIP_SIZE_RULES: dict[str, str] = {
+# The rules that own a tooltip's type size, and the only values they may take: None is
+# no size at all, so the rule reads at the tooltip's.
+TOOLTIP_SIZE_RULES: dict[str, str | None] = {
     ".custom-tooltip": "var(--tooltip-font-size)",
-    ".tip-detail": "var(--tooltip-detail-font-size)",
+    ".tip-detail": None,
 }
 
 _STYLESHEET = ROOT / "src" / "metabrowser" / "static" / "styles.css"
@@ -145,6 +166,16 @@ def _scan(path: Path) -> list[Finding]:
     return findings
 
 
+def _repeats(path: Path) -> list[Finding]:
+    """A literal tip that is its element's literal text."""
+
+    return [
+        Finding(path, number, line.strip())
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1)
+        if _REPEAT_HTML.search(line) or _REPEAT_H.search(line)
+    ]
+
+
 def _candidates() -> list[Path]:
     seen: set[Path] = set()
     for root in SEARCH_ROOTS:
@@ -157,7 +188,7 @@ def _candidates() -> list[Path]:
 
 
 def _size_findings() -> list[Finding]:
-    """Each tooltip rule sets its size from the tooltip's own token."""
+    """Each tooltip rule sets its size from the tooltip's own token, or sets none."""
 
     findings: list[Finding] = []
     css = _STYLESHEET.read_text(encoding="utf-8")
@@ -171,7 +202,16 @@ def _size_findings() -> list[Finding]:
         start = css.index(marker)
         block = css[start : css.index("}", start)]
         match = re.search(r"font-size:\s*([^;]+);", block)
-        if match is None:
+        if expected is None:
+            if match is not None:
+                findings.append(
+                    Finding(
+                        _STYLESHEET,
+                        css.count("\n", 0, start + match.start()) + 1,
+                        f"{selector} sets font-size: {match.group(1).strip()}; it sets none",
+                    )
+                )
+        elif match is None:
             findings.append(
                 Finding(_STYLESHEET, css.count("\n", 0, start) + 1, f"{selector} sets no font-size")
             )
@@ -188,9 +228,22 @@ def _size_findings() -> list[Finding]:
 
 def main() -> int:
     findings: list[Finding] = []
+    repeats: list[Finding] = []
     for path in _candidates():
         findings.extend(_scan(path))
+        repeats.extend(_repeats(path))
     size_findings = _size_findings()
+
+    if repeats:
+        print("tooltips: a tooltip adds information, so it never repeats", file=sys.stderr)
+        for finding in repeats:
+            relative = finding.path.relative_to(ROOT)
+            print(f"  {relative}:{finding.line}: {finding.text[:96]}", file=sys.stderr)
+        print(
+            "\nThe tip is the element's own text. Remove it, or say what the element\n"
+            'does not (docs/design-system.md, "Tooltips Add Information").',
+            file=sys.stderr,
+        )
 
     if size_findings:
         print("tooltips: the size comes from the tooltip's own token", file=sys.stderr)
@@ -217,7 +270,7 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    return 1 if size_findings else 0
+    return 1 if size_findings or repeats else 0
 
 
 if __name__ == "__main__":

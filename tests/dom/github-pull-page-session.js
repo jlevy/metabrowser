@@ -112,12 +112,21 @@ function summarize(model) {
     header:
       pull === null
         ? null
-        : `${pull.title} #${pull.number} [${pull.stateLabel}] ${pull.actor === null ? "" : `${pull.actor} `}${pull.action} ${pull.base} from ${pull.head}`,
-    labels: pull === null ? [] : pull.labels,
+        : `${pull.title} #${pull.number} [${pull.stateLabel}] ${pull.actor === null ? "" : `${pull.actor} `}${pull.action}: ${pull.head} → ${pull.base}`,
+    // Each label's name, GitHub's color and the properties its chip is painted from, or
+    // "neutral", and its description, the chip's tooltip, or "no tip".
+    labels:
+      pull === null
+        ? []
+        : pull.labels.map(
+            (label) =>
+              `${label.name} ${label.color === null ? "neutral" : `#${label.color} ${label.style}`} ${label.tip === null ? "no tip" : `tip: ${label.tip}`}`,
+          ),
     merge: pull?.merge?.label ?? null,
     timeline: model.timeline.map(
       (item) =>
-        `${item.kind} ${item.author}${item.review ? ` [${item.review.label}]` : ""} ${item.at ?? "pending"} ${item.part}`,
+        // A review's chip is only for a state its verb does not say (mb-novh).
+        `${item.kind} ${item.author}${item.review?.label ? ` [${item.review.label}]` : ""} ${item.at ?? "pending"} ${item.part}`,
     ),
     reviewComments: model.reviewComments.map(
       (comment) =>
@@ -277,6 +286,9 @@ function createPage(runtime, options) {
     },
     now: () => clock.now,
     isVisible: () => visible,
+    // A hold's lift as the page says it, in en-US and UTC so the golden is the same on every
+    // machine (`holdLiftText`).
+    formatHold: (liftMs, nowMs) => runtime.holdLiftText(liftMs, nowMs, "en-US", "UTC"),
     render(model) {
       paints.push(model);
     },
@@ -289,7 +301,14 @@ function createPage(runtime, options) {
     navigate(href) {
       navigations.push(href);
     },
+    // The page's one pin switch, the diff plugin's own (diff-view-file.js), which in the
+    // browser posts with fetch and here through the scripted pin route.
+    switchPin: (selection, wanted) => pinSwitch.switchTo(selection, wanted),
   };
+  const pinSwitch = runtime.createPinSwitch({
+    post: (selection) => deps.request("POST", "/api/source/pin", { body: selection }),
+    onRestored: () => () => {},
+  });
   const controller = runtime.createPullController(deps, options);
   const isAskDelay = (delayMs) => delayMs === 0 || delayMs === runtime.REFRESH_ASK_MS;
 
@@ -676,6 +695,13 @@ function placeStory(runtime) {
   step("a page with fewer blocks than the place shows its last", () => keeper.land());
   keeper.readerMoved();
 
+  // A place deep in a header that was taller, an open Diff summary's rows, on a page that
+  // draws its header shorter: the first block, not that many pixels into the page.
+  stage.entry = { block: -1, offset: 0, top: 30000 };
+  reopen([300, 400]);
+  step("a place in a header now shorter shows the first block", () => keeper.land());
+  keeper.readerMoved();
+
   for (const value of [{ block: "1", offset: 0, top: 0 }, { block: 1 }, "nonsense"]) {
     stage.entry = value;
     reopen([300, 400]);
@@ -763,7 +789,14 @@ function writesWhileMoving(runtime, betweenMs) {
 }
 
 async function main() {
-  const runtime = await import(pathToFileURL(pagePath).href);
+  const viewFilePath = path.join(
+    repoRoot,
+    "src/metabrowser/builtin_plugins/diff/diff-view-file.js",
+  );
+  const runtime = {
+    ...(await import(pathToFileURL(pagePath).href)),
+    createPinSwitch: (await import(pathToFileURL(viewFilePath).href)).createPinSwitch,
+  };
   const record = recorded.current.body.record;
   const comment = record.issue_comments[0].id;
   const review = record.reviews[1].id;
@@ -1008,7 +1041,7 @@ async function main() {
   held.clock.now = refusedAt + 10_000;
   held.server.pull = { status: 200, etag: '"rate limited"', body: limited };
   const holding = await held.step("GitHub's rate limit refused it", async () => held.fire());
-  const named = new Date(refusedAt + 60_000).toISOString().replace(".000Z", "Z");
+  const named = runtime.holdLiftText(refusedAt + 60_000, held.clock.now, "en-US", "UTC");
   assert(
     holding.paint.canRefresh === false &&
       holding.paint.failure === `GitHub rate limit · next check at ${named}`,

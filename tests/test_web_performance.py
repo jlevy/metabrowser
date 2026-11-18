@@ -285,12 +285,15 @@ def test_eager_plugin_waterfall_is_a_blocking_budget_failure() -> None:
 
 
 def test_eager_shell_tools_or_missing_deferred_tools_fail() -> None:
+    # The folder shell's 20 startup scripts with the 13 shell-tools scripts made eager
+    # again, measured with devtools/check_startup_scripts.py on 2026-11-12: 178,592 and
+    # 98,967 bytes, 271 KB together.
     config = load_performance_config(BUDGETS)
     issues = budget_issues(
         _valid_run(
             shell_tools_missing=1,
             startup_script_requests=33,
-            startup_script_transfer_kb=214,
+            startup_script_transfer_kb=271,
         ),
         config,
     )

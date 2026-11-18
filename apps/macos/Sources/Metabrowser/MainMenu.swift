@@ -4,8 +4,10 @@ import AppKit
 /// the key window's web view answers Cut, Copy, Paste, Select All, and Undo itself,
 /// its window controller answers the page and server items, and the app delegate
 /// answers the rest. Without an Edit menu, Command-C and Command-V do nothing in a web
-/// view. The page binds plain keys and Command-1 to Command-3; the shortcuts here
-/// stay clear of those.
+/// view. A web view hands a key to its page before the menu, and the page binds plain
+/// keys and, on a pull request in a stack, Control-N and Control-P, which no item here
+/// uses; it takes no other key held with Command, Control, or Option, so every shortcut
+/// here reaches the app (`tests/test_modified_keys.py` holds the page to that).
 enum MainMenu {
     /// `appName` is the bundle's name, which the app menu's items carry.
     static func build(appName: String, recentFolders: NSMenuDelegate) -> NSMenu {
@@ -26,8 +28,11 @@ enum MainMenu {
         recent.delegate = recentFolders
         let recentHolder = NSMenuItem(title: "Open Recent", action: nil, keyEquivalent: "")
         recentHolder.submenu = recent
+        // Open Folder… opens a folder or a file in folder mode, and Open URL… a GitHub URL
+        // in its mirror (docs/project/architecture/arch-open-modes.md, The File Menu).
         main.addSubmenu("File", [
-            item("Open…", #selector(AppDelegate.openFolder(_:)), "o"),
+            item("Open Folder…", #selector(AppDelegate.openFolder(_:)), "o"),
+            item("Open URL…", #selector(AppDelegate.showOpenURL(_:)), "l"),
             recentHolder,
             .separator(),
             item("Close Window", #selector(NSWindow.performClose(_:)), "w"),

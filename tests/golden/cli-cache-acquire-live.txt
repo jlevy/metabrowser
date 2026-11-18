@@ -84,7 +84,16 @@ status: 200
     },
     "authored_at": 1577836800.0,
     "committed_at": 1577836800.0,
-    "subject": "second"
+    "subject": "second",
+    "refs": [
+      {
+        "id": "refs/remotes/origin/topic",
+        "name": "origin/topic",
+        "kind": "remote",
+        "revision": "cf318083ef13511a14c0532985bdb24bd59d2787",
+        "remote": "origin"
+      }
+    ]
   },
   "body": "",
   "stats": {
@@ -135,7 +144,16 @@ status: 200
     },
     "authored_at": 1577836800.0,
     "committed_at": 1577836800.0,
-    "subject": "second"
+    "subject": "second",
+    "refs": [
+      {
+        "id": "refs/remotes/origin/topic",
+        "name": "origin/topic",
+        "kind": "remote",
+        "revision": "cf318083ef13511a14c0532985bdb24bd59d2787",
+        "remote": "origin"
+      }
+    ]
   },
   "body": "",
   "stats": {

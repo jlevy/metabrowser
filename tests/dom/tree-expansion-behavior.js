@@ -173,6 +173,39 @@ assertEqual(
   true,
 );
 
+// A reveal the reader did not ask for lands without travel. The instant class
+// changes with the collapse class, in one call, so no style change can see the
+// new height under the old transition; the reader's own toggle travels again.
+const revealed = folderElements(false);
+expansion.setFolderExpanded(revealed.row, revealed.children, true, true);
+assertEqual(
+  "an instant reveal expands the folder",
+  revealed.children.classList.contains("tree-children-collapsed"),
+  false,
+);
+assertEqual(
+  "an instant reveal lands without travel",
+  revealed.children.classList.contains("tree-children-instant"),
+  true,
+);
+expansion.toggleFolderExpanded(revealed.row, revealed.children);
+assertEqual(
+  "the reader's toggle after an instant reveal collapses the folder",
+  revealed.children.classList.contains("tree-children-collapsed"),
+  true,
+);
+assertEqual(
+  "the reader's toggle travels again",
+  revealed.children.classList.contains("tree-children-instant"),
+  false,
+);
+expansion.setFolderExpanded(revealed.row, revealed.children, true);
+assertEqual(
+  "an expansion the reader asked for travels",
+  revealed.children.classList.contains("tree-children-instant"),
+  false,
+);
+
 if (failures.length > 0) {
   process.stderr.write(`${failures.join("\n")}\n`);
   process.exit(1);

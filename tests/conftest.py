@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
+import sys
 from collections.abc import Generator
 from html.parser import HTMLParser
 from pathlib import Path
@@ -12,13 +14,19 @@ from urllib.parse import urljoin
 import pytest
 
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
-from tests import suite_gates
+from tests import chrome_starts, suite_gates, suite_tiers, suite_timing, suite_workers
 from tests.github_pull_fixture import Origin, build_origin, copy_origin
+from tests.process_group import owned_profile
 from tests.required_tools import require_git, require_node
 
 # Test discovery imports the server from several module scopes. Never let an
 # operator's shell or dotenv configuration alter collection or load external plugins.
 os.environ["METABROWSER_PLUGINS_DIRS"] = ""
+# No server a test starts is an open, so none records its root as a recent target: not in
+# a test's own configuration directory (`_isolated_configuration`), and not, from a
+# module- or session-scoped fixture that starts before any test's exists, in the list of
+# whoever runs the suite. A test of the record itself turns it back on.
+os.environ["METABROWSER_RECORD_RECENT"] = "0"
 for _capability_env in ("METAB_UNTRUSTED", "METAB_ACTIVE_CONTENT", "METAB_ALLOW_EDITS"):
     os.environ.pop(_capability_env, None)
 
@@ -48,6 +56,23 @@ exit 1
 GH_GUARD_LOG_ENV = "METABROWSER_TEST_GH_LOG"
 
 
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--shard",
+        type=suite_tiers.parse_shard,
+        default=None,
+        metavar="I/N",
+        help="run the Ith of N disjoint parts of the selected tests (tests/suite_tiers.py)",
+    )
+    parser.addoption(
+        "--shard-by",
+        choices=suite_tiers.SHARD_UNITS,
+        default=suite_tiers.BY_TEST,
+        help="deal --shard's parts by single test, or by whole file (tests/suite_tiers.py)",
+    )
+    suite_timing.add_option(parser)
+
+
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers", "live_github: an opt-in test that talks to github.com with the real gh"
@@ -58,8 +83,45 @@ def pytest_configure(config: pytest.Config) -> None:
         "file system, or Apple's git shim; `make test-macos` runs these alone and fails "
         "if one skips",
     )
-    # The hooks that judge a skip against its tier; see tests/suite_gates.py.
+    for marker, meaning in suite_tiers.MARKER_HELP.items():
+        config.addinivalue_line("markers", f"{marker}: {meaning}")
+    # The hooks that judge a skip against its tier, and a marker against its meaning; see
+    # tests/suite_gates.py.
     config.pluginmanager.register(suite_gates)
+    # The chrome marker, --shard, and an empty tier; see tests/suite_tiers.py.
+    config.pluginmanager.register(suite_tiers)
+    config.pluginmanager.register(suite_tiers.EmptyTiers(), "suite-empty-tiers")
+    # --file-durations; see tests/suite_timing.py.
+    config.pluginmanager.register(suite_timing.FileTimes(), "suite-file-times")
+    # Reports a pytest-xdist worker can send; see tests/suite_workers.py.
+    config.pluginmanager.register(suite_workers)
+    config.pluginmanager.register(suite_workers.StackDumps(), "suite-stack-dumps")
+
+
+@pytest.fixture(autouse=True)
+def fresh_markdown_child() -> Generator[None]:
+    """Give each test its own process-wide Markdown child worker, and stop it after.
+
+    ``shared_worker()`` keeps its refusals for the process, so without this a test whose
+    document an earlier test had refused would pass without rendering anything (review A
+    of #527, A13), and a worker a test left running would carry its child into the next.
+    A test that runs the serve path in-process marks the process as serving pages, which
+    starts the child ahead of documents; the next test begins as a one-shot command.
+    """
+
+    from metabrowser.diff import markdown_projection_worker as worker_module
+
+    shared = worker_module.shared_worker
+    shared.cache_clear()
+    serving = worker_module._SERVING  # pyright: ignore[reportPrivateUsage]
+    serving.pages = False
+    yield
+    serving.pages = False
+    if shared.cache_info().currsize:
+        # Its event loop may be closed by now; stopping kills the child by its process.
+        with contextlib.suppress(RuntimeError):
+            shared().stop()
+        shared.cache_clear()
 
 
 # ── Tests that must not be silently absent ─────────────────────────────────────
@@ -81,6 +143,26 @@ def git_on_path() -> str:
     """Behind ``needs_git``: without Git the run stops; see ``tests/required_tools.py``."""
 
     return require_git()
+
+
+@pytest.fixture
+def chrome_profile(tmp_path_factory: pytest.TempPathFactory) -> Generator[Path, None, None]:
+    """A headless Chrome's profile directory, owned by the test that drives the browser.
+
+    It is removed after the test. A process still naming it then escaped the test's
+    process group: it is reported, failing the test, and left running; see
+    ``tests/process_group.py``. Each Chrome the test starts through
+    ``tests/dom/chrome-session.mjs`` is noted for the run's summary of starts
+    (``tests/chrome_starts.py``).
+    """
+
+    starts = chrome_starts.log_path(tmp_path_factory.getbasetemp())
+    with (
+        owned_profile("metab-test-chrome-") as profile,
+        pytest.MonkeyPatch.context() as patch,
+    ):
+        patch.setenv(chrome_starts.STARTS_ENV, str(starts))
+        yield profile
 
 
 @pytest.fixture(scope="session")
@@ -134,12 +216,42 @@ def _no_real_gh(  # pyright: ignore[reportUnusedFunction]
         yield
 
 
+@pytest.hookimpl(wrapper=True)
+def pytest_runtestloop(session: pytest.Session) -> Generator[None, object, object]:
+    """Warm Chrome up once before a run with a test that drives it, so the runner's cold
+    first start falls outside every test's bounds, and write how that went to the
+    terminal at once (``tests/chrome_starts.py``).
+
+    A run that collection errors will stop, as pytest's own loop then does, is not
+    warmed: that could cost the warm-up's whole bound before the run stops."""
+
+    option = session.config.option
+    stopping = session.testsfailed and not option.continue_on_collection_errors
+    if (
+        not option.collectonly
+        and not stopping
+        and any(item.get_closest_marker(suite_tiers.CHROME_MARKER) for item in session.items)
+    ):
+        basetemp = session.config._tmp_path_factory.getbasetemp()  # pyright: ignore[reportAttributeAccessIssue]
+        told = chrome_starts.warm_up(basetemp)
+        reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+        if isinstance(reporter, pytest.TerminalReporter):
+            for line in told:
+                reporter.write_line(line)
+            reporter.flush()
+    return (yield)
+
+
 def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
-    """Say which tests would have run gh, so a new one is noticed."""
+    """Say which tests would have run gh, so a new one is noticed, and how the run's
+    Chrome starts went (``tests/chrome_starts.py``)."""
 
     basetemp = terminalreporter.config._tmp_path_factory.getbasetemp()  # pyright: ignore[reportAttributeAccessIssue]
     # pytest also links ``no-real-ghcurrent`` to the numbered directory; read each once.
-    logs = {log.resolve() for log in basetemp.glob("no-real-gh*/calls.log")}
+    # Under pytest-xdist each worker's base is ``popen-gw<N>`` in this one, with its own
+    # stand-in and log, and the summary this process prints reads them all.
+    patterns = ("no-real-gh*/calls.log", "popen-gw*/no-real-gh*/calls.log")
+    logs = {log.resolve() for pattern in patterns for log in basetemp.glob(pattern)}
     calls = [line for log in sorted(logs) for line in log.read_text(encoding="utf-8").splitlines()]
     if calls:
         tests = sorted({line.split("\t", 1)[0].rsplit(" ", 1)[0] for line in calls})
@@ -147,6 +259,8 @@ def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
             f"gh guard: {len(calls)} gh call(s) reached the failing stand-in, "
             f"from {len(tests)} test(s): " + ", ".join(tests)
         )
+    for line in chrome_starts.summary(basetemp):
+        terminalreporter.write_line(line)
 
 
 @pytest.fixture(autouse=True)
@@ -210,6 +324,25 @@ def _reset_rate_budget() -> Generator[None, None, None]:  # pyright: ignore[repo
 
 
 @pytest.fixture(autouse=True)
+def _reset_label_sets() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
+    """Start every test with no parsed label set and no unwritten outcome, as a new process.
+
+    ``pull_labels`` keeps both per process, by home and source, and the fixtures share one
+    source, so a set one test parsed or a refusal it remembered would reach the next. A
+    process that never imported it holds neither, and is not made to import it here.
+    """
+
+    def forget() -> None:
+        loaded = sys.modules.get("metabrowser.builtin_plugins.github.pull_labels")
+        if loaded is not None:
+            loaded.forget()
+
+    forget()
+    yield
+    forget()
+
+
+@pytest.fixture(autouse=True)
 def _restore_environment() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
     """Put back whatever a test, or the code it ran, changed in ``os.environ``.
 
@@ -251,7 +384,9 @@ def _reset_process_caches() -> Generator[None, None, None]:  # pyright: ignore[r
     come back as another test's home. The ignore cache outlives its test by its TTL, keyed
     by a root path a test can reuse. The catalog revision counts distinct catalogs for the
     process, so a test would read a value set by whichever tests ran before it, and the
-    catalog caches are left filled.
+    catalog caches are left filled. Held private directories keep their descriptors open,
+    and a test that stages a race against the first open of a directory needs that open
+    to happen.
 
     Left alone because a stale value cannot reach another test: ``tree_source._POOLS`` and
     ``dotenv._reported``, keyed by a path under the ``tmp_path`` of the test that made
@@ -259,9 +394,10 @@ def _reset_process_caches() -> Generator[None, None, None]:  # pyright: ignore[r
     list already holds.
     """
     yield
-    from metabrowser import events_route, tree
+    from metabrowser import events_route, home, tree
     from metabrowser.cache import probe
 
+    home._HELD_DIRECTORIES.clear()  # pyright: ignore[reportPrivateUsage]
     probe._RESULTS.clear()  # pyright: ignore[reportPrivateUsage]
     tree._IGNORE_CACHE.clear()  # pyright: ignore[reportPrivateUsage]
     events_route._CATALOG_BODY_CACHE.clear()  # pyright: ignore[reportPrivateUsage]
@@ -367,3 +503,14 @@ def _isolated_configuration(tmp_path: Path) -> Generator[None, None, None]:  # p
     with pytest.MonkeyPatch.context() as patch:
         patch.setenv("METABROWSER_CONFIG_DIR", str(tmp_path / "metabrowser-config"))
         yield
+
+
+@pytest.fixture(autouse=True)
+def _reset_delivery() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
+    """A test that runs a serve mode says it serves for local use; the next one starts
+    from the default, which compresses for every client (metabrowser.delivery)."""
+    from metabrowser import delivery
+
+    delivery.serve_locally(False)
+    yield
+    delivery.serve_locally(False)

@@ -1,6 +1,11 @@
 # Metabrowser 0.12.0 Release Preparation
 
-**Status:** In progress; updated November 8, 2026. Earlier product stacks are merged.
+**Status:** Complete.
+0.12.0 was tagged at `87b8ec81` (#344) and published on November 9, 2026; the owner
+deferred the quiet performance comparison and the remaining owner acceptance to open
+beads under `mb-425f`. The record below is as of November 8.
+
+Earlier product stacks are merged.
 The corrective runtime layer [#337](https://github.com/jlevy/metabrowser/pull/337) is
 independently reviewed, passes its full gate and all nine CI jobs, and is installed as
 `0.11.1.dev1290+c3d093d2d`. Its affected filesystem checks pass, and PR views pass in
@@ -406,7 +411,7 @@ Local commit navigation without Git acquisition is a separate tracked enhancemen
 | Linked dependency roots in the benchmark corpus | Behavioral regression test and corpus correction merged in stack 331 | `mb-lsm5` closed |
 | Regular-folder data and test-evidence differentials | Parts A/B/C and selected DATA are accepted at `426ce7b62`, with raw exceptions and capture limits preserved. The corrective runtime has its own focused regressions, full gate and affected installed-browser checks; final release acceptance remains open | `mb-2g6f`; instrumentation gap `mb-q834` closed |
 | Browser differential and runtime stabilization | Corrected 396-job capture and four-case Quick Search supplement complete with row dispositions. The three corrections and startup-budget successor are independently reviewed in #337. Full gate, nine CI jobs, exact-wheel installation and affected built-in-browser replays pass; landing and quiet/owner gates remain open | `mb-sn0s`, `mb-ivwy`, `mb-o12l`, `mb-2g6f`; quiet Step9 remains open |
-| Plain-folder comparison above 50 files | Control and exact `426ce7b62` have identical complete 55-file/55-patch CLI payloads, clean apply oracles and four passing browser cells. Final tag-head attribution and owner acceptance remain pending | `mb-8pyc` |
+| Plain-folder comparison above 50 files | Control and exact `426ce7b62` have identical complete 55-file/55-patch CLI payloads, clean apply oracles and four passing browser cells. On November 9 the 55-file comparison matched again on `a5390794`, whose tree is the `v0.12.0` tag’s. Final tag-head attribution and owner acceptance remain pending | `mb-8pyc` |
 | Complete installed-wheel QA runbook and opt-in tiers | In progress; report every step as passed, failed, blocked or not run | `mb-m20f` |
 | Cross-browser, private-access and external-plugin acceptance | Preserve prior evidence separately; current browser matrix and owner sign-off remain open | `mb-etqi` |
 | Release notes, intended behavior changes and final approval packet | QA-only checkpoint `110a3ae2a` passed its full gate and all nine [#336](https://github.com/jlevy/metabrowser/pull/336) CI jobs, with independent reviews. Draft holds this reconciliation and final corrected-artifact receipts. Version 0.12.0 is decided | `mb-gew9`, `mb-4bd2`, [#336](https://github.com/jlevy/metabrowser/pull/336) |
@@ -417,7 +422,7 @@ The previous published release is 0.11.0. The preserved tag-built control wheel 
 its published SHA-256,
 `b099786f84408968df10296fdf7226218dd8853faf1cdb02a25787c5ab396e7f`. The
 [publishing checklist](../../publishing.md#release-checklist) defines the release gates
-and the [QA runbook](../../qa-v012-repository-library.md) defines the manual rows.
+and the [QA runbook](qa-2026-09-19-v012-repository-library.md) defines the manual rows.
 
 Measurements retain their exact application source and artifact identities.
 Historical loaded-host runs, interrupted captures and mixed-cache observations are not

@@ -51,10 +51,13 @@ status: 200
   "refreshing": false,
   "last_refresh": null,
   "comparison_route": null,
-  "snapshot_route": null,
+  "image_route": null,
   "rendered_route": null,
   "record": null,
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false,
+  "no_store": true
 }
 --- stderr ---
 --- gh ---
@@ -216,10 +219,13 @@ status: 202
     "refreshing": true,
     "last_refresh": null,
     "comparison_route": null,
-    "snapshot_route": null,
+    "image_route": null,
     "rendered_route": null,
     "record": null,
-    "core_preview": null
+    "core_preview": null,
+    "repository_labels": [],
+    "labels_pending": false,
+    "no_store": true
   },
   "status_route": "/api/plugin/github/pull?number=10"
 }
@@ -237,7 +243,7 @@ status: 200
   "verified_by": "catalog",
   "head_moved": false,
   "checks_pending": false,
-  "record_revision": "0560d60b8b671ff9e80c4d84f3823eb66dea5ce4ff24e1f9098b428fd335bd38",
+  "record_revision": "307788c44b33463e9d30e83be9a0f29788a018868fef38ca96ff5cad356fef67",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -247,11 +253,11 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "comparison_route": null,
-  "snapshot_route": null,
+  "image_route": null,
   "rendered_route": null,
   "record": {
     "schema_version": 2,
-    "projection_version": 1,
+    "projection_version": 2,
     "source": "https://github.com/octo/demo",
     "number": 10,
     "fetched_at": "2026-09-17T12:00:00Z",
@@ -317,7 +323,10 @@ status: 200
       "comparison": "no_store"
     }
   },
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false,
+  "no_store": true
 }
 --- stderr ---
 --- body ---
@@ -359,7 +368,7 @@ status: 200
 {
   "number": 10,
   "fetched_at": "2026-09-17T12:00:00Z",
-  "record_revision": "0560d60b8b671ff9e80c4d84f3823eb66dea5ce4ff24e1f9098b428fd335bd38",
+  "record_revision": "307788c44b33463e9d30e83be9a0f29788a018868fef38ca96ff5cad356fef67",
   "part": "body",
   "html": "\n<div><div><p>Not ready.</p></div></div>",
   "assets": {
@@ -371,9 +380,9 @@ status: 200
         "path": "css/style-tokens.css",
         "mode": "hosted",
         "media_type": "text/css",
-        "content_hash": "8aeaaafb77d8ec54",
+        "content_hash": "8efb2fa07a0a0370",
         "output_path": "css/style-tokens.css",
-        "public_url": "/kpress-static/v0.3.5/css/style-tokens.css",
+        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/style-tokens.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -385,7 +394,7 @@ status: 200
         "media_type": "text/css",
         "content_hash": "807cf5be35b5a8dd",
         "output_path": "css/syntax.css",
-        "public_url": "/kpress-static/v0.3.5/css/syntax.css",
+        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/syntax.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -395,9 +404,9 @@ status: 200
         "path": "css/document.css",
         "mode": "hosted",
         "media_type": "text/css",
-        "content_hash": "49d55a2dbac06488",
+        "content_hash": "bc14c4d38a7a4d65",
         "output_path": "css/document.css",
-        "public_url": "/kpress-static/v0.3.5/css/document.css",
+        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/document.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -407,9 +416,9 @@ status: 200
         "path": "css/components.css",
         "mode": "hosted",
         "media_type": "text/css",
-        "content_hash": "3899b614d6672436",
+        "content_hash": "b60a31e9efc56142",
         "output_path": "css/components.css",
-        "public_url": "/kpress-static/v0.3.5/css/components.css",
+        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/components.css",
         "entry_point": true,
         "loading": "stylesheet"
       },
@@ -419,9 +428,69 @@ status: 200
         "path": "css/print.css",
         "mode": "hosted",
         "media_type": "text/css",
-        "content_hash": "86c6396bc77060cd",
+        "content_hash": "8a8f7b928ad6be2f",
         "output_path": "css/print.css",
-        "public_url": "/kpress-static/v0.3.5/css/print.css",
+        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/print.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/print-fonts.css",
+        "kind": "package",
+        "path": "css/print-fonts.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "f4a0751b8416f372",
+        "output_path": "css/print-fonts.css",
+        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/print-fonts.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-400-normal.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-400-normal.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "9a5f82ca54019902",
+        "output_path": "css/mono-planetaire-400-normal.css",
+        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/mono-planetaire-400-normal.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-700-normal.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-700-normal.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "c5232ad5d38dc5a6",
+        "output_path": "css/mono-planetaire-700-normal.css",
+        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/mono-planetaire-700-normal.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-400-italic.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-400-italic.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "34bd1d5b7aa5a794",
+        "output_path": "css/mono-planetaire-400-italic.css",
+        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/mono-planetaire-400-italic.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/mono-planetaire-700-italic.css",
+        "kind": "package",
+        "path": "css/mono-planetaire-700-italic.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8fe04148a6caac2d",
+        "output_path": "css/mono-planetaire-700-italic.css",
+        "public_url": "/kpress-static/@5279a54c458e8a0c/v0.3.8/css/mono-planetaire-700-italic.css",
         "entry_point": true,
         "loading": "stylesheet"
       }
@@ -789,7 +858,7 @@ status: 200
   "verified_by": "catalog",
   "head_moved": false,
   "checks_pending": false,
-  "record_revision": "0560d60b8b671ff9e80c4d84f3823eb66dea5ce4ff24e1f9098b428fd335bd38",
+  "record_revision": "307788c44b33463e9d30e83be9a0f29788a018868fef38ca96ff5cad356fef67",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -799,11 +868,11 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "comparison_route": null,
-  "snapshot_route": null,
+  "image_route": null,
   "rendered_route": null,
   "record": {
     "schema_version": 2,
-    "projection_version": 1,
+    "projection_version": 2,
     "source": "https://github.com/octo/demo",
     "number": 10,
     "fetched_at": "2026-09-17T12:00:00Z",
@@ -869,7 +938,9 @@ status: 200
       "comparison": "no_store"
     }
   },
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 --- stderr ---
 cloning https://github.com/octo/demo into <HOME>
@@ -950,7 +1021,7 @@ status: 202
     "verified_by": "catalog",
     "head_moved": false,
     "checks_pending": false,
-    "record_revision": "0560d60b8b671ff9e80c4d84f3823eb66dea5ce4ff24e1f9098b428fd335bd38",
+    "record_revision": "307788c44b33463e9d30e83be9a0f29788a018868fef38ca96ff5cad356fef67",
     "fresh_for_s": 60.0,
     "refreshing": true,
     "last_refresh": {
@@ -960,11 +1031,11 @@ status: 202
       "at": "2026-09-17T12:00:00Z"
     },
     "comparison_route": null,
-    "snapshot_route": null,
+    "image_route": null,
     "rendered_route": null,
     "record": {
       "schema_version": 2,
-      "projection_version": 1,
+      "projection_version": 2,
       "source": "https://github.com/octo/demo",
       "number": 10,
       "fetched_at": "2026-09-17T12:00:00Z",
@@ -1030,7 +1101,9 @@ status: 202
         "comparison": "no_store"
       }
     },
-    "core_preview": null
+    "core_preview": null,
+    "repository_labels": [],
+    "labels_pending": false
   },
   "status_route": "/api/plugin/github/pull?number=10"
 }
@@ -1048,7 +1121,7 @@ status: 200
   "verified_by": "catalog",
   "head_moved": false,
   "checks_pending": false,
-  "record_revision": "9fc6a5900d8b512290cf866ef06ce3aa4281846caf360ee5ee4cce0ed3e06d4c",
+  "record_revision": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -1058,11 +1131,11 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "comparison_route": "/api/plugin/github/pull-comparison?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&base_policy=merge_base&build=<BUILD>&store=<STORE_TAG>",
-  "snapshot_route": "/api/plugin/github/pull-snapshot?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE_TAG>",
+  "image_route": "/api/plugin/github/pull-image?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE_TAG>",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE_TAG>",
   "record": {
     "schema_version": 2,
-    "projection_version": 1,
+    "projection_version": 2,
     "source": "https://github.com/octo/demo",
     "number": 10,
     "fetched_at": "2026-09-17T12:00:00Z",
@@ -1131,7 +1204,9 @@ status: 200
     },
     "unavailable": {}
   },
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 --- stderr ---
 --- body ---
@@ -1163,7 +1238,7 @@ status: 200
   "verified_by": "catalog",
   "head_moved": false,
   "checks_pending": false,
-  "record_revision": "9fc6a5900d8b512290cf866ef06ce3aa4281846caf360ee5ee4cce0ed3e06d4c",
+  "record_revision": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -1173,11 +1248,11 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "comparison_route": null,
-  "snapshot_route": null,
+  "image_route": null,
   "rendered_route": null,
   "record": {
     "schema_version": 2,
-    "projection_version": 1,
+    "projection_version": 2,
     "source": "https://github.com/octo/demo",
     "number": 10,
     "fetched_at": "2026-09-17T12:00:00Z",
@@ -1243,7 +1318,10 @@ status: 200
       "comparison": "no_store"
     }
   },
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false,
+  "no_store": true
 }
 --- stderr ---
 --- gh ---
@@ -1267,7 +1345,7 @@ status: 202
     "verified_by": "catalog",
     "head_moved": false,
     "checks_pending": false,
-    "record_revision": "9fc6a5900d8b512290cf866ef06ce3aa4281846caf360ee5ee4cce0ed3e06d4c",
+    "record_revision": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4",
     "fresh_for_s": 60.0,
     "refreshing": true,
     "last_refresh": {
@@ -1277,11 +1355,11 @@ status: 202
       "at": "2026-09-17T12:00:00Z"
     },
     "comparison_route": null,
-    "snapshot_route": null,
+    "image_route": null,
     "rendered_route": null,
     "record": {
       "schema_version": 2,
-      "projection_version": 1,
+      "projection_version": 2,
       "source": "https://github.com/octo/demo",
       "number": 10,
       "fetched_at": "2026-09-17T12:00:00Z",
@@ -1347,7 +1425,10 @@ status: 202
         "comparison": "no_store"
       }
     },
-    "core_preview": null
+    "core_preview": null,
+    "repository_labels": [],
+    "labels_pending": false,
+    "no_store": true
   },
   "status_route": "/api/plugin/github/pull?number=10"
 }
@@ -1365,7 +1446,7 @@ status: 200
   "verified_by": "catalog",
   "head_moved": false,
   "checks_pending": false,
-  "record_revision": "9fc6a5900d8b512290cf866ef06ce3aa4281846caf360ee5ee4cce0ed3e06d4c",
+  "record_revision": "b61b65443f1b94641b404dc8f04f65cdc54e53ccda7d5bdb50f0628bc0737ff4",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -1375,11 +1456,11 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "comparison_route": "/api/plugin/github/pull-comparison?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&base_policy=merge_base&build=<BUILD>&store=<STORE_TAG>",
-  "snapshot_route": "/api/plugin/github/pull-snapshot?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE_TAG>",
+  "image_route": "/api/plugin/github/pull-image?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE_TAG>",
   "rendered_route": "/api/plugin/github/pull-rendered-diff?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE_TAG>",
   "record": {
     "schema_version": 2,
-    "projection_version": 1,
+    "projection_version": 2,
     "source": "https://github.com/octo/demo",
     "number": 10,
     "fetched_at": "2026-09-17T12:00:00Z",
@@ -1448,7 +1529,9 @@ status: 200
     },
     "unavailable": {}
   },
-  "core_preview": null
+  "core_preview": null,
+  "repository_labels": [],
+  "labels_pending": false
 }
 --- stderr ---
 --- body ---

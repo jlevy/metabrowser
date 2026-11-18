@@ -212,9 +212,10 @@ description = "Largest contentful paint."
 
 # exp-014 measured 74 startup scripts / 337 KB before selected-kind loading,
 # 33 / 214 KB after that change, and 22 / 154 KB after shell tools moved behind
-# the first usable tree on the same 111,590-file corpus. These ceilings retain
-# headroom for a small core module while preventing either eager tier from
-# returning to the directory shell's critical path.
+# the first usable tree on the same 111,590-file corpus. These ceilings are the
+# release gate's, which performance-budgets.toml explains: they bound what the
+# startup scripts cost, their headrooms add, and tests/test_check_startup_scripts.py,
+# not they, keeps every on-demand bundle out of the startup set.
 [metrics.startup_script_requests]
 category = "loading"
 maximum = 25
@@ -224,15 +225,23 @@ description = "JavaScript requests started before DOMContentLoaded, excluding th
 
 [metrics.startup_script_transfer_kb]
 category = "loading"
-maximum = 175
+maximum = 220
 policy = "gate"
 required = true
-description = "Transferred startup JavaScript before DOMContentLoaded, excluding the separately reported vendor-prefetch tier."
+description = "Startup JavaScript before DOMContentLoaded as the remote path transfers it, gzipped at level 6 with 300 bytes a response, excluding the separately reported vendor-prefetch tier."
 
 # The exact 300,000-file cold trace measured ordinary shell CSS server work at
 # 20.9 ms and an unprepared first KPress stylesheet request at 196.6 ms. This
 # ceiling leaves more than three times the healthy observation while rejecting
 # the deferred-import cost that held first paint.
+# Since H115 the figure is a larger quantity for a stamped /static stylesheet: its
+# `srv` now includes the whole read and compression, which the store finishes before
+# the headers leave, where a streamed file response sent them after its first 64 KiB
+# chunk. The 20.9 ms above predates that. In one untimed landing each (review B of
+# #455, B5), /static/styles.css read `srv` 9.2 ms before H115, 20.9 ms compressed and
+# 15.6 ms on the macOS app's start after it, with its end of body 25, 21.2 and 15.8 ms.
+# A comparison across H115 reads stylesheets by end of body (server-time.mjs's `end_ms`,
+# or Resource Timing's `responseEnd`), not by this figure.
 [metrics.startup_style_server_ms_max]
 category = "loading"
 maximum = 75

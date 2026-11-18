@@ -3,6 +3,12 @@
 Every GitHub page is independently bounded and published before the next begins. The
 server's catalog worker yields its network slot after each page, resumes durable cursors,
 and never fetches a PullRecord, comparison, blob, comment, check or review.
+
+Nothing caps how many rows the catalog holds. A reader's pages come first: the scan that
+keeps the list current, and its filter's prefix as far as the reader has scrolled. The
+backfill past that prefix, newest first to the oldest pull request, is background work,
+which runs only while :mod:`.gh_budget` admits GraphQL work (:func:`backfill_admitted`).
+Held, the job stops at a page boundary, and a later ask resumes it from the saved cursor.
 """
 
 from __future__ import annotations
@@ -18,7 +24,7 @@ from datetime import datetime, timedelta
 from functools import partial
 from typing import Any, Final, Literal
 
-from metabrowser.builtin_plugins.github import pull_list
+from metabrowser.builtin_plugins.github import gh_budget, pull_list
 from metabrowser.builtin_plugins.github.avatars import avatar_of
 from metabrowser.builtin_plugins.github.checkout import claim_source
 from metabrowser.builtin_plugins.github.gh import GhCursorError, GhError, GhServerError, gh_graphql
@@ -27,14 +33,22 @@ from metabrowser.builtin_plugins.github.gh_lists import (
     PullDataError,
     active_account,
     as_dict,
+    cache_unwritable,
     login_of,
+    newer_cache,
     readable_items,
+    unknown_cache,
     utc_stamp,
 )
 from metabrowser.builtin_plugins.github.pull_catalog import (
     CATALOG_PROJECTION,
     PAGE_SIZE,
     CatalogState,
+    CatalogUnusableError,
+    NewerCatalogError,
+    UnknownCatalogError,
+    catalog_refusal,
+    failure_line,
     publish_page,
     read_catalog,
 )
@@ -271,23 +285,45 @@ async def _read_page(
         ) from exc
 
 
+def prefix_wanted(state: CatalogState, name: PullListName, target: int) -> bool:
+    """Whether *name*'s first *target* rows, which a reader asked for, are not all cached."""
+
+    return (
+        not state.done["all"]
+        and not state.done[name]
+        and min(state.covered[name], state.cached[name]) < min(target, state.totals[name])
+    )
+
+
+def backfill_admitted() -> bool:
+    """Whether GitHub's GraphQL budget admits the backfill past every reader's prefix.
+
+    That backfill is background work, which :mod:`.gh_budget` admits only above its floor
+    and outside a rate hold. A reader's own pages, its filter's prefix and the scan that
+    keeps the list current, are never asked.
+    """
+
+    return gh_budget.admission(("graphql",), now=pull_list.utc_now()).admitted
+
+
 def _next_scan(
     state: CatalogState | None, name: PullListName, target: int
-) -> Literal["all", "open", "closed", "updated"] | None:
+) -> tuple[Literal["all", "open", "closed", "updated"] | None, bool]:
+    """The next scan, and whether it is the background backfill past *target*."""
+
     if state is None:
-        return name
+        return name, False
     if state.delta_started or (
         pull_list.utc_now() - pull_list.parse_stamp(state.fetched_at)
         > timedelta(seconds=FRESHNESS_WINDOW_S)
     ):
-        return "updated"
-    if (
-        not state.done["all"]
-        and not state.done[name]
-        and min(state.covered[name], state.cached[name]) < min(target, state.totals[name])
-    ):
-        return name
-    return "all" if not state.done["all"] else None
+        return "updated", False
+    if prefix_wanted(state, name, target):
+        return name, False
+    return ("all", True) if not state.done["all"] else (None, False)
+
+
+_LIST: Final = "the pull-request list"
 
 
 async def _publish(
@@ -298,11 +334,39 @@ async def _publish(
 ) -> bool:
     try:
         return await run_lock_section(partial(publish_page, repository, previous, proposed, rows))
-    except (PrivateStorageError, OSError, sqlite3.Error, ValueError) as exc:
-        raise PullDataError(
-            "cache_unwritable",
-            "the metadata catalog could not be written; clear the affected repository cache and retry",
+    except NewerCatalogError as exc:
+        raise newer_cache(
+            _LIST, str(exc), source=repository.source, checkout=repository.checkout
         ) from exc
+    except UnknownCatalogError as exc:
+        raise unknown_cache(
+            _LIST, str(exc), source=repository.source, checkout=repository.checkout
+        ) from exc
+    except (PrivateStorageError, OSError, sqlite3.Error, CatalogUnusableError) as exc:
+        # The job's own catch records only the message, so the cause is logged here.
+        log.warning(
+            "the pull-request catalog of %s could not be written: %s",
+            repository.source,
+            failure_line(exc),
+        )
+        raise cache_unwritable(
+            _LIST, exc, source=repository.source, checkout=repository.checkout
+        ) from exc
+
+
+async def _stop_at_kept_catalog(repository: ListedRepository) -> None:
+    """Stop before GitHub is asked for a page no publication could keep.
+
+    That is a catalog a newer release wrote, or one whose versions cannot be read, which
+    a writer leaves as it is.
+    """
+
+    refusal = await asyncio.to_thread(catalog_refusal, repository.home, repository.slug)
+    if refusal is None:
+        return
+    kind, why = refusal
+    refuse = newer_cache if kind == "newer" else unknown_cache
+    raise refuse(_LIST, why, source=repository.source, checkout=repository.checkout)
 
 
 def _rate_limit_retry_at(now: datetime, previous: PullRefreshStamp | None) -> str:
@@ -330,13 +394,18 @@ async def refresh_pull_list(
     retry: bool = False,
     take_retry: Callable[[], bool] | None = None,
 ) -> CatalogState:
-    """Warm a requested prefix, then resume all metadata; each page yields its slot."""
+    """Warm a requested prefix, then resume all metadata; each page yields its slot.
+
+    The backfill past the prefix stops, returning the checkpoint, while the GraphQL budget
+    holds background work.
+    """
     reader: str | None = None
     last_refresh: PullRefreshStamp | None = None
     source_claimed = False
     try:
         repository = await claim_source(repository)
         source_claimed = True
+        await _stop_at_kept_catalog(repository)
         login = await active_account()
         reader = f"gh:{login}"
         restarted: set[str] = set()
@@ -365,8 +434,8 @@ async def refresh_pull_list(
                 continue
             selected, wanted = demand() if demand else (name, target)
             force = take_retry() if take_retry else False
-            scan = (
-                "updated"
+            scan, backfill = (
+                ("updated", False)
                 if (retry or force) and state is not None
                 else _next_scan(state, selected, wanted)
             )
@@ -390,6 +459,10 @@ async def refresh_pull_list(
                             "GitHub's API rate limit is exhausted",
                             reset_at=last_refresh.reset_at,
                         )
+                    if backfill and not backfill_admitted():
+                        # Paused, not failed: the next ask resumes from the saved cursor.
+                        assert state is not None
+                        return state
                     # A delta scan vouches for what GitHub had when it asked for its first page.
                     asked_at = utc_stamp(pull_list.utc_now())
                     page = await _read_page(
@@ -510,4 +583,4 @@ async def refresh_pull_list(
         raise
 
 
-__all__ = ["refresh_pull_list"]
+__all__ = ["backfill_admitted", "prefix_wanted", "refresh_pull_list"]

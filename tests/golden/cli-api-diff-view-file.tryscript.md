@@ -23,8 +23,9 @@ before: >-
 ---
 # Golden tests: the sides of a changed file, and where each opens
 
-View file on a diff’s file bar opens a changed file at either side of the comparison.
-What it needs is all in the comparison document: `resolved.left` and `resolved.right`
+View file on a commit’s diff, and View on branch on a pull request’s Changes, open the
+file a change makes, its new side, at the commit it is at.
+What they need is all in the comparison document: `resolved.left` and `resolved.right`
 name the two commits, and each change’s `old` and `new` name the path at each and say
 what kind of entry it is.
 A side the change does not have is absent, so a deleted file has no `new` and an added
@@ -33,16 +34,19 @@ file no `old`, and a renamed file’s `old` is its old path.
 `tests/diff_view_file_fixture.py` writes a bare `origin.git` with `git fast-import`, so
 every commit ID below is the same on every machine: `trunk` is `first` (`a5232ab…`) then
 `second` (`6ac4c8b…`), and `base` (`0dcf612…`) branches from `first`. `changesroot` is a
-clone of it without a checkout, and `home` is an application home that acquired it.
-The comparison of a whole commit, and the one from a merge base that a pull request’s
-Files changed is, are long documents, pinned once and in full in
+clone of it without a checkout, and `home` is an application home that acquired it,
+whose store holds pull request 7’s head, `refs/pull/7/head`, at `second`. The comparison
+of a whole commit, and the one from a merge base that a pull request’s Files changed is,
+are long documents, pinned once and in full in
 `tests/fixtures/diff-view-file-responses.json`, which
 `tests/test_diff_view_file_session.py` checks against the server.
-`tests/golden/cli-ui-diff-view-file.tryscript.md` shows what View file offers for each
-change in them: a name that is not UTF-8, a symbolic link, a submodule, and the merge
-base a base side opens at.
-The commands here are the two a transcript can show whole: one change of that commit,
-and the switch to its parent.
+`tests/golden/cli-ui-diff-view-file.tryscript.md` shows what View file and View on
+branch offer for each change in them: a name that is not UTF-8, a symbolic link, and a
+submodule.
+The commands here are the ones a transcript can show whole: one change of that
+commit, a switch by commit that answers where the page goes, and the switch View on
+branch makes, under the pull request’s ref, once while that ref is at the commit and
+once after the pull request moved on.
 
 ## Test: a renamed file’s old side is its old path at the parent
 
@@ -130,8 +134,8 @@ status: 200
 
 ## Test: switching to the parent answers where the old path opens
 
-`pin-parent.json` is what View file posts for the renamed file’s old side: the parent
-commit, and the `/view/` address of `src/old_name.py`.
+`pin-parent.json` switches by commit, as View file at another commit does, to the
+parent, from a page on the `/view/` address of `src/old_name.py`.
 
 ```console
 $ cat pin-parent.json
@@ -176,4 +180,81 @@ status: 200
   "view_href": "/view/g1-c3Jj/g1-b2xkX25hbWUucHk"
 }
 ? 0
+```
+
+## Test: View on branch serves the head under the pull request’s ref
+
+`pin-on-branch.json` is what View on branch posts for `README.md` on pull request 7’s
+Changes when the page is not on its head: the head commit, and the pull request’s ref as
+`under`.
+
+```console
+$ cat pin-on-branch.json
+{"oid": "6ac4c8b5eb94eecbdb621d629b31066f050c75f1", "under": "refs/pull/7/head", "view": "/view/g1-UkVBRE1FLm1k"}
+? 0
+```
+
+The server served `trunk`, which is at the same commit; the answer serves it under the
+ref the request named, so the page lands on the pull request.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file://$PWD/origin.git --api /api/source/pin --data pin-on-branch.json
+api: /api/source/pin
+status: 200
+{
+  "changed": true,
+  "status": {
+    "subject": "git_revision",
+    "generation": 2,
+    "pin": "6ac4c8b5eb94eecbdb621d629b31066f050c75f1",
+    "ref": "refs/pull/7/head",
+    "ref_name": "refs/pull/7/head",
+    "name": "origin",
+    "origin": "file://[CWD]/origin.git",
+    "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
+    "borrows": null,
+    "shallow": false,
+    "refreshable": true,
+    "latest": "6ac4c8b5eb94eecbdb621d629b31066f050c75f1",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-17T12:00:05Z",
+    "last_outcome": {
+      "operation": "acquire",
+      "outcome": "succeeded",
+      "at": "2026-09-17T12:00:05Z"
+    },
+    "refreshing": false,
+    "stale": true,
+    "pull_request": 7,
+    "selection_state": null,
+    "selection_href": null
+  },
+  "view_href": "/view/g1-UkVBRE1FLm1k"
+}
+? 0
+```
+
+## Test: a pull request that moved on since the page was drawn switches nothing
+
+`pin-head-moved.json` is the same request from a Changes page drawn when pull request
+7’s head was `first`. Its ref is at `second` now, so serving `first` would open a bare
+commit the page calls the pull request’s head; the route refuses, and nothing is
+switched.
+
+```console
+$ cat pin-head-moved.json
+{"oid": "a5232ab93056074aa3dd87c7b3c28ca84081a6a0", "under": "refs/pull/7/head", "view": "/view/g1-UkVBRE1FLm1k"}
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file://$PWD/origin.git --api /api/source/pin --data pin-head-moved.json
+api: /api/source/pin
+status: 409
+{
+  "error": "refs/pull/7/head is no longer at that commit",
+  "code": "ref_moved"
+}
+Error: /api/source/pin returned HTTP 409
+? 1
 ```

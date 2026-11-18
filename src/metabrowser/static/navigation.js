@@ -609,6 +609,317 @@
   }
 
   /**
+   * When the page asks the server for the root's tallies again: one request at a time,
+   * however many callers ask, spaced by what the last one cost.
+   *
+   * Every root aggregate upsert, every tree load, and the recency menu ask for a fresh
+   * summary. A live tree upserts its root on every write, and each answer costs the
+   * server a pass over the whole index, so a page that sent one request per ask held a
+   * growing pile of identical multi-second requests, and in WebKit, which sends them in
+   * parallel, they took every connection the Commits tab needed
+   * (explorations/tree-summary-storm/README.md).
+   *
+   * An ask while a request is in flight or waiting only marks the summary stale, and the
+   * request that follows reads it once. The next request waits out `debounceMs` after the
+   * ask and at least `minIntervalMs`, or `costFactor` times the last request's duration,
+   * after the last one settled. Each failure in a row doubles that wait, up to
+   * `maxIntervalMs`; the cap never shortens the wait a request's own cost earned.
+   * A failure leaves the summary stale, so it is asked again after that backoff.
+   * While `wanted` is false (the page is hidden, or no summary row is on screen) a stale
+   * summary waits, and `resume` sends it once it is wanted again.
+   *
+   * @param {{
+   *   fetchSummary: () => Promise<boolean>,
+   *   wanted: () => boolean,
+   *   now: () => number,
+   *   setTimer: (callback: () => void, ms: number) => unknown,
+   *   debounceMs: number,
+   *   minIntervalMs: number,
+   *   costFactor: number,
+   *   maxIntervalMs: number,
+   * }} deps
+   */
+  function createRootSummaryRefresh(deps) {
+    let stale = false;
+    let inFlight = false;
+    let armed = false;
+    let notBefore = Number.NEGATIVE_INFINITY;
+    let failures = 0;
+
+    function arm() {
+      if (!stale || inFlight || armed || !deps.wanted()) {
+        return;
+      }
+      armed = true;
+      deps.setTimer(send, Math.max(deps.debounceMs, notBefore - deps.now()));
+    }
+
+    function send() {
+      armed = false;
+      if (!stale || inFlight || !deps.wanted()) {
+        return;
+      }
+      stale = false;
+      inFlight = true;
+      const started = deps.now();
+      /** @param {boolean} answered */
+      const settle = (answered) => {
+        inFlight = false;
+        const settled = deps.now();
+        if (answered) {
+          failures = 0;
+        } else {
+          failures += 1;
+          stale = true;
+        }
+        const spacing = Math.max(deps.minIntervalMs, (settled - started) * deps.costFactor);
+        // The cap bounds how far failures back off, never the spacing a request's own
+        // cost earned: a 20 s answer still waits 40 s, so a page spends at most a third
+        // of its time waiting on its tallies however slow the server is.
+        const backoff = Math.min(deps.maxIntervalMs, spacing * 2 ** failures);
+        notBefore = settled + Math.max(spacing, backoff);
+        arm();
+      };
+      let request;
+      try {
+        request = deps.fetchSummary();
+      } catch {
+        request = Promise.resolve(false);
+      }
+      request.then(
+        (answered) => settle(answered === true),
+        () => settle(false),
+      );
+    }
+
+    return Object.freeze({
+      /** The summary on screen may be out of date: refresh it, once, when allowed. */
+      request() {
+        stale = true;
+        arm();
+      },
+      /** The summary may be wanted again: send a waiting refresh. */
+      resume() {
+        arm();
+      },
+      state: () =>
+        Object.freeze({
+          stale,
+          inFlight,
+          armed,
+          notBefore: Number.isFinite(notBefore) ? notBefore : null,
+          failures,
+        }),
+    });
+  }
+
+  /**
+   * One figure of the Files totals: nothing for a fact the source does not have (a Git
+   * listing has no sizes), the pending tally for one still being counted, and the figure
+   * in the line's own words once it is known.
+   *
+   * @param {number | null | undefined} value
+   * @param {string} pendingClass
+   * @param {(value: number) => string} known
+   */
+  function treeSummaryFigureHtml(value, pendingClass, known) {
+    if (value === undefined) {
+      return "";
+    }
+    return value === null || Number.isNaN(value)
+      ? `<span class="${pendingClass} tally-pending"></span>`
+      : known(value);
+  }
+
+  /**
+   * The root's totals from its own entry, in the server's `summary` shape, or null until
+   * the walk has finished the root (docs/design-system.md, "The Files totals").
+   *
+   * @param {{total_files?: unknown, total_size?: unknown, unignored_files?: unknown, unignored_size?: unknown} | null | undefined} entry
+   * @returns {MetabrowserRootTotals | null}
+   */
+  function rootTotalsFromEntry(entry) {
+    if (!entry) {
+      return null;
+    }
+    const { total_files: total, total_size: bytes, unignored_files: files } = entry;
+    const size = entry.unignored_size;
+    return [total, bytes, files, size].every((n) => Number.isInteger(n) && Number(n) >= 0)
+      ? rootTotalsShape({
+          files,
+          size,
+          ignored_files: Number(total) - Number(files),
+          ignored_size: Number(bytes) - Number(size),
+        })
+      : null;
+  }
+
+  /**
+   * @param {unknown} value
+   * @returns {MetabrowserRootTotals | null}
+   */
+  function rootTotalsShape(value) {
+    const totals = /** @type {Record<string, unknown>} */ (value ?? {});
+    const n = (/** @type {unknown} */ v) =>
+      Number.isFinite(v) && Number(v) >= 0 ? Number(v) : null;
+    const files = n(totals.files);
+    const size = n(totals.size);
+    return files === null || size === null
+      ? null
+      : {
+          files,
+          size,
+          ignored_files: n(totals.ignored_files) ?? 0,
+          ignored_size: n(totals.ignored_size) ?? 0,
+        };
+  }
+
+  /**
+   * What the Files totals line is drawn from, and whether it keeps its ignored line: the
+   * root entry's totals once it has them, else a settled tally, never a provisional one;
+   * a line once drawn stays (docs/design-system.md, "The Files totals").
+   *
+   * @param {{gitRevision: boolean, shell?: unknown}} options `shell`: the inlined totals
+   */
+  function createRootTotals({ gitRevision, shell }) {
+    /** @type {MetabrowserRootTotals | null} */
+    let fromEntry = gitRevision ? null : rootTotalsShape(shell);
+    /** @type {MetabrowserRootTotals | null} */
+    let fromTally = null;
+    const totals = () => fromEntry ?? fromTally;
+    let kept = false;
+    const keep = () => {
+      kept ||= !gitRevision && (totals()?.ignored_files ?? 1) > 0;
+    };
+    keep();
+    return Object.freeze({
+      /** @param {Parameters<typeof rootTotalsFromEntry>[0]} entry @returns whether it had totals */
+      fromRootEntry(entry) {
+        const next = gitRevision ? null : rootTotalsFromEntry(entry);
+        if (next) {
+          fromEntry = next;
+          keep();
+        }
+        return next !== null;
+      },
+      /** @param {unknown} summary @param {unknown} status its `tally_cache_status` */
+      fromSummary(summary, status) {
+        const next = status === "scanning" ? null : rootTotalsShape(summary);
+        if (next) {
+          fromTally = next;
+          keep();
+        }
+      },
+      totals,
+      keepsIgnoredLine: () => !gitRevision && (totals() === null || kept),
+    });
+  }
+
+  /**
+   * The Files tab's totals, a navigation metadata line (`.nav-metadata`): the tracked
+   * count, and the ignored count as a line of its own, muted as ignored rows are; each
+   * one line, cut short at its end, its phrase its tooltip. Without
+   * the split it gives the combined figure, "4 files (38 B)", whose two spans the shell
+   * patches live (app.js, `updateRootAggregatePresentation`); *keepIgnoredLine* holds the
+   * ignored line pending then, or says "No ignored files" in it (docs/design-system.md,
+   * "The Files totals").
+   *
+   * @param {{files?: unknown, size: number, ignored_files?: number, ignored_size?: number} | null | undefined} summary
+   * @param {number | null | undefined} fallbackFiles
+   * @param {number | null | undefined} fallbackSize
+   * @param {{formatCountParts(n: number): MetabrowserCountParts, formatSize(bytes: number): string}} format
+   * @param {boolean} [keepIgnoredLine]
+   * @returns {string}
+   */
+  function treeSummaryHtml(summary, fallbackFiles, fallbackSize, format, keepIgnoredLine = false) {
+    if (!summary || typeof summary.files !== "number") {
+      const held = keepIgnoredLine
+        ? '<span class="tree-summary-ignored-pending mb-delayed-loading" role="status"' +
+          ' aria-label="Counting ignored files">' +
+          '<span class="tally-pending" aria-hidden="true"></span></span>'
+        : "";
+      return (
+        '<div class="tree-summary nav-metadata">' +
+        '<span class="tree-summary-line">' +
+        `<span class="tree-summary-count">${treeSummaryCountHtml(fallbackFiles, format)}</span> ` +
+        `<span class="tree-summary-size">${treeSummarySizeHtml(fallbackSize, format)}</span></span>` +
+        held +
+        "</div>"
+      );
+    }
+    const parts = format.formatCountParts(summary.files);
+    const words = parts
+      .map((part) => (typeof part === "string" ? part : "number" in part ? part.number : ""))
+      .join("");
+    const tracked =
+      `<span class="tree-summary-line" data-tip-text="${words} (${format.formatSize(summary.size)})">` +
+      `<span class="tree-summary-tracked">${countSummaryHtml(parts)}</span> ` +
+      `<span class="tree-summary-bytes">${sizeHtml(summary.size, format)}</span></span>`;
+    let ignored = "";
+    const ignoredFiles = summary.ignored_files ?? 0;
+    if (ignoredFiles > 0) {
+      // One item for the count and its word. The spaces between items are not drawn in a
+      // flex box, but make each line's text its tooltip's phrase (digits and words).
+      const number = ignoredFiles.toLocaleString();
+      const phrase = `+ ${number} ignored (${format.formatSize(summary.ignored_size ?? 0)})`;
+      ignored =
+        `<span class="tree-summary-ignored" data-tip-text="${phrase}">` +
+        '<span class="tree-summary-plus">+</span> ' +
+        `<span>${countSummaryHtml([{ number }, " ignored"])}</span> ` +
+        `<span class="tree-summary-bytes">${sizeHtml(summary.ignored_size ?? 0, format)}</span>` +
+        "</span>";
+    } else if (keepIgnoredLine) {
+      ignored =
+        '<span class="tree-summary-ignored tree-summary-ignored-none">No ignored files</span>';
+    }
+    return `<div class="tree-summary tree-summary-split nav-metadata">${tracked}${ignored}</div>`;
+  }
+
+  /**
+   * The fallback's file count, as the live root aggregate patches it.
+   *
+   * @param {number | null | undefined} files
+   * @param {{formatCountParts(n: number): MetabrowserCountParts}} format
+   */
+  function treeSummaryCountHtml(files, format) {
+    return treeSummaryFigureHtml(files, "count", (n) =>
+      countSummaryHtml(format.formatCountParts(n)),
+    );
+  }
+
+  /**
+   * The fallback's size, as the live root aggregate patches it.
+   *
+   * @param {number | null | undefined} bytes
+   * @param {{formatSize(bytes: number): string}} format
+   */
+  function treeSummarySizeHtml(bytes, format) {
+    return treeSummaryFigureHtml(bytes, "size", (n) => sizeHtml(n, format));
+  }
+
+  /**
+   * A count summary's markup, each number bold, in the shell's `.summary-number`, and the
+   * words in the line's weight (docs/design-system.md, "Count Summaries Bold Their
+   * Numbers"), from the shared formatter.
+   *
+   * @param {MetabrowserCountParts} parts
+   */
+  function countSummaryHtml(parts) {
+    return window.MetabrowserFormatters.countPartsHtml(parts);
+  }
+
+  /**
+   * A size in the Files totals' words, "(394.6 MB)": the figure with its unit bold, as one
+   * number, and the parentheses in the line's weight.
+   *
+   * @param {number} bytes
+   * @param {{formatSize(bytes: number): string}} format
+   */
+  function sizeHtml(bytes, format) {
+    return countSummaryHtml(["(", { number: format.formatSize(bytes) }, ")"]);
+  }
+
+  /**
    * Attach both fulfillment and rejection handlers immediately when an
    * independent navigation dependency begins. The caller may await an HTTP
    * result first without creating an unhandled-rejection window.
@@ -1177,6 +1488,8 @@
     createFileRevalidationTracker,
     createPageConnections,
     createPreviewPaneLifecycle,
+    createRootSummaryRefresh,
+    createRootTotals,
     displayPath,
     href,
     navigation,
@@ -1188,7 +1501,11 @@
     replaceFileSnapshot,
     requestFailure,
     responseBodyFailure,
+    rootTotalsFromEntry,
     settleFileSelectionFailure,
     settleNavigationDependency,
+    treeSummaryCountHtml,
+    treeSummaryHtml,
+    treeSummarySizeHtml,
   });
 })();

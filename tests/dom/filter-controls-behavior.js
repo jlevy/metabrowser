@@ -432,6 +432,151 @@ assertContains(
   menuSections,
   'data-chip-preset="family:javascript"',
 );
+// One group pattern (docs/design-system.md, "Groups in a Menu"): each section is a
+// .menu-group named by its .group-heading, and draws its own divider, so the one
+// .menu-separator left is the one before the raw rows, which no heading names.
+assertContains(
+  "a preset section is the menu group",
+  menuSections,
+  '<div class="menu-group" role="group" aria-labelledby="m-section-1" data-chip-menu-section="families">' +
+    '<div class="group-heading" id="m-section-1">Code</div>',
+);
+assertEqual(
+  "only the raw rows are set off by a separator",
+  menuSections.split('class="menu-separator"').length - 1,
+  1,
+);
+
+// ── Menu height ────────────────────────────────────────────────
+// Up to 16 rows of the rendered row, and never past the window's bottom edge less 8 px.
+// The numbers are the Files type menu's, measured in Chrome: 29 px rows, a 10 px frame,
+// and the panel's top at 105 px under the filter row.
+const menuGeometry = { rowHeight: 29, frame: 10, top: 105 };
+assertEqual(
+  "a tall window holds 16 rows",
+  fc.menuMaxHeight({ ...menuGeometry, windowHeight: 900 }),
+  16 * 29 + 10,
+);
+assertEqual(
+  "a short window holds what fits above its edge",
+  fc.menuMaxHeight({ ...menuGeometry, windowHeight: 420 }),
+  420 - 8 - 105,
+);
+assertEqual(
+  "the cap follows the rendered row",
+  fc.menuMaxHeight({ ...menuGeometry, rowHeight: 24, windowHeight: 900 }),
+  16 * 24 + 10,
+);
+assertEqual(
+  "a menu with no room still shows one row",
+  fc.menuMaxHeight({ ...menuGeometry, windowHeight: 120 }),
+  29 + 10,
+);
+
+// Fitting reads that geometry from the rendered panel and sets max-height on every open
+// menu; bind fits them again when the window resizes, and its disposer stops.
+{
+  const viewListeners = {};
+  const view = {
+    innerHeight: 420,
+    getComputedStyle: () => ({
+      paddingTop: "4px",
+      paddingBottom: "4px",
+      borderTopWidth: "1px",
+      borderBottomWidth: "1px",
+    }),
+    addEventListener(type, listener) {
+      viewListeners[type] = listener;
+    },
+    removeEventListener(type, listener) {
+      if (viewListeners[type] === listener) {
+        delete viewListeners[type];
+      }
+    },
+  };
+  const doc = { defaultView: view, addEventListener() {}, removeEventListener() {} };
+  const panel = {
+    ownerDocument: doc,
+    style: {},
+    getClientRects: () => [{}],
+    getBoundingClientRect: () => ({ top: 105 }),
+    querySelector: (selector) =>
+      selector === ".menu-item" ? { getBoundingClientRect: () => ({ height: 29 }) } : null,
+  };
+  const empty = {
+    ownerDocument: doc,
+    style: {},
+    getClientRects: () => [{}],
+    querySelector: () => null,
+  };
+  // Under a hidden toolbar a panel has rows but no box: every rect reads zero.
+  const hidden = {
+    ownerDocument: doc,
+    style: {},
+    getClientRects: () => [],
+    getBoundingClientRect: () => ({ top: 0 }),
+    querySelector: (selector) =>
+      selector === ".menu-item" ? { getBoundingClientRect: () => ({ height: 0 }) } : null,
+  };
+  let asked = "";
+  const root = {
+    ownerDocument: doc,
+    addEventListener() {},
+    removeEventListener() {},
+    querySelectorAll(selector) {
+      asked = selector;
+      return [panel, empty, hidden];
+    },
+  };
+  fc.fitOpenMenus(root);
+  assertEqual(
+    "fitting looks only at open menus",
+    asked,
+    '.chip-menu[aria-expanded="true"] > .chip-menu-panel',
+  );
+  assertEqual("an open menu is fitted to the room", panel.style.maxHeight, "307px");
+  assertEqual("a menu with no rows is left alone", empty.style.maxHeight, undefined);
+  assertEqual("a menu with no box is not fitted to nothing", hidden.style.maxHeight, undefined);
+  const dispose = fc.bind(root, {});
+  view.innerHeight = 900;
+  viewListeners.resize?.();
+  assertEqual("a resize fits the open menu again", panel.style.maxHeight, "474px");
+  dispose();
+  assertEqual("the disposer stops listening for resizes", viewListeners.resize, undefined);
+
+  // A click on a trigger: the consumer renders the menu open, then bind fits it, so a
+  // consumer that only binds still gets a fitted menu.
+  const rootListeners = {};
+  const order = [];
+  const toggle = {
+    getAttribute: (name) => (name === "data-chip-menu-toggle" ? "types" : null),
+    closest: (selector) => (selector === ".chip-menu" ? { getAttribute: () => "false" } : null),
+  };
+  const clicked = {
+    ownerDocument: doc,
+    addEventListener(type, listener) {
+      rootListeners[type] = listener;
+    },
+    removeEventListener() {},
+    contains: () => true,
+    querySelectorAll() {
+      order.push("fit");
+      return [];
+    },
+    // No menu here opened, so there is no row to focus (the focus path is checked below,
+    // on a rendered bar).
+    querySelector: () => null,
+  };
+  fc.bind(clicked, {
+    onMenuToggle(key, open) {
+      order.push(`toggle ${key} ${open}`);
+    },
+  });
+  rootListeners.click({
+    target: { closest: (selector) => (selector === "[data-chip-menu-toggle]" ? toggle : null) },
+  });
+  assertEqual("bind fits a menu after its consumer opens it", order, ["toggle types true", "fit"]);
+}
 assertContains("an exact family names the trigger", menuSections, ">JavaScript<");
 
 const emptyPreset = fc.menuGroupHtml({
@@ -498,6 +643,47 @@ assertMissing("group labels are escaped", hostile, '"><img>');
       chips = [chip("files"), chip("size")];
     },
   });
+  // A key held with Command, Control, or Option is the browser's: Command-Left and
+  // Alt-Left go back, and Command-Up scrolls to the top. A segmented group's arrows and a
+  // menu's rows move only unmodified.
+  const menuRow = {
+    focus() {
+      focused = menuRow;
+    },
+    closest: (selector) =>
+      selector === ".chip-menu-panel"
+        ? { querySelectorAll: () => [menuRow, menuRow] }
+        : selector === ".chip-menu-item"
+          ? menuRow
+          : null,
+  };
+  const swallowed = [];
+  for (const [target, keys] of [
+    [chips[0], ["ArrowLeft", "ArrowRight", "Home", "End", "r"]],
+    [menuRow, ["ArrowDown", "ArrowUp", "Home", "End", "r"]],
+  ]) {
+    for (const key of keys) {
+      for (const modifier of ["metaKey", "ctrlKey", "altKey"]) {
+        let prevented = false;
+        listeners.keydown({
+          key,
+          [modifier]: true,
+          target,
+          preventDefault() {
+            prevented = true;
+          },
+        });
+        if (prevented) {
+          swallowed.push(`${target === menuRow ? "menu" : "group"} ${modifier} ${key}`);
+        }
+      }
+    }
+  }
+  if (swallowed.length > 0 || chosen.length > 0) {
+    failures.push(
+      `a modified key is the browser's: ${swallowed.join(", ")}; chose ${chosen.join()}`,
+    );
+  }
   listeners.keydown({ key: "ArrowRight", target: chips[0], preventDefault() {} });
   if (chosen.join() !== "size") {
     failures.push(`an arrow key selects: ${chosen.join()}`);
@@ -505,6 +691,411 @@ assertMissing("group labels are escaped", hostile, '"><img>');
   if (focused !== chips[1]) {
     failures.push("focus follows the chosen value across a repaint");
   }
+}
+
+// ── A menu's row letters ───────────────────────────────────────
+// A dropdown row carries the letter its option declares, and the any-row the menu's
+// `anyKey`; a letter is one letter a-z, lowercase, and anything else is no letter. A
+// row's letter runs `activateMenuRow`, which is what a click on the row runs, through the
+// handlers of the container `bind` wired around it (docs/design-system.md, "Keys in a
+// Menu").
+{
+  const { FakeDocument } = require("./key-reveal-dom.js");
+  const keyed = fc.menuGroupHtml({
+    key: "group",
+    select: "one",
+    label: "Group by",
+    options: [
+      { value: "age", label: "By age", key: "A" },
+      { value: "type", label: "By file type", key: "t" },
+      { value: "odd", label: "Odd", key: "tt" },
+    ],
+    value: "none",
+    anyLabel: "No grouping",
+    anyKey: "n",
+    anyValue: "none",
+    menuId: "filter-group-menu",
+  });
+  assertContains("the any-row carries its letter", keyed, 'data-chip-any data-menu-key="n"');
+  assertContains(
+    "a row carries its letter, lowercase",
+    keyed,
+    'data-chip-value="age" data-menu-key="a"',
+  );
+  assertContains("each row has its own", keyed, 'data-chip-value="type" data-menu-key="t"');
+  assertMissing("a key that is not one letter is no letter", keyed, 'data-menu-key="tt"');
+  assertMissing("a menu with no letters renders none", menuClosed, "data-menu-key");
+
+  const doc = new FakeDocument();
+  const root = doc.createElement("div");
+  doc.body.append(root);
+  root.innerHTML = keyed;
+  const picked = [];
+  const unbind = fc.bind(root, {
+    onMenuPick(key, value) {
+      picked.push(`${key}:${value}`);
+    },
+  });
+  const row = (selector) => root.querySelector(`#filter-group-menu ${selector}`);
+  assertEqual(
+    "a row's letter runs the row's click path",
+    [
+      fc.activateMenuRow(row('[data-chip-value="type"]')),
+      fc.activateMenuRow(row("[data-chip-any]")),
+    ],
+    [true, true],
+  );
+  assertEqual("and the consumer hears the picks a click makes", picked, [
+    "group:type",
+    "group:null",
+  ]);
+  row('[data-chip-value="age"]').click();
+  assertEqual("a click runs the same path", picked.at(-1), "group:age");
+  assertEqual(
+    "a trigger is not a row",
+    fc.activateMenuRow(root.querySelector('[data-chip-menu-toggle="group"]')),
+    false,
+  );
+  unbind();
+  assertEqual(
+    "once unbound, no container holds the row",
+    fc.activateMenuRow(row('[data-chip-value="type"]')),
+    false,
+  );
+  assertEqual("and nothing is picked", picked.length, 3);
+}
+
+// ── Focus in a dropdown ─────────────────────────────────────────
+// One path for every way a dropdown opens and closes (docs/design-system.md, "Keys in a
+// Menu"): opening focuses its checked row or else its first; Escape, a second click, and
+// a choice that closes it give focus back to the trigger; a pick or a rebuild while a row
+// has focus keeps it there; and focus outside the bar is never taken. The consumer here
+// renders from its own state on every change, as the Files filter bar does.
+{
+  const { FakeDocument, keyEvent } = require("./key-reveal-dom.js");
+  const doc = new FakeDocument();
+  const root = doc.createElement("div");
+  const outside = doc.createElement("button");
+  doc.body.append(root, outside);
+  const state = { open: null, group: "age", types: [] };
+  const render = () => {
+    const restore = fc.keepFocus(root);
+    root.innerHTML =
+      fc.menuGroupHtml({
+        key: "group",
+        select: "one",
+        label: "Group by",
+        options: [
+          { value: "age", label: "By age", key: "a" },
+          { value: "type", label: "By file type", key: "t" },
+        ],
+        value: state.group,
+        anyLabel: "No grouping",
+        anyKey: "n",
+        anyValue: "none",
+        open: state.open === "group",
+        menuId: "filter-group-menu",
+      }) +
+      fc.menuGroupHtml({
+        key: "types",
+        label: "File type",
+        options: [
+          { value: ".md", label: ".md" },
+          { value: ".py", label: ".py" },
+        ],
+        value: state.types,
+        anyLabel: "Any type",
+        open: state.open === "types",
+        menuId: "filter-type-menu",
+      });
+    restore();
+  };
+  render();
+  // The rows the keys move focus to, as the consumer hears them (onMenuFocus).
+  const moves = [];
+  fc.bind(root, {
+    onMenuToggle(key, open) {
+      state.open = open ? key : null;
+      render();
+    },
+    onMenuFocus(key, value) {
+      moves.push(`${key}:${value}`);
+    },
+    onMenuPick(key, value) {
+      if (key === "group") {
+        state.group = value ?? "none";
+        state.open = null;
+      } else {
+        state.types = fc.nextSelection("many", state.types, value) || [];
+      }
+      render();
+    },
+  });
+  const trigger = (key) => root.querySelector(`[data-chip-menu-toggle="${key}"]`);
+  const focused = () => {
+    const active = doc.activeElement;
+    if (active === outside) {
+      return "outside";
+    }
+    if (!active || active === doc.body) {
+      return "body";
+    }
+    if (!active.isConnected) {
+      return "a replaced element";
+    }
+    const key = active.getAttribute("data-chip-menu-toggle");
+    return key ? `${key} trigger` : `${active.querySelector(".menu-item-label").textContent} row`;
+  };
+  const press = (key, init = {}) =>
+    doc.activeElement.dispatchEvent(
+      keyEvent("keydown", key, { target: doc.activeElement, ...init }),
+    );
+  const steps = [];
+  const step = (label, work) => {
+    work();
+    steps.push(`${label}: ${focused()}`);
+  };
+
+  steps.push(`a closed menu takes no focus: ${fc.focusMenu(root, "group")}`);
+  step("a click opens Group by", () => trigger("group").click());
+  step("a second click closes it", () => trigger("group").click());
+  step("↓ on its trigger opens it", () => press("ArrowDown"));
+  step("↓ in it moves a row", () => press("ArrowDown"));
+  step("Option-↓ is the browser's, and moves nothing", () => press("ArrowDown", { altKey: true }));
+  step("↑ moves back", () => press("ArrowUp"));
+  step("Home moves to the first row", () => press("Home"));
+  step("Escape closes it", () => press("Escape"));
+  step("an Escape a surface above took leaves it open", () => {
+    trigger("group").click();
+    press("Escape", { defaultPrevented: true });
+  });
+  step("the next Escape closes it", () => press("Escape"));
+  step("a click opens File type, on its first row with none checked", () =>
+    trigger("types").click(),
+  );
+  step("↓ moves to .md", () => press("ArrowDown"));
+  step("picking .md keeps the menu open and focus on .md", () => doc.activeElement.click());
+  step("a rebuild keeps focus on .md", render);
+  step("Escape closes File type", () => press("Escape"));
+  step("a letter's choice closes Group by", () => {
+    trigger("group").click();
+    fc.activateMenuRow(root.querySelector('#filter-group-menu [data-chip-value="type"]'));
+  });
+  step("a rebuild while focus is outside leaves it there", () => {
+    outside.focus();
+    render();
+  });
+  step("Escape with focus outside the open menu leaves focus outside", () => {
+    trigger("group").click();
+    outside.focus();
+    press("Escape");
+  });
+  assertEqual("focus follows each way a dropdown opens and closes", steps, [
+    "a closed menu takes no focus: null",
+    "a click opens Group by: By age row",
+    "a second click closes it: group trigger",
+    "↓ on its trigger opens it: By age row",
+    "↓ in it moves a row: By file type row",
+    "Option-↓ is the browser's, and moves nothing: By file type row",
+    "↑ moves back: By age row",
+    "Home moves to the first row: No grouping row",
+    "Escape closes it: group trigger",
+    "an Escape a surface above took leaves it open: By age row",
+    "the next Escape closes it: group trigger",
+    "a click opens File type, on its first row with none checked: Any type row",
+    "↓ moves to .md: .md row",
+    "picking .md keeps the menu open and focus on .md: .md row",
+    "a rebuild keeps focus on .md: .md row",
+    "Escape closes File type: types trigger",
+    "a letter's choice closes Group by: group trigger",
+    "a rebuild while focus is outside leaves it there: outside",
+    "Escape with focus outside the open menu leaves focus outside: outside",
+  ]);
+  assertEqual(
+    "the picks reached the consumer",
+    [state.group, state.types, state.open],
+    ["type", [".md"], null],
+  );
+  // A key that moves focus to a row reports it, the any-row as null; opening a menu onto
+  // its checked row, a chord, and a click report nothing.
+  assertEqual("each row a key moved focus to reached the consumer", moves, [
+    "group:type",
+    "group:age",
+    "group:null",
+    "types:.md",
+  ]);
+}
+
+// ── A segmented group wider than its line ──────────────────────
+// In a navigation toolbar a joined group that its line cannot hold takes the cluster
+// layout. Whether it fits is pure; the widths it is asked about are layout, measured in
+// Chrome (tests/test_github_pulls_stacks_chrome.py).
+
+assertEqual(
+  "a joined group fits a line exactly its width",
+  fc.joinedGroupFits({ joined: 193, room: 193 }),
+  true,
+);
+assertEqual(
+  "a joined group a 64th of a pixel wider than its line does not fit",
+  fc.joinedGroupFits({ joined: 193.015625, room: 193 }),
+  false,
+);
+
+// Bound in a navigation toolbar, the groups are fitted at once, on a change to the row's
+// text before the browser paints it, and on a change of size in the next frame, never in
+// the ResizeObserver's own callback. The disposer takes the observers and any waiting
+// frame down, and nothing fires after it.
+{
+  const log = [];
+  /** @type {{resize: any, mutation: any}} */
+  const observers = { resize: null, mutation: null };
+  const frames = new Map();
+  let nextFrame = 1;
+  class FakeResizeObserver {
+    constructor(callback) {
+      this.callback = callback;
+      this.targets = new Set();
+      observers.resize = this;
+    }
+    observe(target) {
+      this.targets.add(target);
+    }
+    unobserve(target) {
+      this.targets.delete(target);
+    }
+    disconnect() {
+      this.targets.clear();
+      log.push("resize observer disconnected");
+    }
+  }
+  class FakeMutationObserver {
+    constructor(callback) {
+      this.callback = callback;
+      this.watching = false;
+      /** @type {Array<[unknown, unknown]>} */
+      this.targets = [];
+      observers.mutation = this;
+    }
+    observe(target, options) {
+      this.watching = true;
+      this.targets.push([target, options]);
+    }
+    takeRecords() {
+      return [];
+    }
+    disconnect() {
+      this.watching = false;
+      log.push("mutation observer disconnected");
+    }
+  }
+  const view = {
+    ResizeObserver: FakeResizeObserver,
+    MutationObserver: FakeMutationObserver,
+    requestAnimationFrame(callback) {
+      const id = nextFrame;
+      nextFrame += 1;
+      frames.set(id, callback);
+      return id;
+    },
+    cancelAnimationFrame(id) {
+      if (frames.delete(id)) {
+        log.push("frame cancelled");
+      }
+    },
+    addEventListener() {},
+    removeEventListener() {},
+  };
+  const doc = { defaultView: view, addEventListener() {}, removeEventListener() {} };
+  let fitted = 0;
+  const rootIn = (toolbar) => ({
+    ownerDocument: doc,
+    addEventListener() {},
+    removeEventListener() {},
+    closest: (selector) => (selector === "[data-nav-toolbar]" ? toolbar : null),
+    querySelectorAll(selector) {
+      if (selector === '.chip-group[data-layout="joined"]') {
+        fitted += 1;
+      }
+      return [];
+    },
+  });
+  const runFrames = () => {
+    const waiting = [...frames.values()];
+    frames.clear();
+    for (const callback of waiting) {
+      callback();
+    }
+  };
+
+  fc.bind(rootIn(null), {})();
+  assertEqual(
+    "outside a navigation toolbar, nothing is observed or fitted",
+    [observers, fitted],
+    [{ resize: null, mutation: null }, 0],
+  );
+
+  const toolbar = {};
+  const root = rootIn(toolbar);
+  const dispose = fc.bind(root, {});
+  assertEqual("bound in a toolbar, the groups are fitted at once", fitted, 1);
+  assertEqual("the row is watched for its size", observers.resize.targets.has(root), true);
+  assertEqual("and for changes to its text", observers.mutation.watching, true);
+  assertEqual(
+    "and its toolbar for being shown, so a stale layout is fitted before it paints",
+    observers.mutation.targets.map(([target, options]) => [
+      target === root ? "row" : target === toolbar ? "toolbar" : "other",
+      options,
+    ]),
+    [
+      ["row", { childList: true, characterData: true, subtree: true }],
+      ["toolbar", { attributes: true, attributeFilter: ["hidden"] }],
+    ],
+  );
+  observers.resize.callback([]);
+  observers.resize.callback([]);
+  assertEqual(
+    "a change of size waits for one next frame, not the observer's own callback",
+    [fitted, frames.size],
+    [1, 1],
+  );
+  runFrames();
+  assertEqual("the frame fits the groups", fitted, 2);
+  observers.mutation.callback([]);
+  assertEqual("a change to the row's text is fitted before the browser paints it", fitted, 3);
+  observers.resize.callback([]);
+  dispose();
+  assertEqual("the disposer takes the observers and the waiting frame down", log, [
+    "resize observer disconnected",
+    "mutation observer disconnected",
+    "frame cancelled",
+  ]);
+  observers.resize.callback([]);
+  observers.mutation.callback([]);
+  runFrames();
+  assertEqual("after the disposer nothing fires", [fitted, frames.size], [3, 0]);
+
+  // A row that is its own toolbar, as the Files bar is, is one node to observe, and a
+  // second `observe` of a node replaces the first's options: it takes both in one.
+  const own = rootIn(null);
+  own.closest = (selector) => (selector === "[data-nav-toolbar]" ? own : null);
+  fc.bind(own, {})();
+  assertEqual(
+    "a row that is its own toolbar is watched for its text and for being shown at once",
+    observers.mutation.targets.map(([target, options]) => [target === own, options]),
+    [
+      [
+        true,
+        {
+          childList: true,
+          characterData: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ["hidden"],
+        },
+      ],
+    ],
+  );
 }
 
 if (failures.length > 0) {

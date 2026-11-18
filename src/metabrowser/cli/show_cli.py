@@ -99,11 +99,18 @@ def _describe_views(views: Any) -> str:
     for view in views:
         if not isinstance(view, dict):
             continue
-        label = str(view.get("id", "?"))
-        if view.get("default"):
-            label += " (default)"
-        rendered.append(label)
+        rendered.append(_describe_view(view))
     return ", ".join(rendered) if rendered else "none"
+
+
+def _describe_view(view: Mapping[str, Any]) -> str:
+    """Name a view with its default mark and its key, as Help writes it: uppercase."""
+    notes = ["default"] if view.get("default") else []
+    key = view.get("key")
+    if isinstance(key, str):
+        notes.append(f"key {key.upper()}")
+    label = str(view.get("id", "?"))
+    return f"{label} ({', '.join(notes)})" if notes else label
 
 
 def _describe_model(payload: dict[str, Any]) -> str:
@@ -588,8 +595,14 @@ def run_show(
     untrusted: bool = False,
     no_active_content: bool = False,
     allow_edits: bool = False,
+    revision: bool = False,
 ) -> None:
-    """Report route, kind, views, and model summary for one filesystem selection."""
+    """Report route, kind, views, and model summary for one filesystem selection.
+
+    *revision* says the folder opens on a branch or tag of its checkout (``--ref``), so
+    the selection is a path in that revision, named as a mirror's is, and not a file on
+    disk.
+    """
 
     resolved = root.expanduser().resolve()
     if not resolved.is_dir():
@@ -619,6 +632,6 @@ def run_show(
             fmt=fmt,
             index_timeout_s=index_timeout_s,
             normalize_root=resolved,
-            filesystem_root=resolved,
+            filesystem_root=None if revision else resolved,
         )
     )

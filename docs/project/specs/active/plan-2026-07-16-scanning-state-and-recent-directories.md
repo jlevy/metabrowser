@@ -1,16 +1,26 @@
 # Feature: Scanning State and Recent Directories
 
-**Date:** 2026-07-16 (last updated 2026-07-17)
+**Date:** 2026-07-16 (last updated 2026-11-18)
 
 **Author:** Metabrowser maintainers
 
-**Status:** Partly implemented; recent-directory items remain planned.
+**Status:** Partly implemented; recent-directory items remain planned (`mb-f42e`).
 
 Inventory lifecycle and coverage, bounded Recent counts, and pending directory
-aggregates are implemented.
-Tree ages represent the newest descendant; the Recent API still returns file leaves,
-with ancestor directories used only for presentation.
+aggregates are implemented, under the
+[inventory provider contract](plan-2026-08-23-pluggable-inventory-engine.md).
+`/api/index/progress` reports scan status, indexed and maximum file counts, truncation,
+and completion. Tree ages represent the newest descendant; the Recent API still returns
+file leaves, with ancestor directories used only for presentation.
 The directory-recency contract and remaining acceptance work below are not complete.
+
+**Not this plan (2026-11-18):** “recent directories” here means recently modified
+directories inside one served root, as the Recent tab and `/api/recent` list them.
+The list of recently opened folders and repositories, which File > Open Recent in the
+macOS app and `metab --recent` show, is a different thing with its own store:
+[Recent Targets](../../architecture/arch-recent-targets.md), planned in the
+[native macOS app plan](plan-2026-11-10-native-macos-app.md#phase-4-recent-targets-the-switcher-and-the-mcp-adapter).
+Nothing in this plan decided or built it.
 
 ## Overview
 

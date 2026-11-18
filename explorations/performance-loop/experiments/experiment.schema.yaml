@@ -38,19 +38,79 @@ properties:
       viewport:
         type: string
         description: Browser viewport the run was measured at, e.g. 1280x900. The tree pages rows against it.
-      cold: 
+      cold:
         type: boolean
         description: Fresh port (empty HTTP cache) and fresh server (scan running).
+      power:
+        type: object
+        additionalProperties: false
+        required: [low_power_mode, source]
+        description: >-
+          The judged power mode: the pair of Low Power Mode (`pmset -g` lowpowermode) and
+          power source, as read before the series' first attempt. The mode decides a
+          series' regime, so a pair read in another mode judges nothing. Older records keep
+          this in host_system.
+        properties:
+          low_power_mode: {type: integer, enum: [0, 1]}
+          source:
+            type: string
+            enum: [AC Power, Battery Power]
+            description: >-
+              The source exactly as `pmset -g batt` names it after "Now drawing from", which
+              is what paced-series.sh records in src_start and src_end.
   method:
     type: object
     additionalProperties: false
     required: [runs_per_condition, control, candidate]
+    dependentRequired:
+      analysis: [protocol]
     properties:
       runs_per_condition: {type: integer, minimum: 1}
       interleaved: {type: boolean}
       control: {type: string}
       candidate: {type: string}
       record: {type: string, description: Path to the recorded runs.}
+      protocol:
+        type: object
+        additionalProperties: false
+        required: [path, sha256]
+        description: >-
+          The round's committed protocol (pre-registration, criteria, and amendments): a path
+          beside the record, and the sha256 of that file as committed with the record. A
+          recorded round's protocol is not edited again; a later correction goes in the
+          record. tests/test_experiment_storage.py checks both.
+        properties:
+          path: {type: string}
+          sha256: {type: string, pattern: "^[0-9a-f]{64}$"}
+      analysis:
+        type: array
+        minItems: 1
+        description: >-
+          The exclusion and analysis scripts the protocol registered by sha256, committed
+          before the first result was read. Each entry gives a path under experiments/ and
+          the sha256 of that file as committed with the record, which must be the hash
+          method.protocol's file registers. A script changed after registration says so: it
+          gives the protocol's hash as registered_sha256 and the reason as deviation, and the
+          record has a heading containing "Deviation" that rules on it.
+          tests/test_experiment_storage.py checks all of this.
+        items:
+          type: object
+          additionalProperties: false
+          required: [path, sha256]
+          dependentRequired:
+            registered_sha256: [deviation]
+            deviation: [registered_sha256]
+          properties:
+            path: {type: string}
+            sha256: {type: string, pattern: "^[0-9a-f]{64}$"}
+            registered_sha256:
+              type: string
+              pattern: "^[0-9a-f]{64}$"
+              description: The hash the protocol registered, when the committed file differs.
+            deviation:
+              type: string
+              minLength: 1
+              description: Why the committed file differs from the one the protocol registered.
       bytecode:
         type: string
         enum: [cached, uncached]

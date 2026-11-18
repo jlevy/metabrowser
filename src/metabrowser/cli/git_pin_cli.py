@@ -58,9 +58,9 @@ from metabrowser.cli.selection import (
     resolve_in_mirror,
     selection_banner,
     selection_lines,
-    selection_view_href,
     unresolved_message,
 )
+from metabrowser.cli.selection_href import selection_view_href
 from metabrowser.cli.serve import serve_until_interrupted, stop_on_interrupt
 from metabrowser.cli.show_cli import git_wire_candidates
 from metabrowser.dotenv import load_dotenv_chain
@@ -485,7 +485,9 @@ async def _prove_servable(
         if path:
             view_href = await _selection_href(subject, path)
         elif source.selection is not None and selected.resolved is not None:
-            view_href = selection_view_href(source.selection, selected.resolved)
+            view_href = selection_view_href(
+                source.selection, selected.resolved.path, commit=selected.resolved.commit
+            )
         else:
             view_href = VIEW_ROUTE_PREFIX
         return _ServablePin(selected=selected, view_href=view_href)
@@ -524,6 +526,7 @@ def run_serve_pin(
     port: int,
     host: str = "127.0.0.1",
     no_open: bool = False,
+    local_client: bool = False,
     plugins_dir: list[Path] | None = None,
     log_level: str = "",
     no_active_content: bool = False,
@@ -562,7 +565,9 @@ def run_serve_pin(
         host=host,
         port=port,
         no_open=no_open,
+        local_client=local_client,
         attach=functools.partial(_serve_selected, selected),
+        mode="mirror",
         banner=(
             f"Revision: {revision}",
             *selection_banner(selected.selection, selected.resolved, pull=selected.pull),

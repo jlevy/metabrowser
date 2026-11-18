@@ -137,6 +137,10 @@ def test_the_session_plays_the_recorded_inert_render() -> None:
         "text": "Install",
     }
     assert transcript["scrolled"]["active"] == "#user-content-constructor"
+    # A heading with no layout box is stepped past, as KPress's toc.js does.
+    assert transcript["hiddenHeading"]["active"] == "#user-content-usage-1"
+    assert transcript["shownAgain"] == "#user-content-constructor"
+    assert transcript["hiddenRun"] == "#user-content-usage-1"
     # The app's tooltip ignores everything inside a rendered document's host, so a data-tip-text
     # here would show nothing.
     assert transcript["toggleNamed"] == {
@@ -149,4 +153,18 @@ def test_the_session_plays_the_recorded_inert_render() -> None:
     ]
     assert transcript["entryClicked"]["opened"] == ["user-content-troubleshooting"]
     assert transcript["modifiedClick"]["defaultPrevented"] is False
+    # The narrow toggle waits for the reader to reach a document below other panels.
+    assert {name: step["toggleShown"] for name, step in transcript["belowOtherPanels"].items()} == {
+        "pastThreshold": False,
+        "justAbove": False,
+        "reached": True,
+        "backAbove": False,
+    }
+    # It measures the element the render is mounted in, as a trusted render's does: once a
+    # collapsed panel leaves that element no height, the toggle goes, although the article
+    # clipped inside it still spans the pane's top.
+    collapsed = transcript["collapsedPanel"]
+    assert collapsed["collapsed"]["articleSpansPaneTop"] is True
+    assert collapsed["collapsed"]["toggleShown"] is False
+    assert collapsed["expandedAgain"]["toggleShown"] is True
     assert transcript["disposed"]["listeners"] == 0

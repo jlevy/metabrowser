@@ -1,23 +1,11 @@
 import ShellCore
 import SwiftUI
 
-/// What a folder window shows in place of the page: the server is starting, it failed
-/// and here is why, it waits for its tab to be selected or for a `metab` the app can run,
-/// or a discarded tab reloads.
+/// What a folder window shows in place of the page (`WindowPhase`).
 @Observable final class WindowStatus {
-    enum Phase: Equatable {
-        case starting
-        case failed(ServerFailure)
-        /// A restored folder in a protected location, whose server starts only once its tab
-        /// is selected, so that a launch raises no privacy prompt for it.
-        case waitingForSelection
-        /// A start waiting for a `metab` the app accepts.
-        case waitingForRuntime
-        /// A tab that gave up its page loads it again from the running server.
-        case reloading
-    }
-
-    var phase: Phase = .starting
+    var phase: WindowPhase = .starting
+    /// While starting: the start waits for another repository's, behind their launch gate.
+    var waitsForAnotherStart = false
 }
 
 struct StatusView: View {
@@ -33,7 +21,7 @@ struct StatusView: View {
             Color(nsColor: .windowBackgroundColor)
             switch status.phase {
             case .starting:
-                StartingView(folderName: folderName, folderPath: folderPath)
+                StartingView(folderName: folderName, folderPath: folderPath, waits: status.waitsForAnotherStart)
             case .failed(let failure):
                 FailureView(
                     folderName: folderName, failure: failure, retry: retry, revealLogs: revealLogs,
@@ -62,11 +50,16 @@ struct StatusView: View {
 private struct StartingView: View {
     let folderName: String
     let folderPath: String
+    let waits: Bool
 
     var body: some View {
         VStack(spacing: 12) {
             DelayedSpinner()
             Text("Starting Metabrowser for \(folderName)…").font(.headline)
+            if waits {
+                Text("It starts once another repository has finished starting, which a first clone can take minutes to do.")
+                    .multilineTextAlignment(.center)
+            }
             Text(folderPath).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
         }
         .padding(32)

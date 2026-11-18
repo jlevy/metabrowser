@@ -1,14 +1,18 @@
 # Feature: Opt-In Trusted-Local File Editing
 
-**Date:** 2026-07-16 (last updated 2026-07-17)
+**Date:** 2026-07-16 (last updated 2026-11-14)
 
 **Author:** Metabrowser maintainers
 
 **Status:** Mutation workflow planned; startup capability gate implemented.
 
-`--allow-edits` and `METAB_ALLOW_EDITS` already publish the mutations capability.
-No built-in write route consumes it.
-Rename, move, trash, their safety checks, and the editing UI below remain future work.
+`--allow-edits` and `METAB_ALLOW_EDITS` already publish the mutations capability
+(`capabilities.py`, #209). No built-in write route consumes it.
+Rename, move, trash, their safety checks, and the editing UI below remain future work
+(`mb-wcb0`). The first slice, regular-file rename and quarantine trash through
+`POST /api/mutate` with a nav-tree context menu, is specified in
+[menu primitives and gated file actions](plan-2026-08-06-menu-primitives-and-file-actions.md)
+Phase 2 (`mb-0d6a`).
 
 ## Overview
 
@@ -92,8 +96,8 @@ No request accepts a client-supplied absolute path.
 
 Ship rename, move, and trash behind explicit startup authorization.
 Keep text editing and plugin-defined mutation disabled until the maintained
-[editor plugin editing contract](../../architecture/arch-editor-plugin-editing-contract.md)
-has a tested host implementation.
+[editor plugin editing contract](plan-2026-07-17-editor-plugin-editing-contract.md) has
+a tested host implementation.
 
 ## Open Questions
 
@@ -114,7 +118,7 @@ has a tested host implementation.
 ## References
 
 - [Core architecture](../../../architecture.md)
-- [Editor plugin editing contract](../../architecture/arch-editor-plugin-editing-contract.md)
+- [Editor plugin editing contract](plan-2026-07-17-editor-plugin-editing-contract.md)
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

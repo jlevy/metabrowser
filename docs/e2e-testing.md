@@ -57,8 +57,8 @@ identifies the responsible transform.
 `cli-ui-markdown-scrollspy.tryscript.md` applies the same pattern to rendered Markdown
 in one composed command.
 It enters through the production rendered-Markdown mount, which runs the link enhancer
-over authored same-document TOC anchors before passing them to the installed KPress TOC
-through the production observation fallback.
+over authored same-document TOC anchors before passing them to the installed KPress TOC,
+in a runtime without `IntersectionObserver` so KPress’s own scroll fallback runs.
 The transcript records the delegated target and active section through a long document,
 including frame coalescing and lifecycle disposal.
 
@@ -70,21 +70,24 @@ fresh sandbox and diffs the result, so a transcript is both a test and a readabl
 of what the command does.
 
 This is the layer that proves **routes**, because `metab --api <route>` issues a real
-request through the real application — the same middleware, routing, and serialization
+request through the real application: the same middleware, routing, and serialization
 the browser reaches.
-`--walk` and `--diff` call their libraries directly, so they prove the model and not the
-wire; a route could accept a parameter the library never sees and those transcripts
-would stay green.
+Fixtures pin mtimes with `touch -t` and Git identity and dates, so commit revisions are
+byte-identical on every machine and transcripts assert real values.
+Regenerate with `make golden-update` only to record an intended change, then read the
+diff line by line.
+[CLI and Functional UI Parity](development.md#cli-and-functional-ui-parity) gives the
+reasons: why `--walk` and `--diff` prove a model and not the wire, what counts as
+evidence for a route, and why only what no fixture can pin is normalized.
 
-Fixtures pin everything they can so transcripts assert real values rather than
-wildcards: mtimes with `touch -t`, and Git identity and dates so commit revisions are
-byte-identical on every machine.
-Only what no fixture can pin is normalized, and `metabrowser/normalize.py` is the single
-table saying what and why.
-
-Regenerate with `make golden-update` **only to record an intended change**, then read
-the diff line by line before committing it.
-A regenerated transcript nobody read turns a regression into a committed expectation.
+tryscript runs its files one after another, so `make test` runs them through
+`devtools/run_goldens.py`, `GOLDEN_JOBS` files at a time; the `Makefile` holds the value
+and the measurement that chose it.
+The runner prints each file’s output whole when the file finishes, then a `golden:` line
+with its verdict and time, and fails unless every file the pattern matches printed its
+own `PASS` verdict. A file that printed no verdict fails the run, and so does a pattern
+that matches nothing.
+`make test GOLDEN_JOBS=1` runs them one at a time.
 
 ### One Harness and One Update Command
 
@@ -130,7 +133,8 @@ transcript from passing while wrong:
   The limit, the measurement it was chosen from, and the files excepted until a named
   bead shrinks them are beside `MAX_GOLDEN_LINES`. An excepted file has its line count
   as a ceiling, so it can shrink and cannot grow.
-  `python -m devtools.check_goldens --report` prints the current distribution.
+  `uv --config-file uv.toml run --frozen python -m devtools.check_goldens --report`
+  prints the current distribution.
 
 ### What a Transcript May Replace
 
@@ -160,9 +164,9 @@ Each marker is written after comparing, so what stopped repeating is printed.
   and the marker’s count changes.
 
 A transcript must not depend on how busy the machine is.
-The server logs a request slower than two seconds to stderr, which a transcript
-captures, so the Make targets run tryscript with `METABROWSER_SLOW_SERVER_MS` set past
-tryscript’s own command timeout.
+The server logs a request slower than `SLOW_OPERATION_LOG_SECONDS` (`settings.py`) to
+stderr, which a transcript captures, so the Make targets run tryscript with
+`METABROWSER_SLOW_SERVER_MS` set past tryscript’s own command timeout.
 Run tryscript through `make test` or `make golden-update`, or set that variable, when
 the machine is loaded.
 
@@ -174,19 +178,9 @@ and CLI. This catches missing package data and source-checkout assumptions.
 
 ## Running Tests
 
-```shell
-# Complete Python suite.
-uv --config-file uv.toml run --frozen pytest
-
-# One module or test.
-uv --config-file uv.toml run --frozen pytest tests/test_plugin_loader.py
-uv --config-file uv.toml run --frozen pytest tests/test_plugin_loader.py::test_classifier_priority_wins
-
-# Full release gate.
-make verify
-```
-
-Node and Git are prerequisites.
+[Everyday Commands](development.md#everyday-commands) lists the commands.
+Node, Git, and jq are prerequisites; jq runs the CI workflow’s `plan` and `ci-ok`
+scripts, which their tests run too.
 The first test that needs one and finds it missing stops the run, with one message that
 names the tool and the way to opt out.
 It does so in CI and locally alike: a run that skipped those tests would pass without
@@ -199,9 +193,16 @@ that need it skip with that reason:
 METABROWSER_ALLOW_MISSING_TOOLS=node uv --config-file uv.toml run --frozen pytest -rs
 ```
 
-The variable takes `node`, `git`, or both separated by a comma.
+The variable takes `node`, `git`, or `jq`, or several of them separated by commas.
 `tests/required_tools.py` is the gate, and a test asks it rather than looking the tool
 up itself; a test in `tests/test_suite_gates.py` fails when one does.
+
+The tryscript goldens need jq too: `tests/golden/cli-skill-recipes.tryscript.md` reads
+the answers of the agent skill’s recipes with it, as an agent does.
+That transcript names it under `requires`, so tryscript stops before it runs any golden
+when jq is missing and names the directories it searched;
+`METABROWSER_ALLOW_MISSING_TOOLS` does not reach tryscript.
+No CI step installs jq: the GitHub-hosted Ubuntu runner image provides it.
 
 ## Test Tiers
 
@@ -211,7 +212,7 @@ Each has one command, one way its tests are selected, and a stated time when it 
 
 | Tier | Command | Selected by | When it runs |
 | --- | --- | --- | --- |
-| Default | `make test` | everything that does not skip | Every pull request in CI, on each supported Python version on Ubuntu; the pre-push hook |
+| Default | `make test` | everything that does not skip | Every pull request in CI, as the [CI Jobs](#ci-jobs) on Ubuntu; the pre-push hook |
 | Admitted Git | `make test-admitted-git` | `ADMITTED_GIT_TESTS` in the `Makefile` | Every pull request in CI, on the lowest admitted Git release and the newest patched one |
 | macOS | `make test-macos` | the `macos_tier` marker | Never in CI. Part of `make test` on a Mac; run it there before a release |
 | Live GitHub | `make test-live-github` | the `live_github` marker | Never in CI. By hand, before a release and after a change to GitHub URL or pull request reading |
@@ -243,10 +244,123 @@ With the tier selected, a live test that skips for any of those fails; it may sk
 for what github.com holds that day.
 Every other test runs with a failing stand-in `gh` first on `PATH`.
 
+### Serial and Chrome Tests
+
+Within the default tier, two markers say what a test needs from the machine it runs on,
+and `tests/suite_tiers.py` holds what each means:
+
+- `chrome`: the test drives headless Chrome.
+  Every test that uses the `chrome_profile` fixture, directly or through another
+  fixture, gets it, and nothing else sets it.
+- `serial`: the test measures wall-clock time and needs the machine to itself.
+  A module sets it by hand, as `pytest.mark.serial(reason=...)` with the measurement
+  that forced it as the reason, the way a module raises its timeout.
+  `tests/test_process_group.py` is one; its one Chrome test is `chrome` as well.
+
+The three `-m` expressions in `TIERS` there, the parallel, serial, and Chrome tiers,
+cover each combination of the two markers once, so they partition the suite whatever is
+marked.
+`--shard=I/N` keeps the Ith of N disjoint parts of what a selection leaves, dealt
+by node ID, so that one tier can be split across machines.
+`--shard-by=file` deals whole files instead, so that a module runs in one part, its
+tests in order; `make test-parallel` passes it, since its files run that way on their
+workers (`tests/suite_tiers.py`). A tier or a shard that selects no test passes, with a
+line that says so; a `-m` that is not one of `TIERS`, or a run that collected nothing,
+still fails when nothing is left.
+
+`make test` runs the default tier as four targets, in this order, and each also runs
+alone, as a CI job can call it:
+
+| Target | Runs | How |
+| --- | --- | --- |
+| `make test-parallel` | every test in neither marker’s tier | under pytest-xdist, `PYTEST_WORKERS` workers, each test file on one worker, its tests in order |
+| `make test-serial` | the tests marked `serial` and not `chrome` | one at a time, after the parallel tier, so never beside its workers |
+| `make test-chrome` | the tests marked `chrome` | one at a time, after the serial tier |
+| `make test-goldens` | `tests/golden/*.tryscript.md` | `devtools/run_goldens.py`, `GOLDEN_JOBS` files at a time |
+
+A run that selects a `chrome` test starts Chrome once per pytest process (each xdist
+worker) and closes it before the first test, under a bound of its own, because a CI
+runner’s first Chrome start is cold and a start cut off before it finishes leaves the
+next one cold too. It writes how the warm-up went to the terminal at once.
+`tests/chrome_starts.py` has the measurements and the bound, `WARM_UP_BOUND_S`. Each
+test’s start then has `START_BOUND_MS` (`tests/dom/chrome-session.mjs`); a start that
+fails is logged with the end of Chrome’s stderr, and one whose Chrome exited is made
+again, up to `START_ATTEMPTS` tries.
+The run’s terminal summary prints a `chrome starts:` line for every start made through
+`tests/dom/chrome-session.mjs`: how many, the slowest, and each that failed, so a run
+that a second start kept green still shows it.
+
+`PYTEST_WORKERS` defaults to one worker per logical processor, and a shared or loaded
+machine lowers it: `make test PYTEST_WORKERS=2`. `make test-chrome SHARD=2/4` runs the
+second of four parts of a tier, and `SHARD` works with each pytest target.
+`make test-admitted-git` runs its list under pytest-xdist too.
+The `Makefile` documents each variable beside its default.
+
+`tests/suite_gates.py` holds each marker to its meaning.
+A test fails when:
+
+- it asks for Chrome through `require_chrome` and is not `chrome`;
+- it is marked `chrome` and does not use `chrome_profile`;
+- it is marked `serial` without a reason;
+- it is `serial` or `chrome` in a module that `ADMITTED_GIT_TESTS` lists.
+  `make test-admitted-git` runs that list with no marker filter, so a module there that
+  fails beside other tests is fixed, not marked.
+
+The markers are two because the properties are: a test that needs the machine to itself
+says nothing by that about the interpreters it has to pass on.
+
+### CI Jobs
+
+`.github/workflows/ci.yml` runs the default tier’s four targets as separate jobs side by
+side, so a run takes as long as its slowest job rather than their sum.
+[Plan for Fast CI](project/specs/active/plan-2026-11-16-fast-ci.md) is the design and
+says why each check runs where it does.
+
+| Job | Runs | On |
+| --- | --- | --- |
+| `plan` | `devtools/ci_plan.sh`: reads `main`’s state, and decides the Chrome tier’s interpreters and whether `stack-integration` has anything to check | every run; its summary says what it decided and from what |
+| `unit` | `make test-parallel`, in parts by `SHARD` | each supported Python and the free-threaded build |
+| `goldens and serial` | `make test-goldens`, then `make test-serial` | the same interpreters |
+| `chrome` | `make test-chrome`, in parts by `SHARD` | `PR_CHROME_PYTHON` for a pull request while `main` is green; every interpreter for a push to `main`, and for a pull request while `main` is red |
+| `admitted-git` | `make test-admitted-git` | the two admitted Git releases |
+| `stack-integration` | `make lint-check` and the four tiers, on the head merged with `main` | a stacked pull request whose tested commit lacks `main`’s head and whose merge with `main` changes the tree: in practice an informal chain, since a formal GitHub stack’s merge commit already holds `main` |
+| `ci-ok` | `devtools/ci_verdict.sh`: fails unless every other job succeeded, and says why it accepted a skipped `stack-integration` | every run |
+
+`ci-ok` is the one check to require.
+While `main` is red it also writes a `main-red` verdict line, which
+[Git](../AGENTS.md#git) merges by, read from the `ci-ok` job’s own log.
+The `plan` job reads `main`’s state for a pull request to `main` and for any pull
+request whose tested commit contains `main`’s head, a formal stack’s layers among them.
+A newer push to a pull request cancels its running jobs, and a push to `main` is never
+cancelled. No leg cancels its siblings, so “Re-run failed jobs” reruns only the one that
+failed, and the legs that passed stay as evidence.
+
+**Time limits and shards.** Each job’s `timeout-minutes` is about 1.5 times its measured
+90th percentile, with the measurement in a comment beside it.
+A limit that trips means a tier grew by half: split its job further, or make its slowest
+tests cheaper.
+To add a shard, raise `N` in the job’s `SHARD=${{ matrix.shard }}/N`, list
+`1` through `N` in its `shard` matrix, and deal the matching `stack-integration` parts
+the same way.
+`devtools/check_ci.py`, part of `make lint-check`, fails an edit that drops
+a check and still goes green: a sharded job whose shards are not `1` through `N`, a
+fixed `SHARD`, a matrix `include` or `exclude`, a tier or required job no step runs, a
+step or job skipped or allowed to fail, a `make` option or variable on a tier, a `ci-ok`
+step other than `devtools/ci_verdict.sh` on every job’s result, an interpreter list that
+differs from `pyproject.toml`’s classifiers and the free-threaded build, and a lost
+trigger. It also fails a permission, trigger, or expression that widens what a pull
+request can reach. Its docstring lists every rule.
+
+**The nightly soak.** `.github/workflows/nightly.yml` repeats the serial and Chrome
+tiers on the interpreter a pull request draws the Chrome tier on, so that a flake is
+found away from a pull request, then runs `make ci-report` with `--check`
+([Measuring CI](#measuring-ci)). It finds flakes; the runs on each commit of `main` are
+the coverage.
+
 ### Skips
 
 `make test` runs pytest with `-rs`, which prints each skipped test with its reason, and
-with `--durations`, which lists the slowest tests.
+with `--durations` and `--file-durations`, which list the slowest tests and test files.
 In CI it also sets `METABROWSER_STRICT_SKIPS`, and a skip has to belong to an outer tier
 or the test fails:
 
@@ -275,6 +389,10 @@ Strict mode is off on a developer machine, which can add these:
 
 - `needs a Git the acquisition floor admits`, where the installed Git is below the
   floor;
+- `reftable repositories need Git 2.45 or later`, for the reftable cases of
+  `tests/test_git_route_memo.py`, where the installed Git is older; the default CI job’s
+  Git is newer, so CI runs them and strict mode fails them if they skip, and the
+  admitted-git job does not select that module;
 - `the macOS filesystem rejects undecodable byte names`, on a Mac; CI runs that test;
 - `root is never denied by modes`, when the suite runs as root;
 - `symlinks are unavailable`, where the platform or the account cannot create one;
@@ -282,19 +400,92 @@ Strict mode is off on a developer machine, which can add these:
   `could not import 'fcntl'` for the lock and atomic-write modules there;
 - `is not on PATH, and METABROWSER_ALLOW_MISSING_TOOLS allows that`, after the opt-out
   above;
-- `Chrome is not installed`, for the transition recorder’s checks in
-  `tests/test_transitions_instrument.py`, which measure paint and the frame clock in a
-  real headless Chrome; the CI runners have Chrome, so CI runs them.
+- `bind mounts are a Linux mount namespace's`, off Linux, and
+  `no private mount namespace could be made`, on Linux, for
+  `test_a_read_only_bind_mount_over_a_held_directory_is_honored` in
+  `tests/test_cache_permissions.py`, which bind-mounts a directory read-only in a mount
+  namespace of its own.
+  It runs there as root of an unprivileged user namespace where the kernel lets one
+  mount. Otherwise it runs as host root through `sudo -n unshare --mount`, and that runs
+  this project’s interpreter, its startup hooks, and everything it imports as root: a
+  private mount namespace confines mounts, not root.
+  So it takes that route only on a machine thrown away after the run: a GitHub-hosted
+  runner, which GitHub marks with `GITHUB_ACTIONS=true` and
+  `RUNNER_ENVIRONMENT=github-hosted`, or one whose owner sets
+  `METABROWSER_TEST_PRIVILEGED_MOUNT=1`. `sudo -n` never asks for a password.
+  CI’s Ubuntu runners cannot mount from an unprivileged user namespace, so CI runs it as
+  root, and a self-hosted runner without the variable fails it under strict mode;
+- `Chrome is not installed`, for the checks that need a real headless Chrome: the
+  transition recorder’s in `tests/test_transitions_instrument.py`, which measure paint
+  and the frame clock; `tests/test_folder_overview_alignment.py`, which measures where
+  the Folder Overview’s labels start at several window widths; the layout checks in
+  `tests/test_git_commit_summary_chrome.py`, `tests/test_github_pull_header_chrome.py`,
+  `tests/test_github_pull_text_chrome.py`, `tests/test_github_pulls_stacks_chrome.py`,
+  `tests/test_nav_metadata_chrome.py`, `tests/test_page_header_chrome.py`, and
+  `tests/test_staged_fonts_chrome.py`; `tests/test_files_totals_stable_chrome.py`, which
+  records every frame of the Files navigation from the document’s start to settled and
+  holds that nothing in it moves; `tests/test_github_pull_timeline_chrome.py`, which
+  reads a pull request’s Conversation timeline’s type, spacing, and line from the boxes
+  Chrome lays out and the pixels it paints; `tests/test_prose_faces_chrome.py`, which
+  reads the face documents and chrome prose are drawn in under each reading font and
+  font set; `tests/test_raw_profile_cache_chrome.py`, which follows a `/raw` answer
+  Chrome kept under the trusted profile after the folder is served `--untrusted`;
+  `tests/test_inert_render_refusal_chrome.py`, which reads the notice and the source an
+  untrusted document past its render deadline shows in its Document tab and in the
+  folder Overview’s README panel; `tests/test_overview_readme_toc_chrome.py`, which
+  measures a folder Overview’s README table of contents against the same README opened
+  as a file; `tests/test_document_print_chrome.py`, which measures a document’s print
+  button in its card’s corner, that nothing moves when it arrives, the table of contents
+  toggle and rail beside it, a click and Command-P, and print output;
+  `tests/test_diff_markdown_fold_chrome.py`, which measures a rendered Markdown diff’s
+  fold of unchanged blocks closed, open, and under the pointer, and its quote and code
+  against a document’s in the light and the dark theme;
+  `tests/test_checkout_ref_selector_chrome.py`, which serves a checkout with `metab` and
+  switches it between its working tree and its branches and tags from the page, reading
+  each document’s policy and the selector’s panel, and then compares every file under
+  the checkout with what it was; `tests/test_control_chords_chrome.py`, which presses
+  Control-N and Control-P through Chrome’s input under a navigator overridden to name a
+  Mac and then Linux, on every host, and reads that only the Mac’s binds them;
+  `tests/test_overview_legend_hover_chrome.py`, which moves Chrome’s pointer onto a File
+  Overview legend entry and a bar segment and reads which bars and entry are marked,
+  what they compute to, where the tooltip lands, and that nothing moves;
+  `tests/test_treemap_legend_hover_chrome.py`, which moves Chrome’s pointer onto the
+  Treemap’s legend entry and one of its cells and reads which cells, bars, and entry are
+  marked, what they compute to, and that the view does not move; and
+  `tests/test_title_prefix_chrome.py`, which reads a title prefix’s and the rest’s
+  computed weight, face, size, and ink on every title surface.
+  Any other check that calls `require_chrome` in `tests/required_tools.py` skips for the
+  same reason. The CI runners have Chrome, so CI runs them.
+  Each runs its Node script in a process group of its own and stops that whole group,
+  Chrome included, however the run ends, with the group’s leader kept unreaped until
+  then so the group ID cannot pass to another process.
+  Chrome keeps every process it starts for a session in that group, which
+  `tests/test_process_group.py` measures for both ways the tests launch it, so stopping
+  the group is the whole mechanism: nothing outside it is signalled.
+  Afterwards a process still naming the profile is reported, failing the test, and left
+  running; the profile is removed even if that look failed.
+  Each test’s bounds, stops, and teardown together fit under its timeout.
+  `tests/process_group.py` does this, and `tests/test_process_group.py` holds it.
 
 ### Timeouts
 
-A test has 60 seconds, set in `pyproject.toml`. When that timeout fires it ends the
-whole run, not one test, so a bound inside a test must be shorter to do any good: a
-child process’s `timeout`, or a polling deadline, is at most 50 seconds.
-A test that needs longer carries its own `pytest.mark.timeout` with the measurement that
-forced it written beside it.
+A test’s budget is `timeout` in `pyproject.toml`’s pytest options.
+When it fires it ends the whole run, not one test, so a bound inside a test must be
+shorter to do any good: a child process’s `timeout`, or a polling deadline, is at most
+`MAX_INNER_BOUND_S` in `tests/test_suite_gates.py`. A test that needs longer carries its
+own `pytest.mark.timeout` with the measurement that forced it written beside it.
 A test in `tests/test_suite_gates.py` fails on a longer bound in a module that has not
 raised its budget.
+
+### Held Steps
+
+A stub held until the test opens a `threading.Event` or `threading.Semaphore` waits on
+its event loop with `held_until` from `tests/loop_gate.py`, never in a worker thread.
+So does a test’s own coroutine that waits for a signal from work in the pool.
+A wait handed to `asyncio.to_thread` keeps a pool thread for the whole hold, and the
+server’s next step can queue behind it until the bound; `tests/loop_gate.py` says how.
+A test in `tests/test_suite_gates.py` fails on a gate’s `wait` or `acquire` passed to
+`asyncio.to_thread` or `run_in_executor`.
 
 ## Measuring the Suite
 
@@ -317,24 +508,60 @@ make test-report LOG=run.log
 
 - An **area** is the first word of a test module’s name: `tests/test_cache_update.py` is
   in `cache`.
+
 - **Lines** are counted from the files of the tree or commit alone, so they are the same
   on every machine. An image is a file with no lines.
+
 - **Test functions** are the ones pytest collects, read from each module’s syntax tree:
   `test_` functions at module level and `test_` methods of a `Test` class.
   A parametrized function is one function, so this is lower than the number of cases a
   run reports.
-- **Time** is read from a CI job log and belongs to that one run, so quote the run and
-  the job with it. A test file’s time is the gap between the timestamps of consecutive
-  progress lines: pytest ends a file’s line when the next file starts.
-  A golden’s time is the gap before tryscript printed its verdict.
-  A pytest output with no timestamps gives no time per file.
-  A developer machine under load gives other times; compare the CI `test (3.13)` job
-  with itself.
+
+- **Time** is read from a CI job log, or a run’s own output, and belongs to that one
+  run, so quote the run and the job with it.
+  Every pytest session and golden run in the job is read.
+  - A test file’s time is the one the run listed under `--file-durations`
+    (`tests/suite_timing.py`): the sum of its tests’ setup, call, and teardown, which a
+    run under pytest-xdist needs, since its progress lines name no file.
+    The section lists the slowest files and counts every one, so the report gives the
+    count and the total beside the files it names.
+  - A golden’s time is the one on its `golden:` line from `devtools/run_goldens.py`.
+  - A log from before those lines existed is read by its timestamps instead: a file’s
+    time is the gap between consecutive progress lines, and a golden’s the gap before
+    tryscript printed its verdict.
+
+  A developer machine under load gives other times; compare a CI job with itself.
+
 - **Skips** are the cases `-rs` listed in the log, counted by reason.
   [Skips](#skips) says which reason belongs to which tier.
 
-`python -m devtools.check_goldens --report` gives the size distribution of the goldens
-and recordings against their review budget.
+`uv --config-file uv.toml run --frozen python -m devtools.check_goldens --report` gives
+the size distribution of the goldens and recordings against their review budget.
+
+### Measuring CI
+
+`make ci-report` takes the same kind of numbers for CI itself, from the run data `gh`
+reads: each job’s median and 90th percentile, the push to green of each kind of run, and
+the runs that needed another attempt.
+`devtools/ci_report.py` says how each is taken.
+
+```shell
+# The newest runs of ci.yml.
+make ci-report
+
+# More runs, on main only, with each job's steps, keeping the data it read.
+make ci-report CI_REPORT_FLAGS="--runs 300 --branch main --steps --save attic/ci-runs"
+
+# The kept data again, without the network.
+make ci-report CI_REPORT_FLAGS="--from attic/ci-runs"
+```
+
+With `--check` it fails when a job’s 90th percentile passes `CHECK_FRACTION` of the
+`timeout-minutes` the workflow gives that job, before the limit itself trips.
+`--containing` keeps only the runs whose head contains a commit, and the nightly soak
+runs `--check` over `main`’s push runs since `ci.yml` last changed, since an older run
+may have done other work under a job’s name.
+Quote the runs a number came from, as for a suite run.
 
 ## Adding Coverage
 
@@ -355,9 +582,8 @@ a listed functional aspect lacks the command-line evidence it claims.
 A data aspect must run through `metab`; an interaction aspect must name an executable
 browserless session; only paint or platform behavior may carry a specific browser-only
 exemption. See [CLI and functional UI parity](../AGENTS.md#cli-and-functional-ui-parity)
-for the rule and
-[Views, Models, and Routes](project/architecture/arch-views-models-routes.md) for the
-table it checks.
+for the rule and the [parity registry](project/architecture/arch-parity-registry.md) for
+the tables it checks.
 
 For regressions, make the test fail for the original defect before applying the fix.
 Assert behavior and public contracts instead of copying implementation structure into
@@ -379,225 +605,42 @@ Keep consumer plugin fixtures in the consumer repository.
 The Metabrowser suite should use generic sample plugins so it cannot pass only because
 an unrelated workspace package happens to be installed.
 
-The [v0.12 alpha test plan](project/specs/active/plan-2026-09-22-v012-alpha-testing.md)
-sequences foundation testing, GitHub URL browsing, and direct PRs, with manual and
-automated scenarios and the landing checklist.
-The step-by-step procedure is
-[QA: v0.12 Repository Library](qa-v012-repository-library.md).
+## Manual Browser Checks
 
-## Manual Browser Check
-
-Before a release, serve the public-safe manual corpus and check the real browser:
-
-```shell
-uv --config-file uv.toml run --frozen metab ./tests/manual-fixtures --no-open
-```
-
-The corpus contains Markdown with frontmatter, structured JSON, JSONL events, source
-code, an SVG image, and an opaque file large enough to exercise the binary view.
-Keep these fixtures generic and free of copied production data.
-
-Open the printed URL and verify:
-
-- first paint appears before a large tree finishes indexing;
-- Markdown, structured data, source, JSONL, image, and binary views render;
-- the binary Bytes view loads a second chunk on **Load more**, appends without
-  re-rendering the bytes already shown, and wraps without horizontal overflow at narrow
-  and wide panes in both themes;
-- a binary file above the preview ceiling renders a bounded prefix and reports where the
-  preview is cut off;
-- changing and deleting files updates tree and recent views;
-- a direct `/view/<path>` address opens the selected file independently of the tree
-  crawl; fragments identify locations within that document, such as headings or source
-  lines;
-- when the served root is in a Git repository, opening a commit that changes the root
-  renders its changed-file diff in a fresh browser session;
-- light and dark themes, narrow panes, keyboard focus, and print output remain usable;
-- the console and Network panel contain no unexpected errors or missing assets.
-
-Do not make the manual check the only coverage for a deterministic contract.
-
-### Markdown Reading Layout
-
-Open a long Markdown file with a table of contents in the built-in browser.
-Compare the document card border with the leftmost tab’s outer edge.
-Switch to Source and check the pane gutter and line-number column.
-At a preview width of 75 rem or more, check the TOC to the right of the prose and follow
-a heading link.
-Use a document with a thumbnail and a wide table to check their positions
-beside the rail.
-
-Narrow the preview through tablet and phone widths.
-Scroll past the first section, open the TOC with its icon, and follow a heading.
-Reopen the overlay and dismiss it with Escape.
-Open a short file, then reopen it after a warm read to check the same start edge.
-In Folder Overview, compare the README’s prose edge with the same file opened directly,
-and check the section rules and panel borders along the stack.
-In a wide pane, compare paragraph widths in Markdown and a PR conversation at both 102
-and 80 in **Max text width**. Restore the setting after the comparison.
-
-Check the first tab’s outer box against the document card border and Source surface.
-Keep KPress’s normal left and right padding inside the card; prose does not have to
-align with the tab label.
-Both views keep the shared outer pane padding; the document card’s inner padding must
-not conceal an absent outer gutter.
-Compare the same README directly and in Overview, retaining the same text measure.
-
-### PR and Git Navigation Performance
-
-Use the
-[performance loop](../explorations/performance-loop/README.md#attributing-stateful-navigation-delay)
-for timing and the focused browserless sessions for deterministic behavior.
-Keep a small review playbook beside the experiment rather than adding another test
-framework:
-
-1. Freeze the build, public repository, PR numbers, full Git revisions and viewport.
-   Name Git-object, detailed-record, browser HTTP, asset and prepared-payload cache
-   states separately. Use an isolated test cache for absent-record cases.
-2. Test a first PR from the neutral prompt, then a different uncached PR from a fully
-   rendered, settled cached PR. A neutral prompt is not prior useful content.
-   Require the previous description and reading position to survive until the correct
-   new description or an actionable failure appears.
-3. Measure description readiness separately from completed discussion, checks and
-   comparison. Exercise row selection, a cold direct link, retry after failure, rapid
-   keyboard replacement, and cached reopening on a managed repository and a checkout.
-   A description preview must not claim that unread sections or Git acquisition are
-   complete. Hold the selected refresh after its description appears and finish it
-   between polling ticks.
-   Check that the waiting cache read returns the correct full record, and that a
-   duplicate or canceled read does not change provider work.
-   To test background description preparation, start in Files and open Pulls.
-   Click once as soon as the row is visible, once while preparation is running, and once
-   after it finishes. Record the actual batch state with each planned dwell.
-   With two tabs, confirm a refused preparation leaves the first tab’s window available.
-   Let one owned batch settle without polling its result, then scroll to a cohort that
-   answers cache-only `ready` or lease-held `partial`. Confirm the previous exact token
-   is released before another cohort starts.
-   Hide or dispose during that release and check that the coverage-only token is never
-   treated as the owner.
-   Hold a batch while scrolling to a second window.
-   Check that viewport demand covers all visible rows and that the background cursor
-   continues through the cached catalog beyond the first transport batch.
-   Keep the provider busy for longer than a minute, then confirm retry resumes without
-   another scroll. Hide or disconnect the browser, then resume the unfinished cursor.
-   Check that default Open rows warm before newer Closed rows and that a known rate
-   reset resumes the pass while Files remains selected.
-   Repeated ready reads must not refetch unchanged rows.
-   Reopen an early prepared description after later batches, a minute, and server
-   restart; confirm that the durable lightweight record is served without a provider
-   call. While a batch runs or after it becomes ready, change one admitted summary and
-   confirm an unchanged sibling is still readable.
-   Replace the repository or authenticated reader and confirm that old admission or
-   cached metadata cannot cross that boundary.
-4. In Commits, compare natural and prepared selection, re-enter the displayed row, and
-   leave for a file while deferred requests are active.
-   Check exact route and subject, cancellation, queued work, single active ownership and
-   final content.
-5. Keep matching request counts and bytes beside painted readiness, Long Tasks, Event
-   Timing, retained heap and sampled backend RSS. Follow the loop’s repetition and
-   acceptance rules; retain failures and distinguish an isolated mechanism probe from a
-   complete navigation result.
-
-### Shared Content Layout and Stack Navigation
-
-Compare a Markdown document, its Source and Raw views, a folder README, a commit with a
-description, and a PR with comments.
-At wide and narrow pane widths, check that card borders and source surfaces begin at the
-first display tab’s outer edge.
-Retain the document card’s roomy KPress inset, with the desktop contents rail on the
-right and the existing narrow contents icon and drawer.
-A wide table must remain reachable by horizontal scrolling without expanding the pane.
-Commit descriptions and PR prose use the same sans size, ink, and neutral bordered
-surface. Author, action, and age must share a baseline while branch chips stay smaller.
-
-On a PR in a known stack, open the position menu.
-Check titles, ordinal and PR number, current-member indication, focus, Escape, outside
-click, and keyboard selection.
-Use ⇧J toward the base and ⇧K toward the top; preserve the selected PR tab and clear the
-old file selection. Confirm endpoint handling and that an editor or open dialog retains
-its keys.
-
-### Quick Search and Main Tabs
-
-Open the same public GitHub repository in a checkout and a managed mirror.
-From Files or a selected commit, press `T` and type `#`. Check that the list shows
-recent PRs across states.
-Add title text, then replace it with a number prefix.
-Check that both queries show only PR options and that an exact number appears first.
-Check the title, number, state, and accessible option name.
-Press Enter and verify that Conversation opens in one history step.
-Back returns to the previous view.
-
-With an isolated cache, try a search before opening Pulls.
-A catalog refresh should start once, and subsequent queries should read the local
-catalog. Reopen a cached result with `gh` unavailable.
-In a plain folder, the dialog should still say Quick Search and search only files.
-
-After Git discovery, check Files, Commits, and Pulls order and the fixed numbers in
-Help. Try the plain digits if the browser owns the Command chords.
-In a plain folder, check that the Files shortcut still uses `1` and the other numbers
-leave the selection alone.
-
-### Pulls Watch and Reconnect
-
-The
-[watch verification plan](project/specs/active/plan-2026-11-06-pr-watch-and-reconnect.md)
-covers incremental provider updates, cached use during an outage, connection recovery,
-and the Reload action in both repository modes.
-
-### Pulls Paging
-
-Use a repository or a seeded catalog with more than 500 matching PRs.
-Start in Pulls and verify the initial window.
-Scroll near its end and check that the next window appears without a click.
-Repeat through the final partial window.
-Keep an eye on the selected row and switch filters during an in-flight page.
-For a partial catalog, verify the same interaction joins the metadata refresh and can
-continue when rows arrive.
-
-### Pull Request Checks
-
-In a checkout and a managed repository, open a PR with checks.
-Select **Checks** and verify the status summary and detail links.
-Navigate to Conversation and Changes, then use Back and Forward to restore the selected
-tab. Reload `/pull/<n>/checks` directly.
-Repeat with an empty check list and a pending PR record to verify each loading or empty
-state. On a cached PR, all three tabs use the same record.
+Do not make a manual check the only coverage for a deterministic contract.
+What only a person in a real browser can judge before a release, from the reading layout
+to Quick Search and the Pulls tab, is the checklist in
+[Manual Browser Checks](project/qa/qa-2026-11-14-manual-browser-checks.md).
+Pull-request and Git navigation timing is reviewed with the performance loop’s
+[navigation playbook](../explorations/performance-loop/README.md#reviewing-pull-request-and-git-navigation).
 
 ### Headless Screenshots
 
 There is no automated visual-regression layer.
-When a change is presentational and a reviewer needs to see it, drive a real browser
-manually.
+When a change is presentational and a reviewer needs to see it, drive a real browser.
 
 Chrome’s `--headless --screenshot --virtual-time-budget` mode does not work against the
 shell: the page holds the `/api/events` stream open, so virtual time never drains and
 Chrome hangs without writing a file.
-Two approaches work instead.
+Two approaches work instead:
 
-Drive the live application over the DevTools protocol.
-Start Chrome with `--headless=new --remote-debugging-port=<port>` and a scratch
-`--user-data-dir`, read the page target from `http://127.0.0.1:<port>/json/list`, then
-send `Emulation.setDeviceMetricsOverride`, `Page.enable`, `Page.navigate`, and
-`Page.captureScreenshot` over the target’s WebSocket.
-Node 24 provides a `WebSocket` global, so the driver needs no dependency.
+- **Drive the live application over the DevTools protocol.** Start Chrome with
+  `--headless=new --remote-debugging-port=<port>` and a scratch `--user-data-dir`, read
+  the page target from `http://127.0.0.1:<port>/json/list`, then send
+  `Emulation.setDeviceMetricsOverride`, `Page.enable`, `Page.navigate`, and
+  `Page.captureScreenshot` over the target’s WebSocket.
+  Node’s global `WebSocket` means the driver needs no dependency.
+- **Skip the shell for a question only about document CSS.** Request
+  `/api/kpress/render` for the file and view, then write a standalone page that inlines
+  the returned `html` with the stylesheet entries of the returned asset manifest and
+  `/static/styles.css`. It holds no event stream, so the ordinary
+  `--virtual-time-budget` screenshot works, at several widths and disclosure states in
+  one pass.
 
-For a question that is only about document CSS, skip the shell.
-Request `/api/kpress/render` for the file and view, then write a standalone page that
-inlines the returned `html` alongside the stylesheet entries in the returned asset
-manifest and `/static/styles.css`. Such a page holds no event stream, so the ordinary
-`--virtual-time-budget` screenshot works, and it can be rendered at several widths and
-disclosure states in one pass.
-Keep these harnesses in a scratch directory; they are debugging aids, not fixtures.
-
-The same driver answers rendering-cost questions that no contract test can.
-Comparing DOM strategies for the binary Bytes view this way showed that CSS-wrapping one
-large run is quadratic — 43 ms at 32 KiB rising to 33 s at 1 MiB — while pre-broken
-lines in `content-visibility` blocks render the same 1 MiB in about 50 ms.
-When a limit looks arbitrary, measure before changing it, and record what was measured
-next to the constant.
-[Rendering large content](large-content-rendering.md) holds the cost model and the
-procedure for establishing the shape of a cost before setting a bound.
+Keep these harnesses in the worktree’s gitignored `attic/`; they are debugging aids, not
+fixtures. The same driver answers rendering-cost questions no contract test can, and
+[Rendering Large Content](large-content-rendering.md) holds the procedure for measuring
+the shape of a cost before setting a bound.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

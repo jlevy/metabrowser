@@ -8,6 +8,7 @@ import inspect
 import itertools
 import os
 from collections.abc import AsyncGenerator, AsyncIterator, Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 
@@ -21,6 +22,7 @@ from metabrowser.inventory_engine.contract import (
     MAX_COUNT_CAP,
     MAX_INVENTORY_ISSUES,
     MAX_ISSUE_DETAIL_BYTES,
+    MAX_TREE_GROUPS,
     QUERY_TYPE_BY_KIND,
     REGISTERED_QUERY_TYPES,
     AdmittedObjectKind,
@@ -48,6 +50,8 @@ from metabrowser.inventory_engine.contract import (
     FilteredTreeProjection,
     FilteredTreeQuery,
     Freshness,
+    GroupedTreeProjection,
+    GroupedTreeQuery,
     IndexState,
     InventoryBackend,
     InventoryClosedError,
@@ -76,6 +80,8 @@ from metabrowser.inventory_engine.contract import (
     RollupProjection,
     RollupQuery,
     SourceKind,
+    TreeGroupFilter,
+    TreeGroupProjection,
     VersionUnavailableError,
     WorkCounters,
     canonical_inventory_name,
@@ -97,6 +103,7 @@ EXPECTED_QUERIES = {
     "entry": EntryQuery,
     "directory": DirectoryQuery,
     "filtered_tree": FilteredTreeQuery,
+    "grouped_tree": GroupedTreeQuery,
     "rollup": RollupQuery,
     "navigation": NavigationQuery,
     "recent": RecentQuery,
@@ -116,6 +123,7 @@ PROVIDER_CONFORMANCE_TESTS = frozenset(
         "test_provider_budget_stop_is_explicit_and_absence_remains_unknown",
         "test_directory_pages_are_lossless_when_directories_outnumber_file_budget",
         "test_filtered_tree_and_recent_share_filter_semantics_before_caps",
+        "test_grouped_tree_answers_each_group_as_its_filtered_tree",
         "test_catalog_predicate_semantics_are_runtime_independent_and_exact",
         "test_catalog_pages_are_lossless_without_suffix_counts",
         "test_provider_applies_work_bounds_to_continuation_pages",
@@ -2004,3 +2012,278 @@ def test_provider_lifecycle_is_monotonic_and_one_handle_keeps_one_session(
             await handle.close()
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
+def test_group_filters_cut_age_bands_at_their_edges_and_keep_symlinks(
+    provider_factory: Callable[[], InventoryBackend],
+    tmp_path: Path,
+) -> None:
+    """Group by's filter fields (metabrowser/tree_groups.py): an age band keeps an mtime
+    exactly at its near edge and rejects one exactly at its far edge, so the bands
+    partition mtimes; a type group classifies by name before extension; and a group,
+    unlike a filter, keeps symlinks, by their own mtime for Age and in Other for type."""
+
+    scope = tmp_path / "scope"
+    scope.mkdir()
+    as_of_ns = 100_000_000_000
+    live_edge_ns = as_of_ns - 90_000_000_000
+    files = {
+        "at-edge.md": live_edge_ns,
+        "just-newer.md": live_edge_ns + 1,
+        "just-older.md": live_edge_ns - 1,
+        "Makefile": live_edge_ns + 5,
+        "notes.xyz": live_edge_ns + 5,
+    }
+    for name, mtime_ns in files.items():
+        path = scope / name
+        path.write_bytes(b"x")
+        os.utime(path, ns=(mtime_ns, mtime_ns))
+    link = scope / "link"
+    try:
+        link.symlink_to("at-edge.md")
+    except OSError as error:
+        pytest.skip(f"symlinks are unavailable: {error}")
+    os.utime(link, ns=(live_edge_ns + 7, live_edge_ns + 7), follow_symlinks=False)
+
+    live = InventoryFilter(band_within_seconds=90, as_of_ns=as_of_ns)
+    past_hour = InventoryFilter(band_within_seconds=3600, older_than_seconds=90, as_of_ns=as_of_ns)
+    selections = {
+        "live": live,
+        "past-hour": past_hour,
+        "docs": InventoryFilter(type_group="docs"),
+        "code": InventoryFilter(type_group="code"),
+        "other": InventoryFilter(type_group="other"),
+        # A filter still drops symlinks: the user's window, here, cuts the Live band.
+        "live-in-window": InventoryFilter(
+            recency_seconds=90, band_within_seconds=90, as_of_ns=as_of_ns
+        ),
+    }
+
+    async def run() -> dict[str, set[str]]:
+        handle = await _open_settled_provider(
+            provider_factory, tmp_path, config=InventoryConfig(watch_mode="off")
+        )
+        try:
+            result = await handle.read(
+                ReadRequest(
+                    queries=tuple(
+                        FilteredTreeQuery(
+                            query_id=name, path="scope", max_depth=1, filter=selection
+                        )
+                        for name, selection in selections.items()
+                    )
+                )
+            )
+            leaves: dict[str, set[str]] = {}
+            for name in selections:
+                projection = result.projection(name)
+                assert isinstance(projection, FilteredTreeProjection)
+                leaves[name] = {
+                    entry.path.removeprefix("scope/")
+                    for entry in projection.entries
+                    if entry.type is not EntryType.DIRECTORY
+                }
+            return leaves
+        finally:
+            await handle.close()
+
+    leaves = asyncio.run(run())
+    assert leaves["live"] == {"at-edge.md", "just-newer.md", "Makefile", "notes.xyz", "link"}
+    assert leaves["past-hour"] == {"just-older.md"}
+    assert leaves["docs"] == {"at-edge.md", "just-newer.md", "just-older.md"}
+    assert leaves["code"] == {"Makefile"}
+    assert leaves["other"] == {"notes.xyz", "link"}
+    assert leaves["live-in-window"] == {"at-edge.md", "just-newer.md", "Makefile", "notes.xyz"}
+
+
+def test_group_filter_fields_are_validated() -> None:
+    with pytest.raises(ValueError, match="band_within_seconds must be positive"):
+        InventoryFilter(band_within_seconds=0, as_of_ns=1)
+    with pytest.raises(ValueError, match="older_than_seconds must be positive"):
+        InventoryFilter(older_than_seconds=0, as_of_ns=1)
+    with pytest.raises(ValueError, match="requires as_of_ns"):
+        InventoryFilter(band_within_seconds=1)
+    with pytest.raises(ValueError, match="requires as_of_ns"):
+        InventoryFilter(older_than_seconds=1)
+
+
+_AS_OF_NS = 1_000_000_000_000_000_000
+_TYPE_GROUPS = tuple(
+    TreeGroupFilter(key=group_id, type_group=group_id)
+    for group_id in ("docs", "code", "data", "archives", "media", "other")
+)
+_AGE_GROUPS = (
+    TreeGroupFilter(key="live", band_within_seconds=90),
+    TreeGroupFilter(key="1h", band_within_seconds=3_600, older_than_seconds=90),
+    TreeGroupFilter(key="24h", band_within_seconds=86_400, older_than_seconds=3_600),
+    TreeGroupFilter(key="older", older_than_seconds=86_400),
+)
+
+
+def _grouped_tree_fixture(root: Path) -> None:
+    """Nested folders deeper than a listed tree, files of several type groups and ages,
+    a file a name classifies, gitignored files, and symlinks."""
+
+    (root / ".git").mkdir()
+    (root / ".git" / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    (root / ".gitignore").write_text("scope/build/\n", encoding="utf-8")
+    ages = (10, 600, 7_200, 200_000)
+    names = ("guide.md", "app.py", "data.json", "pack.zip", "photo.png", "blob.xyz", "Makefile")
+    for index, folder in enumerate(
+        ("scope", "scope/a", "scope/a/b", "scope/a/b/c/d", "scope/e", "scope/build/out")
+    ):
+        directory = root / folder
+        directory.mkdir(parents=True, exist_ok=True)
+        for offset, name in enumerate(names):
+            path = directory / name
+            path.write_bytes(b"x" * (offset * 7 + index))
+            mtime_ns = _AS_OF_NS - ages[(index + offset) % len(ages)] * 1_000_000_000
+            os.utime(path, ns=(mtime_ns, mtime_ns))
+    link = root / "scope" / "a" / "link"
+    try:
+        link.symlink_to("app.py")
+    except OSError as error:
+        pytest.skip(f"symlinks are unavailable: {error}")
+    link_mtime_ns = _AS_OF_NS - 30_000_000_000
+    os.utime(link, ns=(link_mtime_ns, link_mtime_ns), follow_symlinks=False)
+
+
+@pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
+def test_grouped_tree_answers_each_group_as_its_filtered_tree(
+    provider_factory: Callable[[], InventoryBackend],
+    tmp_path: Path,
+) -> None:
+    """A grouped tree's group is exactly its filtered tree (`GroupedTreeQuery.group_query`):
+    the same rows, totals, and pages, read from one pass at one version, for each grouping,
+    shared filter, depth, and page bound."""
+
+    _grouped_tree_fixture(tmp_path)
+    shared_filters = {
+        "none": InventoryFilter(as_of_ns=_AS_OF_NS),
+        "extensions": InventoryFilter(extensions=(".md", ".PY"), as_of_ns=_AS_OF_NS),
+        "size-and-ignored": InventoryFilter(
+            minimum_size=10, include_ignored=False, as_of_ns=_AS_OF_NS
+        ),
+        "recency": InventoryFilter(recency_seconds=7_200, as_of_ns=_AS_OF_NS),
+    }
+    cases = [
+        (grouping, shared_name, path, max_depth, max_rows)
+        for grouping in (_TYPE_GROUPS, _AGE_GROUPS)
+        for shared_name in shared_filters
+        for path, max_depth in (("", 2), ("scope", 1), ("scope", 3), ("scope/a", 2))
+        for max_rows in (2, 4_096)
+    ]
+
+    async def pages(
+        handle: InventoryHandle,
+        first: tuple[InventoryEntry, ...],
+        next_page: str | None,
+        continuation: Callable[[str], FilteredTreeQuery],
+        version: EngineVersion,
+    ) -> list[InventoryEntry]:
+        rows = list(first)
+        while next_page is not None:
+            query = continuation(next_page)
+            result = await handle.read(ReadRequest(queries=(query,), at_version=version))
+            page = result.projection(query.query_id)
+            assert isinstance(page, FilteredTreeProjection)
+            rows.extend(page.entries)
+            next_page = page.next_page
+        return rows
+
+    async def run() -> int:
+        handle = await _open_settled_provider(
+            provider_factory, tmp_path, config=InventoryConfig(watch_mode="off")
+        )
+        compared = 0
+        try:
+            for grouping, shared_name, path, max_depth, max_rows in cases:
+                grouped = GroupedTreeQuery(
+                    query_id="grouped",
+                    groups=grouping,
+                    path=path,
+                    max_depth=max_depth,
+                    max_rows=max_rows,
+                    filter=shared_filters[shared_name],
+                )
+                singles = [grouped.group_query(group) for group in grouping]
+                result = await handle.read(ReadRequest(queries=(grouped, *singles)))
+                answer = result.projection("grouped")
+                assert isinstance(answer, GroupedTreeProjection)
+                assert [group.key for group in answer.groups] == [group.key for group in grouping]
+                for group, single, own in zip(grouping, singles, answer.groups, strict=True):
+                    expected = result.projection(single.query_id)
+                    assert isinstance(expected, FilteredTreeProjection)
+                    label = (shared_name, path, max_depth, max_rows, group.key)
+                    assert (own.matching_leaves, own.matching_files, own.matching_bytes) == (
+                        expected.matching_leaves,
+                        expected.matching_files,
+                        expected.matching_bytes,
+                    ), label
+                    assert own.entries == expected.entries, label
+                    assert (own.next_page is None) == (expected.next_page is None), label
+                    own_rows = await pages(
+                        handle,
+                        own.entries,
+                        own.next_page,
+                        lambda after, grouped=grouped, group=group: grouped.group_query(
+                            group, after=after
+                        ),
+                        result.version,
+                    )
+                    expected_rows = await pages(
+                        handle,
+                        expected.entries,
+                        expected.next_page,
+                        lambda after, single=single: replace(single, after=after),
+                        result.version,
+                    )
+                    assert own_rows == expected_rows, label
+                    compared += 1
+        finally:
+            await handle.close()
+        return compared
+
+    assert asyncio.run(run()) == sum(len(case[0]) for case in cases)
+
+
+def test_grouped_tree_queries_are_validated() -> None:
+    live = TreeGroupFilter(key="live", band_within_seconds=90)
+    with pytest.raises(ValueError, match="selects by type group or by age band"):
+        TreeGroupFilter(key="nothing")
+    with pytest.raises(ValueError, match="older_than_seconds must be positive"):
+        TreeGroupFilter(key="older", older_than_seconds=0)
+    with pytest.raises(ValueError, match="at least one group"):
+        GroupedTreeQuery(query_id="g", groups=())
+    with pytest.raises(ValueError, match="unique"):
+        GroupedTreeQuery(query_id="g", groups=(live, live), filter=InventoryFilter(as_of_ns=1))
+    with pytest.raises(ValueError, match="at most"):
+        GroupedTreeQuery(
+            query_id="g",
+            groups=tuple(
+                TreeGroupFilter(key=str(index), type_group="docs")
+                for index in range(MAX_TREE_GROUPS + 1)
+            ),
+        )
+    with pytest.raises(ValueError, match="shared filter names no group"):
+        GroupedTreeQuery(
+            query_id="g",
+            groups=(TreeGroupFilter(key="docs", type_group="docs"),),
+            filter=InventoryFilter(type_group="code"),
+        )
+    with pytest.raises(ValueError, match="requires the shared filter's as_of_ns"):
+        GroupedTreeQuery(query_id="g", groups=(live,))
+    with pytest.raises(ValueError, match="max_rows must be positive"):
+        GroupedTreeQuery(
+            query_id="g", groups=(TreeGroupFilter(key="docs", type_group="docs"),), max_rows=0
+        )
+    with pytest.raises(ValueError, match="continuation requires a nonempty page"):
+        TreeGroupProjection(
+            key="docs",
+            entries=(),
+            matching_leaves=0,
+            matching_files=0,
+            matching_bytes=0,
+            next_page="token",
+        )

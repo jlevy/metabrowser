@@ -1,0 +1,500 @@
+# metab file://<ORIGIN> --api '/api/tree?group_by=type&depth=1'
+exit: 0
+--- stdout ---
+api: /api/tree?group_by=type&depth=1
+status: 200
+{
+  "root": "",
+  "group_by": "type",
+  "groups": [
+    {
+      "id": "docs",
+      "label": "Documentation",
+      "files": 7,
+      "size": 100,
+      "entries": 7,
+      "tree": [
+        {
+          "name": "a",
+          "path": "g1-YQ",
+          "type": "dir",
+          "children": null,
+          "has_children": true,
+          "total_files": 1,
+          "total_size": 27
+        },
+        {
+          "name": "links",
+          "path": "g1-bGlua3M",
+          "type": "dir",
+          "children": null,
+          "has_children": true,
+          "total_files": 1,
+          "total_size": 12
+        },
+        {
+          "name": "odd",
+          "path": "g1-b2Rk",
+          "type": "dir",
+          "children": null,
+          "has_children": true,
+          "total_files": 3,
+          "total_size": 35
+        },
+        {
+          "name": "README.md",
+          "path": "g1-UkVBRE1FLm1k",
+          "type": "file",
+          "ext": ".md",
+          "size": 17
+        },
+        {
+          "name": "a.txt",
+          "path": "g1-YS50eHQ",
+          "type": "file",
+          "ext": ".txt",
+          "size": 9
+        }
+      ]
+    },
+    {
+      "id": "code",
+      "label": "Code",
+      "files": 2,
+      "size": 28,
+      "entries": 2,
+      "tree": [
+        {
+          "name": "a",
+          "path": "g1-YQ",
+          "type": "dir",
+          "children": null,
+          "has_children": true,
+          "total_files": 1,
+          "total_size": 6
+        },
+        {
+          "name": "tools",
+          "path": "g1-dG9vbHM",
+          "type": "dir",
+          "children": null,
+          "has_children": true,
+          "total_files": 1,
+          "total_size": 22
+        }
+      ]
+    },
+    {
+      "id": "data",
+      "label": "Data",
+      "files": 1,
+      "size": 25,
+      "entries": 1,
+      "tree": [
+        {
+          "name": "a",
+          "path": "g1-YQ",
+          "type": "dir",
+          "children": null,
+          "has_children": true,
+          "total_files": 1,
+          "total_size": 25
+        }
+      ]
+    },
+    {
+      "id": "media",
+      "label": "Media",
+      "files": 1,
+      "size": 67,
+      "entries": 1,
+      "tree": [
+        {
+          "name": "bin",
+          "path": "g1-Ymlu",
+          "type": "dir",
+          "children": null,
+          "has_children": true,
+          "total_files": 1,
+          "total_size": 67
+        }
+      ]
+    },
+    {
+      "id": "other",
+      "label": "Other",
+      "files": 5,
+      "size": 16777254,
+      "entries": 5,
+      "tree": [
+        {
+          "name": "bin",
+          "path": "g1-Ymlu",
+          "type": "dir",
+          "children": null,
+          "has_children": true,
+          "total_files": 2,
+          "total_size": 16777225
+        },
+        {
+          "name": "data",
+          "path": "g1-ZGF0YQ",
+          "type": "dir",
+          "children": null,
+          "has_children": true,
+          "total_files": 1,
+          "total_size": 18
+        },
+        {
+          "name": "a-b",
+          "path": "g1-YS1i",
+          "type": "file",
+          "size": 5
+        },
+        {
+          "name": "ab",
+          "path": "g1-YWI",
+          "type": "file",
+          "size": 6
+        },
+        {
+          "name": "vendor",
+          "path": "g1-dmVuZG9y",
+          "type": "file"
+        }
+      ]
+    }
+  ],
+  "tally_cache_status": "done",
+  "tally_cache_max_files": 500000
+}
+--- stderr ---
+# metab file://<ORIGIN> --api '/api/tree?group=type:docs&depth=2'
+exit: 0
+--- stdout ---
+api: /api/tree?group=type:docs&depth=2
+status: 200
+{
+  "subject": "git_revision",
+  "path": "",
+  "display": "",
+  "oid": "2aba9e6f68f6b11f98bee8a8d7b47693aca3fb43",
+  "kind": "tree",
+  "entries": [
+    {
+      "path": "g1-UkVBRE1FLm1k",
+      "display": "README.md",
+      "mode": "100644",
+      "kind": "blob",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "36516194dee2aa72ce75357bc32cd75a59f71e57",
+      "size": 17
+    },
+    {
+      "path": "g1-YQ",
+      "display": "a",
+      "mode": "040000",
+      "kind": "tree",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "488995644342a4443f2cc5280e6a6d13f3a045fe"
+    },
+    {
+      "path": "g1-YS50eHQ",
+      "display": "a.txt",
+      "mode": "100644",
+      "kind": "blob",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "06b3a8f652461758c3095a9b0014a7d626e1915c",
+      "size": 9
+    },
+    {
+      "path": "g1-bGlua3M",
+      "display": "links",
+      "mode": "040000",
+      "kind": "tree",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "a7dd58c1121a97ccb71a6428c5a9213093f36616"
+    },
+    {
+      "path": "g1-b2Rk",
+      "display": "odd",
+      "mode": "040000",
+      "kind": "tree",
+      "symlink": false,
+      "gitlink": false,
+      "oid": "5386dad79188f6147a05b096d0035cf0f4827ce3"
+    }
+  ],
+  "tree": [
+    {
+      "name": "a",
+      "path": "g1-YQ",
+      "type": "dir",
+      "children": [
+        {
+          "name": "deep",
+          "path": "g1-YQ/g1-ZGVlcA",
+          "type": "dir",
+          "children": null,
+          "has_children": true,
+          "total_files": 1,
+          "total_size": 27
+        }
+      ],
+      "has_children": true,
+      "total_files": 1,
+      "total_size": 27
+    },
+    {
+      "name": "links",
+      "path": "g1-bGlua3M",
+      "type": "dir",
+      "children": [
+        {
+          "name": "to-readme.md",
+          "path": "g1-bGlua3M/g1-dG8tcmVhZG1lLm1k",
+          "type": "symlink",
+          "size": 12
+        }
+      ],
+      "has_children": true,
+      "total_files": 1,
+      "total_size": 12
+    },
+    {
+      "name": "odd",
+      "path": "g1-b2Rk",
+      "type": "dir",
+      "children": [
+        {
+          "name": "latin-�.txt",
+          "path": "g1-b2Rk/g1-bGF0aW4t6S50eHQ",
+          "type": "file",
+          "ext": ".txt",
+          "size": 13
+        },
+        {
+          "name": "line�break.txt",
+          "path": "g1-b2Rk/g1-bGluZQpicmVhay50eHQ",
+          "type": "file",
+          "ext": ".txt",
+          "size": 13
+        },
+        {
+          "name": "tab�here.txt",
+          "path": "g1-b2Rk/g1-dGFiCWhlcmUudHh0",
+          "type": "file",
+          "ext": ".txt",
+          "size": 9
+        }
+      ],
+      "has_children": true,
+      "total_files": 3,
+      "total_size": 35
+    },
+    {
+      "name": "README.md",
+      "path": "g1-UkVBRE1FLm1k",
+      "type": "file",
+      "ext": ".md",
+      "size": 17
+    },
+    {
+      "name": "a.txt",
+      "path": "g1-YS50eHQ",
+      "type": "file",
+      "ext": ".txt",
+      "size": 9
+    }
+  ],
+  "tally_cache_status": "done",
+  "tally_cache_max_files": 500000,
+  "summary": {
+    "files": 16,
+    "size": 16777474,
+    "ignored_files": 0,
+    "ignored_size": 0
+  },
+  "extensions": [
+    [
+      ".txt",
+      4,
+      0
+    ],
+    [
+      ".md",
+      3,
+      0
+    ],
+    [
+      ".bin",
+      2,
+      0
+    ],
+    [
+      ".json",
+      1,
+      0
+    ],
+    [
+      ".jsonl",
+      1,
+      0
+    ],
+    [
+      ".png",
+      1,
+      0
+    ],
+    [
+      ".py",
+      1,
+      0
+    ],
+    [
+      ".sh",
+      1,
+      0
+    ]
+  ],
+  "canonical_extensions": [
+    [
+      ".txt",
+      4,
+      0
+    ],
+    [
+      ".md",
+      3,
+      0
+    ],
+    [
+      ".bin",
+      2,
+      0
+    ],
+    [
+      ".json",
+      1,
+      0
+    ],
+    [
+      ".jsonl",
+      1,
+      0
+    ],
+    [
+      ".png",
+      1,
+      0
+    ],
+    [
+      ".py",
+      1,
+      0
+    ],
+    [
+      ".sh",
+      1,
+      0
+    ]
+  ],
+  "type_families": [
+    [
+      "plain-text",
+      4,
+      0
+    ],
+    [
+      "markdown",
+      3,
+      0
+    ],
+    [
+      "images",
+      1,
+      0
+    ],
+    [
+      "json",
+      1,
+      0
+    ],
+    [
+      "log-files",
+      1,
+      0
+    ],
+    [
+      "python",
+      1,
+      0
+    ],
+    [
+      "shell",
+      1,
+      0
+    ]
+  ],
+  "type_presets": [
+    [
+      "docs",
+      7,
+      0
+    ],
+    [
+      "code",
+      2,
+      0
+    ],
+    [
+      "data",
+      1,
+      0
+    ],
+    [
+      "archives",
+      0,
+      0
+    ],
+    [
+      "media",
+      1,
+      0
+    ]
+  ],
+  "filtered": {
+    "files": 7,
+    "size": 100,
+    "entries": 7
+  }
+}
+--- stderr ---
+# metab file://<ORIGIN> --api '/api/tree?group_by=age&depth=0'
+exit: 1
+--- stdout ---
+api: /api/tree?group_by=age&depth=0
+status: 409
+{
+  "error": "source does not support recency",
+  "code": "unsupported_for_subject",
+  "capability": "recency"
+}
+--- stderr ---
+Error: /api/tree?group_by=age&depth=0 returned HTTP 409
+# metab file://<ORIGIN> --api '/api/tree?group=age:live&depth=1'
+exit: 1
+--- stdout ---
+api: /api/tree?group=age:live&depth=1
+status: 409
+{
+  "error": "source does not support recency",
+  "code": "unsupported_for_subject",
+  "capability": "recency"
+}
+--- stderr ---
+Error: /api/tree?group=age:live&depth=1 returned HTTP 409

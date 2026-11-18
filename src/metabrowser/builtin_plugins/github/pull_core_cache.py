@@ -7,6 +7,7 @@ core from the same source, repository, reader, and catalog epoch. No read fetche
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
@@ -57,8 +58,14 @@ def read_cached_core(
     fresh_only: bool = False,
     reader: str | None = None,
     reader_identity: tuple[str, str, str, str] | None = None,
+    snapshot: tuple[CatalogState | None, Mapping[int, CatalogMember]] | None = None,
 ) -> PullCorePreview | None:
-    """Read one bounded core and validate it against one current catalog snapshot."""
+    """Read one bounded core and validate it against one current catalog snapshot.
+
+    A caller that already read *snapshot*, the checkpoint and the members it checks a
+    batch against, passes it, and the catalog is not opened again for each core. Each
+    catalog open verifies its file and its three journal files as every private read does.
+    """
 
     try:
         data = read_bytes_bounded(
@@ -66,7 +73,9 @@ def read_cached_core(
         )
         entry = CachedCore.model_validate_json(data)
         observed = parse_stamp(entry.observed_at)
-        catalog, members = catalog_members(home, slug, "all", (number,))
+        catalog, members = (
+            catalog_members(home, slug, "all", (number,)) if snapshot is None else snapshot
+        )
         if (
             catalog is None
             or number not in members

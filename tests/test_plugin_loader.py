@@ -22,7 +22,6 @@ from types import ModuleType
 from typing import Any, cast
 
 import pytest
-import yaml as pyyaml
 from pydantic import ValidationError
 
 from metabrowser.file_kinds import FileContext
@@ -774,6 +773,53 @@ def test_view_spec_rejects_unknown_print_profile() -> None:
         ViewSpec(kind="x", id="y", label="Y", print_profile=cast(Any, "poster"))
 
 
+def test_view_spec_key_is_optional_and_stored_lowercase() -> None:
+    assert ViewSpec(kind="x", id="y", label="Y").key is None
+    assert ViewSpec(kind="x", id="y", label="Y", key="V").key == "v"
+
+
+def test_view_spec_rejects_a_key_that_is_not_one_letter() -> None:
+    for key in ("", "1", "ab", "é", "/"):
+        with pytest.raises(ValidationError, match="one letter"):
+            ViewSpec(kind="x", id="y", label="Y", key=key)
+
+
+def test_view_spec_rejects_an_always_reserved_shell_key() -> None:
+    # The main tabs' letters, Quick Search's, and the row keys are reserved in every kind:
+    # P is the Pulls tab (mb-6rfu).
+    for key in ("t", "J", "f", "P", "h"):
+        with pytest.raises(ValidationError, match="reserved"):
+            ViewSpec(kind="x", id="y", label="Y", key=key)
+    # Next and previous are Control-N and Control-P, which reserve no letter (mb-lnqj), and
+    # R is free for a view.
+    for key in ("n", "R"):
+        assert ViewSpec(kind="x", id="y", label="Y", key=key).key == key.lower()
+
+
+def test_manifest_with_a_reserved_view_key_is_refused_at_discovery(make_plugin_dir) -> None:
+    plugin_dir = make_plugin_dir(
+        "files-view",
+        """
+[plugin]
+name = "files-view"
+sdk_version = "0.7"
+
+[[kind]]
+id = "myk"
+match = { ext = ".myk" }
+
+[[view]]
+kind = "myk"
+id = "main"
+label = "Main"
+key = "f"
+""",
+    )
+    result = _try_load_plugin(plugin_dir, source="local:test")
+    assert isinstance(result, str)
+    assert "key 'f' is reserved for the shell's Files tab" in result
+
+
 # ── folder_marker + yaml matchers (Tier A of dataset-plugin spec) ───────
 
 
@@ -936,16 +982,18 @@ def test_yaml_top_level_caches_on_context(tmp_path: Path, monkeypatch) -> None:
     ]
     classifier = build_classifier(rules)
 
+    from metabrowser.plugin_loader import classify as classify_module
+
     call_count = {"n": 0}
-    real_safe_load = pyyaml.safe_load
+    real_load = classify_module.load_bounded_yaml
 
-    def counting_safe_load(stream):
+    def counting_load(text: str, **options: Any) -> object:
         call_count["n"] += 1
-        return real_safe_load(stream)
+        return real_load(text, **options)
 
-    monkeypatch.setattr(pyyaml, "safe_load", counting_safe_load)
+    monkeypatch.setattr(classify_module, "load_bounded_yaml", counting_load)
 
-    # Single FileContext consulted by both rules; assert safe_load fires once.
+    # Single FileContext consulted by both rules; assert the parse runs once.
     ctx = _ctx(f)
     result = classifier(ctx)
     # First rule has lower priority equality and matches first; both rules

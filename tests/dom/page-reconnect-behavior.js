@@ -24,6 +24,12 @@ for (const filtered of [false, true]) {
     filterState: { get: () => ({ types: filtered ? [".md"] : null }) },
     filterHasConstraints: (state) => !!state.types,
     filesPanelUsesRecentSource: () => false,
+    // Ungrouped: no Group by sections.
+    filesPanelUsesGroupedSource: () => false,
+    treeSectionKey: () => "",
+    withTreeIdScope: (_scope, build) => build(),
+    requestGroupedRefresh() {},
+    groupsPrefetch: { markChanged() {} },
     isGitRevisionSource: () => false,
     document: { getElementById: () => null },
     applyCellPatch: (entry) => calls.push(["patch", entry.path]),
@@ -166,6 +172,12 @@ function recoverySession(filtered = false) {
     filterState: { get: () => ({ types: filtered ? [".md"] : null }) },
     filterHasConstraints: (state) => !!state.types,
     filesPanelUsesRecentSource: () => false,
+    // Ungrouped: no Group by sections.
+    filesPanelUsesGroupedSource: () => false,
+    treeSectionKey: () => "",
+    withTreeIdScope: (_scope, build) => build(),
+    requestGroupedRefresh() {},
+    groupsPrefetch: { markChanged() {} },
     isGitRevisionSource: () => revision,
     document: { getElementById: (id) => (id === "tab-files" && present ? panel : null) },
     applyCellPatch() {},
@@ -190,6 +202,15 @@ function recoverySession(filtered = false) {
     renderServedRootHeading() {},
     rootTallyFromTopLevel: () => ({ files: 1, size: 10, newestMtime: 1 }),
     treeSummaryHtml: () => "",
+    // The Files totals' reducer, the real one from navigation.js (createRootTotals).
+    rootTotals() {
+      context._rootTotals ??= context.MetabrowserNavigationRoute.createRootTotals({
+        gitRevision: false,
+        shell: null,
+      });
+      return context._rootTotals;
+    },
+    _rootTotals: null,
     updateFilterTallies: () => false,
     _rootTreeRequestsInFlight: 0,
     _inlineTreeBaseline: null,

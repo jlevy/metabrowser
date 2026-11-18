@@ -9,6 +9,8 @@
 // file holds the SDK's view helpers beside the line anchors and needs the SDK to be
 // there when it runs, so it cannot be loaded into an empty context by itself. The
 // document is the smallest one the SDK's startup touches; nothing renders here.
+// `createSdkSandbox(overrides)` replaces or adds globals before the SDK loads, such as
+// a working event target for a session that dispatches the shell's events.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -16,7 +18,7 @@ const vm = require("node:vm");
 
 const staticDir = path.resolve(__dirname, "../../src/metabrowser/static");
 
-function createSdkSandbox() {
+function createSdkSandbox(overrides = {}) {
   const sandbox = {
     AbortController,
     DOMException,
@@ -48,6 +50,7 @@ function createSdkSandbox() {
     removeEventListener() {},
     setInterval,
     setTimeout,
+    ...overrides,
   };
   sandbox.window = sandbox;
   sandbox.globalThis = sandbox;

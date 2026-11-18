@@ -9,13 +9,21 @@ explorations/performance-loop/experiments/exp-004.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
+import os
 import re
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
 from metabrowser import server
+from metabrowser.inventory_engine.contract import (
+    Coverage,
+    CoverageReason,
+    EntryType,
+    InventoryEntry,
+)
 from tests.inventory_harness import inventory_harness
 
 STATIC_ROOT = Path(server.__file__).resolve().parent / "static"
@@ -121,5 +129,343 @@ def test_collapsed_inline_descendants_stay_cached_out_of_the_dom() -> None:
     render = app[app.index("function renderTreeNodes") : app.index("// ── Lazy subtree loading")]
 
     assert "Array.isArray(node.children) && expanded" in render
-    assert "subtreeCache.set(subtreeCacheKey(node.path), node.children)" in render
+    # Keyed by the Group by section the rows are built for, when there is one.
+    assert "subtreeCache.set(subtreeCacheKey(node.path, options.section), node.children)" in render
     assert "data-tree-lazy-stub" in render
+
+
+async def _landing_html(root: Path, view_path: str) -> str:
+    async with inventory_harness(root) as harness:
+        request = SimpleNamespace(app=harness.app)
+        response = await server.index(cast(Any, request), view_path=view_path)
+        return bytes(response.body).decode("utf-8")
+
+
+def _node(nodes: object, path: str) -> dict[str, Any]:
+    assert isinstance(nodes, list), nodes
+    found = [node for node in nodes if isinstance(node, dict) and node.get("path") == path]
+    assert found, f"{path} is not among {[n.get('path') for n in nodes if isinstance(n, dict)]}"
+    return cast(dict[str, Any], found[0])
+
+
+def _deep_tree(root: Path) -> None:
+    (root / "a" / "b").mkdir(parents=True)
+    (root / "a" / "b" / "c.md").write_text("# c\n")
+    (root / "a" / "b" / "d.md").write_text("# d\n")
+    (root / "a" / "e.md").write_text("# e\n")
+    (root / "z").mkdir()
+    (root / "z" / "y.md").write_text("# y\n")
+    (root / "README.md").write_text("# root\n")
+
+
+def test_a_deep_landing_inlines_its_folders_expanded_and_names_its_row(tmp_path: Path) -> None:
+    """The reveal that opened a deep landing's folders after the tree's first paint moved
+    the tree with no input. The shell carries each folder's rows, expanded, so the first
+    paint already shows the path's row and the page has no folder to fetch or open."""
+
+    _deep_tree(tmp_path)
+    server._set_root_dir(tmp_path)
+    payload = _inline_payload(asyncio.run(_landing_html(tmp_path, "a/b/c.md")))
+
+    assert payload is not None
+    assert payload["path"] == "a/b/c.md"
+    a = _node(payload["tree"], "a")
+    assert a["expanded"] is True
+    b = _node(a["children"], "a/b")
+    assert b["expanded"] is True
+    assert {node["path"] for node in b["children"]} == {"a/b/c.md", "a/b/d.md"}
+    # Only the path's folders: a sibling folder stays collapsed and unloaded.
+    z = _node(payload["tree"], "z")
+    assert "expanded" not in z and z["children"] is None
+
+
+def test_a_landing_on_a_folder_opens_its_parents_and_names_the_folder(tmp_path: Path) -> None:
+    _deep_tree(tmp_path)
+    server._set_root_dir(tmp_path)
+    payload = _inline_payload(asyncio.run(_landing_html(tmp_path, "a/b/")))
+
+    assert payload is not None
+    assert payload["path"] == "a/b"
+    b = _node(_node(payload["tree"], "a")["children"], "a/b")
+    # The folder itself is the selection, not one of the folders to open.
+    assert "expanded" not in b and b["children"] is None
+
+
+def test_a_landing_the_inline_cannot_reach_names_no_row(tmp_path: Path) -> None:
+    """A path whose folder is missing keeps the root rows and leaves the reveal to the page."""
+
+    _deep_tree(tmp_path)
+    server._set_root_dir(tmp_path)
+    for view_path in ("missing/x.md", "a/missing/x.md", ""):
+        payload = _inline_payload(asyncio.run(_landing_html(tmp_path, view_path)))
+        assert payload is not None, view_path
+        assert "path" not in payload, view_path
+        _node(payload["tree"], "README.md")
+    root_file = _inline_payload(asyncio.run(_landing_html(tmp_path, "README.md")))
+    assert root_file is not None and root_file["path"] == "README.md"
+
+
+def test_the_landing_inline_is_bounded() -> None:
+    """Each folder's listing is capped like the root's, only so many folders ride, and the
+    rows they add are bounded in all."""
+
+    assert 1 <= server._INLINE_LANDING_DEPTH <= 16
+    assert 0 < server._INLINE_LANDING_ROWS <= 2 * server._INLINE_INITIAL_TREE_ROWS
+    source = Path(server.__file__).read_text(encoding="utf-8")
+    block = source[source.index("landing_parts = [") :]
+    block = block[: block.index("initial_tree_block = (")]
+    assert "if len(landing_parts) - 1 <= _INLINE_LANDING_DEPTH" in block
+    assert block.count("max_rows=_INLINE_INITIAL_TREE_ROWS") == 1
+    assert block.count("max_entries=_INLINE_INITIAL_TREE_ROWS") == 1
+
+
+def _wide_tree(root: Path, wide: str, entries: int) -> None:
+    (root / "w" / "x" / "y").mkdir(parents=True)
+    (root / "w" / "x" / "y" / "target.md").write_text("# target\n")
+    for index in range(entries):
+        (root / wide / f"f{index:03}.md").write_text("")
+
+
+def test_a_folder_the_inline_cannot_carry_whole_inlines_no_folder(tmp_path: Path) -> None:
+    """No route reconciles an inlined folder below the first level, so a folder grafted
+    with its first 200 rows read as a folder of 200, with no paging row, for the life of
+    the page. A path with a folder whose listing has a further page inlines the root
+    alone: every folder stays collapsed and unloaded, and the page loads, pages, and
+    reveals them itself, as before."""
+
+    _wide_tree(tmp_path, "w/x", 250)
+    server._set_root_dir(tmp_path)
+    payload = _inline_payload(asyncio.run(_landing_html(tmp_path, "w/x/y/target.md")))
+
+    assert payload is not None
+    assert "path" not in payload, "the shell named a row the inline does not reach"
+    w = _node(payload["tree"], "w")
+    assert "expanded" not in w and w["children"] is None
+
+
+def test_a_wide_first_level_also_stays_collapsed(tmp_path: Path) -> None:
+    _wide_tree(tmp_path, "w", 250)
+    server._set_root_dir(tmp_path)
+    payload = _inline_payload(asyncio.run(_landing_html(tmp_path, "w/x/y/target.md")))
+
+    assert payload is not None and "path" not in payload
+    w = _node(payload["tree"], "w")
+    assert "expanded" not in w and w["children"] is None
+
+
+def test_the_rows_a_landing_adds_are_budgeted(tmp_path: Path, monkeypatch: Any) -> None:
+    """Depth alone let a landing mount up to 1,800 rows before first paint. A path whose
+    folders' rows pass the budget inlines the root alone; opening some folders at first
+    paint and the rest after moved the tree more than opening them all after."""
+
+    _deep_tree(tmp_path)
+    server._set_root_dir(tmp_path)
+    # a holds 2 rows and a/b holds 2: a budget of 3 carries the path's first folder only,
+    # so it carries none.
+    monkeypatch.setattr(server, "_INLINE_LANDING_ROWS", 3)
+    payload = _inline_payload(asyncio.run(_landing_html(tmp_path, "a/b/c.md")))
+
+    assert payload is not None and "path" not in payload
+    a = _node(payload["tree"], "a")
+    assert "expanded" not in a and a["children"] is None
+
+    monkeypatch.setattr(server, "_INLINE_LANDING_ROWS", 4)
+    payload = _inline_payload(asyncio.run(_landing_html(tmp_path, "a/b/c.md")))
+    assert payload is not None and payload["path"] == "a/b/c.md"
+
+
+def test_a_landing_spelled_unlike_its_tree_path_is_still_inlined(tmp_path: Path) -> None:
+    """The route hands the shell a native spelling, and the rows carry the canonical one:
+    a literal percent sign is `%25` in the tree, and a POSIX backslash `%5C`."""
+
+    folder = tmp_path / "50%-off"
+    names = ["50%-off"]
+    if os.name != "nt":
+        folder = folder / "bs\\lash"
+        names.append("bs\\lash")
+    folder.mkdir(parents=True)
+    (folder / "f.md").write_text("# f\n")
+    server._set_root_dir(tmp_path)
+    payload = _inline_payload(asyncio.run(_landing_html(tmp_path, "/".join([*names, "f.md"]))))
+
+    canonical = ["50%25-off", *(["bs%5Clash"] if os.name != "nt" else [])]
+    assert payload is not None
+    assert payload["path"] == "/".join([*canonical, "f.md"])
+    level: object = payload["tree"]
+    for index in range(len(canonical)):
+        row = _node(level, "/".join(canonical[: index + 1]))
+        assert row["expanded"] is True
+        level = row["children"]
+
+
+def test_the_first_tree_paint_selects_and_shows_a_landings_row() -> None:
+    """The row the shell names is selected and scrolled into view by the same synchronous
+    paint as the inline rows, so the reveal after it opens and scrolls nothing."""
+
+    app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8")
+    block = app[app.index("function renderInitialTreeRows()") :]
+    block = block[: block.index("async function loadTree(")]
+    assert "window.METABROWSER_INITIAL_TREE?.path" in block
+    assert "setSelectedPath(landed)" in block
+    assert 'scrollIntoView({\n      block: "nearest",' in block
+    # A reveal the reader caused during the session (Quick Search, a link) is movement from
+    # their input: it opens the folders without travel and shows the new selection, in one
+    # frame. Nothing between the last folder opening and the scroll yields to the browser.
+    # revealInTree reveals within a scope (the panel, or a Group by section) through
+    # revealWithin, which opens the folders and shows the selection.
+    reveal = app[app.index("async function revealWithin(") :]
+    reveal = reveal[: reveal.index("\n}\n")]
+    assert "instant = true }" in reveal[: reveal.index(") {")]
+    assert "setFolderExpanded(folder, true, { instant })" in reveal
+    tail = reveal[reveal.rindex("setFolderExpanded(folder, true, { instant })") :]
+    tail = tail[tail.index("\n") :]
+    assert "await" not in tail, "the reveal yields a frame before it shows the selection"
+    assert tail.index("setSelectedPath(path)") < tail.index(
+        'target.scrollIntoView({ block: "nearest" })'
+    )
+    assert "scroll = true" in reveal, "a reveal shows its selection unless told not to"
+    assert "scrollTop +=" not in reveal and "held" not in reveal
+    # A landing's reveal, where the shell could not inline the path, answers no input, and
+    # its folders travel as before: opened at once they moved the tree more.
+    landing = app[app.index("    revealInTree(initialPath, {") :]
+    landing = landing[: landing.index("});")]
+    assert "instant: false" in landing
+
+
+def test_a_landing_deeper_than_the_bound_inlines_no_folder(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    _deep_tree(tmp_path)
+    server._set_root_dir(tmp_path)
+    monkeypatch.setattr(server, "_INLINE_LANDING_DEPTH", 1)
+    payload = _inline_payload(asyncio.run(_landing_html(tmp_path, "a/b/c.md")))
+
+    assert payload is not None and "path" not in payload
+    a = _node(payload["tree"], "a")
+    assert "expanded" not in a and a["children"] is None
+    shallow = _inline_payload(asyncio.run(_landing_html(tmp_path, "a/e.md")))
+    assert shallow is not None and shallow["path"] == "a/e.md"
+
+
+def test_a_landing_inlines_no_folder_while_discovery_runs(tmp_path: Path, monkeypatch: Any) -> None:
+    """A folder the walk has not reached reads as an empty listing with no further page.
+    Grafted, the page drew it empty and open, with nothing to load, and never selected the
+    landing's row; so a read of incomplete coverage grafts no folder."""
+
+    _deep_tree(tmp_path)
+    server._set_root_dir(tmp_path)
+    real = server._inventory_runtime_for
+
+    def unsettled(request: Any) -> Any:
+        runtime = real(request)
+        coordinator = runtime.coordinator
+
+        async def read(read_request: Any) -> Any:
+            answer = await coordinator.read(read_request)
+            state = dataclasses.replace(
+                answer.result.state,
+                coverage=Coverage(complete=False, reason=CoverageReason.BUILDING),
+            )
+            return dataclasses.replace(
+                answer, result=dataclasses.replace(answer.result, state=state)
+            )
+
+        return SimpleNamespace(coordinator=SimpleNamespace(read=read))
+
+    monkeypatch.setattr(server, "_inventory_runtime_for", unsettled)
+    payload = _inline_payload(asyncio.run(_landing_html(tmp_path, "a/b/c.md")))
+    assert payload is not None and "path" not in payload
+    a = _node(payload["tree"], "a")
+    assert "expanded" not in a and a["children"] is None
+    # A root file is its own row, which the root listing names whatever discovery holds.
+    root_file = _inline_payload(asyncio.run(_landing_html(tmp_path, "README.md")))
+    assert root_file is not None and root_file["path"] == "README.md"
+
+
+class _Query:
+    def __init__(self, params: dict[str, str]) -> None:
+        self._params = params
+
+    def get(self, key: str, default: str = "") -> str:
+        return self._params.get(key, default)
+
+
+def _ignoring_tree(root: Path) -> None:
+    """Tracked files, an ignored folder, an ignored file under a tracked folder, and a
+    link, which neither count holds. The repository's ignore file is hidden, so it is
+    not counted either."""
+
+    (root / ".git").mkdir()
+    (root / ".gitignore").write_text("build/\n*.log\n", encoding="utf-8")
+    (root / "src").mkdir()
+    (root / "src" / "app.py").write_text("print(1)\n", encoding="utf-8")
+    (root / "src" / "run.log").write_text("log line\n" * 20, encoding="utf-8")
+    (root / "build").mkdir()
+    for index in range(3):
+        (root / "build" / f"out-{index}.bin").write_bytes(b"x" * (100 + index))
+    (root / "README.md").write_text("# root\n", encoding="utf-8")
+    (root / "link.md").symlink_to(root / "README.md")
+
+
+async def _shell_and_summary(root: Path) -> tuple[dict[str, object] | None, dict[str, Any]]:
+    async with inventory_harness(root) as harness:
+        request = SimpleNamespace(app=harness.app)
+        html = bytes((await server.index(cast(Any, request))).body).decode("utf-8")
+        tree = await server.api_tree(
+            cast(Any, SimpleNamespace(app=harness.app, query_params=_Query({"depth": "0"})))
+        )
+        return _inline_payload(html), json.loads(bytes(tree.body))
+
+
+def test_the_shell_inlines_the_roots_totals_as_the_tally_counts_them(tmp_path: Path) -> None:
+    """The Files totals line paints its tracked and ignored halves from the first frame
+    (mb-h3hc). Its ignored half arrived with the tally's pass over every file, half a
+    second to seconds after the tree, and in the default pane it took a second line and
+    moved the tree down 19.5 px. The root's own entry has the same figures for the cost of
+    reading it, so the shell inlines them, and they are the tally's exactly."""
+
+    _ignoring_tree(tmp_path)
+    server._set_root_dir(tmp_path)
+    payload, tree = asyncio.run(_shell_and_summary(tmp_path))
+
+    assert payload is not None
+    assert payload["summary"] == tree["summary"]
+    assert payload["summary"] == {
+        "files": 2,
+        "size": len("print(1)\n") + len("# root\n"),
+        "ignored_files": 4,
+        "ignored_size": 100 + 101 + 102 + len("log line\n" * 20),
+    }
+
+
+def test_a_folder_with_nothing_ignored_says_so_before_first_paint(tmp_path: Path) -> None:
+    """So the page holds no ignored line for it."""
+
+    (tmp_path / "README.md").write_text("# root\n", encoding="utf-8")
+    server._set_root_dir(tmp_path)
+    payload, tree = asyncio.run(_shell_and_summary(tmp_path))
+
+    assert payload is not None
+    assert payload["summary"] == tree["summary"]
+    assert payload["summary"] == {"files": 1, "size": 7, "ignored_files": 0, "ignored_size": 0}
+
+
+def test_a_root_the_walk_has_not_finished_has_no_totals_to_inline() -> None:
+    """The root's totals are pending until the walk finishes it; the page then holds the
+    ignored line with the pending placeholder until they arrive
+    (static/navigation.js, `createRootTotals`)."""
+
+    pending = InventoryEntry(
+        path="", parent="", name="root", type=EntryType.DIRECTORY, ext="", size=0, mtime_ns=0
+    )
+    assert server._root_totals(pending) is None
+    assert server._root_totals(None) is None
+    finished = dataclasses.replace(
+        pending, total_files=10, total_size=1000, unignored_files=4, unignored_size=300
+    )
+    assert server._root_totals(finished) == {
+        "files": 4,
+        "size": 300,
+        "ignored_files": 6,
+        "ignored_size": 700,
+    }

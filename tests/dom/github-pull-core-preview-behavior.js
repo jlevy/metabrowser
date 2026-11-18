@@ -233,6 +233,7 @@ async function retentionCapability(routes) {
       disposed = 0;
     const mount = routes.createViewMount({
       sdk: {
+        whenIdle: require("./sdk-idle-fixture.js").whenIdle,
         ensureKindAssets: async () => {},
         getRegisteredView: () => ({
           render(node) {
@@ -368,6 +369,10 @@ async function run() {
     markdownRequests = 0;
   const posts = [];
   global.fetch = async (route, options) => {
+    if (route.includes("pull-timeline")) {
+      // Commit timeline reads: none are held here.
+      return { status: 404, headers: { get: () => null }, json: async () => ({}) };
+    }
     if (options.method === "POST") {
       posts.push(JSON.parse(options.body));
       return new Promise((resolve) => {
@@ -391,6 +396,7 @@ async function run() {
   const mb = {
     perf,
     ensureAsset: async () => {},
+    whenIdle: require("./sdk-idle-fixture.js").whenIdle,
     ensureKindAssets: async () => {},
     ...require("./sdk-ref-fixture.js").refHelpers(document),
     formatAge: () => ({ label: "now", className: "age" }),
@@ -445,12 +451,13 @@ async function run() {
   assert.equal(pendingReveal.length, 1, "revealed after the quiet period");
   assert.equal(pendingReveal[0].getAttribute("role"), "status");
   assert.equal(pendingReveal[0].getAttribute("aria-label"), "Loading comments and reviews");
-  // The header keeps the description's plain age, breathing while its details are fetched.
-  const statusLine = container.querySelector(".github-pull-status");
+  // The header keeps the description's plain age, breathing while its details are fetched,
+  // in the note that ends the author's row (mb-ne91).
+  const statusLine = container.querySelector(".github-pull-note");
   const age = statusLine.querySelector(".github-pull-freshness");
   assert.match(age.textContent, /^Description fetched .+ via GitHub CLI$/);
   assert.ok(age.classes.has("mb-refreshing") && age.classes.has("mb-refreshing-muted"));
-  // Busy is the age's, never the status line's, whose buttons and links stay usable.
+  // Busy is the age's, never the note's or the header's, whose controls stay usable.
   assert.equal(age.getAttribute("aria-busy"), "true");
   assert.equal(statusLine.getAttribute("aria-busy"), null);
   function land(tab) {
@@ -519,6 +526,64 @@ async function run() {
     "Changes are still being prepared.",
     "an adopted description does not make the active comparison look unrequested",
   );
+  // The Diff summary's row waits from the first paint for a comparison a read will bring
+  // (mb-30dz), and for nothing no read brings, so its placeholder never outlives the wait.
+  const home = { number: 7, tab: "", nowMs: Date.now() };
+  const absentNoCore = { ...idleCore, core_preview: null };
+  const pendingCore = {
+    ...preview,
+    core_preview: { ...preview.core_preview, comparison_state: "pending" },
+  };
+  const comingFor = (envelope, extra = {}) =>
+    page.describePull(envelope, { ...home, ...extra }).comparisonComing;
+  assert.deepEqual(
+    [
+      ["nothing read yet", comingFor(null)],
+      ["the first read failed", comingFor(null, { error: "Not found" })],
+      ["no record, the fetch on its way", comingFor(absentNoCore, { fetching: true })],
+      ["no record, the fetch still to send", comingFor(absentNoCore, { fetchQueued: true })],
+      [
+        "no record, the reader's fetch to wait for",
+        comingFor(absentNoCore, { waitForReader: true }),
+      ],
+      ["no record, nothing running", comingFor(absentNoCore)],
+      ["not GitHub's", comingFor({ ...absentNoCore, reason: "not_github" }, { fetching: true })],
+      [
+        "a server with no store, the fetch on its way",
+        comingFor({ ...absentNoCore, no_store: true }, { fetching: true }),
+      ],
+      [
+        "a poll that failed while the fetch runs",
+        comingFor(absentNoCore, { fetching: true, error: "The server did not answer." }),
+      ],
+      ["a core, its read running", comingFor(pendingCore)],
+      ["a core, its read running, no store", comingFor(preview)],
+      ["a prepared core, the fetch still to send", comingFor(idleCore, { fetchQueued: true })],
+      ["a prepared core, a refresh running", comingFor({ ...idleCore, refreshing: true })],
+      [
+        "a core, its read running, a server with no store",
+        comingFor({ ...pendingCore, no_store: true }),
+      ],
+      ["a prepared core, nothing running", comingFor(failedCore)],
+    ],
+    [
+      ["nothing read yet", true],
+      ["the first read failed", false],
+      ["no record, the fetch on its way", true],
+      ["no record, the fetch still to send", true],
+      ["no record, the reader's fetch to wait for", true],
+      ["no record, nothing running", false],
+      ["not GitHub's", false],
+      ["a server with no store, the fetch on its way", false],
+      ["a poll that failed while the fetch runs", true],
+      ["a core, its read running", true],
+      ["a core, its read running, no store", false],
+      ["a prepared core, the fetch still to send", true],
+      ["a prepared core, a refresh running", true],
+      ["a core, its read running, a server with no store", false],
+      ["a prepared core, nothing running", false],
+    ],
+  );
   const fullWins = page.describePull(
     { ...full, core_preview: preview.core_preview },
     { number: 7, tab: "", nowMs: Date.now() },
@@ -531,10 +596,23 @@ async function run() {
   assert.notEqual(page.conversationKey(model), page.conversationKey(fullWins));
   const poll = [...timers].find(([, task]) => task.delay > 0 && task.delay <= 1000);
   assert.ok(poll);
+  const previewDescription = body.querySelector(".github-pull-card");
   current = full;
   timers.delete(poll[0]);
   poll[1].callback();
   await settle();
+  // The full record's first paint waits for its description's Markdown, which this server
+  // answers with a 404: plain then, at once, and in place of the preview it replaces.
+  assert.equal(
+    [...timers].some(([, task]) => task.delay === page.DESCRIPTION_HOLD_MS),
+    false,
+    "a description whose Markdown cannot come does not wait out the bound",
+  );
+  assert.equal(
+    body.querySelector(".github-pull-card"),
+    previewDescription,
+    "the description above the replaced Discussion is the node the preview painted",
+  );
   assert.equal(container.dataset.corePreview, "false");
   assert.equal(container.querySelector(".github-pull-section-loading"), null);
   assert.equal(container.querySelector(".spinner"), null, "full arrival clears progress");
@@ -584,7 +662,29 @@ async function run() {
     .find((tab) => tab.getAttribute("aria-selected") === "true");
   assert.equal(selectedChecks?.textContent, "Checks");
   assert.equal(selectedChecks?.getAttribute("href"), checksRoute);
-  assert.match(checksBody.textContent, /1 success · 1 pending/);
+  // "1 success · 1 pending": its dot held to the count before it by a no-break space, and a
+  // comma said in the hidden dot's place, as the paragraph has no name in words (mb-vb51).
+  assert.match(checksBody.textContent, /1 success\u00a0·, {2}1 pending/);
+  const checksLine = checksBody
+    .querySelectorAll(".github-pull-quiet")
+    .find((line) => line.querySelectorAll(".summary-number").length > 0);
+  assert.deepEqual(
+    [".summary-punctuation", ".visually-hidden"].flatMap((selector) =>
+      checksLine
+        .querySelectorAll(selector)
+        .map((mark) => [selector, mark.textContent, mark.getAttribute("aria-hidden")]),
+    ),
+    [
+      [".summary-punctuation", "·", "true"],
+      [".visually-hidden", ", ", null],
+    ],
+  );
+  // The summary's counts are a count summary's bold numbers, and its words are not
+  // (docs/design-system.md, "Count Summaries Bold Their Numbers").
+  assert.deepEqual(
+    checksBody.querySelectorAll(".summary-number").map((number) => number.textContent),
+    ["1", "1"],
+  );
   assert.match(checksBody.textContent, /tests \(3\.13\)/);
   assert.match(checksBody.textContent, /Only some check runs are shown/);
   assert.match(checksBody.textContent, /Commit statuses could not be read/);
@@ -665,6 +765,7 @@ async function run() {
     instances = [];
   const mount = routes.createViewMount({
     sdk: {
+      whenIdle: require("./sdk-idle-fixture.js").whenIdle,
       ensureKindAssets: async () => {},
       getRegisteredView: () => ({
         render(host) {
@@ -935,6 +1036,8 @@ async function run() {
     isPreviewClaimCurrent: (token) => token === generation,
     disposeActivePluginViews() {},
     animatePreviewContentArrival() {},
+    // The keyboard infrastructure, which builds the shell keymap, is not part of this.
+    shellKeymap: null,
   };
   vm.runInNewContext(functions.join("\n"), shell);
   active = {

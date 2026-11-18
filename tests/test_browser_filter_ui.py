@@ -148,13 +148,20 @@ def test_treemap_hover_never_promotes_a_container_over_nested_cells() -> None:
     """A nested folder and its descendants are flattened siblings.
 
     Hover may adjust the folder fill, but changing its stacking level would
-    paint the folder over every descendant rectangle inside it.
+    paint the folder over every descendant rectangle inside it. The hover is the
+    attribute the map's shared hover marks a cell with, not `:hover`, since a legend
+    entry marks every cell of its family. The shimmer's sheen is the one cell's under
+    the pointer, never a family's, whose cells can number maxCells and would each be a
+    layer (measured beside the rule); it sits under the cell's own label, inside the
+    stacking context the lift's filter makes, and never lifts the cell itself. Reduced
+    motion drops the cell's easing and its sheen and keeps the lift.
     """
 
     folder_root = proc_browser.STATIC_DIR.parent / "builtin_plugins" / "folder"
     shared_css = (proc_browser.STATIC_DIR / "styles.css").read_text()
     plugin_css = (folder_root / "styles.css").read_text()
-    hover_start = plugin_css.index(".tm-cell:hover {")
+    assert ".tm-cell:hover" not in plugin_css
+    hover_start = plugin_css.index(".tm-cell[data-hovered] {")
     hover_block = plugin_css[hover_start : plugin_css.index("}", hover_start)]
 
     assert "filter: var(--viz-data-mark-hover-filter);" in hover_block
@@ -167,6 +174,21 @@ def test_treemap_hover_never_promotes_a_container_over_nested_cells() -> None:
     assert "--viz-data-mark-hover-filter:" in shared_css[dark_start:]
     assert "z-index" not in hover_block
     assert "display:" not in hover_block
+    reduced_start = plugin_css.index("@media (prefers-reduced-motion: reduce)")
+    reduced_end = plugin_css.index("\n}\n", reduced_start)
+    reduced = plugin_css[reduced_start:reduced_end]
+    # The whole sheet outside its reduced-motion block, so a rule after the block counts too.
+    moving = plugin_css[:reduced_start] + plugin_css[reduced_end:]
+    # The pointer's cell is the only one with a sheen.
+    assert re.findall(r"\.tm-cell[^{,]*::after", moving) == ['.tm-cell[data-hovered="self"]::after']
+    sheen_start = moving.index('.tm-cell[data-hovered="self"]::after {')
+    sheen_block = moving[sheen_start : moving.index("}", sheen_start)]
+    assert "z-index: -1;" in sheen_block
+    assert "animation: viz-hover-shimmer" in " ".join(sheen_block.split())
+    flattened = " ".join(reduced.split())
+    assert ".tm-cell { transition: none; }" in flattened
+    assert '.tm-cell[data-hovered="self"]::after { content: none; }' in flattened
+    assert "filter" not in flattened, "reduced motion keeps the lift"
 
 
 def test_treemap_pointer_hit_testing_uses_the_full_actionable_cell() -> None:
@@ -231,21 +253,27 @@ def test_symlinks_use_the_lucide_icon_in_the_standard_leading_slot() -> None:
 def test_wrapped_groups_are_chip_clusters_not_segmented_controls() -> None:
     """Segmented controls stay on one line. A long additive set wraps as
     individually bounded chips without an enclosing pill, so every visible
-    shape remains an interactive target."""
+    shape remains an interactive target. A joined group in a navigation
+    toolbar that its line cannot hold is drawn the same way while it cannot
+    (`data-fit="wrap"`, filter-controls.js `fitJoinedGroups`), rather than
+    folding one pill across lines."""
 
     css = _read("styles.css")
     joined_start = css.index(".chip-group {")
     joined_block = css[joined_start : css.index("}", joined_start)]
     assert "flex-wrap: nowrap;" in joined_block
 
-    wrapped_start = css.index('.chip-group[data-layout="wrap"] {')
+    cluster = '.chip-group:is([data-layout="wrap"], [data-fit="wrap"])'
+    wrapped_start = css.index(f"{cluster} {{")
     wrapped_block = css[wrapped_start : css.index("}", wrapped_start)]
     assert "flex-wrap: wrap;" in wrapped_block
     assert "gap: var(--chip-cluster-gap);" in wrapped_block
     assert "border: 0;" in wrapped_block
     assert "background: transparent;" in wrapped_block
+    controls = _read("filter-controls.js")
+    assert 'group.setAttribute("data-fit", "wrap");' in controls
 
-    chip_start = css.index('.chip-group[data-layout="wrap"] > .chip {')
+    chip_start = css.index(f"{cluster} > .chip {{")
     chip_block = css[chip_start : css.index("}", chip_start)]
     assert "border: 1px solid var(--viz-border);" in chip_block
     assert "border-radius: var(--radius-pill);" in chip_block
@@ -343,6 +371,78 @@ def test_extension_tallies_come_from_the_index_not_the_catalog() -> None:
     assert "showIgnored ? row[1] + row[2] : row[1]" in block
 
 
+def _rule(css: str, selector: str) -> str:
+    """The body of the top-level rule for *selector*."""
+
+    start = css.index(f"\n{selector} {{")
+    return css[start : css.index("}", start)]
+
+
+def test_every_line_of_a_menu_starts_on_one_inset() -> None:
+    """A group heading starts where a row's first column does, and a menu's title, a
+    labelled row, and its foot where its rows do, because all of them read one token. A
+    heading on the rows' label column reads as a row (docs/design-system.md, "Groups in a
+    Menu"); where the text actually lands is measured in Chrome by
+    tests/test_files_tab_chrome.py."""
+
+    css = _read("styles.css")
+    assert "--menu-row-inset: 8px;" in css
+    for selector, padding in (
+        (".menu-item", "6px var(--menu-row-inset)"),
+        (".menu-title", "2px var(--menu-row-inset) 3px"),
+        (".menu-row", "2px 0 2px var(--menu-row-inset)"),
+        (".group-heading", "3px var(--menu-row-inset) 2px"),
+        (".menu-version", "2px var(--menu-row-inset)"),
+    ):
+        assert f"padding: {padding};" in _rule(css, selector), selector
+
+
+def test_a_menu_group_draws_the_separator_s_divider_itself() -> None:
+    """A named group's divider is its own top edge, in the separator's geometry, so a
+    heading never lacks one; after a separator it draws none, so it never gets two; the
+    menu's first child needs none. The separator does not shrink, or a scrolling menu
+    gives up its 1px rule."""
+
+    css = _read("styles.css")
+    separator = _rule(css, ".menu-separator")
+    assert "flex-shrink: 0;" in separator
+    assert "height: 1px;" in separator
+    assert "margin: 4px 0;" in separator
+    group = _rule(css, ".menu-group:not(:first-child)")
+    assert "margin-top: 4px;" in group
+    assert "padding-top: 4px;" in group
+    assert "border-top: 1px solid var(--border);" in group
+    after_separator = _rule(css, ".menu-separator + .menu-group")
+    for declaration in ("margin-top: 0;", "padding-top: 0;", "border-top: 0;"):
+        assert declaration in after_separator
+    # Later in the sheet than the group rule it overrides, at the same specificity.
+    assert css.index("\n.menu-separator + .menu-group {") > css.index(
+        "\n.menu-group:not(:first-child) {"
+    )
+
+
+def test_dropdown_height_is_fitted_to_rows_and_window() -> None:
+    """filter-controls.js sets a dropdown's height from the rendered row and the window
+    (mb-1wfn); the CSS keeps only a floor inside the window for a panel not yet fitted.
+    The shell fits after it renders the bar, which the keyboard path opens menus
+    through, and the window margin is the tooltip's."""
+
+    css = _read("styles.css")
+    panel = _rule(css, ".chip-menu-panel")
+    assert "max-height: calc(100vh - 16px);" in panel
+    assert "overflow-y: auto;" in panel
+    app = _read("app.js")
+    fn_start = app.index("function renderNavFilterBar()")
+    fn_block = app[fn_start : app.index("\n}\n", fn_start)]
+    assert fn_block.index("bar.innerHTML = main + drawer;") < fn_block.index(
+        "fc.fitOpenMenus(bar);"
+    )
+    menu_margin = re.search(r"const MENU_WINDOW_MARGIN = (\d+);", _read("filter-controls.js"))
+    tooltip_margin = re.search(r"var TOOLTIP_VIEWPORT_MARGIN = (\d+);", app)
+    assert menu_margin is not None and tooltip_margin is not None
+    assert menu_margin.group(1) == tooltip_margin.group(1)
+
+
 def test_dropdown_rows_are_arrow_key_traversable() -> None:
     """A menu is a list, so it takes the vertical keys; the segmented
     groups take the horizontal ones."""
@@ -356,32 +456,41 @@ def test_dropdown_rows_are_arrow_key_traversable() -> None:
     assert ".chip-menu-item" in block
 
 
-def test_all_three_dimensions_are_dropdowns() -> None:
-    """Age, type, and size are dropdowns rather than segmented ramps:
-    six joined segments each is a lot of pill for a 300px pane."""
-
+def _render_nav_filter_bar() -> str:
     js = _read("app.js")
     fn_start = js.index("function renderNavFilterBar()")
-    fn_block = js[fn_start : fn_start + 4200]
-    assert fn_block.count("fc.menuGroupHtml(") == 3
-    # Age and size pick one; type picks several.
-    assert fn_block.count('select: "one"') == 2
-    for label in ('"Any age"', '"Any type"', '"Any size"'):
+    return js[fn_start : js.index("\n}\n", fn_start)]
+
+
+def test_group_by_and_the_three_filters_are_dropdowns() -> None:
+    """Group by, age, type, and size are dropdowns rather than segmented ramps:
+    six joined segments each is a lot of pill for a 300px pane."""
+
+    fn_block = _render_nav_filter_bar()
+    assert fn_block.count("fc.menuGroupHtml(") == 4
+    # Group by, age, and size pick one; type picks several.
+    assert fn_block.count('select: "one"') == 3
+    for label in ('"No grouping"', '"Any age"', '"Any type"', '"Any size"'):
         assert label in fn_block, f"missing any-label {label}"
 
 
-def test_age_and_type_ride_the_always_visible_row() -> None:
-    """Size and gitignored visibility sit behind the disclosure; the
-    two dimensions people reach for do not."""
+def test_group_by_and_show_ignored_ride_the_row_and_the_filters_sit_in_the_drawer() -> None:
+    """Group by leads the row: it removes nothing, so it needs no drawer. Show ignored
+    follows it, its tick stating its own direction. The three filters sit behind the
+    disclosure, whose badge counts only them; Clear, which resets Show ignored too,
+    shows while any filter is set (mb-sogv, mb-x1h6)."""
 
-    js = _read("app.js")
-    fn_start = js.index("function renderNavFilterBar()")
-    fn_block = js[fn_start : fn_start + 4200]
-    drawer_at = fn_block.index('class="filter-drawer"')
-    assert fn_block.index('"Any age"') < drawer_at
-    assert fn_block.index('"Any type"') < drawer_at
-    assert fn_block.index('"Any size"') > drawer_at
-    assert fn_block.index('"Show ignored"') > drawer_at
+    fn_block = _render_nav_filter_bar()
+    main = fn_block[fn_block.index("var main =") : fn_block.index("var drawer =")]
+    drawer = fn_block[fn_block.index("var drawer =") :]
+    group_at = main.index('key: "group"')
+    assert group_at < main.index('"Show ignored"') < main.index("nav-filter-bar-end")
+    for menu in ("recencyMenu", "typeMenu", "sizeMenu"):
+        assert menu not in main
+    assert "recencyMenu +\n    typeMenu +\n    sizeMenu +" in drawer
+    assert '"Show ignored"' not in drawer
+    assert "badge: drawerCount," in main
+    assert "treeFilterModel.drawerFilterCount(st)" in fn_block
 
 
 def test_option_lists_omit_the_any_value() -> None:
@@ -408,15 +517,14 @@ def test_single_select_dropdowns_close_on_pick() -> None:
 
 def test_only_one_dropdown_is_open_at_a_time() -> None:
     js = _read("app.js")
-    start = js.index("onMenuToggle: (key, open) =>")
+    assert "onMenuToggle: toggleFilterMenu," in js
+    start = js.index("function toggleFilterMenu(key, open)")
     block = js[start : start + 300]
     assert "filterOpenMenu = open ? key : null;" in block
 
 
 def test_clear_is_only_rendered_when_something_is_set() -> None:
-    js = _read("app.js")
-    fn_start = js.index("function renderNavFilterBar()")
-    fn_block = js[fn_start : fn_start + 3000]
+    fn_block = _render_nav_filter_bar()
     assert "count > 0" in fn_block
 
 
@@ -427,11 +535,9 @@ def test_drawer_toggle_is_an_icon_button_that_names_itself() -> None:
     aria-label describes the action and carries the count the badge
     shows visually."""
 
-    js = _read("app.js")
-    fn_start = js.index("function renderNavFilterBar()")
-    fn_block = js[fn_start : fn_start + 3000]
+    fn_block = _render_nav_filter_bar()
     assert "icon: ICONS.toggle" in fn_block
-    assert '"Hide more filters" : "Show more filters"' in fn_block
+    assert '"Hide filters" : "Show filters"' in fn_block
     assert "active)" in fn_block
 
     controls = _read("filter-controls.js")
@@ -470,7 +576,12 @@ def test_every_icon_only_control_carries_the_icon_button_primitive() -> None:
 
     assert 'class="icon-btn settings-btn"' in server
     assert 'class="icon-btn icon-btn-reveal file-header-copy"' in app
-    assert 'class="icon-btn file-header-icon file-header-print"' in app
+    # The print button left the header for the rendered document's card (mb-07a1).
+    assert "file-header-print" not in app
+    printer = (
+        proc_browser.STATIC_DIR.parent / "builtin_plugins" / "markdown" / "print-indicator.js"
+    ).read_text(encoding="utf-8")
+    assert '"icon-btn metabrowser-print-indicator"' in printer
     assert 'class="icon-btn icon-btn-reveal icon-btn-overlay content-copy-btn"' in sdk
     assert 'class="icon-btn${cls}"' in controls
 
@@ -479,9 +590,9 @@ def test_every_icon_only_control_carries_the_icon_button_primitive() -> None:
     assert "\n.icon-btn {" in primitive
     for private_class in (
         "settings-btn",
-        "file-header-icon",
         "file-header-copy",
         "content-copy-btn",
+        "metabrowser-print-indicator",
     ):
         assert f"\n.{private_class}," not in primitive
         assert f"\n.{private_class} {{" not in primitive
@@ -621,10 +732,12 @@ def test_type_presets_name_registry_display_groups() -> None:
     get" (which is why .json sits with YAML there), these answer "which
     kind of work is this"."""
 
+    # Documentation first, the order every surface lists the groups in
+    # (FILE_TYPE_GROUP_DISPLAY_ORDER), not the File Rollup Format's registry order.
     labels = [preset["label"] for preset in FILTER_TYPE_PRESETS]
     assert labels == [
-        "Code",
         "Documentation",
+        "Code",
         "Data",
         "Archives",
         "Media",
@@ -671,13 +784,18 @@ def test_the_drawer_always_opens_closed() -> None:
 
 def test_the_tally_and_its_filtered_count_read_as_one_block() -> None:
     """The totals are what the filtered figure reads against, so the
-    rule goes under the pair rather than between them."""
+    rule goes under the pair rather than between them. Both are lines of
+    the navigation metadata band, which joins consecutive lines."""
 
+    js = _read("app.js")
+    assert 'line.className = "tree-summary-filtered nav-metadata nav-metadata-note";' in js
     css = _read("styles.css")
-    start = css.index(".tree-summary:has(+ .tree-summary-filtered)")
+    start = css.index(".nav-metadata:has(+ .nav-metadata) {")
     block = css[start : css.index("}", start)]
     assert "border-bottom: none;" in block
     assert "padding-bottom: 0;" in block
+    start = css.index(".nav-metadata + .nav-metadata {")
+    assert "padding-top: 0;" in css[start : css.index("}", start)]
 
 
 def test_a_closed_bar_is_vertically_symmetric() -> None:
@@ -690,7 +808,7 @@ def test_a_closed_bar_is_vertically_symmetric() -> None:
     start = css.index(".nav-filter-bar {")
     block = css[start : start + 700]
     assert "row-gap: 0;" in block
-    assert "column-gap: 6px;" in block
+    assert "column-gap: var(--nav-toolbar-gap);" in block
     assert '.nav-filter-bar:has(.filter-drawer[data-open="true"])' in css
 
 
@@ -712,10 +830,10 @@ def test_the_first_tree_row_clears_the_tally_rule() -> None:
     tally's border while every band above kept 6px."""
 
     css = _read("styles.css")
-    start = css.index(".tree-summary + .tree-root > .tree-item:first-child,")
+    start = css.index(".nav-metadata + .tree-root > .tree-item:first-child,")
     block = css[start : css.index("}", start)]
-    # Both leading cases: the tally, and rows alone under a recency window.
-    assert ".tree-summary-filtered + .tree-root > .tree-item:first-child" in block
+    # Both leading cases: the metadata band, whichever of its lines is last, and
+    # rows alone under a recency window.
     assert ".tree-content > * > .tree-root:first-child > .tree-item:first-child" in block
     # Margin, so the hover fill and selected border stay row-height.
     assert "margin-top" in block
@@ -787,11 +905,18 @@ def test_the_filtered_tally_shows_whenever_anything_is_filtered() -> None:
     start = js.index("function _renderFilteredTally(panel, state, count)")
     block = js[start : start + 1800]
     assert "filterHasConstraints(state)" in block
-    assert "Filtered to ${" in block
-    assert "treeFilterModel.recentFilteredTallyText(count" in block
+    # One model says the remark for the tree and for Recent, in parts, and the shell paints
+    # its numbers bold (docs/design-system.md, "Count Summaries Bold Their Numbers").
+    assert "treeFilterModel.filteredTallyParts(" in block
+    assert "filesPanelUsesRecentSource()" in block
     assert "totalMatching: recentTotalMatching" in block
     assert "totalMatchingExact: recentTotalMatchingExact" in block
     assert "truncated: recentTruncated" in block
+    # The remark is one span in the line, which a repaint replaces, so the line's flex gap
+    # does not part its words and numbers.
+    assert "window.MetabrowserFormatters.countPartsNodes(document, parts)" in block
+    assert "existing.replaceChildren(remark);" in block
+    assert "line.append(remark);" in block
 
     # Removing the last filter clears the line through the shared tally helper.
     assert "existing.remove();" in block
@@ -801,12 +926,12 @@ def test_a_non_exact_recent_tally_is_visible_even_when_the_original_page_was_com
     """Deep live changes can invalidate an untruncated snapshot's exact total."""
 
     model = _read("tree-filter-model.js")
-    start = model.index("function recentFilteredTallyText(")
+    start = model.index("function filteredTallyParts(")
     block = model[start : start + 1400]
-    assert "!options.totalMatchingExact && !options.truncated" in block
+    assert "!recent.totalMatchingExact && !recent.truncated" in block
     assert "${count.toLocaleString()}+" in block
-    assert "options.truncated" in block
-    assert 'options.totalMatchingExact ? "" : "+"' in block
+    assert "recent.truncated" in block
+    assert 'recent.totalMatchingExact ? "" : "+"' in block
 
 
 def test_the_filtered_tally_counts_a_subtree_not_rendered_rows() -> None:
@@ -877,7 +1002,7 @@ def test_type_presets_use_index_wide_tracked_and_ignored_tallies() -> None:
     render_block = js[render_start : render_start + 2200]
     assert "presetSections: filterTypePresetSections()" in render_block
     assert "function filterTypeFamilies(groupId)" in js
-    assert "window.MetabrowserFileTypeTaxonomy?.groups" in js
+    assert "window.MetabrowserFileTypeTaxonomy?.displayGroups" in js
     assert "_typeFamilyTally" in js
 
 
@@ -901,13 +1026,13 @@ def test_opening_age_menu_refreshes_rolling_tallies() -> None:
     """Age membership changes as time passes even when no filesystem event fires."""
 
     js = _read("app.js")
-    toggle_start = js.index("onMenuToggle: (key, open) =>")
+    toggle_start = js.index("function toggleFilterMenu(key, open)")
     toggle_block = js[toggle_start : toggle_start + 500]
     assert 'key === "recency" && open' in toggle_block
     assert "scheduleRootSummaryRefresh();" in toggle_block
 
-    refresh_start = js.index("function scheduleRootSummaryRefresh()")
-    refresh_block = js[refresh_start : refresh_start + 2000]
+    refresh_start = js.index("async function fetchRootSummary()")
+    refresh_block = js[refresh_start : js.index("\nfunction ", refresh_start + 1)]
     assert "patchOpenRecencyTallyCounts();" in refresh_block
 
 
@@ -944,9 +1069,10 @@ def test_leaving_recency_refetches_the_authoritative_tree() -> None:
 
     js = _read("app.js")
     start = js.index("function onFilterStateChange(state)")
-    block = js[start : start + 2200]
-    assert "loadTree();" in block
-    assert "renderFilesFromTree()" not in block
+    block = js[start : js.index("\n}\n", start)]
+    # Home's filter reset asks the same load to draw the tree as a fresh load does.
+    assert "loadTree({ asHome });" in block
+    assert "renderFilesFromTree(" not in block
 
 
 def test_the_summary_poll_does_not_disturb_an_open_menu() -> None:
@@ -954,7 +1080,7 @@ def test_the_summary_poll_does_not_disturb_an_open_menu() -> None:
     would drop focus out of a dropdown being arrowed through."""
 
     js = _read("app.js")
-    start = js.index("function scheduleRootSummaryRefresh()")
+    start = js.index("async function fetchRootSummary()")
     # Slice to the next top-level function rather than a fixed character
     # count: a comment added inside this one pushed the last assertion out
     # of an 1800-character window and failed a behavior that had not changed.
@@ -962,12 +1088,16 @@ def test_the_summary_poll_does_not_disturb_an_open_menu() -> None:
     assert "filterOpenMenu === null" in block
     # Both caches move together, or the tally reverts to first-paint
     # figures under a recency filter.
-    assert "_lastTreeSummaryHtml = html;" in block
+    assert "paintTreeSummary(" in block
+    paint = js[js.index("function paintTreeSummary(html)") :]
+    paint = paint[: paint.index("\n}\n")]
+    assert "_lastTreeSummaryHtml = html;" in paint
+    assert "_lastTreeRender.chromeHtml = _lastTreeRender.chromeHtml.replace(" in paint
 
 
 def _provider_tree_source() -> str:
     py = (proc_browser.STATIC_DIR.parent / "server.py").read_text()
-    start = py.index("async def _read_tree_from_provider(")
+    start = py.index("async def _tree_payload_from_provider(")
     return py[start : py.index("\nasync def ", start + 1)]
 
 
@@ -1080,9 +1210,11 @@ def test_the_tree_source_asks_the_server_rather_than_judging_mounted_rows() -> N
 
     # A subtree cached under a wider filter is not an answer for a narrower
     # one, so the cache key carries the selection.
-    key_start = js.index("function subtreeCacheKey(path)")
+    # Inside a Group by section the key is that group's request instead.
+    key_start = js.index("function subtreeCacheKey(path, group)")
     key = js[key_start : js.index("}", js.index("return filter", key_start))]
     assert "treeFilterKey()" in key
+    assert 'treeUrl("", [], group)' in key
 
     # And the tree source never re-decides a folder: it judges leaves only,
     # which is all that rows arriving live can get wrong.
@@ -1131,8 +1263,10 @@ def test_a_filter_that_excludes_where_you_are_standing_says_so() -> None:
     assert "renderSelectionOutsideFilterNote(null);" in select_block
     assert js.count("renderSelectionOutsideFilterNote();") >= 3
 
+    # A muted remark of the metadata band under the totals, as the filtered count is.
+    assert 'note.className = "tree-selection-note nav-metadata nav-metadata-note";' in block
     css = _read("styles.css")
-    note_start = css.index(".tree-selection-note {")
+    note_start = css.index(".nav-metadata-note {")
     assert "var(--muted)" in css[note_start : css.index("}", note_start)]
 
 
@@ -1332,9 +1466,7 @@ def test_clear_sits_with_the_dropdowns_it_undoes() -> None:
     opening the drawer to undo a filter set from the row above is a
     step too many. Short label so it shares the row."""
 
-    js = _read("app.js")
-    fn_start = js.index("function renderNavFilterBar()")
-    fn_block = js[fn_start : fn_start + 4200]
+    fn_block = _render_nav_filter_bar()
     clear_at = fn_block.index("fc.clearHtml(")
     assert clear_at < fn_block.index('class="filter-drawer"')
     assert '{ label: "Clear" }' in fn_block
@@ -1377,18 +1509,28 @@ def test_the_drawer_animates_open_and_stays_out_of_reach_when_closed() -> None:
 
 
 def test_the_nav_column_shares_one_vertical_rhythm() -> None:
-    """The tally row and the filter bar are both one-line bordered
-    bands of chrome, so they get the same padding; .tree-content adds
-    nothing on top of it."""
+    """The filter bar and the metadata line under it are both bordered
+    bands of chrome, and one line of the metadata band is the toolbar
+    slot's height, so the column reads as evenly spaced bands, and the
+    Commits tally, which stands in the slot, sits exactly as the Files
+    totals do under the filters; .tree-content adds nothing on top."""
 
     css = _read("styles.css")
     bar_start = css.index(".nav-filter-bar {")
-    assert "padding: 6px var(--pane-header-padding-x);" in css[bar_start : bar_start + 900]
+    assert (
+        "padding: var(--nav-toolbar-gap) var(--pane-header-padding-x);"
+        in css[bar_start : bar_start + 900]
+    )
 
-    sum_start = css.index(".tree-summary {")
+    sum_start = css.index(".nav-metadata {")
     sum_block = css[sum_start : css.index("}", sum_start)]
-    assert "padding: 6px 12px;" in sum_block
+    assert "padding: var(--nav-metadata-padding-y) var(--pane-header-padding-x);" in sum_block
     assert "margin-bottom" not in sum_block
+    token = css[css.index("--nav-metadata-padding-y:") :]
+    token = token[: token.index(";")]
+    assert "var(--nav-toolbar-height)" in token
+    assert "var(--nav-metadata-line-height) * var(--nav-font-size)" in " ".join(token.split())
+    assert "line-height: var(--nav-metadata-line-height);" in sum_block
 
     content_start = css.index(".tree-content {")
     assert "padding: 0 0 8px;" in css[content_start : content_start + 300]
@@ -1404,4 +1546,5 @@ def test_scroll_shadow_rides_the_filter_bar() -> None:
     fn_block = js[fn_start : fn_start + 900]
     assert 'document.getElementById("nav-filter-bar")' in fn_block
     css = _read("styles.css")
-    assert ".nav-filter-bar.scrolled {" in css
+    # Each main tab's toolbar in the slot takes the same shadow as the filter bar.
+    assert ".nav-filter-bar.scrolled,\n.nav-toolbar.scrolled {" in css

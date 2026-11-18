@@ -1,7 +1,7 @@
 // The rendered Markdown layer of a comparison whose server names a route for it, as a
 // pull request's does. Source stays hydrated by the diff's existing scheduler, so a
 // refusal or a reader's Source selection has a patch ready. This module names no route:
-// the comparison carries the rendered route and the snapshot route that its links open.
+// the comparison carries the rendered route and the image route its images load from.
 
 const CONTEXT_BLOCKS = 2;
 const MARKDOWN = /\.(?:md|markdown|mdown|mkd)$/i;
@@ -29,7 +29,7 @@ const LOADING_DELAY_MS = 50;
 /** @typedef {{
  *   section: HTMLElement, bar: HTMLElement, toggle: HTMLElement,
  *   source: HTMLElement, rendered: HTMLElement,
- *   progress: HTMLElement, progressLabel: HTMLElement, fallback: HTMLElement,
+ *   progress: HTMLElement, progressLabel: HTMLElement,
  *   control: HTMLElement,
  *   id: string, mode: Mode, pending: boolean, expanded: boolean, holding: boolean,
  *   retryAt: number, retries: number,
@@ -85,31 +85,42 @@ function isProjection(value) {
   );
 }
 
+// A path in the Git path codec's wire form, and a `/view/` address of one with, at most,
+// a fragment, which the server writes into the file's own heading anchors and spells with
+// percent escapes.
+const GIT_PATH = /^g1-[\w-]+(?:\/g1-[\w-]+)*$/;
+const HEAD_LINK = /^\/view\/g1-[\w-]+(?:\/g1-[\w-]+)*(?:#[\w%.~-]+)?$/;
+
 /**
- * Which addresses in a rendered block open a file of this comparison: those the server
- * spelled from the comparison's own snapshot route, which a page completes with a side,
- * a path in the Git path codec's wire form, and, for an image, its mode. Every other
- * local address is dropped before the shared sanitizer, which would drop it anyway.
- * @param {string | undefined} route The comparison's `snapshot_route`, when it names one.
+ * Which addresses in a rendered block open something of this comparison, as the server
+ * spelled them, before the shared sanitizer, which would drop every local one:
+ *
+ * - an image, on the comparison's own image route, which the server completes with the
+ *   path of an image at the head in the Git path codec's wire form;
+ * - a link to a file of the head, at its `/view/` address, only while *linksOpen* says
+ *   the page shows that head. Anywhere else the address would open the same path at
+ *   another commit, and a link that switched the pin first would let content choose what
+ *   the server serves, so the link stays plain text.
+ *
+ * Every other local address is dropped.
+ * @param {string | undefined} imageRoute The comparison's `image_route`, when it names one.
+ * @param {() => boolean} linksOpen
  * @returns {(value: string, image: boolean) => boolean}
  */
-export function snapshotTargets(route) {
-  if (typeof route !== "string" || !route.startsWith("/") || !route.includes("?")) {
-    return () => false;
-  }
+export function markdownTargets(imageRoute, linksOpen) {
+  const images =
+    typeof imageRoute === "string" && imageRoute.startsWith("/") && imageRoute.includes("?")
+      ? imageRoute
+      : null;
   return (value, image) => {
-    if (!value.startsWith(`${route}&`)) {
+    if (!image) {
+      return HEAD_LINK.test(value) && linksOpen();
+    }
+    if (images === null || !value.startsWith(`${images}&`)) {
       return false;
     }
-    const query = new URLSearchParams(value.slice(route.length + 1));
-    const names = [...query.keys()];
-    return (
-      new Set(names).size === names.length &&
-      names.every((name) => ["side", "path", "mode"].includes(name)) &&
-      /^(?:base|head)$/.test(query.get("side") ?? "") &&
-      /^g1-[\w-]+(?:\/g1-[\w-]+)*$/.test(query.get("path") ?? "") &&
-      (image ? query.get("mode") === "image" : [null, "document"].includes(query.get("mode")))
-    );
+    const query = new URLSearchParams(value.slice(images.length + 1));
+    return [...query.keys()].join() === "path" && GIT_PATH.test(query.get("path") ?? "");
   };
 }
 
@@ -155,15 +166,15 @@ function outsideLink(value) {
 
 /**
  * The shared sanitizer discards reserved application URLs. Preserve only
- * explicit snapshot addresses through it and discard other local targets
+ * the addresses *isTarget* keeps (`markdownTargets`) through it and discard other local targets
  * before the detached nodes can load any resource.
  * @param {string} html
  * @param {MetabrowserInertHtmlRuntime} inert
  * @param {HTMLTemplateElement} template
  * @param {Document} scratch
- * @param {(value: string, image: boolean) => boolean} isSnapshotTarget
+ * @param {(value: string, image: boolean) => boolean} isTarget
  */
-export function sanitizeBlock(html, inert, template, scratch, isSnapshotTarget) {
+export function sanitizeBlock(html, inert, template, scratch, isTarget) {
   template.innerHTML = html;
   /** @type {Map<string, string>} */
   const targets = new Map();
@@ -171,8 +182,8 @@ export function sanitizeBlock(html, inert, template, scratch, isSnapshotTarget) 
     const image = element.tagName === "IMG";
     const attribute = image ? "src" : "href";
     const value = element.getAttribute(attribute) ?? "";
-    if (isSnapshotTarget(value, image)) {
-      const marker = `mb-snapshot-target-${targets.size}`;
+    if (isTarget(value, image)) {
+      const marker = `mb-markdown-target-${targets.size}`;
       targets.set(marker, value);
       element.setAttribute(attribute, marker);
     } else if (image || (!value.startsWith(`#${inert.ANCHOR_PREFIX}`) && !outsideLink(value))) {
@@ -195,8 +206,9 @@ export function sanitizeBlock(html, inert, template, scratch, isSnapshotTarget) 
 }
 
 /**
- * One rendered block's row: its change gutter, its screen-reader label, and, when
- * its source says more than any render shows, a note that names Source.
+ * One rendered block's row: its change gutter and its screen-reader label. A block whose
+ * source says more than its render shows draws nothing to say so: the Rendered | Source
+ * chooser is how a reader reaches what Rendered does not show.
  * @param {Block} block
  * @param {(html: string) => Node} build
  */
@@ -208,13 +220,6 @@ function blockRow(block, build) {
     label.className = "sr-only";
     label.textContent = block.kind === "added" ? "Added: " : "Removed: ";
     row.append(label);
-  }
-  if (block.source_only) {
-    row.classList.add("diff-markdown-source-only");
-    const note = document.createElement("p");
-    note.className = "diff-markdown-note";
-    note.textContent = "Source shows changes not shown here.";
-    row.append(note);
   }
   row.append(build(block.html));
   return row;
@@ -254,6 +259,7 @@ export function appendBlocks(fragment, blocks, build) {
     const details = document.createElement("details");
     details.className = "diff-markdown-context";
     const summary = document.createElement("summary");
+    summary.className = "disclosure-toggle";
     summary.textContent = `${hidden.length} unchanged blocks`;
     details.append(summary);
     let mounted = false;
@@ -297,7 +303,8 @@ function stylesOnly(assets) {
     assets: assets.assets.filter(
       (asset) =>
         asset.loading === "stylesheet" &&
-        /^\/kpress-static\/[\w./%-]+\.css$/.test(asset.public_url ?? ""),
+        // `@` begins the asset stamp segment (metabrowser.asset_stamps).
+        /^\/kpress-static\/[\w./%@-]+\.css$/.test(asset.public_url ?? ""),
     ),
   };
 }
@@ -306,21 +313,27 @@ function stylesOnly(assets) {
  * One queue for a mounted comparison, one request at a time to match the server's one
  * projection slot. An answer that arrives after its file switched to Source or left
  * the lookahead is kept for when the reader comes back to it.
+ *
+ * *holdMs* is how long the first screen's files wait for Rendered with Source hidden,
+ * `LOADING_DELAY_MS` unless a page says otherwise. `firstScreen` settles once none of
+ * them waits: each is drawn, Rendered or Source, or the wait is over. A page that keeps the
+ * comparison out of sight until then shows its first screen at the heights it keeps.
  * @param {{
  *   load: (fileId: string, signal: AbortSignal) => Promise<unknown>,
  *   controls: NonNullable<MetabrowserPublicSdk["filterControls"]>,
  *   ensureInert: () => Promise<MetabrowserInertHtmlRuntime | undefined>,
  *   loadStyles: (assets: KpressAssetManifest) => Promise<void>,
  *   mutate: (change: () => void) => void,
- *   isSnapshotTarget?: (value: string, image: boolean) => boolean,
+ *   isTarget?: (value: string, image: boolean) => boolean,
  *   now?: () => number,
  *   later?: (callback: () => void, ms: number) => unknown,
- *   cancel?: (handle: unknown) => void
+ *   cancel?: (handle: unknown) => void,
+ *   holdMs?: number
  * }} deps
  */
 export function createMarkdownViews(deps) {
   const now = deps.now ?? (() => Date.now());
-  const isSnapshotTarget = deps.isSnapshotTarget ?? (() => false);
+  const isTarget = deps.isTarget ?? (() => false);
   const later = deps.later ?? ((callback, ms) => setTimeout(callback, ms));
   const cancel =
     deps.cancel ??
@@ -348,13 +361,43 @@ export function createMarkdownViews(deps) {
   let retryTimer;
   /** @type {(() => void) | undefined} */
   let unbind;
+  let firstScreenSettled = false;
+  /** @type {() => void} */
+  let settleFirstScreen = () => {};
+  /** @type {Promise<void>} */
+  const firstScreen = new Promise((resolve) => {
+    settleFirstScreen = () => {
+      firstScreenSettled = true;
+      resolve(undefined);
+    };
+  });
+
+  // The first screen has been reported and none of its files waits for Rendered any more.
+  function checkFirstScreen() {
+    if (firstScreenSettled) {
+      return;
+    }
+    if (
+      disposed ||
+      (reported &&
+        !Array.from(files.values()).some(
+          (file) =>
+            file.holding &&
+            file.expanded &&
+            file.mode === "rendered" &&
+            file.state === "idle" &&
+            nearby.has(file),
+        ))
+    ) {
+      settleFirstScreen();
+    }
+  }
 
   /** @param {FileView} file */
   function draw(file) {
     const rich = file.mode === "rendered" && file.state === "ready";
     file.source.hidden = rich || (file.holding && file.mode === "rendered" && file.expanded);
     file.rendered.hidden = !file.expanded || !rich;
-    file.fallback.hidden = !file.expanded || !file.fallback.textContent;
     drawProgress(file);
   }
 
@@ -426,6 +469,7 @@ export function createMarkdownViews(deps) {
         }
       });
     }
+    checkFirstScreen();
   }
 
   function pump() {
@@ -498,7 +542,7 @@ export function createMarkdownViews(deps) {
         inert = undefined;
       }
       if (inert === undefined) {
-        // Not kept: the retry the message offers loads it again.
+        // Not kept: choosing Rendered again loads it again.
         inertReady = undefined;
         throw new Error("The untrusted Markdown sanitizer is unavailable.");
       }
@@ -513,14 +557,8 @@ export function createMarkdownViews(deps) {
       const scratch = document.implementation.createHTMLDocument("");
       const template = document.createElement("template");
       const folds = appendBlocks(content, projection.blocks, (html) =>
-        sanitizeBlock(html, inert, template, scratch, isSnapshotTarget),
+        sanitizeBlock(html, inert, template, scratch, isTarget),
       );
-      if (projection.source_only) {
-        const note = document.createElement("p");
-        note.className = "diff-availability";
-        note.textContent = "Source shows additional changes.";
-        content.prepend(note);
-      }
       settled = true;
       deps.mutate(() => {
         file.rendered.replaceChildren(content);
@@ -530,11 +568,13 @@ export function createMarkdownViews(deps) {
         file.retries = 0;
         draw(file);
       });
+      checkFirstScreen();
     } catch (error) {
       if (!signal.aborted && !disposed) {
         if (/** @type {{status?: unknown}} */ (error)?.status === 429) {
           retryLater(file);
         } else {
+          console.warn("metabrowser diff: rendered Markdown failed; showing Source", error);
           fallBack(file, false);
         }
       }
@@ -548,18 +588,19 @@ export function createMarkdownViews(deps) {
     }
   }
 
+  // Source is what a file shows when it is not rendered, and nothing says so: a file
+  // that can only show Source loses its chooser, and one whose render failed keeps it, so
+  // choosing Rendered asks again.
   /** @param {FileView} file @param {boolean} unsupported */
   function fallBack(file, unsupported) {
     deps.mutate(() => {
       file.state = unsupported ? "unavailable" : "idle";
       file.mode = "source";
       file.holding = false;
-      file.fallback.textContent = unsupported
-        ? "Rendered diff unavailable. Showing source."
-        : "Could not render Markdown. Select Rendered to retry.";
       drawControl(file);
       draw(file);
     });
+    checkFirstScreen();
   }
 
   /** @param {FileView} file @param {Mode} mode */
@@ -571,7 +612,6 @@ export function createMarkdownViews(deps) {
       file.mode = mode;
       file.holding = false;
       if (mode === "rendered") {
-        file.fallback.textContent = "";
         file.retryAt = 0;
       }
       drawControl(file);
@@ -603,9 +643,6 @@ export function createMarkdownViews(deps) {
       const progressLabel = document.createElement("span");
       progressLabel.className = "sr-only";
       progress.append(spinner, progressLabel);
-      const fallback = document.createElement("p");
-      fallback.className = "diff-availability diff-markdown-fallback";
-      fallback.setAttribute("role", "status");
       /** @type {FileView} */
       const file = {
         section,
@@ -615,7 +652,6 @@ export function createMarkdownViews(deps) {
         rendered,
         progress,
         progressLabel,
-        fallback,
         id,
         control,
         mode: "rendered",
@@ -638,7 +674,7 @@ export function createMarkdownViews(deps) {
         }
       });
       toggle.after(control, progress);
-      source.before(fallback, rendered);
+      source.before(rendered);
       files.set(section, file);
       controls.set(source.id, file);
       drawControl(file);
@@ -656,9 +692,10 @@ export function createMarkdownViews(deps) {
     observe(container, root) {
       observed = true;
       if (files.size === 0) {
+        settleFirstScreen();
         return;
       }
-      holdTimer = later(release, LOADING_DELAY_MS);
+      holdTimer = later(release, deps.holdMs ?? LOADING_DELAY_MS);
       unbind = deps.controls.bind(container, {
         onChange(key, value, selectType) {
           const file = controls.get(key);
@@ -711,6 +748,7 @@ export function createMarkdownViews(deps) {
             });
           }
           pump();
+          checkFirstScreen();
         },
         { root, rootMargin: `0px 0px ${LOOKAHEAD} 0px` },
       );
@@ -718,8 +756,22 @@ export function createMarkdownViews(deps) {
         observer.observe(section);
       }
     },
+    firstScreen,
+    /**
+     * Make every link to a file of the head plain text, in what is drawn: the page learned
+     * that the server serves another pin, at which those addresses open other files. What
+     * is drawn later asks *isTarget*, which says so itself.
+     */
+    closeHeadLinks() {
+      for (const file of files.values()) {
+        for (const link of file.rendered.querySelectorAll('a[href^="/view/"]')) {
+          link.removeAttribute("href");
+        }
+      }
+    },
     dispose() {
       disposed = true;
+      settleFirstScreen();
       observer?.disconnect();
       active?.controller.abort();
       if (active !== null) {

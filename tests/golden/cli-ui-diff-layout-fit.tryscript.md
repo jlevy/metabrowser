@@ -23,6 +23,10 @@ within the return margin as narrow, because the scrollbar the draw brings has no
 arrived.
 A container with no width yet, as a commit’s stage has until it is placed, draws
 nothing until its first report, and draws in that report, before the browser paints.
+`L` switches to the other layout through the same path as a click, so where Split does
+not fit it chooses Split and its sideways scroll, and it writes the preference a click
+writes. The diff attaches it once, through the SDK’s shortcut surface, on the chip it
+would select, and moves it to the new chip after each draw.
 
 This browserless session loads the production `builtin_plugins/diff/diff-view.js` and
 mounts a document of the conformance corpus into a small element tree.
@@ -31,7 +35,7 @@ It asserts, and so prints nothing for, that a wide pane builds what a mount with
 observer does, node for node, whether it drew at mount or at its first report; that a
 report of the same width draws nothing; that the root is not watched while its first
 draw changes its height, and is watched again from the next task; and that disposing
-lets the observer go and drops a fit still waiting.
+lets the observer go, drops a fit still waiting, and detaches `L`.
 
 ```console
 $ node tests/dom/diff-layout-fit-session.js
@@ -454,6 +458,95 @@ $ node tests/dom/diff-layout-fit-session.js
         "Split: Too narrow for Split, so this shows Unified. Choose Split to scroll sideways."
       ],
       "preference": []
+    },
+    {
+      "step": "a wide diff attaches L once, on the option it would select",
+      "draws": "split",
+      "splitRows": 3,
+      "unifiedRows": 0,
+      "builtSplit": true,
+      "control": "split",
+      "tips": [],
+      "preference": [],
+      "key": {
+        "attached": "L diff.layout, controls",
+        "on": "Unified (aria-checked false)",
+        "retargets": 0
+      }
+    },
+    {
+      "step": "L chooses Unified, as clicking it does, and moves to Split",
+      "draws": "unified",
+      "splitRows": 0,
+      "unifiedRows": 4,
+      "builtSplit": true,
+      "control": "unified",
+      "tips": [],
+      "preference": [
+        "diff.layout=unified"
+      ],
+      "key": {
+        "attached": "L diff.layout, controls",
+        "on": "Split (aria-checked false)",
+        "retargets": 1
+      }
+    },
+    {
+      "step": "L again: Split, and the choice is written",
+      "draws": "split",
+      "splitRows": 3,
+      "unifiedRows": 0,
+      "builtSplit": true,
+      "control": "split",
+      "tips": [],
+      "preference": [
+        "diff.layout=unified",
+        "diff.layout=split"
+      ],
+      "key": {
+        "attached": "L diff.layout, controls",
+        "on": "Unified (aria-checked false)",
+        "retargets": 2
+      }
+    },
+    {
+      "step": "Split falls back where it does not fit: L moves to Split, which it would choose",
+      "draws": "unified",
+      "splitRows": 0,
+      "unifiedRows": 4,
+      "builtSplit": true,
+      "control": "unified",
+      "tips": [
+        "Split: Too narrow for Split, so this shows Unified. Choose Split to scroll sideways."
+      ],
+      "preference": [
+        "diff.layout=unified",
+        "diff.layout=split"
+      ],
+      "key": {
+        "attached": "L diff.layout, controls",
+        "on": "Split (aria-checked false)",
+        "retargets": 3
+      }
+    },
+    {
+      "step": "L there chooses Split and its sideways scroll, as clicking Split does",
+      "draws": "split",
+      "splitRows": 3,
+      "unifiedRows": 0,
+      "builtSplit": true,
+      "control": "split",
+      "tips": [],
+      "preference": [
+        "diff.layout=unified",
+        "diff.layout=split",
+        "diff.layout=split"
+      ],
+      "key": {
+        "attached": "L diff.layout, controls",
+        "on": "Unified (aria-checked false)",
+        "retargets": 4
+      }
     }
   ],
   "limit": [

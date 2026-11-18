@@ -27,12 +27,17 @@ from metabrowser.errors import CLIError
 
 LOG = logging.getLogger(__name__)
 
+# How long `wait_for_index` waits for the scan to finish when no timeout is given,
+# polling `/api/index/progress` every `INDEX_READY_POLL_S`. `--index-timeout` in
+# `cli/main.py` repeats this default as a literal.
 INDEX_READY_TIMEOUT_S = 60.0
 INDEX_READY_POLL_S = 0.05
 # A server-sent-event route never completes its response, so an unbounded read
 # would hang rather than fail. This bounds every request instead of guessing
 # which routes stream.
 REQUEST_TIMEOUT_S = 30.0
+# Bounds application startup and shutdown, so an app that neither completes nor fails
+# its lifespan reports an error instead of hanging with no output.
 LIFESPAN_TIMEOUT_S = 30.0
 
 # A caller writes a route the way the browser would request it, which may carry
@@ -115,7 +120,16 @@ class InProcessClient:
                 f"{self._label} application did not start within {LIFESPAN_TIMEOUT_S:g}s"
             ) from exc
         if message["type"] != "lifespan.startup.complete":
-            detail = message.get("message", "application startup failed")
+            # What was asked to be served could not be: its own message, which names no
+            # path, in place of the traceback an application's failed startup carries.
+            from metabrowser.source import subject_open_failure
+
+            failure = subject_open_failure()
+            detail = (
+                str(failure)
+                if failure is not None
+                else message.get("message", "application startup failed")
+            )
             # Draining the task re-raises whatever the app raised. That
             # traceback is the symptom; the failure message is the cause, so
             # report the cause and attach the exception to it.

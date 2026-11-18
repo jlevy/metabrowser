@@ -37,6 +37,7 @@ const HELPERS = [
   "decorateExternalLink",
   "refChipHtml",
   "refChip",
+  "mergeRefs",
   "mountRefCopies",
   "ageBucket",
   "ageLabelHtml",
@@ -374,6 +375,9 @@ async function sourceHeaderReadiness() {
   if (begin < 0 || end < 0) {
     throw new Error("source header boundary moved");
   }
+  // *managed* is whether the shell has the selector's row. The server writes it only
+  // where there is something to switch to, a pin with a mirror or a folder that is a
+  // repository's root, so a plain folder's page has none and asks for nothing.
   function header(managed) {
     const requested = [],
       jobs = new Map(),
@@ -382,8 +386,9 @@ async function sourceHeaderReadiness() {
     const element = {};
     const context = {
       Promise,
-      isGitRevisionSource: () => managed,
-      document: { getElementById: () => element },
+      // No keyboard infrastructure here, so no shell keymap hears the selector mount.
+      shellKeymap: null,
+      document: { getElementById: () => (managed ? element : null) },
       window: {
         MetabrowserAssets: {
           ensureAsset(name) {

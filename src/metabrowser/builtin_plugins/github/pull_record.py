@@ -18,6 +18,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
+import shutil
 import stat
 from datetime import datetime
 from pathlib import Path
@@ -25,6 +27,7 @@ from typing import Annotated, Final, Literal
 
 from pydantic import (
     BaseModel,
+    BeforeValidator,
     ConfigDict,
     Field,
     StringConstraints,
@@ -52,7 +55,12 @@ log = logging.getLogger(__name__)
 
 # 2 added the pull request's commit count and who merged it.
 PULL_RECORD_SCHEMA: Final = 2
-PULL_RECORD_PROJECTION: Final = 1
+# 1 added each actor's avatar; 2 each label's color and description (:class:`PullLabel`).
+# A record of an earlier projection is still shown, but the catalog never vouches for it
+# (:func:`.pull_freshness.record_freshness`), so once its window has passed it is stale,
+# and the next page that shows it refreshes it, closed or open, asking GitHub for every
+# part again, without the ETags that would let a 304 keep what it lacks.
+PULL_RECORD_PROJECTION: Final = 2
 
 # Measured on ten public pull requests (octocat/Hello-World#1, cli/cli#14462,
 # kubernetes/kubernetes#18085 and #102884, rust-lang/rust#69864, #137944, and #162519,
@@ -110,6 +118,61 @@ class _Model(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+# GitHub's color for a label: six hex digits and no ``#``, which the API gives in either
+# case. Of the 2,846 labels of cli/cli, kubernetes/kubernetes, rust-lang/rust,
+# microsoft/vscode, python/cpython, and pytorch/pytorch (``gh api repos/<r>/labels``,
+# 2026-11-15), every color was six hex digits and 556 were upper case; a record keeps it
+# lower case.
+type LabelColor = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{6}$")]
+_LABEL_COLOR: Final = re.compile(r"[0-9A-Fa-f]{6}")
+
+
+def label_color(value: object) -> str | None:
+    """GitHub's color for a label, lower case, or ``None`` for anything but six hex digits.
+
+    A label without one is drawn neutral, never guessed at.
+    """
+
+    return value.lower() if isinstance(value, str) and _LABEL_COLOR.fullmatch(value) else None
+
+
+def label_description(value: object) -> str | None:
+    """A label's description, or ``None`` for none: GitHub answers ``null`` or ``""``."""
+
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def bare_labels(value: object) -> object:
+    """Labels an earlier projection wrote as bare names, each read as one without a color.
+
+    A record of projection 1 or earlier, and a core (:mod:`.pull_core_cache`), which has no
+    projection, written by Metabrowser 0.12.0 or a build since, hold a label as its name.
+    Each reads as a label whose color and description are ``None``, so it is drawn neutral
+    until a refresh rewrites it. Anything else is left for the model to validate.
+    """
+
+    if not isinstance(value, list | tuple):
+        return value
+    items: list[object] = list(value)  # pyright: ignore[reportUnknownArgumentType]
+    return [
+        {"name": item, "color": None, "description": None} if isinstance(item, str) else item
+        for item in items
+    ]
+
+
+class PullLabel(_Model):
+    """A label on the pull request: its name, GitHub's color for it, and its description.
+
+    ``color`` is ``None`` when GitHub gave no six hex digits, and the chip is drawn
+    neutral; ``description`` is ``None`` when the label has none, and the chip has no
+    tooltip.
+    """
+
+    name: Short
+    color: LabelColor | None
+    description: Short | None
+
+
 class PullSide(_Model):
     """One end of a pull request: the branch name, its commit, and its repository.
 
@@ -141,7 +204,9 @@ class PullRequest(_Model):
     commits: Annotated[int, Field(ge=0, le=MAX_PULL_COMMITS)] | None
     merge_commit_sha: Sha | None
     mergeable: Mergeable
-    labels: tuple[Short, ...] = Field(max_length=MAX_LABELS)
+    labels: Annotated[tuple[PullLabel, ...], BeforeValidator(bare_labels)] = Field(
+        max_length=MAX_LABELS
+    )
     author: Login | None
     author_avatar_url: AvatarUrl = None
     created_at: Timestamp
@@ -473,6 +538,47 @@ def _require_published_source(home: Path, slug: str) -> None:
         raise FileNotFoundError("no source is published under this slug")
 
 
+def clear_pulls(home: Path, slug: str) -> int:
+    """Remove every entry of the source's ``pulls`` directory; how many. Blocking.
+
+    That directory is this plugin's whole cache of the repository: records, changed-file
+    lists, timelines, previews, the catalog and its sidecars, the stack snapshot, and every
+    refresh outcome, each fetched again when it is next wanted. The source's own records
+    and its store are the cache's and stay. A slug no source holds has nothing to clear,
+    and nothing is created for it.
+
+    It runs under the source's alias lock, which every writer of the directory takes, so a
+    writer finds each of its files whole or gone, never half removed, and a job still
+    running publishes into an empty directory as it would into a new one. Entries are
+    removed through the directory's descriptor, so a link is removed, never followed.
+    The work is one unlink for each cached file, as many as the cache holds.
+    """
+
+    try:
+        _require_published_source(home, slug)
+    except FileNotFoundError:
+        return 0
+    relative = source_pulls_directory(slug)
+    with source_alias_lock(home, slug):
+        try:
+            os.lstat(home / relative)
+        except FileNotFoundError:
+            return 0
+        directory = ensure_private_directory(home, relative)
+        fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            with os.scandir(fd) as listed:
+                entries = [(entry.name, entry.is_dir(follow_symlinks=False)) for entry in listed]
+            for name, is_directory in entries:
+                if is_directory:
+                    shutil.rmtree(name, dir_fd=fd)
+                else:
+                    os.unlink(name, dir_fd=fd)
+            return len(entries)
+        finally:
+            os.close(fd)
+
+
 def _metadata_record(record: PullRecord, current: PullRecord | RecordAbsence) -> PullRecord:
     """Retain only the latest shared comparison whose reader and inputs still match."""
     comparison = None
@@ -521,8 +627,8 @@ def write_pull_record(
     expectation, and neither is ``None``.
 
     *store_id* names the store a mirror computed *record*'s comparison in. The pair it
-    replaces and its own pair are kept in the bounded history the revision route admits
-    (:mod:`.pull_snapshot_cache`). Any write keeps only its own reader's pairs there, with
+    replaces and its own pair are kept in the bounded history the rendered diff and its
+    images admit (:mod:`.pull_snapshot_cache`). Any write keeps only its own reader's pairs there, with
     a store or without. A history that cannot be read or saved is left as it was and
     logged, and the record is still published.
 
@@ -626,6 +732,10 @@ def read_pull_record(
 MAX_PULL_REFRESH_BYTES: Final = 4096
 
 
+# The most a refresh outcome's message keeps; every message a stamp records fits it.
+MAX_REFRESH_MESSAGE_CHARS: Final = 1000
+
+
 class PullRefreshStamp(_Model):
     """``succeeded`` or a failure state, why, when GitHub's limit lifts, and when.
 
@@ -636,7 +746,7 @@ class PullRefreshStamp(_Model):
     """
 
     outcome: Annotated[str, StringConstraints(pattern=r"^[a-z_]{1,40}$")]
-    message: Annotated[str, StringConstraints(max_length=1000)] | None = None
+    message: Annotated[str, StringConstraints(max_length=MAX_REFRESH_MESSAGE_CHARS)] | None = None
     reset_at: Timestamp | None = None
     at: Timestamp
     reader: Reader | None = None
@@ -737,6 +847,7 @@ __all__ = [
     "MAX_STATUSES",
     "MAX_TEXT_BYTES",
     "MAX_TITLE_BYTES",
+    "MAX_REFRESH_MESSAGE_CHARS",
     "PULL_RECORD_SCHEMA",
     "PullObservationSuperseded",
     "PullRefreshStamp",
@@ -746,6 +857,8 @@ __all__ = [
     "CommitStatus",
     "Comparison",
     "IssueComment",
+    "LabelColor",
+    "PullLabel",
     "PullRecord",
     "PullRequest",
     "PullSide",
@@ -756,11 +869,15 @@ __all__ = [
     "Truncation",
     "UnavailablePart",
     "apply_text_budget",
+    "bare_labels",
+    "clear_pulls",
     "cut_escaped",
     "cut_text",
     "ensure_pulls_directory",
     "escaped_size",
     "fit_record",
+    "label_color",
+    "label_description",
     "read_pull_record",
     "read_pull_refresh",
     "read_refresh_stamp",

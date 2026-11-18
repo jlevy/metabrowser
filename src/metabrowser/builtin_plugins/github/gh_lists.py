@@ -28,7 +28,10 @@ from metabrowser.builtin_plugins.github.gh import (
     gh_account,
     gh_api,
 )
-from metabrowser.builtin_plugins.github.pull_record import API_PAGE_SIZE
+from metabrowser.builtin_plugins.github.pull_record import (
+    API_PAGE_SIZE,
+    MAX_REFRESH_MESSAGE_CHARS,
+)
 
 log = logging.getLogger(__name__)
 
@@ -61,6 +64,8 @@ type PullDataState = Literal[
     "git_failed",
     "record_too_large",
     "cache_unwritable",
+    "newer_cache",
+    "unknown_cache",
     "not_github",
 ]
 
@@ -76,6 +81,115 @@ class PullDataError(Exception):
         super().__init__(message)
         self.state: PullDataState = state
         self.reset_at = reset_at
+
+
+# The route that discards everything this plugin caches for one repository.
+CACHE_CLEAR_ROUTE: Final = "/api/plugin/github/cache-clear"
+
+
+def cache_clear_command(source: str, *, checkout: bool) -> str:
+    """The command a reader pastes to clear *source*'s GitHub cache.
+
+    *source* is the repository's ``https://github.com/<owner>/<repo>``. Beside a checkout
+    the command serves the checkout, ``.``, rather than the address, which would clone the
+    repository when no store is attached; the message says to run it there.
+    """
+
+    served = "." if checkout else source
+    return f"echo '{{}}' | metab {served} --api {CACHE_CLEAR_ROUTE} --data -"
+
+
+def _name(source: str) -> str:
+    return source.removeprefix("https://github.com/")
+
+
+def _run_clear(source: str, *, checkout: bool) -> str:
+    where = f" in a checkout of {_name(source)}" if checkout else ""
+    return f"run `{cache_clear_command(source, checkout=checkout)}`{where}"
+
+
+def cache_failure_reason(exc: BaseException) -> str:
+    """Why the cache refused, in words that name no path.
+
+    A home refusal's own sentence already names no path and says what to do, as SQLite's
+    and a cache record's do. An ``OSError`` gives only the system's ``strerror``: its other
+    text can carry a file name, which below the home can be a private repository's slug.
+    """
+
+    if isinstance(exc, OSError):
+        return exc.strerror or "the file system refused it"
+    return str(exc).rstrip(".") or type(exc).__name__
+
+
+# The longest a diagnostic stands in a message, before what to do; a stamp keeps a message
+# to MAX_REFRESH_MESSAGE_CHARS, and an error can quote text the cache holds. The longest
+# path-free refusal the home gives is 352 characters (2026-11-12, every violation,
+# location, and detail of metabrowser.home), which a cache_unwritable message keeps whole
+# with room to spare beside even the longest repository name GitHub admits.
+_DIAGNOSTIC_CHARS: Final = 400
+
+
+def _with_instructions(head: str, diagnostic: str, tail: str) -> str:
+    """*head*, then *diagnostic* cut to fit, then *tail*, within a stamp's message bound.
+
+    Only the diagnostic is ever cut, so *tail*, which says what to do and names the
+    command, is whole in every message a stamp keeps.
+    """
+
+    room = min(_DIAGNOSTIC_CHARS, MAX_REFRESH_MESSAGE_CHARS - len(head) - len(tail))
+    told = " ".join(diagnostic.split())
+    if len(told) > room:
+        told = told[: max(room - 1, 0)] + "…"
+    return head + told + tail
+
+
+def cache_unwritable(
+    what: str, exc: BaseException, *, source: str, checkout: bool
+) -> PullDataError:
+    """``cache_unwritable`` for *what*, saying why and the command that clears the cache."""
+
+    return PullDataError(
+        "cache_unwritable",
+        _with_instructions(
+            f"{what} could not be written to the cache: ",
+            cache_failure_reason(exc),
+            f". To clear the GitHub cache of {_name(source)}, "
+            f"{_run_clear(source, checkout=checkout)}, then retry",
+        ),
+    )
+
+
+def newer_cache(what: str, declared: str, *, source: str, checkout: bool) -> PullDataError:
+    """``newer_cache``: a newer Metabrowser wrote *what*, and this one leaves it as it is.
+
+    *declared* is what it says it is, against what this release reads.
+    """
+
+    return PullDataError(
+        "newer_cache",
+        _with_instructions(
+            f"{what} in the cache was written by a newer Metabrowser (",
+            declared,
+            "), and this one leaves it as it is. Upgrade metab to read it, or "
+            f"{_run_clear(source, checkout=checkout)} to clear the GitHub cache of "
+            f"{_name(source)} and fetch it again with this one",
+        ),
+    )
+
+
+def unknown_cache(what: str, why: str, *, source: str, checkout: bool) -> PullDataError:
+    """``unknown_cache``: *what*'s versions cannot be read, so this one leaves it as it is."""
+
+    return PullDataError(
+        "unknown_cache",
+        _with_instructions(
+            f"{what} in the cache cannot be checked for the Metabrowser that wrote it (",
+            why,
+            "), so this one leaves it as it is. Upgrade metab if a newer one wrote it, or "
+            f"{_run_clear(source, checkout=checkout)} to clear the GitHub cache of "
+            f"{_name(source)} and fetch it again with this one",
+        ),
+    )
 
 
 def utc_stamp(moment: datetime) -> str:
@@ -255,6 +369,7 @@ async def read_list(
 
 
 __all__ = [
+    "CACHE_CLEAR_ROUTE",
     "EXTRA_PAGE_REQUESTS",
     "READ_FAILURES",
     "ListRead",
@@ -264,11 +379,16 @@ __all__ = [
     "UnreadableItemError",
     "active_account",
     "as_dict",
+    "cache_clear_command",
+    "cache_failure_reason",
+    "cache_unwritable",
     "get_response",
     "login_of",
+    "newer_cache",
     "read_list",
     "readable_items",
     "response_json",
     "unconditional_304",
+    "unknown_cache",
     "utc_stamp",
 ]

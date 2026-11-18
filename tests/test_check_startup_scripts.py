@@ -4,17 +4,20 @@
 the performance loop's gate reads from a browser. These tests hold the things that
 would make that number wrong without failing anything: the scripts it counts, the ones
 a script asks for that no tag shows, the size it gives each, and the ceilings it
-compares them with.
+compares them with. The ceilings bound cost, not membership, so the deferred
+``shell-tools`` bundle is held out of the startup scripts here as well.
 """
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 import tomllib
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, cast
+from urllib.parse import urlsplit
 
 import pytest
 from starlette.testclient import TestClient
@@ -117,21 +120,64 @@ def test_a_lower_ceiling_fails_and_names_the_scripts(
     )
 
 
+def _bundled_at_startup(html: str) -> list[str]:
+    """The scripts of *html*'s on-demand bundles that it also requests as startup scripts."""
+
+    bundles = json.loads(
+        html.split("window.METABROWSER_ASSET_BUNDLES=", 1)[1].split(";</script>", 1)[0]
+    )
+    assert "/static/git-panel.js" in {
+        urlsplit(asset["src"]).path for asset in bundles["shell-tools"]
+    }
+    startup = set(check.startup_script_paths(html))
+    bundled = {urlsplit(asset["src"]).path for assets in bundles.values() for asset in assets}
+    return sorted(bundled & startup)
+
+
+@pytest.mark.parametrize("address", [check.FOLDER_ADDRESS, check.PULL_ADDRESS])
+def test_no_on_demand_script_is_a_startup_script(address: str) -> None:
+    # An on-demand bundle's script, such as the shell's navigation, search, Help, and Git
+    # tools, loads after the first usable tree. The two ceilings bound what the startup
+    # scripts cost, not which scripts they are, and their headrooms add: at 27ea216c a
+    # shell with five shell tools as startup scripts fit both. So membership is held
+    # here, whatever the budget file allows. The one exception is the server's own: at a
+    # pull-request address its routes are a startup script (PULL_PAGE_STARTUP_SCRIPTS),
+    # and everywhere else the pull-route bundle.
+    html = check.render_shells(address)[0]
+    named = server.PULL_PAGE_STARTUP_SCRIPTS if address == check.PULL_ADDRESS else ()
+    assert _bundled_at_startup(html) == sorted(f"/static/{name}" for name in named)
+
+
+def test_a_shell_tool_made_a_startup_script_is_named() -> None:
+    # The variant that fit both ceilings at 27ea216c: five shell tools as tags before
+    # app.js.
+    eager = ["main-tabs.js", "catalog-feed.js", "git-graph.js", "git-history-window.js"]
+    eager.append("git-panel.js")
+    html = check.render_folder_shell()
+    tags = "".join(f'<script src="/static/{name}"></script>' for name in eager)
+    assert _bundled_at_startup(_tag_before_app(html, tags)) == sorted(
+        f"/static/{name}" for name in eager
+    )
+
+
 @pytest.mark.parametrize("attribute", ["", " defer", " async"], ids=["blocking", "defer", "async"])
 def test_a_script_added_to_the_shell_is_counted_whatever_its_attributes(attribute: str) -> None:
-    # git-panel.js is an on-demand script. As one more startup script it is what the
-    # budget exists to refuse: with it the shell is over. A deferred or async script
-    # is requested as the parser meets it, the same as a blocking one.
+    # git-panel.js is an on-demand script, and as a startup script it is counted against
+    # both ceilings. A deferred or async script is requested as the parser meets it, the
+    # same as a blocking one. The ceiling here is the shell's own size, so that it is the
+    # added script that crosses it: the budget file's own headroom admits this script,
+    # and test_no_on_demand_script_is_a_startup_script is what keeps it out.
     html = check.render_folder_shell()
     before = check.measure(html)
     after = check.measure(
         _tag_before_app(html, f'<script{attribute} src="/static/git-panel.js"></script>')
     )
+    at_the_shell = check.Limits(requests=len(after), transfer_kb=check.transfer_kb(before))
 
     assert [script.url_path for script in after if script not in before] == ["/static/git-panel.js"]
     assert len(after) == len(before) + 1
-    assert check.problems(before, check.load_limits()) == []
-    over = check.problems(after, check.load_limits())
+    assert check.problems(before, at_the_shell) == []
+    over = check.problems(after, at_the_shell)
     assert len(over) == 1 and over[0].startswith("startup_script_transfer_kb:")
 
 
@@ -230,6 +276,20 @@ def test_the_computed_size_is_the_body_the_application_sends() -> None:
         assert len(response.content) == script.decoded_bytes, script.url_path
 
 
+def test_the_check_measures_with_delivery_and_refuses_a_middleware_that_differs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # One computation of what a gzip client is sent (review A of #455, A8): the check's is
+    # metabrowser.delivery's, and a middleware set apart from it stops the check.
+    from metabrowser import delivery
+
+    body = b"const x = 1;\n" * 400
+    assert check.sent_body_bytes(body) == delivery.sent_size(body)
+    monkeypatch.setattr(delivery, "GZIP_LEVEL", delivery.GZIP_LEVEL + 1)
+    with pytest.raises(SystemExit, match="they must agree"):
+        check.sent_body_bytes(body)
+
+
 # The probe's own selection and rounding, run on Resource Timing entries: the functions
 # probe.js defines ahead of its body, which is what a browser capture evaluates.
 _PROBE_ARITHMETIC = """
@@ -244,6 +304,7 @@ const counted = sandbox.startupScriptResources(entries, domContentLoadedEventEnd
 process.stdout.write(JSON.stringify({
   names: counted.map((entry) => entry.name),
   kb: sandbox.transferKb(counted),
+  paths: sandbox.startupScriptPaths(counted),
 }));
 """
 
@@ -274,6 +335,7 @@ def test_the_probe_counts_and_rounds_what_the_check_does() -> None:
             "name": f"{origin}{script.url_path}?v=1",
             "startTime": 5,
             "transferSize": script.transfer_bytes,
+            "encodedBodySize": script.transfer_bytes - check.RESOURCE_TIMING_HEADER_BYTES,
         }
         for script in scripts
     ]
@@ -290,6 +352,46 @@ def test_the_probe_counts_and_rounds_what_the_check_does() -> None:
 
     assert probe["names"] == [entry["name"] for entry in counted]
     assert probe["kb"] == check.transfer_kb(scripts)
+    assert probe["paths"] == [f"{script.url_path}?v=1" for script in scripts]
+    # A script the browser's cache answered transferred nothing, and one answered 304
+    # transferred its headers' 300 bytes and no body: neither is read back. Each has the
+    # shape Chrome gives it: a cache hit keeps its full encodedBodySize (review C of #455,
+    # C1, reproduced in headless Chrome).
+    cached = {
+        "name": f"{origin}/static/app.js?v=2",
+        "startTime": 5,
+        "transferSize": 0,
+        "encodedBodySize": 6413,
+    }
+    revalidated = {
+        "name": f"{origin}/static/app.js?v=3",
+        "startTime": 5,
+        "transferSize": check.RESOURCE_TIMING_HEADER_BYTES,
+        "encodedBodySize": 0,
+    }
+    assert _probe([*counted, cached, revalidated])["paths"] == probe["paths"]
+
+
+def test_the_loop_reads_the_number_this_check_computes() -> None:
+    """`run.py record` reads `startup_script_transfer_kb` again from the scripts the page
+    named, compressed as the remote path sends them, because a loopback browser of a
+    local server is sent them uncompressed (H115). It must stay this check's number,
+    which is the browser's on a server that compresses toward it."""
+    runner = check.ROOT / "explorations" / "performance-loop" / "run.py"
+    spec = importlib.util.spec_from_file_location("metabrowser_performance_loop", runner)
+    assert spec is not None and spec.loader is not None
+    loop = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(loop)
+    scripts = check.measure(check.render_folder_shell())
+    client = TestClient(server.app, base_url="http://127.0.0.1")
+
+    def read(path: str, _timeout_s: float) -> bytes:
+        answer = client.get(path, headers={"Accept-Encoding": "identity"})
+        assert "content-encoding" not in answer.headers, path
+        return answer.content
+
+    paths = [script.url_path for script in scripts]
+    assert loop._startup_script_transfer_kb(paths, read) == check.transfer_kb(scripts)
 
 
 @pytest.mark.parametrize("total", [175 * 1024 + 511, 175 * 1024 + 512, 1, 0])

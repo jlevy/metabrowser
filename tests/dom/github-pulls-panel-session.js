@@ -78,10 +78,9 @@ function summarize(model) {
       model.countNumber === null
         ? model.repository
         : model.countNumber + model.countSuffix + model.repository,
-    window: model.window,
     connection: model.connection,
     empty: model.empty,
-    loadMore: model.loadMore,
+    progress: model.progress,
     github: model.github,
     live: model.live || null,
     rowsHeld: rows.length || null,
@@ -359,7 +358,7 @@ async function run() {
   controller.dispose();
 
   // A large real catalog is read in bounded cache pages. Older backfill progress does not
-  // replace the prefix or silently enlarge the display budget.
+  // replace the prefix or read rows ahead of the reader; scrolling reads them, a page at a time.
   page = createPage();
   page.clock.now = Date.parse(recorded.large_0.body.fetched_at) + 30_000;
   controller = panel.createPullsController(page.deps, { filter: "closed", current: null });
@@ -379,22 +378,39 @@ async function run() {
   assert(controller.snapshot().rows === 500, "catalog growth must not grow display");
   assert(page.rowsVersion() === beforeProgress, "older appends preserve prefix identity");
   steps.push(page.observe("6,000 cached: the same 500 rows stay in place", controller));
-  void controller.loadMore();
-  await settle();
   for (let index = 5; index < 10; index += 1) {
+    const approach = controller.reachedEnd();
+    await settle();
+    assert(page.waitingCount() === 1, "each approach to the tail reads one page");
+    if (index === 5) {
+      const reading = page.observe("nearing the tail reads the next cached page", controller);
+      assert(
+        reading.paint.progress === "Fetching pull requests…",
+        "a page on its way shows the crawl's indicator below the rows",
+      );
+      steps.push(reading);
+    }
     await page.answer(recorded[`large_${index}`]);
+    await approach;
   }
-  assert(controller.snapshot().rows === 1000, "Fetch more grows display by 500");
+  assert(controller.snapshot().rows === 1000, "five approaches read five more pages");
   assert(page.filterTotals()?.all === 6000, "an older append cannot roll back newer tallies");
   const moreCached = page.observe(
-    "Fetch more displays another 500 cached rows without provider work",
+    "scrolling to the tail five times reads 500 more cached rows without provider work",
     controller,
   );
   assert(
     moreCached.paint.listName.endsWith("6,000 pull requests"),
     "the selected total stays current",
   );
-  assert(moreCached.paint.window === "Showing last 1,000", "the display remains a partial window");
+  assert(
+    !JSON.stringify(moreCached.paint).match(/Showing last|cached|Fetch more/u),
+    "no notice says how many rows are held",
+  );
+  assert(
+    moreCached.paint.progress === undefined,
+    "every row is cached: the next page waits for the reader, with nothing below the rows",
+  );
   assert(
     moreCached.paint.connection.state === "connected" &&
       moreCached.paint.connection.refreshing === true &&
@@ -495,7 +511,7 @@ async function run() {
     }
     const model = panel.describePulls(answer.body, {
       filter: "all",
-      rows: answer.body.rows.map((row) => panel.describeRow(row, "octo/demo")),
+      rows: answer.body.rows.map((row) => panel.describeRow(row)),
       rowsVersion: 1,
       nowMs: Date.parse(answer.body.fetched_at) + 30_000,
       formatTime: (iso) => new Date(iso).toISOString(),
@@ -534,33 +550,26 @@ async function run() {
     timers: page.timerDelays(),
   });
 
-  const hostile = panel.describeRow(
-    {
-      number: 7,
-      title: '<img src=x onerror="alert(1)"> & "quotes"',
-      state: "closed",
-      draft: false,
-      merged: true,
-      author: null,
-      updated_at: "2026-09-17T12:00:00Z",
-      base_ref: "main",
-      head_ref: "<b>topic</b>",
-      head_repository: null,
-    },
-    "octo/demo",
-  );
-  const spelled = panel.describeRow(
-    { number: 8, state: "open", base_ref: "main", head_ref: "topic", head_repository: "OCTO/demo" },
-    "octo/demo",
-  ).refs;
+  const hostile = panel.describeRow({
+    number: 7,
+    title: '<img src=x onerror="alert(1)"> & "quotes"',
+    state: "closed",
+    draft: false,
+    merged: true,
+    author: null,
+    updated_at: "2026-09-17T12:00:00Z",
+    base_ref: "main",
+    head_ref: "<b>topic</b>",
+    head_repository: null,
+  });
   return {
     steps,
     provider_calls: recorded.provider_calls,
     failures,
     hostile,
-    spelled,
     reader: await readerStory(),
     paint: await paintStory(panel),
+    numbers: await numberStory(panel),
   };
 }
 
@@ -921,6 +930,19 @@ async function paintStory(panel, selection = false) {
       !connection.hidden && message.textContent === "Fetching pull requests…",
       "one fetch line",
     );
+    // The status line is there before the list answers, holding its line, so the list and
+    // the connection line under it never move when it fills (they dropped 24 px).
+    const statusLine = container.childNodes.find((node) =>
+      node.classList?.contains("github-pulls-status"),
+    );
+    assert(
+      !statusLine.hidden && statusLine.textContent.length > 0,
+      "the status line holds its line before the list answers",
+    );
+    assert(
+      container.childNodes.indexOf(statusLine) + 1 === container.childNodes.indexOf(connection),
+      "the connection line is under the status line",
+    );
     assert(
       !spinner.hidden &&
         spinner.firstElementChild.classList.contains("spinner") &&
@@ -979,11 +1001,21 @@ async function paintStory(panel, selection = false) {
     const list = container.childNodes.find((node) => node.localName === "ul");
     const [hostile, shown] = list.childNodes;
     const row = (item) => item.firstElementChild;
+    // A row's third line, its change line, the row's one child, which owns its files.
+    const change = (item) =>
+      item.childNodes.find((node) => node.classList?.contains("github-pulls-change-group"))
+        .firstElementChild;
     const fileWindow = () => answers.findIndex((request) => request.route.includes("/pull-files?"));
-    const previewDisclosure = row(shown).getAttribute("aria-expanded");
+    const previewDisclosure = change(shown).getAttribute("aria-expanded");
     if (!selection) {
       assert(previewDisclosure === "false", "a PR preview stays collapsed");
       assert(fileWindow() === -1, "a PR preview reads no changed-file metadata");
+      // Right goes to the row's change line and opens nothing; Right again opens its files.
+      mounted.expand();
+      assert(
+        document.activeElement === change(shown) && fileWindow() === -1,
+        "Right on a row goes to its change line, and reads no files",
+      );
       mounted.expand();
       await settle();
       const group = shown.childNodes.find((node) => node.classList?.contains("github-pull-files"));
@@ -1097,6 +1129,8 @@ async function paintStory(panel, selection = false) {
           .map((node) => node.getAttribute("href"));
       assert(selected(current).length === 1, "initial page observation selects its actual file");
       list.listeners.get("focusin")({ target: row(shown) });
+      // Right to the change line, then Right into its files.
+      mounted.expand();
       mounted.expand();
       const oldAnchor = walk(container).find(
         (node) =>
@@ -1123,7 +1157,7 @@ async function paintStory(panel, selection = false) {
       await settle();
       observations.leaving = selected(current);
       assert(
-        row(shown).getAttribute("aria-expanded") === "true",
+        change(shown).getAttribute("aria-expanded") === "true",
         "reader-expanded old tree remains open",
       );
       assert(oldAnchor.getAttribute("tabindex") === "0", "leaving keeps the old roving anchor");
@@ -1200,51 +1234,91 @@ async function paintStory(panel, selection = false) {
     const metadata = row(hostile).childNodes.find((node) =>
       node.classList?.contains("github-pulls-meta"),
     );
-    const numberLabel = metadata.childNodes.find((node) =>
-      node.classList?.contains("github-pulls-number"),
+    /** @param {any} parent @param {string} name */
+    const child = (parent, name) =>
+      parent.childNodes.find((node) => node.classList?.contains(name));
+    // The line wraps: the author carries the separator before it, so it moves to the next
+    // line whole. A row names no branches; the pull request's page does.
+    const line = child(metadata, "github-pulls-line");
+    const id = child(line, "github-pulls-id");
+    const numberLabel = child(id, "github-pulls-number");
+    const by = child(line, "github-pulls-by");
+    // The stylesheet lays the row out as three lines (mb-lkkt, mb-3cbf, mb-d0a3): the icon,
+    // the number's line, where a stack member's place comes before the number (mb-dzsi), and
+    // the age; then the title alone, so it has the room; then the change line, with the
+    // chevron. tests/dom/github-pull-header-chrome.mjs lays these rows out in Chrome.
+    const classesOf = (node) =>
+      node.childNodes
+        .filter((child) => typeof child.className === "string")
+        .map((child) => child.className.split(" ").find((name) => name.startsWith("github-pull")));
+    const order = classesOf(row(hostile));
+    assert(
+      JSON.stringify(order) ===
+        JSON.stringify([
+          "github-pull-state-icon",
+          "github-pulls-title",
+          "github-pulls-age",
+          "github-pulls-meta",
+        ]),
+      `the row's link is the state icon, the title, the age, and the muted line: ${order}`,
     );
-    const identity = metadata.childNodes.find((node) =>
-      node.classList?.contains("github-pull-identity"),
+    assert(
+      JSON.stringify(classesOf(hostile).slice(0, 2)) ===
+        JSON.stringify(["github-pulls-row", "github-pulls-change-group"]) &&
+        JSON.stringify(classesOf(change(hostile))) ===
+          JSON.stringify(["github-pulls-toggle", "github-pulls-change-line"]),
+      "under the link, the change line: the chevron, then the line",
     );
-    const authorLabel = identity.childNodes.find((node) =>
-      node.classList?.contains("github-pulls-author"),
+    assert(
+      id.childNodes[0].classList.contains("github-pulls-place") &&
+        id.childNodes[0].hidden &&
+        id.childNodes[0].textContent === "",
+      "the line starts with the stack place, with the number, empty and hidden while no stack holds it",
     );
-    const branches = metadata.childNodes.find((node) =>
-      node.classList?.contains("github-pulls-refs"),
+    assert(
+      metadata.textContent === `#${first.body.rows[0].number} · ${first.body.rows[0].author}`,
+      "the line reads number, then author, and names no branches",
     );
+    assert(
+      !metadata.childNodes.some((node) => node.textContent.includes("→")) &&
+        line.childNodes.length === 2,
+      "the line has the place and number, and the author, and no merge",
+    );
+    assert(
+      by.firstChild.classList.contains("github-pulls-sep") && by.firstChild.textContent === " · ",
+      "a part that may wrap carries its own separator",
+    );
+    const identity = child(by, "github-pull-identity");
+    const authorLabel = child(identity, "github-pulls-author");
     assert(
       numberLabel.textContent === `#${first.body.rows[0].number}`,
       "number has its normal-size span",
     );
     assert(authorLabel.localName === "strong", "username is semantically bold");
     assert(authorLabel.textContent === first.body.rows[0].author, "username stays literal text");
-    assert(branches.textContent.includes(" ← "), "branches keep their own smaller semantic span");
-    const chips = branches.childNodes.filter((node) => node.classList?.contains("git-ref"));
-    assert(chips.length === 2, "exactly two structured chips, including literal arrow refs");
-    assert(chips[0].dataset.refCopy === "release/←base", "raw base ref remains intact");
-    assert(
-      chips[1].dataset.refCopy === "feature/←<literal>",
-      "copy omits fork display qualification",
-    );
-    assert(
-      chips[1].textContent === "fork:feature/←<literal>",
-      "head label is literal and owner-qualified",
-    );
 
     const status = container.childNodes.find((node) =>
       node.classList?.contains("github-pulls-status"),
     );
     const total = status.firstElementChild;
+    // The count is the shell's metadata line, set as the Files and Commits totals are: the
+    // number bold, as every count summary's (docs/design-system.md, "Count Summaries Bold
+    // Their Numbers"), the words in the line's weight, and the repository name in its text
+    // role.
     assert(
-      total.childNodes[0].localName === "strong" && total.childNodes[0].textContent === "102",
-      "the exact repository number is strong",
+      status.classList.contains("nav-metadata") &&
+        total.childNodes[0].localName === "span" &&
+        total.childNodes[0].classList.contains("summary-number") &&
+        total.childNodes[0].textContent === "102",
+      "the exact repository number is a count summary's bold number",
     );
     assert(
       total.childNodes[1].nodeName === "#text" &&
         total.childNodes[1].textContent === " PRs on " &&
         total.childNodes[2].localName === "strong" &&
+        total.childNodes[2].classList.contains("repository-name") &&
         total.childNodes[2].textContent === "octo/demo",
-      "only the repository name is bold in the label",
+      "the words keep the line's weight, and the repository name is bold in its role",
     );
     assert(status.textContent.match(/octo\/demo/g)?.length === 1, "names the repository once");
     const story = {
@@ -1252,7 +1326,7 @@ async function paintStory(panel, selection = false) {
       "ready action": reload.textContent,
       landing: pane.textContent,
       "filter tallies": filterTallies,
-      "the count and repository name are bold": total.childNodes.map((node) => ({
+      "only the repository name is bold": total.childNodes.map((node) => ({
         node: node.nodeName,
         text: node.textContent,
       })),
@@ -1260,10 +1334,17 @@ async function paintStory(panel, selection = false) {
       "a row": [described(hostile), described(row(hostile))],
       "the row whose page is shown": described(row(shown)),
       "its parts": row(shown).childNodes.map(described),
+      // The stylesheet draws the title first and the number's line under it (mb-lkkt); the
+      // DOM keeps the title the row's first text too. This reads the text, not the accessible
+      // name, which gives the state icon's label first and then the title.
+      "its text leads with its title": row(shown)
+        .textContent.trim()
+        .startsWith(row(shown).childNodes[1].textContent),
       "a PR preview leaves its files expanded": previewDisclosure === "true",
-      "Right opens its cached changed files": filesRead,
+      "Right to its change line, and Right again, opens its cached changed files": filesRead,
       "they hang under it as a group it owns": shown.childNodes.map(described),
-      "a title written as markup is one text node": row(hostile).childNodes[2].childNodes.map(
+      "its change line, the row's child, owns them": described(change(shown)),
+      "a title written as markup is one text node": row(hostile).childNodes[1].childNodes.map(
         (node) => ({ node: node.nodeName, data: node.data }),
       ),
       "rows built for the first window": built,
@@ -1294,7 +1375,9 @@ async function paintStory(panel, selection = false) {
     story["rows held"] = list.childNodes.length;
     // Two hours on, the list unchanged: a poll's answer moves the freshness, and with it each
     // row's age, in place.
-    const age = () => row(shown).childNodes[3].textContent;
+    const age = () =>
+      row(shown).childNodes.find((node) => node.className?.includes("github-pulls-age"))
+        .textContent;
     story["an age, before"] = age();
     built = 0;
     now += 2 * 60 * 60 * 1000;
@@ -1348,7 +1431,9 @@ async function paintStory(panel, selection = false) {
     const many = list.childNodes
       .filter((item) => Number(row(item).dataset.number) !== current)
       .slice(0, 12);
-    const click = (item) => list.listeners.get("click")({ target: row(item), preventDefault() {} });
+    // A press on a row's change line toggles its files; a press on the row opens it.
+    const click = (item) =>
+      list.listeners.get("click")({ target: change(item), preventDefault() {} });
     const retained = () =>
       list.childNodes.filter((item) =>
         item.childNodes.some(
@@ -1370,12 +1455,12 @@ async function paintStory(panel, selection = false) {
     const afterClosingAll = retained();
     assert(afterClosingAll === panel.MAX_HELD_TREES + 1, "closed trees must be bounded on close");
     assert(
-      row(many[0]).getAttribute("aria-owns") === null,
+      change(many[0]).getAttribute("aria-owns") === null,
       "the longest-closed tree must go first",
     );
-    assert(row(shown).getAttribute("aria-owns") !== null, "the shown page's tree must remain");
+    assert(change(shown).getAttribute("aria-owns") !== null, "the shown page's tree must remain");
     assert(
-      row(many.at(-1)).getAttribute("aria-owns") !== null,
+      change(many.at(-1)).getAttribute("aria-owns") !== null,
       "the most recently closed tree must remain",
     );
     story["closing twelve expanded trees enforces retention immediately"] = {
@@ -1384,6 +1469,43 @@ async function paintStory(panel, selection = false) {
     };
     mounted.dispose();
     story["disposed: what is left in the tab"] = container.childNodes.length;
+    // With the host's toolbar, the filters are the tab's toolbar in the navigation's slot,
+    // and the list starts with its status line; a disposed list leaves the slot.
+    const slot = new FakeElement("div");
+    const slotted = new FakeElement("div");
+    const inSlot = panel.mountPullsPanel(
+      slotted,
+      {
+        kind: "pull-request-list",
+        pullsNav: {
+          filter: "all",
+          current: null,
+          shown: true,
+          refreshAhead: false,
+          toolbar: slot,
+          scrollRoot: null,
+          open() {},
+          file: null,
+          fileHref: () => null,
+          pageFor: () => null,
+          onPageChange: () => () => {},
+          filterChanged() {},
+        },
+      },
+      mb,
+    );
+    await settle();
+    assert(
+      slot.childNodes.length === 1 && slot.childNodes[0].classList.contains("github-pulls-filters"),
+      "the filters fill the host's toolbar",
+    );
+    assert(
+      slotted.childNodes[0].classList.contains("github-pulls-status") &&
+        !slotted.childNodes.some((node) => node.classList?.contains("github-pulls-filters")),
+      "the list under the toolbar starts with its status line",
+    );
+    inSlot.dispose();
+    assert(slot.childNodes.length === 0, "a disposed list leaves the toolbar");
     return story;
   } finally {
     Date.now = realNow;
@@ -1392,6 +1514,415 @@ async function paintStory(panel, selection = false) {
         delete globalThis[name];
       } else {
         Object.defineProperty(globalThis, name, descriptor);
+      }
+    }
+  }
+}
+
+// ── The numbers ────────────────────────────────────────────────
+//
+// The state chips and Reload are situational, so each takes a number from its place on screen
+// through the SDK's shortcut surface (docs/design-system.md, "Keyboard Shortcuts"). The
+// shortcut stand-in is the production registry and plugin facade, static/keyboard-shortcuts.js
+// and static/plugin-shortcuts.js, loaded whole into a realm of their own as `shell-tools` loads
+// them, and the panel's `mb.shortcuts.attach` is the facade's. Around the panel is a page
+// shaped as the shell's: the navigation pane, with the Files tab's filter bar, whose triggers
+// the shell numbers through `attachNumbered()`, and the Pulls tab, before the main pane, with a
+// pull request header's View on GitHub. Switching tabs hides the other with `display: none`, as
+// main-tabs.js does. The elements answer what the registry reads of one in a browser:
+// connection, `hidden` and `display: none` up the tree, `inert`, and document order.
+
+async function numberStory(panel) {
+  const vm = require("node:vm");
+  let filterOptions = [];
+  class NumberedElement extends FakeElement {
+    get parentElement() {
+      return this.parentNode instanceof FakeElement ? this.parentNode : null;
+    }
+    get inert() {
+      return this.attributes.has("inert");
+    }
+    hasAttribute(name) {
+      return this.attributes.has(name);
+    }
+    checkVisibility() {
+      for (let node = this; node; node = node.parentNode) {
+        if (
+          node.hidden === true ||
+          node.attributes?.has("hidden") ||
+          node.style?.display === "none"
+        ) {
+          return false;
+        }
+      }
+      return true;
+    }
+    compareDocumentPosition(other) {
+      let root = this;
+      while (root.parentNode) {
+        root = root.parentNode;
+      }
+      const order = [];
+      const visit = (node) => {
+        order.push(node);
+        for (const child of node.childNodes) {
+          visit(child);
+        }
+      };
+      visit(root);
+      // Node.DOCUMENT_POSITION_FOLLOWING, or PRECEDING.
+      return order.indexOf(other) > order.indexOf(this) ? 4 : 2;
+    }
+    set innerHTML(markup) {
+      super.innerHTML = markup;
+      if (this.classList.contains("github-pulls-filters")) {
+        for (const option of filterOptions) {
+          const chip = new NumberedElement("button");
+          chip.dataset.chipValue = option.value;
+          chip.append(option.label);
+          this.append(chip);
+        }
+      }
+    }
+    querySelectorAll(selector) {
+      if (selector === "button" && this.classList.contains("github-pulls-filters")) {
+        return this.childNodes;
+      }
+      return super.querySelectorAll();
+    }
+  }
+  /** A control's own label: its first text, before a tally or a badge. */
+  const name = (node) => node.childNodes[0]?.textContent.trim();
+  const element = (tag, label) => {
+    const made = new NumberedElement(tag);
+    made.append(label);
+    return made;
+  };
+  const listeners = [];
+  const body = new NumberedElement("body");
+  const document = {
+    activeElement: null,
+    visibilityState: "visible",
+    body,
+    addEventListener(type, listener, options) {
+      const entry = { type, listener };
+      listeners.push(entry);
+      options?.signal?.addEventListener("abort", () => {
+        listeners.splice(listeners.indexOf(entry), 1);
+      });
+    },
+    removeEventListener(type, listener) {
+      const at = listeners.findIndex((entry) => entry.type === type && entry.listener === listener);
+      if (at >= 0) {
+        listeners.splice(at, 1);
+      }
+    },
+    createElement: (tag) => new NumberedElement(tag),
+    createDocumentFragment: () => new FakeNode("#fragment"),
+    importNode: (node) => new NumberedElement(node.localName),
+  };
+  // What the panel asked the server, and the answers it waits for.
+  const asked = [];
+  const answers = [];
+  const saved = {};
+  const globals = {
+    document,
+    window: {
+      addEventListener() {},
+      setTimeout: () => 0,
+      clearTimeout() {},
+    },
+    getComputedStyle: () => ({ getPropertyValue: () => "24" }),
+    HTMLElement: NumberedElement,
+    Element: NumberedElement,
+    MouseEvent: class {},
+    DOMParser: class {
+      parseFromString() {
+        return { body: { firstElementChild: new NumberedElement("svg") } };
+      }
+    },
+    fetch(route, init = {}) {
+      if (route === "/api/plugin/github/stacks") {
+        return Promise.resolve({
+          status: optionalStacks.missing.status,
+          headers: { get: () => optionalStacks.missing.etag },
+          json: async () => optionalStacks.missing.body,
+        });
+      }
+      if (route === PREFETCH_ROUTE) {
+        return Promise.resolve({
+          status: 200,
+          headers: { get: () => null },
+          json: async () => ({ prefetch: "not_due" }),
+        });
+      }
+      asked.push(`${init.method ?? "GET"} ${route}${init.body ? ` ${init.body}` : ""}`);
+      return new Promise((resolve) => {
+        answers.push({ route, resolve });
+      });
+    },
+  };
+  for (const [key, value] of Object.entries(globals)) {
+    saved[key] = Object.getOwnPropertyDescriptor(globalThis, key);
+    Object.defineProperty(globalThis, key, { value, configurable: true, writable: true });
+  }
+  const realNow = Date.now;
+  Date.now = () => Date.parse(recorded.more_done.body.fetched_at) + 30_000;
+  const shell = { console, document, HTMLElement: NumberedElement };
+  shell.window = shell;
+  vm.createContext(shell);
+  for (const file of ["keyboard-shortcuts.js", "plugin-shortcuts.js"]) {
+    const source = path.join(repoRoot, "src/metabrowser/static", file);
+    vm.runInContext(fs.readFileSync(source, "utf8"), shell, { filename: source });
+  }
+  const registry = shell.MetabrowserKeyboardShortcuts.create({ document });
+  const facade = shell.MetabrowserPluginShortcuts;
+  const detachRegistry = facade.attachShortcutRegistry(registry);
+  try {
+    const recency = element("button", "Modified within");
+    const types = element("button", "File type");
+    const filterBar = new NumberedElement("div");
+    filterBar.append(recency, types);
+    const filesTab = new NumberedElement("div");
+    const pullsTab = new NumberedElement("div");
+    const navigation = new NumberedElement("div");
+    navigation.append(filterBar, filesTab, pullsTab);
+    const onGitHub = element("a", "View on GitHub");
+    const main = new NumberedElement("div");
+    main.append(onGitHub);
+    body.append(navigation, main);
+    const show = (tab) => {
+      filterBar.style.display = tab === "files" ? "" : "none";
+      filesTab.style.display = tab === "files" ? "" : "none";
+      pullsTab.style.display = tab === "pulls" ? "" : "none";
+    };
+    // What the shell's filter menus and the page's link were asked to do.
+    const ran = [];
+    // Attached before the panel mounts, and after it in the page: the place decides.
+    for (const trigger of [recency, types]) {
+      registry.attachNumbered(trigger, { activate: () => ran.push(name(trigger)) });
+    }
+    facade.attachShortcut(onGitHub, {
+      activate: () => ran.push(name(onGitHub)),
+      id: "github.pull.header.github",
+      numbered: true,
+    });
+    const heard = [];
+    let chipChange = null;
+    const mb = {
+      ...require("./sdk-ref-fixture.js").refHelpers(document),
+      perf: { measure: (_label, work) => work(), measureAsync: (_label, work) => work() },
+      filterControls: {
+        groupHtml({ options }) {
+          filterOptions = options;
+          return "<div></div>";
+        },
+        bind(_root, handlers) {
+          chipChange = handlers.onChange;
+          return () => {};
+        },
+      },
+      formatAge: () => ({ label: "1m", className: "age-min" }),
+      formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
+      shortcuts: { attach: facade.attachShortcut },
+    };
+    show("pulls");
+    const mounted = panel.mountPullsPanel(
+      pullsTab,
+      {
+        kind: "pull-request-list",
+        pullsNav: {
+          filter: "all",
+          current: null,
+          shown: true,
+          refreshAhead: false,
+          scrollRoot: null,
+          open() {},
+          file: null,
+          fileHref: () => null,
+          pageFor: () => null,
+          onPageChange: () => () => {},
+          filterChanged: (state) => heard.push(state),
+        },
+      },
+      mb,
+    );
+    await settle();
+    const filters = pullsTab.childNodes.find((node) =>
+      node.classList?.contains("github-pulls-filters"),
+    );
+    const chips = filters.childNodes.filter((node) => node.dataset.chipValue !== undefined);
+    const chip = (value) => chips.find((node) => node.dataset.chipValue === value);
+    const reload = filters.childNodes.at(-1);
+    assert(reload.classList.contains("github-pulls-reload"), "Reload ends the filter row");
+    const numbers = () => registry.liveNumbers().map((node, at) => `${at + 1} ${name(node)}`);
+    /** What one act asked of the server and the list, what else ran, and where it moved focus. */
+    async function acted(what, act) {
+      asked.length = 0;
+      heard.length = 0;
+      ran.length = 0;
+      const before = document.activeElement;
+      const handled = act();
+      await settle();
+      return present({
+        what,
+        handled,
+        asked: [...asked],
+        list: heard.length > 0 ? heard.join(", ") : null,
+        ran: [...ran],
+        focused: document.activeElement === before ? null : name(document.activeElement),
+      });
+    }
+    /** A digit typed outside a text field, through every document listener as a browser would. */
+    const press = (digit) =>
+      acted(`press ${digit}`, () => {
+        const event = {
+          type: "keydown",
+          key: digit,
+          code: "",
+          altKey: false,
+          ctrlKey: false,
+          metaKey: false,
+          shiftKey: false,
+          repeat: false,
+          isComposing: false,
+          target: body,
+          defaultPrevented: false,
+          preventDefault() {
+            this.defaultPrevented = true;
+          },
+        };
+        for (const entry of listeners.filter((candidate) => candidate.type === "keydown")) {
+          entry.listener(event);
+        }
+        return event.defaultPrevented;
+      });
+    // A click on a segment, as static/filter-controls.js reports one: nothing for the chip
+    // already chosen, else the group's change. A click on Reload is its own listener.
+    const clickChip = (value) =>
+      acted(`click ${name(chip(value))}`, () => {
+        if (chip(value).getAttribute("aria-checked") !== "true") {
+          chipChange("github-pulls-filter", value, "one");
+        }
+      });
+    const clickReload = () => acted("click Reload", () => reload.listeners.get("click")());
+    /** Answer the oldest request waiting on *route* with a recorded answer. */
+    async function answer(route, recording) {
+      const at = answers.findIndex((waiting) => waiting.route.split("?")[0] === route);
+      assert(at >= 0, `no request waits on ${route}`);
+      const [{ resolve }] = answers.splice(at, 1);
+      resolve({
+        status: recording.status,
+        headers: { get: () => recording.etag },
+        json: async () => recording.body,
+      });
+      await settle();
+    }
+
+    const story = {};
+    // The Pulls tab shows, the Files tab's filter bar is hidden, and the list is loading.
+    story["the Pulls tab, loading"] = numbers();
+    assert(
+      numbers().join() === "1 Open,2 Closed,3 All,4 Reload,5 View on GitHub",
+      "the chips and Reload take 1 to 4 in reading order, before the page's link",
+    );
+    assert(
+      reload.getAttribute("aria-disabled") === "true",
+      "positive control: Reload waits while the list loads",
+    );
+    story["Reload waits"] = [await press("4"), await clickReload()];
+    await answer("/api/plugin/github/pulls", recorded.more_done);
+    assert(reload.getAttribute("aria-disabled") === "false", "the settled Reload is available");
+    story["the Pulls tab, settled"] = numbers();
+    const byKey = await press("4");
+    await answer("/api/plugin/github/pulls-refresh", recorded.not_due);
+    const byClick = await clickReload();
+    story.Reload = [byKey, byClick];
+    assert(
+      byKey.asked.length === 1 && JSON.stringify(byKey.asked) === JSON.stringify(byClick.asked),
+      "Reload's number asks for what its click asks for",
+    );
+    // Each chip's number, then each chip's click, from the same list: the same asks in the
+    // same order. Then the chip already chosen: its number, like its click, asks for nothing.
+    const chosen = [];
+    for (const act of [
+      () => press("1"),
+      () => press("2"),
+      () => press("3"),
+      () => clickChip("open"),
+      () => clickChip("closed"),
+      () => clickChip("all"),
+      () => press("3"),
+      () => clickChip("all"),
+    ]) {
+      chosen.push(await act());
+    }
+    story["the state chips"] = chosen;
+    const asks = (step) => JSON.stringify([step.asked, step.list]);
+    assert(
+      [0, 1, 2].every((at) => chosen[at].asked && asks(chosen[at]) === asks(chosen[at + 3])),
+      "a chip's number asks for the list its click asks for",
+    );
+    assert(
+      chosen
+        .slice(0, 3)
+        .map((step) => step.list)
+        .join() === "open,closed,all",
+      "1, 2, and 3 are Open, Closed, and All",
+    );
+    assert(
+      asks(chosen[6]) === asks({}) && asks(chosen[7]) === asks({}),
+      "the chosen chip's number asks for nothing, as its click does",
+    );
+    assert(
+      chosen
+        .slice(0, 3)
+        .map((step) => step.focused)
+        .join() === "Open,Closed,All",
+      "a chip's number moves focus to the chip",
+    );
+    // Holding Shift shows each live number on its control.
+    registry.setRevealed(true);
+    story["the keycaps while Shift is held"] = [...chips, reload, recency, types, onGitHub]
+      .map((node) => {
+        const badge = node.childNodes.find((child) => child.classList?.contains("kbd-badge"));
+        return `${name(node)} ${badge?.textContent ?? "none"}`;
+      })
+      .join(", ");
+    registry.setRevealed(false);
+    // The Files tab shows: the hidden panel's controls give up their numbers.
+    show("files");
+    story["the Files tab"] = numbers();
+    assert(
+      numbers().join() === "1 Modified within,2 File type,3 View on GitHub",
+      "the hidden panel's controls hold no number",
+    );
+    story["on the Files tab"] = [await press("1"), await press("3"), await press("4")];
+    show("pulls");
+    assert(numbers().length === 5, "the Pulls tab shows its numbers again");
+    // Disposal ends the panel's numbers, and the page's link moves up to 1. Put back in the
+    // page, the disposed panel's controls still hold none: their numbers were let go.
+    mounted.dispose();
+    story["the Pulls tab, disposed"] = numbers();
+    pullsTab.append(filters);
+    assert(
+      numbers().join() === "1 View on GitHub",
+      "a disposed panel's chips and Reload hold no number",
+    );
+    filters.remove();
+    story["after disposal"] = [await press("1"), await press("2")];
+    show("files");
+    story["the Files tab, after disposal"] = numbers();
+    return story;
+  } finally {
+    detachRegistry();
+    registry.dispose();
+    Date.now = realNow;
+    for (const [key, descriptor] of Object.entries(saved)) {
+      if (descriptor === undefined) {
+        delete globalThis[key];
+      } else {
+        Object.defineProperty(globalThis, key, descriptor);
       }
     }
   }

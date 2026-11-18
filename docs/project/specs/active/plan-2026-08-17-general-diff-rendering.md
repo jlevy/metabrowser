@@ -1,6 +1,6 @@
 # Feature: General Diff Rendering
 
-**Date:** 2026-08-17 (last updated 2026-11-09)
+**Date:** 2026-08-17 (last updated 2026-11-14)
 
 **Author:** Metabrowser maintainers
 
@@ -11,9 +11,15 @@ Current delivery includes patch-file rendering, immutable Git comparisons, unifi
 split layouts, intraline refinement, bounded initial hydration, and deferred per-file
 reads. The reusable Python model and adapters live in `metabrowser.diff`; the built-in
 `diff` plugin owns browser routes and rendering.
+Its `document`, `children`, and `comparison` data hooks
+(`builtin_plugins/diff/manifest.toml`) serve the browser, and
+`builtin_plugins/diff/comparison_cache.py` keeps a store’s commit-ID comparisons,
+bounded, with an entity tag (#284, on `main` through #283). They take the place of the
+core `diff/service.py` and `/api/diff/` collection below.
 Older module names, routes, and core-placement discussion below record the original
-design. General working-tree/index comparisons, watcher-driven staleness, broader
-presets, and patch anchoring remain outside this delivered subset.
+design. Working-tree and index comparisons and their staleness are the
+[Git-status plan](plan-2026-08-26-git-status-and-working-tree-diffs.md) (`mb-097x`).
+Broader presets, `/compare/`, and patch anchoring remain outside this delivered subset.
 
 ## Overview
 
@@ -30,7 +36,7 @@ history. A renderer that lives inside `git/` would have to be extracted before a
 those could use it, and extraction after the fact is where coupling gets discovered.
 
 The design work is largely done.
-[Web Diff Viewer Architecture and Intermediate Representations](../../research/research-2026-07-17-web-diff-viewer-architecture.md)
+[Web Diff Viewer Architecture and Intermediate Representations](../../research/archive/research-2026-07-17-web-diff-viewer-architecture.md)
 surveyed comparison semantics, intermediate representations, backends, renderers, and
 competing products, and its conclusions are adopted here rather than restated.
 This plan is the implementation shape those conclusions imply once diff is core rather
@@ -122,7 +128,6 @@ They stop being blockers for this plan.
   status, additions, deletions, binary flags, and rename similarity — Layer 3 for one
   source, under a different name.
 - `registerNavPanel`, the shell seam the Changes surface mounts through.
-- A bead tree under `mb-ypme` that assumed the plugin framing and needs refiling.
 
 ### What we borrow from VS Code
 
@@ -252,8 +257,8 @@ emitted shape and `validate_manifest`, `validate_file_patch`,
 The [repository-library plan](plan-2026-08-11-open-repo-from-git-url.md) owns durable
 Git objects, publication, and worktree materialization; its `mb-jlon` extraction owns
 provider jobs and selected-ref fetching.
-The [GitHub provider plan](plan-2026-08-27-github-provider-and-pull-requests.md) owns PR
-metadata, the bounded PR index, and selected-PR bundles.
+The [GitHub provider plan](../done/plan-2026-08-27-github-provider-and-pull-requests.md)
+owns PR metadata, the bounded PR index, and selected-PR bundles.
 The diff service consumes resolved object IDs and remains independent of how those
 objects arrived.
 
@@ -377,7 +382,7 @@ Before that point their lifetimes differ and must not share one vague “cache�
 3. **Transient materialization.** A detached worktree, patch anchor, or unpacked archive
    exists only while a container or bounded job needs filesystem bytes, then follows the
    materialization policy in
-   [nav containers](../../architecture/arch-nav-containers.md).
+   [nav containers](../../architecture/arch-plugin-system.md#navigation-containers).
 4. **Recomputable comparison cache.** Manifests, patches, enrichments, and browser
    projections are bounded in-memory or request caches, never repository-library state.
 
@@ -392,10 +397,10 @@ The existing shell maps onto it with three customizations, each extending a mech
 that already exists rather than adding one:
 
 0. **A comparison is a container in the tree.** The durable ontology is in
-   [nav containers](../../architecture/arch-nav-containers.md): every tree entry is
-   item-like (opens views), folder-like (expands to children; selecting the entry itself
-   opens an overview), or both, and directories are the already-working precedent rather
-   than a special case.
+   [nav containers](../../architecture/arch-plugin-system.md#navigation-containers):
+   every tree entry is item-like (opens views), folder-like (expands to children;
+   selecting the entry itself opens an overview), or both, and directories are the
+   already-working precedent rather than a special case.
    A patch file or PR mirror is a folder-like entry whose children are its file changes;
    selecting the container opens the change-set summary, and selecting a child opens
    that file’s diff tabs.
@@ -421,10 +426,10 @@ that already exists rather than adding one:
 3. **The context is addressable, on its own route.** A comparison scopes what the tree
    shows and what the tabs mean, so it lives in the URL like every other selection.
    The grammar is decided and documented in
-   [Browser URL Grammar](../../../architecture.md#browser-url-grammar): one route per
-   address space, with a uniform `<container address>/<inner path>` shape after it —
-   `/commit/<rev>` for a commit’s change set, `/commit/<rev>/<file>` for one file’s
-   diff, `/compare/<base>..<head>` for an explicit comparison.
+   [Browser URL Grammar](../../architecture/arch-views-models-routes.md#browser-url-grammar):
+   one route per address space, with a uniform `<container address>/<inner path>` shape
+   after it — `/commit/<rev>` for a commit’s change set, `/commit/<rev>/<file>` for one
+   file’s diff, `/compare/<base>..<head>` for an explicit comparison.
    Revisions get their own route because they are not served-tree paths; the shape after
    the route is the container contract written as a URL, so a patch file
    (`/view/changes.patch/src/app.py`) and a commit (`/commit/abc123/src/app.py`) read
@@ -450,13 +455,15 @@ sessions (#349): `GET github/pull-rendered-diff`, `diff/markdown_projection.py`,
 `builtin_plugins/diff/diff-markdown.js`. Open items are listed under
 [Acceptance](#acceptance).
 
-The implementation links directly to each admitted revision file and keeps the server’s
-current subject in place.
-Each side is parsed once by KPress’s own MarkdownIt core, and every top-level block is
-rendered from its own tokens, so a block’s source range is the token map that rendered
-it; a test checks the joined blocks against KPress’s `parse_markdown`. One changed list
-item or quoted paragraph is shown on its own, and changed words are marked by a bounded
-word diff whose span must occur exactly once in the changed source lines.
+The rendered answer keeps the server’s current subject in place: its images load from
+the admitted pair’s image route, and its links to files of the head are their `/view/`
+addresses, which the page keeps only while it shows the head
+([View on branch](plan-2026-11-17-view-on-branch.md)). Each side is parsed once by
+KPress’s own MarkdownIt core, and every top-level block is rendered from its own tokens,
+so a block’s source range is the token map that rendered it; a test checks the joined
+blocks against KPress’s `parse_markdown`. One changed list item or quoted paragraph is
+shown on its own, and changed words are marked by a bounded word diff whose span must
+occur exactly once in the changed source lines.
 These remain readable only in Source:
 
 - raw HTML, including inline tags such as `<br>` (HTML comments are allowed),
@@ -482,9 +489,12 @@ attribute syntax, a block moved past others whose signature changed, and any blo
 label points somewhere new anywhere in the document.
 The file carries **Source shows additional changes** whenever any source change has no
 visible counterpart, a whitespace-only or rewrap edit included.
-Edited blocks pair with the neighbor they resemble (at least half their words shared),
-and a mark’s span occurs exactly once in the changed source lines; where the same words
-stand on an untouched line beside it, the mark may sit on that copy.
+Addendum, 2026-11-13: at the user’s request the page draws neither note.
+The projection still flags such blocks and files, a flagged block still never folds, and
+the **Rendered** | **Source** chooser is how a reader reaches what Rendered does not
+show. Edited blocks pair with the neighbor they resemble (at least half their words
+shared), and a mark’s span occurs exactly once in the changed source lines; where the
+same words stand on an untouched line beside it, the mark may sit on that copy.
 A run whose blocks each resemble the one in their place pairs in order.
 Otherwise runs of up to 16 blocks a side are aligned block against block, within a
 budget of word comparisons per file; past either limit an equal run pairs in order where
@@ -524,8 +534,7 @@ Type changes and paths without a renderer use Source.
 **Source** uses the existing diff and its Unified or Split preference, source anchors,
 and exact line text.
 Keep the reader’s choice while reviewing that file in the displayed comparison.
-Keep the full-page **View file** and **View at base** links separate from the
-presentation toggle.
+Keep the file bar’s **View on branch** separate from the presentation toggle.
 
 Defaulting to Rendered does not eagerly mount every document.
 The file bar can paint with the manifest.
@@ -574,6 +583,14 @@ Use Source when a structural edit cannot be represented with trustworthy block-l
 markers.
 
 #### Full File at the Reviewed Revision
+
+**Status:** Superseded on 2026-11-17 by
+[View on branch](plan-2026-11-17-view-on-branch.md).
+The standalone revision page this section specified (`GET github/pull-snapshot`) is
+deleted: a changed file opens at the pull request’s head in the main UI, and the old
+side, a merge base on no branch, has no control.
+What remains of this section is the admission it describes, which the rendered diff and
+its images (`GET github/pull-image`) still use; the text below is the design as it was.
 
 Open the complete file in the normal Document or Source view at the comparison’s exact
 snapshot.
@@ -631,8 +648,8 @@ sanitizer, the route golden `cli-github-pull-rendered.txt`, and the
 `diff.markdown-rendered-view` session `cli-ui-diff-markdown.tryscript.md`. Still open: a
 rename, two tabs across a force-push and restart, an offline cached reopen, history
 restoration in a real browser, and the measurement of first diff content, requests, and
-main-thread work against the Source default on a documentation-heavy comparison, which
-gates widening automatic preparation.
+main-thread work against the Source default on a documentation-heavy comparison
+(`mb-5rth`), which gates widening automatic preparation.
 
 ### The format is defined standalone, up front
 
@@ -689,6 +706,9 @@ references. Both are the same format.
 
 ### API changes
 
+The original design follows; the diff plugin’s data hooks replaced it, as the status
+above records.
+
 A core route collection under `/api/diff/`, following the research’s shape:
 
 ```text
@@ -734,36 +754,56 @@ DOM and main-thread bound.
 Ends with: opening a `.patch` file renders a real diff.
 No Git involvement.
 
-- [ ] File Diff Format: the standalone architecture document, JSON schemas, and
-  conformance corpus described above, following git semantics; evaluate existing
-  diff-model libraries against it before writing any parser
-- [ ] `diff/model.py`: intent, resolved comparison, manifest, file patch, availability
+- [x] File Diff Format: the standalone architecture document, JSON schemas, and
+  conformance corpus described above, following git semantics (`mb-72hs`:
+  `docs/project/architecture/file-diff-format/`,
+  `src/metabrowser/data/file-diff-format/`); no evaluation of existing diff-model
+  libraries against it is recorded
+- [x] `diff/model.py`: intent, resolved comparison, manifest, file patch, availability
   states — implementing the format, with wire validators in the style of `git/wire.py`
-- [ ] `diff/adapters/patch_file.py`: bounded unified-patch parser covering renames,
-  copies, mode changes, binary markers, and malformed input
-- [ ] `diff/service.py`: adapter registry, deterministic comparison IDs, bounded caches
-- [ ] `diff/routes.py`: the `/api/diff/` collection above
-- [ ] `diff` file kind wired into classification and the view registry
-- [ ] `static/diff-model.js` and `static/diff-view.js`: unified rendering, hunk context
-  expansion, sticky file headers, every availability state
-- [ ] Golden fixtures: a corpus of patches including pathological and malformed cases
+  (`mb-t2ub`, as `diff/format.py` with `validate_document`; an intent stays
+  adapter-specific plain data, per `diff/adapters/base.py`)
+- [x] `diff/adapters/patch_file.py`: bounded unified-patch parser covering renames,
+  copies, mode changes, binary markers, and malformed input (`mb-rre2`)
+- [ ] Superseded: `diff/service.py`: adapter registry, deterministic comparison IDs,
+  bounded caches (`mb-uawv`). Adapters are wired at their call sites with no registry
+  ([comparison sources](../../architecture/arch-diff-pipeline.md#the-source-port)), and
+  `builtin_plugins/diff/comparison_cache.py` bounds the cache (#284)
+- [ ] Superseded: `diff/routes.py`: the `/api/diff/` collection above (`mb-27dr`). The
+  diff plugin’s data hooks serve the browser
+- [x] `diff` file kind wired into classification and the view registry (`mb-yv0g`)
+- [x] `src/metabrowser/builtin_plugins/diff/diff-model.js` and
+  `src/metabrowser/builtin_plugins/diff/diff-view.js`: unified rendering, sticky file
+  headers, every availability state (`mb-snkb`, `mb-ao1d`)
+- [ ] Hunk context expansion (`mb-hhmb`)
+- [x] Golden fixtures: a corpus of patches including pathological and malformed cases
+  (`tests/test_diff_patch_file.py`)
 
 ### Phase 2: Git source and the Changes surface
 
 Ends with: selecting a commit in the Git panel shows what it changed, per file and whole
 commit.
 
-- [ ] `diff/adapters/git.py` on the existing runner: commit-versus-parent, staged,
-  unstaged, all uncommitted
-- [ ] Rename and copy detection with stated limits
-- [ ] `--diff-merges=first-parent` for merges, matching the history surface
-- [ ] Comparison context in the shell: the Files tree renders the manifest as a third
-  source beside tree and recent, scoped like a filter to the changed files, with the
-  full change-indicator set from the format
-- [ ] Comparison views injected into changed files’ view descriptors, Diff as the
-  context default, After beside it; selection flows through `navigateToPath`
-- [ ] Commit detail in the Git panel links into the comparison rather than re-rendering
-- [ ] Watcher-driven `stale` for uncommitted comparisons
+- [x] `diff/adapters/git.py` on the existing runner: commit-versus-parent (`mb-kxvb`).
+  Staged and unstaged move to the Git-status plan’s `GitWorkingTreeDiffSource`
+  (`mb-u4mf`)
+- [ ] All-uncommitted preset (`mb-8bjd`)
+- [x] Rename and copy detection with stated limits (`-M50 -C` in `diff/adapters/git.py`)
+- [x] `--diff-merges=first-parent` for merges, matching the history surface
+- [ ] Superseded: comparison context in the shell as a third Files-tree source
+  (`mb-p2mi`). A comparison is a
+  [nav container](../../architecture/arch-plugin-system.md#navigation-containers)
+  instead: a patch file expands to its file changes with their indicators (`mb-6ba6`,
+  `mb-um0p`), and a pull request’s Changes tab has its own file tree
+- [ ] Superseded in part: comparison views injected into changed files’ view descriptors
+  (`mb-p2mi`, which took over `mb-yv0g`’s Phase 2 half).
+  An inner change opens with Diff as its default view, and the file bar’s **View file**
+  control opens the whole file the change makes (#248, on `main` through #260; one side
+  since the View on branch plan) in place of an After tab
+- [x] Commit detail in the Git panel links into the comparison rather than re-rendering
+  (`mb-3syc`)
+- [ ] Moved: watcher-driven `stale` for uncommitted comparisons is Git-status Phase 2
+  (`mb-vibn`)
 
 ### Phase 3: Enrichment and the renderer decision gate
 
@@ -771,15 +811,17 @@ Ends with: split view and syntax highlighting on the measured in-house renderer,
 the remaining enrichment and virtualization work explicitly scoped.
 
 - [ ] Benchmark harness over the representative fixtures, measuring first-paint, scroll,
-  and memory at stated corpus sizes
+  and memory at stated corpus sizes (`mb-k0x3`)
 - [ ] Evaluate `@pierre/diffs` and `@git-diff-view/core` against the Phase 1 in-house
   renderer extended in place, scoring: bundle size, worker behavior under the Content
   Security Policy, dependency count and update cadence, accessibility, design-token
-  integration, and the maintenance surface each leaves behind
-- [ ] Record the decision and its evidence in this document
+  integration, and the maintenance surface each leaves behind (`mb-k0x3`)
+- [ ] Record the decision and its evidence in this document (`mb-k0x3`)
 - [x] Split view and bounded syntax highlighting on the in-house renderer
 - [ ] Row virtualization on the chosen path when the measured review corpus requires it
+  (`mb-hhmb`)
 - [ ] Whitespace and wrap controls, keyboard next-file and next-hunk navigation
+  (whitespace with `mb-hhmb`, navigation with `mb-k0x3`; no bead names wrap controls)
 
 #### 2026-08-24 addendum: syntax and split layout
 
@@ -1189,28 +1231,28 @@ model have to render somewhere.
 
 ## Open Decisions
 
-- Whether hunks are produced by the Python adapter or parsed in a browser worker from
-  bounded per-file patches.
-  Server production is the cleaner target.
-- How a comparison is addressed in the `/view/` URL grammar so a diff is linkable.
-  (Whether review needed its own surface is resolved above: it is the existing shell in
-  a comparison context.)
 - Whether the core file tree gains a decoration API so changed and staged files can be
-  badged in place. This moves the core boundary and should be settled before the Changes
-  surface ships rather than after.
-- How strong local consistency must be for uncommitted comparisons: optimistic
-  generation and refresh, or bounded content-addressed worktree snapshots.
+  badged in place. This moves the core boundary.
+  The Changes surface shipped without this decision; `mb-k0x3` carries it, and the
+  Git-status plan leaves Files-tree decorations out of its baseline.
 - Whether additions and deletions are deferred when exact counts would delay the
   manifest.
 
+Settled since this plan was written: the Python adapters produce hunks; comparisons are
+addressed by `/commit/<rev>[/<file>]`, `/pull/<n>/files[/<file>]`, and the specified
+`/compare/` route in the
+[browser URL grammar](../../architecture/arch-views-models-routes.md#browser-url-grammar);
+and uncommitted comparisons use optimistic generations with a `stale` refresh, as the
+Git-status plan specifies.
+
 ## References
 
-- [Web Diff Viewer Architecture and Intermediate Representations](../../research/research-2026-07-17-web-diff-viewer-architecture.md)
+- [Web Diff Viewer Architecture and Intermediate Representations](../../research/archive/research-2026-07-17-web-diff-viewer-architecture.md)
 - [Historical Diff View Spike Results](../../research/archive/research-2026-07-18-diff-view-spike-results.md)
 - [Browser Contributor Toolchain and Distribution](../../research/research-2026-07-18-browser-contributor-toolchain.md)
 - [Git graph nav panel and read-only Git API](../done/plan-2026-08-06-git-graph-view.md)
 - [Rendering large content](../../../large-content-rendering.md)
-- [File Patch Formats](../../research/research-2026-08-19-file-patch-formats.md)
+- [File Patch Formats](../../research/archive/research-2026-08-19-file-patch-formats.md)
 - [Git `diff-highlight`](https://github.com/git/git/tree/master/contrib/diff-highlight)
 - [VS Code default diff computer at the reviewed revision](https://github.com/microsoft/vscode/tree/77f86f3d3a05cf5d6f765705e816341c918b7dae/src/vs/editor/common/diff/defaultLinesDiffComputer)
 - [CodeMirror merge diff algorithm](https://github.com/codemirror/merge/blob/main/src/diff.ts)
