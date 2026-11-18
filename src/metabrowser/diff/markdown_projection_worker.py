@@ -51,10 +51,13 @@ projection on the server, so the child is shared under these rules:
   client disconnects (:mod:`metabrowser.client_disconnect`), as a page that navigates
   away or a transclusion past its own deadline does.
 - At most :data:`_MAX_RENDERS` distinct renders are in flight, the one in the child among
-  them. Past that a render is refused ``renderer_busy`` (``503``), which is not kept.
+  them. Past that a render is refused ``renderer_busy`` (``503``), which is not kept. A
+  kept refusal is checked before the document's front matter is looked at, so a reload of
+  a refused document costs no walk of it.
 - A refusal is kept only for what the child did with the document: it ran past the
-  deadline, counted from when the child had the whole request, with one more look at the
-  pipe when the server's own loop ran the deadline late; or the child exited on it twice.
+  deadline, counted from when the child had the whole request, with a last look at the
+  pipe, and a longer one when the server's own loop ran the deadline late; or the child
+  exited on it twice.
   A child already dead when the request reached it, or killed from outside, is not the
   document's doing: the render runs once more on a fresh child. A kept refusal lapses
   after :data:`_VERDICT_TTL_S`, so a moment of heavy load does not hide a document for
@@ -67,7 +70,9 @@ projection on the server, so the child is shared under these rules:
   child stopped in the server's group with a blocking wait on the event loop, which then
   never wakes. It still ends with the server: when its input closes, when the server it
   started from is gone (it looks every :data:`_PARENT_POLL_S`, mid-render too), or when
-  the server stops at once on Ctrl-C (:func:`stop_children`).
+  the server stops at once on Ctrl-C (:func:`stop_children`, which signals only a child
+  not yet reaped). The end of its standard error is kept, for the log line that says why
+  a child ended.
 
 The child costs memory while it runs: 56-66 MB resident once it is ready and 63-70 MB
 after all 434 of this repository's real Markdown pairs (macOS ``ps`` RSS, two runs each
@@ -187,17 +192,29 @@ _START_COOL_OFF_S = 10.0
 # host), one of them the events stream, so one page's renders are never more than five at
 # once: a document's transclusions, which each ask at once, and a pull request page's two
 # texts at a time (MARKDOWN_CONCURRENCY in pull-page.js) fit, with room for a second
-# page's first renders. A render admitted behind a full queue of hostile documents waits
-# at most seven deadlines and their restarts, about 37 s at the default; past that the
-# reader's reload is the better retry, as pull_rendered_diff's _Slot reasons for diffs.
+# page's first renders. A document holds the child for one exchange and a restart, or,
+# when its first child ends before answering, for a second exchange on a fresh child too
+# (the retry in _render_flight): at most two deadlines and two starts. So a render
+# admitted behind a full queue of hostile documents waits at most seven of those, about
+# 90 s at the default (5 s deadlines, starts of up to 1.4 s measured under load), and
+# about 37 s when they only run long; past that the reader's reload is the better retry,
+# as pull_rendered_diff's _Slot reasons for diffs.
 _MAX_RENDERS: Final = 8
-# A deadline that fired more than this late was held up by the server's own event loop
-# (the repository budgets 50 ms for an unrelated request's delay), so the child's whole
-# answer may already be in the pipe, unread. It gets one more look, of at most
-# _ANSWER_GRACE_S, before the render counts as past its deadline: reading a 21.6 MB
-# answer from the pipe took 42 to 57 ms (review C of #527).
+# When the deadline fires, an answer the loop has already read, or reads in its next turn,
+# is taken, however late the deadline ran (review E of #527, E3). A deadline that fired
+# more than _LATE_S late was held up by the server's own event loop (the repository
+# budgets 50 ms for an unrelated request's delay), so the child's whole answer may still
+# be in the pipe, unread: it gets one more look, of at most _ANSWER_GRACE_S, before the
+# render counts as past its deadline. Reading a 21.6 MB answer from the pipe took 42 to
+# 57 ms (review C of #527).
 _LATE_S = 0.05
 _ANSWER_GRACE_S = 0.25
+# The last of a child's standard error kept, for the log line that says why it ended (a
+# traceback's last frames and its error), and how long that line waits for the rest of
+# it once the child has gone. The pipe is drained as the child writes, so a library that
+# prints a great deal never blocks the child.
+_STDERR_TAIL_BYTES: Final = 2048
+_STDERR_TAIL_WAIT_S = 0.5
 # A child no projection or render has used for this long is stopped; the next one starts
 # it again. A start took 0.23-0.24 s to ready (review E of #349), against 56-63 MB kept
 # resident for as long as the server runs.
@@ -284,6 +301,7 @@ class InertRender:
     *link_base*, when given, makes the answer a pull request's text: only its HTML,
     reduced by :func:`metabrowser.inert_html.harden` with every reference made absolute
     against that page. Without it the answer is :func:`kpress_adapter.inert_render`'s.
+    *display_path* only names the document in the log.
     """
 
     source_text: str
@@ -299,6 +317,9 @@ class InertRender:
     profile: str | None = None
     include_toc: Literal["auto", "on", "off"] = "auto"
     link_base: str | None = None
+    # What the log names the document by, where *source_path* is a route's token rather
+    # than a name a reader knows (a pin's wire path); *source_path* otherwise.
+    display_path: str | None = None
 
     @property
     def verdict_key(self) -> tuple[str, ...]:
@@ -527,21 +548,51 @@ async def _read(stream: asyncio.StreamReader) -> dict[str, Any]:
     return cast("dict[str, Any]", json.loads(await _read_body(stream, _MAX_ANSWER_FRAME)))
 
 
-_CHILDREN: set[int] = set()
+# The Markdown children this process started and has not killed, by process ID, with the
+# Process whose ``returncode`` asyncio sets once it reaps the child: from then on the ID
+# may belong to another process.
+_CHILDREN: dict[int, asyncio.subprocess.Process] = {}
+
+
+def _unreaped(pid: int) -> bool:
+    """Whether *pid* is, now, a child of this process not yet reaped, alive or not.
+
+    Its ID stays its own until it is reaped, so a signal to it reaches no one else.
+    ``WNOWAIT`` leaves it for asyncio to reap. Python before 3.13 has no ``waitid`` on
+    macOS; there the Process's ``returncode`` is all there is.
+    """
+
+    waitid = getattr(os, "waitid", None)
+    if waitid is None:
+        return True
+    try:
+        waitid(os.P_PID, pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+    except ChildProcessError:
+        return False
+    return True
 
 
 def stop_children() -> None:
-    """Kill every Markdown child this process started, at once.
+    """Kill every Markdown child this process started that is still its own, at once.
 
     For a command that ends without unwinding, such as a server stopped by Ctrl-C
     (``cli/serve.py``): a child leads its own process group, so the terminal's signal does
-    not reach it. It needs nothing from the event loop, so a signal handler may call it.
+    not reach it. A child that died of anything else and was reaped is skipped, since its
+    ID may name another process by now (review E of #527, E2). It needs nothing from the
+    event loop, so a signal handler may call it.
     """
 
-    for pid in list(_CHILDREN):
-        with contextlib.suppress(OSError):
-            os.kill(pid, signal.SIGKILL)
+    for pid, process in list(_CHILDREN.items()):
+        if process.returncode is None and _unreaped(pid):
+            with contextlib.suppress(OSError):
+                os.kill(pid, signal.SIGKILL)
     _CHILDREN.clear()
+
+
+def _forget_reaped() -> None:
+    for pid, process in list(_CHILDREN.items()):
+        if process.returncode is not None:
+            del _CHILDREN[pid]
 
 
 # A child also exits when its input closes with this process; this ends one mid-import.
@@ -638,6 +689,43 @@ class _ChildLock:
         self.holder = None
 
 
+def _named(request: InertRender) -> str:
+    """What a log line names *request*'s document by; logged with ``%r``, so a name in an
+    untrusted tree cannot put a newline or a terminal escape in the operator's log."""
+
+    return request.display_path or request.source_path
+
+
+class _Tail:
+    """The last :data:`_STDERR_TAIL_BYTES` a child wrote to its standard error."""
+
+    def __init__(self) -> None:
+        self._data = bytearray()
+        self._task: asyncio.Task[None] | None = None
+
+    @classmethod
+    def follow(cls, process: asyncio.subprocess.Process) -> _Tail:
+        tail = cls()
+        if process.stderr is not None:
+            tail._task = asyncio.get_running_loop().create_task(tail._drain(process.stderr))
+        return tail
+
+    async def _drain(self, stream: asyncio.StreamReader) -> None:
+        while chunk := await stream.read(64 * 1024):
+            self._data += chunk
+            del self._data[:-_STDERR_TAIL_BYTES]
+
+    def done(self) -> bool:
+        return self._task is None or self._task.done()
+
+    async def text(self) -> str:
+        """What it holds once the pipe has closed, or after a short wait for that."""
+
+        if self._task is not None and not self._task.done():
+            await asyncio.wait({self._task}, timeout=_STDERR_TAIL_WAIT_S)
+        return self._data.decode("utf-8", "replace").strip()
+
+
 @dataclass(frozen=True, slots=True)
 class _Failed:
     """How a render ended without HTML, as a flight returns it (nothing raises out of a
@@ -689,6 +777,8 @@ class ProjectionWorker:
         self._failed_at = -_START_COOL_OFF_S
         self._start_warned = False
         self._requests = 0
+        # What each child this loop started last wrote to its standard error.
+        self._tails: dict[asyncio.subprocess.Process, _Tail] = {}
         self._counted: asyncio.AbstractEventLoop | None = None
         self._used = 0.0
         self._idle_timer: asyncio.TimerHandle | None = None
@@ -720,6 +810,7 @@ class ProjectionWorker:
             if self._loop is not None:
                 self.stop()
                 self._dying = {}
+                self._tails = {}
             self._loop, self._lock = loop, _ChildLock()
             self._flights = {}
         return self._lock
@@ -748,7 +839,7 @@ class ProjectionWorker:
                 *self._command,
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.PIPE,
                 cwd=Path(__file__).resolve().parent,
                 # Its own group: see "One child for both jobs" above.
                 process_group=0,
@@ -759,7 +850,14 @@ class ProjectionWorker:
             self._start_failed(f"it could not be spawned: {exc}")
             return
         self._process = process
-        _CHILDREN.add(process.pid)
+        _forget_reaped()
+        _CHILDREN[process.pid] = process
+        self._tails = {
+            each: tail
+            for each, tail in self._tails.items()
+            if each.returncode is None or not tail.done()
+        }
+        self._tails[process] = _Tail.follow(process)
         assert process.stdout is not None
         failure: str | None = None
         try:
@@ -776,7 +874,7 @@ class ProjectionWorker:
             return
         if failure is not None:
             self._kill(process)
-            self._start_failed(failure)
+            self._start_failed(failure + await self._said(process))
             return
         self._ready = True
         self._starts = 0
@@ -825,7 +923,8 @@ class ProjectionWorker:
     def _kill(self, process: asyncio.subprocess.Process) -> None:
         if self._process is process:
             self._process, self._ready, self._starting = None, False, None
-        _CHILDREN.discard(process.pid)
+        if _CHILDREN.get(process.pid) is process:
+            del _CHILDREN[process.pid]
         if process.returncode is None:
             with contextlib.suppress(ProcessLookupError):
                 process.kill()
@@ -878,6 +977,7 @@ class ProjectionWorker:
         self.stop()
         dying = [each for each, at in self._dying.items() if at is loop and each.returncode is None]
         self._dying = {}
+        self._tails = {}
         if dying:
             with contextlib.suppress(TimeoutError):
                 async with asyncio.timeout(_REAP_S):
@@ -997,10 +1097,12 @@ class ProjectionWorker:
         any more is cancelled.
         """
 
-        request = _with_plain_frontmatter(request)
         refused = self.refusal(request)
         if refused is not None:
             raise refused
+        # After the kept refusal, which reads no front matter, so a refused document costs
+        # no walk of it.
+        request = _with_plain_frontmatter(request)
         loop = asyncio.get_running_loop()
         self._bind(loop)
         # Ahead of the lock, so the start overlaps the frame's encoding.
@@ -1010,8 +1112,8 @@ class ProjectionWorker:
         if flight is None:
             if sum(not each.task.done() for each in self._flights.values()) >= _MAX_RENDERS:
                 LOG.warning(
-                    "Refused rendering %s: %d other documents are being rendered",
-                    request.source_path,
+                    "Refused rendering %r: %d other documents are being rendered",
+                    _named(request),
                     _MAX_RENDERS,
                 )
                 raise InertRenderRefused("renderer_busy")
@@ -1088,18 +1190,20 @@ class ProjectionWorker:
                     # document's doing, so nothing is kept.
                     return _Failed("refused", "renderer_unavailable")
                 self._kill(process)
+                said = await self._said(process)
                 if attempt == 1:
                     # Dead before the request reached it, or killed from outside, as easily
                     # as by this document: once more, on a fresh child.
                     LOG.info(
-                        "The Markdown child stopped on %s; rendering it on a new child",
-                        request.source_path,
+                        "The Markdown child stopped on %r; rendering it on a new child%s",
+                        _named(request),
+                        said,
                     )
                     continue
                 if outcome == "exited":
                     # Twice on two children: the input may be what stopped it, so it is
                     # not rendered again.
-                    return self._refuse(request, "renderer_exited", began)
+                    return self._refuse(request, "renderer_exited", began, said)
             return _Failed("refused", "renderer_unavailable")
 
     async def _exchange_render(
@@ -1131,10 +1235,13 @@ class ProjectionWorker:
                 async with asyncio.timeout_at(due):
                     return await asyncio.shield(reading)
             except TimeoutError:
-                if loop.time() - due <= _LATE_S:
-                    return "deadline"
-                # The loop ran the deadline late, and the answer may be in the pipe.
-                await asyncio.wait({reading}, timeout=_ANSWER_GRACE_S)
+                late = loop.time() - due
+                if not reading.done():
+                    # One turn of the loop: an answer already read is finished by it.
+                    await asyncio.sleep(0)
+                if not reading.done() and late > _LATE_S:
+                    # The loop ran the deadline late, and the answer may be in the pipe.
+                    await asyncio.wait({reading}, timeout=_ANSWER_GRACE_S)
                 if not reading.done():
                     return "deadline"
                 return reading.result()
@@ -1175,19 +1282,32 @@ class ProjectionWorker:
         self._kill(process)
         return self._refuse(request, "renderer_exited", time.monotonic())
 
-    def _refuse(self, request: InertRender, code: RefusalCode, began: float) -> _Failed:
+    def _refuse(
+        self, request: InertRender, code: RefusalCode, began: float, said: str = ""
+    ) -> _Failed:
         """Keep and log a refusal the child earned, and start its replacement."""
 
         self._remember(request, code)
         LOG.warning(
-            "Refused rendering %s (%s) after %.2f s: %s",
-            request.source_path,
+            "Refused rendering %r (%s) after %.2f s: %s%s",
+            _named(request),
             request.identity,
             time.monotonic() - began,
             code,
+            said,
         )
         self._replace()
         return _Failed("refused", code)
+
+    async def _said(self, process: asyncio.subprocess.Process) -> str:
+        """The end of what a child that has ended wrote to its standard error, for a log
+        line, or ""."""
+
+        tail = self._tails.pop(process, None)
+        if tail is None:
+            return ""
+        text = await tail.text()
+        return f"; its standard error ended {text!r}" if text else ""
 
     def _remember(self, request: InertRender, code: RefusalCode) -> None:
         self._verdicts[request.verdict_key] = (code, time.monotonic())

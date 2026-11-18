@@ -12,12 +12,15 @@ child, which renders one document at a time, for its whole deadline
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import TYPE_CHECKING, Any, Final
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
 
     from starlette.requests import Request
+
+LOG = logging.getLogger(__name__)
 
 # What a request whose client disconnected answers, which no client reads: nginx's
 # "client closed request", so the slow-request log tells abandoned work from answered work.
@@ -32,6 +35,10 @@ async def unless_disconnected[ResultT](
     Read the body before calling this: it waits on the request's next message, which
     after the body is the disconnect. Cancellation lands at *work*'s next ``await``, so a
     blocking call already in a worker thread runs to its end, and nothing after it does.
+
+    Only an ``http.disconnect`` message is a client that left. A ``receive`` that fails
+    instead, as a caller that cannot be watched does, is logged and *work* runs to its end
+    (review E of #527, E4): an error is not an answer nobody reads.
     """
 
     async def disconnected() -> None:
@@ -42,6 +49,14 @@ async def unless_disconnected[ResultT](
     disconnect = asyncio.ensure_future(disconnected())
     try:
         await asyncio.wait((doing, disconnect), return_when=asyncio.FIRST_COMPLETED)
+        if not doing.done() and not disconnect.cancelled():
+            failure = disconnect.exception()
+            if failure is not None:
+                LOG.warning(
+                    "Could not watch for the client leaving, so the work runs to its end: %r",
+                    failure,
+                )
+                await asyncio.wait((doing,))
     finally:
         disconnect.cancel()
         if not doing.done():

@@ -1758,6 +1758,7 @@ async def git_revision_kpress_render(
                     InertRender(
                         source_text=content,
                         source_path=entry.path.to_wire(),
+                        display_path=entry.path.display(),
                         identity=(
                             f"blob:{entry.oid}"
                             if source_override is None

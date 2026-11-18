@@ -155,7 +155,7 @@ the render’s own, not a refusal kept from an earlier one.
 
 ```console
 $ METABROWSER_INERT_RENDER_DEADLINE_MS=250 metab slow --untrusted --api '/api/kpress/render?path=slow.md&view=document'
-[..] metabrowser.diff.markdown_projection_worker | Refused rendering slow.md (sha256:6d547e03b6bb237dc4ebdb452e24980c5a74749b35eef82755adf7ab51270c30) after [..] s: render_deadline
+[..] metabrowser.diff.markdown_projection_worker | Refused rendering 'slow.md' (sha256:6d547e03b6bb237dc4ebdb452e24980c5a74749b35eef82755adf7ab51270c30) after [..] s: render_deadline
 api: /api/kpress/render?path=slow.md&view=document
 status: 422
 {

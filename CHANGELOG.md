@@ -4,16 +4,17 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
-- A Markdown document from an untrusted source can no longer freeze the server.
+- Rendering a Markdown document from an untrusted source can no longer hold the server.
   Every document rendered under the untrusted profile, a served mirror’s files, a folder
   served with `--untrusted`, and a pull request’s description and comments, now renders
   in the server’s Markdown child process under a deadline, instead of on a server thread
   that could not be stopped: a crafted document could hold the server for many seconds
   per reload, and reloads stacked.
-  A render past the deadline stops the child, and the page shows the document’s source
-  with one line saying why; a pull request text shows its plain text with the same kind
-  of line, and the folder Overview’s README panel shows the line and the README’s source
-  instead of a render error.
+  A document’s YAML front matter is still read in the server before it renders, as
+  before. A render past the deadline stops the child, and the page shows the document’s
+  source with one line saying why; a pull request text shows its plain text with the
+  same kind of line, and the folder Overview’s README panel shows the line and the
+  README’s source instead of a render error.
   The server remembers the refusal for that document for ten minutes, so reloading it is
   refused at once. `/api/kpress/render` answers such a document `422` with
   `"type": "kpress_render_refused"` and the code `render_deadline`, and

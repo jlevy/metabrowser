@@ -8,6 +8,7 @@ request by the first line of the render's text:
 
 - ``sleep <seconds>``: wait, then answer as ``echo`` does;
 - ``exit``: exit without answering;
+- ``crash``: write a line to standard error, then exit without answering;
 - ``error``: KPress's render error, ``{"error": "render", ...}``;
 - ``invalid``: KPress's invalid request;
 - ``garbage``: a frame that is not JSON;
@@ -41,6 +42,10 @@ def _render(request: dict[str, Any]) -> object:
     if command == "sleep":
         time.sleep(float(rest))
     if command == "exit":
+        os._exit(3)
+    if command == "crash":
+        sys.stderr.write("stand-in crashed\n")
+        sys.stderr.flush()
         os._exit(3)
     if command == "error":
         return {"error": "render", "message": "boom"}

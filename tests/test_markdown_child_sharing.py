@@ -300,11 +300,14 @@ def test_a_child_killed_from_outside_is_not_charged_to_the_next_document() -> No
     assert kept is None
 
 
+@pytest.mark.parametrize("held_s", [0.9, 0.42], ids=["late-400ms", "late-20ms"])
 def test_an_answer_in_the_pipe_when_a_late_loop_runs_the_deadline_is_accepted(
-    monkeypatch: pytest.MonkeyPatch,
+    held_s: float, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Review D's D4: the child answers at 0.2 s, the server's loop is held from 0.1 to
-    # 1.0 s, and the 0.5 s deadline runs late with the whole answer waiting.
+    # Review D's D4: the child answers at 0.2 s, the server's loop is held from 0.1 s to
+    # past the 0.5 s deadline, which runs late with the whole answer waiting: about 0.4 s
+    # late, and about 20 ms late, inside the margin past which the pipe gets its longer
+    # look (review E's E3).
     monkeypatch.setattr(worker_module, "_RENDER_DEADLINE_S", 0.5)
 
     async def run() -> tuple[dict[str, Any], InertRenderRefused | None]:
@@ -312,7 +315,7 @@ def test_an_answer_in_the_pipe_when_a_late_loop_runs_the_deadline_is_accepted(
         try:
             await _ready(worker)
             request = _request("sleep 0.2")
-            asyncio.get_running_loop().call_later(0.1, time.sleep, 0.9)
+            asyncio.get_running_loop().call_later(0.1, time.sleep, held_s)
             return await worker.render_inert(request), worker.refusal(request)
         finally:
             await worker.aclose()
@@ -621,7 +624,7 @@ def test_stopping_at_once_kills_the_child_in_its_own_group() -> None:
         worker_module.stop_children()
         async with asyncio.timeout(10):
             await child.wait()
-        worker.stop()
+        await worker.aclose()
         return child.pid
 
     assert not _alive(asyncio.run(run()))
@@ -760,3 +763,97 @@ def test_a_text_is_one_with_a_link_base_however_empty_on_both_sides_of_the_pipe(
     # was a string, so an empty one was kept as a document and hardened as a text.
     assert _request("x", link_base="").verdict_key[-1] == "text"
     assert _request("x").verdict_key[-1] == "document"
+
+
+def test_stopping_at_once_never_signals_a_child_already_reaped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Review E's E2: a child that died of something else stayed in the list, and a stop
+    # sent SIGKILL to its number, which the system may have given to another process.
+    signalled: list[int] = []
+    kill = os.kill
+
+    def recorded(pid: int, sig: int) -> None:
+        if sig == signal.SIGKILL:
+            signalled.append(pid)
+        kill(pid, sig)
+
+    async def run() -> tuple[int, int]:
+        gone = ProjectionWorker(command=_standin())
+        live = ProjectionWorker(command=_standin())
+        dead = await _ready(gone)
+        alive = await _ready(live)
+        kill(dead.pid, signal.SIGKILL)
+        async with asyncio.timeout(10):
+            await dead.wait()
+        monkeypatch.setattr(os, "kill", recorded)
+        worker_module.stop_children()
+        monkeypatch.setattr(os, "kill", kill)
+        async with asyncio.timeout(10):
+            await alive.wait()
+        await gone.aclose()
+        await live.aclose()
+        return dead.pid, alive.pid
+
+    dead, alive = asyncio.run(run())
+    assert dead not in signalled, "the reaped child's number is not signalled"
+    assert signalled == [alive]
+
+
+def test_a_refusal_is_logged_by_a_name_that_cannot_reach_the_terminal_raw(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    # Review E's E7: the path a request gave, a pin's display path rather than its wire
+    # token, and the end of what the child wrote to its standard error.
+    monkeypatch.setattr(worker_module, "_RENDER_DEADLINE_S", 5.0)
+
+    async def run() -> None:
+        worker = ProjectionWorker(command=_standin())
+        try:
+            for request in (
+                _request("crash", "sha256:one", source_path="a\n\x1b[31mb.md"),
+                _request("crash", "blob:two", source_path="g1-YQ", display_path="docs/pinned.md"),
+            ):
+                with pytest.raises(InertRenderRefused):
+                    await worker.render_inert(request)
+        finally:
+            await worker.aclose()
+
+    with caplog.at_level(logging.WARNING, logger=worker_module.__name__):
+        asyncio.run(run())
+    said = [record.getMessage() for record in caplog.records if "Refused" in record.getMessage()]
+    assert len(said) == 2, said
+    assert all("\n" not in line and "\x1b" not in line for line in said), said
+    assert said[0].startswith("Refused rendering 'a\\n\\x1b[31mb.md'"), said
+    assert said[1].startswith("Refused rendering 'docs/pinned.md'"), said
+    assert all(
+        "renderer_exited; its standard error ended 'stand-in crashed'" in line for line in said
+    )
+
+
+def test_a_reload_of_a_refused_document_does_not_walk_its_front_matter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Review E's E1: the walk ran before the kept refusal was checked, so a reload of a
+    # refused document with a costly mapping paid for it again on the event loop.
+    monkeypatch.setattr(worker_module, "_RENDER_DEADLINE_S", 0.3)
+
+    async def run() -> InertRenderRefused:
+        worker = ProjectionWorker(command=_standin())
+        request = _request("sleep 5", frontmatter={"title": "Slow"})
+        try:
+            with pytest.raises(InertRenderRefused):
+                await worker.render_inert(request)
+
+            def walked(_request: InertRender) -> InertRender:
+                raise AssertionError("a kept refusal walked the front matter")
+
+            monkeypatch.setattr(worker_module, "_with_plain_frontmatter", walked)
+            with pytest.raises(InertRenderRefused) as again:
+                await worker.render_inert(request)
+            return again.value
+        finally:
+            await worker.aclose()
+
+    again = asyncio.run(run())
+    assert again.code == "render_deadline" and again.remembered is True

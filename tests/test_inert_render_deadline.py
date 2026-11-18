@@ -30,7 +30,6 @@ from metabrowser.diff.markdown_projection_worker import (
     InertRender,
     InertRenderRefused,
     ProjectionWorker,
-    shared_worker,
 )
 from metabrowser.git.tree_source import GitPath
 from tests.git_pin_harness import fast_import_store, pinned_client
@@ -74,10 +73,27 @@ def _request(text: str, identity: str, **fields: Any) -> InertRender:
     )
 
 
+def _count_exchanges(monkeypatch: pytest.MonkeyPatch) -> list[int]:
+    """How many render exchanges reach a child: a kept refusal makes none."""
+
+    exchanges: list[int] = []
+    exchange = ProjectionWorker._exchange_render  # pyright: ignore[reportPrivateUsage]
+
+    async def counted(
+        self: ProjectionWorker, process: asyncio.subprocess.Process, frame: bytes
+    ) -> object:
+        exchanges.append(process.pid)
+        return await exchange(self, process, frame)
+
+    monkeypatch.setattr(ProjectionWorker, "_exchange_render", counted)
+    return exchanges
+
+
 @needs_git
 def test_a_pathological_pinned_document_is_refused_at_the_deadline_while_the_server_answers(
-    tmp_path: Path, untrusted: None
+    tmp_path: Path, untrusted: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    exchanges = _count_exchanges(monkeypatch)
     store, commit = fast_import_store(
         tmp_path,
         {b"README.md": b"# Fine\n\nA *short* readme.\n", b"slow.md": PATHOLOGICAL.encode()},
@@ -98,13 +114,12 @@ def test_a_pathological_pinned_document_is_refused_at_the_deadline_while_the_ser
                 await asyncio.sleep(0.05)
             refused = await render
             elapsed = loop.time() - began
-            # The killed child's replacement, started at once (review C of #527, C2).
-            child_before_reload = shared_worker()._process  # pyright: ignore[reportPrivateUsage]
-            # A reload is refused by the kept verdict, and starts no child to render it.
+            rendered_before_reload = len(exchanges)
+            # A reload is refused by the kept verdict, and renders nothing.
             again = await client.get(
                 "/api/kpress/render", params={"path": SLOW_WIRE, "view": "document", "toc": "off"}
             )
-            child_after_reload = shared_worker()._process  # pyright: ignore[reportPrivateUsage]
+            rendered_after_reload = len(exchanges)
             fine = await client.get(
                 "/api/kpress/render", params={"path": README_WIRE, "view": "document"}
             )
@@ -113,7 +128,7 @@ def test_a_pathological_pinned_document_is_refused_at_the_deadline_while_the_ser
                 "refused": (refused.status_code, refused.json()),
                 "elapsed": elapsed,
                 "again": (again.status_code, again.json()),
-                "child_after_reload": child_after_reload is child_before_reload,
+                "rendered_by_reload": rendered_after_reload - rendered_before_reload,
                 "fine": (fine.status_code, fine.json()),
             }
 
@@ -135,7 +150,7 @@ def test_a_pathological_pinned_document_is_refused_at_the_deadline_while_the_ser
     # The last may have answered just after the render did; the rest answered while it ran.
     assert sum(1 for _code, done in answered if not done) >= 3, answered
     assert result["again"] == (422, {**body, "remembered": True})
-    assert result["child_after_reload"] is True, "the reload rendered nothing"
+    assert result["rendered_by_reload"] == 0, "the reload rendered nothing"
     status, fine = result["fine"]
     assert status == 200 and fine["inert"] is True
     assert '<h1 id="user-content-fine">Fine</h1>' in fine["html"]
@@ -145,15 +160,15 @@ def test_an_untrusted_folder_keeps_the_refusal_by_the_documents_text(
     tmp_path: Path, untrusted: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(worker_module, "_RENDER_DEADLINE_S", 0.2)
+    exchanges = _count_exchanges(monkeypatch)
     (tmp_path / "slow.md").write_text(SLOW, encoding="utf-8")
     (tmp_path / "copy.md").write_text(SLOW, encoding="utf-8")
     server._set_root_dir(tmp_path)  # pyright: ignore[reportPrivateUsage]
     with TestClient(server.app) as client:
         first = client.get("/api/kpress/render", params={"path": "slow.md", "view": "document"})
-        child_before_copy = shared_worker()._process  # pyright: ignore[reportPrivateUsage]
         # Another file with the same text is the same document: refused without a render.
         copy = client.get("/api/kpress/render", params={"path": "copy.md", "view": "document"})
-        child_after_copy = shared_worker()._process  # pyright: ignore[reportPrivateUsage]
+        rendered_before_sent = len(exchanges)
         # A page's own text in its place is another document, and renders.
         sent = client.post(
             "/api/kpress/render",
@@ -166,7 +181,7 @@ def test_an_untrusted_folder_keeps_the_refusal_by_the_documents_text(
     assert copy.status_code == 422
     assert first.json()["remembered"] is False
     assert copy.json() == {**first.json(), "path": "copy.md", "remembered": True}
-    assert child_after_copy is child_before_copy, "the copy rendered nothing"
+    assert rendered_before_sent == 1, "the copy rendered nothing"
     assert sent.status_code == 200
     assert '<h1 id="user-content-sent">Sent</h1>' in sent.json()["html"]
 
@@ -193,7 +208,7 @@ def test_identical_requests_in_flight_share_one_render(
                 *(worker.render_inert(request) for _ in range(3)), return_exceptions=True
             )
         finally:
-            worker.stop()
+            await worker.aclose()
 
     answers = asyncio.run(run())
     assert [type(answer) for answer in answers] == [InertRenderRefused] * 3
@@ -222,7 +237,7 @@ def test_a_render_waits_for_a_child_still_starting_rather_than_replacing_it() ->
             serving = spawned(worker)
             return starting.pid, None if serving is None else serving.pid, rendered
         finally:
-            worker.stop()
+            await worker.aclose()
 
     starting, serving, rendered = asyncio.run(run())
     assert serving == starting
@@ -262,7 +277,7 @@ def test_the_child_renders_what_the_in_process_inert_render_would() -> None:
         try:
             return await worker.render_inert(_request(HOSTILE_README, "sha256:hostile"))
         finally:
-            worker.stop()
+            await worker.aclose()
 
     rendered = asyncio.run(run())
     expected = kpress_adapter.inert_render(
@@ -303,7 +318,7 @@ def test_inert_renders_never_run_in_the_server(monkeypatch: pytest.MonkeyPatch) 
             )
             return document, text
         finally:
-            worker.stop()
+            await worker.aclose()
 
     document, text = asyncio.run(run())
     # Plain code: escaped, with none of the spans highlighting would add for the allowlist
@@ -320,7 +335,7 @@ def test_kpress_errors_cross_the_child_as_they_were_raised() -> None:
         try:
             await worker.render_inert(_request("# x\n", "sha256:x", profile="no-such-profile"))
         finally:
-            worker.stop()
+            await worker.aclose()
 
     with pytest.raises(kpress_adapter.KPressInvalidRequestError):
         asyncio.run(run())
@@ -345,7 +360,7 @@ def test_a_child_that_exits_mid_render_refuses_that_document_and_keeps_it() -> N
                 await worker.render_inert(request)
             return refused.value.code, worker.refusal(request)
         finally:
-            worker.stop()
+            await worker.aclose()
 
     code, kept = asyncio.run(run())
     assert code == "renderer_exited"

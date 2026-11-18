@@ -2751,9 +2751,19 @@ def test_a_text_past_the_render_deadline_is_refused_and_refused_again_at_once(
     The refusal is kept by the text, so asking again renders nothing.
     """
     from metabrowser.diff import markdown_projection_worker as worker_module
-    from metabrowser.diff.markdown_projection_worker import shared_worker
+    from metabrowser.diff.markdown_projection_worker import ProjectionWorker
 
     monkeypatch.setattr(worker_module, "_RENDER_DEADLINE_S", 0.2)
+    exchanges: list[int] = []
+    exchange = ProjectionWorker._exchange_render  # pyright: ignore[reportPrivateUsage]
+
+    async def counted(
+        self: ProjectionWorker, process: asyncio.subprocess.Process, frame: bytes
+    ) -> object:
+        exchanges.append(process.pid)
+        return await exchange(self, process, frame)
+
+    monkeypatch.setattr(ProjectionWorker, "_exchange_render", counted)
     stand, client = pinned_pull
     record = stand.record(7)
     assert isinstance(record, PullRecord)
@@ -2761,10 +2771,7 @@ def test_a_text_past_the_render_deadline_is_refused_and_refused_again_at_once(
     write_pull_record(stand.published.home, stand.published.slug, slow)
     params = {"number": 7, "part": "body"}
     refused = client.get("/api/plugin/github/pull-markdown", params=params)
-    # The killed child's replacement, which the kept refusal leaves as it is.
-    child_before_again = shared_worker()._process  # pyright: ignore[reportPrivateUsage]
     again = client.get("/api/plugin/github/pull-markdown", params=params)
-    child_after_again = shared_worker()._process  # pyright: ignore[reportPrivateUsage]
     body: dict[str, Any] = refused.json()
     answer = {"status": refused.status_code, "body": body}
     assert answer == {
@@ -2779,7 +2786,7 @@ def test_a_text_past_the_render_deadline_is_refused_and_refused_again_at_once(
         },
     }
     assert (again.status_code, again.json()) == (422, {**body, "remembered": True})
-    assert child_after_again is child_before_again, "the kept refusal renders nothing"
+    assert len(exchanges) == 1, "the kept refusal renders nothing"
     assert json.loads(REFUSED_TEXT_FIXTURE.read_text(encoding="utf-8")) == answer
 
 
