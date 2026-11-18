@@ -34,16 +34,21 @@ server with no GitHub repository answers once for every row.
 prints each row’s third line as drawn: first holding the shell’s pending placeholder,
 then with #106’s and #105’s lines arrived, drawn through the SDK’s one component for it
 (`said`), and #104 and #103 with none.
-Its item’s accessible name says the line in words.
-Then `tree` prints, after each press and key, each row and its change line, the row’s
-one child item, with their roles, levels, places, expansion, Tab stop, and focus.
+The line’s accessible name says it in words, and its row is described by it.
+Then `tree` prints, after each press and key, each item’s row and the change line under
+it, with their roles, levels, places, expansion, what each owns, describes, or controls,
+the Tab stop, and focus.
+A pull request is one item of three lines, one stop of the tree (mb-1z7j): its row, the
+link, is the tree’s item and owns its files, and its change line, the line that carries
+the toggle, is a button that is no stop of its own.
 No row’s files are open by default.
-A press on a row’s title opens it and expands nothing; a press on its chevron or its
-line opens or closes its files and opens no page.
-Up and Down walk the rows and expand nothing.
-Right goes to a row’s change line, where Enter and Space open and close its files, Right
-opens them, Left closes them and then goes back to the row, Up goes back to the row, and
-Down goes into the open files, or on to the next row.
+A press on a row’s title, number’s line, or state icon opens it and expands nothing; a
+press anywhere on its change line, its chevron or its values, opens or closes its files,
+opens no page, and leaves the focus on the item: the rule for a row with a disclosure
+toggle, which the invariants hold at every step (`pressed`). Up and Down walk the pull
+requests as wholes and expand nothing, whether a row’s files are open or not.
+On a row, Space opens and closes its files, Right opens them and then goes into them,
+Left closes them and then goes to its stack’s row, and Enter opens the pull request.
 
 Run alone, the session holds every part’s invariants and says how many steps each took;
 `lane` and `row` print each part.
@@ -53,7 +58,7 @@ $ node tests/dom/github-pulls-row-lines-session.js
 {
   "steps": {
     "lane": 23,
-    "row": 22
+    "row": 23
   },
   "invariants": true
 }
@@ -743,74 +748,163 @@ $ node tests/dom/github-pulls-row-lines-session.js row
       {
         "step": "the collapsed default: no row's files are open, and no list was read",
         "tree": [
-          "#106 · treeitem · level 1 · 1/102 · expanded true · owns github-pull-change-106 · Tab stop",
-          "  #106's change line · treeitem · level 2 · 1/1 · expanded false",
-          "#105 · treeitem · level 1 · 2/102 · expanded true · owns github-pull-change-105",
-          "  #105's change line · treeitem · level 2 · 1/1 · expanded false",
-          "#104 · treeitem · level 1 · 3/102 · expanded true · owns github-pull-change-104",
-          "  #104's change line · treeitem · level 2 · 1/1 · expanded false",
-          "#103 · treeitem · level 1 · 4/102 · expanded true · owns github-pull-change-103",
-          "  #103's change line · treeitem · level 2 · 1/1 · expanded false"
+          "#106 · treeitem · level 1 · 1/102 · expanded false · described by github-pull-change-106 · Tab stop",
+          "  #106's change line · button · expanded false · no stop",
+          "#105 · treeitem · level 1 · 2/102 · expanded false · described by github-pull-change-105",
+          "  #105's change line · button · expanded false · no stop",
+          "#104 · treeitem · level 1 · 3/102 · expanded false · described by github-pull-change-104",
+          "  #104's change line · button · expanded false · no stop",
+          "#103 · treeitem · level 1 · 4/102 · expanded false · described by github-pull-change-103",
+          "  #103's change line · button · expanded false · no stop"
         ],
         "requests": []
       },
       {
         "step": "a press on #106's title opens it, and its files stay closed",
+        "pressed": {
+          "item": 106,
+          "on": "title"
+        },
         "tree": [
-          "#106 · treeitem · level 1 · 1/102 · expanded true · owns github-pull-change-106 · Tab stop",
-          "  #106's change line · treeitem · level 2 · 1/1 · expanded false",
-          "#105 · treeitem · level 1 · 2/102 · expanded true · owns github-pull-change-105",
-          "  #105's change line · treeitem · level 2 · 1/1 · expanded false",
-          "#104 · treeitem · level 1 · 3/102 · expanded true · owns github-pull-change-104",
-          "  #104's change line · treeitem · level 2 · 1/1 · expanded false",
-          "#103 · treeitem · level 1 · 4/102 · expanded true · owns github-pull-change-103",
-          "  #103's change line · treeitem · level 2 · 1/1 · expanded false"
+          "#106 · treeitem · level 1 · 1/102 · expanded false · described by github-pull-change-106 · Tab stop",
+          "  #106's change line · button · expanded false · no stop",
+          "#105 · treeitem · level 1 · 2/102 · expanded false · described by github-pull-change-105",
+          "  #105's change line · button · expanded false · no stop",
+          "#104 · treeitem · level 1 · 3/102 · expanded false · described by github-pull-change-104",
+          "  #104's change line · button · expanded false · no stop",
+          "#103 · treeitem · level 1 · 4/102 · expanded false · described by github-pull-change-103",
+          "  #103's change line · button · expanded false · no stop"
         ],
         "opened": [
           "#106"
         ]
       },
       {
-        "step": "a press on its chevron opens its files, and opens no page",
+        "step": "a press on #105's number's line opens it, and its files stay closed",
+        "pressed": {
+          "item": 105,
+          "on": "number's line"
+        },
         "tree": [
-          "#106 · treeitem · level 1 · 1/102 · expanded true · owns github-pull-change-106 · Tab stop",
-          "  #106's change line · treeitem · level 2 · 1/1 · expanded true · owns github-pull-files-106",
-          "#105 · treeitem · level 1 · 2/102 · expanded true · owns github-pull-change-105",
-          "  #105's change line · treeitem · level 2 · 1/1 · expanded false",
-          "#104 · treeitem · level 1 · 3/102 · expanded true · owns github-pull-change-104",
-          "  #104's change line · treeitem · level 2 · 1/1 · expanded false",
-          "#103 · treeitem · level 1 · 4/102 · expanded true · owns github-pull-change-103",
-          "  #103's change line · treeitem · level 2 · 1/1 · expanded false"
+          "#106 · treeitem · level 1 · 1/102 · expanded false · described by github-pull-change-106",
+          "  #106's change line · button · expanded false · no stop",
+          "#105 · treeitem · level 1 · 2/102 · expanded false · described by github-pull-change-105 · Tab stop",
+          "  #105's change line · button · expanded false · no stop",
+          "#104 · treeitem · level 1 · 3/102 · expanded false · described by github-pull-change-104",
+          "  #104's change line · button · expanded false · no stop",
+          "#103 · treeitem · level 1 · 4/102 · expanded false · described by github-pull-change-103",
+          "  #103's change line · button · expanded false · no stop"
+        ],
+        "opened": [
+          "#105"
+        ]
+      },
+      {
+        "step": "a press on #106's state icon opens it again, and its files stay closed",
+        "pressed": {
+          "item": 106,
+          "on": "state icon"
+        },
+        "tree": [
+          "#106 · treeitem · level 1 · 1/102 · expanded false · described by github-pull-change-106 · Tab stop",
+          "  #106's change line · button · expanded false · no stop",
+          "#105 · treeitem · level 1 · 2/102 · expanded false · described by github-pull-change-105",
+          "  #105's change line · button · expanded false · no stop",
+          "#104 · treeitem · level 1 · 3/102 · expanded false · described by github-pull-change-104",
+          "  #104's change line · button · expanded false · no stop",
+          "#103 · treeitem · level 1 · 4/102 · expanded false · described by github-pull-change-103",
+          "  #103's change line · button · expanded false · no stop"
+        ],
+        "opened": [
+          "#106"
+        ]
+      },
+      {
+        "step": "a press on #106's chevron opens its files, opens no page, and focuses its item",
+        "pressed": {
+          "item": 106,
+          "on": "chevron"
+        },
+        "tree": [
+          "#106 · treeitem · level 1 · 1/102 · expanded true · owns github-pull-files-106 · described by github-pull-change-106 · Tab stop · focused",
+          "  #106's change line · button · expanded true · controls github-pull-files-106 · no stop",
+          "#105 · treeitem · level 1 · 2/102 · expanded false · described by github-pull-change-105",
+          "  #105's change line · button · expanded false · no stop",
+          "#104 · treeitem · level 1 · 3/102 · expanded false · described by github-pull-change-104",
+          "  #104's change line · button · expanded false · no stop",
+          "#103 · treeitem · level 1 · 4/102 · expanded false · described by github-pull-change-103",
+          "  #103's change line · button · expanded false · no stop"
         ],
         "requests": [
           "/api/plugin/github/pull-files?number=106&offset=0"
         ]
       },
       {
-        "step": "a press on its change line closes them",
+        "step": "a press on the values of its change line closes them: the whole line carries the toggle",
+        "pressed": {
+          "item": 106,
+          "on": "change line"
+        },
         "tree": [
-          "#106 · treeitem · level 1 · 1/102 · expanded true · owns github-pull-change-106 · Tab stop",
-          "  #106's change line · treeitem · level 2 · 1/1 · expanded false · owns github-pull-files-106",
-          "#105 · treeitem · level 1 · 2/102 · expanded true · owns github-pull-change-105",
-          "  #105's change line · treeitem · level 2 · 1/1 · expanded false",
-          "#104 · treeitem · level 1 · 3/102 · expanded true · owns github-pull-change-104",
-          "  #104's change line · treeitem · level 2 · 1/1 · expanded false",
-          "#103 · treeitem · level 1 · 4/102 · expanded true · owns github-pull-change-103",
-          "  #103's change line · treeitem · level 2 · 1/1 · expanded false"
+          "#106 · treeitem · level 1 · 1/102 · expanded false · owns github-pull-files-106 · described by github-pull-change-106 · Tab stop · focused",
+          "  #106's change line · button · expanded false · controls github-pull-files-106 · no stop",
+          "#105 · treeitem · level 1 · 2/102 · expanded false · described by github-pull-change-105",
+          "  #105's change line · button · expanded false · no stop",
+          "#104 · treeitem · level 1 · 3/102 · expanded false · described by github-pull-change-104",
+          "  #104's change line · button · expanded false · no stop",
+          "#103 · treeitem · level 1 · 4/102 · expanded false · described by github-pull-change-103",
+          "  #103's change line · button · expanded false · no stop"
         ]
       },
       {
-        "step": "Down walks to #105, which opens, and expands nothing",
+        "step": "a press on the change line itself, past its values, opens them again",
+        "pressed": {
+          "item": 106,
+          "on": "change line"
+        },
+        "tree": [
+          "#106 · treeitem · level 1 · 1/102 · expanded true · owns github-pull-files-106 · described by github-pull-change-106 · Tab stop · focused",
+          "  #106's change line · button · expanded true · controls github-pull-files-106 · no stop",
+          "#105 · treeitem · level 1 · 2/102 · expanded false · described by github-pull-change-105",
+          "  #105's change line · button · expanded false · no stop",
+          "#104 · treeitem · level 1 · 3/102 · expanded false · described by github-pull-change-104",
+          "  #104's change line · button · expanded false · no stop",
+          "#103 · treeitem · level 1 · 4/102 · expanded false · described by github-pull-change-103",
+          "  #103's change line · button · expanded false · no stop"
+        ],
+        "requests": [
+          "/api/plugin/github/pull-files?number=106&offset=0"
+        ]
+      },
+      {
+        "step": "and closes them",
+        "pressed": {
+          "item": 106,
+          "on": "change line"
+        },
+        "tree": [
+          "#106 · treeitem · level 1 · 1/102 · expanded false · owns github-pull-files-106 · described by github-pull-change-106 · Tab stop · focused",
+          "  #106's change line · button · expanded false · controls github-pull-files-106 · no stop",
+          "#105 · treeitem · level 1 · 2/102 · expanded false · described by github-pull-change-105",
+          "  #105's change line · button · expanded false · no stop",
+          "#104 · treeitem · level 1 · 3/102 · expanded false · described by github-pull-change-104",
+          "  #104's change line · button · expanded false · no stop",
+          "#103 · treeitem · level 1 · 4/102 · expanded false · described by github-pull-change-103",
+          "  #103's change line · button · expanded false · no stop"
+        ]
+      },
+      {
+        "step": "Down walks to #105, a whole item, which opens and expands nothing",
         "handled": true,
         "tree": [
-          "#106 · treeitem · level 1 · 1/102 · expanded true · owns github-pull-change-106",
-          "  #106's change line · treeitem · level 2 · 1/1 · expanded false · owns github-pull-files-106",
-          "#105 · treeitem · level 1 · 2/102 · expanded true · owns github-pull-change-105 · Tab stop · focused",
-          "  #105's change line · treeitem · level 2 · 1/1 · expanded false",
-          "#104 · treeitem · level 1 · 3/102 · expanded true · owns github-pull-change-104",
-          "  #104's change line · treeitem · level 2 · 1/1 · expanded false",
-          "#103 · treeitem · level 1 · 4/102 · expanded true · owns github-pull-change-103",
-          "  #103's change line · treeitem · level 2 · 1/1 · expanded false"
+          "#106 · treeitem · level 1 · 1/102 · expanded false · owns github-pull-files-106 · described by github-pull-change-106",
+          "  #106's change line · button · expanded false · controls github-pull-files-106 · no stop",
+          "#105 · treeitem · level 1 · 2/102 · expanded false · described by github-pull-change-105 · Tab stop · focused",
+          "  #105's change line · button · expanded false · no stop",
+          "#104 · treeitem · level 1 · 3/102 · expanded false · described by github-pull-change-104",
+          "  #104's change line · button · expanded false · no stop",
+          "#103 · treeitem · level 1 · 4/102 · expanded false · described by github-pull-change-103",
+          "  #103's change line · button · expanded false · no stop"
         ],
         "opened": [
           "#105"
@@ -820,14 +914,14 @@ $ node tests/dom/github-pulls-row-lines-session.js row
         "step": "Down again to #104: nothing expands",
         "handled": true,
         "tree": [
-          "#106 · treeitem · level 1 · 1/102 · expanded true · owns github-pull-change-106",
-          "  #106's change line · treeitem · level 2 · 1/1 · expanded false · owns github-pull-files-106",
-          "#105 · treeitem · level 1 · 2/102 · expanded true · owns github-pull-change-105",
-          "  #105's change line · treeitem · level 2 · 1/1 · expanded false",
-          "#104 · treeitem · level 1 · 3/102 · expanded true · owns github-pull-change-104 · Tab stop · focused",
-          "  #104's change line · treeitem · level 2 · 1/1 · expanded false",
-          "#103 · treeitem · level 1 · 4/102 · expanded true · owns github-pull-change-103",
-          "  #103's change line · treeitem · level 2 · 1/1 · expanded false"
+          "#106 · treeitem · level 1 · 1/102 · expanded false · owns github-pull-files-106 · described by github-pull-change-106",
+          "  #106's change line · button · expanded false · controls github-pull-files-106 · no stop",
+          "#105 · treeitem · level 1 · 2/102 · expanded false · described by github-pull-change-105",
+          "  #105's change line · button · expanded false · no stop",
+          "#104 · treeitem · level 1 · 3/102 · expanded false · described by github-pull-change-104 · Tab stop · focused",
+          "  #104's change line · button · expanded false · no stop",
+          "#103 · treeitem · level 1 · 4/102 · expanded false · described by github-pull-change-103",
+          "  #103's change line · button · expanded false · no stop"
         ],
         "opened": [
           "#104"
@@ -837,217 +931,175 @@ $ node tests/dom/github-pulls-row-lines-session.js row
         "step": "Up back to #105",
         "handled": true,
         "tree": [
-          "#106 · treeitem · level 1 · 1/102 · expanded true · owns github-pull-change-106",
-          "  #106's change line · treeitem · level 2 · 1/1 · expanded false · owns github-pull-files-106",
-          "#105 · treeitem · level 1 · 2/102 · expanded true · owns github-pull-change-105 · Tab stop · focused",
-          "  #105's change line · treeitem · level 2 · 1/1 · expanded false",
-          "#104 · treeitem · level 1 · 3/102 · expanded true · owns github-pull-change-104",
-          "  #104's change line · treeitem · level 2 · 1/1 · expanded false",
-          "#103 · treeitem · level 1 · 4/102 · expanded true · owns github-pull-change-103",
-          "  #103's change line · treeitem · level 2 · 1/1 · expanded false"
+          "#106 · treeitem · level 1 · 1/102 · expanded false · owns github-pull-files-106 · described by github-pull-change-106",
+          "  #106's change line · button · expanded false · controls github-pull-files-106 · no stop",
+          "#105 · treeitem · level 1 · 2/102 · expanded false · described by github-pull-change-105 · Tab stop · focused",
+          "  #105's change line · button · expanded false · no stop",
+          "#104 · treeitem · level 1 · 3/102 · expanded false · described by github-pull-change-104",
+          "  #104's change line · button · expanded false · no stop",
+          "#103 · treeitem · level 1 · 4/102 · expanded false · described by github-pull-change-103",
+          "  #103's change line · button · expanded false · no stop"
         ],
         "opened": [
           "#105"
         ]
       },
       {
-        "step": "Right on #105 goes to its change line, and opens nothing",
+        "step": "Space on #105 (the handle's toggleFiles) opens its files in place, and keeps the focus",
         "handled": true,
         "tree": [
-          "#106 · treeitem · level 1 · 1/102 · expanded true · owns github-pull-change-106",
-          "  #106's change line · treeitem · level 2 · 1/1 · expanded false · owns github-pull-files-106",
-          "#105 · treeitem · level 1 · 2/102 · expanded true · owns github-pull-change-105 · Tab stop",
-          "  #105's change line · treeitem · level 2 · 1/1 · expanded false · focused",
-          "#104 · treeitem · level 1 · 3/102 · expanded true · owns github-pull-change-104",
-          "  #104's change line · treeitem · level 2 · 1/1 · expanded false",
-          "#103 · treeitem · level 1 · 4/102 · expanded true · owns github-pull-change-103",
-          "  #103's change line · treeitem · level 2 · 1/1 · expanded false"
-        ]
-      },
-      {
-        "step": "Enter on the change line opens its files",
-        "handled": true,
-        "tree": [
-          "#106 · treeitem · level 1 · 1/102 · expanded true · owns github-pull-change-106",
-          "  #106's change line · treeitem · level 2 · 1/1 · expanded false · owns github-pull-files-106",
-          "#105 · treeitem · level 1 · 2/102 · expanded true · owns github-pull-change-105 · Tab stop",
-          "  #105's change line · treeitem · level 2 · 1/1 · expanded true · owns github-pull-files-105 · focused",
-          "#104 · treeitem · level 1 · 3/102 · expanded true · owns github-pull-change-104",
-          "  #104's change line · treeitem · level 2 · 1/1 · expanded false",
-          "#103 · treeitem · level 1 · 4/102 · expanded true · owns github-pull-change-103",
-          "  #103's change line · treeitem · level 2 · 1/1 · expanded false"
+          "#106 · treeitem · level 1 · 1/102 · expanded false · owns github-pull-files-106 · described by github-pull-change-106",
+          "  #106's change line · button · expanded false · controls github-pull-files-106 · no stop",
+          "#105 · treeitem · level 1 · 2/102 · expanded true · owns github-pull-files-105 · described by github-pull-change-105 · Tab stop · focused",
+          "  #105's change line · button · expanded true · controls github-pull-files-105 · no stop",
+          "#104 · treeitem · level 1 · 3/102 · expanded false · described by github-pull-change-104",
+          "  #104's change line · button · expanded false · no stop",
+          "#103 · treeitem · level 1 · 4/102 · expanded false · described by github-pull-change-103",
+          "  #103's change line · button · expanded false · no stop"
         ],
         "requests": [
           "/api/plugin/github/pull-files?number=105&offset=0"
         ]
       },
       {
-        "step": "Enter again closes them",
+        "step": "Space again closes them",
         "handled": true,
         "tree": [
-          "#106 · treeitem · level 1 · 1/102 · expanded true · owns github-pull-change-106",
-          "  #106's change line · treeitem · level 2 · 1/1 · expanded false · owns github-pull-files-106",
-          "#105 · treeitem · level 1 · 2/102 · expanded true · owns github-pull-change-105 · Tab stop",
-          "  #105's change line · treeitem · level 2 · 1/1 · expanded false · owns github-pull-files-105 · focused",
-          "#104 · treeitem · level 1 · 3/102 · expanded true · owns github-pull-change-104",
-          "  #104's change line · treeitem · level 2 · 1/1 · expanded false",
-          "#103 · treeitem · level 1 · 4/102 · expanded true · owns github-pull-change-103",
-          "  #103's change line · treeitem · level 2 · 1/1 · expanded false"
+          "#106 · treeitem · level 1 · 1/102 · expanded false · owns github-pull-files-106 · described by github-pull-change-106",
+          "  #106's change line · button · expanded false · controls github-pull-files-106 · no stop",
+          "#105 · treeitem · level 1 · 2/102 · expanded false · owns github-pull-files-105 · described by github-pull-change-105 · Tab stop · focused",
+          "  #105's change line · button · expanded false · controls github-pull-files-105 · no stop",
+          "#104 · treeitem · level 1 · 3/102 · expanded false · described by github-pull-change-104",
+          "  #104's change line · button · expanded false · no stop",
+          "#103 · treeitem · level 1 · 4/102 · expanded false · described by github-pull-change-103",
+          "  #103's change line · button · expanded false · no stop"
         ]
       },
       {
-        "step": "Space on it (the handle's toggleFiles) opens them",
+        "step": "Enter opens #105 again, and expands nothing",
         "handled": true,
         "tree": [
-          "#106 · treeitem · level 1 · 1/102 · expanded true · owns github-pull-change-106",
-          "  #106's change line · treeitem · level 2 · 1/1 · expanded false · owns github-pull-files-106",
-          "#105 · treeitem · level 1 · 2/102 · expanded true · owns github-pull-change-105 · Tab stop",
-          "  #105's change line · treeitem · level 2 · 1/1 · expanded true · owns github-pull-files-105 · focused",
-          "#104 · treeitem · level 1 · 3/102 · expanded true · owns github-pull-change-104",
-          "  #104's change line · treeitem · level 2 · 1/1 · expanded false",
-          "#103 · treeitem · level 1 · 4/102 · expanded true · owns github-pull-change-103",
-          "  #103's change line · treeitem · level 2 · 1/1 · expanded false"
-        ],
-        "requests": [
-          "/api/plugin/github/pull-files?number=105&offset=0"
-        ]
-      },
-      {
-        "step": "Left closes them, and keeps the change line",
-        "handled": true,
-        "tree": [
-          "#106 · treeitem · level 1 · 1/102 · expanded true · owns github-pull-change-106",
-          "  #106's change line · treeitem · level 2 · 1/1 · expanded false · owns github-pull-files-106",
-          "#105 · treeitem · level 1 · 2/102 · expanded true · owns github-pull-change-105 · Tab stop",
-          "  #105's change line · treeitem · level 2 · 1/1 · expanded false · owns github-pull-files-105 · focused",
-          "#104 · treeitem · level 1 · 3/102 · expanded true · owns github-pull-change-104",
-          "  #104's change line · treeitem · level 2 · 1/1 · expanded false",
-          "#103 · treeitem · level 1 · 4/102 · expanded true · owns github-pull-change-103",
-          "  #103's change line · treeitem · level 2 · 1/1 · expanded false"
-        ]
-      },
-      {
-        "step": "Right opens them again",
-        "handled": true,
-        "tree": [
-          "#106 · treeitem · level 1 · 1/102 · expanded true · owns github-pull-change-106",
-          "  #106's change line · treeitem · level 2 · 1/1 · expanded false · owns github-pull-files-106",
-          "#105 · treeitem · level 1 · 2/102 · expanded true · owns github-pull-change-105 · Tab stop",
-          "  #105's change line · treeitem · level 2 · 1/1 · expanded true · owns github-pull-files-105 · focused",
-          "#104 · treeitem · level 1 · 3/102 · expanded true · owns github-pull-change-104",
-          "  #104's change line · treeitem · level 2 · 1/1 · expanded false",
-          "#103 · treeitem · level 1 · 4/102 · expanded true · owns github-pull-change-103",
-          "  #103's change line · treeitem · level 2 · 1/1 · expanded false"
-        ],
-        "requests": [
-          "/api/plugin/github/pull-files?number=105&offset=0"
-        ]
-      },
-      {
-        "step": "Down from the open change line, its files not yet listed, goes on to #104, which opens",
-        "handled": true,
-        "tree": [
-          "#106 · treeitem · level 1 · 1/102 · expanded true · owns github-pull-change-106",
-          "  #106's change line · treeitem · level 2 · 1/1 · expanded false · owns github-pull-files-106",
-          "#105 · treeitem · level 1 · 2/102 · expanded true · owns github-pull-change-105",
-          "  #105's change line · treeitem · level 2 · 1/1 · expanded true · owns github-pull-files-105",
-          "#104 · treeitem · level 1 · 3/102 · expanded true · owns github-pull-change-104 · Tab stop · focused",
-          "  #104's change line · treeitem · level 2 · 1/1 · expanded false",
-          "#103 · treeitem · level 1 · 4/102 · expanded true · owns github-pull-change-103",
-          "  #103's change line · treeitem · level 2 · 1/1 · expanded false"
-        ],
-        "opened": [
-          "#104"
-        ]
-      },
-      {
-        "step": "Up back to #105, which opens",
-        "handled": true,
-        "tree": [
-          "#106 · treeitem · level 1 · 1/102 · expanded true · owns github-pull-change-106",
-          "  #106's change line · treeitem · level 2 · 1/1 · expanded false · owns github-pull-files-106",
-          "#105 · treeitem · level 1 · 2/102 · expanded true · owns github-pull-change-105 · Tab stop · focused",
-          "  #105's change line · treeitem · level 2 · 1/1 · expanded true · owns github-pull-files-105",
-          "#104 · treeitem · level 1 · 3/102 · expanded true · owns github-pull-change-104",
-          "  #104's change line · treeitem · level 2 · 1/1 · expanded false",
-          "#103 · treeitem · level 1 · 4/102 · expanded true · owns github-pull-change-103",
-          "  #103's change line · treeitem · level 2 · 1/1 · expanded false"
+          "#106 · treeitem · level 1 · 1/102 · expanded false · owns github-pull-files-106 · described by github-pull-change-106",
+          "  #106's change line · button · expanded false · controls github-pull-files-106 · no stop",
+          "#105 · treeitem · level 1 · 2/102 · expanded false · owns github-pull-files-105 · described by github-pull-change-105 · Tab stop · focused",
+          "  #105's change line · button · expanded false · controls github-pull-files-105 · no stop",
+          "#104 · treeitem · level 1 · 3/102 · expanded false · described by github-pull-change-104",
+          "  #104's change line · button · expanded false · no stop",
+          "#103 · treeitem · level 1 · 4/102 · expanded false · described by github-pull-change-103",
+          "  #103's change line · button · expanded false · no stop"
         ],
         "opened": [
           "#105"
         ]
       },
       {
-        "step": "Right to its change line, then Left: its files close",
+        "step": "Right opens #105's files, as on a folder",
         "handled": true,
         "tree": [
-          "#106 · treeitem · level 1 · 1/102 · expanded true · owns github-pull-change-106",
-          "  #106's change line · treeitem · level 2 · 1/1 · expanded false · owns github-pull-files-106",
-          "#105 · treeitem · level 1 · 2/102 · expanded true · owns github-pull-change-105 · Tab stop",
-          "  #105's change line · treeitem · level 2 · 1/1 · expanded false · owns github-pull-files-105 · focused",
-          "#104 · treeitem · level 1 · 3/102 · expanded true · owns github-pull-change-104",
-          "  #104's change line · treeitem · level 2 · 1/1 · expanded false",
-          "#103 · treeitem · level 1 · 4/102 · expanded true · owns github-pull-change-103",
-          "  #103's change line · treeitem · level 2 · 1/1 · expanded false"
+          "#106 · treeitem · level 1 · 1/102 · expanded false · owns github-pull-files-106 · described by github-pull-change-106",
+          "  #106's change line · button · expanded false · controls github-pull-files-106 · no stop",
+          "#105 · treeitem · level 1 · 2/102 · expanded true · owns github-pull-files-105 · described by github-pull-change-105 · Tab stop · focused",
+          "  #105's change line · button · expanded true · controls github-pull-files-105 · no stop",
+          "#104 · treeitem · level 1 · 3/102 · expanded false · described by github-pull-change-104",
+          "  #104's change line · button · expanded false · no stop",
+          "#103 · treeitem · level 1 · 4/102 · expanded false · described by github-pull-change-103",
+          "  #103's change line · button · expanded false · no stop"
+        ],
+        "requests": [
+          "/api/plugin/github/pull-files?number=105&offset=0"
         ]
       },
       {
-        "step": "Left again goes back to #105's row",
+        "step": "Right again, its files not yet listed, has no file to go to: the focus stays",
         "handled": true,
         "tree": [
-          "#106 · treeitem · level 1 · 1/102 · expanded true · owns github-pull-change-106",
-          "  #106's change line · treeitem · level 2 · 1/1 · expanded false · owns github-pull-files-106",
-          "#105 · treeitem · level 1 · 2/102 · expanded true · owns github-pull-change-105 · Tab stop · focused",
-          "  #105's change line · treeitem · level 2 · 1/1 · expanded false · owns github-pull-files-105",
-          "#104 · treeitem · level 1 · 3/102 · expanded true · owns github-pull-change-104",
-          "  #104's change line · treeitem · level 2 · 1/1 · expanded false",
-          "#103 · treeitem · level 1 · 4/102 · expanded true · owns github-pull-change-103",
-          "  #103's change line · treeitem · level 2 · 1/1 · expanded false"
+          "#106 · treeitem · level 1 · 1/102 · expanded false · owns github-pull-files-106 · described by github-pull-change-106",
+          "  #106's change line · button · expanded false · controls github-pull-files-106 · no stop",
+          "#105 · treeitem · level 1 · 2/102 · expanded true · owns github-pull-files-105 · described by github-pull-change-105 · Tab stop · focused",
+          "  #105's change line · button · expanded true · controls github-pull-files-105 · no stop",
+          "#104 · treeitem · level 1 · 3/102 · expanded false · described by github-pull-change-104",
+          "  #104's change line · button · expanded false · no stop",
+          "#103 · treeitem · level 1 · 4/102 · expanded false · described by github-pull-change-103",
+          "  #103's change line · button · expanded false · no stop"
+        ],
+        "requests": [
+          "/api/plugin/github/pull-files?number=105&offset=0"
         ]
       },
       {
-        "step": "Right, then Up from the change line: back to #105's row",
+        "step": "Down from #105, its files open, goes on to #104, a whole item: the files are Right's",
         "handled": true,
         "tree": [
-          "#106 · treeitem · level 1 · 1/102 · expanded true · owns github-pull-change-106",
-          "  #106's change line · treeitem · level 2 · 1/1 · expanded false · owns github-pull-files-106",
-          "#105 · treeitem · level 1 · 2/102 · expanded true · owns github-pull-change-105 · Tab stop · focused",
-          "  #105's change line · treeitem · level 2 · 1/1 · expanded false · owns github-pull-files-105",
-          "#104 · treeitem · level 1 · 3/102 · expanded true · owns github-pull-change-104",
-          "  #104's change line · treeitem · level 2 · 1/1 · expanded false",
-          "#103 · treeitem · level 1 · 4/102 · expanded true · owns github-pull-change-103",
-          "  #103's change line · treeitem · level 2 · 1/1 · expanded false"
-        ]
-      },
-      {
-        "step": "Right, then Down from its closed change line: on to #104, which opens",
-        "handled": true,
-        "tree": [
-          "#106 · treeitem · level 1 · 1/102 · expanded true · owns github-pull-change-106",
-          "  #106's change line · treeitem · level 2 · 1/1 · expanded false · owns github-pull-files-106",
-          "#105 · treeitem · level 1 · 2/102 · expanded true · owns github-pull-change-105",
-          "  #105's change line · treeitem · level 2 · 1/1 · expanded false · owns github-pull-files-105",
-          "#104 · treeitem · level 1 · 3/102 · expanded true · owns github-pull-change-104 · Tab stop · focused",
-          "  #104's change line · treeitem · level 2 · 1/1 · expanded false",
-          "#103 · treeitem · level 1 · 4/102 · expanded true · owns github-pull-change-103",
-          "  #103's change line · treeitem · level 2 · 1/1 · expanded false"
+          "#106 · treeitem · level 1 · 1/102 · expanded false · owns github-pull-files-106 · described by github-pull-change-106",
+          "  #106's change line · button · expanded false · controls github-pull-files-106 · no stop",
+          "#105 · treeitem · level 1 · 2/102 · expanded true · owns github-pull-files-105 · described by github-pull-change-105",
+          "  #105's change line · button · expanded true · controls github-pull-files-105 · no stop",
+          "#104 · treeitem · level 1 · 3/102 · expanded false · described by github-pull-change-104 · Tab stop · focused",
+          "  #104's change line · button · expanded false · no stop",
+          "#103 · treeitem · level 1 · 4/102 · expanded false · described by github-pull-change-103",
+          "  #103's change line · button · expanded false · no stop"
         ],
         "opened": [
           "#104"
+        ]
+      },
+      {
+        "step": "Up back to #105, its files still open",
+        "handled": true,
+        "tree": [
+          "#106 · treeitem · level 1 · 1/102 · expanded false · owns github-pull-files-106 · described by github-pull-change-106",
+          "  #106's change line · button · expanded false · controls github-pull-files-106 · no stop",
+          "#105 · treeitem · level 1 · 2/102 · expanded true · owns github-pull-files-105 · described by github-pull-change-105 · Tab stop · focused",
+          "  #105's change line · button · expanded true · controls github-pull-files-105 · no stop",
+          "#104 · treeitem · level 1 · 3/102 · expanded false · described by github-pull-change-104",
+          "  #104's change line · button · expanded false · no stop",
+          "#103 · treeitem · level 1 · 4/102 · expanded false · described by github-pull-change-103",
+          "  #103's change line · button · expanded false · no stop"
+        ],
+        "opened": [
+          "#105"
+        ]
+      },
+      {
+        "step": "Left closes #105's files, as on a folder",
+        "handled": true,
+        "tree": [
+          "#106 · treeitem · level 1 · 1/102 · expanded false · owns github-pull-files-106 · described by github-pull-change-106",
+          "  #106's change line · button · expanded false · controls github-pull-files-106 · no stop",
+          "#105 · treeitem · level 1 · 2/102 · expanded false · owns github-pull-files-105 · described by github-pull-change-105 · Tab stop · focused",
+          "  #105's change line · button · expanded false · controls github-pull-files-105 · no stop",
+          "#104 · treeitem · level 1 · 3/102 · expanded false · described by github-pull-change-104",
+          "  #104's change line · button · expanded false · no stop",
+          "#103 · treeitem · level 1 · 4/102 · expanded false · described by github-pull-change-103",
+          "  #103's change line · button · expanded false · no stop"
+        ]
+      },
+      {
+        "step": "Left again, on a pull request in no stack, goes nowhere, and is the list's",
+        "handled": true,
+        "tree": [
+          "#106 · treeitem · level 1 · 1/102 · expanded false · owns github-pull-files-106 · described by github-pull-change-106",
+          "  #106's change line · button · expanded false · controls github-pull-files-106 · no stop",
+          "#105 · treeitem · level 1 · 2/102 · expanded false · owns github-pull-files-105 · described by github-pull-change-105 · Tab stop · focused",
+          "  #105's change line · button · expanded false · controls github-pull-files-105 · no stop",
+          "#104 · treeitem · level 1 · 3/102 · expanded false · described by github-pull-change-104",
+          "  #104's change line · button · expanded false · no stop",
+          "#103 · treeitem · level 1 · 4/102 · expanded false · described by github-pull-change-103",
+          "  #103's change line · button · expanded false · no stop"
         ]
       },
       {
         "step": "Tab reaches #103's row, and Enter opens it: nothing expands",
         "handled": true,
         "tree": [
-          "#106 · treeitem · level 1 · 1/102 · expanded true · owns github-pull-change-106",
-          "  #106's change line · treeitem · level 2 · 1/1 · expanded false · owns github-pull-files-106",
-          "#105 · treeitem · level 1 · 2/102 · expanded true · owns github-pull-change-105",
-          "  #105's change line · treeitem · level 2 · 1/1 · expanded false · owns github-pull-files-105",
-          "#104 · treeitem · level 1 · 3/102 · expanded true · owns github-pull-change-104",
-          "  #104's change line · treeitem · level 2 · 1/1 · expanded false",
-          "#103 · treeitem · level 1 · 4/102 · expanded true · owns github-pull-change-103 · Tab stop · focused",
-          "  #103's change line · treeitem · level 2 · 1/1 · expanded false"
+          "#106 · treeitem · level 1 · 1/102 · expanded false · owns github-pull-files-106 · described by github-pull-change-106",
+          "  #106's change line · button · expanded false · controls github-pull-files-106 · no stop",
+          "#105 · treeitem · level 1 · 2/102 · expanded false · owns github-pull-files-105 · described by github-pull-change-105",
+          "  #105's change line · button · expanded false · controls github-pull-files-105 · no stop",
+          "#104 · treeitem · level 1 · 3/102 · expanded false · described by github-pull-change-104",
+          "  #104's change line · button · expanded false · no stop",
+          "#103 · treeitem · level 1 · 4/102 · expanded false · described by github-pull-change-103 · Tab stop · focused",
+          "  #103's change line · button · expanded false · no stop"
         ],
         "opened": [
           "#103"
