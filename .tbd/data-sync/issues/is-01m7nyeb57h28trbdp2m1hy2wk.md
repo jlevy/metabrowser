@@ -5,7 +5,7 @@ title: "macOS app: open https GitHub repo and pull request URLs"
 kind: feature
 status: open
 priority: 1
-version: 10
+version: 11
 labels:
   - skill
   - alpha
@@ -18,8 +18,9 @@ child_order_hints:
   - is-01m7pvpe36ynt581a9txte0tcg
   - is-01m7pvpehjbses9hzggv3ahw4d
   - is-01m7pvqa59443hvcrrczxef78t
+  - is-01m7qqfgcrxaw4qrcd855nwf3a
 created_at: 2026-11-17T23:45:58.438Z
-updated_at: 2026-11-18T08:17:41.032Z
+updated_at: 2026-11-18T16:22:45.395Z
 ---
 Alpha slice of plan #534 per the skill review: AppDelegate accepts https GitHub URLs (today AppDelegate.swift:225 drops non-file URLs while open exits 0); resolve through metab --present --dry-run --json; key the session by repository, not path or pin; an already-open repository navigates (showFrontWindow(page:)); a refusal shows metab's reason; ServerLaunch passes the URL, not root.path; ServerSupervisor no longer abandons at 60 s while clone progress arrives; add the capability marker --present checks; source roots stay out of recents and the saved session for the alpha. ShellCoreTests for the key and deadline.
 
