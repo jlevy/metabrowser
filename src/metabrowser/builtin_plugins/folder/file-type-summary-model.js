@@ -750,6 +750,54 @@ export function buildFileTypeLegend(
 }
 
 /**
+ * What a legend's and a table's shares are of, for assistive technology: the tally row,
+ * which follows Show ignored, and its count in the measure the shares are in, the number
+ * they add up to. On screen the tally bars and the Show ignored checkbox already say it.
+ *
+ * @param {NonNullable<ReturnType<typeof selectPopulation>>} population
+ * @param {boolean} showIgnored
+ * @param {"files" | "size"} metric
+ * @param {{formatSize(value: number): string, formatFileCount(value: number): string}} formatters
+ */
+function shareCaption(population, showIgnored, metric, formatters) {
+  const count =
+    metric === "size"
+      ? formatters.formatSize(population.bytes)
+      : formatters.formatFileCount(population.files);
+  return `Share of ${showIgnored ? "Total" : "Files"} (${count})`;
+}
+
+/**
+ * The compact legend alone, with its caption, for a view that shows the legend without
+ * the table, as the Treemap does: the entries File Overview's legend shows for the same
+ * rollup, measure, and Show ignored. No entries while the rollup has no totals.
+ *
+ * @param {ReturnType<typeof normalizeRollupEnvelope> | null} envelope
+ * @param {boolean} showIgnored
+ * @param {"files" | "size"} metric
+ * @param {{formatSize(value: number): string, formatFileCount(value: number): string}} formatters
+ * @param {MetabrowserPublicFileTypeTaxonomyRuntime} fileTypes
+ */
+export function buildFileTypeLegendModel(envelope, showIgnored, metric, formatters, fileTypes) {
+  const population = envelope?.totals ? selectPopulation(envelope, showIgnored) : null;
+  if (!envelope || !population) {
+    return Object.freeze({ legend: Object.freeze([]), caption: "" });
+  }
+  const percentFormatter = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
+  return Object.freeze({
+    legend: buildFileTypeLegend(
+      envelope,
+      metric,
+      showIgnored,
+      population,
+      fileTypes,
+      percentFormatter,
+    ),
+    caption: shareCaption(population, showIgnored, metric, formatters),
+  });
+}
+
+/**
  * @param {ReturnType<typeof normalizeRollupEnvelope> | null} envelope
  * @param {boolean} showIgnored
  * @param {{formatSize(value: number): string, formatInteger(value: number): string, formatFileCount(value: number): string}} formatters
@@ -818,13 +866,9 @@ export function buildFileTypeSummaryModel(
     ),
     groups: groupDescriptors,
     // The legend's and the rows' percentages match exactly one of the tally rows above
-    // them, and which one follows Show ignored. The count is in the measure the rows
-    // show, so it is the number their shares add up to. The view gives this to
-    // assistive technology as the legend's and the table's name; on screen the tally
-    // bars and the Show ignored checkbox already say which population it is.
-    caption: `Share of ${showIgnored ? "Total" : "Files"} (${
-      selectedMetric === "size" ? bytesText : filesText
-    })`,
+    // them, and which one follows Show ignored. The view gives this to assistive
+    // technology as the legend's and the table's name.
+    caption: shareCaption(population, showIgnored, selectedMetric, formatters),
     files: population.files,
     bytes: population.bytes,
     filesText,

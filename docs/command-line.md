@@ -475,14 +475,15 @@ $ metab https://github.com/owner/repo/pull/123/files --present --dry-run --forma
   the repository’s mirror can know it, which the app reads as the entry page of the
   server it starts; that server resolves the URL and opens the right address.
   For a GitHub `tree` or `blob` URL, `page` is known when the URL leaves one reading: a
-  branch alone or a branch and a file name, either one after `refs/heads/` or
-  `refs/tags/` too, or `HEAD` and any path.
-  Otherwise the branch might hold `/`, and `page` is null.
-  A commit’s page is `/commit/<id>` for a full ID and null for an abbreviated one, which
-  the commit page refuses; `metab COMMIT_URL` opens at the same page.
+  `tree` of one branch, also after `refs/heads/` or `refs/tags/`, or `HEAD` and any
+  path. Otherwise the branch might hold `/`, and `page` is null: a `blob` URL’s
+  `release/v1` may be one branch, which `metab URL` opens at `/view/`, or a branch and a
+  file. A commit’s page is `/commit/<id>` for a full ID and null for an abbreviated one,
+  which the commit page refuses; `metab COMMIT_URL` opens at the same page.
 - **`handoff`:** exactly what `open -b` is given after the bundle identifier: a folder;
-  a file’s root and then the file, so the app opens the root that is reported and shows
-  the file in it; or a URL’s canonical `https://github.com/` form.
+  a file named alone; ROOT and then the file `--path` names in it, so the app opens the
+  root that was named and shows the file there; or a URL’s canonical
+  `https://github.com/` form.
   It is null for a folder inside ROOT, because the app opens each folder in a window of
   its own; such a target is reported and not sent.
 - **`refusal`:** null, or a `code` and a one-line `message` that names the fix, with
@@ -493,9 +494,10 @@ $ metab https://github.com/owner/repo/pull/123/files --present --dry-run --forma
   `tests/golden/cli-present.tryscript.md` shows these and most others, `--path` with a
   URL among them.
 
-A file inside a folder the app already has open, and nested inside the reported root,
-opens in that folder’s window instead: the app places a file in the most specific open
-folder that holds it.
+A file named alone goes where the app places any file it is handed: in the most specific
+folder it has open that holds the file, and otherwise in the folder `root` reports.
+A file named with `--path` opens in ROOT, unless a folder inside ROOT that holds the
+file is open already, which is more specific.
 
 Without `--dry-run`, `--present` asks LaunchServices for the app: the release build,
 then the development build every local build is, or the one `--app-bundle-id ID` or
@@ -517,9 +519,11 @@ one object whose `target` is the object above:
 
 `delivered_to` is `app` once LaunchServices has taken the target.
 That does not mean a window shows it, and the app cannot answer yet, so `confirmed` is
-always `false`. `bundle_path` is the bundle LaunchServices named, whose `Info.plist` was
-read. Otherwise `delivered_to` is `none`, nothing is started, and `code` is a refusal’s
-code or one of these:
+always `false`. `bundle_path` is the bundle LaunchServices named for `bundle_id`, or
+null when none was looked up or found.
+Otherwise `delivered_to` is `none`, and `code` is a refusal’s code or one of these;
+nothing was handed over, except that an `open` that did not return in time may still
+deliver what it was given:
 
 | Code | Meaning |
 | --- | --- |
@@ -528,7 +532,7 @@ code or one of these:
 | `app_not_found` | LaunchServices knows no Metabrowser app |
 | `app_not_installed` | The app LaunchServices names is not at an install location below, as a build left where it was built is not |
 | `app_not_marked` | The app is not named Metabrowser or does not declare the marker below, being an older build or another app |
-| `app_cannot_select_folder` | `--path` names a folder inside ROOT, and the app opens each folder in a window of its own |
+| `app_cannot_select_folder` | `--path` names a folder inside ROOT, and the app opens each folder in a window of its own; it is refused before LaunchServices is asked |
 | `lookup_failed` | LaunchServices could not be asked, as when a sandbox denies its database |
 | `open_failed` | `open` failed or did not return in time |
 
@@ -540,15 +544,19 @@ status alone.
 Every handoff, a file’s or a URL’s, first checks the bundle LaunchServices names:
 
 - **Installed:** it is at `/Applications/Metabrowser.app` or
-  `~/Applications/Metabrowser.app`. LaunchServices registers a bundle wherever it was
-  opened, a build in a source checkout included, so a bundle anywhere else is refused
-  with `app_not_installed` and a message that names its path; move or copy the app to
-  one of the two, and open it once from there.
+  `~/Applications/Metabrowser.app`, `~` being the home folder of your account, not
+  `$HOME`. LaunchServices registers a bundle wherever it was opened, a build in a source
+  checkout included, so a bundle anywhere else, or a link at an install location, is
+  refused with `app_not_installed` and a message that names its path; install the
+  Metabrowser app at one of the two, and open it once from there.
 - **Named:** its `Info.plist` names it `Metabrowser`.
 - **Marked:** its `Info.plist` declares `MetabrowserOpensURLs` true, which every build
   that takes what `--present` sends declares: an older build drops a URL while `open`
   still succeeds, and an app an override names must not be handed a file it would run.
 
+Each identifier’s bundle is checked in turn, so a stray registration of the release
+identifier does not hide an installed development build, and the first refusal is
+reported only when no identifier’s bundle passes.
 A developer testing a build where it was built sets
 `METABROWSER_ALLOW_UNINSTALLED_APP=1`, which lifts the first check alone.
 `APP_INSTALL_LOCATIONS` and the other constants in `cli/present.py` hold the locations,

@@ -25,9 +25,11 @@ resolves the URL itself and opens the right address. :func:`_source_page` says w
 links leave one reading.
 
 ``handoff`` is exactly what ``open -b <bundle id>`` is given after the identifier: the
-folder; the root and then the file, so that the app opens the reported root and shows the
-file in it; or the canonical web URL. A folder inside the root has none, because the app
-opens every folder in a window of its own.
+folder; a file named alone, which the app places in the most specific folder it has open
+that holds it, and otherwise opens in its own folder, the ``root`` reported; ROOT and
+then the file ``--path`` names in it, so that the app opens the root the user named and
+shows the file there; or the canonical web URL. A folder inside the root has none,
+because the app opens every folder in a window of its own.
 
 Anything else is a :class:`Refusal` with a stable code and a one-line message that
 names the fix. ``--dry-run`` stops here and prints the target, which is how the app
@@ -58,6 +60,7 @@ import shlex
 import stat
 import subprocess
 import sys
+import unicodedata
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -91,11 +94,13 @@ OPENS_URLS_KEY: Final = "MetabrowserOpensURLs"
 # in `common.sh`, which `tests/test_present.py` holds to this).
 APP_BUNDLE_NAME: Final = "Metabrowser"
 # Where an installed app is, and the only places `--present` sends to: the system's and
-# the user's Applications folder, `~` being the user's home. LaunchServices registers a
-# bundle wherever it was opened, a build under `apps/macos/build/` or a copy in a cloned
-# repository included, and names one of them for an identifier, so a target goes only to a
-# bundle it names at one of these paths. A check of the path is cheap and runs on every
-# handoff; it is not a signature (a release's team identifier is not checked yet).
+# the user's Applications folder, `~` being the account's home folder as the password
+# database records it, never `$HOME`, which a harness or a script sets for other reasons
+# (`install_locations`). LaunchServices registers a bundle wherever it was opened, a
+# build under `apps/macos/build/` or a copy in a cloned repository included, and names
+# one of them for an identifier, so a target goes only to a bundle it names at one of
+# these paths. A check of the path is cheap and runs on every handoff; it is not a
+# signature (a release's team identifier is not checked yet).
 APP_INSTALL_LOCATIONS: Final = (
     "/Applications/Metabrowser.app",
     "~/Applications/Metabrowser.app",
@@ -166,8 +171,6 @@ class Presentable:
     handoff: tuple[str, ...] | None
     """What ``open -b <id>`` is given: absolute paths, or the canonical web URL; ``None``
     for a folder inside the root, which no handoff makes the app select."""
-    url: bool = False
-    """The handoff is a URL."""
 
     def as_json(self) -> dict[str, object]:
         return {
@@ -256,8 +259,9 @@ def _resolve_local(value: str, path: str) -> Presentable | Refusal:
         page = _view_href(resolved.name)
         if isinstance(page, Refusal):
             return page
-        folder = str(resolved.parent)
-        return Presentable("file", folder, page, (folder, str(resolved)))
+        # Named alone, so the app places it as it places any file it is handed: in the
+        # most specific open folder that holds it, else in this folder.
+        return Presentable("file", str(resolved.parent), page, (str(resolved),))
     if not resolved.is_dir():
         return Refusal(
             "not_a_file_or_folder",
@@ -314,10 +318,11 @@ def _unambiguous_path(selection: RepositorySelection) -> tuple[bytes, ...] | Non
 
     ``resolve_selection`` (``cache/resolve.py``) reads a leading ``HEAD`` as the default
     branch and the rest as the path. Otherwise it drops a leading ``refs/heads/`` or
-    ``refs/tags/``, and tries each leading run of the segments left as a ref, which only
-    the mirror can answer. A tree with one segment left is that ref at its top, and a
-    blob with two is a ref and a file, since a blob names a file; anything longer is
-    ``None``.
+    ``refs/tags/``, and tries each leading run of the segments left as a ref, the whole
+    run included, which leaves an empty path: only the mirror can answer which. So one
+    segment left is that ref at the top of its tree, and anything longer is ``None``,
+    every ``blob`` among them (the reducer refuses a ``blob`` of one segment): a blob's
+    ``release/v1`` may be one branch, which ``metab URL`` serves at ``/view/``.
     """
 
     segments = selection.ref_and_path
@@ -325,10 +330,8 @@ def _unambiguous_path(selection: RepositorySelection) -> tuple[bytes, ...] | Non
         return segments[1:]
     if segments[:2] in _EXPLICIT_REF_PREFIXES:
         segments = segments[2:]
-    if selection.kind == "tree" and len(segments) == 1:
+    if len(segments) == 1:
         return ()
-    if selection.kind == "blob" and len(segments) == 2:
-        return segments[1:]
     return None
 
 
@@ -395,7 +398,6 @@ def _resolve_source(value: str, path: str) -> Presentable | Refusal:
         classified.normalized,
         _source_page(selection),
         (handoff,),
-        url=True,
     )
 
 
@@ -516,9 +518,9 @@ open_executable: str = "/usr/bin/open"
 def read_info_plist(bundle: Path) -> dict[str, object] | None:
     """The property list at *bundle*'s ``Contents/Info.plist``, or ``None``.
 
-    Reads a regular file only, without waiting on one that is not (a FIFO would block),
-    and at most :data:`INFO_PLIST_MAX_BYTES`; anything it cannot read or parse, or that is
-    not a dictionary, is ``None``.
+    Reads a regular file only, without waiting on one that is not (a FIFO would block)
+    or reading a directory, and at most :data:`INFO_PLIST_MAX_BYTES`; anything it cannot
+    read or parse, or that is not a dictionary, is ``None``.
     """
 
     info = bundle / "Contents" / "Info.plist"
@@ -526,13 +528,14 @@ def read_info_plist(bundle: Path) -> dict[str, object] | None:
         descriptor = os.open(info, os.O_RDONLY | os.O_NONBLOCK)
     except OSError:
         return None
-    with os.fdopen(descriptor, "rb") as stream:
-        try:
-            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
-                return None
-            data = stream.read(INFO_PLIST_MAX_BYTES + 1)
-        except OSError:
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
             return None
+        data = os.read(descriptor, INFO_PLIST_MAX_BYTES + 1)
+    except OSError:
+        return None
+    finally:
+        os.close(descriptor)
     if len(data) > INFO_PLIST_MAX_BYTES:
         return None
     try:
@@ -548,59 +551,93 @@ def read_info_plist(bundle: Path) -> dict[str, object] | None:
     return {str(key): value for key, value in plist.items()}
 
 
-def declares_marker(bundle: Path) -> bool:
-    """Whether the app at *bundle* declares :data:`OPENS_URLS_KEY` true in its Info.plist."""
+def _account_home() -> str:
+    """The home folder the password database records for this process's user."""
 
-    info = read_info_plist(bundle)
-    return info is not None and info.get(OPENS_URLS_KEY) is True
+    # Imported here: only a handoff needs it, and the module is POSIX's.
+    import pwd
+
+    return pwd.getpwuid(os.getuid()).pw_dir
 
 
-def install_locations() -> tuple[Path, ...]:
-    """:data:`APP_INSTALL_LOCATIONS`, with ``~`` read now."""
+def install_locations() -> tuple[str, ...]:
+    """:data:`APP_INSTALL_LOCATIONS`, with ``~`` the account's home folder.
 
-    return tuple(Path(location).expanduser() for location in APP_INSTALL_LOCATIONS)
+    A module function, so tests replace it rather than ``$HOME``.
+    """
+
+    home = _account_home()
+    return tuple(
+        home + location[1:] if location.startswith("~/") else location
+        for location in APP_INSTALL_LOCATIONS
+    )
+
+
+def _comparable(path: str) -> str:
+    """*path* with its folder's links resolved and one Unicode spelling.
+
+    Only the folder is resolved, so a link at an install location stays a link.
+    CoreFoundation spells a path decomposed and a home folder may be spelled composed,
+    so both sides are compared composed.
+    """
+
+    folder, name = os.path.split(os.path.normpath(path))
+    return unicodedata.normalize("NFC", os.path.join(os.path.realpath(folder), name))
 
 
 def is_installed(bundle: Path) -> bool:
     """Whether *bundle*, as LaunchServices names it, is one of :func:`install_locations`.
 
-    The path is compared as given, normalized but not resolved, so a link at an install
-    location to a bundle elsewhere is not an install: LaunchServices names where a bundle
-    is.
+    A link at an install location to a bundle elsewhere is not an install, whichever
+    path LaunchServices names: its own is refused here, and its target is not at an
+    install location.
     """
 
-    return Path(os.path.normpath(bundle)) in install_locations()
+    if os.path.islink(bundle):
+        return False
+    named = _comparable(str(bundle))
+    return any(named == _comparable(location) for location in install_locations())
 
 
 def _any_location_allowed() -> bool:
     return os.environ.get(ANY_APP_LOCATION_ENV) == "1"
 
 
-def app_refusal(bundle: Path) -> tuple[DeliveryCode, str] | None:
-    """Why the app at *bundle* is sent nothing, or ``None`` if it passes the trust check.
+def app_refusal(bundle: Path, bundle_id: str) -> tuple[DeliveryCode, str] | None:
+    """Why the app at *bundle*, found for *bundle_id*, is sent nothing, or ``None``.
 
     Every handoff, a file's or a URL's, needs all three: the bundle is installed
     (:func:`is_installed`, unless :data:`ANY_APP_LOCATION_ENV` is ``1``), its Info.plist
-    names it :data:`APP_BUNDLE_NAME`, and it declares :data:`OPENS_URLS_KEY` true.
+    names it :data:`APP_BUNDLE_NAME`, and it declares :data:`OPENS_URLS_KEY` true. A
+    refusal names the bundle and what to install where, and never asks for anything to
+    be done with the bundle it refused, which may be one the user never installed.
     """
 
     if not _any_location_allowed() and not is_installed(bundle):
         allowed = " or ".join(APP_INSTALL_LOCATIONS)
+        if bundle_id in DEFAULT_BUNDLE_IDS:
+            named = (
+                f"LaunchServices names the app at {_shown(bundle)}, which is not installed in "
+                "an Applications folder"
+            )
+        else:
+            named = (
+                f"LaunchServices names the app at {_shown(bundle)} for {bundle_id}, which is "
+                "not a Metabrowser app installed in an Applications folder"
+            )
         return (
             "app_not_installed",
-            f"LaunchServices names the app at {_shown(bundle)}, which is not installed; "
-            f"--present sends only to {allowed}, so move or copy the app there and open it "
-            "once from there",
+            f"{named}; --present sends only to an app at {allowed}, so install the "
+            "Metabrowser app at one of them",
         )
     info = read_info_plist(bundle)
-    name = info.get("CFBundleName") if info is not None else None
-    if name != APP_BUNDLE_NAME:
+    if info is None or info.get("CFBundleName") != APP_BUNDLE_NAME:
         return (
             "app_not_marked",
             f"the app at {_shown(bundle)} is not named {APP_BUNDLE_NAME} in its Info.plist, "
             "so it is not the Metabrowser app; install a current Metabrowser build",
         )
-    if info is None or info.get(OPENS_URLS_KEY) is not True:
+    if info.get(OPENS_URLS_KEY) is not True:
         return (
             "app_not_marked",
             f"the app at {_shown(bundle)} does not declare {OPENS_URLS_KEY}, so it is not a "
@@ -659,52 +696,60 @@ def _send(bundle_id: str, handoff: Sequence[str]) -> str | None:
 
 
 def deliver(target: Presentable, bundle_ids: Sequence[str]) -> Delivery:
-    """Hand *target* to the first app of *bundle_ids* LaunchServices has, if it takes it."""
+    """Hand *target* to the first app of *bundle_ids* that LaunchServices has and trusts.
 
+    A target the app can never take is refused before anything is asked. Each
+    identifier's bundle is checked in turn, so a stray registration of one identifier
+    does not hide an installed build of the next; the first refusal is reported only when
+    no identifier's bundle passes. Each handoff goes to the identifier whose bundle
+    passed, which ``open -b`` resolves to the bundle LaunchServices named for it.
+    """
+
+    if target.handoff is None:
+        return _not_sent(
+            "app_cannot_select_folder",
+            "the app opens a folder in a window of its own and cannot select one inside "
+            "another; present that folder itself, or ROOT without --path",
+        )
     lookup = bundle_lookup
     if lookup is None:
         return _not_sent(
             "not_macos",
             "the Metabrowser app runs on macOS only; serve the target with metab ROOT",
         )
-    found: tuple[str, Path] | None = None
+    refused: Delivery | None = None
     for bundle_id in bundle_ids:
         try:
             bundle = lookup(bundle_id)
         except AppLookupError as exc:
             return _not_sent("lookup_failed", f"{exc}; serve the target with metab ROOT instead")
-        if bundle is not None:
-            found = (bundle_id, bundle)
-            break
-    if found is None:
-        return _not_sent(
-            "app_not_found",
-            f"LaunchServices knows no app {' or '.join(bundle_ids)}; install or build the "
-            "Metabrowser app and open it once, or serve the target with metab ROOT",
-        )
-    bundle_id, bundle = found
-    if target.handoff is None:
-        return _not_sent(
-            "app_cannot_select_folder",
-            "the app opens a folder in a window of its own and cannot select one inside "
-            "another; present that folder itself, or ROOT without --path",
+        if bundle is None:
+            continue
+        if (refusal := app_refusal(bundle, bundle_id)) is not None:
+            refused = refused or _not_sent(*refusal, bundle_id, bundle)
+            continue
+        failure = _send(bundle_id, target.handoff)
+        if failure is not None:
+            return _not_sent(
+                "open_failed",
+                f"{failure}; serve the target with metab ROOT instead",
+                bundle_id,
+                bundle,
+            )
+        return Delivery(
+            "app",
             bundle_id,
-            bundle,
+            str(bundle),
+            "not_confirmed",
+            "LaunchServices took the target; the app does not reply yet, so nothing "
+            "confirms that a window shows it",
         )
-    if (refused := app_refusal(bundle)) is not None:
-        return _not_sent(*refused, bundle_id, bundle)
-    failure = _send(bundle_id, target.handoff)
-    if failure is not None:
-        return _not_sent(
-            "open_failed", f"{failure}; serve the target with metab ROOT instead", bundle_id, bundle
-        )
-    return Delivery(
-        "app",
-        bundle_id,
-        str(bundle),
-        "not_confirmed",
-        "LaunchServices took the target; the app does not reply yet, so nothing confirms "
-        "that a window shows it",
+    if refused is not None:
+        return refused
+    return _not_sent(
+        "app_not_found",
+        f"LaunchServices knows no app {' or '.join(bundle_ids)}; install or build the "
+        "Metabrowser app and open it once, or serve the target with metab ROOT",
     )
 
 
@@ -838,7 +883,6 @@ __all__ = [
     "Refusal",
     "bundle_lookup",
     "app_refusal",
-    "declares_marker",
     "deliver",
     "install_locations",
     "is_installed",

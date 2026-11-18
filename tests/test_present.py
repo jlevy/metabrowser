@@ -17,7 +17,9 @@ import struct
 import subprocess
 import sys
 import textwrap
+import unicodedata
 from pathlib import Path
+from typing import get_args
 
 import pytest
 import typer
@@ -41,13 +43,14 @@ from metabrowser.cli.present import (
     OPENS_URLS_KEY,
     RELEASE_BUNDLE_ID,
     AppLookupError,
+    DeliveryCode,
     Presentable,
     Refusal,
     app_refusal,
-    declares_marker,
     deliver,
     is_installed,
     present_bundle_ids,
+    read_info_plist,
     resolve_target,
 )
 from metabrowser.cli.selection_href import selection_view_href
@@ -73,6 +76,8 @@ def test_the_bundle_identifiers_are_the_ones_the_app_is_built_with() -> None:
 def test_every_delivery_code_ends_with_its_own_kind_of_status() -> None:
     # Delivered is 0; no app to take it and blocked are apart, so a caller can tell
     # "install the app" from "run this where LaunchServices answers" by the status alone.
+    # Every code has a status, or a delivery would end in a KeyError after it was sent.
+    assert set(DELIVERY_EXIT_CODES) == set(get_args(DeliveryCode.__value__))
     assert DELIVERY_EXIT_CODES["not_confirmed"] == 0
     statuses = set(DELIVERY_EXIT_CODES.values()) - {0}
     assert statuses == {PRESENT_NO_APP_EXIT_CODE, PRESENT_BLOCKED_EXIT_CODE}
@@ -92,31 +97,66 @@ def _bundle(
     return bundle
 
 
+_CURRENT_INFO: dict[str, object] = {"CFBundleName": APP_BUNDLE_NAME, OPENS_URLS_KEY: True}
+
+
+@pytest.fixture
+def home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    """A home folder of the test's own, whose `Applications` is an install location.
+
+    It replaces `install_locations`, the seam the account's home folder is read through,
+    so `$HOME` is left alone, as it grants nothing.
+    """
+
+    folder = tmp_path / "home"
+    folder.mkdir()
+    user = str(folder / "Applications" / f"{APP_BUNDLE_NAME}.app")
+    monkeypatch.setattr(
+        present, "install_locations", lambda: ("/Applications/Metabrowser.app", user)
+    )
+    monkeypatch.delenv(ANY_APP_LOCATION_ENV, raising=False)
+    return folder
+
+
+def _installed(home: Path, info: dict[str, object] | list[str] | bytes) -> Path:
+    """A bundle at the user's install location, *home* being the account's home."""
+
+    return _bundle(home / "Applications", info, f"{APP_BUNDLE_NAME}.app")
+
+
 @pytest.mark.parametrize(
-    ("info", "expected"),
+    ("info", "says"),
     [
-        ({OPENS_URLS_KEY: True}, True),
-        ({OPENS_URLS_KEY: False}, False),
+        (_CURRENT_INFO, None),
+        ({"CFBundleName": APP_BUNDLE_NAME, OPENS_URLS_KEY: False}, OPENS_URLS_KEY),
         # Only a boolean declares it: a string or a number is not the key the app writes.
-        ({OPENS_URLS_KEY: "YES"}, False),
-        ({OPENS_URLS_KEY: 1}, False),
-        ({}, False),
-        ([OPENS_URLS_KEY], False),
-        (b"not a property list", False),
+        ({"CFBundleName": APP_BUNDLE_NAME, OPENS_URLS_KEY: "YES"}, OPENS_URLS_KEY),
+        ({"CFBundleName": APP_BUNDLE_NAME, OPENS_URLS_KEY: 1}, OPENS_URLS_KEY),
+        ({"CFBundleName": APP_BUNDLE_NAME}, OPENS_URLS_KEY),
+        ({"CFBundleName": "Terminal", OPENS_URLS_KEY: True}, f"not named {APP_BUNDLE_NAME}"),
+        ({OPENS_URLS_KEY: True}, f"not named {APP_BUNDLE_NAME}"),
+        ([OPENS_URLS_KEY], f"not named {APP_BUNDLE_NAME}"),
+        (b"not a property list", f"not named {APP_BUNDLE_NAME}"),
         # Malformed property lists raise more than plistlib's own error: ExpatError for
         # the first three, IndexError and AttributeError for the next two; a deep binary
         # one raises RecursionError (below).
-        (b'<?xml version="1.0"?><plist><dict><key>a</key>', False),
-        (b"<plist><dict><key>a</key><true/></array></plist>", False),
-        (b"<plist><dict>\x00</dict></plist>", False),
-        (b"<plist><key>a</key></plist>", False),
-        (b"<plist><date>nope</date></plist>", False),
+        (b'<?xml version="1.0"?><plist><dict><key>a</key>', f"not named {APP_BUNDLE_NAME}"),
+        (b"<plist><dict><key>a</key><true/></array></plist>", f"not named {APP_BUNDLE_NAME}"),
+        (b"<plist><dict>\x00</dict></plist>", f"not named {APP_BUNDLE_NAME}"),
+        (b"<plist><key>a</key></plist>", f"not named {APP_BUNDLE_NAME}"),
+        (b"<plist><date>nope</date></plist>", f"not named {APP_BUNDLE_NAME}"),
     ],
 )
-def test_only_a_true_marker_says_the_app_takes_targets(
-    tmp_path: Path, info: dict[str, object] | list[str] | bytes, expected: bool
+def test_an_installed_bundle_needs_the_name_and_a_true_marker(
+    home: Path, info: dict[str, object] | list[str] | bytes, says: str | None
 ) -> None:
-    assert declares_marker(_bundle(tmp_path, info)) is expected
+    refused = app_refusal(_installed(home, info), DEV_BUNDLE_ID)
+
+    if says is None:
+        assert refused is None
+    else:
+        assert refused is not None and refused[0] == "app_not_marked"
+        assert says in refused[1]
 
 
 def _nested_binary_plist(depth: int) -> bytes:
@@ -134,24 +174,22 @@ def _nested_binary_plist(depth: int) -> bytes:
     return body + struct.pack(">6xBBQQQ", 2, 2, len(objects), 0, table)
 
 
-def test_a_deeply_nested_binary_info_plist_is_no_marker(tmp_path: Path) -> None:
-    bundle = _bundle(tmp_path, _nested_binary_plist(5000))
-
-    assert declares_marker(bundle) is False
+def test_a_deeply_nested_binary_info_plist_is_unreadable(tmp_path: Path) -> None:
+    assert read_info_plist(_bundle(tmp_path, _nested_binary_plist(5000))) is None
 
 
-def test_a_bundle_without_a_readable_info_plist_has_no_marker(tmp_path: Path) -> None:
+def test_a_bundle_without_a_readable_info_plist_has_none(tmp_path: Path) -> None:
     (tmp_path / "Bare.app").mkdir()
 
-    assert declares_marker(tmp_path / "Bare.app") is False
-    assert declares_marker(tmp_path / "Missing.app") is False
+    assert read_info_plist(tmp_path / "Bare.app") is None
+    assert read_info_plist(tmp_path / "Missing.app") is None
 
 
 def test_an_oversized_info_plist_is_not_read(tmp_path: Path) -> None:
     padding = "x" * INFO_PLIST_MAX_BYTES
-    bundle = _bundle(tmp_path, {OPENS_URLS_KEY: True, "Padding": padding})
+    bundle = _bundle(tmp_path, {**_CURRENT_INFO, "Padding": padding})
 
-    assert declares_marker(bundle) is False
+    assert read_info_plist(bundle) is None
 
 
 @pytest.mark.skipif(os.name != "posix", reason="a FIFO and /dev/zero are POSIX")
@@ -162,10 +200,26 @@ def test_an_info_plist_that_is_not_a_regular_file_is_not_waited_on(tmp_path: Pat
     device = tmp_path / "Device.app" / "Contents"
     device.mkdir(parents=True)
     (device / "Info.plist").symlink_to("/dev/zero")
+    folder = tmp_path / "Folder.app" / "Contents" / "Info.plist"
+    folder.mkdir(parents=True)
+    linked = tmp_path / "Linked.app" / "Contents"
+    linked.mkdir(parents=True)
+    (linked / "Info.plist").symlink_to(folder)
 
-    # A FIFO with no writer would block an ordinary open for good.
-    assert declares_marker(tmp_path / "Pipe.app") is False
-    assert declares_marker(tmp_path / "Device.app") is False
+    # A FIFO with no writer would block an ordinary open for good, and a folder opens but
+    # cannot be read.
+    for name in ("Pipe.app", "Device.app", "Folder.app", "Linked.app"):
+        assert read_info_plist(tmp_path / name) is None, name
+
+
+@pytest.mark.skipif(os.name != "posix", reason="a folder Info.plist is opened as POSIX opens")
+def test_a_folder_info_plist_at_an_install_location_is_not_marked(home: Path) -> None:
+    bundle = home / "Applications" / f"{APP_BUNDLE_NAME}.app"
+    (bundle / "Contents" / "Info.plist").mkdir(parents=True)
+
+    refused = app_refusal(bundle, DEV_BUNDLE_ID)
+
+    assert refused is not None and refused[0] == "app_not_marked"
 
 
 def test_the_flag_names_the_app_before_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -243,15 +297,6 @@ def test_a_lookup_that_cannot_ask_launch_services_is_blocked_not_missing(
     assert delivery.exit_code == PRESENT_BLOCKED_EXIT_CODE
 
 
-_CURRENT_INFO: dict[str, object] = {"CFBundleName": APP_BUNDLE_NAME, OPENS_URLS_KEY: True}
-
-
-def _installed(home: Path, info: dict[str, object]) -> Path:
-    """A bundle at ``~/Applications/Metabrowser.app``, *home* being ``~``."""
-
-    return _bundle(home / "Applications", info, f"{APP_BUNDLE_NAME}.app")
-
-
 def _record_open(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     """Point `open` at a stand-in that records its arguments; return the record."""
 
@@ -261,17 +306,6 @@ def _record_open(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     opener.chmod(0o755)
     monkeypatch.setattr(present, "open_executable", str(opener))
     return log
-
-
-@pytest.fixture
-def home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
-    """A home folder of the test's own, so `~/Applications` is one it can write."""
-
-    folder = tmp_path / "home"
-    folder.mkdir()
-    monkeypatch.setenv("HOME", str(folder))
-    monkeypatch.delenv(ANY_APP_LOCATION_ENV, raising=False)
-    return folder
 
 
 def test_only_the_two_install_locations_are_installed(home: Path) -> None:
@@ -287,6 +321,46 @@ def test_only_the_two_install_locations_are_installed(home: Path) -> None:
     assert not is_installed(home / "Metabrowser.app")
 
 
+def test_home_grants_no_trust(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # `$HOME` pointed into a tree someone else wrote does not move the user's install
+    # location: it is the account's home folder, from the password database.
+    planted = _bundle(tmp_path / "clone" / "Applications", _CURRENT_INFO, "Metabrowser.app")
+    monkeypatch.setenv("HOME", str(tmp_path / "clone"))
+
+    assert not is_installed(planted)
+    assert str(tmp_path) not in " ".join(present.install_locations())
+
+
+@pytest.mark.skipif(os.name != "posix", reason="symbolic links")
+def test_a_link_at_an_install_location_is_not_an_install(home: Path, tmp_path: Path) -> None:
+    build = _bundle(tmp_path / "apps/macos/build/dev", _CURRENT_INFO, "Metabrowser.app")
+    link = home / "Applications" / "Metabrowser.app"
+    link.parent.mkdir(parents=True)
+    link.symlink_to(build, target_is_directory=True)
+
+    # Whichever LaunchServices names, the link or where it leads, it is refused.
+    assert not is_installed(link)
+    assert not is_installed(build)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="symbolic links")
+def test_an_install_location_reached_through_a_linked_folder_or_spelled_decomposed_is_one(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The account's home is spelled composed and reached through a link; CoreFoundation
+    # names the bundle decomposed, at the real folder.
+    real = tmp_path / unicodedata.normalize("NFD", "renée")
+    real.mkdir()
+    composed = tmp_path / "home-link"
+    composed.symlink_to(real, target_is_directory=True)
+    user = str(composed / "Applications" / "Metabrowser.app")
+    monkeypatch.setattr(present, "install_locations", lambda: (user,))
+    bundle = _bundle(real / "Applications", _CURRENT_INFO, "Metabrowser.app")
+
+    assert is_installed(Path(unicodedata.normalize("NFD", str(bundle))))
+    assert is_installed(Path(unicodedata.normalize("NFC", str(bundle))))
+
+
 @pytest.mark.skipif(os.name != "posix", reason="the open stand-ins are shell scripts")
 def test_a_bundle_elsewhere_is_sent_nothing_unless_a_developer_allows_it(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, home: Path
@@ -300,9 +374,12 @@ def test_a_bundle_elsewhere_is_sent_nothing_unless_a_developer_allows_it(
 
     assert (refused.delivered_to, refused.code) == ("none", "app_not_installed")
     assert refused.exit_code == PRESENT_NO_APP_EXIT_CODE
-    # The message names where the bundle is and where to install it.
+    # The message names where the bundle is and where to install the app, and asks for
+    # nothing to be done with the bundle it refused.
     assert str(build) in refused.message
     assert all(location in refused.message for location in APP_INSTALL_LOCATIONS)
+    assert "install the Metabrowser app at one of them" in refused.message
+    assert "copy" not in refused.message and "move" not in refused.message
     # Only exactly `1` is the developer's word.
     monkeypatch.setenv(ANY_APP_LOCATION_ENV, "true")
     assert deliver(target, (DEV_BUNDLE_ID,)).code == "app_not_installed"
@@ -315,30 +392,8 @@ def test_a_bundle_elsewhere_is_sent_nothing_unless_a_developer_allows_it(
     assert log.read_text() == f"-b {DEV_BUNDLE_ID} /srv/notes\n"
     # The override moves the location only: the marker is still required.
     unmarked = _bundle(tmp_path / "old-build", {"CFBundleName": APP_BUNDLE_NAME}, "Metabrowser.app")
-    refusal = app_refusal(unmarked)
+    refusal = app_refusal(unmarked, DEV_BUNDLE_ID)
     assert refusal is not None and refusal[0] == "app_not_marked"
-
-
-@pytest.mark.parametrize(
-    ("info", "says"),
-    [
-        ({"CFBundleName": APP_BUNDLE_NAME}, OPENS_URLS_KEY),
-        ({"CFBundleName": "Terminal", OPENS_URLS_KEY: True}, f"not named {APP_BUNDLE_NAME}"),
-        ({OPENS_URLS_KEY: True}, f"not named {APP_BUNDLE_NAME}"),
-    ],
-)
-def test_an_installed_bundle_needs_the_name_and_the_marker(
-    home: Path, info: dict[str, object], says: str
-) -> None:
-    refused = app_refusal(_installed(home, info))
-
-    assert refused is not None
-    assert refused[0] == "app_not_marked"
-    assert says in refused[1]
-
-
-def test_an_installed_current_bundle_passes_the_trust_check(home: Path) -> None:
-    assert app_refusal(_installed(home, _CURRENT_INFO)) is None
 
 
 @pytest.mark.skipif(os.name != "posix", reason="the refusing open is a shell script")
@@ -359,6 +414,7 @@ def test_an_app_an_override_names_is_sent_no_file(
 
     assert (delivery.delivered_to, delivery.code) == ("none", "app_not_installed")
     assert delivery.bundle_path == str(terminal)
+    assert "for com.apple.Terminal, which is not a Metabrowser app installed" in delivery.message
     assert delivery.exit_code == PRESENT_NO_APP_EXIT_CODE
     # Copied to an install location, it is still not the Metabrowser app.
     monkeypatch.setattr(
@@ -367,25 +423,78 @@ def test_an_app_an_override_names_is_sent_no_file(
     assert deliver(target, ("com.apple.Terminal",)).code == "app_not_marked"
 
 
-def test_the_first_app_launch_services_has_is_the_one_used(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+@pytest.mark.skipif(os.name != "posix", reason="the open stand-ins are shell scripts")
+def test_a_stray_registration_of_the_release_does_not_hide_an_installed_build(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, home: Path
 ) -> None:
+    stray = _bundle(tmp_path / "clone", _CURRENT_INFO, "Metabrowser.app")
+    installed = _installed(home, _CURRENT_INFO)
     asked: list[str] = []
-    dev = _bundle(tmp_path, {})
 
     def lookup(bundle_id: str) -> Path | None:
         asked.append(bundle_id)
-        return dev if bundle_id == DEV_BUNDLE_ID else None
+        return stray if bundle_id == RELEASE_BUNDLE_ID else installed
 
     monkeypatch.setattr(present, "bundle_lookup", lookup)
-    # A folder inside the root is refused after the lookup, so nothing runs `open`.
-    target = Presentable("folder", "/srv/notes", "/view/docs/", None)
+    log = _record_open(monkeypatch, tmp_path)
+    target = Presentable("folder", "/srv/notes", "/view/", ("/srv/notes",))
 
     delivery = deliver(target, DEFAULT_BUNDLE_IDS)
 
     assert asked == [RELEASE_BUNDLE_ID, DEV_BUNDLE_ID]
-    assert (delivery.delivered_to, delivery.bundle_id) == ("none", DEV_BUNDLE_ID)
-    assert delivery.code == "app_cannot_select_folder"
+    assert (delivery.code, delivery.bundle_id, delivery.bundle_path) == (
+        "not_confirmed",
+        DEV_BUNDLE_ID,
+        str(installed),
+    )
+    assert log.read_text() == f"-b {DEV_BUNDLE_ID} /srv/notes\n"
+    # With no identifier's bundle passing, the first refusal is the one reported.
+    installed_info = installed / "Contents" / "Info.plist"
+    installed_info.write_bytes(plistlib.dumps({"CFBundleName": APP_BUNDLE_NAME}))
+    asked.clear()
+    refused = deliver(target, DEFAULT_BUNDLE_IDS)
+    assert asked == [RELEASE_BUNDLE_ID, DEV_BUNDLE_ID]
+    assert (refused.code, refused.bundle_id) == ("app_not_installed", RELEASE_BUNDLE_ID)
+
+
+def test_a_folder_inside_root_is_refused_before_launch_services_is_asked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def lookup(bundle_id: str) -> Path | None:
+        raise AssertionError("a target with no handoff asked LaunchServices")
+
+    monkeypatch.setattr(present, "bundle_lookup", lookup)
+    target = Presentable("folder", "/srv/notes", "/view/docs/", None)
+
+    delivery = deliver(target, DEFAULT_BUNDLE_IDS)
+
+    assert (delivery.code, delivery.bundle_id, delivery.bundle_path) == (
+        "app_cannot_select_folder",
+        None,
+        None,
+    )
+    assert delivery.exit_code == PRESENT_NO_APP_EXIT_CODE
+    # Off macOS too: the target is refused for what it is, not for the platform.
+    monkeypatch.setattr(present, "bundle_lookup", None)
+    assert deliver(target, DEFAULT_BUNDLE_IDS).code == "app_cannot_select_folder"
+
+
+def test_the_identifiers_are_looked_up_in_order_until_one_is_found(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    asked: list[str] = []
+
+    def lookup(bundle_id: str) -> Path | None:
+        asked.append(bundle_id)
+        return None
+
+    monkeypatch.setattr(present, "bundle_lookup", lookup)
+    target = Presentable("folder", "/srv/notes", "/view/", ("/srv/notes",))
+
+    delivery = deliver(target, DEFAULT_BUNDLE_IDS)
+
+    assert asked == [RELEASE_BUNDLE_ID, DEV_BUNDLE_ID]
+    assert (delivery.code, delivery.bundle_id) == ("app_not_found", None)
 
 
 @pytest.mark.macos_tier
@@ -504,11 +613,7 @@ def test_a_served_commit_url_opens_at_the_commit_it_resolved_to() -> None:
         # One reading only: the page is known without a mirror.
         ("https://github.com/o/r/tree/main", "/view/"),
         ("https://github.com/o/r/tree/refs/tags/v1.0", "/view/"),
-        ("https://github.com/o/r/blob/refs/heads/main/README.md", "/view/g1-UkVBRE1FLm1k"),
-        (
-            "https://raw.githubusercontent.com/o/r/refs/heads/main/README.md",
-            "/view/g1-UkVBRE1FLm1k",
-        ),
+        ("https://github.com/o/r/blob/HEAD/README.md", "/view/g1-UkVBRE1FLm1k"),
         ("https://github.com/o/r/tree/HEAD/docs/a", "/view/g1-ZG9jcw/g1-YQ/"),
         (f"https://github.com/o/r/commit/{_FULL_ID}", f"/commit/{_FULL_ID}"),
         # Only the mirror knows where the ref ends, or what an abbreviation names.
@@ -516,6 +621,13 @@ def test_a_served_commit_url_opens_at_the_commit_it_resolved_to() -> None:
         ("https://github.com/o/r/tree/release/v1/docs", None),
         ("https://github.com/o/r/blob/main/docs/guide.md", None),
         ("https://github.com/o/r/tree/refs/heads/release/v1", None),
+        # A blob of two segments may be one ref, `release/v1`, with an empty path, which
+        # `metab URL` serves at `/view/` (tests/test_github_serve.py), or a ref and a file.
+        ("https://github.com/o/r/blob/release/v1", None),
+        ("https://raw.githubusercontent.com/o/r/release/v1", None),
+        ("https://github.com/o/r/blob/refs/heads/release/v1", None),
+        ("https://github.com/o/r/blob/refs/heads/main/README.md", None),
+        ("https://raw.githubusercontent.com/o/r/refs/heads/main/README.md", None),
         ("https://github.com/o/r/commit/0123456", None),
     ],
 )

@@ -509,6 +509,8 @@ def _check_functional_parity(doc: str) -> list[str]:
     registered = registered_surfaces()
     route_rows = {row.surface: row for row in parity_rows(doc)}
     session_contracts: dict[str, InteractionSessionContract] = {}
+    # The modules of `_MODEL_MODES` that an `owned-model` data row names.
+    modelled: set[str] = set()
     for row in rows:
         if row.aspect in seen:
             problems.append(f"functional aspect {row.aspect!r} is listed more than once")
@@ -584,6 +586,7 @@ def _check_functional_parity(doc: str) -> list[str]:
                     f"{sorted(_MODEL_MODES.values())}"
                 )
             else:
+                modelled.add(owners[0])
                 _canonical, problem = _canonical_source_owner(owners[0])
                 if problem is not None:
                     problems.append(f"{row.aspect}: model owner {owners[0]!r} {problem}")
@@ -742,6 +745,13 @@ def _check_functional_parity(doc: str) -> list[str]:
                     f"{row.aspect}: golden {golden} never runs successful CLI command "
                     f"{row.command!r}"
                 )
+    # As a registered route needs a row, so does a mode's model: its consumers read it as
+    # they read a route's envelope.
+    for mode, module in sorted(_MODEL_MODES.items()):
+        if module not in modelled:
+            problems.append(
+                f"{mode} owns the model in {module!r}, and no 'owned-model' data row covers it"
+            )
     return problems
 
 

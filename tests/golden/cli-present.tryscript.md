@@ -57,7 +57,8 @@ handoff: [CWD]/notes
 ```
 
 A file is presented in the folder `metab FILE` serves, and a link where it points.
-The handoff names the folder and then the file, so the app opens that folder.
+The handoff is the file alone, which the app places in the most specific folder it has
+open that holds it, and otherwise opens in that folder.
 
 ```console
 $ metab notes/README.md --present --dry-run --format json
@@ -66,7 +67,6 @@ $ metab notes/README.md --present --dry-run --format json
   "root": "[CWD]/notes",
   "page": "/view/README.md",
   "handoff": [
-    "[CWD]/notes",
     "[CWD]/notes/README.md"
   ],
   "refusal": null
@@ -81,7 +81,6 @@ $ metab notes/link.md --present --dry-run --format json
   "root": "[CWD]/notes/docs",
   "page": "/view/guide.md",
   "handoff": [
-    "[CWD]/notes/docs",
     "[CWD]/notes/docs/guide.md"
   ],
   "refusal": null
@@ -90,8 +89,8 @@ $ metab notes/link.md --present --dry-run --format json
 ```
 
 `--path` selects a file or a folder inside ROOT, as serve mode reads it.
-A file is handed over after its root, so the app opens that root; a folder inside ROOT
-has no handoff, because the app opens every folder in a window of its own.
+A file is handed over after the ROOT named, so the app opens that root; a folder inside
+ROOT has no handoff, because the app opens every folder in a window of its own.
 
 ```console
 $ metab notes --path docs/guide.md --present --dry-run --format json
@@ -148,8 +147,8 @@ handoff: https://github.com/octo/demo
 ? 0
 ```
 
-A branch is a `tree` at the top of the repository, and a ref spelled in full or `HEAD`
-leaves one reading of the path after it, so its page is known.
+A branch is a `tree` at the top of the repository, named alone or spelled in full, and a
+path after `HEAD` has one reading, so their pages are known.
 
 ```console
 $ metab https://github.com/octo/demo/tree/main --present --dry-run --format json
@@ -193,20 +192,6 @@ $ metab https://github.com/octo/demo/tree/HEAD/docs --present --dry-run --format
 ? 0
 ```
 
-```console
-$ metab https://raw.githubusercontent.com/octo/demo/refs/heads/main/README.md --present --dry-run --format json
-{
-  "kind": "file",
-  "root": "https://github.com/octo/demo",
-  "page": "/view/g1-UkVBRE1FLm1k",
-  "handoff": [
-    "https://github.com/octo/demo/blob/refs/heads/main/README.md"
-  ],
-  "refusal": null
-}
-? 0
-```
-
 A file keeps its `plain=1` and its line anchor.
 
 ```console
@@ -225,7 +210,10 @@ $ metab 'https://github.com/octo/demo/blob/HEAD/docs/guide.md?plain=1#L3-L5' --p
 
 Where only the mirror knows where a ref ends, `page` is null, which the app reads as the
 entry page of the server it starts; that server resolves the URL and opens the right
-address. `claude/x` below may be a branch, or `claude` a branch with a folder `x`.
+address. `claude/x` below may be a branch, or `claude` a branch with a folder `x`. A
+`blob` URL’s last two segments may be a branch and a file, or one branch such as
+`release/v1`, which `metab URL` serves at `/view/`, so no `blob` but one after `HEAD`
+has a page here.
 
 ```console
 $ metab https://github.com/octo/demo/tree/claude/x/docs --present --dry-run --format json
@@ -235,6 +223,34 @@ $ metab https://github.com/octo/demo/tree/claude/x/docs --present --dry-run --fo
   "page": null,
   "handoff": [
     "https://github.com/octo/demo/tree/claude/x/docs"
+  ],
+  "refusal": null
+}
+? 0
+```
+
+```console
+$ metab https://raw.githubusercontent.com/octo/demo/refs/heads/main/README.md --present --dry-run --format json
+{
+  "kind": "file",
+  "root": "https://github.com/octo/demo",
+  "page": null,
+  "handoff": [
+    "https://github.com/octo/demo/blob/refs/heads/main/README.md"
+  ],
+  "refusal": null
+}
+? 0
+```
+
+```console
+$ metab https://github.com/octo/demo/blob/release/v1 --present --dry-run --format json
+{
+  "kind": "file",
+  "root": "https://github.com/octo/demo",
+  "page": null,
+  "handoff": [
+    "https://github.com/octo/demo/blob/release/v1"
   ],
   "refusal": null
 }
