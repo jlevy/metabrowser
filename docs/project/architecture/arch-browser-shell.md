@@ -22,7 +22,7 @@ it, may read them, and an installed plugin uses the SDK.
 | Area | Modules |
 | --- | --- |
 | Loading and the SDK | `asset-loader.js`, `plugin-sdk.js`, `plugin-sdk-views.js`, `perf.js` |
-| Navigation and the pane | `navigation.js` (routes and the pane’s claim lifecycle), `view-composition.js`, `view-state.js` |
+| Navigation and the pane | `navigation.js` (routes and the pane’s claim lifecycle), `view-composition.js`, `view-header.js`, `view-state.js` |
 | Stores | `resource-context.js`, `directory-totals-store.js`, `inventory-scope.js`, `known-file-catalog.js`, `catalog-feed.js` |
 | Tree and filters | `tree-expansion.js`, `tree-keyboard-navigation.js`, `tree-filter-model.js`, `filter-state.js`, `filter-controls.js`, `pending-tally-diagnostics.js` |
 | Main tabs | `main-tabs.js`, `git-panel.js` with `git-graph.js` and `git-history-window.js`, `pulls-nav.js`, `pull-route.js` |
@@ -113,6 +113,13 @@ everything it collected, or committed, after which lazily mounted tabs join the 
 list. Replacing the pane disposes that list, and `releaseShortcutsWithin` releases any
 plugin key still attached inside the container.
 The same module runs in the browserless sessions in `tests/dom/`.
+
+`view-header.js` builds the header `renderFile` draws above a file’s or a folder’s views
+([View Headers](../../design-system.md#view-headers)) over helpers `app.js` passes it,
+so its sizes, counts, ages, and icons are the tree rows’ own.
+It is an on-demand bundle, not a startup script: `loadViewComposition` fetches it beside
+the compositor and the SDK’s view helpers, and a header is drawn only after that.
+The server comment on its bundle in `server.py` records what it costs.
 
 A retained pull-request page goes through `cancelPending()` first: its subtree turns
 inert while the next view prepares, and `dispose()` follows the actual replacement.
@@ -281,6 +288,7 @@ them; the note beside the budget says why.
 | Search, Help, keyboard, Git, and Pulls tools | On demand, once the first tree is usable; Pulls only in a shell that drew the tab | `shell-tools` in `on_demand_script_bundles` | The same note |
 | The plugin shortcut queue | Eager, since a plugin can attach a key before the registry exists | `queueShortcut` in `plugin-sdk.js` | The comment beside it |
 | Line gutter, SDK view helpers, and the syntax service | On demand, beside the view compositor and before any plugin code | `sdk-views` | [exp-037](../../../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
+| A file’s and a folder’s view header | On demand, beside the view compositor and the SDK view helpers | `view-header` | The comment beside the bundle in `server.py` |
 | Pull-request routes and page host | Eager at a `/pull/` address; on demand otherwise | `PULL_PAGE_STARTUP_SCRIPTS`, `pull-route` | exp-037 |
 | GitPath wire codec | Eager on a pin’s shell, the only page whose addresses spell it | `PIN_STARTUP_SCRIPTS` | exp-037 |
 | The pin guard | Inline on a pin’s shell, before any script can fetch. On demand on the working-tree page of a checkout, with the ref selector that can make its server serve a revision, so a folder’s first paint carries none of it | `_SOURCE_PIN_GUARD_SCRIPT`; `source-ref-selector` in `on_demand_script_bundles` | The comment beside the bundle |

@@ -127,9 +127,9 @@ a header line’s ([Type Scale](#type-scale)). Dense navigation uses the compact
 style: `2h ago`, `just now`, or `in 2h` for a future timestamp.
 Unknown times have no age label.
 The Pulls sidebar, file tree and compact Git history remain condensed navigation; PR
-headers, comments, reviews, full commit summaries and folder headers use relative ages.
-Call sites choose the presentation style and positioning, never their own suffix,
-abbreviation, color, weight, or size.
+headers, comments, reviews, full commit summaries and file and folder view headers use
+relative ages. Call sites choose the presentation style and positioning, never their own
+suffix, abbreviation, color, weight, or size.
 A plugin reaches the same primitive as `metabrowser.formatAge` and puts the exact time
 in `data-tip-text`, on a surface that has tooltips
 ([Tooltips Add Information](#tooltips-add-information)). Freshness sentences such as
@@ -248,8 +248,8 @@ The chrome has two text sizes, and the one region set apart is the navigation co
 which takes the smaller one throughout, its metadata and its header path included: it is
 a dense list in a pane narrower than the main view, read by scanning rather than at
 length. Everything else in the main view reads at the body size, its text and its
-metadata, a file’s or a folder’s header and a diff file bar among them; a tree drawn
-there is the navigation’s own component and keeps its rows’ size.
+metadata, a file’s or a folder’s view header and a diff file bar among them; a tree
+drawn there is the navigation’s own component and keeps its rows’ size.
 The column sets its size once, on `.tree-pane`, so a primitive it shares with the main
 view, a notice or an age, sets no size and takes the column’s there and the body’s in
 the main view.
@@ -258,9 +258,9 @@ it.
 
 | Role | Token | Where |
 | --- | --- | --- |
-| Page title | `--page-title-font-size` | The title of a page no file stands behind, a pull request’s or a commit’s. It stands above the regular first heading of the text below by its bold weight, not by its size |
+| Page title | `--page-title-font-size` | The title of every [view header](#view-headers): a file’s or a folder’s name, a pull request’s title, a commit’s subject. It stands above the regular first heading of the text below by its bold weight, not by its size |
 | Document prose | `--document-body-font-size` | A rendered document and a message, one step above the app body, with KPress’s ramp under it (below) |
-| Reading text | `--body-font-size` | The main view’s lines, cards, tables, inputs, notes, and empty and error states; a file’s or a folder’s header, its path, size, count, age, and mirror note; a diff file bar; a commit’s files outside the served folder; every line under a page header’s title, the Diff summary’s header among them ([Page Headers](#page-headers)); a dialog’s prose; a [section heading](#section-headings), in caps |
+| Reading text | `--body-font-size` | The main view’s lines, cards, tables, inputs, notes, and empty and error states; a view header’s eyebrow, its address and mirror note, and its metadata line, a file’s or a folder’s size, count, and age; a diff file bar; a commit’s files outside the served folder; every line under a page header’s title, the Diff summary’s header among them ([Page Headers](#page-headers)); a dialog’s prose; a [section heading](#section-headings), in caps |
 | Tooltip | `--tooltip-font-size` | The body size; its detail lines set none and read at it ([One Tooltip, and It Is Ours](#one-tooltip-and-it-is-ours)) |
 | List text | `--nav-font-size` | The navigation column throughout: its header path, the Files, Pulls, and Commits rows, the [navigation metadata line](#navigation-metadata-line), and the freshness line at its foot; a tree’s rows wherever one is drawn, the Diff summary’s file list among them; and Quick Search’s results and Help’s commands, the lists in those dialogs |
 | Secondary metadata | The token of the text it accompanies | Ages, update and fetch times, counts, sizes, a row’s second line, notes, and captions |
@@ -273,11 +273,11 @@ it.
 | Micro marks | `--micro-font-size` | Marks set deliberately under the controls, never running text: a chip’s count badge, a filled mark inside the chip, and the dot between a stack’s badges |
 
 A path reads at its region’s size, and its metadata with it.
-The navigation column’s header path is list text, the size of the rows it heads, and the
-band it shares with the file header keeps one height across the divider at the two
-sizes. In the main view a file’s or a folder’s header, a diff file bar, and a review
-comment’s file, in its card’s head, read at the body size, and a header’s size, count,
-age, and mirror note share its path’s size and baseline.
+The navigation column’s header path is list text, the size of the rows it heads, in a
+row of one fixed height.
+In the main view a view header’s eyebrow and metadata line, a diff file bar, and a
+review comment’s file, in its card’s head, read at the body size, and a view header’s
+size, count, age, and mirror note share their line’s size.
 [Design Rule Measurements](../explorations/performance-loop/design-rule-measurements.md#type-by-role)
 has the inventory behind this table.
 
@@ -352,6 +352,112 @@ Keep these roles distinct:
 
 Do not shrink essential text to fit.
 Prefer truncation with an accessible full-value tooltip or allow a panel to scroll.
+
+### View Headers
+
+Every page the main view shows opens with one block above its content, a **view
+header**, and each kind of page fills the same rows with what it has: a file, a folder,
+a pull request, and a commit.
+
+```text
++--------------------------------------------------------------------+
+| [Up] ~/wrk/project / docs / specs                    mirror in ... |  1 eyebrow, optional
+| [icon] Title, at the page title's size  [copy]            [toggle] |  2 heading row
+| 33.9 KB · 2h ago                                                   |  3 metadata line(s)
+| DOCUMENT   SOURCE                                                  |  4 tab bar
++--------------------------------------------------------------------+  the one rule, the tab bar's
+| content                                                            |
+```
+
+| Row | A file | A folder | A pull request | A commit |
+| --- | --- | --- | --- | --- |
+| 1. Eyebrow | Up, the address of the folder that holds it, and Copy path | Up, and the address of its parent; at the served root, the directory that holds the root | Only where it says something the rows under it do not (planned) | The same (planned) |
+| 2. Heading row | The navigation row’s icon for its type and its name | The folder icon and its name | Its state icon, its title, and its number | The commit icon, its subject (planned) |
+| 3. Metadata | Its badges, size, and age | Its size, file count, and age | Its author line, branches, and ages ([Page Headers](#page-headers)) | Its author, revision, and age ([Page Headers](#page-headers)) |
+| 4. Tab bar | Its views: Document, Source, and so on | Overview and Treemap | Conversation, Changes, and Checks | None |
+
+Files and folders draw these rows today (`viewHeaderHtml` in `static/view-header.js`, an
+on-demand bundle the shell fetches beside the view compositor).
+A pull request’s page and a commit’s draw their title and lines as
+[Page Headers](#page-headers) says, and move onto the same rows, icon, and ground next
+(planned). What another kind shares is the class structure, not that builder, which is
+the shell’s own: a `.view-header` block holding `.view-header-eyebrow`,
+`.view-header-heading` (with `.view-header-icon`, `.view-header-title`, and
+`.view-header-end`), and `.view-header-line`, whose rules are the rhythm and the ground
+below. A plugin that draws a header, as the GitHub plugin draws a pull request’s, writes
+those classes.
+
+**The eyebrow** is a quiet line above the title: context, at the body size, its served
+root dimmed and its crumbs links.
+It is optional by kind.
+A file’s and a folder’s always have one, because where a file is matters: Up, which
+keeps its place disabled at the served root, and the folders above the item, but not the
+item, which is the title under it.
+A pull request’s or a commit’s has one only when it carries something the rows under it
+do not, such as the repository and branch it belongs to.
+Where a kind has no eyebrow, it writes it empty, and an empty eyebrow is left out: the
+heading row starts the header and nothing holds empty space for one.
+Where it has one, the eyebrow is its token’s height from first paint, so nothing under
+it moves as it fills in.
+A file’s eyebrow ends in Copy path, revealed on hover, so the heading row’s width is the
+title’s.
+
+**The heading row** is the kind’s icon, then the title at `--page-title-font-size`,
+bold, then the row’s controls at its far end.
+The icon is the one the rest of the app draws for the item, at the title’s size: a
+file’s is its navigation row’s icon for its type, through the same function, and a pull
+request’s is its state icon.
+A file’s or a folder’s name is one line, cut short at its end with the whole name as its
+tooltip ([Tooltips Add Information](#tooltips-add-information)); a pull request’s title
+holds two lines. The far end holds the row’s controls: the planned toggle to the item’s
+page on github.com, beside which the planned folder-or-mirror indicator sits as a
+separate mark. The header has no print button ([Print](#print)).
+
+**The metadata lines** sit under the title, at the body size, in muted ink, and each
+value keeps its own primitive: a size its chip, a count its count, an age its freshness
+ink ([File Age](#file-age)), the same helpers a navigation row draws them with.
+On a file’s or a folder’s line, badges lead and the values follow, each after a muted
+dot, `.summary-punctuation`, with the age last: it is the one value that changes while
+nothing on disk does, “just now” becoming “1m ago”, and last on its line it moves
+nothing when it does.
+The line is one line at its token’s height whatever fills it, so a value arriving, a
+skeleton becoming a number, or an age changing width moves nothing above or below it.
+On the line itself, a value that changes width moves the values after it sideways, as
+“999 B” becoming “1.0 MB” moves the count and the age: only the age, which changes while
+nothing on disk does, is last so that its own change moves nothing.
+A folder’s line follows the inventory as it changes (`startFolderHeaderSubscription` in
+`static/app.js`); a file’s line describes the content the view loaded, its size and age
+when it was read, and a reload refreshes it (planned: following the file’s own change).
+In a pane too narrow for the line, its items leave it from the end, each with its dot,
+whole: an item and the dot before it are one box that does not wrap, and a wrapped item
+falls to a second line the line’s height clips away.
+No value is cut mid-number.
+
+**The tab bar** is the one tab style, `.tab-bar` and `.tab-btn`, its labels on the
+content’s inset, where a folder’s Overview labels start
+([Folder Overview Is a Panel Stack](#folder-overview-is-a-panel-stack)), one tab’s
+padding in from the header’s rows.
+Every tab bar in the main view sits on `--bg`, a pull request’s among them; a pull
+request’s spans its reading column rather than the pane, and moves onto the pane’s width
+with the rest of its header (planned).
+
+**Ground and rules.** The header and its tab bar sit on the main view’s ground, `--bg`,
+the ground the content under them has: `--sidebar-bg` is the navigation column’s, and
+stops at the divider.
+The header has no rule of its own and none between its rows; the one rule is the tab
+bar’s, `1px solid var(--border)`, under the tabs, across the pane.
+A kind with no tab bar ends its header without one (planned for a commit’s page).
+Every ink on the header is one the main view already sets on `--bg`: `--text`,
+`--muted`, `--link`, the size chip’s, and the age inks, whose contrast on every age
+surface, `--bg` among them, `tests/test_file_age_palette.py` holds.
+
+The rhythm is tokens in `static/styles.css`, `--view-header-*`: the pads above the first
+row and under the last, the gap between rows, and the eyebrow’s and the metadata line’s
+heights. `tests/test_view_header_chrome.py` draws a file’s, a folder’s, and the served
+root’s header in headless Chrome at four pane widths in both themes and holds the rows
+to those tokens, the title and the line to their sizes, the header and its tabs to one
+ground with the tab bar’s one rule, every value whole or gone, and every box but the
+line’s own still while the line’s values change.
 
 ### Page Headers
 
@@ -512,8 +618,8 @@ keeps it.
 The rule does not reach a number that is not a count summary’s:
 
 - row metadata, as the right-aligned size and count of a tree row, and the size, count,
-  and age of a folder’s header strip, which the size and count chips set by their own
-  threshold;
+  and age of a view header’s metadata line, which the size and count chips set by their
+  own threshold;
 - a control’s label or a chip’s tally, as “Show 40 more” or the Pulls filters’ “Open
   30”;
 - prose or a notice, as “wants to merge 6 commits” or “This commit changes 900 files;
@@ -683,9 +789,9 @@ The overlay’s toggle belongs to its document.
 It fades in once the pane has scrolled past KPress’s threshold and the reader has
 reached the document, whose top is at or above the pane’s, and fades out above the
 document or past its end.
-An opened file starts within the threshold, so the threshold decides, as in KPress; a
-folder Overview’s README starts below File Overview, so the toggle appears as the reader
-scrolls to the README’s beginning.
+An opened file’s document starts below its view header and tab bar, and a folder
+Overview’s README below File Overview, both further down than the threshold, so the
+toggle appears as the reader scrolls to the document’s beginning.
 One rule in `builtin_plugins/markdown/toc-toggle.js` serves KPress’s table of contents
 and an inert render’s.
 
@@ -929,7 +1035,6 @@ unsettled rather than consistently offset.
 | --- | --- | --- |
 | File tree row, in Files and Recent | Name, age, size, and a container child’s change letter | Icon, chevron, activity spinner, loading skeletons |
 | Git history row | Subject, author, and age | Graph gutter, ref chips |
-| File and folder header | Path, file size, and folder summary | Parent button, badges, copy button, a summary still loading |
 | Pull request row, in [the Pulls tab](#the-pulls-tab) | The title, alone on the first line; the number’s line and the age, on the second | State icon, on the first line; chevron, on the change line |
 | Diff file bar | Change letter, path, change stats, and notes | Chevron, a Markdown, YAML, or JSON file’s **Rendered** \| **Source** chooser, View file or View on branch control, copy button |
 
@@ -944,8 +1049,6 @@ Baseline alignment places the text group at the top of the row’s content box, 
 group reads as centered only while that box is no taller than the group.
 A tree row’s `--ui-row-height` is the name’s line box plus the row’s 2px pads, so change
 the row height and the name’s line height together.
-The header’s path fills the header’s content box and centers its own crumbs, so the
-header’s text stays where centering put it at any header height.
 
 A header badge whose label changes in place sits in a slot as wide as its widest label
 from first paint, so the change moves nothing after it: a one-column grid of the badge,
@@ -959,10 +1062,10 @@ text inside it, so it is set at the path’s own size and line height: text of o
 and one line height centers onto one baseline.
 
 Two rows are deliberately not in the table.
-A mirror’s location note at the far end of the file header is whole or absent, by
-wrapping inside a box of its own one line tall, so it is centered rather than
-baseline-aligned, with the rest of the row between it and the path; at the header’s one
-size, that box is the path’s line, so the note sits on the path’s baseline.
+A [view header](#view-headers)’s rows each set their text at one size, the eyebrow’s
+address and mirror note and the metadata line’s values at the body size and the heading
+row’s title alone at the page title’s, so each centers its text and its boxes and needs
+no baseline: text of one size centers onto one baseline.
 The Git commit summary’s metadata line sets a monospace revision at `--nav-font-size`
 beside body-size sans text, and aligning the two faces on one baseline would grow the
 line, so it stays centered.
@@ -1132,7 +1235,7 @@ together.
 The notice is the only place a view reports how much of a file is loaded.
 A second readout in the pane chrome would say the same sentence twice in two boxes and
 give a reader two things to reconcile where there is one fact.
-The file header states the file’s **size**, which is identity; the notice states
+The view header states the file’s **size**, which is identity; the notice states
 **progress**, which is state.
 The two controls at the ends of the content are not a second statement: they bracket the
 same content so the reader meets one of them wherever they are.
@@ -3064,10 +3167,10 @@ names for it:
   A keycap is wider than a tab’s padding, so it covers the label’s last letter, which
   reads through the translucent fill.
   A `beside` badge also sits over its target’s own inline end, but is positioned within
-  the nearest `[data-kbd-badge-anchor]`: the file header, the folder header, or the
+  the nearest `[data-kbd-badge-anchor]`: a file’s or a folder’s view header, or the
   commit view’s heading.
-  It serves icon buttons and targets in a row that clips, such as the Copy path button
-  and the breadcrumbs, where a badge inside the target would be cut off.
+  It serves icon buttons and targets in a row that clips, such as the view header’s Up
+  control, where a badge inside the target would be cut off.
   It covers the icon or the crumb’s last letter, never the file name, note, size, path,
   or author that follows.
   A crumb narrower than a keycap, such as the root’s `/`, lets the keycap reach back

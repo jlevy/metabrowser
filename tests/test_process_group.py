@@ -131,6 +131,7 @@ CHROME_TESTS = (
     "tests.test_transitions_instrument",
     "tests.test_treemap_legend_hover_chrome",
     "tests.test_type_scale_chrome",
+    "tests.test_view_header_chrome",
 )
 CHROME_TESTS_EXEMPT = ("tests.test_process_group", "tests.test_suite_tiers")
 # Creating the profile and the test's own setup, before its bounds start.
