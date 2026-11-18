@@ -258,7 +258,9 @@ A folder that is a repository’s root can show any branch or tag of its checkou
 mirror shows one, a pinned revision read from Git objects, while the working tree, which
 is what a folder opens on, stays a separate choice.
 The checked-out branch, chosen as a ref, shows its last commit, not the working tree.
-This section is the mechanism; which modes exist and why is the open-modes design.
+This section is the mechanism.
+Which modes exist, what each shows, and why is the open-modes design, proposed in
+[#558](https://github.com/jlevy/metabrowser/pull/558).
 
 - **Which folders.** The chooser follows the open root: it is offered when the served
   root is a repository’s root, by the discovery behind the
