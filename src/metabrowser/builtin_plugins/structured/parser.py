@@ -13,7 +13,6 @@ renderer rewrite when ``ruamel.yaml`` round-trip-with-comments lands.
 
 from __future__ import annotations
 
-import io
 import json
 import logging
 import os
@@ -22,6 +21,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from cachetools import LRUCache
+
+from metabrowser.structured_text import collapse_yaml_documents, decode_text
 
 LOG = logging.getLogger(__name__)
 
@@ -128,7 +129,7 @@ def _serialize_to_yaml(value: Any) -> str:
     return re.sub(r"\n{3,}", "\n\n", text)
 
 
-def parse_structured_text(text: str, ext: str) -> Any:
+def _parse_text(text: str, ext: str) -> Any:
     """Parse JSON or YAML text into a JSON-safe Python value.
 
     Raises whatever the underlying parser raises on malformed input.
@@ -165,22 +166,6 @@ def parse_structured_text(text: str, ext: str) -> Any:
 
         docs = list(pyyaml.safe_load_all(text))
     return collapse_yaml_documents(docs)
-
-
-def collapse_yaml_documents(docs: list[Any]) -> Any:
-    """Reduce a YAML document stream to a single tree-renderable value.
-
-    A lone document renders as itself. A multi-document stream renders as a
-    list, after dropping empty (``None``) documents — these are usually a
-    trailing ``---`` followed only by comments. If exactly one real document
-    remains it renders bare, not as a one-element list.
-    """
-    if len(docs) <= 1:
-        return docs[0] if docs else None
-    meaningful = [doc for doc in docs if doc is not None]
-    if len(meaningful) == 1:
-        return meaningful[0]
-    return meaningful or None
 
 
 _PAYLOAD_CACHE: LRUCache[tuple[str, str, str], StructuredPayload] = LRUCache(
@@ -261,19 +246,6 @@ def error_payload(exc: Exception) -> StructuredPayload:
     )
 
 
-def decode_text(data: bytes) -> str:
-    """*data* as the text a file opened in text mode reads as.
-
-    That is how 0.11.0 read a file, and what its answers depend on: a byte that is
-    not UTF-8 becomes U+FFFD and the rest still parses, so a Latin-1 file opens as a
-    tree; and CRLF and a lone CR read as LF, so a parse error counts lines and columns
-    as an editor does. Decoding strictly turned the first into a `UnicodeDecodeError`
-    and a Source view. A leading byte order mark is kept, as it was.
-    """
-
-    return io.TextIOWrapper(io.BytesIO(data), encoding="utf-8", errors="replace").read()
-
-
 def parse_structured_bytes(data: bytes, ext: str) -> StructuredPayload:
     """Parse JSON/YAML bytes. The only parse entry point; bounds are the caller's.
 
@@ -285,7 +257,7 @@ def parse_structured_bytes(data: bytes, ext: str) -> StructuredPayload:
     if len(data) > STRUCTURED_PARSE_MAX_BYTES:
         return truncated_payload()
     try:
-        parsed = parse_structured_text(decode_text(data), ext)
+        parsed = _parse_text(decode_text(data), ext)
     except Exception as exc:
         return error_payload(exc)
     return _payload_from_parsed(parsed, label="bytes")

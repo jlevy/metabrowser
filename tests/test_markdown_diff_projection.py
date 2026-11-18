@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import difflib
 import random
+import time
 from collections.abc import Callable, Sequence
 from html import escape
 
@@ -302,12 +303,148 @@ def test_unchanged_frontmatter_is_context_and_a_comment_change_is_source_only() 
     assert result["source_only"] is True
 
 
-def test_frontmatter_the_document_view_would_not_show_is_absent_or_unsupported() -> None:
+def _fenced(frontmatter: bytes, body: bytes = b"Body\n") -> bytes:
+    return b"---\n" + frontmatter + b"---\n" + body
+
+
+def test_frontmatter_the_document_view_lists_no_disclosure_for_is_absent() -> None:
     assert "frontmatter" not in _project(b"Body\n", b"Body 2\n")
-    assert "frontmatter" not in _project(b"---\n- a\n---\nBody\n", b"---\n- b\n---\nBody\n")
-    alias = b"---\na: &x [1]\nb: *x\n---\nBody\n"
-    assert _project(None, alias)["status"] == "unsupported"
-    assert _project(None, b"---\na: [1\n---\nBody\n")["status"] == "unsupported"
+    listed = _project(_fenced(b"- a\n"), _fenced(b"- b\n"))
+    assert "frontmatter" not in listed
+    assert listed["source_only"] is True
+    assert "frontmatter" not in _project(_fenced(b"{}\n"), _fenced(b"{}\n", b"Body 2\n"))
+
+
+def test_an_alias_and_a_merge_key_load_as_the_document_view_loads_them() -> None:
+    answer = _project(None, _fenced(b"a: &x [1]\nb: *x\nc:\n  <<: {m: 1}\n  n: 2\n"))
+    assert answer["status"] == "ready"
+    assert answer.get("frontmatter") == {
+        "change": "added",
+        "entries": [
+            {"key": "a", "change": "added", "text": "[1]"},
+            {"key": "b", "change": "added", "text": "[1]"},
+            {"key": "c", "change": "added", "text": "{'m': 1, 'n': 2}"},
+        ],
+    }
+
+
+@pytest.mark.parametrize(
+    "frontmatter",
+    [
+        b"a: [1\n",
+        b"a: 1\na: 2\n",
+        b"title: {{ title }}\n",
+        b"a: !custom 1\n",
+        b"a:\n\t- 1\n",
+        b"tags: [" + b", ".join(b"1" for _ in range(2_100)) + b"]\n",
+    ],
+    ids=["malformed", "duplicate-key", "template", "custom-tag", "tab-indent", "past-node-bound"],
+)
+def test_a_body_edit_under_frontmatter_that_does_not_load_still_renders(frontmatter: bytes) -> None:
+    # mb-8274 review A3: the Document view shows such a file's body beside an error.
+    answer = _project(
+        _fenced(frontmatter, b"\nOld body.\n"), _fenced(frontmatter, b"\nNew body.\n")
+    )
+    assert answer["status"] == "ready"
+    assert "frontmatter" not in answer
+    assert [block["kind"] for block in answer["blocks"]] == ["removed", "added"]
+    assert answer["source_only"] is False
+
+
+def test_a_document_opening_with_a_thematic_break_still_renders() -> None:
+    old = b"---\n\nA paragraph.\n\n---\n\nOld body.\n"
+    answer = _project(old, old.replace(b"Old", b"New"))
+    assert answer["status"] == "ready"
+    assert "frontmatter" not in answer
+
+
+def test_changed_frontmatter_that_does_not_load_is_left_to_source() -> None:
+    answer = _project(_fenced(b"a: [1\n"), _fenced(b"a: [2\n"))
+    assert answer["status"] == "ready"
+    assert "frontmatter" not in answer
+    assert answer["source_only"] is True
+
+
+def test_a_side_the_disclosure_does_not_list_keeps_its_lines_unmapped() -> None:
+    # mb-8274 review D2: a list has no disclosure, so nothing draws its lines.
+    mapping, listed = (
+        _fenced(b"title: Old\n", b"\nBody text.\n"),
+        _fenced(b"- a\n- b\n", b"\nBody text.\n"),
+    )
+    removed = _project(mapping, listed)
+    assert removed.get("frontmatter", {}).get("change") == "removed"
+    assert removed["source_only"] is True
+    added = _project(listed, mapping)
+    assert added.get("frontmatter", {}).get("change") == "added"
+    assert added["source_only"] is True
+    gone = _project(mapping, b"\nBody text.\n")
+    assert gone.get("frontmatter", {}).get("change") == "removed"
+    assert gone["source_only"] is False
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        (b"draft: false\n", b'draft: "False"\n'),
+        (b"version: 1\n", b'version: "1"\n'),
+        (b"1: a\n", b'"1": a\n'),
+        (b"when: 2026-11-18\n", b'when: "2026-11-18"\n'),
+    ],
+    ids=["bool", "int", "key", "date"],
+)
+def test_a_value_whose_type_changed_and_text_did_not_is_source_only(old: bytes, new: bytes) -> None:
+    # mb-8274 review B2: the disclosure writes both alike, so Source shows the change.
+    answer = _project(_fenced(old), _fenced(new))
+    frontmatter = answer.get("frontmatter")
+    assert frontmatter is not None
+    assert frontmatter["change"] == "context"
+    assert answer["source_only"] is True
+
+
+def test_a_set_in_frontmatter_reads_alike_in_every_order() -> None:
+    # mb-8274 review D9: a set's text is sorted, so no process's hash seed changes it.
+    forward = _fenced(b"tags: !!set {alpha, beta, gamma, delta}\n")
+    backward = _fenced(b"tags: !!set {delta, gamma, beta, alpha}\n")
+    answer = _project(forward, backward)
+    assert answer.get("frontmatter") == {
+        "change": "context",
+        "entries": [
+            {"key": "tags", "change": "context", "text": "['alpha', 'beta', 'delta', 'gamma']"}
+        ],
+    }
+    assert answer["source_only"] is True
+
+
+def test_a_long_integer_in_frontmatter_is_its_hexadecimal_text() -> None:
+    digits = b"f" * 4_000
+    answer = _project(None, _fenced(b"n: 0x" + digits + b"\n"))
+    assert answer["status"] == "ready"
+    assert answer.get("frontmatter", {}).get("entries") == [
+        {"key": "n", "change": "added", "text": "0x" + digits.decode()}
+    ]
+
+
+def test_equal_frontmatter_loads_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+    load = markdown_projection.load_frontmatter_yaml
+
+    def counted(text: str, **options: object) -> object:
+        calls.append(text)
+        return load(text, **options)  # pyright: ignore[reportArgumentType]
+
+    monkeypatch.setattr(markdown_projection, "load_frontmatter_yaml", counted)
+    _project(_fenced(b"title: Same\n", b"Old\n"), _fenced(b"title: Same\n", b"New\n"))
+    assert calls == ["title: Same\n"]
+
+
+def test_dense_frontmatter_is_bounded_by_its_nodes() -> None:
+    # mb-8274 review A4: 44 KB of one flow list took 762 ms to load.
+    dense = b"tags: [" + b", ".join(b"1" for _ in range(7_000)) + b"]\n"
+    start = time.perf_counter()
+    answer = _project(_fenced(dense, b"Old\n"), _fenced(dense, b"New\n"))
+    assert time.perf_counter() - start < 3.0
+    assert answer["status"] == "ready"
+    assert "frontmatter" not in answer
 
 
 def test_rewrite_local_uses_only_live_links_and_assets() -> None:

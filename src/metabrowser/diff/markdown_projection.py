@@ -23,7 +23,6 @@ visible counterpart shows only in the Source view.
 
 from __future__ import annotations
 
-import datetime as dt
 import hashlib
 import re
 from collections import Counter
@@ -32,7 +31,7 @@ from dataclasses import dataclass, field, replace
 from difflib import SequenceMatcher
 from html import escape
 from html.parser import HTMLParser
-from typing import Any, Literal, NotRequired, TypedDict
+from typing import Any, Final, Literal, NotRequired, TypedDict, cast
 from urllib.parse import unquote
 
 from frontmatter_format import fmf_split_frontmatter
@@ -46,7 +45,7 @@ from markdown_it.token import Token
 from pygments.lexers import get_all_lexers
 
 from metabrowser.diff.format import FilePatch, Hunk, LineOp, LineRecord
-from metabrowser.diff.structured_projection import UnboundedYamlError, load_guarded_yaml
+from metabrowser.frontmatter_yaml import FrontmatterError, load_frontmatter_yaml
 from metabrowser.inert_html import ALLOWED_TAGS, ANCHOR_PREFIX, harden, is_inside
 
 MARKDOWN_DIFF_VERSION = "markdown-diff-v1"
@@ -89,6 +88,15 @@ _MAX_NODES = 2_400
 # the spans compared, summed over a projection, stop at four such diffs.
 _MAX_INLINE_WORDS = 256
 _MAX_INLINE_WORK = 4 * _MAX_INLINE_WORDS * _MAX_INLINE_WORDS
+# The nodes one side's front matter may compose to. Composing costs a few tens of
+# microseconds a node, and a flow list of one-digit integers is a node every three
+# bytes, so inside MARKDOWN_DIFF_MAX_BYTES front matter alone took 762 ms (mb-8274
+# review A4). Of the 191 tracked Markdown files of this repository whose front matter
+# loads, the largest is 694 nodes (10 KB). A flow list of 2,000 loaded in 80 ms at a
+# load average of 70-115 (Apple M1 Pro, Python 3.14, 2026-11-18). Past it the side shows
+# no disclosure and its front matter lines count as unmapped, as for front matter that
+# does not load.
+_FRONTMATTER_MAX_NODES = 2_000
 
 _VOID = frozenset({"br", "hr", "img"})
 _CONTAINERS = frozenset({"bullet_list_open", "ordered_list_open", "blockquote_open"})
@@ -1330,70 +1338,108 @@ class _Projector:
         return True
 
 
-def _json_safe(value: Any) -> Any:
-    """Front matter as the file view hands it to KPress: dates and times as ISO-8601.
+class _NotShown:
+    """Front matter the Document view shows no disclosure for, or that this diff does not
+    load: YAML that does not load or is past _FRONTMATTER_MAX_NODES, and YAML that is not
+    a non-empty mapping."""
 
-    The same coercion as ``server._json_safe_frontmatter``, which the child cannot import.
+
+_NOT_SHOWN: Final = _NotShown()
+_MISSING: Final = object()
+
+
+def _frontmatter_mapping(text: str | None) -> dict[str, Any] | _NotShown | None:
+    """The mapping the Document view's disclosure lists, ``None`` for no front matter, or
+    :data:`_NOT_SHOWN`.
+
+    Loaded as the Document view loads it (:func:`~metabrowser.frontmatter_yaml.load_frontmatter_yaml`),
+    with each value's type kept, so the key ``1`` and the key ``"1"``, or ``false`` and
+    ``"False"``, compare as different values though the disclosure writes them alike.
     """
 
-    if isinstance(value, dict):
-        return {key: _json_safe(item) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_json_safe(item) for item in value]
-    if isinstance(value, (dt.date, dt.time)):
-        return value.isoformat()
-    return value
-
-
-def _frontmatter_mapping(text: str | None) -> dict[Any, Any] | None:
-    """The mapping the Document view shows, or ``None`` where it shows no disclosure.
-
-    As ``plugin_loader.classify.parse_frontmatter_bytes`` reads it: ruamel's safe loader,
-    and nothing unless the YAML is a non-empty mapping. YAML that does not load, or would
-    expand an alias, leaves the file to Source.
-    """
-
-    if not text:
+    if text is None:
         return None
     try:
-        parsed = load_guarded_yaml(text, stream=False)
-    except UnboundedYamlError as exc:
-        raise _Unsupported(str(exc)) from exc
-    except Exception as exc:
-        # The Document view shows a front matter error then, which Source shows too.
-        raise _Unsupported("front matter does not load") from exc
-    return _json_safe(parsed) if isinstance(parsed, dict) and parsed else None
+        parsed = load_frontmatter_yaml(text, max_nodes=_FRONTMATTER_MAX_NODES, typed=True)
+    except FrontmatterError:
+        # The Document view shows its body with a front matter error, which this leaves
+        # to Source: the lines stay unmapped (mb-8274 review A3).
+        return _NOT_SHOWN
+    return cast("dict[str, Any]", parsed) if isinstance(parsed, dict) and parsed else _NOT_SHOWN
 
 
-def _frontmatter_diff(old: str | None, new: str | None) -> FrontmatterDiff | None:
+def _identity(value: object) -> object:
+    """A value with the type of each key and scalar the loader wrote as text, to compare."""
+
+    if isinstance(value, dict):
+        return (
+            "map",
+            tuple(
+                sorted(
+                    (key, getattr(key, "origin", ""), _identity(item))
+                    for key, item in cast("dict[str, object]", value).items()
+                )
+            ),
+        )
+    if isinstance(value, list):
+        items = cast("list[object]", value)
+        return ("list", getattr(value, "origin", ""), tuple(_identity(item) for item in items))
+    return (type(value).__name__, getattr(value, "origin", ""), value)
+
+
+@dataclass(frozen=True, slots=True)
+class _FrontmatterChange:
+    diff: FrontmatterDiff | None
+    # Whether the disclosure lists each side, so its changed lines count as shown.
+    old_shown: bool
+    new_shown: bool
+    # Two values differ that the disclosure writes alike, so it draws them unchanged.
+    hidden: bool
+
+
+def _frontmatter_diff(old: str | None, new: str | None) -> _FrontmatterChange:
     """Both sides' front matter, merged key by key, as KPress's disclosure lists it."""
 
-    before, after = _frontmatter_mapping(old), _frontmatter_mapping(new)
-    if before is None and after is None:
-        return None
-    rows = {str(key): str(value) for key, value in (before or {}).items()}
-    now = {str(key): str(value) for key, value in (after or {}).items()}
+    before = _frontmatter_mapping(old)
+    after = before if old == new else _frontmatter_mapping(new)
+    old_map = before if isinstance(before, dict) else None
+    new_map = after if isinstance(after, dict) else None
+    if old_map is None and new_map is None:
+        return _FrontmatterChange(None, False, False, False)
+    rows = {str(key): value for key, value in (old_map or {}).items()}
+    now = {str(key): value for key, value in (new_map or {}).items()}
     entries: list[FrontmatterDiffEntry] = []
+    hidden = False
     for key in sorted(rows.keys() | now.keys()):
-        was, text = rows.get(key), now.get(key)
-        if was == text:
+        was, value = rows.get(key, _MISSING), now.get(key, _MISSING)
+        was_text = None if was is _MISSING else str(was)
+        text = None if value is _MISSING else str(value)
+        if was is not _MISSING and value is not _MISSING and _identity(was) == _identity(value):
             assert text is not None
             entries.append({"key": key, "change": "context", "text": text})
             continue
-        if was is not None:
-            entries.append({"key": key, "change": "removed", "text": was})
+        if text is not None and was_text == text:
+            # A value whose type changed and whose text did not, such as `false` and
+            # "False": the disclosure cannot show it, so Source does.
+            hidden = True
+            entries.append({"key": key, "change": "context", "text": text})
+            continue
+        if was_text is not None:
+            entries.append({"key": key, "change": "removed", "text": was_text})
         if text is not None:
             entries.append({"key": key, "change": "added", "text": text})
     change: Literal["context", "modified", "removed", "added"]
-    if before is None:
+    if old_map is None:
         change = "added"
-    elif after is None:
+    elif new_map is None:
         change = "removed"
     elif any(entry["change"] != "context" for entry in entries):
         change = "modified"
     else:
         change = "context"
-    return {"change": change, "entries": entries}
+    return _FrontmatterChange(
+        {"change": change, "entries": entries}, old_map is not None, new_map is not None, hidden
+    )
 
 
 def _project(
@@ -1413,6 +1459,8 @@ def _project(
         raise _Unsupported("unmapped Markdown source")
     unchanged, removed, added = _correspondence(old_lines, new_lines, patch)
     old_side, new_side = _parse(before.decode()), _parse(after.decode())
+    shown = _frontmatter_diff(old_side.frontmatter, new_side.frontmatter)
+    frontmatter = shown.diff
     if old_side.elements + new_side.elements > _MAX_NODES:
         raise _OverBudget("combined Markdown elements")
     old_blocks, old_nodes = _render(old_side, _MAX_NODES - new_side.elements)
@@ -1430,12 +1478,14 @@ def _project(
     )
     projector.walk(old_blocks, new_blocks)
     projector.flag_moves()
-    frontmatter = _frontmatter_diff(old_side.frontmatter, new_side.frontmatter)
     if frontmatter is not None and frontmatter["change"] != "context":
         # The disclosure shows what changed in the front matter's lines. It cannot say
-        # which line a key came from, so a comment changed beside a key counts as shown.
-        projector.removed.difference_update(range(old_side.offset))
-        projector.added.difference_update(range(new_side.offset))
+        # which line a key came from, so a comment changed beside a key counts as shown;
+        # a side it does not list keeps its lines unmapped (mb-8274 review D2).
+        if shown.old_shown:
+            projector.removed.difference_update(range(old_side.offset))
+        if shown.new_shown:
+            projector.added.difference_update(range(new_side.offset))
     # A blank separator beside an already visible addition or deletion adds no
     # information to the notice. Standalone whitespace changes still point to Source.
     has_visual_change = any(block["kind"] != "context" for block in projector.blocks) or (
@@ -1446,6 +1496,7 @@ def _project(
     )
     source_only = (
         projector.notice
+        or shown.hidden
         or unmapped
         or any(block["source_only"] for block in projector.blocks)
         or (
