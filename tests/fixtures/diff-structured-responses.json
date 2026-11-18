@@ -116,6 +116,54 @@
   },
   "deploy/anchors.yaml": {
     "version": "structured-diff-v1",
+    "status": "ready",
+    "format": "yaml",
+    "root": [
+      {
+        "change": "modified",
+        "type": "map",
+        "entries": [
+          {
+            "change": "modified",
+            "type": "map",
+            "entries": [
+              {
+                "change": "removed",
+                "value": 1,
+                "key": "replicas"
+              },
+              {
+                "change": "added",
+                "value": 2,
+                "key": "replicas"
+              }
+            ],
+            "key": "base"
+          },
+          {
+            "change": "modified",
+            "type": "map",
+            "entries": [
+              {
+                "change": "removed",
+                "value": 1,
+                "key": "replicas"
+              },
+              {
+                "change": "added",
+                "value": 2,
+                "key": "replicas"
+              }
+            ],
+            "key": "worker"
+          }
+        ]
+      }
+    ],
+    "source_only": false
+  },
+  "deploy/duplicate.yaml": {
+    "version": "structured-diff-v1",
     "status": "unsupported",
     "root": [],
     "source_only": false
@@ -131,6 +179,35 @@
           "mode": "fast",
           "retries": 3
         }
+      }
+    ],
+    "source_only": true
+  },
+  "config/dates.yaml": {
+    "version": "structured-diff-v1",
+    "status": "ready",
+    "format": "yaml",
+    "root": [
+      {
+        "change": "modified",
+        "type": "map",
+        "entries": [
+          {
+            "change": "context",
+            "value": "2026-11-18",
+            "key": "released"
+          },
+          {
+            "change": "removed",
+            "value": 3,
+            "key": "retries"
+          },
+          {
+            "change": "added",
+            "value": 4,
+            "key": "retries"
+          }
+        ]
       }
     ],
     "source_only": true

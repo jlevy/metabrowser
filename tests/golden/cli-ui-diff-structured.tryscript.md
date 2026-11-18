@@ -33,8 +33,11 @@ mounts the files in `tests/fixtures/diff-structured-responses.json`, what the pr
 projection answers for them, through the page’s views as Changes does.
 The first step is the first screen: the requests in order, how often the tree renderer
 was asked for, and each file’s chooser, what its body shows, and its rows.
-A file whose answer is a refusal shows only Source, with no chooser, and a file whose
-only change is outside the tree (here a comment) notes that Source shows it.
+A file whose answer is a refusal (here a key twice in one mapping) shows only Source,
+with no chooser. An alias reads as the value it names.
+A file whose only change is outside the tree (here a comment) notes that Source shows
+it, and one whose value changed only in type beside a drawn change (here a date that
+became a string) notes that Source shows a change the tree draws as unchanged.
 The steps after it click rows of `config/app.yaml`, mount it where the tree renderer
 fails to load, and dispose of the views.
 Each row line is its change, its state (`open`, `closed`, `leaf`, `empty` or `more`),
@@ -57,7 +60,9 @@ $ node tests/dom/diff-structured-session.js
         "package.json",
         "data/swap.json",
         "deploy/anchors.yaml",
-        "config/comments.yaml"
+        "deploy/duplicate.yaml",
+        "config/comments.yaml",
+        "config/dates.yaml"
       ],
       "files": {
         "config/app.yaml": {
@@ -101,6 +106,19 @@ $ node tests/dom/diff-structured-session.js
           ]
         },
         "deploy/anchors.yaml": {
+          "chooser": "YAML diff format: *Rendered | Source",
+          "shows": "rendered",
+          "rows": [
+            "modified open {2 keys}",
+            "  modified open base: {1 keys}",
+            "    removed leaf replicas: 1",
+            "    added leaf replicas: 2",
+            "  modified open worker: {1 keys}",
+            "    removed leaf replicas: 1",
+            "    added leaf replicas: 2"
+          ]
+        },
+        "deploy/duplicate.yaml": {
           "chooser": "none",
           "shows": "source"
         },
@@ -110,6 +128,17 @@ $ node tests/dom/diff-structured-session.js
           "rows": [
             "note: The tree shows no change. Source shows what changed in the text.",
             "context closed {mode: \"fast\", retries: 3}"
+          ]
+        },
+        "config/dates.yaml": {
+          "chooser": "YAML diff format: *Rendered | Source",
+          "shows": "rendered",
+          "rows": [
+            "note: Source shows a change the tree draws as unchanged.",
+            "modified open {2 keys}",
+            "  context leaf released: \"2026-11-18\"",
+            "  removed leaf retries: 3",
+            "  added leaf retries: 4"
           ]
         }
       }
