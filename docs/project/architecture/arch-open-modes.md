@@ -371,8 +371,13 @@ Git directory is under its superproject’s.
   too. That tab’s diffs still run a driver the folder’s configuration names, which is one
   of the
   [known gaps in the read-only rule](arch-git.md#known-gaps-in-the-read-only-rule).
-- **Held where Git starts.** `spawn_git_process` refuses a `log`, `show`, or `diff` at a
-  store target that lacks the options it needs, so a read added later cannot omit them.
+- **A submodule’s own diff.** A superproject’s `diff.submodule=diff` diffs a moved
+  submodule in a child Git that runs the submodule’s drivers, so every read at a store
+  target sets `diff.submodule=short`.
+- **Held where Git starts.** `spawn_git_process` refuses a store read that lacks the
+  options it needs or could run a configured program another way, and under the read
+  policies any command outside those store reads use, so a read added later cannot omit
+  them.
 - **Test:** `tests/test_checkout_revisions.py`, with a fixture that has a dirty index,
   uncommitted and untracked files, a signed commit, and a local configuration naming a
   driver and a signature program that would each leave a marker file.

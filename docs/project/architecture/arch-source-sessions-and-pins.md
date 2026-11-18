@@ -342,17 +342,21 @@ Which modes exist, what each shows, and why is [Open Modes](arch-open-modes.md).
   (`GitLocation.diff_driver_args`): no driver runs, and `cachetextconv` writes no ref.
   That configuration can also set `log.showSignature`, under which `log` and `show` run
   the program `gpg.program` names, so every command at a `GitLocation` sets
-  `log.showSignature=false` (`GIT_NO_SIGNATURE_ARGS`). `spawn_git_process` refuses a
-  `log`, `show`, or `diff` at a store target that lacks the options it needs
+  `log.showSignature=false` (`GIT_NO_SIGNATURE_ARGS`). A superproject’s
+  `diff.submodule=diff` would diff a moved submodule in a child Git with the submodule’s
+  own drivers, so every command at a store target sets `diff.submodule=short`
+  (`GIT_NO_SUBMODULE_DIFF_ARGS`). `spawn_git_process` refuses a store read that lacks
+  the options it needs, or that could run a configured program another way
   (`_require_no_configured_program`), so a later read cannot forget them.
   `tests/test_checkout_revisions.py` compares every entry under the checkout, `.git`
   included, with each file’s inode and modification time, across a session of trees,
   files, history, commit views, and diffs, with an edited, a staged, and an untracked
   file in the fixture, and with a hostile configuration, a driver and a signature
   program, planted each of those ways.
-  It repeats the session in a linked worktree and a submodule served as the root, and
-  asks a blobless clone for a commit and a comparison whose blobs it lacks: each answers
-  `object_unavailable` and no pack arrives.
+  It repeats the session in a linked worktree, in a submodule served as the root, and in
+  a superproject whose commit moves its submodule.
+  A blobless clone asked for a commit and a comparison whose blobs it lacks answers
+  `object_unavailable` for each, and no pack arrives.
 - **Trust.** A pinned revision is never trusted, a mirror’s or a checkout’s, whatever
   the process’s block: `capabilities_for` in `capabilities.py` answers the untrusted
   block for a pin, and each route takes it for the subject it resolved before anything

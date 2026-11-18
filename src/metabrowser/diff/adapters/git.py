@@ -742,7 +742,10 @@ class GitDiffSource:
         oid fails every root-commit comparison there.
         """
         if self._empty_tree_oid is None:
-            out = await run_git_at(["hash-object", "-t", "tree", "/dev/null"], self._location)
+            # No filter: a store target refuses a hash-object that could run one.
+            out = await run_git_at(
+                ["hash-object", "--no-filters", "-t", "tree", "/dev/null"], self._location
+            )
             self._empty_tree_oid = out.decode("ascii").strip()
 
     def _endpoints(self, resolved: ResolvedComparison) -> list[str]:

@@ -45,6 +45,7 @@ from metabrowser.checkout_revisions import (
 from metabrowser.git.process import (
     GIT_NO_DRIVER_ARGS,
     GIT_NO_SIGNATURE_ARGS,
+    GIT_NO_SUBMODULE_DIFF_ARGS,
     UnsupportedGitVersionError,
     detect_git_version,
     repository_store_target,
@@ -894,10 +895,8 @@ def test_a_linked_worktree_shows_its_repositorys_refs_and_neither_is_written(
     assert (_differing(before[0], after[0]), _differing(before[1], after[1])) == ([], [])
 
 
-def test_a_submodule_served_as_the_root_is_read_from_its_own_git_directory(
-    tmp_path: Path,
-) -> None:
-    """A submodule's Git directory is under its superproject's, and neither is written."""
+def _superproject(tmp_path: Path) -> tuple[Path, Path]:
+    """A superproject on ``main`` whose submodule ``sub`` is the fixture origin on ``topic``."""
 
     origin = build_origin(tmp_path)
     superproject = tmp_path / "super"
@@ -917,6 +916,15 @@ def test_a_submodule_served_as_the_root_is_read_from_its_own_git_directory(
     git(superproject, "commit", "-q", "-m", "add sub")
     module = (superproject / "sub").resolve()
     assert (module / ".git").is_file()
+    return superproject.resolve(), module
+
+
+def test_a_submodule_served_as_the_root_is_read_from_its_own_git_directory(
+    tmp_path: Path,
+) -> None:
+    """A submodule's Git directory is under its superproject's, and neither is written."""
+
+    superproject, module = _superproject(tmp_path)
     markers = _plant(module, tmp_path)
     before = snapshot(superproject)
     server._set_root_dir(module)
@@ -925,6 +933,43 @@ def test_a_submodule_served_as_the_root_is_read_from_its_own_git_directory(
         _read_revisions(client, ("origin/feature", "v1"), _commit_views(FEATURE))
     assert [name for name, marker in markers.items() if marker.exists()] == []
     assert _differing(before, snapshot(superproject)) == []
+
+
+def test_a_superprojects_comparison_runs_no_driver_of_its_submodule(tmp_path: Path) -> None:
+    """A moved submodule is diffed by name only, so its own drivers never run.
+
+    With ``diff.submodule=diff`` in the superproject's configuration, ``git diff -p`` diffs
+    a changed submodule in a child ``git diff`` in the submodule's Git directory, with
+    that directory's configuration and ``info/attributes``; ``--no-textconv`` and
+    ``--no-ext-diff`` stay with the parent. The submodule's driver ran for a revision's
+    comparison, and its cache wrote ``refs/notes/textconv/`` under ``.git/modules/sub``
+    (review B1 on #559). Every read at a store target says ``diff.submodule=short``.
+    """
+
+    superproject, module = _superproject(tmp_path)
+    # A branch whose one commit moves the submodule from topic's tip to feature's.
+    git(superproject, "checkout", "-q", "-b", "moved")
+    git(module, "checkout", "-q", FEATURE)
+    git(superproject, "add", "sub")
+    git(superproject, "commit", "-q", "-m", "move sub")
+    moved = git(superproject, "rev-parse", "HEAD")
+    git(superproject, "checkout", "-q", "main")
+    git(module, "checkout", "-q", "topic")
+    markers = _plant(module, tmp_path)
+    git(superproject, "config", "diff.submodule", "diff")
+    before = snapshot(superproject)
+    server._set_root_dir(superproject)
+    with TestClient(server.app) as client:
+        assert _pin(client, ref="moved")["status"]["pin"] == moved
+        for address in _commit_views(moved):
+            assert client.get(address).status_code == 200, address
+        _pin(client, working_tree=True)
+    assert [name for name, marker in markers.items() if marker.exists()] == []
+    assert _differing(before, snapshot(superproject)) == []
+    # The fixture is live: Git asked for the same patch without the setting runs the
+    # submodule's driver.
+    git(superproject, "diff", "-p", f"{moved}~1", moved)
+    assert markers["driver"].exists()
 
 
 def test_a_partial_clone_answers_object_unavailable_and_fetches_nothing(tmp_path: Path) -> None:
@@ -1105,7 +1150,7 @@ def test_a_git_entry_that_is_no_repository_has_its_row_removed_by_the_page(
 
 
 def test_a_repository_git_refuses_for_its_owner_is_not_read(
-    checkout: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    checkout: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Git's ownership check decides, and ``--git-dir`` is never used to step around it.
 
@@ -1116,10 +1161,8 @@ def test_a_repository_git_refuses_for_its_owner_is_not_read(
     """
 
     before = snapshot(checkout)
-    empty = tmp_path / "gitconfig-empty"
-    empty.write_text("", encoding="utf-8")
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
-    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(empty))
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
     for name in ("GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT"):
         monkeypatch.delenv(name, raising=False)
     # What Git's own tests set to have every repository belong to someone else.
@@ -1193,18 +1236,93 @@ def test_a_store_read_that_could_run_a_configured_program_is_refused_at_the_spaw
     async def run(*args: str) -> bytes:
         return await run_git(list(args), target=target)
 
-    for args, missing in (
+    settings = (*GIT_NO_SIGNATURE_ARGS, *GIT_NO_SUBMODULE_DIFF_ARGS)
+    for args, refused in (
         (("show", FEATURE), "--no-textconv --no-ext-diff"),
         (("diff", FIRST, FEATURE), "--no-textconv --no-ext-diff"),
-        (("log", "-p", "-1", FEATURE), "--no-textconv --no-ext-diff"),
+        (("log", "-1", FEATURE), "--no-textconv --no-ext-diff"),
         (("--literal-pathspecs", "log", "--stat", "-1", FEATURE), "--no-textconv --no-ext-diff"),
-        (("log", "-1", FEATURE), "-c log.showSignature=false"),
-        (("-C", ".", "log", "-1", FEATURE), "-c log.showSignature=false"),
-        ((*GIT_NO_SIGNATURE_ARGS, "log", "--show-signature", "-1"), "-c log.showSignature=false"),
-        (("show", *GIT_NO_DRIVER_ARGS, FEATURE), "-c log.showSignature=false"),
+        # The driver options name the diff's own, so they come after the command.
+        ((*settings, *GIT_NO_DRIVER_ARGS, "log", "-1", FEATURE), "--no-textconv --no-ext-diff"),
+        (("log", *GIT_NO_DRIVER_ARGS, "-1", FEATURE), "-c log.showSignature=false"),
+        (
+            ("-C", ".", *GIT_NO_SIGNATURE_ARGS, "show", *GIT_NO_DRIVER_ARGS, FEATURE),
+            "-c diff.submodule=short",
+        ),
+        (
+            (*settings, "-c", "log.showSignature=true", "log", *GIT_NO_DRIVER_ARGS, FEATURE),
+            "must not set log.showSignature=true",
+        ),
+        (
+            (*settings, "-c", "log.showsignature", "log", *GIT_NO_DRIVER_ARGS, FEATURE),
+            "must not set log.showsignature",
+        ),
+        (
+            (*settings, "-c", "diff.submodule=diff", "diff", *GIT_NO_DRIVER_ARGS, FIRST, FEATURE),
+            "must not set diff.submodule=diff",
+        ),
+        (
+            (
+                *settings,
+                "--config-env=diff.submodule=MB_SUBMODULE",
+                *("diff", *GIT_NO_DRIVER_ARGS, FIRST, FEATURE),
+            ),
+            "must not set --config-env=diff.submodule=MB_SUBMODULE",
+        ),
+        (
+            (*settings, "log", *GIT_NO_DRIVER_ARGS, "--show-signature", "-1", FEATURE),
+            "--show-signature",
+        ),
+        (
+            (*settings, "diff", *GIT_NO_DRIVER_ARGS, "--submodule=diff", FIRST, FEATURE),
+            "--submodule=diff",
+        ),
+        (
+            (*settings, "log", *GIT_NO_DRIVER_ARGS, "-1", "--format=%G?", FEATURE),
+            "must not verify a signature",
+        ),
+        (
+            (*settings, "log", *GIT_NO_DRIVER_ARGS, "-1", "--pretty", "%GS", FEATURE),
+            "must not verify a signature",
+        ),
+        (("cat-file", "--textconv", f"{FEATURE}:README.md"), "must not run a configured filter"),
+        (("cat-file", "--filters", f"{FEATURE}:README.md"), "must not run a configured filter"),
+        (("rev-list", "-Sneedle", FEATURE), "must not search content"),
+        (("rev-list", "--find-object", FEATURE, FEATURE), "must not search content"),
+        # Git takes the last of --no-textconv and --textconv.
+        (
+            (*settings, "show", *GIT_NO_DRIVER_ARGS, "--textconv", FEATURE),
+            "must not pass --textconv",
+        ),
+        (
+            (*settings, "diff", *GIT_NO_DRIVER_ARGS, "--ext-diff", FIRST, FEATURE),
+            "must not pass --ext-diff",
+        ),
+        (("hash-object", "README.md"), "must pass --no-filters"),
+        (("config", "--edit"), "must not start an editor"),
+        # A command no store read uses could start a program its configuration names.
+        (("blame", FEATURE, "--", "README.md"), "git blame is not a read of a repository store"),
+        (("grep", "x", FEATURE), "git grep is not a read of a repository store"),
+        # ``--shallow-file`` takes the next word, so the command is ``log``.
+        (
+            ("--shallow-file", "x", "log", "-p", FEATURE),
+            "git log at a repository store must pass --no-textconv --no-ext-diff",
+        ),
+        (
+            ("for-each-ref", "--format=%(signature:grade)", "refs/heads"),
+            "must not verify a signature",
+        ),
     ):
-        with pytest.raises(ValueError, match=re.escape(missing)):
+        with pytest.raises(ValueError, match=re.escape(refused)):
             asyncio.run(run(*args))
-    listed = asyncio.run(run(*GIT_NO_SIGNATURE_ARGS, "log", "-1", "--format=%H", FEATURE))
+    listed = asyncio.run(run(*settings, "log", *GIT_NO_DRIVER_ARGS, "-1", "--format=%H", FEATURE))
     assert listed.decode().strip() == FEATURE
+    # After ``--`` each word is a path: a file named --show-signature is no option, and
+    # the commit changes no such file.
+    shown = asyncio.run(
+        run(*settings, "show", *GIT_NO_DRIVER_ARGS, "--stat", FEATURE, "--", "--show-signature")
+    )
+    assert shown == b""
+    shown = asyncio.run(run(*settings, "show", *GIT_NO_DRIVER_ARGS, "--stat", FEATURE))
+    assert FEATURE in shown.decode()
     assert asyncio.run(run("rev-parse", FEATURE)).decode().strip() == FEATURE

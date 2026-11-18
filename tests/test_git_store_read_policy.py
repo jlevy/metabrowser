@@ -56,7 +56,7 @@ def test_what_a_store_read_writes_is_owner_only(tmp_path: Path) -> None:
     try:
         written = asyncio.run(
             run_git(
-                ["hash-object", "-w", "--stdin"],
+                ["hash-object", "--no-filters", "-w", "--stdin"],
                 target=repository_store_target(git_dir=store),
                 stdin_bytes=b"written by a store-read spawn\n",
             )

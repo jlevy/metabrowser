@@ -63,10 +63,17 @@ Every command run at a `GitLocation`, a served folder’s included, sets
 that setting on in a repository’s configuration, `log` and `show` verify signatures by
 running the program `gpg.program`, `gpg.ssh.program`, or `gpg.x509.program` names, and
 no page shows a signature’s state.
+Every command at a store target also sets `diff.submodule=short`
+(`GIT_NO_SUBMODULE_DIFF_ARGS`): with `diff`, a patch diffs each changed submodule in a
+child Git in the submodule’s own Git directory, which runs that directory’s drivers
+whatever the parent passes.
 A store target that names no policy gets the store policy, and a store spawn is refused
-when its policy would allow lazy fetch, or when it is a `log` or `show` that lacks the
-signature setting, or a `diff`, a `show`, or a `log` printing patches that lacks the
-driver options (`_require_no_configured_program`).
+when its policy would allow lazy fetch, or when it could run a program the repository’s
+configuration names (`_require_no_configured_program`): a `diff`, `show`, or `log`
+without the driver options after its command and the signature and submodule settings
+before it, a setting or option that turns either back on, a signature in a format, a
+`cat-file` or `hash-object` filter, an editor, a `rev-list` content search, and, under
+the read policies, any command outside `_STORE_READ_COMMANDS`.
 
 | Invariant | Mechanism | What it prevents |
 | --- | --- | --- |
