@@ -1149,22 +1149,22 @@ const PULLS_ROWS = `async (rows, width) => {
       grew: Math.round((box.height - heights[at]) * 100) / 100,
       itemGrew: Math.round((item.getBoundingClientRect().height - itemHeights[at]) * 100) / 100,
       height: Math.round(box.height * 100) / 100,
-      // The row is three lines: the link's two, and the change line under the title.
-      threeLines: Math.abs(item.getBoundingClientRect().height - box.height - third.height) < 0.5 && third.top >= box.bottom - 0.5 && third.top >= t.bottom - 0.5,
+      // The row is three lines: the link's two, and the change line under the number's line.
+      threeLines: Math.abs(item.getBoundingClientRect().height - box.height - third.height) < 0.5 && third.top >= box.bottom - 0.5 && third.top >= meta.bottom - 0.5,
       // The number's line is one line of the number's type.
       oneLine: Math.abs(meta.height - parseFloat(getComputedStyle(metaBox).lineHeight)) < 0.5,
-      // The title runs to the row's end, under the age.
-      titleEnd: Math.abs(t.right - (end - 0.5)) < 0.5 && t.top > age.getBoundingClientRect().bottom - 0.5,
+      // The title runs to the row's end, over the age and the number's line.
+      titleEnd: Math.abs(t.right - (end - 0.5)) < 0.5 && t.bottom < age.getBoundingClientRect().top + 0.5 && t.bottom < meta.top + 0.5,
       // The title starts in the text column, after the chevron's and the icon's slots.
       titleFrom: round(t.left - inset),
       textColumn: round(2 * parseFloat(style.getPropertyValue("--tree-icon-slot")) + 2 * parseFloat(style.columnGap)),
-      // The icon is on the number's line, centered on it (mb-3cbf), in the second slot; the
-      // chevron is on the change line, under the title, in the first, and the change line's
-      // text column is the title's (mb-d0a3).
-      iconOff: round(middle(icon) - middle(meta)),
-      iconWithNumber: icon.height > 0 && icon.top >= meta.top - 0.5 && icon.bottom <= meta.bottom + 0.5 && icon.bottom <= t.top + 0.5,
+      // The icon is on the title's line, centered on it, in the second slot; the chevron is on
+      // the change line, under the number's line, in the first, and the change line's text
+      // column is the title's (mb-d0a3).
+      iconOff: round(middle(icon) - middle(t)),
+      iconWithTitle: icon.height > 0 && icon.top >= t.top - 0.5 && icon.bottom <= t.bottom + 0.5 && icon.bottom <= meta.top + 0.5,
       iconFrom: round(icon.left - inset),
-      chevronOnThird: chevron.height > 0 && chevron.top >= third.top - 0.5 && chevron.bottom <= third.bottom + 0.5 && chevron.top >= t.bottom - 0.5,
+      chevronOnThird: chevron.height > 0 && chevron.top >= third.top - 0.5 && chevron.bottom <= third.bottom + 0.5 && chevron.top >= meta.bottom - 0.5,
       chevronFrom: round(chevron.left - inset),
       lineFrom: round(line.getBoundingClientRect().left - inset),
       // The author on the number's line, at its floor or wider and its name ending inside the
@@ -2029,9 +2029,9 @@ async function main() {
           );
           // The number's line is one line at every width, so the link is always two (mb-lkkt):
           // before, three stacks took a third line at 300 px and one stack at 180 px. The
-          // row's third line is its change line (mb-d0a3), under the title.
+          // row's third line is its change line (mb-d0a3), under the number's line.
           check(
-            `${where}: the number's line stays one line, the link two, and the row three, its change line under the title and in the title's column`,
+            `${where}: the number's line stays one line, the link two, and the row three, its change line under the number's line and in the title's column`,
             row.oneLine &&
               row.grew === 0 &&
               row.itemGrew === 0 &&
@@ -2040,17 +2040,17 @@ async function main() {
             JSON.stringify(row),
           );
           check(
-            `${where}: the title runs from the text column to the row's end, under the age`,
+            `${where}: the title runs from the text column to the row's end, over the age`,
             row.titleEnd && Math.abs(row.titleFrom - row.textColumn) < 0.5,
             JSON.stringify(row),
           );
-          // The icon leads the number's line, in its slot (mb-3cbf); on the title's line it sat
-          // a line below it. The chevron is on the change line, under the title, in the first
-          // slot, and the line starts in the title's column (mb-d0a3); on the number's line it
-          // led the link.
+          // The icon leads the title's line, in its slot, since the title came first (2026-11-17);
+          // from mb-3cbf it led the number's line. The chevron is on the change line, in the
+          // first slot, and the line starts in the title's column (mb-d0a3); on the number's
+          // line it led the link.
           check(
-            `${where}: the icon sits on the number's line, centered on it, in the second slot, and the chevron on the change line under the title, in the first`,
-            row.iconWithNumber &&
+            `${where}: the icon sits on the title's line, centered on it, in the second slot, and the chevron on the change line in the first`,
+            row.iconWithTitle &&
               Math.abs(row.iconOff) < 0.5 &&
               Math.abs(row.iconFrom - row.textColumn / 2) < 0.5 &&
               row.chevronOnThird &&

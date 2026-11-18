@@ -15,6 +15,13 @@ All notable changes to Metabrowser are documented here.
   `printIndicator: true` to draw the button, off unless asked; `PLUGIN_SDK_VERSION`
   remains `0.7`. See [Print](docs/design-system.md#print).
 
+- A Pulls row now leads with its title, right after the state icon, on its first line,
+  and puts the stack position, number, author, and age on the second; its author’s
+  avatar is a little smaller.
+  Where a row or a stack heading is too narrow for its file status counts (“2 A, 30 M”),
+  they are left out whole, and its line totals stay, rather than being cut short with an
+  ellipsis.
+
 - On a folder’s Overview, pointing at a File Overview legend entry, its dot or its
   words, now lifts its family’s segment in the bar above, as pointing at the segment
   does, and shows that family’s file count and byte size beside the entry.
