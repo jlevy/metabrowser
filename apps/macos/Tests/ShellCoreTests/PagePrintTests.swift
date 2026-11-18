@@ -5,7 +5,12 @@ import WebKit
 
 private final class LoadWatcher: NSObject, WKNavigationDelegate {
     var loaded = false
+    /// Whether WebKit's network process ended under the load (`isNetworkProcessLoss`).
+    var networkProcessEnded = false
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { loaded = true }
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: any Error) {
+        if isNetworkProcessLoss(error) { networkProcessEnded = true }
+    }
 }
 
 /// The page's Print button in a real `WKWebView` (mb-j3eu). WebKit on macOS hands a
@@ -64,7 +69,8 @@ private final class LoadWatcher: NSObject, WKNavigationDelegate {
 /// Which page print requests a folder window answers.
 /// Review G1: a page print is authorized by the document's security origin, through the
 /// same check the window uses (`PagePrintRequests.allows`). A `/raw` response has the
-/// server's URL but, under its CSP sandbox, an opaque origin.
+/// server's URL but, under its CSP sandbox, an opaque origin. A test fails at once if
+/// WebKit's network process ends under its load (`NetworkProcessLost`).
 @Suite struct PagePrintAuthorizationTests {
     init() { ignoreSIGPIPELikeTheApp() }
 
@@ -92,7 +98,12 @@ private final class LoadWatcher: NSObject, WKNavigationDelegate {
         let watcher = LoadWatcher()
         webView.navigationDelegate = watcher
         webView.load(URLRequest(url: url))
-        #expect(await eventually { watcher.loaded })
+        do {
+            #expect(try await eventually(unlessLost: { watcher.networkProcessEnded }) { watcher.loaded })
+        } catch {
+            server.stop()  // returned, the caller stops it
+            throw error
+        }
         withExtendedLifetime(watcher) {}
         return (webView, server, received, accepted)
     }
