@@ -96,14 +96,15 @@ _MAX_ENTRIES: Final = 2_000
 # Steps of list alignment one projection may take, across all its lists: a step is one
 # diagonal Myers' algorithm extends or one item it slides along a diagonal. Past it, the
 # middle of each later list is one replaced run. Review A1's shapes, two lists of 1,000
-# to 2,000 items drawn from ten values, project in 90-99 ms at a load average of 33-41,
-# where difflib took 1.1 s and more; two lists of 1,000 random bits with the first and
-# last flipped take 3 ms.
+# to 2,000 items drawn from ten values, answer in 90-99 ms at a load average of 33-41,
+# where difflib took 1.1 s and more (the 2,000 draw more than _MAX_ENTRIES and answer
+# too_large); two lists of 1,000 random bits with the first and last flipped take 3 ms.
 _MAX_ALIGNMENT_STEPS: Final = 400_000
 # Shared entries one projection may compare while it pairs the mappings and lists of
 # replaced runs, across all its runs; a run whose removed and added items make more pairs
 # than _MAX_PAIRING_CELLS is paired in order. A run of 100 removed and 100 added mappings
-# of 40 keys spends it and answers in 27 ms at a load average of 33-41.
+# of 40 keys spends it and answers, too_large by its entries, in 27 ms at a load average
+# of 33-41.
 _MAX_PAIRING_STEPS: Final = 200_000
 _MAX_PAIRING_CELLS: Final = 10_000
 # Nesting deeper than this is refused: the merge recurses once per level. YAML's loader

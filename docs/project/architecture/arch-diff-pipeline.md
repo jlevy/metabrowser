@@ -246,14 +246,19 @@ Changed words are marked by a bounded word diff.
 - **Front matter:** each side’s front matter is read as the Document view reads it, and
   its keys are listed as KPress’s Frontmatter disclosure lists them, sorted, each value
   in the disclosure’s own words.
-  A key whose value changed is removed and added.
-  Front matter that does not load, or that has an alias, leaves the file to Source.
-  Changed front matter lines count as shown when any key changed, since the disclosure
-  cannot say which line a key came from.
+  A key whose value changed is removed and added; values are compared with each type
+  kept, so one whose type changed and whose text did not is drawn unchanged and makes
+  the file `source_only`. Front matter that does not load, or that composes to more
+  nodes than `_FRONTMATTER_MAX_NODES`, shows no disclosure and leaves its lines
+  unmapped, so the body still renders and the file is `source_only` when those lines
+  changed. Changed front matter lines count as shown when any key changed, since the
+  disclosure cannot say which line a key came from, but only for a side the disclosure
+  lists: a side whose front matter is not a non-empty mapping keeps its lines unmapped.
 - **Off the server’s interpreter:** projections run in one long-lived child process
   (`diff/markdown_projection_worker.py`), started on the second projection or on a
   page’s prefetch, so a projection never holds the server’s GIL; the module records the
-  measurement. Until the child is ready, projections run in a thread.
+  measurement. A prefetch waits for the child to start; until it is ready, a reader’s own
+  projections run in a thread.
   The same child renders every untrusted Markdown document, under a deadline
   ([What a Pin Serves](arch-source-sessions-and-pins.md#what-a-pin-serves)); a
   projection that finds such a render holding the child runs in a thread instead, and
@@ -265,22 +270,35 @@ Changed words are marked by a bounded word diff.
 ### YAML and JSON
 
 `diff/structured_projection.py` parses both sides as the structured plugin’s tree view
-parses them and merges them into one tree (`structured-diff-v1`): each entry unchanged,
-`added`, `removed`, or `modified`, a mapping or list whose entries differ.
+parses them, YAML through the bounded loader (`frontmatter_yaml.py`), and merges them
+into one tree (`structured-diff-v1`): each entry unchanged, `added`, `removed`, or
+`modified`, a mapping or list whose entries differ.
 A changed scalar is its old entry removed and its new one added.
-Mappings align by key and lists by value, a replaced run pairing its items in order.
+Mappings align by key, a removed key drawn after the key it followed.
+Lists align by value: Myers’ shortest edit script over each item’s identity, within a
+work budget; past it a list’s middle is one replaced run.
+In a replaced run, removed and added mappings and lists that share the most entries are
+paired first, within their own budget, and the items between paired ones in order.
 `builtin_plugins/diff/diff-structured.js` draws the tree with the structured plugin’s
-own rows (`renderRowHtml` in `structured/tree.js`), opening every modified container and
-leaving unchanged ones closed with the tree view’s preview.
+own rows (`materializeRows` and `renderRowHtml` in `structured/tree.js`), opening
+modified containers and whole added or removed values within a first-draw budget
+(`ROW_BUDGET`), drawing each open container’s children a page at a time (`PAGE`) behind
+a “more” row, and leaving unchanged ones closed with the tree view’s preview.
+Rows are keyed by position, not key text, and a click redraws only the rows under the
+row it changes.
 
-- **Fallback:** a side that does not parse, YAML with an alias, which loading would
-  expand without a bound, or a pair past the byte, node, entry, and alignment budgets
-  beside each constant is refused, and the file shows Source.
+- **Fallback:** a side that does not parse, a key twice in one mapping, or a pair past
+  the byte, node, nesting, and entry budgets beside each constant is refused, and the
+  file shows Source; a refusal of the route itself answers in the same format.
+  Aliases and merge keys load within the loader’s budget on the value written out.
   [The structured diff measurement](../../../explorations/structured-diff/README.md)
-  records them over this repository’s history.
+  records the budgets over this repository’s history and the worst shapes.
 - **Source only:** the projection reads no patch.
+  Values are compared before they are made JSON-safe, with each type kept.
   A pair whose bytes differ and whose trees do not, as for a comment, quoting, or key
-  order, is `source_only`.
+  order, is `source_only`, and so is one where two values differ only in what the tree
+  does not draw, such as a date and the string that spells it, which are drawn
+  unchanged. The page says either in one line above the tree.
 
 A further format can supply an equivalent bounded, inert projection once its renderer
 can map changes to what it draws.

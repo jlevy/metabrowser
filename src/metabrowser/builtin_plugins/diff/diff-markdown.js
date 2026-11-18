@@ -233,9 +233,15 @@ export function markdownTargets(imageRoute, linksOpen) {
 // among the ones the first screen shows. The page draws files in manifest order, a file
 // bar and its first rows take about 420 px, and the server hydrates the first 8 files'
 // patches with the comparison, so at most 4 rendered files of the first 8 are asked for.
-// Each costs one projection in the server's worker process (a Markdown pair 12 ms at the
-// median and 31-33 ms at p90 of 434 real pairs; a YAML pair 14 ms and 40 ms of 168, and a
-// JSON pair under 3 ms at p90), sent one at a time after the comparison arrives.
+// Each costs one projection, sent one at a time after the comparison arrives; the server
+// waits for its projection process to start before it answers one of these, so none runs
+// on the server's interpreter (mb-8274 review C2). A Markdown pair took 12 ms at the
+// median and 31-33 ms at p90 of 434 real pairs before front matter was read, and those
+// with front matter p50 14.6 and p90 31.4 ms after (811 pairs, review C4); a YAML pair
+// 14 ms and 40 ms of 168; a JSON pair under 3 ms at p90, with 5.6-6.5 ms of reads where
+// nothing else held the store's reader (review C5, since held for both reads). Review C1
+// measured tree first screens holding Changes back longer than Markdown's; re-measuring
+// these two and CHANGES_FIRST_SCREEN_MS on them is bead mb-10ip.
 const FIRST_SCREEN_FILES = 8;
 const FIRST_SCREEN_MARKDOWN = 4;
 
