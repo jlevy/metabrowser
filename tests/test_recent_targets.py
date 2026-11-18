@@ -164,15 +164,20 @@ def test_a_folder_is_one_root_however_it_is_reached(tmp_path: Path, home: Path) 
     assert _roots(home) == [folder_root(real)]
 
 
-@pytest.mark.skipif(sys.platform != "darwin", reason="macOS volumes that ignore case")
+@pytest.mark.macos_tier
 def test_on_macos_a_folder_is_spelled_as_the_volume_spells_it(tmp_path: Path) -> None:
-    """``realpath(3)``'s spelling, which the macOS app keys a folder's session by."""
+    """``realpath(3)``'s spelling, which the macOS app keys a folder's session by.
+
+    In the macOS tier, as the other tests of its case-insensitive file system are
+    (``docs/e2e-testing.md``): elsewhere, and on a Mac volume that tells case apart, two
+    spellings are two folders and there is nothing to respell.
+    """
 
     real = tmp_path / "MixedCase"
     real.mkdir()
     other = tmp_path / "mixedcase"
-    if not other.exists():
-        pytest.skip("this volume tells MixedCase from mixedcase")
+    if sys.platform != "darwin" or not other.exists():
+        pytest.skip("the file system is case-sensitive, so mixedcase is not MixedCase")
 
     assert folder_root(other) == folder_root(real)
     assert folder_root(other).endswith("/MixedCase")
@@ -255,8 +260,6 @@ def test_the_file_is_the_same_with_and_without_libyaml(
     root may hold one.
     """
 
-    if not hasattr(yaml, "CSafeDumper"):
-        pytest.skip("this PyYAML has no libyaml to compare with")
     roots = [
         "/work/plain",
         "/work/with space/and: colon/# hash/- dash",
@@ -270,8 +273,11 @@ def test_the_file_is_the_same_with_and_without_libyaml(
     with_libyaml = (home / STORE_FILE).read_bytes()
 
     other = tmp_path / "other" / "metabrowser"
-    monkeypatch.delattr(yaml, "CSafeDumper")
-    monkeypatch.delattr(yaml, "CBaseLoader")
+    # On a PyYAML built without libyaml both lists are written by its own emitter, and the
+    # comparison says only that it is stable; the test still runs, since a skip here
+    # belongs to no tier.
+    monkeypatch.delattr(yaml, "CSafeDumper", raising=False)
+    monkeypatch.delattr(yaml, "CBaseLoader", raising=False)
     for root in roots:
         record("folder", root, directory=other, opened_at=_STAMP)
 
