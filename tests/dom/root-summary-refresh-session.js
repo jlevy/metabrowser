@@ -48,11 +48,11 @@ function refreshBlock() {
 
 // The shell state a summary answer is painted into. None of it decides when to ask.
 // The line itself is the shell's: app.js's `treeSummaryHtml` and the text helpers it
-// writes with, verbatim, over navigation.js, so the tree cache that the refresh
-// rewrites holds the markup that paints, and the session shows whether it was rewritten.
+// writes with, and `paintTreeSummary`, which draws it in place, verbatim over
+// navigation.js, so the row the refresh rewrites holds the markup that paints, and the
+// session shows what it holds after each step.
 const COLLABORATORS = `
 const RECENT_RECLUSTER_DEBOUNCE_MS = 100;
-var _lastTreeSummaryHtml = "";
 var filterOpenMenu = null;
 function updateFilterTallies() {
   return false;
@@ -64,7 +64,7 @@ function isGitRevisionSource() {
 }
 var _rootTotals = null;
 ${["esc", "formatSize", "formatCountParts", "treeSummaryFormat", "treeSummaryHtml", "rootTotals", "paintTreeSummary"].map(appFunction).join("\n")}
-var _lastTreeRender = { chromeHtml: treeSummaryHtml(null, null, null) };
+var _lastTreeRender = { chromeHtml: "" };
 `;
 
 /**
@@ -77,6 +77,11 @@ function reads(html) {
     .replace(/<[^>]*>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/** How many of a line's figures are held pending. */
+function pendingIn(html) {
+  return (html.match(/tally-pending/g) ?? []).length;
 }
 
 /**
@@ -100,9 +105,16 @@ function createPage(server) {
   /** @type {string[]} */
   const did = [];
   const files = { style: { display: "" } };
+  // The summary row, which the first paint drew pending (below, once the shell's markup
+  // is loaded). The shell compares before it writes, so it reads the row back too.
+  let rowHtml = "";
   const row = {
+    get outerHTML() {
+      return rowHtml;
+    },
     set outerHTML(html) {
-      const pending = (html.match(/tally-pending/g) ?? []).length;
+      rowHtml = html;
+      const pending = pendingIn(html);
       did.push(`t=${now} painted "${reads(html)}"${pending ? ` (${pending} pending)` : ""}`);
     },
   };
@@ -188,6 +200,7 @@ function createPage(server) {
     vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
   }
   vm.runInContext(COLLABORATORS, context, { filename: "root-summary-collaborators.js" });
+  rowHtml = context.treeSummaryHtml(null, null, null);
   vm.runInContext(refreshBlock(), context, { filename: "app-root-summary-refresh.js" });
 
   /** Let every settled promise run its continuations. */
@@ -237,9 +250,10 @@ function createPage(server) {
       }
     },
     after() {
-      // What the tree cache holds now: a source swap paints it back.
-      const cached = reads(context._lastTreeRender.chromeHtml);
-      return { asks, requests, maxInFlight, inFlight, cached };
+      // What the summary row shows now, and how many of its figures are held.
+      const pending = pendingIn(row.outerHTML);
+      const shows = `${reads(row.outerHTML)}${pending ? ` (${pending} pending)` : ""}`.trim();
+      return { asks, requests, maxInFlight, inFlight, shows };
     },
   };
 }

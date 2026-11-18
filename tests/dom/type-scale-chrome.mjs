@@ -244,7 +244,8 @@ try {
   const files = "the Files panel";
   await role(files, "list text", "#tab-files .tree-item-name");
   await role(files, "list text", "#tab-files .tree-item-size");
-  await role(files, "list text", "#tab-files .tree-summary");
+  // The totals stand in the band over the panel (#nav-metadata-files), outside its scroller.
+  await role(files, "list text", "#nav-metadata-files .tree-summary");
   await accompanies(files, "#tab-files .tree-item-size", "#tab-files .tree-item-name");
   if (await evaluate("document.querySelector('#tab-files .tree-item-age:not(:empty)') !== null")) {
     await accompanies(files, "#tab-files .tree-item-age:not(:empty)", "#tab-files .tree-item-name");

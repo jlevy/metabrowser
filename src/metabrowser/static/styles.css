@@ -2302,8 +2302,8 @@ html.theme-anim .menu {
    The ignored count is a line of its own (`flex-basis: 100%`), "+ 248,189
    ignored (10.1 GB)" under the tracked one, and one line in every pane: in one
    too narrow for it its size is cut short at its end rather than wrapped, as
-   "+ 7,906 ignored (133.4 …" at the 180 px minimum, where it took a second
-   line of its own. So the band is one line with nothing ignored and two with
+   "+ 10,000 ignored (1001.4 MB)" is at the 180 px minimum, where a phrase that
+   long took a second line of its own. So the band is one line with nothing ignored and two with
    something, whatever the figures' lengths. As half of one line it wrapped only
    when the two halves outgrew the pane: in the default 300 px pane the tree
    moved down 19.5 px when the split arrived (mb-h3hc, measured in headless

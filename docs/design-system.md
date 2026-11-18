@@ -4279,8 +4279,8 @@ in the Commits slot, and 12px muted text with no space above it under the Pulls 
 - **The Files totals.** The tracked count is the first line and the gitignored count a
   line of its own under it.
   Each is one line in every pane: in a pane too narrow for it, its size is cut short at
-  its end, “+ 7,906 ignored (133.4 …” at the 180 px minimum, never wrapped, and its
-  whole phrase is its tooltip, which the shell shows only while it is cut
+  its end, as “+ 10,000 ignored (1001.4 MB)” is at the 180 px minimum, never wrapped,
+  and its whole phrase is its tooltip, which the shell shows only while it is cut
   ([Tooltips Add Information](#tooltips-add-information)). So the band’s height is
   decided by whether it has the ignored line, never by the figures’ lengths.
   The shell inlines the root’s totals with its first rows (the root’s own entry carries
