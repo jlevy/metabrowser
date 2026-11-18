@@ -84,6 +84,9 @@ and may change together as internal contracts.
 - Recursively listing a submodule’s dirty files as members of the parent repository.
 - Opening a served subdirectory as a repository.
   The current exact repository-root gate remains.
+  [Open Modes](../../architecture/arch-open-modes.md#resolving-a-target-to-a-root) has
+  since designed opening a path inside a repository at the repository’s root; status
+  belongs to the working-tree view only.
 - Hosted-provider state such as pull requests, issues, checks, or reviews.
 - Making cached repositories editable.
   Repository stores are worktree-free and read-only.
