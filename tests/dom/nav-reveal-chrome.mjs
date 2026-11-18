@@ -9,10 +9,10 @@
 // process's whole group, Chrome included, however the run ends (tests/process_group.py).
 //
 // After each route it reads the navigation pane as a reader sees it: which tab is in front,
-// which row is selected, whether that row lies inside the pane's scroller, what a panel
-// says of an item it cannot show, and where focus is (docs/design-system.md, "Navigation
-// Reveals the Item"). The decisions behind them run browserlessly in
-// tests/dom/nav-reveal-session.js.
+// which row is selected, whether that row lies inside the pane's scroller with nothing
+// between them clipping it, what a panel says of an item it cannot show, and where focus is
+// (docs/design-system.md, "Navigation Reveals the Item"). The decisions behind them run
+// browserlessly in tests/dom/nav-reveal-session.js.
 //
 // Each step writes `phase <name> <ms since start>` to stderr, so a slow run says where.
 import fs from "node:fs";
@@ -42,12 +42,30 @@ const check = (label, ok, detail = "") => {
   }
 };
 
+// In the page: the box between *element* and the pane's scroller that clips away any of its
+// *rect*, as a class name, or null. A folder's body clips its rows while it opens, and it
+// can scroll, so a row scrolled into view while its folder opened was scrolled within that
+// body and lay inside the pane's bounds, seen by no reader, until the folder was open and
+// the row far below the pane (app.js, folderTravelAbove; mb-551m).
+const CLIPPED_BY = `((element, rect, scroller) => {
+  for (let box = element.parentElement; box && box !== scroller; box = box.parentElement) {
+    if (getComputedStyle(box).overflowY !== "visible") {
+      const clip = box.getBoundingClientRect();
+      if (rect.top < clip.top - 1 || rect.bottom > clip.bottom + 1) {
+        return box.className;
+      }
+    }
+  }
+  return null;
+})`;
+
 // In the page: the navigation pane as a reader sees it, for the row *selector* names.
 const PANE = (selector) => `(() => {
   const scroller = document.getElementById("tree-content");
   const view = scroller.getBoundingClientRect();
   const row = document.querySelector(${JSON.stringify(selector)});
   const box = row?.getBoundingClientRect();
+  const clip = row ? ${CLIPPED_BY}(row, box, scroller) : null;
   const active = document.activeElement;
   const notes = [...document.querySelectorAll(".tree-selection-note, .github-pulls-outside")]
     .filter((note) => note.offsetParent !== null)
@@ -57,8 +75,9 @@ const PANE = (selector) => `(() => {
     address: location.pathname,
     row: row ? {
       selected: row.classList.contains("selected") || row.getAttribute("aria-current") === "page",
-      inView: row.offsetParent !== null && box.height > 0 && box.top >= view.top - 1 && box.bottom <= view.bottom + 1,
+      inView: row.offsetParent !== null && box.height > 0 && box.top >= view.top - 1 && box.bottom <= view.bottom + 1 && clip === null,
       at: [Math.round(box.top), Math.round(box.bottom), Math.round(view.top), Math.round(view.bottom), scroller.scrollTop],
+      clip,
     } : null,
     selectedFiles: [...document.querySelectorAll("#tab-files .tree-item.selected")].map((r) => r.dataset.path),
     notes,
@@ -614,7 +633,7 @@ try {
     return {
       address: location.pathname,
       row: row?.getAttribute?.("href") ?? null,
-      inView: Boolean(box) && row.offsetParent !== null && box.height > 0 && box.top >= view.top - 1 && box.bottom <= view.bottom + 1,
+      inView: Boolean(box) && row.offsetParent !== null && box.height > 0 && box.top >= view.top - 1 && box.bottom <= view.bottom + 1 && ${CLIPPED_BY}(row, box, scroller) === null,
       scrollTop: scroller.scrollTop,
     };
   })()`;

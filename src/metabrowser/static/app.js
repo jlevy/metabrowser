@@ -9750,11 +9750,65 @@ async function revealWithin(
     return false;
   }
   setSelectedPath(path);
-  if (scroll) {
+  var travel = scroll ? folderTravelAbove(target) : null;
+  if (travel !== null) {
+    const revealed = target;
+    const shown = () => (revealed.isConnected ? revealed : scope.querySelector(selector));
+    scrollIntoViewOnceOpen(travel, shown, isCurrent);
+  } else if (scroll) {
     target.scrollIntoView({ block: "nearest" });
   }
   synchronizeTreeNow();
   return true;
+}
+
+/**
+ * Scroll the row *find* names into view once *travel*, the opening of the folders above it,
+ * has ended, if the reveal that asked still stands and the row's folder is still open. The
+ * reveal does not wait for it: the file it opens loads meanwhile.
+ *
+ * @param {Promise<unknown>} travel From folderTravelAbove.
+ * @param {() => Element | null} find
+ * @param {() => boolean} isCurrent
+ */
+function scrollIntoViewOnceOpen(travel, find, isCurrent) {
+  void travel.then(() => {
+    var row = find();
+    if (row && isCurrent() && !row.closest(".tree-children-collapsed")) {
+      row.scrollIntoView({ block: "nearest" });
+    }
+  });
+}
+
+/**
+ * The end of the travel of every folder above *row* that is still opening, or null when
+ * none is: a row is scrolled into view only once its folders are open.
+ *
+ * A folder's body clips its rows while its height travels up from 0 (styles.css,
+ * "Disclosure motion"), and a landing's reveal opens its folders that way (the
+ * `revealInTree` call that ends the shell's DOMContentLoaded handler). A row scrolled into
+ * view before the travel ended was scrolled within that body, which can scroll because it
+ * clips, rather than within the pane, whose scroll height did not hold the row yet. Once
+ * the folder had opened, its body's own scroll was gone, the pane was still at its top, and
+ * the row lay below it: a landing on the 906th file of a 1,000-file folder left its row
+ * 7,433 px below the top of a 566 px pane, on every load (headless Chrome 152, 2026-11-18).
+ *
+ * @param {Element} row
+ * @returns {Promise<unknown> | null}
+ */
+function folderTravelAbove(row) {
+  /** @type {Animation[]} */
+  var travel = [];
+  for (
+    var body = row.parentElement?.closest(".tree-children");
+    body;
+    body = body.parentElement?.closest(".tree-children")
+  ) {
+    travel.push(...body.getAnimations());
+  }
+  return travel.length > 0
+    ? Promise.allSettled(travel.map((animation) => animation.finished))
+    : null;
 }
 
 /**

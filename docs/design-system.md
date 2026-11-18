@@ -977,6 +977,9 @@ folders within `_INLINE_LANDING_ROWS` rows and `_INLINE_LANDING_DEPTH` folders, 
 `server.py`, and the inventory’s discovery complete.
 A landing outside them inlines the root alone, and the page reveals its path after the
 first paint with its folders travelling, which still moves the tree with no input.
+Its row is scrolled into view once they are open (`folderTravelAbove` in `app.js`):
+scrolled while they travelled, it was scrolled within the opening folder’s clipped body,
+not the pane, and once the folder was open it lay below the pane.
 
 ### Disclosure Toggles Never Select Text
 
