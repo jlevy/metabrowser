@@ -23,6 +23,21 @@ RUN_BUDGET_S = DUMP_LEAD_S + 2
 # Collected only by the nested runs below, which name ``probe_*`` as their tests.
 
 
+@pytest.mark.timeout(0)
+def probe_a_first_test_that_warms_the_process() -> None:
+    """Runs first in each nested run, with no budget, so the probes timed after it are warm.
+
+    pytest-timeout and ``StackDumps`` time a test from the start of its setup to the end
+    of its teardown, and the first test of a process pays the deferred imports of the
+    suite's autouse fixtures in both (``tests/conftest.py``). On 2026-11-18 at load
+    average 116, five nested runs gave their first test 1.7 to 2.8 s of setup and 2.5 to
+    4.8 s of teardown, and the test after it 0.01 s or less of each. A timed probe that
+    ran first had its dump fire in setup, where its stack does not name it, or its
+    budget end in teardown, which ended the process. With no budget this one is neither
+    dumped nor ended; the nested run's own ``MAX_INNER_BOUND_S`` bounds it.
+    """
+
+
 @pytest.mark.timeout(DUMP_LEAD_S + 1)
 def probe_a_test_that_nears_its_budget() -> None:
     time.sleep(2.5)
@@ -60,7 +75,7 @@ def test_a_test_near_its_budget_leaves_every_stack_in_the_log(
     log = _run(tmp_path, *workers)
 
     # One second into a six-second budget, the five before it ends; the suite's own
-    # budget leaves the other two tests alone.
+    # budget leaves the two tests after it alone, and the first has none.
     assert log.count("Timeout (0:00:01)!") == 1, log
     assert "Timeout (0:00:02)!" not in log, log
     assert "in probe_a_test_that_nears_its_budget" in log
@@ -75,7 +90,7 @@ def test_a_test_near_its_budget_leaves_every_stack_in_the_log(
 def test_a_budget_the_run_gives_is_read_as_pytest_timeout_reads_it(
     tmp_path: Path, arguments: list[str], environ: dict[str, str]
 ) -> None:
-    log = _run(tmp_path, "-k", "run_budget", *arguments, environ=environ)
+    log = _run(tmp_path, "-k", "warms_the_process or run_budget", *arguments, environ=environ)
 
     assert log.count(f"Timeout (0:00:{RUN_BUDGET_S - DUMP_LEAD_S:02g})!") == 1, log
     assert "in probe_a_test_that_nears_a_run_budget" in log
