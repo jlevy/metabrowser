@@ -29,6 +29,13 @@ All notable changes to Metabrowser are documented here.
   served pull request’s page as it is first read, so a first document or comment does
   not wait for it; a one-shot `--api` command starts it only when it renders.
 
+- A Pulls row now leads with its title, right after the state icon, on its first line,
+  and puts the stack position, number, author, and age on the second; its author’s
+  avatar is a little smaller.
+  Where a row or a stack heading is too narrow for its file status counts (“2 A, 30 M”),
+  they are left out whole, and its line totals stay, rather than being cut short with an
+  ellipsis.
+
 - On a folder’s Overview, pointing at a File Overview legend entry, its dot or its
   words, now lifts its family’s segment in the bar above, as pointing at the segment
   does, and shows that family’s file count and byte size beside the entry.
@@ -980,19 +987,19 @@ All notable changes to Metabrowser are documented here.
   text only past that wait.
   The first screen is the new page’s own top, wherever the page it replaces was
   scrolled. A page shown first as a description preview waits for its description alone.
-  A cold link or reload keeps its loading heading, and its loading blocks if they have
-  appeared, where they are until the pull request’s header and conversation show
-  together, so nothing moves and the body is never empty in between.
-  The tab keys, and Control-N and Control-P for the stack, start working when the header
-  shows. A rendered text is kept for the rest of the session, so a revisit, Back,
-  Forward, or a refresh that leaves a text unchanged shows it at once without asking
-  again. When the full record replaces a description preview, the description stays where
-  it is and only the sections below it change; ages in kept cards and commit rows still
-  read as of each paint.
-  Commits that arrive after the conversation has painted are added after everything
-  shown, so nothing you are reading moves; a conversation painted with its commits
-  already known, as when you return to it from another tab, places them among the
-  comments and reviews in GitHub’s order.
+  On a cold link or reload the pull request’s header shows as soon as its record is
+  read, and its loading blocks, if they have appeared, stay where they are until the
+  conversation shows, so the body is never empty in between.
+  The tab keys, and Control-N and Control-P for the stack, work from the paint that
+  shows the record’s header.
+  A rendered text is kept for the rest of the session, so a revisit, Back, Forward, or a
+  refresh that leaves a text unchanged shows it at once without asking again.
+  When the full record replaces a description preview, the description stays where it is
+  and only the sections below it change; ages in kept cards and commit rows still read
+  as of each paint. Commits that arrive after the conversation has painted are added
+  after everything shown, so nothing you are reading moves; a conversation painted with
+  its commits already known, as when you return to it from another tab, places them
+  among the comments and reviews in GitHub’s order.
   The state badge shows the fresher of the cached record and the repository’s list of
   pull requests, so a stale record of a merged pull request no longer shows Open first.
 

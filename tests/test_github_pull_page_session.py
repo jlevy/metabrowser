@@ -615,11 +615,11 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "the record then names no comparison: nothing",
         ],
         # A page mounted with no record in hand holds its cold header and tab column for the
-        # quiet period, kept unseen while a record that landed in it waits for the
-        # conversation's held first paint, and the first header with a record lifts it.
+        # quiet period, and the first header with a record lifts it, also while the
+        # conversation's first paint still waits for its Markdown (exp-099).
         "coldHold": [
             "mounted with no record in hand: header github-pull-cold, tab column github-pull-cold",
-            "its record lands, the header waiting for the conversation: header github-pull-cold github-pull-cold-held, tab column github-pull-cold github-pull-cold-held",
+            "its record lands, the conversation waiting for its Markdown: header shown, tab column shown",
             "the conversation's first paint, at its bound: header shown, tab column shown",
             "on Changes, mounted with no record in hand: header github-pull-cold, tab column github-pull-cold",
             "its record lands: header shown, tab column shown",
@@ -765,10 +765,15 @@ def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
         # Each hold's span says how it ended (review B1).
         "holdSpans": ["hidden met 1", "hidden bound 1"],
         # A direct landing's loading blocks give way to the held conversation (review B5).
-        # The header waits with the body, so header and body change once (review D1).
+        # The header paints the record at once and only the body waits (exp-099), which
+        # reverses review D1's change-once for the header.
         "landing": {
             "blocksBefore": True,
-            "whileHeld": {"holding": True, "blocks": False, "heading": "Pull request #7"},
+            "whileHeld": {
+                "holding": True,
+                "blocks": False,
+                "heading": "Count to two in the app #7",
+            },
             "final": True,
             "heading": "Count to two in the app #7",
         },
@@ -779,7 +784,7 @@ def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
                 "holding": True,
                 "sameBlocks": True,
                 "cover": True,
-                "heading": "Pull request #7",
+                "heading": "Count to two in the app #7",
             },
             "shown": {
                 "blocks": False,
@@ -843,27 +848,27 @@ def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
         # cancelled (review E1); before, the diff was shown and the wait recorded as met.
         | {"cancelled": {"held": True, "keptOutOfSight": True, "outcome": "cancelled"}},
         "bounded": True,
-        # No tab key is live while the header waits with the held body; all three at release
-        # (review E2).
+        # The header does not wait with the held body (exp-099), so all three tab keys, the
+        # stack menu, and the stack keys are live while it waits, as at release (review E2).
         "tabKeysWhileHeld": {
             "whileHeld": {
                 "holding": True,
-                "tabColumn": "inert",
-                "live": [],
-                "badges": "none",
-                "g": "not handled",
-                # The stack keys and menu wait with the header, as the tab keys do.
-                "stackMenus": 0,
-                "stackKeys": "none",
-                "strip": "none",
-                "control-n": "not handled",
+                "tabColumn": "live",
+                "live": ["conversation", "files", "checks"],
+                "badges": "Conversation C, Changes G, Checks E",
+                "g": "opened the files route",
+                "stackMenus": 1,
+                "stackKeys": "pulls.stack.top, pulls.stack.base",
+                "strip": "pulls.stack.top, pulls.stack.base",
+                "control-n": "opened #8",
             },
             "released": {
                 "holding": False,
                 "tabColumn": "live",
                 "live": ["conversation", "files", "checks"],
                 "badges": "Conversation C, Changes G, Checks E",
-                "focus": "Changes, preventScroll true",
+                # Nothing went inert, so focus never left the Changes link to be given back.
+                "focus": "none",
                 "g": "opened the files route",
                 "stackMenus": 1,
                 "stackKeys": "pulls.stack.top, pulls.stack.base",
