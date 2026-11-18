@@ -83,8 +83,9 @@ The quality, test, audit, and build targets install both locked environments fir
 Make keeps the stages ordered under parallel jobs.
 `make lint` applies the ordinary auto-fixes and then runs the repository’s own checks
 (public hygiene, file-type colors, tooltips, supply chain, CI workflow coverage,
-artifact contracts, parity, and goldens); `make lint-check` runs the same checks without
-changing files, plus the startup-script budget and a Flowmark check.
+artifact contracts, parity, goldens, and changelog fragments); `make lint-check` runs
+the same checks without changing files, plus the startup-script budget and a Flowmark
+check.
 
 ### The Verify Gate
 
@@ -590,6 +591,18 @@ Start from current `main` on a focused branch, add the failing test before a reg
 fix where practical, keep implementation, documentation, and public-hygiene changes
 together when they describe one contract, and review the wheel contents as well as the
 diff for unintended files or private residue.
+
+**Changelog entries are fragments.** A change that a user or plugin author can observe
+writes its entry as `changelog.d/<bead>.md`, holding the bullets the Unreleased section
+would have had, and leaves `CHANGELOG.md` alone.
+When every pull request added its entry at the top of Unreleased, each merge to `main`
+left every other open pull request with a conflict there, and so a merge-up and a full
+CI run; GitHub’s server-side merge ignores the `merge=union` attribute that resolves
+such conflicts locally.
+`make lint-check` runs `devtools/changelog.py check` against `origin/main`, which
+validates the fragments and fails a branch whose Unreleased section gains an entry, and
+the [Release Checklist](publishing.md#release-checklist) runs its `assemble`.
+[The fragments README](../changelog.d/README.md) has the rules.
 
 **A reference pull request can read as merged.** GitHub marks a pull request merged, and
 deletes its branch, as soon as its head commit is reachable from `main`. A reference

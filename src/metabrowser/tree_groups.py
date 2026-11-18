@@ -53,6 +53,9 @@ class TreeGroup:
     by: GroupBy
     id: str
     label: str
+    icon: str | None = None
+    """A type group's representative icon (``FileTypeCategory.icon``), which its heading
+    draws beside its name; an age group has none."""
 
     @property
     def key(self) -> str:
@@ -79,9 +82,14 @@ class AgeBand:
 
 
 def _type_groups() -> tuple[TreeGroup, ...]:
-    labels = {category.id: category.label for category in FILE_TYPE_CATEGORIES}
+    categories = {category.id: category for category in FILE_TYPE_CATEGORIES}
     return tuple(
-        TreeGroup(by="type", id=group_id, label=labels[group_id])
+        TreeGroup(
+            by="type",
+            id=group_id,
+            label=categories[group_id].label,
+            icon=categories[group_id].icon,
+        )
         for group_id in FILE_TYPE_GROUP_DISPLAY_ORDER
     )
 
@@ -169,9 +177,11 @@ def inventory_group_filter(group: TreeGroup) -> TreeGroupFilter:
 
 
 def group_row(group: TreeGroup, payload: Mapping[str, Any]) -> dict[str, Any]:
-    """One group of a grouped answer: its name, what it holds, and its tree.
+    """One group of a grouped answer: its name, its icon, what it holds, and its tree.
 
-    The counts come from the group's filtered totals. A source that cannot count a group
+    A type group's icon is its category's representative icon, by name in the shared icon
+    registry (static/icons.js); an age group's is None. The counts come from the group's
+    filtered totals. A source that cannot count a group
     (a Git revision whose blob index is truncated) gives them as None, and a source that
     counts files but not bytes gives `size` as None.
     """
@@ -180,6 +190,7 @@ def group_row(group: TreeGroup, payload: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "id": group.id,
         "label": group.label,
+        "icon": group.icon,
         "files": filtered.get("files", 0),
         "size": filtered.get("size", 0),
         "entries": filtered.get("entries", 0),

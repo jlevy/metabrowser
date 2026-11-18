@@ -109,11 +109,28 @@ const MEASURE = `(key) => {
   const first = rows[0];
   const firstBox = first.getBoundingClientRect();
   const rowInset = firstBox.left + parseFloat(getComputedStyle(first).paddingLeft);
+  // A category's heading leads with its icon (docs/design-system.md, "File-Type Category
+  // Icons"): the icon starts on the inset, in the heading's ink, and the name follows it.
+  const iconOf = (heading) => {
+    const icon = heading.querySelector(":scope > .category-icon");
+    if (!icon) return null;
+    const iconBox = icon.getBoundingClientRect();
+    const ink = getComputedStyle(heading).color;
+    return {
+      width: round(iconBox.width),
+      height: round(iconBox.height),
+      textFromIcon: round(textLeft(heading) - iconBox.right),
+      inHeadingInk: getComputedStyle(icon).color === ink && getComputedStyle(icon).stroke === ink,
+    };
+  };
   const headings = [...panel.querySelectorAll(".group-heading")].map((heading) => {
     const group = heading.parentElement;
+    const icon = heading.querySelector(":scope > .category-icon");
     return {
       text: heading.textContent,
-      fromRowInset: round(textLeft(heading) - rowInset),
+      // The heading's lead, its icon where it has one, else its name.
+      fromRowInset: round((icon ? icon.getBoundingClientRect().left : textLeft(heading)) - rowInset),
+      icon: iconOf(heading),
       namesItsGroup:
         group.classList.contains("menu-group") &&
         group.getAttribute("role") === "group" &&
@@ -143,6 +160,11 @@ const MEASURE = `(key) => {
       round(rule.getBoundingClientRect().height),
     ),
     headings,
+    // The glyph size and the gap from icon to name, which a category's heading takes.
+    glyph: round(parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--icon-glyph"))),
+    categoryIconGap: round(
+      parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--category-icon-gap")),
+    ),
   };
 }`;
 
@@ -380,6 +402,7 @@ const SECTIONS = `[...document.querySelectorAll(".tree-section")].map((section) 
   const round = (value) => Math.round(value * 100) / 100;
   const heading = section.querySelector(":scope > .tree-section-heading");
   const label = heading.querySelector(".tree-section-label");
+  const icon = heading.querySelector(":scope > .category-icon");
   const range = document.createRange();
   range.selectNodeContents(label);
   const row = section.querySelector(".tree-item");
@@ -421,8 +444,21 @@ const SECTIONS = `[...document.querySelectorAll(".tree-section")].map((section) 
     numeralWeight: getComputedStyle(document.documentElement).getPropertyValue("--count-numeral-weight").trim(),
     dotHidden: dot.getAttribute("aria-hidden") === "true",
     headingClasses: [...heading.classList],
-    fromRowInset: Math.round((range.getBoundingClientRect().left - box.left -
-      parseFloat(style.borderLeftWidth) - parseFloat(style.paddingLeft)) * 100) / 100,
+    // The heading's lead, its category icon, starts on the tree's row inset, and the name
+    // follows it by the gap, in the heading's ink (docs/design-system.md, "File-Type
+    // Category Icons").
+    fromRowInset: round(((icon ? icon.getBoundingClientRect().left : range.getBoundingClientRect().left) -
+      box.left - parseFloat(style.borderLeftWidth) - parseFloat(style.paddingLeft))),
+    icon: icon
+      ? {
+          width: round(icon.getBoundingClientRect().width),
+          height: round(icon.getBoundingClientRect().height),
+          textFromIcon: round(range.getBoundingClientRect().left - icon.getBoundingClientRect().right),
+          inHeadingInk:
+            getComputedStyle(icon).color === headingStyle.color &&
+            getComputedStyle(icon).stroke === headingStyle.color,
+        }
+      : null,
     namesItsTree: section.getAttribute("aria-labelledby") === heading.id &&
       tree?.getAttribute("aria-labelledby") === heading.id,
     divider: parseFloat(getComputedStyle(section).borderTopWidth),
@@ -930,9 +966,10 @@ try {
   }
   await browser.evaluate(frames);
   result.refresh = { before: beforeWrite, after: await browser.evaluate(REFRESH_STATE) };
-  // The heading kept its place and updated its tally beside its name.
+  // The heading kept its place, its category's icon, and its name, and updated its tally
+  // beside its name.
   result.refreshedHeading = await browser.evaluate(
-    `(() => { const heading = ${CODE_HEADING}; return { kept: heading.dataset.before === "1", tally: heading.querySelector(":scope > .heading-tally").textContent }; })()`,
+    `(() => { const heading = ${CODE_HEADING}; return { kept: heading.dataset.before === "1", icon: heading.firstElementChild?.matches(".category-icon") ?? false, tally: heading.querySelector(":scope > .heading-tally").textContent }; })()`,
   );
   phase("refreshed");
   // No grouping is the one tree again.
