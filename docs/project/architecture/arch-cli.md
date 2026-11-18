@@ -197,12 +197,11 @@ imports the serve mode’s modules before a mode is chosen.
    reply.
 6. **Serve for a browser.** `serve_detached` starts `server_command`, this interpreter
    running `metab ROOT` with its `--path` and without `--no-open`, through
-   `os.posix_spawn` with `setsid`, stdin at `/dev/null`, stdout and stderr in a
-   `mkstemp` log in the temporary folder, and every descriptor this process inherited
-   closed, so the server outlives the command and its terminal and nothing reading the
-   command’s output waits on it.
-   It reads the log until the `Serving <root> at <url>` line, which `serving_url` parses
-   as the macOS app’s `CLIServeLaunch` does, the server exits, or
+   `subprocess.Popen` with `start_new_session`, stdin at `/dev/null`, stdout and stderr
+   in a `mkstemp` log in the temporary folder, and every other descriptor closed, so the
+   server outlives the command and its terminal and nothing reading the command’s output
+   waits on it. It reads the log until the `Serving <root> at <url>` line, which
+   `serving_url` parses as the macOS app’s `CLIServeLaunch` does, the server exits, or
    `server_announce_timeout_s` passes.
    The server opens the browser itself once its page answers, as serve mode always does.
    Nothing records the server: the report’s `pid` is how to stop it.

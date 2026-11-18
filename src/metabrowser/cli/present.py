@@ -71,7 +71,6 @@ import os
 import plistlib
 import re
 import shlex
-import signal
 import stat
 import subprocess
 import sys
@@ -1021,19 +1020,9 @@ class _Announcement:
     tail: tuple[str, ...]
 
 
-def _exit_status(pid: int) -> int | None:
-    """*pid*'s exit status if it has exited, reaping it; ``None`` while it runs."""
-
-    try:
-        reaped, status = os.waitpid(pid, os.WNOHANG)
-    except ChildProcessError:
-        return None
-    if reaped == 0:
-        return None
-    return os.waitstatus_to_exitcode(status)
-
-
-def _await_announcement(pid: int, log_path: str, timeout_s: float) -> _Announcement:
+def _await_announcement(
+    server: subprocess.Popen[bytes], log_path: str, timeout_s: float
+) -> _Announcement:
     """Read *log_path* until the server says where it serves, exits, or *timeout_s* ends.
 
     The exit is checked before each read, so the read after an exit sees all it wrote.
@@ -1048,7 +1037,7 @@ def _await_announcement(pid: int, log_path: str, timeout_s: float) -> _Announcem
     with open(log_path, "rb") as log:
         while True:
             if status is None:
-                status = _exit_status(pid)
+                status = server.poll()
             # At most this much each round, so a server that writes faster than this reads
             # still meets the deadline below.
             budget = SERVER_LOG_READ_BYTES
@@ -1077,33 +1066,9 @@ def _await_announcement(pid: int, log_path: str, timeout_s: float) -> _Announcem
             time.sleep(SERVER_POLL_S)
 
 
-def _inherited_descriptors() -> list[int]:
-    """The descriptors above standard error a child of this process would inherit.
-
-    Python opens every descriptor of its own non-inheritable, so these are ones this
-    process was started with, such as a pipe a harness passed on. A detached server
-    holding one open would keep whoever reads it waiting until the server stops, so the
-    server starts without them, as ``subprocess`` closes them for its children.
-    """
-
-    for folder in ("/dev/fd", "/proc/self/fd"):
-        try:
-            names = os.listdir(folder)
-        except OSError:
-            continue
-        found: list[int] = []
-        for name in names:
-            if not name.isdigit() or (descriptor := int(name)) <= 2:
-                continue
-            try:
-                inheritable = os.get_inheritable(descriptor)
-            except OSError:
-                # The listing's own descriptor, closed once the listing was read.
-                continue
-            if inheritable:
-                found.append(descriptor)
-        return sorted(found)
-    return []
+# The servers this command started and left running. Each one's Popen is held so that,
+# collected, it does not warn that its child still runs: leaving it running is the point.
+_detached: list[subprocess.Popen[bytes]] = []
 
 
 def _serve_arguments(value: str, path: str) -> list[str]:
@@ -1119,22 +1084,21 @@ def serve_detached(
     """Start ``metab ROOT`` for a browser, detached, and report it once it says where.
 
     The server runs in a session of its own, with stdin at ``/dev/null``, its output in a
-    log file, and no other descriptor this command was given, so neither this command's
-    exit nor its terminal's hangup reaches it, and nothing reading this command's output
-    waits on the server.
+    log file, and no other descriptor this command was given (``subprocess`` closes the
+    rest), so neither this command's exit nor its terminal's hangup reaches it, and
+    nothing reading this command's output waits on the server.
     It is serve mode, which opens the page in a browser once it answers: what a user who
     ran ``metab ROOT`` would get, in the same working directory and environment.
     """
 
     argv = _serve_arguments(value, path)
-    spawn = getattr(os, "posix_spawn", None)
-    if spawn is None:
+    if os.name != "posix":
         return Delivery(
             "none",
             None,
             None,
             "server_failed",
-            "a detached server needs POSIX process control, which this platform lacks; "
+            "a detached server needs a POSIX session of its own, which this platform lacks; "
             "serve the target with metab ROOT",
             fallback=fallback,
         )
@@ -1153,35 +1117,32 @@ def serve_detached(
             fallback=fallback,
         )
     try:
-        pid = spawn(
-            argv[0],
+        server = subprocess.Popen(
             argv,
-            os.environ,
-            file_actions=[
-                (os.POSIX_SPAWN_OPEN, 0, os.devnull, os.O_RDONLY, 0),
-                (os.POSIX_SPAWN_DUP2, descriptor, 1),
-                (os.POSIX_SPAWN_DUP2, descriptor, 2),
-                *((os.POSIX_SPAWN_CLOSE, inherited) for inherited in _inherited_descriptors()),
-            ],
-            setsid=True,
-            # As `subprocess` restores them for every child: Python ignores SIGPIPE, and an
-            # ignored signal stays ignored across exec.
-            setsigdef=(signal.SIGPIPE, signal.SIGXFSZ),
+            stdin=subprocess.DEVNULL,
+            stdout=descriptor,
+            stderr=descriptor,
+            # setsid() in the child, which every POSIX Python has. Not os.posix_spawn's
+            # setsid, which a Python built without POSIX_SPAWN_SETSID refuses ("setsid
+            # unavailable on this platform"), as the Linux 3.13 in CI did on 2026-11-18.
+            start_new_session=True,
         )
-    except (OSError, NotImplementedError) as exc:
-        why = exc.strerror if isinstance(exc, OSError) and exc.strerror else str(exc)
+    except OSError as exc:
         return Delivery(
             "none",
             None,
             None,
             "server_failed",
-            f"the metab server could not start ({why}); serve the target with metab ROOT",
+            f"the metab server could not start ({exc.strerror or exc}); serve the target "
+            "with metab ROOT",
             log=log_path,
             fallback=fallback,
         )
     finally:
         os.close(descriptor)
-    heard = _await_announcement(pid, log_path, server_announce_timeout_s)
+    _detached.append(server)
+    pid = server.pid
+    heard = _await_announcement(server, log_path, server_announce_timeout_s)
     log = _shown(log_path)
     if heard.status is not None:
         said = f": {display_segment(heard.tail[-1].encode())}" if heard.tail else ""
