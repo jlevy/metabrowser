@@ -6,7 +6,9 @@ opens the Modified within menu in both. This judges what it measured against
 ``docs/design-system.md``, "Groups in a Menu" and "Menu Height":
 
 - a group heading starts on the menu's row inset, the edge its rows' check column starts
-  on, and names its rows as an ARIA group;
+  on, and names its rows as an ARIA group; a category's heading starts there with its
+  icon, the glyph size and in the heading's ink, its name the gap after it ("File-Type
+  Category Icons");
 - an open menu is its rows' natural height up to 16 rows, and stops 8 px short of the
   window's bottom edge, measured again when it opens and when the window resizes;
 - the Modified within menu, with few rows, keeps its natural height in both windows;
@@ -21,9 +23,9 @@ opens the Modified within menu in both. This judges what it measured against
 - in a narrower pane the row wraps by the toolbar rule, at every width from the narrowest
   in both font sets, read in Tab order, its numbers working, and the closed drawer adding
   nothing to it ("Navigation Toolbars Wrap");
-- each File type section's heading starts on its tree's row inset and names its section
-  and tree, Documentation first, and a folder opened in a section lists its group's
-  files only;
+- each File type section's heading starts on its tree's row inset with its category's
+  icon and names its section and tree, Documentation first, and a folder opened in a
+  section lists its group's files only;
 - each section heading's tally sits beside its name after the separator, its dot one
   space's advance after the name, on its one line at the default pane and the 180 px
   minimum, its numeral at a count's numeral weight, and the section and its tree are
@@ -139,6 +141,19 @@ def _close(actual: float, expected: float) -> bool:
     return abs(actual - expected) <= TOLERANCE
 
 
+def _category_icon_drawn(icon: dict[str, Any] | None, menu: dict[str, Any]) -> bool:
+    """Whether a heading's category icon is the glyph size, in the heading's ink, with
+    its name the gap after it (docs/design-system.md, "File-Type Category Icons")."""
+
+    if icon is None:
+        return False
+    return (
+        icon["width"] == icon["height"] == menu["glyph"]
+        and _close(icon["textFromIcon"], menu["categoryIconGap"])
+        and icon["inHeadingInk"]
+    )
+
+
 def _row(menu: dict[str, Any]) -> float:
     heights = menu["rowHeights"]
     assert isinstance(heights, list) and len(heights) == 1, (
@@ -192,8 +207,14 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
         "Code",
     ]
     for heading in tall["headings"]:
-        # On the rows' inset, the edge the check column starts on, not the label column.
+        # On the rows' inset, the edge the check column starts on, not the label column:
+        # a category's heading starts there with its icon, in the heading's ink, and its
+        # name follows by the gap; the Groups heading names no category and has none
+        # (docs/design-system.md, "File-Type Category Icons").
         assert _close(heading["fromRowInset"], 0), heading
+        assert (heading["icon"] is None) == (heading["text"] == "Groups"), heading
+        if heading["icon"] is not None:
+            assert _category_icon_drawn(heading["icon"], tall), heading
         assert heading["namesItsGroup"], heading
         # Every group follows the "Any type" row, so each draws its own 1 px divider.
         assert heading["divider"] == 1, heading
@@ -406,13 +427,18 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
     assert [section["tally"] for section in sections] == [f" · {tally}" for tally in tallies]
     for index, section in enumerate(sections):
         assert "group-heading" in section["headingClasses"], section
+        # The heading leads with its category's icon on the tree's row inset, as a menu's
+        # does on its rows' inset.
         assert _close(section["fromRowInset"], 0), section
+        assert _category_icon_drawn(section["icon"], tall), section
         assert section["namesItsTree"], section
         assert section["divider"] == (0 if index == 0 else 1), section
         assert _close(section["tallyFromLabel"], 0), section
         # One space's advance at the tally's size: the tally keeps its spaces.
         assert 2 < section["dotFromLabel"] < 6, section
-        assert section["tallyToEnd"] > 100, section
+        # A tally at the far end would leave none; Documentation, the longest name after its
+        # icon, leaves about 100 px at the default pane.
+        assert section["tallyToEnd"] > 50, section
         assert section["lines"] == 1, section
         assert not section["nameCut"] and section["tallyWhole"], section
         assert section["weights"] == {
@@ -471,8 +497,10 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
     assert not refresh["before"]["written"], refresh
     assert refresh["after"] == {**refresh["before"], "written": True}, refresh
     # Code's heading is the one it had, its tally counting the new file beside its name.
+    # A refresh rewrites the heading it keeps, which still leads with its category's icon.
     assert measured["refreshedHeading"] == {
         "kept": True,
+        "icon": True,
         "tally": f" · {len(_CODE) * 3 + _LIB_FILES + 1} files",
     }, measured["refreshedHeading"]
     # No grouping is the one Files tree again.

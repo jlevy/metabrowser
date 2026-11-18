@@ -78,6 +78,20 @@ type SelectionKind = Literal["repository", "tree", "blob", "commit", "pull_reque
 
 
 @dataclass(frozen=True, slots=True)
+class FileAnchor:
+    """One changed file of a pull request, as a provider's web URL anchors it.
+
+    ``digest`` names the file in the provider's own terms, which only the provider that
+    reduced the URL can resolve, against the pull request's list of changed files.
+    ``line`` is the provider's spelling of a line or range in that file's diff, kept so
+    that the URL's canonical spelling selects the same thing; empty for none.
+    """
+
+    digest: str
+    line: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class RepositorySelection:
     """What a provider web URL points at inside its repository.
 
@@ -85,7 +99,9 @@ class RepositorySelection:
     mirror knows where a ref name that contains ``/`` ends; ``cache/resolve.py`` splits
     it. ``commit`` is a validated lowercase hexadecimal object ID, possibly abbreviated.
     ``pull_tab`` is the tab of the pull request's page the URL names, with an empty value
-    for Conversation. The generic grammar never invents a selection.
+    for Conversation, and ``pull_file`` the changed file a Changes tab URL anchors, which
+    the provider resolves once the pull request is open. The generic grammar never
+    invents a selection.
     """
 
     kind: SelectionKind = "repository"
@@ -93,6 +109,7 @@ class RepositorySelection:
     commit: str | None = None
     pull_request: int | None = None
     pull_tab: str = ""
+    pull_file: FileAnchor | None = None
     lines: LineSelection | None = None
     plain: bool = False
 

@@ -14,6 +14,11 @@ also brings the pull request's commits, a fork's included, into the store;
 ``refs/pull/<n>/head``. When the pull request cannot be opened, the URL falls back to
 what it pins without pull-request data -- the default branch, or the commit a commit URL
 names if the mirror has it -- and the ``pull_request`` line says why.
+
+A Changes tab URL that anchors one file names it by a hash the provider resolves against
+the pull request's changed files, from the cache and the store alone, after the open. A
+file it names opens at ``/pull/<n>/files/<path>``; an anchor it cannot resolve is not an
+error, and the URL opens the Changes tab itself, with the ``file`` line saying why.
 """
 
 from __future__ import annotations
@@ -24,9 +29,11 @@ from dataclasses import dataclass
 from metabrowser.cache.acquire import PublishedSource
 from metabrowser.cache.providers import (
     PullRequestFetch,
+    PullRequestFile,
     PullRequestPin,
     PullRequestUnavailableError,
     open_pull_request,
+    pull_request_file,
 )
 from metabrowser.cache.repository_store import open_revision
 from metabrowser.cache.resolve import (
@@ -34,7 +41,7 @@ from metabrowser.cache.resolve import (
     UnresolvedSelection,
     resolve_selection,
 )
-from metabrowser.cache.urls import RepositorySelection
+from metabrowser.cache.urls import FileAnchor, RepositorySelection
 from metabrowser.cli.common import maybe_cli_logging
 from metabrowser.cli.selection_href import selection_view_href
 from metabrowser.errors import CLIError
@@ -48,11 +55,21 @@ LOG = logging.getLogger(__name__)
 
 @dataclass(frozen=True, slots=True)
 class PullOpen:
-    """A pull request a URL names: its pin, or why it could not be opened."""
+    """A pull request a URL names: its pin, or why it could not be opened.
+
+    ``file`` is the changed file the URL's anchor names, or why none, for a URL with one.
+    """
 
     number: int
     pin: PullRequestPin | None
     unavailable: str | None
+    file: PullRequestFile | None = None
+
+    @property
+    def file_path(self) -> str:
+        """The path of the changed file the URL's anchor names; empty for none."""
+
+        return (self.file.path or "") if self.file is not None else ""
 
     def resolution(self) -> ResolvedSelection | None:
         """The pull request's head as a resolved selection, when it opened."""
@@ -73,17 +90,28 @@ class PullOpen:
 
 
 async def open_pull_for_cli(
-    published: PublishedSource, number: int, *, fetch: PullRequestFetch
+    published: PublishedSource,
+    number: int,
+    *,
+    fetch: PullRequestFetch,
+    anchor: FileAnchor | None = None,
 ) -> PullOpen:
-    """Open pull request *number*; a failure is kept as the reason, never raised."""
+    """Open pull request *number*; a failure is kept as the reason, never raised.
+
+    With *anchor*, the changed file it names is then resolved from what the open left in
+    the cache, whether or not the pull request opened.
+    """
 
     with maybe_cli_logging():
+        pin: PullRequestPin | None = None
+        unavailable: str | None = None
         try:
             pin = await open_pull_request(published, number, fetch=fetch)
         except PullRequestUnavailableError as exc:
             LOG.debug("pull request %s could not be opened: %s", number, exc)
-            return PullOpen(number=number, pin=None, unavailable=str(exc))
-    return PullOpen(number=number, pin=pin, unavailable=None)
+            unavailable = str(exc)
+        file = None if anchor is None else await pull_request_file(published, number, anchor)
+    return PullOpen(number=number, pin=pin, unavailable=unavailable, file=file)
 
 
 def unresolved_message(
@@ -270,6 +298,7 @@ def selection_lines(
         lines.append("plain: true")
     if selection.pull_tab:
         lines.append(f"tab: {selection.pull_tab}")
+    lines.extend(_file_lines(selection, pull, label="file", line_label="diff_line"))
     if pull is not None:
         note = pull.note(fallback=selection.kind == "pull_request")
         lines.append(f"pull_request: {pull.number} ({note})")
@@ -296,9 +325,33 @@ def selection_banner(
         where = GitPath(resolved.path).display() if resolved.path else selection.pull_tab
         anchor = f"#{selection.lines.fragment()}" if selection.lines is not None else ""
         lines.append(f"Selection: {selection.kind} {where}{anchor}".rstrip())
+    lines.extend(_file_lines(selection, pull, label="File", line_label="Diff line"))
     if pull is not None:
         note = pull.note(fallback=selection.kind == "pull_request")
         lines.append(f"Pull request: {pull.number} ({note})")
+    return lines
+
+
+def _file_lines(
+    selection: RepositorySelection, pull: PullOpen | None, *, label: str, line_label: str
+) -> list[str]:
+    """What a Changes tab URL's file anchor opened: the file and its line, or why not.
+
+    The Changes tab has no address for a line, so the line the anchor names is reported
+    and the page opens at the file.
+    """
+
+    if selection.pull_file is None or pull is None or pull.file is None:
+        return []
+    if pull.file.path is None:
+        return [f"{label}: not resolved: {pull.file.unresolved}; opening the Changes tab"]
+    path = GitPath(tuple(segment.encode() for segment in pull.file.path.split("/")))
+    lines = [f"{label}: {path.display()}"]
+    if selection.pull_file.line:
+        lines.append(
+            f"{line_label}: {selection.pull_file.line} (the Changes tab opens at the file, "
+            "not the line)"
+        )
     return lines
 
 

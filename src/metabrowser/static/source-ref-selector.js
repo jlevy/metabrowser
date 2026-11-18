@@ -446,6 +446,16 @@
       if (view?.startsWith(VIEW_PREFIX)) {
         body.view = view;
       }
+      // From here the server may serve the other subject while this page is still here,
+      // and would refuse what it asks as a page left behind: its requests wait for the
+      // answer, and go with the page when it goes (static/source-pin-guard.js).
+      /** @type {(gone: boolean) => void} */
+      let decided = () => {};
+      deps.hold?.(
+        new Promise((resolve) => {
+          decided = resolve;
+        }),
+      );
       try {
         const response = await deps.request("POST", PIN_ROUTE, body);
         if (disposed) {
@@ -474,11 +484,14 @@
           deps.navigate(
             typeof href === "string" && href.startsWith(VIEW_PREFIX) ? href : VIEW_PREFIX,
           );
+          decided(true);
           return;
         }
         state.error = switchFailure(response.status, response.body, checkout);
       } catch {
         state.error = "The switch request failed.";
+      } finally {
+        decided(false);
       }
       state.switching = false;
       render();
@@ -813,6 +826,7 @@
         render: (model) => paint(parts, model, choose),
         navigate: (href) => window.location.assign(href),
         currentView: () => window.location.pathname,
+        hold: (going) => window.MetabrowserSourcePinGuard?.hold(going),
       },
       { shown: window.METABROWSER_SOURCE_PIN ?? null, checkout },
     );

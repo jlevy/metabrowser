@@ -125,16 +125,33 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
   to the link’s page. If GitHub does not have it either, or the fetch fails, the windows
   stay on the default branch and the app says so.
 - **A first clone** of a large repository can take minutes.
-  The window says it is starting meanwhile, and File > Reveal Server Log shows the
-  clone’s progress. The app waits for as long as the clone keeps reporting progress, up
-  to `metab`’s own bound on a clone, and gives up on one that stops; the window then
-  offers Retry. Folders you open meanwhile start at once; another repository waits for
-  the clone, and its window says so.
+  The window says it is starting meanwhile, with the clone’s progress under it, as
+  `metab` reports it in Terminal: how far the clone has got, how fast, and for how long,
+  then that it is done, and then that it is reading the pull request the link names.
+  File > Reveal Server Log shows the whole account.
+  The app waits for as long as the clone keeps reporting progress, up to `metab`’s own
+  bound on a clone, and gives up on one that stops; the window then offers Retry.
+  Folders you open meanwhile start at once; another repository waits for the clone, and
+  its window says so.
+- **When GitHub is the problem,** the window of a repository that could not be cloned
+  says which problem it is.
+  The repository was not found, which is also how GitHub answers when GitHub CLI (`gh`)
+  is signed out, its account cannot read a private repository, or its sign-in lacks the
+  `repo` scope; so a signed-out `gh` shows as not found, until Metabrowser checks the
+  sign-in itself. Or the repository was not found and Metabrowser did not find GitHub CLI
+  either, so it could offer GitHub no sign-in; or the connection to GitHub failed; or
+  GitHub answered but is limiting requests, or answered with an error.
+  It shows `metab`’s message and the commands that fix the problem or show what it is,
+  each with Copy, and Copy Message copies all of it, to paste into a message or a note.
+  When the repository was not found and GitHub CLI was, run the commands in Terminal and
+  switch back: Metabrowser tries again by itself, as Retry does, and the window says so.
+  Any other failure waits for Retry, since trying again on every switch could restart a
+  long clone from the beginning or ask GitHub again while it asks for fewer requests.
+  After installing GitHub CLI, choose Find Again in Settings first, so that Metabrowser
+  finds it, then Retry.
 - **A link `metab` refuses**, such as an issues page, shows `metab`’s message, which
-  says what to do. A private repository that your `gh` sign-in cannot read opens a window
-  whose server fails, with its message and Retry.
-  A link to another site, an `http` link, and a link with a user name, a password, or a
-  port other than 443 show the app’s own message.
+  says what to do. A link to another site, an `http` link, and a link with a user name, a
+  password, or a port other than 443 show the app’s own message.
 - **Many links at once** are read one at a time, a link sent again while it waits opens
   once, and what could not be opened is said in one message at the end, never over
   another message or question.
