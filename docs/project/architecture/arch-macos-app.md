@@ -531,10 +531,17 @@ mark in a trailing one (`TitleBarMarkController`).
   does, which `AppDelegate.choose` carries out; Option alternates open a choice in a new
   window. The menu is native chrome, so it is an `NSMenu` with section headers and
   subtitles.
+- **The Switch Folder panel.** View > Switch Folder… opens
+  `SwitchFolderWindowController`, an `NSPanel` with a search field and a table over the
+  window, the chooser’s keyboard route.
+  Its rows are `FolderChooser.panelRows` (the open folders most recently shown first,
+  this window’s last), and its search, selection, and Command-Delete are
+  `FolderSwitcher`’s; a choice goes through `AppDelegate.choose`, as the chooser’s does.
 - **Shared marks.** The menus that list roots (the chooser, File > Open Recent, and the
   Dock menu) draw each root’s `RootMark` as a template image: the page’s own Lucide
   glyph for a folder, copied from `static/icons.js` and held to it by `RootMarkTests`,
   and Lucide `cloud` for a repository, which the page draws no mark for.
+  The Switch Folder panel draws the same marks.
 - **The mark.** The partial M and the B, drawn as paths from the icon masters’ glyph
   group, which `AppIcon/make-glyphs.swift` copies into `AppIconMarkGeometry.swift`; a
   test checks the copy against both masters.

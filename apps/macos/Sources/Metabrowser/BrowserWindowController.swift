@@ -134,6 +134,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         (NSApp.delegate as? AppDelegate)?.closeFolder(session)
     }
 
+    /// View > Switch Folder…: the panel that switches this window's folder by name.
+    @objc func switchFolder(_ sender: Any?) {
+        (NSApp.delegate as? AppDelegate)?.showSwitchFolder(over: self)
+    }
+
     /// The page's menu actions (Back, Reload, Find, Print, Zoom, and the rest) are the
     /// page's: nil-targeted items reach the window and its controller, which hand them to
     /// the page the window shows.

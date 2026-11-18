@@ -158,6 +158,12 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
   A recent GitHub repository opens in a window of its own, as its link would.
   **Close Background Folders** at the foot of the chooser closes every folder no window
   shows. Dragging the title still moves the window.
+- **Switching by keyboard:** View > Switch Folder… (Shift-Command-O) opens a panel over
+  the window that lists the same folders, the one you looked at last first, so
+  Shift-Command-O then Return goes back to it.
+  Type to filter by name or path, Return to show the selected folder in this window,
+  Option-Return for a new window, and Escape to close the panel.
+  Command-Delete closes the selected open folder.
 - **Tabs or windows:** Settings > Open folders in decides where a newly opened folder
   goes: as System Settings > Desktop & Dock > “Prefer tabs when opening documents” says
   (the default), as a tab of the front window, or in a window of its own.

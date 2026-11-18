@@ -71,6 +71,8 @@ enum MainMenu {
         ])
 
         main.addSubmenu("View", [
+            item("Switch Folder…", #selector(BrowserWindowController.switchFolder(_:)), "o", [.command, .shift]),
+            .separator(),
             item("Back", #selector(FolderPage.navigateBack(_:)), "["),
             item("Forward", #selector(FolderPage.navigateForward(_:)), "]"),
             item("Reload Page", #selector(FolderPage.reloadPage(_:)), "r"),

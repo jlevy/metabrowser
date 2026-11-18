@@ -60,6 +60,9 @@ final class FolderChooserMenu: NSObject {
         // Nil-targeted, so they reach the app delegate as the File menu's do.
         menu.addItem(Self.command("Open Folder…", #selector(AppDelegate.openFolder(_:)), "o"))
         menu.addItem(Self.command("Open URL…", #selector(AppDelegate.showOpenURL(_:)), "l"))
+        let switcher = Self.command("Switch Folder…", #selector(BrowserWindowController.switchFolder(_:)), "o")
+        switcher.keyEquivalentModifierMask = [.command, .shift]
+        menu.addItem(switcher)
         menu.addItem(.separator())
         let close = NSMenuItem(
             title: "Close Background Folders", action: #selector(closeBackground(_:)), keyEquivalent: "")

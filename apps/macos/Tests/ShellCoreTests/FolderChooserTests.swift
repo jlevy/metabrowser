@@ -122,3 +122,72 @@ import Testing
         #expect(FolderChooser.matching(rows, query: "github jlevy").map(\.title) == ["kpress"])
     }
 }
+
+@Suite struct FolderSwitcherTests {
+    private func row(_ title: String, _ target: FolderChooser.Target) -> FolderChooser.Row {
+        FolderChooser.Row(
+            section: .open, title: title, subtitle: "~/\(title)", location: "~/\(title)", mark: .folder,
+            isChecked: target == .open("/\(title)", .here), target: target)
+    }
+
+    private var rows: [FolderChooser.Row] {
+        [
+            row("beta", .open("/beta", .background)), row("gamma", .open("/gamma", .inAnotherWindow)),
+            row("delta", .recent(URL(filePath: "/delta", directoryHint: .isDirectory))), row("alpha", .open("/alpha", .here)),
+        ]
+    }
+
+    @Test func itOpensOnTheFirstRowAndReturnGoesBackToTheFolderShownBefore() {
+        let switcher = FolderSwitcher(rows: rows)
+        #expect(switcher.selected == 0)
+        #expect(switcher.choice(newWindow: false) == .showHere("/beta"))
+        #expect(switcher.choice(newWindow: true) == .newWindow("/beta"))
+        #expect(FolderSwitcher(rows: []).selected == nil)
+        #expect(FolderSwitcher(rows: []).choice(newWindow: false) == nil)
+    }
+
+    @Test func theSelectionMovesAndStopsAtEitherEnd() {
+        var switcher = FolderSwitcher(rows: rows)
+        switcher.move(by: -1)
+        #expect(switcher.selected == 0)
+        switcher.move(by: 2)
+        #expect(switcher.choice(newWindow: false) == .openHere(URL(filePath: "/delta", directoryHint: .isDirectory)))
+        switcher.move(by: 5)
+        #expect(switcher.selected == 3)
+        #expect(switcher.choice(newWindow: false) == FolderChooser.Action.nothing)
+        switcher.select(1)
+        #expect(switcher.choice(newWindow: false) == .bringForward("/gamma"))
+        switcher.select(9)
+        #expect(switcher.selected == 1)
+    }
+
+    @Test func aSearchSelectsItsFirstMatch() {
+        var switcher = FolderSwitcher(rows: rows)
+        switcher.move(by: 2)
+        switcher.search("ALPHA")
+        #expect(switcher.shown.map(\.title) == ["alpha"])
+        #expect(switcher.selected == 0)
+        switcher.search("nothing like it")
+        #expect(switcher.selected == nil)
+        #expect(switcher.closable == nil)
+        switcher.search("")
+        #expect(switcher.shown.count == 4)
+    }
+
+    @Test func onlyAnOpenFolderCanBeClosedAndTheListKeepsItsPlace() {
+        var switcher = FolderSwitcher(rows: rows)
+        #expect(switcher.closable == "/beta")
+        switcher.select(2)
+        #expect(switcher.closable == nil)
+        switcher.select(3)
+        #expect(switcher.closable == "/alpha")
+        switcher.reload(Array(rows.dropLast()))
+        #expect(switcher.selected == 2)
+        switcher.search("a")
+        switcher.select(1)
+        switcher.reload(rows.filter { $0.title != "gamma" })
+        #expect(switcher.query == "a")
+        #expect(switcher.shown.map(\.title) == ["beta", "delta", "alpha"])
+        #expect(switcher.selected == 1)
+    }
+}

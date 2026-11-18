@@ -291,6 +291,49 @@ What the panel decides is unit-tested in `OpenURLPanelTests`, and against the re
     then `.md`, shows a reason that names U+3164 and `%E3%85%A4` under the field, and no
     window opens.
 
+## Switching Folders
+
+With the folders from Files, Tabs, Recents, and Restore, and Settings > Open folders in
+set to Windows, open and close `c` and `d`, so they are recent, then open `a` and `b`,
+each in a window of its own:
+
+1. **The title.** Each title reads its folder with a small chevron after it, dim at rest
+   and darker under the pointer, where a rounded fill appears behind the title and
+   chevron; both dim in a window that is not main, in light and dark mode.
+   A long name in a narrow window truncates before the chevron, never under it.
+2. **Click and drag.** A click on `a`’s title opens the chooser under it; a drag from
+   the title moves the window and opens nothing; Command-click and right-click open the
+   path menu; a double-click on the title bar outside the title still zooms.
+3. **The chooser.** In `a`’s window it lists Open (`a` checked, then `b` subtitled “In
+   another window”), Recent (`d` and `c`, subtitled with their paths), Open Folder…,
+   Open URL…, Switch Folder… (Shift-Command-O), and Close Background Folders, disabled.
+   Each root shows the page’s folder glyph, which File > Open Recent and the Dock menu
+   show too. Holding Option turns each row into “Open … in New Window”.
+4. **A folder another window shows.** Choosing `b` brings `b`’s window forward and
+   changes nothing in `a`’s.
+5. **A recent folder, in place.** In `a`’s window choose `c`: the same window, at the
+   same frame and in the same Space, shows `c`, its server starts, and the log says `a`
+   stays open in the background.
+6. **Back, instantly.** Choose `a` from the chooser: its page shows at once, where you
+   left it, with no reload and no new server (`pgrep -f -- "--no-open"` counts three).
+7. **Option.** Option-choosing the background folder moves its page into a new window;
+   Option-choosing the window’s own folder opens a second window on it.
+8. **Close Background Folders.** With a folder in the background, it is enabled, and
+   choosing it stops that folder’s server and removes it from Open.
+9. **Close Folder.** File > Close Folder on a window whose folder is the only one open
+   closes the window; with a folder in the background, the window shows it instead.
+10. **Switch Folder….** Shift-Command-O opens the panel over the front window with the
+    folder shown before this one selected; Return shows it, and Shift-Command-O then
+    Return switches back.
+    Typing filters by name or path, Up and Down move the selection, Option-Return opens
+    a new window, Escape or a click elsewhere closes the panel, and Command-Delete on an
+    open folder’s row closes that folder and keeps the panel open.
+11. **VoiceOver.** With VoiceOver on, the title reads as a pop-up button with the
+    folder’s name; VO-Space opens the chooser, and the Actions rotor offers Show Path,
+    which opens the path menu.
+12. **Restore.** Quit with a folder in the background and reopen: it is back in the
+    chooser’s Open section, and its server starts only when a window shows it.
+
 ## Print and Drops
 
 `node webkit-gate/run.mjs --checks`, from `apps/macos`, scripts these in the app’s web

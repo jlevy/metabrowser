@@ -11,7 +11,8 @@ All notable changes to Metabrowser are documented here.
   Option opens the choice in a new window, and **Close Background Folders** closes the
   folders no window shows.
   File > Open Recent and the Dock menu now mark a folder with the page’s own folder
-  glyph.
+  glyph. View > Switch Folder… (Shift-Command-O) does the same from the keyboard: a panel
+  that lists the folders, the last one shown first, filtered as you type.
 
 - The macOS app has **File > Close Folder**, which closes the folder the front window
   shows in every window that shows it.

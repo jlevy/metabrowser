@@ -166,3 +166,62 @@ public nonisolated enum FolderChooser {
         }
     }
 }
+
+/// The Switch Folder panel's state: its rows (`FolderChooser.panelRows`), the search, the
+/// rows it matches, and the selected one, which Return chooses and Command-Delete closes.
+/// `SwitchFolderWindowController` shows it and passes on the user's keys.
+public nonisolated struct FolderSwitcher: Equatable, Sendable {
+    /// Every row, in the panel's order.
+    public private(set) var rows: [FolderChooser.Row]
+    public private(set) var query = ""
+    /// The rows the search matches, in the panel's order.
+    public private(set) var shown: [FolderChooser.Row]
+    /// The selected row's index in `shown`; nil while nothing matches.
+    public private(set) var selected: Int?
+
+    /// The panel opens on its first row: the folder shown before this window's.
+    public init(rows: [FolderChooser.Row]) {
+        self.rows = rows
+        shown = rows
+        selected = rows.isEmpty ? nil : 0
+    }
+
+    /// The search changed: the first match is selected, as Open Quickly selects it.
+    public mutating func search(_ query: String) {
+        self.query = query
+        shown = FolderChooser.matching(rows, query: query)
+        selected = shown.isEmpty ? nil : 0
+    }
+
+    /// Up or Down: the selection moves by `delta`, and stops at either end.
+    public mutating func move(by delta: Int) {
+        guard let current = selected else { return }
+        selected = min(max(current + delta, 0), shown.count - 1)
+    }
+
+    /// A click on a row.
+    public mutating func select(_ index: Int) {
+        if shown.indices.contains(index) { selected = index }
+    }
+
+    /// What Return chooses, or Option-Return with `newWindow`; nil with nothing selected.
+    public func choice(newWindow: Bool) -> FolderChooser.Action? {
+        guard let selected else { return nil }
+        return FolderChooser.action(for: shown[selected].target, newWindow: newWindow)
+    }
+
+    /// The open folder Command-Delete would close: the selected row's, if it is open.
+    public var closable: String? {
+        guard let selected, case .open(let key, _) = shown[selected].target else { return nil }
+        return key
+    }
+
+    /// The rows changed under the panel, as when Command-Delete closed a folder: the
+    /// search stays, and so does the selection's place in the list, kept in range.
+    public mutating func reload(_ rows: [FolderChooser.Row]) {
+        let place = selected ?? 0
+        self.rows = rows
+        shown = FolderChooser.matching(rows, query: query)
+        selected = shown.isEmpty ? nil : min(place, shown.count - 1)
+    }
+}
