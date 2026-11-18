@@ -3624,31 +3624,45 @@ Show ignored begins checked without a saved preference and changes only the popu
 the distribution counts.
 There is one chooser and one checkbox, because both act on the same numbers.
 A segment’s hover tooltip, the shared body-portaled one, gives the family name in bold
-and its file count and byte size, and a tooltip-bearing mark brightens by
-`--viz-data-mark-hover-filter`, as a Treemap cell does, and grows
+and its file count and byte size, and a tooltip-bearing mark deepens or lifts by
+`--viz-data-mark-hover-filter`, as a Treemap cell does, grows to twice the track, and
+shimmers
 ([Hover Styles the Thing Under the Pointer](#hover-styles-the-thing-under-the-pointer)).
-A family’s legend entry, its dot and its words, is a second handle on that family’s
-segment in the tally row the legend’s shares are of, Total while Show ignored is on and
-Files while it is off: pointing at the entry lifts and grows that segment, as pointing
-at the segment does.
-The tooltip is anchored on the handle the pointer is on, the entry or the segment, as
-any tooltip sits by what the reader points at.
+The hover marks what its handle names.
+A segment names one value, its family’s share of its row, so pointing at it marks that
+segment alone: its tooltip describes that value, and lifting the family’s other marks
+would say it describes them too.
+A family’s legend entry, its dot and its words, names the family, so pointing at it
+marks every mark of the family on screen: its segment in each tally row that has one,
+Files, Ignored, and Total, and, while Details is open, its own row’s bar there, not its
+extensions’ rows, which are its parts and other values.
+Details opened or closed under a pointer still on an entry, as a key can, marks or
+unmarks that row as it appears or goes.
+Either way the family’s entry is marked too, so the key answers with what it keys: its
+dot lifts and shimmers as the marks do, and its name takes the family’s ink, the
+family’s color mixed toward the text ink by `--mb-distribution-ink-share`, which keeps
+4.5:1 for every family on both pages where the family’s own color would not
+(`test_a_hovered_legend_entrys_ink_reads_for_every_family`). Nothing in the entry moves
+or changes size. There is one tooltip, never one per mark, anchored on the handle the
+pointer is on, as any tooltip sits by what the reader points at.
 On the segment it names the family; on the entry, which shows the name, it gives the
 file count and byte size alone, since restating the name adds nothing
-([Tooltips Add Information](#tooltips-add-information)). The two share one hover, which
-the bars draw (`distribution-hover.js`), so neither keeps a copy of the other’s
-behavior; the entry itself does not change.
-Other answers no hover: it is the families too small to name and the files no family
-claims, each its own segment in its own place, so there is no one mark to point at.
-The bars draw again whenever the folder’s sums arrive, which a changed file sends.
-A segment under the pointer is replaced, and the browser enters its replacement; an
-entry outlives the draw and hears nothing, so the bars draw its hover again themselves.
-A legend rebuilt or emptied under the pointer lets go of the hover its entry held,
-because a removed element never hears the pointer leave, and the browser enters the
-rebuilt entry under the pointer.
+([Tooltips Add Information](#tooltips-add-information)), of the family’s segment in the
+tally row the legend’s shares are of, Total while Show ignored is on and Files while it
+is off. The bars, the legend, and the table share one hover (`distribution-hover.js`):
+the bars draw it on themselves and show the tooltip, and the distribution draws it on
+the legend and on Details, so none keeps a copy of another’s behavior.
+Other answers no hover and is never marked: it is the families too small to name and the
+files no family claims, each its own segment in its own place, so there is no one mark
+to point at. The bars draw again whenever the folder’s sums arrive, which a changed file
+sends. A segment under the pointer is replaced, and the browser enters its replacement;
+an entry outlives the draw and hears nothing, so the bars draw its hover again
+themselves. A legend rebuilt or emptied under the pointer lets go of the hover its entry
+held, because a removed element never hears the pointer leave, and the browser enters
+the rebuilt entry under the pointer.
 In a window too short for the tooltip under the legend, the shell flips it above the
-entry, onto the bars, where it can cover part of the segment it describes; File Overview
-is the first panel, so that takes a window about 330 px tall or less.
+entry, onto the bars, where it can cover part of the segments it lifts; File Overview is
+the first panel, so that takes a window about 330 px tall or less.
 These tooltips add no tab stops, on a segment or an entry; the distribution stays the
 accessible source. The Ignored row dims through `--dimmed-content-opacity`, as ignored
 navigation and Treemap entries do.
@@ -4777,10 +4791,12 @@ can point at:
 | --- | --- |
 | Grow the hovered mark on the axis that carries **no** data, with `--viz-hover-grow` on `--viz-hover-grow-ease` | Grow the axis that encodes the value |
 | Lift its own color a step with `--viz-data-mark-hover-filter` | Dim, fade, or desaturate the other marks |
+| Ease in and out on the viz layout scale, and shimmer on the `--viz-hover-shimmer-*` tokens | Spring past the target, or pulse as a loading block does |
 | Leave every other mark exactly as it was | Outline, ring, or border the mark, or move the layout |
 
-A legend entry that names one mark is a second handle on it: pointing at the entry draws
-this hover on the mark it names, and nowhere else, as File Overview’s legend does
+A legend entry is a handle on the marks it keys: pointing at it draws this hover on
+every mark of its family on screen, and on the entry, and nowhere else; pointing at a
+mark draws it on that mark and on its family’s entry, as File Overview’s legend does
 ([Aggregate Distributions](#aggregate-distributions)).
 
 **Grow, do not outline.** An outline is drawn *on* the data: it covers the color it is
@@ -4803,18 +4819,31 @@ every segment answers the same.
 
 Because the axis is small, the factor, `--viz-hover-grow`, is large: a few percent of a
 thin track would be a fraction of a pixel.
+Its bound is the room beside the mark: a legend entry grows its family’s segment in
+every tally row at once, so grown neighbours must still clear each other and the legend,
+which the measurement beside the token records.
 
 **Grow with a transform, never with layout**, so the row does not reflow under the
 pointer.
 
-**The curve is what makes it read as an answer.** `--viz-hover-grow-ease` overshoots its
-target and settles back, so the mark goes further than it ends up and returns.
-At `--viz-hover-grow-duration` that is a flick; the same distance on a plain ease reads
-as the layout being sluggish.
+**Ease in and out, without a spring.** The growth and the lift move together, on the viz
+layout scale’s duration and plain ease (`--viz-hover-grow-duration` and
+`--viz-hover-grow-ease`), and run back the same way when the pointer leaves.
+A spring that overshot its target, which this replaced, read as a snap.
 
-Growth is proportional, so a wide mark moves further than a narrow one.
-That is the right way round: a one-pixel segment has almost no color to lift either, and
-its tooltip is what identifies it.
+**A hovered mark shimmers.** While it is marked, a sheen over its color breathes in and
+settles, once a period, on the `--viz-hover-shimmer-*` tokens and the
+`viz-hover-shimmer` keyframes.
+It is a sibling of the progress blocks’ pulse (`tally-pending-pulse`), and meant not to
+read as one: the progress pulse fades a whole block, steadily and without a pause, which
+says “waiting”, while the shimmer lightens a mark that is there by a fraction of what
+the lift moved it, rises, settles, and rests, more than twice as slowly, so it reads as
+a glint.
+At its peak the mark keeps its family’s color and stays clear of its rest color.
+It is a pseudo-element’s opacity, so the compositor runs it with no main-thread work
+while the pointer holds; the values and their measurements are beside the tokens in
+`static/styles.css`. Marks the hover enters together shimmer in step, and one marked
+later, as a Details row opened under a held hover, starts its own cycle.
 
 The lift darkens on light and brightens on dark, and it is relative to the mark’s own
 color rather than a fixed overlay: file-type families sit at different lightnesses in a
@@ -4822,16 +4851,17 @@ band, and a deviating family outside it, so a fixed delta lands differently on a
 family than on a dark one.
 See [File-Type Colors](#file-type-colors).
 
-Under `prefers-reduced-motion` the growth is dropped rather than made instant: an
-instant jump is worse than no growth, and the color lift still answers the hover.
+Under `prefers-reduced-motion: reduce` the motion goes, the transitions and the shimmer,
+and the lift and the growth stay, drawn at once: a darker, thicker mark is a state, not
+a movement, and the stronger highlight is what makes the hover read.
 
 **Where growth does not apply.** Two conditions rule it out, and the treemap meets both,
 so it takes the lift alone.
 
 - *The mark’s area is its value in two dimensions.* A bar segment’s width encodes its
-  share and the overshoot settles back to it, so nothing is misstated once the motion
-  ends. A treemap cell’s area is the whole encoding, and a cell held larger states a size
-  it does not have.
+  share and the growth leaves it as it is, so nothing is misstated.
+  A treemap cell’s area is the whole encoding, and a cell held larger states a size it
+  does not have.
 - *The mark cannot be lifted above its neighbours.* Growth needs the mark on top, and a
   treemap flattens a nested folder and its descendants into siblings, so raising a
   hovered container paints it over every rectangle inside it.
@@ -4844,8 +4874,10 @@ One that meets either keeps the lift and states why here.
 
 Motion communicates a state transition: tree insertion, removal, refresh, loading, or
 layout change. Keep durations short and use the shared motion tokens.
-Avoid looping animation except for active progress indicators and
-[refreshing content](#refreshing-content).
+Avoid looping animation except for active progress indicators,
+[refreshing content](#refreshing-content), and the shimmer on a hovered data mark
+([Hover Styles the Thing Under the Pointer](#hover-styles-the-thing-under-the-pointer)),
+which runs only while the pointer holds the mark.
 
 Respect `prefers-reduced-motion`. Content and status must remain understandable when
 transitions are disabled.

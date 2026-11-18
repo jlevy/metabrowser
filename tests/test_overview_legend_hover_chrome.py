@@ -93,7 +93,7 @@ def _free_port() -> int:
 # The Python family's tooltip on its legend entry, which shows the name, and on its segment,
 # which does not: its Total segment, the row the legend's shares are of with Show ignored on
 # (docs/design-system.md, "Aggregate Distributions").
-_PYTHON_TOOLTIP = {"legend": "6 files Â· 18 B", "segment": "Python 6 files Â· 18 B"}
+_PYTHON_TOOLTIP = {"legend": "6 files · 18 B", "segment": "Python 6 files · 18 B"}
 _PYTHON_BARS = ["Files family:python", "Ignored family:python", "Total family:python"]
 _PYTHON_ENTRY = "legend family:python"
 # --viz-hover-grow in static/styles.css.
