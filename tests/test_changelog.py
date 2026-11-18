@@ -323,6 +323,27 @@ def test_the_guard_compares_with_the_merge_base_not_the_tip(repo: Path) -> None:
     assert _guard(repo) == []
 
 
+def test_the_guard_passes_a_merge_of_main_in_progress(repo: Path) -> None:
+    # main gains an entry after the branch left it, and the branch merges main in. Until
+    # the merge is committed HEAD is the branch's own commit, so the merge base is the
+    # older main, and only main's tip shows the entry is not the branch's.
+    _write(repo, {"changelog.d/mb-abcd.md": "- Mine.\n"})
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "fragment", when=1_700_000_100)
+    _git(repo, "checkout", "-q", "main")
+    moved = CHANGELOG.replace("- An existing entry.", "- Landed later.\n\n- An existing entry.")
+    _commit(repo, {"CHANGELOG.md": moved}, "main moves", 1_700_000_300)
+    _git(repo, "checkout", "-q", "pr")
+    _git(repo, "merge", "-q", "--no-commit", "--no-ff", "main", when=1_700_000_400)
+    assert (repo / "CHANGELOG.md").read_text(encoding="utf-8") == moved
+    assert changelog.check(repo, "main") == []
+
+    # The same entry written by the branch itself, not merged from main, still fails.
+    _git(repo, "merge", "--abort")
+    _write(repo, {"CHANGELOG.md": moved.replace("Landed later", "Mine, in the changelog")})
+    assert changelog.check(repo, "main")[0].startswith("CHANGELOG.md: adds 1 entry")
+
+
 def test_the_guard_says_to_fetch_a_ref_it_cannot_find(repo: Path) -> None:
     problems = changelog.check(repo, "upstream/trunk")
     assert len(problems) == 1

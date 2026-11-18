@@ -22,7 +22,8 @@ Commands, run as ``python -m devtools.changelog <command>``:
   it gained more entries than it lost: a new entry belongs in a fragment, while an edit
   to an existing one replaces it and passes. An entry that came from a fragment the
   branch deletes is not new, which is what ``assemble`` produces, so a release passes,
-  as does one that moves the entries under a version heading. ``make lint-check`` runs it
+  as does one that moves the entries under a version heading; nor is one REF already
+  has, which a merge of REF in progress brings. ``make lint-check`` runs it
   against ``origin/main``.
 - ``show`` prints the Unreleased section as ``assemble`` would leave it: everything on
   ``main`` that the last release lacks.
@@ -287,8 +288,12 @@ def _quote(entry: str) -> str:
 
 def new_entry_problems(root: Path, against: str) -> list[str]:
     """Why the working tree's Unreleased section must not be merged: it gained more
-    entries than it lost since the merge base of *against* and ``HEAD``, not counting
-    entries moved there from fragments the working tree no longer has."""
+    entries than it lost since the merge base of *against* and ``HEAD``.
+
+    An entry is not new when it came from a fragment the working tree no longer has, which
+    is what ``assemble`` does, or when *against* already has it: in the middle of merging
+    *against* in, ``HEAD`` is still the commit before the merge, so the merge base is the
+    older one and the entries the merge brings would otherwise count as this branch's."""
 
     try:
         base = _git(root, "merge-base", against, "HEAD").strip()
@@ -300,13 +305,14 @@ def new_entry_problems(root: Path, against: str) -> list[str]:
             f"({fetch})."
         ) from error
     base_entries = read_unreleased(_git(root, "show", f"{base}:{CHANGELOG}")).entries
+    tip_entries = read_unreleased(_git(root, "show", f"{against}:{CHANGELOG}")).entries
     head_entries = read_unreleased((root / CHANGELOG).read_text(encoding="utf-8")).entries
     moved: list[str] = []
     for path in _git(root, "ls-tree", "--name-only", base, f"{FRAGMENTS}/").splitlines():
         if is_fragment(path) and not (root / path).exists():
             name = path.rpartition("/")[2]
             moved += parse_fragment(name, _git(root, "show", f"{base}:{path}")).entries
-    known = {_normalized(entry) for entry in (*base_entries, *moved)}
+    known = {_normalized(entry) for entry in (*base_entries, *tip_entries, *moved)}
     kept = {_normalized(entry) for entry in head_entries}
     added = [entry for entry in head_entries if _normalized(entry) not in known]
     removed = [entry for entry in base_entries if _normalized(entry) not in kept]
