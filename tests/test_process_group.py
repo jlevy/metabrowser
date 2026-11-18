@@ -7,8 +7,9 @@ The Chrome tests (``test_folder_overview_alignment.py``, ``test_transitions_inst
 ``test_github_pull_header_chrome.py``, ``test_github_pull_text_chrome.py``,
 ``test_github_pull_timeline_chrome.py``, ``test_github_pulls_stacks_chrome.py``,
 ``test_inert_render_refusal_chrome.py``,
-``test_nav_metadata_chrome.py``, ``test_overview_readme_toc_chrome.py``,
-``test_page_header_chrome.py``, ``test_prose_faces_chrome.py``,
+``test_nav_metadata_chrome.py``, ``test_overview_legend_hover_chrome.py``,
+``test_overview_readme_toc_chrome.py``, ``test_page_header_chrome.py``,
+``test_prose_faces_chrome.py``,
 ``test_raw_profile_cache_chrome.py``, ``test_staged_fonts_chrome.py``,
 ``test_title_prefix_chrome.py``) run a Node script
 that starts Chrome and its helpers. Stopping that script's process group is what stops
@@ -48,6 +49,17 @@ import pytest
 import tests.process_group as pg
 from tests.process_group import owned_profile, run_in_own_group, stop_group
 from tests.required_tools import require_chrome, require_node
+
+# The serial tier (tests/suite_tiers.py): every stop and teardown here is timed against
+# the time its callers reserve, past it by SLACK_S at most, so beside other workers it
+# would time the machine. Its one Chrome test is in the Chrome tier, which is serial too.
+# Beside three busy-looping processes on a 4-processor machine its six timing tests
+# still passed, in 48 s against 49 s alone (2026-11-17), so the slack holds against
+# processor load alone; workers start Node, Git, and ps processes too, which no run has
+# measured beside it.
+pytestmark = pytest.mark.serial(
+    reason="times each stop and teardown to within SLACK_S of its reserved time"
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 PROBE = ROOT / "tests" / "dom" / "chrome-group-probe.mjs"
@@ -108,6 +120,7 @@ CHROME_TESTS = (
     "tests.test_github_pulls_stacks_chrome",
     "tests.test_inert_render_refusal_chrome",
     "tests.test_nav_metadata_chrome",
+    "tests.test_overview_legend_hover_chrome",
     "tests.test_overview_readme_toc_chrome",
     "tests.test_page_header_chrome",
     "tests.test_prose_faces_chrome",

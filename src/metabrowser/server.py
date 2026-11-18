@@ -1381,9 +1381,7 @@ _DEFAULT_FONT_SET = _FONT_SETS[0]["value"]
 # preference cookies (see the index shell below, which explains the keys). It reads the
 # reading width from `window.MetabrowserDocumentWidth`, so a page embeds
 # :data:`_DOCUMENT_WIDTH_SCRIPT` before it, and that script reads its default from
-# `window.METABROWSER_SETTINGS`, which the shell writes first. Pages outside the shell that
-# show a reader's content, such as a pull request's revision file, embed all three through
-# :func:`page_preference_scripts`.
+# `window.METABROWSER_SETTINGS`, which the shell writes first.
 _THEME_BOOTSTRAP_SCRIPT = """
   (function () {
     function cookie(name) {
@@ -1421,20 +1419,6 @@ _THEME_BOOTSTRAP_SCRIPT = """
   """.replace("__FONT_VALUES__", _json.dumps([s["value"] for s in _FONT_SETS])).replace(
     "__FONT_DEFAULT__", _DEFAULT_FONT_SET
 )
-
-
-# The one setting the width script needs on a page outside the shell. Static, so a policy
-# can allow it by hash; the shell's own settings block names this build and store too.
-_PAGE_SETTINGS_SCRIPT = (
-    f"window.METABROWSER_SETTINGS={_json.dumps({'DOC_MAX_CHARS_DEFAULT': DOC_MAX_CHARS_DEFAULT})};"
-)
-
-
-def page_preference_scripts() -> tuple[str, ...]:
-    """The inline scripts, in order, that apply the reader's display preferences on a page
-    outside the shell: the width default, the width state machine, and the theme bootstrap."""
-
-    return (_PAGE_SETTINGS_SCRIPT, _DOCUMENT_WIDTH_SCRIPT, _THEME_BOOTSTRAP_SCRIPT)
 
 
 # Prefetched-tier scheduling. The chain waits for the page to be idle so it

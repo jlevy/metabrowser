@@ -368,6 +368,13 @@ It answers `/api/cache/…` with `unsupported_for_subject`, so records that name
 cached sources are never served beside acquired content, and answers the path-shaped
 `/raw/{path}` the same way, because the preview that is that form’s only consumer is
 never offered there.
+Its Markdown renders with fenced code as plain text (`plain_code`, which the Markdown
+child sets on every inert render in `diff/markdown_projection_worker.py`): the inert
+render drops the classes highlighting writes anyway, and a lexer can cost far more than
+its input’s size (`kpress_adapter._PLAIN_CODE`). Plain fences do not bound the render
+itself; the child’s deadline does ([Inert Markdown](#inert-markdown)), so whoever wrote
+a pinned Markdown file, such as a pull request’s author, cannot decide how long the
+server spends rendering it.
 
 ### Borrowed Objects
 

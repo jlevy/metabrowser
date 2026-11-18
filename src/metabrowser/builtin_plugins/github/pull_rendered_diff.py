@@ -1,8 +1,8 @@
 """``GET github/pull-rendered-diff``: one changed Markdown file of an admitted comparison.
 
 The envelope's ``rendered_route`` names the comparison; a page appends ``file``, the
-manifest ID of the file. The pair passes the same admission check as
-``GET github/pull-snapshot``, and the answer is ``markdown-diff-v1``
+manifest ID of the file. The pair passes the same admission check as the images its
+Markdown shows (``GET github/pull-image``), and the answer is ``markdown-diff-v1``
 (:mod:`metabrowser.diff.markdown_projection`) or a refusal with its own code. A page's
 request sent before the reader asks names ``prefetch=1``, which also starts the projection
 process, so the first screen of Changes is computed while the reader is still on
@@ -292,7 +292,7 @@ async def pull_rendered_diff_handler(request: Request) -> JSONResponse:
         or len(file_id) > 128
     ):
         return JSONResponse({"code": "invalid_rendered_diff"}, status_code=400, headers=_NO_STORE)
-    snapshot = Snapshot(number, base, head, params.get("store", ""), "head")
+    snapshot = Snapshot(number, base, head, params.get("store", ""))
     published, admission = await admitted_snapshot(request, snapshot)
     if admission == "unknown":
         return JSONResponse({"code": "snapshot_unavailable"}, status_code=409, headers=_NO_STORE)

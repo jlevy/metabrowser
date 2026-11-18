@@ -14,19 +14,32 @@ A skipped test is judged against the tier it belongs to (``docs/e2e-testing.md``
 
 A test is also judged on what it asked for: a module that reaches the Git floor has to
 be in ``ADMITTED_GIT_TESTS``, or the admitted-git job never runs it unpatched.
+
+And each tier marker is held to its meaning (``tests/suite_tiers.py``), so that no test
+runs beside other workers when it should not, and none reaches one interpreter by being
+marked:
+
+- a test that asks for Chrome through ``require_chrome`` has to be ``chrome``;
+- a ``chrome`` test has to use ``chrome_profile``, the marker's only source;
+- a ``serial`` marker has to give its reason;
+- no test in an ``ADMITTED_GIT_TESTS`` module may be ``serial`` or ``chrome``:
+  ``make test-admitted-git`` runs that list beside other workers with no marker filter,
+  so a module there that fails beside them is fixed, not marked.
 """
 
 from __future__ import annotations
 
 import os
 import re
-from collections.abc import Collection, Generator, Mapping
+from collections.abc import Collection, Generator, Mapping, Sequence
 from functools import cache
 from pathlib import Path
 
 import pytest
 
 from tests.admitted_git import take_floor_request
+from tests.required_tools import take_chrome_request
+from tests.suite_tiers import CHROME_FIXTURE, CHROME_MARKER, SERIAL_MARKER
 
 REQUIRE_MACOS_TIER_ENV = "METABROWSER_REQUIRE_MACOS_TIER"
 LIVE_GITHUB_ENV = "METABROWSER_LIVE_GITHUB"
@@ -85,6 +98,68 @@ def unlisted_floor_request(
     )
 
 
+def unmarked_chrome_request(markers: Collection[str]) -> str | None:
+    """Why a test that asked for Chrome has to fail, or ``None`` when it is ``chrome``."""
+
+    if CHROME_MARKER in markers:
+        return None
+    return (
+        "this test asks for Chrome through require_chrome but is not in the Chrome tier, "
+        f"so it would run beside other workers. Use the {CHROME_FIXTURE} fixture, which "
+        f"gives it the {CHROME_MARKER} marker (tests/suite_tiers.py)."
+    )
+
+
+def misused_tier_marker(
+    markers: Collection[str], serial_reasons: Sequence[object], fixtures: Collection[str]
+) -> str | None:
+    """Why a test's tier markers contradict their meaning, or ``None``.
+
+    *serial_reasons* holds the ``reason`` of each ``serial`` marker the test carries,
+    ``None`` where one gives none, and *fixtures* every fixture the test uses.
+    """
+
+    if CHROME_MARKER in markers and CHROME_FIXTURE not in fixtures:
+        return (
+            f"this test is marked {CHROME_MARKER} but does not use the {CHROME_FIXTURE} "
+            f"fixture. The marker takes a test to one interpreter on a pull request, so it "
+            f"comes from that fixture alone: drop the marker, or drive Chrome through the "
+            f"fixture (tests/suite_tiers.py)."
+        )
+    if any(not isinstance(reason, str) or not reason.strip() for reason in serial_reasons):
+        return (
+            f"this test is marked {SERIAL_MARKER} without a reason. Write "
+            f"pytest.mark.{SERIAL_MARKER}(reason=...) with the measurement that showed it "
+            "needs the machine to itself, or fix what made it need that "
+            "(tests/suite_tiers.py)."
+        )
+    return None
+
+
+def tiered_admitted_git_test(
+    module: str, markers: Collection[str], listed: Collection[str] | None
+) -> str | None:
+    """Why a ``serial`` or ``chrome`` test in an ``ADMITTED_GIT_TESTS`` module fails, or ``None``.
+
+    ``make test-admitted-git`` runs the list beside other workers and selects no tier, so
+    such a test would not have the machine to itself there.
+    """
+
+    tiers = sorted({SERIAL_MARKER, CHROME_MARKER} & set(markers))
+    if listed is None or module not in listed or not tiers:
+        return None
+    return (
+        f"{module} is in ADMITTED_GIT_TESTS, which make test-admitted-git runs beside "
+        f"other workers with no marker filter, so a {' and '.join(tiers)} test there "
+        "would not have the machine to itself. Fix what makes it need the machine, or "
+        "move it to a module the list leaves out."
+    )
+
+
+def _serial_reasons(item: pytest.Item) -> list[object]:
+    return [mark.kwargs.get("reason") for mark in item.iter_markers(name=SERIAL_MARKER)]
+
+
 @cache
 def admitted_git_tests(root: Path) -> frozenset[str] | None:
     """The modules ``make test-admitted-git`` runs, as the ``Makefile`` lists them."""
@@ -116,11 +191,21 @@ def pytest_runtest_makereport(
     if report.skipped and not hasattr(report, "wasxfail"):
         verdict = refused_skip(markers, _skip_reason(report), os.environ)
     module = item.nodeid.split("::", 1)[0]
+    listed = admitted_git_tests(item.config.rootpath)
     asked = take_floor_request()
     if asked and verdict is None and not report.failed and module not in _unlisted_reported:
-        verdict = unlisted_floor_request(module, markers, admitted_git_tests(item.config.rootpath))
+        verdict = unlisted_floor_request(module, markers, listed)
         if verdict is not None:
             _unlisted_reported.add(module)
+    if take_chrome_request() and verdict is None and not report.failed:
+        verdict = unmarked_chrome_request(markers)
+    # A test's markers are judged once: on its call, or on its setup where that skipped
+    # and no call follows. A test that already failed keeps its own failure.
+    once = report.when == "call" or (report.when == "setup" and report.skipped)
+    if once and verdict is None and not report.failed:
+        fixtures = getattr(item, "fixturenames", ())
+        verdict = misused_tier_marker(markers, _serial_reasons(item), fixtures)
+        verdict = verdict or tiered_admitted_git_test(module, markers, listed)
     if verdict is not None:
         report.outcome = "failed"
         report.longrepr = verdict

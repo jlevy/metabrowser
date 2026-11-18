@@ -1730,8 +1730,9 @@ async def git_revision_kpress_render(
         parse_source = source_override.encode() if source_override is not None else body
         _, _, frontmatter, frontmatter_error = _git_blob_content_predicates(ext, parse_source)
     envelope = _git_frontmatter_envelope(mapping=frontmatter, error=frontmatter_error)
+    trusted = get_capabilities().active_content
     try:
-        if get_capabilities().active_content:
+        if trusted:
             rendered = await asyncio.to_thread(
                 kpress_adapter.render_kpress_view,
                 source_text=content,

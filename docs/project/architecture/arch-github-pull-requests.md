@@ -171,11 +171,19 @@ from the record’s head: a pull request opened from the list moves no pin, a co
 inside the pull request pins that commit, and a refresh can find a newer head, which the
 page offers as `latest` rather than switching under a reader.
 **Browse code** is a link to the served root when the pin is the record’s head, and
-otherwise a button that posts the head ref to `/api/source/pin` and then opens the root,
-so what moves the pin is never a link a modified click could open without moving it; a
+otherwise a button that posts the head’s commit to `/api/source/pin`, naming the pull
+request’s `refs/pull/<n>/head` as the ref to serve it under, and then opens the root, so
+what moves the pin is never a link a modified click could open without moving it; a
 checkout has no pin and no Browse code.
-Changes never switches the pin, on a mirror or beside a checkout: its file links open
-the envelope’s `snapshot_route`.
+**View on branch** is Browse code for one file, on each file bar of Changes while the
+diff shows the pull request’s head: a link to the file’s `/view/` address when the pin
+is the head, otherwise a button that serves the head the same way first, and, beside a
+checkout whose `HEAD` is the head, a link to the working-tree file.
+The page’s one switch (`createPinSwitch` in the diff plugin) serves both, so a refusal
+reads the same from either.
+The pin is server-wide, so a switch from Changes moves every tab’s pin, as Browse code
+always has; how the other tabs learn it is in
+[Source Sessions and Pins](arch-source-sessions-and-pins.md).
 
 ## Freshness Verdicts
 
@@ -314,18 +322,21 @@ store, so its answer is immutable and a browser asks for it no more.
 `tests/test_github_pull_manifests.py` holds both, and that a route naming another head,
 as a record whose head moved does, is computed.
 In the page, what was read is kept for the document rather than for one page
-([The Comparison Keep](#the-comparison-keep)). `GET pull-snapshot` (`pull_snapshot.py`)
-opens a file at the exact displayed base or head without changing the pin or the
-checkout, for a pair the record or its snapshot file admits; its docstring lists every
-outcome code. `GET pull-rendered-diff` (`pull_rendered_diff.py`) answers one changed
-Markdown file as `markdown-diff-v1` after the same admission, computed in a projection
-worker process. `GET pull-markdown` (`pull_markdown.py`) renders one text of the record
-through KPress in sanitized mode, then reduces it to the inert allowlist of
-`inert_html.py`, both in the server’s Markdown child under its deadline, the same child
-as the projections, which a served page’s first `GET pull` starts; a text past the
-deadline answers `422` `render_deadline`, one that arrives while the child has as many
-renders as it takes answers `503` `renderer_busy`, and the page keeps its plain text
-with a line saying why, which it keeps for that text until the text renders.
+([The Comparison Keep](#the-comparison-keep)). `GET pull-rendered-diff`
+(`pull_rendered_diff.py`) answers one changed Markdown file as `markdown-diff-v1`,
+computed in a projection worker process, for a pair the record or its snapshot file
+admits (`pull_snapshot.py`). Its images load from `GET pull-image`, which serves an
+image at the head of an admitted pair without changing the pin or the checkout; its
+links to a file of the head are that file’s `/view/` address, the same in every answer,
+which the page keeps only while its pin is the head and leaves as plain text otherwise.
+`pull_snapshot.py`’s docstring lists every outcome code.
+`GET pull-markdown` (`pull_markdown.py`) renders one text of the record through KPress
+in sanitized mode, then reduces it to the inert allowlist of `inert_html.py`, both in
+the server’s Markdown child under its deadline, the same child as the projections, which
+a served page’s first `GET pull` starts; a text past the deadline answers `422`
+`render_deadline`, one that arrives while the child has as many renders as it takes
+answers `503` `renderer_busy`, and the page keeps its plain text with a line saying why,
+which it keeps for that text until the text renders.
 Only KPress’s stylesheet manifest reaches the page, so no text chooses what loads.
 The trust model behind that allowlist is in
 [Server and Content](arch-server-and-content.md).
@@ -565,7 +576,7 @@ handler’s docstring in `sidekick.py`, or the module it names, holds its contra
 | `pull-refresh` | `POST` | That pull request’s refresh, comparison, repair, or idle preparation |
 | `pull-cores-prepare` | `POST` | A batch of lightweight cores |
 | `pull-comparison` | `GET` | The record’s comparison, from the store, for Changes and the header’s Diff summary |
-| `pull-snapshot` | `GET` | A file at the comparison’s base or head |
+| `pull-image` | `GET` | An image at the comparison’s head, for its rendered Markdown |
 | `pull-rendered-diff` | `GET` | One changed Markdown file, rendered |
 | `pull-timeline` | `POST` | Conversation’s order of commits, comments, and reviews |
 | `pull-markdown` | `GET` | One text of the record, rendered inert |

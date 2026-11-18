@@ -1,0 +1,150 @@
+name: Nightly soak
+
+# Runs the serial and Chrome tiers five times over, on Python 3.13, the interpreter a pull
+# request draws the Chrome tier on (PR_CHROME_PYTHON in ci.yml), so that a flake is found
+# away from a pull request. Any failure fails the run, and pytest names the test. It
+# finds flakes; the ci.yml runs on each commit of main are the coverage. A schedule runs
+# on main, and a dispatch on the ref it names, main by default.
+#
+# Then `make ci-report` reads ci.yml's push runs on main and fails when a job's 90th
+# percentile passes CHECK_FRACTION of its timeout-minutes (devtools/ci_report.py): the
+# early warning of the fast CI plan's Time Limits, before a limit trips.
+# docs/project/specs/active/plan-2026-11-16-fast-ci.md has the design; who reads a red
+# nightly is its open question Q9.
+
+on:
+  schedule:
+    # 12:37 UTC: no run of this repository started in the 12:00 UTC hour among the 500
+    # before 2026-11-17, so the soak's jobs queue behind few others.
+    - cron: "37 12 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+env:
+  UV_EXCLUDE_NEWER: "14 days"
+
+jobs:
+  serial:
+    name: serial (${{ matrix.repetition }})
+    strategy:
+      fail-fast: false
+      matrix:
+        repetition: [1, 2, 3, 4, 5]
+    runs-on: ubuntu-latest
+    # The serial tier took 66 to 70 seconds in each goldens job of ci.yml run
+    # 44038762653, with about 0.4 minutes of setup.
+    timeout-minutes: 3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          version: "0.11.26"
+          checksum: "6426a73c3837e6e2483ee344cbc00f36394d179afcba6183cb77437e67db4af0"
+          enable-cache: true
+          python-version: "3.13"
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24.18.0"
+          cache: "npm"
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Run the serial tier
+        run: make test-serial
+
+  chrome:
+    name: chrome (${{ matrix.repetition }}, ${{ matrix.shard }}/4)
+    strategy:
+      fail-fast: false
+      matrix:
+        repetition: [1, 2, 3, 4, 5]
+        shard: [1, 2, 3, 4]
+    runs-on: ubuntu-latest
+    # As for ci.yml's chrome job; check_ci.py holds the two equal.
+    timeout-minutes: 7
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          version: "0.11.26"
+          checksum: "6426a73c3837e6e2483ee344cbc00f36394d179afcba6183cb77437e67db4af0"
+          enable-cache: true
+          python-version: "3.13"
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24.18.0"
+          cache: "npm"
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Run the Chrome tier
+        run: make test-chrome SHARD=${{ matrix.shard }}/4
+
+  time-limits:
+    # After the soak, so that it reports whatever the soak found.
+    needs: [serial, chrome]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    # Estimated at 1.5 minutes: the environment, and one read per run and per attempt.
+    timeout-minutes: 5
+    # Reads ci.yml's runs. Recorded in SUPPLY-CHAIN-SECURITY.md.
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      # Full history, to tell which runs of main contain the workflow as it is.
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          version: "0.11.26"
+          checksum: "6426a73c3837e6e2483ee344cbc00f36394d179afcba6183cb77437e67db4af0"
+          enable-cache: true
+          python-version: "3.13"
+
+      - name: Set up Python
+        run: uv python install
+
+      # The locked environment, installed before the step that holds the token, so no
+      # install code runs beside it.
+      - name: Install the locked environment
+        run: uv --config-file uv.toml sync --frozen
+
+      # Only the runs since ci.yml last changed: an older run may have done other work
+      # under a job's name, and would be judged against a limit set for the new.
+      - name: Report each ci.yml job's time against its limit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          changed=$(git log -1 --format=%H -- .github/workflows/ci.yml)
+          make ci-report CI_REPORT_FLAGS="--branch main --event push --containing $changed --check"

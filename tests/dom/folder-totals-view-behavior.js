@@ -1,7 +1,19 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 
 const repoRoot = path.resolve(process.argv[2]);
+
+// The folder plugin's modules have no package.json saying they are modules, which the
+// browser never asks about, and folder-totals.js imports the hover it draws, so it is
+// loaded from its file. Node's warning names the process and the checkout.
+const emitWarning = process.emitWarning;
+process.emitWarning = (warning, ...rest) => {
+  if (String(warning).includes("is not specified and it doesn't parse as CommonJS")) {
+    return;
+  }
+  emitWarning.call(process, warning, ...rest);
+};
 const failures = [];
 
 function check(name, condition, detail = "failed") {
@@ -66,15 +78,36 @@ class Element {
   get innerHTML() {
     return this._innerHTML;
   }
+
+  /** In the document: each parent up to its body still holds the element. */
+  get isConnected() {
+    let node = this;
+    while (node.parentNode?.children.includes(node)) {
+      node = node.parentNode;
+    }
+    return node === document.body;
+  }
+
+  /** Whether *other* is this element or inside it. */
+  contains(other) {
+    for (let node = other; node; node = node.parentNode) {
+      if (node === this) {
+        return true;
+      }
+      if (!node.parentNode?.children.includes(node)) {
+        return false;
+      }
+    }
+    return false;
+  }
 }
 
 global.document = { createElement: (tag) => new Element(tag) };
+document.body = new Element("body");
 
 (async () => {
-  const source = fs.readFileSync(
-    path.join(repoRoot, "src/metabrowser/builtin_plugins/folder/folder-totals.js"),
-    "utf8",
-  );
+  const folder = (name) =>
+    pathToFileURL(path.join(repoRoot, "src/metabrowser/builtin_plugins/folder", name)).href;
   const styles = fs.readFileSync(
     path.join(repoRoot, "src/metabrowser/builtin_plugins/folder/file_type_summary.css"),
     "utf8",
@@ -83,9 +116,8 @@ global.document = { createElement: (tag) => new Element(tag) };
     path.join(repoRoot, "src/metabrowser/static/styles.css"),
     "utf8",
   );
-  const module = await import(
-    `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`
-  );
+  const module = await import(folder("folder-totals.js"));
+  const { createDistributionHover } = await import(folder("distribution-hover.js"));
   const tooltipCalls = [];
   const mb = {
     countClass: () => "",
@@ -206,15 +238,31 @@ global.document = { createElement: (tag) => new Element(tag) };
   tooltipCalls.length = 0;
   const hoverEvent = { clientX: 20, clientY: 30 };
   const segment = filesTrack.children[0];
-  segment.emit("mouseover", hoverEvent);
+  const hoveredSegments = () =>
+    [filesTrack, ignoredTrack].flatMap((track) =>
+      track.children.filter((child) => "hovered" in child.dataset),
+    );
+  segment.emit("mouseenter", hoverEvent);
+  const markedWhileHovered = hoveredSegments();
   segment.emit("mousemove", hoverEvent);
-  segment.emit("mouseout", hoverEvent);
+  segment.emit("mouseleave", hoverEvent);
   check(
     "semantic family segments reuse the shared nav tooltip",
     tooltipCalls[0]?.action === "show" &&
       tooltipCalls[0]?.html === "<strong>Python</strong><br>18 files · 180 B" &&
       tooltipCalls[1]?.action === "hide",
     JSON.stringify(tooltipCalls.map((c) => c.action)),
+  );
+  // The hover is drawn on the segment by an attribute, not by :hover, so a legend entry
+  // naming the segment can draw it too; it marks that segment alone, and leaving takes it
+  // off along with the tooltip, put away where it was anchored, on the segment.
+  check(
+    "a hovered segment is marked, alone, until the pointer leaves it",
+    markedWhileHovered.length === 1 &&
+      markedWhileHovered[0] === segment &&
+      hoveredSegments().length === 0 &&
+      tooltipCalls[1]?.within === segment,
+    JSON.stringify({ marked: markedWhileHovered.length, after: hoveredSegments().length }),
   );
   // A tooltip names the segment it is on, so it is anchored to the segment and
   // never to the pointer. Moving the mouse across a segment must produce no
@@ -234,7 +282,9 @@ global.document = { createElement: (tag) => new Element(tag) };
   const darkStart = sharedStyles.indexOf('[data-theme="dark"] {');
   check(
     "tooltip-bearing segments reuse the shared data-mark hover treatment",
-    styles.includes(".folder-totals .file-type-summary-fill[data-segment-key]:hover") &&
+    styles.includes(".folder-totals .file-type-summary-fill[data-hovered]") &&
+      // One source of the hover: :hover too would mark a segment the hover has put away.
+      !styles.includes(".file-type-summary-fill[data-segment-key]:hover") &&
       styles.includes("filter: var(--viz-data-mark-hover-filter);") &&
       darkStart > 0 &&
       sharedStyles.indexOf("--viz-data-mark-hover-filter:") < darkStart &&
@@ -250,7 +300,7 @@ global.document = { createElement: (tag) => new Element(tag) };
   check(
     "the hovered segment grows and lifts its colour, and takes no outline",
     flattened.includes(
-      ".folder-totals .file-type-summary-fill[data-segment-key]:hover { " +
+      ".folder-totals .file-type-summary-fill[data-hovered] { " +
         "filter: var(--viz-data-mark-hover-filter); " +
         "transform: scaleY(var(--viz-hover-grow)); z-index: 1; }",
     ) &&
@@ -281,7 +331,9 @@ global.document = { createElement: (tag) => new Element(tag) };
   );
   check(
     "no rule dims a segment to pick out one of its siblings",
-    !styles.includes(":not(:hover)") && !sharedStyles.includes("--mb-distribution-segment-recede"),
+    !styles.includes(":not(:hover)") &&
+      !styles.includes(":not([data-hovered])") &&
+      !sharedStyles.includes("--mb-distribution-segment-recede"),
     styles.slice(0, 200),
   );
   // An instant jump is worse than no growth.
@@ -289,7 +341,7 @@ global.document = { createElement: (tag) => new Element(tag) };
     "reduced motion drops the growth rather than making it instant",
     flattened.includes("prefers-reduced-motion") &&
       flattened.includes(
-        ".folder-totals .file-type-summary-fill[data-segment-key]:hover { transform: none; }",
+        ".folder-totals .file-type-summary-fill[data-hovered] { transform: none; }",
       ),
     flattened.slice(flattened.indexOf("prefers-reduced-motion"), 400),
   );
@@ -337,6 +389,133 @@ global.document = { createElement: (tag) => new Element(tag) };
         child.className.includes("file-type-summary-percent"),
       ),
     styles,
+  );
+
+  // Bars that share their hover, as File Overview's do with the legend under them. A
+  // hover entered from an element outside the bars, as a legend entry enters it, marks
+  // that row's segment as the segment's own hover does and shows that segment's file
+  // count and byte size, anchored on that element, which shows the name; its leave puts
+  // away only the tooltip anchored there. A row with no such segment draws nothing. A
+  // draw puts away a hover held from a segment, which it replaces, and draws again one
+  // held from an element it outlives, while that element is in the document. Disposal
+  // lets go of the hover and stops listening.
+  const shared = createDistributionHover();
+  const sharedContainer = new Element("div");
+  // A legend entry, beside the bars and outside them.
+  const entry = new Element("li");
+  document.body.append(sharedContainer, entry);
+  const sharedView = module.mountFolderTotalsView(sharedContainer, totals, mb, "size", shared);
+  sharedView.updateComposition(composition, {
+    classFor: () => "",
+    styleFor: () => "",
+    paint: () => {},
+  });
+  const sharedRoot = sharedContainer.children[0];
+  const sharedBody = () => sharedRoot.children[0].children[2];
+  const sharedTrack = (row) => sharedBody().children[row].children[1].children[0].children[1];
+  const sharedMarked = () =>
+    [0, 1].flatMap((row) => sharedTrack(row).children.filter((fill) => "hovered" in fill.dataset));
+  /** A tooltip call, with its anchor named rather than serialized. */
+  const named = (call) =>
+    call && {
+      action: call.action,
+      html: call.html,
+      on: [call.anchor, call.within].includes(entry)
+        ? "entry"
+        : [call.anchor, call.within].includes(sharedRoot)
+          ? "bars"
+          : call.anchor || call.within
+            ? "segment"
+            : "nothing",
+    };
+  const markdown = sharedTrack(0).children[1];
+  tooltipCalls.length = 0;
+  markdown.emit("mouseenter", hoverEvent);
+  const fromSegment = { ...tooltipCalls[0] };
+  markdown.emit("mouseleave", hoverEvent);
+  tooltipCalls.length = 0;
+  const markdownFromEntry = { population: "files", key: "family:markdown", anchor: entry };
+  shared.enter(markdownFromEntry);
+  const fromOutside = { ...tooltipCalls[0], marked: sharedMarked() };
+  shared.leave(markdownFromEntry);
+  check(
+    "a hover entered from outside marks the segment and shows its counts on that element",
+    fromSegment.action === "show" &&
+      fromSegment.html === "<strong>Markdown</strong><br>12 files · 120 B" &&
+      fromSegment.anchor === markdown &&
+      fromOutside.action === "show" &&
+      fromOutside.html === "12 files · 120 B" &&
+      fromOutside.anchor === entry &&
+      fromOutside.marked.length === 1 &&
+      fromOutside.marked[0] === markdown &&
+      sharedMarked().length === 0 &&
+      tooltipCalls.length === 2 &&
+      tooltipCalls[1].action === "hide" &&
+      tooltipCalls[1].within === entry,
+    JSON.stringify({
+      fromSegment: named(fromSegment),
+      fromOutside: named(fromOutside),
+      calls: tooltipCalls.map(named),
+    }),
+  );
+  // The Ignored row has no Markdown segment.
+  tooltipCalls.length = 0;
+  const ignoredMarkdown = { population: "ignored", key: "family:markdown", anchor: entry };
+  shared.enter(ignoredMarkdown);
+  check(
+    "a hover whose row has no such segment marks nothing and shows no tooltip",
+    !tooltipCalls.some((call) => call.action === "show") && sharedMarked().length === 0,
+    JSON.stringify(tooltipCalls.map(named)),
+  );
+  shared.leave(ignoredMarkdown);
+
+  // A draw replaces every segment. One the pointer is on is replaced under it, and the
+  // browser enters the new one, so the hover it held goes.
+  sharedTrack(0).children[0].emit("mouseenter", hoverEvent);
+  tooltipCalls.length = 0;
+  sharedView.update(totals);
+  check(
+    "a draw puts away a hover held from a segment it replaces, with its tooltip",
+    shared.current() === null &&
+      sharedMarked().length === 0 &&
+      tooltipCalls.some((call) => call.action === "hide") &&
+      !tooltipCalls.some((call) => call.action === "show"),
+    JSON.stringify(tooltipCalls.map(named)),
+  );
+  // An element outside the bars outlives the draw and hears nothing, so the bars draw its
+  // hover again on the new segment, with the tooltip on the same element.
+  const pythonFromEntry = { population: "files", key: "family:python", anchor: entry };
+  shared.enter(pythonFromEntry);
+  tooltipCalls.length = 0;
+  sharedView.update(totals);
+  const redrawnPython = sharedTrack(0).children[0];
+  const lastCall = tooltipCalls.at(-1);
+  check(
+    "a draw draws again a hover held from an element it outlives",
+    shared.current()?.anchor === entry &&
+      shared.current()?.key === "family:python" &&
+      sharedMarked().length === 1 &&
+      sharedMarked()[0] === redrawnPython &&
+      lastCall?.action === "show" &&
+      lastCall.anchor === entry &&
+      lastCall.html === "18 files · 180 B",
+    JSON.stringify({ current: shared.current()?.key, calls: tooltipCalls.map(named) }),
+  );
+  // Not once that element has left the document, which never hears the pointer leave it.
+  document.body.replaceChildren(sharedContainer);
+  sharedView.update(totals);
+  check(
+    "a draw puts away a hover held from an element that has left the document",
+    shared.current() === null && sharedMarked().length === 0,
+    JSON.stringify(shared.current()?.key),
+  );
+  sharedView.dispose();
+  tooltipCalls.length = 0;
+  shared.enter(pythonFromEntry);
+  check(
+    "disposed bars stop drawing a hover they shared",
+    tooltipCalls.length === 0,
+    JSON.stringify(tooltipCalls.map(named)),
   );
 
   if (failures.length) {
