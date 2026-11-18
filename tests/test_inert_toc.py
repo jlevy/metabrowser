@@ -160,4 +160,11 @@ def test_the_session_plays_the_recorded_inert_render() -> None:
         "reached": True,
         "backAbove": False,
     }
+    # It measures the element the render is mounted in, as a trusted render's does: once a
+    # collapsed panel leaves that element no height, the toggle goes, although the article
+    # clipped inside it still spans the pane's top.
+    collapsed = transcript["collapsedPanel"]
+    assert collapsed["collapsed"]["articleSpansPaneTop"] is True
+    assert collapsed["collapsed"]["toggleShown"] is False
+    assert collapsed["expandedAgain"]["toggleShown"] is True
     assert transcript["disposed"]["listeners"] == 0
