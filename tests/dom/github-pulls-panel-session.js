@@ -1000,24 +1000,26 @@ async function paintStory(panel, selection = false) {
     );
     const list = container.childNodes.find((node) => node.localName === "ul");
     const [hostile, shown] = list.childNodes;
-    const row = (item) => item.firstElementChild;
-    // A row's third line, its change line, the row's one child, which owns its files.
+    // A pull request's three lines are one zone, its item's first child (mb-1z7j): the row,
+    // the link and the tree's item, which owns its files; and its third line, the change line,
+    // which carries their toggle.
+    const row = (item) => item.firstElementChild.firstElementChild;
     const change = (item) =>
-      item.childNodes.find((node) => node.classList?.contains("github-pulls-change-group"))
-        .firstElementChild;
+      item.firstElementChild.childNodes.find((node) =>
+        node.classList?.contains("github-pulls-change"),
+      );
     const fileWindow = () => answers.findIndex((request) => request.route.includes("/pull-files?"));
     const previewDisclosure = change(shown).getAttribute("aria-expanded");
     if (!selection) {
       assert(previewDisclosure === "false", "a PR preview stays collapsed");
       assert(fileWindow() === -1, "a PR preview reads no changed-file metadata");
-      // Right goes to the row's change line and opens nothing; Right again opens its files.
-      mounted.expand();
-      assert(
-        document.activeElement === change(shown) && fileWindow() === -1,
-        "Right on a row goes to its change line, and reads no files",
-      );
+      // Right on a row opens its files, as on a folder's (mb-1z7j).
       mounted.expand();
       await settle();
+      assert(
+        document.activeElement !== change(shown),
+        "Right on a row leaves the focus off its change line, which is no stop",
+      );
       const group = shown.childNodes.find((node) => node.classList?.contains("github-pull-files"));
       const [progress] = group.firstElementChild.childNodes;
       assert(!progress.hidden && progress.firstElementChild.classList.contains("spinner"));
@@ -1129,8 +1131,7 @@ async function paintStory(panel, selection = false) {
           .map((node) => node.getAttribute("href"));
       assert(selected(current).length === 1, "initial page observation selects its actual file");
       list.listeners.get("focusin")({ target: row(shown) });
-      // Right to the change line, then Right into its files.
-      mounted.expand();
+      // Right on the row, whose files the address opened: into its files, as on a folder's.
       mounted.expand();
       const oldAnchor = walk(container).find(
         (node) =>
@@ -1263,11 +1264,12 @@ async function paintStory(panel, selection = false) {
       `the row's link is the state icon, the title, the age, and the muted line: ${order}`,
     );
     assert(
-      JSON.stringify(classesOf(hostile).slice(0, 2)) ===
-        JSON.stringify(["github-pulls-row", "github-pulls-change-group"]) &&
+      JSON.stringify(classesOf(hostile).slice(0, 1)) === JSON.stringify(["github-pulls-entry"]) &&
+        JSON.stringify(classesOf(hostile.firstElementChild)) ===
+          JSON.stringify(["github-pulls-row", "github-pulls-change"]) &&
         JSON.stringify(classesOf(change(hostile))) ===
           JSON.stringify(["github-pulls-toggle", "github-pulls-change-line"]),
-      "under the link, the change line: the chevron, then the line",
+      "one zone of three lines: the link, then under it the change line, the chevron and the line",
     );
     assert(
       id.childNodes[0].classList.contains("github-pulls-place") &&
@@ -1341,9 +1343,12 @@ async function paintStory(panel, selection = false) {
         .textContent.trim()
         .startsWith(row(shown).childNodes[1].textContent),
       "a PR preview leaves its files expanded": previewDisclosure === "true",
-      "Right to its change line, and Right again, opens its cached changed files": filesRead,
-      "they hang under it as a group it owns": shown.childNodes.map(described),
-      "its change line, the row's child, owns them": described(change(shown)),
+      "Right on its row opens its cached changed files": filesRead,
+      "they hang under its three lines as a group": shown.childNodes.map(described),
+      "its row owns them, and its change line controls them": [
+        described(row(shown)),
+        described(change(shown)),
+      ],
       "a title written as markup is one text node": row(hostile).childNodes[1].childNodes.map(
         (node) => ({ node: node.nodeName, data: node.data }),
       ),
@@ -1455,12 +1460,13 @@ async function paintStory(panel, selection = false) {
     const afterClosingAll = retained();
     assert(afterClosingAll === panel.MAX_HELD_TREES + 1, "closed trees must be bounded on close");
     assert(
-      change(many[0]).getAttribute("aria-owns") === null,
+      row(many[0]).getAttribute("aria-owns") === null &&
+        change(many[0]).getAttribute("aria-controls") === null,
       "the longest-closed tree must go first",
     );
-    assert(change(shown).getAttribute("aria-owns") !== null, "the shown page's tree must remain");
+    assert(row(shown).getAttribute("aria-owns") !== null, "the shown page's tree must remain");
     assert(
-      change(many.at(-1)).getAttribute("aria-owns") !== null,
+      row(many.at(-1)).getAttribute("aria-owns") !== null,
       "the most recently closed tree must remain",
     );
     story["closing twelve expanded trees enforces retention immediately"] = {
