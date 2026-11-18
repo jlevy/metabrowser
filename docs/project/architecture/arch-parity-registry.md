@@ -22,11 +22,11 @@ registered, any other status, and a golden that never runs the route.
 | Surface | Status | CLI | Golden or reason |
 | --- | --- | --- | --- |
 | `/api/file` | covered | `--show PATH`, `--api` | `cli-show.tryscript.md`, `cli-api.tryscript.md`, `cli-api-hidden-folder.tryscript.md`, `cli-api-frontmatter-bounds.tryscript.md` |
-| `/api/tree` | covered | `--walk`, `--api` | `cli-api.tryscript.md`, `cli-api-tree-groups.tryscript.md` |
-| `/api/rollup` | covered | `--api` | `cli-api-nav.tryscript.md`, `cli-api-file-type-legend.tryscript.md` |
+| `/api/tree` | covered | `--walk`, `--api` | `cli-api.tryscript.md`, `cli-api-tree-groups.tryscript.md`, `cli-api-inventory-moved.txt` |
+| `/api/rollup` | covered | `--api` | `cli-api-nav.tryscript.md`, `cli-api-file-type-legend.tryscript.md`, `cli-api-inventory-moved.txt` |
 | `/api/recent` | covered | `--api` | `cli-api-nav.tryscript.md` |
 | `/api/activity` | covered | `--api` | `cli-api-nav.tryscript.md` |
-| `/api/catalog` | covered | `--api` | `cli-api-shell.tryscript.md` |
+| `/api/catalog` | covered | `--api` | `cli-api-shell.tryscript.md`, `cli-api-inventory-moved.txt` |
 | `/api/routes` | covered | `--api` | `cli-api-shell.tryscript.md` |
 | `/api/diagnostics/pending-tallies` | covered | `--api --data` | `cli-api-shell.tryscript.md` |
 | `/api/capabilities` | covered | `--api` | `cli-api-shell.tryscript.md` |
@@ -78,7 +78,7 @@ registered, any other status, and a golden that never runs the route.
 | `/commit` | covered | `--show /commit/<rev>[/<inner>]` | `cli-api-git.tryscript.md` |
 | `/pull` | covered | `--show /pull/<n>[/files[/<path>] or /checks]` | `cli-github-pull.tryscript.md`, `cli-github-pull-files.tryscript.md` |
 | `/pulls` | covered | `--show /pulls` | `cli-github-pulls.tryscript.md` |
-| `/api/events` | exempt | — | streaming; the response never terminates, so there is no envelope to pin |
+| `/api/events` | exempt | — | streaming; the response never terminates, so there is no envelope to pin. Its resync when the first snapshot cannot be read at one version is asserted by `tests/test_inventory_moved.py` |
 | `/raw` | exempt | — | asset serving; the query form and `/raw/{path}` share one resolver and send the file’s bytes plus sandbox headers, covered by `tests/test_raw_passthrough.py`, `tests/test_content_trust.py`, `tests/test_raw_path_route.py`, and, on a served Git pin, `tests/test_serve_pin.py`. A raster image’s query-form answer at the file’s current version (`v`, from the `raw_versions` of `/api/kpress/render`) is kept for a year and every other is `no-cache`, covered by `tests/test_raw_versions.py`, and in Chrome across a switch to `--untrusted` by `tests/test_raw_profile_cache_chrome.py`; only an `If-None-Match` naming the trust profile’s tag is answered `304`, covered by `tests/test_asset_stamps.py` |
 | `/_debug/tasks` | exempt | — | opt-in diagnostic, not a surface the browser reads |
 | `/_debug/inventory` | exempt | — | opt-in diagnostic; its work counters carry wall and CPU times, which no transcript can pin. Its payload shape is asserted by `tests/test_inventory_debug_route.py`, because the performance harness and `devtools/bench_serving.py` both parse it, its discovery record included. On a Git pin, which runs no inventory provider, it answers `unsupported_for_subject`, asserted by `tests/test_serve_pin.py` |

@@ -98,6 +98,7 @@ from metabrowser.inventory_engine.contract import (
     LifecyclePhase,
     NavigationProjection,
     NavigationQuery,
+    ProviderFailureError,
     QueryKind,
     QueryLimitProjection,
     QueryWorkLimitError,
@@ -119,6 +120,7 @@ from metabrowser.inventory_engine.runtime import (
     inventory_provider_from_environment,
 )
 from metabrowser.inventory_engine.tree_page_assembly import assemble_tree_pages
+from metabrowser.inventory_moved import inventory_retry_code
 from metabrowser.settings import (
     DEFAULT_EXECUTOR_WORKERS,
     INDEX_PROGRESS_UPDATE_FILES,
@@ -695,9 +697,21 @@ async def _stream_events(
     bus = _event_bus_for(request)
     scope = _scope_from_query(request)
     last_id = _parse_last_event_id(request)
-    snap, queue = await bus.snapshot_and_attach(scope)
     client = getattr(request, "client", None)
     client_str = f"{client.host}:{client.port}" if client else "?"
+    try:
+        snap, queue = await bus.snapshot_and_attach(scope)
+    except (VersionUnavailableError, ProviderFailureError) as error:
+        # The snapshot assembly ran out of attempts while the version moved, or the
+        # provider failed, so this connection has no coherent starting point. The
+        # response has already started, so instead of failing it, ask for a fresh
+        # snapshot the way every other gap does: the browser reconnects with its own
+        # backoff (inventory_moved.py).
+        LOG.info("sse: snapshot unavailable client=%s; requesting resync: %s", client_str, error)
+        reason = inventory_retry_code(error)
+        yield encode_sse(EventEnvelope(id=0, event=FsResyncRequired(reason=reason)))
+        return
+
     LOG.debug(
         "sse: attached client=%s scope=%s last_id=%s conns=%d",
         client_str,

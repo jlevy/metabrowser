@@ -12,6 +12,20 @@ All notable changes to Metabrowser are documented here.
   to reload what it shows; if reopening keeps failing, the folder reports a failed index
   with a `provider_failure` issue instead.
 
+- A tree, grouped tree, catalog, or rollup the inventory could not read at one version,
+  because the files kept changing through every bounded attempt, now answers HTTP 503
+  with a `Retry-After` header and the body
+  `{"error", "code": "inventory_version_moved", "retry_after_s"}`, instead of an
+  internal server error.
+  The event stream, when it cannot assemble its first snapshot for the same reason,
+  sends `fs.resync_required` with that code as its reason and ends, and the browser
+  reconnects for a fresh snapshot as after any other gap; it used to fail the stream.
+  `metab --walk` stops with an error naming the code, and `metab --api` prints the 503
+  envelope and exits non-zero.
+  The retry hint is `INVENTORY_RETRY_AFTER_S` in `inventory_moved.py`. A read the
+  inventory provider failed answers the same way with the code
+  `inventory_provider_failed`, while the server reopens the folder.
+
 - `/_debug/inventory` reports `discovery`, when the served root’s first discovery ended
   as the server observed it: its index status and phase, and how long the inventory
   provider’s open and then its discovery took, along with `files_indexed`.

@@ -1,0 +1,57 @@
+# metab <ROOT>/movedroot --api '/api/tree?depth=2'
+exit: 1
+--- stdout ---
+api: /api/tree?depth=2
+status: 503
+{
+  "error": "Inventory changed while this answer was read",
+  "code": "inventory_version_moved",
+  "retry_after_s": 1
+}
+--- stderr ---
+Error: /api/tree?depth=2 returned HTTP 503
+
+# metab <ROOT>/movedroot --api '/api/tree?group_by=type&depth=2'
+exit: 1
+--- stdout ---
+api: /api/tree?group_by=type&depth=2
+status: 503
+{
+  "error": "Inventory changed while this answer was read",
+  "code": "inventory_version_moved",
+  "retry_after_s": 1
+}
+--- stderr ---
+Error: /api/tree?group_by=type&depth=2 returned HTTP 503
+
+# metab <ROOT>/movedroot --api /api/catalog
+exit: 1
+--- stdout ---
+api: /api/catalog
+status: 503
+{
+  "error": "Inventory changed while this answer was read",
+  "code": "inventory_version_moved",
+  "retry_after_s": 1
+}
+--- stderr ---
+Error: /api/catalog returned HTTP 503
+
+# metab <ROOT>/movedroot --api '/api/rollup?path=&depth=0'
+exit: 1
+--- stdout ---
+api: /api/rollup?path=&depth=0
+status: 503
+{
+  "error": "Inventory changed while this answer was read",
+  "code": "inventory_version_moved",
+  "retry_after_s": 1
+}
+--- stderr ---
+Error: /api/rollup?path=&depth=0 returned HTTP 503
+
+# metab <ROOT>/movedroot --walk --format json
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: the inventory changed while this answer was read; retry in 1s (inventory_version_moved)

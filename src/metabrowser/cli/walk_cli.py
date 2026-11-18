@@ -17,7 +17,12 @@ import typer
 from metabrowser.cli.common import apply_log_level, cli_logging, validate_contained_path
 from metabrowser.dotenv import load_dotenv_chain as _load_dotenv_chain
 from metabrowser.errors import CLIError
-from metabrowser.inventory_engine.contract import parse_inventory_path
+from metabrowser.inventory_engine.contract import (
+    ProviderFailureError,
+    VersionUnavailableError,
+    parse_inventory_path,
+)
+from metabrowser.inventory_moved import inventory_moved_message, inventory_retry_code
 from metabrowser.settings import RECENT_WINDOW_SECONDS
 from metabrowser.tree_filter import TreeFilter, parse_recency, parse_types
 from metabrowser.walk import (
@@ -112,7 +117,11 @@ def run_walk(
         include_ignored=include_ignored,
     )
     with cli_logging():
-        _run_walk(root, fmt, stream, subpath, detail, max_depth, max_files, tree_filter)
+        try:
+            _run_walk(root, fmt, stream, subpath, detail, max_depth, max_files, tree_filter)
+        except (VersionUnavailableError, ProviderFailureError) as error:
+            # The route's retryable 503, as this command says it (inventory_moved.py).
+            raise CLIError(inventory_moved_message(inventory_retry_code(error))) from error
 
 
 def _run_walk(

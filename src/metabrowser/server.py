@@ -153,6 +153,7 @@ from metabrowser.inventory_engine.contract import (
     NavigationProjection,
     NavigationQuery,
     PriorityRequest,
+    ProviderFailureError,
     QueryWorkLimitError,
     ReadQuery,
     ReadRequest,
@@ -177,6 +178,11 @@ from metabrowser.inventory_engine.tree_page_assembly import (
     TreePageQuery,
     assemble_grouped_tree,
     assemble_tree_pages,
+)
+from metabrowser.inventory_moved import (
+    inventory_moved_headers,
+    inventory_moved_payload,
+    inventory_retry_code,
 )
 from metabrowser.inventory_rollup import RollupOptions, RollupRank
 from metabrowser.jsonl_view import _parse_jsonl_file
@@ -3076,7 +3082,9 @@ async def api_rollup(request: Request) -> Response:
     except VersionUnavailableError:
         # Discovery can advance between the checkpoint and the pinned read.
         # Fall back to one unpinned coherent result rather than starving a
-        # request behind a continuously moving scan.
+        # request behind a continuously moving scan. A provider that cannot answer
+        # that read either raises the same error, which `_inventory_moved_response`
+        # answers as a retryable 503.
         etag, body = await encode()
         _remember_rollup_body(etag, body)
         if matches_if_none_match(request, etag):
@@ -5239,6 +5247,29 @@ async def _query_work_limit_response(
     )
 
 
+async def _inventory_moved_response(
+    request: Request,
+    error: Exception,
+) -> JSONResponse:
+    """Answer an inventory read no single version could give as a retryable 503.
+
+    Every route reaches it the same way: a tree, grouped-tree, or catalog assembly that
+    ran out of bounded attempts, and a rollup whose unpinned fallback the provider could
+    not answer either, all raise `VersionUnavailableError` (`inventory_moved.py`). A
+    read the provider failed with `ProviderFailureError` answers the same, under its own
+    code.
+    """
+
+    if not isinstance(error, (VersionUnavailableError, ProviderFailureError)):  # pragma: no cover
+        raise error
+    LOG.info("inventory read failed during %s; answering 503: %s", request.url.path, error)
+    return JSONResponse(
+        inventory_moved_payload(inventory_retry_code(error)),
+        status_code=503,
+        headers=inventory_moved_headers(),
+    )
+
+
 async def _unsupported_source_response(
     _request: Request,
     error: Exception,
@@ -5254,6 +5285,8 @@ app = Starlette(
     lifespan=_lifespan,
     exception_handlers={
         QueryWorkLimitError: _query_work_limit_response,
+        VersionUnavailableError: _inventory_moved_response,
+        ProviderFailureError: _inventory_moved_response,
         UnsupportedSourceCapabilityError: _unsupported_source_response,
     },
 )

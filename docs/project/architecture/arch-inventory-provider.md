@@ -133,7 +133,14 @@ If the provider stops retaining the pinned version, the whole bounded assembly r
 cursors must advance and the final page must omit its continuation.
 Exhausted retries fail the request with `VersionUnavailableError`; a complete consumer
 never substitutes a partial first page.
-The protocol does not promise indefinite retention: a provider states its own eviction
+The host answers that error, and the same error from an unpinned read such as the
+rollup’s fallback, as one retryable outcome that `inventory_moved.py` defines: a route
+answers 503 with `Retry-After` and the `inventory_version_moved` code, the event stream
+asks for a resync, and `metab --walk` stops with a typed error
+(`tests/test_inventory_moved.py`, `tests/golden/cli-api-inventory-moved.txt`). A read
+that raises `ProviderFailureError` is the same outcome with the
+`inventory_provider_failed` code, while the coordinator replaces the handle (D14). The
+protocol does not promise indefinite retention: a provider states its own eviction
 policy, and an unrelated old version-pinned request may expire.
 
 A provider may answer a repeated root-summary read from an earlier coherent boundary
