@@ -58,6 +58,7 @@ import os
 import re
 import sys
 import time
+import unicodedata
 from collections.abc import Callable, Generator, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -112,7 +113,8 @@ MAX_RECENT_TARGETS: Final = 50
 # The longest root recorded, in UTF-8 bytes: Linux's PATH_MAX, four times macOS's. No
 # folder a server can open has a longer path, and a normalized address is far shorter.
 MAX_ROOT_BYTES: Final = 4096
-# The largest file read. A root holds no control character, and YAML at most doubles what
+# The largest file read. A root holds no control or line-breaking character, and YAML at
+# most doubles what
 # is left to escape (a quote, or a character it writes as ``\xNN``), so 50 roots of 4,096
 # bytes stay under this, and :func:`_serialize` drops the oldest entries of a list that
 # would still exceed it and reads back what it wrote, so no writer publishes a file a
@@ -143,6 +145,13 @@ MODES: Final[tuple[TargetMode, ...]] = ("folder", "mirror")
 # The canonical RFC 3339 UTC spelling the cache's records use (``cache/records.py``).
 _TIMESTAMP: Final = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
 _ENTRY_KEYS: Final = frozenset({"mode", "root", "opened_at"})
+# The Unicode categories of the characters no root may hold: controls (C0, DEL, and C1,
+# which has NEL) and the line and paragraph separators. A terminal acts on the first, and
+# YAML reads NEL, U+2028, and U+2029 as line breaks: PyYAML's own emitter, its fallback
+# without libyaml, wrote them raw in a quoted scalar, which did not read back as written,
+# while libyaml escapes them. Without them the two emitters write the same text, which
+# `test_the_file_is_the_same_with_and_without_libyaml` holds.
+_LINE_BREAKING: Final = frozenset({"Cc", "Zl", "Zp"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -240,8 +249,8 @@ def _checked_root(mode: str, root: str) -> str | None:
         return "the root is not valid UTF-8"
     if size > MAX_ROOT_BYTES:
         return f"the root is longer than {MAX_ROOT_BYTES} bytes"
-    if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in root):
-        return "the root holds a control character"
+    if any(unicodedata.category(ch) in _LINE_BREAKING for ch in root):
+        return "the root holds a control character or a line separator"
     if mode == "folder" and not root.startswith("/"):
         return "a folder's root is an absolute path"
     if mode == "mirror" and (root.startswith("/") or any(ch.isspace() for ch in root)):

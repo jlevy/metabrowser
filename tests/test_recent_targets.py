@@ -184,7 +184,8 @@ def test_a_folder_that_cannot_be_opened_keeps_its_resolved_path(tmp_path: Path) 
         "/work/123",
         "/work/café/日本語",
         "/work/quote\"s/and 'single'",
-        "/work/line separator/next\u0085line",
+        "/work/zero\u200bwidth/rtl\u202eoverride/bom\ufeff/nbsp\u00a0x/\U0001f600",
+        "/work/trailing space /ends with colon:",
         "/",
         "/work/" + "x" * (MAX_ROOT_BYTES - len("/work/")),
     ],
@@ -195,7 +196,8 @@ def test_a_folder_that_cannot_be_opened_keeps_its_resolved_path(tmp_path: Path) 
         "number",
         "unicode",
         "quotes",
-        "separators",
+        "invisible",
+        "spaces",
         "root",
         "longest",
     ],
@@ -213,6 +215,9 @@ def test_a_root_is_read_back_exactly_as_recorded(home: Path, root: str) -> None:
         ("folder", "relative/path", "absolute path"),
         ("folder", "/work/line\nbreak", "control character"),
         ("folder", "/work/bell\x07", "control character"),
+        ("folder", "/work/next\u0085line", "line separator"),
+        ("folder", "/work/line\u2028separator", "line separator"),
+        ("folder", "/work/paragraph\u2029separator", "line separator"),
         ("folder", "/" + "x" * MAX_ROOT_BYTES, "longer than"),
         ("folder", "/work/\udcff", "UTF-8"),
         ("mirror", "/a/path", "repository address"),
@@ -227,6 +232,43 @@ def test_a_root_the_list_cannot_hold_is_refused(
         record(mode, root, directory=home)  # pyright: ignore[reportArgumentType]
 
     assert not home.exists()
+
+
+def test_the_file_is_the_same_with_and_without_libyaml(
+    home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PyYAML's own emitter and parser, its fallback without libyaml, agree with libyaml's.
+
+    A build of PyYAML without the C extension must write the file a build with it reads,
+    and the reverse: the two can be installed side by side, as a free-threaded
+    interpreter's may be. A root with U+2028 or NEL is what told them apart: PyYAML's
+    emitter wrote it raw in a quoted scalar, which did not read back as written, so no
+    root may hold one.
+    """
+
+    if not hasattr(yaml, "CSafeDumper"):
+        pytest.skip("this PyYAML has no libyaml to compare with")
+    roots = [
+        "/work/plain",
+        "/work/with space/and: colon/# hash/- dash",
+        "/work/quote\"s/and 'single'",
+        "/work/zero\u200bwidth/rtl\u202eoverride/bom\ufeff/nbsp\u00a0x/\U0001f600",
+        "/work/calf\u00e9/\u65e5\u672c\u8a9e",
+        "/work/" + "x" * (MAX_ROOT_BYTES - len("/work/")),
+    ]
+    for root in roots:
+        record("folder", root, directory=home, opened_at=_STAMP)
+    with_libyaml = (home / STORE_FILE).read_bytes()
+
+    other = tmp_path / "other" / "metabrowser"
+    monkeypatch.delattr(yaml, "CSafeDumper")
+    monkeypatch.delattr(yaml, "CBaseLoader")
+    for root in roots:
+        record("folder", root, directory=other, opened_at=_STAMP)
+
+    assert (other / STORE_FILE).read_bytes() == with_libyaml
+    assert _roots(other) == list(reversed(roots))
+    assert _roots(home) == list(reversed(roots))
 
 
 # ── Folders that are gone ──────────────────────────────────────────
