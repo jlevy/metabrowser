@@ -4,6 +4,10 @@ The server is authoritative. Client settings and ``/api/capabilities``
 publish the same block as a hint. ``--untrusted`` sets every switch to
 its conservative value; individual CLI flags override that profile, and
 nothing in the environment does.
+
+One thing narrows the block after it is resolved, and nothing widens it: while a folder's
+server shows a committed revision of its checkout, :func:`get_capabilities` answers the
+untrusted block (:func:`serve_checkout_revision`).
 """
 
 from __future__ import annotations
@@ -71,11 +75,38 @@ class Capabilities:
 
 
 DEFAULT_CAPABILITIES = Capabilities(active_content=True, mutations=False)
+# Every switch at its conservative value: what ``--untrusted`` resolves to.
+UNTRUSTED_CAPABILITIES = Capabilities(active_content=False, mutations=False)
 _current = DEFAULT_CAPABILITIES
+# Whether a folder's server is showing one of its checkout's committed revisions; see
+# :func:`serve_checkout_revision`.
+_checkout_revision = False
 
 
 def get_capabilities() -> Capabilities:
-    return _current
+    """The block in effect for what is served now.
+
+    The process's own block, except while a folder's server shows a committed revision of
+    its checkout, which runs under the untrusted profile as every pin does.
+    """
+
+    return UNTRUSTED_CAPABILITIES if _checkout_revision else _current
+
+
+def serve_checkout_revision(served: bool) -> None:
+    """Say whether a folder's server is showing a committed revision of its checkout.
+
+    A folder is opened under the profile its reader chose for the files they work in. A
+    branch or tag in its ``.git`` is whatever a fetch brought, so its pages get the
+    profile a mirror's content gets, and the folder's own block is in effect again once
+    the working tree is served. The process's block is kept, not replaced, so returning
+    restores exactly what the operator's flags resolved to. Called in the same step that
+    replaces the served subject (:mod:`metabrowser.checkout_revisions`), and cleared
+    whenever a filesystem root is attached (:mod:`metabrowser.source`).
+    """
+
+    global _checkout_revision
+    _checkout_revision = served
 
 
 def set_capabilities(capabilities: Capabilities) -> None:

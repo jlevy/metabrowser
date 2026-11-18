@@ -80,6 +80,7 @@ from metabrowser.capabilities import get_capabilities, raw_sandbox_csp, untruste
 # Cache invalidator: clear_charts_cache is invoked by the root-change
 # handler so chart memos don't stick across served-root swaps.
 from metabrowser.charts import clear_charts_cache
+from metabrowser.checkout_revisions import checkout_revisions, lifespan_checkout
 from metabrowser.content_sniff import ContentClass, sniff_artifact
 from metabrowser.dotenv import load_dotenv_chain
 from metabrowser.embedded_resources import embedded_raw_paths
@@ -224,6 +225,7 @@ from metabrowser.source_routes import (
     SOURCE_ROUTES,
     SourcePinGuard,
     SourceStatus,
+    crossed_view_href,
     source_status,
 )
 from metabrowser.sse import api_stream
@@ -1279,6 +1281,13 @@ def _mirror_tip(status: SourceStatus) -> str | None:
 
     if status["location"] is None:
         return None
+    if status["origin"] is None:
+        # A revision of the served checkout: the directory is the reader's own folder, and
+        # the page is not the files in it.
+        return (
+            f"Committed revision {status['pin']} of the checkout in {status['location']}, "
+            "read from its Git objects: not the files in that folder now."
+        )
     borrowing = f", borrowing objects from {status['borrows']}" if status["borrows"] else ""
     return (
         f"Mirror of {status['origin']} at {status['pin']}, stored in {status['location']}"
@@ -1300,7 +1309,13 @@ def _mirror_heading_attrs(status: SourceStatus) -> str:
     if tip is None:
         return ""
     location = html_escape(status["location"] or "", quote=True)
-    return f' data-mirror-location="{location}" data-mirror-tip="{html_escape(tip, quote=True)}"'
+    # What the note after the main heading's address says before the location. A mirror
+    # is kept there, which is the words static/mirror-heading.js has; a checkout's
+    # revision is of the folder there, so its page names the words.
+    note = "" if status["origin"] is not None else ' data-mirror-note="committed revision of"'
+    return (
+        f' data-mirror-location="{location}"{note} data-mirror-tip="{html_escape(tip, quote=True)}"'
+    )
 
 
 @functools.cache
@@ -1460,17 +1475,21 @@ async def index(
     git_pin = pin is not None
     # Only a pin has a mirror session; a folder's shell never reads the app's state.
     mirror = mirror_session(request.app) if pin is not None else None
+    # The served checkout's own refs and revisions: a folder that is a repository's root,
+    # on its working tree and on each revision it shows. A mirror and a plain folder
+    # have none.
+    checkout = checkout_revisions(request.app)
     # The tab's title, and a native window's: what the served subject is called, from the
     # model `/api/identity` answers, so the two cannot disagree. A page changes subject
     # only by loading again, so the title written here stays current.
-    page_title = html_escape(root_identity(mirror)["title"])
+    page_title = html_escape(root_identity(mirror, checkout)["title"])
     if pin is not None:
         # Imported where a pin is served, like every other Git import below: the
         # modules behind a pinned revision are start-up work a folder never uses.
         from metabrowser.git.tree_source import ref_branch_name
 
         pin_oid = pin.commit_oid
-        status = source_status(mirror)
+        status = source_status(mirror, checkout)
         initial_path = _pin_label_html(status)
         # A mirror's served root is the repository's name, as a folder's is its path:
         # what the file header's prefix and this heading's tooltip call the root.
@@ -1576,11 +1595,12 @@ async def index(
         if git_pin
         else ""
     )
-    # A mirror's branch and tag selector, filled by static/source-ref-selector.js. Only a
-    # pin served from a mirror has other refs to switch to.
+    # The branch and tag selector, filled by static/source-ref-selector.js: on a pin
+    # served from a mirror, and on a checkout, whose working tree and revisions it
+    # switches between. A plain folder and a pin with no mirror have nothing to switch to.
     source_ref_selector_row = (
         '\n      <div class="source-ref-selector" id="source-ref-selector" hidden></div>'
-        if git_pin and mirror_session(request.app) is not None
+        if (git_pin and mirror is not None) or checkout is not None
         else ""
     )
     # The Pulls tab is decided here, from what the page already knows: a pin whose mirror is a
@@ -1821,6 +1841,14 @@ async def index(
         )
         if mirror_attrs:
             repository_context_block += f"<script>{_mirror_heading_script()}</script>"
+    if checkout is not None:
+        # A checkout's page says so, and whether it shows the working tree: the ref
+        # selector reads it for what it offers, and the pin guard, which the selector's
+        # bundle brings to a working-tree page, for what the page's requests name.
+        page_checkout = _json.dumps({"working_tree": pin is None})
+        repository_context_block += (
+            f"<script>window.METABROWSER_SOURCE_CHECKOUT={page_checkout};</script>"
+        )
     # Read preferences from host-only cookies (not localStorage): cookies
     # ignore the port, so the choice is shared across every metabrowser instance
     # on this host (each folder server lands on its own port). Runs before the
@@ -1933,10 +1961,20 @@ async def index(
         # this; a pin starts it after the first tree request settles, and the
         # label it paints is a quiet row the page does not wait for.
         "source-freshness": [{"src": source_freshness_url}],
-        # Only a pin served from a mirror has the selector; it is fetched after the
-        # first tree request settles, like the freshness row, and no request is made
-        # for the refs until a reader opens it.
-        "source-ref-selector": [{"src": source_ref_selector_url}],
+        # Only a pin served from a mirror, or a checkout, has the selector; it is fetched
+        # after the first tree request settles, like the freshness row, and no request is
+        # made for the refs until a reader opens it. A pin's page carries the pin guard
+        # inline. A checkout's working-tree page takes it here, ahead of the selector
+        # that can make the server serve something else, so that a folder's first paint
+        # carries none of it.
+        "source-ref-selector": [
+            *(
+                [{"src": _static_asset_url("source-pin-guard.js")}]
+                if checkout is not None and pin is None
+                else []
+            ),
+            {"src": source_ref_selector_url},
+        ],
         "source-append": [{"src": source_append_url}],
         "chart": [
             {"src": _static_asset_url("vendor/chart.umd.min.js"), "provides": "Chart"},
@@ -2229,15 +2267,38 @@ async def view_shell(request: Request) -> Response:
     raw_path = request.scope.get("raw_path")
     if not isinstance(raw_path, bytes):
         return PlainTextResponse("Invalid view path.", status_code=400)
+    crossed: str | None = None
     if as_git_revision_subject(get_source_session().subject) is not None:
         from metabrowser.git.content_routes import decode_git_view_path
 
         decoded = decode_git_view_path(raw_path)
+        if decoded is None:
+            # A folder's address on a revision of its checkout: a tab, a history entry,
+            # or a bookmark from the working tree. It goes where a switch would send it.
+            crossed = await crossed_view_href(request.app, raw_path)
     else:
         decoded = decode_safe_view_path(raw_path)
+        # A revision's address on its checkout's working tree, unless the folder has an
+        # entry by that very name.
+        if (
+            decoded is not None
+            and decoded.startswith("g1-")
+            and not await asyncio.to_thread(_view_path_exists, decoded)
+        ):
+            crossed = await crossed_view_href(request.app, raw_path)
+    if crossed is not None:
+        return RedirectResponse(crossed, status_code=307)
     if decoded is None:
         return PlainTextResponse("Invalid view path.", status_code=400)
     return await index(request, view_path=decoded)
+
+
+def _view_path_exists(decoded: str) -> bool:
+    target = _safe_path(decoded)
+    try:
+        return target is not None and target.exists()
+    except OSError:
+        return False
 
 
 async def commit_shell(request: Request) -> Response:
@@ -4975,10 +5036,13 @@ async def _lifespan(app: Starlette) -> AsyncIterator[None]:
     # A served pin attaches before the inventory opens, which reads the active
     # subject, and closes after it, so nothing still reads its Git processes. The
     # refresh jobs start once the pin is attached and are cancelled before it closes.
+    # What a folder's server keeps for its checkout comes last, so it is left first: a
+    # revision of the checkout still served at shutdown is closed while the rest is up.
     async with (
         lifespan_subject(),
         build_lifespan(app=app, root_provider=_inventory_root_provider),
         lifespan_refresh(app),
+        lifespan_checkout(app),
     ):
         try:
             yield

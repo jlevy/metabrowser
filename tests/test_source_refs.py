@@ -126,6 +126,7 @@ def test_branches_list_the_default_first_and_mark_the_served_one(
         "ref": "refs/remotes/origin/topic",
         "commit": origin.second,
         "default": True,
+        "checked_out": False,
         "current": True,
     }
     assert (release["default"], release["current"]) == (False, False)

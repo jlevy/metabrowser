@@ -15,6 +15,11 @@ The origin is ``tests/source_mirror_fixture.py``'s, written by ``git fast-import
 every commit ID is the same on every machine, and its last fetch is recorded at the
 fixture's fixed time, so every status envelope is literal. ``make golden-update``
 rewrites the recording and then the transcript.
+
+The same module is a served checkout's selector. Its conversation is recorded the same
+way, from ``tests/source_checkout_fixture.py``'s checkout served as a folder, in
+``tests/fixtures/source-ref-selector-checkout-responses.json``: the listings on the working
+tree and on a revision, a branch, the checked-out branch, and the working tree again.
 """
 
 from __future__ import annotations
@@ -43,11 +48,14 @@ from tests.golden_harness import (
     stand_in_sandbox,
 )
 from tests.required_tools import needs_git
+from tests.source_checkout_fixture import build_checkout
+from tests.source_checkout_fixture import view as revision_view
 from tests.source_mirror_fixture import FETCHED_AT, build_origin
 from tests.test_cache_acquire import _allow_installed_git, _file_source
 from tests.test_source_freshness_session import _write_state
 
 RECORDING = "source-ref-selector-responses.json"
+CHECKOUT_RECORDING = "source-ref-selector-checkout-responses.json"
 TRANSCRIPT = "cli-ui-source-ref-selector.tryscript.md"
 
 TOPIC = "refs/remotes/origin/topic"
@@ -117,6 +125,124 @@ def test_recording_is_what_a_served_mirror_answers(
     assert "view_href" not in recorded["switch_no_view"]["body"]
     assert recorded["switch_missing"]["status"] == 404
     check_recording(RECORDING, recorded, transcript=TRANSCRIPT)
+
+
+def _record_checkout(tmp_path: Path) -> dict[str, Any]:
+    sandbox = tmp_path.resolve()
+    server._set_root_dir(build_checkout(sandbox))
+    readme = revision_view("README.md")
+    recorded: dict[str, Any] = {"views": {"readme": "/view/README.md", "readme_revision": readme}}
+    with TestClient(server.app) as client:
+
+        def listing(**params: str) -> dict[str, Any]:
+            return answer(client.get("/api/source/refs", params=params))
+
+        def switch(body: dict[str, object]) -> dict[str, Any]:
+            return answer(client.post("/api/source/pin", json=body, headers=JSON_BODY))
+
+        recorded["branches"] = listing(kind="branch")
+        recorded["tags"] = listing(kind="tag")
+        recorded["remotes"] = listing(kind="remote")
+        recorded["switch_missing"] = switch({"ref": "refs/heads/gone"})
+        recorded["switch_working_tree_same"] = switch(
+            {"working_tree": True, "view": "/view/README.md"}
+        )
+        recorded["switch_branch"] = switch({"ref": "refs/heads/feature", "view": "/view/README.md"})
+        recorded["branches_on_revision"] = listing(kind="branch")
+        recorded["switch_checked_out"] = switch({"ref": "refs/heads/topic", "view": readme})
+        recorded["switch_working_tree"] = switch({"working_tree": True, "view": readme})
+    return stand_in_sandbox(recorded, sandbox)
+
+
+def test_recording_is_what_a_served_checkout_answers(tmp_path: Path) -> None:
+    recorded = _record_checkout(tmp_path)
+    branches = recorded["branches"]["body"]
+    assert branches["kinds"] == ["branch", "tag", "remote"]
+    assert branches["working_tree"] == {
+        "current": True,
+        "head": "refs/heads/topic",
+        "head_name": "topic",
+    }
+    assert [row["name"] for row in branches["refs"]] == ["topic", "feature", "local-work"]
+    assert branches["refs"][0]["checked_out"] and not branches["refs"][0]["current"]
+    assert [row["name"] for row in recorded["remotes"]["body"]["refs"]] == [
+        "origin/feature",
+        "origin/topic",
+    ]
+    switched = recorded["switch_branch"]["body"]
+    assert (switched["changed"], switched["view_href"]) == (
+        True,
+        recorded["views"]["readme_revision"],
+    )
+    # The checkout's path is the sandbox's, and stands in as the recording's.
+    assert switched["status"]["location"] == "/sandbox/checkout"
+    on_revision = recorded["branches_on_revision"]["body"]
+    assert on_revision["working_tree"]["current"] is False
+    assert [row["name"] for row in on_revision["refs"] if row["current"]] == ["feature"]
+    # The checked-out branch is a revision too: a pin, not the working tree.
+    assert recorded["switch_checked_out"]["body"]["status"]["subject"] == "git_revision"
+    back = recorded["switch_working_tree"]["body"]
+    assert (back["status"]["subject"], back["status"]["pin"], back["view_href"]) == (
+        "attached_filesystem",
+        None,
+        recorded["views"]["readme"],
+    )
+    assert recorded["switch_working_tree_same"]["body"]["changed"] is False
+    assert recorded["switch_missing"]["status"] == 404
+    check_recording(CHECKOUT_RECORDING, recorded, transcript=TRANSCRIPT)
+
+
+def test_the_session_runs_a_checkout_on_its_recording() -> None:
+    checkout = run_session("source-ref-selector-session.js")["checkout"]
+    by_name = {step["step"]: step for step in checkout["steps"]}
+    recording = read_recording(CHECKOUT_RECORDING)
+    assert by_name["the button names the working tree"]["paint"]["button"] == "Working tree"
+    listed = by_name["the working tree is listed above the branches, and is what is served"]
+    assert listed["paint"]["workingTree"] == ("Working tree: Live local files, on topic [current]")
+    assert listed["paint"]["lists"] == ["branch", "tag", "remote"]
+    assert listed["paint"]["rows"][0].startswith("topic ")
+    assert "[checked out]" in listed["paint"]["rows"][0]
+    assert "[current]" not in listed["paint"]["rows"][0]
+    asked = by_name["a branch is asked for by its ref, with the folder's address"]
+    body = {"ref": "refs/heads/feature", "view": recording["views"]["readme"]}
+    assert asked["requests"] == [f"POST /api/source/pin {json.dumps(body, separators=(',', ':'))}"]
+    assert by_name["the page goes to the same file in the revision"]["navigated"] == [
+        recording["views"]["readme_revision"]
+    ]
+    shown = by_name["the branch shown is current, and the working tree no longer is"]["paint"]
+    assert shown["workingTree"] == "Working tree: Live local files, on topic"
+    assert [row.split()[0] for row in shown["rows"] if "[current]" in row] == ["feature"]
+    # The checked-out branch navigates as any ref does; it is not the way back.
+    assert by_name["the checked-out branch opens its commit, not the working tree"][
+        "navigated"
+    ] == [recording["views"]["readme_revision"]]
+    way_back = by_name["the working tree is asked for by name, not by a ref"]
+    body = {"working_tree": True, "view": recording["views"]["readme_revision"]}
+    assert way_back["requests"] == [
+        f"POST /api/source/pin {json.dumps(body, separators=(',', ':'))}"
+    ]
+    assert by_name["the page goes to the same file in the folder"]["navigated"] == [
+        recording["views"]["readme"]
+    ]
+    assert "navigated" not in by_name["choosing the working tree while it is shown only closes"]
+    assert by_name["a ref gone from the checkout says so, and nothing is fetched"]["paint"][
+        "error"
+    ] == ("That ref is no longer in the checkout.")
+    assert by_name["a working-tree page left behind offers a reload"]["paint"]["stale"] == (
+        "The server now shows another revision [Reload]"
+    )
+    assert by_name["a revision's page left behind offers one too"]["paint"]["stale"] == (
+        "The server now shows the working tree [Reload]"
+    )
+    mirror = by_name["a mirror's selector asks for no working tree and offers no reload"]
+    assert mirror["requests"] == [] and "stale" not in mirror["paint"]
+    assert checkout["labels"] == [
+        "Working tree",
+        "Branch: feature (local chip)",
+        "Remote branch: origin/feature (remote chip)",
+        "Tag: v1 (tag chip)",
+        f"Commit: {recording['switch_branch']['body']['status']['pin'][:12]}",
+    ]
 
 
 def test_the_session_runs_on_the_recording() -> None:

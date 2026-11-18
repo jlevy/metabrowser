@@ -26,6 +26,7 @@ from typing import IO, TYPE_CHECKING, Protocol, runtime_checkable
 from strif import clean_alphanum_hash
 
 import metabrowser.paths_safe as paths_safe
+from metabrowser import capabilities
 from metabrowser.content_errors import ContentReadError, ContentUnavailableError
 from metabrowser.gz_io import ArtifactCompressionError, ArtifactPath
 from metabrowser.inventory_engine.contract import canonical_inventory_path, native_inventory_path
@@ -559,12 +560,20 @@ _open_failure: SubjectOpenError | None = None
 _owned_subject: ClosableRepositorySubject | None = None
 
 
-def attach_subject(subject: RepositorySubject) -> SourceSession:
-    """Install `subject` as the sole active session, releasing any previous lease."""
+def attach_subject(subject: RepositorySubject, *, checkout_revision: bool = False) -> SourceSession:
+    """Install `subject` as the sole active session, releasing any previous lease.
+
+    *checkout_revision* says the subject is a committed revision a folder's server shows
+    of its own checkout, which runs under the untrusted profile
+    (:func:`metabrowser.capabilities.serve_checkout_revision`). Every attachment states
+    it, in the step that installs the subject, so the profile in effect never belongs to
+    a subject that was replaced.
+    """
 
     global _session, _generation
     if _session is not None:
         _session.close()
+    capabilities.serve_checkout_revision(checkout_revision)
     _generation += 1
     _session = SourceSession(
         subject=subject,
@@ -574,27 +583,52 @@ def attach_subject(subject: RepositorySubject) -> SourceSession:
     return _session
 
 
-def attach_owned_subject(subject: ClosableRepositorySubject) -> SourceSession:
+def attach_owned_subject(
+    subject: ClosableRepositorySubject, *, checkout_revision: bool = False
+) -> SourceSession:
     """Serve *subject*, which this process opened and closes with :func:`close_owned_subject`."""
 
     global _owned_subject
-    session = attach_subject(subject)
+    session = attach_subject(subject, checkout_revision=checkout_revision)
     _owned_subject = subject
     return session
 
 
-async def replace_owned_subject(subject: ClosableRepositorySubject) -> SourceSession:
+async def replace_owned_subject(
+    subject: ClosableRepositorySubject, *, checkout_revision: bool = False
+) -> SourceSession:
     """Serve *subject* in place of the owned subject, then close the one it replaced.
 
     The new subject is attached first, so every request that starts afterwards reads it
     under the new generation. Closing the old one releases only its share of the
     per-store reader pool: a request still reading the old pin from the same store
     finishes on readers the new pin keeps alive.
+
+    A folder's server owns no subject until it shows a revision of its checkout, so the
+    first such switch replaces the folder, which is not closed: its files are not this
+    process's to close, and it is served again by :func:`restore_filesystem_subject`.
     """
 
     previous = _owned_subject
-    session = attach_owned_subject(subject)
+    session = attach_owned_subject(subject, checkout_revision=checkout_revision)
     if previous is not None and previous is not subject:
+        await previous.aclose()
+    return session
+
+
+async def restore_filesystem_subject(root: Path) -> SourceSession:
+    """Serve the folder at *root* in place of the owned subject, then close that subject.
+
+    How a folder's server returns to its working tree from a revision of its checkout.
+    The folder is attached first, under a new generation and its own trust profile, so
+    every request that starts afterwards reads the files on disk; the revision's batch
+    readers are closed after it.
+    """
+
+    global _owned_subject
+    previous, _owned_subject = _owned_subject, None
+    session = attach_subject(AttachedFilesystemSubject(root))
+    if previous is not None:
         await previous.aclose()
     return session
 
@@ -651,6 +685,7 @@ def reset_source_session() -> None:
     global _session, _generation, _subject_opener, _open_failure, _owned_subject
     if _session is not None:
         _session.close()
+    capabilities.serve_checkout_revision(False)
     _session = None
     _generation = 0
     _subject_opener = None
@@ -874,6 +909,7 @@ __all__ = [
     "resolve_content",
     "resolve_content_container",
     "resolve_session_identity",
+    "restore_filesystem_subject",
     "serve_subject_opener",
     "session_filesystem_root",
     "source_capabilities",

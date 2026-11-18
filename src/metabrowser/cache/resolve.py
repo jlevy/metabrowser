@@ -4,6 +4,11 @@ This is the one resolver: URL opening (:func:`resolve_selection`), the pin route
 (:func:`resolve_pin`), the refresh and status reads (:func:`ref_tip`), and the branch
 and tag listing (:func:`list_mirror_refs`) all look refs up the same way.
 
+A served checkout's own refs go through the same pin resolver and listing, with
+:data:`CHECKOUT_REFS` naming where a checkout keeps its branches where :data:`MIRROR_REFS`
+names a mirror's (:class:`RefNamespaces`), so a folder's ref selector resolves a name by
+the rules a mirror's does.
+
 A URL such as ``…/tree/release/v1/docs`` cannot be split by reading it: the ref may be
 ``release``, ``release/v1``, or ``release/v1/docs``. Only the mirror knows, so each
 split is a candidate, up to :data:`MAX_REF_CANDIDATES`. Every candidate that passes
@@ -79,6 +84,55 @@ _PULL_REFS: Final = "refs/pull/"
 _PULL_HEAD = re.compile(r"refs/pull/([1-9][0-9]{0,9})/head")
 
 type ResolvedVia = Literal["default", "branch", "tag", "commit", "pull_request"]
+
+
+@dataclass(frozen=True, slots=True)
+class RefNamespaces:
+    """Where a repository keeps the refs a reader can select, and what it is called.
+
+    A mirror holds its origin's branches under ``refs/remotes/origin/`` and no
+    remote-tracking branches of its own, plus the pull-request heads fetched into it. A
+    checkout holds its local branches under ``refs/heads/`` and every remote's under
+    ``refs/remotes/``. Tags are ``refs/tags/`` in both. ``where`` is how a refusal names
+    the repository.
+    """
+
+    branch: str
+    tag: str
+    remote: str | None
+    pull_heads: bool
+    where: str
+
+    def prefix(self, kind: RefKind) -> str | None:
+        """The namespace *kind* lists, or ``None`` when the repository has no such list."""
+
+        if kind == "branch":
+            return self.branch
+        return self.tag if kind == "tag" else self.remote
+
+    @property
+    def kinds(self) -> tuple[RefKind, ...]:
+        """The lists the repository has, in the order a selector offers them."""
+
+        return ("branch", "tag") if self.remote is None else ("branch", "tag", "remote")
+
+    @property
+    def prefixes(self) -> tuple[str, ...]:
+        """Every namespace a short name is tried in, in precedence order."""
+
+        return tuple(prefix for prefix in (self.branch, self.tag, self.remote) if prefix)
+
+
+MIRROR_REFS: Final = RefNamespaces(
+    branch=BRANCH_MIRROR_PREFIX, tag=TAG_PREFIX, remote=None, pull_heads=True, where="the mirror"
+)
+CHECKOUT_REFS: Final = RefNamespaces(
+    branch="refs/heads/",
+    tag=TAG_PREFIX,
+    remote="refs/remotes/",
+    pull_heads=False,
+    where="the checkout",
+)
 type UnresolvedReason = Literal[
     "ref_not_found", "commit_not_found", "commit_ambiguous", "not_a_commit", "invalid_ref"
 ]
@@ -145,15 +199,17 @@ def is_valid_ref_name(name: str) -> bool:
     )
 
 
-def is_pinnable_ref(ref: str) -> bool:
-    """Whether *ref* is a full name a mirror holds and a pin may be served under.
+def is_pinnable_ref(ref: str, namespaces: RefNamespaces = MIRROR_REFS) -> bool:
+    """Whether *ref* is a full name the repository holds and a pin may be served under.
 
-    The origin's branches (``refs/remotes/origin/…``), its tags (``refs/tags/…``), and a
-    pull request's head (``refs/pull/<n>/head``), each a valid ref name.
+    In a mirror, the origin's branches (``refs/remotes/origin/…``), its tags
+    (``refs/tags/…``), and a pull request's head (``refs/pull/<n>/head``); in a
+    checkout, its branches, tags, and remote-tracking branches. Each a valid ref name.
     """
 
     return (
-        ref.startswith((BRANCH_MIRROR_PREFIX, TAG_PREFIX)) or _PULL_HEAD.fullmatch(ref) is not None
+        ref.startswith(namespaces.prefixes)
+        or (namespaces.pull_heads and _PULL_HEAD.fullmatch(ref) is not None)
     ) and is_valid_ref_name(ref)
 
 
@@ -345,17 +401,27 @@ async def mirror_refs(target: RepositoryStoreTarget) -> dict[str, str]:
 # ``--sort`` is the primary key, so names break a tie between dates.
 # ``%(object)`` and ``%(type)`` are an annotated tag's own target, one level on every
 # Git version; both are empty for a ref that names a commit.
-_LIST_FORMAT: Final = "%(refname)%00%(objectname)%00%(objecttype)%00%(object)%00%(type)"
+# ``%(symref)`` is empty unless the ref is symbolic, as a checkout's ``origin/HEAD`` is.
+_LIST_FORMAT: Final = "%(refname)%00%(objectname)%00%(objecttype)%00%(object)%00%(type)%00%(symref)"
 _LIST_SORT: Final[Mapping[RefKind, tuple[str, ...]]] = {
     "branch": ("--sort=refname",),
     "tag": ("--sort=refname", "--sort=-creatordate"),
+    "remote": ("--sort=refname",),
 }
 
 
 async def list_mirror_refs(
-    target: RepositoryStoreTarget, kind: RefKind, *, default_ref: str | None = None
+    target: RepositoryStoreTarget,
+    kind: RefKind,
+    *,
+    default_ref: str | None = None,
+    namespaces: RefNamespaces = MIRROR_REFS,
 ) -> tuple[MirrorRef, ...]:
     """Every branch, or every tag, the store holds that names a commit, in one ``for-each-ref``.
+
+    *namespaces* says where the repository keeps each kind; a kind it has no list of, as a
+    mirror has no remote-tracking branches, lists nothing. A remote-tracking ref that is
+    symbolic, ``origin/HEAD``, is left out: it names another row of the same list.
 
     The default branch, *default_ref*, comes first and is marked. A ref is listed when
     it names a commit, or names an annotated tag whose own target is a commit. A tag of
@@ -368,7 +434,9 @@ async def list_mirror_refs(
     listing is bounded by the store-read policy's output cap and deadline.
     """
 
-    prefix = BRANCH_MIRROR_PREFIX if kind == "branch" else TAG_PREFIX
+    prefix = namespaces.prefix(kind)
+    if prefix is None:
+        return ()
     out = await _git(
         target, ["for-each-ref", f"--format={_LIST_FORMAT}", *_LIST_SORT[kind], "--", prefix]
     )
@@ -378,9 +446,11 @@ async def list_mirror_refs(
             fields = line.decode("utf-8").split("\0")
         except UnicodeDecodeError:
             continue
-        if len(fields) != 5 or not fields[0].startswith(prefix):
+        if len(fields) != 6 or not fields[0].startswith(prefix):
             continue
-        ref, oid, object_kind, target_oid, target_kind = fields
+        ref, oid, object_kind, target_oid, target_kind, symbolic = fields
+        if kind == "remote" and symbolic:
+            continue
         if object_kind == "commit":
             commit = oid
         elif object_kind == "tag" and target_kind == "commit":
@@ -465,7 +535,9 @@ class ResolvedPin:
     ref: str | None
 
 
-async def _pin_commit_id(target: RepositoryStoreTarget, text: str) -> str:
+async def _pin_commit_id(
+    target: RepositoryStoreTarget, text: str, *, where: str = "the mirror"
+) -> str:
     resolved = await resolve_commit_id(target, text)
     if isinstance(resolved, ResolvedSelection):
         return resolved.commit
@@ -476,8 +548,8 @@ async def _pin_commit_id(target: RepositoryStoreTarget, text: str) -> str:
     if resolved.reason == "commit_ambiguous":
         raise AmbiguousSelectionError("that abbreviated commit ID matches several commits")
     if resolved.reason == "not_a_commit":
-        raise SelectionNotACommitError("that ID names an object in the mirror that is not a commit")
-    raise SelectionNotFoundError("no commit with that ID is in the mirror")
+        raise SelectionNotACommitError(f"that ID names an object in {where} that is not a commit")
+    raise SelectionNotFoundError(f"no commit with that ID is in {where}")
 
 
 async def _ref_at(target: RepositoryStoreTarget, commit: str, refs: tuple[str, ...]) -> str | None:
@@ -514,13 +586,17 @@ async def resolve_pin(
     oid: str | None = None,
     default_ref: str | None = None,
     keep_refs: tuple[str, ...] = (),
+    namespaces: RefNamespaces = MIRROR_REFS,
 ) -> ResolvedPin:
     """The commit a pin request names in the mirror, and the ref it came through.
 
     Exactly one of *ref* and *oid* is given. A short ref name is tried as a branch,
     then as a tag, and then, when it is hexadecimal, as a commit ID; a full name must
     be under ``refs/remotes/origin/`` or ``refs/tags/``, or be a pull request's
-    ``refs/pull/<n>/head``: the only refs a mirror holds.
+    ``refs/pull/<n>/head``: the only refs a mirror holds. In a checkout
+    (:data:`CHECKOUT_REFS`) a short name is a branch, then a tag, then a remote-tracking
+    branch such as ``origin/main``, and a full name is under one of those three; it holds
+    no pull-request heads, and its ``HEAD`` is the checked-out branch.
     *oid* is only a commit ID, full or abbreviated to at least seven digits. A commit
     pinned by ID has no ref, unless it is the tip of one of *keep_refs* in the mirror
     now: the refs a server was serving, which a reader who went to another commit and
@@ -538,29 +614,42 @@ async def resolve_pin(
     if (ref is None) == (oid is None):
         raise InvalidSelectionError('give exactly one of "ref" and "oid"')
     if oid is not None:
-        commit = await _pin_commit_id(target, oid)
+        commit = await _pin_commit_id(target, oid, where=namespaces.where)
         kept = await _ref_at(target, commit, keep_refs)
-        return ResolvedPin(commit_oid=commit, ref=kept or await _pull_head_at(target, commit))
+        if kept is None and namespaces.pull_heads:
+            kept = await _pull_head_at(target, commit)
+        return ResolvedPin(commit_oid=commit, ref=kept)
     assert ref is not None
     if not ref:
         raise InvalidSelectionError("the ref is empty")
     if ref == "HEAD":
         if default_ref is None:
-            raise SelectionNotFoundError("the mirror has recorded no default branch")
+            raise SelectionNotFoundError(
+                "the mirror has recorded no default branch"
+                if namespaces.pull_heads
+                else "the checkout is on no branch"
+            )
         candidates: tuple[str, ...] = (default_ref,)
     elif ref.startswith("refs/"):
-        if not ref.startswith((BRANCH_MIRROR_PREFIX, TAG_PREFIX)) and not _PULL_HEAD.fullmatch(ref):
+        if not ref.startswith(namespaces.prefixes) and not (
+            namespaces.pull_heads and _PULL_HEAD.fullmatch(ref)
+        ):
             raise InvalidSelectionError(
                 "only the origin's branches (refs/remotes/origin/…), tags (refs/tags/…), "
                 "and pull-request heads (refs/pull/<n>/head) can be pinned"
+                if namespaces.pull_heads
+                else "only branches (refs/heads/…), tags (refs/tags/…), and remote-tracking "
+                "branches (refs/remotes/…) can be pinned"
             )
         candidates = (ref,)
     else:
-        candidates = (BRANCH_MIRROR_PREFIX + ref, TAG_PREFIX + ref)
+        candidates = tuple(prefix + ref for prefix in namespaces.prefixes)
     is_hex = _COMMIT_ID.fullmatch(ref.lower()) is not None
     # A name that is not a commit, such as a tag of a tree, is decided only after every
     # other reading -- a tag of the same name, a commit ID -- had its turn.
-    not_a_commit = SelectionNotACommitError("that name is in the mirror but does not name a commit")
+    not_a_commit = SelectionNotACommitError(
+        f"that name is in {namespaces.where} but does not name a commit"
+    )
     names_a_non_commit = False
     if all(is_valid_ref_name(candidate) for candidate in candidates):
         exact = await _exact_refs(target, list(candidates))
@@ -576,14 +665,16 @@ async def resolve_pin(
         raise InvalidSelectionError("the ref is not a valid Git ref name")
     if is_hex:
         try:
-            return ResolvedPin(commit_oid=await _pin_commit_id(target, ref), ref=None)
+            return ResolvedPin(
+                commit_oid=await _pin_commit_id(target, ref, where=namespaces.where), ref=None
+            )
         except SelectionNotFoundError:
             if names_a_non_commit:
                 raise not_a_commit from None
             raise
     if names_a_non_commit:
         raise not_a_commit
-    raise SelectionNotFoundError("no branch or tag with that name is in the mirror")
+    raise SelectionNotFoundError(f"no branch or tag with that name is in {namespaces.where}")
 
 
 async def resolve_ref_and_path(
@@ -675,9 +766,12 @@ async def resolve_selection(
 
 
 __all__ = [
+    "CHECKOUT_REFS",
     "MAX_DISAMBIGUATION_OBJECTS",
     "MAX_REF_CANDIDATES",
+    "MIRROR_REFS",
     "RefCandidate",
+    "RefNamespaces",
     "ResolvedPin",
     "ResolvedSelection",
     "SelectionResolution",

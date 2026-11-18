@@ -106,6 +106,7 @@ DEADLINE_S = 5.0
 # How far past its reserved time a teardown may run: a thread switch and a last ``ps``.
 SLACK_S = 0.5
 CHROME_TESTS = (
+    "tests.test_checkout_ref_selector_chrome",
     "tests.test_control_chords_chrome",
     "tests.test_diff_markdown_fold_chrome",
     "tests.test_folder_overview_alignment",
