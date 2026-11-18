@@ -4,10 +4,10 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Draft, for the owner’s review.
+**Status:** In implementation, as a stack of four pull requests.
 Epic `mb-32yq` tracks it.
 The design follows a survey of `origin/main` at `a1100bca6`; the open questions at the
-end are the owner’s.
+end took their recommended answers, under Decisions.
 
 ## Overview
 
@@ -124,9 +124,11 @@ The app loads each glyph’s SVG through `NSImage`, whose CoreSVG reads Lucide�
 paths (it drops only filters, which these glyphs have none of; see
 `apps/macos/AppIcon/render-svg.swift`). One table names each root kind’s Lucide id, and
 a test holds the app’s copy of each glyph to its entry in `static/icons.js`, so the two
-cannot drift. A mark with no page counterpart, such as the title’s chevron, is an SF
-Symbol. The path menu keeps Finder’s own folder icons, as the system title’s path menu
-draws them.
+cannot drift (`RootMarkTests`, in Swift, which reads `static/icons.js` from the
+checkout).
+A mark with no page counterpart, such as the title’s chevron, is an SF Symbol.
+The path menu keeps Finder’s own folder icons, as the system title’s path menu draws
+them.
 
 ### A Window Shows One Folder at a Time, Any Folder
 
@@ -185,9 +187,13 @@ The chevron is always shown, in the tertiary label color at rest and the seconda
 hover. A document window’s title reveals its chevron only on hover, but a control that
 appears only on hover cannot be found by looking, and here the title is the only way
 into the menu by mouse; macOS’s own pop-up and pull-down buttons always show theirs
-(Q2). On hover, the button shows the system’s rounded hover surface behind the title and
-chevron (`showsBorderOnlyWhileMouseInside`), as a toolbar button does, which also shows
-how far the control reaches.
+(Q2). On hover, the button shows a rounded surface behind the title and chevron in the
+system’s fill for a control under the pointer, as a toolbar button does, which also
+shows how far the control reaches.
+It is drawn as the title bar’s mark draws its highlight, with the fill resolved in the
+plain light or dark appearance, since a bordered button’s own hover border
+(`showsBorderOnlyWhileMouseInside`) takes the title bar’s vibrant fills, which are meant
+for a visual effect view to blend.
 In a window that is not key, the title and chevron dim as the system title does.
 The text inset, font, and truncation stay those measured for `TitleBarTitleView` on
 macOS 26.5; the chevron takes its space from the title’s trailing margin, and a long
@@ -240,6 +246,7 @@ route.
 | A background folder | This window shows it |
 | A folder another window shows | That window comes forward, as opening an open folder does today |
 | A recent folder | It opens, and this window shows it |
+| A recent repository | It opens as its link does, in a window of its own: which repository a link names is `metab`’s answer, which arrives later |
 | Any folder, with Option held | It opens in a new window, placed as a new folder is; the row reads “Open … in New Window” while Option is down (`NSMenuItem.isAlternate`) |
 | This window’s folder | Nothing |
 
@@ -337,6 +344,19 @@ document (`arch-macos-app.md`), and `CHANGELOG.md` for what it changes.
 
 The stack merges to `main` at the owner’s word, as the macOS app’s pull requests do, and
 ships with the next app build.
+
+## Decisions
+
+The owner asked for the work end to end, so each open question below took its
+recommended answer:
+
+- **Q1:** Command-W closes the folder when no other window shows it, as a browser tab
+  does.
+- **Q2:** the chevron is always shown, and it is the SF Symbol `chevron.down`.
+- **Q3:** File > Open Recent and the Dock menu draw the shared mark.
+- **Q4:** View > Switch Folder… is Command-Shift-O.
+- **Q5:** a repository’s mark is Lucide `cloud`, in the app only, since the page draws
+  none.
 
 ## Open Questions
 

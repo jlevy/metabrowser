@@ -64,11 +64,11 @@ import Testing
     }
 }
 
-@Suite struct TitleBarMarkInteractionTests {
+@Suite struct TitleBarPressInteractionTests {
     private let inside = CGPoint(x: 680, y: 16)
 
     @Test func aPressReleasedInsideOpensThePageOnce() {
-        var mark = TitleBarMarkInteraction()
+        var mark = TitleBarPressInteraction()
         mark.pointerEntered()
         mark.pressed(at: inside)
         #expect(mark.isPressed)
@@ -80,20 +80,20 @@ import Testing
     }
 
     @Test func anAccessibilityPressOpensThePageOnce() {
-        var mark = TitleBarMarkInteraction()
+        var mark = TitleBarPressInteraction()
         #expect(mark.accessibilityPressed() == .open)
         #expect(mark.released(inside: true) == nil)
     }
 
     @Test func aReleaseOutsideTheHighlightOpensNothing() {
-        var mark = TitleBarMarkInteraction()
+        var mark = TitleBarPressInteraction()
         mark.pressed(at: inside)
         #expect(mark.released(inside: false) == nil)
         #expect(!mark.isPressed)
     }
 
     @Test func aPressThatMovesThreePointsDragsAndNeverOpens() {
-        var mark = TitleBarMarkInteraction()
+        var mark = TitleBarPressInteraction()
         mark.pressed(at: inside)
         #expect(mark.moved(to: CGPoint(x: inside.x + 2.9, y: inside.y)) == nil)
         #expect(mark.moved(to: CGPoint(x: inside.x + 3, y: inside.y)) == .drag)
@@ -106,7 +106,7 @@ import Testing
     }
 
     @Test func deactivationMidPressOpensNothing() {
-        var mark = TitleBarMarkInteraction()
+        var mark = TitleBarPressInteraction()
         mark.pointerEntered()
         mark.pressed(at: inside)
         mark.deactivated()
@@ -116,7 +116,7 @@ import Testing
 
     @Test func aFirstClickInAWindowThatIsNotKeyOpensOnce() {
         // The key-window tracking area reports no hover there: the press comes unlit.
-        var mark = TitleBarMarkInteraction()
+        var mark = TitleBarPressInteraction()
         #expect(!mark.isHovered)
         mark.pressed(at: inside)
         #expect(mark.released(inside: true) == .open)
@@ -124,7 +124,7 @@ import Testing
     }
 
     @Test func theHoverGoesOutOnExitAndOnDeactivation() {
-        var mark = TitleBarMarkInteraction()
+        var mark = TitleBarPressInteraction()
         mark.pointerEntered()
         #expect(mark.isHovered)
         mark.pointerExited()

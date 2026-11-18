@@ -466,11 +466,11 @@ Applications.
   (`NextPage`). By design the open folder that takes a file never lies above the file’s
   repository root, and a file with no such folder opens its open root
   ([Open Modes](arch-open-modes.md#what-keys-on-the-root)).
-- **Recents.** File > Open Recent lists `metab`’s
-  [recent targets](arch-recent-targets.md#the-macos-app), which every server records as
-  it starts, so the app decides nothing about the list and keeps none of its own.
-  The Dock menu lists the same targets (`applicationDockMenu`), and a restored folder’s
-  server, like any restart, is told not to record.
+- **Recents.** File > Open Recent, and the folder chooser’s Recent section, list
+  `metab`’s [recent targets](arch-recent-targets.md#the-macos-app), which every server
+  records as it starts, so the app decides nothing about the list and keeps none of its
+  own. The Dock menu lists the same targets (`applicationDockMenu`), and a restored
+  folder’s server, like any restart, is told not to record.
 
 ### Session Restore
 
@@ -518,8 +518,23 @@ mark in a trailing one (`TitleBarMarkController`).
   A centered toolbar item would make the title bar taller and center the title, which
   macOS 26 puts at the leading edge.
 - **No proxy icon.** AppKit drops the proxy icon when a leading accessory is present, so
-  Command-click, right-click, or VoiceOver’s Show Menu on a local folder’s title opens
-  its path menu, from `representedURL`.
+  Command-click, right-click, or VoiceOver’s Show Path action on a local folder’s title
+  opens its path menu, from `representedURL`.
+- **The folder chooser.** The title is a pop-up control (`TitleBarTitleView`): an
+  always-shown `chevron.down` after it, and on hover the system’s fill for a control
+  under the pointer, resolved as the mark’s is.
+  A click opens `FolderChooserMenu` under it, and a press that moves
+  `TitleBarPressInteraction.dragDistance` drags the window instead; VoiceOver reads a
+  pop-up button whose Press and Show Menu open the chooser.
+  `FolderChooser` decides the rows (the open folders in the order they opened, then the
+  recent targets not open), each row’s check mark and subtitle, and what each choice
+  does, which `AppDelegate.choose` carries out; Option alternates open a choice in a new
+  window. The menu is native chrome, so it is an `NSMenu` with section headers and
+  subtitles.
+- **Shared marks.** The menus that list roots (the chooser, File > Open Recent, and the
+  Dock menu) draw each root’s `RootMark` as a template image: the page’s own Lucide
+  glyph for a folder, copied from `static/icons.js` and held to it by `RootMarkTests`,
+  and Lucide `cloud` for a repository, which the page draws no mark for.
 - **The mark.** The partial M and the B, drawn as paths from the icon masters’ glyph
   group, which `AppIcon/make-glyphs.swift` copies into `AppIconMarkGeometry.swift`; a
   test checks the copy against both masters.
@@ -527,8 +542,8 @@ mark in a trailing one (`TitleBarMarkController`).
   bar deeper tints that meet WCAG contrast for graphics; both comments hold their
   measurements.
 - **A link.** A click opens `ProjectLinks.repository` in the default browser, and a
-  press that moves `TitleBarMarkInteraction.dragDistance` drags the window instead.
-  `TitleBarMarkInteraction` decides each pointer event and is tested event by event.
+  press that moves `TitleBarPressInteraction.dragDistance` drags the window instead.
+  `TitleBarPressInteraction` decides each pointer event and is tested event by event.
 - **System behavior.** The title dims when its window is not main in the active app,
   AppKit dims the mark with it, and both follow light and dark mode.
 

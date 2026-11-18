@@ -104,7 +104,7 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         webView.uiDelegate = self
         webView.onFileDrop = { urls in
             guard let app = NSApp.delegate as? AppDelegate else { return false }
-            urls.forEach(app.request)
+            urls.forEach { app.request($0) }
             return true
         }
         textFinder.client = webView  // WKWebView adopts NSTextFinderClient

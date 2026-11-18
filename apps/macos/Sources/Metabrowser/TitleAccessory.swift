@@ -1,13 +1,16 @@
 import AppKit
 import ShellCore
 
-/// The window title: the folder's short name, bold.
+/// The window title: the folder's short name, bold, and the folder chooser it opens.
 ///
 /// AppKit draws a system title in one style, so the window hides it
 /// (`titleVisibility = .hidden`) and shows this leading title-bar accessory instead,
 /// which AppKit places beside the window buttons, where macOS 26 puts the system title.
 /// The inset and font below reproduce that title as measured on macOS 26.5. The app
 /// icon's mark stands at the other end of the title bar (`TitleBarMarkController`).
+///
+/// The title is a pop-up control: a click opens the folder chooser under it
+/// (`FolderChooserMenu`), and a small chevron after it always says so.
 ///
 /// With a leading accessory, AppKit also drops the proxy icon (measured on macOS 26.5),
 /// so a folder's window has none to drag; Command-click or right-click on the title
@@ -31,8 +34,22 @@ final class TitleAccessoryController: NSTitlebarAccessoryViewController {
         loadViewIfNeeded()
         titleView.show(title, representing: url)
     }
+
+    /// The folder chooser the title opens, built when it opens.
+    var chooser: (() -> NSMenu?)? {
+        get { titleView.chooser }
+        set { titleView.chooser = newValue }
+    }
 }
 
+/// The title as a pop-up control. A click opens the chooser, and a press that moves a few
+/// points drags the window instead, as on the rest of the title bar, so a click never
+/// moves the window and a drag never opens the chooser; what each event means is
+/// `TitleBarPressInteraction`'s, tested in `ShellCore`, as the mark's is.
+///
+/// It is drawn as macOS draws a title-bar control, not as the page draws one: the system
+/// title font, an SF Symbol chevron, and the system's fill for a control under the
+/// pointer, behind the title and chevron, which also shows how far the control reaches.
 final class TitleBarTitleView: NSView {
     /// Where AppKit draws a plain window's title without a proxy icon, from the
     /// accessory's leading edge, x 78, a button gap after the zoom button: the label at
@@ -43,18 +60,59 @@ final class TitleBarTitleView: NSView {
     private static let trailingMargin: CGFloat = 12
     /// The path menu's folder icons, as the system title's path menu draws them.
     private static let menuIconSize: CGFloat = 16
+    /// From the end of the title to the chevron, and from the chevron to the hover
+    /// surface's end, which reaches as far past the chevron as it does before the title.
+    private static let chevronGap: CGFloat = 4
+    private static let chevronTrailing: CGFloat = textInset
+    /// The hover surface's height and corners, a toolbar button's on macOS 26.5 in a
+    /// title bar of `frame.height` 28.
+    private static let hoverHeight: CGFloat = 22
+    private static let hoverCornerRadius: CGFloat = 6
 
     private static let font = NSFont.titleBarFont(ofSize: 0)
+    /// `chevron.down` at the size a pop-up button draws its indicator beside the system
+    /// title font.
+    private static let chevronImage: NSImage? = NSImage(
+        systemSymbolName: "chevron.down", accessibilityDescription: nil)?
+        .withSymbolConfiguration(.init(pointSize: font.pointSize * 0.7, weight: .semibold))
 
     private let label = NSTextField(labelWithString: "")
+    private let chevron = NSImageView()
     /// Measures the title as `label` would draw it.
     private let scratch = NSTextField(labelWithString: "")
     private var title: WindowTitle?
     private var url: URL?
+    private var trackingArea: NSTrackingArea?
+    private var interaction = TitleBarPressInteraction() {
+        didSet {
+            if interaction.isHovered != oldValue.isHovered || interaction.isPressed != oldValue.isPressed {
+                needsDisplay = true
+                render()
+            }
+        }
+    }
+    /// The press a drag starts from.
+    private var pressEvent: NSEvent?
+    /// Builds the folder chooser when it opens; nil until the window's controller sets it,
+    /// and while it is nil the title is a plain title, with no chevron.
+    var chooser: (() -> NSMenu?)? {
+        didSet {
+            chevron.isHidden = chooser == nil
+            setAccessibilityRole(chooser == nil ? .staticText : .popUpButton)
+            updateWidth()
+            needsLayout = true
+        }
+    }
     /// Shows the path menu: pops it up under the title.
     var presentPathMenu: (NSMenu, NSPoint, NSView) -> Void = { menu, point, view in
         menu.popUp(positioning: menu.items.first, at: point, in: view)
     }
+    /// Shows the chooser: drops it down from under the hover surface's leading corner.
+    var presentChooser: (NSMenu, NSPoint, NSView) -> Void = { menu, point, view in
+        menu.popUp(positioning: nil, at: point, in: view)
+    }
+    /// Drags the window from a mouse-down event, as the title bar does.
+    var dragWindow: (NSEvent) -> Void = { $0.window?.performDrag(with: $0) }
 
     init() {
         super.init(frame: NSRect(x: 0, y: 0, width: 0, height: 28))
@@ -65,10 +123,13 @@ final class TitleBarTitleView: NSView {
         }
         label.cell?.truncatesLastVisibleLine = true
         addSubview(label)
-        // This view is the title's accessibility element, static text that reads the
-        // title, so it can offer the path menu as VoiceOver's Show Menu; the label, and
-        // the cell that would stand for it, are not elements.
-        label.setAccessibilityElement(false)
+        chevron.image = Self.chevronImage
+        chevron.isHidden = true
+        addSubview(chevron)
+        // This view is the title's accessibility element: a pop-up button whose value is
+        // the title, once it opens the chooser, and until then static text that reads it.
+        // The label, its cell, and the chevron are not elements.
+        for element in [label, chevron] as [NSView] { element.setAccessibilityElement(false) }
         label.cell?.setAccessibilityElement(false)
         setAccessibilityElement(true)
         setAccessibilityRole(.staticText)
@@ -83,22 +144,43 @@ final class TitleBarTitleView: NSView {
         toolTip = title.subtitle
         setAccessibilityValue(title.text)
         setAccessibilityHelp(title.subtitle)
+        setAccessibilityCustomActions(
+            url == nil
+                ? []
+                : [NSAccessibilityCustomAction(name: "Show Path") { [weak self] in
+                    self?.showPathMenu()
+                    return true
+                }])
         updateWidth()
         needsLayout = true
     }
 
     // MARK: - Accessibility
 
-    /// VoiceOver's Show Menu opens a local folder's path menu, as Command-click does.
+    /// VoiceOver's Press and Show Menu open the chooser; a local folder's path menu, which
+    /// Command-click opens, is the custom action Show Path. A title with no chooser yet
+    /// offers the path menu as Show Menu, as the plain title did.
     override func accessibilityPerformShowMenu() -> Bool {
+        if chooser != nil {
+            if interaction.accessibilityPressed() == .open { showChooser() }
+            return true
+        }
         guard url != nil else { return false }
         showPathMenu()
         return true
     }
 
-    /// Only a local folder's title offers Show Menu: a cached mirror's has no path menu.
+    override func accessibilityPerformPress() -> Bool {
+        guard chooser != nil else { return false }
+        if interaction.accessibilityPressed() == .open { showChooser() }
+        return true
+    }
+
+    /// Show Menu is offered by a title that opens something: the chooser, or a local
+    /// folder's path menu; Press only by one that opens the chooser.
     override func isAccessibilitySelectorAllowed(_ selector: Selector) -> Bool {
-        if selector == #selector(accessibilityPerformShowMenu) { return url != nil }
+        if selector == #selector(accessibilityPerformShowMenu) { return chooser != nil || url != nil }
+        if selector == #selector(accessibilityPerformPress) { return chooser != nil }
         return super.isAccessibilitySelectorAllowed(selector)
     }
 
@@ -106,26 +188,54 @@ final class TitleBarTitleView: NSView {
 
     private var isRightToLeft: Bool { userInterfaceLayoutDirection == .rightToLeft }
 
-    override func layout() {
-        super.layout()
-        let height = ceil(measure(title?.text ?? "").height)
-        let y = ((bounds.height - height) / 2).rounded()
-        var text = NSRect(x: Self.textInset, y: y, width: max(0, bounds.width - Self.textInset), height: height)
-        if isRightToLeft { text.origin.x = bounds.width - text.maxX }
-        label.frame = text
-        render()
+    /// The chevron's room after the title, none while there is no chooser: the gap, the
+    /// chevron, and the hover surface's reach past it.
+    private var chevronRoom: CGFloat {
+        guard chooser != nil, let size = Self.chevronImage?.size else { return 0 }
+        return Self.chevronGap + size.width + Self.chevronTrailing
     }
 
-    /// As wide as the title, but never into the trailing accessories or past the window's
-    /// trailing margin, so a narrow window truncates it.
+    override func layout() {
+        super.layout()
+        let measured = measure(title?.text ?? "")
+        let height = ceil(measured.height)
+        let y = ((bounds.height - height) / 2).rounded()
+        // The title truncates before the chevron, never under it.
+        let width = max(0, min(ceil(measured.width), bounds.width - Self.textInset - chevronRoom))
+        var text = NSRect(x: Self.textInset, y: y, width: width, height: height)
+        let size = Self.chevronImage?.size ?? .zero
+        var mark = NSRect(
+            x: text.maxX + Self.chevronGap, y: ((bounds.height - size.height) / 2).rounded(), width: size.width,
+            height: size.height)
+        if isRightToLeft {
+            text.origin.x = bounds.width - text.maxX
+            mark.origin.x = bounds.width - mark.maxX
+        }
+        label.frame = text
+        chevron.frame = mark
+        render()
+        updateTrackingAreas()
+    }
+
+    /// The hover surface: from the view's leading edge to the chevron's reach past it, at
+    /// a toolbar button's height, centered.
+    private var hoverRect: NSRect {
+        let width = min(bounds.width, Self.textInset + label.frame.width + chevronRoom)
+        var rect = NSRect(x: 0, y: ((bounds.height - Self.hoverHeight) / 2).rounded(), width: width, height: Self.hoverHeight)
+        if isRightToLeft { rect.origin.x = bounds.width - rect.maxX }
+        return rect
+    }
+
+    /// As wide as the title and its chevron, but never into the trailing accessories or
+    /// past the window's trailing margin, so a narrow window truncates the title.
     private func updateWidth() {
         guard let window, let title else { return }
-        let ideal = Self.textInset + measure(title.text).width
+        let ideal = Self.textInset + ceil(measure(title.text).width) + chevronRoom
         let trailing = window.titlebarAccessoryViewControllers
             .filter { $0.layoutAttribute == .trailing }
             .reduce(0) { $0 + $1.view.frame.width }
         let available = window.frame.width - leadingDistance(in: window) - trailing - Self.trailingMargin
-        let width = ceil(max(Self.textInset, min(ideal, available)))
+        let width = ceil(max(Self.textInset + chevronRoom, min(ideal, available)))
         if abs(frame.width - width) > 0.5 { setFrameSize(NSSize(width: width, height: frame.height)) }
     }
 
@@ -151,8 +261,30 @@ final class TitleBarTitleView: NSView {
 
     private func render() {
         guard let title else { return }
-        label.attributedStringValue = attributed(title.text, active: isActive)
+        let active = isActive
+        label.attributedStringValue = attributed(title.text, active: active)
         label.alignment = isRightToLeft ? .right : .left
+        // Tertiary at rest, as a pop-up button's indicator is beside its title; secondary
+        // under the pointer; dimmer with the title in a window that is not main.
+        chevron.contentTintColor =
+            !active ? .quaternaryLabelColor
+            : interaction.isHovered || interaction.isPressed ? .secondaryLabelColor : .tertiaryLabelColor
+    }
+
+    /// The system's fill for a control under the pointer, deeper while pressed, resolved in
+    /// the plain light or dark appearance as the mark's is (`TitleBarMarkButton.draw`): the
+    /// title bar's own vibrant appearance gives fills meant for a visual effect view.
+    override func draw(_ dirtyRect: NSRect) {
+        guard chooser != nil, interaction.isHovered || interaction.isPressed else { return }
+        let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        var fill = NSColor.secondarySystemFill
+        let pressed = interaction.isPressed
+        NSAppearance(named: dark ? .darkAqua : .aqua)?.performAsCurrentDrawingAppearance {
+            let system: NSColor = pressed ? .systemFill : .secondarySystemFill
+            fill = NSColor(cgColor: system.cgColor) ?? fill
+        }
+        fill.setFill()
+        NSBezierPath(roundedRect: hoverRect, xRadius: Self.hoverCornerRadius, yRadius: Self.hoverCornerRadius).fill()
     }
 
     private func measure(_ text: String) -> NSSize {
@@ -200,13 +332,38 @@ final class TitleBarTitleView: NSView {
         needsLayout = true
     }
 
-    @objc private func activeStateChanged(_ notification: Notification) { render() }
+    /// The tracking area stops reporting when the window resigns key, so the hover would
+    /// stay lit; it goes out then, and when the app resigns active, and a press held
+    /// meanwhile opens nothing.
+    @objc private func activeStateChanged(_ notification: Notification) {
+        if [NSWindow.didResignKeyNotification, NSApplication.didResignActiveNotification].contains(notification.name) {
+            interaction.deactivated()
+            pressEvent = nil
+        }
+        render()
+    }
+
     @objc private func windowResized(_ notification: Notification) { updateWidth() }
 
     // MARK: - Mouse
 
-    /// The title moves the window like the system title.
-    override var mouseDownCanMoveWindow: Bool { true }
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea { removeTrackingArea(trackingArea) }
+        trackingArea = nil
+        guard chooser != nil else { return }
+        let area = NSTrackingArea(
+            rect: hoverRect, options: [.mouseEnteredAndExited, .activeInKeyWindow], owner: self, userInfo: nil)
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) { interaction.pointerEntered() }
+    override func mouseExited(with event: NSEvent) { interaction.pointerExited() }
+
+    /// A plain title moves the window like the system title; a chooser's title drags it
+    /// itself, once a press has moved far enough not to be a click.
+    override var mouseDownCanMoveWindow: Bool { chooser == nil }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         super.hitTest(point) == nil ? nil : self
@@ -215,9 +372,34 @@ final class TitleBarTitleView: NSView {
     override func mouseDown(with event: NSEvent) {
         if url != nil, !event.modifierFlags.isDisjoint(with: [.command, .control]) {
             showPathMenu()
+        } else if chooser != nil {
+            pressEvent = event
+            interaction.pressed(at: event.locationInWindow)
         } else {
             super.mouseDown(with: event)
         }
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard chooser != nil else { return super.mouseDragged(with: event) }
+        guard let start = pressEvent, interaction.moved(to: event.locationInWindow) == .drag else { return }
+        pressEvent = nil
+        dragWindow(start)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard chooser != nil else { return super.mouseUp(with: event) }
+        pressEvent = nil
+        let inside = bounds.contains(convert(event.locationInWindow, from: nil))
+        if interaction.released(inside: inside) == .open { showChooser() }
+    }
+
+    /// Opens the chooser under the hover surface, its leading corner at the surface's.
+    private func showChooser() {
+        guard let menu = chooser?() else { return }
+        let hover = hoverRect
+        let anchor = NSPoint(x: isRightToLeft ? hover.maxX : hover.minX, y: hover.minY - 2)
+        presentChooser(menu, anchor, self)
     }
 
     override func rightMouseDown(with event: NSEvent) {

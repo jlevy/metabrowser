@@ -44,6 +44,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         super.init(window: window)
         window.delegate = self
         Self.open[ObjectIdentifier(self)] = self
+        titleAccessory.chooser = { [weak self] in
+            guard let self else { return nil }
+            return (NSApp.delegate as? AppDelegate)?.folderChooserMenu(for: self)
+        }
         host(page)
     }
 

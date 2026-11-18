@@ -153,11 +153,11 @@ final class FolderWindows {
     /// Shows `session` in `controller`'s window in place of the folder it shows: the
     /// folder's page in the background if it has one, else a new page of it. The page the
     /// window leaves stays open in the background, or closes if its folder has another
-    /// page (`SwitchedAwayPage`).
-    func switchWindow(_ controller: BrowserWindowController, to session: FolderSession) {
+    /// page (`SwitchedAwayPage`). A new page opens at `address`, if one is given.
+    func switchWindow(_ controller: BrowserWindowController, to session: FolderSession, page address: PageAddress? = nil) {
         let old = controller.page
         guard old.session !== session else { return }
-        let page = session.backgroundPage ?? session.makePage()
+        let page = session.backgroundPage ?? session.makePage(page: address)
         controller.show(page)
         if let left = old.session {
             switch SwitchedAwayPage.fate(otherPages: left.pages.count - 1) {
@@ -186,6 +186,22 @@ final class FolderWindows {
             }
         }
         session.pages.forEach { $0.close() }
+    }
+
+    /// The open folders in the order they opened, as `controller`'s window sees each, for
+    /// its folder chooser (`FolderChooser`). A folder whose session has no page yet, as
+    /// during a restore, is left out.
+    func chooserFolders(for controller: BrowserWindowController) -> [FolderChooser.OpenFolder] {
+        let sessions = Dictionary(openSessions().map { ($0.path, $0) }, uniquingKeysWith: { first, _ in first })
+        return openFolders.inOrderOpened.compactMap { key in
+            guard let session = sessions[key], !session.pages.isEmpty else { return nil }
+            let shown: FolderChooser.Shown =
+                session.pages.contains { $0.host === controller } ? .here
+                : session.isInBackground ? .background : .inAnotherWindow
+            return FolderChooser.OpenFolder(
+                key: key, title: session.windowTitle, location: session.location, mark: RootMark(session.served),
+                shown: shown)
+        }
     }
 
     /// Closes every folder open in the background.

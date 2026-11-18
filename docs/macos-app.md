@@ -147,6 +147,17 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
   another open folder has the same short name.
   The title’s tooltip gives the full name and whether the folder is local or a cached
   mirror; Command-click or right-click a local folder’s title for its path menu.
+- **Switching folders:** click a window’s title, marked by the small chevron after it,
+  for the folder chooser.
+  It lists the open folders, in the order you opened them, with a check mark on the
+  window’s own, then the recent folders that are not open.
+  Choosing a folder shows it in this window, and the folder the window showed stays open
+  in the background, its page kept, so switching back is instant; a folder another
+  window shows brings that window forward instead.
+  Hold Option to open the chosen folder in a new window.
+  A recent GitHub repository opens in a window of its own, as its link would.
+  **Close Background Folders** at the foot of the chooser closes every folder no window
+  shows. Dragging the title still moves the window.
 - **Tabs or windows:** Settings > Open folders in decides where a newly opened folder
   goes: as System Settings > Desktop & Dock > “Prefer tabs when opening documents” says
   (the default), as a tab of the front window, or in a window of its own.
@@ -169,9 +180,9 @@ The mark at the title bar’s trailing end opens the project on GitHub.
 
 ## Recent Items
 
-File > Open Recent and the Dock icon’s menu list what you opened lately, most recent
-first: the folders and GitHub repositories you opened in the app, in either build of it,
-and those `metab` served in Terminal.
+File > Open Recent, the Dock icon’s menu, and the folder chooser’s Recent section list
+what you opened lately, most recent first: the folders and GitHub repositories you
+opened in the app, in either build of it, and those `metab` served in Terminal.
 It is `metab`’s own list of [recent targets](command-line.md#recent-targets), so
 `metab --recent` shows the same entries, and a folder stays in it however many others
 you open, up to the list’s length.

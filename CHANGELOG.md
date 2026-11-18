@@ -4,6 +4,15 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A macOS app window’s title is a folder chooser.
+  Click it, marked by a small chevron, for the open folders and the recent ones;
+  choosing one shows it in this window, and the folder the window showed stays open in
+  the background, so switching back is instant.
+  Option opens the choice in a new window, and **Close Background Folders** closes the
+  folders no window shows.
+  File > Open Recent and the Dock menu now mark a folder with the page’s own folder
+  glyph.
+
 - The macOS app has **File > Close Folder**, which closes the folder the front window
   shows in every window that shows it.
   Each of those windows shows the folder open in the background that you looked at last,
