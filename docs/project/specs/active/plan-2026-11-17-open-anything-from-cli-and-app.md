@@ -52,6 +52,12 @@ links describe what was built.
   configuration directory, recorded at serve start, and the app’s Open Recent and Dock
   menu draw it, mirrors included
   ([Recent Targets](../../architecture/arch-recent-targets.md)).
+- **GitHub’s anchor for one file of a pull request** (jlevy/metabrowser#574):
+  `/pull/<n>/files#diff-<hash>` opens at `/pull/<n>/files/<path>`, named offline from
+  the cached list of changed files or the record’s comparison, and at the Changes tab,
+  with the reason, when neither names it.
+  A line in the anchor is reported, not yet scrolled to, and `--present --dry-run`
+  reports no page for such a URL, since only the cache can name the file.
 - **The skill and its docs** (jlevy/metabrowser#562): “Hand the User a Page” uses
   `--present`, falls back to the `--no-open` server, and documents the Claude Code and
   Codex sandbox settings.
@@ -85,7 +91,6 @@ links describe what was built.
   chooses between the app and a browser (`mb-gh6l`).
 - The GitHub status check, its `--doctor` section and route, the check before a first
   clone or pull request read, and token scopes (`mb-si2g`).
-- GitHub’s anchor for one file in a pull request (`mb-j8a1`).
 - The app reading the GitHub status check: sign-in, scope, and access failures told
   apart, and a recheck on activation that re-reads the status instead of restarting the
   start (`mb-1rl3`, after `mb-si2g`).
@@ -403,9 +408,9 @@ transport.
 - [ ] GitHub status: the check, its `--doctor` section and route, the check before a
   first clone or pull request read, and token scopes.
   Remaining (`mb-si2g`).
-- [ ] Map `/pull/N/files#diff-<hash>` to `/pull/<n>/files/<path>`, and open a commit URL
-  at `/commit/<sha>`. The commit URL landed in jlevy/metabrowser#540. Remaining: the
-  anchor (`mb-j8a1`).
+- [x] Map `/pull/N/files#diff-<hash>` to `/pull/<n>/files/<path>`, and open a commit URL
+  at `/commit/<sha>`. The commit URL landed in jlevy/metabrowser#540, and the anchor in
+  jlevy/metabrowser#574.
 - [x] App: `RootIdentity` replaces the local-path key everywhere a session, log, title,
   saved tab, or waiting folder uses one.
   Landed in jlevy/metabrowser#539 as `SessionRoot`, keyed by repository without the pin;
