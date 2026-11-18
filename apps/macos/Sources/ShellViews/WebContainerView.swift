@@ -3,8 +3,7 @@ import ShellCore
 import WebKit
 
 /// A window's content: the web view, the status view that covers it until the page
-/// commits, the pane the window can show in the page's place, and the slot for the find
-/// bar.
+/// commits, and the slot for the find bar.
 ///
 /// `WKWebView` is not inside an `NSScrollView`, so `NSTextFinder` needs this container
 /// to hold its bar (the pattern from the macOS WebView shell guideline).
@@ -25,41 +24,11 @@ public final class WebContainerView: NSView, NSTextFinderBarContainer {
     public required init?(coder: NSCoder) { fatalError("unused") }
 
     public var showsStatus = true {
-        didSet { updateVisibility() }
-    }
-
-    /// A view the window can show in the page's place, its GitHub view, and the web view in
-    /// it that Find searches. The page's web view stays beneath it, hidden, with its page,
-    /// scroll, and state, and so does the status view, so hiding the pane shows either
-    /// again just as it was.
-    public private(set) var pane: NSView?
-    private var paneContent: NSView?
-
-    /// The pane is on screen in place of the page and the status view.
-    public var showsPane = false {
-        didSet { updateVisibility() }
-    }
-
-    /// Holds `pane`, hidden until `showsPane`, in place of the one before; nil lets it go
-    /// and shows the page.
-    public func setPane(_ pane: NSView?, searching content: NSView?) {
-        if self.pane !== pane {
-            self.pane?.removeFromSuperview()
-            if let pane { addSubview(pane, positioned: .below, relativeTo: statusView) }
+        didSet {
+            webView.isHidden = showsStatus
+            statusView.isHidden = !showsStatus
+            needsLayout = true
         }
-        self.pane = pane
-        paneContent = pane == nil ? nil : content
-        if pane == nil { showsPane = false }
-        updateVisibility()
-    }
-
-    private var paneShown: Bool { pane != nil && showsPane }
-
-    private func updateVisibility() {
-        pane?.isHidden = !paneShown
-        webView.isHidden = paneShown || showsStatus
-        statusView.isHidden = paneShown || !showsStatus
-        needsLayout = true
     }
 
     /// Swaps in the view of a tab that gave up its page, hidden like the old one would be.
@@ -67,7 +36,8 @@ public final class WebContainerView: NSView, NSTextFinderBarContainer {
         webView.removeFromSuperview()
         webView = replacement
         addSubview(replacement, positioned: .below, relativeTo: statusView)
-        updateVisibility()
+        replacement.isHidden = showsStatus
+        needsLayout = true
     }
 
     public var findBarView: NSView? {
@@ -91,7 +61,7 @@ public final class WebContainerView: NSView, NSTextFinderBarContainer {
     }
 
     public func findBarViewDidChangeHeight() { needsLayout = true }
-    public func contentView() -> NSView? { paneShown ? paneContent ?? pane : webView }
+    public func contentView() -> NSView? { webView }
 
     public override func layout() {
         super.layout()
@@ -103,7 +73,6 @@ public final class WebContainerView: NSView, NSTextFinderBarContainer {
             webFrame.size.height -= height
         }
         webView.frame = webFrame
-        pane?.frame = webFrame
     }
 }
 

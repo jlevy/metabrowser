@@ -990,24 +990,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - GitHub data
 
-    /// Metabrowser > Clear GitHub Data…: empties the store every GitHub view shares
-    /// (`GitHubDataStore`), which signs you out of GitHub in every window, then reloads
-    /// each GitHub view, signed out. Cancel is the default button, as for the clone
-    /// question, so a stray Return keeps the sign-in.
+    /// Metabrowser > Clear GitHub Data…: empties the store every window's GitHub popover
+    /// shares (`GitHubDataStore`), which signs you out of GitHub in every window, then
+    /// reloads each popover's page, signed out. Cancel is the default button, as for the
+    /// clone question, so a stray Return keeps the sign-in.
     @objc func clearGitHubData(_ sender: Any?) {
         let alert = NSAlert()
         alert.messageText = "Clear GitHub data?"
         alert.informativeText =
-            "This signs you out of GitHub in Metabrowser’s GitHub views and removes the cookies, cache, and other data github.com stored there. It does not change your gh sign-in, your browser, or Metabrowser’s own settings."
+            "This signs you out of GitHub in Metabrowser’s View on GitHub popovers and removes the cookies, cache, and other data github.com stored there. It does not change your gh sign-in, your browser, or Metabrowser’s own settings."
         alert.addButton(withTitle: "Cancel")  // the first button is the default
         let clear = alert.addButton(withTitle: "Clear")
         clear.hasDestructiveAction = true
         guard alert.runModal() == .alertSecondButtonReturn else { return }
-        AppLog.app.info("clearing the GitHub views' data")
+        AppLog.app.info("clearing the GitHub popovers' data")
         Task {
             await GitHubDataStore.clear()
             for case let controller as BrowserWindowController in NSApp.windows.map(\.windowController) {
-                controller.reloadGitHubView()
+                controller.reloadGitHubPopover()
             }
         }
     }

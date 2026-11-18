@@ -37,16 +37,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     private(set) var isDiscarded = false
     /// Reloads after the web content process dies, then the status view.
     private var contentRecoveries = RecoveryBudget.webContent
-    /// Which view the window shows, and what its GitHub view was opened for
-    /// (`GitHubViewState`).
-    private var gitHub = GitHubViewState()
-    /// The GitHub view, from the toggle's first use until the tab gives up its pages.
-    private var gitHubPane: GitHubPane?
-    /// The GitHub view's address, which the bar above it shows, as it changes, including
-    /// github.com's own in-page navigations, which commit no new page.
-    private var gitHubLocation: NSKeyValueObservation?
-    /// Reloads after the GitHub view's web content process dies.
-    private var gitHubRecoveries = RecoveryBudget.webContent
+    /// View on GitHub's popover, from the button's first use until the window closes.
+    private var gitHubPopover: GitHubPopover?
     /// The sheets the page opened, which Command-R cancels before it reloads.
     private var pageSheets = PageSheets<NSWindow>()
     /// The print panel, while a print the window started runs.
@@ -93,7 +85,6 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         window.delegate = self
 
         wire(webView)
-        textFinder.client = webView  // WKWebView adopts NSTextFinderClient
         textFinder.findBarContainer = container
         textFinder.isIncrementalSearchingEnabled = true
         showTitle(session.title, windowTitle: session.windowTitle)
@@ -136,8 +127,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         return webView
     }
 
-    /// A page's configuration: the folder's own, with the page's Print button and the view
-    /// header's GitHub toggle answered by the window that shows it.
+    /// A page's configuration: the folder's own, with the page's Print and View on GitHub
+    /// buttons answered by the window that shows it.
     private static func pageConfiguration() -> WKWebViewConfiguration {
         WebConfiguration.make(pagePrints: pagePrints, gitHubViews: gitHubViews)
     }
@@ -150,104 +141,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
             urls.forEach(app.request)
             return true
         }
-    }
-
-    private func unwire(_ webView: DropAwareWebView) {
-        webView.stopLoading()
-        webView.navigationDelegate = nil
-        webView.uiDelegate = nil
-        webView.onFileDrop = nil
-    }
-
-    // MARK: - The GitHub view
-
-    /// Every window's view header toggles (`GitHubViewRequests`): each shows the GitHub
-    /// view in the window whose page asked.
-    static let gitHubViews = GitHubViewRequests { webView, frame, href in
-        (webView.window?.windowController as? BrowserWindowController)?.toggleAskedForGitHub(href, from: frame)
-    }
-
-    private func toggleAskedForGitHub(_ href: String, from frame: WKFrameInfo) {
-        guard GitHubViewRequests.allows(frame, under: policy), let page = GitHubView.togglePage(href) else {
-            AppLog.app.info("a GitHub toggle was not answered: not this server's own page, or not a page on github.com")
-            return
-        }
-        showGitHub(page)
-    }
-
-    /// Shows the GitHub view in the page's place, at `page`, or as it was left when it was
-    /// opened for `page` before (`GitHubViewState`).
-    private func showGitHub(_ page: URL) {
-        let pane = gitHubPane ?? makeGitHubPane()
-        if let load = gitHub.showGitHub(for: page) {
-            pane.webView.load(URLRequest(url: load))
-        }
-        container.showsPane = true
-        textFinder.client = pane.webView
-        window?.makeFirstResponder(pane.webView)
-    }
-
-    /// Shows the window's page again, as it was left; the GitHub view stays beside it.
-    private func showMetabrowser() {
-        guard gitHub.showsGitHub else { return }
-        gitHub.showMetabrowser()
-        container.showsPane = false
-        textFinder.client = webView
-        if !container.showsStatus { window?.makeFirstResponder(webView) }
-    }
-
-    private func makeGitHubPane() -> GitHubPane {
-        let view = Self.makeWebView(WebConfiguration.makeGitHub())
-        wire(view)
-        let pane = GitHubPane(webView: view) { [weak self] in self?.showMetabrowser() }
-        gitHubLocation = view.observe(\.url) { [weak self] _, _ in
-            MainActor.assumeIsolated { self?.gitHubPane?.showLocation() }
-        }
-        container.setPane(pane, searching: view)
-        gitHubPane = pane
-        return pane
-    }
-
-    /// Lets the GitHub view go, with its web content process: the tab gave up its pages, or
-    /// the window closes. The window shows its page.
-    private func dropGitHubView() {
-        let shown = gitHub.showsGitHub
-        gitHub.discard()
-        guard let pane = gitHubPane else { return }
-        gitHubLocation = nil
-        unwire(pane.webView)
-        container.setPane(nil, searching: nil)
-        gitHubPane = nil
-        if shown { textFinder.client = webView }
-    }
-
-    /// After Metabrowser > Clear GitHub Data…: the GitHub view loads its page again, signed out.
-    func reloadGitHubView() {
-        gitHubPane?.webView.reload()
-    }
-
-    private var shownWebView: WKWebView {
-        if gitHub.showsGitHub, let pane = gitHubPane { return pane.webView }
-        return webView
-    }
-
-    private func isGitHubView(_ view: WKWebView) -> Bool {
-        gitHubPane.map { $0.webView === view } ?? false
-    }
-
-    /// View > Show GitHub View, Option-Command-G, or Show Metabrowser View while the GitHub
-    /// view shows. From the page, it asks the page for its toggle's link, in the app's own
-    /// content world, and shows nothing, with a beep, on a page with no toggle or one of
-    /// an opaque origin, such as a `/raw` file.
-    @objc func toggleGitHubView(_ sender: Any?) {
-        if gitHub.showsGitHub { return showMetabrowser() }
-        guard currentServerURL != nil else { return NSSound.beep() }
-        webView.evaluateJavaScript(GitHubViewRequests.query, in: nil, in: GitHubViewRequests.world) { [weak self] result in
-            guard let self, !gitHub.showsGitHub else { return }
-            guard case .success(let value) = result, let href = value as? String, let page = GitHubView.togglePage(href)
-            else { return NSSound.beep() }
-            showGitHub(page)
-        }
+        textFinder.client = webView  // WKWebView adopts NSTextFinderClient
     }
 
     // MARK: - Server state
@@ -317,10 +211,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         self.endpoint = endpoint
     }
 
-    /// Shows `page` now if the server is ready and still answers, or once it is ready, in
-    /// the Metabrowser view: a file or a link sent to the app opens there.
+    /// Shows `page` now if the server is ready and still answers, or once it is ready.
     func show(_ page: PageAddress) {
-        showMetabrowser()
+        gitHubPopover?.close()
         pages.request(page)
         isDiscarded = false
         if let endpoint { loadNextPageOnceAnswered(from: endpoint) }
@@ -332,7 +225,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     /// forward, is superseded, since the old server can go on serving while the restart
     /// waits at the launch gate (`ServerSupervisor.restart`).
     func showEntryPage() {
-        showMetabrowser()
+        gitHubPopover?.close()
         pages.cancelAll()
         pages.requestEntry()
         isDiscarded = false
@@ -356,11 +249,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         rememberPage()
         isDiscarded = true
         reveal.supersede()  // the discarded view is stopped below
-        dropGitHubView()
-        unwire(webView)
+        let discarded = webView
+        discarded.stopLoading()
+        discarded.navigationDelegate = nil
+        discarded.uiDelegate = nil
+        discarded.onFileDrop = nil
+        gitHubPopover?.discard()
         webView = Self.makeWebView(Self.pageConfiguration())
         wire(webView)
-        textFinder.client = webView
         container.replaceWebView(webView)
         if endpoint != nil { status.phase = .reloading }
         container.showsStatus = true
@@ -447,7 +343,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         // A task waiting on this window may keep it alive past its closing.
         if let window { Self.lastPlaced.close(window) }
         pages.cancelAll()
-        dropGitHubView()
+        gitHubPopover?.discard()
+        gitHubPopover = nil
         textFinder.client = nil
         textFinder.findBarContainer = nil
         webView.stopLoading()
@@ -458,22 +355,15 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
 
     // MARK: - Menu actions (nil-targeted items reach the key window's controller)
 
-    // Back, Forward, Reload, zoom, Print, and Find act on the view the window shows: its
-    // page, or its GitHub view.
-    @objc func navigateBack(_ sender: Any?) { shownWebView.goBack() }
-    @objc func navigateForward(_ sender: Any?) { shownWebView.goForward() }
+    @objc func navigateBack(_ sender: Any?) { webView.goBack() }
+    @objc func navigateForward(_ sender: Any?) { webView.goForward() }
 
     /// Command-R, in every state the window can be in (`PageReload`).
     @objc func reloadPage(_ sender: Any?) {
         cancelPageSheets()
         switch PageReload.route(in: windowState) {
-        case .reloadPage: shownWebView.reload()
-        case .loadPage:
-            if gitHub.showsGitHub, let page = gitHub.openedFor {
-                gitHubPane?.webView.load(URLRequest(url: page))
-            } else if let endpoint {
-                loadPageAgain(from: endpoint)
-            }
+        case .reloadPage: webView.reload()
+        case .loadPage: if let endpoint { loadPageAgain(from: endpoint) }
         case .startServer: Task { await session?.startForReload() }
         case .restartServer: session?.retry(from: self)
         case .startAsSelected: session?.windowShown(self)
@@ -512,27 +402,21 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         }
     }
 
-    /// The window as its menu items see it (`PageMenu`, `PageReload`). While the GitHub
-    /// view shows, its page is the one on screen, and it needs no server.
+    /// The window as its menu items see it (`PageMenu`, `PageReload`).
     private var windowState: FolderWindowState {
-        if gitHub.showsGitHub, let view = gitHubPane?.webView {
-            return FolderWindowState(
-                phase: status.phase, showsPage: true, hasPage: view.backForwardList.currentItem != nil,
-                serverReady: true, canGoBack: view.canGoBack, canGoForward: view.canGoForward)
-        }
-        return FolderWindowState(
+        FolderWindowState(
             phase: status.phase, showsPage: !container.showsStatus,
             hasPage: webView.backForwardList.currentItem != nil, serverReady: endpoint != nil,
             canGoBack: webView.canGoBack, canGoForward: webView.canGoForward)
     }
 
     @objc func actualSize(_ sender: Any?) { setZoom(1) }
-    @objc func zoomIn(_ sender: Any?) { setZoom(PageZoom.zoomedIn(shownWebView.pageZoom)) }
-    @objc func zoomOut(_ sender: Any?) { setZoom(PageZoom.zoomedOut(shownWebView.pageZoom)) }
+    @objc func zoomIn(_ sender: Any?) { setZoom(PageZoom.zoomedIn(webView.pageZoom)) }
+    @objc func zoomOut(_ sender: Any?) { setZoom(PageZoom.zoomedOut(webView.pageZoom)) }
 
     private func setZoom(_ zoom: Double) {
-        shownWebView.pageZoom = zoom
-        UserDefaults.standard.set(shownWebView.pageZoom, forKey: Self.zoomKey)
+        webView.pageZoom = zoom
+        UserDefaults.standard.set(webView.pageZoom, forKey: Self.zoomKey)
     }
 
     /// File > Print, and the page's own Print button (`PagePrintRequests`).
@@ -542,8 +426,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     /// gate's checks, macOS 26.5.2), while modally it printed the document alone.
     @objc func printPage(_ sender: Any?) {
         guard let window else { return }
-        let operation = shownWebView.printOperation(with: NSPrintInfo.shared)
-        operation.view?.frame = shownWebView.bounds
+        let operation = webView.printOperation(with: NSPrintInfo.shared)
+        operation.view?.frame = webView.bounds
         let before = window.attachedSheet
         operation.runModal(
             for: window, delegate: self, didRun: #selector(printOperationDidRun(_:success:contextInfo:)),
@@ -578,6 +462,34 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         printPage(nil)
     }
 
+    /// Every window's View on GitHub buttons (`GitHubViewRequests`): each opens the popover
+    /// in the window whose page asked.
+    static let gitHubViews = GitHubViewRequests { webView, frame, request in
+        let controller = webView.window?.windowController as? BrowserWindowController
+        controller?.pageAskedToViewOnGitHub(request, from: frame, in: webView)
+    }
+
+    /// Opens View on GitHub's popover below the page's button, on the item's page on
+    /// github.com, for a click in the main frame of the server's own page.
+    private func pageAskedToViewOnGitHub(
+        _ request: GitHubViewRequests.Request, from frame: WKFrameInfo, in view: WKWebView
+    ) {
+        guard view === webView, GitHubViewRequests.allows(frame, under: policy) else {
+            AppLog.app.info("a View on GitHub click was not answered: not from this server's own page")
+            return
+        }
+        let popover = gitHubPopover ?? GitHubPopover(isInspectable: Self.isInspectable)
+        gitHubPopover = popover
+        let anchor = GitHubPopoverLayout.anchor(
+            request.link, viewportWidth: request.viewportWidth, in: webView.bounds, flipped: webView.isFlipped)
+        popover.show(request.page, at: anchor, of: webView)
+    }
+
+    /// After Metabrowser > Clear GitHub Data…: the popover's page loads again, signed out.
+    func reloadGitHubPopover() {
+        gitHubPopover?.reload()
+    }
+
     /// Menu items carry the `NSTextFinder.Action` in their tag.
     @objc func performFindAction(_ sender: Any?) {
         guard let tag = (sender as? NSMenuItem)?.tag, let action = NSTextFinder.Action(rawValue: tag) else { return }
@@ -587,16 +499,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     @objc func restartServer(_ sender: Any?) { session?.retry(from: self) }
     @objc func revealServerLog(_ sender: Any?) { session?.revealLog() }
 
-    /// File > Open in Default Browser: the page the window shows, on the folder's server
-    /// or, in the GitHub view, on github.com.
     @objc func openInDefaultBrowser(_ sender: Any?) {
-        if let url = shownPageURL { NSWorkspace.shared.open(url) }
-    }
-
-    private var shownPageURL: URL? {
-        guard gitHub.showsGitHub else { return currentServerURL }
-        guard let url = gitHubPane?.webView.url, GitHubViewPolicy.staysInView(url) else { return nil }
-        return url
+        if let url = currentServerURL { NSWorkspace.shared.open(url) }
     }
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
@@ -613,10 +517,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
             guard PageMenu.isEnabled(.find, in: window), let action = NSTextFinder.Action(rawValue: item.tag)
             else { return false }
             return textFinder.validateAction(action)
-        case #selector(openInDefaultBrowser(_:)): return shownPageURL != nil
-        case #selector(toggleGitHubView(_:)):
-            item.title = gitHub.toggleTitle
-            return gitHub.showsGitHub || (!container.showsStatus && currentServerURL != nil)
+        case #selector(openInDefaultBrowser(_:)): return currentServerURL != nil
         default: return true
         }
     }
@@ -630,17 +531,10 @@ extension BrowserWindowController: WKNavigationDelegate, WKUIDelegate {
         decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void
     ) {
         let linkClick = action.navigationType == .linkActivated
-        let isMainFrame = action.targetFrame?.isMainFrame ?? true
-        let wantsNewWindow = linkClick && action.modifierFlags.contains(.command)
-        let decision =
-            isGitHubView(webView)
-            ? GitHubViewPolicy.decide(
-                action.request.url, isMainFrame: isMainFrame,
-                byUser: [.linkActivated, .formSubmitted, .formResubmitted].contains(action.navigationType),
-                shouldDownload: action.shouldPerformDownload, wantsNewWindow: wantsNewWindow)
-            : policy.decide(
-                action.request.url, isMainFrame: isMainFrame, isLinkClick: linkClick,
-                shouldDownload: action.shouldPerformDownload, wantsNewWindow: wantsNewWindow)
+        let decision = policy.decide(
+            action.request.url, isMainFrame: action.targetFrame?.isMainFrame ?? true, isLinkClick: linkClick,
+            shouldDownload: action.shouldPerformDownload,
+            wantsNewWindow: linkClick && action.modifierFlags.contains(.command))
         switch decision {
         case .allow: decisionHandler(.allow)
         case .download: decisionHandler(.download)
@@ -666,23 +560,14 @@ extension BrowserWindowController: WKNavigationDelegate, WKUIDelegate {
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
-        if isGitHubView(webView) {
-            gitHubPane?.showLocation()  // in place of a failure the bar showed
-            return
-        }
         session?.pageChanged()
         guard reveal.reveals(onCommit: navigation) else { return }
         container.showsStatus = false
-        if !gitHub.showsGitHub { window?.makeFirstResponder(webView) }
+        window?.makeFirstResponder(webView)
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: any Error) {
         let cancelled = (error as NSError).code == NSURLErrorCancelled
-        if isGitHubView(webView) {
-            // A load the policy stopped, or one superseded by the next, is no failure.
-            if (error as NSError).domain == NSURLErrorDomain, !cancelled { gitHubPane?.showFailure(error) }
-            return
-        }
         guard reveal.reports(failureOf: navigation, cancelled: cancelled) else { return }
         status.phase = .failed(ServerFailure(
             summary: "The page did not load: \(error.localizedDescription)", recentOutput: []))
@@ -691,10 +576,6 @@ extension BrowserWindowController: WKNavigationDelegate, WKUIDelegate {
 
     /// WebContent crashed or was killed under memory pressure; never leave a blank window.
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-        if isGitHubView(webView) {
-            if gitHubRecoveries.allow() { webView.reload() }
-            return
-        }
         guard contentRecoveries.allow() else {
             AppLog.app.error("web content process died repeatedly; showing the status view")
             supersedeLoad()
@@ -713,14 +594,6 @@ extension BrowserWindowController: WKNavigationDelegate, WKUIDelegate {
         _ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
         for action: WKNavigationAction, windowFeatures: WKWindowFeatures
     ) -> WKWebView? {
-        if isGitHubView(webView) {
-            switch GitHubViewPolicy.decideNewWindow(action.request.url) {
-            case .allow: webView.load(action.request)  // a GitHub page opens here, in place
-            case .openExternally(let url): NSWorkspace.shared.open(url)
-            default: break
-            }
-            return nil
-        }
         switch policy.decideNewWindow(action.request.url) {
         case .openInNewWindow:
             WebConfiguration.restrict(configuration)
@@ -734,7 +607,6 @@ extension BrowserWindowController: WKNavigationDelegate, WKUIDelegate {
     }
 
     func webViewDidClose(_ webView: WKWebView) {
-        guard !isGitHubView(webView) else { return }  // github.com never closes the window
         window?.close()  // the page called window.close()
     }
 

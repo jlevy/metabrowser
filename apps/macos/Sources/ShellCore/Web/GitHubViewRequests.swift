@@ -1,24 +1,26 @@
+import CoreGraphics
 import WebKit
 
-/// The view header's GitHub toggle, chosen in a folder window (`GitHubView`).
+/// The page's View on GitHub button, clicked in a folder window (`GitHubView`).
 ///
-/// The toggle's GitHub mark is a link to the item's page on github.com that opens a new
-/// window, which a browser opens as a tab and the app would send to the default browser
-/// (`NavigationPolicy.decideNewWindow`). A user script, installed by `WebConfiguration.make`
-/// in each page's main frame, takes a trusted primary click with no modifier key on a link
-/// marked `data-view-toggle="github"` (`marker`), cancels the link's own action, and posts
-/// its `href` to this handler, and the window shows the page in its GitHub view instead.
+/// The button's main link, marked `data-view-on-github="open"` (`marker`), names the item's
+/// page on github.com. A user script, installed by `WebConfiguration.make` in each page's
+/// main frame, takes a trusted primary click with no modifier key on that link, cancels the
+/// link's own navigation, and posts its `href` and where it sits on screen to this handler,
+/// and the window opens its GitHub popover there instead (`Request`).
 ///
 /// The script and the handler live in a content world of the app's own (`world`), so the
 /// page's scripts cannot post to the handler, and a click a script dispatches is not
-/// trusted: only the user's click on the page's toggle, or a key that activates it, reaches
+/// trusted: only the user's click on the page's button, or a key that activates it, reaches
 /// the app. A click with Command, Shift, Option, or Control, or with another button, is
-/// left to WebKit, which opens the page in the default browser as before. The page itself
-/// only marks its link; nothing in it knows about the app.
+/// left to WebKit, which opens the page in the default browser. The button's menu item
+/// Open in Browser, marked `data-view-on-github="external"`, is not the marker: it opens
+/// a new window, which the app hands to the default browser. The page itself only marks
+/// its links; nothing in it knows about the app.
 public final class GitHubViewRequests: NSObject, WKScriptMessageHandler {
     public static let handlerName = "metabrowserGitHubView"
-    /// The toggle's GitHub link, as `toggle` in `static/github-page.js` marks it.
-    public static let marker = #"a[data-view-toggle="github"]"#
+    /// The View on GitHub button's main link, as the page marks it.
+    public static let marker = #"a[data-view-on-github="open"]"#
     /// The app's own content world, where the script runs and the handler answers.
     public static var world: WKContentWorld { .defaultClient }
 
@@ -33,21 +35,44 @@ public final class GitHubViewRequests: NSObject, WKScriptMessageHandler {
                 return;
             }
             event.preventDefault();
-            window.webkit.messageHandlers.\(handlerName).postMessage(link.href);
+            const box = link.getBoundingClientRect();
+            window.webkit.messageHandlers.\(handlerName).postMessage({
+                href: link.href,
+                rect: [box.left, box.top, box.width, box.height],
+                viewportWidth: window.innerWidth,
+            });
         }, true);
         """
 
-    /// Evaluated in `world` for View > Show GitHub View: the page's toggle's `href`, or an
-    /// empty string on a page with no toggle or with an opaque origin, such as a `/raw`
-    /// file's under its CSP sandbox, as `allows` refuses a click there.
-    public static let query = """
-        window.origin === "null" ? "" : document.querySelector('\(marker)')?.href ?? ""
-        """
+    /// One click on the button, as the script posts it.
+    public struct Request: Equatable, Sendable {
+        /// The item's page on github.com (`GitHubView.page`).
+        public let page: URL
+        /// The link's client rectangle, in CSS pixels from the viewport's top left.
+        public let link: CGRect
+        /// The viewport's width in CSS pixels, `innerWidth`, which gives the page's scale.
+        public let viewportWidth: CGFloat
 
-    private let onRequest: (WKWebView, WKFrameInfo, String) -> Void
+        /// Nil for a message of any other shape, or for a page that is not on github.com.
+        public init?(_ body: Any) {
+            guard let body = body as? [String: Any], let href = body["href"] as? String,
+                  let page = GitHubView.page(href),
+                  let numbers = body["rect"] as? [Any], numbers.count == 4,
+                  let width = (body["viewportWidth"] as? NSNumber)?.doubleValue, width.isFinite, width > 0
+            else { return nil }
+            let values = numbers.compactMap { ($0 as? NSNumber)?.doubleValue }.filter(\.isFinite)
+            guard values.count == 4, values[2] >= 0, values[3] >= 0 else { return nil }
+            self.page = page
+            link = CGRect(x: values[0], y: values[1], width: values[2], height: values[3])
+            viewportWidth = width
+        }
+    }
 
-    /// `onRequest` gets the web view, the frame that asked, and the link's `href`.
-    public init(onRequest: @escaping (WKWebView, WKFrameInfo, String) -> Void) {
+    private let onRequest: (WKWebView, WKFrameInfo, Request) -> Void
+
+    /// `onRequest` gets the web view, the frame that asked, and what it asked for. A
+    /// message of another shape, or for a page not on github.com, is dropped.
+    public init(onRequest: @escaping (WKWebView, WKFrameInfo, Request) -> Void) {
         self.onRequest = onRequest
     }
 
@@ -59,13 +84,13 @@ public final class GitHubViewRequests: NSObject, WKScriptMessageHandler {
     }
 
     public func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard let webView = message.webView, let href = message.body as? String else { return }
-        onRequest(webView, message.frameInfo, href)
+        guard let webView = message.webView, let request = Request(message.body) else { return }
+        onRequest(webView, message.frameInfo, request)
     }
 }
 
 extension GitHubViewRequests {
-    /// Whether a window shows the GitHub view for a toggle in `frame`: only the main frame
+    /// Whether a window opens its GitHub popover for a click in `frame`: only the main frame
     /// of a document of the server's own origin, as for the page's Print button
     /// (`PagePrintRequests.allows`), so a `/raw` HTML file, whose CSP sandbox gives it an
     /// opaque origin, cannot use a marked link of its own.

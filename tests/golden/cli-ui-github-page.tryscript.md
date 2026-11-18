@@ -30,8 +30,6 @@ view, and the GitHub link for each page: a folder’s tree or a file’s blob at
 the page is on, or at its commit where it is on none or origin had none of its name at
 the last fetch, under the served root’s place in the repository.
 The link’s tooltip writes a commit short, and says when origin had no such branch.
-The link is marked `data-view-toggle="github"`, by which the macOS app shows it in the
-window’s own GitHub view.
 
 ```console
 $ node tests/dom/github-page-session.js
@@ -57,8 +55,7 @@ $ node tests/dom/github-page-session.js
           "tip": "View on GitHub: github.com/octo/demo/tree/main",
           "href": "https://github.com/octo/demo/tree/main",
           "target": "_blank",
-          "rel": "noopener noreferrer",
-          "viewToggle": "github"
+          "rel": "noopener noreferrer"
         }
       ]
     },
@@ -94,8 +91,7 @@ $ node tests/dom/github-page-session.js
           "tip": "View on GitHub: github.com/octo/demo/tree/feature/x",
           "href": "https://github.com/octo/demo/tree/feature/x",
           "target": "_blank",
-          "rel": "noopener noreferrer",
-          "viewToggle": "github"
+          "rel": "noopener noreferrer"
         }
       ]
     },
@@ -131,8 +127,7 @@ $ node tests/dom/github-page-session.js
           "tip": "View on GitHub: github.com/octo/demo/tree/0123456789ab",
           "href": "https://github.com/octo/demo/tree/0123456789abcdef0123456789abcdef01234567",
           "target": "_blank",
-          "rel": "noopener noreferrer",
-          "viewToggle": "github"
+          "rel": "noopener noreferrer"
         }
       ]
     },
@@ -168,8 +163,7 @@ $ node tests/dom/github-page-session.js
           "tip": "View on GitHub: github.com/octo/demo/tree/0123456789ab/docs. origin had no feature/x at your last fetch, so this commit may not be on github.com either",
           "href": "https://github.com/octo/demo/tree/0123456789abcdef0123456789abcdef01234567/docs",
           "target": "_blank",
-          "rel": "noopener noreferrer",
-          "viewToggle": "github"
+          "rel": "noopener noreferrer"
         }
       ]
     },
@@ -261,8 +255,7 @@ $ node tests/dom/github-page-session.js
           "tip": "View on GitHub: github.com/octo/demo/tree/main",
           "href": "https://github.com/octo/demo/tree/main",
           "target": "_blank",
-          "rel": "noopener noreferrer",
-          "viewToggle": "github"
+          "rel": "noopener noreferrer"
         }
       ]
     },

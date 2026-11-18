@@ -20,7 +20,10 @@ public nonisolated struct TabActivity<ID: Hashable & Sendable>: Equatable, Senda
 /// Which background tabs give up their web views.
 ///
 /// A folder tab's web view is its own WebContent process, and that process is most of
-/// what a tab costs (see `defaultLiveBackgroundTabs`). A discarded tab keeps its window
+/// what a tab costs (see `defaultLiveBackgroundTabs`). A window's View on GitHub popover
+/// adds a process of its own while it is open and for
+/// `GitHubPopoverState.keptAfterClosing` after it closes; the policy does not count it,
+/// since time bounds it, not the number of tabs. A discarded tab keeps its window
 /// and its server, and reloads its page from that running server when it is shown
 /// again. The windows on screen keep their pages, and so do the background tabs shown
 /// most recently, up to the limit.

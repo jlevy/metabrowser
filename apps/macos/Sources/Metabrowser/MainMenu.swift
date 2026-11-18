@@ -7,8 +7,7 @@ import AppKit
 /// view. A web view hands a key to its page before the menu, and the page binds plain
 /// keys and, on a pull request in a stack, Control-N and Control-P, which no item here
 /// uses; it takes no other key held with Command, Control, or Option, so every shortcut
-/// here reaches the app (`tests/test_modified_keys.py` holds the page to that). In a
-/// window's GitHub view, github.com's page has each key first instead.
+/// here reaches the app (`tests/test_modified_keys.py` holds the page to that).
 enum MainMenu {
     /// `appName` is the bundle's name, which the app menu's items carry.
     static func build(appName: String, recentFolders: NSMenuDelegate) -> NSMenu {
@@ -40,7 +39,7 @@ enum MainMenu {
             item("Close Window", #selector(NSWindow.performClose(_:)), "w"),
             .separator(),
             item("Restart Server", #selector(BrowserWindowController.restartServer(_:)), "r", [.command, .option]),
-            item("Open in Default Browser", #selector(BrowserWindowController.openInDefaultBrowser(_:)), "o", [.command, .shift]),
+            item("Open in Default Browser", #selector(BrowserWindowController.openInDefaultBrowser(_:))),
             item("Reveal Server Log", #selector(BrowserWindowController.revealServerLog(_:))),
             .separator(),
             item("Print…", #selector(BrowserWindowController.printPage(_:)), "p"),
@@ -75,9 +74,6 @@ enum MainMenu {
             item("Back", #selector(BrowserWindowController.navigateBack(_:)), "["),
             item("Forward", #selector(BrowserWindowController.navigateForward(_:)), "]"),
             item("Reload Page", #selector(BrowserWindowController.reloadPage(_:)), "r"),
-            .separator(),
-            // Titled by the window: Show Metabrowser View while its GitHub view shows.
-            item("Show GitHub View", #selector(BrowserWindowController.toggleGitHubView(_:)), "g", [.command, .option]),
             .separator(),
             item("Actual Size", #selector(BrowserWindowController.actualSize(_:)), "0"),
             item("Zoom In", #selector(BrowserWindowController.zoomIn(_:)), "="),

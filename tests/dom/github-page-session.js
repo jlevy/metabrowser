@@ -9,8 +9,7 @@
 // is, its two states: the Metabrowser mark, the view the page opens in and is shown in,
 // and the GitHub mark, a link to the item's page on github.com; then it commits the next
 // page's header and records that the toggle is drawn again, for the new item, and still
-// shows the Metabrowser view. The GitHub link carries `data-view-toggle="github"`, the
-// mark by which the macOS app shows it in its own GitHub view.
+// shows the Metabrowser view.
 //
 // Prints the transcript; exits 1 on any failure.
 
@@ -180,12 +179,7 @@ function describe(toggle) {
       label: option.getAttribute("aria-label"),
       tip: option.dataset.tipText,
       ...(option.tagName === "A"
-        ? {
-            href: option.href,
-            target: option.target,
-            rel: option.rel,
-            viewToggle: option.dataset.viewToggle ?? null,
-          }
+        ? { href: option.href, target: option.target, rel: option.rel }
         : {}),
     })),
   };
@@ -218,11 +212,6 @@ for (const [name, context] of Object.entries(recorded)) {
     check(
       `${name} ${each.path}: GitHub is a link`,
       there.element === "a" && there.current === null,
-    );
-    // The macOS app shows its GitHub view for this link alone (GitHubViewRequests.swift).
-    check(
-      `${name} ${each.path}: the GitHub link is marked as the toggle`,
-      there.viewToggle === "github",
     );
   }
   transcript.push({

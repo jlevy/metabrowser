@@ -3,21 +3,22 @@ import Foundation
 import Testing
 @testable import ShellCore
 
-@Suite struct GitHubViewTogglePageTests {
-    @Test func theTogglesPagesOnGitHubAreShown() {
+@Suite struct GitHubViewPageTests {
+    @Test func theButtonsPagesOnGitHubAreShown() {
         for href in [
             "https://github.com/octo/demo/blob/main/docs/guide.md",
             "https://github.com/octo/demo/tree/0123456789abcdef0123456789abcdef01234567/docs",
             "https://github.com/octo/demo/blob/main/docs/a%20b/%E9%9B%AA%20(1).md",
+            "https://github.com/octo/demo/pull/12", "https://github.com/octo/demo/commit/0123456",
             "https://GitHub.com/octo/demo/tree/main",
             "https://github.com:443/octo/demo/tree/main",
         ] {
-            #expect(GitHubView.togglePage(href)?.absoluteString == href, "\(href)")
+            #expect(GitHubView.page(href)?.absoluteString == href, "\(href)")
         }
     }
 
-    /// Only github.com itself: the toggle writes nothing else, so a marked link anywhere
-    /// else shows nothing in the GitHub view.
+    /// Only github.com itself: the button names nothing else, so a marked link anywhere
+    /// else opens no popover.
     @Test func anythingElseIsIgnored() {
         for href in [
             "", "about:blank", "javascript:alert(1)", "http://github.com/octo/demo",
@@ -28,7 +29,7 @@ import Testing
             "https://%67ithub.com/octo/demo", "file:///tmp/a.md",
             "https://github.com/" + String(repeating: "a", count: GitHubLink.maximumLength),
         ] {
-            #expect(GitHubView.togglePage(href) == nil, "\(href.prefix(80))")
+            #expect(GitHubView.page(href) == nil, "\(href.prefix(80))")
         }
     }
 }
@@ -110,10 +111,27 @@ import Testing
         #expect(GitHubViewPolicy.decide(page, isMainFrame: true, byUser: true, wantsNewWindow: true) == .openExternally(page))
     }
 
-    @Test func subframesAndDownloadsAreThePagesOwn() {
+    @Test func subframesAreThePagesOwn() {
         let other = url("https://viewscreen.example.com/render")
         #expect(GitHubViewPolicy.decide(other, isMainFrame: false, byUser: false) == .allow)
-        #expect(GitHubViewPolicy.decide(other, isMainFrame: true, byUser: true, shouldDownload: true) == .download)
+    }
+
+    /// A download goes to the default browser, and only when the user asked for it: never
+    /// a save panel over the popover.
+    @Test func aDownloadOpensInTheDefaultBrowserWhenTheUserAsks() {
+        let file = url("https://github.com/octo/demo/raw/main/a.zip")
+        #expect(GitHubViewPolicy.decide(file, isMainFrame: true, byUser: true, shouldDownload: true) == .openExternally(file))
+        #expect(GitHubViewPolicy.decide(file, isMainFrame: true, byUser: false, shouldDownload: true) == .cancel)
+        #expect(GitHubViewPolicy.decide(url("blob:https://github.com/1"), isMainFrame: true, byUser: true, shouldDownload: true)
+            == .cancel)
+    }
+
+    @Test func aResponseShowsOrItsDownloadFromGitHubOpensInTheBrowser() {
+        let zip = url("https://codeload.github.com/octo/demo/zip/refs/heads/main")
+        #expect(GitHubViewPolicy.decideResponse(zip, .show) == .allow)
+        #expect(GitHubViewPolicy.decideResponse(zip, .download) == .openExternally(zip))
+        #expect(GitHubViewPolicy.decideResponse(url("https://example.com/a.zip"), .download) == .cancel)
+        #expect(GitHubViewPolicy.decideResponse(nil, .download) == .cancel)
     }
 
     @Test func aNewWindowForGitHubLoadsHereAndOtherwiseOpensInTheBrowser() {
@@ -126,50 +144,128 @@ import Testing
     }
 }
 
-@Suite struct GitHubViewStateTests {
+@Suite struct GitHubPopoverStateTests {
     private let readme = URL(string: "https://github.com/octo/demo/blob/main/README.md")!
     private let guide = URL(string: "https://github.com/octo/demo/blob/main/docs/guide.md")!
 
-    @Test func everyWindowOpensInTheMetabrowserView() {
-        let state = GitHubViewState()
-        #expect(!state.showsGitHub && !state.hasGitHubView && state.openedFor == nil)
-        #expect(state.toggleTitle == "Show GitHub View")
+    @Test func theFirstOpeningLoadsTheItemsPage() {
+        var state = GitHubPopoverState()
+        #expect(state.openedFor == nil)
+        #expect(state.open(readme) == readme)
+        #expect(state.openedFor == readme)
     }
 
-    @Test func theFirstChoiceLoadsTheItemsPage() {
-        var state = GitHubViewState()
-        #expect(state.showGitHub(for: readme) == readme)
-        #expect(state.showsGitHub && state.hasGitHubView)
-        #expect(state.toggleTitle == "Show Metabrowser View")
+    /// Opened again for the same item, it shows as it was left, with no load.
+    @Test func theSameItemShowsItAsItWasLeft() {
+        var state = GitHubPopoverState()
+        _ = state.open(readme)
+        #expect(state.open(readme) == nil)
     }
 
-    /// Back to Metabrowser and to GitHub again, for the same item: the GitHub view shows as
-    /// it was left, wherever the user went on github.com, and keeps its history.
-    @Test func switchingBackAndForthKeepsBothViews() {
-        var state = GitHubViewState()
-        _ = state.showGitHub(for: readme)
-        state.showMetabrowser()
-        #expect(!state.showsGitHub && state.hasGitHubView)
-        #expect(state.showGitHub(for: readme) == nil)
-        #expect(state.showsGitHub)
+    @Test func anotherItemLoadsItsPage() {
+        var state = GitHubPopoverState()
+        _ = state.open(readme)
+        #expect(state.open(guide) == guide)
+        #expect(state.open(readme) == readme)
     }
 
-    @Test func anotherItemLoadsItsPageInTheSameView() {
-        var state = GitHubViewState()
-        _ = state.showGitHub(for: readme)
-        state.showMetabrowser()
-        #expect(state.showGitHub(for: guide) == guide)
-        #expect(state.openedFor == guide)
-        state.showMetabrowser()
-        #expect(state.showGitHub(for: readme) == readme)
-    }
-
-    @Test func aDiscardedTabGivesUpItsGitHubViewAndShowsItsPage() {
-        var state = GitHubViewState()
-        _ = state.showGitHub(for: readme)
+    @Test func afterItsWebViewIsLetGoItLoadsAgain() {
+        var state = GitHubPopoverState()
+        _ = state.open(readme)
         state.discard()
-        #expect(!state.showsGitHub && !state.hasGitHubView)
-        #expect(state.showGitHub(for: readme) == readme)
+        #expect(state.openedFor == nil)
+        #expect(state.open(readme) == readme)
+    }
+}
+
+@Suite struct GitHubPopoverLayoutTests {
+    private let screen = CGSize(width: 1728, height: 1079)
+
+    @Test func itTakesMostOfALargeWindow() {
+        let size = GitHubPopoverLayout.contentSize(window: CGSize(width: 1400, height: 900), screen: screen)
+        #expect(size == CGSize(width: 1260, height: 765))
+    }
+
+    @Test func itIsNeverSmallerThanTheMinimum() {
+        let size = GitHubPopoverLayout.contentSize(window: CGSize(width: 600, height: 400), screen: screen)
+        #expect(size == GitHubPopoverLayout.minimumSize)
+    }
+
+    /// The screen wins over the minimum, less a margin for the popover's border and arrow.
+    @Test func itStaysOnASmallScreen() {
+        let size = GitHubPopoverLayout.contentSize(
+            window: CGSize(width: 700, height: 500), screen: CGSize(width: 760, height: 540))
+        #expect(size == CGSize(width: 760 - GitHubPopoverLayout.screenMargin, height: 540 - GitHubPopoverLayout.screenMargin))
+        #expect(GitHubPopoverLayout.contentSize(window: CGSize(width: 1400, height: 900), screen: nil)
+            == CGSize(width: 1260, height: 765))
+    }
+
+    private let bounds = CGRect(x: 0, y: 0, width: 1000, height: 600)
+    private let button = CGRect(x: 880, y: 12, width: 100, height: 24)
+
+    /// In a flipped web view the button's CSS rectangle is its rectangle in points at
+    /// 100%; unflipped, it is measured up from the bottom.
+    @Test func theAnchorIsTheButtonInTheWebView() {
+        let flipped = GitHubPopoverLayout.anchor(button, viewportWidth: 1000, in: bounds, flipped: true)
+        #expect(flipped == button)
+        let unflipped = GitHubPopoverLayout.anchor(button, viewportWidth: 1000, in: bounds, flipped: false)
+        #expect(unflipped == CGRect(x: 880, y: 600 - 12 - 24, width: 100, height: 24))
+    }
+
+    /// At 200% page zoom the viewport is half the web view's width in CSS pixels.
+    @Test func itFollowsThePagesZoom() {
+        let zoomed = GitHubPopoverLayout.anchor(
+            CGRect(x: 440, y: 6, width: 50, height: 12), viewportWidth: 500, in: bounds, flipped: true)
+        #expect(zoomed == CGRect(x: 880, y: 12, width: 100, height: 24))
+    }
+
+    @Test func itIsClippedToTheWebView() {
+        let partly = GitHubPopoverLayout.anchor(
+            CGRect(x: 950, y: -10, width: 100, height: 24), viewportWidth: 1000, in: bounds, flipped: true)
+        #expect(partly == CGRect(x: 950, y: 0, width: 50, height: 14))
+    }
+
+    /// A button scrolled out of sight, or of no size, leaves the popover pointing at the web
+    /// view's top right corner, where the button sits.
+    @Test func aButtonOutOfSightPointsAtTheTopRightCorner() {
+        let gone = CGRect(x: 880, y: -100, width: 100, height: 24)
+        #expect(GitHubPopoverLayout.anchor(gone, viewportWidth: 1000, in: bounds, flipped: true)
+            == CGRect(x: 999, y: 0, width: 1, height: 1))
+        #expect(GitHubPopoverLayout.anchor(gone, viewportWidth: 1000, in: bounds, flipped: false)
+            == CGRect(x: 999, y: 599, width: 1, height: 1))
+        #expect(GitHubPopoverLayout.anchor(.zero, viewportWidth: 0, in: bounds, flipped: true)
+            == CGRect(x: 999, y: 0, width: 1, height: 1))
+    }
+}
+
+@Suite struct GitHubViewRequestTests {
+    private let href = "https://github.com/octo/demo/blob/main/README.md"
+
+    @Test func aClickCarriesThePageAndWhereTheButtonIs() throws {
+        let request = try #require(GitHubViewRequests.Request([
+            "href": href, "rect": [880.5, 12, 100, 24] as [Any], "viewportWidth": 1000,
+        ] as [String: Any]))
+        #expect(request.page.absoluteString == href)
+        #expect(request.link == CGRect(x: 880.5, y: 12, width: 100, height: 24))
+        #expect(request.viewportWidth == 1000)
+    }
+
+    @Test func aMessageOfAnotherShapeIsDropped() {
+        let rect: [Any] = [880, 12, 100, 24]
+        for body: Any in [
+            href, [href], ["href": href] as [String: Any],
+            ["href": href, "rect": rect] as [String: Any],
+            ["href": href, "rect": [880, 12, 100] as [Any], "viewportWidth": 1000] as [String: Any],
+            ["href": href, "rect": [880, 12, -1, 24] as [Any], "viewportWidth": 1000] as [String: Any],
+            ["href": href, "rect": [Double.nan, 12, 100, 24] as [Any], "viewportWidth": 1000] as [String: Any],
+            ["href": href, "rect": ["880", 12, 100, 24] as [Any], "viewportWidth": 1000] as [String: Any],
+            ["href": href, "rect": rect, "viewportWidth": 0] as [String: Any],
+            ["href": href, "rect": rect, "viewportWidth": Double.infinity] as [String: Any],
+            ["href": "https://example.com/", "rect": rect, "viewportWidth": 1000] as [String: Any],
+            ["href": 1, "rect": rect, "viewportWidth": 1000] as [String: Any],
+        ] {
+            #expect(GitHubViewRequests.Request(body) == nil, "\(body)")
+        }
     }
 }
 
@@ -184,67 +280,5 @@ import Testing
         // An opaque origin, such as a `/raw` file's under its CSP sandbox.
         #expect(!policy.isAppDocument(scheme: "", host: "", port: 0, isMainFrame: true))
         #expect(!NavigationPolicy().isAppDocument(scheme: "http", host: "127.0.0.1", port: 8411, isMainFrame: true))
-    }
-}
-
-@Suite struct ViewToggleTests {
-    private let aspectRatio = AppIconMark.ink.width / AppIconMark.ink.height
-
-    /// The marks are the view header's own: the stylesheet masks the same SVG.
-    @Test func theMarksAreTheViewHeadersOwn() throws {
-        let repository = URL(filePath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        let css = try String(
-            contentsOf: repository.appending(path: "src/metabrowser/static/styles.css"), encoding: .utf8)
-        for svg in [ViewToggleMarks.github, ViewToggleMarks.metabrowser] {
-            let encoded = svg.replacingOccurrences(of: "<", with: "%3C").replacingOccurrences(of: ">", with: "%3E")
-            #expect(css.contains("url(\"data:image/svg+xml,\(encoded)\")"), "\(svg.prefix(80))")
-        }
-    }
-
-    @Test func theToggleIsTheHeadersSizeInsetAsTheHeaderInsetsIt() {
-        let layout = ViewToggleLayout(width: 800, markAspectRatio: aspectRatio)
-        // Two 28 by 20 segments in a 1-point border: 58 by 22, 24 points from the edge.
-        #expect(layout.toggle.size == CGSize(width: 58, height: 22))
-        #expect(layout.toggle.maxX == CGFloat(800 - 24))
-        // Centered in the 28-point bar.
-        #expect(ViewToggleLayout.barHeight == 28)
-        #expect(layout.toggle.minY == 3 && layout.toggle.maxY == 25)
-        #expect(layout.metabrowser.size == CGSize(width: 28, height: 20))
-        #expect(layout.github.size == CGSize(width: 28, height: 20))
-        #expect(layout.metabrowser.minX == layout.toggle.minX + 1 && layout.github.minX == layout.metabrowser.maxX)
-        #expect(layout.toggle.contains(layout.metabrowser) && layout.toggle.contains(layout.github))
-    }
-
-    @Test func theMarksAreCenteredInTheirSegmentsOnWholePoints() {
-        let layout = ViewToggleLayout(width: 800, markAspectRatio: aspectRatio)
-        #expect(layout.githubMark.size == CGSize(width: 14, height: 14))
-        #expect(layout.metabrowser.contains(layout.metabrowserMark))
-        #expect(layout.github.contains(layout.githubMark))
-        // The Metabrowser mark fills the 16-point width of its box, as `contain` does.
-        #expect(layout.metabrowserMark.width == 16)
-        #expect(abs(layout.metabrowserMark.height - 16 / aspectRatio) < 0.001)
-        for mark in [layout.metabrowserMark, layout.githubMark] {
-            #expect(mark.minX == mark.minX.rounded() && mark.minY == mark.minY.rounded())
-        }
-    }
-
-    @Test func theLabelTakesTheRestUpToAGapBeforeTheToggle() {
-        let layout = ViewToggleLayout(width: 800, markAspectRatio: aspectRatio)
-        #expect(layout.label.minX == 24)
-        #expect(layout.label.maxX == layout.toggle.minX - 12)
-        #expect(layout.label.height == ViewToggleLayout.barHeight)
-        // A window too narrow for any label leaves it none, never a negative width.
-        #expect(ViewToggleLayout(width: 100, markAspectRatio: aspectRatio).label.width == 0)
-    }
-
-    @Test func rightToLeftMirrorsTheBar() {
-        let ltr = ViewToggleLayout(width: 800, markAspectRatio: aspectRatio)
-        let rtl = ViewToggleLayout(width: 800, markAspectRatio: aspectRatio, rightToLeft: true)
-        #expect(rtl.toggle.minX == 24)
-        #expect(rtl.toggle.size == ltr.toggle.size)
-        // The Metabrowser segment leads, on the right.
-        #expect(rtl.metabrowser.minX > rtl.github.minX)
-        #expect(rtl.label.minX == rtl.toggle.maxX + 12 && rtl.label.width == ltr.label.width)
     }
 }
