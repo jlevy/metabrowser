@@ -62,9 +62,14 @@ pytestmark = [
 SWITCH_BOUND_MS = 5000
 WORKING_TREE = ["NOTES.md", "README.md", "STAGED.md", "UNTRACKED.md"]
 FEATURE = "c7ae2a331f546e6a2431ed7093e9e430a9d1269b"
-# Each ref's commit as `git rev-parse --short` prints it in the fixture, whose IDs are
-# literal (tests/source_checkout_fixture.py).
-TOPIC, FEATURE_SHORT, LOCAL_WORK, V1 = "42382ea", "c7ae2a3", "25e0a2a", "fcb9d63"
+# Each ref's commit as every line names one (`short_commit` in root_identity.py), in the
+# fixture, whose IDs are literal (tests/source_checkout_fixture.py).
+TOPIC, FEATURE_SHORT, LOCAL_WORK, V1 = (
+    "42382ea2303b",
+    "c7ae2a331f54",
+    "25e0a2a76ab4",
+    "fcb9d63c3c85",
+)
 TRUSTED = {"active_content": True, "mutations": False}
 UNTRUSTED = {"active_content": False, "mutations": False}
 
@@ -159,6 +164,7 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
     ]
     for name in ("workingTreePanel", "workingTreeRemotes", "workingTreeTags", "branchPanel"):
         assert result[name]["inside"], f"{name}: the panel leaves the navigation pane"
+        assert result[name]["spansToolbar"], f"{name}: the panel does not span the toolbar"
         assert result[name]["overflowing"] == 0, f"{name}: a row is wider than the panel"
         assert result[name]["error"] == ""
         # Every ref's short ID is in the commit-ID face, and every ref has an age in a tier,
@@ -166,6 +172,10 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
         for row in result[name]["rows"]:
             assert row["commitFace"] is True, (name, row)
             assert row["age"]["text"] and row["age"]["tier"] and row["age"]["tip"], (name, row)
+        # The ages end the rows in one column, so the IDs line up: the widest compact age
+        # takes no more room than the narrowest.
+        assert len(set(result[name]["ageColumn"])) == 1, (name, result[name]["ageColumn"])
+        assert result[name]["commitColumns"] <= 1, name
 
     # A branch: a revision's page, under the untrusted profile, with no file of the disk's.
     branch = result["branch"]
@@ -173,7 +183,7 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
     assert branch["pin"] == {"pin": FEATURE, "ref": "refs/heads/feature"}
     assert branch["checkout"] == {"working_tree": False}
     assert branch["button"] == "feature"
-    assert branch["heading"] == f"checkoutfeature{FEATURE[:12]}"
+    assert branch["heading"] == f"checkoutfeature{FEATURE_SHORT}"
     assert branch["tree"] == ["FEATURE.md", "README.md"]
     assert branch["capabilities"] == UNTRUSTED
     assert branch["title"] == tree["title"] == "checkout • Metabrowser"

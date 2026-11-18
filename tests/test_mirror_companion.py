@@ -71,6 +71,9 @@ class _Mirror:
     async def ref_tip(self, ref: str) -> str | None:
         return None
 
+    async def default_tip(self) -> str | None:
+        return None
+
     async def list_refs(self, kind: RefKind) -> tuple[MirrorRef, ...]:
         raise AssertionError("not reached")
 

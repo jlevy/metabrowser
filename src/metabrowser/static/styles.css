@@ -2729,8 +2729,16 @@ html.theme-anim .menu {
   min-width: 0;
   max-width: 100%;
 }
-/* Only what a long name needs is local. The button keeps its width beside the stale
-   notice, whose words give way instead; a name longer than the row shortens. */
+/* Only what a long name needs is local. The button keeps its width, and Group by moves
+   to the next line instead; a name longer than the row shortens. Its span is what a ref
+   chip's copy control is placed against (.git-ref-copy-host), so the list's containing
+   block stays the toolbar. */
+.source-ref-selector-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 100%;
+}
 .source-ref-selector-toggle {
   flex: 0 0 auto;
   min-width: 0;
@@ -2795,7 +2803,7 @@ html.theme-anim .menu {
 /* A ref's commit as the history shows one: Git's short ID in the commit-ID face
    (`.git-commit-sha`), muted beside the ref's name, then its age, whose tier sets its
    colour and weight (`.age-*`). Neither shrinks: the name gives way first. The age ends
-   the row in a column as wide as the widest compact age, "12mo", so the IDs line up. */
+   the row in a column as wide as the widest compact age, so the IDs line up. */
 .source-ref-selector-commit {
   flex: 0 0 auto;
   color: var(--muted);
@@ -2803,13 +2811,20 @@ html.theme-anim .menu {
 /* A commit ID sits one step below the sans beside it (`.git-commit-sha`), and this list
    and the button are at the small size, the ramp's last step before the micro marks. So
    here an ID takes the ratio a ref chip takes to its text, and reads at the size of the
-   ref names it sits among; at the history's size it read larger than them. */
-.source-ref-selector .git-commit-sha {
+   ref names it sits among; at the history's size it read larger than them. A mirror's
+   offer of a newer commit, in the freshness row, names it the same way. */
+.source-ref-selector .git-commit-sha,
+.source-freshness .git-commit-sha {
   font-size: var(--git-ref-font-size);
 }
+/* The age column is as wide as the widest compact age, "12mo". In em, not ch: a tier's
+   weight widens its "0", so 4ch was 24.2px at weight 500 and 25.3px at 700, while "12mo"
+   was 28.7px. Measured 2026-11-18 in Chrome at 12px: "12mo" is 2.39em in Clean Fonts
+   (Source Sans 3) and 2.78em in System Fonts, and the next widest, "60m" at weight 700,
+   2.28em; tests/test_checkout_ref_selector_chrome.py holds the column. */
 .source-ref-selector-age {
   flex: 0 0 auto;
-  min-width: 4ch;
+  min-width: 2.8em;
   text-align: end;
 }
 .source-ref-selector-note,
@@ -2855,30 +2870,15 @@ html.theme-anim .menu {
   max-width: 100%;
   color: var(--text);
 }
-.source-ref-selector-working-tree[hidden],
-.source-ref-selector-stale[hidden] {
+.source-ref-selector-working-tree[hidden] {
   display: none;
-}
-/* What a checkout's page says, beside its button, once the server shows something
-   else: the words and the one action, as the freshness row offers a reload on a mirror.
-   On one toolbar line with the button, so the words shorten rather than wrap. */
-.source-ref-selector-stale {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  color: var(--text);
-  white-space: nowrap;
-}
-.source-ref-selector-stale > :first-child {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /* A served mirror's freshness, at the foot of the navigation pane where a
    folder shows crawl progress: when it was last fetched, and an offer when a
-   refresh moved the pinned ref. Quiet unless a refresh failed. */
+   refresh moved the pinned ref. Quiet unless a refresh failed. A checkout's page
+   offers its reload in the same row (.source-ref-selector-stale), so every tab
+   shows it. */
 .source-freshness[hidden] {
   display: none;
 }

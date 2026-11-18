@@ -89,8 +89,19 @@ from metabrowser.source import (
 APP_NAME: Final = "Metabrowser"
 # U+2022 BULLET between single spaces, as in ``fdu • Metabrowser``.
 TITLE_SEPARATOR: Final = " \u2022 "
-# How much of a commit ID a commit pin's full name shows, as the navigation heading does.
+# How much of a commit ID a line shows wherever it names a commit: a commit pin's full
+# name, the navigation heading, the ref chooser's button and rows, and a mirror's offer of
+# its ref's newer commit. One length, so one commit reads the same in each. The page's copy
+# is `SHORT_COMMIT_CHARS` in static/formatters.js (`shortCommit`), which
+# tests/test_short_commit.py holds to this one.
 SHORT_COMMIT_CHARS: Final = 12
+
+
+def short_commit(commit: str) -> str:
+    """*commit* as a line names it: its first :data:`SHORT_COMMIT_CHARS` characters."""
+
+    return commit[:SHORT_COMMIT_CHARS]
+
 
 type IdentityKind = Literal["folder", "mirror"]
 
@@ -240,16 +251,16 @@ def mirror_identity(
     # is a pin's module, and a folder's server never loads it.
     from metabrowser.git.tree_source import ref_short_name
 
-    short_commit = commit[:SHORT_COMMIT_CHARS]
+    shown_commit = short_commit(commit)
     ref_name = ref_short_name(ref)
     pull = pull_head_number(ref)
     if display is None:
-        label = ref_name if ref_name is not None else short_commit
-        return _identity(label, label if ref_name is None else f"{label}@{short_commit}", "mirror")
+        label = ref_name if ref_name is not None else shown_commit
+        return _identity(label, label if ref_name is None else f"{label}@{shown_commit}", "mirror")
     origin = abbreviate_origin(display.origin, home=home)
     if pull is not None:
         return _identity(f"{display.name} #{pull}", f"{origin}#{pull}", "mirror")
-    pinned = ref_name if ref_name is not None else short_commit
+    pinned = ref_name if ref_name is not None else shown_commit
     return _identity(display.name, f"{origin}@{pinned}", "mirror")
 
 
@@ -259,7 +270,7 @@ def checkout_revision_identity(
     """What a revision of the checkout at *root* is called: the folder, and what is shown."""
 
     folder = folder_identity(root, home=home)
-    shown = checkout_ref_name(ref) or commit[:SHORT_COMMIT_CHARS]
+    shown = checkout_ref_name(ref) or short_commit(commit)
     return _identity(folder["short_name"], f"{folder['full_name']}@{shown}", "folder")
 
 
@@ -316,5 +327,6 @@ __all__ = [
     "folder_identity",
     "mirror_identity",
     "root_identity",
+    "short_commit",
     "user_home",
 ]

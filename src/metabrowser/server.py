@@ -199,7 +199,7 @@ from metabrowser.recent import (
     recent_result_from_projection,
 )
 from metabrowser.repository_context import discover_repository_context
-from metabrowser.root_identity import IDENTITY_ROUTES, SHORT_COMMIT_CHARS, root_identity
+from metabrowser.root_identity import IDENTITY_ROUTES, root_identity, short_commit
 from metabrowser.settings import (
     DOC_MAX_CHARS_DEFAULT,
     FOLDER_DISCOVERY_MAX_ENTRIES,
@@ -1292,7 +1292,7 @@ def _pin_label_html(status: SourceStatus) -> str:
     and the full commit is its served root.
     """
 
-    short = html_escape((status["pin"] or "")[:12])
+    short = html_escape(short_commit(status["pin"] or ""))
     name = status["name"]
     ref_name = status["ref_name"]
 
@@ -1539,8 +1539,7 @@ def _source_ref_label_html(pin: GitRevisionSubject | None, *, checkout: bool) ->
         return html_escape(name)
     # As much of the ID as the navigation heading shows: the page has the full ID alone.
     return (
-        'Commit: <span class="git-commit-sha">'
-        f"{html_escape(pin.commit_oid[:SHORT_COMMIT_CHARS])}</span>"
+        f'Commit: <span class="git-commit-sha">{html_escape(short_commit(pin.commit_oid))}</span>'
     )
 
 
@@ -1711,17 +1710,20 @@ async def index(
     # adopts this button, so focus a reader put on it stays
     # (static/source-ref-selector.js#build), and app.js refills the row around it rather
     # than over it (renderNavFilterBar). It removes the button when Git says a checkout's
-    # root is no repository.
+    # root is no repository. The button has a span of its own, which a ref chip's copy
+    # control is placed against (`mountRefCopies`), so the list still has the toolbar for
+    # its containing block and spans the pane, on a ref's page as on the working tree's.
     source_ref_selector = ""
     if checkout is not None or (git_pin and mirror is not None):
         source_ref_selector = (
             '<div class="source-ref-selector" id="source-ref-selector">'
+            '<span class="source-ref-selector-button">'
             '<button type="button" class="chip chip-menu-trigger source-ref-selector-toggle'
             ' disclosure-toggle" aria-haspopup="dialog" aria-expanded="false"'
             ' data-tip-text="Switch branch or tag">'
             '<span class="source-ref-selector-label">'
             f"{_source_ref_label_html(pin, checkout=checkout is not None)}</span>"
-            '<span class="chip-menu-caret" aria-hidden="true"></span></button></div>'
+            '<span class="chip-menu-caret" aria-hidden="true"></span></button></span></div>'
         )
     # The Pulls tab is decided here, from what the page already knows: a pin whose mirror is a
     # hosted repository, or a checkout, a subdirectory of one too, whose `origin` is on

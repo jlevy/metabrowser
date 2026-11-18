@@ -66,7 +66,8 @@ const context = {
 context.window = context;
 context.globalThis = context;
 vm.createContext(context);
-// formatters.js gives each row's commit its age, as the shell's startup scripts do.
+// formatters.js gives each row's commit its short ID and age, as the shell's startup
+// scripts do.
 for (const name of ["formatters.js", "filter-controls.js", "source-ref-selector.js"]) {
   vm.runInContext(fs.readFileSync(path.join(staticDir, name), "utf8"), context, {
     filename: path.join(staticDir, name),

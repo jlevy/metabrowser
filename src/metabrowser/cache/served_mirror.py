@@ -277,6 +277,11 @@ class StoreMirror:
     async def ref_tip(self, ref: str) -> str | None:
         return await ref_tip(self._target(), ref)
 
+    async def default_tip(self) -> str | None:
+        # The store's record of the default branch, then one `for-each-ref` for it.
+        default_ref = await asyncio.to_thread(self._default_ref)
+        return None if default_ref is None else await ref_tip(self._target(), default_ref)
+
     async def list_refs(self, kind: RefKind) -> tuple[MirrorRef, ...]:
         default_ref = await asyncio.to_thread(self._default_ref) if kind == "branch" else None
         return await list_mirror_refs(self._target(), kind, default_ref=default_ref)

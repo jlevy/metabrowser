@@ -53,8 +53,12 @@ function loadProductionModule() {
   };
   context.window.window = context.window;
   vm.createContext(context);
-  const file = path.join(staticDir, "source-ref-selector.js");
-  vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
+  // formatters.js names each commit as every line does, as the shell's startup scripts
+  // load it first.
+  for (const name of ["formatters.js", "source-ref-selector.js"]) {
+    const file = path.join(staticDir, name);
+    vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
+  }
   return context.window.MetabrowserSourceRefSelector;
 }
 
@@ -191,7 +195,7 @@ function paintOf(model) {
     open: true,
     ...(checkout
       ? {
-          workingTree: `Working tree${model.workingTree.location === "" ? "" : `: ${model.workingTree.location}`}${model.workingTree.current ? " [current]" : ""}`,
+          workingTree: `Working tree${model.workingTree.location === "" ? "" : `: ${model.workingTree.location} (kept whole: ${model.workingTree.base})`}${model.workingTree.current ? " [current]" : ""}`,
           lists: model.kinds,
         }
       : {}),
@@ -552,7 +556,30 @@ async function runCheckout() {
     "a mirror's pin": named({ pin, ref: "refs/remotes/origin/feature" }, undefined),
     "a plain folder": named(undefined, undefined),
   };
-  return { steps, labels, guard };
+
+  // Where the Working tree row cuts a folder's path, keeping the folder's own name whole:
+  // at the name the server sends, in whatever separator the platform joined the path with,
+  // and nowhere at the home directory, whose path is `~` alone.
+  const folders = Object.fromEntries(
+    [
+      ["under the home directory", "~/src/checkout", "checkout"],
+      ["with the platform's other separator", "~\\src\\checkout", "checkout"],
+      ["the home directory itself", "~", "levy"],
+      ["outside the home directory", "/srv/checkout", "checkout"],
+    ].map(([where, location, name]) => {
+      const listing = {
+        ...recording.branches.body,
+        working_tree: { current: true, head: null, head_name: null, name, location },
+      };
+      const tree = selectorRuntime.describe({
+        ...emptyState(),
+        listing,
+        checkout: true,
+      }).workingTree;
+      return [where, `${tree.directory}[${tree.base}]`];
+    }),
+  );
+  return { steps, labels, guard, folders };
 }
 
 function emptyState() {

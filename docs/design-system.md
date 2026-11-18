@@ -4850,7 +4850,7 @@ list chooser, a filter box, and one row for each ref (`static/source-ref-selecto
   ref’s name, its commit, and the commit’s age need the room.
 
 - **A ref’s row is its name, its commit, and its age.** The name is its
-  [chip](#branch-chips), the commit is Git’s short ID in the commit-ID face
+  [chip](#branch-chips), the commit is its short ID in the commit-ID face
   (`.git-commit-sha`), muted, and the age is `MetabrowserFormatters.age` in the compact
   style, in its tier’s ink, with the commit’s time as its tooltip ([Age](#age)). A tag’s
   age is its commit’s. The ID sits one step below the text beside it, as it does in a
@@ -4858,6 +4858,14 @@ list chooser, a filter box, and one row for each ref (`static/source-ref-selecto
   micro marks, it takes the ratio a chip takes to its text.
   The ages end the rows in one column, so the IDs line up.
   A pin that names no ref puts “Commit:” and the same face on the button.
+
+- **A commit reads the same wherever a line names it.** The navigation heading, the
+  button, the rows, and a mirror’s offer of its ref’s newer commit all show the first
+  `SHORT_COMMIT_CHARS` characters of its ID, from one formatter:
+  `MetabrowserFormatters.shortCommit` on the page and `short_commit` in
+  `root_identity.py` on the server, which `tests/test_short_commit.py` holds equal.
+  A Commits tab’s row keeps Git’s own abbreviation, which grows in a large repository so
+  that it stays unique.
 
 A checkout adds three things, and each uses a primitive the control already had:
 
@@ -4884,12 +4892,13 @@ A checkout adds three things, and each uses a primitive the control already had:
   revision’s page is told from the working tree’s in two places before the list is
   opened.
 
-- **A page the server has moved on from says so beside the button,** in the text ink
-  with one `.btn`, “Reload” (`.source-ref-selector-stale`): the offer a mirror’s
-  freshness row makes at the foot of the pane.
-  It shares the button’s line, and its words shorten before the button does, so Group by
-  moves to the next line in the default pane.
-  It appears only after another tab has switched the server.
+- **A page the server has moved on from says so at the foot of the pane,** in the
+  freshness row a mirror offers its reload in, with one `.btn`, “Reload”
+  (`.source-ref-selector-stale`). Every tab shows it, not only Files: the Pulls tab’s
+  requests and a comparison’s are refused as the Files tab’s are, and the button is in
+  the Files toolbar, which the other tabs hide.
+  A checkout’s Commits tab is answered whichever revision is served (`SourcePinGuard` in
+  `source_routes.py`). It appears only after another tab has switched the server.
 
 - **The selector keeps its box from first paint.** The module arrives after the tree’s
   first rows, so the server draws the selector in the Files toolbar with the button it

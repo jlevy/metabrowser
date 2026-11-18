@@ -98,10 +98,8 @@
     if (pull !== null) {
       return { kind: "Pull request", name: `#${pull[1]}` };
     }
-    // As much of the ID as the navigation heading names a commit pin by
-    // (`SHORT_COMMIT_CHARS` in root_identity.py, which the server's button uses too): the
-    // page has the full ID alone, not Git's abbreviation of it.
-    return { kind: "Commit", name: shown.pin.slice(0, 12) };
+    // As the navigation heading and every row name a commit (`shortCommit`).
+    return { kind: "Commit", name: window.MetabrowserFormatters.shortCommit(shown.pin) };
   }
 
   /**
@@ -143,7 +141,7 @@
         : listing.refs.map((row) => ({
             name: row.name,
             ref: row.ref,
-            commit: row.short_commit,
+            commit: window.MetabrowserFormatters.shortCommit(row.commit),
             committedAt: row.committed_at,
             default: row.default,
             checkedOut: row.checked_out === true,
@@ -166,12 +164,19 @@
     // whether it is served, the page does: a checkout's page with no pin shows it. The
     // branch it is on is not repeated here: the Branches list marks it "checked out".
     const tree = listing?.working_tree ?? null;
+    const location = tree?.location ?? "";
+    // The folder's own name, which the row keeps whole: the path ends with it, in the
+    // platform's separator, except at the home directory, whose path is `~` alone.
+    const name = tree?.name ?? "";
+    const cut = name !== "" && location.endsWith(name) ? location.length - name.length : 0;
     /** @type {MetabrowserSourceRefSelectorModel["workingTree"]} */
     const workingTree = !checkout
       ? null
       : {
           current: tree !== null ? tree.current : state.shown === null,
-          location: tree?.location ?? "",
+          location,
+          directory: location.slice(0, cut),
+          base: location.slice(cut),
         };
     return {
       button: label.name === "" ? label.kind : `${label.kind}: ${label.name}`,
@@ -587,7 +592,7 @@
       } else {
         parts.label.textContent = model.button;
       }
-      parts.releaseCopies = window.metabrowser.mountRefCopies(parts.toggle, parts.root);
+      parts.releaseCopies = window.metabrowser.mountRefCopies(parts.toggle, parts.buttonHost);
     }
     parts.toggle.setAttribute("aria-expanded", String(model.open));
     parts.panel.hidden = !model.open;
@@ -606,10 +611,8 @@
     parts.workingTree.hidden = model.workingTree === null;
     if (model.workingTree !== null) {
       parts.workingTree.disabled = model.switching;
-      const location = model.workingTree.location;
-      const base = location.lastIndexOf("/") + 1;
-      parts.workingTreeDirectory.textContent = location.slice(0, base);
-      parts.workingTreeBase.textContent = location.slice(base);
+      parts.workingTreeDirectory.textContent = model.workingTree.directory;
+      parts.workingTreeBase.textContent = model.workingTree.base;
       if (model.workingTree.current) {
         parts.workingTree.setAttribute("aria-current", "true");
       } else {
@@ -723,17 +726,24 @@
     if (drawn === null) {
       toggle.append(label, caret);
     }
-    // What a checkout's page says when the server comes to show something else.
-    const stale = document.createElement("span");
-    stale.className = "source-ref-selector-stale";
+    // What a checkout's page says when the server comes to show something else, as a
+    // freshness row: at the foot of the navigation pane, where a mirror's makes the same
+    // offer, so every tab shows it. The Pulls tab's requests and a comparison's are
+    // refused as the Files tab's are, and this button is in the Files toolbar, which the
+    // other tabs hide.
+    const stale = document.createElement("div");
+    stale.className = "source-freshness source-ref-selector-stale";
     stale.setAttribute("role", "status");
     stale.hidden = true;
+    const staleOffer = document.createElement("span");
+    staleOffer.className = "source-freshness-offer";
     const staleText = document.createElement("span");
     const reload = document.createElement("button");
     reload.type = "button";
     reload.className = "btn source-ref-selector-reload";
     reload.textContent = "Reload";
-    stale.append(staleText, reload);
+    staleOffer.append(staleText, reload);
+    stale.append(staleOffer);
     const panel = document.createElement("div");
     panel.className = "source-ref-selector-panel menu";
     panel.setAttribute("role", "dialog");
@@ -798,15 +808,29 @@
       }
     });
     panel.append(workingTree, kinds, filter, list, note, error);
+    // The button's own box, which a ref chip's copy control is placed against, so that
+    // the list's containing block stays the toolbar and the list spans the pane. Drawn
+    // by the server around its button, and adopted with it.
+    const buttonHost =
+      /** @type {HTMLElement | null} */ (
+        toggle.parentElement?.closest(".source-ref-selector-button")
+      ) ?? document.createElement("span");
+    buttonHost.className = "source-ref-selector-button";
     // The list is put in by `mount`, once its kinds are bound.
     if (drawn === null) {
-      element.replaceChildren(toggle, stale);
+      buttonHost.append(toggle);
+      element.replaceChildren(buttonHost);
+    }
+    const foot = document.getElementById("index-progress");
+    if (foot) {
+      foot.after(stale);
     } else {
       element.append(stale);
     }
     element.hidden = false;
     return {
       root: element,
+      buttonHost,
       toggle,
       label,
       stale,
@@ -1116,6 +1140,7 @@
         unbindKinds();
         mounted.dispose();
         parts.releaseCopies?.();
+        parts.stale.remove();
         element.replaceChildren();
         element.hidden = true;
         if (mountedSelector === handle) {

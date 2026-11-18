@@ -627,6 +627,8 @@ type MetabrowserFormatterRuntime = Readonly<{
   formatBytes(value: number): string;
   formatFileCount(value: number): string;
   formatInteger(value: number): string;
+  /** A commit ID as a line names it, in the commit-ID face (`SHORT_COMMIT_CHARS`). */
+  shortCommit(commit: string): string;
   sizeClass(value: number): "" | "size-large";
   /** A commit's or pull request's title as markup, its prefix in `span.title-prefix`. */
   titleHtml(title: string): string;
@@ -3183,7 +3185,7 @@ declare global {
   type MetabrowserSourcePage = { pin: string; ref: string | null };
 
   type MetabrowserSourceOffer =
-    | { kind: "switch"; ref: string; latest: string; text: string; button: string }
+    | { kind: "switch"; ref: string; latest: string; text: string; commit: string; button: string }
     | { kind: "reload"; text: string; button: string }
     | { kind: "retry"; text: string; button: string };
 
@@ -3349,7 +3351,6 @@ declare global {
     ref: string;
     commit: string;
     /** The commit's ID as Git abbreviates it, which the list shows. */
-    short_commit: string;
     /** When the commit was made, in epoch seconds; null when Git gives no date. */
     committed_at: number | null;
     default: boolean;
@@ -3418,11 +3419,13 @@ declare global {
     switching: boolean;
     /** A checkout's working-tree row: whether it is what the server serves, and the
      * folder's path, "" until the first listing says it. Null on a mirror. */
-    workingTree: { current: boolean; location: string } | null;
+    /** A checkout's working tree: its path, and that path cut before the folder's own
+     *  name, which the row keeps whole. */
+    workingTree: { current: boolean; location: string; directory: string; base: string } | null;
     rows: Array<{
       name: string;
       ref: string;
-      /** The commit's ID as Git abbreviates it. */
+      /** The commit's ID as every line names one (`MetabrowserFormatters.shortCommit`). */
       commit: string;
       /** When the commit was made, in epoch seconds, which the row shows as an age. */
       committedAt: number | null;
@@ -3460,6 +3463,8 @@ declare global {
   type MetabrowserSourceRefSelectorParts = {
     releaseCopies?: () => void;
     root: HTMLElement;
+    /** The button's own box, which a ref chip's copy control is placed against. */
+    buttonHost: HTMLElement;
     toggle: HTMLButtonElement;
     label: HTMLElement;
     stale: HTMLElement;

@@ -121,10 +121,7 @@ def test_branches_list_the_default_first_and_mark_the_served_one(
     ]
     assert (listing["total"], listing["truncated"]) == (4, False)
     topic, release, feature, _patches = listing["refs"]
-    # Each row's commit as the history shows one: Git's abbreviation of its ID, at least
-    # seven characters, and the date it was committed, as the origin has it.
-    short = topic.pop("short_commit")
-    assert origin.second.startswith(short) and len(short) >= 7
+    # Each row's commit and the date it was committed, as the origin has it.
     committed = subprocess.run(
         ["git", "-C", str(origin.path), "log", "-1", "--format=%ct", origin.second],
         check=True,
@@ -327,11 +324,12 @@ def test_a_mirror_pin_shell_has_the_selector_loaded_on_demand(served: TestClient
     assert (
         '<div class="nav-filter-bar-main nav-toolbar-row">'
         '<div class="source-ref-selector" id="source-ref-selector">'
+        '<span class="source-ref-selector-button">'
         '<button type="button" class="chip chip-menu-trigger source-ref-selector-toggle'
         ' disclosure-toggle" aria-haspopup="dialog" aria-expanded="false"'
         ' data-tip-text="Switch branch or tag">'
         '<span class="source-ref-selector-label">topic</span>'
-        '<span class="chip-menu-caret" aria-hidden="true"></span></button></div>'
+        '<span class="chip-menu-caret" aria-hidden="true"></span></button></span></div>'
         '<span class="count tally-pending"></span></div>'
     ) in shell
     bundles = shell[shell.index("window.METABROWSER_ASSET_BUNDLES=") :]

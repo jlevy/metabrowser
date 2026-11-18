@@ -247,16 +247,15 @@ class SourceRef(TypedDict):
     """One row of ``/api/source/refs``: a :class:`MirrorRef` and whether it is served.
 
     ``default`` marks a mirror's default branch and ``checked_out`` the branch a
-    checkout's ``HEAD`` is on; each lists first, and the other is false. ``short_commit``
-    is Git's abbreviation of ``commit``, as a history row's ``short_id`` is, and
-    ``committed_at`` that commit's committer date in epoch seconds, from which a row
-    shows its age; ``None`` when Git printed none.
+    checkout's ``HEAD`` is on; each lists first, and the other is false.
+    ``committed_at`` is the commit's committer date in epoch seconds, from which a row
+    shows its age; ``None`` when Git printed none. The page shows ``commit`` as every line
+    names a commit (``shortCommit`` in static/formatters.js).
     """
 
     name: str
     ref: str
     commit: str
-    short_commit: str
     committed_at: float | None
     default: bool
     checked_out: bool
@@ -270,7 +269,8 @@ class WorkingTree(TypedDict):
     on and ``head_name`` the branch's name, both ``None`` when ``HEAD`` is detached.
     ``name`` is the folder's name and ``location`` its path with the home directory as
     ``~``, as the page names the folder: display text, with any control or invisible
-    character already replaced.
+    character already replaced. The page keeps the name whole where the path ends with
+    it, in the platform's separator; at the home directory the path is ``~`` alone.
     """
 
     current: bool
@@ -339,7 +339,6 @@ def source_refs(
                 name=entry.name,
                 ref=entry.ref,
                 commit=entry.commit,
-                short_commit=entry.short_commit,
                 committed_at=entry.committed_at,
                 default=entry.default and not of_checkout,
                 checked_out=entry.default and of_checkout,
@@ -857,6 +856,12 @@ PIN_CHANGED_HEADER: Final = "x-metabrowser-pin-changed"
 # hexadecimal, so it can never name a served pin.
 WORKING_TREE_PIN: Final = "working-tree"
 _PIN_EXEMPT_PREFIX: Final = "/api/source/"
+# A checkout's Commits tab and a commit's view: answered whichever revision a page names,
+# since they read the checkout's history and its Git directory whichever revision Files
+# shows (`history_git_location` in git/routes.py). The chooser that switches the served
+# revision is in the Files toolbar, which the Commits tab hides, so a refusal there would
+# stop the tab at a reload offer its reader cannot see.
+_CHECKOUT_HISTORY_PREFIX: Final = "/api/git/"
 
 
 def pin_changed_response(claimed: str | None) -> JSONResponse | None:
@@ -885,7 +890,10 @@ class SourcePinGuard:
     working tree names :data:`WORKING_TREE_PIN`, since its server can serve a revision
     of the checkout instead, and is refused while one is served. The ``/api/source/``
     routes are exempt: a page learns what is served from the status route and switches
-    through the pin route. The refusal is ``409 pin_changed`` with the served commit, or
+    through the pin route. So are a checkout's ``/api/git/`` routes, which answer the same
+    whichever of its revisions is served. A mirror's stay guarded: its freshness row, at
+    the foot of the pane, offers the reload on every tab. The refusal is
+    ``409 pin_changed`` with the served commit, or
     an empty value when a folder is served, in :data:`PIN_CHANGED_HEADER`, which the page
     reads without consuming the body.
 
@@ -919,18 +927,35 @@ class SourcePinGuard:
                 # such page, and its requests are checked only by what they name.
                 claimed = WORKING_TREE_PIN
             response = pin_changed_response(claimed)
-            if response is not None:
+            if response is not None and not _checkout_history(scope):
                 await response(scope, receive, send)
                 return
         await self.app(scope, receive, send)
 
 
-def _guarded(scope: dict[str, Any]) -> bool:
+def _route_path(scope: dict[str, Any]) -> str:
     path = str(scope.get("path") or "")
     root_path = str(scope.get("root_path") or "")
     if root_path and path.startswith(root_path):
         path = path[len(root_path) :]
+    return path
+
+
+def _guarded(scope: dict[str, Any]) -> bool:
+    path = _route_path(scope)
     return path.startswith("/api/") and not path.startswith(_PIN_EXEMPT_PREFIX)
+
+
+def _checkout_history(scope: dict[str, Any]) -> bool:
+    """Whether this is a checkout's ``/api/git/`` request, which no switch makes stale.
+
+    Asked only of a request about to be refused, so a page whose pin is served pays
+    nothing for it.
+    """
+
+    return (
+        _route_path(scope).startswith(_CHECKOUT_HISTORY_PREFIX) and checkout_revisions() is not None
+    )
 
 
 def _own_page_fetch(scope: dict[str, Any]) -> bool:

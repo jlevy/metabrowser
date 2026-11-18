@@ -160,13 +160,12 @@ def test_a_checkout_lists_its_branches_tags_and_remotes(served: TestClient, chec
     # The checked-out branch lists first, as a mirror's default does, and is not "current":
     # picked as a ref it shows its commit, which is not the working tree.
     assert _names(branches) == ["topic", "feature", "local-work"]
-    # Each row's commit as the history shows one: Git's own abbreviation of its ID and
-    # the date it was committed, read in the same for-each-ref.
+    # Each row's commit and the date it was committed, read in the same for-each-ref. The
+    # page shortens the ID as every line does (`shortCommit` in static/formatters.js).
     assert branches["refs"][0] == {
         "name": "topic",
         "ref": "refs/heads/topic",
         "commit": SECOND,
-        "short_commit": git(checkout, "rev-parse", "--short", SECOND),
         "committed_at": float(git(checkout, "log", "-1", "--format=%ct", SECOND)),
         "default": False,
         "checked_out": True,
@@ -178,7 +177,6 @@ def test_a_checkout_lists_its_branches_tags_and_remotes(served: TestClient, chec
     # An annotated tag is peeled to the commit it names, and has that commit's date.
     v1 = {row["name"]: row for row in tags["refs"]}["v1"]
     assert v1["commit"] == FIRST
-    assert v1["short_commit"] == git(checkout, "rev-parse", "--short", FIRST)
     assert v1["committed_at"] == float(git(checkout, "log", "-1", "--format=%ct", FIRST))
     remotes = _refs(served, kind="remote")
     # A remote-tracking branch keeps its remote's name; origin/HEAD names another row.
@@ -682,6 +680,44 @@ def test_a_page_that_names_nothing_is_refused_while_a_revision_is_served(
     assert served.get("/api/source/status", headers=page_fetch).status_code == 200
     _pin(served, working_tree=True)
     assert served.get("/api/tree", headers=page_fetch).status_code == 200
+
+
+def test_a_switch_in_another_tab_does_not_fail_the_commits_tab(served: TestClient) -> None:
+    """A page left on its Commits tab keeps its history when another tab switches.
+
+    The chooser is in the Files toolbar, which the Commits tab hides, so a refusal there
+    would stop the tab with its reload offer out of sight. Its routes answer the same
+    whichever revision is served, so the guard answers them, for the working tree's page
+    and a revision's, and for a page whose guard has not arrived. Files' routes are still
+    refused.
+    """
+
+    page_fetch = {"sec-fetch-site": "same-origin", "sec-fetch-dest": "empty"}
+    routes = (
+        "/api/git/repo",
+        "/api/git/refs",
+        "/api/git/summary",
+        "/api/git/log?limit=5",
+        "/api/git/log?limit=5&scope=all",
+    )
+    on_tree = {**page_fetch, PIN_HEADER: WORKING_TREE_PIN}
+    before = {route: served.get(route, headers=on_tree).json() for route in routes}
+    commit = f"/api/git/commit/{FIRST}"
+    assert served.get(commit, headers=on_tree).status_code == 200
+    pinned = _pin(served, ref="feature")["status"]["pin"]
+    for headers in (on_tree, page_fetch):
+        assert served.get("/api/tree", headers=headers).status_code == 409
+        for route in routes:
+            reply = served.get(route, headers=headers)
+            assert (reply.status_code, reply.json()) == (200, before[route]), route
+        assert served.get(commit, headers=headers).status_code == 200
+    # And the revision's page, once another tab has gone back to the working tree.
+    _pin(served, working_tree=True)
+    on_revision = {**page_fetch, PIN_HEADER: pinned}
+    assert served.get("/api/tree", headers=on_revision).status_code == 409
+    for route in routes:
+        assert served.get(route, headers=on_revision).json() == before[route], route
+    assert served.get(commit, headers=on_revision).status_code == 200
 
 
 # ── The checkout is never written ────────────────────────────

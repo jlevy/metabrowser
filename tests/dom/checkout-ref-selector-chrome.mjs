@@ -218,6 +218,21 @@ const PANEL = `(() => {
   // The folder the Working tree row names, and whether its own name is shown whole.
   const location = tree.querySelector(".source-ref-selector-location");
   const base = location?.querySelector(".path-base");
+  // The ages end the rows in one column, so the IDs line up: the widest compact age,
+  // "12mo", takes no more room than the narrowest, in the list's own face and weights.
+  const list = root.querySelector(".source-ref-selector-list");
+  const ageWidth = (text, tier) => {
+    const probe = document.createElement("span");
+    probe.className = \`source-ref-selector-age \${tier}\`;
+    probe.style.position = "absolute";
+    probe.textContent = text;
+    list.append(probe);
+    const width = probe.getBoundingClientRect().width;
+    probe.remove();
+    return Math.round(width * 100) / 100;
+  };
+  const commitLefts = [...root.querySelectorAll(".source-ref-selector-list .source-ref-selector-commit")]
+    .map((commit) => Math.round(commit.getBoundingClientRect().left * 2) / 2);
   return {
     open: !panel.hidden,
     focused: document.activeElement === root.querySelector(".source-ref-selector-filter"),
@@ -229,10 +244,20 @@ const PANEL = `(() => {
       chosen: button.getAttribute("aria-checked") === "true",
     })),
     rows: [...root.querySelectorAll(".source-ref-selector-list button")].map(row),
+    ageColumn: [ageWidth("12mo", "age-old"), ageWidth("60m", "age-min"), ageWidth("7d", "age-day")],
+    commitColumns: new Set(commitLefts).size,
     note: root.querySelector(".source-ref-selector-note").textContent,
     error: root.querySelector(".source-ref-selector-error").textContent,
     // The panel is inside the navigation pane, and no row is wider than it.
     inside: box.left >= pane.left - 0.5 && box.right <= pane.right + 0.5 && box.width > 0,
+    // It spans the toolbar it opens under, on a ref's page, whose chip has a copy
+    // control, as on the working tree's.
+    spansToolbar: (() => {
+      const bar = root.closest("[data-nav-toolbar]");
+      const inset = parseFloat(getComputedStyle(bar).paddingLeft);
+      const across = bar.getBoundingClientRect();
+      return Math.abs(box.left - (across.left + inset)) < 1 && Math.abs(box.right - (across.right - inset)) < 1;
+    })(),
     overflowing: [...panel.querySelectorAll("button.menu-item")]
       .filter((button) => !button.hidden && button.getBoundingClientRect().right > box.right + 0.5)
       .length,
@@ -325,7 +350,7 @@ const LAYOUT = `({
   toggles: document.querySelectorAll(${JSON.stringify(TOGGLE)}).length,
   adopted: window.__firstToggle != null
     && window.__firstToggle === document.querySelector(${JSON.stringify(TOGGLE)})
-    && window.__firstToggle.parentElement.querySelector(".source-ref-selector-panel") !== null,
+    && window.__firstToggle.closest("#source-ref-selector")?.querySelector(".source-ref-selector-panel") != null,
 })`;
 
 const result = {};
