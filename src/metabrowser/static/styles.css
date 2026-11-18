@@ -694,16 +694,23 @@
      align their border instead, since that is their visual edge. */
   --pane-header-padding-x: 12px;
   --pane-header-padding-y: 8px;
-  /* The height of the path row on BOTH sides of the divider, border included,
-     so the two headers meet exactly and the hairline under them is one line
-     across the app rather than two that happen to be close.
-
-     Driven from here rather than from each side's content, which is how they
-     drifted: the navigation header came out 40.5px against the file header's
-     41px — invisible in review, and enough for the rules to miss each other by
-     half a pixel. Both rows are border-box, so this is the whole row. */
+  /* The height of the navigation column's path row, border included: a fixed
+     height rather than its content's, so the column's rules sit where they sit
+     whatever the path's font set measures. The row is border-box, so this is the
+     whole row. The main view's header is a view header (below), not a twin of it. */
   --pane-header-row-height: 41px;
-  --file-header-padding-y: var(--pane-header-padding-y);
+  /* A view header's rhythm (docs/design-system.md, "View Headers"): the pads above
+     its first row and below its last, the gap between rows, and the eyebrow's and
+     the metadata line's heights, which a row holds whatever fills it, so nothing
+     under it moves as a value arrives. 22 px is the body size's line (21 px) with
+     room for a badge's box, 22 px, on the metadata line, and the Up control's box,
+     20 px, on the eyebrow. */
+  --view-header-padding-top: 12px;
+  --view-header-padding-bottom: 8px;
+  --view-header-row-gap: 4px;
+  --view-header-eyebrow-height: 22px;
+  --view-header-line-height: 22px;
+  --view-header-up-size: 20px;
   --file-tab-padding-x: 12px;
   --file-tab-padding-y: 4px;
   --file-tab-align-adjust: 3px;
@@ -1560,15 +1567,10 @@ body {
 
 /* ── Header ──────────────────────────────────────────────────── */
 
-/* One row — the path, then the Metabrowser menu — which is the shape
-   .file-header has on the other side of the divider, so the two headers
-   read as one bar across the top of the app rather than as two headers
-   that happen to be adjacent. */
-/* The navigation column's path row. Its twin across the divider is
-   .file-header: same height, same hairline, so the top of the app reads as one
-   band rather than as two panes that happen to be adjacent. Anything that
-   changes the height of one belongs in --pane-header-row-height, which changes
-   both. */
+/* The navigation column's path row: one row, the path and then the
+   Metabrowser menu, at one fixed height (--pane-header-row-height) with its
+   hairline under it. The main view's header across the divider is a view
+   header of its own rows (.view-header, below), not a twin of this one. */
 .app-header {
   background: var(--header-bg);
   color: var(--header-text);
@@ -3493,6 +3495,13 @@ a.tab-btn {
   z-index: 1;
   transition: box-shadow var(--transition-fast);
 }
+/* A tab bar in the main view (docs/design-system.md, "View Headers"): on the view's
+   ground, --bg, its rule the one rule under the header block, a file's or a folder's
+   and a pull request's alike. Its labels keep the content's inset, where a folder's
+   Overview labels start ("Folder Overview Is a Panel Stack"). */
+:is(.preview-pane, .preview-file-stage) .tab-bar {
+  background: var(--bg);
+}
 .tab-bar.nav-tab-bar.scrolled,
 .nav-filter-bar.scrolled,
 .nav-toolbar.scrolled {
@@ -4237,20 +4246,125 @@ a.tab-btn {
   }
 }
 
-/* ── File header ─────────────────────────────────────────────── */
+/* ── View headers ────────────────────────────────────────────── */
 
-/* The main view's path row, and the twin of .app-header across the divider.
-   See --pane-header-row-height. */
-.file-header {
-  padding: var(--file-header-padding-y) var(--content-padding-x);
-  height: var(--pane-header-row-height);
-  border-bottom: 1px solid var(--border);
-  background: var(--sidebar-bg);
+/* The block above a file's or a folder's tab bar (docs/design-system.md, "View
+   Headers"; view-header.js, viewHeaderHtml): the eyebrow, the heading row, and the
+   metadata line, on the main view's own ground, --bg, with no rule of its own. The one
+   rule under a view's header is the tab bar's, under the tabs. Every row holds its
+   height whatever fills it, so a value arriving or changing moves nothing below it.
+   The block's rules are on .view-header, the structure a kind's header takes;
+   .file-header names a file's or a folder's for the keymap and the key badges. */
+.view-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--view-header-row-gap);
+  padding: var(--view-header-padding-top) var(--content-padding-x) var(--view-header-padding-bottom);
+  background: var(--bg);
+  flex-shrink: 0;
+  min-width: 0;
+}
+/* The eyebrow: what holds the item, quiet, at the body size, above its title. It is
+   one line, which a long address gives way inside (`.folder-breadcrumb`). A kind
+   with nothing to say there writes it empty, and an empty eyebrow is left out of
+   the header, its height and its gap with it. */
+.view-header-eyebrow:empty {
+  display: none;
+}
+.view-header-eyebrow {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  height: var(--view-header-eyebrow-height);
+}
+/* Up, at the eyebrow's height, so the control reads as part of the line it leads. */
+.view-header-eyebrow > .folder-up {
+  width: var(--view-header-up-size);
+  height: var(--view-header-up-size);
+  padding: 0;
+}
+.view-header-eyebrow > .file-header-path {
+  font-weight: var(--weight-normal);
+}
+/* Copy path, at the eyebrow's end: the Up control's size, and none of the title's
+   row, which in a narrow pane is the title's only room. */
+.view-header-eyebrow > .file-header-copy {
+  flex: none;
+  width: var(--view-header-up-size);
+  height: var(--view-header-up-size);
+}
+/* The heading row: the kind's icon, the title at the page title's size, what follows
+   the title, and the row's end, its controls, at the far end. */
+.view-header-heading {
+  display: flex;
+  align-items: center;
   gap: 8px;
-  flex-shrink: 0;
+  min-width: 0;
+}
+/* The icon a navigation row draws for the item, at the title's size, as a pull
+   request's state icon is in its title. */
+.view-header-icon.file-identity-icon {
+  flex: none;
+  width: 1em;
+  height: 1lh;
+  font-size: var(--page-title-font-size);
+  line-height: 1.25;
+}
+.view-header-icon.file-identity-icon svg {
+  width: 1em;
+  height: 1em;
+}
+/* A file's or a folder's name is one line, cut short at its end with its whole name as
+   its tooltip, so the rows under it start at one height for every name.
+   The block padding holds the name's glyphs, so a whole name does not read as cut: Source
+   Sans 3's are 1.42em tall in the 1.25em line, and in its 30 px box a whole name's
+   scroll height was 32 px, which `tipAnchorIsCut` (app.js) took for a clamp, showing
+   the name as its own tooltip (measured in Chrome 152). The equal negative margin keeps
+   the row the line's height, and the padding stays inside the row gap. */
+.view-header-title.page-heading {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin: -0.125em 0;
+  padding: 0.125em 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.view-header-end {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  margin-inline-start: auto;
+}
+/* The metadata line: badges, then the item's values after muted dots, at the body
+   size. It is one line at its height whatever fills it. A pane too narrow for an item
+   wraps that item, with its dot, to a second line, which is clipped away, so an item
+   is whole or absent, never cut mid-number; the last items go first. */
+.view-header-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 8px;
+  min-width: 0;
+  height: var(--view-header-line-height);
+  overflow: hidden;
+  color: var(--muted);
+}
+.view-header-line > .folder-header-summary {
+  display: contents;
+}
+/* An item is the line's height, so a wrapped item starts its own row a whole line
+   down, where the line's clip hides all of it: at its text's 21 px a wrapped row
+   showed its top pixel. */
+.view-header-item {
+  display: inline-flex;
+  align-items: center;
+  column-gap: 8px;
+  flex: none;
+  height: var(--view-header-line-height);
+  white-space: nowrap;
 }
 .file-header-path {
   font-family: var(--font-sans);
@@ -4268,35 +4382,24 @@ a.tab-btn {
 /* Geometry, hover, and reveal come from the .icon-btn primitive; only
    the reveal trigger and the copied-confirmation tint live here. */
 
-/* Folder preview header: up control + clickable breadcrumb + summary.
-   Shares .file-header chrome; crumbs are real buttons for keyboard use. */
+/* The eyebrow's address (view-header.js, headerEyebrowAddressHtml): the served root
+   and the folders that hold the item. Its crumbs are real buttons for keyboard use. */
 .folder-breadcrumb {
   gap: 2px;
 }
 /* The address gives way in the order the reader can afford to lose it: the
-   dimmed root prefix first, then the directories, and the segment you are
-   standing on last, because the name you are looking at is the part worth
-   keeping. Each shrinking part carries its own ellipsis, so a squeezed
-   address ends in a visible "…" instead of being cut mid-word against the
-   header's clip. The separators and the leading slash hold their size —
-   they are five to eight pixels of structure, not content.
+   dimmed root prefix first, then the directories, and the folder that holds the
+   item last, because it is the one the title is in. Each shrinking part carries
+   its own ellipsis, so a squeezed address ends in a visible "…" instead of being
+   cut mid-word against the eyebrow's clip. The separators and the leading slash
+   hold their size — they are five to eight pixels of structure, not content.
 
    The weights matter more than their absolute values: the root outshrinks a
    directory by enough that it is effectively gone before one narrows, and a
-   directory outshrinks the current segment the same way.
-
-   At the header's size, the main view's 14px, the root has nothing left to
-   give below a 367px header (Chrome 152, root / src / metabrowser /
-   color_oklch.py), and at every header from 249px to 689px a filename cut
-   short ends in an ellipsis and the copy control stays inside the box.
-   The rules below make that so. Measured with the path at 13px,
-   on a 296px header, which is a 620px window at the default nav width,
-   showing a served root 494px wide followed by three components, the root
-   had nothing left to give below a 375px header, and without these rules
-   the next 55px came out of the end of the run rather than the start: at
-   320px the filename was cut 19px short with no ellipsis, and the copy
-   control sat 45px outside the clipped box, where it could be neither seen
-   nor clicked. */
+   directory outshrinks the holding folder the same way. Without them the width
+   came out of the end of the run rather than the start, cutting the nearest
+   folder short with no ellipsis (measured in Chrome 152 on the header's earlier
+   one-row address, whose crumbs these rules shrink the same way). */
 .folder-breadcrumb .folder-crumb {
   flex: 0 4 auto;
   min-width: 0;
@@ -4304,7 +4407,7 @@ a.tab-btn {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.folder-breadcrumb .folder-crumb-current {
+.folder-breadcrumb .folder-crumb:not(.folder-crumb-root):last-of-type {
   flex-shrink: 1;
 }
 .folder-breadcrumb .folder-crumb-root,
@@ -4327,18 +4430,10 @@ a.tab-btn {
   outline: 2px solid var(--link);
   outline-offset: -1px;
 }
-/* The component you are standing on: darker and bold so the address has a
-   focus, but still a control. It navigates to where you already are, which
-   changes nothing — the point is that the address has no dead segment in
-   the middle of a run of live ones. */
-.folder-crumb-current {
-  color: var(--text);
-  font-weight: var(--weight-bold);
-}
 /* The served root, absolute, ahead of the first slash. Dimmed because it
    is identical on every page of the app: context for the live part of the
    address rather than part of it. It gives up its width first, so a long
-   root elides before a filename does — the shrink weight is what puts it
+   root elides before a folder does — the shrink weight is what puts it
    first, against the 4 and the 1 the crumbs above carry.
 
    The weight is enormous on purpose, because flex-shrink is proportional
@@ -4397,9 +4492,7 @@ a.tab-btn {
    repository's name, and no directory holds its files: they are read from a
    bare Git repository in the cache. So that directory is not the start of the
    address, where it would read as a folder of these files. It stands apart at
-   the far end, muted and at the header's size, and its tooltip says what it is.
-   `order` puts it there: it is written with the address, ahead of a file's copy
-   control, and drawn after it.
+   the eyebrow's far end, muted and at its size, and its tooltip says what it is.
 
    Its zero flex basis gives the address its natural width first; the note
    grows into only the remaining space. A proportional shrink weight can take
@@ -4459,13 +4552,8 @@ a.tab-btn {
 .folder-crumb-sep {
   color: var(--muted);
 }
-.folder-header-summary {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 8px;
-}
 .folder-header-count,
-.folder-header-age {
+.view-header-age {
   color: var(--muted);
   font-variant-numeric: var(--tabular-numerals);
   white-space: nowrap;
@@ -4483,28 +4571,6 @@ a.tab-btn {
    size-chip convention above. */
 .file-header-size {
   flex-shrink: 0;
-}
-/* The path, the size, and the folder summary are the header's one size, the
-   main view's, and share a baseline, as a tree row's text does (see
-   .tree-item).
-   Buttons, badges, and skeletons are boxes and keep the header's
-   centering.
-
-   Baseline alignment puts the text group at the top of the header's
-   content box. The path fills that box and centers its own crumbs, so the
-   group lands where centering put it at any header height. Without the
-   min-height, a folder header, whose path has no 24px copy button, moved
-   its text 2.25px up. */
-.file-header > :is(.file-header-path, .file-header-size):not(.tally-pending) {
-  align-self: baseline;
-}
-.file-header > .file-header-path {
-  min-height: 100%;
-}
-/* A summary still showing a skeleton has no text baseline to share. Its
-   own rule, so an engine without :has() drops only this one. */
-.file-header > .folder-header-summary:not(:has(.tally-pending)) {
-  align-self: baseline;
 }
 /* A badge is one word or two on one line, and centers its capitals, not
    the font's line box. Centered by its line box, 12px Source Sans 3
@@ -4534,8 +4600,8 @@ a.tab-btn {
 /* A run's status badge changes its label in place (Running to Live, Live to Run
    ended), so it sits in a slot as wide as the widest label from first paint: a
    one-column grid of the badge, then a sizer of every label in a badge's box of no
-   height (renderBadges in app.js), so the column is the widest label's, in any
-   engine's font metrics, and the badge stretches to it. The sizers are outside the
+   height (renderBadges in view-header.js), so the column is the widest label's, in
+   any engine's font metrics, and the badge stretches to it. The sizers are outside the
    badge, which centers its capitals by trimming its one line. As a pseudo-element of
    the inline-block badge, the sizer was laid beside the label and the widths added:
    Live was 104.6 px, and Run ended, arriving, made it 144.2 px and moved what followed

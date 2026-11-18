@@ -10,6 +10,22 @@ All notable changes to Metabrowser are documented here.
   orange. Only the color changes, in both themes; the headings keep their size and
   weight, and grouping by file type is unchanged.
 
+- A file’s and a folder’s header is now a view header of three rows on the main view’s
+  ground: a quiet line with the Up button and the folders that hold the item, then the
+  item’s icon and its name at the page title’s size, then its badges, size, file count,
+  and age, “4.7 MB · 138 files · 8m ago”, in the navigation rows’ inks.
+  The size and age moved from the header’s upper right to the line under the name, and a
+  file’s header shows its age too, from a new `mtime` in the `/api/file` envelope.
+  A file now has the Up button a folder has, which `U` presses; the item’s own name is
+  the title, so the address no longer ends in a crumb that reopens the page.
+  The header and its tabs share the content’s white or dark ground with one rule under
+  the tabs, where the header was a gray band with a rule of its own above the tabs; a
+  pull request’s tabs moved onto that ground too.
+  Copy path sits at the end of the quiet line, so the name keeps its row.
+  The line holds its height and puts the age last, so a value arriving or an age
+  changing width moves nothing; in a narrow pane values leave it from the end, each
+  whole. See [View Headers](docs/design-system.md#view-headers).
+
 - In the macOS app, Open Recent, the Dock menu and the title’s path menu show folders
   with the same outline folder symbol as the mirror’s cloud, instead of Finder’s colored
   folder.
