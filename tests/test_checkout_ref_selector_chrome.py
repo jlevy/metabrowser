@@ -211,6 +211,10 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
     for name in ("workingTreeBrowsing", "revisionRequests", "revisionBrowsing"):
         assert result[name]["asked"] > 0, name
         assert result[name]["refused"] == [], f"{name}: refused {result[name]['refused']}"
+    # Nor is the page that asked to switch, which asks nothing more: it asked for its root's
+    # tallies every few milliseconds through the switch, as its own refresh of them can,
+    # and each waited for the answer and went with the page (mb-bio7).
+    assert result["leftBehind"] == [], f"the page left behind asked: {result['leftBehind']}"
 
     # Another tab switched the server back: this page is refused, and offers a reload.
     assert (result["switchedOutside"], result["refused"]) == (200, 409)

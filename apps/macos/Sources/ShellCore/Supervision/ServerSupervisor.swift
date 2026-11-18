@@ -5,10 +5,14 @@ import Foundation
 public nonisolated struct ServerFailure: Equatable, Sendable {
     public var summary: String
     public var recentOutput: [String]
+    /// For a repository's server, GitHub as the reason, which the session reads from the
+    /// output (`diagnosingGitHub(repository:)`); nil for any other failure.
+    public var gitHub: GitHubFailure?
 
-    public init(summary: String, recentOutput: [String]) {
+    public init(summary: String, recentOutput: [String], gitHub: GitHubFailure? = nil) {
         self.summary = summary
         self.recentOutput = recentOutput
+        self.gitHub = gitHub
     }
 }
 
@@ -125,6 +129,14 @@ public final class ServerSupervisor {
     /// and waits, and with false once it has the gate: what the windows say meanwhile, since
     /// another repository's first clone can hold it for minutes.
     public var onGateWait: ((Bool) -> Void)?
+    /// While a start with a `startupLimit`, a repository's, which may clone first, waits to
+    /// be ready: the newest progress its output reports (`ServerLaunch.startProgress(in:)`),
+    /// read every `SupervisorPolicy.progressInterval` that the output grew. Nil before it
+    /// reports any, and once the start has ended, however it ended.
+    public private(set) var startProgress: StartProgress? {
+        didSet { if startProgress != oldValue { onStartProgress?(startProgress) } }
+    }
+    public var onStartProgress: ((StartProgress?) -> Void)?
 
     /// What the next launch runs. `restart(using:)` replaces it.
     public private(set) var spec: LaunchSpec
@@ -149,6 +161,9 @@ public final class ServerSupervisor {
     private var healthCheck: (generation: Int, answer: Task<Bool, Never>)?
     /// How many callers are waiting on `healthCheck`, for tests that order checks.
     private(set) var healthCheckWaiters = 0
+    /// The child whose start `startProgress` reports, so a superseded start's report
+    /// neither updates nor clears a newer one's.
+    private var progressOwner: ObjectIdentifier?
 
     private struct Termination {
         let child: any ServerProcess
@@ -385,6 +400,8 @@ public final class ServerSupervisor {
         process = child
         event("started pid \(child.pid), the leader of its own process group: \(spec.commandLine)")
         onSpawn?()
+        let reporting = policy.startupLimit == nil ? nil : reportProgress(of: child)
+        defer { endProgress(of: child, reporting) }
         // Exits before ready are this function's to report (the race below watches for
         // them); this task reports an exit after ready.
         Task { [weak self] in
@@ -471,6 +488,40 @@ public final class ServerSupervisor {
             }
             return nil
         }
+    }
+
+    /// Reads what `child`'s output says of its start each `progressInterval` that the
+    /// output grew, until cancelled. The read is of the log's newest lines, on the main
+    /// actor, as the failure view reads them, and only after the output grew: for a clone,
+    /// once per `MetabAcquisition.progressLineInterval`.
+    private func reportProgress(of child: any ServerProcess) -> Task<Void, Never> {
+        let owner = ObjectIdentifier(child)
+        progressOwner = owner
+        startProgress = nil
+        let interval = policy.progressInterval
+        return Task { [weak self] in
+            var seen: Int?
+            while !Task.isCancelled {
+                let written = child.outputProgress
+                if written != seen {
+                    seen = written
+                    guard let self, self.progressOwner == owner else { return }
+                    let progress = self.launch.startProgress(in: child.recentOutput())
+                    if let progress { self.startProgress = progress }
+                }
+                try? await Task.sleep(for: interval)  // cancelled: the start ended
+            }
+        }
+    }
+
+    /// The start of `child` has ended: its progress stops, and is cleared unless a newer
+    /// start reports its own.
+    private func endProgress(of child: any ServerProcess, _ reporting: Task<Void, Never>?) {
+        guard let reporting else { return }
+        reporting.cancel()
+        guard progressOwner == ObjectIdentifier(child) else { return }
+        progressOwner = nil
+        startProgress = nil
     }
 
     /// A launch overtaken after it spawned ends its own child, unless whatever overtook
