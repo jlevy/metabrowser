@@ -1,8 +1,10 @@
-/// One folder tab, as the discard policy sees it.
+/// One folder page, as the discard policy sees it: a window's tab, or a folder's page in
+/// the background, which no window shows (`OpenFolders`).
 public nonisolated struct TabActivity<ID: Hashable & Sendable>: Equatable, Sendable {
     public var id: ID
-    /// A tab its window is not showing. A window's shown tab, or a window without other
-    /// tabs, is on screen, and is never discarded.
+    /// A page no window is showing: a tab its window is not showing, or a folder's page in
+    /// the background. A window's shown tab, or a window without other tabs, is on screen,
+    /// and is never discarded.
     public var isBackground: Bool
     /// Whether it still has its web view's page.
     public var isLive: Bool
@@ -17,15 +19,17 @@ public nonisolated struct TabActivity<ID: Hashable & Sendable>: Equatable, Senda
     }
 }
 
-/// Which background tabs give up their web views.
+/// Which background pages give up their web views: background tabs, and the pages of
+/// folders in the background, ranked together.
 ///
-/// A folder tab's web view is its own WebContent process, and that process is most of
-/// what a tab costs (see `defaultLiveBackgroundTabs`). A discarded tab keeps its window
-/// and its server, and reloads its page from that running server when it is shown
-/// again. The windows on screen keep their pages, and so do the background tabs shown
-/// most recently, up to the limit.
+/// A folder page's web view is its own WebContent process, and that process is most of
+/// what a tab costs (see `defaultLiveBackgroundTabs`). A discarded page keeps its window,
+/// if it has one, and its server, and reloads its page from that running server when it
+/// is shown again. The windows on screen keep their pages, and so do the background
+/// pages shown most recently, up to the limit.
 public nonisolated struct TabDiscardPolicy: Equatable, Sendable {
-    /// Background tabs that keep their pages.
+    /// Background pages, of tabs and of folders in the background, that keep their web
+    /// views.
     ///
     /// Measured on macOS 26.5.2 with `scripts/measure-web-views.swift` against this
     /// repository's own server:
@@ -51,7 +55,7 @@ public nonisolated struct TabDiscardPolicy: Equatable, Sendable {
         self.liveBackgroundTabs = max(0, liveBackgroundTabs)
     }
 
-    /// The tabs to discard now, least recently shown first.
+    /// The pages to discard now, least recently shown first.
     public func discards<ID>(_ tabs: [TabActivity<ID>]) -> [ID] {
         let live = tabs.filter { $0.isBackground && $0.isLive }.sorted { $0.lastShown > $1.lastShown }
         return live.dropFirst(liveBackgroundTabs).reversed().map(\.id)

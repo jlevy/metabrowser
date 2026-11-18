@@ -3,12 +3,14 @@ import ShellCore
 import WebKit
 
 /// One opened folder or GitHub repository (`SessionRoot`): one server, and its pages
-/// (`FolderPage`), each shown in a window.
+/// (`FolderPage`), each shown in a window or, for a folder open in the background, in
+/// none (`OpenFolders`).
 ///
 /// The first page opens before the server starts and shows its progress; pages the page
 /// opens (`target=_blank`, Command-click) join it as tabs. When the last page closes, the
-/// server stops: a folder nobody is looking at keeps no process running. A restored
-/// folder's pages open before its server starts, which `FolderWindows` schedules.
+/// server stops: a closed folder keeps no process running, while a folder in the
+/// background keeps its server for a switch back. A restored folder's pages open before
+/// its server starts, which `FolderWindows` schedules.
 final class FolderSession: ManagedServer {
     /// What the session serves, which keys it.
     let served: SessionRoot
@@ -57,7 +59,8 @@ final class FolderSession: ManagedServer {
     private var selectionWatch: Task<Void, Never>?
     /// The folder's title changed, so every open folder's window title may change.
     var onTitleChange: ((FolderSession) -> Void)?
-    var onAllWindowsClosed: ((FolderSession) -> Void)?
+    /// The folder's last page closed, shown or in the background: the folder closes.
+    var onAllPagesClosed: ((FolderSession) -> Void)?
     /// A window showing one of the folder's pages became key, which is how a tab is
     /// selected.
     var onWindowShown: ((FolderSession, BrowserWindowController) -> Void)?
@@ -147,14 +150,14 @@ final class FolderSession: ManagedServer {
     /// opens in (`OpenTarget`), a recent folder, or a tab of the saved session.
     var isLocal: Bool { served.isLocal }
 
-    /// The folder's canonical path without a trailing slash, as `OpenTarget` and the saved
-    /// session name it; for a repository, its key, which is no path, so no restore names it.
-    var path: String { isLocal ? FolderSession.path(of: root) : served.key }
+    /// The session's one key (`SessionRoot.key`), which every lookup of an open folder
+    /// uses: the folder's canonical path without a trailing slash, as `OpenTarget` and the
+    /// saved session name it, or the repository's URL, which is no path, so no restore
+    /// names it.
+    var path: String { served.key }
 
     static func path(of root: URL) -> String {
-        var path = root.path(percentEncoded: false)
-        while path.count > 1, path.hasSuffix("/") { path.removeLast() }
-        return path
+        SessionRoot.folder(root).key
     }
 
     /// Every server child not yet reaped; each pid is also its process group.
@@ -363,7 +366,7 @@ final class FolderSession: ManagedServer {
     /// One of the folder's pages is gone for good (`FolderPage.close`).
     func pageClosed(_ page: FolderPage) {
         pages.removeAll { $0 === page }
-        if pages.isEmpty { onAllWindowsClosed?(self) }
+        if pages.isEmpty { onAllPagesClosed?(self) }
         onLayoutChange?()
     }
 

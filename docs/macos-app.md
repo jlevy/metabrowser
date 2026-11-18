@@ -33,6 +33,7 @@ Closing a folder’s last window stops it, so reopening the folder starts a new 
 **File > Close Folder** closes the folder the front window shows in every window that
 shows it; each of those windows shows the folder open in the background that you looked
 at last, or closes if there is none.
+It waits while a dialog or panel is open on one of those windows.
 If a server stops answering or fails to start, the window says so and offers Retry,
 Reveal Logs, and Runtime Settings….
 
@@ -157,7 +158,7 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
   A clicked link to another site opens in your default browser; a page cannot open one
   by itself.
 - **Background tabs:** the tab each window shows keeps its page, and so do the three
-  background tabs shown most recently.
+  background tabs shown most recently, a folder open in the background counting as one.
   Any other background tab gives up its page to save memory and reloads it when shown,
   at the top of the page and without its Back and Forward history.
 
@@ -203,6 +204,9 @@ loads its page. The servers start one at a time, the front tab’s first.
   no prompt for a folder nobody is looking at.
 - **A moved folder:** a saved folder that now leads somewhere else through a symbolic
   link waits for its tab, then opens where the link leads.
+- **Folders in the background** come back in the background, and each starts its server
+  when a window shows it.
+  If no window was open, the one you looked at last opens in a window of its own.
 - **The budget:** a launch rebuilds at most the front 20 windows and 50 tabs.
 - **Turning it off:** clear Settings > “Reopen the last session’s folders when
   Metabrowser opens”. The session is still saved.

@@ -543,18 +543,20 @@ extension FolderPage: WKNavigationDelegate, WKUIDelegate {
     /// Every page's downloads: a save panel opened in Downloads, as a sheet on the window
     /// that started the download. Choosing the destination is user intent, so saving raises
     /// no Downloads-folder privacy prompt. A file the panel confirmed replacing stays until
-    /// the new one is complete (`DownloadCoordinator`).
+    /// the new one is complete (`DownloadCoordinator`). A download that a page no window
+    /// shows starts, as a folder's page in the background can by script, saves nothing:
+    /// nobody is there to choose where. A failed download's alert still reaches the user,
+    /// who chose to save it, as an alert of its own once its page has no window.
     static let downloads = DownloadCoordinator(
         chooseDestination: { download, suggestedFilename, answer in
+            guard let window = download.webView?.window else {
+                AppLog.app.info("not saving \(suggestedFilename, privacy: .public): a page no window shows started it")
+                return answer(nil)
+            }
             let panel = NSSavePanel()
             panel.nameFieldStringValue = suggestedFilename
             panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
-            let chosen: (NSApplication.ModalResponse) -> Void = { answer($0 == .OK ? panel.url : nil) }
-            if let window = download.webView?.window {
-                panel.beginSheetModal(for: window, completionHandler: chosen)
-            } else {
-                panel.begin(completionHandler: chosen)
-            }
+            panel.beginSheetModal(for: window) { answer($0 == .OK ? panel.url : nil) }
         },
         reportFailure: { download, failure in
             AppLog.app.error("download failed: \(failure.message, privacy: .public)")
@@ -625,8 +627,15 @@ extension FolderPage: WKNavigationDelegate, WKUIDelegate {
     }
 
     /// The page's `alert`, `confirm`, or `prompt`, as a sheet the page opened (`PageSheets`).
+    /// A page no window shows, a folder's page in the background, gets WebKit's own answer
+    /// at once, OK for `alert` and Cancel for `confirm` and `prompt`, rather than an alert
+    /// modal to the whole app from a page nobody can see.
     private func presentPageAlert(_ alert: NSAlert, completion: @escaping @MainActor (NSApplication.ModalResponse) -> Void) {
-        guard let window else { return completion(alert.runModal()) }
+        guard let window else {
+            AppLog.app.info(
+                "a page of \(self.session?.folderName ?? "", privacy: .public) that no window shows opened a dialog; answered as WebKit does without one")
+            return completion(.cancel)
+        }
         let sheet = alert.window
         pageSheets.opened(sheet)
         alert.beginSheetModal(for: window) { [weak self] response in

@@ -5,7 +5,7 @@ import ShellCore
 /// tabbing), showing one folder's page at a time (`FolderPage`). The page belongs to its
 /// folder's session; the window only hosts it, so it can show another page in its place
 /// without becoming another window.
-final class BrowserWindowController: NSWindowController, NSWindowDelegate {
+final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMenuItemValidation {
     /// Shared by every folder window, so macOS merges folders into one window's tabs.
     static let tabbingIdentifier = "io.github.jlevy.metabrowser.folder"
 
@@ -135,5 +135,15 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     /// the page the window shows.
     override func supplementalTarget(forAction action: Selector, sender: Any?) -> Any? {
         page.responds(to: action) ? page : super.supplementalTarget(forAction: action, sender: sender)
+    }
+
+    /// The window's own items. Close Folder is off while a sheet is open on the window,
+    /// which keeps its page until the sheet ends (`FolderSwitch.refused`); the page
+    /// validates its own items.
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        switch item.action {
+        case #selector(closeFolder(_:)): window?.attachedSheet == nil
+        default: true
+        }
     }
 }

@@ -5,9 +5,9 @@ import Foundation
 /// open in the background, which the next launch recreates.
 public nonisolated struct SavedSession: Codable, Equatable, Sendable {
     public var windows: [SavedWindow]
-    /// The folders no window showed, in the order they opened, each with its one page
-    /// (`OpenFolders`). A launch reopens them without a window or a server; each starts
-    /// when a window first shows it.
+    /// The folders no window showed, the one shown most recently first
+    /// (`OpenFolders.byRecency`), each with its one page. A launch reopens them without a
+    /// window or a server, in this order; each starts when a window first shows it.
     public var background: [SavedTab]
 
     public init(windows: [SavedWindow], background: [SavedTab] = []) {
@@ -83,7 +83,7 @@ public nonisolated struct SavedSession: Codable, Equatable, Sendable {
 
     /// The session cut to `budget`: its front windows, and in each its first tabs and the
     /// one it shows, until the budget's windows or tabs run out; then the background
-    /// folders first opened, each a tab, while tabs remain.
+    /// folders shown most recently, each a tab, while tabs remain.
     public func limited(to budget: RestoreBudget) -> SavedSession {
         var windows: [SavedWindow] = []
         var tabsLeft = budget.tabs
@@ -107,6 +107,25 @@ public nonisolated struct SavedSession: Codable, Equatable, Sendable {
 
     /// Every tab of every window, and every background folder's page.
     public var tabCount: Int { windows.reduce(background.count) { $0 + $1.tabs.count } }
+
+    /// Every root once, in the order the restore opens their folders (`OpenFolders`): each
+    /// window's tabs, front window first, then the background folders.
+    public var roots: [String] {
+        var seen = Set<String>()
+        return (windows.flatMap { $0.tabs.map(\.root) } + background.map(\.root)).filter { seen.insert($0).inserted }
+    }
+
+    /// The session as the restore builds it. One with folders in the background and no
+    /// window, which a quit after the last window closed saves, or a launch finds when
+    /// every saved window's folder is gone, would open to nothing: neither a window nor
+    /// the Open panel, since folders are open. Its first background folder, the one shown
+    /// most recently, gets a window of its own instead, placed as a new folder's is, and
+    /// is the front tab, which starts first (`RestoreQueue`).
+    public var withFrontWindow: SavedSession {
+        guard windows.isEmpty, let front = background.first else { return self }
+        return SavedSession(
+            windows: [SavedWindow(tabs: [front], selected: 0, frame: nil)], background: Array(background.dropFirst()))
+    }
 }
 
 /// A saved session after admission, and the roots in it whose servers wait for one of

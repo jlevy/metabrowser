@@ -58,9 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var folderWindows = FolderWindows(
         store: SessionStore(directory: appIdentity.supportDirectory()),
         openSessions: { [weak self] in self?.sessions.openServers.compactMap { $0 as? FolderSession } ?? [] },
-        session: { [weak self] path in
-            self?.sessions[URL(filePath: path, directoryHint: .isDirectory).path(percentEncoded: false)] as? FolderSession
-        })
+        session: { [weak self] key in self?.sessions[key] as? FolderSession })
     /// Set when a launch found no runtime, so the last session is restored once one is.
     private var restoreAfterDiscovery = false
     private var runtimeWindow: RuntimeWindowController?
@@ -239,9 +237,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.terminate(nil)
     }
 
+    /// A click on the Dock icon with no window on screen shows the open folder shown most
+    /// recently, which may be minimized or in the background, else offers the Open panel.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
         if !hasVisibleWindows {
-            if let session = sessions.openServers.first as? FolderSession {
+            if let session = folderWindows.mostRecentFolder() {
                 session.showFrontWindow()
             } else if selection.setup != nil {
                 openFolder(nil)
@@ -271,8 +271,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let reason = CLIServeLaunch.unservableReason(root) {
             return refuse("Metabrowser cannot open this folder", "\(root.lastPathComponent) cannot be served: \(reason).")
         }
-        recentFolders.noteOpened(root, isOpen: sessions[root.path(percentEncoded: false)] != nil)
-        if let session = sessions[root.path(percentEncoded: false)] as? FolderSession {
+        let open = sessions[SessionRoot.folder(root).key] as? FolderSession
+        recentFolders.noteOpened(root, isOpen: open != nil)
+        if let session = open {
             session.showFrontWindow(page: target.page)
             return
         }
@@ -599,7 +600,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let name = missing.served.identity().fullName
             if let alert = LinkAlert.selectionMissing(outcome, link: link, repository: name) { self?.noteLinkProblem(alert) }
         }
-        session.onAllWindowsClosed = { [weak self] closed in
+        session.onAllPagesClosed = { [weak self] closed in
             self?.sessions.retire(closed)
             self?.folderWindows.folderClosed(closed)
             self?.retitleWindows()
@@ -633,10 +634,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// File > Close Folder, for the folder the key window shows.
-    func closeFolder(_ session: FolderSession) {
+    /// File > Close Folder, for the folder the key window shows. Returns false, having
+    /// beeped, when a sheet open on one of the folder's windows holds it up
+    /// (`FolderWindows.closeFolder`).
+    @discardableResult
+    func closeFolder(_ session: FolderSession) -> Bool {
         AppLog.app.info("closing \(session.folderName, privacy: .public) in every window")
-        folderWindows.closeFolder(session)
+        return folderWindows.closeFolder(session)
     }
 
     private func restoreLastSession() {

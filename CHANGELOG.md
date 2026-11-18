@@ -10,6 +10,7 @@ All notable changes to Metabrowser are documented here.
   or closes if there is none, and the folder’s server stops.
   A folder open in the background is saved with the session and reopens in the
   background, starting its server only when a window shows it.
+  Close Folder waits while a dialog or panel is open on one of those windows.
 
 - With the Files tab grouped by age, each section’s name is drawn in the age color its
   files’ ages show: Past hour in the yellow of a file changed minutes ago, then quieter
