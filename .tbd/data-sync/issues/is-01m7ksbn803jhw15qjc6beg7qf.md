@@ -5,7 +5,7 @@ title: "Coordinate landing the open PRs, Fast CI Phases 1-2, plan currency and 0
 kind: epic
 status: in_progress
 priority: 1
-version: 22
+version: 23
 delegate: claude-code@vm
 labels: []
 dependencies: []
@@ -32,10 +32,26 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-17T03:38:38.720Z
-updated_at: 2026-11-18T02:46:57.910Z
+updated_at: 2026-11-18T03:00:09.583Z
 started_at: 2026-11-17T03:38:54.763Z
 ---
 
 ## Notes
 
-2026-11-17 15:50 UTC: coordination taken over by a local desktop session (the cloud coordinator ended at ~09:33 UTC; its sub-agents are gone, GitHub is the source of truth). Landing order: #514, #513, #515 (hang fixes) -> main; then merge main into #499 and land #499+#504 as the stack; #509+#510 macOS stack independently. In flight: #514 review A Lows being addressed; #515 folding mb-qcqb before review; #513 review A; #504 follow-up review C; #509/#510 follow-up review B. Out of scope: #506/#511 (the owner's 'Local build review' session), the fdu swap draft stack #498/#501-#503/#507/#508, reference drafts #380/#247.
+2026-11-18 ~03:30 UTC coordinator handoff (account spend limit hit; agents stopped; resets Nov 21 9pm PT).
+
+MERGED today: #514 #513 #515 #521 #509+#510 #523 #511 #516 #499+#504 (Fast CI) #524. (#517 #522 #538 merged by other sessions.) Main green at d46d0359a; main run for a604716eb (#524) was running.
+
+MERGE QUEUE (each after main's newest ci.yml run is green, per AGENTS.md; never auto-merge):
+1. #529 (eb55a28f4; review A + dispositions published) - CI was finishing.
+2. #525 then #526 (benchmark chain; #525 retargeted to main after #524) - #525 rerun of a Chrome-start flake pending.
+3. #528 -> #530 -> #533 (drawn-from-disk chain; their session was still pushing; #533 had 19 failing checks - wait for its session's note).
+4. #543 (#517 review A follow-up; review A Lows addressed at ac2210033) - CI was running.
+5. #532 -> #536 (loading-box chain) - CI was running.
+6. #506 (agent addressing review A with owner decisions: keys 1/2 stable, Refresh last in row of ages; note drops out whole; hold in note's place) - agent stopped; resume.
+7. #544 help bar (needs owner's narrow-pane decision implemented: drop items from the end, one row, Shift always shown; then review).
+8. mb-z6hb legend hover PR (agent stopped mid-way, branch claude/legend-hover-all-bars in overview-legend-hover worktree, not yet pushed/PR'd?) then mb-39h4 treemap legend stacked on it.
+9. mb-40k4 recents (branch claude/recent-folders, plan text at 0e0a5cd8c; code in progress).
+OTHER LANES: Local build review owns #527 #539 #540 #541 #542 and Open URL (mb-m4mg).
+OWNER DECISIONS 2026-11-18: recents file in config dir (~/.config/metabrowser/recent-targets.json); no route for recents yet (CLI only). Help bar narrow: drop items from end. Legend hover: all visible bars, darker/wider, eased, gentle shimmer (own tokens, akin to progress), also on the legend entry and its color; treemap gets same legend+behavior. Mode indicator icons: mirror = GitHub mark (+cloud if clean), folder = folder icon (mb-wup3).
+OWNER TODO: add the ci-ok ruleset (mb-m4ct); quit and reopen the app to load the rebuilt server.
