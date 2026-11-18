@@ -192,6 +192,13 @@ and test fixtures use `conftest.SyntheticIndexWriter` for the same reason.
 - **Change history** is bounded by the change-queue size; a cursor older than the
   history, or from another session, gets a reset.
 
+## Work Charges
+
+The store fills three `WorkCounters` fields: `rows_visited`, `rows_returned`, and
+`maintained_index_work`. Every other field stays zero, the walk reads
+(`directories_read`, `entries_visited`, `files_visited`, `bytes_visited`) among them, so
+its work compares with another provider’s only on those three.
+
 ## Unit Costs
 
 Each operation was timed alone on Darwin 25.5.0 with CPython 3.14;

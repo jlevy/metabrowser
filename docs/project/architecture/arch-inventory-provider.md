@@ -5,7 +5,9 @@ one provider, the Python reference engine
 ([Python Inventory Engine](arch-inventory-engine-python.md)). Planned: a native fdu
 provider behind this same contract
 ([provider plan](../specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md),
-Phase 2).
+Phase 2). [Decisions for a Second Provider](#decisions-for-a-second-provider) records
+which of that provider’s rules Metabrowser has decided and which are open pending fdu
+(`mb-54tl`).
 
 Metabrowser owns a sealed interface between application behavior and the engine that
 walks, retains, aggregates, and watches one served root.
@@ -214,11 +216,11 @@ and ignored state. The name derives from the canonical path; directory aggregate
 host preview and activity decorations are absent because the Recent response consumes
 neither. `tests/test_browser_recent.py` checks the wire fields and the absence of a
 coordinator decoration join, alongside filtering and ordering.
-Providers may return `valid_until_ns` when the answer has a known expiry.
-The coordinator includes that time boundary in request fingerprints, validators, and
-retained-body keys. A caller assembling a time-dependent result from several
-version-pinned pages chooses one `as_of_ns` before the first page and reuses it for
-every page in that assembly.
+`RecentProjection` and `NavigationProjection` have an optional `valid_until_ns` for an
+answer with a known expiry, but no provider sets it and nothing above the contract reads
+it, so a time-dependent answer describes only the `as_of_ns` it was read at.
+A caller assembling a time-dependent result from several version-pinned pages chooses
+one `as_of_ns` before the first page and reuses it for every page in that assembly.
 
 Catalog terminal extensions follow `catalog_terminal_suffix`, which spells the rule
 rather than leaving it to a path library, so `archive.tar.gz` has `.gz` and `.gitignore`
@@ -289,7 +291,10 @@ facts. A same-phase observation is always valid; cross-phase transitions follow
 `ALLOWED_PHASE_TRANSITIONS` in `contract.py`, which
 `tests/test_inventory_provider_contract.py::test_lifecycle_transition_graph_is_explicit_and_terminal`
 checks: every live phase may stop or fail, `stopped` is terminal, and `failed` may only
-stop.
+stop. The graph binds through conformance, not at run time:
+`test_provider_lifecycle_is_monotonic_and_one_handle_keeps_one_session` applies
+`IndexState.can_transition_to` to every transition a provider makes while it opens, and
+the coordinator does not reject an illegal one.
 
 `ready` means the handle is open and answering without discovery, reconciliation, or a
 live filesystem observer.
@@ -470,9 +475,70 @@ A new provider:
 5. reruns the serving benchmark with `--provider` and records the result in
    [Scale Benchmark](../../scale-benchmark.md).
 
-Nothing above this contract changes, with one exception: `metab --walk` (`walk.py`)
-calls the Python walker’s `walk_tree` directly, to show what the walker yields, so it
-walks with the Python engine whichever provider serves.
+Nothing above this contract changes for a new provider, but a few host paths still read
+the served tree without it.
+Two would make a provider swap non-equivalent:
+
+- `metab --walk` text and `--stream` modes (`walk.py`) call the Python walker’s
+  `walk_tree` directly, so they show the Python walker whichever provider serves; its
+  JSON, YAML, and filtered modes already read through the runtime.
+- The `tree._dir_tree` family, which `server.py` re-exports, walks with `os.scandir`,
+  though no production route calls it.
+
+The rest are bounded host reads: the README scan in `folder_discovery.py`, which must
+also answer for folders outside the index; `_folder_not_indexed` in `server.py`, which
+re-applies the scope rules with the default hidden allowlist rather than the configured
+one; and the activity tracker’s `stat` of catalog candidates, which feeds verified
+refresh hints. The research’s
+[bypass table](../research/research-2026-11-17-fdu-backend-revisited.md#a-few-code-paths-still-bypass-the-seam)
+gives each one’s disposition.
+
+## Decisions for a Second Provider
+
+A second provider exposes rules the Python provider never had to state.
+[The revisited fdu research](../research/research-2026-11-17-fdu-backend-revisited.md#decisions-needed-before-parity-runs)
+names the decisions parity runs need and gives each one’s reasons, evidence, and the
+changes it implies; this table records only the rule, its status, and what holds a
+provider to it.
+
+A **decided** rule is Metabrowser’s alone and binds every provider, including where the
+Python provider does not meet it yet, which the last column says.
+An **open, pending fdu** rule changes fdu’s behavior or contradicts a decision fdu has
+recorded, so it is Metabrowser’s proposal in
+[jlevy/fdu#215](https://github.com/jlevy/fdu/issues/215) until fdu agrees, and the last
+column says what, if anything, holds a provider to it meanwhile.
+R numbers name the research’s
+[refactors](../research/research-2026-11-17-fdu-backend-revisited.md#required-metabrowser-refactors),
+whose bead table tracks each, and a layer is a step of the stack its
+[recommendations](../research/research-2026-11-17-fdu-backend-revisited.md#recommendations)
+order. `test_architecture_document_records_every_decision` checks that the table records
+each decision the research names once, in its order, with one of these statuses, that
+every open one links the fdu proposal, and that every test it names exists.
+
+| # | Rule | Status | Held by |
+| --- | --- | --- | --- |
+| D1 | An unreadable or vanished directory makes coverage partial with reason `inaccessible` and adds a bounded `permission` or `disappeared` issue, rather than reading as empty; the host tells “complete with issues” from “still discovering” | Decided | Not yet: the Python walker treats such a directory as empty, with coverage complete. R6 (layer 4) |
+| D2 | Serving a repository subdirectory applies every `.gitignore` from the enclosing repository root down, those above the served root included; `.git/info/exclude`, global excludes, and `core.ignorecase` are decided together with it | Open, pending fdu ([jlevy/fdu#215](https://github.com/jlevy/fdu/issues/215)) | The Python provider’s rule, which `tests/test_gitignore_hierarchical.py` checks against `git check-ignore` through the Python matcher rather than a provider. R8 (layer 4) |
+| D3 | A `.gitignore` edit is observed live and reclassifies its subtree as one verified change | Decided | Not yet: the Python watcher drops the hidden name. R7 (layer 4) |
+| D4 | The observer watches exactly the admitted scope, turns overflow into scoped reconciliation, and retries or degrades explicitly when it fails | Decided | Not yet: see [The Watcher](arch-inventory-engine-python.md#the-watcher). R7 (layer 4) |
+| D5 | After an observer failure, including a watch-limit failure at open, a handle reports `ready`, freshness `stale`, and an `observation_gap` issue, because its data is complete as of its version | Open, pending fdu ([jlevy/fdu#215](https://github.com/jlevy/fdu/issues/215)) | [State and Failures](#state-and-failures) states it; the Python provider meets it (`test_python_provider_surfaces_observation_gap`), and no conformance case can fail an observer yet |
+| D6 | A per-page tree work budget is soft: a page spends its budget, stops at a position its continuation can name, reports the work it spent, and returns at least one row or ends the traversal; conformance asserts progress, termination, and conservation, never a ceiling | Open, pending fdu ([jlevy/fdu#215](https://github.com/jlevy/fdu/issues/215)) | Not yet: the typed-limit and continuation-work conformance cases pin the Python provider’s hard limit and its exact charges (R1). R5 (layer 6) |
+| D7 | A filtered or grouped tree is one complete-or-limit read at one version and does not page; a moved version restarts it | Open, pending fdu ([jlevy/fdu#215](https://github.com/jlevy/fdu/issues/215)) | Not yet: both page today. R5 (layer 6) |
+| D8 | Replay capacity is a provider budget: a cursor inside it replays exactly and one outside it gets a reset. A batch is one coherent version and may carry state only; the host publishes a transient `reconciling` freshness and the batches after it as one change, and tests assert convergence rather than envelope counts | Decided | Not yet: the replay conformance case pins one refresh as one batch at capacity 1 (R1). The host rule is R27 (layer 3) |
+| D9 | The engine receives classification, not presentation: a File Rollup classification profile names the fields an engine reads, providers derive semantic identity from what they parse, and the host stamps the browser’s registry fingerprint | Intent decided; profile open, pending fdu ([jlevy/fdu#215](https://github.com/jlevy/fdu/issues/215)) | Providers parse the whole registry document today (`test_provider_derives_registry_identity_from_supplied_content`, `test_provider_uses_supplied_registry_content_for_classification`). R9 (layer 5) |
+| D10 | Metabrowser’s total canonical grammar is the identity, `%5C` for a POSIX backslash included | Open, pending fdu ([jlevy/fdu#215](https://github.com/jlevy/fdu/issues/215)) | `canonical_inventory_name` in `contract.py` (`test_the_canonical_path_is_total_and_injective`, `test_an_unescaped_posix_backslash_is_not_an_identity`); fdu’s grammar does not escape the backslash |
+| D11 | Every bound both providers must meet is one contract constant, set from a measurement of both and recorded beside it, and the adapter asserts fdu’s exported bounds against those constants at open | Method decided; values pending measurement | The constants at the top of `contract.py`, set for the Python provider today (`test_configuration_and_command_bounds_are_enforced`). R5 (layer 6), after R20 |
+| D12 | The fdu adapter in `src/` is thin from its first commit: a kind fdu cannot answer returns a typed unsupported result in its projection’s place, against a shrink-only expected list, fallbacks live in a harness outside `src/`, and the provider stays experimental with no goldens until every kind is native | Decided | With the adapter (R10, R11, R14, R29); the contract has no unsupported result yet |
+| D13 | A complete assembly of path-keyed rows equals one version while the version moves: a continuation names a position in the total order, and the coordinator re-reads what its dirty ledger names until a pass finds nothing new | Open, pending fdu ([jlevy/fdu#215](https://github.com/jlevy/fdu/issues/215)) | Today a pin fails instead of moving ([Version Pins](#version-pins), `test_provider_version_pins_fail_instead_of_moving`). R5 (layer 6) |
+| D14 | A native panic or poisoned root becomes a typed provider failure, and a coordinator supervisor, not the relay, closes the failed handle with a bounded wait, reopens it up to a cap, publishes a host reset, and past the cap leaves the root failed | Decided | Not yet. R26 (layer 3); `tests/perturbed_provider.py` injects the fault. It reproduces the defect: an `Exception` from `changes()` makes the relay publish a host reset and end, but a `BaseException`, as a native panic is, escapes the relay’s `TaskGroup` as a `BaseExceptionGroup` that its `except Exception` misses, so no reset is published, live updates stop silently, and the group is raised again from the coordinator’s close |
+| D15 | The seam has two latency bounds, measured separately and stated in the contract: the uninterruptible native hold and event-loop lag, which also counts preemptible conversion; page sizes follow from both, and `open`, `close`, and root replacement have bounds under the coordinator lock | Decided | Not yet: measured with the adapter, and stated with D11’s constants |
+| D16 | A provider’s settled memory per retained entry has a byte budget, and the fdu process is no larger than Python’s on one corpus, measured at steady state after settle | Decided | Not yet: `devtools/bench_engine.py` (R18) records peak resident memory, not settled memory; R30 re-measures the Python baseline (layer 7) |
+| D17 | Which files a budget stop admits is unspecified; conformance and goldens assert the stop, coverage, issue, and counts, never membership | Decided | Not yet: `test_provider_budget_stop_is_explicit_and_absence_remains_unknown` pins the files the Python provider admits (R1) |
+| D18 | Only the byte-exact served name is identity: a lookup or refresh spelled differently only in letter case or Unicode normalization answers `absent` or is rejected, and a refresh verifies its spelling against the parent’s listing | Open, pending fdu ([jlevy/fdu#215](https://github.com/jlevy/fdu/issues/215)) | Not yet: macOS cases with the adapter |
+| D19 | Metabrowser pins fdu exactly, changes the pin in one commit with the adapter and its conformance results, and uses only the public `fdu.opened` surface and fdu’s exported bounds | Decided | With the adapter’s packaging (R14) |
+| D20 | A change batch names every path whose row may differ from the version before it, every ancestor whose aggregates changed included; a removed subtree is named by its root in a separate bounded field; what a batch cannot express this way is all-dirty | Open, pending fdu ([jlevy/fdu#215](https://github.com/jlevy/fdu/issues/215)) | The ancestor rule is the Python provider’s, and `tests/test_e2e_filesystem_to_sse.py` relies on it (R2). The removed-subtrees field is R5 (layer 6) |
+| D21 | Native events are never trusted on a remote or unknown filesystem: such a root reports D5’s `ready`, `stale`, and `observation_gap`, with refresh driven by the host until fdu can poll | Open, pending fdu ([jlevy/fdu#215](https://github.com/jlevy/fdu/issues/215)) | The Python provider polls those filesystems instead (`select_watch_mode` in `watch_backends.py`); fdu’s side comes with the adapter |
+| D22 | Aggregates cross the seam as contract-owned values: classification tallies per dimension, ranked children with a remainder, exact-or-capped totals, and recency-window counts, from which the host builds `RollupResult` and navigation rows and stamps registry identity | Open, pending fdu ([jlevy/fdu#215](https://github.com/jlevy/fdu/issues/215)) | Not yet: `RollupProjection` and `NavigationProjection` carry browser wire models. R3 (layer 5) |
 
 ## Provider Conformance Registry
 

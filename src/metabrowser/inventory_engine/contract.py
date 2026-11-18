@@ -266,12 +266,17 @@ def canonical_inventory_name(name: str) -> str:
     index at its first dirty-path check. Windows names cannot contain a backslash, so
     that platform keeps the character and the grammar keeps refusing it.
 
-    The platform branch mirrors how the name was decoded, and mirrors fdu. On POSIX,
-    `os.scandir` decodes undecodable bytes with `surrogateescape`, mapping each byte to one
-    scalar in `U+DC80..U+DCFF`, so each becomes one escape. On Windows a name is UTF-16
-    that need not be well formed, and an unpaired surrogate has no UTF-8 encoding at all,
-    so its two code units' bytes are escaped big-endian: `U+D800` becomes `%D8%00`, whose
-    hex digits read in the order the code unit is written.
+    The platform branch mirrors how the name was decoded. On POSIX, `os.scandir` decodes
+    undecodable bytes with `surrogateescape`, mapping each byte to one scalar in
+    `U+DC80..U+DCFF`, so each becomes one escape. On Windows a name is UTF-16 that need
+    not be well formed, and an unpaired surrogate has no UTF-8 encoding at all, so its two
+    code units' bytes are escaped big-endian: `U+D800` becomes `%D8%00`, whose hex digits
+    read in the order the code unit is written.
+
+    This grammar is Metabrowser's, and every provider must produce it. fdu's portable
+    paths do not escape a POSIX backslash, so a name holding one has a different identity
+    and sorts differently there; which grammar both use is decision D10, open pending fdu
+    (`arch-inventory-provider.md`, "Decisions for a Second Provider").
 
     Without this, ordering a directory that holds one undecodable name raised
     `UnicodeEncodeError` from `name.encode("utf-8")` -- surrogates are not encodable -- so
@@ -750,14 +755,25 @@ class IndexState:
             raise ValueError(f"index state accepts at most {MAX_INVENTORY_ISSUES} issues")
 
     def can_transition_to(self, other: IndexState) -> bool:
-        """Whether *other* is a legal next lifecycle state for this session."""
+        """Whether *other* is a legal next lifecycle state for this session.
+
+        Nothing calls this at run time, and the coordinator does not reject an illegal
+        transition. The graph binds through conformance: the lifecycle case in
+        `tests/test_inventory_provider_contract.py` applies this to every transition a
+        provider makes while it opens.
+        """
 
         return other.phase == self.phase or other.phase in ALLOWED_PHASE_TRANSITIONS[self.phase]
 
 
 @dataclass(frozen=True, slots=True)
 class WorkCounters:
-    """Bounded semantic work shared with the native fdu engine."""
+    """Deterministic semantic work, with the same meaning in every provider.
+
+    A field a provider does not count stays zero, so two providers' work compares field
+    by field only where both count it; each engine's architecture document says which
+    fields it counts.
+    """
 
     observations: int = 0
     unchanged: int = 0
@@ -1416,6 +1432,8 @@ class RollupProjection:
 class NavigationProjection:
     query_id: str
     payload: NavigationTallies
+    # An expiry for an answer that has one. No provider sets it and nothing above the
+    # contract reads it, so an answer describes only the `as_of_ns` it was read at.
     valid_until_ns: int | None = None
 
     def __post_init__(self) -> None:
@@ -1465,6 +1483,7 @@ class RecentProjection:
     entries: tuple[RecentRecord, ...]
     total_matches: CountResult
     gitignored_directories: tuple[str, ...] = ()
+    # As on `NavigationProjection`: unset by every provider and read by nothing.
     valid_until_ns: int | None = None
 
     def __post_init__(self) -> None:
