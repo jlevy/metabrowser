@@ -556,6 +556,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
 {
   "provider_calls": {
     "source acquisition": [
+      "gh auth status",
       "gh api repos/octo/demo --jq .size"
     ],
     "cold cache reads": [],

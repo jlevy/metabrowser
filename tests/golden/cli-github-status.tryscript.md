@@ -22,7 +22,7 @@ One check reports what GitHub work needs from GitHub CLI: where `gh` is, its ver
 the account it is signed in to, that account’s token scopes, and one state with the step
 that fixes it. `metab --doctor` prints it after the plugin verdict, and
 `POST /api/plugin/github/status` serves the same report.
-The state table is in `src/metabrowser/builtin_plugins/github/gh_status.py`.
+The state table is in the GitHub plugin’s `gh_status.py`.
 
 `gh` here is `tests/fixtures/github-status/gh`, which answers `gh --version` and
 `gh auth status --json hosts` as `FAKE_GH_STATUS` names and fails anything else, so no
