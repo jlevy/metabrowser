@@ -194,11 +194,12 @@ ignore = [
 # https://marketplace.visualstudio.com/items?itemName=detachhead.basedpyright
 # https://docs.basedpyright.com/latest/configuration/config-files/#sample-pyprojecttoml-file
 include = ["src", "tests", "devtools"]
-# This disposable integration is checked separately against the exact reviewed
-# fdu wheel. The normal MetaBrowser environment deliberately has no fdu
-# dependency, so analyzing it here would turn an absent optional artifact into
-# unknown-type noise rather than verify either package.
-exclude = ["explorations/fdu-inventory-adapter"]
+# These disposable integrations are checked separately against the exact reviewed
+# fdu wheel (each has its own pyrightconfig.json). The normal MetaBrowser
+# environment deliberately has no fdu dependency, so analyzing them here would
+# turn an absent optional artifact into unknown-type noise rather than verify
+# either package.
+exclude = ["explorations/fdu-inventory-adapter", "explorations/fdu-provider-spike"]
 typeCheckingMode = "strict"
 reportMissingTypeStubs = false
 reportUnusedCallResult = false

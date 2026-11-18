@@ -1,0 +1,24 @@
+{
+  "include": [
+    "adapter.py",
+    "probe.py",
+    "conformance.py",
+    "rollup_corpus.py",
+    "routes.py",
+    "run.py",
+    "launcher.py",
+    "bench.py",
+    "projections.py",
+    "summarize.py",
+    "binding.py",
+    "firstread.py",
+    "flake.py"
+  ],
+  "extraPaths": [".", "../../src", "../../tests", "../.."],
+  "typeCheckingMode": "strict",
+  "reportMissingTypeStubs": false,
+  "reportUnusedCallResult": false,
+  "reportImplicitStringConcatenation": false,
+  "reportImplicitOverride": false,
+  "reportPrivateUsage": false
+}

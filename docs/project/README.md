@@ -167,6 +167,9 @@ It links each document below and the contributor standards in `docs/`.
 A research record stays here while it informs open work, and moves to
 [`research/archive/`](research/archive/) once its questions are answered.
 
+- [fdu as the inventory backend, revisited on fdu 0.6](research/research-2026-11-17-fdu-backend-revisited.md):
+  the Linux spike, decisions, fdu changes, and Metabrowser refactors for a swappable
+  Python and Rust inventory backend
 - [Why CI takes twenty minutes](research/research-2026-11-16-ci-speed.md): where a CI
   run’s minutes go by job, step, and test, what flakes cost, and the options for the
   fast CI plan
@@ -212,6 +215,9 @@ A research record stays here while it informs open work, and moves to
 
 ## Reviews
 
+- [fdu backend design, two rounds](reviews/review-2026-11-17-fdu-backend-design.md): the
+  findings of both review rounds of the revisited fdu research, plan, and Linux spike,
+  and where each was applied
 - [Bead and spec audit, 2026-11-14](reviews/review-2026-11-14-bead-and-spec-audit.md):
   every bead closed, updated, or held in the audit after 0.12.0, with its evidence
 - [Changes to existing behavior in the v0.12 stack](reviews/review-2026-10-01-v012-changes-to-existing-behavior.md):

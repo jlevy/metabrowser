@@ -1,0 +1,1414 @@
+{
+  "adapter_modes": {
+    "image_memo": true,
+    "native_max_page_rows": 4096,
+    "verify_extensions": true
+  },
+  "conformance": [
+    {
+      "class": null,
+      "fdu_detail": "",
+      "fdu_outcome": "passed",
+      "python_outcome": "passed",
+      "registered": true,
+      "root_cause": "",
+      "test": "test_catalog_pages_are_lossless_without_suffix_counts"
+    },
+    {
+      "class": null,
+      "fdu_detail": "",
+      "fdu_outcome": "passed",
+      "python_outcome": "passed",
+      "registered": true,
+      "root_cause": "",
+      "test": "test_catalog_predicate_semantics_are_runtime_independent_and_exact"
+    },
+    {
+      "class": null,
+      "fdu_detail": "",
+      "fdu_outcome": "passed",
+      "python_outcome": "passed",
+      "registered": true,
+      "root_cause": "",
+      "test": "test_checkpoint_read_returns_only_a_coherent_constant_work_envelope"
+    },
+    {
+      "class": null,
+      "fdu_detail": "",
+      "fdu_outcome": "passed",
+      "python_outcome": "passed",
+      "registered": true,
+      "root_cause": "",
+      "test": "test_directory_pages_are_lossless_when_directories_outnumber_file_budget"
+    },
+    {
+      "class": null,
+      "fdu_detail": "",
+      "fdu_outcome": "passed",
+      "python_outcome": "passed",
+      "registered": true,
+      "root_cause": "",
+      "test": "test_filtered_tree_and_recent_share_filter_semantics_before_caps"
+    },
+    {
+      "class": null,
+      "fdu_detail": "",
+      "fdu_outcome": "passed",
+      "python_outcome": "passed",
+      "registered": false,
+      "root_cause": "",
+      "test": "test_group_filters_cut_age_bands_at_their_edges_and_keep_symlinks"
+    },
+    {
+      "class": null,
+      "fdu_detail": "",
+      "fdu_outcome": "passed",
+      "python_outcome": "passed",
+      "registered": true,
+      "root_cause": "",
+      "test": "test_grouped_tree_answers_each_group_as_its_filtered_tree"
+    },
+    {
+      "class": null,
+      "fdu_detail": "",
+      "fdu_outcome": "passed",
+      "python_outcome": "passed",
+      "registered": true,
+      "root_cause": "",
+      "test": "test_paged_time_dependent_reads_reuse_one_as_of"
+    },
+    {
+      "class": null,
+      "fdu_detail": "",
+      "fdu_outcome": "passed",
+      "python_outcome": "passed",
+      "registered": true,
+      "root_cause": "",
+      "test": "test_provider_allows_only_one_active_change_iterator"
+    },
+    {
+      "class": "b",
+      "failing_assertion": "test_inventory_provider_contract.py:1627 assert limited.projection(kind) == QueryLimitProjection(",
+      "fdu_detail": "Traceback (most recent call last):\n  File \"<METABROWSER>/explorations/fdu-provider-spike/conformance.py\", line 48, in run_case\n    getattr(suite, name)(factory, Path(raw_root))\n    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<METABROWSER>/tests/test_inventory_provider_contract.py\", line 1645, in test_provider_applies_work_bounds_to_continuation_pages\n    asyncio.run(run())\n    ~~~~~~~~~~~^^^^^^^\n  File \"/usr/local/lib/python3.13/asyncio/runners.py\", line 196, in run\n    return runner.run(main)\n           ~~~~~~~~~~^^^^^^\n  File \"/usr/local/lib/python3.13/asyncio/runners.py\", line 119, in run\n    return self._loop.run_until_complete(task)\n           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^\n  File \"/usr/local/lib/python3.13/asyncio/base_events.py\", line 726, in run_until_complete\n    return future.result()\n           ~~~~~~~~~~~~~^^\n  File \"<METABROWSER>/tests/test_inventory_provider_contract.py\", line 1627, in run\n    assert limited.projection(kind) == QueryLimitProjection(\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    ...<4 lines>...\n    )\n    ^\nAssertionError\n",
+      "fdu_outcome": "failed",
+      "python_outcome": "passed",
+      "registered": true,
+      "root_cause": "Fails in its first (directory) half, so the test never reaches the others; `work_bounds_by_half` runs each half on its own. fdu's tree max_work is a soft budget, so a max_work=1 continuation returns rows instead of a typed limit and consumes the single-use continuation, which makes the retry unavailable.",
+      "test": "test_provider_applies_work_bounds_to_continuation_pages"
+    },
+    {
+      "class": "c",
+      "failing_assertion": "test_inventory_provider_contract.py:1302 assert asyncio.run(run()) == (",
+      "fdu_detail": "Traceback (most recent call last):\n  File \"<METABROWSER>/explorations/fdu-provider-spike/conformance.py\", line 48, in run_case\n    getattr(suite, name)(factory, Path(raw_root))\n    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<METABROWSER>/tests/test_inventory_provider_contract.py\", line 1302, in test_provider_budget_stop_is_explicit_and_absence_remains_unknown\n    assert asyncio.run(run()) == (\n           ^^^^^^^^^^^^^^^^^^^^^^^\n    ...<9 lines>...\n    )\n    ^\nAssertionError\n",
+      "fdu_outcome": "failed",
+      "python_outcome": "passed",
+      "registered": true,
+      "root_cause": "The test assumes the 2-file budget admits a.txt and b.txt (Python's sorted admission). The contract orders traversal breadth-first but not admission within one directory; fdu admits in readdir order (b.txt and z.txt here), so z.txt is present and a.txt, never retained, is rejected by refresh. Stopped phase, budget coverage, resource_budget issue, and watch facts match. Whether admission order should be deterministic is also an fdu design question.",
+      "test": "test_provider_budget_stop_is_explicit_and_absence_remains_unknown"
+    },
+    {
+      "class": "c",
+      "failing_assertion": "test_inventory_provider_contract.py:1859 assert gap.reset is True",
+      "fdu_detail": "Traceback (most recent call last):\n  File \"<METABROWSER>/explorations/fdu-provider-spike/conformance.py\", line 48, in run_case\n    getattr(suite, name)(factory, Path(raw_root))\n    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<METABROWSER>/tests/test_inventory_provider_contract.py\", line 1866, in test_provider_changes_resume_and_report_history_gaps_as_reset\n    asyncio.run(run())\n    ~~~~~~~~~~~^^^^^^^\n  File \"/usr/local/lib/python3.13/asyncio/runners.py\", line 196, in run\n    return runner.run(main)\n           ~~~~~~~~~~^^^^^^\n  File \"/usr/local/lib/python3.13/asyncio/runners.py\", line 119, in run\n    return self._loop.run_until_complete(task)\n           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^\n  File \"/usr/local/lib/python3.13/asyncio/base_events.py\", line 726, in run_until_complete\n    return future.result()\n           ~~~~~~~~~~~~~^^\n  File \"<METABROWSER>/tests/test_inventory_provider_contract.py\", line 1859, in run\n    assert gap.reset is True\n           ^^^^^^^^^^^^^^^^^\nAssertionError\n",
+      "fdu_outcome": "failed",
+      "python_outcome": "passed",
+      "registered": true,
+      "root_cause": "change_queue_size=1 asks for a gap after two batches. fdu budgets its journal in bytes with a 64 KiB floor (MIN_JOURNAL_CAPACITY_BYTES), so two small refreshes stay replayable and no reset is due. The contract should state capacity as a minimum a provider retains, not a maximum it must forget beyond.",
+      "test": "test_provider_changes_resume_and_report_history_gaps_as_reset"
+    },
+    {
+      "class": null,
+      "fdu_detail": "",
+      "fdu_outcome": "passed",
+      "python_outcome": "passed",
+      "registered": true,
+      "root_cause": "",
+      "test": "test_provider_close_joins_change_delivery_and_is_idempotent"
+    },
+    {
+      "class": null,
+      "fdu_detail": "",
+      "fdu_outcome": "passed",
+      "python_outcome": "passed",
+      "registered": true,
+      "root_cause": "",
+      "test": "test_provider_counts_are_exact_or_proven_lower_bounds"
+    },
+    {
+      "class": null,
+      "fdu_detail": "",
+      "fdu_outcome": "passed",
+      "python_outcome": "passed",
+      "registered": true,
+      "root_cause": "",
+      "test": "test_provider_derives_registry_identity_from_supplied_content"
+    },
+    {
+      "class": null,
+      "fdu_detail": "",
+      "fdu_outcome": "passed",
+      "python_outcome": "passed",
+      "registered": true,
+      "root_cause": "",
+      "test": "test_provider_lifecycle_is_monotonic_and_one_handle_keeps_one_session"
+    },
+    {
+      "class": null,
+      "fdu_detail": "",
+      "fdu_outcome": "passed",
+      "python_outcome": "passed",
+      "registered": true,
+      "root_cause": "",
+      "test": "test_provider_refresh_verifies_the_filesystem_instead_of_trusting_the_hint"
+    },
+    {
+      "class": "b",
+      "failing_assertion": "test_inventory_provider_contract.py:1674 assert projection == QueryLimitProjection(",
+      "fdu_detail": "Traceback (most recent call last):\n  File \"<METABROWSER>/explorations/fdu-provider-spike/conformance.py\", line 48, in run_case\n    getattr(suite, name)(factory, Path(raw_root))\n    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<METABROWSER>/tests/test_inventory_provider_contract.py\", line 1685, in test_provider_returns_typed_query_limits_without_partial_answers\n    asyncio.run(run())\n    ~~~~~~~~~~~^^^^^^^\n  File \"/usr/local/lib/python3.13/asyncio/runners.py\", line 196, in run\n    return runner.run(main)\n           ~~~~~~~~~~^^^^^^\n  File \"/usr/local/lib/python3.13/asyncio/runners.py\", line 119, in run\n    return self._loop.run_until_complete(task)\n           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^\n  File \"/usr/local/lib/python3.13/asyncio/base_events.py\", line 726, in run_until_complete\n    return future.result()\n           ~~~~~~~~~~~~~^^\n  File \"<METABROWSER>/tests/test_inventory_provider_contract.py\", line 1674, in run\n    assert projection == QueryLimitProjection(\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    ...<4 lines>...\n    )\n    ^\nAssertionError\n",
+      "fdu_outcome": "failed",
+      "python_outcome": "passed",
+      "registered": true,
+      "root_cause": "Fails at the first query, the directory one, for the same soft tree budget; `work_bounds_by_half.typed_limits` records every kind.",
+      "test": "test_provider_returns_typed_query_limits_without_partial_answers"
+    },
+    {
+      "class": "d",
+      "failing_assertion": "test_inventory_provider_contract.py:1253 assert actual == expected, actual",
+      "fdu_detail": "owser/tests/test_inventory_provider_contract.py\", line 1253, in test_provider_semantic_digest\n    assert actual == expected, actual\n           ^^^^^^^^^^^^^^^^^^\nAssertionError: {'state': ('watching', True, 'fresh', 'scanned'), 'link': ('bundle-link', 'symlink', '', None, False, None, None, None, None, None), 'directory': (('ignored', 'dir', '', None, True, 1, 3, 0, 0, False), ('tracked', 'dir', '', None, False, 2, 10, 2, 10, False), ('bundle-link', 'symlink', '', None, False, None, None, None, None, None), ('ignored/cache.bin', 'file', '.bin', 3, True, None, None, None, None, None), ('tracked/README', 'file', '', 6, False, None, None, None, None, None), ('tracked/bundle.min.js', 'file', '.min.js', 4, False, None, None, None, None, None)), 'filtered': (('tracked', 'tracked/bundle.min.js'), 1, 4), 'rollup': (3, 13, 2, 10, (('tracked', 'dir', 2, 10, 2, 10, False), ('ignored', 'dir', 1, 3, 0, 0, True))), 'navigation': {'files': 2, 'size': 10, 'ignored_files': 1, 'ignored_size': 3}, 'recent': ('tracked/bundle.min.js', 'tracked/README', 'ignored/cache.bin'), 'catalog': (('tracked/README', '', 6), ('tracked/bundle.min.js', '.min.js', 4)), 'diagnostics': ('fdu', 'inventory-provider-v1')}\n",
+      "fdu_outcome": "failed",
+      "python_outcome": "passed",
+      "registered": true,
+      "root_cause": "Fails only at the provider name: the test asserts diagnostics.provider == 'python'. Every filesystem fact, order, aggregate, filter, rollup, navigation, recent, and catalog value matches; the masked rerun (`semantic_digest_with_provider_identity_masked`) passes.",
+      "test": "test_provider_semantic_digest"
+    },
+    {
+      "class": null,
+      "fdu_detail": "",
+      "fdu_outcome": "passed",
+      "python_outcome": "passed",
+      "registered": true,
+      "root_cause": "",
+      "test": "test_provider_uses_canonical_portable_row_order"
+    },
+    {
+      "class": null,
+      "fdu_detail": "",
+      "fdu_outcome": "passed",
+      "python_outcome": "passed",
+      "registered": true,
+      "root_cause": "",
+      "test": "test_provider_uses_supplied_registry_content_for_classification"
+    },
+    {
+      "class": null,
+      "fdu_detail": "",
+      "fdu_outcome": "passed",
+      "python_outcome": "passed",
+      "registered": true,
+      "root_cause": "",
+      "test": "test_provider_version_pins_fail_instead_of_moving"
+    }
+  ],
+  "conformance_probe": {
+    "change_batches": 4,
+    "change_polls": 5,
+    "extension_checks": 103,
+    "extension_mismatch_examples": [],
+    "extension_mismatches": 0,
+    "fallbacks": {
+      "catalog_offset_ledger": {
+        "aggregate_passes": 0,
+        "child_bucket_builds": 0,
+        "full_result_sorts": 0,
+        "image_reuses": 0,
+        "invocations": 4,
+        "materialized_path_bytes": 0,
+        "materialized_rows": 0,
+        "native_calls": 0,
+        "native_pages": 0,
+        "remedy": "a flat continuation that carries the count of rows already emitted, or an Aggregate lower bound that includes them, so a continued catalog page can state its proven at-least count without adapter state",
+        "rows_returned": 11
+      },
+      "continuation_identity_ledger": {
+        "aggregate_passes": 0,
+        "child_bucket_builds": 0,
+        "full_result_sorts": 0,
+        "image_reuses": 0,
+        "invocations": 12,
+        "materialized_path_bytes": 0,
+        "materialized_rows": 0,
+        "native_calls": 0,
+        "native_pages": 0,
+        "remedy": "a Continue that carries (or validates) the resubmitted query, so a continuation presented with a different path, depth, or filter is refused natively",
+        "rows_returned": 0
+      },
+      "directory_empty_probe": {
+        "aggregate_passes": 0,
+        "child_bucket_builds": 0,
+        "full_result_sorts": 0,
+        "image_reuses": 0,
+        "invocations": 9,
+        "materialized_path_bytes": 0,
+        "materialized_rows": 0,
+        "native_calls": 9,
+        "native_pages": 9,
+        "remedy": "a leaf (file plus symlink) count in PartitionRollUpSummary, so `empty` is known for a directory holding no files without walking its subtree",
+        "rows_returned": 0
+      },
+      "filtered_tree": {
+        "aggregate_passes": 911,
+        "child_bucket_builds": 0,
+        "full_result_sorts": 911,
+        "image_reuses": 907,
+        "invocations": 911,
+        "materialized_path_bytes": 363,
+        "materialized_rows": 29,
+        "native_calls": 4,
+        "native_pages": 4,
+        "remedy": "native filtered-tree projection: one bounded selection and aggregation pass over portable_children with Metabrowser filter predicates (logical extension, exact name, registry family and display group, age band, minimum size, ignored pruning) returning level-ordered rows plus matching leaf/file/byte totals",
+        "rows_returned": 2121
+      },
+      "grouped_tree": {
+        "aggregate_passes": 320,
+        "child_bucket_builds": 0,
+        "full_result_sorts": 0,
+        "image_reuses": 63,
+        "invocations": 64,
+        "materialized_path_bytes": 860,
+        "materialized_rows": 52,
+        "native_calls": 1,
+        "native_pages": 1,
+        "remedy": "native grouped filtered tree: the same pass with up to MAX_TREE_GROUPS group predicates (display group, age band) evaluated per leaf",
+        "rows_returned": 1059
+      },
+      "navigation": {
+        "aggregate_passes": 1,
+        "child_bucket_builds": 0,
+        "full_result_sorts": 0,
+        "image_reuses": 1,
+        "invocations": 1,
+        "materialized_path_bytes": 0,
+        "materialized_rows": 0,
+        "native_calls": 0,
+        "native_pages": 0,
+        "remedy": "native navigation projection derived from the maintained root partitions, semantic type tallies, declared exact-name tallies, and global recency order",
+        "rows_returned": 1
+      },
+      "page_chaining": {
+        "aggregate_passes": 0,
+        "child_bucket_builds": 0,
+        "full_result_sorts": 0,
+        "image_reuses": 0,
+        "invocations": 2,
+        "materialized_path_bytes": 0,
+        "materialized_rows": 0,
+        "native_calls": 2,
+        "native_pages": 2,
+        "remedy": "a native page bound at least as large as Metabrowser's page requests (catalog pages are `budget.max_files` rows), or a provider page-size hint the host assembly honours; fdu 0.6.0 refuses a page limit above 4096",
+        "rows_returned": 5
+      },
+      "recent": {
+        "aggregate_passes": 3,
+        "child_bucket_builds": 0,
+        "full_result_sorts": 3,
+        "image_reuses": 2,
+        "invocations": 3,
+        "materialized_path_bytes": 80,
+        "materialized_rows": 9,
+        "native_calls": 1,
+        "native_pages": 1,
+        "remedy": "native ranked-recency projection over the maintained global recency order (ignored last, mtime descending, path), with an Aggregate-style capped count",
+        "rows_returned": 8
+      },
+      "registry_downlevel": {
+        "aggregate_passes": 0,
+        "child_bucket_builds": 0,
+        "full_result_sorts": 0,
+        "image_reuses": 0,
+        "invocations": 25,
+        "materialized_path_bytes": 0,
+        "materialized_rows": 25,
+        "native_calls": 0,
+        "native_pages": 0,
+        "remedy": "accept File Rollup registry schema 5 (the presentation-only `chroma_ratio` family field), which fdu's fingerprint already excludes",
+        "rows_returned": 0
+      },
+      "rollup": {
+        "aggregate_passes": 3,
+        "child_bucket_builds": 2,
+        "full_result_sorts": 0,
+        "image_reuses": 1,
+        "invocations": 3,
+        "materialized_path_bytes": 14,
+        "materialized_rows": 4,
+        "native_calls": 2,
+        "native_pages": 2,
+        "remedy": "native File Rollup projection: DirectoryRollUp plus the maintained per-directory semantic type tallies, emitting the node/children, extension tallies, and file-type breakdown that Metabrowser's RollupResult carries",
+        "rows_returned": 3
+      }
+    },
+    "helper_reads": 655,
+    "native": {
+      "catalog": {
+        "invocations": 9,
+        "rows_returned": 21
+      },
+      "directory": {
+        "invocations": 9,
+        "rows_returned": 21
+      },
+      "entry": {
+        "invocations": 4,
+        "rows_returned": 4
+      }
+    },
+    "native_reads": 669,
+    "priorities": 0,
+    "read_retries": 0,
+    "refreshes": 7,
+    "typed_failures": {}
+  },
+  "file_rollup_corpus": {
+    "aggregate_cases": 2,
+    "aggregate_cases_status": "not applicable: fdu 0.6.0 has no file-type breakdown projection; the spike's rollup is the Python oracle, which would only compare with itself",
+    "fields_not_exposed_by_fdu": ["confidence", "detection_source"],
+    "invalid_registry_cases": 21,
+    "invalid_registry_method": "each case down-leveled through the adapter's schema-5 shim, then fdu's refusal compared with the defect the case names, by the wording in expected_fdu_wording",
+    "invalid_registry_rows": [
+      {
+        "expected_fdu_wording": null,
+        "fdu_message": "invalid type rules \"\": line 1: field appears before [[kind]]",
+        "id": "invalid-toml",
+        "metabrowser_error": "invalid-toml",
+        "verdict": "refused_for_another_reason"
+      },
+      {
+        "expected_fdu_wording": "unsupported schema_version",
+        "fdu_message": "invalid type rules \"\": unsupported schema_version 6: this engine reads File Rollup registry schema 3 and 4",
+        "id": "unsupported-schema",
+        "metabrowser_error": "unsupported-schema-version",
+        "verdict": "refused_for_the_case_reason"
+      },
+      {
+        "expected_fdu_wording": "unsupported schema_version",
+        "fdu_message": "",
+        "id": "previous-schema-version",
+        "metabrowser_error": "unsupported-schema-version",
+        "verdict": "accepted"
+      },
+      {
+        "expected_fdu_wording": "max_extension_components",
+        "fdu_message": "invalid type rules \"\": max_extension_components must be 2",
+        "id": "unsupported-components",
+        "metabrowser_error": "unsupported-extension-components",
+        "verdict": "refused_for_the_case_reason"
+      },
+      {
+        "expected_fdu_wording": "registry_revision",
+        "fdu_message": "invalid type rules \"\": registry_revision must be positive",
+        "id": "invalid-field",
+        "metabrowser_error": "invalid-field",
+        "verdict": "refused_for_the_case_reason"
+      },
+      {
+        "expected_fdu_wording": "requires a deviation",
+        "fdu_message": "invalid type rules \"\": line 27: family lightness_rank requires a deviation",
+        "id": "undeclared-deviation",
+        "metabrowser_error": "undeclared-deviation",
+        "verdict": "refused_for_the_case_reason"
+      },
+      {
+        "expected_fdu_wording": "requires a deviation",
+        "fdu_message": "",
+        "id": "undeclared-chroma-deviation",
+        "metabrowser_error": "undeclared-deviation",
+        "verdict": "accepted"
+      },
+      {
+        "expected_fdu_wording": "invalid group id",
+        "fdu_message": "invalid type rules \"\": invalid group id \"code_name\"",
+        "id": "invalid-id",
+        "metabrowser_error": "invalid-id",
+        "verdict": "refused_for_the_case_reason"
+      },
+      {
+        "expected_fdu_wording": "must declare the other group",
+        "fdu_message": "invalid type rules \"\": registry must declare the other group",
+        "id": "missing-fallback",
+        "metabrowser_error": "missing-fallback",
+        "verdict": "refused_for_the_case_reason"
+      },
+      {
+        "expected_fdu_wording": "duplicate group order",
+        "fdu_message": "invalid type rules \"\": duplicate group order 10",
+        "id": "duplicate-order",
+        "metabrowser_error": "duplicate-order",
+        "verdict": "refused_for_the_case_reason"
+      },
+      {
+        "expected_fdu_wording": "unknown group",
+        "fdu_message": "invalid type rules \"\": family python names unknown group \"missing\"",
+        "id": "unknown-group",
+        "metabrowser_error": "unknown-group",
+        "verdict": "refused_for_the_case_reason"
+      },
+      {
+        "expected_fdu_wording": "unknown family",
+        "fdu_message": "invalid type rules \"\": kind python names unknown family \"missing\"",
+        "id": "unknown-family",
+        "metabrowser_error": "unknown-family",
+        "verdict": "refused_for_the_case_reason"
+      },
+      {
+        "expected_fdu_wording": "invalid content_family",
+        "fdu_message": "invalid type rules \"\": kind python has invalid content_family \"mystery\"",
+        "id": "invalid-content-family",
+        "metabrowser_error": "invalid-content-family",
+        "verdict": "refused_for_the_case_reason"
+      },
+      {
+        "expected_fdu_wording": "invalid extension",
+        "fdu_message": "invalid type rules \"\": kind python has invalid extension \".py\"",
+        "id": "invalid-extension",
+        "metabrowser_error": "invalid-extension",
+        "verdict": "refused_for_the_case_reason"
+      },
+      {
+        "expected_fdu_wording": "belongs to",
+        "fdu_message": "invalid type rules \"\": extension \"py\" belongs to python and python-copy",
+        "id": "duplicate-evidence",
+        "metabrowser_error": "duplicate-evidence",
+        "verdict": "refused_for_the_case_reason"
+      },
+      {
+        "expected_fdu_wording": "hue must be",
+        "fdu_message": "invalid type rules \"\": line 24: hue must be in [0, 360) degrees",
+        "id": "invalid-hue",
+        "metabrowser_error": "invalid-hue",
+        "verdict": "refused_for_the_case_reason"
+      },
+      {
+        "expected_fdu_wording": "linguist and linguist_color",
+        "fdu_message": "invalid type rules \"\": line 25: family linguist and linguist_color must be present together",
+        "id": "linguist-without-color",
+        "metabrowser_error": "invalid-linguist",
+        "verdict": "refused_for_the_case_reason"
+      },
+      {
+        "expected_fdu_wording": "neither family nor group",
+        "fdu_message": "invalid type rules \"\": kind standalone names neither family nor group",
+        "id": "familyless-kind-without-group",
+        "metabrowser_error": "invalid-field",
+        "verdict": "refused_for_the_case_reason"
+      },
+      {
+        "expected_fdu_wording": "group conflicts with family",
+        "fdu_message": "invalid type rules \"\": kind python group conflicts with family",
+        "id": "family-group-mismatch",
+        "metabrowser_error": "group-mismatch",
+        "verdict": "refused_for_the_case_reason"
+      },
+      {
+        "expected_fdu_wording": "no declared extension evidence",
+        "fdu_message": "invalid type rules \"\": family empty has no declared extension evidence",
+        "id": "empty-family",
+        "metabrowser_error": "empty-family",
+        "verdict": "refused_for_the_case_reason"
+      },
+      {
+        "expected_fdu_wording": "declares no evidence",
+        "fdu_message": "invalid type rules \"\": kind python declares no evidence",
+        "id": "missing-evidence",
+        "metabrowser_error": "missing-evidence",
+        "verdict": "refused_for_the_case_reason"
+      }
+    ],
+    "invalid_registry_verdicts": {
+      "accepted": ["previous-schema-version", "undeclared-chroma-deviation"],
+      "refused_for_another_reason": ["invalid-toml"],
+      "refused_for_the_case_reason": [
+        "unsupported-schema",
+        "unsupported-components",
+        "invalid-field",
+        "undeclared-deviation",
+        "invalid-id",
+        "missing-fallback",
+        "duplicate-order",
+        "unknown-group",
+        "unknown-family",
+        "invalid-content-family",
+        "invalid-extension",
+        "duplicate-evidence",
+        "invalid-hue",
+        "linguist-without-color",
+        "familyless-kind-without-group",
+        "family-group-mismatch",
+        "empty-family",
+        "missing-evidence"
+      ]
+    },
+    "metadata_agree": 153,
+    "metadata_cases": 153,
+    "metadata_cases_run": 153,
+    "metadata_disagreements": [],
+    "metadata_field_mismatches": {
+      "canonical_extension": 0,
+      "content_family": 0,
+      "family_id": 0,
+      "group_id": 0,
+      "kind_id": 0,
+      "logical_extension": 0
+    },
+    "platform": "Linux",
+    "registry": {
+      "fingerprint": "78c00764ddfcb68cc0724f8b9801428f0d3fcb178d6ed5f29cc720ffbcfe7704",
+      "revision": 3,
+      "schema_version": 5
+    }
+  },
+  "identity_and_bounds": {
+    "fdu": {
+      "backslash_lookup": "present",
+      "catalog_order": ["100%25.txt", "a.txt", "a%5Cb.txt", "a]b.txt", "f00.txt"],
+      "directory_order": ["100%25.txt", "a.txt", "a%5Cb.txt", "a]b.txt", "f00.txt"],
+      "forty_entry_bundle_present": 40,
+      "hundred_path_priority": "accepted"
+    },
+    "order_agrees": false,
+    "python": {
+      "backslash_lookup": "present",
+      "catalog_order": ["100%25.txt", "a%5Cb.txt", "a.txt", "a]b.txt", "f00.txt"],
+      "directory_order": ["100%25.txt", "a%5Cb.txt", "a.txt", "a]b.txt", "f00.txt"],
+      "forty_entry_bundle_present": 40,
+      "hundred_path_priority": "accepted"
+    }
+  },
+  "lifecycle": {
+    "first_phase": "watching",
+    "live_change": {
+      "all_dirty": false,
+      "dirty_paths": ["", "live.txt"],
+      "reset": false
+    },
+    "live_reread_presence": "present",
+    "present": true,
+    "refresh_accepted": ["refresh.txt"],
+    "replacement_presence": "present",
+    "spike_threads_after": 0,
+    "spike_threads_before": 0,
+    "usable_after_iterator_cancel": "ready",
+    "volatile": {
+      "iterator_cancel_ms": 200.7,
+      "live_change_latency_ms": 51.2
+    }
+  },
+  "provenance": {
+    "cpus": 4,
+    "fdu_checkout_head": "4450be7e58b1e87a3d2b0fc8ffc0e8646e5b7a09",
+    "fdu_revision": "4450be7",
+    "fdu_version": "0.6.0",
+    "import_origin": "<HOME><SITE_PACKAGES>/fdu/__init__.py",
+    "metabrowser_dirty_paths": [
+      "M explorations/fdu-provider-spike/README.md",
+      " M explorations/fdu-provider-spike/adapter.py",
+      " M explorations/fdu-provider-spike/bench.py",
+      " M explorations/fdu-provider-spike/evidence/correctness.json",
+      " M explorations/fdu-provider-spike/evidence/performance.json",
+      " M explorations/fdu-provider-spike/pyrightconfig.json",
+      " M explorations/fdu-provider-spike/rollup_corpus.py",
+      " M explorations/fdu-provider-spike/routes.py",
+      " M explorations/fdu-provider-spike/run.py",
+      " M explorations/fdu-provider-spike/series.sh",
+      " M explorations/fdu-provider-spike/summarize.py",
+      "?? explorations/fdu-provider-spike/binding.py",
+      "?? explorations/fdu-provider-spike/evidence/flake.json",
+      "?? explorations/fdu-provider-spike/firstread.py",
+      "?? explorations/fdu-provider-spike/flake.py"
+    ],
+    "metabrowser_head": "b6129b1c1f3145a88785d722eaabab32b5fb73cf",
+    "platform": "Linux 6.18.44-fc-v553 x86_64",
+    "python": "3.13.18",
+    "source_tree_import": false,
+    "wheel": "fdu-0.6.0-cp312-abi3-manylinux_2_34_x86_64.whl",
+    "wheel_sha256": "d4b9071b377be9201ad95dedaebc19328e0a255cd76dc072fe5fa0cc91fdac1f"
+  },
+  "representative_read": {
+    "corpus": "corpus-checkout",
+    "files": 9954,
+    "probe": {
+      "change_batches": 0,
+      "change_polls": 0,
+      "extension_checks": 20385,
+      "extension_mismatch_examples": [],
+      "extension_mismatches": 0,
+      "fallbacks": {
+        "filtered_tree": {
+          "aggregate_passes": 1,
+          "child_bucket_builds": 0,
+          "full_result_sorts": 1,
+          "image_reuses": 0,
+          "invocations": 1,
+          "materialized_path_bytes": 490179,
+          "materialized_rows": 10475,
+          "native_calls": 3,
+          "native_pages": 3,
+          "remedy": "native filtered-tree projection: one bounded selection and aggregation pass over portable_children with Metabrowser filter predicates (logical extension, exact name, registry family and display group, age band, minimum size, ignored pruning) returning level-ordered rows plus matching leaf/file/byte totals",
+          "rows_returned": 411
+        },
+        "grouped_tree": {
+          "aggregate_passes": 2,
+          "child_bucket_builds": 0,
+          "full_result_sorts": 0,
+          "image_reuses": 1,
+          "invocations": 1,
+          "materialized_path_bytes": 0,
+          "materialized_rows": 0,
+          "native_calls": 0,
+          "native_pages": 0,
+          "remedy": "native grouped filtered tree: the same pass with up to MAX_TREE_GROUPS group predicates (display group, age band) evaluated per leaf",
+          "rows_returned": 568
+        },
+        "navigation": {
+          "aggregate_passes": 1,
+          "child_bucket_builds": 0,
+          "full_result_sorts": 0,
+          "image_reuses": 1,
+          "invocations": 1,
+          "materialized_path_bytes": 0,
+          "materialized_rows": 0,
+          "native_calls": 0,
+          "native_pages": 0,
+          "remedy": "native navigation projection derived from the maintained root partitions, semantic type tallies, declared exact-name tallies, and global recency order",
+          "rows_returned": 1
+        },
+        "page_chaining": {
+          "aggregate_passes": 0,
+          "child_bucket_builds": 0,
+          "full_result_sorts": 0,
+          "image_reuses": 0,
+          "invocations": 2,
+          "materialized_path_bytes": 0,
+          "materialized_rows": 0,
+          "native_calls": 3,
+          "native_pages": 3,
+          "remedy": "a native page bound at least as large as Metabrowser's page requests (catalog pages are `budget.max_files` rows), or a provider page-size hint the host assembly honours; fdu 0.6.0 refuses a page limit above 4096",
+          "rows_returned": 6398
+        },
+        "recent": {
+          "aggregate_passes": 1,
+          "child_bucket_builds": 0,
+          "full_result_sorts": 1,
+          "image_reuses": 1,
+          "invocations": 1,
+          "materialized_path_bytes": 0,
+          "materialized_rows": 0,
+          "native_calls": 0,
+          "native_pages": 0,
+          "remedy": "native ranked-recency projection over the maintained global recency order (ignored last, mtime descending, path), with an Aggregate-style capped count",
+          "rows_returned": 200
+        },
+        "registry_downlevel": {
+          "aggregate_passes": 0,
+          "child_bucket_builds": 0,
+          "full_result_sorts": 0,
+          "image_reuses": 0,
+          "invocations": 1,
+          "materialized_path_bytes": 0,
+          "materialized_rows": 1,
+          "native_calls": 0,
+          "native_pages": 0,
+          "remedy": "accept File Rollup registry schema 5 (the presentation-only `chroma_ratio` family field), which fdu's fingerprint already excludes",
+          "rows_returned": 0
+        },
+        "rollup": {
+          "aggregate_passes": 1,
+          "child_bucket_builds": 520,
+          "full_result_sorts": 0,
+          "image_reuses": 1,
+          "invocations": 1,
+          "materialized_path_bytes": 0,
+          "materialized_rows": 0,
+          "native_calls": 0,
+          "native_pages": 0,
+          "remedy": "native File Rollup projection: DirectoryRollUp plus the maintained per-directory semantic type tallies, emitting the node/children, extension tallies, and file-type breakdown that Metabrowser's RollupResult carries",
+          "rows_returned": 1
+        }
+      },
+      "helper_reads": 1,
+      "native": {
+        "catalog": {
+          "invocations": 1,
+          "rows_returned": 9954
+        },
+        "directory": {
+          "invocations": 1,
+          "rows_returned": 540
+        },
+        "entry": {
+          "invocations": 1,
+          "rows_returned": 1
+        }
+      },
+      "native_reads": 1,
+      "priorities": 0,
+      "read_retries": 0,
+      "refreshes": 0,
+      "typed_failures": {}
+    },
+    "projection_rows": {
+      "catalog": 9954,
+      "diagnostics": 0,
+      "directory": 540,
+      "grouped": 0,
+      "markdown": 411,
+      "navigation": 0,
+      "recent": 200,
+      "rollup": 0,
+      "root": 0
+    },
+    "rows_returned": 11678,
+    "settled_phase": "ready",
+    "volatile": {
+      "bundle_python_peak_bytes": 21716248,
+      "bundle_wall_ms_under_tracemalloc": 2168.2,
+      "probe_timings": {
+        "fallbacks.filtered_tree.cpu_time_ns": 1054979939,
+        "fallbacks.filtered_tree.max_wall_time_ns": 1065161801,
+        "fallbacks.filtered_tree.wall_time_ns": 1065161801,
+        "fallbacks.grouped_tree.cpu_time_ns": 61106073,
+        "fallbacks.grouped_tree.max_wall_time_ns": 61203092,
+        "fallbacks.grouped_tree.wall_time_ns": 61203092,
+        "fallbacks.navigation.cpu_time_ns": 184440789,
+        "fallbacks.navigation.max_wall_time_ns": 186959874,
+        "fallbacks.navigation.wall_time_ns": 186959874,
+        "fallbacks.page_chaining.cpu_time_ns": 0,
+        "fallbacks.page_chaining.max_wall_time_ns": 284691045,
+        "fallbacks.page_chaining.wall_time_ns": 304262171,
+        "fallbacks.recent.cpu_time_ns": 30984855,
+        "fallbacks.recent.max_wall_time_ns": 31463736,
+        "fallbacks.recent.wall_time_ns": 31463736,
+        "fallbacks.registry_downlevel.cpu_time_ns": 0,
+        "fallbacks.registry_downlevel.max_wall_time_ns": 0,
+        "fallbacks.registry_downlevel.wall_time_ns": 0,
+        "fallbacks.rollup.cpu_time_ns": 97096252,
+        "fallbacks.rollup.max_wall_time_ns": 97090912,
+        "fallbacks.rollup.wall_time_ns": 97090912,
+        "native_read_wall_ns": 682039
+      },
+      "settle_s": 2.295
+    }
+  },
+  "rollup_etag_modes": {
+    "outcomes": {
+      "fdu": {
+        "tests/test_rollup_route.py:464 assert await _engine_version(harness) == served, \"the version must hold\"": 4,
+        "tests/test_rollup_route.py:474 assert first_files == 2": 2
+      },
+      "python": {
+        "passed": 6
+      }
+    },
+    "runs_per_provider": 6,
+    "test": "tests/test_rollup_route.py::test_rollup_payload_and_etag_share_one_version"
+  },
+  "routes": {
+    "inventory_suites": {
+      "backends_per_test": {
+        "tests/test_api_folder_envelope.py::test_a_folder_the_inventory_lists_carries_no_reason[.logs/sub]": 1,
+        "tests/test_api_folder_envelope.py::test_a_folder_the_inventory_lists_carries_no_reason[.logs]": 1,
+        "tests/test_api_folder_envelope.py::test_a_folder_the_inventory_lists_carries_no_reason[.state]": 1,
+        "tests/test_api_folder_envelope.py::test_a_folder_the_inventory_lists_carries_no_reason[]": 1,
+        "tests/test_api_folder_envelope.py::test_a_folder_the_inventory_lists_carries_no_reason[sub]": 1,
+        "tests/test_api_folder_envelope.py::test_a_pins_dot_folder_keeps_its_totals_and_readme": 1,
+        "tests/test_api_folder_envelope.py::test_directory_returns_folder_envelope": 1,
+        "tests/test_api_folder_envelope.py::test_envelope_aggregates_come_from_inventory": 1,
+        "tests/test_api_folder_envelope.py::test_file_in_a_hidden_folder_still_opens": 1,
+        "tests/test_api_folder_envelope.py::test_folder_through_a_symlink_says_it_is_not_indexed[link/]": 1,
+        "tests/test_api_folder_envelope.py::test_folder_through_a_symlink_says_it_is_not_indexed[link/nested]": 1,
+        "tests/test_api_folder_envelope.py::test_folder_through_a_symlink_says_it_is_not_indexed[link]": 1,
+        "tests/test_api_folder_envelope.py::test_hidden_folder_keeps_its_envelope_and_says_it_is_not_indexed[.hidden/]": 1,
+        "tests/test_api_folder_envelope.py::test_hidden_folder_keeps_its_envelope_and_says_it_is_not_indexed[.hidden/sub]": 1,
+        "tests/test_api_folder_envelope.py::test_hidden_folder_keeps_its_envelope_and_says_it_is_not_indexed[.hidden]": 1,
+        "tests/test_api_folder_envelope.py::test_hidden_folder_keeps_its_envelope_and_says_it_is_not_indexed[shown/.hidden/deeper]": 1,
+        "tests/test_api_folder_envelope.py::test_hidden_folder_keeps_its_envelope_and_says_it_is_not_indexed[shown/.hidden]": 1,
+        "tests/test_api_folder_envelope.py::test_hidden_folder_keeps_its_readme": 1,
+        "tests/test_api_folder_envelope.py::test_missing_path_still_404": 1,
+        "tests/test_api_folder_envelope.py::test_readme_detection_direct_children_only": 2,
+        "tests/test_api_folder_envelope.py::test_root_directory_envelope_and_pending_state": 1,
+        "tests/test_api_folder_envelope.py::test_served_root_through_a_symlink_is_an_ordinary_folder": 2,
+        "tests/test_api_folder_envelope.py::test_traversal_still_404": 1,
+        "tests/test_browser_active_tracker.py::test_activity_patch_preserves_other_fields_and_cache_inputs": 1,
+        "tests/test_browser_active_tracker.py::test_api_activity_reads_the_same_overlay_snapshot": 1,
+        "tests/test_browser_active_tracker.py::test_decoration_change_emits_fs_upsert_without_catalog_delta": 1,
+        "tests/test_browser_active_tracker.py::test_quiet_overlay_transition_preserves_engine_version_and_pid_label": 1,
+        "tests/test_browser_active_tracker.py::test_tick_refreshes_facts_then_marks_the_overlay_active": 1,
+        "tests/test_browser_active_tracker.py::test_trackable_catalog_records_are_scoped_bounded_and_uncompressed": 0,
+        "tests/test_browser_events_route.py::test_all_known_snapshot_pages_directory_heavy_scope_losslessly": 1,
+        "tests/test_browser_events_route.py::test_api_capabilities_shape_with_fs_type_detection": 1,
+        "tests/test_browser_events_route.py::test_api_events_emits_snapshot_on_connect": 1,
+        "tests/test_browser_events_route.py::test_api_events_heartbeat_arrives_when_producer_quiet": 1,
+        "tests/test_browser_events_route.py::test_api_events_scope_query_param_drives_snapshot_scope": 2,
+        "tests/test_browser_events_route.py::test_api_events_snapshot_supersedes_preconnect_ring_entries": 1,
+        "tests/test_browser_events_route.py::test_api_index_meta_etag_round_trip": 1,
+        "tests/test_browser_events_route.py::test_api_index_meta_payload_shape": 1,
+        "tests/test_browser_events_route.py::test_api_index_progress_does_not_304_while_active": 1,
+        "tests/test_browser_events_route.py::test_api_index_progress_etag_round_trip": 1,
+        "tests/test_browser_events_route.py::test_api_index_progress_payload_shape": 1,
+        "tests/test_browser_events_route.py::test_event_bus_defers_provider_projection_until_a_browser_connects": 1,
+        "tests/test_browser_events_route.py::test_event_bus_overflow_restarts_slow_connection": 1,
+        "tests/test_browser_events_route.py::test_heartbeat_interval_default_matches_spec": 0,
+        "tests/test_browser_events_route.py::test_lifespan_propagates_required_inventory_open_failure": 1,
+        "tests/test_browser_events_route.py::test_multi_path_change_fits_one_filesystem_and_catalog_pair": 1,
+        "tests/test_browser_events_route.py::test_parse_sse_frames_round_trips_comment_and_data": 0,
+        "tests/test_browser_events_route.py::test_pending_tally_diagnostic_correlates_client_and_inventory_state": 1,
+        "tests/test_browser_events_route.py::test_pending_tally_diagnostic_rejects_oversized_payload": 0,
+        "tests/test_browser_events_route.py::test_pending_tally_diagnostic_stops_reading_chunked_payload_at_limit": 0,
+        "tests/test_browser_events_route.py::test_resync_marker_ends_stream_after_delivery": 1,
+        "tests/test_browser_events_route.py::test_root_depth_scope_filters_live_fs_change_ops": 0,
+        "tests/test_browser_events_route.py::test_root_replacement_refreshes_connected_browsers": 1,
+        "tests/test_browser_events_route.py::test_snapshot_handoff_drops_a_change_already_covered_by_the_snapshot": 1,
+        "tests/test_browser_lifespan_e2e.py::test_full_lifespan_stack_serves_all_endpoints": 1,
+        "tests/test_browser_lifespan_e2e.py::test_recent_filter_includes_logs_state_files": 1,
+        "tests/test_browser_lifespan_e2e.py::test_watcher_detects_new_file_after_walker_completes": 1,
+        "tests/test_browser_recent.py::test_api_recent_accepts_the_full_navigation_filter_vocabulary": 1,
+        "tests/test_browser_recent.py::test_api_recent_preserves_envelope_and_validation": 1,
+        "tests/test_browser_recent.py::test_recent_applies_the_navigation_filter_before_the_response_cap": 1,
+        "tests/test_browser_recent.py::test_recent_cap_prioritizes_tracked_files_then_restores_mtime_order": 1,
+        "tests/test_browser_recent.py::test_recent_carries_ignored_leaves_and_ancestor_directories": 1,
+        "tests/test_browser_recent.py::test_recent_excluding_ignored_spends_no_rows_on_them": 1,
+        "tests/test_browser_recent.py::test_recent_limit_extension_and_prefix_filters": 1,
+        "tests/test_browser_recent.py::test_recent_projection_is_flat_complete_and_newest_first": 1,
+        "tests/test_browser_recent.py::test_recent_record_has_one_canonical_identity": 0,
+        "tests/test_browser_recent.py::test_recent_serializes_a_capped_count_without_claiming_exactness": 0,
+        "tests/test_browser_recent.py::test_recent_shared_and_nested_ignored_ancestors": 1,
+        "tests/test_browser_recent.py::test_recent_window_uses_mtime_for_every_file": 1,
+        "tests/test_browser_rollup.py::test_aggregate_computed_against_moved_data_is_never_published": 0,
+        "tests/test_browser_rollup.py::test_derived_index_state_survives_writes_and_removals": 0,
+        "tests/test_browser_rollup.py::test_every_index_write_goes_through_the_two_write_methods": 0,
+        "tests/test_browser_rollup.py::test_eviction_epochs_are_released_once_no_rollup_is_in_flight": 0,
+        "tests/test_browser_rollup.py::test_rollup_depth_sentinel_keeps_full_totals": 0,
+        "tests/test_browser_rollup.py::test_rollup_global_node_budget_on_adversarial_branching": 0,
+        "tests/test_browser_rollup.py::test_rollup_none_for_files_and_unknown_paths": 0,
+        "tests/test_browser_rollup.py::test_rollup_reflects_real_fs_mutation_through_fs_change": 0,
+        "tests/test_browser_rollup.py::test_rollup_retries_when_child_topology_moves_between_aggregate_and_emit": 0,
+        "tests/test_browser_rollup.py::test_rollup_reuses_child_index_until_inventory_changes": 0,
+        "tests/test_browser_rollup.py::test_rollup_scoped_to_subtree_with_inherited_ignore": 0,
+        "tests/test_browser_rollup.py::test_rollup_top_n_rest_bucket_and_ordering": 0,
+        "tests/test_browser_rollup.py::test_rollup_totals_and_gitignore_variants": 0,
+        "tests/test_browser_rollup.py::test_rollup_traversal_is_bounded_cold_and_independent_of_index_size_warm": 0,
+        "tests/test_browser_walk.py::test_dump_tree_envelope_golden": 1,
+        "tests/test_browser_walk.py::test_dump_tree_json_and_yaml_round_trip": 2,
+        "tests/test_browser_walk.py::test_inventory_classifies_symlinks_without_counting_them_as_files": 0,
+        "tests/test_browser_walk.py::test_rewalk_subtree_refuses_escaping_and_ancestor_symlinks": 0,
+        "tests/test_browser_walk.py::test_rewalk_subtree_refuses_symlinked_dir": 0,
+        "tests/test_browser_walk.py::test_stream_records": 0,
+        "tests/test_browser_walk.py::test_tree_dump_honors_inventory_provider_selection": 1,
+        "tests/test_browser_walk.py::test_walk_counts_symlinks_separately": 0,
+        "tests/test_browser_walk.py::test_walk_report_detail_levels": 0,
+        "tests/test_browser_walk.py::test_walk_report_golden": 0,
+        "tests/test_browser_walk.py::test_walker_permission_denied_is_debug_diagnostic": 0,
+        "tests/test_browser_walk.py::test_walker_uses_plain_worker_threads_for_each_directory": 0,
+        "tests/test_browser_watch_backends.py::test_backend_batch_is_deduplicated_and_submitted_once": 0,
+        "tests/test_browser_watch_backends.py::test_backend_batch_uses_the_opened_scope_hidden_allowlist": 0,
+        "tests/test_browser_watch_backends.py::test_detect_fs_type_returns_string_on_real_path": 0,
+        "tests/test_browser_watch_backends.py::test_native_set_includes_ext4_apfs": 0,
+        "tests/test_browser_watch_backends.py::test_polling_set_includes_nfs_and_fuse": 0,
+        "tests/test_browser_watch_backends.py::test_run_watcher_emits_fs_change_on_new_file": 1,
+        "tests/test_browser_watch_backends.py::test_run_watcher_finishes_cooperative_stop_after_repeated_cancellation": 0,
+        "tests/test_browser_watch_backends.py::test_run_watcher_reports_a_failure_while_stopping_once": 0,
+        "tests/test_browser_watch_backends.py::test_run_watcher_stops_backend_cooperatively_before_cancellation_returns": 0,
+        "tests/test_browser_watch_backends.py::test_select_watch_mode_native_or_explained_fallback": 0,
+        "tests/test_browser_watch_backends.py::test_select_watch_mode_polling_for_nfs_synthetic": 0,
+        "tests/test_browser_watch_backends.py::test_select_watch_mode_polling_for_unknown_fs": 0,
+        "tests/test_browser_watch_backends.py::test_select_watch_mode_polling_when_detect_fails": 0,
+        "tests/test_browser_watch_backends.py::test_stale_add_event_removes_now_absent_file": 1,
+        "tests/test_browser_watch_backends.py::test_stale_delete_event_reconciles_recreated_directory": 1,
+        "tests/test_browser_watch_backends.py::test_watcher_announces_a_failed_refresh_batch": 0,
+        "tests/test_browser_watch_backends.py::test_watcher_announces_a_failed_watch_instead_of_dying_silently": 1,
+        "tests/test_browser_watch_backends.py::test_watcher_announces_a_rejected_observation_batch": 0,
+        "tests/test_browser_watch_backends.py::test_watcher_stops_after_a_middle_chunk_failure": 0,
+        "tests/test_catalog_feed_server.py::test_api_catalog_is_incomplete_while_discovery_is_blocked": 1,
+        "tests/test_catalog_feed_server.py::test_api_catalog_lists_the_complete_nonignored_file_universe": 1,
+        "tests/test_catalog_feed_server.py::test_catalog_bulk_materialization_stays_in_the_worker": 0,
+        "tests/test_catalog_feed_server.py::test_catalog_change_passes_depth_scope_filter": 0,
+        "tests/test_catalog_feed_server.py::test_catalog_content_identity_does_not_depend_on_page_boundaries": 0,
+        "tests/test_catalog_feed_server.py::test_catalog_content_identity_hashes_the_records_it_documents": 0,
+        "tests/test_catalog_feed_server.py::test_catalog_content_identity_separates_path_from_extension": 0,
+        "tests/test_catalog_feed_server.py::test_catalog_encoding_is_off_loop_and_reused": 1,
+        "tests/test_catalog_feed_server.py::test_catalog_etag_and_live_addition_converge": 1,
+        "tests/test_catalog_feed_server.py::test_catalog_identity_ignores_changes_the_catalog_does_not_carry": 1,
+        "tests/test_catalog_feed_server.py::test_catalog_live_add_ignore_and_remove_deltas": 1,
+        "tests/test_catalog_feed_server.py::test_file_to_non_file_metadata_becomes_exact_catalog_invalidations": 0,
+        "tests/test_catalog_feed_server.py::test_live_deep_file_to_directory_and_symlink_emit_exact_invalidations": 1,
+        "tests/test_catalog_feed_server.py::test_walker_completion_projects_capability_update": 1,
+        "tests/test_inventory_coordinator.py::test_cancelled_read_drains_before_root_replacement_closes_handle": 0,
+        "tests/test_inventory_coordinator.py::test_cancelled_read_logs_a_provider_failure_discovered_while_draining": 0,
+        "tests/test_inventory_coordinator.py::test_catalog_decorations_are_joined_only_when_requested": 0,
+        "tests/test_inventory_coordinator.py::test_coherent_read_joins_only_returned_overlay_entries_without_changing_facts": 0,
+        "tests/test_inventory_coordinator.py::test_coordinator_opens_one_handle_and_closes_before_root_replacement": 0,
+        "tests/test_inventory_coordinator.py::test_every_close_joins_shutdown_even_if_the_first_caller_is_cancelled[False]": 0,
+        "tests/test_inventory_coordinator.py::test_every_close_joins_shutdown_even_if_the_first_caller_is_cancelled[True]": 0,
+        "tests/test_inventory_coordinator.py::test_factory_is_sealed_to_the_real_python_provider": 0,
+        "tests/test_inventory_coordinator.py::test_grouped_tree_assembly_enforces_page_and_row_bounds_page_by_page": 1,
+        "tests/test_inventory_coordinator.py::test_host_resume_overflow_and_history_expiry_return_reset": 0,
+        "tests/test_inventory_coordinator.py::test_nonmonotonic_provider_batches_reset_stream_consumers": 0,
+        "tests/test_inventory_coordinator.py::test_old_root_changes_cannot_publish_and_close_ends_subscriptions": 0,
+        "tests/test_inventory_coordinator.py::test_page_session_pins_overlay_without_blocking_other_host_operations": 0,
+        "tests/test_inventory_coordinator.py::test_provider_changes_are_coalesced_and_reset_dominates": 0,
+        "tests/test_inventory_coordinator.py::test_provider_fingerprint_drift_fails_reads_and_resets_stream_consumers": 0,
+        "tests/test_inventory_coordinator.py::test_provider_session_drift_fails_reads_and_resets_stream_consumers": 0,
+        "tests/test_inventory_coordinator.py::test_reads_run_concurrently_and_root_replacement_waits_for_them": 0,
+        "tests/test_inventory_coordinator.py::test_refresh_and_priority_are_provider_neutral": 0,
+        "tests/test_inventory_coordinator.py::test_refresh_rejects_incomplete_receipts_and_provider_identity_drift": 0,
+        "tests/test_inventory_coordinator.py::test_tree_page_assembly_enforces_page_and_row_bounds": 1,
+        "tests/test_rollup_route.py::test_disconnecting_client_does_not_cancel_shared_build": 1,
+        "tests/test_rollup_route.py::test_rollup_falls_back_to_a_current_read_when_its_pinned_version_expires": 1,
+        "tests/test_rollup_route.py::test_rollup_payload_and_etag_share_one_version": 1,
+        "tests/test_rollup_route.py::test_rollup_revalidates_and_reuses_unchanged_body": 1,
+        "tests/test_rollup_route.py::test_rollup_route_clamps_params": 1,
+        "tests/test_rollup_route.py::test_rollup_route_cold_index_is_coherent": 1,
+        "tests/test_rollup_route.py::test_rollup_route_envelope_and_wire_shape": 1,
+        "tests/test_rollup_route.py::test_rollup_route_rejects_unknown_rank": 0,
+        "tests/test_rollup_route.py::test_rollup_route_rejects_unsafe_path_without_opening_inventory": 0,
+        "tests/test_rollup_route.py::test_rollup_route_reports_a_truncated_index": 1,
+        "tests/test_rollup_route.py::test_rollup_route_runs_aggregation_off_the_event_loop": 1,
+        "tests/test_rollup_route.py::test_rollup_route_supports_summary_only_dual_rank": 1,
+        "tests/test_rollup_route.py::test_rollup_route_uses_provider_presence_for_missing_or_non_directory_paths": 1,
+        "tests/test_rollup_route.py::test_rollup_validator_identifies_served_root": 2,
+        "tests/test_rollup_route.py::test_simultaneous_identical_rollups_compute_once": 1,
+        "tests/test_rollup_route.py::test_tree_and_recent_report_a_truncated_index": 1,
+        "tests/test_rollup_route.py::test_unicode_root_and_subfolder_rollups_revalidate_independently": 1,
+        "tests/test_startup_nonblocking.py::test_inventory_start_offloads_gitignore_build": 0,
+        "tests/test_startup_nonblocking.py::test_inventory_walker_yields_to_request_tasks_between_entry_batches": 0,
+        "tests/test_tree_filter.py::test_filter_query_values_normalize_or_degrade_to_unbounded": 0,
+        "tests/test_tree_filter.py::test_tree_filter_active_reports_only_constraining_selections": 0
+      },
+      "failed": 7,
+      "failures": [
+        {
+          "class": "b",
+          "detail": "_locked(canonical_root)\n                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nsrc/metabrowser/inventory_engine/coordinator.py:595: in _replace_root_locked\n    handle = await self._backend.open(root, self._config)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nexplorations/fdu-provider-spike/adapter.py:1855: in open\n    raise InventoryContractError(\nE   metabrowser.inventory_engine.contract.InventoryContractError: fdu 0.6.0 has no polling observer; the spike will not fake one",
+          "failing_assertion": "? E   metabrowser.inventory_engine.contract.InventoryContractError: fdu 0.6.0 has no polling observer; the spike will not fake one",
+          "fdu_backends_built": 1,
+          "fdu_outcome": "failed",
+          "root_cause": "Uses watch_mode='poll'. fdu 0.6.0 has no polling observer; the adapter refuses it with a typed InventoryContractError rather than faking one.",
+          "test": "tests/test_browser_lifespan_e2e.py::test_watcher_detects_new_file_after_walker_completes"
+        },
+        {
+          "class": "d",
+          "detail": "tests/test_browser_walk.py:420: in test_tree_dump_honors_inventory_provider_selection\n    with pytest.raises(ValueError, match=\"unavailable-provider\"):\n         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nE   Failed: DID NOT RAISE ValueError",
+          "failing_assertion": "tests/test_browser_walk.py:420 E   Failed: DID NOT RAISE ValueError",
+          "fdu_backends_built": 1,
+          "fdu_outcome": "failed",
+          "root_cause": "Asserts the sealed factory rejects an unknown provider name; the spike's injection replaces that constructor, so the assertion cannot hold under it.",
+          "test": "tests/test_browser_walk.py::test_tree_dump_honors_inventory_provider_selection"
+        },
+        {
+          "class": "d",
+          "detail": "tests/test_api_folder_envelope.py:97: in test_root_directory_envelope_and_pending_state\n    assert body[\"dir\"][\"total_files\"] is None\nE   assert 1 is None",
+          "failing_assertion": "tests/test_api_folder_envelope.py:97 assert body[\"dir\"][\"total_files\"] is None",
+          "fdu_backends_built": 1,
+          "fdu_outcome": "failed",
+          "root_cause": "Monkeypatches python_inventory.walk_tree to hold or slow discovery; fdu has no such seam.",
+          "test": "tests/test_api_folder_envelope.py::test_root_directory_envelope_and_pending_state"
+        },
+        {
+          "class": "c",
+          "detail": "6: in run_until_complete\n    return future.result()\n           ^^^^^^^^^^^^^^^\ntests/test_rollup_route.py:464: in run\n    assert await _engine_version(harness) == served, \"the version must hold\"\nE   AssertionError: the version must hold\nE   assert EngineVersion...42230880aea1') == EngineVersion...42230880aea1')\nE     \nE     Omitting 3 identical items, use -vv to show\nE     Differing attributes:\nE     ['sequence']\nE     \nE     Drill down into differing attribute sequence:\nE       sequence: 6 != 4",
+          "failing_assertion": "tests/test_rollup_route.py:464 assert await _engine_version(harness) == served, \"the version must hold\"",
+          "fdu_backends_built": 1,
+          "fdu_outcome": "failed",
+          "root_cause": "Mode B. A native refresh is three commits (freshness to reconciling, insert, verified to fresh); the receipt names the last, but the host relay can still be publishing an earlier one when refresh() returns, so the served version moves between two reads. The contract permits sub-batches; the coordinator does not wait for its relay to reach the receipt's version.",
+          "test": "tests/test_rollup_route.py::test_rollup_payload_and_etag_share_one_version"
+        },
+        {
+          "class": "d",
+          "detail": "^^^^^^^^^^\n/usr/local/lib/python3.13/asyncio/base_events.py:726: in run_until_complete\n    return future.result()\n           ^^^^^^^^^^^^^^^\ntests/test_catalog_feed_server.py:139: in run\n    await asyncio.wait_for(started.wait(), timeout=1)\n/usr/local/lib/python3.13/asyncio/tasks.py:513: in wait_for\n    async with timeouts.timeout(timeout):\n               ^^^^^^^^^^^^^^^^^^^^^^^^^\n/usr/local/lib/python3.13/asyncio/timeouts.py:117: in __aexit__\n    raise TimeoutError from exc_val\nE   TimeoutError",
+          "failing_assertion": "tests/test_catalog_feed_server.py:139 E   TimeoutError",
+          "fdu_backends_built": 1,
+          "fdu_outcome": "failed",
+          "root_cause": "Monkeypatches python_inventory.walk_tree to hold or slow discovery; fdu has no such seam.",
+          "test": "tests/test_catalog_feed_server.py::test_api_catalog_is_incomplete_while_discovery_is_blocked"
+        },
+        {
+          "class": "d",
+          "detail": "til_complete\n    return future.result()\n           ^^^^^^^^^^^^^^^\ntests/test_catalog_feed_server.py:424: in run\n    envelope = await asyncio.wait_for(queue.get(), timeout=2.0)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n/usr/local/lib/python3.13/asyncio/tasks.py:513: in wait_for\n    async with timeouts.timeout(timeout):\n               ^^^^^^^^^^^^^^^^^^^^^^^^^\n/usr/local/lib/python3.13/asyncio/timeouts.py:117: in __aexit__\n    raise TimeoutError from exc_val\nE   TimeoutError",
+          "failing_assertion": "tests/test_catalog_feed_server.py:424 E   TimeoutError",
+          "fdu_backends_built": 1,
+          "fdu_outcome": "failed",
+          "root_cause": "Monkeypatches python_inventory.walk_tree to hold or slow discovery; fdu has no such seam.",
+          "test": "tests/test_catalog_feed_server.py::test_walker_completion_projects_capability_update"
+        },
+        {
+          "class": "d",
+          "detail": "tests/test_browser_events_route.py:615: in test_api_index_progress_does_not_304_while_active\n    assert status == 200\nE   assert 304 == 200",
+          "failing_assertion": "tests/test_browser_events_route.py:615 assert status == 200",
+          "fdu_backends_built": 1,
+          "fdu_outcome": "failed",
+          "root_cause": "Monkeypatches python_inventory.walk_tree to hold or slow discovery; fdu has no such seam.",
+          "test": "tests/test_browser_events_route.py::test_api_index_progress_does_not_304_while_active"
+        }
+      ],
+      "fdu_backends_built": 97,
+      "passed": 161,
+      "passed_with_an_fdu_backend": 85,
+      "passed_without_an_fdu_backend": [
+        "tests/test_startup_nonblocking.py::test_inventory_start_offloads_gitignore_build",
+        "tests/test_startup_nonblocking.py::test_inventory_walker_yields_to_request_tasks_between_entry_batches",
+        "tests/test_browser_walk.py::test_walk_report_golden",
+        "tests/test_browser_walk.py::test_walk_report_detail_levels",
+        "tests/test_browser_walk.py::test_walk_counts_symlinks_separately",
+        "tests/test_browser_walk.py::test_inventory_classifies_symlinks_without_counting_them_as_files",
+        "tests/test_browser_walk.py::test_stream_records",
+        "tests/test_browser_walk.py::test_rewalk_subtree_refuses_symlinked_dir",
+        "tests/test_browser_walk.py::test_walker_permission_denied_is_debug_diagnostic",
+        "tests/test_browser_walk.py::test_walker_uses_plain_worker_threads_for_each_directory",
+        "tests/test_browser_walk.py::test_rewalk_subtree_refuses_escaping_and_ancestor_symlinks",
+        "tests/test_tree_filter.py::test_tree_filter_active_reports_only_constraining_selections",
+        "tests/test_tree_filter.py::test_filter_query_values_normalize_or_degrade_to_unbounded",
+        "tests/test_rollup_route.py::test_rollup_route_rejects_unsafe_path_without_opening_inventory",
+        "tests/test_rollup_route.py::test_rollup_route_rejects_unknown_rank",
+        "tests/test_browser_rollup.py::test_rollup_totals_and_gitignore_variants",
+        "tests/test_browser_rollup.py::test_rollup_scoped_to_subtree_with_inherited_ignore",
+        "tests/test_browser_rollup.py::test_rollup_top_n_rest_bucket_and_ordering",
+        "tests/test_browser_rollup.py::test_rollup_depth_sentinel_keeps_full_totals",
+        "tests/test_browser_rollup.py::test_rollup_none_for_files_and_unknown_paths",
+        "tests/test_browser_rollup.py::test_rollup_reuses_child_index_until_inventory_changes",
+        "tests/test_browser_rollup.py::test_rollup_reflects_real_fs_mutation_through_fs_change",
+        "tests/test_browser_rollup.py::test_rollup_global_node_budget_on_adversarial_branching",
+        "tests/test_browser_rollup.py::test_rollup_traversal_is_bounded_cold_and_independent_of_index_size_warm",
+        "tests/test_browser_rollup.py::test_derived_index_state_survives_writes_and_removals",
+        "tests/test_browser_rollup.py::test_eviction_epochs_are_released_once_no_rollup_is_in_flight",
+        "tests/test_browser_rollup.py::test_rollup_retries_when_child_topology_moves_between_aggregate_and_emit",
+        "tests/test_browser_rollup.py::test_aggregate_computed_against_moved_data_is_never_published",
+        "tests/test_browser_rollup.py::test_every_index_write_goes_through_the_two_write_methods",
+        "tests/test_browser_recent.py::test_recent_serializes_a_capped_count_without_claiming_exactness",
+        "tests/test_browser_recent.py::test_recent_record_has_one_canonical_identity",
+        "tests/test_catalog_feed_server.py::test_file_to_non_file_metadata_becomes_exact_catalog_invalidations",
+        "tests/test_catalog_feed_server.py::test_catalog_change_passes_depth_scope_filter",
+        "tests/test_catalog_feed_server.py::test_catalog_bulk_materialization_stays_in_the_worker",
+        "tests/test_catalog_feed_server.py::test_catalog_content_identity_hashes_the_records_it_documents",
+        "tests/test_catalog_feed_server.py::test_catalog_content_identity_does_not_depend_on_page_boundaries",
+        "tests/test_catalog_feed_server.py::test_catalog_content_identity_separates_path_from_extension",
+        "tests/test_browser_events_route.py::test_root_depth_scope_filters_live_fs_change_ops",
+        "tests/test_browser_events_route.py::test_pending_tally_diagnostic_rejects_oversized_payload",
+        "tests/test_browser_events_route.py::test_pending_tally_diagnostic_stops_reading_chunked_payload_at_limit",
+        "tests/test_browser_events_route.py::test_parse_sse_frames_round_trips_comment_and_data",
+        "tests/test_browser_events_route.py::test_heartbeat_interval_default_matches_spec",
+        "tests/test_browser_active_tracker.py::test_trackable_catalog_records_are_scoped_bounded_and_uncompressed",
+        "tests/test_browser_watch_backends.py::test_native_set_includes_ext4_apfs",
+        "tests/test_browser_watch_backends.py::test_polling_set_includes_nfs_and_fuse",
+        "tests/test_browser_watch_backends.py::test_select_watch_mode_native_or_explained_fallback",
+        "tests/test_browser_watch_backends.py::test_select_watch_mode_polling_for_nfs_synthetic",
+        "tests/test_browser_watch_backends.py::test_select_watch_mode_polling_for_unknown_fs",
+        "tests/test_browser_watch_backends.py::test_select_watch_mode_polling_when_detect_fails",
+        "tests/test_browser_watch_backends.py::test_detect_fs_type_returns_string_on_real_path",
+        "tests/test_browser_watch_backends.py::test_backend_batch_is_deduplicated_and_submitted_once",
+        "tests/test_browser_watch_backends.py::test_backend_batch_uses_the_opened_scope_hidden_allowlist",
+        "tests/test_browser_watch_backends.py::test_run_watcher_stops_backend_cooperatively_before_cancellation_returns",
+        "tests/test_browser_watch_backends.py::test_run_watcher_finishes_cooperative_stop_after_repeated_cancellation",
+        "tests/test_browser_watch_backends.py::test_run_watcher_reports_a_failure_while_stopping_once",
+        "tests/test_browser_watch_backends.py::test_watcher_announces_a_failed_refresh_batch",
+        "tests/test_browser_watch_backends.py::test_watcher_announces_a_rejected_observation_batch",
+        "tests/test_browser_watch_backends.py::test_watcher_stops_after_a_middle_chunk_failure",
+        "tests/test_inventory_coordinator.py::test_factory_is_sealed_to_the_real_python_provider",
+        "tests/test_inventory_coordinator.py::test_coordinator_opens_one_handle_and_closes_before_root_replacement",
+        "tests/test_inventory_coordinator.py::test_reads_run_concurrently_and_root_replacement_waits_for_them",
+        "tests/test_inventory_coordinator.py::test_cancelled_read_drains_before_root_replacement_closes_handle",
+        "tests/test_inventory_coordinator.py::test_every_close_joins_shutdown_even_if_the_first_caller_is_cancelled[False]",
+        "tests/test_inventory_coordinator.py::test_every_close_joins_shutdown_even_if_the_first_caller_is_cancelled[True]",
+        "tests/test_inventory_coordinator.py::test_cancelled_read_logs_a_provider_failure_discovered_while_draining",
+        "tests/test_inventory_coordinator.py::test_coherent_read_joins_only_returned_overlay_entries_without_changing_facts",
+        "tests/test_inventory_coordinator.py::test_catalog_decorations_are_joined_only_when_requested",
+        "tests/test_inventory_coordinator.py::test_provider_changes_are_coalesced_and_reset_dominates",
+        "tests/test_inventory_coordinator.py::test_host_resume_overflow_and_history_expiry_return_reset",
+        "tests/test_inventory_coordinator.py::test_old_root_changes_cannot_publish_and_close_ends_subscriptions",
+        "tests/test_inventory_coordinator.py::test_provider_session_drift_fails_reads_and_resets_stream_consumers",
+        "tests/test_inventory_coordinator.py::test_provider_fingerprint_drift_fails_reads_and_resets_stream_consumers",
+        "tests/test_inventory_coordinator.py::test_nonmonotonic_provider_batches_reset_stream_consumers",
+        "tests/test_inventory_coordinator.py::test_refresh_and_priority_are_provider_neutral",
+        "tests/test_inventory_coordinator.py::test_refresh_rejects_incomplete_receipts_and_provider_identity_drift",
+        "tests/test_inventory_coordinator.py::test_page_session_pins_overlay_without_blocking_other_host_operations"
+      ],
+      "pytest_exit_code": 1,
+      "python_baseline": {
+        "failed": [],
+        "passed": 168,
+        "pytest_exit_code": 0,
+        "setup_or_teardown_failures": [],
+        "tests": 168
+      },
+      "selected": [
+        "tests/test_startup_nonblocking.py",
+        "tests/test_browser_lifespan_e2e.py",
+        "tests/test_browser_walk.py",
+        "tests/test_tree_filter.py",
+        "tests/test_api_folder_envelope.py",
+        "tests/test_rollup_route.py",
+        "tests/test_browser_rollup.py",
+        "tests/test_browser_recent.py",
+        "tests/test_catalog_feed_server.py",
+        "tests/test_browser_events_route.py",
+        "tests/test_browser_active_tracker.py",
+        "tests/test_browser_watch_backends.py",
+        "tests/test_inventory_coordinator.py"
+      ],
+      "setup_or_teardown_failures": [],
+      "skipped": 0,
+      "tests": 168
+    },
+    "selected_2a": {
+      "backends_per_test": {
+        "tests/test_browser_inventory_api.py::test_a_row_request_does_not_pay_for_the_tallies": 1,
+        "tests/test_browser_inventory_api.py::test_api_tree_group_by_assembles_a_group_past_the_page_bound": 1,
+        "tests/test_browser_inventory_api.py::test_api_tree_group_by_builds_each_group_s_tree_in_a_turn_of_its_own": 1,
+        "tests/test_browser_inventory_api.py::test_api_tree_group_by_reads_every_group_in_one_pass": 1,
+        "tests/test_browser_inventory_api.py::test_api_tree_group_by_reads_overlapping_wide_groupings_without_missing_a_page": 1,
+        "tests/test_browser_inventory_api.py::test_api_tree_pages_provider_reads_independently_of_the_discovery_budget": 1,
+        "tests/test_browser_inventory_api.py::test_api_tree_tallies_share_one_provider_read": 1,
+        "tests/test_browser_inventory_api.py::test_api_tree_uses_inventory_when_populated": 1,
+        "tests/test_browser_inventory_api.py::test_api_tree_uses_pending_inventory_without_filesystem_fallback": 1,
+        "tests/test_browser_inventory_api.py::test_api_tree_uses_provider_presence_instead_of_parallel_filesystem_truth": 1,
+        "tests/test_browser_lifespan_e2e.py::test_full_lifespan_stack_serves_all_endpoints": 1,
+        "tests/test_browser_lifespan_e2e.py::test_recent_filter_includes_logs_state_files": 1,
+        "tests/test_e2e_filesystem_to_sse.py::test_fresh_connect_no_replay_flood": 1,
+        "tests/test_e2e_filesystem_to_sse.py::test_mkdir_with_files_reconciles_subtree_and_root_totals": 1,
+        "tests/test_e2e_filesystem_to_sse.py::test_rm_directory_coalesces_descendant_removals": 1,
+        "tests/test_e2e_filesystem_to_sse.py::test_rm_file_emits_remove_and_updates_root": 1,
+        "tests/test_e2e_filesystem_to_sse.py::test_touch_existing_file_emits_one_upsert_path": 1
+      },
+      "failed": 1,
+      "failures": [
+        {
+          "class": "d",
+          "detail": "tests/test_browser_inventory_api.py:480: in test_api_tree_uses_pending_inventory_without_filesystem_fallback\n    assert body[\"tally_cache_status\"] == \"scanning\"\nE   AssertionError: assert 'done' == 'scanning'\nE     \nE     - scanning\nE     + done",
+          "failing_assertion": "tests/test_browser_inventory_api.py:480 assert body[\"tally_cache_status\"] == \"scanning\"",
+          "fdu_backends_built": 1,
+          "fdu_outcome": "failed",
+          "root_cause": "Monkeypatches python_inventory.walk_tree to hold or slow discovery; fdu has no such seam.",
+          "test": "tests/test_browser_inventory_api.py::test_api_tree_uses_pending_inventory_without_filesystem_fallback"
+        }
+      ],
+      "fdu_backends_built": 17,
+      "passed": 16,
+      "passed_with_an_fdu_backend": 16,
+      "passed_without_an_fdu_backend": [],
+      "pytest_exit_code": 1,
+      "python_baseline": {
+        "failed": [],
+        "passed": 17,
+        "pytest_exit_code": 0,
+        "setup_or_teardown_failures": [],
+        "tests": 17
+      },
+      "selected": [
+        "tests/test_browser_inventory_api.py",
+        "tests/test_browser_lifespan_e2e.py::test_full_lifespan_stack_serves_all_endpoints",
+        "tests/test_browser_lifespan_e2e.py::test_recent_filter_includes_logs_state_files",
+        "tests/test_e2e_filesystem_to_sse.py"
+      ],
+      "setup_or_teardown_failures": [],
+      "skipped": 0,
+      "tests": 17
+    }
+  },
+  "schema": "fdu-provider-spike-correctness-v2",
+  "semantic_digest_with_provider_identity_masked": {
+    "outcome": "passed"
+  },
+  "sources_sha256": {
+    "adapter.py": "573cd5d0e0a554d2fd279686dbe3e5449007663a53d15111cf299ca00022e102",
+    "conformance.py": "7c75980cbf258a6a9b8cde9c77c8e4b6232dc71581dceaa342eda6f5753eb7bb",
+    "probe.py": "2804faedec4cd763a2c64fe550f65a5542566961d8a5374cd01264a9030a3a14",
+    "rollup_corpus.py": "7ea9be002a2094d5ce0989b44f23d472ed4d0dba2780a21fcf75cc89224cf617",
+    "routes.py": "c60b55407670e0999611203aff16c717eb1207b5382509229dafc1b779815e66",
+    "run.py": "d1711e9e5bdbc0a9fbeec0ef49c6ad1a32609be61cd9698c352ebea90450ac7f"
+  },
+  "unclassified_failures": [],
+  "volatile": {
+    "conformance_probe_timings": {
+      "fallbacks.catalog_offset_ledger.cpu_time_ns": 0,
+      "fallbacks.catalog_offset_ledger.max_wall_time_ns": 0,
+      "fallbacks.catalog_offset_ledger.wall_time_ns": 0,
+      "fallbacks.continuation_identity_ledger.cpu_time_ns": 0,
+      "fallbacks.continuation_identity_ledger.max_wall_time_ns": 0,
+      "fallbacks.continuation_identity_ledger.wall_time_ns": 0,
+      "fallbacks.directory_empty_probe.cpu_time_ns": 534601,
+      "fallbacks.directory_empty_probe.max_wall_time_ns": 89045,
+      "fallbacks.directory_empty_probe.wall_time_ns": 534510,
+      "fallbacks.filtered_tree.cpu_time_ns": 57855787,
+      "fallbacks.filtered_tree.max_wall_time_ns": 680066,
+      "fallbacks.filtered_tree.wall_time_ns": 58089832,
+      "fallbacks.grouped_tree.cpu_time_ns": 25929520,
+      "fallbacks.grouped_tree.max_wall_time_ns": 3543100,
+      "fallbacks.grouped_tree.wall_time_ns": 25930279,
+      "fallbacks.navigation.cpu_time_ns": 95050,
+      "fallbacks.navigation.max_wall_time_ns": 95029,
+      "fallbacks.navigation.wall_time_ns": 95029,
+      "fallbacks.page_chaining.cpu_time_ns": 0,
+      "fallbacks.page_chaining.max_wall_time_ns": 262618,
+      "fallbacks.page_chaining.wall_time_ns": 389054,
+      "fallbacks.recent.cpu_time_ns": 444211,
+      "fallbacks.recent.max_wall_time_ns": 274920,
+      "fallbacks.recent.wall_time_ns": 443998,
+      "fallbacks.registry_downlevel.cpu_time_ns": 0,
+      "fallbacks.registry_downlevel.max_wall_time_ns": 0,
+      "fallbacks.registry_downlevel.wall_time_ns": 0,
+      "fallbacks.rollup.cpu_time_ns": 971572,
+      "fallbacks.rollup.max_wall_time_ns": 403346,
+      "fallbacks.rollup.wall_time_ns": 970987,
+      "native_read_wall_ns": 60757926
+    }
+  },
+  "work_bounds_by_half": {
+    "fdu": {
+      "continuation_halves": {
+        "catalog": {
+          "limited": {
+            "limit_rows_visited": 1,
+            "projection": "QueryLimitProjection",
+            "work_rows_returned": 0,
+            "work_rows_visited": 1
+          },
+          "retry": {
+            "limit_rows_visited": null,
+            "projection": "CatalogProjection",
+            "work_rows_returned": 4,
+            "work_rows_visited": 4
+          }
+        },
+        "directory": {
+          "limited": {
+            "limit_rows_visited": null,
+            "projection": "DirectoryProjection",
+            "work_rows_returned": 2,
+            "work_rows_visited": 3
+          },
+          "retry": {
+            "error": "VersionUnavailableError: the continuation is unavailable or belongs to a different query"
+          }
+        },
+        "filtered_tree": {
+          "limited": {
+            "limit_rows_visited": 1,
+            "projection": "QueryLimitProjection",
+            "work_rows_returned": 0,
+            "work_rows_visited": 1
+          },
+          "retry": {
+            "limit_rows_visited": null,
+            "projection": "FilteredTreeProjection",
+            "work_rows_returned": 4,
+            "work_rows_visited": 4
+          }
+        }
+      },
+      "typed_limits": {
+        "bundle_work": {
+          "rows_returned": 2,
+          "rows_visited": 13
+        },
+        "catalog": {
+          "limit_rows_visited": 2,
+          "projection": "QueryLimitProjection"
+        },
+        "directory": {
+          "limit_rows_visited": null,
+          "projection": "DirectoryProjection"
+        },
+        "filtered": {
+          "limit_rows_visited": 2,
+          "projection": "QueryLimitProjection"
+        },
+        "navigation": {
+          "limit_rows_visited": 2,
+          "projection": "QueryLimitProjection"
+        },
+        "recent": {
+          "limit_rows_visited": 2,
+          "projection": "QueryLimitProjection"
+        },
+        "rollup": {
+          "limit_rows_visited": 2,
+          "projection": "QueryLimitProjection"
+        }
+      }
+    },
+    "python": {
+      "continuation_halves": {
+        "catalog": {
+          "limited": {
+            "limit_rows_visited": 1,
+            "projection": "QueryLimitProjection",
+            "work_rows_returned": 0,
+            "work_rows_visited": 1
+          },
+          "retry": {
+            "limit_rows_visited": null,
+            "projection": "CatalogProjection",
+            "work_rows_returned": 4,
+            "work_rows_visited": 4
+          }
+        },
+        "directory": {
+          "limited": {
+            "limit_rows_visited": 1,
+            "projection": "QueryLimitProjection",
+            "work_rows_returned": 0,
+            "work_rows_visited": 1
+          },
+          "retry": {
+            "limit_rows_visited": null,
+            "projection": "DirectoryProjection",
+            "work_rows_returned": 4,
+            "work_rows_visited": 4
+          }
+        },
+        "filtered_tree": {
+          "limited": {
+            "limit_rows_visited": 1,
+            "projection": "QueryLimitProjection",
+            "work_rows_returned": 0,
+            "work_rows_visited": 1
+          },
+          "retry": {
+            "limit_rows_visited": null,
+            "projection": "FilteredTreeProjection",
+            "work_rows_returned": 4,
+            "work_rows_visited": 4
+          }
+        }
+      },
+      "typed_limits": {
+        "bundle_work": {
+          "rows_returned": 0,
+          "rows_visited": 12
+        },
+        "catalog": {
+          "limit_rows_visited": 2,
+          "projection": "QueryLimitProjection"
+        },
+        "directory": {
+          "limit_rows_visited": 2,
+          "projection": "QueryLimitProjection"
+        },
+        "filtered": {
+          "limit_rows_visited": 2,
+          "projection": "QueryLimitProjection"
+        },
+        "navigation": {
+          "limit_rows_visited": 2,
+          "projection": "QueryLimitProjection"
+        },
+        "recent": {
+          "limit_rows_visited": 2,
+          "projection": "QueryLimitProjection"
+        },
+        "rollup": {
+          "limit_rows_visited": 2,
+          "projection": "QueryLimitProjection"
+        }
+      }
+    }
+  }
+}
