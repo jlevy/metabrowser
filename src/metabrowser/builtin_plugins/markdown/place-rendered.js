@@ -19,7 +19,8 @@
 // imports nothing statically, so it adds no level. Measured 2026-11-14 in headless Chrome
 // 152 on a served folder's first Markdown view: 3,501 bytes transferred and 7,867 decoded,
 // of 67,236 for the plugin's files, 17 of them modules as before; the enhancer, which gave
-// up the record, went from 22,045 bytes decoded to 19,500.
+// up the record, went from 22,045 bytes decoded to 19,500. toc-toggle.js has joined the
+// static tree since; its header has its measurement, dated 2026-11-17.
 
 /**
  * The images this page has loaded whose address names their bytes, by address, least
