@@ -191,9 +191,18 @@ _PROC_SELF_FD: Final = Path("/proc/self/fd")
 
 # Atomic publication. A temporary file is `.<target>.<16 hex>.tmp` beside its target and
 # holds an exclusive flock for its whole life, so a later writer of the same target can
-# tell a crashed writer's leftover from a live one without guessing from its age.
+# tell a crashed writer's leftover from a live one without guessing from its age. A file
+# exists before it can be locked, so its writer creates and locks it while holding a
+# shared flock on the directory, and a sweep judges other writers' temporaries only while
+# holding that flock exclusively: one it can lock then was left by a writer that crashed.
 _TEMPORARY_SUFFIX_RE: Final = r"\.[0-9a-f]{16}\.tmp"
 _TEMPORARY_ATTEMPTS: Final = 4
+# How flock says the file system cannot take a lock at all; cache/locks.py refuses such a
+# home. A directory that cannot be locked cannot be locked exclusively by a sweep either,
+# so there writers create their temporaries without the directory lock and sweeps skip.
+UNSUPPORTED_LOCK_ERRNOS: Final = frozenset(
+    {errno.ENOLCK, errno.EOPNOTSUPP, errno.ENOTSUP, errno.EINVAL, errno.ENOSYS}
+)
 # No-replace renames: renameat2(RENAME_NOREPLACE) on Linux, renamex_np(RENAME_EXCL) on
 # macOS. A file system that does not implement the flag answers with one of these, and
 # publication then relies on its verify-absent check under the owning lock alone.
@@ -749,41 +758,38 @@ def write_private_file_atomic(
     the new, never a partial write. With *replace* false an existing target raises
     :class:`FileExistsError`, through the platform's no-replace rename where it has one.
     Before writing, leftovers of this target from a writer that crashed are removed:
-    their locks are free, while a live writer's is held. The parent directory must
-    already exist.
+    their locks are free, while a live writer's is held, or is being taken under the
+    directory's shared lock. The parent directory must already exist.
     """
 
     require_canonical_inventory_path(relative_path, "application-home path", allow_root=False)
+    _require_home_argument(home)
     directory, _, name = relative_path.rpartition("/")
     for _ in range(_TEMPORARY_ATTEMPTS):
-        temporary = f"{directory}/" if directory else ""
-        temporary += f".{name}.{secrets.token_hex(8)}.tmp"
-        try:
-            # Verifies every parent directory, so the listing below reads a private one.
-            fd = open_private_file(home, temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL)
-        except FileExistsError:
+        temporary = f".{name}.{secrets.token_hex(8)}.tmp"
+        fd = _hold_new_temporary(home, directory, name, temporary)
+        if fd is None:
             continue
+        path = home / (f"{directory}/{temporary}" if directory else temporary)
         try:
-            if not _hold_temporary(fd, home / temporary):
-                continue
-            _remove_stale_temporaries(home, directory, name)
             _write_all(fd, data)
             os.fsync(fd)
             try:
                 if replace:
-                    os.replace(home / temporary, home / relative_path)
+                    os.replace(path, home / relative_path)
                 else:
-                    rename_without_replacing(home / temporary, home / relative_path)
+                    rename_without_replacing(path, home / relative_path)
             except BaseException:
                 with contextlib.suppress(OSError):
-                    os.unlink(home / temporary)
+                    os.unlink(path)
                 raise
             _sync_directory(home / directory if directory else home)
             return
         finally:
             os.close(fd)
-    # Not replaced: no entry at the path was checked, and each temporary name was taken or
-    # its file swept before this writer held it, which opening the target again cannot help.
+    # Not replaced: no entry at the path was checked, and each temporary name was taken, or
+    # its file locked or replaced by something other than a sweep before this writer held
+    # it, which opening the target again cannot help.
     raise PrivateStorageError(
         PrivateStorageViolation.UNVERIFIABLE,
         PrivateStorageLocation.ENTRY,
@@ -861,8 +867,48 @@ def _same_inode(fd: int, path: Path) -> bool:
     return (opened.st_dev, opened.st_ino) == (current.st_dev, current.st_ino)
 
 
+def _hold_new_temporary(home: Path, directory: str, name: str, temporary: str) -> int | None:
+    """Create and lock *temporary* for the target *name* in *directory*, then sweep.
+
+    The file is created as :func:`open_private_file` creates one, through the verified
+    directory, and its lock is taken before the directory's shared lock is released, so
+    no sweep judges it unlocked. Leftovers of *name* are then removed through the same
+    directory by :func:`_remove_stale_temporaries`. Returns the held descriptor, or
+    ``None`` if the name was taken or the file was locked or replaced by something else
+    before it was held.
+    """
+
+    require_canonical_inventory_path(temporary, "application-home path", allow_root=False)
+    with (
+        _verified_directory(home, directory, shared="repair", create=False) as (parent_fd, parent),
+        _own_description(parent_fd) as directory_fd,
+    ):
+        path = parent / temporary
+        with _temporaries_lock(directory_fd, parent, exclusive=False):
+            try:
+                fd = _open_file_entry(
+                    parent_fd, temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, path
+                )
+            except FileExistsError:
+                return None
+            try:
+                held = _hold_temporary(fd, path)
+            except BaseException:
+                os.close(fd)
+                raise
+        if not held:
+            os.close(fd)
+            return None
+        try:
+            _remove_stale_temporaries(parent_fd, directory_fd, parent, name, temporary)
+        except BaseException:
+            os.close(fd)
+            raise
+    return fd
+
+
 def _hold_temporary(fd: int, path: Path) -> bool:
-    """Take a new temporary file's liveness lock; ``False`` if a cleaner took it first."""
+    """Take a new temporary file's liveness lock; ``False`` if something else took it first."""
 
     if fcntl is None:
         raise PrivateStorageError(
@@ -878,31 +924,113 @@ def _hold_temporary(fd: int, path: Path) -> bool:
     return _same_inode(fd, path)
 
 
-def _remove_stale_temporaries(home: Path, directory: str, name: str) -> None:
-    """Remove temporaries of *name* in *directory* whose writers are gone."""
+@contextlib.contextmanager
+def _own_description(parent_fd: int) -> Generator[int]:
+    """Open the directory *parent_fd* names again, for this caller alone.
+
+    A verified descriptor is shared by every thread in this process, and both a read
+    position and a ``flock`` belong to the open file description: two threads locking
+    through one would both be granted the lock.
+    """
+
+    fd = os.open(".", os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC, dir_fd=parent_fd)
+    try:
+        yield fd
+    finally:
+        os.close(fd)
+
+
+@contextlib.contextmanager
+def _temporaries_lock(directory_fd: int, path: Path, *, exclusive: bool) -> Generator[bool]:
+    """Hold the directory's temporaries lock through *directory_fd*; yield whether it is held.
+
+    A writer takes it shared from before it creates its temporary until it has locked it,
+    and may wait for a sweep to finish: a sweep holds it exclusively only while it opens,
+    tries, and removes the other temporaries, none of which waits on anyone. A sweep
+    only tries it, and gets ``False`` while any writer is between creating and locking.
+    Where the file system cannot lock a directory it is ``False`` for both, and the
+    writer goes ahead. It is released with ``LOCK_UN`` rather than by closing the
+    descriptor, because a child forked meanwhile shares the description and would
+    otherwise hold the lock for as long as it lives.
+    """
+
+    if fcntl is None:
+        raise PrivateStorageError(
+            PrivateStorageViolation.UNVERIFIABLE,
+            PrivateStorageLocation.ENTRY,
+            path,
+            detail=_UNSUPPORTED_PLATFORM,
+        )
+    operation = (fcntl.LOCK_EX | fcntl.LOCK_NB) if exclusive else fcntl.LOCK_SH
+    try:
+        fcntl.flock(directory_fd, operation)
+    except BlockingIOError:
+        held = False
+    except OSError as error:
+        if error.errno not in UNSUPPORTED_LOCK_ERRNOS:
+            raise
+        held = False
+    else:
+        held = True
+    try:
+        yield held
+    finally:
+        if held:
+            fcntl.flock(directory_fd, fcntl.LOCK_UN)
+
+
+def _remove_stale_temporaries(
+    parent_fd: int, directory_fd: int, parent: Path, name: str, own: str
+) -> None:
+    """Remove temporaries of *name* whose writers are gone from the verified *parent*.
+
+    *own* is the caller's held temporary. The others are judged under the directory's
+    exclusive temporaries lock, and only through *parent_fd*, the directory that lock is
+    on: a writer holds the shared lock from before it creates its temporary until it has
+    locked it, so a temporary whose lock is free then was left by a writer that crashed.
+    While a writer is creating one the sweep is left to a later write.
+    """
 
     pattern = re.compile(rf"\.{re.escape(name)}{_TEMPORARY_SUFFIX_RE}")
-    for entry in os.listdir(home / directory if directory else home):
-        if pattern.fullmatch(entry) is None:
-            continue
-        relative = f"{directory}/{entry}" if directory else entry
+    others = [
+        entry
+        for entry in os.listdir(directory_fd)
+        if entry != own and pattern.fullmatch(entry) is not None
+    ]
+    if not others:
+        return
+    with _temporaries_lock(directory_fd, parent, exclusive=True) as held:
+        if not held:
+            return
+        for entry in others:
+            _remove_if_unlocked(parent_fd, entry, parent / entry)
+
+
+def _remove_if_unlocked(parent_fd: int, name: str, path: Path) -> None:
+    """Unlink the temporary *name* in *parent_fd* if its liveness lock is free."""
+
+    if fcntl is None:
+        return
+    try:
+        fd = _open_file_entry(parent_fd, name, os.O_RDONLY | os.O_NONBLOCK, path)
+    except (FileNotFoundError, PrivateStorageError):
+        return
+    try:
         try:
-            fd = open_private_file(home, relative, os.O_RDONLY | os.O_NONBLOCK)
-        except (FileNotFoundError, PrivateStorageError):
-            continue
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return
+        opened = os.fstat(fd)
         try:
-            if fcntl is None:
-                return
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                continue
-            if _same_inode(fd, home / relative):
-                with contextlib.suppress(FileNotFoundError):
-                    os.unlink(home / relative)
-                log.info("Removed a temporary file left by an interrupted write")
-        finally:
-            os.close(fd)
+            current = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            return
+        if (current.st_dev, current.st_ino) == (opened.st_dev, opened.st_ino):
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(name, dir_fd=parent_fd)
+            log.info("Removed a temporary file left by an interrupted write")
+    finally:
+        os.close(fd)
 
 
 @functools.cache

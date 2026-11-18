@@ -9,11 +9,14 @@ from __future__ import annotations
 
 import ctypes
 import errno
+import logging
 import os
 import stat
 import subprocess
 import sys
 import textwrap
+import threading
+import time
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
@@ -164,6 +167,340 @@ def test_a_live_writers_temporary_is_never_removed(home: Path) -> None:
         os.close(fd)
     write_private_file_atomic(home, "example.yml", b"content\n")
     assert not live.exists()
+
+
+# ── Concurrent writers of one target ───────────────────────────────
+
+
+def _leftover(home: Path, token: str = "f" * 16) -> Path:
+    """Leave a temporary of ``example.yml`` as a writer that crashed before its lock does."""
+
+    path = home / f".example.yml.{token}.tmp"
+    os.close(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))
+    return path
+
+
+def _counted_draws(monkeypatch: pytest.MonkeyPatch) -> list[int]:
+    """Count the temporary names writers draw: one per write unless a write lost its file."""
+
+    real = home_module.secrets.token_hex
+    draws: list[int] = []
+    guard = threading.Lock()
+
+    def token_hex(length: int) -> str:
+        with guard:
+            draws.append(1)
+        return real(length)
+
+    monkeypatch.setattr(home_module, "secrets", SimpleNamespace(token_hex=token_hex))
+    return draws
+
+
+def _second_write_while_creating(
+    monkeypatch: pytest.MonkeyPatch, home: Path, step: str, during: Callable[[], None]
+) -> list[str]:
+    """Run *during* while the first write's new temporary exists but is not yet locked.
+
+    *step* ``"create"`` runs it as soon as the exclusive ``open`` that creates that
+    temporary returns, before the open's own checks of the new file; ``"lock"`` runs it
+    once the file is checked, just before the writer takes its ``flock``. The list names
+    every temporary a writer creates, in order.
+    """
+
+    created: list[str] = []
+    real_open = os.open
+    real_hold = home_module._hold_temporary  # pyright: ignore[reportPrivateUsage]
+
+    def opening(path: Any, flags: int, *args: Any, **kwargs: Any) -> int:
+        fd = real_open(path, flags, *args, **kwargs)
+        ours = isinstance(path, str) and path.startswith(".example.yml.")
+        if ours and flags & os.O_EXCL and kwargs.get("dir_fd") is not None:
+            created.append(path)
+            if step == "create" and len(created) == 1:
+                during()
+        return fd
+
+    def holding(fd: int, path: Path) -> bool:
+        if step == "lock" and len(created) == 1:
+            during()
+        return real_hold(fd, path)
+
+    monkeypatch.setattr(os, "open", opening)
+    monkeypatch.setattr(home_module, "_hold_temporary", holding)
+    return created
+
+
+@pytest.mark.parametrize("step", ["create", "lock"], ids=["after-create", "before-lock"])
+def test_another_writers_sweep_never_takes_a_temporary_before_it_is_locked(
+    home: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, step: str
+) -> None:
+    """A second writer of the target sweeps while the first's temporary is not yet held.
+
+    The exclusive create and the ``flock`` are two system calls, and a sweep between them
+    found the file unlocked and unlinked it as a crashed writer's (mb-532r). After the
+    create the first write was refused as replaced, in CI three times; before the lock it
+    drew another name. Mutation check: create and lock the temporary outside the
+    directory's shared lock, and ``after-create`` raises while ``before-lock`` creates a
+    third temporary and logs a removal.
+    """
+
+    def second_write() -> None:
+        write_private_file_atomic(home, "example.yml", b"second\n")
+        assert (home / "example.yml").read_bytes() == b"second\n"
+
+    created = _second_write_while_creating(monkeypatch, home, step, second_write)
+    with caplog.at_level(logging.INFO, logger="metabrowser.home"):
+        write_private_file_atomic(home, "example.yml", b"first\n")
+
+    assert (home / "example.yml").read_bytes() == b"first\n"
+    assert len(created) == 2, created
+    assert "Removed a temporary file" not in caplog.text
+    assert _temporaries(home) == []
+
+
+def test_a_crashed_writers_leftover_waits_out_a_writer_that_is_creating(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A sweep that meets a writer between create and lock leaves even real leftovers.
+
+    It cannot tell that writer's file from a crashed one's then, so it keeps both, and
+    the next sweep that finds no writer creating removes the leftover.
+    """
+
+    leftover = _leftover(home)
+
+    def second_write() -> None:
+        write_private_file_atomic(home, "example.yml", b"second\n")
+        assert leftover.exists()
+
+    created = _second_write_while_creating(monkeypatch, home, "create", second_write)
+    write_private_file_atomic(home, "example.yml", b"first\n")
+
+    assert len(created) == 2
+    assert not leftover.exists()
+    assert _temporaries(home) == []
+
+
+def test_a_writer_killed_between_create_and_lock_leaves_a_removable_leftover(
+    home: Path,
+) -> None:
+    """The directory's shared lock goes with the killed process, so its file is swept."""
+
+    result = _run_killed_at_rename(
+        home,
+        """
+        home_module._hold_temporary = die
+        home_module.write_private_file_atomic(home, "example.yml", b"new\\n")
+        print("the temporary was locked")
+        """,
+    )
+
+    assert result.returncode == -9, result.stderr
+    (leftover,) = _temporaries(home)
+    assert leftover.startswith(".example.yml.")
+
+    write_private_file_atomic(home, "example.yml", b"newer\n")
+
+    assert (home / "example.yml").read_bytes() == b"newer\n"
+    assert _temporaries(home) == []
+
+
+def test_a_copy_of_a_directory_lock_descriptor_does_not_keep_the_lock(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A child forked while a writer holds the directory's lock inherits the descriptor.
+
+    ``flock`` belongs to the open file description, which the child's copy keeps open,
+    so closing the parent's descriptor would leave the lock held for as long as the child
+    lives and every sweep would be skipped. Each directory lock is released explicitly.
+    Here every directory descriptor the writer opens is duplicated and kept, as a child
+    would keep it. Mutation check: close the directory lock without ``LOCK_UN`` and the
+    leftover is never removed.
+    """
+
+    real_open = os.open
+    copies: list[int] = []
+
+    def opening(path: Any, flags: int, *args: Any, **kwargs: Any) -> int:
+        fd = real_open(path, flags, *args, **kwargs)
+        if path == "." and flags & os.O_DIRECTORY and kwargs.get("dir_fd") is not None:
+            copies.append(os.dup(fd))
+        return fd
+
+    monkeypatch.setattr(os, "open", opening)
+    try:
+        write_private_file_atomic(home, "example.yml", b"first\n")
+        leftover = _leftover(home)
+        write_private_file_atomic(home, "example.yml", b"second\n")
+
+        assert copies
+        assert not leftover.exists()
+    finally:
+        for fd in copies:
+            os.close(fd)
+
+
+def test_where_a_directory_cannot_be_locked_writers_go_ahead_and_sweeps_skip(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A file system that locks files but not directories still takes writes.
+
+    No sweep there can take the exclusive lock either, so none can remove a temporary
+    whose writer has not locked it yet; leftovers stay until the lock is available.
+    """
+
+    real_flock = fcntl.flock
+
+    def flock(fd: int, operation: int) -> None:
+        if stat.S_ISDIR(os.fstat(fd).st_mode):
+            raise OSError(errno.ENOTSUP, os.strerror(errno.ENOTSUP))
+        real_flock(fd, operation)
+
+    leftover = _leftover(home)
+    monkeypatch.setattr(home_module, "fcntl", SimpleNamespace(**{**vars(fcntl), "flock": flock}))
+    write_private_file_atomic(home, "example.yml", b"first\n")
+
+    assert (home / "example.yml").read_bytes() == b"first\n"
+    assert leftover.exists()
+
+    monkeypatch.undo()
+    write_private_file_atomic(home, "example.yml", b"second\n")
+    assert _temporaries(home) == []
+
+
+def test_an_unexpected_directory_lock_failure_refuses_the_write(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only the errors that mean no lock exists are let through; others are raised."""
+
+    real_flock = fcntl.flock
+
+    def flock(fd: int, operation: int) -> None:
+        if stat.S_ISDIR(os.fstat(fd).st_mode):
+            raise OSError(errno.EIO, os.strerror(errno.EIO))
+        real_flock(fd, operation)
+
+    monkeypatch.setattr(home_module, "fcntl", SimpleNamespace(**{**vars(fcntl), "flock": flock}))
+    with pytest.raises(OSError) as refused:
+        write_private_file_atomic(home, "example.yml", b"first\n")
+
+    assert refused.value.errno == errno.EIO
+    assert str(home) not in str(refused.value)
+    assert not (home / "example.yml").exists()
+    assert _temporaries(home) == []
+
+
+# Measured 2026-11-17 on a 10-CPU Mac at load average 10 to 18, without mb-532r's fix:
+# eight processes of 100 writes each were refused in 5 of 10 runs, and eight threads of
+# 60 in 1 of 20, as the GIL rarely lets another thread in between create and lock. With
+# it, none of 20 and 10. Each run takes about a second, far inside the suite's budget.
+STRESS_THREADS = 8
+STRESS_THREAD_WRITES = 60
+STRESS_PROCESSES = 8
+STRESS_PROCESS_WRITES = 100
+# Each writer leaves a crashed writer's leftover this often, so the sweeps have real work.
+STRESS_LEFTOVER_EVERY = 10
+
+
+def test_concurrent_writers_and_sweeps_in_threads_never_lose_a_temporary(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every write sweeps; none of them may take another writer's file, or refuse."""
+
+    draws = _counted_draws(monkeypatch)
+    start = threading.Barrier(STRESS_THREADS)
+    failures: list[BaseException] = []
+
+    def run(index: int) -> None:
+        try:
+            start.wait(timeout=CHILD_TIMEOUT)
+            for count in range(STRESS_THREAD_WRITES):
+                write_private_file_atomic(home, "example.yml", f"{index}:{count}\n".encode())
+                if count % STRESS_LEFTOVER_EVERY == 0:
+                    _leftover(home, f"{index:08x}{count:08x}")
+        except BaseException as failure:
+            failures.append(failure)
+
+    threads = [threading.Thread(target=run, args=(index,)) for index in range(STRESS_THREADS)]
+    for thread in threads:
+        thread.start()
+    deadline = time.monotonic() + CHILD_TIMEOUT
+    for thread in threads:
+        thread.join(timeout=max(0.0, deadline - time.monotonic()))
+    assert not any(thread.is_alive() for thread in threads)
+
+    assert failures == []
+    assert len(draws) == STRESS_THREADS * STRESS_THREAD_WRITES
+    write_private_file_atomic(home, "example.yml", b"last\n")
+    assert _temporaries(home) == []
+
+
+_STRESS_CHILD = """
+import os, secrets, sys
+from pathlib import Path
+from types import SimpleNamespace
+from metabrowser import home as home_module
+
+home, index, writes, every = Path(sys.argv[1]), int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4])
+draws = []
+
+def token_hex(length):
+    draws.append(1)
+    return secrets.token_hex(length)
+
+home_module.secrets = SimpleNamespace(token_hex=token_hex)
+sys.stdin.readline()
+for count in range(writes):
+    home_module.write_private_file_atomic(home, "example.yml", f"{index}:{count}\\n".encode())
+    if count % every == 0:
+        name = f".example.yml.{index:08x}{count:08x}.tmp"
+        os.close(os.open(home / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))
+print(len(draws))
+"""
+
+
+def test_concurrent_writers_and_sweeps_in_processes_never_lose_a_temporary(
+    home: Path,
+) -> None:
+    """The same contest between interpreters, where only the file locks order them."""
+
+    children = [
+        subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                _STRESS_CHILD,
+                str(home),
+                str(index),
+                str(STRESS_PROCESS_WRITES),
+                str(STRESS_LEFTOVER_EVERY),
+            ],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        for index in range(STRESS_PROCESSES)
+    ]
+    deadline = time.monotonic() + CHILD_TIMEOUT
+    results: list[tuple[int, str, str]] = []
+    try:
+        for child in children:
+            assert child.stdin is not None
+            child.stdin.write("go\n")
+            child.stdin.flush()
+        for child in children:
+            out, err = child.communicate(timeout=max(0.0, deadline - time.monotonic()))
+            results.append((child.returncode, out.strip(), err))
+    finally:
+        for child in children:
+            if child.poll() is None:
+                child.kill()
+                child.wait()
+
+    assert results == [(0, str(STRESS_PROCESS_WRITES), "")] * STRESS_PROCESSES
+    write_private_file_atomic(home, "example.yml", b"last\n")
+    assert _temporaries(home) == []
 
 
 def test_the_no_replace_rename_refuses_an_empty_directory_os_rename_would_replace(

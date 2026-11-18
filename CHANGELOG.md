@@ -4,6 +4,16 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- Two writes of the same cached file at once no longer fail, rarely, with an entry that
+  “was replaced while it was being checked”.
+  Each write first removes the temporary files a crashed write left beside its target,
+  and it could take another write’s new temporary file for one in the moment between
+  that write creating it and locking it.
+  A pull request’s changed files, refreshed twice at once, could then fail to be cached.
+  Now a write creates and locks its temporary file under a shared lock on the folder,
+  and the removal runs only while it holds that lock exclusively.
+  See [Atomic Writes](docs/project/architecture/arch-repository-cache.md#atomic-writes).
+
 - A Pulls row now leads with its title, right after the state icon, on its first line,
   and puts the stack position, number, author, and age on the second; its author’s
   avatar is a little smaller.
