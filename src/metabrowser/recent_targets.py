@@ -25,8 +25,13 @@ person can read it, with a ``format`` string and the ``targets``, most recently 
 first, one entry per root. The format string follows the application home's convention
 (``cache/layout.py``): a short self-describing string, here ``mf`` and a number, an
 append-only :data:`FORMAT_HISTORY`, a :data:`MIGRATIONS` step from each format to the
-next, and a refusal of a format newer than this release reads. It is raised only for a
-change an older reader would misread; a compatible change keeps it. The file is read
+next, and a refusal of a format newer than this release reads. One change is
+compatible, and keeps the string: a new field on an entry. A reader that does not know a
+field keeps it, on every entry it carries along, and drops it only from the entry it
+records again, whose open the field no longer describes. Anything else new raises the
+number: a mode, a key beside ``format`` and ``targets``, or a rule relaxed. A file with
+a mode or a key this release does not know is taken for a newer release's whatever its
+number, and left alone, so a release that forgot to raise it costs no list. The file is read
 with PyYAML's base loader, which makes every scalar a string and builds no object, and
 not with the schema library the cache's records use, which a folder's server never
 loads (``tests/test_plugin_public_api.py``). The list names the user's folders, so it is
@@ -52,6 +57,7 @@ longer than :data:`LOCK_WAIT_S`: the list is not worth delaying or failing a ser
 from __future__ import annotations
 
 import contextlib
+import ctypes
 import errno
 import logging
 import os
@@ -60,7 +66,7 @@ import sys
 import time
 import unicodedata
 from collections.abc import Callable, Generator, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final, Literal, cast
@@ -71,6 +77,7 @@ from metabrowser.home import (
     PrivateFileTooLargeError,
     PrivateStorageError,
     SharedEntryPolicy,
+    StorageDirectoryError,
     configuration_directory,
     ensure_storage_root,
     open_private_file,
@@ -95,8 +102,9 @@ _OFF: Final = frozenset({"0", "false", "no", "off"})
 STORE_FILE: Final = "recent-targets.yml"
 LOCK_FILE: Final = "recent-targets.lock"
 # The format this release writes: ``mf`` for a Metabrowser format, then its number, so
-# the string says what it is wherever it turns up. The number rises only for a change an
-# older reader would misread; a compatible change keeps the string.
+# the string says what it is wherever it turns up. A new field on an entry keeps the
+# string, since every reader keeps a field it does not know (`RecentTarget.extra`); a new
+# mode, a new key beside these two, or a relaxed rule raises the number.
 FORMAT: Final = "mf01"
 # Every format a released Metabrowser has written, oldest first, ending with the current
 # one. Adding a format appends it here and adds the migration from its predecessor.
@@ -143,8 +151,6 @@ _LOCK_RETRY_MAX_S: Final = 0.1
 _UNSUPPORTED_LOCK_ERRNOS: Final = frozenset(
     {errno.ENOLCK, errno.EOPNOTSUPP, errno.ENOTSUP, errno.EINVAL, errno.ENOSYS}
 )
-# macOS's MAXPATHLEN, the size of the buffer F_GETPATH fills.
-_DARWIN_PATH_BYTES: Final = 1024
 
 type TargetMode = Literal["folder", "mirror"]
 MODES: Final[tuple[TargetMode, ...]] = ("folder", "mirror")
@@ -152,6 +158,9 @@ MODES: Final[tuple[TargetMode, ...]] = ("folder", "mirror")
 # The canonical RFC 3339 UTC spelling the cache's records use (``cache/records.py``).
 _TIMESTAMP: Final = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
 _ENTRY_KEYS: Final = frozenset({"mode", "root", "opened_at"})
+# What a mode is spelled like. A mode this release does not know is a newer release's;
+# anything else in a mode's place is damage.
+_MODE_NAME: Final = re.compile(r"[a-z][a-z0-9_-]{0,31}")
 # The Unicode categories of the characters no root may hold: controls (C0, DEL, and C1,
 # which has NEL) and the line and paragraph separators. A terminal acts on the first, and
 # YAML reads NEL, U+2028, and U+2029 as line breaks: PyYAML's own emitter, its fallback
@@ -168,6 +177,9 @@ class RecentTarget:
     mode: TargetMode
     root: str
     opened_at: str
+    extra: Mapping[str, Any] = field(default_factory=dict[str, Any])
+    """The fields of the entry this release does not know, as the file spelled them: a
+    later release's, kept so that rewriting the list does not lose them."""
 
     @property
     def key(self) -> tuple[TargetMode, str]:
@@ -176,7 +188,14 @@ class RecentTarget:
         return (self.mode, self.root)
 
     def as_json(self) -> dict[str, str]:
+        """What a listing says of the entry: the fields this release knows."""
+
         return {"mode": self.mode, "root": self.root, "opened_at": self.opened_at}
+
+    def as_stored(self) -> dict[str, Any]:
+        """The entry as the file holds it: the known fields, then any it carries along."""
+
+        return {**self.as_json(), **self.extra}
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,18 +215,26 @@ class RecentTargetsError(Exception):
 
 
 class NewerFormatError(RecentTargetsError):
-    """The file was written by a newer release, so this one leaves it alone."""
+    """The file was written by a newer release, so this one leaves it alone.
 
-    def __init__(self, found: str) -> None:
-        super().__init__(
-            f"the recent targets file uses format {found}, and this release reads formats "
-            f"up to {FORMAT}. Upgrade Metabrowser to list or record recent targets"
+    Either its format says so (``found``), or it is well formed and holds a mode or a
+    key this release does not know (``found`` is ``None``).
+    """
+
+    def __init__(self, found: str | None, unknown: str = "") -> None:
+        what = (
+            f"uses format {found}, and this release reads formats up to {FORMAT}"
+            if found is not None
+            else f"holds {unknown} this release does not know, as a newer release's would"
         )
-        self.found: str = found
+        super().__init__(
+            f"the recent targets file {what}. Upgrade Metabrowser to list or record recent targets"
+        )
+        self.found: str | None = found
 
 
 class UnrecordableRootError(ValueError):
-    """A root the list cannot hold; ``str()`` says why."""
+    """A root, or a time it was opened, that the list cannot hold; ``str()`` says why."""
 
 
 class _Damaged(Exception):
@@ -221,26 +248,33 @@ def folder_root(path: Path) -> str:
     """The root a served folder is recorded under: resolved, as the file system spells it.
 
     *path* is the folder a server serves. Symbolic links are resolved, as ``run_serve``
-    resolves them, and on macOS the path is then spelled as the volume spells it, which
-    ``realpath(3)`` does and Python's does not: on a volume that ignores case,
-    ``~/Src/Repo`` and ``~/src/repo`` are one folder, and the macOS app names it by
-    ``realpath(3)``. A path that cannot be opened keeps its resolved spelling.
+    resolves them. On macOS the spelling is ``realpath(3)``'s own, called through
+    ``ctypes``, because the macOS app names a folder's session by that function
+    (``FileChecks.canonicalPath``) and the two must agree for an entry to find its window:
+    on a volume that ignores case, ``~/Src/Repo`` and ``~/src/repo`` are one folder, which
+    Python's ``realpath`` does not know, and a folder reached through
+    ``/System/Volumes/Data`` keeps that spelling, which ``F_GETPATH`` does not. A path
+    ``realpath(3)`` cannot resolve keeps Python's spelling.
     """
 
     resolved = os.path.realpath(path)
-    if sys.platform != "darwin" or fcntl is None:
+    if sys.platform != "darwin":
         return resolved
     try:
-        fd = os.open(resolved, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
-    except OSError:
+        libc = ctypes.CDLL(None, use_errno=True)
+        libc.realpath.argtypes = (ctypes.c_char_p, ctypes.c_char_p)
+        libc.realpath.restype = ctypes.c_void_p
+        libc.free.argtypes = (ctypes.c_void_p,)
+        libc.free.restype = None
+        spelled = libc.realpath(os.fsencode(path), None)
+    except (OSError, AttributeError, ValueError):
+        return resolved
+    if not spelled:
         return resolved
     try:
-        spelled = fcntl.fcntl(fd, fcntl.F_GETPATH, bytes(_DARWIN_PATH_BYTES))
-    except OSError:
-        return resolved
+        return os.fsdecode(ctypes.string_at(spelled)) or resolved
     finally:
-        os.close(fd)
-    return os.fsdecode(spelled.split(b"\0", 1)[0]) or resolved
+        libc.free(spelled)
 
 
 def _checked_root(mode: str, root: str) -> str | None:
@@ -306,8 +340,10 @@ def _parse(payload: bytes) -> tuple[RecentTarget, ...]:
     if not isinstance(loaded, dict):
         raise _Damaged("it is not a YAML mapping")
     fields = _current_document(cast(dict[str, Any], loaded))
+    if "targets" not in fields:
+        raise _Damaged("it holds no targets")
     if set(fields) != {"format", "targets"}:
-        raise _Damaged("it does not hold exactly a format and its targets")
+        raise NewerFormatError(None, "a key")
     entries = fields["targets"]
     if not isinstance(entries, list):
         raise _Damaged("its targets are not a list")
@@ -320,11 +356,14 @@ def _parse(payload: bytes) -> tuple[RecentTarget, ...]:
         if not isinstance(entry, dict):
             raise _Damaged(f"entry {position} is not a mode, a root, and a time")
         values = cast(dict[str, object], entry)
-        if frozenset(values) != _ENTRY_KEYS:
+        if not frozenset(values) >= _ENTRY_KEYS:
             raise _Damaged(f"entry {position} is not a mode, a root, and a time")
         mode, root, opened_at = values["mode"], values["root"], values["opened_at"]
         if not isinstance(mode, str) or not isinstance(root, str):
             raise _Damaged(f"entry {position} is not a mode, a root, and a time")
+        if mode not in MODES and _MODE_NAME.fullmatch(mode) is not None:
+            # A mode this release cannot open, and whose roots it cannot judge.
+            raise NewerFormatError(None, "a mode")
         if (reason := _checked_root(mode, root)) is not None:
             # The reason, never the root: this sentence reaches a terminal and a log.
             raise _Damaged(f"entry {position} cannot be a target: {reason}")
@@ -333,7 +372,8 @@ def _parse(payload: bytes) -> tuple[RecentTarget, ...]:
         if (mode, root) in seen:
             raise _Damaged(f"entry {position} repeats an earlier one")
         seen.add((mode, root))
-        targets.append(RecentTarget(cast(TargetMode, mode), root, opened_at))
+        extra = {name: value for name, value in values.items() if name not in _ENTRY_KEYS}
+        targets.append(RecentTarget(cast(TargetMode, mode), root, opened_at, extra))
     return tuple(targets)
 
 
@@ -361,9 +401,8 @@ def read(directory: Path | None = None) -> Listing:
     cannot be read raises :class:`RecentTargetsError`.
     """
 
-    home = configuration_directory() if directory is None else directory
     try:
-        return Listing(_load(home, shared="refuse"))
+        return Listing(_load(_directory(directory), shared="refuse"))
     except NewerFormatError as error:
         message = str(error)
         return Listing((), f"{message[0].upper()}{message[1:]}.")
@@ -384,6 +423,22 @@ def read(directory: Path | None = None) -> Listing:
 # ── Writing ────────────────────────────────────────────────────────
 
 
+def _directory(directory: Path | None) -> Path:
+    """*directory*, or the configuration directory the environment names.
+
+    A setting that names no usable directory, or a home folder that cannot be found, is
+    a :class:`RecentTargetsError` with the setting's own sentence, as every other way the
+    list cannot be reached is.
+    """
+
+    if directory is not None:
+        return directory
+    try:
+        return configuration_directory()
+    except (StorageDirectoryError, RuntimeError) as error:
+        raise RecentTargetsError(str(error).rstrip(".")) from error
+
+
 def _why(error: OSError) -> str:
     return os.strerror(error.errno) if error.errno is not None else "a file system error"
 
@@ -397,7 +452,7 @@ def _serialize(targets: list[RecentTarget]) -> bytes:
 
     dumper = getattr(yaml, "CSafeDumper", yaml.SafeDumper)
     while True:
-        document = {"format": FORMAT, "targets": [target.as_json() for target in targets]}
+        document = {"format": FORMAT, "targets": [target.as_stored() for target in targets]}
         text = yaml.dump(
             document,
             Dumper=dumper,
@@ -462,20 +517,24 @@ type _Change = Callable[[tuple[RecentTarget, ...]], tuple[RecentTarget, ...] | N
 def _change(directory: Path | None, change: _Change) -> tuple[RecentTarget, ...]:
     """Apply *change* to the stored list under the writer lock; return what was stored.
 
-    A damaged file is treated as an empty list, which the write then replaces. A file
-    from a newer release raises :class:`NewerFormatError` and is not written.
+    A damaged file is treated as an empty list and is always replaced, by an empty list
+    when *change* has nothing to write. A file from a newer release raises
+    :class:`NewerFormatError` and is not written.
     """
 
-    home = configuration_directory() if directory is None else directory
     try:
+        home = _directory(directory)
         ensure_storage_root(home)
         with _writing(home):
+            damaged = False
             try:
                 before = _load(home, shared="repair")
             except _Damaged as error:
                 log.warning("replacing the recent targets file, which is damaged: %s", error)
-                before = ()
+                before, damaged = (), True
             after = change(before)
+            if after is None and damaged:
+                after = ()  # nothing to change, but the damaged file is still replaced
             if after is not None:
                 write_private_file_atomic(home, STORE_FILE, _serialize(list(after)))
             return before
@@ -514,6 +573,8 @@ def record(
 
     if (reason := _checked_root(mode, root)) is not None:
         raise UnrecordableRootError(reason)
+    if opened_at is not None and _TIMESTAMP.fullmatch(opened_at) is None:
+        raise UnrecordableRootError("the time opened is not a UTC time to the second")
     target = RecentTarget(mode, root, now() if opened_at is None else opened_at)
 
     def to_front(before: tuple[RecentTarget, ...]) -> tuple[RecentTarget, ...]:
@@ -560,7 +621,12 @@ def record_quietly(mode: TargetMode, root: str) -> None:
     except UnrecordableRootError as error:
         log.info("this root is not recorded as a recent target: %s", error)
     except RecentTargetsError as error:
-        log.warning("this root is not recorded as a recent target: %s", error)
+        log.warning(
+            "this root is not recorded as a recent target: %s. Set %s=0 to stop recording, "
+            "and this message",
+            error,
+            RECORD_ENV,
+        )
     except Exception:
         log.warning("this root is not recorded as a recent target", exc_info=True)
 

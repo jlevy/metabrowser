@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -231,6 +232,18 @@ _FORBIDDEN_CALLS = ("application_cache", "ensure_home", "validate_private_home")
 # These reach the cache and the configuration directory alike, and serving a folder uses
 # them for one thing: its entry in the recent targets list, in the configuration
 # directory. So each is refused only for the cache.
+# What a folder's serve may name in the configuration directory: the directory itself,
+# the list, its lock, and the temporary file an atomic write of the list renames.
+_RECENT_TARGET_ENTRY = re.compile(
+    "|".join(
+        (
+            "",
+            re.escape(recent_targets.STORE_FILE),
+            re.escape(recent_targets.LOCK_FILE),
+            rf"\.{re.escape(recent_targets.STORE_FILE)}\.[0-9a-f]{{16}}\.tmp",
+        )
+    )
+)
 _FORBIDDEN_FOR_THE_CACHE = (
     "ensure_private_directory",
     "open_private_file",
@@ -272,13 +285,22 @@ def test_local_browsing_in_process_never_calls_the_application_cache(
     def forbid_for_the_cache(name: str) -> Any:
         real = getattr(home_module, name)
 
-        def refuse_the_cache(home: Path, *args: Any, **kwargs: Any) -> Any:
+        def refuse_all_but_the_list(home: Path, *args: Any, **kwargs: Any) -> Any:
             if home == chosen or chosen in home.parents:
                 calls.append(name)
                 raise AssertionError(f"local browsing called metabrowser.home.{name} on the cache")
+            # In the configuration directory, only the list's own files: a read of
+            # `config.yml` fails here as it did when every such call was refused.
+            entry = args[0] if args else kwargs.get("relative_path", "")
+            if home == config and not _RECENT_TARGET_ENTRY.fullmatch(entry):
+                calls.append(f"{name}:{entry}")
+                raise AssertionError(
+                    f"local browsing called metabrowser.home.{name} for {entry!r} in the "
+                    "configuration directory"
+                )
             return real(home, *args, **kwargs)
 
-        return refuse_the_cache
+        return refuse_all_but_the_list
 
     for name in _FORBIDDEN_CALLS:
         monkeypatch.setattr(home_module, name, forbid(name))
@@ -306,6 +328,11 @@ def test_local_browsing_in_process_never_calls_the_application_cache(
         ("folder", recent_targets.folder_root(root))
     ]
     assert recent_targets.read(config).targets == recorded
+    # And it wrote nothing else there: no `config.yml`, and no temporary file left behind.
+    assert sorted(entry.name for entry in config.iterdir()) == [
+        recent_targets.LOCK_FILE,
+        recent_targets.STORE_FILE,
+    ]
 
 
 @posix_only

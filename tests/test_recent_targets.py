@@ -20,8 +20,10 @@ from pathlib import Path
 
 import pytest
 import yaml
+from typer.testing import CliRunner
 
 from metabrowser import recent_targets
+from metabrowser.cli.main import _app
 from metabrowser.recent_targets import (
     FORMAT,
     FORMAT_HISTORY,
@@ -379,13 +381,12 @@ _ENTRY = "- mode: folder\n  root: /work/a\n  opened_at: '2026-11-18T03:14:15Z'\n
         ("targets: []\n", "names no format"),
         ("format: 1\ntargets: []\n", "names no format"),
         ("format: mf00\ntargets: []\n", "no Metabrowser release wrote"),
-        ("format: mf01\ntargets: []\nextra: 1\n", "exactly a format"),
-        ("format: mf01\n", "exactly a format"),
+        ("format: mf01\n", "holds no targets"),
         ("format: mf01\ntargets: nothing\n", "not a list"),
         ("format: mf01\ntargets:\n- just a string\n", "entry 1 is not"),
         ("format: mf01\ntargets:\n- mode: folder\n  root: /work/a\n", "entry 1 is not"),
         (
-            "format: mf01\ntargets:\n- mode: window\n  root: /work/a\n  opened_at: x\n",
+            "format: mf01\ntargets:\n- mode: Not A Mode\n  root: /work/a\n  opened_at: x\n",
             "entry 1 cannot be a target",
         ),
         (
@@ -415,12 +416,11 @@ _ENTRY = "- mode: folder\n  root: /work/a\n  opened_at: '2026-11-18T03:14:15Z'\n
         "no-format",
         "numeric-format",
         "unwritten-format",
-        "extra-key",
         "no-targets",
         "targets-not-a-list",
         "entry-not-a-mapping",
         "entry-missing-a-field",
-        "unknown-mode",
+        "mode-that-is-no-name",
         "relative-folder",
         "bad-time",
         "repeated-root",
@@ -446,6 +446,161 @@ def test_a_damaged_file_lists_as_empty_and_the_next_record_replaces_it(
         record("folder", "/work/new", directory=home)
     assert _roots(home) == ["/work/new"]
     assert any("damaged" in message for message in caplog.messages)
+
+
+@pytest.mark.parametrize(
+    ("text", "unknown"),
+    [
+        ("format: mf01\ntargets: []\nlater: 1\n", "a key"),
+        ("format: mf01\nlater: 1\ntargets:\n" + _ENTRY, "a key"),
+        (
+            "format: mf01\ntargets:\n" + _ENTRY + "- mode: remote\n  root: host:/srv\n"
+            f"  opened_at: '{_STAMP}'\n",
+            "a mode",
+        ),
+    ],
+    ids=["key", "key-with-targets", "mode"],
+)
+def test_a_well_formed_file_with_something_unknown_is_a_newer_releases_and_is_left_alone(
+    home: Path, text: str, unknown: str
+) -> None:
+    """A release that adds a mode or a key and forgets to raise the format costs no list.
+
+    Mutation check: call these damage, as they were, and one ``--recent-add`` by an older
+    ``metab`` replaces the newer one's whole list with its one entry.
+    """
+
+    _store(home, text)
+
+    listing = read(home)
+    assert listing.targets == ()
+    assert listing.problem is not None
+    assert f"holds {unknown} this release does not know" in listing.problem
+    assert "Upgrade Metabrowser" in listing.problem
+    for change in (
+        lambda: record("folder", "/work/new", directory=home),
+        lambda: forget(frozenset({("folder", "/work/a")}), directory=home),
+        lambda: clear(directory=home),
+    ):
+        with pytest.raises(NewerFormatError) as refused:
+            change()
+        assert refused.value.found is None
+    assert (home / STORE_FILE).read_text(encoding="utf-8") == text
+
+
+def test_a_field_this_release_does_not_know_is_kept_until_its_entry_is_opened_again(
+    home: Path,
+) -> None:
+    """A later release may add a field to an entry without a new format.
+
+    This release lists the entry by what it knows, carries the field along through every
+    rewrite, and drops it only from the entry it records again: that open is a new one,
+    which the old field no longer describes.
+    """
+
+    _store(
+        home,
+        "format: mf01\ntargets:\n"
+        "- mode: mirror\n  root: https://github.com/jlevy/tbd\n"
+        f"  opened_at: '{_STAMP}'\n  target: https://github.com/jlevy/tbd/pull/12\n"
+        "  checkout:\n    path: /work/tbd\n    remotes: [origin, upstream]\n" + _ENTRY,
+    )
+    later = {
+        "target": "https://github.com/jlevy/tbd/pull/12",
+        "checkout": {"path": "/work/tbd", "remotes": ["origin", "upstream"]},
+    }
+
+    listing = read(home)
+    assert listing.problem is None
+    assert [target.as_json() for target in listing.targets] == [
+        {"mode": "mirror", "root": "https://github.com/jlevy/tbd", "opened_at": _STAMP},
+        {"mode": "folder", "root": "/work/a", "opened_at": _STAMP},
+    ]
+    assert listing.targets[0].extra == later
+
+    record("folder", "/work/b", directory=home)
+    assert forget(frozenset({("folder", "/work/a")}), directory=home) == 1
+    kept = yaml.safe_load((home / STORE_FILE).read_text(encoding="utf-8"))["targets"]
+    assert [entry["root"] for entry in kept] == ["/work/b", "https://github.com/jlevy/tbd"]
+    assert {name: kept[1][name] for name in later} == later
+    assert read(home).targets[1].extra == later
+
+    record("mirror", "https://github.com/jlevy/tbd", directory=home)
+    again = read(home).targets[0]
+    assert (again.root, dict(again.extra)) == ("https://github.com/jlevy/tbd", {})
+
+
+@pytest.mark.parametrize("change", ["clear", "forget"])
+def test_clearing_or_forgetting_replaces_a_damaged_file(home: Path, change: str) -> None:
+    """Either says it replaces the damaged file, so it does, with nothing to remove."""
+
+    _store(home, "format: mf01\ntargets: nonsense\n")
+
+    if change == "clear":
+        assert clear(directory=home) == 0
+    else:
+        assert forget(frozenset({("folder", "/work/a")}), directory=home) == 0
+
+    assert read(home) == recent_targets.Listing(())
+    assert yaml.safe_load((home / STORE_FILE).read_text(encoding="utf-8")) == {
+        "format": FORMAT,
+        "targets": [],
+    }
+
+
+def test_a_time_that_is_not_one_is_refused_before_anything_is_written(home: Path) -> None:
+    with pytest.raises(UnrecordableRootError, match="UTC time"):
+        record("folder", "/work/a", directory=home, opened_at="yesterday")
+
+    assert not home.exists()
+
+
+@pytest.mark.parametrize(
+    "setting",
+    [{"XDG_CONFIG_HOME": "relative/config"}, {"METABROWSER_CONFIG_DIR": ""}],
+    ids=["relative-xdg", "empty-override"],
+)
+def test_a_setting_that_names_no_directory_is_one_sentence_not_a_traceback(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, setting: dict[str, str]
+) -> None:
+    """Before the list, a folder's serve never resolved the configuration directory."""
+
+    monkeypatch.delenv("METABROWSER_CONFIG_DIR", raising=False)
+    for name, value in setting.items():
+        monkeypatch.setenv(name, value)
+
+    with pytest.raises(RecentTargetsError, match="must be a nonempty absolute path"):
+        read()
+    with pytest.raises(RecentTargetsError, match="must be a nonempty absolute path"):
+        record("folder", "/work/a")
+    with caplog.at_level(logging.WARNING, logger="metabrowser.recent_targets"):
+        record_quietly("folder", "/work/a")
+    assert len(caplog.records) == 1
+    assert caplog.records[0].exc_info is None
+    assert "must be a nonempty absolute path" in caplog.messages[0]
+    assert f"{RECORD_ENV}=0" in caplog.messages[0]
+
+
+def test_a_folder_that_is_gone_is_forgotten_through_a_link_above_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``/tmp/x`` on macOS is listed as ``/private/tmp/x``, and is forgotten by either."""
+
+    monkeypatch.setenv("METABROWSER_CONFIG_DIR", str(tmp_path / "config"))
+    real = tmp_path / "real"
+    (real / "project").mkdir(parents=True)
+    link = tmp_path / "link"
+    link.symlink_to(real)
+    runner = CliRunner()
+    assert runner.invoke(_app, [str(link / "project"), "--recent-add"]).exit_code == 0
+    assert [target.root for target in read().targets] == [folder_root(real / "project")]
+    (real / "project").rmdir()
+
+    forgotten = runner.invoke(_app, [str(link / "project"), "--recent-forget"])
+
+    assert forgotten.exit_code == 0, forgotten.output
+    assert "Forgotten." in forgotten.output
+    assert read().targets == ()
 
 
 def test_a_hand_edited_file_with_unquoted_values_is_read(home: Path) -> None:
@@ -544,6 +699,8 @@ def test_a_writer_gives_up_on_a_lock_held_too_long_and_a_server_starts_anyway(
         with caplog.at_level(logging.WARNING, logger="metabrowser.recent_targets"):
             record_quietly("folder", "/work/b")
         assert any("not recorded as a recent target" in message for message in caplog.messages)
+        # It says how to stop a warning that would otherwise come with every serve.
+        assert any(f"{RECORD_ENV}=0" in message for message in caplog.messages)
         assert "/work/b" not in "".join(caplog.messages), "a log line names no root"
         # A reader takes no lock.
         assert _roots(home) == ["/work/a"]

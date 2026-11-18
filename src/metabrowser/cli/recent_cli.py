@@ -133,12 +133,15 @@ def _folder_spellings(path: Path) -> frozenset[tuple[str, str]]:
     """Every root a folder entry for *path* could be stored under.
 
     A folder that exists is stored as :func:`~metabrowser.recent_targets.folder_root`
-    spells it. One that is gone cannot be resolved, so its entry is matched by the path
-    as given, made absolute, which is how a shell hands back a root it was listed.
+    spells it. One that is gone cannot be resolved whole, so its entry is matched by the
+    path as given, made absolute, which is how a shell hands back a root it was listed,
+    and by that path with the links above the missing folder resolved.
     """
 
     expanded = path.expanduser()
-    spellings = {os.path.abspath(expanded)}
+    # Not strict, so it resolves what is left of the path: a folder recorded through a
+    # link above it, as anything under /tmp on macOS is, is listed by the link's target.
+    spellings = {os.path.abspath(expanded), os.path.realpath(expanded)}
     try:
         resolved = expanded.resolve(strict=True)
     except (OSError, RuntimeError):

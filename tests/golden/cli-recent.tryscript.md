@@ -386,6 +386,100 @@ folder  [TIMESTAMP]  [ROOTS]/beta
 ? 0
 ```
 
+## Test: clearing a damaged file replaces it
+
+```console
+$ printf 'format: mf01\ntargets: nonsense\n' > config/recent-targets.yml
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config metab --recent-clear 2>&1
+replacing the recent targets file, which is damaged: its targets are not a list
+Cleared 0 recent targets.
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config metab --recent
+No recent targets.
+? 0
+```
+
+## Test: a field this release does not know is kept
+
+A later release may add a field to an entry under the same format.
+This one lists the entry by what it knows and carries the field through a rewrite.
+
+```console
+$ printf 'format: mf01\ntargets:\n- mode: mirror\n  root: https://github.com/jlevy/tbd\n  opened_at: 2026-11-18T03:14:15Z\n  target: https://github.com/jlevy/tbd/pull/12\n' > config/recent-targets.yml
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config metab --recent --json
+{
+  "limit": 50,
+  "targets": [
+    {
+      "mode": "mirror",
+      "root": "https://github.com/jlevy/tbd",
+      "opened_at": "[TIMESTAMP]"
+    }
+  ],
+  "problem": null
+}
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config metab roots/beta --recent-add 2>&1
+? 0
+```
+
+```console
+$ grep -c 'target: https://github.com/jlevy/tbd/pull/12' config/recent-targets.yml
+1
+? 0
+```
+
+## Test: a mode or a key this release does not know is a newer release’s
+
+It is left alone whatever format it names, so a release that forgot to raise the format
+costs no list.
+
+```console
+$ printf 'format: mf01\ntargets:\n- mode: remote\n  root: host:/srv/files\n  opened_at: 2026-11-18T03:14:15Z\n' > config/recent-targets.yml
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config metab --recent 2>&1
+The recent targets file holds a mode this release does not know, as a newer release's would. Upgrade Metabrowser to list or record recent targets.
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config metab roots/beta --recent-add 2>&1
+Error: not recorded: the recent targets file holds a mode this release does not know, as a newer release's would. Upgrade Metabrowser to list or record recent targets
+? 1
+```
+
+```console
+$ cat config/recent-targets.yml
+format: mf01
+targets:
+- mode: remote
+  root: host:/srv/files
+  opened_at: 2026-11-18T03:14:15Z
+? 0
+```
+
+```console
+$ rm config/recent-targets.yml
+? 0
+```
+
 ## Test: clearing the list
 
 ```console
@@ -395,7 +489,7 @@ $ METABROWSER_CONFIG_DIR=$PWD/config metab roots/alpha --recent-add
 
 ```console
 $ METABROWSER_CONFIG_DIR=$PWD/config metab --recent-clear
-Cleared 2 recent targets.
+Cleared 1 recent target.
 ? 0
 ```
 
@@ -413,6 +507,20 @@ $ METABROWSER_CONFIG_DIR=$PWD/config metab --recent --json
   "problem": null
 }
 ? 0
+```
+
+## Test: a setting that names no directory is refused in one line
+
+```console
+$ METABROWSER_CONFIG_DIR=relative/config metab --recent 2>&1
+Error: METABROWSER_CONFIG_DIR must be a nonempty absolute path without '..' components
+? 1
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=relative/config metab roots/alpha --recent-add 2>&1
+Error: not recorded: METABROWSER_CONFIG_DIR must be a nonempty absolute path without '..' components
+? 1
 ```
 
 ## Test: a configuration directory other users can read is refused
