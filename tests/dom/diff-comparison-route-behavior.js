@@ -87,9 +87,9 @@ async function main() {
   requests.length = 0;
   const rendered_route =
     "/api/plugin/github/pull-rendered-diff?number=7&left=base&right=head&store=route-store";
-  const snapshot_route =
-    "/api/plugin/github/pull-snapshot?number=7&left=base&right=head&store=route-store";
-  const pull = { ...comparison, rendered_route, snapshot_route };
+  const image_route =
+    "/api/plugin/github/pull-image?number=7&left=base&right=head&store=route-store";
+  const pull = { ...comparison, rendered_route, image_route };
   const markdown = answer.manifest.files
     .filter((file) => /\.md$/.test((file.new ?? file.old).path))
     .map((file) => file.id);
@@ -121,7 +121,7 @@ async function main() {
   await registered.prefetchMarkdown(comparison, read, new AbortController().signal);
   assert.equal(requests.length, 0, "a comparison with no rendered route asked for Markdown");
   requests.length = 0;
-  // The route codec a page has loaded; View file's own behavior is its session's.
+  // The route codec a page has loaded; View on branch's own behavior is its session's.
   window.MetabrowserGitPath = { wire: () => "g1-UkVBRE1FLm1k" };
   const mounted = await registered.render({}, { comparison: pull });
   assert.equal(typeof mounted.options.renderMarkdown, "function");
@@ -134,10 +134,13 @@ async function main() {
     file: markdown[0],
   });
   assert.equal(requests.at(-1).signal, signal);
-  const target = `${snapshot_route}&side=head&path=g1-UkVBRE1FLm1k`;
-  assert.equal(mounted.options.isSnapshotTarget(target, false), true);
-  assert.equal(mounted.options.isSnapshotTarget(`${target}&mode=image`, true), true);
-  assert.equal(mounted.options.isSnapshotTarget("/api/tree", false), false);
+  // An image of the head opens on the comparison's image route; a link to a file of the
+  // head opens only while the page shows that head, which a page with no pin never does.
+  const target = `${image_route}&path=g1-UkVBRE1FLm1k`;
+  assert.equal(mounted.options.markdownTargets(target, true), true);
+  assert.equal(mounted.options.markdownTargets(target, false), false);
+  assert.equal(mounted.options.markdownTargets("/view/g1-UkVBRE1FLm1k", false), false);
+  assert.equal(mounted.options.markdownTargets("/api/tree", false), false);
   const plain = await registered.render({}, { comparison });
   assert.equal(plain.options.renderMarkdown, undefined, "no rendered route, no Rendered view");
   const errors = [];

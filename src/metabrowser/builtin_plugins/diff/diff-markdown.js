@@ -1,7 +1,7 @@
 // The rendered Markdown layer of a comparison whose server names a route for it, as a
 // pull request's does. Source stays hydrated by the diff's existing scheduler, so a
 // refusal or a reader's Source selection has a patch ready. This module names no route:
-// the comparison carries the rendered route and the snapshot route that its links open.
+// the comparison carries the rendered route and the image route its images load from.
 
 const CONTEXT_BLOCKS = 2;
 const MARKDOWN = /\.(?:md|markdown|mdown|mkd)$/i;
@@ -85,31 +85,42 @@ function isProjection(value) {
   );
 }
 
+// A path in the Git path codec's wire form, and a `/view/` address of one with, at most,
+// a fragment, which the server writes into the file's own heading anchors and spells with
+// percent escapes.
+const GIT_PATH = /^g1-[\w-]+(?:\/g1-[\w-]+)*$/;
+const HEAD_LINK = /^\/view\/g1-[\w-]+(?:\/g1-[\w-]+)*(?:#[\w%.~-]+)?$/;
+
 /**
- * Which addresses in a rendered block open a file of this comparison: those the server
- * spelled from the comparison's own snapshot route, which a page completes with a side,
- * a path in the Git path codec's wire form, and, for an image, its mode. Every other
- * local address is dropped before the shared sanitizer, which would drop it anyway.
- * @param {string | undefined} route The comparison's `snapshot_route`, when it names one.
+ * Which addresses in a rendered block open something of this comparison, as the server
+ * spelled them, before the shared sanitizer, which would drop every local one:
+ *
+ * - an image, on the comparison's own image route, which the server completes with the
+ *   path of an image at the head in the Git path codec's wire form;
+ * - a link to a file of the head, at its `/view/` address, only while *linksOpen* says
+ *   the page shows that head. Anywhere else the address would open the same path at
+ *   another commit, and a link that switched the pin first would let content choose what
+ *   the server serves, so the link stays plain text.
+ *
+ * Every other local address is dropped.
+ * @param {string | undefined} imageRoute The comparison's `image_route`, when it names one.
+ * @param {() => boolean} linksOpen
  * @returns {(value: string, image: boolean) => boolean}
  */
-export function snapshotTargets(route) {
-  if (typeof route !== "string" || !route.startsWith("/") || !route.includes("?")) {
-    return () => false;
-  }
+export function markdownTargets(imageRoute, linksOpen) {
+  const images =
+    typeof imageRoute === "string" && imageRoute.startsWith("/") && imageRoute.includes("?")
+      ? imageRoute
+      : null;
   return (value, image) => {
-    if (!value.startsWith(`${route}&`)) {
+    if (!image) {
+      return HEAD_LINK.test(value) && linksOpen();
+    }
+    if (images === null || !value.startsWith(`${images}&`)) {
       return false;
     }
-    const query = new URLSearchParams(value.slice(route.length + 1));
-    const names = [...query.keys()];
-    return (
-      new Set(names).size === names.length &&
-      names.every((name) => ["side", "path", "mode"].includes(name)) &&
-      /^(?:base|head)$/.test(query.get("side") ?? "") &&
-      /^g1-[\w-]+(?:\/g1-[\w-]+)*$/.test(query.get("path") ?? "") &&
-      (image ? query.get("mode") === "image" : [null, "document"].includes(query.get("mode")))
-    );
+    const query = new URLSearchParams(value.slice(images.length + 1));
+    return [...query.keys()].join() === "path" && GIT_PATH.test(query.get("path") ?? "");
   };
 }
 
@@ -155,15 +166,15 @@ function outsideLink(value) {
 
 /**
  * The shared sanitizer discards reserved application URLs. Preserve only
- * explicit snapshot addresses through it and discard other local targets
+ * the addresses *isTarget* keeps (`markdownTargets`) through it and discard other local targets
  * before the detached nodes can load any resource.
  * @param {string} html
  * @param {MetabrowserInertHtmlRuntime} inert
  * @param {HTMLTemplateElement} template
  * @param {Document} scratch
- * @param {(value: string, image: boolean) => boolean} isSnapshotTarget
+ * @param {(value: string, image: boolean) => boolean} isTarget
  */
-export function sanitizeBlock(html, inert, template, scratch, isSnapshotTarget) {
+export function sanitizeBlock(html, inert, template, scratch, isTarget) {
   template.innerHTML = html;
   /** @type {Map<string, string>} */
   const targets = new Map();
@@ -171,8 +182,8 @@ export function sanitizeBlock(html, inert, template, scratch, isSnapshotTarget) 
     const image = element.tagName === "IMG";
     const attribute = image ? "src" : "href";
     const value = element.getAttribute(attribute) ?? "";
-    if (isSnapshotTarget(value, image)) {
-      const marker = `mb-snapshot-target-${targets.size}`;
+    if (isTarget(value, image)) {
+      const marker = `mb-markdown-target-${targets.size}`;
       targets.set(marker, value);
       element.setAttribute(attribute, marker);
     } else if (image || (!value.startsWith(`#${inert.ANCHOR_PREFIX}`) && !outsideLink(value))) {
@@ -313,7 +324,7 @@ function stylesOnly(assets) {
  *   ensureInert: () => Promise<MetabrowserInertHtmlRuntime | undefined>,
  *   loadStyles: (assets: KpressAssetManifest) => Promise<void>,
  *   mutate: (change: () => void) => void,
- *   isSnapshotTarget?: (value: string, image: boolean) => boolean,
+ *   isTarget?: (value: string, image: boolean) => boolean,
  *   now?: () => number,
  *   later?: (callback: () => void, ms: number) => unknown,
  *   cancel?: (handle: unknown) => void,
@@ -322,7 +333,7 @@ function stylesOnly(assets) {
  */
 export function createMarkdownViews(deps) {
   const now = deps.now ?? (() => Date.now());
-  const isSnapshotTarget = deps.isSnapshotTarget ?? (() => false);
+  const isTarget = deps.isTarget ?? (() => false);
   const later = deps.later ?? ((callback, ms) => setTimeout(callback, ms));
   const cancel =
     deps.cancel ??
@@ -546,7 +557,7 @@ export function createMarkdownViews(deps) {
       const scratch = document.implementation.createHTMLDocument("");
       const template = document.createElement("template");
       const folds = appendBlocks(content, projection.blocks, (html) =>
-        sanitizeBlock(html, inert, template, scratch, isSnapshotTarget),
+        sanitizeBlock(html, inert, template, scratch, isTarget),
       );
       settled = true;
       deps.mutate(() => {
@@ -746,6 +757,18 @@ export function createMarkdownViews(deps) {
       }
     },
     firstScreen,
+    /**
+     * Make every link to a file of the head plain text, in what is drawn: the page learned
+     * that the server serves another pin, at which those addresses open other files. What
+     * is drawn later asks *isTarget*, which says so itself.
+     */
+    closeHeadLinks() {
+      for (const file of files.values()) {
+        for (const link of file.rendered.querySelectorAll('a[href^="/view/"]')) {
+          link.removeAttribute("href");
+        }
+      }
+    },
     dispose() {
       disposed = true;
       settleFirstScreen();
