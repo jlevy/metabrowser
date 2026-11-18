@@ -38,7 +38,10 @@ commit; only the working-tree row asks the pin route for the working tree.
 A page left behind by a switch elsewhere offers a reload, which a mirror’s freshness row
 does for a mirror. A checkout’s rows say which chip each name is drawn as, and its
 `labels` are the button on the working tree, a branch, a remote-tracking branch, a tag,
-and a commit.
+and a commit. `guard` is what each kind of page names on its data requests
+(`static/source-pin-guard.js`), which is how a tab left behind is refused: a revision
+its commit, a checkout’s working tree the word `working-tree`, and a plain folder
+nothing, since its server can serve nothing else.
 
 ```console
 $ node tests/dom/source-ref-selector-session.js
@@ -713,7 +716,13 @@ $ node tests/dom/source-ref-selector-session.js
       "Remote branch: origin/feature (remote chip)",
       "Tag: v1 (tag chip)",
       "Commit: c7ae2a331f54"
-    ]
+    ],
+    "guard": {
+      "a checkout's working tree": "working-tree; refused when another is served: true; while its own is: false",
+      "a checkout's revision": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b; refused when another is served: true; while its own is: false",
+      "a mirror's pin": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b; refused when another is served: true; while its own is: false",
+      "a plain folder": "nothing"
+    }
   }
 }
 ? 0

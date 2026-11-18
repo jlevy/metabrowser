@@ -34,7 +34,7 @@ Each subject the source session can hold (:mod:`metabrowser.source`) is named th
   (:mod:`metabrowser.checkout_revisions`), is still that folder: ``kind`` stays ``folder``,
   since the mode is how the root was opened, and ``short_name`` is the folder's name.
   ``full_name`` is the folder's path and then what is shown, as a mirror's is its origin
-  and then its pin: ``~/src/tbd@main``, with a remote-tracking branch as ``@origin/main``
+  and then its pin: ``~/src/tbd@topic``, with a remote-tracking branch as ``@origin/topic``
   and a commit with no ref as its first 12 hex digits.
 - **A pin with no mirror** has no origin to take a name from, and is named as the
   navigation heading names it: by its ref's short name, or by its short commit when it

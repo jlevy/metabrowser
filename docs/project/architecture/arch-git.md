@@ -50,6 +50,12 @@ or a trusted store target, never both.
 Each spawn runs under a named `GitProcessPolicy`: `READ_POLICY` for a served folder,
 `STORE_READ_POLICY` and `BATCH_OBJECT_POLICY` for a Metabrowser-owned store, and
 `ACQUISITION_POLICY` for fetching.
+A revision a folder’s server shows of its own checkout is read as a store is: its target
+is the checkout’s Git directory, with no worktree, under the two store policies
+([Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout)).
+Every `diff` and `show` at a store target also says `--no-textconv --no-ext-diff`
+(`GitLocation.diff_driver_args`), since those policies leave a repository’s local
+configuration in effect and a checkout’s can name a driver.
 A store target that names no policy gets the store policy, and a store spawn whose
 policy would allow lazy fetch is refused.
 

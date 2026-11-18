@@ -82,7 +82,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 
 from metabrowser import kpress_adapter
-from metabrowser.capabilities import get_capabilities
+from metabrowser.capabilities import UNTRUSTED_CAPABILITIES
 from metabrowser.content_sniff import SNIFF_PREFIX_BYTES, ContentClass, classify_prefix
 from metabrowser.file_extensions import (
     BROWSER_IMAGE_EXTS,
@@ -327,11 +327,17 @@ def _git_frontmatter_envelope(
     return fields
 
 
+# A pinned revision is never trusted, whatever the process's block: every route here was
+# handed the pin its request resolved, so the profile is fixed before anything is awaited
+# (capabilities.capabilities_for).
+_PIN_CAPABILITIES = UNTRUSTED_CAPABILITIES
+
+
 def _views_for_kind(kind: str) -> list[dict[str, Any]]:
     # Plugin kinds such as diff live in manifests, not VIEW_REGISTRY.
     from metabrowser.server import _views_for_kind as merged_views_for_kind
 
-    return merged_views_for_kind(kind)
+    return merged_views_for_kind(kind, active_content=_PIN_CAPABILITIES.active_content)
 
 
 def _passes_min_size(entry: GitTreeEntry, floor: int) -> bool:
@@ -1177,7 +1183,7 @@ async def git_revision_capabilities(subject: GitRevisionSubject) -> JSONResponse
                 "contract": _GIT_INDEX_CONTRACT,
             },
             "events": {"stream": "off", "reason": "git-revision-no-watcher"},
-            "capabilities": get_capabilities().as_wire(),
+            "capabilities": _PIN_CAPABILITIES.as_wire(),
         }
     )
 
@@ -1721,7 +1727,7 @@ async def git_revision_kpress_render(
         parse_source = source_override.encode() if source_override is not None else body
         _, _, frontmatter, frontmatter_error = _git_blob_content_predicates(ext, parse_source)
     envelope = _git_frontmatter_envelope(mapping=frontmatter, error=frontmatter_error)
-    trusted = get_capabilities().active_content
+    trusted = _PIN_CAPABILITIES.active_content
     try:
         rendered = await asyncio.to_thread(
             kpress_adapter.render_kpress_view,

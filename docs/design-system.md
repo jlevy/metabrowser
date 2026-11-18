@@ -760,10 +760,10 @@ state looks like.
 
 | Offers | Primitive | ARIA and keyboard | Used by |
 | --- | --- | --- | --- |
-| One of a few labelled values | `.chip-group[data-select="one"][data-layout="joined"]` | `radiogroup` of `radio` with `aria-checked`; one tab stop, arrow keys select | Split / Unified, Files / Bytes, Branches / Tags |
+| One of a few labelled values | `.chip-group[data-select="one"][data-layout="joined"]` | `radiogroup` of `radio` with `aria-checked`; one tab stop, arrow keys select | Split / Unified, Files / Bytes, Branches / Tags, and for a checkout Branches / Tags / Remotes |
 | Any of a set of labelled values | `.chip-group[data-select="many"]` | `group` of buttons with `aria-pressed`; each a tab stop | An agent log’s event types |
 | One of a few values in a menu, where the glyph is the label | `.menu-chooser` of `.menu-seg` | `group` of `menuitemradio` with `aria-checked`; each a tab stop | Theme and reading font |
-| One of a long list, named by its trigger | `.chip-menu-trigger` over a `.menu` | `aria-haspopup`, `aria-expanded`; the panel’s pattern within | Filter dropdowns, the source ref selector |
+| One of a long list, named by its trigger | `.chip-menu-trigger` over a `.menu` | `aria-haspopup`, `aria-expanded`; the panel’s pattern within | Filter dropdowns, the source ref selector of a mirror and of a checkout |
 | A boolean whose polarity has to be legible | `.filter-check` | A real checkbox | Show ignored |
 | A boolean with no room for a word | `.icon-btn[aria-pressed]` | A button with an accessible action name | The filter drawer |
 
@@ -1311,7 +1311,7 @@ The size each context’s chip gets is in
 
 | Kind or mark | Token | Form | Cue besides hue |
 | --- | --- | --- | --- |
-| Remote branch | `--git-ref-remote`, blue | Plain | In a history the name carries its remote, `origin/topic`; a merge and the ref selector show only remote branches |
+| Remote branch | `--git-ref-remote`, blue | Plain | In a history, and in a checkout’s ref selector, the name carries its remote, `origin/topic`; a merge and a mirror’s ref selector show only remote branches |
 | Local branch | `--git-ref-local`, blue-green | Plain | A name with no remote |
 | Tag | `--git-ref-tag`, amber | Notched left edge, `<v1.0)` | The notch |
 | Trunk | Its kind’s color becomes the ground | Solid | The solid form |
@@ -1335,7 +1335,7 @@ so a definition cannot differ between two places.
 | A commit’s summary | Its detail’s refs, the same parser as the row | As its row | As its row | As its row | In the chip |
 | A commit’s tooltip | The same | As its row | As its row | As its row | None: a tooltip owns no action |
 | A pull request’s header | `mb.mergeRefs`, head → base | Remote: GitHub’s branches, a fork’s as `owner:branch` | Never | Never | In the chip |
-| The ref selector’s button and list | `mb.refChip` in `static/source-ref-selector.js` | Remote for a branch, tag for a tag | Never; the list says “default” beside the default branch | Never | Button beside it; list none |
+| The ref selector’s button and list | `mb.refChip` in `static/source-ref-selector.js` | Tag for a tag. A mirror’s branch is remote. A checkout’s own branch is local and its remote-tracking branch remote | Never; the list says “default” beside a mirror’s default branch | Never; the list says “checked out” beside the branch a checkout’s `HEAD` is on | Button beside it; list none |
 
 The reasons:
 
@@ -1350,6 +1350,10 @@ The reasons:
   a history of many refs.
 - **The ref selector never draws trunk.** Its default branch is the mirror’s default,
   which need not be the branch the history draws solid, so it says “default” in words.
+- **The ref selector never draws `HEAD`.** A checkout’s list says “checked out” beside
+  the branch `HEAD` is on.
+  The mark would say the page is there, and it is not: that branch, chosen, shows its
+  last commit, and the working tree is the row above the list.
 - **`HEAD` belongs to a checkout.** Only refs from Git carry `is_head`, and a pin, a
   mirror’s page, is detached.
 
@@ -4504,6 +4508,42 @@ Correct semantics are part of the primitive.
 A menu renderer supplies menu roles and roving focus; a dialog renderer supplies its
 label relationship and modal state; a tooltip renderer never accepts interactive
 children. Visually similar surfaces do not borrow the wrong role merely to share CSS.
+
+### The Ref Selector’s Working Tree Row
+
+The ref selector is one control for a served mirror and a served checkout: a
+`.chip-menu-trigger` under the navigation header that names what is shown, over a
+`.menu` panel with a list chooser, a filter box, and one row for each ref
+(`static/source-ref-selector.js`). A checkout adds three things, and each uses a
+primitive the control already had:
+
+- **The working tree is a row, above the lists, and not in them.** It is a `.menu-item`
+  like a ref’s (`.source-ref-selector-working-tree`), ruled off from the list chooser
+  below it, because it is the one choice that is not a ref: the filter and the list
+  shown do not apply to it, so it stays where it is whichever list is open.
+  Its name is “Working tree”.
+  Where a ref’s row has its commit, this one says what it is in the same muted ink,
+  “Live local files, on topic”, so the two kinds of row read as one column of names and
+  one of what each name is.
+- **The served choice is marked one way.** A ref’s row and the working-tree row both
+  carry `aria-current` and the medium weight when they are what the server shows, and
+  exactly one of them does.
+  The checked-out branch is not that row unless it was chosen: it says “checked out” in
+  the `.source-ref-selector-badge` a mirror’s default branch says “default” in.
+- **The button says “Working tree” in words,** with no chip, since a chip is a ref.
+  On a revision it is the ref’s chip, as on a mirror, and the navigation heading carries
+  the ref and the short commit beside the folder’s name, so a revision’s page is told
+  from the working tree’s in two places before the list is opened.
+- **A page the server has moved on from says so beside the button,** in the text ink
+  with one `.btn`, “Reload” (`.source-ref-selector-stale`): the offer a mirror’s
+  freshness row makes at the foot of the pane.
+  It is the one state in which the selector’s row grows, to a second line in the default
+  pane, and it appears only after another tab has switched the server.
+
+What each state shows is pinned by
+`tests/golden/cli-ui-source-ref-selector.tryscript.md`, and
+`tests/test_checkout_ref_selector_chrome.py` measures in headless Chrome that the panel
+stays inside the navigation pane with no row wider than it.
 
 ### Groups in a Menu
 

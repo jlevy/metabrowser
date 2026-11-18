@@ -53,10 +53,10 @@ pytestmark = [
 ]
 # A switch is one POST, which resolves a ref and opens a tree with a few Git commands, and
 # one document. Measured 2026-11-18 in headless Chrome 152 on a 10-core Mac at a load
-# average of 13, from the click to the new document's first tree rows: 119 ms to a branch,
-# 99 ms to a tag, and 33 ms back to the working tree, whose folder was never closed. The
-# bound is loose on purpose: it is here to catch a switch that waits on something, not to
-# rank machines.
+# average of 13 to 16, over three runs, from the click to the new document's first tree
+# rows: 117 to 123 ms to a branch, 107 to 121 ms to a tag, and 34 to 41 ms back to the
+# working tree, whose folder was never closed. The bound is loose on purpose: it is here
+# to catch a switch that waits on something, not to rank machines.
 SWITCH_BOUND_MS = 5000
 WORKING_TREE = ["NOTES.md", "README.md", "STAGED.md", "UNTRACKED.md"]
 FEATURE = "c7ae2a331f546e6a2431ed7093e9e430a9d1269b"

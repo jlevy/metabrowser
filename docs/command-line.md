@@ -159,6 +159,33 @@ switch branches and take a newer commit.
 [Mirror acquisition and refresh](project/architecture/arch-mirror-acquisition-and-refresh.md)
 covers the refresh cadence, the `/api/source/…` routes, and what a clone prints.
 
+### A Branch or Tag of a Local Checkout
+
+A folder that is a repository’s root opens on its working tree, and `--ref` opens it on
+one of its branches or tags, read from the repository’s own Git objects:
+
+```shell
+metab ~/src/repo --ref release-1.2
+metab ~/src/repo --ref origin/main --show README.md
+metab ~/src/repo --ref v2.0 --api '/api/tree?depth=1'
+```
+
+- **What it takes:** a branch, a tag, a remote-tracking branch such as `origin/main`, or
+  a commit ID, looked up in that order and never as revision syntax, so `HEAD~2` is
+  refused.
+- **What it shows:** that commit, as a repository URL’s page shows one.
+  Nothing is checked out, fetched, or written, so the working tree, the index, and
+  `HEAD` are untouched.
+  The revision is read-only and runs under the untrusted profile, whatever
+  `--allow-edits` and the environment say of the folder.
+- **Where it applies:** when serving and with `--api`, `--show`, and `--check-api`. ROOT
+  must be the repository’s root.
+  A Git source names its branch or tag in its URL, so `--ref` is refused there.
+
+While serving, the page’s button switches to any other branch or tag and back to the
+working tree; the
+[history guide](browsing-history.md#branches-and-tags-of-a-local-checkout) shows it.
+
 ### GitHub URLs
 
 A GitHub URL copied from the browser opens the repository it names, pinned where it

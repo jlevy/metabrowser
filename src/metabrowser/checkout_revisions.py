@@ -1,12 +1,12 @@
 """A served checkout's own branches, tags, and committed revisions, read without touching it.
 
-A folder that is a repository's root is in folder mode, and folder mode is a superset of
-mirror mode: any branch or tag of the checkout, the checked-out one included, can be shown
-as a mirror shows one, as a pinned revision read from Git objects, while the working tree
-stays a separate choice, the one a folder opens on
-(``docs/project/specs/active/plan-2026-11-02-pr-review-mirror-and-checkout.md``, "Open
-Modes"). :class:`CheckoutRevisions` is that for one served root. The source routes ask it
-what a mirror's session answers for a mirror: the refs to list, and to serve another
+A folder that is a repository's root shows everything a mirror does and more: any branch
+or tag of the checkout, the checked-out one included, can be shown as a mirror shows one,
+as a pinned revision read from Git objects, while the working tree stays a separate
+choice, the one a folder opens on
+(``docs/project/architecture/arch-source-sessions-and-pins.md``, "Revisions of a
+Checkout"). :class:`CheckoutRevisions` is that for one served root. The source routes ask
+it what a mirror's session answers for a mirror: the refs to list, and to serve another
 selection.
 
 **Nothing here writes the checkout.** Showing a revision is ``for-each-ref``,
@@ -14,7 +14,10 @@ selection.
 directory, and nothing else: no ``checkout``, ``switch``, ``reset``, ``stash``, or
 ``fetch``, no index, no ``HEAD`` or ref written. The commands run under the store policies
 (``git/process.py``), so no optional lock is taken and a partial clone's missing object is
-``object_unavailable``, never fetched into the reader's ``.git``.
+``object_unavailable``, never fetched into the reader's ``.git``. Those policies leave
+the checkout's local configuration in effect, so a revision's ``diff`` and ``show`` also
+refuse every driver it names (``GitLocation.diff_driver_args``), which would run a
+program and could write a ``refs/notes/textconv/`` ref.
 ``tests/test_checkout_revisions.py`` compares every file under the checkout, its ``.git``
 included, before and after.
 
@@ -23,19 +26,25 @@ worktree's objects and refs are its main repository's, so the directory read is 
 common one. The plan says when Metabrowser's cache would be read instead; nothing here
 does that yet.
 
-**Which checkouts.** One whose root is the served root and that Git itself accepts, by the
-discovery the Commits tab uses (:func:`metabrowser.git.repo.repo_info`): a subdirectory's
-revision would show files outside the folder the reader chose, and a repository Git
-refuses for its ownership is not read through ``--git-dir`` either.
+**Which checkouts.** The chooser follows the open root: it is offered when the served
+root is a repository's root and Git itself accepts it, by the discovery the Commits tab
+uses (:func:`metabrowser.git.repo.repo_info`). A repository Git refuses for its ownership
+is not read through ``--git-dir`` either.
 
 **Trust.** A revision's pages run under the untrusted profile whatever the folder was
-opened with (:func:`metabrowser.capabilities.serve_checkout_revision`), set in the step
-that attaches the revision and cleared in the step that attaches the folder again.
+opened with, as every pin's do: the profile is the subject's that a request resolved
+(:func:`metabrowser.capabilities.capabilities_for`), so nothing is set or cleared here.
 
 Serving a revision replaces the session's subject, as a mirror's pin switch does, so the
 switch is server-wide and lasts until the working tree is chosen again or the server
 stops. The folder's inventory and watcher keep running underneath, which is why returning
 needs no scan.
+
+**From the command line.** ``metab PATH --ref NAME`` opens the folder on that branch or
+tag: :func:`open_on_ref` tells the next application lifespan, which makes the same switch
+a page's selector does, once, as it starts (:func:`lifespan_checkout`). Every mode that
+runs the application takes it, serving, ``--api``, ``--show``, and ``--check-api``, so a
+revision of a checkout is read from a terminal by the routes a page reads it by.
 
 This module is imported by every server, so the revision tree source and the resolver are
 imported where a revision is first asked for, as a pin's other modules are.
@@ -51,10 +60,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from metabrowser.content_errors import ContentReadError
 from metabrowser.invisible_chars import display_segment
 from metabrowser.mirror_refresh import (
     MirrorRef,
     RefKind,
+    SelectionError,
     SelectionRefMovedError,
 )
 from metabrowser.paths_safe import tilde_path
@@ -64,6 +75,7 @@ from metabrowser.source import (
     SubjectNotOpenError,
     UnsupportedSourceCapabilityError,
     as_git_revision_subject,
+    fail_subject_open,
     get_source_session,
     replace_owned_subject,
     restore_filesystem_subject,
@@ -106,8 +118,8 @@ def checkout_ref_name(ref: str | None) -> str | None:
     """The name a reader knows a checkout's ref by, or ``None`` for no ref.
 
     ``main`` for the branch ``refs/heads/main`` and ``v1`` for the tag ``refs/tags/v1``. A
-    remote-tracking branch keeps its remote, ``origin/main`` for
-    ``refs/remotes/origin/main``, since a checkout has a branch of its own by the bare
+    remote-tracking branch keeps its remote, ``origin/topic`` for
+    ``refs/remotes/origin/topic``, since a checkout has a branch of its own by the bare
     name; a mirror, which holds only its origin's branches, drops it
     (:func:`metabrowser.git.tree_source.ref_short_name`). Any other ref keeps its full
     spelling.
@@ -239,8 +251,7 @@ class CheckoutRevisions:
             )
             self.shallow = await asyncio.to_thread(_has_boundary, target.git_dir)
             self._served = subject
-            # Attached, and the untrusted profile put in effect, before anything else runs.
-            session = await replace_owned_subject(subject, checkout_revision=True)
+            session = await replace_owned_subject(subject)
             return True, session
 
     async def serve_working_tree(self) -> tuple[bool, SourceSession]:
@@ -312,16 +323,61 @@ def checkout_revisions(app: Any) -> CheckoutRevisions | None:
     return held.revisions
 
 
+# The ref ``--ref`` named for the next application lifespan; see :func:`open_on_ref`.
+_open_on: str | None = None
+# What ``--ref`` says of a root with no refs of its own to open.
+NOT_A_CHECKOUT = (
+    "--ref names a branch or tag of a checkout, and ROOT is not a Git repository's root"
+)
+
+
+def open_on_ref(ref: str | None) -> None:
+    """Open the served checkout on *ref* when the application next starts, or on its files.
+
+    *ref* is what ``metab PATH --ref NAME`` named: a branch, a tag, a remote-tracking
+    branch such as ``origin/topic``, or a commit ID, resolved as a page's selection is and
+    never as revision syntax. It is taken by one lifespan and then forgotten, so a later
+    start in the same process opens the working tree unless it is said again.
+    """
+
+    global _open_on
+    _open_on = ref
+
+
+async def _open_named_ref(app: Any, ref: str) -> None:
+    """Serve *ref* of the served checkout, or fail the startup with a message to print."""
+
+    checkout = checkout_revisions(app)
+    if checkout is None:
+        raise fail_subject_open(NOT_A_CHECKOUT)
+    try:
+        await checkout.switch_pin(ref=ref, oid=None)
+    except UnsupportedSourceCapabilityError:
+        raise fail_subject_open(NOT_A_CHECKOUT) from None
+    except SelectionError as exc:
+        raise fail_subject_open(f"--ref {_shown(ref)}: {exc}") from None
+    except ContentReadError as exc:
+        # Git's own text can name the checkout's Git directory; only the code is said.
+        log.debug("opening the checkout on a ref failed: %s", exc)
+        raise fail_subject_open(f"--ref {_shown(ref)} could not be opened ({exc.code})") from None
+
+
 @asynccontextmanager
 async def lifespan_checkout(app: Any) -> AsyncGenerator[None]:
     """Own what a server keeps for its checkout, and leave the folder served at exit.
 
     Entered last and so left first: a revision still served at shutdown is detached, and
-    its batch readers closed, while the rest of the application is still up.
+    its batch readers closed, while the rest of the application is still up. A ref named
+    with ``--ref`` is opened here, once the folder and its inventory are up, by the switch
+    the pin route makes.
     """
 
+    global _open_on
+    ref, _open_on = _open_on, None
     app.state.source_checkout = None
     try:
+        if ref is not None:
+            await _open_named_ref(app, ref)
         yield
     finally:
         held = getattr(app.state, "source_checkout", None)
@@ -334,9 +390,11 @@ async def lifespan_checkout(app: Any) -> AsyncGenerator[None]:
 
 
 __all__ = [
+    "NOT_A_CHECKOUT",
     "CheckoutDisplay",
     "CheckoutRevisions",
     "checkout_ref_name",
     "checkout_revisions",
     "lifespan_checkout",
+    "open_on_ref",
 ]

@@ -243,6 +243,14 @@ def test_the_session_runs_a_checkout_on_its_recording() -> None:
         "Tag: v1 (tag chip)",
         f"Commit: {recording['switch_branch']['body']['status']['pin'][:12]}",
     ]
+    pin = recording["switch_branch"]["body"]["status"]["pin"]
+    refused = "refused when another is served: true; while its own is: false"
+    assert checkout["guard"] == {
+        "a checkout's working tree": f"working-tree; {refused}",
+        "a checkout's revision": f"{pin}; {refused}",
+        "a mirror's pin": f"{pin}; {refused}",
+        "a plain folder": "nothing",
+    }
 
 
 def test_the_session_runs_on_the_recording() -> None:

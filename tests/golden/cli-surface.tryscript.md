@@ -70,6 +70,16 @@ $ metab --help
 │                                              serving, --api, --show,         │
 │                                              --check-api, and --no-serve on  │
 │                                              a Git source.                   │
+│ --ref                      NAME              Open a local checkout on this   │
+│                                              branch, tag, remote-tracking    │
+│                                              branch, or commit ID, read from │
+│                                              its Git objects, where it would │
+│                                              open on its working tree.       │
+│                                              Nothing is checked out or       │
+│                                              written. ROOT must be the       │
+│                                              repository's root. Applies when │
+│                                              serving and to --api, --show,   │
+│                                              and --check-api.                │
 │ --path                     TEXT              Serve: relative path from ROOT  │
 │                                              to select on launch. Walk:      │
 │                                              subtree for a JSON/YAML         │

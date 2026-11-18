@@ -595,7 +595,7 @@ async def resolve_pin(
     be under ``refs/remotes/origin/`` or ``refs/tags/``, or be a pull request's
     ``refs/pull/<n>/head``: the only refs a mirror holds. In a checkout
     (:data:`CHECKOUT_REFS`) a short name is a branch, then a tag, then a remote-tracking
-    branch such as ``origin/main``, and a full name is under one of those three; it holds
+    branch such as ``origin/topic``, and a full name is under one of those three; it holds
     no pull-request heads, and its ``HEAD`` is the checked-out branch.
     *oid* is only a commit ID, full or abbreviated to at least seven digits. A commit
     pinned by ID has no ref, unless it is the tip of one of *keep_refs* in the mirror

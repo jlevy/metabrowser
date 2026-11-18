@@ -88,8 +88,44 @@ click it to fetch now.
 A fetch never moves the page under you: when it moves the served branch, the foot offers
 the new commit, and **Switch** serves it.
 
-A local folder has no switcher.
-Its Commits tab follows your checkout, so switch branches there with Git.
+## Branches and Tags of a Local Checkout
+
+A folder that is a repository’s root has the same button, and opens on **Working tree**:
+the files on disk, with whatever you have edited, staged, or not yet added.
+Click it or press `W` to see any other branch or tag without checking it out.
+
+- **Working tree** is the first row, and the only one that shows your live files.
+- **Branches** are the checkout’s own, with the one you have checked out first and
+  marked “checked out”.
+  **Tags** are its tags, newest first.
+  **Remotes** are its remote-tracking branches, such as `origin/main`, as your last
+  fetch left them.
+- Choosing a branch or tag shows its last commit, read from the repository’s Git
+  objects. The button and the navigation header then name it, with its short commit.
+  This includes the checked-out branch: choosing it shows what is committed, without
+  your uncommitted changes, and **Working tree** is the way back to them.
+
+Nothing is checked out, fetched, or written.
+Your working tree, your index, and `HEAD` stay exactly as they are, so it is safe with
+work in progress, and Git commands in a terminal are unaffected.
+
+A branch or tag is shown the way a repository opened by its URL is.
+It is read-only and runs under the untrusted profile, whatever the folder was opened
+with, because another branch holds whatever a fetch brought: Markdown is rendered inert
+and an HTML file shows only its source.
+It has no Recent tab, live updates, ignored files, or Pulls tab; those belong to the
+working tree, which gets the folder’s own profile back.
+
+The choice is the server’s, so it holds for every tab until you choose **Working tree**
+again or the server stops.
+`metab <folder>` starts on the working tree, and `metab <folder> --ref <name>` starts on
+that branch or tag
+([the command line](command-line.md#a-branch-or-tag-of-a-local-checkout)). A tab left on
+the other one says so and offers **Reload**. Metabrowser fetches nothing into a
+checkout, so a remote-tracking branch is only as new as your own last `git fetch`, and a
+branch that moves while it is shown is shown at its new commit when you choose it again.
+The button follows the folder you opened: it is there when that folder is a repository’s
+root, as the Commits tab is.
 
 ## Diffs from a Terminal
 

@@ -1,8 +1,10 @@
 """A folder's server shows its checkout's branches and tags, and never writes the checkout.
 
-Folder mode is a superset of mirror mode (the mirror-and-checkout plan, "Open Modes"): any
-branch or tag of a served checkout is shown as a mirror shows one, a pinned revision read
-from Git objects, and the working tree is a separate choice, the one a folder opens on.
+A folder that is a repository's root shows what a mirror does and more
+(``docs/project/architecture/arch-source-sessions-and-pins.md``, "Revisions of a
+Checkout"): any branch or tag of a served checkout is shown as a mirror shows one, a
+pinned revision read from Git objects, and the working tree is a separate choice, the one
+a folder opens on.
 These tests run the real application over ``tests/source_checkout_fixture.py``'s checkout,
 which has local branches, remote-tracking branches, tags, and a working tree that differs
 from every commit: an edited file, a staged file, and an untracked one.
@@ -33,6 +35,8 @@ from metabrowser.capabilities import (
     apply_capabilities,
     get_capabilities,
 )
+from metabrowser.checkout_revisions import NOT_A_CHECKOUT, open_on_ref
+from metabrowser.source import SubjectOpenError, subject_open_failure
 from metabrowser.source_routes import PIN_CHANGED_HEADER, PIN_HEADER, WORKING_TREE_PIN
 from tests.required_tools import needs_git
 from tests.source_checkout_fixture import (
@@ -280,31 +284,80 @@ def test_an_address_crosses_between_the_folder_and_a_revision(served: TestClient
     assert served.get(view("FEATURE.md"), follow_redirects=False).status_code == 200
 
 
+def test_a_folder_opens_on_a_named_ref_once(checkout: Path, tmp_path: Path) -> None:
+    """``--ref``: the application's start makes the selector's switch, for that start only."""
+
+    server._set_root_dir(checkout)
+    open_on_ref("origin/feature")
+    with TestClient(server.app) as client:
+        status = client.get("/api/source/status").json()
+        assert (status["subject"], status["ref"], status["pin"]) == (
+            "git_revision",
+            "refs/remotes/origin/feature",
+            FEATURE,
+        )
+        assert _tree(client) == ["FEATURE.md", "README.md"]
+        # The page's selector can still return to the working tree.
+        assert _pin(client, working_tree=True)["status"]["pin"] is None
+    # The next start says nothing, and opens on the files.
+    with TestClient(server.app) as client:
+        assert client.get("/api/source/status").json()["subject"] == "attached_filesystem"
+    # A ref the checkout lacks, and a root with no checkout, stop the start with a message
+    # that names no path, and leave nothing for the start after.
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    for root, ref, said in (
+        (checkout, "gone", "--ref gone: no branch or tag with that name is in the checkout"),
+        (checkout, "topic~1", "--ref topic~1: the ref is not a valid Git ref name"),
+        (plain, "topic", NOT_A_CHECKOUT),
+    ):
+        server._set_root_dir(root)
+        open_on_ref(ref)
+        with pytest.raises(SubjectOpenError) as refused, TestClient(server.app):
+            pass
+        assert str(refused.value) == said
+        assert str(subject_open_failure()) == said
+        assert str(tmp_path) not in said
+        with TestClient(server.app) as client:
+            assert client.get("/api/source/status").json()["subject"] == "attached_filesystem"
+        assert subject_open_failure() is None
+
+
 # ── Trust ────────────────────────────────────────────────────
+
+
+def _answered_under(client: TestClient) -> dict[str, bool]:
+    """The trust block the served subject's routes answer under."""
+
+    answer: dict[str, bool] = client.get("/api/capabilities").json()["capabilities"]
+    return answer
 
 
 def test_a_revision_runs_under_the_untrusted_profile_and_the_folder_gets_its_own_back(
     served: TestClient,
 ) -> None:
-    assert get_capabilities() == DEFAULT_CAPABILITIES
+    trusted = DEFAULT_CAPABILITIES.as_wire()
+    untrusted = UNTRUSTED_CAPABILITIES.as_wire()
+    assert _answered_under(served) == trusted
     assert "content-security-policy" not in served.get("/view/").headers
     _pin(served, ref="feature")
-    assert get_capabilities() == UNTRUSTED_CAPABILITIES
+    # The process's block is the folder's and does not move: a revision's profile is its
+    # subject's, so nothing has to be set, or cleared, for it to hold.
+    assert get_capabilities() == DEFAULT_CAPABILITIES
+    assert _answered_under(served) == untrusted
     page = served.get("/view/")
     assert "script-src 'nonce-" in page.headers["content-security-policy"]
-    assert served.get("/api/capabilities").json()["capabilities"] == {
-        "active_content": False,
-        "mutations": False,
-    }
+    assert '"CAPABILITIES": {"active_content": false, "mutations": false}' in page.text
     # /raw never hands a revision's file to the page as a script.
     raw = served.get("/raw", params={"path": _wire("README.md")})
     assert raw.status_code == 200
     assert "allow-scripts" not in raw.headers["content-security-policy"]
     _pin(served, ref="topic")
-    assert get_capabilities() == UNTRUSTED_CAPABILITIES
+    assert _answered_under(served) == untrusted
     _pin(served, working_tree=True)
-    assert get_capabilities() == DEFAULT_CAPABILITIES
+    assert _answered_under(served) == trusted
     assert "content-security-policy" not in served.get("/view/").headers
+    assert "allow-scripts" in served.get("/raw/README.md").headers["content-security-policy"]
 
 
 def test_the_folders_own_flags_return_exactly_and_a_revision_never_gains_them(
@@ -315,12 +368,149 @@ def test_the_folders_own_flags_return_exactly_and_a_revision_never_gains_them(
     server._set_root_dir(checkout)
     with TestClient(server.app) as client:
         _pin(client, ref="feature")
-        assert get_capabilities() == UNTRUSTED_CAPABILITIES
+        assert _answered_under(client) == UNTRUSTED_CAPABILITIES.as_wire()
         _pin(client, working_tree=True)
-        assert get_capabilities() == chosen
+        assert _answered_under(client) == chosen.as_wire()
         _pin(client, ref="feature")
-    # A server stopped on a revision leaves the folder's profile in effect.
     assert get_capabilities() == chosen
+
+
+# A commit whose files would run if anything served them as active content.
+_SCRIPT = "<script>window.ran = true</script>"
+_HOSTILE_FILES = {
+    "page.html": f"<!doctype html><title>t</title>{_SCRIPT}<img src=x onerror=alert(1)>\n",
+    "doc.md": f'# Doc\n\n{_SCRIPT}\n\n<a href="javascript:alert(1)">link</a>\n',
+    "pic.svg": "<svg xmlns='http://www.w3.org/2000/svg'><script>alert(1)</script></svg>\n",
+    "code.js": "window.ran = true;\n",
+}
+
+
+def _hostile_branch(checkout: Path) -> None:
+    """Write ``refs/heads/hostile`` with fast-import, leaving the working tree as it is."""
+
+    stream = b"commit refs/heads/hostile\n"
+    stream += b"committer Hostile <hostile@example.invalid> 1767225600 +0000\n"
+    stream += b"data 8\nhostile\n"
+    for name, body in _HOSTILE_FILES.items():
+        payload = body.encode()
+        stream += f"M 100644 inline {name}\ndata {len(payload)}\n".encode() + payload + b"\n"
+    subprocess.run(
+        ["git", "-C", str(checkout), "fast-import", "--quiet", "--done"],
+        check=True,
+        input=stream + b"done\n",
+        capture_output=True,
+        env=git_env(checkout.parent),
+    )
+
+
+def _assert_no_active_content(address: str, response: Any) -> None:
+    """One answer of a pinned revision carries nothing a page would run."""
+
+    kind = response.headers.get("content-type", "")
+    policy = response.headers.get("content-security-policy", "")
+    if address.startswith("/raw"):
+        assert policy.startswith("sandbox"), address
+        assert "allow-scripts" not in policy, address
+        assert not kind.startswith(("text/javascript", "application/javascript")), address
+        return
+    if kind.startswith("text/html"):
+        # The application's own page: every script it runs is the server's, by nonce.
+        assert "script-src 'nonce-" in policy, address
+        return
+    if kind.startswith("application/json"):
+        body = response.json()
+        if not isinstance(body, dict):
+            return
+        capabilities = body.get("capabilities")
+        if isinstance(capabilities, dict) and "active_content" in capabilities:
+            assert capabilities == UNTRUSTED_CAPABILITIES.as_wire(), address
+        # No Preview tab for an HTML file, the only view that frames a file's own page. An
+        # image's Preview draws it in an <img>, which runs nothing.
+        if body.get("kind") == "html":
+            assert "preview" not in [view.get("id") for view in body.get("views") or []], address
+        # A render is inert: no script element, handler, or script address survives it.
+        rendered = str(body.get("html", ""))
+        for hostile in ("<script", "onerror", "javascript:"):
+            assert hostile not in rendered.lower(), (address, hostile)
+
+
+def _sweep_a_hostile_revision(checkout: Path) -> int:
+    """Ask every GET route of a revision holding hostile files; return how many were asked."""
+
+    _hostile_branch(checkout)
+    chosen = apply_capabilities(allow_edits=True)
+    assert chosen.active_content and chosen.mutations
+    server._set_root_dir(checkout)
+    asked = 0
+    with TestClient(server.app) as client:
+        _pin(client, ref="hostile")
+        wires = {name: _wire(name) for name in _HOSTILE_FILES}
+        for route in server.app.routes:
+            path = getattr(route, "path", "")
+            if "GET" not in (getattr(route, "methods", None) or set()) or "{" in path:
+                continue
+            if path.startswith("/_debug"):
+                continue
+            for wire in ("", *wires.values()):
+                address = path if not wire else f"{path}?path={wire}&view=rendered"
+                _assert_no_active_content(address, client.get(address))
+                asked += 1
+        for name, wire in wires.items():
+            shell = client.get(f"/view/{wire}")
+            _assert_no_active_content(f"/view/{name}", shell)
+        # The document did render, so the checks above read a real render.
+        document = client.get(
+            "/api/kpress/render", params={"path": wires["doc.md"], "view": "rendered"}
+        )
+        assert document.status_code == 200 and "Doc" in document.json()["html"]
+        page = client.get("/api/file", params={"path": wires["page.html"]}).json()
+        assert page["kind"] == "html" and [view["id"] for view in page["views"]] == ["source"]
+        # And the folder's own block is still the process's.
+        _pin(client, working_tree=True)
+        assert _answered_under(client) == chosen.as_wire()
+    return asked
+
+
+def test_no_revision_response_is_under_active_content_with_a_trusted_process(
+    checkout: Path,
+) -> None:
+    """A pin is never trusted: every route answers a revision without active content.
+
+    The process's block is as trusting as it gets, as a reader's own folder may be. The
+    revision is of that folder's checkout, and its commit holds a page, a document, an
+    image, and a script that would each run under that block.
+    """
+
+    assert _sweep_a_hostile_revision(checkout) > 150
+
+
+def test_the_sweep_sees_a_revision_answered_under_the_process_block(
+    checkout: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The sweep above fails if a pin's routes take the process's block, as they once did."""
+
+    from metabrowser.git import content_routes
+
+    monkeypatch.setattr(content_routes, "_PIN_CAPABILITIES", DEFAULT_CAPABILITIES)
+    with pytest.raises(AssertionError):
+        _sweep_a_hostile_revision(checkout)
+
+
+def test_raw_answers_as_a_pin_when_the_revision_arrived_after_the_request(
+    served: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The profile is the subject's that the handler resolved, not what was served before.
+
+    A request can arrive while the folder is served and be answered after a revision
+    replaced it. The arrival is stood in for here: the middleware is told a folder was
+    served when the request came, and the handler resolves the revision.
+    """
+
+    _pin(served, ref="feature")
+    monkeypatch.setattr(server, "_pin_is_served", lambda: False)
+    raw = served.get("/raw", params={"path": _wire("README.md")})
+    assert raw.status_code == 200 and raw.text == "# Mirror\n"
+    assert "allow-scripts" not in raw.headers["content-security-policy"]
 
 
 def test_a_revision_serves_nothing_of_the_working_tree(served: TestClient) -> None:
@@ -376,6 +566,36 @@ def test_a_working_tree_page_is_refused_while_a_revision_is_served(served: TestC
     stale = served.get("/api/tree", headers={PIN_HEADER: pinned})
     assert (stale.status_code, stale.headers[PIN_CHANGED_HEADER]) == (409, "")
     assert served.get("/api/tree", headers=on_tree).status_code == 200
+
+
+def test_a_page_that_names_nothing_is_refused_while_a_revision_is_served(
+    served: TestClient,
+) -> None:
+    """The moment before a working-tree page has its guard is covered by the server.
+
+    The page takes the guard with the selector's bundle, after its first requests. Until
+    then its ``fetch`` names nothing, and a browser's own headers say it is a page's.
+    """
+
+    page_fetch = {"sec-fetch-site": "same-origin", "sec-fetch-dest": "empty"}
+    assert served.get("/api/tree", headers=page_fetch).status_code == 200
+    pinned = _pin(served, ref="feature")["status"]["pin"]
+    refused = served.get("/api/tree", headers=page_fetch)
+    assert (refused.status_code, refused.json()["code"]) == (409, "pin_changed")
+    assert refused.headers[PIN_CHANGED_HEADER] == pinned
+    # The pin's own page names its commit, and is answered.
+    assert served.get("/api/tree", headers={**page_fetch, PIN_HEADER: pinned}).status_code == 200
+    # A client that is no browser, a navigation, and an image are not a page's fetch.
+    assert served.get("/api/tree").status_code == 200
+    for other in (
+        {"sec-fetch-site": "same-origin", "sec-fetch-dest": "image"},
+        {"sec-fetch-site": "none", "sec-fetch-dest": "empty"},
+    ):
+        assert served.get("/api/tree", headers=other).status_code == 200, other
+    # The routes a page learns and switches through stay open to it.
+    assert served.get("/api/source/status", headers=page_fetch).status_code == 200
+    _pin(served, working_tree=True)
+    assert served.get("/api/tree", headers=page_fetch).status_code == 200
 
 
 # ── The checkout is never written ────────────────────────────
@@ -530,3 +750,73 @@ def test_a_hostile_checkout_configuration_runs_nothing_for_a_revision(
         _pin(client, working_tree=True)
     assert not marker.exists(), marker.read_text(encoding="utf-8")
     assert snapshot(checkout) == before
+
+
+@pytest.mark.parametrize(
+    "selected_by", ["info/attributes", "core.attributesFile", ".gitattributes"]
+)
+def test_a_revisions_commit_view_runs_no_driver_and_writes_nothing(
+    checkout: Path, tmp_path: Path, selected_by: str
+) -> None:
+    """A revision's history, commit view, and diff run no driver a checkout's configuration names.
+
+    The store policies leave a checkout's local configuration in effect, and it can name
+    a textconv driver, cached, and an external diff, which the repository's own
+    ``info/attributes`` or a local ``core.attributesFile`` selects for every path. Run,
+    each is a program started by a page of fetched content, and the cache is a
+    ``refs/notes/textconv/`` ref written into the reader's ``.git``. Every ``diff`` and
+    ``show`` at a store target says ``--no-textconv --no-ext-diff``
+    (``GitLocation.diff_driver_args``), so none runs and nothing is written.
+    """
+
+    marker = tmp_path / "marker"
+    script = tmp_path / "driver.sh"
+    script.write_text(f"#!/bin/sh\necho ran >> '{marker}'\ncat \"$1\"\n", encoding="utf-8")
+    script.chmod(0o755)
+    for key, value in (
+        ("diff.external", str(script)),
+        ("diff.planted.textconv", str(script)),
+        ("diff.planted.cachetextconv", "true"),
+        ("diff.planted.command", str(script)),
+    ):
+        git(checkout, "config", key, value)
+    if selected_by == "info/attributes":
+        (checkout / ".git" / "info").mkdir(exist_ok=True)
+        (checkout / ".git" / "info" / "attributes").write_text("* diff=planted\n", "utf-8")
+    elif selected_by == "core.attributesFile":
+        attributes = tmp_path / "attributes"
+        attributes.write_text("* diff=planted\n", encoding="utf-8")
+        git(checkout, "config", "core.attributesFile", str(attributes))
+    else:
+        (checkout / ".gitattributes").write_text("* diff=planted\n", encoding="utf-8")
+    commit_view = (
+        "/api/git/repo",
+        "/api/git/refs",
+        "/api/git/log?limit=5",
+        f"/api/git/commit/{FEATURE}",
+        f"/api/git/summary?rev={FEATURE}",
+        f"/api/plugin/diff/comparison?revision={FEATURE}",
+        f"/api/plugin/diff/comparison?revision={FEATURE}&file=FEATURE.md",
+        f"/api/plugin/diff/comparison?revision={SECOND}&file=NOTES.md",
+    )
+    marker.unlink(missing_ok=True)
+    before = snapshot(checkout)
+    server._set_root_dir(checkout)
+    with TestClient(server.app) as client:
+        for ref in ("feature", "topic"):
+            _pin(client, ref=ref)
+            for address in commit_view:
+                assert client.get(address).status_code == 200, address
+        _pin(client, working_tree=True)
+    assert not marker.exists(), marker.read_text(encoding="utf-8")
+    after = snapshot(checkout)
+    assert (
+        sorted(key for key in before.keys() | after.keys() if before.get(key) != after.get(key))
+        == []
+    )
+    # The fixture is live: the folder's own Commits tab honors its drivers, as before, so
+    # the same diff asked of the working tree's server runs the one planted here.
+    server._set_root_dir(checkout)
+    with TestClient(server.app) as client:
+        assert client.get(commit_view[-2]).status_code == 200
+    assert marker.exists()

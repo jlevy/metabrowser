@@ -1035,9 +1035,11 @@ def test_each_context_assigns_its_chip_kind() -> None:
 
     "Which Kind Each Context Gets" in the design system: a history row, a commit's summary,
     and its tooltip draw the wire's kind with the server's trunk and HEAD; a merge's two
-    branches are remote and never trunk or HEAD; the ref selector draws a branch as remote
-    and a tag as a tag, and never trunk, since the mirror's default is not the history's
-    trunk. `tests/test_git_api.py` holds that the detail and the refs listing carry the
+    branches are remote and never trunk or HEAD; the ref selector draws a mirror's branch
+    as remote, a checkout's own as local and its remote-tracking branch as remote, and a
+    tag as a tag, and never trunk or HEAD: the mirror's default is not the history's
+    trunk, and it says "default" and "checked out" in words.
+    `tests/test_git_api.py` holds that the detail and the refs listing carry the
     refs and trunk the history row does.
     """
     doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
@@ -1077,18 +1079,26 @@ def test_each_context_assigns_its_chip_kind() -> None:
         options = calls[0].rsplit("{", 1)[1]
         assert 'kind: "remote"' in options, f"{name}'s branches are remote"
         assert not re.search(r"\b(?:trunk|head):", calls[0]), f"{name} marks trunk or HEAD"
-    # The ref selector: a branch is remote and a tag a tag, on the button and in the list,
-    # and neither is trunk or HEAD; the list says "default" in words.
+    # The ref selector: a tag is a tag, and a branch is remote but for a checkout's own,
+    # which is local, on the button and in the list. Neither is trunk or HEAD; the list
+    # says "default", and "checked out" for a checkout's HEAD, in words.
     selector = (STATIC / "source-ref-selector.js").read_text(encoding="utf-8")
     chips = re.findall(r"metabrowser\.refChip\((.*?)\}\)", selector, re.S)
     assert len(chips) == 2, "the selector draws a chip on its button and on each row"
     for chip in chips:
-        assert re.search(
-            r'kind: (?:model\.selectedRef\.kind|model\.kind === "tag" \? "tag" : "remote"),', chip
-        )
+        assert re.search(r"kind: (?:model\.selectedRef\.kind|row\.chip),", chip)
         assert not re.search(r"\b(?:trunk|head):", chip), "the selector marks trunk or HEAD"
-    assert 'kind: label.kind === "Tag" ? "tag" : "remote",' in selector
-    assert 'badge.textContent = "default";' in selector
+    squeezed = re.sub(r"\s+", " ", selector)
+    # A list's rows, by the list shown, and the button, by what the page shows.
+    assert (
+        'state.kind === "tag" ? "tag" : state.kind === "branch" && checkout ? "local" : "remote";'
+        in squeezed
+    )
+    assert (
+        'label.kind === "Tag" ? "tag" : label.kind === "Branch" && checkout ? "local" : "remote",'
+        in squeezed
+    )
+    assert 'badge.textContent = row.default ? "default" : "checked out";' in selector
     # Trunk has one definition, on the server, and every answer that names a ref uses it.
     log = (REPO_ROOT / "src/metabrowser/git/log.py").read_text(encoding="utf-8")
     assert log.count('is_trunk_ref(ref["name"], ref["kind"])') == 2, "decoration and refs"

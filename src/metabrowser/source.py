@@ -26,7 +26,6 @@ from typing import IO, TYPE_CHECKING, Protocol, runtime_checkable
 from strif import clean_alphanum_hash
 
 import metabrowser.paths_safe as paths_safe
-from metabrowser import capabilities
 from metabrowser.content_errors import ContentReadError, ContentUnavailableError
 from metabrowser.gz_io import ArtifactCompressionError, ArtifactPath
 from metabrowser.inventory_engine.contract import canonical_inventory_path, native_inventory_path
@@ -560,20 +559,12 @@ _open_failure: SubjectOpenError | None = None
 _owned_subject: ClosableRepositorySubject | None = None
 
 
-def attach_subject(subject: RepositorySubject, *, checkout_revision: bool = False) -> SourceSession:
-    """Install `subject` as the sole active session, releasing any previous lease.
-
-    *checkout_revision* says the subject is a committed revision a folder's server shows
-    of its own checkout, which runs under the untrusted profile
-    (:func:`metabrowser.capabilities.serve_checkout_revision`). Every attachment states
-    it, in the step that installs the subject, so the profile in effect never belongs to
-    a subject that was replaced.
-    """
+def attach_subject(subject: RepositorySubject) -> SourceSession:
+    """Install `subject` as the sole active session, releasing any previous lease."""
 
     global _session, _generation
     if _session is not None:
         _session.close()
-    capabilities.serve_checkout_revision(checkout_revision)
     _generation += 1
     _session = SourceSession(
         subject=subject,
@@ -583,20 +574,16 @@ def attach_subject(subject: RepositorySubject, *, checkout_revision: bool = Fals
     return _session
 
 
-def attach_owned_subject(
-    subject: ClosableRepositorySubject, *, checkout_revision: bool = False
-) -> SourceSession:
+def attach_owned_subject(subject: ClosableRepositorySubject) -> SourceSession:
     """Serve *subject*, which this process opened and closes with :func:`close_owned_subject`."""
 
     global _owned_subject
-    session = attach_subject(subject, checkout_revision=checkout_revision)
+    session = attach_subject(subject)
     _owned_subject = subject
     return session
 
 
-async def replace_owned_subject(
-    subject: ClosableRepositorySubject, *, checkout_revision: bool = False
-) -> SourceSession:
+async def replace_owned_subject(subject: ClosableRepositorySubject) -> SourceSession:
     """Serve *subject* in place of the owned subject, then close the one it replaced.
 
     The new subject is attached first, so every request that starts afterwards reads it
@@ -610,7 +597,7 @@ async def replace_owned_subject(
     """
 
     previous = _owned_subject
-    session = attach_owned_subject(subject, checkout_revision=checkout_revision)
+    session = attach_owned_subject(subject)
     if previous is not None and previous is not subject:
         await previous.aclose()
     return session
@@ -620,9 +607,10 @@ async def restore_filesystem_subject(root: Path) -> SourceSession:
     """Serve the folder at *root* in place of the owned subject, then close that subject.
 
     How a folder's server returns to its working tree from a revision of its checkout.
-    The folder is attached first, under a new generation and its own trust profile, so
-    every request that starts afterwards reads the files on disk; the revision's batch
-    readers are closed after it.
+    The folder is attached first, under a new generation, so every request that starts
+    afterwards reads the files on disk, under the folder's own trust profile, which is a
+    subject's and not a flag's (:func:`metabrowser.capabilities.capabilities_for`); the
+    revision's batch readers are closed after it.
     """
 
     global _owned_subject
@@ -685,7 +673,6 @@ def reset_source_session() -> None:
     global _session, _generation, _subject_opener, _open_failure, _owned_subject
     if _session is not None:
         _session.close()
-    capabilities.serve_checkout_revision(False)
     _session = None
     _generation = 0
     _subject_opener = None
@@ -714,6 +701,19 @@ def subject_open_failure() -> SubjectOpenError | None:
     return _open_failure
 
 
+def fail_subject_open(message: str) -> SubjectOpenError:
+    """Record that what a command asked to be served could not be, and return the error.
+
+    For a failure found at startup outside :func:`lifespan_subject`, as a folder asked to
+    open on a ref its checkout lacks is: the caller raises what this returns, and the
+    command prints *message*, which names no path, in place of a traceback.
+    """
+
+    global _open_failure
+    _open_failure = SubjectOpenError(message)
+    return _open_failure
+
+
 @asynccontextmanager
 async def lifespan_subject() -> AsyncGenerator[SourceSession | None]:
     """Open, attach, and at exit close the served subject, when one is configured.
@@ -728,6 +728,9 @@ async def lifespan_subject() -> AsyncGenerator[SourceSession | None]:
     global _open_failure
     opener = _subject_opener
     if opener is None:
+        # A folder's startup has its own way to fail (:func:`fail_subject_open`), and
+        # starts with none recorded.
+        _open_failure = None
         yield None
         return
     _open_failure = None
@@ -896,6 +899,7 @@ __all__ = [
     "attach_owned_subject",
     "attach_subject",
     "close_owned_subject",
+    "fail_subject_open",
     "get_source_session",
     "lifespan_subject",
     "open_content",

@@ -236,6 +236,15 @@ try {
   // 1. The working tree's page.
   result.workingTreeLoadMs = await load("/view/README.md");
   result.workingTree = await chrome.evaluate(PAGE);
+  // What the selector's bundle cost this page: the guard and the selector, on demand.
+  result.bundle = await chrome.evaluate(`performance.getEntriesByType("resource")
+    .filter((entry) => /source-(pin-guard|ref-selector)\\.js/.test(entry.name))
+    .map((entry) => ({
+      name: new URL(entry.name).pathname.split("/").pop(),
+      encoded: entry.encodedBodySize,
+      ms: Math.round(entry.duration * 10) / 10,
+      startMs: Math.round(entry.startTime),
+    }))`);
   await capture("working-tree");
   result.workingTreePanel = await openPanel();
   await capture("working-tree-panel");

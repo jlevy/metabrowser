@@ -37,7 +37,7 @@ every command starts on the working tree.
 No pin and no ref: the subject is the folder.
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab checkout --api /api/source/status
+$ metab --cache-dir home --config-dir config checkout --api /api/source/status
 api: /api/source/status
 status: 200
 {
@@ -73,7 +73,7 @@ The checked-out branch lists first and is `checked_out`, not `current`: chosen a
 it shows its commit, which the working tree is not.
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab checkout --api /api/source/refs
+$ metab --cache-dir home --config-dir config checkout --api /api/source/refs
 api: /api/source/refs
 status: 200
 {
@@ -130,7 +130,7 @@ Each keeps its remote’s name.
 The symbolic `origin/HEAD` a clone writes is not a row: it names `origin/topic`.
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab checkout --api '/api/source/refs?kind=remote'
+$ metab --cache-dir home --config-dir config checkout --api '/api/source/refs?kind=remote'
 api: /api/source/refs?kind=remote
 status: 200
 {
@@ -176,7 +176,7 @@ status: 200
 ## Test: tags list newest first, peeled to the commit they name
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab checkout --api '/api/source/refs?kind=tag'
+$ metab --cache-dir home --config-dir config checkout --api '/api/source/refs?kind=tag'
 api: /api/source/refs?kind=tag
 status: 200
 {
@@ -228,7 +228,7 @@ The page was on the folder’s `README.md`; `view_href` is that file at the revi
 address.
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab checkout --api /api/source/pin --data pin-feature-view.json
+$ metab --cache-dir home --config-dir config checkout --api /api/source/pin --data pin-feature-view.json
 api: /api/source/pin
 status: 200
 {
@@ -265,7 +265,7 @@ status: 200
 `STAGED.md` is in the index and in no commit, so a page on it goes to the root.
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab checkout --api /api/source/pin --data pin-checked-out.json
+$ metab --cache-dir home --config-dir config checkout --api /api/source/pin --data pin-checked-out.json
 api: /api/source/pin
 status: 200
 {
@@ -300,7 +300,7 @@ status: 200
 ## Test: a remote-tracking branch and a tag are served by name
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab checkout --api /api/source/pin --data pin-remote.json
+$ metab --cache-dir home --config-dir config checkout --api /api/source/pin --data pin-remote.json
 api: /api/source/pin
 status: 200
 {
@@ -332,7 +332,7 @@ status: 200
 ```
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab checkout --api /api/source/pin --data pin-tag.json
+$ metab --cache-dir home --config-dir config checkout --api /api/source/pin --data pin-tag.json
 api: /api/source/pin
 status: 200
 {
@@ -368,7 +368,7 @@ status: 200
 It is already served in a new process, so nothing changes.
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab checkout --api /api/source/pin --data pin-working-tree.json
+$ metab --cache-dir home --config-dir config checkout --api /api/source/pin --data pin-working-tree.json
 api: /api/source/pin
 status: 200
 {
@@ -402,7 +402,7 @@ status: 200
 ## Test: a ref the checkout lacks is not found, and nothing is fetched
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab checkout --api /api/source/pin --data pin-gone.json
+$ metab --cache-dir home --config-dir config checkout --api /api/source/pin --data pin-gone.json
 api: /api/source/pin
 status: 404
 {
@@ -416,7 +416,7 @@ Error: /api/source/pin returned HTTP 404
 ## Test: revision syntax and a mixed selection are refused before any lookup
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab checkout --api /api/source/pin --data pin-syntax.json
+$ metab --cache-dir home --config-dir config checkout --api /api/source/pin --data pin-syntax.json
 api: /api/source/pin
 status: 400
 {
@@ -428,7 +428,7 @@ Error: /api/source/pin returned HTTP 400
 ```
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab checkout --api /api/source/pin --data pin-working-tree-and-ref.json
+$ metab --cache-dir home --config-dir config checkout --api /api/source/pin --data pin-working-tree-and-ref.json
 api: /api/source/pin
 status: 400
 {
@@ -442,7 +442,7 @@ Error: /api/source/pin returned HTTP 400
 ## Test: a window of a checkout is called by its folder
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab checkout --api /api/identity
+$ metab --cache-dir home --config-dir config checkout --api /api/identity
 api: /api/identity
 status: 200
 {
@@ -455,10 +455,178 @@ status: 200
 ? 0
 ```
 
+## Test: `--ref` opens the folder on a branch
+
+`metab PATH --ref NAME` starts on a revision where `metab PATH` starts on the working
+tree, by the switch the selector makes: the subject is the pin, named by the folder.
+
+```console
+$ metab --cache-dir home --config-dir config checkout --ref feature --api /api/source/status
+api: /api/source/status
+status: 200
+{
+  "subject": "git_revision",
+  "generation": 2,
+  "pin": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+  "ref": "refs/heads/feature",
+  "ref_name": "feature",
+  "name": "checkout",
+  "origin": null,
+  "location": "<ROOT>",
+  "borrows": null,
+  "shallow": false,
+  "refreshable": false,
+  "latest": null,
+  "ref_on_origin": null,
+  "last_fetch_at": null,
+  "last_outcome": null,
+  "refreshing": false,
+  "stale": false,
+  "pull_request": null,
+  "selection_state": null,
+  "selection_href": null
+}
+? 0
+```
+
+## Test: a revision’s files are read by the routes a page reads them by
+
+`feature` has `FEATURE.md` and the committed `README.md`, and none of the working tree’s
+edited, staged, or untracked files.
+The catalog is every file of the revision, each named by its `GitPath` wire (`p`), as on
+a mirror.
+
+```console
+$ metab --cache-dir home --config-dir config checkout --ref feature --api /api/catalog
+api: /api/catalog
+status: 200
+{
+  "complete": true,
+  "truncated": false,
+  "revision": 1,
+  "files": [
+    {
+      "p": "g1-RkVBVFVSRS5tZA",
+      "e": ".md",
+      "n": "FEATURE.md"
+    },
+    {
+      "p": "g1-UkVBRE1FLm1k",
+      "e": ".md",
+      "n": "README.md"
+    }
+  ]
+}
+? 0
+```
+
+```console
+$ metab --cache-dir home --config-dir config checkout --ref feature --show FEATURE.md
+show: FEATURE.md
+route: /view/g1-RkVBVFVSRS5tZA
+kind: markdown
+views: rendered (default, key V), source (key S)
+model: text envelope; size=17 content_bytes=17 content_truncated=False
+? 0
+```
+
+## Test: `--ref` takes a tag, a remote-tracking branch, and a commit ID
+
+A window of a revision is still called by its folder, and its full name adds what is
+shown. The home directory is set to the sandbox here, so the folder’s path is spelled as
+a reader’s is, with `~`.
+
+```console
+$ HOME=$PWD metab --cache-dir home --config-dir config checkout --ref v1 --api /api/identity
+api: /api/identity
+status: 200
+{
+  "short_name": "checkout",
+  "full_name": "~/checkout@v1",
+  "kind": "folder",
+  "kind_label": "Local folder",
+  "title": "checkout • Metabrowser"
+}
+? 0
+```
+
+```console
+$ HOME=$PWD metab --cache-dir home --config-dir config checkout --ref origin/feature --api /api/identity
+api: /api/identity
+status: 200
+{
+  "short_name": "checkout",
+  "full_name": "~/checkout@origin/feature",
+  "kind": "folder",
+  "kind_label": "Local folder",
+  "title": "checkout • Metabrowser"
+}
+? 0
+```
+
+```console
+$ metab --cache-dir home --config-dir config checkout --ref fcb9d63c3c85 --show README.md
+show: README.md
+route: /view/g1-UkVBRE1FLm1k
+kind: markdown
+views: rendered (default, key V), source (key S)
+model: text envelope; size=9 content_bytes=9 content_truncated=False
+? 0
+```
+
+## Test: the navigation check runs on a revision
+
+A revision has no recency, so the live filter answers its typed refusal, which is what a
+page hides that filter by.
+
+```console
+$ metab --cache-dir home --config-dir config checkout --ref feature --check-api
+api check: checkout
+scenario: nav-live-clear-filter
+initial tree: 200; response=tree
+live filter: 409; unsupported_for_subject
+cleared filter: 200; response=tree
+index: done
+final nav: 200; rows=2; files=2; size=26; index=done
+filtered nav: 200; rows=2; files=2; size=26; empty_dirs=0
+result: pass
+? 0
+```
+
+## Test: a ref the checkout lacks, revision syntax, and a root with no checkout are refused
+
+Nothing is fetched for a name the checkout does not have, and nothing starts.
+
+```console
+$ metab --cache-dir home --config-dir config checkout --ref gone --api /api/source/status
+Error: --ref gone: no branch or tag with that name is in the checkout
+? 1
+```
+
+```console
+$ metab --cache-dir home --config-dir config checkout --ref 'topic~1' --show README.md
+Error: --ref topic~1: the ref is not a valid Git ref name
+? 1
+```
+
+```console
+$ metab --cache-dir home --config-dir config plain --ref feature --api /api/source/status
+Error: --ref names a branch or tag of a checkout, and ROOT is not a Git repository's root
+? 1
+```
+
+A Git source names its branch or tag in its URL.
+
+```console
+$ metab --cache-dir home --config-dir config file://$PWD/origin.git --ref feature --api /api/source/status
+Error: --ref names a branch or tag of a local checkout, and ROOT is a Git source; name the branch or tag in the URL
+? 1
+```
+
 ## Test: a plain folder has no refs to choose among
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab plain --api /api/source/refs
+$ metab --cache-dir home --config-dir config plain --api /api/source/refs
 api: /api/source/refs
 status: 409
 {

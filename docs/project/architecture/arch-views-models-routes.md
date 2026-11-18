@@ -200,7 +200,7 @@ counts is missing here; the asset routes are not counted.
 | `/api/stream`, `/api/activity` | The live tail of a JSONL file, and the files being written now | [Live Delivery](arch-live-delivery.md) |
 | `/api/diagnostics/pending-tallies` | `POST`: a client’s pending-tally warning, matched with server state | [Live Delivery](arch-live-delivery.md) |
 | `/api/git/repo`, `/api/git/refs`, `/api/git/summary`, `/api/git/log`, `/api/git/commit/<rev>` | Read-only history for the Commits tab | [Git](arch-git.md) |
-| `/api/source/status`, `/api/source/refs`, `/api/source/pin` | What the server serves, the mirror’s branches and tags, and switching the pin | [Source Sessions and Pins](arch-source-sessions-and-pins.md) |
+| `/api/source/status`, `/api/source/refs`, `/api/source/pin` | What the server serves; a mirror’s branches and tags, or a checkout’s, with its remote-tracking branches; and switching the pin, or a checkout between a revision and its working tree. `metab PATH --ref NAME` starts a checkout on a revision, so every route that answers a pin answers a checkout’s revision from a terminal | [Source Sessions and Pins](arch-source-sessions-and-pins.md) |
 | `/api/identity` | What the served subject is called, for a window’s title (`root_identity.py`) | [Source Sessions and Pins](arch-source-sessions-and-pins.md) |
 | `/api/source/refresh` | `POST`: start or join a background refresh of the served mirror | [Mirror Acquisition and Refresh](arch-mirror-acquisition-and-refresh.md) |
 | `/api/cache/layout`, `/api/cache/sources`, `/api/cache/source/<slug>`, `/api/cache/stores` | Read-only logical state of the repository cache (`cache/wire.py`) | [Repository Cache](arch-repository-cache.md) |

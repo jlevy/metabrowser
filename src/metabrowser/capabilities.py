@@ -5,9 +5,11 @@ publish the same block as a hint. ``--untrusted`` sets every switch to
 its conservative value; individual CLI flags override that profile, and
 nothing in the environment does.
 
-One thing narrows the block after it is resolved, and nothing widens it: while a folder's
-server shows a committed revision of its checkout, :func:`get_capabilities` answers the
-untrusted block (:func:`serve_checkout_revision`).
+The block is the process's and says how the reader trusts the files they opened. A
+pinned Git revision is never served under it: its content is whatever its repository
+holds, so every route that answers a pin uses :data:`UNTRUSTED_CAPABILITIES`, chosen by
+the subject the request resolved and not by anything read later
+(:func:`capabilities_for`).
 """
 
 from __future__ import annotations
@@ -75,38 +77,32 @@ class Capabilities:
 
 
 DEFAULT_CAPABILITIES = Capabilities(active_content=True, mutations=False)
-# Every switch at its conservative value: what ``--untrusted`` resolves to.
+# Every switch at its conservative value: what ``--untrusted`` resolves to, and what a
+# pinned revision is always served under.
 UNTRUSTED_CAPABILITIES = Capabilities(active_content=False, mutations=False)
 _current = DEFAULT_CAPABILITIES
-# Whether a folder's server is showing one of its checkout's committed revisions; see
-# :func:`serve_checkout_revision`.
-_checkout_revision = False
 
 
 def get_capabilities() -> Capabilities:
-    """The block in effect for what is served now.
+    """The process's block: how the reader trusts the folder they opened."""
 
-    The process's own block, except while a folder's server shows a committed revision of
-    its checkout, which runs under the untrusted profile as every pin does.
+    return _current
+
+
+def capabilities_for(*, pinned_revision: bool) -> Capabilities:
+    """The block a request is answered under, by the subject it resolved.
+
+    A pinned revision is never trusted, whatever the process's block: a mirror's content
+    is its origin's, and a branch or tag in a checkout's ``.git`` is whatever a fetch
+    brought, where the folder is what the reader works in. A caller passes whether the
+    subject it resolved *at the start of the request* is a pin, and uses the answer for
+    the whole request, so a switch of the served subject while the request awaits cannot
+    render a revision's content under the folder's profile. A server showing a revision
+    of its own checkout therefore needs no flag: the folder's profile is simply what its
+    working tree's requests get.
     """
 
-    return UNTRUSTED_CAPABILITIES if _checkout_revision else _current
-
-
-def serve_checkout_revision(served: bool) -> None:
-    """Say whether a folder's server is showing a committed revision of its checkout.
-
-    A folder is opened under the profile its reader chose for the files they work in. A
-    branch or tag in its ``.git`` is whatever a fetch brought, so its pages get the
-    profile a mirror's content gets, and the folder's own block is in effect again once
-    the working tree is served. The process's block is kept, not replaced, so returning
-    restores exactly what the operator's flags resolved to. Called in the same step that
-    replaces the served subject (:mod:`metabrowser.checkout_revisions`), and cleared
-    whenever a filesystem root is attached (:mod:`metabrowser.source`).
-    """
-
-    global _checkout_revision
-    _checkout_revision = served
+    return UNTRUSTED_CAPABILITIES if pinned_revision else _current
 
 
 def set_capabilities(capabilities: Capabilities) -> None:

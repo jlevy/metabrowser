@@ -61,6 +61,17 @@ function loadProductionModule() {
 const selectorRuntime = loadProductionModule();
 assert(selectorRuntime, "the production module did not install its runtime");
 
+// The pin guard, which a checkout's working-tree page takes with the selector's bundle.
+// Its window here has no `fetch`, so it defines its functions and guards nothing.
+function loadPinGuard() {
+  const context = { window: {}, URL, Headers, Request, Promise, Object };
+  context.window.window = context.window;
+  vm.createContext(context);
+  const file = path.join(staticDir, "source-pin-guard.js");
+  vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
+  return context.window.MetabrowserSourcePinGuard;
+}
+
 async function settle() {
   for (let turn = 0; turn < 20; turn += 1) {
     await new Promise((resolve) => setImmediate(resolve));
@@ -490,7 +501,27 @@ async function runCheckout() {
     const chip = model.selectedRef === null ? "" : ` (${model.selectedRef.kind} chip)`;
     return `${model.button}${chip}`;
   });
-  return { steps, labels };
+
+  // What each kind of page names on its data requests, so a tab left behind is refused:
+  // a commit, the working tree's word, or nothing, for a page with nothing to guard.
+  const pinGuard = loadPinGuard();
+  const named = (page, source) => {
+    const shown = pinGuard.shownPin(page, source);
+    if (shown === undefined) {
+      return "nothing";
+    }
+    const token = shown ?? pinGuard.WORKING_TREE_PIN;
+    const elsewhere = pinGuard.servesAnother(shown, { pin: shown === null ? pin : null });
+    const here = pinGuard.servesAnother(shown, { pin: shown });
+    return `${token}; refused when another is served: ${elsewhere}; while its own is: ${here}`;
+  };
+  const guard = {
+    "a checkout's working tree": named(undefined, { working_tree: true }),
+    "a checkout's revision": named({ pin, ref: "refs/heads/feature" }, { working_tree: false }),
+    "a mirror's pin": named({ pin, ref: "refs/remotes/origin/feature" }, undefined),
+    "a plain folder": named(undefined, undefined),
+  };
+  return { steps, labels, guard };
 }
 
 function emptyState() {

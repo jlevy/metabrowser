@@ -598,10 +598,13 @@ def test_git_kpress_render_shows_fenced_code_plain_under_the_untrusted_profile(
 ) -> None:
     """A pin runs under the untrusted profile, and there a fence never reaches a lexer.
 
+    Whatever the process's block is (*trusted*): a pin's profile is its subject's, never
+    the process's (``capabilities.capabilities_for``).
+
     The inert render keeps no class a highlighter writes, so a mirror's fence already showed
     as plain text; a lexer can cost far more than its input (review G on #348 timed a
     1.6 KB ``console`` line at 12 s), so the render asks for plain code. A trusting profile
-    still highlights.
+    still highlights a folder's file; it never applies to a pin.
     """
 
     from kpress.format import markdown as kpress_markdown
@@ -630,13 +633,9 @@ def test_git_kpress_render_shows_fenced_code_plain_under_the_untrusted_profile(
     status, html = asyncio.run(_run())
     assert status == 200, html
     code = html.split("<pre", 1)[1].split("</pre>", 1)[0]
-    if trusted:
-        assert lexed == ["$ echo [a@] <b>\n"]
-        assert '<span class="' in code
-    else:
-        assert lexed == []
-        assert "<span" not in code
-        assert "$ echo [a@] &lt;b&gt;" in code
+    assert lexed == []
+    assert "<span" not in code
+    assert "$ echo [a@] &lt;b&gt;" in code
 
 
 def test_git_text_preview_windows_match_filesystem_highlight_bound(tmp_path: Path) -> None:
@@ -1457,19 +1456,20 @@ def test_git_view_shell_honors_gitpath_and_refuses_filesystem_spelling(tmp_path:
     asyncio.run(_run())
 
 
-def _assert_git_raw_sandbox(response: Any, *, active_content: bool) -> None:
+def _assert_git_raw_sandbox(response: Any) -> None:
     """The raw trust headers, whichever layer produced the response.
 
     ``_RawTrustHeaderMiddleware`` owns these for the whole ``/raw`` path, so a
-    pinned Git subject must carry them exactly as a filesystem subject does --
-    on a hit, on a miss, and with active content on or off.
+    pinned Git subject carries the sandbox on a hit and on a miss. It never carries
+    ``allow-scripts``, whatever the process's block: a pin is never trusted
+    (``capabilities.capabilities_for``).
     """
 
     csp = response.headers["content-security-policy"]
     assert csp.startswith("sandbox ")
     assert "allow-same-origin" not in csp
     assert "frame-ancestors" not in csp
-    assert ("allow-scripts" in csp) is active_content
+    assert "allow-scripts" not in csp
     assert response.headers["x-content-type-options"] == "nosniff"
 
 
@@ -1501,16 +1501,16 @@ def test_git_raw_blobs_are_sandboxed_like_filesystem_raw(
                 assert hit.status_code == 200, name
                 # A wire names another blob once the pin is switched, so no cache keeps it.
                 assert hit.headers["cache-control"] == "no-store"
-                _assert_git_raw_sandbox(hit, active_content=active_content)
+                _assert_git_raw_sandbox(hit)
                 assert str(store) not in hit.text
             miss = await client.get("/raw", params={"path": _wire(b"absent.html")})
             assert miss.status_code == 404
-            _assert_git_raw_sandbox(miss, active_content=active_content)
+            _assert_git_raw_sandbox(miss)
             # A filesystem spelling is not a wire identity, so it is a miss
             # too -- and a miss is still sandboxed.
             spelled = await client.get("/raw", params={"path": "page.html"})
             assert spelled.status_code == 404
-            _assert_git_raw_sandbox(spelled, active_content=active_content)
+            _assert_git_raw_sandbox(spelled)
 
     asyncio.run(_run())
 
@@ -1532,7 +1532,7 @@ def test_git_raw_path_form_is_a_sandboxed_capability_refusal(tmp_path: Path) -> 
                 answered = await client.get(address)
                 assert answered.status_code == 409, (address, answered.status_code)
                 assert answered.json()["capability"] == "raw_document_path"
-                _assert_git_raw_sandbox(answered, active_content=True)
+                _assert_git_raw_sandbox(answered)
                 assert str(store) not in answered.text
 
     asyncio.run(_run())

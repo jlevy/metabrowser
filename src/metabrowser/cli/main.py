@@ -83,6 +83,7 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
             "no_active_content",
             "allow_edits",
             "checkout",
+            "ref",
         }
     ),
     "walk": frozenset(
@@ -112,6 +113,7 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
             "no_active_content",
             "allow_edits",
             "checkout",
+            "ref",
         }
     ),
     "show": frozenset(
@@ -124,6 +126,7 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
             "no_active_content",
             "allow_edits",
             "checkout",
+            "ref",
         }
     ),
     "check-api": frozenset(
@@ -135,6 +138,7 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
             "no_active_content",
             "allow_edits",
             "checkout",
+            "ref",
         }
     ),
     "no-serve": frozenset({"log_level", "checkout"}),
@@ -189,6 +193,7 @@ _OPTION_LABELS: dict[str, str] = {
     "no_active_content": "--no-active-content",
     "allow_edits": "--allow-edits",
     "checkout": "--checkout",
+    "ref": "--ref",
 }
 
 
@@ -411,6 +416,27 @@ def _refuse_checkout_on_folder(checkout: Path | None) -> None:
         )
 
 
+def _open_folder_on(ref: str | None) -> None:
+    """Open the folder on a branch or tag of its checkout, or on its files without one.
+
+    Said for every start of the application over a local path, so a ref a command named
+    is never left for the next one. The application's startup opens it and refuses a
+    root with no checkout, or a ref the checkout lacks (``checkout_revisions.py``).
+    """
+
+    from metabrowser.checkout_revisions import open_on_ref
+
+    open_on_ref(ref)
+
+
+def _refuse_ref_on_source(ref: str | None) -> None:
+    if ref is not None:
+        raise CLIError(
+            "--ref names a branch or tag of a local checkout, and ROOT is a Git source; "
+            "name the branch or tag in the URL"
+        )
+
+
 def _reject_root(ctx: typer.Context, root: str | None, mode: str) -> None:
     if root is not None:
         message = f"ROOT is not used with {_MODE_LABELS[mode]}"
@@ -472,6 +498,17 @@ def _metab(
         help="Borrow objects from this checkout of the Git source instead of cloning, so "
         "only what it lacks is fetched. Remembered from then on; never written to. "
         "Applies when serving, --api, --show, --check-api, and --no-serve on a Git source.",
+        rich_help_panel=_PANEL_SHARED,
+        show_default=False,
+    ),
+    ref: str | None = typer.Option(
+        None,
+        "--ref",
+        metavar="NAME",
+        help="Open a local checkout on this branch, tag, remote-tracking branch, or commit "
+        "ID, read from its Git objects, where it would open on its working tree. Nothing "
+        "is checked out or written. ROOT must be the repository's root. Applies when "
+        "serving and to --api, --show, and --check-api.",
         rich_help_panel=_PANEL_SHARED,
         show_default=False,
     ),
@@ -862,6 +899,7 @@ def _metab(
         classified = _classified_root(ctx, root, mode)
         if isinstance(classified, Path):
             _refuse_checkout_on_folder(checkout)
+            _open_folder_on(ref)
             run_serve(
                 classified,
                 path=path,
@@ -876,6 +914,7 @@ def _metab(
                 allow_edits=allow_edits,
             )
         else:
+            _refuse_ref_on_source(ref)
             from metabrowser.cli.git_pin_cli import run_serve_pin
 
             run_serve_pin(
@@ -931,6 +970,7 @@ def _metab(
         classified = _classified_root(ctx, root, mode)
         if isinstance(classified, Path):
             _refuse_checkout_on_folder(checkout)
+            _open_folder_on(ref)
             run_api(
                 classified,
                 route=api,
@@ -945,6 +985,7 @@ def _metab(
                 allow_edits=allow_edits,
             )
         else:
+            _refuse_ref_on_source(ref)
             from metabrowser.cli.acquire_cli import is_cache_inspect_route, run_api_after_acquire
 
             if is_cache_inspect_route(api):
@@ -989,6 +1030,7 @@ def _metab(
         classified = _classified_root(ctx, root, mode)
         if isinstance(classified, Path):
             _refuse_checkout_on_folder(checkout)
+            _open_folder_on(ref)
             run_show(
                 classified,
                 path=show,
@@ -999,8 +1041,10 @@ def _metab(
                 untrusted=untrusted,
                 no_active_content=no_active_content,
                 allow_edits=allow_edits,
+                revision=ref is not None,
             )
         else:
+            _refuse_ref_on_source(ref)
             from metabrowser.cli.git_pin_cli import run_show_after_acquire
 
             run_show_after_acquire(
@@ -1018,6 +1062,7 @@ def _metab(
         classified = _classified_root(ctx, root, mode)
         if isinstance(classified, Path):
             _refuse_checkout_on_folder(checkout)
+            _open_folder_on(ref)
             from metabrowser.cli.check_api import run_api_check
 
             run_api_check(
@@ -1028,8 +1073,10 @@ def _metab(
                 untrusted=untrusted,
                 no_active_content=no_active_content,
                 allow_edits=allow_edits,
+                revision=ref is not None,
             )
         else:
+            _refuse_ref_on_source(ref)
             from metabrowser.cli.git_pin_cli import run_pin_api_check
 
             run_pin_api_check(

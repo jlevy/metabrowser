@@ -20,7 +20,7 @@ on the control it reaches now.
 | `J` or `K` | Down or up a row | A tree, Commits, Pulls, or changed-file row has focus |
 | `Control-N` or `Control-P` | Next or previous item one level up: the pull requests of a stack | A pull request in a stack is open, outside text fields, on macOS and iOS |
 | `U` | Up: the parent folder | A file, or a folder below the root, is shown |
-| `W` | The branch or tag switcher | A pinned revision of a cached repository is shown |
+| `W` | The branch or tag switcher | A repository opened by its URL, or a folder that is a repository’s root, is shown |
 | `V` | The rendered view: Document, Preview, Tree, or Log | A file’s tab bar is shown |
 | `S` | The source: Source, or Raw JSON | A file’s tab bar is shown |
 | `C` | Charts | An agent log is shown |

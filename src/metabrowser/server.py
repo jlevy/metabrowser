@@ -75,7 +75,12 @@ from metabrowser.asset_stamps import StampedStaticFiles, StampedTree, split_stam
 from metabrowser.build_version import display_version_line
 from metabrowser.builtin_plugins.html.detect import sniff_full_page_html
 from metabrowser.cache.routes import CACHE_ROUTES
-from metabrowser.capabilities import get_capabilities, raw_sandbox_csp, untrusted_shell_csp
+from metabrowser.capabilities import (
+    capabilities_for,
+    get_capabilities,
+    raw_sandbox_csp,
+    untrusted_shell_csp,
+)
 
 # Cache invalidator: clear_charts_cache is invoked by the root-change
 # handler so chart memos don't stick across served-root swaps.
@@ -210,6 +215,7 @@ from metabrowser.settings import (
     client_settings_dict,
 )
 from metabrowser.source import (
+    SubjectNotOpenError,
     UnsupportedSourceCapabilityError,
     as_git_revision_subject,
     get_source_session,
@@ -1035,7 +1041,11 @@ class _RawTrustHeaderMiddleware:
             return
 
         started = False
-        active_content = get_capabilities().active_content
+        # The profile of the subject served as the request arrives: a pin is never
+        # trusted. The handler resolves the subject again and marks the scope when it
+        # answers a pin (`_RAW_PINNED_SCOPE`), so a pin attached in between still gets a
+        # pin's headers; a pin replaced in between keeps the stricter ones it began with.
+        process_active = capabilities_for(pinned_revision=_pin_is_served()).active_content
 
         # ``MutableMapping``, not ``dict``: this wrapper is handed to
         # ``Response.__call__`` below, whose ``Send`` alias is written
@@ -1044,6 +1054,7 @@ class _RawTrustHeaderMiddleware:
             nonlocal started
             if message.get("type") == "http.response.start":
                 started = True
+                active_content = process_active and not scope.get(_RAW_PINNED_SCOPE, False)
                 headers = MutableHeaders(scope=message)
                 # A raster image runs nothing, so it never needs `allow-scripts`, and without it
                 # its policy is the same in both profiles (_PROFILE_INDEPENDENT_MEDIA_TYPES).
@@ -1069,7 +1080,7 @@ class _RawTrustHeaderMiddleware:
                     headers["Content-Type"] = "text/plain; charset=utf-8"
             await send(message)
 
-        if not active_content and _request_header(scope, b"sec-fetch-dest") in _CODE_DESTINATIONS:
+        if not process_active and _request_header(scope, b"sec-fetch-dest") in _CODE_DESTINATIONS:
             # Under the untrusted profile a browsed file is never a script, stylesheet,
             # or worker of any page, the application's included: its own static paths
             # are the only code it runs (capabilities.untrusted_shell_csp).
@@ -1093,6 +1104,23 @@ class _RawTrustHeaderMiddleware:
                     scope, receive, send_sandboxed
                 )
             raise
+
+
+# Set on a ``/raw`` request's scope by the handler when it answers a pinned revision.
+_RAW_PINNED_SCOPE: Final = "metabrowser.raw_pinned_revision"
+
+
+def _pin_is_served() -> bool:
+    """Whether a pinned revision is the served subject now, or is about to be.
+
+    A subject configured and not yet open is a pin's, so it counts: nothing is trusted on
+    its behalf.
+    """
+
+    try:
+        return as_git_revision_subject(get_source_session().subject) is not None
+    except SubjectNotOpenError:
+        return True
 
 
 class _SlowRequestLogMiddleware:
@@ -1473,6 +1501,10 @@ async def index(
 
     pin = as_git_revision_subject(get_source_session().subject)
     git_pin = pin is not None
+    # The trust profile of this page is its subject's, decided here before anything is
+    # awaited: a pin is never trusted, so a switch of the served subject while this
+    # request renders cannot hand a revision's shell the folder's policy.
+    page_capabilities = capabilities_for(pinned_revision=git_pin)
     # Only a pin has a mirror session; a folder's shell never reads the app's state.
     mirror = mirror_session(request.app) if pin is not None else None
     # The served checkout's own refs and revisions: a folder that is a repository's root,
@@ -1576,7 +1608,10 @@ async def index(
     # duplicating constants in the source. A store's token travels beside the build, so
     # an answer a browser keeps is scoped to this store; a folder has none.
     client_settings = {
-        **client_settings_dict(syntax_highlight_max_bytes=_SYNTAX_HIGHLIGHT_MAX_BYTES),
+        **client_settings_dict(
+            syntax_highlight_max_bytes=_SYNTAX_HIGHLIGHT_MAX_BYTES,
+            capabilities=page_capabilities,
+        ),
         "BUILD_TAG": BUILD_TAG,
     }
     if pin is not None:
@@ -1966,7 +2001,13 @@ async def index(
         # made for the refs until a reader opens it. A pin's page carries the pin guard
         # inline. A checkout's working-tree page takes it here, ahead of the selector
         # that can make the server serve something else, so that a folder's first paint
-        # carries none of it.
+        # carries none of it: inline it would be 3,354 compressed bytes on the page of
+        # every checkout, most of which never switch. Measured 2026-11-18 in headless
+        # Chrome 152 from 127.0.0.1, three runs on a 10-core Mac at a load average of
+        # 13 to 16: the guard 3,354 compressed bytes in 8.6 to 10.5 ms and the selector
+        # 9,879 in 7.0 to 9.7 ms, both asked for 124 to 142 ms after the navigation
+        # began, once the first tree rows were in; the selector was mounted 170 to
+        # 181 ms after it (tests/dom/checkout-ref-selector-chrome.mjs prints them).
         "source-ref-selector": [
             *(
                 [{"src": _static_asset_url("source-pin-guard.js")}]
@@ -2245,7 +2286,7 @@ async def index(
   {optional_assets_block}
 </body>
 </html>"""
-    if get_capabilities().active_content:
+    if page_capabilities.active_content:
         return HTMLResponse(html)
     # An untrusted source: the page runs only what this server wrote. Every inline script
     # of the shell carries this response's nonce (capabilities.untrusted_shell_csp).
@@ -4408,6 +4449,9 @@ async def raw_file(request: Request) -> Response:
     if pin is not None:
         from metabrowser.git.content_routes import git_revision_raw
 
+        # Said before anything is awaited: this answer is a pin's, whatever was served
+        # when the request arrived and whatever is by the time it is sent.
+        request.scope[_RAW_PINNED_SCOPE] = True
         return await git_revision_raw(request, pin)
     target = _raw_target_from_request(request)
     if target is None or not target.is_file():
@@ -4705,7 +4749,9 @@ def _resolve_container_child(subpath: str) -> JSONResponse | None:
     return None
 
 
-def _views_for_kind(kind: str, *, target: Path | None = None) -> list[dict[str, Any]]:
+def _views_for_kind(
+    kind: str, *, target: Path | None = None, active_content: bool | None = None
+) -> list[dict[str, Any]]:
     """Return the merged view list for a kind: built-in registry + plugin manifests.
 
     :func:`merge_views` owns the merge order and the override rule, and
@@ -4723,16 +4769,22 @@ def _views_for_kind(kind: str, *, target: Path | None = None) -> list[dict[str, 
     merged = merge_views(VIEW_REGISTRY.get(kind, []), _PLUGIN_VIEWS_BY_KIND.get(kind, []))
     out = check_view_keys(kind, merged).views
     if kind == "html":
-        out = _html_kind_views(out, target)
+        out = _html_kind_views(out, target, active_content=active_content)
     elif out and not any(v.get("default") for v in out):
         out[0] = {**out[0], "default": True}
     return live_view_keys(out)
 
 
-def _html_kind_views(views: list[dict[str, Any]], target: Path | None) -> list[dict[str, Any]]:
-    """Apply the html kind's capability gate and default-tab sniff."""
+def _html_kind_views(
+    views: list[dict[str, Any]], target: Path | None, *, active_content: bool | None = None
+) -> list[dict[str, Any]]:
+    """Apply the html kind's capability gate and default-tab sniff.
 
-    if not get_capabilities().active_content:
+    *active_content* is the caller's subject's: a pin's routes pass false, since a pin is
+    never trusted; a folder's leave it to the process's block.
+    """
+
+    if not (get_capabilities().active_content if active_content is None else active_content):
         remaining = [dict(view) for view in views if view["id"] != "preview"]
         if remaining and not any(view.get("default") for view in remaining):
             remaining[0] = {**remaining[0], "default": True}

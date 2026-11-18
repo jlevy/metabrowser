@@ -848,6 +848,15 @@ class SourcePinGuard:
     the pin route. The refusal is ``409 pin_changed`` with the served commit, or an
     empty value when a folder is served, in :data:`PIN_CHANGED_HEADER`, which the page
     reads without consuming the body.
+
+    One request that names nothing is refused too. A working-tree page takes its guard
+    with the selector's bundle, after its first requests, so for a moment it names
+    nothing, and a revision served from another tab in that moment would answer it.
+    While a pin is served, a page's own ``fetch`` that names no commit cannot be the
+    pin's page, which names its commit from before its first script: it is a page of
+    something else, and is refused as the working tree's is. A browser says which
+    requests those are (``Sec-Fetch-Site: same-origin`` with ``Sec-Fetch-Dest: empty``);
+    ``curl`` and ``metab --api`` send neither and are answered.
     """
 
     def __init__(self, app: Any) -> None:
@@ -855,7 +864,11 @@ class SourcePinGuard:
 
     async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
         if scope.get("type") == "http" and _guarded(scope):
-            response = pin_changed_response(_header(scope, PIN_HEADER.encode()))
+            claimed = _header(scope, PIN_HEADER.encode())
+            if claimed is None and _own_page_fetch(scope) and _served_pin():
+                # A page that is not the served pin's: what a working-tree page names.
+                claimed = WORKING_TREE_PIN
+            response = pin_changed_response(claimed)
             if response is not None:
                 await response(scope, receive, send)
                 return
@@ -868,6 +881,20 @@ def _guarded(scope: dict[str, Any]) -> bool:
     if root_path and path.startswith(root_path):
         path = path[len(root_path) :]
     return path.startswith("/api/") and not path.startswith(_PIN_EXEMPT_PREFIX)
+
+
+def _own_page_fetch(scope: dict[str, Any]) -> bool:
+    """Whether a browser says this is a ``fetch`` made by one of this server's own pages.
+
+    The fetch metadata the origin check reads: a script's request to its own origin, as
+    ``fetch`` and an event stream are, and not a navigation, an image, or a frame. A
+    client that is no browser sends neither header.
+    """
+
+    return (
+        _header(scope, b"sec-fetch-site") == "same-origin"
+        and _header(scope, b"sec-fetch-dest") == "empty"
+    )
 
 
 def _header(scope: dict[str, Any], name: bytes) -> str | None:

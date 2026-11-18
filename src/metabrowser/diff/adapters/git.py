@@ -749,6 +749,8 @@ class GitDiffSource:
                 "-M50",
                 "-C",
                 "--diff-merges=first-parent",
+                # At a store target, no driver the repository's configuration names.
+                *self._location.diff_driver_args,
                 *endpoints,
             ],
             self._location,
@@ -1268,6 +1270,10 @@ class GitDiffSource:
                 "--src-prefix=a/",
                 "--dst-prefix=b/",
                 "--no-ext-diff",
+                # A pinned revision's patch runs no textconv driver either: its target may
+                # be a checkout's own Git directory (GitLocation.diff_driver_args). The
+                # listing run above already says so for every location.
+                *(["--no-textconv"] if self._location.target is not None and not listing else []),
                 "--no-color",
                 "--diff-merges=first-parent",
                 *self._endpoints(resolved),

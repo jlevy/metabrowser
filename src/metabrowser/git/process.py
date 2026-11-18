@@ -331,6 +331,24 @@ class GitLocation:
     def config_args(self) -> tuple[str, ...]:
         return GIT_DISABLE_MAILMAP_ARGS if self.target is not None else ()
 
+    @property
+    def diff_driver_args(self) -> tuple[str, ...]:
+        """What every ``diff`` and ``show`` takes at a store target, so it runs no driver.
+
+        A pinned revision's diff is Git's own, for every reader. A store Metabrowser made
+        names no textconv or external diff driver, so for a mirror these change nothing.
+        They matter where the target is a checkout's own Git directory, which a folder's
+        server reads to show one of its revisions: the store policies isolate the reader's
+        user and system configuration, not that repository's local one, and a driver its
+        configuration names, selected by its ``info/attributes`` or a local
+        ``core.attributesFile``, would run a program, and with ``cachetextconv`` write a
+        ``refs/notes/textconv/`` ref into the reader's ``.git``. Measured 2026-11-18 with
+        Git 2.50.1: both ran and wrote before these options, and neither after. A served
+        folder's own Commits tab keeps honoring its drivers, as before.
+        """
+
+        return ("--no-textconv", "--no-ext-diff") if self.target is not None else ()
+
 
 def as_location(value: Path | GitLocation) -> GitLocation:
     """Accept the historical ``Path`` overload or an explicit location."""
