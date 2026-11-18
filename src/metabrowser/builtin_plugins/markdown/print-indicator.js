@@ -42,11 +42,12 @@ export function documentCard(container) {
  * Place the print button in the card of the document *container* holds, and return its
  * disposer, which removes it; with no card, a disposer that does nothing.
  *
- * The button is the page's, owner-marked (`mb.ownDelegate`), so it keeps its tooltip
- * inside the document, whose own markup takes none (app.js `tipTextAnchor`), and its
- * listener is its own, so a document that spells its markup prints nothing. It goes last in
- * the card, after the document's text: first, it would take the place KPress's spacing rules
- * give a leading heading (`h1:first-child`).
+ * The button is the page's, marked with `mb.ownDelegate`, which the tooltip recognizes by
+ * the element itself, so it keeps its tooltip inside the document, whose own markup takes
+ * none (app.js `tipTextAnchor`), and its listener is its own, so a document that spells its
+ * markup prints nothing. It goes last in the card, after the document's text, and so last
+ * in focus order: first, it would take the place KPress's spacing rules give a leading
+ * heading (`h1:first-child`). Command-P is the keyboard route to print.
  *
  * @param {HTMLElement} container
  * @param {Pick<MetabrowserPublicSdk, "icons" | "ownDelegate">} mb

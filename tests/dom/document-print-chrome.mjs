@@ -283,6 +283,15 @@ async function checkPage(page, label, address, band, overview) {
   );
   const still = await page.evaluate(STILL);
   check(`${label}: nothing moves when the button arrives`, still.same && still.count > 3, still);
+  // The button is shown on a card KPress draws: a render without the card's mark has none.
+  const unmarked = await page.evaluate(`(() => {
+    const article = ${HOST}.querySelector(":scope > article.kpress");
+    article.removeAttribute("data-kpress-card");
+    const display = getComputedStyle(${CARD}.querySelector(":scope > .metabrowser-print-indicator")).display;
+    article.setAttribute("data-kpress-card", "on");
+    return display;
+  })()`);
+  check(`${label}: a render without the card has no button shown`, unmarked === "none", unmarked);
 
   if (band === "narrow" && parts.toggle) {
     // Where the toggle shows with the button still on screen: just past the threshold in a

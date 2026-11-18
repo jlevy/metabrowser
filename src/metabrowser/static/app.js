@@ -339,6 +339,14 @@ function isOwnedControl(element) {
   return window.MetabrowserPluginHost?.isOwnedDelegate?.(element) === true;
 }
 
+// Whether page code marked this very element with `mb.ownDelegate`: its identity, which a
+// document that carries a copy of the owner value cannot have. See `ownsElement` in
+// plugin-sdk.js.
+/** @param {Element | null} element */
+function isPageElement(element) {
+  return window.MetabrowserPluginHost?.ownsElement?.(element) === true;
+}
+
 /**
  * The main view's address: the served root dimmed, the root slash, then one
  * control per component beneath it.
@@ -3443,13 +3451,15 @@ if (typeof window !== "undefined") {
  * it runs nothing, and plugins write plain `data-tip-text`. It does ignore a
  * rendered document's own markup, which a trusted folder's Markdown keeps, so a
  * document cannot label itself in the application's tooltip layer. A control page
- * code placed in the document and owner-marked, as the document's print button is
- * (builtin_plugins/markdown/print-indicator.js), keeps its tooltip.
+ * code placed in the document and marked with `mb.ownDelegate`, as the document's print
+ * button is (builtin_plugins/markdown/print-indicator.js), keeps its tooltip. That test
+ * is the element's identity, not its owner value, so a document that has come to carry
+ * the value still cannot label itself.
  */
 function tipTextAnchor(event) {
   var anchor = eventTargetElement(event)?.closest("[data-tip-text]");
   return anchor instanceof HTMLElement &&
-    (!anchor.closest(".metabrowser-kpress-host") || isOwnedControl(anchor))
+    (!anchor.closest(".metabrowser-kpress-host") || isPageElement(anchor))
     ? anchor
     : null;
 }

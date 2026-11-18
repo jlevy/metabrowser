@@ -511,6 +511,8 @@ async function flush() {
             inCard: button.parentElement === top,
             lastInCard: top?.lastElementChild === button,
             ownerMarked: sdk.MetabrowserPluginHost.isOwnedDelegate(button),
+            // The tooltip admits it inside the document by identity (app.js tipTextAnchor).
+            pageElement: sdk.MetabrowserPluginHost.ownsElement(button),
             tipText: button.getAttribute("data-tip-text"),
             type: button.type,
           }
@@ -538,7 +540,11 @@ async function flush() {
     file.ariaLabel === PRINT_INDICATOR_LABEL && file.tipText === PRINT_INDICATOR_LABEL,
     file,
   );
-  check("it is owner-marked and has no id a label could name", file.ownerMarked && !file.id);
+  check(
+    "it is owner-marked, the element ownDelegate marked, and has no id a label could name",
+    file.ownerMarked && file.pageElement && !file.id,
+    file,
+  );
 
   const noteView = container();
   const noteHandle = await mounted(

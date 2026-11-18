@@ -187,7 +187,11 @@ drawn when the page loads, which a document written earlier cannot spell, and th
 tooltip ignores a rendered document’s markup.
 The document’s print button is the page’s own control placed in its card, with a
 listener of its own rather than a document-wide one, so a copy of its markup prints
-nothing; its owner mark is what keeps the app’s tooltip on it there.
+nothing.
+The tooltip, which otherwise ignores a rendered document, admits it by identity:
+the elements `ownDelegate` marked (`ownsElement` in `plugin-sdk.js`), not any element
+carrying the owner value, so a document that comes to carry the value (below) still
+cannot label itself in the app’s tooltip layer.
 Two limits remain:
 
 - The tooltip exclusion covers only a rendered Markdown document

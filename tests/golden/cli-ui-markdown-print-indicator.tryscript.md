@@ -18,13 +18,13 @@ This browserless session runs the production `builtin_plugins/markdown/index.js`
 `builtin_plugins/folder/readme-panel.js`, and the trusted and inert placement modules on
 a small DOM of its own.
 It shows the button in the document’s own card and not a nested transclusion’s, last in
-it, named and labelled, owner-marked, with no `id`; that a click prints once and a
-document’s own copy of its markup prints nothing; that an inert render has the same
-button, and a failed render and a host that does not ask have none; and that disposing
-removes it with its listener, so a view mounted again has one.
-Where the button lands, that nothing moves when it arrives, and the table of contents
-toggle beside it are layout, which `tests/test_document_print_chrome.py` measures in
-headless Chrome.
+it, named and labelled, owner-marked as the very element `ownDelegate` marked, with no
+`id`; that a click prints once and a document’s own copy of its markup prints nothing;
+that an inert render has the same button, and a failed render and a host that does not
+ask have none; and that disposing removes it with its listener, so a view mounted again
+has one. Where the button lands, that nothing moves when it arrives, and the table of
+contents toggle beside it are layout, which `tests/test_document_print_chrome.py`
+measures in headless Chrome.
 
 ```console
 $ node tests/dom/markdown-print-indicator-session.js
@@ -52,6 +52,7 @@ $ node tests/dom/markdown-print-indicator-session.js
     "inCard": true,
     "lastInCard": true,
     "ownerMarked": true,
+    "pageElement": true,
     "tipText": "Print document",
     "type": "button"
   },

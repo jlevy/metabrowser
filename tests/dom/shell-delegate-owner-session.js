@@ -45,6 +45,7 @@ const LIFTED = [
   "eventTargetElement",
   "ownedControlAttr",
   "isOwnedControl",
+  "isPageElement",
   "headerAddressHtml",
   "renderFolderHeader",
   "tipTextAnchor",
@@ -249,6 +250,17 @@ const printIndicator = sandbox.metabrowser.ownDelegate(
 check(
   "a control page code placed in the document and marked keeps its tooltip",
   tooltipFor(printIndicator) === printIndicator,
+);
+// A document that has come to carry the page's owner value, as one fetched after its
+// stylesheet read it could, spells the mark exactly. The tooltip asks for the element
+// page code marked, not the value, so the copy still does not label itself.
+const leaked = buttons(
+  `<button type="button" data-tip-text="Verified by Metabrowser" data-mb-owner="${owner}">x</button>`,
+  host,
+)[0];
+check(
+  "a document carrying the page's own owner value still takes no tooltip",
+  sandbox.MetabrowserPluginHost.isOwnedDelegate(leaked) && tooltipFor(leaked) === null,
 );
 
 check(

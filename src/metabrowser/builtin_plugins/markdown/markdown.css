@@ -114,10 +114,11 @@
    against the card, which `position: relative` makes its containing block without moving
    any box in it, the button moves nothing when it arrives.
 
-   Only where the card is drawn: in a pane 48rem or wider, the boundary of KPress's own
-   card rule, which queries the same container. Narrower, KPress pads the column 1rem
-   and 0.75rem, which a 24px button cannot fit in without covering the first line, and
-   the reader prints with Command-P.
+   Only where the card is drawn: on a card KPress stamps `data-kpress-card="on"` (a
+   trusted render, and the inert render's article, inert-render.js), in a pane 48rem or
+   wider, the selector and boundary of KPress's own card rule, which queries the same
+   container. Narrower, KPress pads the column 1rem and 0.75rem, which a 24px button
+   cannot fit in without covering the first line, and the reader prints with Command-P.
 
    The narrow table of contents toggle sits in the pane's trailing gutter, outside the
    card (`--kpress-toc-toggle-clearance` above), and the wide band's rail beside it, so
@@ -142,7 +143,7 @@
   }
 
   @container kpress-doc (min-width: 48rem) {
-    .metabrowser-markdown-document .metabrowser-print-indicator {
+    .metabrowser-markdown-document > .kpress[data-kpress-card="on"] .metabrowser-print-indicator {
       display: inline-flex;
     }
   }

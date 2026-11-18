@@ -711,15 +711,22 @@ only when its host asks, with `printIndicator: true`, so a source view, a render
 and any other host have none, and Command-P is their print.
 It is the `.icon-btn` primitive, bare at rest, named and labelled “Print document”, and
 it calls `window.print()`, the print Command-P runs.
-It is the page’s own control in the document, owner-marked, so it keeps the app’s
-tooltip there, and a document that spells its markup prints nothing.
+It is the page’s own control in the document, marked with `mb.ownDelegate`, which the
+tooltip recognizes by the element itself, so it keeps the app’s tooltip there, and a
+document that spells its markup, owner value and all, neither prints nor labels itself.
+It comes last in the card, after the document’s text, so it is last in focus and reading
+order though it is drawn at the top: placed first, it would take the place the card’s
+leading-heading rules give its first heading.
+Command-P is the keyboard route to print, wherever focus is.
 
 The button sits in the card’s padding and covers no text.
-In the card band the card pads its top 2.5rem and its trailing side at least as much, so
-the button is centred in a 2.5rem corner square, and it is absolute against the card, so
-its arrival moves nothing.
-In a pane under 48rem KPress draws no card and pads the text 1rem and 0.75rem, so there
-is no corner to hold it, and it is not shown.
+It is centred in a corner square, `--print-indicator-corner` in
+`builtin_plugins/markdown/markdown.css`, no larger than the card band’s block-start
+padding and trailing inset, and it is absolute against the card, so its arrival moves
+nothing. It is shown only on a card KPress draws (`data-kpress-card="on"`), under the
+same container query on the pane as KPress’s card rule; narrower, KPress draws no card
+and pads the text too little to hold it, so it is not shown.
+markdown.css records KPress’s lengths beside the token.
 The narrow table of contents toggle sits in the trailing gutter outside the card
 (`--kpress-toc-toggle-clearance`), and the wide band’s rail beside the card, so neither
 meets it. `tests/test_document_print_chrome.py` measures the placement, the stillness,
