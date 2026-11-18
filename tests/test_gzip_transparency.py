@@ -77,6 +77,7 @@ def _setup(tmp_path: Path) -> tuple[Path, Path]:
 _VOLATILE_FIELDS = {
     "path",
     "size",
+    "mtime",
     "mtime_hash",
     "size_uncompressed",
     "logical_ext",

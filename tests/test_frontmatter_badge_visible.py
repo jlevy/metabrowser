@@ -5,7 +5,7 @@ to the ``/api/file`` JSON response but the shell didn't surface it
 anywhere visible — a user clicking a malformed process spec saw a
 normal-looking Markdown view unless they opened DevTools.
 
-These tests assert that the shell's ``renderBadges`` emits a
+These tests assert that the view header's ``renderBadges`` (``static/view-header.js``) emits a
 ``badge-frontmatter-error`` chip when ``data.frontmatter_error`` is
 present, and that the CSS rule scoping that class lives in styles.css.
 
@@ -19,14 +19,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
-APP_JS = Path(__file__).resolve().parent.parent / "src" / "metabrowser" / "static" / "app.js"
+VIEW_HEADER_JS = (
+    Path(__file__).resolve().parent.parent / "src" / "metabrowser" / "static" / "view-header.js"
+)
 STYLES_CSS = (
     Path(__file__).resolve().parent.parent / "src" / "metabrowser" / "static" / "styles.css"
 )
 
 
 def test_render_badges_emits_frontmatter_error_badge() -> None:
-    src = APP_JS.read_text(encoding="utf-8")
+    src = VIEW_HEADER_JS.read_text(encoding="utf-8")
     assert "data.frontmatter_error" in src, (
         "renderBadges must read data.frontmatter_error from the api/file response"
     )

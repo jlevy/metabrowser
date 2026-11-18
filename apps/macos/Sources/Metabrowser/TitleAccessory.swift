@@ -41,8 +41,6 @@ final class TitleBarTitleView: NSView {
     /// Space kept between the end of the title and what stands at the title bar's trailing
     /// end: the window's edge, or the mark's accessory.
     private static let trailingMargin: CGFloat = 12
-    /// The path menu's folder icons, as the system title's path menu draws them.
-    private static let menuIconSize: CGFloat = 16
 
     private static let font = NSFont.titleBarFont(ofSize: 0)
 
@@ -237,8 +235,9 @@ final class TitleBarTitleView: NSView {
                 keyEquivalent: "")
             item.target = self
             item.representedObject = index == 0 ? [path] : [path, folders[index - 1]]
-            item.image = NSWorkspace.shared.icon(forFile: path)
-            item.image?.size = NSSize(width: Self.menuIconSize, height: Self.menuIconSize)
+            // Every row is a folder: the folder outline Open Recent uses, not Finder's
+            // colored icon for that path.
+            item.image = RecentTargetsMenu.folderSymbol
             menu.addItem(item)
         }
         let anchor = NSPoint(x: label.frame.minX - 10, y: label.frame.maxY + 4)

@@ -444,7 +444,7 @@ $ node tests/dom/key-reveal-session.js
         ["F","main-tabs.files","Files tab"],
         ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
-        ["U","header.parent","/ crumb"],
+        ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null]
       ],
       "numbers": ["Group by","Modified within","File type"],
@@ -471,7 +471,7 @@ $ node tests/dom/key-reveal-session.js
         ["F","main-tabs.files","Files tab"],
         ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
-        ["U","header.parent","/ crumb"],
+        ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null]
       ],
       "numbers": ["Group by","Modified within","File type"],
@@ -498,7 +498,7 @@ $ node tests/dom/key-reveal-session.js
         ["F","main-tabs.files","Files tab"],
         ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
-        ["U","header.parent","/ crumb"],
+        ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null]
       ],
       "numbers": ["Group by","Modified within","File type"],
@@ -525,7 +525,7 @@ $ node tests/dom/key-reveal-session.js
         ["F","main-tabs.files","Files tab"],
         ["O","view-tabs.o","Overview tab"],
         ["M","view-tabs.m","Treemap tab"],
-        ["U","header.parent","Open parent folder"],
+        ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null]
       ],
       "numbers": ["Group by","Modified within","File type"],
@@ -547,7 +547,7 @@ $ node tests/dom/key-reveal-session.js
         ["F","main-tabs.files","Files tab"],
         ["O","view-tabs.o","Overview tab"],
         ["M","view-tabs.m","Treemap tab"],
-        ["U","header.parent","Open parent folder"],
+        ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null]
       ],
       "numbers": ["Group by","Modified within","File type"],
@@ -617,7 +617,7 @@ $ node tests/dom/key-reveal-session.js
         ["F","main-tabs.files","Files tab"],
         ["V","view-tabs.v","Tree tab"],
         ["S","view-tabs.s","Source tab"],
-        ["U","header.parent","/ crumb"],
+        ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null]
       ],
       "numbers": ["Group by","Modified within","File type"],
@@ -644,7 +644,7 @@ $ node tests/dom/key-reveal-session.js
         ["F","main-tabs.files","Files tab"],
         ["V","view-tabs.v","Tree tab"],
         ["S","view-tabs.s","Source tab"],
-        ["U","header.parent","/ crumb"],
+        ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null]
       ],
       "numbers": ["Group by","Modified within","File type"],
@@ -672,7 +672,7 @@ $ node tests/dom/key-reveal-session.js
         ["V","view-tabs.v","Log tab"],
         ["C","view-tabs.c","Charts tab"],
         ["S","view-tabs.s","Raw JSON tab"],
-        ["U","header.parent","/ crumb"],
+        ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null]
       ],
       "numbers": ["Group by","Modified within","File type"],
@@ -694,7 +694,7 @@ $ node tests/dom/key-reveal-session.js
         ["F","main-tabs.files","Files tab"],
         ["V","view-tabs.v","Tree tab"],
         ["S","view-tabs.s","Source tab"],
-        ["U","header.parent","/ crumb"],
+        ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null]
       ],
       "numbers": ["Group by","Modified within","File type"],
@@ -721,7 +721,7 @@ $ node tests/dom/key-reveal-session.js
         ["T or /","quick-file.open",null],
         ["0","shell.home","squares"],
         ["F","main-tabs.files","Files tab"],
-        ["U","header.parent","/ crumb"],
+        ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null]
       ],
       "numbers": ["Group by","Modified within","File type"],
@@ -761,7 +761,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["F","main-tabs.files","Files tab"],
         ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
-        ["U","header.parent","/ crumb"],
+        ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null]
       ],
       "numbers": ["Group by","Modified within","File type"],
@@ -783,7 +783,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["F","main-tabs.files","Files tab"],
         ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
-        ["U","header.parent","/ crumb"],
+        ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null]
       ],
       "numbers": ["Group by","Modified within","File type"],
@@ -793,7 +793,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["1","Group by"],
         ["2","Modified within"],
         ["3","File type"],
-        ["U","beside, in file-header"],
+        ["U","beside, in file-header view-header"],
         ["V","Document tab"],
         ["S","Source tab"]
       ],
@@ -814,7 +814,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["F","main-tabs.files","Files tab"],
         ["V","view-tabs.v","Tree tab"],
         ["S","view-tabs.s","Source tab"],
-        ["U","header.parent","/ crumb"],
+        ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null]
       ],
       "numbers": ["Group by","Modified within","File type"],
@@ -824,7 +824,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["1","Group by"],
         ["2","Modified within"],
         ["3","File type"],
-        ["U","beside, in file-header"],
+        ["U","beside, in file-header view-header"],
         ["V","Tree tab"],
         ["S","Source tab"]
       ],
@@ -850,7 +850,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["F","main-tabs.files","Files tab"],
         ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
-        ["U","header.parent","/ crumb"],
+        ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null]
       ],
       "numbers": ["Group by","Modified within","File type"],
@@ -872,7 +872,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["F","main-tabs.files","Files tab"],
         ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
-        ["U","header.parent","/ crumb"],
+        ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null]
       ],
       "numbers": ["Group by","Modified within","File type"],
@@ -913,7 +913,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["F","main-tabs.files","Files tab"],
         ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
-        ["U","header.parent","/ crumb"],
+        ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null]
       ],
       "numbers": ["Group by","Modified within","File type"],
@@ -935,7 +935,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["F","main-tabs.files","Files tab"],
         ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
-        ["U","header.parent","/ crumb"],
+        ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null]
       ],
       "numbers": ["Group by","Modified within","File type"],
@@ -957,7 +957,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["F","main-tabs.files","Files tab"],
         ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
-        ["U","header.parent","/ crumb"],
+        ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null]
       ],
       "numbers": ["Group by","Modified within","File type"],
@@ -967,7 +967,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["1","Group by"],
         ["2","Modified within"],
         ["3","File type"],
-        ["U","beside, in file-header"],
+        ["U","beside, in file-header view-header"],
         ["V","Document tab"],
         ["S","Source tab"]
       ],
@@ -988,7 +988,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["F","main-tabs.files","Files tab"],
         ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
-        ["U","header.parent","/ crumb"],
+        ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null]
       ],
       "numbers": ["Group by","Modified within","File type"],
@@ -1010,7 +1010,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["F","main-tabs.files","Files tab"],
         ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
-        ["U","header.parent","/ crumb"],
+        ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null],
         ["↑ or K","tree.previous",null],
         ["↓ or J","tree.next",null],
@@ -1040,7 +1040,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["F","main-tabs.files","Files tab"],
         ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
-        ["U","header.parent","/ crumb"],
+        ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null],
         ["↑ or K","tree.previous",null],
         ["↓ or J","tree.next",null],
@@ -1057,7 +1057,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["1","Group by"],
         ["2","Modified within"],
         ["3","File type"],
-        ["U","beside, in file-header"],
+        ["U","beside, in file-header view-header"],
         ["V","Document tab"],
         ["S","Source tab"]
       ],
@@ -1089,7 +1089,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["F","main-tabs.files","Files tab"],
         ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
-        ["U","header.parent","/ crumb"],
+        ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null],
         ["↑ or K","tree.previous",null],
         ["↓ or J","tree.next",null],
@@ -1106,7 +1106,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["1","Group by"],
         ["2","Modified within"],
         ["3","File type"],
-        ["U","beside, in file-header"],
+        ["U","beside, in file-header view-header"],
         ["V","Document tab"],
         ["S","Source tab"]
       ],
@@ -1134,7 +1134,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["F","main-tabs.files","Files tab"],
         ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
-        ["U","header.parent","/ crumb"],
+        ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null]
       ],
       "numbers": ["Group by","Modified within","File type"],
@@ -1156,7 +1156,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["F","main-tabs.files","Files tab"],
         ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
-        ["U","header.parent","/ crumb"],
+        ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null],
         ["↑ or K","tree.previous",null],
         ["↓ or J","tree.next",null],
@@ -1185,7 +1185,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["F","main-tabs.files","Files tab"],
         ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
-        ["U","header.parent","/ crumb"],
+        ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null],
         ["↑ or K","tree.previous",null],
         ["↓ or J","tree.next",null],
@@ -1248,7 +1248,7 @@ $ node tests/dom/key-reveal-session.js gestures
         ["F","main-tabs.files","Files tab"],
         ["V","view-tabs.v","Document tab"],
         ["S","view-tabs.s","Source tab"],
-        ["U","header.parent","/ crumb"],
+        ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null]
       ],
       "numbers": ["Group by","Modified within","File type"],
@@ -1556,7 +1556,7 @@ $ node tests/dom/key-reveal-session.js tabs
         ["H","main-tabs.git","Commits tab"],
         ["V","view-tabs.v","Preview tab"],
         ["S","view-tabs.s","Source tab"],
-        ["U","header.parent","/ crumb"],
+        ["U","header.parent","Open parent folder /"],
         ["1–9","numbered",null]
       ],
       "numbers": ["Group by","Modified within","File type"],
@@ -1586,7 +1586,7 @@ $ node tests/dom/key-reveal-session.js tabs
         ["H","main-tabs.git","Commits tab"],
         ["V","view-tabs.v","Preview tab"],
         ["S","view-tabs.s","Source tab"],
-        ["U","header.parent","/ crumb"]
+        ["U","header.parent","Open parent folder /"]
       ],
       "numbers": [],
       "badges": [],
@@ -1615,7 +1615,7 @@ $ node tests/dom/key-reveal-session.js tabs
         ["H","main-tabs.git","Commits tab"],
         ["V","view-tabs.v","Preview tab"],
         ["S","view-tabs.s","Source tab"],
-        ["U","header.parent","/ crumb"]
+        ["U","header.parent","Open parent folder /"]
       ],
       "numbers": [],
       "badges": [],
