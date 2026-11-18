@@ -58,8 +58,15 @@ is the checkout’s Git directory, with no worktree, under the two store policie
 Every `diff` and `show` at a store target also says `--no-textconv --no-ext-diff`
 (`GitLocation.diff_driver_args`), since those policies leave a repository’s local
 configuration in effect and a checkout’s can name a driver.
-A store target that names no policy gets the store policy, and a store spawn whose
-policy would allow lazy fetch is refused.
+Every command run at a `GitLocation`, a served folder’s included, sets
+`log.showSignature=false` (`GIT_NO_SIGNATURE_ARGS` in `GitLocation.config_args`): with
+that setting on in a repository’s configuration, `log` and `show` verify signatures by
+running the program `gpg.program`, `gpg.ssh.program`, or `gpg.x509.program` names, and
+no page shows a signature’s state.
+A store target that names no policy gets the store policy, and a store spawn is refused
+when its policy would allow lazy fetch, or when it is a `log` or `show` that lacks the
+signature setting, or a `diff`, a `show`, or a `log` printing patches that lacks the
+driver options (`_require_no_configured_program`).
 
 | Invariant | Mechanism | What it prevents |
 | --- | --- | --- |
@@ -112,9 +119,12 @@ Git therefore writes into the checkout’s Git directory in two cases:
 
 Both were reproduced on 2026-11-18 with Git 2.50.1, through `/api/git/commit/<rev>` on a
 `--filter=blob:none` clone and through `/api/plugin/diff/comparison` on a checkout with
-such a driver. No test holds either yet (`mb-z849`).
-[Open Modes](arch-open-modes.md#what-is-never-written) states the rule they fall short
-of, and requires that a revision of a checkout never reach either.
+such a driver. No test holds either yet (`mb-z849`). A third case is closed for every
+location: a signature program named by the checkout’s configuration, which
+`log.showSignature` would run from the Commits tab, is never started, and
+`tests/test_checkout_revisions.py` holds that for a folder’s own history as for a
+revision’s. [Open Modes](arch-open-modes.md#what-is-never-written) states the rule they
+fall short of, and requires that a revision of a checkout never reach either.
 
 ### The One Other Git Process
 

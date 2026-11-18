@@ -244,14 +244,15 @@ sets `GIT_NO_LAZY_FETCH=1`, though a store has no promisor remote; and with
 `GIT_DISABLE_MAILMAP_ARGS`, because a bare store’s default mailmap is `HEAD:.mailmap`.
 Git can report a failed read on stderr and still exit 0, so stderr from a store read
 degrades the result.
-A store’s configuration names no diff driver, and a borrowed checkout’s configuration is
-never read, which is one reason a mirror reads a checkout’s objects only through its own
-store.
-A folder’s server reads its own checkout’s Git directory in place for history, and
-by design for that checkout’s revisions
-([Open Modes](arch-open-modes.md#showing-a-revision-never-writes-the-checkout)). The
-pool of batch readers per store (`MAX_BATCH_READERS_PER_STORE` in `git/tree_source.py`)
-is part of the tree source.
+A store’s configuration names no diff driver, and a checkout that lends its objects to a
+store never has its configuration read, which is one reason a mirror reads a checkout’s
+objects only through its own store.
+A folder’s server is the other case: it reads its own checkout’s Git directory in place,
+for history and for that checkout’s revisions, with the checkout’s local configuration
+in effect, so those reads pass the options that keep a configured program from running
+([Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout)).
+The pool of batch readers per store (`MAX_BATCH_READERS_PER_STORE` in
+`git/tree_source.py`) is part of the tree source.
 
 A complete object read verifies the object ID against the header and bytes in the
 store’s SHA-1 or SHA-256 format, and a mismatch is `object_corrupt`. A windowed read

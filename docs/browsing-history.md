@@ -127,6 +127,10 @@ branch that moves while it is shown is shown at its new commit when you choose i
 The button follows the folder you opened: it is there when that folder is a repository’s
 root, as the Commits tab is.
 
+Showing a branch or tag needs a Git as recent as cloning does
+([installation](installation.md#git-and-github-setup)). With an older one the list says
+which release it needs, and the working tree and its Commits tab work as before.
+
 ## Diffs from a Terminal
 
 `--diff` prints a change set of a local repository without a browser:
@@ -192,11 +196,12 @@ option.
   [Git status plan](project/specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md).
 - **Ranges in the browser:** a page shows one commit against its first parent, or a pull
   request’s Changes. A range of commits is a terminal command.
-- **Branches of a local repository:** a local folder has no switcher, and a folder
-  inside a repository has no Commits tab.
-  Opening such a folder at its repository’s root, and viewing another branch or tag
-  there read-only with nothing checked out, are planned in
+- **A folder inside a repository:** it has no Commits tab and no branch button, which
+  belong to a repository’s root.
+  Opening such a folder at its repository’s root is planned in
   [Open Modes](project/architecture/arch-open-modes.md).
+- **Pull requests on a branch of a local checkout:** the Pulls tab belongs to the
+  working tree.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

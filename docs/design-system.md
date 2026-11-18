@@ -4597,7 +4597,7 @@ primitive the control already had:
 
 - **The row keeps its box from first paint.** The module arrives after the tree’s first
   rows, so a checkout’s server draws the row with the button it will have, and the
-  module replaces that button with one of the same box
+  module adopts that button and never swaps it, so focus put on it early stays
   ([Regions Keep Their Boxes](#regions-keep-their-boxes)). Hidden until the module
   mounted, the row pushed the filter bar and every tree row down by its own height.
   `tests/test_checkout_ref_selector_chrome.py` records the row’s height and the first

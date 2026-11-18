@@ -23,6 +23,14 @@ All notable changes to Metabrowser are documented here.
   served under a trusting profile, whatever the process was started with: the profile is
   the subject’s, so a mirror’s page and a checkout’s revision are untrusted by
   construction and not by a flag.
+  A branch or tag of a checkout is read without running anything the checkout’s Git
+  configuration names, a diff driver or a signature program, and without fetching into a
+  partial clone, where an object the clone lacks is reported as unavailable.
+  That last guarantee needs a Git as recent as cloning does, so with an older Git the
+  list says which release it needs and the working tree is served as before.
+  The Commits tab of a folder no longer runs a signature program: where the repository’s
+  or your own Git configuration sets `log.showSignature`, Git verified each commit it
+  listed, and Metabrowser shows no signature state.
   See
   [Branches and Tags of a Local Checkout](docs/browsing-history.md#branches-and-tags-of-a-local-checkout).
 

@@ -185,6 +185,9 @@ metab ~/src/repo --ref v2.0 --api '/api/tree?depth=1'
 - **Where it applies:** when serving and with `--api`, `--show`, and `--check-api`. ROOT
   must be the repository’s root.
   A Git source names its branch or tag in its URL, so `--ref` is refused there.
+- **What it needs:** a Git as recent as cloning needs
+  ([installation](installation.md#git-and-github-setup)). With an older one `--ref`
+  stops with the release it needs, and `metab ROOT` without it opens the working tree.
 
 While serving, the page’s button switches to any other branch or tag and back to the
 working tree; the
