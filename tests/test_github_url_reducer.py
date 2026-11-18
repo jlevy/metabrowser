@@ -170,6 +170,25 @@ _WEB_URL_SHAPES = [
         f"https://github.com/octo/demo/pull/12/files#diff-{README_DIGEST}R0",
         RepositorySelection(kind="pull_request", pull_request=12, pull_tab="files"),
     ),
+    # GitHub's Changes page is `/changes` since 2026-01-22, and `/files` redirects there:
+    # both are the Changes tab, with or without a file anchor.
+    (
+        "https://github.com/octo/demo/pull/12/changes",
+        RepositorySelection(kind="pull_request", pull_request=12, pull_tab="files"),
+    ),
+    (
+        f"https://github.com/octo/demo/pull/12/changes#diff-{README_DIGEST}R12",
+        RepositorySelection(
+            kind="pull_request",
+            pull_request=12,
+            pull_tab="files",
+            pull_file=FileAnchor(README_DIGEST, "R12"),
+        ),
+    ),
+    (
+        f"https://github.com/octo/demo/pull/12/changes#diff-{README_DIGEST[:32]}",
+        RepositorySelection(kind="pull_request", pull_request=12, pull_tab="files"),
+    ),
     # A file anchor belongs to the Changes tab; on any other tab it is dropped.
     (
         f"https://github.com/octo/demo/pull/12#diff-{README_DIGEST}",

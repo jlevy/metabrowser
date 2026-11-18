@@ -293,6 +293,14 @@ def test_golden_a_changes_url_anchor_opens_the_file_it_names(
     assert _paths(listed) == ["docs/new.md", "src/app.txt"]
     assert "\nfile: docs/new.md\ndiff_line: L1-R1 " in listed.stderr
 
+    session.say(
+        "GitHub's Changes page is `/changes` since 2026-01-22, and `/files` its older "
+        "spelling: both carry the same anchor."
+    )
+    moved = session.run(f"{CANONICAL}/pull/7/changes#diff-{app_txt}R2", "--no-serve")
+    assert moved.exit_code == 0, moved.stderr
+    assert "\ntab: files\nfile: src/app.txt\ndiff_line: R2 " in moved.stdout
+
     session.say("A file the pull request does not change, and a hash GitHub never writes.")
     unchanged = session.run(f"{changes}#diff-{path_digest('README.md')}", "--no-serve")
     assert unchanged.exit_code == 0, unchanged.stderr

@@ -333,6 +333,39 @@ $ metab 'https://github.com/octo/demo/pull/7/files#diff-be97662273fac8ac' --pres
 ? 0
 ```
 
+GitHub’s Changes page is `/pull/<n>/changes` since 2026-01-22, and `/files` its older
+spelling, which GitHub redirects there.
+Both select the Changes tab, with or without a file anchor, and the `handoff` spells the
+URL `/files`, which GitHub answers either way.
+
+```console
+$ metab 'https://github.com/octo/demo/pull/7/changes#diff-be97662273fac8ac301e8dfa98ba5d8d90d390bfa9419746155382b7ace0a3c2R2' --present --dry-run --format json
+{
+  "kind": "pull_request",
+  "root": "https://github.com/octo/demo",
+  "page": null,
+  "handoff": [
+    "https://github.com/octo/demo/pull/7/files#diff-be97662273fac8ac301e8dfa98ba5d8d90d390bfa9419746155382b7ace0a3c2R2"
+  ],
+  "refusal": null
+}
+? 0
+```
+
+```console
+$ metab https://github.com/octo/demo/pull/7/changes --present --dry-run --format json
+{
+  "kind": "pull_request",
+  "root": "https://github.com/octo/demo",
+  "page": "/pull/7/files",
+  "handoff": [
+    "https://github.com/octo/demo/pull/7/files"
+  ],
+  "refusal": null
+}
+? 0
+```
+
 ```console
 $ metab https://github.com/octo/demo/commit/1A2B3C4D --present --dry-run --format json
 {

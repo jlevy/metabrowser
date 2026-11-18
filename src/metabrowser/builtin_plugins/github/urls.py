@@ -12,8 +12,8 @@ It claims only ``github.com`` (with or without ``www.``) and
 | ``…/blob/<ref-and-path>[#L10][#L10-L20][#L10C5-L20C8]`` (``?plain=1`` kept) | blob |
 | ``…/commit/<oid>``, ``…/pull/<n>/commits/<oid>`` | commit |
 | ``…/pull/<n>[/commits]`` | pull request |
-| ``…/pull/<n>/files``, ``…/pull/<n>/checks`` | pull request, on its Changes or Checks tab |
-| ``…/pull/<n>/files#diff-<hash>[R12][-R15]`` | pull request, on its Changes tab, at one file |
+| ``…/pull/<n>/files`` or ``/changes``, ``…/pull/<n>/checks`` | pull request, on that tab |
+| ``…/pull/<n>/files#diff-<hash>[R12][-R15]``, or ``/changes#…`` | pull request, at one file |
 | ``raw.githubusercontent.com/<o>/<r>/<ref-and-path>`` | blob |
 | ``git@github.com:<o>/<r>.git``, ``ssh://git@github.com/<o>/<r>.git`` (``www.``) | repository |
 
@@ -31,6 +31,15 @@ diff, ``R`` for the head's side and ``L`` for the base's, or a range of two. Whi
 the hash names is in the pull request's list of changed files, which no URL carries, so
 the selection keeps the anchor (:class:`~metabrowser.cache.urls.FileAnchor`) and the
 provider resolves it once the pull request is open (``pull_file_anchor.py``).
+
+GitHub's Changes page moved from ``/pull/<n>/files`` to ``/pull/<n>/changes`` (its
+changelog of 2025-12-11; the default for every account since 2026-01-22), and it
+redirects a ``/files`` link there, so both spellings select the Changes tab, with or
+without a file anchor. A page served without signing in, checked on 2026-11-18, still
+redirected ``/changes`` to ``/files`` and anchored each file as ``diff-`` and the
+SHA-256 of its path; the signed-in ``/changes`` page's anchor was not checked, and is
+read in the same form. A selection's web URL is spelled ``/files``, which GitHub
+answers either way.
 
 A web URL is read as a browser sends it. A person pastes the decoded form an address
 bar shows, such as ``…/docs/雪.md`` or ``…/space name.md``, and a browser sends a
@@ -495,7 +504,7 @@ def _pull_selection(args: list[str], fragment: str, repo_url: str) -> Repository
         )
     number = int(args[0])
     tail = args[1:]
-    if tail == ["files"]:
+    if tail in (["files"], ["changes"]):
         return RepositorySelection(
             kind="pull_request",
             pull_request=number,
