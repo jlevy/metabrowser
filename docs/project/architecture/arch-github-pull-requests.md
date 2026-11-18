@@ -546,6 +546,40 @@ no store.
 What a reader sees for each failure name, and what to do, is in
 [Reviewing Pull Requests](../../reviewing-pull-requests.md).
 
+## Drawn From Disk
+
+Everything a mirror’s pull request page and Pulls tab draw from GitHub’s data is read
+from a file beside the source or the store, so a server started on an existing cache
+answers it before anything asks GitHub, and a page paints it before it starts a refresh.
+`tests/test_github_drawn_from_disk.py` holds the inventory.
+`ELEMENTS` names each drawn element, its route, and the Git commands the route runs in
+the local store, and runs each through `metab --api` over a cache home with `gh`
+failing, the remote unreachable, every Git transport command refused, and every socket
+that would leave the machine refused.
+`JOBS` names every other route, each of which starts or reports work, so a new route is
+classified before it lands.
+
+Four routes compute from local data rather than read a stored answer: `pull-comparison`
+takes its manifest from the bank and runs Git only to check that the store answers for
+both commits and their merge base and to print the first files’ hunks; `pull-image`
+reads an image from the head’s tree; `pull-rendered-diff` renders both sides off the
+event loop; and `pull-markdown` renders the record’s text through KPress, which keeps
+the render for the process.
+
+What a surface draws that does not answer from disk is in `GAPS`, each a strict expected
+failure:
+
+- **Avatars.** Records and the catalog keep the URL; the image comes from GitHub’s
+  avatar host, and only the browser’s HTTP cache keeps it
+  ([Chrome](../../design-system.md#chrome) in the design system).
+- **A replaced manifest.** The bank’s slots are direct-mapped (`MANIFEST_SLOTS` in
+  `pull_manifest.py`), so a repository with more than a few pull requests replaces one’s
+  manifest with another’s, and that one’s next Diff summary is listed by Git again.
+- **A manifest from another build.** A manifest’s identity names `BUILD_TAG`, which an
+  editable install derives from its newest source change (`http_caching.py`), so after
+  an upgrade, or any edit of a checkout `metab` runs from, every Diff summary is listed
+  by Git again; the changed-files lists name only their schema and still answer.
+
 ## Clearing the Cache
 
 `POST cache-clear` takes an empty object and removes every entry of the source’s `pulls`
