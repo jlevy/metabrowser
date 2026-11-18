@@ -16,10 +16,24 @@ Nothing on the server starts this by itself, so it runs only while a page is vis
 online, and a hidden or offline page asks for nothing. The request replaces the lane's
 queue, so a walk that moved on drops what it no longer needs.
 
-Each served repository has one lane, a coordinator job that runs one item at a time. The
-two kinds take turns, a record and then a files list, each in its own order, so neither
-waits for the whole of the other: a cold server's missing records would otherwise hold
-every list back for as long as they take. Before each item it reads again, off the event
+Each served repository has one lane, a coordinator job that runs one item at a time.
+First it makes the queued lists local where it can (:func:`_prepare_lists`): a list the
+store can give, from a record's comparison of the newest known head or, for an open pull
+request, from the head and base branch the list of pull requests names, compared with the
+mirror's base branch, takes tens of milliseconds and no GitHub request, where a record takes
+seconds. The heads the store lacks and the base branches arrive in one Git fetch for the
+whole ask, at the store's turn as background work a reader's job preempts, and a served
+checkout attaches its store for it if no reader has yet. A list already current is left
+out, so an ask with nothing to list fetches nothing. Those lists go first; then the two
+kinds take turns, a record and then a files list from GitHub, each in its own order, so
+neither waits for the whole of the other: a cold server's missing records would otherwise
+hold every list back for as long as they take. Measured 2026-11-17 on this repository's own
+Pulls tab with a fresh cache, served from its checkout, 11 open rows in view at a load
+average of 11 to 14: the last row's change line was drawn 40.6 s after the tab opened when
+lists took turns with records, each record 3.6 to 4.7 s and each list from GitHub 0.3 to
+2 s; with the lists made local first, 10.4 s, of which attaching the checkout's store took
+2.3 to 2.5 s once, the merge bases of 11 heads 0.42 s at :data:`MERGE_BASES_AT_ONCE`
+(1.3 s one at a time), and each list 42 to 134 ms. Before each item it reads again, off the event
 loop, whether the item is still due, which another process's refresh may have made it
 not, then whether the rate-limit governor admits it (:mod:`.gh_budget`) and the caps have
 room. It stops, dropping the rest, when the governor refuses; a cap that is reached drops
@@ -30,7 +44,9 @@ is cancelled when one starts waiting (:mod:`.checkout`, :mod:`metabrowser.mirror
 A preempted job gives its place in the caps back, and the lane stops there: what it had
 queued would wait behind the reader too, and the page's next ask says what is wanted then.
 
-The caps, measured against the fake ``gh`` in ``tests/golden/cli-github-pulls-prefetch.txt``: a
+The caps, measured against the fake ``gh`` in ``tests/golden/cli-github-pulls-prefetch.txt``,
+count only what GitHub's API answers; a list the store gives is not counted
+(``tests/golden/cli-github-pulls-prefetch-local-lists.txt``): a
 background record refresh asks for at most 8 core points when each part fits on one page
 (two account checks, the pull, and five parts; a ``304`` is free and an account check is
 not), and a one-page files list for 3 (two account checks and the page). A part of more
@@ -52,6 +68,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import time
 from collections import OrderedDict, deque
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -64,11 +81,16 @@ from weakref import WeakKeyDictionary
 from metabrowser.builtin_plugins.github import gh_budget, pulls
 from metabrowser.builtin_plugins.github.gh_lists import utc_stamp
 from metabrowser.builtin_plugins.github.pull_catalog import read_catalog
-from metabrowser.builtin_plugins.github.pull_list import rate_limit_holds, read_list_refresh
+from metabrowser.builtin_plugins.github.pull_list import (
+    ListedRepository,
+    rate_limit_holds,
+    read_list_refresh,
+)
 from metabrowser.cache.paths import MAX_PULL_REQUEST_NUMBER
 from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S
 
 if TYPE_CHECKING:
+    from metabrowser.builtin_plugins.github.pull_list import LocalComparison
     from metabrowser.builtin_plugins.github.pull_route import PullHost
     from metabrowser.builtin_plugins.github.served_pull import ServedPulls
 
@@ -78,6 +100,10 @@ PREFETCH_ROUTE: Final = "/api/plugin/github/pulls-prefetch"
 # Numbers a request may name in each list: the anchored row, two neighbours, the top five
 # open pull requests, and the visible rows of a list pane fit.
 MAX_PREFETCH_NUMBERS: Final = 16
+# The merge bases the lane computes at once, each one Git process (`branch_endpoints`).
+# Measured 2026-11-17 on this repository's checkout store, 11 open heads at a load average
+# of 12 to 13: 1.3 s one at a time, 0.42 s four at a time.
+MERGE_BASES_AT_ONCE: Final = 4
 RECORDS_PER_SCAN: Final = 8
 RECORDS_PER_HOUR: Final = 40
 # The lists of six panes of rows in view, at the 16 an ask names, with a few rested on: a
@@ -173,6 +199,16 @@ class Lane:
         default_factory=lambda: deque[OutcomeWire](maxlen=MAX_RECENT)
     )
     viewed: OrderedDict[int, None] = field(default_factory=OrderedDict[int, None])
+    # The lists this ask made local, by number: the comparison its head fetch prepared, or
+    # ``None`` once tried with none to give. Each ask starts again (:func:`request_prefetch`).
+    prepared: dict[int, LocalComparison | None] = field(
+        default_factory=dict[int, "LocalComparison | None"]
+    )
+    # Numbers whose list the store gives with no GitHub, which the lane lists first.
+    local_ready: set[int] = field(default_factory=set[int])
+    # Until when a head fetch that failed is not tried again, so an ask that moves on does
+    # not repeat it at once; the lists go to GitHub meanwhile.
+    heads_held_until: datetime | None = None
 
     def note(self, item: Item, outcome: ItemOutcome) -> None:
         self.recent.append(
@@ -257,6 +293,10 @@ async def request_prefetch(
         lane.queue.clear()
         return "deferred", verdict.reason, 0
     lane.queue = deque(items)
+    # Each ask prepares its lists again, as the heads and base branches are then: a list
+    # already current is left out, so this costs a fetch only when there is a list to make.
+    lane.prepared = {}
+    lane.local_ready = set()
     started = host.coordinator.start(
         _key(host.pulls), partial(_run_lane, app, host, lane), network=False
     )
@@ -279,6 +319,16 @@ _KIND_STOPS: Final = frozenset({"deferred:hourly_cap", "deferred:scan_cap"})
 
 async def _run_lane(app: Any, host: PullHost, lane: Lane) -> None:
     while lane.queue:
+        if any(item.kind == "files" and item.number not in lane.prepared for item in lane.queue):
+            try:
+                await _prepare_lists(host, lane)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                # A bug, which the log names; each list then goes as it would have.
+                log.exception("preparing the prefetch's local lists failed")
+            if not lane.queue:
+                break
         item = lane.queue.popleft()
         lane.running = item
         try:
@@ -299,6 +349,143 @@ async def _run_lane(app: Any, host: PullHost, lane: Lane) -> None:
             lane.queue.clear()
         elif outcome in _KIND_STOPS:
             lane.queue = deque(other for other in lane.queue if other.kind != item.kind)
+
+
+def _listable_heads(
+    served: ServedPulls, numbers: list[int]
+) -> tuple[dict[int, tuple[str, str]], set[int]]:
+    """Which of *numbers* to list from a head and base branch, and which a record's comparison
+    lists. Blocking and bounded: a record and a catalog row each, through their caches."""
+
+    from metabrowser.builtin_plugins.github.pull_files_route import list_source
+
+    heads: dict[int, tuple[str, str]] = {}
+    recorded: set[int] = set()
+    for number in numbers:
+        source = list_source(served.home, served.slug, number)
+        if source == "record":
+            recorded.add(number)
+        elif source is not None:
+            heads[number] = source
+    return heads, recorded
+
+
+async def _prepare_lists(host: PullHost, lane: Lane) -> None:
+    """Make the queued lists local where the store can give them, then queue those first.
+
+    A list is made only for a pull request whose cached list is not current
+    (:func:`~.pull_files_route.list_source`). For an open pull request whose record has no
+    comparison of its newest known head, the heads the store lacks and every base branch
+    named arrive in one fetch (:func:`~metabrowser.cache.pull_refs.fetch_pull_heads`), so
+    each is compared from its base branch as the origin has it now, as GitHub's list is, and
+    its list is the store's manifest with no GitHub request (:mod:`.pull_files_refresh`).
+    The fetch, and attaching a served checkout's store, run at the store's turn as
+    background work, which a reader's job preempts (:class:`~metabrowser.mirror_refresh.
+    StoreTurn`); preempted, or with a fetch that failed, the lists go to GitHub as before.
+    The lists the store gives go first, since each takes tens of milliseconds where a record
+    takes seconds.
+    """
+
+    numbers = sorted(
+        {item.number for item in lane.queue if item.kind == "files"} - lane.prepared.keys()
+    )
+    for number in numbers:
+        lane.prepared[number] = None
+    if not numbers or host.store_turn is None:
+        return
+    work = asyncio.get_running_loop().create_task(_prepare_at_turn(host, lane, numbers))
+    try:
+        await asyncio.wait((work,))
+    except asyncio.CancelledError:
+        work.cancel()
+        await asyncio.wait((work,))
+        raise
+    if work.cancelled():
+        log.debug("a reader's job preempted the prefetch's local lists")
+        return
+    work.result()
+    # Stable: each kind keeps its own order, and the lists the store gives come first.
+    lane.queue = deque(
+        sorted(
+            lane.queue,
+            key=lambda item: not (item.kind == "files" and item.number in lane.local_ready),
+        )
+    )
+
+
+async def _prepare_at_turn(host: PullHost, lane: Lane, numbers: list[int]) -> None:
+    from metabrowser.builtin_plugins.github.checkout import (
+        CheckoutRepository,
+        attach_store_for_lists,
+    )
+    from metabrowser.builtin_plugins.github.pull_list import LocalComparison
+    from metabrowser.cache.pull_refs import (
+        PullRefError,
+        branch_endpoints,
+        fetch_pull_heads,
+        has_commit,
+    )
+    from metabrowser.git.process import GitError
+
+    assert host.store_turn is not None
+    me = asyncio.current_task()
+    assert me is not None
+    async with host.store_turn(me.cancel):
+        served = host.pulls
+        published = served.published
+        if isinstance(published, CheckoutRepository):
+            # A served checkout attaches its store when a reader first compares; the lists
+            # attach it sooner, since a store is what lists them without GitHub.
+            published = await attach_store_for_lists(published)
+        if published is None or isinstance(published, ListedRepository):
+            return
+        git_dir = published.git_dir
+        heads, recorded = await asyncio.to_thread(_listable_heads, served, numbers)
+        lane.local_ready |= recorded
+        now = pulls.utc_now()
+        if not heads or (lane.heads_held_until is not None and now < lane.heads_held_until):
+            return
+        started = time.monotonic()
+        try:
+            missing = [
+                number
+                for number, (head, _) in heads.items()
+                if not await has_commit(published, head)
+            ]
+            await fetch_pull_heads(
+                published, missing, base_branches=sorted({base for _, base in heads.values()})
+            )
+        except (PullRefError, GitError) as exc:
+            # A list from a base branch the origin has since moved would be wrong, so none is
+            # made; GitHub's are read instead.
+            lane.heads_held_until = now + timedelta(seconds=FRESHNESS_WINDOW_S)
+            log.debug("the prefetch could not fetch %d heads: %r", len(heads), exc)
+            return
+        log.debug(
+            "the prefetch fetched %d heads and their base branches in %.0f ms",
+            len(missing),
+            (time.monotonic() - started) * 1000,
+        )
+        gate = asyncio.Semaphore(MERGE_BASES_AT_ONCE)
+
+        async def prepare(number: int, head: str, base_ref: str) -> None:
+            async with gate:
+                try:
+                    if not await has_commit(published, head):
+                        return
+                    endpoints = await branch_endpoints(published, head=head, base_branch=base_ref)
+                except (PullRefError, GitError) as exc:
+                    log.debug("pull request %s is listed from GitHub: %r", number, exc)
+                    return
+            # A merge base that is the head lists nothing: a pull request merged into its
+            # base since the list of pull requests was read. GitHub's list says what it was.
+            if endpoints is not None and endpoints.base != head:
+                lane.prepared[number] = LocalComparison(
+                    git_dir, endpoints.base, head, base_ref=base_ref
+                )
+                lane.local_ready.add(number)
+
+        await asyncio.gather(*(prepare(number, *head) for number, head in heads.items()))
 
 
 def _refund(starts: deque[datetime], at: datetime) -> None:
@@ -390,7 +577,9 @@ async def _files(app: Any, host: PullHost, lane: Lane, item: Item) -> ItemOutcom
     if view.refreshing:
         return "joined"
     ask = FilesRefreshRequest(item.number, False)
-    wanted, local = await asyncio.to_thread(files_refresh_wanted, view, ask)
+    wanted, local = await asyncio.to_thread(
+        files_refresh_wanted, view, ask, lane.prepared.get(item.number)
+    )
     if not wanted:
         return "skipped:not_due"
     # A local comparison's list needs no GitHub and is not counted, but one Git cannot

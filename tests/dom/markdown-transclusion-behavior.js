@@ -131,7 +131,15 @@ async function loadModule() {
         ).href,
       ),
     )
-    .replace('"./markdown-worker-client.js"', JSON.stringify(workerUrl));
+    .replace('"./markdown-worker-client.js"', JSON.stringify(workerUrl))
+    .replace(
+      '"./toc-toggle.js"',
+      JSON.stringify(
+        require("node:url").pathToFileURL(
+          path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/toc-toggle.js"),
+        ).href,
+      ),
+    );
   const [transclusion, parser] = await Promise.all([
     import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`),
     import(parserUrl),
