@@ -9,6 +9,51 @@ All notable changes to Metabrowser are documented here.
   and the entry; pointing at a cell or a segment highlights it and its family’s entry.
   See [Folder Treemap](docs/design-system.md#folder-treemap).
 
+- A pull request’s page says how fresh it is once, at the end of the author’s line, in
+  muted text after a dot: “jlevy wants to merge 1 commit · Fetched just now via GitHub
+  CLI”. It no longer says “Checked just now · fetched 3 h ago”: a check that found
+  nothing changed does not make what is shown newer, so the page names the fetch alone.
+  Where the line has no room for all of it, the note leaves the line rather than cutting
+  the author’s name or sentence short.
+  A rate limit’s hold, “GitHub rate limit · next check at 2:05 PM”, is said in its
+  place, a time of day when the limit lifts today and a short date and time otherwise,
+  cut short with its whole text as a tooltip rather than leaving the line.
+  Refresh ends the row of ages, after View on GitHub and Browse code, and takes the
+  number after theirs.
+  While a refresh runs it stays in its place, muted, and keeps its number, so an offer’s
+  number after it does not move.
+  On a narrow pane the ages are cut short before View on GitHub and Browse code.
+  When fetching a pull request’s changes is refused, the reason is said on Changes,
+  beside Retry changes, rather than on the header.
+  The age ticking and Refresh appearing move nothing.
+  The line under the row of ages is there only while it has something to say: a failure,
+  a message, or an offer to switch to the pull request’s head.
+  See [The Pull Request Page](docs/design-system.md#the-pull-request-page).
+
+- In the Pulls tab, a pull request’s row starts at the list’s left edge, and only the
+  rows of a stack are indented, under their stack’s row: each one’s state icon under the
+  stack’s icon and its title under the stack’s label.
+  A row’s three lines start at one place: the chevron on the third line sits under the
+  state icon, just before the change counts it opens, which line up with the title and
+  the number above them, and the changed files it opens hang one level under it.
+  See [The Pulls Tab](docs/design-system.md#the-pulls-tab).
+
+- The modified status color, the “M” in “2 A, 45 M” wherever a change is summed, reads
+  clearly yellow: dark gold in the light theme, where it read olive, and a brighter
+  yellow in the dark theme, where it read as tan.
+
+- Two writes of the same cached file at once no longer fail, rarely, with an entry that
+  “was replaced while it was being checked”.
+  Each write first removes the temporary files a crashed write left beside its target,
+  and it could take another write’s new temporary file for one in the moment between
+  that write creating it and locking it.
+  A pull request’s changed files, refreshed twice at once, could then fail to be cached.
+  Now a write creates and locks its temporary file under a shared lock on the folder,
+  and the removal runs only while it holds that lock exclusively.
+  A write waits for that lock only briefly; if another process keeps it, as a stopped
+  one can, the write goes ahead without it and logs a warning.
+  See [Atomic Writes](docs/project/architecture/arch-repository-cache.md#atomic-writes).
+
 - The agent skill’s commands now produce output an agent can parse, and its recipes stop
   with a nonzero status when `metab` fails.
   Every `--api` recipe asks for `--format json` and writes the answer to a file that
