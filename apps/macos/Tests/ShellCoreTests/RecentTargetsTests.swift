@@ -6,7 +6,7 @@ import Testing
 /// become rows. `metab` owns the list itself, which `tests/golden/cli-recent.tryscript.md`
 /// pins; `LiveMetabTests` checks the two against each other.
 @Suite struct RecentTargetsTests {
-    private static let home = "/Users/ada"
+    private static let home = "/Volumes/Home"
     private static let stamp = "2026-11-18T03:14:15Z"
 
     private func folder(_ root: String) -> RecentTarget {
@@ -29,7 +29,7 @@ import Testing
             },
             {
               "mode": "folder",
-              "root": "/Users/ada/src/fdu",
+              "root": "/Volumes/Home/src/fdu",
               "opened_at": "2026-11-17T22:01:09Z"
             }
           ],
@@ -46,7 +46,7 @@ import Testing
     @Test func theAnswerIsReadInMetabsOrder() {
         let expected = RecentTargets.Listing(targets: [
             RecentTarget(mode: .mirror, root: "https://github.com/jlevy/tbd", openedAt: "2026-11-18T03:14:15Z"),
-            RecentTarget(mode: .folder, root: "/Users/ada/src/fdu", openedAt: "2026-11-17T22:01:09Z"),
+            RecentTarget(mode: .folder, root: "/Volumes/Home/src/fdu", openedAt: "2026-11-17T22:01:09Z"),
         ])
         #expect(RecentTargets.answer(result(Self.answer)) == .listing(expected))
     }
@@ -103,10 +103,10 @@ import Testing
     // MARK: - The rows
 
     @Test func everyFolderIsARowAndARepositoryOnlyInABuildThatOpensLinks() {
-        let targets = [mirror("https://github.com/jlevy/tbd"), folder("/Users/ada/src/fdu"), folder("/")]
+        let targets = [mirror("https://github.com/jlevy/tbd"), folder("/Volumes/Home/src/fdu"), folder("/")]
         let without = RecentTargets.items(targets, opensURLs: false, home: Self.home)
         #expect(without.map(\.title) == ["fdu", "/"])
-        #expect(without.map(\.url) == [URL(filePath: "/Users/ada/src/fdu/"), URL(filePath: "/")])
+        #expect(without.map(\.url) == [URL(filePath: "/Volumes/Home/src/fdu/"), URL(filePath: "/")])
 
         let with = RecentTargets.items(targets, opensURLs: true, home: Self.home)
         #expect(with.map(\.title) == ["tbd", "fdu", "/"])
@@ -116,20 +116,20 @@ import Testing
 
     @Test func aRowsToolTipSaysWhereItIsAndWhatItIs() {
         let items = RecentTargets.items(
-            [folder("/Users/ada/src/fdu"), mirror("https://github.com/jlevy/tbd")], opensURLs: true, home: Self.home)
+            [folder("/Volumes/Home/src/fdu"), mirror("https://github.com/jlevy/tbd")], opensURLs: true, home: Self.home)
         #expect(items.map(\.toolTip) == ["~/src/fdu · Local folder", "github.com/jlevy/tbd · Cached mirror"])
     }
 
     @Test func rowsThatShareAShortNameAreTitledByTheirFullNames() {
         let items = RecentTargets.items(
-            [folder("/Users/ada/src/tbd"), mirror("https://github.com/jlevy/tbd"), folder("/Users/ada/notes")],
+            [folder("/Volumes/Home/src/tbd"), mirror("https://github.com/jlevy/tbd"), folder("/Volumes/Home/notes")],
             opensURLs: true, home: Self.home)
         #expect(items.map(\.title) == ["~/src/tbd", "github.com/jlevy/tbd", "notes"])
     }
 
     @Test func aRootTheAppCannotOpenIsNoRow() {
         let targets = [
-            mirror("file:///Users/ada/origin.git"),  // metab in Terminal serves it; the app has no way to
+            mirror("file:///Volumes/Home/origin.git"),  // metab in Terminal serves it; the app has no way to
             mirror("https://example.com/team/project"),
             mirror("http://github.com/jlevy/tbd"),
             mirror("https://github.com/jlevy/tbd?tab=readme"),
@@ -152,7 +152,7 @@ import Testing
     @Test func theCommandsAreMetabsModes() {
         #expect(RecentTargets.listArguments == ["--recent", "--json"])
         #expect(RecentTargets.clearArguments == ["--recent-clear"])
-        #expect(RecentTargets.addArguments("/Users/ada/src/fdu") == ["/Users/ada/src/fdu", "--recent-add"])
+        #expect(RecentTargets.addArguments("/Volumes/Home/src/fdu") == ["/Volumes/Home/src/fdu", "--recent-add"])
         #expect(RecentTargets.forgetArguments("/Volumes/Gone/work") == ["/Volumes/Gone/work", "--recent-forget"])
     }
 
@@ -160,7 +160,7 @@ import Testing
         let setup = RuntimeSetup(
             runtime: Runtime(executable: "/opt/tools/metab", version: "0.12.1", source: .chosen),
             tools: ToolPaths(git: "/opt/git/bin/git", gh: nil))
-        let inherited = ["HOME": "/Users/ada", "METABROWSER_CONFIG_DIR": "/elsewhere", "UV_PYTHON": "3.14"]
+        let inherited = ["HOME": "/Volumes/Home", "METABROWSER_CONFIG_DIR": "/elsewhere", "UV_PYTHON": "3.14"]
         let spec = RecentTargets.spec(RecentTargets.listArguments, with: setup, inherited: inherited)
         #expect(spec.executable == "/opt/tools/metab")
         #expect(spec.arguments == ["--recent", "--json"])

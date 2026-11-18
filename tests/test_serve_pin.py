@@ -34,7 +34,7 @@ from starlette.testclient import TestClient
 from typer.testing import CliRunner
 
 from devtools import check_startup_scripts
-from metabrowser import server
+from metabrowser import recent_targets, server
 from metabrowser.cache.acquire import PublishedSource, acquire_source
 from metabrowser.cache.repository_store import open_revision
 from metabrowser.capabilities import get_capabilities, untrusted_shell_csp
@@ -247,6 +247,31 @@ def test_serve_pin_forces_the_untrusted_profile(
     with TestClient(server.app) as client:
         wire = client.get("/api/capabilities").json()["capabilities"]
     assert wire == {"active_content": False, "mutations": False}
+
+
+def test_serving_a_source_records_it_as_a_mirror(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pinned serve enters the recent targets in mirror mode, by its source's address.
+
+    The root is the address the banner names, whatever ``--path`` selects, and a source
+    refused before it is served is not recorded.
+    """
+
+    _home(tmp_path, monkeypatch)
+    origin = _origin(tmp_path)
+
+    refused = _serve(origin.url, "--allow-edits")
+    assert refused.exit_code != 0
+    assert recent_targets.read().targets == ()
+
+    result = _serve(origin.url, "--path", "README.md")
+    assert result.exit_code == 0, result.output
+    served = result.stdout.partition("Serving ")[2].partition(" at ")[0]
+    assert served.startswith("file://")
+    assert [(target.mode, target.root) for target in recent_targets.read().targets] == [
+        ("mirror", served)
+    ]
 
 
 def test_serve_pin_refuses_allow_edits_before_acquiring(

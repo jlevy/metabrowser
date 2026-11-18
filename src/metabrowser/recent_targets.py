@@ -301,9 +301,11 @@ def _parse(payload: bytes) -> tuple[RecentTarget, ...]:
     targets: list[RecentTarget] = []
     seen: set[tuple[str, str]] = set()
     for position, entry in enumerate(raw_entries, start=1):
-        if not isinstance(entry, dict) or set(cast(dict[object, object], entry)) != _ENTRY_KEYS:
+        if not isinstance(entry, dict):
             raise _Damaged(f"entry {position} is not a mode, a root, and a time")
         values = cast(dict[str, object], entry)
+        if frozenset(values) != _ENTRY_KEYS:
+            raise _Damaged(f"entry {position} is not a mode, a root, and a time")
         mode, root, opened_at = values["mode"], values["root"], values["opened_at"]
         if not isinstance(mode, str) or not isinstance(root, str):
             raise _Damaged(f"entry {position} is not a mode, a root, and a time")
