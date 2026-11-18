@@ -1,23 +1,52 @@
-"""End-to-end tests for watcher → coordinator → SSE convergence."""
+"""End-to-end tests for watcher → coordinator → SSE convergence.
+
+The refresh cases run against the selected provider and against it behind
+`tests/perturbed_provider.py` with each refresh split into a `reconciling` state-only
+batch and its data, delivered apart, as fdu commits a refresh. They assert convergence
+and what each envelope may contain, never how many envelopes a change takes (D8 in
+docs/project/architecture/arch-inventory-provider.md): the coordinator publishes a
+transient `reconciling` state with the data after it, so neither arm projects a
+`capability.update` for one refresh.
+"""
 
 from __future__ import annotations
 
 import asyncio
 import shutil
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from typing import Any, cast
 
+import pytest
 from watchfiles import Change
 
 import metabrowser.events_route as evroute
 from metabrowser.events import EventEnvelope, FsChange, FsRemove, FsUpsert
 from metabrowser.events_route import _stream_events, parse_sse_frames
-from metabrowser.inventory_engine.contract import EntryProjection, EntryQuery, ReadRequest
+from metabrowser.inventory_engine.contract import (
+    EntryProjection,
+    EntryQuery,
+    InventoryBackend,
+    ReadRequest,
+)
+from metabrowser.inventory_engine.coordinator import RECONCILING_HOLD_S
 from metabrowser.watch_backends import _emit_for_path
 from tests.inventory_harness import InventoryHarness, inventory_harness
+from tests.perturbed_provider import Perturbation, PerturbedBackend
 
 _REFRESH_EVENT_TIMEOUT_S = 2.0
+
+type _Wrap = Callable[[InventoryBackend], InventoryBackend] | None
+
+
+def _split(inner: InventoryBackend) -> InventoryBackend:
+    # Apart, so the relay sees the state-only half alone, and within the hold.
+    return PerturbedBackend(
+        inner, Perturbation(split_batches=True, delivery_delay_s=RECONCILING_HOLD_S / 5)
+    )
+
+
+_WRAPS = pytest.mark.parametrize("wrap", [None, _split], ids=["provider", "split"])
 
 
 class _FakeQuery:
@@ -144,11 +173,12 @@ def test_fresh_connect_no_replay_flood(tmp_path: Path) -> None:
     assert change_count == 0
 
 
-def test_touch_existing_file_emits_one_upsert_path(tmp_path: Path) -> None:
+@_WRAPS
+def test_touch_existing_file_emits_one_upsert_path(tmp_path: Path, wrap: _Wrap) -> None:
     _build_tree(tmp_path)
 
     async def run() -> tuple[set[str], set[str]]:
-        async with inventory_harness(tmp_path) as harness:
+        async with inventory_harness(tmp_path, wrap=wrap) as harness:
             target = tmp_path / "file_a.log"
             target.write_bytes(b"a" * 75)
             envelopes = await _observe_refresh(
@@ -174,11 +204,12 @@ def test_touch_existing_file_emits_one_upsert_path(tmp_path: Path) -> None:
     assert event_types <= {"fs.change", "catalog.change"}
 
 
-def test_mkdir_with_files_reconciles_subtree_and_root_totals(tmp_path: Path) -> None:
+@_WRAPS
+def test_mkdir_with_files_reconciles_subtree_and_root_totals(tmp_path: Path, wrap: _Wrap) -> None:
     _build_tree(tmp_path)
 
     async def run() -> tuple[set[str], tuple[int | None, int | None]]:
-        async with inventory_harness(tmp_path) as harness:
+        async with inventory_harness(tmp_path, wrap=wrap) as harness:
             new_dir = tmp_path / "newdir"
             new_dir.mkdir()
             (new_dir / "x.txt").write_bytes(b"x" * 10)
@@ -216,11 +247,12 @@ def test_mkdir_with_files_reconciles_subtree_and_root_totals(tmp_path: Path) -> 
     assert root_totals == (4, 180)
 
 
-def test_rm_file_emits_remove_and_updates_root(tmp_path: Path) -> None:
+@_WRAPS
+def test_rm_file_emits_remove_and_updates_root(tmp_path: Path, wrap: _Wrap) -> None:
     _build_tree(tmp_path)
 
     async def run() -> tuple[set[str], tuple[int | None, int | None]]:
-        async with inventory_harness(tmp_path) as harness:
+        async with inventory_harness(tmp_path, wrap=wrap) as harness:
             target = tmp_path / "file_a.log"
             target.unlink()
             envelopes = await _observe_refresh(
@@ -253,11 +285,18 @@ def test_rm_file_emits_remove_and_updates_root(tmp_path: Path) -> None:
     assert root_totals == (1, 100)
 
 
-def test_rm_directory_coalesces_descendant_removals(tmp_path: Path) -> None:
+@_WRAPS
+def test_rm_directory_coalesces_descendant_removals(tmp_path: Path, wrap: _Wrap) -> None:
+    """A removed directory and its descendants leave in one envelope, never half removed.
+
+    The count of envelopes is the provider's and the relay's; what D8 forbids is a
+    published version in which ``sub1`` is gone but a descendant remains.
+    """
+
     _build_tree(tmp_path)
 
-    async def run() -> tuple[int, set[str]]:
-        async with inventory_harness(tmp_path) as harness:
+    async def run() -> tuple[list[set[str]], set[str]]:
+        async with inventory_harness(tmp_path, wrap=wrap) as harness:
             target = tmp_path / "sub1"
             shutil.rmtree(target)
             envelopes = await _observe_refresh(
@@ -279,8 +318,14 @@ def test_rm_directory_coalesces_descendant_removals(tmp_path: Path) -> None:
                 for operation in change.ops
                 if isinstance(operation, FsRemove)
             }
-            return len(changes), removed
+            per_change = [
+                {operation.path for operation in change.ops if isinstance(operation, FsRemove)}
+                for change in changes
+            ]
+            return per_change, removed
 
-    change_count, removed = asyncio.run(run())
-    assert change_count == 1
+    per_change, removed = asyncio.run(run())
     assert {"sub1", "sub1/file_b.log"} <= removed
+    removing_root = [paths for paths in per_change if "sub1" in paths]
+    assert removing_root
+    assert all("sub1/file_b.log" in paths for paths in removing_root)

@@ -28,6 +28,7 @@ from metabrowser.inventory_engine.contract import (
     EngineVersion,
     EntryProjection,
     FilteredTreeProjection,
+    Freshness,
     IndexState,
     InventoryBackend,
     InventoryClosedError,
@@ -71,6 +72,32 @@ _DECORATED_QUERY_KINDS = frozenset(
 
 class InventoryNotOpenError(InventoryContractError):
     """The coordinator has not opened its first served root."""
+
+
+# How long the change relay holds a batch whose freshness is `reconciling`, with every
+# batch after it, waiting for freshness to settle before it publishes them as one host
+# change (D8 in docs/project/architecture/arch-inventory-provider.md). A provider may
+# commit a refresh's state transition as a version of its own; fdu's three commits for
+# one refresh arrived within one 250 ms poll of its change thread in the spike
+# (explorations/fdu-provider-spike/README.md), so the hold matches that poll. It is also
+# the most a provider that stays `reconciling`, as the Python provider does while its
+# watcher starts, delays each change.
+RECONCILING_HOLD_S = 0.25
+
+# How long `refresh()` waits for the change relay to publish its receipt's version
+# before it fails (R27). This is a liveness bound for a provider whose change stream
+# never delivers the version its receipt named, not a latency target: a relay that
+# delivers answers within the provider's own commit latency plus one reconciling hold.
+REFRESH_PUBLICATION_TIMEOUT_S = 5.0
+
+
+class InventoryPublicationError(InventoryContractError):
+    """The change relay did not publish a refresh receipt's version.
+
+    The refresh itself was applied; what failed is the host's read-your-writes promise,
+    because the relay stopped or its provider's change stream never reached the
+    receipt's version within `REFRESH_PUBLICATION_TIMEOUT_S`.
+    """
 
 
 class InventoryConsistencyError(InventoryContractError):
@@ -320,6 +347,12 @@ class InventoryCoordinator:
         self._engine_cursor: ChangeCursor | None = None
         self._state: IndexState | None = None
         self._relay_task: asyncio.Task[None] | None = None
+        # The newest provider sequence the relay has published as a host change, and
+        # an event set and replaced at each publication or relay exit, which
+        # `refresh()` waits on. Reads also advance `_engine_version`, so it cannot
+        # stand for what the change stream has published.
+        self._published_sequence = -1
+        self._publication = asyncio.Event()
         self._host_session: str | None = None
         self._host_sequence = 0
         self._history: deque[HostChange] = deque(maxlen=config.change_queue_size)
@@ -444,7 +477,14 @@ class InventoryCoordinator:
             await asyncio.shield(self._end_operation())
 
     async def refresh(self, request: RefreshRequest) -> RefreshReceipt:
-        """Forward verified filesystem hints without exposing the provider."""
+        """Forward verified filesystem hints and return once the host has published them.
+
+        The receipt returns only after the change relay has published a host change at
+        or past the receipt's version, so a read, checkpoint, or change subscription
+        that follows sees the refresh (R27). The wait fails fast with
+        `InventoryPublicationError` if the relay has stopped, and after
+        `REFRESH_PUBLICATION_TIMEOUT_S` if it never reaches the version.
+        """
 
         handle = await self._begin_operation()
         try:
@@ -461,9 +501,41 @@ class InventoryCoordinator:
                     )
                 current = self._require_engine_version_locked()
                 _require_same_provider_identity(current, receipt.version)
+            await self._await_publication(handle, receipt.version)
             return receipt
         finally:
             await asyncio.shield(self._end_operation())
+
+    async def _await_publication(self, handle: InventoryHandle, version: EngineVersion) -> None:
+        """Wait until the relay for *handle* has published *version* as a host change."""
+
+        try:
+            async with asyncio.timeout(REFRESH_PUBLICATION_TIMEOUT_S):
+                while True:
+                    if handle is not self._handle:
+                        raise InventoryConsistencyError(
+                            "the served root changed during a coordinated refresh"
+                        )
+                    if self._published_sequence >= version.sequence:
+                        return
+                    relay = self._relay_task
+                    if relay is None or relay.done():
+                        raise InventoryPublicationError(
+                            "the inventory change relay stopped before it published "
+                            "the refresh receipt's version"
+                        )
+                    # No await separates the checks above from taking this event, so
+                    # a publication cannot fall between them.
+                    await self._publication.wait()
+        except TimeoutError as error:
+            raise InventoryPublicationError(
+                "the inventory change relay did not publish the refresh receipt's version "
+                f"within {REFRESH_PUBLICATION_TIMEOUT_S} s"
+            ) from error
+
+    def _signal_publication(self) -> None:
+        event, self._publication = self._publication, asyncio.Event()
+        event.set()
 
     async def prioritize(self, request: PriorityRequest) -> None:
         """Forward bounded interactive-priority hints to the opened handle."""
@@ -647,6 +719,7 @@ class InventoryCoordinator:
         self._opened_at_ns = opened_at_ns
         self._open_ns = opened_at_ns - open_started_ns
         self._note_discovery_locked(initial.state)
+        self._published_sequence = initial.version.sequence
         self._host_session = uuid.uuid4().hex
         self._host_sequence = 0
         self._history.clear()
@@ -712,6 +785,9 @@ class InventoryCoordinator:
         except Exception:
             LOG.exception("inventory provider change relay failed")
             await self._publish_relay_reset(handle)
+        finally:
+            # A refresh waiting on this relay fails fast once it has stopped.
+            self._signal_publication()
 
     @staticmethod
     async def _pump_provider_changes(
@@ -754,16 +830,9 @@ class InventoryCoordinator:
                 return
             await asyncio.sleep(0)
             batches = [first]
-            ended = False
-            while True:
-                try:
-                    batch = queue.get_nowait()
-                except asyncio.QueueEmpty:
-                    break
-                if batch is None:
-                    ended = True
-                    break
-                batches.append(batch)
+            ended = self._take_ready_batches(queue, batches)
+            if not ended:
+                ended = await self._hold_reconciling_batches(queue, batches)
             for batch in batches:
                 if batch.version.sequence <= previous_sequence:
                     raise InventoryConsistencyError(
@@ -773,6 +842,51 @@ class InventoryCoordinator:
             await self._publish_provider_batches(handle, tuple(batches))
             if ended:
                 return
+
+    @staticmethod
+    def _take_ready_batches(
+        queue: asyncio.Queue[ChangeBatch | None], batches: list[ChangeBatch]
+    ) -> bool:
+        """Append every batch already queued; true when the stream's end was among them."""
+
+        while True:
+            try:
+                batch = queue.get_nowait()
+            except asyncio.QueueEmpty:
+                return False
+            if batch is None:
+                return True
+            batches.append(batch)
+
+    @classmethod
+    async def _hold_reconciling_batches(
+        cls, queue: asyncio.Queue[ChangeBatch | None], batches: list[ChangeBatch]
+    ) -> bool:
+        """Hold a transient `reconciling` freshness until it settles, within a bound (D8).
+
+        While the newest batch reports `reconciling`, every batch that follows joins
+        the held group, so a provider that commits a refresh's state transition before
+        its data publishes one host change at the settled version. The hold ends when
+        freshness settles or after `RECONCILING_HOLD_S`; true when the stream ended.
+        """
+
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + RECONCILING_HOLD_S
+        while batches[-1].state.freshness is Freshness.RECONCILING:
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                return False
+            try:
+                async with asyncio.timeout(remaining):
+                    batch = await queue.get()
+            except TimeoutError:
+                return False
+            if batch is None:
+                return True
+            batches.append(batch)
+            if cls._take_ready_batches(queue, batches):
+                return True
+        return False
 
     async def _publish_provider_batches(
         self,
@@ -787,6 +901,7 @@ class InventoryCoordinator:
             for batch in batches:
                 _require_same_provider_identity(current, batch.version)
             merged = self._merge_provider_batches(batches)
+            self._published_sequence = max(self._published_sequence, merged.version.sequence)
             if merged.version.sequence >= current.sequence:
                 self._engine_version = merged.version
                 self._engine_cursor = merged.cursor
@@ -804,6 +919,7 @@ class InventoryCoordinator:
                 work=merged.work,
             )
             self._publish_locked(published)
+            self._signal_publication()
         self._notify_listeners(published)
 
     async def _publish_relay_reset(self, handle: InventoryHandle) -> None:
@@ -1112,6 +1228,8 @@ class InventoryCoordinator:
 
 __all__ = [
     "DISCOVERY_PHASES",
+    "RECONCILING_HOLD_S",
+    "REFRESH_PUBLICATION_TIMEOUT_S",
     "CoordinatedRead",
     "DecoratedInventoryEntry",
     "DiscoveryRecord",
@@ -1122,5 +1240,6 @@ __all__ = [
     "InventoryConsistencyError",
     "InventoryCoordinator",
     "InventoryNotOpenError",
+    "InventoryPublicationError",
     "InventoryReadSession",
 ]

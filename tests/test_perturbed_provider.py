@@ -2,9 +2,10 @@
 
 Each case wraps the provider the environment selects, so the wrapper is proven over a
 real provider, and checks one perturbation or fault at the provider boundary. The last
-cases reach the host through the inventory harness: one shows the split reaching the
-coordinator, and one records, as an expected failure, the read-after-refresh defect the
-delivery delay reproduces.
+cases reach the host through the inventory harness and pin the host rules the
+perturbations once broke: a refresh's split halves publish as one host change (D8) unless
+they arrive further apart than the coordinator's hold, and a refresh returns only after
+the host has published its receipt's version (R27).
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -20,6 +22,7 @@ from metabrowser.inventory_engine.contract import (
     ChangeBatch,
     DiagnosticsProjection,
     DiagnosticsQuery,
+    Freshness,
     InventoryConfig,
     LifecyclePhase,
     ObservationKind,
@@ -28,7 +31,7 @@ from metabrowser.inventory_engine.contract import (
     RefreshRequest,
     VersionUnavailableError,
 )
-from metabrowser.inventory_engine.coordinator import HostChange
+from metabrowser.inventory_engine.coordinator import RECONCILING_HOLD_S, HostChange
 from metabrowser.inventory_engine.factory import create_inventory_backend
 from tests.inventory_harness import inventory_harness, selected_inventory_provider
 from tests.perturbed_provider import Perturbation, PerturbedBackend, PerturbedHandle
@@ -133,7 +136,8 @@ def test_split_delivers_state_before_data_and_resumes_past_the_half_seen(
     first, second = asyncio.run(run())
     state_only, data = first[-2:]
     assert state_only.version.sequence == data.version.sequence - 1
-    assert state_only.state == data.state
+    assert state_only.state.freshness is Freshness.RECONCILING
+    assert replace(state_only.state, freshness=data.state.freshness) == data.state
     assert (state_only.dirty_paths, state_only.dirty_queries) == ((), frozenset())
     assert not (state_only.reset or state_only.all_dirty)
     # Resumed from the state-only cursor, the stream starts at that batch's data half.
@@ -228,66 +232,80 @@ async def _host_changes_after_refresh(
     raise AssertionError(f"the host stream ended first: {seen}")
 
 
-def test_the_split_reaches_the_host_as_its_own_change(tmp_path: Path) -> None:
-    """One refresh is two host changes when its halves arrive apart, as fdu's commits did.
+async def _split_refresh_host_changes(tmp_path: Path, delay_s: float) -> list[HostChange]:
+    config = InventoryConfig(watch_mode="off")
+    wrap = _wrap(
+        Perturbation(split_batches=True, provider_name="renamed", delivery_delay_s=delay_s)
+    )
+    async with inventory_harness(tmp_path, config=config, wrap=wrap) as harness:
+        coordinator = harness.runtime.coordinator
+        read = await coordinator.read(
+            ReadRequest(queries=(DiagnosticsQuery(query_id="diagnostics"),))
+        )
+        diagnostics = read.result.projection("diagnostics")
+        assert isinstance(diagnostics, DiagnosticsProjection)
+        assert diagnostics.payload.provider == "renamed"
+        cursor, _version, _state = await coordinator.checkpoint()
+        changes = coordinator.changes(after=cursor)
+        (tmp_path / "new.txt").write_text("new")
+        seen = await _host_changes_after_refresh(
+            changes, lambda: coordinator.refresh(_refresh("new.txt")), "new.txt"
+        )
+        await changes.aclose()
+        return seen
 
-    Delivered together, the change relay merges the halves into one host change, so
-    the split is paired with a delivery delay here.
+
+def test_a_split_refresh_reaches_the_host_as_one_change(tmp_path: Path) -> None:
+    """A refresh committed as a state-only version then its data is one host change (D8).
+
+    The halves arrive apart, as fdu's commits did, but within the coordinator's hold,
+    so the `reconciling` state-only half waits for the data and publishes with it.
     """
 
-    config = InventoryConfig(watch_mode="off")
+    seen = asyncio.run(_split_refresh_host_changes(tmp_path, RECONCILING_HOLD_S / 5))
+    assert len(seen) == 1
+    (change,) = seen
+    assert change.facts_changed
+    assert change.state.freshness is not Freshness.RECONCILING
+    assert change.version.engine.sequence % 2 == 0
 
-    async def run() -> list[HostChange]:
-        wrap = _wrap(
-            Perturbation(split_batches=True, provider_name="renamed", delivery_delay_s=0.05)
-        )
-        async with inventory_harness(tmp_path, config=config, wrap=wrap) as harness:
-            coordinator = harness.runtime.coordinator
-            read = await coordinator.read(
-                ReadRequest(queries=(DiagnosticsQuery(query_id="diagnostics"),))
-            )
-            diagnostics = read.result.projection("diagnostics")
-            assert isinstance(diagnostics, DiagnosticsProjection)
-            assert diagnostics.payload.provider == "renamed"
-            cursor, _version, _state = await coordinator.checkpoint()
-            changes = coordinator.changes(after=cursor)
-            (tmp_path / "new.txt").write_text("new")
-            seen = await _host_changes_after_refresh(
-                changes, lambda: coordinator.refresh(_refresh("new.txt")), "new.txt"
-            )
-            await changes.aclose()
-            return seen
 
-    seen = asyncio.run(run())
+def test_split_halves_further_apart_than_the_hold_publish_separately(tmp_path: Path) -> None:
+    """The hold is bounded: halves that arrive after it expires are two host changes."""
+
+    seen = asyncio.run(_split_refresh_host_changes(tmp_path, RECONCILING_HOLD_S * 2))
     state_only, data = seen[-2:]
     assert not state_only.facts_changed
+    assert state_only.state.freshness is Freshness.RECONCILING
     assert state_only.version.engine.sequence == data.version.engine.sequence - 1
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="a refresh returns before the change relay publishes its receipt's version "
-    "(R27 in research-2026-11-17-fdu-backend-revisited.md)",
-)
-def test_a_checkpoint_after_a_refresh_is_at_least_the_receipt_version(tmp_path: Path) -> None:
-    """A read after a refresh must not see a host version older than the receipt's.
+def test_a_refresh_returns_after_the_host_publishes_its_receipt_version(
+    tmp_path: Path,
+) -> None:
+    """A read after a refresh sees at least the receipt's version, however late the relay.
 
-    Unwrapped, the Python provider passes, because its relay publishes while the refresh
-    itself awaits the filesystem. A relay that trails, here by the wrapper's delivery
-    delay and under fdu by its commit poll, leaves the host's version behind the
-    receipt's when the refresh returns.
+    The wrapper's delivery delay makes the change relay trail the refresh, as fdu's
+    commit poll did, so the coordinator has to wait for the relay (R27). The refresh's
+    change is then already in host history, so a subscriber from before the refresh
+    replays it at once.
     """
 
     config = InventoryConfig(watch_mode="off")
 
-    async def run() -> tuple[int, int]:
+    async def run() -> tuple[int, int, HostChange]:
         wrap = _wrap(Perturbation(delivery_delay_s=_DELAY_S))
         async with inventory_harness(tmp_path, config=config, wrap=wrap) as harness:
             coordinator = harness.runtime.coordinator
+            before, _version, _state = await coordinator.checkpoint()
             (tmp_path / "new.txt").write_text("new")
             receipt = await coordinator.refresh(_refresh("new.txt"))
             _cursor, version, _state = await coordinator.checkpoint()
-            return version.engine.sequence, receipt.version.sequence
+            changes = coordinator.changes(after=before)
+            replayed = await asyncio.wait_for(anext(changes), _DELAY_S / 4)
+            await changes.aclose()
+            return version.engine.sequence, receipt.version.sequence, replayed
 
-    checkpoint, receipt = asyncio.run(run())
+    checkpoint, receipt, replayed = asyncio.run(run())
     assert checkpoint >= receipt
+    assert "new.txt" in replayed.dirty_paths

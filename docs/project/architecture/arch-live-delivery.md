@@ -45,7 +45,17 @@ iterator. `_run_change_relay` pumps `ChangeBatch` values into a bounded queue; a
 queue is drained and replaced by one reset.
 `_dispatch_provider_changes` takes every batch that has queued, rejects a sequence that
 does not increase or an identity that does not match the handle, and merges the group
-into one `HostChange`.
+into one `HostChange`. While the newest batch in the group reports freshness
+`reconciling`, the relay holds the group and adds every batch that follows, until
+freshness settles or `RECONCILING_HOLD_S` passes, so a provider that commits a refresh’s
+state transition before its data publishes one host change at the settled version (D8 in
+[the provider contract](arch-inventory-provider.md#decisions-for-a-second-provider)).
+
+`refresh()` returns its receipt only once the relay has published a host change at or
+past the receipt’s version, so a read, checkpoint, or subscription after it sees the
+refresh (R27). The wait raises `InventoryPublicationError` at once if the relay has
+stopped, and after `REFRESH_PUBLICATION_TIMEOUT_S` if the provider’s stream never
+reaches the version.
 
 A `HostChange` carries a host cursor, the host version (engine version plus overlay
 revision), the provider state, and dirty paths, dirty query kinds, `all_dirty`, or

@@ -11,6 +11,7 @@ from typing import cast
 import pytest
 
 from metabrowser.file_type_registry import load_file_type_registry_from_text
+from metabrowser.inventory_engine import coordinator as coordinator_module
 from metabrowser.inventory_engine.contract import (
     BoundaryMetrics,
     CatalogProjection,
@@ -53,9 +54,11 @@ from metabrowser.inventory_engine.contract import (
 )
 from metabrowser.inventory_engine.coordinator import (
     CoordinatedRead,
+    HostChange,
     HostCursor,
     InventoryConsistencyError,
     InventoryCoordinator,
+    InventoryPublicationError,
     InventoryReadSession,
 )
 from metabrowser.inventory_engine.factory import (
@@ -71,11 +74,11 @@ from metabrowser.inventory_engine.tree_page_assembly import (
 from tests.inventory_harness import inventory_harness
 
 
-def _state() -> IndexState:
+def _state(freshness: Freshness = Freshness.FRESH) -> IndexState:
     return IndexState(
         phase=LifecyclePhase.WATCHING,
         coverage=Coverage(complete=True),
-        freshness=Freshness.FRESH,
+        freshness=freshness,
         source=SourceKind.SCANNED,
     )
 
@@ -228,12 +231,13 @@ class _FakeHandle:
         dirty_queries: frozenset[QueryKind] = frozenset(),
         reset: bool = False,
         work: WorkCounters = WorkCounters(),
+        freshness: Freshness = Freshness.FRESH,
     ) -> ChangeBatch:
         self.sequence += 1
         batch = ChangeBatch(
             cursor=self.cursor(),
             version=self.version(),
-            state=_state(),
+            state=_state(freshness),
             dirty_paths=() if reset else dirty_paths,
             non_file_paths=() if reset else non_file_paths,
             dirty_queries=frozenset() if reset else dirty_queries,
@@ -888,6 +892,169 @@ def test_refresh_rejects_incomplete_receipts_and_provider_identity_drift(
         )
         with pytest.raises(InventoryConsistencyError, match="provider fingerprints"):
             await coordinator.refresh(refresh)
+        await coordinator.close()
+
+    asyncio.run(_run())
+
+
+def _ahead_receipt(handle: _FakeHandle, path: str) -> RefreshReceipt:
+    """A receipt one version past what the fake has delivered, as a refresh's would be."""
+
+    version = handle.version()
+    return RefreshReceipt(
+        version=EngineVersion(
+            session=version.session,
+            sequence=version.sequence + 1,
+            scope_fingerprint=version.scope_fingerprint,
+            semantic_fingerprint=version.semantic_fingerprint,
+        ),
+        accepted_paths=(path,),
+    )
+
+
+def test_refresh_returns_after_the_relay_publishes_its_receipt_version(tmp_path: Path) -> None:
+    """R27: a refresh's receipt is a host fact once it returns, not a provider's promise."""
+
+    async def _run() -> None:
+        backend = _FakeBackend()
+        coordinator = _coordinator(backend)
+        await coordinator.open(tmp_path)
+        handle = backend.handles[0]
+        await asyncio.wait_for(handle.changes_started.wait(), timeout=1)
+        cursor, _version, _state_value = await coordinator.checkpoint()
+        handle.refresh_receipt = _ahead_receipt(handle, "a")
+        refresh = asyncio.ensure_future(
+            coordinator.refresh(RefreshRequest(observations=(RefreshObservation(path="a"),)))
+        )
+        await asyncio.sleep(0.05)
+        assert not refresh.done()
+
+        handle.emit(dirty_paths=("a",))
+        receipt = await asyncio.wait_for(refresh, timeout=1)
+        new_cursor, version, _state_value = await coordinator.checkpoint()
+        assert version.engine.sequence >= receipt.version.sequence
+        assert new_cursor.sequence == cursor.sequence + 1
+        # The change is already in host history, so a subscriber from before the
+        # refresh replays it without waiting on the relay.
+        changes = coordinator.changes(after=cursor)
+        change = await asyncio.wait_for(anext(changes), timeout=0.05)
+        assert change.dirty_paths == ("a",)
+        await changes.aclose()
+        await coordinator.close()
+
+    asyncio.run(_run())
+
+
+def test_refresh_fails_fast_when_the_relay_has_stopped(tmp_path: Path) -> None:
+    async def _run() -> None:
+        backend = _FakeBackend()
+        coordinator = _coordinator(backend)
+        await coordinator.open(tmp_path)
+        handle = backend.handles[0]
+        await asyncio.wait_for(handle.changes_started.wait(), timeout=1)
+        cursor, _version, _state_value = await coordinator.checkpoint()
+        changes = coordinator.changes(after=cursor)
+        # Ending the provider's stream while the handle is open stops the relay, which
+        # publishes a reset as it goes.
+        for queue in tuple(handle.subscribers):
+            queue.put_nowait(None)
+        assert (await asyncio.wait_for(anext(changes), timeout=1)).reset
+        handle.refresh_receipt = _ahead_receipt(handle, "a")
+        with pytest.raises(InventoryPublicationError, match="stopped"):
+            await asyncio.wait_for(
+                coordinator.refresh(RefreshRequest(observations=(RefreshObservation(path="a"),))),
+                timeout=1,
+            )
+        await changes.aclose()
+        await coordinator.close()
+
+    asyncio.run(_run())
+
+
+def test_refresh_fails_when_the_stream_never_reaches_its_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(coordinator_module, "REFRESH_PUBLICATION_TIMEOUT_S", 0.05)
+
+    async def _run() -> None:
+        backend = _FakeBackend()
+        coordinator = _coordinator(backend)
+        await coordinator.open(tmp_path)
+        handle = backend.handles[0]
+        handle.refresh_receipt = _ahead_receipt(handle, "a")
+        with pytest.raises(InventoryPublicationError, match="did not publish"):
+            await coordinator.refresh(RefreshRequest(observations=(RefreshObservation(path="a"),)))
+        # The failed wait released its operation, so the root can still close.
+        await asyncio.wait_for(coordinator.close(), timeout=1)
+
+    asyncio.run(_run())
+
+
+async def _next_change(changes: AsyncIterator[HostChange]) -> HostChange:
+    return await asyncio.wait_for(anext(changes), timeout=1)
+
+
+def test_a_reconciling_batch_and_the_batches_after_it_publish_as_one_change(
+    tmp_path: Path,
+) -> None:
+    """D8: a transient `reconciling` state is not an envelope of its own."""
+
+    async def _run() -> None:
+        backend = _FakeBackend()
+        coordinator = _coordinator(backend)
+        await coordinator.open(tmp_path)
+        handle = backend.handles[0]
+        await asyncio.wait_for(handle.changes_started.wait(), timeout=1)
+        cursor, _version, _state_value = await coordinator.checkpoint()
+        changes = coordinator.changes(after=cursor)
+        pending = asyncio.ensure_future(_next_change(changes))
+
+        handle.emit(freshness=Freshness.RECONCILING)
+        await asyncio.sleep(0.02)
+        handle.emit(dirty_paths=("a",), freshness=Freshness.RECONCILING)
+        await asyncio.sleep(0.02)
+        assert not pending.done()
+        settled = handle.emit(dirty_paths=("b",))
+
+        change = await pending
+        assert change.version.engine == settled.version
+        assert change.state.freshness is Freshness.FRESH
+        assert change.dirty_paths == ("a", "b")
+        assert change.cursor.sequence == cursor.sequence + 1
+        await changes.aclose()
+        await coordinator.close()
+
+    asyncio.run(_run())
+
+
+def test_a_reconciling_hold_publishes_when_its_bound_expires(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(coordinator_module, "RECONCILING_HOLD_S", 0.05)
+
+    async def _run() -> None:
+        backend = _FakeBackend()
+        coordinator = _coordinator(backend)
+        await coordinator.open(tmp_path)
+        handle = backend.handles[0]
+        await asyncio.wait_for(handle.changes_started.wait(), timeout=1)
+        cursor, _version, _state_value = await coordinator.checkpoint()
+        changes = coordinator.changes(after=cursor)
+
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+        held = handle.emit(dirty_paths=("a",), freshness=Freshness.RECONCILING)
+        first = await _next_change(changes)
+        assert loop.time() - started >= 0.05
+        assert first.version.engine == held.version
+        assert first.state.freshness is Freshness.RECONCILING
+        assert first.dirty_paths == ("a",)
+
+        # A provider that stays reconciling still publishes, one bounded hold at a time.
+        handle.emit(dirty_paths=("b",), freshness=Freshness.RECONCILING)
+        second = await _next_change(changes)
+        assert second.dirty_paths == ("b",)
+        await changes.aclose()
         await coordinator.close()
 
     asyncio.run(_run())
