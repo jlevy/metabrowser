@@ -6,6 +6,9 @@ A letter means the same thing wherever it works, `0` goes home, and the numbers 
 `9` reach the controls on the current screen in reading order.
 Press `?` for Help, which lists the keys by what they do, and hold Shift to see each key
 on the control it reaches now.
+The strip at the foot of the navigation pane lists Shift first, as Reveal keys, then
+`?`; in a narrow pane it keeps Shift and drops the others from the end, whose keys still
+work.
 
 ## Letters and Numbers
 
@@ -20,7 +23,7 @@ on the control it reaches now.
 | `J` or `K` | Down or up a row | A tree, Commits, Pulls, or changed-file row has focus |
 | `Control-N` or `Control-P` | Next or previous item one level up: the pull requests of a stack | A pull request in a stack is open, outside text fields, on macOS and iOS |
 | `U` | Up: the parent folder | A file, or a folder below the root, is shown |
-| `W` | The branch or tag switcher | A pinned revision of a cached repository is shown |
+| `W` | The branch or tag switcher | A repository opened by its URL, or a folder that is a repository’s root, is shown |
 | `V` | The rendered view: Document, Preview, Tree, or Log | A file’s tab bar is shown |
 | `S` | The source: Source, or Raw JSON | A file’s tab bar is shown |
 | `C` | Charts | An agent log is shown |
@@ -60,7 +63,7 @@ Each control is numbered only while it is shown:
 | --- | --- |
 | The Files tab | Group by, Modified within (Any age), and File type (Any type), whether the filter drawer is open or closed; a Git pin has no Modified within |
 | The Pulls tab | Open, Closed, and All, then Reload, which keeps its number while it waits |
-| A pull request page | The header’s links and actions, such as View on GitHub, Browse code, and Refresh, in the order the header shows them |
+| A pull request page | The header’s links and actions, such as View on GitHub, Browse code, and Refresh, in the order the header shows them; Refresh keeps its number while it waits |
 
 The navigation pane’s numbers come first, so a pull request page’s numbers continue
 after those of the tab beside it.
@@ -105,6 +108,12 @@ Command-R (Control-R or F5 elsewhere) always reloads, whatever has focus.
 In the macOS app it is View > Reload Page, which also restarts a folder whose server
 failed. The app’s other keys are the ones its menus show, which
 [the app guide](macos-app.md) describes.
+
+Command-P (Control-P elsewhere) prints the view shown, as the browser’s Print, and in
+the macOS app it is File > Print.
+A rendered Markdown document, opened as a file or as the README on a folder’s Overview,
+also has a print button at its top right when the window is wide enough to show the
+document as a card, and it prints the same way.
 
 ## For Plugin Authors
 

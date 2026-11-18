@@ -161,6 +161,9 @@ export function wireInertToc(article, options = {}) {
   const windowTarget = options.windowTarget ?? window;
   const viewport = /** @type {HTMLElement | null} */ (article.closest("[data-kpress-viewport]"));
   const scroller = viewport ?? windowTarget;
+  // The toggle measures the element the render is mounted in, as a trusted render's does
+  // (rendered.js, transclusion.js): `inertArticle` finds the article as its child.
+  const mounted = article.parentElement ?? article;
   const links = Array.from(nav.querySelectorAll("a.toc-link"));
   const targets = links.flatMap((link) => {
     const target = findElementById(article, (link.getAttribute("href") ?? "").slice(1));
@@ -208,7 +211,7 @@ export function wireInertToc(article, options = {}) {
   const update = () => {
     toggle.classList.toggle(
       "show-toggle",
-      tocToggleVisible(article, {
+      tocToggleVisible(mounted, {
         scrollTop: scrollTop(),
         top: viewport ? viewport.getBoundingClientRect().top : 0,
       }),

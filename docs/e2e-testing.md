@@ -278,6 +278,18 @@ alone, as a CI job can call it:
 | `make test-chrome` | the tests marked `chrome` | one at a time, after the serial tier |
 | `make test-goldens` | `tests/golden/*.tryscript.md` | `devtools/run_goldens.py`, `GOLDEN_JOBS` files at a time |
 
+A run that selects a `chrome` test starts Chrome once per pytest process (each xdist
+worker) and closes it before the first test, under a bound of its own, because a CI
+runner’s first Chrome start is cold and a start cut off before it finishes leaves the
+next one cold too. It writes how the warm-up went to the terminal at once.
+`tests/chrome_starts.py` has the measurements and the bound, `WARM_UP_BOUND_S`. Each
+test’s start then has `START_BOUND_MS` (`tests/dom/chrome-session.mjs`); a start that
+fails is logged with the end of Chrome’s stderr, and one whose Chrome exited is made
+again, up to `START_ATTEMPTS` tries.
+The run’s terminal summary prints a `chrome starts:` line for every start made through
+`tests/dom/chrome-session.mjs`: how many, the slowest, and each that failed, so a run
+that a second start kept green still shows it.
+
 `PYTEST_WORKERS` defaults to one worker per logical processor, and a shared or loaded
 machine lowers it: `make test PYTEST_WORKERS=2`. `make test-chrome SHARD=2/4` runs the
 second of four parts of a tier, and `SHARD` works with each pytest target.
@@ -418,21 +430,32 @@ Strict mode is off on a developer machine, which can add these:
   reads the face documents and chrome prose are drawn in under each reading font and
   font set; `tests/test_raw_profile_cache_chrome.py`, which follows a `/raw` answer
   Chrome kept under the trusted profile after the folder is served `--untrusted`;
-  `tests/test_overview_readme_toc_chrome.py`, which measures a folder Overview’s README
-  table of contents against the same README opened as a file;
+  `tests/test_inert_render_refusal_chrome.py`, which reads the notice and the source an
+  untrusted document past its render deadline shows in its Document tab and in the
+  folder Overview’s README panel; `tests/test_overview_readme_toc_chrome.py`, which
+  measures a folder Overview’s README table of contents against the same README opened
+  as a file; `tests/test_document_print_chrome.py`, which measures a document’s print
+  button in its card’s corner, that nothing moves when it arrives, the table of contents
+  toggle and rail beside it, a click and Command-P, and print output;
   `tests/test_diff_markdown_fold_chrome.py`, which measures a rendered Markdown diff’s
   fold of unchanged blocks closed, open, and under the pointer, and its quote and code
   against a document’s in the light and the dark theme;
-  `tests/test_control_chords_chrome.py`, which presses Control-N and Control-P through
-  Chrome’s input under a navigator overridden to name a Mac and then Linux, on every
-  host, and reads that only the Mac’s binds them;
+  `tests/test_checkout_ref_selector_chrome.py`, which serves a checkout with `metab` and
+  switches it between its working tree and its branches and tags from the page, reading
+  each document’s policy and the selector’s panel, and then compares every file under
+  the checkout with what it was; `tests/test_control_chords_chrome.py`, which presses
+  Control-N and Control-P through Chrome’s input under a navigator overridden to name a
+  Mac and then Linux, on every host, and reads that only the Mac’s binds them;
   `tests/test_overview_legend_hover_chrome.py`, which moves Chrome’s pointer onto a File
-  Overview legend entry and its bar segment and reads the segment’s computed lift and
-  growth and where the tooltip lands; and `tests/test_title_prefix_chrome.py`, which
-  reads a title prefix’s and the rest’s computed weight, face, size, and ink on every
-  title surface. Any other check that calls `require_chrome` in `tests/required_tools.py`
-  skips for the same reason.
-  The CI runners have Chrome, so CI runs them.
+  Overview legend entry and a bar segment and reads which bars and entry are marked,
+  what they compute to, where the tooltip lands, and that nothing moves;
+  `tests/test_treemap_legend_hover_chrome.py`, which moves Chrome’s pointer onto the
+  Treemap’s legend entry and one of its cells and reads which cells, bars, and entry are
+  marked, what they compute to, and that the view does not move; and
+  `tests/test_title_prefix_chrome.py`, which reads a title prefix’s and the rest’s
+  computed weight, face, size, and ink on every title surface.
+  Any other check that calls `require_chrome` in `tests/required_tools.py` skips for the
+  same reason. The CI runners have Chrome, so CI runs them.
   Each runs its Node script in a process group of its own and stops that whole group,
   Chrome included, however the run ends, with the group’s leader kept unreaped until
   then so the group ID cannot pass to another process.

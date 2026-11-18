@@ -343,7 +343,6 @@ def _baseline_rows() -> list[tuple[str, str, _El]]:
                 text("file-header-path folder-breadcrumb", el("folder-crumb folder-crumb-current")),
                 box("file-header-badge-slot", el("file-header-badge badge-live")),
                 text("size file-header-size"),
-                box("icon-btn file-header-icon file-header-print"),
             ),
         ),
         (
@@ -1035,9 +1034,11 @@ def test_each_context_assigns_its_chip_kind() -> None:
 
     "Which Kind Each Context Gets" in the design system: a history row, a commit's summary,
     and its tooltip draw the wire's kind with the server's trunk and HEAD; a merge's two
-    branches are remote and never trunk or HEAD; the ref selector draws a branch as remote
-    and a tag as a tag, and never trunk, since the mirror's default is not the history's
-    trunk. `tests/test_git_api.py` holds that the detail and the refs listing carry the
+    branches are remote and never trunk or HEAD; the ref selector draws a mirror's branch
+    as remote, a checkout's own as local and its remote-tracking branch as remote, and a
+    tag as a tag, and never trunk or HEAD: the mirror's default is not the history's
+    trunk, and it says "default" and "checked out" in words.
+    `tests/test_git_api.py` holds that the detail and the refs listing carry the
     refs and trunk the history row does.
     """
     doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
@@ -1077,18 +1078,26 @@ def test_each_context_assigns_its_chip_kind() -> None:
         options = calls[0].rsplit("{", 1)[1]
         assert 'kind: "remote"' in options, f"{name}'s branches are remote"
         assert not re.search(r"\b(?:trunk|head):", calls[0]), f"{name} marks trunk or HEAD"
-    # The ref selector: a branch is remote and a tag a tag, on the button and in the list,
-    # and neither is trunk or HEAD; the list says "default" in words.
+    # The ref selector: a tag is a tag, and a branch is remote but for a checkout's own,
+    # which is local, on the button and in the list. Neither is trunk or HEAD; the list
+    # says "default", and "checked out" for a checkout's HEAD, in words.
     selector = (STATIC / "source-ref-selector.js").read_text(encoding="utf-8")
     chips = re.findall(r"metabrowser\.refChip\((.*?)\}\)", selector, re.S)
     assert len(chips) == 2, "the selector draws a chip on its button and on each row"
     for chip in chips:
-        assert re.search(
-            r'kind: (?:model\.selectedRef\.kind|model\.kind === "tag" \? "tag" : "remote"),', chip
-        )
+        assert re.search(r"kind: (?:model\.selectedRef\.kind|row\.chip),", chip)
         assert not re.search(r"\b(?:trunk|head):", chip), "the selector marks trunk or HEAD"
-    assert 'kind: label.kind === "Tag" ? "tag" : "remote",' in selector
-    assert 'badge.textContent = "default";' in selector
+    squeezed = re.sub(r"\s+", " ", selector)
+    # A list's rows, by the list shown, and the button, by what the page shows.
+    assert (
+        'state.kind === "tag" ? "tag" : state.kind === "branch" && checkout ? "local" : "remote";'
+        in squeezed
+    )
+    assert (
+        'label.kind === "Tag" ? "tag" : label.kind === "Branch" && checkout ? "local" : "remote",'
+        in squeezed
+    )
+    assert 'badge.textContent = row.default ? "default" : "checked out";' in selector
     # Trunk has one definition, on the server, and every answer that names a ref uses it.
     log = (REPO_ROOT / "src/metabrowser/git/log.py").read_text(encoding="utf-8")
     assert log.count('is_trunk_ref(ref["name"], ref["kind"])') == 2, "decoration and refs"
@@ -3019,6 +3028,59 @@ def test_refreshing_text_breathes_on_the_compositor_and_keeps_its_contrast() -> 
         assert rest < lift <= 1, "a muted line lifts toward primary ink, never below its rest"
 
 
+def _oklab(value: str) -> tuple[float, float, float]:
+    lightness, chroma, hue = _oklch_channels(value)
+    return (
+        lightness,
+        chroma * math.cos(math.radians(hue)),
+        chroma * math.sin(math.radians(hue)),
+    )
+
+
+def _oklab_luminance(lightness: float, a: float, b: float) -> float:
+    """WCAG relative luminance of an OKLab color, clipped to sRGB as a browser paints it."""
+
+    chroma = math.hypot(a, b)
+    hue = math.degrees(math.atan2(b, a)) % 360
+    return _relative_luminance(lightness, chroma, hue)
+
+
+def test_a_hovered_legend_entrys_ink_reads_for_every_family() -> None:
+    """A hovered family's legend name keeps 4.5:1 for every registered family, on both pages.
+
+    While the hover marks a File Overview legend entry, its name is drawn in its family's
+    ink: the family's color mixed in OKLab with `--text`, `--mb-distribution-ink-share` of it
+    the family's ("Aggregate Distributions"). A family's own color can read 2.3:1 on the
+    light page, so the share is what makes the name text. Every family the registry declares
+    is checked, at the color the server resolves for each theme, on `--bg`, which the legend
+    sits on. tests/test_overview_legend_hover_chrome.py reads one family's ink as Chrome
+    computes it.
+    """
+
+    from metabrowser.file_type_filters import serialize_distribution_colors
+
+    rules = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "folder/file_type_summary.css"))
+    label = ".file-type-summary-legend-item[data-hovered] .file-type-summary-legend-label"
+    assert " ".join(rules[label]["color"].split()) == (
+        "color-mix( in oklab, var(--mb-distribution-color) var(--mb-distribution-ink-share),"
+        " var(--text) )"
+    )
+    light_block, dark_block = _theme_blocks()
+    share = float(_declared(light_block, "--mb-distribution-ink-share").removesuffix("%")) / 100
+    colors = serialize_distribution_colors()
+    assert colors
+    for theme, block in (("light", light_block), ("dark", dark_block)):
+        text = _oklab(_declared(block, "--text"))
+        ground = _relative_luminance(*_oklch_channels(_declared(block, "--bg")))
+        for family in colors:
+            mixed = [
+                share * own + (1 - share) * ink
+                for own, ink in zip(_oklab(family[theme]), text, strict=True)
+            ]
+            ratio = _ratio(_oklab_luminance(*mixed), ground)
+            assert ratio >= 4.5, f"{family['key']} reads {ratio:.2f}:1 on the {theme} page"
+
+
 def test_only_the_group_by_wait_dims_shown_content_and_never_twice() -> None:
     """The one wait that dims what is shown has its own token, and dims nothing twice.
 
@@ -3366,6 +3428,20 @@ def test_file_status_ink_is_shared_and_legible() -> None:
             # (mb-8iwn).
             for ground in ("--bg", "--sidebar-bg", "--hover-bg", "--viz-surface-raised"):
                 assert _contrast(color, _declared(block, ground)) >= 4.5, (role, ground)
+    # The current row's ground, a translucent tint, under a Pulls row's change line and its
+    # file rows and the Files tree's current row: `--highlight-bg` over the ground it tints.
+    # Over `--sidebar-bg` it is the modified ink's lowest in the light theme, 4.57:1 (A5 of
+    # review A on #506).
+    for theme, tokens in _theme_tokens().items():
+        mix = _MIX_OVER_TRANSPARENT.fullmatch(_resolved(tokens, "--highlight-bg"))
+        assert mix is not None, theme
+        tint = _srgb(_resolved(tokens, mix["token"]))
+        for role in ("added", "deleted", "modified", "renamed"):
+            ink = _srgb_luminance(_srgb(_resolved(tokens, f"--git-status-{role}")))
+            for under in ("--bg", "--sidebar-bg"):
+                ground = _over(tint, _srgb(_resolved(tokens, under)), float(mix["percent"]) / 100)
+                ratio = _ratio(ink, _srgb_luminance(ground))
+                assert ratio >= 4.5, (theme, role, under, round(ratio, 2))
     for relative in (
         "static/git-panel.js",
         "builtin_plugins/diff/diff-view.js",

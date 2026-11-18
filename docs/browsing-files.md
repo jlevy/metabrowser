@@ -37,7 +37,8 @@ is incomplete. [Keyboard shortcuts](keyboard-shortcuts.md) lists every key.
 Selecting a folder shows two views, **Overview** (`O`) and **Treemap** (`M`).
 
 **Overview** has a **File Overview** section and, when the folder has one, its
-**README** rendered as a document.
+**README** rendered as a document, with the table of contents it has opened as a file;
+an entry scrolls the Overview to its heading.
 File Overview counts what the folder holds:
 
 - **Files, Ignored, and Total:** the folder’s files, the files Git ignores, and both
@@ -119,7 +120,10 @@ Plugins add views for other formats ([plugin authoring](plugins.md)).
 The Document view renders Markdown with KPress: headings with a table of contents,
 tables, footnotes, highlighted code, math, images, and YAML frontmatter, which shows as
 a closed **Frontmatter** disclosure.
-The Print button in the file header prints the document without the rest of the page.
+When the window is wide enough to show the document as a card, a print button at the
+card’s top right prints the document without the rest of the page, and the README on a
+folder’s Overview has the same button.
+Command-P, or Control-P outside macOS, prints whichever view is shown, at any width.
 
 Links resolve the way GitHub resolves them:
 
@@ -146,6 +150,14 @@ Obsidian wiki links work too:
   Embeds nest, within limits on depth, count, size, and time; past them, or in a cycle,
   the embed says why it stopped.
 - `![[image.png]]` and other media embed the file.
+
+With active content off (`--untrusted` or `--no-active-content`, and always for a
+repository URL), a document renders without its styles and scripts, and with a time
+limit: a document that takes longer than a few seconds to render shows its source
+instead, under one line saying so.
+Reloading it shows the source again at once for a while, since the server remembers it.
+The same line says when the renderer is busy with other documents or could not start;
+reloading the page then tries again.
 
 ### Data, Logs, and Code
 

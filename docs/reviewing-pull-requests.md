@@ -214,14 +214,17 @@ entries.
 ## Staying Current
 
 The page says when GitHub CLI fetched what it shows, as in
-`Fetched 3 min ago via GitHub CLI`. While the Pulls tab or a pull request’s page is
-visible, Metabrowser rescans the repository’s list of pull requests, so new pull
-requests, state changes, and edits arrive by themselves.
+`Fetched 3 min ago via GitHub CLI`, at the end of the author’s line; Refresh ends the
+row of ages under it.
+While the Pulls tab or a pull request’s page is visible, Metabrowser rescans the
+repository’s list of pull requests, so new pull requests, state changes, and edits
+arrive by themselves.
 A record counts as current for 60 seconds after its fetch, the freshness window, and for
 as long after that as the list says GitHub has not changed the pull request; the page
-then reads `Checked just now · fetched 3 h ago via GitHub CLI`. The list does not track
-checks, statuses, or mergeability, so an open pull request’s page reads those again on
-their own once a window.
+still reads `Fetched 3 h ago via GitHub CLI`, one time and never two, since a check that
+found nothing changed makes what is shown no newer.
+The list does not track checks, statuses, or mergeability, so an open pull request’s
+page reads those again on their own once a window.
 
 A visible page refreshes a record that has gone stale, and the Pulls tab also fetches,
 behind you, the pull requests you are likely to open next, within hourly limits and
@@ -354,6 +357,9 @@ the page.
 
 A pull request’s text and diff are untrusted and inert, beside a checkout too: nothing
 in them runs, and they cannot make the page load anything from another site.
+A description or comment that takes longer than a few seconds to render stays plain
+text, under one line saying so; the same line says when the renderer is busy with other
+texts or could not start, and reloading the page then tries again.
 A repository URL is served under the untrusted profile.
 Files of a local folder keep that folder’s
 [content-trust](command-line.md#content-trust) settings; reviewing a pull request does
@@ -367,6 +373,12 @@ not change them.
   GitHub**.
 - **Only github.com.** A pull-request URL on another host is read as a Git address and
   fails.
+- **The pull request’s code beside a checkout that is elsewhere.** Files and Commits
+  there show your checkout, which is the pull request’s code only while its `HEAD` is
+  the pull request’s head.
+  Opening the head whatever is checked out, as a read-only revision view in the same
+  window, is planned in
+  [Open Modes](project/architecture/arch-open-modes.md#pull-requests-in-a-repository-folder).
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

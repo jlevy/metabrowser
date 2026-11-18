@@ -1208,12 +1208,19 @@ type MarkdownBuiltins = {
   mountRendered: (
     container: HTMLElement,
     ctx: MetabrowserRenderContext,
-    /** `includeToc: "off"` for a document embedded in host navigation that is
-     * already the reader's way around it; omitted leaves the decision to
-     * KPress' own thresholds. `pagePath` is the path of the page that shows the
-     * document as its own when that is not the document's, as a folder's Overview
-     * shows its README: the document's fragments are places on that page. */
-    options?: { signal?: AbortSignal; includeToc?: "auto" | "on" | "off"; pagePath?: string },
+    /** `includeToc` is the render route's `toc` query: omitted leaves the decision to
+     * KPress's own thresholds, and no built-in caller sets it (mb-2nqa tracks its
+     * removal). `pagePath` is the path of the page that shows the document as its own
+     * when that is not the document's, as a folder's Overview shows its README, with its
+     * table of contents: the document's fragments are places on that page.
+     * `printIndicator: true` puts a print button in the corner of the document's
+     * card, for a host whose view prints the document itself; it is off unless asked. */
+    options?: {
+      signal?: AbortSignal;
+      includeToc?: "auto" | "on" | "off";
+      pagePath?: string;
+      printIndicator?: boolean;
+    },
   ) => DisposableHandle;
   renderSource: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
 };
@@ -2282,6 +2289,8 @@ type MetabrowserPluginHostRuntime = Readonly<{
   registerLoadMoreAction(name: string, action: () => unknown): void;
   /** Whether page code marked this element as a delegated control; see plugin-sdk.js. */
   isOwnedDelegate(element: Element | null | undefined): boolean;
+  /** Whether `ownDelegate` marked this very element, not a copy of its mark. */
+  ownsElement(element: Element | null | undefined): boolean;
   /** Keys still held from before static/plugin-shortcuts.js loaded; it empties this. */
   shortcutQueue: Set<MetabrowserQueuedShortcut>;
   configureAssets(
@@ -2873,13 +2882,19 @@ type MetabrowserKeyboardHelpRuntime = Readonly<{
     snapshot: ReadonlyArray<MetabrowserShortcutGroupPresentation>,
     invoke: (commandId: string, context: Record<string, unknown>) => boolean,
     append?: (container: HTMLElement, presentation: MetabrowserBindingPresentation) => void,
-    options?: { actions?: boolean; bindings?: "all" | "preferred"; limit?: number },
+    options?: {
+      actions?: boolean;
+      bindings?: "all" | "preferred";
+      lead?: HTMLElement;
+      limit?: number;
+    },
   ): void;
   renderHelpGroups(
     body: HTMLElement,
     snapshot: ReadonlyArray<MetabrowserShortcutGroupPresentation>,
     append?: (container: HTMLElement, presentation: MetabrowserBindingPresentation) => void,
   ): void;
+  stripItemsThatFit(widths: ReadonlyArray<number>, available: number, gap: number): number;
 }>;
 
 type MetabrowserTreeMutationSnapshot = Readonly<{
@@ -3269,7 +3284,8 @@ declare global {
     ): string | null;
   }>;
 
-  type MetabrowserSourceRefKind = "branch" | "tag";
+  /** `remote` is a checkout's remote-tracking branches; a mirror has no such list. */
+  type MetabrowserSourceRefKind = "branch" | "tag" | "remote";
 
   /** One row of `GET /api/source/refs`. */
   type MetabrowserSourceRef = {
@@ -3277,6 +3293,8 @@ declare global {
     ref: string;
     commit: string;
     default: boolean;
+    /** The branch a checkout's `HEAD` is on; false on a mirror. */
+    checked_out: boolean;
     current: boolean;
   };
 
@@ -3285,8 +3303,13 @@ declare global {
     kind: MetabrowserSourceRefKind;
     query: string;
     limit: number;
-    pin: string;
+    /** The served commit and ref; both null while a checkout's working tree is served. */
+    pin: string | null;
     ref: string | null;
+    /** The lists the subject has. */
+    kinds: MetabrowserSourceRefKind[];
+    /** A checkout's working tree and the branch checked out; null on a mirror. */
+    working_tree: { current: boolean; head: string | null; head_name: string | null } | null;
     total: number;
     truncated: boolean;
     refs: MetabrowserSourceRef[];
@@ -3302,6 +3325,13 @@ declare global {
     loading: boolean;
     switching: boolean;
     error: string | null;
+    /** Whether the page is a checkout's; absent on a mirror's. */
+    checkout?: boolean;
+    /** What the server came to serve instead of this page: a commit, "" for the working
+     * tree, or null while the page is current. A checkout's page only. */
+    stale?: string | null;
+    /** The refs route said the folder is no repository's root: the row is removed. */
+    removed?: boolean;
   };
 
   /** What the ref selector shows for one state. */
@@ -3312,25 +3342,37 @@ declare global {
     pullNumber: string | null;
     open: boolean;
     kind: MetabrowserSourceRefKind;
+    /** The lists offered: a checkout's remote-tracking branches are a third. */
+    kinds: MetabrowserSourceRefKind[];
     query: string;
     loading: boolean;
     switching: boolean;
+    /** A checkout's working-tree row, and whether it is what the server serves; null on a mirror. */
+    workingTree: { current: boolean; detail: string } | null;
     rows: Array<{
       name: string;
       ref: string;
       commit: string;
       default: boolean;
+      /** The branch a checkout's `HEAD` is on, badged "checked out". */
+      checkedOut: boolean;
       current: boolean;
+      /** The chip a row's name is drawn as. */
+      chip: "local" | "remote" | "tag";
     }>;
     note: string;
     error: string | null;
+    /** What a checkout's page says once the server shows something else; else null. */
+    stale: string | null;
+    /** Whether the row is taken away: a folder Git does not take for a repository's root. */
+    removed: boolean;
   };
 
   type MetabrowserSourceRefSelectorDependencies = {
     request(
       method: "GET" | "POST",
       route: string,
-      body?: Record<string, string>,
+      body?: Record<string, string | boolean>,
       signal?: AbortSignal,
     ): Promise<MetabrowserSourceResponse>;
     schedule(callback: () => void, delayMs: number): unknown;
@@ -3347,7 +3389,12 @@ declare global {
     root: HTMLElement;
     toggle: HTMLButtonElement;
     label: HTMLElement;
+    stale: HTMLElement;
+    staleText: HTMLElement;
+    reload: HTMLButtonElement;
     panel: HTMLElement;
+    workingTree: HTMLButtonElement;
+    workingTreeDetail: HTMLElement;
     kinds: HTMLElement;
     tabs: Record<MetabrowserSourceRefKind, HTMLButtonElement>;
     filter: HTMLInputElement;
@@ -3363,6 +3410,10 @@ declare global {
     setKind(kind: MetabrowserSourceRefKind): Promise<void>;
     setQuery(query: string): void;
     choose(ref: string): Promise<void>;
+    /** Serve a checkout's working tree again; does nothing on a mirror. */
+    chooseWorkingTree(): Promise<void>;
+    /** The server serves *served*, a commit or "" for the working tree, not this page. */
+    servedChanged(served: string): void;
     dispose(): void;
     snapshot(): MetabrowserSourceRefSelectorState & { filterPending: boolean };
   }>;
@@ -3378,14 +3429,17 @@ declare global {
     FILTER_DELAY_MS: number;
     createSelector(
       deps: MetabrowserSourceRefSelectorDependencies,
-      options?: { shown?: MetabrowserSourcePage | null },
+      options?: { shown?: MetabrowserSourcePage | null; checkout?: boolean },
     ): MetabrowserSourceRefSelector;
     describe(state: MetabrowserSourceRefSelectorState): MetabrowserSourceRefSelectorModel;
     mount(element: HTMLElement): MetabrowserSourceRefSelectorMount;
     /** The selector this page mounted, for the branch or tag key; null until it mounts. */
     mounted(): MetabrowserSourceRefSelectorMount | null;
     moveRow(key: string, index: number, count: number): number | null;
-    shownLabel(shown: MetabrowserSourcePage | null): { kind: string; name: string };
+    shownLabel(
+      shown: MetabrowserSourcePage | null,
+      checkout?: boolean,
+    ): { kind: string; name: string };
   }>;
 
   type MetabrowserGitHistoryWindowRuntime = {
@@ -3992,19 +4046,25 @@ declare global {
     MetabrowserSourcePinGuard?: Readonly<{
       PIN_CHANGED_HEADER: string;
       PIN_HEADER: string;
+      /** What the page of a checkout's working tree names in place of a commit. */
+      WORKING_TREE_PIN: string;
       createHistoryGuard(
         deps: {
           status(): Promise<{ pin?: unknown } | null>;
           reload(): void;
         },
-        pin: string,
+        pin: string | null,
       ): Readonly<{
         loaded(navigationType: string): Promise<void>;
         shown(persisted: boolean): Promise<void>;
         refused(): void;
         snapshot(): { asking: boolean; reloaded: boolean };
       }>;
-      servesAnother(pin: string, served: { pin?: unknown } | null): boolean;
+      servesAnother(pin: string | null, served: { pin?: unknown } | null): boolean;
+      shownPin(
+        page: { pin?: unknown } | null | undefined,
+        checkout: { working_tree?: unknown } | null | undefined,
+      ): string | null | undefined;
       guardFetch(
         fetchImpl: typeof fetch,
         pin: string,
@@ -4015,6 +4075,9 @@ declare global {
     }>;
     /** The pin and ref a pin's page was rendered for; absent on a folder. */
     METABROWSER_SOURCE_PIN?: MetabrowserSourcePage;
+    /** Present on a checkout's page, a folder that is a repository's root: on its working
+     * tree (`working_tree` true) and on each revision it shows. */
+    METABROWSER_SOURCE_CHECKOUT?: { working_tree: boolean };
     /** static/mirror-heading.js, which only a served mirror's page carries. */
     MetabrowserMirrorHeading?: Readonly<{
       mountCommitCopy(): void;

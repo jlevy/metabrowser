@@ -243,6 +243,8 @@ def _absent(
     *,
     listing: bool = False,
     listed: tuple[str, str, str | None] | None = None,
+    base: str | None = None,
+    base_ref: str | None = None,
 ) -> dict[str, Any]:
     """An absent answer. *listed* is the list file's source, refresh, and head, for a list
     that is cached and sums to nothing: one still filling, or too large to sum."""
@@ -255,6 +257,8 @@ def _absent(
         "listed_from": None if listed is None else listed[0],
         "generation": None if listed is None else listed[1],
         "head": None if listed is None else listed[2],
+        "base": base,
+        "base_ref": base_ref,
         "files": None,
         "additions": None,
         "deletions": None,
@@ -310,6 +314,8 @@ def test_a_whole_list_is_summed_by_status(
         "listed_from": "github",
         "generation": listed.generation,
         "head": listed.head,
+        "base": listed.base,
+        "base_ref": listed.base_ref,
         "files": 249,
         "additions": 1093,
         "deletions": 493,
@@ -359,6 +365,8 @@ def test_a_count_the_local_comparison_lacks_counts_as_none_and_the_sums_are_not_
         "listed_from": "comparison",
         "generation": "2" * 32,
         "head": "c" * 40,
+        "base": "b" * 40,
+        "base_ref": None,
         "files": 3,
         "additions": 5,
         "deletions": 1,

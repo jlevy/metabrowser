@@ -274,20 +274,12 @@ def test_frontmatter_text_matches_what_the_document_view_shows() -> None:
     )
 
     from metabrowser.plugin_loader.classify import parse_frontmatter_bytes
-    from metabrowser.server import (
-        _json_safe_frontmatter,  # pyright: ignore[reportPrivateUsage]
-    )
 
     source = b"---\nb: {x: [1, 2.5, null]}\na: 2026-11-18T10:00:00\n'3': true\n---\nBody\n"
     mapping, error = parse_frontmatter_bytes(source)
     assert error is None and mapping is not None
     shown = _render_frontmatter(
-        DocumentInput(
-            title="t",
-            source_path="t.md",
-            source_text="",
-            frontmatter=_json_safe_frontmatter(mapping),
-        )
+        DocumentInput(title="t", source_path="t.md", source_text="", frontmatter=mapping)
     )
     frontmatter = _project(None, source).get("frontmatter")
     assert frontmatter is not None

@@ -38,7 +38,8 @@ $ metab --help
  or checked at the commit it selects under the untrusted profile; --no-serve
  only acquires it into the cache. Diagnostics: --check-api, --plugins,
  --plugin, --doctor.
- Remote serving: --remote.
+ Remote serving: --remote. The macOS app: --present hands it ROOT.
+ Recent targets: --recent, --recent-add, --recent-forget, --recent-clear.
 
 ╭─ Arguments ──────────────────────────────────────────────────────────────────╮
 │   [root]      TEXT  Root directory to serve, check, or walk; a file may be   │
@@ -70,12 +71,22 @@ $ metab --help
 │                                              serving, --api, --show,         │
 │                                              --check-api, and --no-serve on  │
 │                                              a Git source.                   │
-│ --path                     TEXT              Serve: relative path from ROOT  │
-│                                              to select on launch. Walk:      │
-│                                              subtree for a JSON/YAML         │
-│                                              all-at-once tree envelope.      │
-│                                              Remote: remote directory to     │
-│                                              serve (required).               │
+│ --ref                      NAME              Open a local checkout on this   │
+│                                              branch, tag, remote-tracking    │
+│                                              branch, or commit ID, read from │
+│                                              its Git objects, where it would │
+│                                              open on its working tree.       │
+│                                              Nothing is checked out or       │
+│                                              written. ROOT must be the       │
+│                                              repository's root. Applies when │
+│                                              serving and to --api, --show,   │
+│                                              and --check-api.                │
+│ --path                     TEXT              Serve and present: relative     │
+│                                              path from ROOT to select on     │
+│                                              launch. Walk: subtree for a     │
+│                                              JSON/YAML all-at-once tree      │
+│                                              envelope. Remote: remote        │
+│                                              directory to serve (required).  │
 │ --no-open                                    Don't auto-open the browser     │
 │                                              (serve and remote modes).       │
 │ --plugins-dir              PATH              Extra plugin directory; each    │
@@ -127,7 +138,9 @@ $ metab --help
 │                                              diff: json/yaml dump the exact  │
 │                                              data the browser consumes.      │
 │                                              Show: json reports the four     │
-│                                              layers as an object. Api: json  │
+│                                              layers as an object. Present:   │
+│                                              json prints the target or the   │
+│                                              report as one object. Api: json │
 │                                              or yaml prints the envelope     │
 │                                              alone, so stdout parses; unset  │
 │                                              prints the route and status     │
@@ -139,26 +152,42 @@ $ metab --help
 │                                              [default: 60.0]                 │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Modes (default: serve ROOT) ────────────────────────────────────────────────╮
-│ --walk                    Walk ROOT with the inventory walker and dump the   │
-│                           result (no server).                                │
-│ --diff             SPEC   Show a change set: BASE..TARGET, one revision      │
-│                           (against its first parent), or a .patch/.diff file │
-│                           under ROOT.                                        │
-│ --api              ROUTE  Issue one /api/ route through the real request     │
-│                           stack and print the normalized envelope (no        │
-│                           browser, no listening port).                       │
-│ --show             PATH   Report the four layers for one selection: route,   │
-│                           kind, views, and a model summary.                  │
-│ --check-api               Run the navigation API scenario without a browser  │
-│                           or listening port.                                 │
-│ --no-serve                Acquire a file:// or https:// Git source into the  │
-│                           cache without starting a server.                   │
-│ --remote           HOST   SSH into HOST, start metab there, and tunnel it to │
-│                           localhost. Pass the remote directory with --path.  │
-│ --plugins                 List every discovered plugin.                      │
-│ --plugin           NAME   Print the full resolved manifest for one plugin.   │
-│ --doctor                  Validate every discovered plugin; exit non-zero on │
-│                           any problem.                                       │
+│ --walk                        Walk ROOT with the inventory walker and dump   │
+│                               the result (no server).                        │
+│ --diff                 SPEC   Show a change set: BASE..TARGET, one revision  │
+│                               (against its first parent), or a .patch/.diff  │
+│                               file under ROOT.                               │
+│ --api                  ROUTE  Issue one /api/ route through the real request │
+│                               stack and print the normalized envelope (no    │
+│                               browser, no listening port).                   │
+│ --show                 PATH   Report the four layers for one selection:      │
+│                               route, kind, views, and a model summary.       │
+│ --check-api                   Run the navigation API scenario without a      │
+│                               browser or listening port.                     │
+│ --no-serve                    Acquire a file:// or https:// Git source into  │
+│                               the cache without starting a server.           │
+│ --remote               HOST   SSH into HOST, start metab there, and tunnel   │
+│                               it to localhost. Pass the remote directory     │
+│                               with --path.                                   │
+│ --plugins                     List every discovered plugin.                  │
+│ --plugin               NAME   Print the full resolved manifest for one       │
+│                               plugin.                                        │
+│ --doctor                      Validate every discovered plugin; exit         │
+│                               non-zero on any problem.                       │
+│ --present                     Hand ROOT, a folder, a file, or a GitHub URL,  │
+│                               to the Metabrowser macOS app through           │
+│                               LaunchServices and report what was sent.       │
+│                               Clones and serves nothing. Exit 3 when ROOT    │
+│                               cannot be presented, 4 when no app takes it, 5 │
+│                               when LaunchServices could not be asked or      │
+│                               refused it.                                    │
+│ --recent                      List the recent targets: the folders and       │
+│                               repositories opened lately, most recent first. │
+│                               Every serve records its ROOT.                  │
+│ --recent-add                  Record ROOT as a recent target, as serving it  │
+│                               would, without serving.                        │
+│ --recent-forget               Remove ROOT from the recent targets.           │
+│ --recent-clear                Empty the list of recent targets.              │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Diff (--diff SPEC) ─────────────────────────────────────────────────────────╮
 │ --diff-patch        PATH  Print one changed file's hunks from the comparison │
@@ -254,7 +283,16 @@ $ metab --help
 │                                                  --gcp).                     │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Plugins (--plugins / --plugin / --doctor) ──────────────────────────────────╮
-│ --json          Emit structured JSON (plugin modes).                         │
+│ --json          Emit structured JSON (plugin modes and --recent).            │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Present (--present) ────────────────────────────────────────────────────────╮
+│ --dry-run                  Resolve ROOT and print what --present would hand  │
+│                            the app, without looking for the app or sending   │
+│                            anything.                                         │
+│ --app-bundle-id        ID  The app to hand ROOT to, by bundle identifier,    │
+│                            instead of the release build and then the         │
+│                            development build. Env:                           │
+│                            METABROWSER_APP_BUNDLE_ID.                        │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 
  Examples:
@@ -267,6 +305,7 @@ $ metab --help
  metab file:///path/to/repo.git
  metab file:///path/to/repo.git --no-serve
  metab --remote example-host --path /srv/shared-files
+ metab ./notes/report.md --present
  metab --plugins
  Guide: https://github.com/jlevy/metabrowser/blob/main/docs/command-line.md
 ? 0

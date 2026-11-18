@@ -34,6 +34,16 @@ commit, the build the skill is written for:
    ``not_found_or_private``, names only words of the source under ``src/``: a key, a
    field, or a value the code spells. A word the code also uses elsewhere passes, so
    this catches a misspelling and not a name moved to another meaning.
+6. **Presenting.** Each ``--present`` recipe under "Present It in the App" is a command
+   of ``tests/golden/cli-present-delivery.txt``, with the placeholders
+   :data:`PRESENT_SPELLING` names filled in. That transcript runs the production CLI
+   with a stand-in LaunchServices and ``open``, never a real app, and runs the skill's
+   shape of command for each status the skill tells apart; every field path the
+   section's prose names is a key of each report it prints. The section's table lists,
+   for each status a delivery code ends with, exactly the codes ``DELIVERY_EXIT_CODES``
+   in ``cli/present.py`` maps to it, so a new code fails here until the skill says what
+   to do about it, and every other status it restates is the constant behind its row:
+   a refusal's, a usage error's, and an ``Error:`` line's.
 
 ``docs/working-with-agents.md`` repeats the skill's commands for a person, so checks 1,
 2, 3, and 5 read it too. Outside every check: the names of query parameters, page
@@ -59,6 +69,9 @@ import typer.main
 
 from devtools import tryscript_blocks
 from metabrowser.cli import main as cli_main
+from metabrowser.cli.exit_codes import PRESENT_REFUSED_EXIT_CODE
+from metabrowser.cli.present import DELIVERY_EXIT_CODES
+from metabrowser.errors import CLIError
 from tests.golden_harness import run_metab
 
 REPO_ROOT: Final = Path(__file__).resolve().parent.parent
@@ -116,6 +129,35 @@ GOLDEN_SPELLING: Final = {
 # run it, and `tests/test_cli_github_checkout_golden.py` posts its body instead.
 REFRESH_SECTION: Final = "Beside a Checkout"
 REFRESH_ROUTE: Final = "/api/plugin/github/pull-refresh"
+
+# The section of the `--present` recipes, the transcript that runs them against a
+# stand-in app, and how that transcript spells their placeholders.
+PRESENT_SECTION: Final = "Present It in the App"
+PRESENT_GOLDEN: Final = REPO_ROOT / "tests" / "golden" / "cli-present-delivery.txt"
+PRESENT_SPELLING: Final = {
+    "<invocation>": "metab",
+    "<target>": "notes",
+    "<root>": "notes",
+    "<relative-path>": "docs/guide.md",
+}
+# The shape of every recipe: `--present` first, and the report as JSON.
+PRESENT_PREFIX: Final = "metab --present "
+PRESENT_SUFFIX: Final = " --format json"
+# A block of an in-process transcript (`tests/golden_harness.block`): its command line,
+# its status, and its standard output.
+_TRANSCRIPT_BLOCK: Final = re.compile(
+    r"^# ([^\n]+)\nexit: (\d+)\n--- stdout ---\n(.*?)--- stderr ---\n", re.MULTILINE | re.DOTALL
+)
+# A row of the section's table: its status, and the cell of codes after it.
+_STATUS_ROW: Final = re.compile(r"^\| (\d+) \| ([^|]*) \|")
+_CODE: Final = re.compile(r"`([a-z_]+)`")
+# What the code cell of a row without a delivery code says it is, and the status the code
+# ends such a command with.
+_MARKED_STATUSES: Final = {
+    "a refusal": PRESENT_REFUSED_EXIT_CODE,
+    "a usage error": typer.BadParameter("").exit_code,
+    "an `error:` line": CLIError("").exit_code,
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -345,6 +387,43 @@ def refresh_body(number: int, text: str | None = None) -> dict[str, Any]:
     return json.loads(body.replace("<n>", str(number)))
 
 
+def present_recipes(text: str) -> list[Code]:
+    """The commands of :data:`PRESENT_SECTION`'s blocks that present a target."""
+
+    return [
+        piece
+        for piece in code_pieces(text)
+        if piece.block and piece.section == PRESENT_SECTION and "--present" in _tokens(piece.text)
+    ]
+
+
+def _section(text: str, heading: str) -> str:
+    """The lines of the section *heading* names, up to the next heading."""
+
+    lines, _offset = _body(text)
+    start = next(
+        i for i, line in enumerate(lines) if _HEADING.match(line) and line.endswith(heading)
+    )
+    end = next((i for i in range(start + 1, len(lines)) if _HEADING.match(lines[i])), len(lines))
+    return "\n".join(lines[start + 1 : end])
+
+
+def transcript_blocks(transcript: str) -> list[tuple[str, int, str]]:
+    """Each block of an in-process transcript: its command, status, and standard output.
+
+    The command drops the environment assignments a block's line starts with, which the
+    harness sets for the run, such as the stand-in ``open``'s failure switch.
+    """
+
+    found: list[tuple[str, int, str]] = []
+    for match in _TRANSCRIPT_BLOCK.finditer(transcript):
+        words = match.group(1).split()
+        while words and _ASSIGNMENT.match(words[0]):
+            words = words[1:]
+        found.append((" ".join(words), int(match.group(2)), match.group(3)))
+    return found
+
+
 # ── What the build offers ───────────────────────────────────────────
 
 
@@ -564,6 +643,108 @@ def refresh_findings(text: str, answer: Mapping[str, Any]) -> list[str]:
     return found
 
 
+def _has_field(node: Any, path: str) -> bool:
+    for key in path.removeprefix(".").split("."):
+        if not isinstance(node, Mapping) or key not in node:
+            return False
+        node = node[key]
+    return True
+
+
+def present_findings(text: str, transcript: str) -> list[str]:
+    """Present recipes the delivery transcript does not run, and fields its reports lack."""
+
+    recipes = present_recipes(text)
+    if not recipes:
+        return [f"SKILL.md has no --present recipe under {PRESENT_SECTION!r}"]
+    blocks = transcript_blocks(transcript)
+    ran = {command for command, _status, _stdout in blocks}
+    found: list[str] = []
+    for piece in recipes:
+        spelled = piece.text
+        for placeholder, value in PRESENT_SPELLING.items():
+            spelled = spelled.replace(placeholder, value)
+        spelled = _normalized(spelled)
+        if spelled not in ran:
+            found.append(f"SKILL.md:{piece.line}: {PRESENT_GOLDEN.name} does not run {spelled!r}")
+        elif not (spelled.startswith(PRESENT_PREFIX) and spelled.endswith(PRESENT_SUFFIX)):
+            found.append(
+                f"SKILL.md:{piece.line}: {spelled!r} does not start with {PRESENT_PREFIX.strip()!r} "
+                f"and end with {PRESENT_SUFFIX.strip()!r}, which a sandbox rule and jq need"
+            )
+    # Every report of the skill's shape of command, whatever its target and status.
+    reports = [
+        (status, json.loads(stdout))
+        for command, status, stdout in blocks
+        if command.startswith(PRESENT_PREFIX) and command.endswith(PRESENT_SUFFIX)
+    ]
+    wanted = {PRESENT_REFUSED_EXIT_CODE, *DELIVERY_EXIT_CODES.values()}
+    missing = sorted(wanted - {status for status, _report in reports})
+    if missing:
+        found.append(f"{PRESENT_GOLDEN.name} runs the skill's command with no status {missing}")
+    fields = [
+        piece.text
+        for piece in code_pieces(text)
+        if not piece.block
+        and piece.section == PRESENT_SECTION
+        and piece.text.startswith(".")
+        and _NAME.fullmatch(piece.text)
+    ]
+    if not fields:
+        found.append(f"SKILL.md names no report field under {PRESENT_SECTION!r}")
+    for path in dict.fromkeys(fields):
+        lacking = sorted({status for status, report in reports if not _has_field(report, path)})
+        if lacking:
+            found.append(f"the report of status {lacking} has no {path}, which SKILL.md reads")
+    return found
+
+
+def status_code_findings(text: str) -> list[str]:
+    """Rows of the recipes' table whose status is not the one the code ends with.
+
+    A row that lists delivery codes gives the status ``DELIVERY_EXIT_CODES`` maps them
+    to, and the rows of one status list exactly the codes mapped to it. Each row without
+    a delivery code says what it is in its code cell: a refusal, whose status is
+    ``PRESENT_REFUSED_EXIT_CODE``; a usage error, Click's; or an ``Error:`` line,
+    ``CLIError``'s. So every status the table restates is held to its constant.
+    """
+
+    listed: dict[int, set[str]] = {}
+    marked: dict[str, list[int]] = {marker: [] for marker in _MARKED_STATUSES}
+    found: list[str] = []
+    for line in _section(text, PRESENT_SECTION).splitlines():
+        row = _STATUS_ROW.match(line)
+        if row is None:
+            continue
+        status, cell = int(row.group(1)), row.group(2)
+        codes = set(_CODE.findall(cell))
+        markers = [marker for marker in _MARKED_STATUSES if marker in cell.lower()]
+        if codes:
+            listed.setdefault(status, set()).update(codes)
+        elif len(markers) == 1:
+            marked[markers[0]].append(status)
+        else:
+            found.append(
+                f"the row for status {status} names no delivery code and is not one of {list(_MARKED_STATUSES)}"
+            )
+    for marker, expected in _MARKED_STATUSES.items():
+        if not marked[marker]:
+            found.append(f"the table has no row for {marker}")
+        found += [
+            f"the table gives {marker} status {status}, where the code ends with {expected}"
+            for status in marked[marker]
+            if status != expected
+        ]
+    for status in sorted(set(DELIVERY_EXIT_CODES.values()) | set(listed)):
+        expected_codes = {code for code, mapped in DELIVERY_EXIT_CODES.items() if mapped == status}
+        if listed.get(status, set()) != expected_codes:
+            found.append(
+                f"the table lists {sorted(listed.get(status, set()))} for status {status}, where "
+                f"DELIVERY_EXIT_CODES maps {sorted(expected_codes)} to it"
+            )
+    return found
+
+
 def name_findings(text: str, words: frozenset[str], name: str = "SKILL.md") -> list[str]:
     """Field paths and underscored names in *text*'s prose that are not among *words*."""
 
@@ -632,6 +813,7 @@ def test_the_skill_is_read_as_commands(skill: str, guide: str) -> None:
     assert read >= RECIPE_ROUTES and named >= PROSE_ROUTES, (read, named)
     assert any(not command.whole for command in found)
     assert len(_recipes(skill)) == 3
+    assert len(present_recipes(skill)) == 2
     assert len([c for c in commands(guide, GUIDE.name) if c.whole]) >= 8
 
 
@@ -671,6 +853,14 @@ def test_every_name_in_prose_is_one_the_source_uses(
 ) -> None:
     assert name_findings(skill, source) == []
     assert name_findings(guide, source, GUIDE.name) == []
+
+
+def test_the_delivery_golden_runs_the_present_recipes(skill: str) -> None:
+    assert present_findings(skill, PRESENT_GOLDEN.read_text(encoding="utf-8")) == []
+
+
+def test_the_present_table_gives_each_status_its_codes(skill: str) -> None:
+    assert status_code_findings(skill) == []
 
 
 # ── Each check fails its mutation ───────────────────────────────────
@@ -804,6 +994,61 @@ def test_a_name_the_source_does_not_use_fails(skill: str, source: frozenset[str]
     mutated = _mutated(skill, "`.pin_ref` names", "`.pinref` names")
     assert [finding.split(": ", 1)[1] for finding in name_findings(mutated, source)] == [
         "`.pinref` names 'pinref', which no source under src/ uses"
+    ]
+
+
+PRESENT: Final = "<invocation> --present <target> --format json\n"
+
+
+def test_a_present_recipe_the_delivery_golden_does_not_run_fails(skill: str) -> None:
+    golden = PRESENT_GOLDEN.read_text(encoding="utf-8")
+    dropped = _mutated(skill, PRESENT, PRESENT.replace(" --format json", ""))
+    findings = present_findings(dropped, golden)
+    assert len(findings) == 1 and "does not run 'metab --present notes'" in findings[0]
+    # The transcript runs this order too, for the command-line guide; a sandbox rule for
+    # the prefix `metab --present` would not match it.
+    moved = _mutated(skill, PRESENT, "<invocation> <target> --present --format json\n")
+    findings = present_findings(moved, golden)
+    assert len(findings) == 1 and "does not start with 'metab --present'" in findings[0]
+
+
+def test_a_report_field_the_golden_lacks_fails(skill: str) -> None:
+    mutated = _mutated(skill, "`.target.page`, the address", "`.target.address`, the address")
+    assert present_findings(mutated, PRESENT_GOLDEN.read_text(encoding="utf-8")) == [
+        "the report of status [0, 3, 4, 5] has no .target.address, which SKILL.md reads"
+    ]
+
+
+def test_a_delivery_code_under_another_status_fails(skill: str) -> None:
+    mutated = _mutated(skill, "| `lookup_failed`, `open_failed` |", "| `lookup_failed` |")
+    assert status_code_findings(mutated) == [
+        "the table lists ['lookup_failed'] for status 5, where DELIVERY_EXIT_CODES maps "
+        "['lookup_failed', 'open_failed'] to it"
+    ]
+    moved = _mutated(skill, "`app_not_marked`, ", "").replace(
+        "| `lookup_failed`, `open_failed` |", "| `app_not_marked`, `lookup_failed`, `open_failed` |"
+    )
+    assert len(status_code_findings(moved)) == 2
+
+
+@pytest.mark.parametrize(
+    ("row", "marker", "expected"),
+    [
+        ("| 3 | A refusal’s code |", "a refusal", 3),
+        ("| 2 | None: a usage error |", "a usage error", 2),
+        ("| 1 | None: an `Error:` line |", "an `error:` line", 1),
+    ],
+)
+def test_a_restated_status_the_code_does_not_end_with_fails(
+    skill: str, row: str, marker: str, expected: int
+) -> None:
+    renumbered = _mutated(skill, row, row.replace(f"| {expected} |", "| 7 |", 1))
+    assert status_code_findings(renumbered) == [
+        f"the table gives {marker} status 7, where the code ends with {expected}"
+    ]
+    assert status_code_findings(_mutated(skill, row + " ", "| 9 | Gone | ")) == [
+        f"the row for status 9 names no delivery code and is not one of {list(_MARKED_STATUSES)}",
+        f"the table has no row for {marker}",
     ]
 
 

@@ -31,6 +31,9 @@ It links each document below and the contributor standards in `docs/`.
   to the browser’s stores, with events, recovery, and invariants
 - [Git](architecture/arch-git.md): the process boundary, history sessions, graph
   checkpoints, and commit detail
+- [Open modes](architecture/arch-open-modes.md): plain folder, repository folder, and
+  mirror; how a target resolves to a root; the working tree and revision views; and what
+  is never written
 - [Source sessions and pins](architecture/arch-source-sessions-and-pins.md): subjects,
   capabilities, path projection, and the pin guard
 - [Diff pipeline](architecture/arch-diff-pipeline.md): comparison sources, hydration,
@@ -47,6 +50,8 @@ It links each document below and the contributor standards in `docs/`.
   and asset loading tiers
 - [macOS app](architecture/arch-macos-app.md): server supervision, windows and tabs,
   restore, and WebKit differences
+- [Recent targets](architecture/arch-recent-targets.md): the list of folders and
+  repositories opened lately, what records an open, and the shells that read it
 
 ### Formats
 

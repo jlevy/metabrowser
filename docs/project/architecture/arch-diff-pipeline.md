@@ -182,9 +182,9 @@ memory, can be computed again:
 - **The repository store** holds Git objects across sessions; see the
   [repository cache](arch-repository-cache.md).
 - **The pull request’s manifest bank** (`builtin_plugins/github/pull_manifest.py`) keeps
-  a prepared manifest beside the store after each fetch, in a fixed number of
-  direct-mapped slots, so a fresh server skips the costly listing.
-  A missing, stale, or corrupt slot is recomputed.
+  a prepared manifest beside the store after each fetch, one for each pull request, so a
+  fresh server skips the costly listing.
+  A missing, stale, or corrupt manifest is recomputed.
 - **The server’s comparison cache** (`builtin_plugins/diff/comparison_cache.py`) keeps a
   store comparison’s resolution and manifest, and each encoded answer, in memory, keyed
   by the commit IDs and every request input the answer reads.
@@ -250,6 +250,14 @@ Changed words are marked by a bounded word diff.
   Front matter that does not load, or that has an alias, leaves the file to Source.
   Changed front matter lines count as shown when any key changed, since the disclosure
   cannot say which line a key came from.
+- **Off the server’s interpreter:** projections run in one long-lived child process
+  (`diff/markdown_projection_worker.py`), started on the second projection or on a
+  page’s prefetch, so a projection never holds the server’s GIL; the module records the
+  measurement. Until the child is ready, projections run in a thread.
+  The same child renders every untrusted Markdown document, under a deadline
+  ([What a Pin Serves](arch-source-sessions-and-pins.md#what-a-pin-serves)); a
+  projection that finds such a render holding the child runs in a thread instead, and
+  one waiting for the child goes before every waiting render.
 - **Paint:** a file on screen waits for its projection for the app’s loading-state delay
   with Source hidden; past it, Source paints first and Rendered replaces it when it
   arrives. Conversation prefetches the projections of the first screen’s files.

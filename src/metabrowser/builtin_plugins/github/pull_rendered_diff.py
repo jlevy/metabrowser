@@ -42,7 +42,7 @@ from metabrowser.diff.markdown_projection import (
     MARKDOWN_DIFF_VERSION,
     bind_markdown_diff,
 )
-from metabrowser.diff.markdown_projection_worker import ProjectionWorker
+from metabrowser.diff.markdown_projection_worker import ProjectionWorker, shared_worker
 from metabrowser.diff.structured_projection import (
     STRUCTURED_DIFF_MAX_BYTES,
     Format,
@@ -131,12 +131,11 @@ class _Slot:
 
 
 def projection_worker(state: Any) -> ProjectionWorker:
-    """The server's projection worker, which a test may replace before a request."""
+    """The server's Markdown child, which renders its untrusted documents too, or the
+    worker a test put in its place before a request."""
 
     worker = getattr(state, "pull_rendered_diff_worker", None)
-    if worker is None:
-        worker = state.pull_rendered_diff_worker = ProjectionWorker()
-    return cast("ProjectionWorker", worker)
+    return shared_worker() if worker is None else cast("ProjectionWorker", worker)
 
 
 def _path(side: EntrySide) -> GitPath:
@@ -248,7 +247,9 @@ async def _project(
 
     target = RepositoryStoreTarget(published.git_dir, published.object_format)
     source = GitDiffSource(GitLocation.revision(target, snapshot.head))
-    comparison = await shared_pull_manifest(published, snapshot.base, snapshot.head)
+    comparison = await shared_pull_manifest(
+        published, snapshot.number, snapshot.base, snapshot.head
+    )
     resolved, manifest = comparison.resolved, comparison.manifest
     if resolved.left.id != snapshot.base or resolved.right.id != snapshot.head:
         return _fallback()
