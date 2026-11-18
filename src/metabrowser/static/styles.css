@@ -4217,6 +4217,33 @@ a.tab-btn {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* By age, a section's name takes its band's age ink (docs/design-system.md, "Grouping
+   the Files Tree"): the ink every file age in the band reads in, and the one the
+   Modified within row for that window wears (FILTER_RECENCY_OPTIONS in app.js). Each
+   band lies inside one tier of AGE_TIERS (formatters.js); Live is the activity state,
+   as the Live badge and the Live row are. The band is the route's group id
+   (metabrowser/tree_groups.py), which the section carries, so this is paint alone.
+   It takes the shared tokens, not an .age-* class, because the name is not an age: the
+   heading keeps its size, weight, caps, and tracking, and its tally stays muted.
+   tests/test_tree_groups.py holds the mapping to the menu's and to the tiers. */
+.tree-section[data-tree-group="age:live"] .tree-section-label {
+  color: var(--file-age-live);
+}
+.tree-section[data-tree-group="age:1h"] .tree-section-label {
+  color: var(--file-age-min);
+}
+.tree-section[data-tree-group="age:24h"] .tree-section-label {
+  color: var(--file-age-hr);
+}
+.tree-section[data-tree-group="age:7d"] .tree-section-label {
+  color: var(--file-age-day);
+}
+.tree-section[data-tree-group="age:30d"] .tree-section-label {
+  color: var(--file-age-wk);
+}
+.tree-section[data-tree-group="age:older"] .tree-section-label {
+  color: var(--file-age-old);
+}
 /* Regrouping (docs/design-system.md, "Grouping the Files Tree", Waiting): while a
    grouping's first sections are on their way, the tree on screen is the arrangement
    the reader left, so once the wait passes the quiet period it dims to
