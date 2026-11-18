@@ -262,14 +262,19 @@ async function main() {
   assert(article, "the inert article is the render's container's child");
   const headings = article.querySelectorAll("h1, h2, h3, h4, h5, h6");
   // Where the document starts down the viewport's scroll: at its top, as an opened file's
-  // does, until the session moves it below a folder Overview's other panels.
+  // does, until the session moves it below a folder Overview's other panels. The toggle
+  // measures the element the render is mounted in, which a folder Overview collapses to no
+  // height while the article clipped inside it keeps its own.
   let documentTop = 0;
-  article.getBoundingClientRect = () => ({
+  let mountedHeight = 10_000;
+  const box = (height) => ({
     top: 100 + documentTop - viewport.scrollTop,
-    bottom: 100 + documentTop - viewport.scrollTop + 10_000,
+    bottom: 100 + documentTop - viewport.scrollTop + height,
     width: 1000,
-    height: 10_000,
+    height,
   });
+  target.getBoundingClientRect = () => box(mountedHeight);
+  article.getBoundingClientRect = () => box(10_000);
   headings.forEach((heading, index) => {
     heading.getBoundingClientRect = () => ({
       top: 100 + documentTop + index * 1000 - viewport.scrollTop,
@@ -440,6 +445,28 @@ async function main() {
     flush();
     transcript.belowOtherPanels[label] = {
       scrollTop,
+      toggleShown: toggle.classList.contains("show-toggle"),
+    };
+  }
+
+  // That README's panel collapsed, with the pane scrolled past it onto a panel below: the
+  // body it is mounted in has no height and the article clipped in it keeps its own, so the
+  // article still spans the pane's top and the body does not. The toggle goes, and comes
+  // back once the panel opens again.
+  transcript.collapsedPanel = {};
+  for (const [label, height] of [
+    ["collapsed", 0],
+    ["expandedAgain", 10_000],
+  ]) {
+    mountedHeight = height;
+    viewport.scrollTop = 1600;
+    viewport.dispatch("scroll");
+    flush();
+    const articleBox = article.getBoundingClientRect();
+    transcript.collapsedPanel[label] = {
+      scrollTop: viewport.scrollTop,
+      mountedHeight: target.getBoundingClientRect().height,
+      articleSpansPaneTop: articleBox.top <= 100 && articleBox.bottom > 100,
       toggleShown: toggle.classList.contains("show-toggle"),
     };
   }

@@ -32,7 +32,11 @@ The narrow toggle follows the rule in `builtin_plugins/markdown/toc-toggle.js`, 
 trusted render’s does: in a document that starts the pane, it shows past the threshold;
 in one a folder Overview shows 1,000px down the pane (`belowOtherPanels`), it stays
 hidden past the threshold until the reader reaches the document’s beginning, and hides
-again above it. Disposal removes every listener.
+again above it. It measures the element the render is mounted in, as a trusted render’s
+toggle does, so when that README’s panel is collapsed (`collapsedPanel`) and the pane is
+scrolled past it, the toggle hides although the article clipped inside the empty body
+still spans the pane’s top, and shows again once the panel opens.
+Disposal removes every listener.
 
 ```console
 $ node tests/dom/markdown-inert-toc-session.js
@@ -177,6 +181,20 @@ $ node tests/dom/markdown-inert-toc-session.js
     "backAbove": {
       "scrollTop": 500,
       "toggleShown": false
+    }
+  },
+  "collapsedPanel": {
+    "collapsed": {
+      "scrollTop": 1600,
+      "mountedHeight": 0,
+      "articleSpansPaneTop": true,
+      "toggleShown": false
+    },
+    "expandedAgain": {
+      "scrollTop": 1600,
+      "mountedHeight": 10000,
+      "articleSpansPaneTop": true,
+      "toggleShown": true
     }
   },
   "disposed": {
