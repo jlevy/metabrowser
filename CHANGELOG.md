@@ -4,6 +4,13 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- On a folder’s Overview, pointing at a File Overview legend entry, its dot or its
+  words, now lifts its family’s segment in the bar above, as pointing at the segment
+  does, and shows that family’s file count and byte size beside the entry.
+  The segment’s own tooltip, beside the segment, also names the family.
+  The hover holds while the folder’s totals update under the pointer.
+  See [Aggregate Distributions](docs/design-system.md#aggregate-distributions).
+
 - The Pulls tab’s change lines, each row’s file and line totals, arrive in seconds
   rather than tens of seconds on a cold cache.
   The prefetch now lists the changed files of the open pull requests in view from the
