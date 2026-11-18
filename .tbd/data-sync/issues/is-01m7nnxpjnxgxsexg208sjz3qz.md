@@ -5,12 +5,16 @@ title: "GitHub URL gaps: /pull/N/files#diff-<hash> to a file, commit URL opens /
 kind: task
 status: open
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-11-17-open-anything-from-cli-and-app.md
 labels: []
 dependencies: []
 parent_id: is-01m7nnxhaqce1g2ewec3wbaf7e
 created_at: 2026-11-17T21:17:04.469Z
-updated_at: 2026-11-17T21:17:04.469Z
+updated_at: 2026-11-18T20:21:16.374Z
 ---
 Phase 1. Map GitHub's per-file anchor (hash of the path) to /pull/<n>/files/<path>; open a commit selection at /commit/<sha> instead of /view/.
+
+## Notes
+
+2026-11-18, checked against main a1100bca6. Landed in jlevy/metabrowser#540: a commit URL opens at /commit/<full id> (cli/selection_href.py selection_view_href, format_commit_href) and the dry run reports that page. Remaining: /pull/N/files#diff-<hash> is still dropped; builtin_plugins/github/urls.py keeps only a line anchor, so the per-file anchor does not reach /pull/<n>/files/<path>.
