@@ -304,6 +304,39 @@ later.
 Recorded again on 2026-11-16, when the summary’s header took the body size (mb-26zj):
 the block is 203 by 11.89 px, still 14.5 em of the header’s type, now 14 px.
 
+Recorded on 2026-11-17, when the placeholder began at a page’s first paint rather than
+at its core preview (mb-30dz): headless Chrome 152, this repository served as a checkout
+on a copy of an everyday cache, three back-to-back pairs a case at a load average of 16
+to 41, each frame’s row read from navigation start, or from the click.
+A direct link to #470, its record not cached: the header was in sight with an empty row
+for 1455 to 1886 ms, the placeholder showed at 1822 to 2286 ms; after, the row was never
+seen empty and the placeholder showed at 286 to 315 ms, with the header.
+A Pulls row of #521, its record not cached, clicked: empty for 993 to 1268 ms, the
+placeholder at 1074 to 1419 ms; after, never empty, the placeholder at 67 to 87 ms.
+#502, cached, on a server’s first visit: empty for 517 to 596 ms, the placeholder at 849
+to 959 ms; after, never empty, at 295 to 330 ms.
+The summary arrived as before in each case, 2.7 to 4.8 s cold and 1.1 to 1.3 s warm.
+
+### The Cached Brief Line
+
+Recorded on 2026-11-17, when a pull request header’s Diff summary row began holding the
+cached changed-files list’s brief line while its comparison is read (mb-z8ea): measured
+in headless Chrome 152 at 560, 420, and 360 px in both themes by
+`tests/test_github_pull_header_chrome.py` (`summary-wait`), the brief line of “35 files
+changed · 2 A, 3 D, 30 M · +1,234 −3,423” has its words 16 px from the content edge and
+2 px under the row’s top, and its text ends 308.19 px from the content edge at 560 and
+420 px and 291 px at 360 px, where it is cut short, each the same as the summary that
+replaces it; the row is 24 px before and after, and the tab bar does not move.
+Without the toggle’s right padding the line cut short ended 6 px later, and without a
+button’s `normal` line its words were 0.5 px higher.
+On this repository served as a checkout, at a load average of 38 to 94, three runs a
+case: opened from a Pulls row, the line showed 110 and 151 ms after the click, read from
+the row’s line with no request (in the third run the row’s list was of another head, and
+the placeholder held the row), and the summary at 3.2 to 4.4 s; a direct link to #470,
+its record not cached, showed it at 1.3 to 2.2 s (before the line waited for a known
+head, which the core brings at about the same time), its read 0.66 to 1.27 s on a server
+just started, and the summary at 4.5 to 6.4 s.
+
 ### A Kept Comparison
 
 Recorded on 2026-11-16, when a pull request’s page began keeping the comparisons it read
