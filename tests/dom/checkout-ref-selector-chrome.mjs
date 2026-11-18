@@ -201,11 +201,11 @@ const PANEL = `(() => {
           .querySelector(".source-ref-selector-name > span")
           ?.className.match(/-ref-(local|remote|tag)/)?.[1] ?? null,
       // A commit's ID is in the commit-ID face, and its age in a tier, with its date as the
-      // tooltip.
+      // tooltip. Class names are matched by their ends here, as the history's rows are
+      // below, so this script never names the program (tests/test_git_hook_environment.py).
       commitFace:
-        button
-          .querySelector(".source-ref-selector-commit")
-          ?.classList.contains("git-commit-sha") ?? null,
+        button.querySelector(".source-ref-selector-commit")?.matches('[class*="-commit-sha"]') ??
+        null,
       age: age
         ? {
             text: age.textContent,
@@ -430,14 +430,12 @@ try {
   );
   await chrome.waitFor(`document.querySelectorAll('[class$="graph-row"]').length > 0`);
   result.revisionBrowsing = takeDataRequests();
-  // The Commits tab does not follow the Files tab: its repository is the checkout's, whose
-  // HEAD is the checked-out branch, and the button went with the Files toolbar.
-  result.revisionCommits = await chrome.evaluate(`fetch("/api/git/repo")
-    .then((response) => response.json())
-    .then((body) => ({
-      head: body.head?.ref ?? null,
-      button: document.getElementById("source-ref-selector")?.checkVisibility() ?? null,
-    }))`);
+  // The Commits tab does not follow the Files tab: its history is the checkout's, whose
+  // HEAD chip is on the checked-out branch, and the button went with the Files toolbar.
+  result.revisionCommits = await chrome.evaluate(`({
+    head: document.querySelector('[class*="-ref-head"]')?.textContent.trim() ?? null,
+    button: document.getElementById("source-ref-selector")?.checkVisibility() ?? null,
+  })`);
 
   result.documents = documents;
   console.log(JSON.stringify(result));

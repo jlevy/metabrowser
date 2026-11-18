@@ -96,6 +96,12 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
     ),
     "static/source-ref-selector.js": (
         Listener(
+            "the list chooser's arrows, Home, and End going no further than the chooser, "
+            "since the Files toolbar's own binding would take them for a filter's",
+            None,
+            cancels=False,
+        ),
+        Listener(
             "the open list's Escape and Tab trap, which keeps Option-Tab",
             'parts.panel.hidden || event.ctrlKey || event.metaKey || (event.altKey && event.key !== "Tab")',
             checks=("tests/dom/source-ref-selector-keys-session.js",),

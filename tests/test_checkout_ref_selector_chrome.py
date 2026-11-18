@@ -237,10 +237,10 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
     for entry in documents:
         assert entry["csp"] is entry["url"].startswith("/view/g1-"), entry
 
-    # The Commits tab does not follow the Files tab: on feature's page, the repository it
-    # reads is the checkout's, whose HEAD is the checked-out topic, and the button went with
-    # the Files toolbar.
-    assert result["revisionCommits"] == {"head": "refs/heads/topic", "button": False}
+    # The Commits tab does not follow the Files tab: on feature's page, the history it shows
+    # is the checkout's, whose HEAD chip is on the checked-out topic, and the button went
+    # with the Files toolbar.
+    assert result["revisionCommits"] == {"head": "topic", "button": False}
 
     for name in ("toBranch", "toTag", "toWorkingTree"):
         assert result[name]["rowsMs"] < SWITCH_BOUND_MS, f"{name}: {result[name]}"
