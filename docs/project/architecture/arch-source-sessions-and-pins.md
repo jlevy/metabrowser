@@ -1,14 +1,17 @@
 # Source Sessions and Pins
 
-**Status:** Implemented: one active subject per server process, either an attached
-folder or a pinned Git revision; the content-source contract and capabilities; `GitPath`
-projection on every content route; switching the pin within one store; a folder’s server
-showing a [revision of its own checkout](#revisions-of-a-checkout) in the folder’s
-place; and the pin guard.
+**Status:** Implemented: one active subject per server process, either a folder’s
+working tree or a pinned revision, of a mirror or of a repository folder’s own checkout;
+the content-source contract and capabilities; `GitPath` projection on every content
+route; switching the pin within one store; a folder’s server showing a
+[revision of its own checkout](#revisions-of-a-checkout) in its working tree’s place
+([Open Modes](arch-open-modes.md), `mb-8ob8`); and the pin guard.
 A server that serves several subjects at once is not designed: it would need
 subject-qualified addresses on every route.
 
-A session’s **subject** is what it browses.
+A server’s root, and whether it is a folder or a mirror, are fixed for its life
+([Open Modes](arch-open-modes.md)). Its **subject** is the view it shows now: a folder’s
+working tree, or one revision.
 Where the subject’s Git objects come from is the
 [repository cache](arch-repository-cache.md), and how a mirror is fetched and refreshed
 is in [mirror acquisition and refresh](arch-mirror-acquisition-and-refresh.md).
@@ -22,7 +25,10 @@ There are two kinds, `RepositorySubjectKind` in `source.py`:
   files, including uncommitted changes, with the watcher, the filesystem inventory, and
   safe-path containment.
   Metabrowser never fetches into, switches, resets, locks, or writes a checkout or its
-  `.git` directory.
+  `.git` directory. A branch, tag, or commit of a checkout is a revision too, and showing
+  one never switches, fetches into, or writes the checkout.
+  [Open Modes](arch-open-modes.md#views) says which views a root has, and
+  [Revisions of a Checkout](#revisions-of-a-checkout) how a checkout’s revision is read.
 - **A pinned revision** (`git_revision`, `GitRevisionSubject` in `git/tree_source.py`)
   is one commit of a Metabrowser-owned, worktree-free repository store.
   A branch, tag, or pull-request head is resolved once to a full commit ID; the subject
@@ -205,6 +211,10 @@ revisions, so every data request from a pin’s page names its commit:
 - `SourcePinGuard` in `source_routes.py` refuses a request that names another commit
   with 409 `pin_changed` and the served commit in `x-metabrowser-pin-changed`. A request
   that names no commit, from `curl`, `metab --api`, or a folder’s page, is not checked.
+  Once a repository folder can show a revision, its working-tree page names the working
+  tree the same way, so a tab left on either view is refused when the other is served,
+  and only `curl` and `metab --api` name no view
+  ([Open Modes](arch-open-modes.md#views)).
 - The page announces the refusal as a `metabrowser:pin-changed` event, and the freshness
   row offers a reload.
   Nothing changes under a reader who is looking at the page.
@@ -239,6 +249,9 @@ switches nothing, so View on branch and Browse code on that page say the head mo
 instead of opening a bare commit.
 Beside a checkout, which has no pin, View on branch is a link to the working-tree file
 while the checkout’s `HEAD` is the diff’s head.
+[Open Modes](arch-open-modes.md#pull-requests-in-a-repository-folder) designs what
+replaces that: the pull request’s head as a revision view in the repository folder, with
+the working-tree copy a separate, labelled action.
 The old side has no control: a parent is a bare commit, and a merge base is on no
 branch. Only a regular file’s side gets a control, since a submodule’s side is another
 repository’s commit and a symbolic link’s would open its target.
@@ -259,8 +272,7 @@ mirror shows one, a pinned revision read from Git objects, while the working tre
 is what a folder opens on, stays a separate choice.
 The checked-out branch, chosen as a ref, shows its last commit, not the working tree.
 This section is the mechanism.
-Which modes exist, what each shows, and why is the open-modes design, proposed in
-[#558](https://github.com/jlevy/metabrowser/pull/558).
+Which modes exist, what each shows, and why is [Open Modes](arch-open-modes.md).
 
 - **Which folders.** The chooser follows the open root: it is offered when the served
   root is a repository’s root, by the discovery behind the
@@ -351,6 +363,7 @@ holds the naming rule, the exception, and the test that guards it.
 
 ## References
 
+- [Open Modes](arch-open-modes.md)
 - [Git Reading and History](arch-git.md)
 - [Diff Pipeline](arch-diff-pipeline.md)
 - [Repository cache](arch-repository-cache.md)

@@ -3372,6 +3372,20 @@ def test_file_status_ink_is_shared_and_legible() -> None:
             # (mb-8iwn).
             for ground in ("--bg", "--sidebar-bg", "--hover-bg", "--viz-surface-raised"):
                 assert _contrast(color, _declared(block, ground)) >= 4.5, (role, ground)
+    # The current row's ground, a translucent tint, under a Pulls row's change line and its
+    # file rows and the Files tree's current row: `--highlight-bg` over the ground it tints.
+    # Over `--sidebar-bg` it is the modified ink's lowest in the light theme, 4.57:1 (A5 of
+    # review A on #506).
+    for theme, tokens in _theme_tokens().items():
+        mix = _MIX_OVER_TRANSPARENT.fullmatch(_resolved(tokens, "--highlight-bg"))
+        assert mix is not None, theme
+        tint = _srgb(_resolved(tokens, mix["token"]))
+        for role in ("added", "deleted", "modified", "renamed"):
+            ink = _srgb_luminance(_srgb(_resolved(tokens, f"--git-status-{role}")))
+            for under in ("--bg", "--sidebar-bg"):
+                ground = _over(tint, _srgb(_resolved(tokens, under)), float(mix["percent"]) / 100)
+                ratio = _ratio(ink, _srgb_luminance(ground))
+                assert ratio >= 4.5, (theme, role, under, round(ratio, 2))
     for relative in (
         "static/git-panel.js",
         "builtin_plugins/diff/diff-view.js",

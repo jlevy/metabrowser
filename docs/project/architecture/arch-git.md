@@ -6,7 +6,9 @@ commit detail, for a served folder and for a pinned revision.
 Planned: working-tree status and diffs, in the
 [Git status plan](../specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md).
 
-Metabrowser reads Git and never writes a repository it serves.
+Metabrowser reads Git and never writes a repository it serves;
+[Known Gaps in the Read-Only Rule](#known-gaps-in-the-read-only-rule) names the two
+reads where Git itself does.
 This document covers how it starts Git, what the Commits panel asks of it, and how the
 answers stay bounded.
 [Source Sessions and Pins](arch-source-sessions-and-pins.md) covers what a session
@@ -93,6 +95,27 @@ separators are bytes, so each parser decodes at its own granularity.
 The cost is that the stat cache never persists, so a feature that polls Git pays a cost
 that does not amortize.
 
+### Known Gaps in the Read-Only Rule
+
+`READ_POLICY`, which a served folder’s own Git reads run under, keeps the reader’s and
+the checkout’s Git configuration and sets no lazy-fetch guard.
+Git therefore writes into the checkout’s Git directory in two cases:
+
+- **A partial clone.** A read that needs a blob the clone lacks makes Git fetch it from
+  the promisor remote and store a new pack.
+  Commit detail’s `git show --numstat` is such a read.
+  The store policies set `GIT_NO_LAZY_FETCH=1`, under which the same read fails and
+  fetches nothing.
+- **A cached textconv driver.** Where the checkout’s configuration names a textconv
+  driver with `cachetextconv`, a comparison that runs the driver makes Git write
+  `refs/notes/textconv/<driver>`.
+
+Both were reproduced on 2026-11-18 with Git 2.50.1, through `/api/git/commit/<rev>` on a
+`--filter=blob:none` clone and through `/api/plugin/diff/comparison` on a checkout with
+such a driver. No test holds either yet (`mb-z849`).
+[Open Modes](arch-open-modes.md#what-is-never-written) states the rule they fall short
+of, and requires that a revision of a checkout never reach either.
+
 ### The One Other Git Process
 
 `build_version.py` also runs `git`, with `subprocess.run`, to annotate the version line
@@ -131,6 +154,11 @@ root. A served folder is Git-capable only when the two are equal.
 History spans the whole repository, so serving a subdirectory as a Git root would let
 the Commits panel describe files outside the tree the user chose to browse; widening the
 gate is a containment change.
+
+[Open Modes](arch-open-modes.md#resolving-a-target-to-a-root) designs opening a path
+inside a repository at the repository’s root.
+The gate then stays as it is, and refuses only a folder served exactly, below a
+repository’s root.
 
 Discovery answers a negative reason, such as `not_repo_root`, and never raises to a
 route. Linked worktrees qualify because Git reports each worktree’s own root.
@@ -348,6 +376,7 @@ code does not import provider code.
 
 ## References
 
+- [Open Modes](arch-open-modes.md)
 - [Source Sessions and Pins](arch-source-sessions-and-pins.md)
 - [Diff Pipeline](arch-diff-pipeline.md)
 - [Views, models, and routes](arch-views-models-routes.md)

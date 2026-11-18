@@ -170,7 +170,7 @@ function mount(mountPullPage, envelope, how = {}) {
     markdown,
     timelines,
     body: () => container.querySelector(".github-pull-body"),
-    status: () => container.querySelector(".github-pull-status"),
+    note: () => container.querySelector(".github-pull-note"),
     frame() {
       const ready = [...frames.values()];
       frames.clear();
@@ -258,7 +258,7 @@ async function run() {
   const [first] = session.timelines;
   // Commits join a conversation already shown: the age breathes, and nothing spins.
   assert.equal(placed.querySelector(".spinner"), null);
-  const age = session.status().querySelector(".github-pull-freshness");
+  const age = session.note().querySelector(".github-pull-freshness");
   assert.ok(age.classes.has("mb-refreshing"));
   assert.equal(age.getAttribute("aria-busy"), "true");
   assert.deepEqual(first.request, { number: 7, record_revision: firstRevision });
