@@ -565,6 +565,17 @@ A developer testing a build where it was built sets
 `APP_INSTALL_LOCATIONS` and the other constants in `cli/present.py` hold the locations,
 the bundle identifiers, the name, and the marker.
 
+A build that predates `--present` refuses it as an unknown option, a usage error.
+`metab --present --version` checks for it without presenting anything, as the app checks
+each `metab` it might run for the flags it needs
+([Choosing a metab](macos-app.md#choosing-a-metab)).
+
+In an agent’s sandbox, LaunchServices may not answer, or may refuse what `open` asks,
+and `--present` reports `lookup_failed` or `open_failed`. Run it outside the sandbox:
+[Working with agents](working-with-agents.md#let-an-agent-reach-the-app-from-a-sandbox)
+has the Claude Code and Codex settings, which match a command by its first words, so
+write it as `metab --present ROOT`, and says when such a setting is safe.
+
 ## Recent Targets
 
 Metabrowser keeps one list of what you opened lately, which the
