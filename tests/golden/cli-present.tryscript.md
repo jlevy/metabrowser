@@ -32,8 +32,9 @@ A target that resolves also carries a `decision`: where `--present` would open i
 app or a browser, and why.
 This file sets `METABROWSER_OPEN_IN=browser`, so the decision is the same on every
 machine: nothing here looks for the app, clones, fetches, or starts a server.
-Decisions under each preference, and delivery to the app with a recording `open` or to a
-browser on a stand-in server, are `tests/golden/cli-present-delivery.txt`.
+Decisions under each preference, and delivery to the app with a recording `open`, are
+`tests/golden/cli-present-delivery.txt`; delivery to a browser on a stand-in server is
+`tests/golden/cli-present-browser.txt`.
 
 ## Test: a folder, a file, and a selection inside a folder
 

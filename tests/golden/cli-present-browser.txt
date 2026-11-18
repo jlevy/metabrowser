@@ -1,0 +1,872 @@
+# metab notes --present --format json
+exit: 0
+--- stdout ---
+{
+  "delivered_to": "browser",
+  "open_in": "auto",
+  "open_in_source": "default",
+  "bundle_id": null,
+  "bundle_path": null,
+  "url": "http://127.0.0.1:8413/view/",
+  "pid": 12345,
+  "log": "<ROOT>/logs/metab-present-XXXXXXXX.log",
+  "target": {
+    "kind": "folder",
+    "root": "<ROOT>/notes",
+    "page": "/view/",
+    "handoff": [
+      "<ROOT>/notes"
+    ],
+    "refusal": null
+  },
+  "confirmed": false,
+  "code": "server_started",
+  "reason": "a metab server for the target runs detached at http://127.0.0.1:8413/view/, which answers as the target's, and opens it in a browser once the page answers; nothing confirms that a browser shows it. Its output is in <ROOT>/logs/metab-present-XXXXXXXX.log; stop it with kill 12345",
+  "fallback": {
+    "code": "app_not_found",
+    "reason": "LaunchServices knows no app io.github.jlevy.metabrowser or io.github.jlevy.metabrowser.dev; install or build the Metabrowser app and open it once, or serve the target with metab ROOT"
+  }
+}
+--- stderr ---
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> none
+--- open ---
+--- server ---
+metab -- notes
+# metab notes --path docs/guide.md --present
+exit: 0
+--- stdout ---
+delivered_to: browser
+open_in: auto (default)
+url: http://127.0.0.1:8413/view/
+pid: 12345
+log: <ROOT>/logs/metab-present-XXXXXXXX.log
+kind: file
+root: <ROOT>/notes
+page: /view/docs/guide.md
+handoff: <ROOT>/notes <ROOT>/notes/docs/guide.md
+confirmed: false
+code: server_started
+reason: a metab server for the target runs detached at http://127.0.0.1:8413/view/, which answers as the target's, and opens it in a browser once the page answers; nothing confirms that a browser shows it. Its output is in <ROOT>/logs/metab-present-XXXXXXXX.log; stop it with kill 12345
+fallback: app_not_found: LaunchServices knows no app io.github.jlevy.metabrowser or io.github.jlevy.metabrowser.dev; install or build the Metabrowser app and open it once, or serve the target with metab ROOT
+--- stderr ---
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> none
+--- open ---
+--- server ---
+metab --path docs/guide.md -- notes
+# metab https://github.com/octo/demo/pull/7 --present --format json
+exit: 0
+--- stdout ---
+{
+  "delivered_to": "browser",
+  "open_in": "auto",
+  "open_in_source": "default",
+  "bundle_id": null,
+  "bundle_path": null,
+  "url": "http://127.0.0.1:8413/view/",
+  "pid": 12345,
+  "log": "<ROOT>/logs/metab-present-XXXXXXXX.log",
+  "target": {
+    "kind": "pull_request",
+    "root": "https://github.com/octo/demo",
+    "page": "/pull/7",
+    "handoff": [
+      "https://github.com/octo/demo/pull/7"
+    ],
+    "refusal": null
+  },
+  "confirmed": false,
+  "code": "server_started",
+  "reason": "a metab server for the target runs detached at http://127.0.0.1:8413/view/, which answers as the target's, and opens it in a browser once the page answers; nothing confirms that a browser shows it. Its output is in <ROOT>/logs/metab-present-XXXXXXXX.log; stop it with kill 12345",
+  "fallback": {
+    "code": "app_not_found",
+    "reason": "LaunchServices knows no app io.github.jlevy.metabrowser or io.github.jlevy.metabrowser.dev; install or build the Metabrowser app and open it once, or serve the target with metab ROOT"
+  }
+}
+--- stderr ---
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> none
+--- open ---
+--- server ---
+metab -- https://github.com/octo/demo/pull/7
+# metab notes --present --format json
+exit: 0
+--- stdout ---
+{
+  "delivered_to": "browser",
+  "open_in": "auto",
+  "open_in_source": "default",
+  "bundle_id": null,
+  "bundle_path": null,
+  "url": "http://127.0.0.1:8413/view/",
+  "pid": 12345,
+  "log": "<ROOT>/logs/metab-present-XXXXXXXX.log",
+  "target": {
+    "kind": "folder",
+    "root": "<ROOT>/notes",
+    "page": "/view/",
+    "handoff": [
+      "<ROOT>/notes"
+    ],
+    "refusal": null
+  },
+  "confirmed": false,
+  "code": "server_started",
+  "reason": "a metab server for the target runs detached at http://127.0.0.1:8413/view/, which answers as the target's, and opens it in a browser once the page answers; nothing confirms that a browser shows it. Its output is in <ROOT>/logs/metab-present-XXXXXXXX.log; stop it with kill 12345",
+  "fallback": {
+    "code": "app_not_installed",
+    "reason": "LaunchServices names the app at <ROOT>/apps/macos/build/dev/Metabrowser.app, which is not installed in an Applications folder; --present sends only to an app at /Applications/Metabrowser.app or ~/Applications/Metabrowser.app, so install the Metabrowser app at one of them"
+  }
+}
+--- stderr ---
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> <ROOT>/apps/macos/build/dev/Metabrowser.app
+--- open ---
+--- server ---
+metab -- notes
+# metab notes --present --format json
+exit: 1
+--- stdout ---
+{
+  "delivered_to": "none",
+  "open_in": "auto",
+  "open_in_source": "default",
+  "bundle_id": null,
+  "bundle_path": null,
+  "url": null,
+  "pid": null,
+  "log": "<ROOT>/logs/metab-present-XXXXXXXX.log",
+  "target": {
+    "kind": "folder",
+    "root": "<ROOT>/notes",
+    "page": "/view/",
+    "handoff": [
+      "<ROOT>/notes"
+    ],
+    "refusal": null
+  },
+  "confirmed": false,
+  "code": "server_failed",
+  "reason": "the metab server for the target exited with status 1 before it said where it serves: Error: the stand-in server exits, as it was told to; its output is in <ROOT>/logs/metab-present-XXXXXXXX.log",
+  "fallback": {
+    "code": "app_not_found",
+    "reason": "LaunchServices knows no app io.github.jlevy.metabrowser or io.github.jlevy.metabrowser.dev; install or build the Metabrowser app and open it once, or serve the target with metab ROOT"
+  }
+}
+--- stderr ---
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> none
+--- open ---
+--- server ---
+metab -- notes  [stand-in told to exit 1 first]
+# metab notes --present
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: not served: the metab server for the target exited with status 1 before it said where it serves: Error: the stand-in server exits, as it was told to; its output is in <ROOT>/logs/metab-present-XXXXXXXX.log (server_failed)
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> none
+--- open ---
+--- server ---
+metab -- notes  [stand-in told to exit 1 first]
+# metab https://github.com/octo/demo --present --format json
+exit: 0
+--- stdout ---
+{
+  "delivered_to": "browser",
+  "open_in": "auto",
+  "open_in_source": "default",
+  "bundle_id": null,
+  "bundle_path": null,
+  "url": null,
+  "pid": 12345,
+  "log": "<ROOT>/logs/metab-present-XXXXXXXX.log",
+  "target": {
+    "kind": "repository",
+    "root": "https://github.com/octo/demo",
+    "page": "/view/",
+    "handoff": [
+      "https://github.com/octo/demo"
+    ],
+    "refusal": null
+  },
+  "confirmed": false,
+  "code": "server_starting",
+  "reason": "a metab server for the target runs detached and has not said where it serves after 0.5 s, as a first clone can take minutes; it opens the page in a browser once it answers. Its output is in <ROOT>/logs/metab-present-XXXXXXXX.log; stop it with kill 12345",
+  "fallback": {
+    "code": "app_not_found",
+    "reason": "LaunchServices knows no app io.github.jlevy.metabrowser or io.github.jlevy.metabrowser.dev; install or build the Metabrowser app and open it once, or serve the target with metab ROOT"
+  }
+}
+--- stderr ---
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> none
+--- open ---
+--- server ---
+metab -- https://github.com/octo/demo  [stand-in told to say nothing yet]
+# metab https://github.com/octo/demo --present
+exit: 0
+--- stdout ---
+delivered_to: browser
+open_in: auto (default)
+url: (not yet)
+pid: 12345
+log: <ROOT>/logs/metab-present-XXXXXXXX.log
+kind: repository
+root: https://github.com/octo/demo
+page: /view/
+handoff: https://github.com/octo/demo
+confirmed: false
+code: server_starting
+reason: a metab server for the target runs detached and has not said where it serves after 0.5 s, as a first clone can take minutes; it opens the page in a browser once it answers. Its output is in <ROOT>/logs/metab-present-XXXXXXXX.log; stop it with kill 12345
+fallback: app_not_found: LaunchServices knows no app io.github.jlevy.metabrowser or io.github.jlevy.metabrowser.dev; install or build the Metabrowser app and open it once, or serve the target with metab ROOT
+--- stderr ---
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> none
+--- open ---
+--- server ---
+metab -- https://github.com/octo/demo  [stand-in told to say nothing yet]
+# SERVER_STAND_IN_TAKEN_URL=http://127.0.0.1:8413/view/ metab notes --present --open-in browser --format json
+exit: 1
+--- stdout ---
+{
+  "delivered_to": "none",
+  "open_in": "browser",
+  "open_in_source": "flag",
+  "bundle_id": null,
+  "bundle_path": null,
+  "url": null,
+  "pid": null,
+  "log": "<ROOT>/logs/metab-present-XXXXXXXX.log",
+  "target": {
+    "kind": "folder",
+    "root": "<ROOT>/notes",
+    "page": "/view/",
+    "handoff": [
+      "<ROOT>/notes"
+    ],
+    "refusal": null
+  },
+  "confirmed": false,
+  "code": "server_failed",
+  "reason": "the metab server for the target exited with status 1 after it said where it serves: ERROR:    [Errno 48] error while attempting to bind on address: address already in use; its output is in <ROOT>/logs/metab-present-XXXXXXXX.log",
+  "fallback": null
+}
+--- stderr ---
+--- launch_services ---
+--- open ---
+--- server ---
+metab -- notes
+# metab notes --present --open-in browser --format json
+exit: 0
+--- stdout ---
+{
+  "delivered_to": "browser",
+  "open_in": "browser",
+  "open_in_source": "flag",
+  "bundle_id": null,
+  "bundle_path": null,
+  "url": "http://127.0.0.1:8413/view/",
+  "pid": 12345,
+  "log": "<ROOT>/logs/metab-present-XXXXXXXX.log",
+  "target": {
+    "kind": "folder",
+    "root": "<ROOT>/notes",
+    "page": "/view/",
+    "handoff": [
+      "<ROOT>/notes"
+    ],
+    "refusal": null
+  },
+  "confirmed": false,
+  "code": "server_started",
+  "reason": "a metab server for the target runs detached at http://127.0.0.1:8413/view/, which answers as the target's, and opens it in a browser once the page answers; nothing confirms that a browser shows it. Its output is in <ROOT>/logs/metab-present-XXXXXXXX.log; stop it with kill 12345",
+  "fallback": null
+}
+--- stderr ---
+--- launch_services ---
+--- open ---
+--- server ---
+metab -- notes
+# METABROWSER_OPEN_IN=browser metab notes --present --format json
+exit: 0
+--- stdout ---
+{
+  "delivered_to": "browser",
+  "open_in": "browser",
+  "open_in_source": "environment",
+  "bundle_id": null,
+  "bundle_path": null,
+  "url": "http://127.0.0.1:8413/view/",
+  "pid": 12345,
+  "log": "<ROOT>/logs/metab-present-XXXXXXXX.log",
+  "target": {
+    "kind": "folder",
+    "root": "<ROOT>/notes",
+    "page": "/view/",
+    "handoff": [
+      "<ROOT>/notes"
+    ],
+    "refusal": null
+  },
+  "confirmed": false,
+  "code": "server_started",
+  "reason": "a metab server for the target runs detached at http://127.0.0.1:8413/view/, which answers as the target's, and opens it in a browser once the page answers; nothing confirms that a browser shows it. Its output is in <ROOT>/logs/metab-present-XXXXXXXX.log; stop it with kill 12345",
+  "fallback": null
+}
+--- stderr ---
+--- launch_services ---
+--- open ---
+--- server ---
+metab -- notes
+# metab notes --present --format json
+exit: 0
+--- stdout ---
+{
+  "delivered_to": "browser",
+  "open_in": "browser",
+  "open_in_source": "config",
+  "bundle_id": null,
+  "bundle_path": null,
+  "url": "http://127.0.0.1:8413/view/",
+  "pid": 12345,
+  "log": "<ROOT>/logs/metab-present-XXXXXXXX.log",
+  "target": {
+    "kind": "folder",
+    "root": "<ROOT>/notes",
+    "page": "/view/",
+    "handoff": [
+      "<ROOT>/notes"
+    ],
+    "refusal": null
+  },
+  "confirmed": false,
+  "code": "server_started",
+  "reason": "a metab server for the target runs detached at http://127.0.0.1:8413/view/, which answers as the target's, and opens it in a browser once the page answers; nothing confirms that a browser shows it. Its output is in <ROOT>/logs/metab-present-XXXXXXXX.log; stop it with kill 12345",
+  "fallback": null
+}
+--- stderr ---
+--- config_yml ---
+  open_in: browser
+--- launch_services ---
+--- open ---
+--- server ---
+metab -- notes
+# METABROWSER_OPEN_IN=auto metab notes --present --format json
+exit: 0
+--- stdout ---
+{
+  "delivered_to": "app",
+  "open_in": "auto",
+  "open_in_source": "environment",
+  "bundle_id": "io.github.jlevy.metabrowser.dev",
+  "bundle_path": "<ROOT>/Applications/Metabrowser.app",
+  "url": null,
+  "pid": null,
+  "log": null,
+  "target": {
+    "kind": "folder",
+    "root": "<ROOT>/notes",
+    "page": "/view/",
+    "handoff": [
+      "<ROOT>/notes"
+    ],
+    "refusal": null
+  },
+  "confirmed": false,
+  "code": "not_confirmed",
+  "reason": "LaunchServices took the target; the app does not reply yet, so nothing confirms that a window shows it",
+  "fallback": null
+}
+--- stderr ---
+--- config_yml ---
+  open_in: browser
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> <ROOT>/Applications/Metabrowser.app
+--- open ---
+open -b io.github.jlevy.metabrowser.dev <ROOT>/notes
+--- server ---
+# metab notes --present --open-in app --format json
+exit: 0
+--- stdout ---
+{
+  "delivered_to": "app",
+  "open_in": "app",
+  "open_in_source": "flag",
+  "bundle_id": "io.github.jlevy.metabrowser.dev",
+  "bundle_path": "<ROOT>/Applications/Metabrowser.app",
+  "url": null,
+  "pid": null,
+  "log": null,
+  "target": {
+    "kind": "folder",
+    "root": "<ROOT>/notes",
+    "page": "/view/",
+    "handoff": [
+      "<ROOT>/notes"
+    ],
+    "refusal": null
+  },
+  "confirmed": false,
+  "code": "not_confirmed",
+  "reason": "LaunchServices took the target; the app does not reply yet, so nothing confirms that a window shows it",
+  "fallback": null
+}
+--- stderr ---
+--- config_yml ---
+  open_in: browser
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> <ROOT>/Applications/Metabrowser.app
+--- open ---
+open -b io.github.jlevy.metabrowser.dev <ROOT>/notes
+--- server ---
+# metab notes --present --open-in browser --app-bundle-id org.example.metabrowser-fork
+exit: 2
+--- stdout ---
+--- stderr ---
+Usage: metab [OPTIONS] [ROOT]
+Try 'metab --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ --app-bundle-id not valid with --open-in browser, which looks for no app     │
+╰──────────────────────────────────────────────────────────────────────────────╯
+--- launch_services ---
+--- open ---
+--- server ---
+# metab notes --present --format json
+exit: 4
+--- stdout ---
+{
+  "delivered_to": "none",
+  "open_in": "auto",
+  "open_in_source": "default",
+  "bundle_id": null,
+  "bundle_path": null,
+  "url": null,
+  "pid": null,
+  "log": null,
+  "target": {
+    "kind": "folder",
+    "root": "<ROOT>/notes",
+    "page": "/view/",
+    "handoff": [
+      "<ROOT>/notes"
+    ],
+    "refusal": null
+  },
+  "confirmed": false,
+  "code": "browser_off",
+  "reason": "no app takes the target, but present_browser is false in config.yml, so --present starts no server for a browser and opens a target only in the app",
+  "fallback": {
+    "code": "app_not_found",
+    "reason": "LaunchServices knows no app io.github.jlevy.metabrowser or io.github.jlevy.metabrowser.dev; install or build the Metabrowser app and open it once, or serve the target with metab ROOT"
+  }
+}
+--- stderr ---
+--- config_yml ---
+  present_browser: false
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> none
+--- open ---
+--- server ---
+# metab notes --present --open-in browser
+exit: 4
+--- stdout ---
+--- stderr ---
+Error: not served: open_in is browser, but present_browser is false in config.yml, so --present starts no server for a browser and opens a target only in the app (browser_off)
+--- config_yml ---
+  present_browser: false
+--- launch_services ---
+--- open ---
+--- server ---
+# METABROWSER_OPEN_IN=browser metab notes --present --format json
+exit: 4
+--- stdout ---
+{
+  "delivered_to": "none",
+  "open_in": "browser",
+  "open_in_source": "environment",
+  "bundle_id": null,
+  "bundle_path": null,
+  "url": null,
+  "pid": null,
+  "log": null,
+  "target": {
+    "kind": "folder",
+    "root": "<ROOT>/notes",
+    "page": "/view/",
+    "handoff": [
+      "<ROOT>/notes"
+    ],
+    "refusal": null
+  },
+  "confirmed": false,
+  "code": "browser_off",
+  "reason": "open_in is browser, but present_browser is false in config.yml, so --present starts no server for a browser and opens a target only in the app",
+  "fallback": null
+}
+--- stderr ---
+--- config_yml ---
+  present_browser: false
+--- launch_services ---
+--- open ---
+--- server ---
+# metab notes --present --dry-run --open-in browser --format json
+exit: 0
+--- stdout ---
+{
+  "kind": "folder",
+  "root": "<ROOT>/notes",
+  "page": "/view/",
+  "handoff": [
+    "<ROOT>/notes"
+  ],
+  "refusal": null,
+  "decision": {
+    "delivers_to": "none",
+    "open_in": "browser",
+    "open_in_source": "flag",
+    "bundle_id": null,
+    "bundle_path": null,
+    "code": "browser_off",
+    "reason": "open_in is browser, but present_browser is false in config.yml, so --present starts no server for a browser and opens a target only in the app",
+    "fallback": null
+  }
+}
+--- stderr ---
+--- config_yml ---
+  present_browser: false
+--- launch_services ---
+--- open ---
+--- server ---
+# metab notes --present --format json
+exit: 0
+--- stdout ---
+{
+  "delivered_to": "app",
+  "open_in": "auto",
+  "open_in_source": "default",
+  "bundle_id": "io.github.jlevy.metabrowser.dev",
+  "bundle_path": "<ROOT>/Applications/Metabrowser.app",
+  "url": null,
+  "pid": null,
+  "log": null,
+  "target": {
+    "kind": "folder",
+    "root": "<ROOT>/notes",
+    "page": "/view/",
+    "handoff": [
+      "<ROOT>/notes"
+    ],
+    "refusal": null
+  },
+  "confirmed": false,
+  "code": "not_confirmed",
+  "reason": "LaunchServices took the target; the app does not reply yet, so nothing confirms that a window shows it",
+  "fallback": null
+}
+--- stderr ---
+--- config_yml ---
+  present_browser: false
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> <ROOT>/Applications/Metabrowser.app
+--- open ---
+open -b io.github.jlevy.metabrowser.dev <ROOT>/notes
+--- server ---
+# metab notes --present --open-in browser --format json
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: present_browser in <ROOT>/metabrowser-config/config.yml is not true or false; fix it there; --present reads present_browser from it before it starts a server for a browser
+--- config_yml ---
+  present_browser: maybe
+--- launch_services ---
+--- open ---
+--- server ---
+# metab notes --present --open-in app --format json
+exit: 0
+--- stdout ---
+{
+  "delivered_to": "app",
+  "open_in": "app",
+  "open_in_source": "flag",
+  "bundle_id": "io.github.jlevy.metabrowser.dev",
+  "bundle_path": "<ROOT>/Applications/Metabrowser.app",
+  "url": null,
+  "pid": null,
+  "log": null,
+  "target": {
+    "kind": "folder",
+    "root": "<ROOT>/notes",
+    "page": "/view/",
+    "handoff": [
+      "<ROOT>/notes"
+    ],
+    "refusal": null
+  },
+  "confirmed": false,
+  "code": "not_confirmed",
+  "reason": "LaunchServices took the target; the app does not reply yet, so nothing confirms that a window shows it",
+  "fallback": null
+}
+--- stderr ---
+--- config_yml ---
+  present_browser: maybe
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> <ROOT>/Applications/Metabrowser.app
+--- open ---
+open -b io.github.jlevy.metabrowser.dev <ROOT>/notes
+--- server ---
+# metab notes --present --open-in sometimes
+exit: 2
+--- stdout ---
+--- stderr ---
+Usage: metab [OPTIONS] [ROOT]
+Try 'metab --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ Invalid value for --open-in: 'sometimes' is not one of auto, app, browser    │
+╰──────────────────────────────────────────────────────────────────────────────╯
+--- launch_services ---
+--- open ---
+--- server ---
+# METABROWSER_OPEN_IN=sometimes metab notes --present --format json
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: METABROWSER_OPEN_IN is not auto, app, or browser; set it to one, or unset it
+--- launch_services ---
+--- open ---
+--- server ---
+# metab notes --present --format json
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: open_in in <ROOT>/metabrowser-config/config.yml is not auto, app, or browser; fix open_in there, or choose with --open-in or METABROWSER_OPEN_IN, which are read first
+--- config_yml ---
+  open_in: sometimes
+--- launch_services ---
+--- open ---
+--- server ---
+# metab notes --present --open-in app --format json
+exit: 0
+--- stdout ---
+{
+  "delivered_to": "app",
+  "open_in": "app",
+  "open_in_source": "flag",
+  "bundle_id": "io.github.jlevy.metabrowser.dev",
+  "bundle_path": "<ROOT>/Applications/Metabrowser.app",
+  "url": null,
+  "pid": null,
+  "log": null,
+  "target": {
+    "kind": "folder",
+    "root": "<ROOT>/notes",
+    "page": "/view/",
+    "handoff": [
+      "<ROOT>/notes"
+    ],
+    "refusal": null
+  },
+  "confirmed": false,
+  "code": "not_confirmed",
+  "reason": "LaunchServices took the target; the app does not reply yet, so nothing confirms that a window shows it",
+  "fallback": null
+}
+--- stderr ---
+--- config_yml ---
+  open_in: sometimes
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> <ROOT>/Applications/Metabrowser.app
+--- open ---
+open -b io.github.jlevy.metabrowser.dev <ROOT>/notes
+--- server ---
+# metab --doctor
+exit: 0
+--- stdout ---
+metab --doctor: open_in auto (default); the app: <ROOT>/Applications/Metabrowser.app (io.github.jlevy.metabrowser.dev)
+--- stderr ---
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> <ROOT>/Applications/Metabrowser.app
+--- open ---
+--- server ---
+# metab --doctor --json
+exit: 0
+--- stdout ---
+{
+  "ok": true,
+  "open_in": {
+    "value": "auto",
+    "source": "default",
+    "present_browser": true,
+    "app": {
+      "found": true,
+      "bundle_id": "io.github.jlevy.metabrowser.dev",
+      "bundle_path": "<ROOT>/Applications/Metabrowser.app",
+      "code": "app_found",
+      "reason": "the app takes a target"
+    }
+  },
+  "problems": []
+}
+--- stderr ---
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> <ROOT>/Applications/Metabrowser.app
+--- open ---
+--- server ---
+# METABROWSER_OPEN_IN=browser metab --doctor
+exit: 0
+--- stdout ---
+metab --doctor: open_in browser (environment); --present looks for no app
+--- stderr ---
+--- launch_services ---
+--- open ---
+--- server ---
+# metab --doctor --json
+exit: 0
+--- stdout ---
+{
+  "ok": true,
+  "open_in": {
+    "value": "auto",
+    "source": "default",
+    "present_browser": true,
+    "app": {
+      "found": false,
+      "bundle_id": null,
+      "bundle_path": null,
+      "code": "app_not_found",
+      "reason": "LaunchServices knows no app io.github.jlevy.metabrowser or io.github.jlevy.metabrowser.dev; install or build the Metabrowser app and open it once, or serve the target with metab ROOT"
+    }
+  },
+  "problems": []
+}
+--- stderr ---
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> none
+--- open ---
+--- server ---
+# metab --doctor
+exit: 1
+--- stdout ---
+--- stderr ---
+  • open_in is app (config), and no app takes a target: LaunchServices knows no app io.github.jlevy.metabrowser or io.github.jlevy.metabrowser.dev; install or build the Metabrowser app and open it once, or serve the target with metab ROOT
+--- config_yml ---
+  open_in: app
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> none
+--- open ---
+--- server ---
+# metab --doctor --json
+exit: 1
+--- stdout ---
+{
+  "ok": false,
+  "open_in": {
+    "value": "app",
+    "source": "config",
+    "present_browser": true,
+    "app": {
+      "found": false,
+      "bundle_id": null,
+      "bundle_path": null,
+      "code": "app_not_found",
+      "reason": "LaunchServices knows no app io.github.jlevy.metabrowser or io.github.jlevy.metabrowser.dev; install or build the Metabrowser app and open it once, or serve the target with metab ROOT"
+    }
+  },
+  "problems": [
+    "open_in is app (config), and no app takes a target: LaunchServices knows no app io.github.jlevy.metabrowser or io.github.jlevy.metabrowser.dev; install or build the Metabrowser app and open it once, or serve the target with metab ROOT"
+  ]
+}
+--- stderr ---
+--- config_yml ---
+  open_in: app
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> none
+--- open ---
+--- server ---
+# METABROWSER_OPEN_IN=browser metab --doctor
+exit: 1
+--- stdout ---
+--- stderr ---
+  • open_in is browser (environment), and present_browser is false in config.yml, so --present starts no server for a browser and opens a target only in the app: --present opens nothing
+--- config_yml ---
+  present_browser: false
+--- launch_services ---
+--- open ---
+--- server ---
+# metab --doctor --json
+exit: 1
+--- stdout ---
+{
+  "ok": false,
+  "open_in": {
+    "value": "auto",
+    "source": "default",
+    "present_browser": false,
+    "app": {
+      "found": false,
+      "bundle_id": null,
+      "bundle_path": null,
+      "code": "app_not_found",
+      "reason": "LaunchServices knows no app io.github.jlevy.metabrowser or io.github.jlevy.metabrowser.dev; install or build the Metabrowser app and open it once, or serve the target with metab ROOT"
+    }
+  },
+  "problems": [
+    "open_in is auto (default), no app takes a target (LaunchServices knows no app io.github.jlevy.metabrowser or io.github.jlevy.metabrowser.dev; install or build the Metabrowser app and open it once, or serve the target with metab ROOT), and present_browser is false in config.yml, so --present starts no server for a browser and opens a target only in the app: --present opens nothing"
+  ]
+}
+--- stderr ---
+--- config_yml ---
+  present_browser: false
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> none
+--- open ---
+--- server ---
+# METABROWSER_OPEN_IN=sometimes metab --doctor --json
+exit: 1
+--- stdout ---
+{
+  "ok": false,
+  "open_in": {
+    "value": null,
+    "source": null,
+    "present_browser": true,
+    "app": {
+      "found": false,
+      "bundle_id": null,
+      "bundle_path": null,
+      "code": "app_not_found",
+      "reason": "LaunchServices knows no app io.github.jlevy.metabrowser or io.github.jlevy.metabrowser.dev; install or build the Metabrowser app and open it once, or serve the target with metab ROOT"
+    }
+  },
+  "problems": [
+    "open_in: METABROWSER_OPEN_IN is not auto, app, or browser; set it to one, or unset it"
+  ]
+}
+--- stderr ---
+--- launch_services ---
+io.github.jlevy.metabrowser -> none
+io.github.jlevy.metabrowser.dev -> none
+--- open ---
+--- server ---

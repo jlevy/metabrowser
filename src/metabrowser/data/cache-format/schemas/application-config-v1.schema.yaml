@@ -45,6 +45,12 @@ properties:
     - $ref: '#/$defs/OpenInChoice'
     - type: 'null'
     default: null
+  present_browser:
+    anyOf:
+    - type: boolean
+    - type: 'null'
+    default: null
+    title: Present Browser
   upgrades:
     items:
       $ref: '#/$defs/ConfigUpgrade'
@@ -60,4 +66,4 @@ title: ApplicationConfig
 type: object
 x-softschema:
   contract: metabrowser.config:ApplicationConfig/v1
-  schema_sha256: d2cc980c0b4edc5ca7bf93e6dfc24c371e186e6089e72bbc3ccc19768f2e801c
+  schema_sha256: 8bdb93b443fbf9c793f8795e23408e6e6705fb5a5960a0f73cd970829073d6a8

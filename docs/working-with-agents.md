@@ -111,15 +111,30 @@ The command then reports `lookup_failed` or `open_failed`, with the status the
 [exit-status table](command-line.md#exit-status) gives a target LaunchServices did not
 take, and the skill has the agent rerun the command outside the sandbox when you allow
 that, or serve the page instead.
+The skill never reruns a delivery to a browser outside the sandbox: it serves that page
+inside the sandbox instead.
 A rule can let the one command prefix, `metab --present`, run outside the sandbox every
 time. The skill writes `--present` first and runs the command alone, with no redirect or
 pipe, so that such a rule matches it and nothing else.
 
-> **A rule runs `metab` with your full access.** Add one only for a `metab` installed
-> outside every folder the agent can write, its code included, such as one that
-> `uv tool install` made: the command in `~/.local/bin`, its code under
-> `~/.local/share/uv/tools`. Never name a source checkout the agent works in.
-> A checkout’s `.venv/bin/metab` is an editable install that runs the checkout’s own
+> **A rule runs `metab` with your full access, and lets the agent start a server outside
+> the sandbox.** The rule matches `metab --present` whatever follows, so besides handing
+> the app a target, a matched command can start a `metab` server for any path the agent
+> names: under `--open-in browser`, or under the default `auto` when no app takes the
+> target. That server runs outside the sandbox, serves the path on a loopback address the
+> report gives the agent, and keeps running after the session ends, until it is stopped.
+> No `open_in` setting prevents it, since `--open-in` overrides them.
+> **Set `present_browser: false`** in `config.yml`
+> ([Turning Browser Delivery Off](command-line.md#turning-browser-delivery-off)) with
+> any rule: `--present` then hands the app a target or nothing, and no flag or variable
+> undoes it. It holds while the agent cannot also write `config.yml` or choose the
+> configuration directory (`METABROWSER_CONFIG_DIR`, `XDG_CONFIG_HOME`) for that
+> command.
+> 
+> Add a rule only for a `metab` installed outside every folder the agent can write, its
+> code included, such as one that `uv tool install` made: the command in `~/.local/bin`,
+> its code under `~/.local/share/uv/tools`. Never name a source checkout the agent works
+> in. A checkout’s `.venv/bin/metab` is an editable install that runs the checkout’s own
 > `src/`, so an agent that can write the checkout can change that code inside the
 > sandbox and then run it outside, with no prompt under an allow rule.
 > To use a source build, point the rule, and the app’s Settings > Choose metab…, at a

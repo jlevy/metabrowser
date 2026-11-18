@@ -55,7 +55,7 @@ selected. Opening a path inside a Git repository at the repository’s root is p
 | 1 | A refusal or failure, printed as one `Error:` line on stderr; `--api` when the route answers outside 2xx; `--present` when the server it started exited first |
 | 2 | A usage error, such as two modes or an option the mode does not use; a `--diff` that cannot be computed |
 | 3 | `--present`: ROOT cannot be presented, and the refusal says why |
-| 4 | `--present`: no app takes the target under `open_in` `app`, so nothing was sent; the report’s `code` says why |
+| 4 | `--present`: no app takes the target under `open_in` `app`, or a browser would and `present_browser` is false, so nothing was sent; the report’s `code` says why |
 | 5 | `--present`: LaunchServices could not be asked or did not take the target, as in a sandbox |
 | 129, 130 | Stopped by a terminal hangup or Ctrl-C |
 | 143 | Stopped by `SIGTERM` while cloning |
@@ -73,7 +73,7 @@ selected. Opening a path inside a Git repository at the repository’s root is p
 | `--no-serve` | Clone or reuse a Git source in the cache, and serve nothing |
 | `--remote HOST` | Serve a directory on another machine through an SSH tunnel |
 | `--plugins`, `--plugin NAME`, `--doctor` | List, show, or validate plugins |
-| `--present` | Hand a folder, a file, or a GitHub URL to the [macOS app](macos-app.md) |
+| `--present` | Open a folder, a file, or a GitHub URL in the [macOS app](macos-app.md) or a browser |
 | `--recent`, `--recent-add`, `--recent-forget`, `--recent-clear` | List or change the [recent targets](#recent-targets) |
 
 The modes read, with three exceptions: a Git source is cloned into the cache by
@@ -521,6 +521,9 @@ Under `auto`, a target LaunchServices cannot be asked about goes nowhere with
 browser it started would be kept from the screen as well.
 Bare `metab ROOT` does not read the preference; it serves and opens a browser as it
 always has.
+`present_browser: false` in the same mapping keeps `--present` from opening a
+browser whatever the preference says
+([Turning Browser Delivery Off](#turning-browser-delivery-off)).
 
 ### Checking a Target: `--dry-run`
 
@@ -675,14 +678,20 @@ and `--present` reports `lookup_failed` or `open_failed`. Run it outside the san
 [Working with agents](working-with-agents.md#let-an-agent-reach-the-app-from-a-sandbox)
 has the Claude Code and Codex settings, which match a command by its first words, so
 write it as `metab --present ROOT`, and says when such a setting is safe.
+Such a setting also lets `--present` start a server outside the sandbox for any path the
+agent names, unless `present_browser` is false
+([Turning Browser Delivery Off](#turning-browser-delivery-off)).
 
 ### Opening in a Browser
 
 Under `browser`, and under `auto` when no app takes the target, `--present` starts
 `metab ROOT`, with its `--path`, as a server of its own: in a session of its own, with
 its output in a log file in the temporary folder, so it outlives the command and the
-terminal. It waits for the server’s `Serving <root> at <url>` line and reports it; the
-server opens the page in your browser once it answers, as `metab ROOT` in a terminal
+terminal. It waits for the server’s `Serving <root> at <url>` line, and then for that
+address to answer `GET /api/identity` as a server of the target’s root, and reports it.
+The second wait is what says this server started: two servers started together can both
+find the same port free and print it, and the second to bind exits.
+The server opens the page in your browser once it answers, as `metab ROOT` in a terminal
 does, and serves until it is stopped:
 
 ```json
@@ -705,9 +714,9 @@ does, and serves until it is stopped:
 
 | Code | Meaning |
 | --- | --- |
-| `server_started` | The server printed `url`, and opens it in a browser once the page answers; nothing confirms a browser shows it |
-| `server_starting` | The server runs but has not printed its address in the time `--present` waits, as a first clone can take minutes; it opens the page once it answers, and `log` will hold the address |
-| `server_failed` | The server exited first, or could not start; `reason` names its last line and `log` holds the rest, and the status is 1 |
+| `server_started` | The server printed `url`, which answers as a server of the target, and opens it in a browser once the page answers; nothing confirms a browser shows it |
+| `server_starting` | The server runs, but has not printed its address, or its address has not answered as the target’s, in the time `--present` waits, as a first clone can take minutes; `url` is null, the server opens the page once it answers, and `log` will hold the address |
+| `server_failed` | The server exited first, before or after it printed an address, or could not start; `reason` names its last line and `log` holds the rest, and the status is 1 |
 
 `pid` is the server’s process ID: `kill PID` stops it.
 `fallback`, under `auto`, is the code and reason that no app took the target.
@@ -715,6 +724,29 @@ does, and serves until it is stopped:
 measurement that set it.
 Each `--present` starts a server of its own; to show another page under the same root,
 open it on that server’s address rather than presenting again.
+
+### Turning Browser Delivery Off
+
+```yaml
+config:
+  # ... format, written_by, and upgrades, as above
+  present_browser: false
+```
+
+`present_browser: false` in the `config` mapping of `config.yml` keeps `--present` from
+starting a server for a browser: it opens a target in the app or nowhere, whatever
+`open_in` says and wherever it was read.
+No flag or variable turns it back on, so it holds for a command an agent runs outside
+its sandbox through a rule for `metab --present`
+([Working with agents](working-with-agents.md#let-an-agent-reach-the-app-from-a-sandbox)).
+Unset, or `true`, a browser may be used.
+`--present` reads it only when it would start a server, and a `config.yml` it cannot
+read then is an `Error:` line, so a broken file starts nothing; a target for the app is
+sent as before. `--dry-run` reports the decision, and `--doctor` the setting:
+
+| Code | Meaning |
+| --- | --- |
+| `browser_off` | A browser would take the target, and `present_browser` is false, so nothing was sent and no server started; under `auto`, `fallback` says why no app took it, and the status is 4 |
 
 ## Recent Targets
 

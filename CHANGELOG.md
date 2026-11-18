@@ -205,11 +205,16 @@ All notable changes to Metabrowser are documented here.
   `open_in` in `config.yml`, a setting `ApplicationConfig` now declares, for good; a
   value that is not one of the three is an `Error:` line naming where it was read.
   For a browser, `--present` starts `metab ROOT` detached, in a session of its own with
-  its output in a log in the temporary folder, waits for its `Serving` line, and reports
+  its output in a log in the temporary folder, waits for its `Serving` line and for that
+  address to answer `/api/identity` as a server of the target, and reports
   `delivered_to: browser` with the server’s `url`, `pid`, and `log`; the server opens
   the page once it answers and runs until `kill` stops it.
   Its codes are `server_started` and `server_starting` (status 0) and `server_failed`
   (status 1); under `auto` the report’s `fallback` says why no app took the target.
+  `present_browser: false` in `config.yml`, which no flag or variable overrides, turns
+  browser delivery off: `--present` then opens a target in the app or nowhere, with
+  `browser_off` and status 4. Set it with any sandbox rule for `metab --present`, which
+  otherwise lets an agent start a server outside the sandbox for any path.
   Every `--present` report gains `open_in`, `open_in_source`, `url`, `pid`, `log`, and
   `fallback`, and `--present --dry-run` adds a `decision`: where the target would go and
   why, looking the app up but sending nothing and starting nothing; its status still
@@ -220,8 +225,8 @@ All notable changes to Metabrowser are documented here.
   preference, or `app` with no app to take a target, is a problem.
   Bare `metab ROOT` is unchanged and does not read the preference.
   The agent skill gives the user `.url` for a page opened in a browser, adds
-  `--open-in browser` for when the user asks for one, and stops the server with `kill`
-  when the user is done.
+  `--open-in browser` for when the user asks for one, stops the server with `kill` when
+  the user is done, and never reruns a delivery to a browser outside the sandbox.
   See
   [choosing the app or a browser](docs/command-line.md#choosing-the-app-or-a-browser).
 

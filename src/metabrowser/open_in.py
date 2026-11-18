@@ -30,6 +30,14 @@ and names the file then.
 A ``config.yml`` this reader cannot read, or whose ``open_in`` is not one of
 :data:`OPEN_IN_CHOICES`, is an error that names the file and the fix; the flag and the
 environment are read first, so either one still chooses while the file is broken.
+
+**Turning browser delivery off.** ``present_browser: false`` in ``config.yml``
+(:func:`browser_delivery_allowed`) keeps ``--present`` from starting a server for a
+browser, whatever ``open_in`` says. It is read from the file alone, never from a flag or
+the environment, because the command it limits may be one an agent runs outside its
+sandbox through an exemption for the ``metab --present`` prefix, and no flag or variable
+that command carries can turn it back on. It is read before a server would start, so a
+``config.yml`` that cannot be read then starts none.
 """
 
 from __future__ import annotations
@@ -55,6 +63,8 @@ DEFAULT_OPEN_IN: Final[OpenInChoice] = "auto"
 OPEN_IN_ENV: Final = "METABROWSER_OPEN_IN"
 # The key in config.yml's `config` mapping.
 OPEN_IN_SETTING: Final = "open_in"
+# The key that turns browser delivery off, read from config.yml alone.
+PRESENT_BROWSER_SETTING: Final = "present_browser"
 
 
 class OpenInError(CLIError):
@@ -86,17 +96,20 @@ def _shown(path: Path) -> str:
     return display_segment(os.fsencode(path))
 
 
-def configured_open_in(directory: Path | None = None) -> OpenInChoice | None:
-    """The ``open_in`` that ``config.yml`` sets, or ``None`` when it sets none.
+def _configured(
+    setting: str, fix: str, otherwise: str, directory: Path | None
+) -> tuple[Path, object]:
+    """``config.yml``'s path and the value of *setting* in its ``config`` mapping.
 
     *directory* is the configuration directory, ``configuration_directory()`` when
-    ``None``. No directory, no file, and a file without the setting or with a null one
-    are all ``None``. Raises :class:`OpenInError` when the file cannot be read, is not
-    YAML with a ``config`` mapping, or sets a value that is not a choice.
+    ``None``. No directory, no file, and a file without the setting all give ``None`` for
+    the value. Raises :class:`OpenInError` when the file cannot be read or is not YAML
+    with a ``config`` mapping: one about the file ends with *fix*, and one about where
+    it is kept with the sentence *otherwise*.
     """
 
-    # Imported here: only a preference that neither the flag nor the environment gives
-    # reads the file, and the owner-only helpers are nothing else in `--present` needs.
+    # Imported here: only a setting that neither the flag nor the environment gives reads
+    # the file, and the owner-only helpers are nothing else in `--present` needs.
     import yaml
 
     from metabrowser.config_file import CONFIG_MAX_BYTES, CONFIG_RECORD
@@ -111,24 +124,20 @@ def configured_open_in(directory: Path | None = None) -> OpenInChoice | None:
     try:
         home = directory if directory is not None else configuration_directory()
     except StorageDirectoryError as exc:
-        raise OpenInError(f"{exc} Or choose with --open-in or {OPEN_IN_ENV}.") from exc
+        raise OpenInError(f"{exc} {otherwise}") from exc
     path = home / CONFIG_RECORD
-    fix = (
-        f"fix {OPEN_IN_SETTING} there, or choose with --open-in or {OPEN_IN_ENV}, "
-        "which are read first"
-    )
     try:
         payload = read_private_file_bounded(
             home, CONFIG_RECORD, max_bytes=CONFIG_MAX_BYTES, shared="keep"
         )
     except FileNotFoundError:
-        return None
+        return path, None
     except PrivateFileTooLargeError as exc:
         raise OpenInError(
             f"{_shown(path)} is larger than {CONFIG_MAX_BYTES} bytes, so it is not read; {fix}"
         ) from exc
     except PrivateStorageError as exc:
-        raise OpenInError(f"{exc} Or choose with --open-in or {OPEN_IN_ENV}.") from exc
+        raise OpenInError(f"{exc} {otherwise}") from exc
     except OSError as exc:
         why = exc.strerror or "it cannot be read"
         raise OpenInError(f"{_shown(path)} cannot be read ({why}); {fix}") from exc
@@ -144,13 +153,57 @@ def configured_open_in(directory: Path | None = None) -> OpenInChoice | None:
     )
     if not isinstance(values, dict):
         raise OpenInError(f"{_shown(path)} has no config mapping; {fix}")
-    setting = cast(dict[object, object], values).get(OPEN_IN_SETTING)
+    return path, cast(dict[object, object], values).get(setting)
+
+
+def configured_open_in(directory: Path | None = None) -> OpenInChoice | None:
+    """The ``open_in`` that ``config.yml`` sets, or ``None`` when it sets none.
+
+    *directory* is the configuration directory, ``configuration_directory()`` when
+    ``None``. No directory, no file, and a file without the setting or with a null one
+    are all ``None``. Raises :class:`OpenInError` when the file cannot be read, is not
+    YAML with a ``config`` mapping, or sets a value that is not a choice.
+    """
+
+    fix = (
+        f"fix {OPEN_IN_SETTING} there, or choose with --open-in or {OPEN_IN_ENV}, "
+        "which are read first"
+    )
+    otherwise = f"Or choose with --open-in or {OPEN_IN_ENV}."
+    path, setting = _configured(OPEN_IN_SETTING, fix, otherwise, directory)
     if setting is None:
         return None
     chosen = parse_open_in(setting)
     if chosen is None:
         raise OpenInError(f"{OPEN_IN_SETTING} in {_shown(path)} is not {_choices()}; {fix}")
     return chosen
+
+
+def browser_delivery_allowed(directory: Path | None = None) -> bool:
+    """Whether ``--present`` may start a server for a browser: ``present_browser`` in
+    ``config.yml``, true unless the file sets it false.
+
+    No file, and a file without the setting or with a null one, allow it. Raises
+    :class:`OpenInError` when the file cannot be read, is not YAML with a ``config``
+    mapping, or sets a value that is not true or false, so a broken file starts nothing.
+    """
+
+    fix = (
+        f"fix it there; --present reads {PRESENT_BROWSER_SETTING} from it before it starts a "
+        "server for a browser"
+    )
+    otherwise = (
+        f"--present reads {PRESENT_BROWSER_SETTING} from config.yml there before it starts a "
+        "server for a browser."
+    )
+    path, setting = _configured(PRESENT_BROWSER_SETTING, fix, otherwise, directory)
+    if setting is None:
+        return True
+    if not isinstance(setting, bool):
+        raise OpenInError(
+            f"{PRESENT_BROWSER_SETTING} in {_shown(path)} is not true or false; {fix}"
+        )
+    return setting
 
 
 def resolve_open_in(
@@ -186,10 +239,12 @@ __all__ = [
     "OPEN_IN_CHOICES",
     "OPEN_IN_ENV",
     "OPEN_IN_SETTING",
+    "PRESENT_BROWSER_SETTING",
     "OpenInChoice",
     "OpenInError",
     "OpenInPreference",
     "OpenInSource",
+    "browser_delivery_allowed",
     "configured_open_in",
     "parse_open_in",
     "resolve_open_in",

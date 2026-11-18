@@ -2,8 +2,9 @@
 
 The transcripts are the contract: ``tests/golden/cli-present.tryscript.md`` pins every
 target shape and refusal of ``--present --dry-run``, and
-``tests/golden/cli-present-delivery.txt`` (``tests/test_cli_present_golden.py``) pins
-delivery with a recording ``open`` and fixture app bundles. This module checks what a
+``tests/golden/cli-present-delivery.txt`` and ``cli-present-browser.txt``
+(``tests/test_cli_present_golden.py``) pin delivery with a recording ``open``, fixture app
+bundles, and a stand-in server. This module checks what a
 transcript cannot: the constants against the app's build scripts, the Info.plist reader's
 edges, the bundle identifier's sources, and the LaunchServices lookup on a Mac.
 """
@@ -21,6 +22,7 @@ import textwrap
 import time
 import unicodedata
 import urllib.request
+from collections.abc import Sequence
 from pathlib import Path
 from typing import get_args
 
@@ -48,26 +50,42 @@ from metabrowser.cli.present import (
     SERVER_LOG_PREFIX,
     AppLookupError,
     DecisionCode,
+    Delivery,
     DeliveryCode,
     Presentable,
     Refusal,
+    allow_browser,
     app_refusal,
     decide,
-    deliver,
     doctor_open_in,
+    find_app,
     is_installed,
     present_bundle_ids,
     read_info_plist,
     resolve_target,
+    send_to_app,
     serve_detached,
     serving_url,
 )
 from metabrowser.cli.selection_href import selection_view_href
+from metabrowser.config_file import CONFIG_RECORD
 from metabrowser.errors import CLIError
-from metabrowser.open_in import OPEN_IN_ENV, OpenInChoice, OpenInPreference
+from metabrowser.home import (
+    configuration_directory,
+    ensure_private_directory,
+    write_private_file_atomic,
+)
+from metabrowser.open_in import OPEN_IN_ENV, OpenInChoice, OpenInError, OpenInPreference
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 COMMON_SH = REPO_ROOT / "apps/macos/scripts/common.sh"
+SERVER_STAND_IN = Path(__file__).with_name("present_server_standin.py")
+
+
+def deliver(target: Presentable, bundle_ids: Sequence[str]) -> Delivery:
+    """``--present --open-in app``'s delivery: look for the app, then send to it."""
+
+    return send_to_app(target, find_app(target, bundle_ids))
 
 
 def test_the_bundle_identifiers_are_the_ones_the_app_is_built_with() -> None:
@@ -731,6 +749,69 @@ def test_the_preference_and_what_looking_found_decide_where_a_target_goes(
         assert (report["bundle_id"], report["bundle_path"]) == (DEV_BUNDLE_ID, str(bundle))
 
 
+def _configured(directory: Path, settings: str) -> Path:
+    """A configuration directory whose config.yml's ``config`` mapping adds *settings*."""
+
+    ensure_private_directory(directory)
+    header = (
+        "softschema:\n  contract: metabrowser.config:ApplicationConfig/v1\n"
+        "  envelope: config\n  status: permissive\n"
+        "config:\n  format: f01\n  written_by: 0.13.0\n  upgrades: []\n"
+    )
+    write_private_file_atomic(directory, CONFIG_RECORD, (header + settings).encode())
+    return directory
+
+
+@pytest.mark.parametrize(
+    ("choice", "app", "expected"),
+    [
+        ("browser", True, ("none", "browser_off", None)),
+        ("auto", False, ("none", "browser_off", "app_not_found")),
+        ("auto", True, ("app", "app_found", None)),
+        ("app", False, ("none", "app_not_found", None)),
+    ],
+)
+def test_a_browser_that_config_yml_turns_off_takes_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+    home: Path,
+    tmp_path: Path,
+    choice: OpenInChoice,
+    app: bool,
+    expected: tuple[str, str, str | None],
+) -> None:
+    """``present_browser: false`` turns a decision for a browser into one for nowhere,
+    whatever the preference, and leaves a decision for the app as it was."""
+
+    bundle = _installed(home, _CURRENT_INFO)
+    _lookup_from(monkeypatch, {DEV_BUNDLE_ID: bundle} if app else {})
+    off = _configured(tmp_path / "config", "  present_browser: false\n")
+
+    decided = decide(_FOLDER, OpenInPreference(choice, "flag"), DEFAULT_BUNDLE_IDS)
+    decision = allow_browser(decided, off)
+
+    fallback = decision.fallback[0] if decision.fallback else None
+    assert (decision.delivers_to, decision.code, fallback) == expected
+    if decision.code == "browser_off":
+        assert DELIVERY_EXIT_CODES["browser_off"] == PRESENT_NO_APP_EXIT_CODE
+        assert "present_browser is false in config.yml" in decision.message
+    # Allowed, or unset, a browser decision stands.
+    on = _configured(tmp_path / "on", "  present_browser: true\n")
+    assert allow_browser(decided, on) == decided
+    assert allow_browser(decided, tmp_path / "unset") == decided
+
+
+def test_a_config_yml_it_cannot_read_starts_no_server(tmp_path: Path) -> None:
+    broken = tmp_path / "config"
+    ensure_private_directory(broken)
+    write_private_file_atomic(broken, CONFIG_RECORD, b"config: [unclosed\n")
+    browser = decide(_FOLDER, OpenInPreference("browser", "flag"), ())
+    with pytest.raises(OpenInError, match="is not YAML"):
+        allow_browser(browser, broken)
+    # A decision for nowhere, or for the app, does not read the file.
+    nowhere = present.Decision(None, "none", "lookup_failed", "blocked", None)
+    assert allow_browser(nowhere, broken) is nowhere
+
+
 @pytest.mark.parametrize(
     ("line", "url"),
     [
@@ -789,9 +870,38 @@ def _stop(pid: int | None) -> None:
         os.waitpid(pid, 0)
 
 
-_SERVES: str = (
-    'for last; do :; done\necho "Serving $last at http://127.0.0.1:8413/view/"\nexec sleep 30'
+_SERVES: str = f'exec "{sys.executable}" -I "{SERVER_STAND_IN}" "$@"'
+_LOOPBACK_VIEW = re.compile(r"http://127\.0\.0\.1:\d+/view/")
+
+
+def _notes(tmp_path: Path) -> tuple[Presentable, str]:
+    """A folder target and ROOT as given for it."""
+
+    notes = tmp_path / "notes"
+    notes.mkdir(exist_ok=True)
+    return Presentable("folder", str(notes.resolve()), "/view/", None), str(notes)
+
+
+_DEMO = Presentable(
+    "repository", "https://github.com/octo/demo", "/view/", ("https://github.com/octo/demo",)
 )
+
+
+def _other_server(tmp_path: Path) -> tuple[subprocess.Popen[str], str]:
+    """A stand-in serving another folder, and the address it says it serves at."""
+
+    other = tmp_path / "other"
+    other.mkdir()
+    server = subprocess.Popen(
+        [sys.executable, "-I", str(SERVER_STAND_IN), "--", str(other)],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    assert server.stdout is not None
+    url = serving_url(server.stdout.readline().strip())
+    assert url is not None
+    return server, url
+
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="a detached server is POSIX's")
 
@@ -801,25 +911,26 @@ def test_a_server_that_says_where_it_serves_runs_detached(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     record = _server(monkeypatch, tmp_path, _SERVES)
+    target, value = _notes(tmp_path)
 
-    delivery = serve_detached("notes", "docs/guide.md")
+    delivery = serve_detached(target, value, "docs/guide.md")
     try:
         assert (delivery.delivered_to, delivery.code, delivery.exit_code) == (
             "browser",
             "server_started",
             0,
         )
-        assert delivery.url == "http://127.0.0.1:8413/view/"
+        assert delivery.url is not None and _LOOPBACK_VIEW.fullmatch(delivery.url)
         # `metab ROOT` with its --path, options before `--`, and without --no-open, so it
         # opens the browser itself.
-        assert record.read_text() == "--path docs/guide.md -- notes\n"
+        assert record.read_text() == f"--path docs/guide.md -- {value}\n"
         assert delivery.pid is not None and delivery.log is not None
         # A session of its own, so neither this command's exit nor a hangup reaches it.
         assert os.getsid(delivery.pid) == delivery.pid
         log = Path(delivery.log)
         assert log.parent == tmp_path / "logs" and log.name.startswith(SERVER_LOG_PREFIX)
         assert log.stat().st_mode & 0o777 == 0o600
-        assert log.read_text().startswith("Serving notes at ")
+        assert log.read_text().startswith(f"Serving {value} at ")
         assert f"stop it with kill {delivery.pid}" in delivery.message
     finally:
         _stop(delivery.pid)
@@ -836,9 +947,10 @@ def test_progress_and_an_overlong_line_do_not_hide_the_serving_line(
         "head -c 40000 /dev/zero | tr '\\000' x\necho\n" + _SERVES,
     )
 
-    delivery = serve_detached("notes", "")
+    delivery = serve_detached(*_notes(tmp_path), "")
     try:
-        assert (delivery.code, delivery.url) == ("server_started", "http://127.0.0.1:8413/view/")
+        assert delivery.code == "server_started"
+        assert delivery.url is not None and _LOOPBACK_VIEW.fullmatch(delivery.url)
     finally:
         _stop(delivery.pid)
 
@@ -853,7 +965,7 @@ def test_a_server_that_exits_first_failed_and_names_its_last_line_and_log(
         "echo 'Cloning octo/demo'\necho 'Error: no such repository' >&2\nexit 2",
     )
 
-    delivery = serve_detached("https://github.com/octo/demo", "")
+    delivery = serve_detached(_DEMO, _DEMO.root, "")
 
     assert (delivery.delivered_to, delivery.code, delivery.exit_code) == (
         "none",
@@ -875,7 +987,7 @@ def test_a_server_that_has_not_said_where_by_the_deadline_is_still_starting(
     _server(monkeypatch, tmp_path, "echo 'Cloning octo/demo'\nexec sleep 30")
     monkeypatch.setattr(present, "server_announce_timeout_s", 0.3)
 
-    delivery = serve_detached("https://github.com/octo/demo", "")
+    delivery = serve_detached(_DEMO, _DEMO.root, "")
     try:
         assert (delivery.delivered_to, delivery.code, delivery.exit_code) == (
             "browser",
@@ -900,7 +1012,7 @@ def test_the_server_holds_no_descriptor_this_command_was_given(
     os.set_inheritable(write_end, True)
     delivery = None
     try:
-        delivery = serve_detached("notes", "")
+        delivery = serve_detached(*_notes(tmp_path), "")
         assert delivery.code == "server_started"
         os.close(write_end)
         write_end = -1
@@ -920,14 +1032,99 @@ def test_a_server_that_cannot_start_or_log_is_reported_failed(
 ) -> None:
     _server(monkeypatch, tmp_path, _SERVES)
     monkeypatch.setattr(present, "server_command", (str(tmp_path / "no-such-metab"),))
-    missing = serve_detached("notes", "")
+    target, value = _notes(tmp_path)
+    missing = serve_detached(target, value, "")
     assert (missing.code, missing.exit_code, missing.pid) == ("server_failed", 1, None)
     assert missing.message.startswith("the metab server could not start (")
 
     monkeypatch.setattr(present, "server_log_directory", lambda: str(tmp_path / "no-such-logs"))
-    unlogged = serve_detached("notes", "")
+    unlogged = serve_detached(target, value, "")
     assert (unlogged.code, unlogged.log) == ("server_failed", None)
     assert unlogged.message.startswith("no log file for the server could be made (")
+
+
+@posix_only
+def test_a_server_that_loses_the_address_it_named_failed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Two servers started together can name the same free port; the second to bind
+    exits. The address answers for the other server's root, so this one is not reported
+    started, and its exit is reported with its last line."""
+
+    other, url = _other_server(tmp_path)
+    try:
+        _server(monkeypatch, tmp_path, f"SERVER_STAND_IN_TAKEN_URL={url} {_SERVES}")
+        delivery = serve_detached(*_notes(tmp_path), "")
+    finally:
+        other.terminate()
+        other.wait()
+
+    assert (delivery.delivered_to, delivery.code, delivery.exit_code, delivery.url) == (
+        "none",
+        "server_failed",
+        1,
+        None,
+    )
+    assert delivery.message.startswith(
+        "the metab server for the target exited with status 1 after it said where it "
+        "serves: ERROR:    [Errno 48] error while attempting to bind on address: "
+        "address already in use; its output is in "
+    )
+
+
+@posix_only
+def test_an_address_that_answers_for_another_root_is_not_reported(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A server that names an address another root's server answers, and keeps running,
+    is still starting when the wait ends, and the report gives no address."""
+
+    other, url = _other_server(tmp_path)
+    try:
+        _server(monkeypatch, tmp_path, f'echo "Serving notes at {url}"\nexec sleep 30')
+        # Long enough for a loaded machine to start the shell that prints the line.
+        monkeypatch.setattr(present, "server_announce_timeout_s", 3.0)
+        delivery = serve_detached(*_notes(tmp_path), "")
+        try:
+            assert (delivery.delivered_to, delivery.code, delivery.url) == (
+                "browser",
+                "server_starting",
+                None,
+            )
+            assert f"said it serves at {url}, which has not answered as the target's" in (
+                delivery.message
+            )
+        finally:
+            _stop(delivery.pid)
+    finally:
+        other.terminate()
+        other.wait()
+
+
+@pytest.mark.parametrize(
+    ("answer", "target", "same"),
+    [
+        ({"kind": "folder", "full_name": "<notes>"}, "notes", True),
+        ({"kind": "folder", "full_name": "<notes>/docs"}, "notes", False),
+        ({"kind": "mirror", "full_name": "<notes>"}, "notes", False),
+        ({"kind": "mirror", "full_name": "github.com/octo/demo@main"}, "demo", True),
+        ({"kind": "mirror", "full_name": "github.com/Octo/Demo@0123456789ab"}, "demo", True),
+        ({"kind": "mirror", "full_name": "github.com/octo/demo#7"}, "demo", True),
+        ({"kind": "mirror", "full_name": "github.com/octo/demo-fork@main"}, "demo", False),
+        ({"kind": "folder", "full_name": "github.com/octo/demo@main"}, "demo", False),
+        ({"kind": "mirror"}, "demo", False),
+        (["github.com/octo/demo@main"], "demo", False),
+    ],
+)
+def test_an_identity_answer_names_the_target_or_not(
+    tmp_path: Path, answer: object, target: str, same: bool
+) -> None:
+    notes, _value = _notes(tmp_path)
+    if isinstance(answer, dict) and answer.get("kind") == "folder":
+        # A folder outside the home folder is named by its path, as `folder_identity` says.
+        answer = {**answer, "full_name": answer["full_name"].replace("<notes>", notes.root)}
+    chosen = notes if target == "notes" else _DEMO
+    assert present._is_target_identity(answer, chosen) is same
 
 
 @posix_only
@@ -948,7 +1145,9 @@ def test_a_real_server_serves_the_target_detached_until_killed(
     monkeypatch.setattr(present, "server_command", present.SERVER_COMMAND)
     monkeypatch.setattr(present, "server_log_directory", lambda: str(tmp_path))
 
-    delivery = serve_detached(str(root), "README.md")
+    target = resolve_target(str(root), "README.md", local=False)
+    assert isinstance(target, Presentable)
+    delivery = serve_detached(target, str(root), "README.md")
     try:
         assert delivery.code == "server_started", delivery.message
         assert delivery.url is not None and delivery.pid is not None
@@ -980,7 +1179,12 @@ def test_doctor_reports_a_browser_preference_and_looks_for_no_app(
 
     report = doctor_open_in()
 
-    assert report.section == {"value": "browser", "source": "environment", "app": None}
+    assert report.section == {
+        "value": "browser",
+        "source": "environment",
+        "present_browser": True,
+        "app": None,
+    }
     assert (
         report.line == "metab --doctor: open_in browser (environment); --present looks for no app"
     )
@@ -997,6 +1201,7 @@ def test_doctor_reports_the_app_auto_finds(monkeypatch: pytest.MonkeyPatch, home
     assert report.section == {
         "value": "auto",
         "source": "default",
+        "present_browser": True,
         "app": {
             "found": True,
             "bundle_id": DEV_BUNDLE_ID,
@@ -1040,6 +1245,34 @@ def test_doctor_reports_no_app_as_a_problem_only_when_the_preference_needs_one(
         )
     else:
         assert report.problems == ()
+
+
+@pytest.mark.parametrize(
+    ("choice", "app", "problem"),
+    [
+        ("browser", False, "open_in is browser (environment), and present_browser is false"),
+        ("auto", False, "open_in is auto (environment), no app takes a target ("),
+        ("auto", True, None),
+    ],
+)
+def test_doctor_reports_a_browser_turned_off_and_settings_that_open_nothing(
+    monkeypatch: pytest.MonkeyPatch, home: Path, choice: str, app: bool, problem: str | None
+) -> None:
+    bundle = _installed(home, _CURRENT_INFO)
+    _lookup_from(monkeypatch, {DEV_BUNDLE_ID: bundle} if app else {})
+    monkeypatch.delenv(BUNDLE_ID_ENV, raising=False)
+    monkeypatch.setenv(OPEN_IN_ENV, choice)
+    _configured(configuration_directory(), "  present_browser: false\n")
+
+    report = doctor_open_in()
+
+    assert report.section["present_browser"] is False
+    assert report.line.endswith("; present_browser: false, so no server for a browser")
+    if problem is None:
+        assert report.problems == ()
+    else:
+        assert len(report.problems) == 1 and report.problems[0].startswith(problem)
+        assert report.problems[0].endswith(": --present opens nothing")
 
 
 def test_doctor_reports_a_preference_it_cannot_read_and_still_looks(

@@ -1,8 +1,8 @@
 """The ``open_in`` preference: where it is read, and the light reader of ``config.yml``.
 
-``metabrowser.open_in`` reads the one setting without the record's contract, so these
-tests hold it to the contract's reader, ``read_config`` in ``cache/layout.py``, for every
-value the setting may hold.
+``metabrowser.open_in`` reads its settings, ``open_in`` and ``present_browser``, without
+the record's contract, so these tests hold it to the contract's reader, ``read_config``
+in ``cache/layout.py``, for every value each setting may hold.
 """
 
 from __future__ import annotations
@@ -33,6 +33,7 @@ from metabrowser.open_in import (
     OPEN_IN_ENV,
     OpenInError,
     OpenInPreference,
+    browser_delivery_allowed,
     configured_open_in,
     parse_open_in,
     resolve_open_in,
@@ -217,3 +218,60 @@ def test_both_readers_refuse_a_value_that_is_not_a_choice(value: str) -> None:
         read_config(home, shared="keep")
     with pytest.raises(OpenInError):
         configured_open_in(home)
+
+
+@posix_only
+@pytest.mark.parametrize("allowed", [True, False, None])
+def test_the_light_reader_reads_the_browser_switch_the_contract_writes(
+    allowed: bool | None,
+) -> None:
+    config = ApplicationConfig.model_validate(
+        {
+            "format": CONFIG_FORMAT,
+            "written_by": "0.13.0",
+            "upgrades": [],
+            "present_browser": allowed,
+        }
+    )
+    home = _home()
+    write_private_file_atomic(home, CONFIG_RECORD, serialize_config(config))
+    read = read_config(home, shared="keep")
+    assert read is not None and read.present_browser is allowed
+    # Unset allows a browser.
+    assert browser_delivery_allowed(home) is (allowed is not False)
+    if allowed is None:
+        assert b"present_browser" not in serialize_config(config)
+
+
+@posix_only
+def test_no_config_yml_allows_a_browser(tmp_path: Path) -> None:
+    assert browser_delivery_allowed(tmp_path / "missing") is True
+    assert browser_delivery_allowed(_write(_HEADER + _SETTINGS)) is True
+
+
+@posix_only
+@pytest.mark.parametrize("value", ["maybe", "'false'", "0", "[false]"])
+def test_both_readers_refuse_a_browser_switch_that_is_not_a_boolean(value: str) -> None:
+    home = _write(_HEADER + _SETTINGS + f"  present_browser: {value}\n")
+    with pytest.raises(ConfigurationError):
+        read_config(home, shared="keep")
+    with pytest.raises(OpenInError, match="present_browser in .* is not true or false"):
+        browser_delivery_allowed(home)
+
+
+@posix_only
+def test_no_flag_or_variable_turns_a_browser_back_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The switch is read from config.yml alone, so the command it limits cannot undo it."""
+
+    home = _write(_HEADER + _SETTINGS + "  present_browser: false\n  open_in: browser\n")
+    monkeypatch.setenv(OPEN_IN_ENV, "browser")
+    monkeypatch.setenv("METABROWSER_PRESENT_BROWSER", "true")
+    assert resolve_open_in("browser", directory=home) == OpenInPreference("browser", "flag")
+    assert browser_delivery_allowed(home) is False
+
+
+@posix_only
+def test_a_config_yml_it_cannot_read_allows_no_browser() -> None:
+    home = _write("config: [unclosed\n")
+    with pytest.raises(OpenInError, match="is not YAML; fix it there"):
+        browser_delivery_allowed(home)

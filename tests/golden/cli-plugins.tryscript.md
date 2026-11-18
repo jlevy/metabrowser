@@ -17,7 +17,7 @@ stable; the absolute checkout prefix of each plugin’s `static_root` is elided 
 `--doctor` also reports where `metab --present` opens a target, the `open_in`
 preference, and the app it finds; this file sets `METABROWSER_OPEN_IN=browser`, which
 looks for no app, so the report is the same on every machine.
-`tests/golden/cli-present-delivery.txt` shows what it finds with a stand-in app.
+`tests/golden/cli-present-browser.txt` shows what it finds with a stand-in app.
 
 ## Test: --plugins lists every discovered plugin
 
@@ -414,6 +414,7 @@ $ metab --doctor --json 2>/dev/null
   "open_in": {
     "value": "browser",
     "source": "environment",
+    "present_browser": true,
     "app": null
   }
 }

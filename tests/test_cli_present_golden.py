@@ -1,5 +1,8 @@
-"""Golden CLI transcript: ``metab ROOT --present`` opening targets in the app or a browser.
+"""Golden CLI transcripts: ``metab ROOT --present`` opening targets in the app or a browser.
 
+``cli-present-delivery.txt`` pins delivery to the app, refusals, blocked lookups, dry
+runs, and the agent skill's commands; ``cli-present-browser.txt`` pins delivery to a
+browser, the ``open_in`` preference and ``present_browser`` switch, and ``--doctor``.
 Each command runs the production CLI in-process with three substitutions, so the
 transcript is the same on every platform and nothing reaches a real app or browser:
 
@@ -16,12 +19,13 @@ transcript is the same on every platform and nothing reaches a real app or brows
   ``PATH`` would record itself as ``planted``; no block shows it, because ``--present``
   never looks ``open`` up on ``PATH``; and
 - ``metabrowser.cli.present.server_command``, the detached ``metab ROOT`` a browser
-  delivery starts, is a stand-in that records its arguments, says it serves at
-  ``http://127.0.0.1:8413/view/``, and waits to be stopped. A block's ``server`` lines
-  name what it was given, and say so when it was told to exit 1 before it says where
-  it serves, or to say nothing for longer than ``--present`` waits. The server's process
-  ID is shown as ``12345`` and its log's random name as ``XXXXXXXX``. Each stand-in is
-  stopped after its block.
+  delivery starts, is a stand-in that records its arguments, then runs
+  ``tests/present_server_standin.py``, which says it serves at a free loopback port and
+  answers ``GET /api/identity`` for its ROOT until it is stopped. A block's ``server``
+  lines name what it was given, and say so when it was told to exit 1 before it says
+  where it serves, or to say nothing for longer than ``--present`` waits. The port is
+  shown as ``8413``, the server's process ID as ``12345``, and its log's random name as
+  ``XXXXXXXX``. Each stand-in is stopped after its block.
 
 Each block lists the bundle identifiers looked up, with the bundle each named, and every
 ``open`` the command ran. The lookup itself runs against LaunchServices in
@@ -39,6 +43,8 @@ import plistlib
 import re
 import signal
 import stat
+import subprocess
+import sys
 from pathlib import Path
 from typing import Final
 
@@ -73,7 +79,6 @@ printf '%s\\n' "$$" >> "$SERVER_STAND_IN_PIDS"
 printf 'metab' >> "$SERVER_STAND_IN_LOG"
 for argument in "$@"; do printf ' %s' "$argument" >> "$SERVER_STAND_IN_LOG"; done
 printf '\\n' >> "$SERVER_STAND_IN_LOG"
-for last; do :; done
 case "$SERVER_STAND_IN_MODE" in
   fail)
     echo "Cloning into the cache"
@@ -83,8 +88,7 @@ case "$SERVER_STAND_IN_MODE" in
     echo "Cloning into the cache"
     exec sleep 60;;
 esac
-echo "Serving $last at http://127.0.0.1:8413/view/"
-exec sleep 60
+exec "$SERVER_STAND_IN_PYTHON" -I "$SERVER_STAND_IN_SERVE" "$@"
 """
 # How long `--present` waits for the stand-in to say where it serves: long enough for a
 # loaded machine to start a shell, and short where a block shows a server still starting.
@@ -93,6 +97,9 @@ _SLOW_ANNOUNCE_S: Final = 0.5
 # What a block says the stand-in was told to do.
 _SERVER_MODES: Final = {"fail": "told to exit 1 first", "slow": "told to say nothing yet"}
 _SHOWN_PID: Final = "12345"
+_PORT: Final = re.compile(r"(http://127\.0\.0\.1:)\d+")
+_SHOWN_PORT: Final = "8413"
+_SERVES: Final = Path(__file__).with_name("present_server_standin.py")
 _LOG_NAME: Final = re.compile(r"(metab-present-)[a-z0-9_]+(\.log)")
 # A Metabrowser build installed under an identifier of its own, as a local fork's is.
 OTHER_BUNDLE_ID: Final = "org.example.metabrowser-fork"
@@ -173,6 +180,9 @@ class _Sandbox:
         monkeypatch.setattr(present, "server_log_directory", lambda: str(logs))
         monkeypatch.setenv("SERVER_STAND_IN_LOG", str(self.served))
         monkeypatch.setenv("SERVER_STAND_IN_PIDS", str(self.pids))
+        monkeypatch.setenv("SERVER_STAND_IN_PYTHON", sys.executable)
+        monkeypatch.setenv("SERVER_STAND_IN_SERVE", str(_SERVES))
+        monkeypatch.delenv("SERVER_STAND_IN_TAKEN_URL", raising=False)
         monkeypatch.delenv(OPEN_IN_ENV, raising=False)
         self.config = configuration_directory()
         # The settings config.yml was last written with, which each block names.
@@ -250,7 +260,10 @@ class _Sandbox:
         mode = f"  [stand-in {_SERVER_MODES[self.server_mode]}]" if self.server_mode else ""
         served = [line + mode for line in self.served.read_text().splitlines()]
         lookups = self.looked_up if self.platform else ["no LaunchServices on this platform"]
-        prefix = "".join(f"{name}={value} " for name, value in (env or {}).items())
+        prefix = _PORT.sub(
+            rf"\g<1>{_SHOWN_PORT}",
+            "".join(f"{name}={value} " for name, value in (env or {}).items()),
+        )
         command = prefix + "metab " + " ".join(quoted(argument) for argument in args)
         if doctor:
             result = _doctor_open_in(result, json_output="--json" in args)
@@ -305,8 +318,9 @@ _PID_FIELDS: Final = re.compile(r'("pid": |pid: |kill )(\d+)')
 
 
 def _masked(text: str, pids: set[str]) -> str:
-    """*text* with the server's process ID and its log's random name fixed."""
+    """*text* with the server's port, process ID, and log's random name fixed."""
 
+    text = _PORT.sub(rf"\g<1>{_SHOWN_PORT}", text)
     text = _PID_FIELDS.sub(
         lambda found: found[1] + (_SHOWN_PID if found[2] in pids else found[2]), text
     )
@@ -438,54 +452,6 @@ def test_golden_present_hands_targets_to_the_app(
     blocks.append(sandbox.run(["notes", "--present", *app_only, *as_json]))
     blocks.append(sandbox.run(["notes", "--present", *app_only]))
 
-    # Under `auto`, the default, a target no app takes opens in a browser: `--present`
-    # starts `metab ROOT` detached, with its --path, and reports its address, process,
-    # and log; the server opens the page in a browser once it answers. A development
-    # build that is not installed is passed over as well.
-    blocks.append(sandbox.run(["notes", "--present", *as_json]))
-    blocks.append(sandbox.run(["notes", "--path", "docs/guide.md", "--present"]))
-    blocks.append(sandbox.run(["https://github.com/octo/demo/pull/7", "--present", *as_json]))
-    sandbox.apps = {DEV_BUNDLE_ID: sandbox.build}
-    blocks.append(sandbox.run(["notes", "--present", *as_json]))
-
-    # A server that exits before it says where it serves fails the command, naming its
-    # last line and its log; one that has not said by the deadline, as a first clone
-    # may not, is still starting, and opens the page once it answers.
-    sandbox.apps = {}
-    sandbox.server_mode = "fail"
-    blocks.append(sandbox.run(["notes", "--present", *as_json]))
-    blocks.append(sandbox.run(["notes", "--present"]))
-    sandbox.server_mode = "slow"
-    blocks.append(sandbox.run(["https://github.com/octo/demo", "--present", *as_json]))
-    blocks.append(sandbox.run(["https://github.com/octo/demo", "--present"]))
-    sandbox.server_mode = ""
-
-    # `browser` looks for no app, from the flag, the environment, or config.yml, in that
-    # order; `--app-bundle-id` names an app it would never look for.
-    sandbox.apps = {DEV_BUNDLE_ID: sandbox.current}
-    blocks.append(sandbox.run(["notes", "--present", "--open-in", "browser", *as_json]))
-    blocks.append(sandbox.run(["notes", "--present", *as_json], env={OPEN_IN_ENV: "browser"}))
-    sandbox.configure("  open_in: browser")
-    blocks.append(sandbox.run(["notes", "--present", *as_json]))
-    blocks.append(sandbox.run(["notes", "--present", *as_json], env={OPEN_IN_ENV: "auto"}))
-    blocks.append(sandbox.run(["notes", "--present", "--open-in", "app", *as_json]))
-    sandbox.configure(None)
-    blocks.append(
-        sandbox.run(
-            ["notes", "--present", "--open-in", "browser", "--app-bundle-id", OTHER_BUNDLE_ID]
-        )
-    )
-
-    # A preference that is not a choice is refused where it was read, before anything
-    # is looked up or started; the flag and the environment still choose while
-    # config.yml is broken.
-    blocks.append(sandbox.run(["notes", "--present", "--open-in", "sometimes"]))
-    blocks.append(sandbox.run(["notes", "--present", *as_json], env={OPEN_IN_ENV: "sometimes"}))
-    sandbox.configure("  open_in: sometimes")
-    blocks.append(sandbox.run(["notes", "--present", *as_json]))
-    blocks.append(sandbox.run(["notes", "--present", "--open-in", "app", *as_json]))
-    sandbox.configure(None)
-
     # Blocked, with its own status: LaunchServices cannot be asked, as under a sandbox
     # that denies its database, or `open` fails. Under `auto` too: a sandbox that keeps
     # `metab` from LaunchServices would keep a browser it started from the screen.
@@ -546,6 +512,107 @@ def test_golden_present_hands_targets_to_the_app(
     blocks.append(sandbox.run(["notes", "--present", *app_only, *as_json]))
     blocks.append(sandbox.run(skill))
 
+    rendered = "".join(blocks)
+    assert str(tmp_path) not in rendered
+    assert "planted" not in rendered
+    check_golden("cli-present-delivery.txt", rendered)
+
+
+def test_golden_present_opens_a_browser(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    sandbox = _Sandbox(tmp_path, monkeypatch)
+    blocks: list[str] = []
+    as_json = ["--format", "json"]
+    sandbox.apps = {}
+
+    # Under `auto`, the default, a target no app takes opens in a browser: `--present`
+    # starts `metab ROOT` detached, with its --path, and reports its address, process,
+    # and log; the server opens the page in a browser once it answers. A development
+    # build that is not installed is passed over as well.
+    blocks.append(sandbox.run(["notes", "--present", *as_json]))
+    blocks.append(sandbox.run(["notes", "--path", "docs/guide.md", "--present"]))
+    blocks.append(sandbox.run(["https://github.com/octo/demo/pull/7", "--present", *as_json]))
+    sandbox.apps = {DEV_BUNDLE_ID: sandbox.build}
+    blocks.append(sandbox.run(["notes", "--present", *as_json]))
+
+    # A server that exits before it says where it serves fails the command, naming its
+    # last line and its log; one that has not said by the deadline, as a first clone
+    # may not, is still starting, and opens the page once it answers.
+    sandbox.apps = {}
+    sandbox.server_mode = "fail"
+    blocks.append(sandbox.run(["notes", "--present", *as_json]))
+    blocks.append(sandbox.run(["notes", "--present"]))
+    sandbox.server_mode = "slow"
+    blocks.append(sandbox.run(["https://github.com/octo/demo", "--present", *as_json]))
+    blocks.append(sandbox.run(["https://github.com/octo/demo", "--present"]))
+    sandbox.server_mode = ""
+
+    # Two servers started together can find the same port free and both say they serve
+    # there; the one that binds second exits 1. The address answers for the other
+    # server's root, not this target's, so the report waits, and names the exit.
+    other = subprocess.Popen(
+        [sys.executable, "-I", str(_SERVES), "--", str(tmp_path / "notes" / "docs")],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert other.stdout is not None
+        taken = present.serving_url(other.stdout.readline().strip())
+        assert taken is not None
+        blocks.append(
+            sandbox.run(
+                ["notes", "--present", "--open-in", "browser", *as_json],
+                env={"SERVER_STAND_IN_TAKEN_URL": taken},
+            )
+        )
+    finally:
+        other.terminate()
+        other.wait()
+
+    # `browser` looks for no app, from the flag, the environment, or config.yml, in that
+    # order; `--app-bundle-id` names an app it would never look for.
+    sandbox.apps = {DEV_BUNDLE_ID: sandbox.current}
+    blocks.append(sandbox.run(["notes", "--present", "--open-in", "browser", *as_json]))
+    blocks.append(sandbox.run(["notes", "--present", *as_json], env={OPEN_IN_ENV: "browser"}))
+    sandbox.configure("  open_in: browser")
+    blocks.append(sandbox.run(["notes", "--present", *as_json]))
+    blocks.append(sandbox.run(["notes", "--present", *as_json], env={OPEN_IN_ENV: "auto"}))
+    blocks.append(sandbox.run(["notes", "--present", "--open-in", "app", *as_json]))
+    sandbox.configure(None)
+    blocks.append(
+        sandbox.run(
+            ["notes", "--present", "--open-in", "browser", "--app-bundle-id", OTHER_BUNDLE_ID]
+        )
+    )
+
+    # `present_browser: false` in config.yml starts no server, whatever open_in says and
+    # wherever it was read: a target no app takes goes nowhere, with the status of no
+    # app, and the app still takes what it takes. No flag or variable turns it back on.
+    # A config.yml that cannot be read then starts no server either.
+    sandbox.apps = {}
+    sandbox.configure("  present_browser: false")
+    blocks.append(sandbox.run(["notes", "--present", *as_json]))
+    blocks.append(sandbox.run(["notes", "--present", "--open-in", "browser"]))
+    blocks.append(sandbox.run(["notes", "--present", *as_json], env={OPEN_IN_ENV: "browser"}))
+    blocks.append(
+        sandbox.run(["notes", "--present", "--dry-run", "--open-in", "browser", *as_json])
+    )
+    sandbox.apps = {DEV_BUNDLE_ID: sandbox.current}
+    blocks.append(sandbox.run(["notes", "--present", *as_json]))
+    sandbox.configure("  present_browser: maybe")
+    blocks.append(sandbox.run(["notes", "--present", "--open-in", "browser", *as_json]))
+    blocks.append(sandbox.run(["notes", "--present", "--open-in", "app", *as_json]))
+    sandbox.configure(None)
+
+    # A preference that is not a choice is refused where it was read, before anything
+    # is looked up or started; the flag and the environment still choose while
+    # config.yml is broken.
+    blocks.append(sandbox.run(["notes", "--present", "--open-in", "sometimes"]))
+    blocks.append(sandbox.run(["notes", "--present", *as_json], env={OPEN_IN_ENV: "sometimes"}))
+    sandbox.configure("  open_in: sometimes")
+    blocks.append(sandbox.run(["notes", "--present", *as_json]))
+    blocks.append(sandbox.run(["notes", "--present", "--open-in", "app", *as_json]))
+    sandbox.configure(None)
+
     # `--doctor` reports the preference, where it was read, and what looking for the app
     # found, sending nothing; a preference it cannot read, or `app` with no app to take a
     # target, is a problem.
@@ -559,10 +626,13 @@ def test_golden_present_hands_targets_to_the_app(
     sandbox.configure("  open_in: app")
     blocks.append(sandbox.run(["--doctor"], doctor=True))
     blocks.append(sandbox.run(["--doctor", "--json"], doctor=True))
+    sandbox.configure("  present_browser: false")
+    blocks.append(sandbox.run(["--doctor"], env={OPEN_IN_ENV: "browser"}, doctor=True))
+    blocks.append(sandbox.run(["--doctor", "--json"], doctor=True))
     sandbox.configure(None)
     blocks.append(sandbox.run(["--doctor", "--json"], env={OPEN_IN_ENV: "sometimes"}, doctor=True))
 
     rendered = "".join(blocks)
     assert str(tmp_path) not in rendered
     assert "planted" not in rendered
-    check_golden("cli-present-delivery.txt", rendered)
+    check_golden("cli-present-browser.txt", rendered)

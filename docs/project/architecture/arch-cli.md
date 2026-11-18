@@ -200,9 +200,17 @@ imports the serve mode’s modules before a mode is chosen.
    `subprocess.Popen` with `start_new_session`, stdin at `/dev/null`, stdout and stderr
    in a `mkstemp` log in the temporary folder, and every other descriptor closed, so the
    server outlives the command and its terminal and nothing reading the command’s output
-   waits on it. It reads the log until the `Serving <root> at <url>` line, which
-   `serving_url` parses as the macOS app’s `CLIServeLaunch` does, the server exits, or
-   `server_announce_timeout_s` passes.
+   waits on it. It reads the log for the `Serving <root> at <url>` line, which
+   `serving_url` parses as the macOS app’s `CLIServeLaunch` does, then asks that address
+   for `GET /api/identity` until it answers as a server of the target’s root
+   (`_is_target_identity`), the server exits, or `server_announce_timeout_s` passes.
+   Serve mode prints the line after it finds a free port and before uvicorn binds it, so
+   two servers started together can print one address; the identity tells servers of
+   different roots apart, and binding before printing (`mb-afxa`) would close the race
+   for every reader of the line.
+   Before it starts anything, `allow_browser` reads `present_browser` from `config.yml`
+   (`open_in.py` `browser_delivery_allowed`), which no flag or variable overrides, and
+   turns a decision for a browser into `browser_off` when it is false.
    The server opens the browser itself once its page answers, as serve mode always does.
    Nothing records the server: the report’s `pid` is how to stop it.
    Tests start no real server unless they say so: an autouse fixture in

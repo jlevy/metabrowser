@@ -90,6 +90,7 @@ $ metab --doctor --json --plugins-dir pair 2>/dev/null
   "open_in": {
     "value": "browser",
     "source": "environment",
+    "present_browser": true,
     "app": null
   }
 }
@@ -110,6 +111,7 @@ $ metab --doctor --json --plugins-dir stack 2>/dev/null
   "open_in": {
     "value": "browser",
     "source": "environment",
+    "present_browser": true,
     "app": null
   }
 }
@@ -132,6 +134,7 @@ $ metab --doctor --json --plugins-dir pulls 2>/dev/null
   "open_in": {
     "value": "browser",
     "source": "environment",
+    "present_browser": true,
     "app": null
   }
 }
@@ -153,6 +156,7 @@ $ metab --doctor --json --plugins-dir reserved 2>/dev/null
   "open_in": {
     "value": "browser",
     "source": "environment",
+    "present_browser": true,
     "app": null
   }
 }

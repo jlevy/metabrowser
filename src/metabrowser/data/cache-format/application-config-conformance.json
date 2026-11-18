@@ -106,6 +106,24 @@
       "record": "config",
       "changes": [{ "path": ["open_in"], "value": "sometimes" }],
       "expect": "invalid"
+    },
+    {
+      "name": "config-present-browser-may-be-false",
+      "record": "config",
+      "changes": [{ "path": ["present_browser"], "value": false }],
+      "expect": "valid"
+    },
+    {
+      "name": "config-present-browser-may-be-null",
+      "record": "config",
+      "changes": [{ "path": ["present_browser"], "value": null }],
+      "expect": "valid"
+    },
+    {
+      "name": "config-present-browser-must-be-a-boolean",
+      "record": "config",
+      "changes": [{ "path": ["present_browser"], "value": "no" }],
+      "expect": "invalid"
     }
   ]
 }

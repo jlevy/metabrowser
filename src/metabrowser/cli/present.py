@@ -81,7 +81,7 @@ from collections import deque
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Literal, NoReturn
+from typing import TYPE_CHECKING, Final, Literal, NoReturn, cast
 from urllib.parse import urlsplit
 
 import typer
@@ -93,7 +93,12 @@ from metabrowser.cli.exit_codes import (
 )
 from metabrowser.errors import CLIError
 from metabrowser.invisible_chars import display_segment
-from metabrowser.open_in import OpenInPreference, resolve_open_in
+from metabrowser.open_in import (
+    PRESENT_BROWSER_SETTING,
+    OpenInPreference,
+    browser_delivery_allowed,
+    resolve_open_in,
+)
 from metabrowser.view_routes import format_view_href
 
 if TYPE_CHECKING:
@@ -168,6 +173,7 @@ type DeliveryCode = Literal[
     "server_started",
     "server_starting",
     "server_failed",
+    "browser_off",
 ]
 """What became of a target that resolved: taken by LaunchServices, served for a browser,
 or why neither."""
@@ -186,10 +192,11 @@ type DecisionCode = Literal[
     "app_not_marked",
     "app_cannot_select_folder",
     "lookup_failed",
+    "browser_off",
 ]
 """Why a dry run decided what it did: the app takes the target, the preference is
-``browser``, no app takes it under ``auto``, the preference could not be read, or the
-app code that sends it nowhere."""
+``browser``, no app takes it under ``auto``, the preference could not be read, the app
+code that sends it nowhere, or a browser it would go to that ``config.yml`` turns off."""
 
 # The exit status each delivery code ends the command with (`cli/exit_codes.py`). A
 # server that exited before it said where it serves is a failure like any other, 1.
@@ -205,18 +212,31 @@ DELIVERY_EXIT_CODES: Final[dict[DeliveryCode, int]] = {
     "server_started": 0,
     "server_starting": 0,
     "server_failed": 1,
+    # Nothing takes the target: the app does not, and config.yml turns a browser off.
+    "browser_off": PRESENT_NO_APP_EXIT_CODE,
 }
 
 # How long `--present` waits for a server it started to print where it serves, the
-# `Serving <root> at <url>` line. Measured on 2026-11-18 on an Apple silicon Mac under a
-# load average of about 265: a folder's server printed it 1.6 to 2.5 s after it started,
-# five starts in a row. This is about eight times the slowest. A repository's first clone
-# can take minutes, so past this the report says `server_starting`, and the server still
-# opens the page once it answers. A module attribute so tests shorten it.
+# `Serving <root> at <url>` line, and for that address to answer as the target's. Measured
+# on 2026-11-18 on an Apple silicon Mac: under a load average of about 265 a folder's
+# server printed the line 1.6 to 2.5 s after it started, five starts in a row; under 50
+# to 70 a small folder's and this repository's checkout's answered `/api/identity` 0.7 to
+# 1.1 s after, six starts. This is about eight times the slowest. A repository's first
+# clone can take minutes, so past this the report says `server_starting`, and the server
+# still opens the page once it answers. A module attribute so tests shorten it.
 server_announce_timeout_s: float = 20.0
 # How often the server's log is read while waiting: the interval `cli/http_readiness.py`
 # polls at before a browser opens.
 SERVER_POLL_S: Final = 0.05
+# The route whose answer says which root a server serves (`root_identity.py`).
+IDENTITY_ROUTE: Final = "/api/identity"
+# The most of an identity answer read. Its five fields are names of at most a path, an
+# origin, and a pin, a few hundred bytes; a longer answer is not an identity.
+IDENTITY_MAX_BYTES: Final = 64 * 1024
+# How long one identity request may take. A started server answers it from memory,
+# reading no store and running no Git (`root_identity.py`), so a request that takes this
+# long is to a server still starting, and the next round asks again.
+SERVER_IDENTITY_REQUEST_S: Final = 1.0
 # The server's last lines kept, to say why it failed; one is reported.
 SERVER_LOG_TAIL_LINES: Final = 5
 # A line of the server's output longer than this is skipped while waiting: the `Serving`
@@ -871,6 +891,33 @@ def decide(
     return Decision(preference, "none", code, message, finding)
 
 
+_BROWSER_OFF: Final = (
+    f"{PRESENT_BROWSER_SETTING} is false in config.yml, so --present starts no server for "
+    "a browser and opens a target only in the app"
+)
+
+
+def allow_browser(decision: Decision, directory: Path | None = None) -> Decision:
+    """*decision*, unless it starts a server for a browser that ``config.yml`` turns off.
+
+    ``present_browser`` is read only here, once a server would start, so a target for the
+    app is sent while ``config.yml`` is broken; a server is never started then. Raises
+    :class:`~metabrowser.open_in.OpenInError` when the file cannot be read.
+    """
+
+    if decision.delivers_to != "browser" or browser_delivery_allowed(directory):
+        return decision
+    why = "open_in is browser" if decision.fallback is None else "no app takes the target"
+    return Decision(
+        decision.preference,
+        "none",
+        "browser_off",
+        f"{why}, but {_BROWSER_OFF}",
+        decision.finding,
+        decision.fallback,
+    )
+
+
 # ── Delivering ──────────────────────────────────────────────────────
 
 
@@ -955,15 +1002,6 @@ def send_to_app(target: Presentable, finding: AppFinding) -> Delivery:
     )
 
 
-def deliver(target: Presentable, bundle_ids: Sequence[str]) -> Delivery:
-    """Hand *target* to the first app of *bundle_ids* that LaunchServices has and trusts.
-
-    :func:`find_app` then :func:`send_to_app`: the ``app`` preference's delivery.
-    """
-
-    return send_to_app(target, find_app(target, bundle_ids))
-
-
 # The command that serves a target for a browser: this interpreter running the `metab`
 # command line, so the server is the build that answered, wherever it is installed and
 # whatever is first on PATH. `-I` keeps the working directory, which is the user's and
@@ -1012,21 +1050,91 @@ def serving_url(line: str) -> str | None:
 
 @dataclass(frozen=True, slots=True)
 class _Announcement:
-    """What a detached server said while ``--present`` waited."""
+    """What a detached server said and did while ``--present`` waited."""
 
     url: str | None
+    """The address its ``Serving`` line named, once it printed one."""
+    answered: bool
+    """Whether that address answered as a server of the target."""
     status: int | None
     """Its exit status, once it exited."""
     tail: tuple[str, ...]
 
 
-def _await_announcement(
-    server: subprocess.Popen[bytes], log_path: str, timeout_s: float
-) -> _Announcement:
-    """Read *log_path* until the server says where it serves, exits, or *timeout_s* ends.
+def _is_target_identity(answer: object, target: Presentable) -> bool:
+    """Whether *answer*, a ``GET /api/identity`` body, names *target*'s root.
 
-    The exit is checked before each read, so the read after an exit sees all it wrote.
-    A line is complete at its newline; a carriage return ends one too, as progress does.
+    A folder's server names its folder as ``folder_identity`` does; a mirror's names its
+    origin and then its pin (``@<ref>``, ``@<commit>``) or pull request (``#<n>``).
+    """
+
+    # Imported here, once a server has said where it serves: the names come from the
+    # session modules, which a dry run never loads (about 60 to 130 ms more, measured on
+    # 2026-11-18 on an Apple silicon Mac under a load average of 50 to 80).
+    from metabrowser.root_identity import abbreviate_origin, folder_identity, user_home
+
+    if not isinstance(answer, dict):
+        return False
+    fields = cast(dict[object, object], answer)
+    kind, name = fields.get("kind"), fields.get("full_name")
+    if not isinstance(name, str):
+        return False
+    if os.path.isabs(target.root):
+        expected = folder_identity(Path(target.root), home=user_home())["full_name"]
+        return kind == "folder" and name == expected
+    origin = abbreviate_origin(target.root, home=None).casefold()
+    return kind == "mirror" and name.casefold().startswith((f"{origin}@", f"{origin}#"))
+
+
+def _answers_as_target(url: str, target: Presentable, timeout_s: float) -> bool:
+    """Whether the server at *url* answers ``GET /api/identity`` as a server of *target*.
+
+    A server prints where it serves after it finds a free port and before it binds it,
+    so two started together can print the same address, and the one that binds second
+    exits. An answer for the target says a server of the target has started there; one
+    for another root says the address is another server's. Two servers of the same root
+    that print the same address are not told apart this way: the one that exits leaves
+    the other serving the same target, and binding before printing (``mb-afxa``) would
+    keep them from printing the same address at all.
+    """
+
+    # Imported here: only a browser delivery asks, and the dry run's imports are counted.
+    import http.client
+    from contextlib import closing
+
+    parts = urlsplit(url)
+    if parts.hostname is None or parts.port is None:
+        return False
+    try:
+        with closing(
+            http.client.HTTPConnection(parts.hostname, parts.port, timeout=timeout_s)
+        ) as connection:
+            connection.request("GET", IDENTITY_ROUTE, headers={"Connection": "close"})
+            with connection.getresponse() as response:
+                if response.status != 200:
+                    return False
+                body = response.read(IDENTITY_MAX_BYTES + 1)
+    except (OSError, http.client.HTTPException):
+        return False
+    if len(body) > IDENTITY_MAX_BYTES:
+        return False
+    try:
+        answer: object = json.loads(body)
+    except ValueError:
+        return False
+    return _is_target_identity(answer, target)
+
+
+def _await_server(
+    server: subprocess.Popen[bytes], log_path: str, target: Presentable, timeout_s: float
+) -> _Announcement:
+    """Read *log_path* until the server answers as *target*'s, exits, or *timeout_s* ends.
+
+    Answering takes two steps: the ``Serving`` line names an address, and that address
+    then answers ``GET /api/identity`` for the target. The log is read throughout, so an
+    exit after the line still reports what the server said last. The exit is checked
+    before each read, so the read after an exit sees all it wrote. A line is complete at
+    its newline; a carriage return ends one too, as progress does.
     """
 
     deadline = time.monotonic() + timeout_s
@@ -1034,6 +1142,7 @@ def _await_announcement(
     pending = b""
     skipping = False
     status: int | None = None
+    url: str | None = None
     with open(log_path, "rb") as log:
         while True:
             if status is None:
@@ -1052,17 +1161,25 @@ def _await_announcement(
                     line = raw.decode("utf-8", errors="replace")
                     if line.strip():
                         tail.append(line)
-                    if (url := serving_url(line)) is not None:
-                        return _Announcement(url, status, tuple(tail))
+                    if url is None:
+                        url = serving_url(line)
                 if len(pending) > SERVER_LOG_LINE_MAX_BYTES:
                     pending = b""
                     skipping = True
             if status is not None and budget > 0:
                 if pending.strip() and not skipping:
                     tail.append(pending.decode("utf-8", errors="replace"))
-                return _Announcement(None, status, tuple(tail))
+                return _Announcement(url, False, status, tuple(tail))
+            left = deadline - time.monotonic()
+            if (
+                url is not None
+                and left > 0
+                and _answers_as_target(url, target, min(SERVER_IDENTITY_REQUEST_S, left))
+                and server.poll() is None
+            ):
+                return _Announcement(url, True, None, tuple(tail))
             if time.monotonic() >= deadline:
-                return _Announcement(None, None, tuple(tail))
+                return _Announcement(url, False, None, tuple(tail))
             time.sleep(SERVER_POLL_S)
 
 
@@ -1079,9 +1196,17 @@ def _serve_arguments(value: str, path: str) -> list[str]:
 
 
 def serve_detached(
-    value: str, path: str, *, fallback: tuple[AppRefusalCode, str] | None = None
+    target: Presentable,
+    value: str,
+    path: str,
+    *,
+    fallback: tuple[AppRefusalCode, str] | None = None,
 ) -> Delivery:
-    """Start ``metab ROOT`` for a browser, detached, and report it once it says where.
+    """Start ``metab ROOT`` for a browser, detached, and report it once it answers.
+
+    *value* and *path* are ROOT and ``--path`` as given, which the server is given too;
+    *target* is what they resolved to, whose root the server must answer for before the
+    report says it started.
 
     The server runs in a session of its own, with stdin at ``/dev/null``, its output in a
     log file, and no other descriptor this command was given (``subprocess`` closes the
@@ -1142,7 +1267,7 @@ def serve_detached(
         os.close(descriptor)
     _detached.append(server)
     pid = server.pid
-    heard = _await_announcement(server, log_path, server_announce_timeout_s)
+    heard = _await_server(server, log_path, target, server_announce_timeout_s)
     log = _shown(log_path)
     if heard.status is not None:
         said = f": {display_segment(heard.tail[-1].encode())}" if heard.tail else ""
@@ -1157,16 +1282,21 @@ def serve_detached(
             log=log_path,
             fallback=fallback,
         )
-    if heard.url is None:
+    if heard.url is None or not heard.answered:
+        said = (
+            "has not said where it serves"
+            if heard.url is None
+            else f"said it serves at {heard.url}, which has not answered as the target's"
+        )
         return Delivery(
             "browser",
             None,
             None,
             "server_starting",
-            f"a metab server for the target runs detached and has not said where it serves "
-            f"after {server_announce_timeout_s:g} s, as a first clone can take minutes; it "
-            f"opens the page in a browser once it answers. Its output is in {log}; stop it "
-            f"with kill {pid}",
+            f"a metab server for the target runs detached and {said} after "
+            f"{server_announce_timeout_s:g} s, as a first clone can take minutes; it opens "
+            f"the page in a browser once it answers. Its output is in {log}; stop it with "
+            f"kill {pid}",
             pid=pid,
             log=log_path,
             fallback=fallback,
@@ -1176,9 +1306,9 @@ def serve_detached(
         None,
         None,
         "server_started",
-        f"a metab server for the target runs detached at {heard.url} and opens it in a "
-        f"browser once the page answers; nothing confirms that a browser shows it. Its "
-        f"output is in {log}; stop it with kill {pid}",
+        f"a metab server for the target runs detached at {heard.url}, which answers as the "
+        f"target's, and opens it in a browser once the page answers; nothing confirms that "
+        f"a browser shows it. Its output is in {log}; stop it with kill {pid}",
         url=heard.url,
         pid=pid,
         log=log_path,
@@ -1215,16 +1345,18 @@ class DoctorOpenIn:
     line: str
     """The line ``--doctor`` prints."""
     problems: tuple[str, ...]
-    """A preference that cannot be read, or ``app`` with no app to take a target."""
+    """A setting that cannot be read, or settings under which nothing takes a target."""
 
 
 def doctor_open_in() -> DoctorOpenIn:
-    """The preference, where it was read, and, unless it is ``browser``, the app found.
+    """The preference, where it was read, whether a browser may be used, and, unless the
+    preference is ``browser``, the app found.
 
-    Looks the app up as ``--present`` would for a folder, sending nothing. A preference
-    that cannot be read, or one that is ``app`` where no app takes a target, is a
-    problem; LaunchServices that cannot be asked is not, since only where the command
-    runs decides that.
+    Looks the app up as ``--present`` would for a folder, sending nothing. A setting that
+    cannot be read is a problem, and so are settings under which nothing takes a target:
+    ``app`` where no app takes one, and ``present_browser: false`` with ``browser``, or
+    with ``auto`` where no app takes one. LaunchServices that cannot be asked is not,
+    since only where the command runs decides that.
     """
 
     problems: list[str] = []
@@ -1250,19 +1382,35 @@ def doctor_open_in() -> DoctorOpenIn:
             "code": finding.refusal[0] if finding.refusal else "app_found",
             "reason": finding.refusal[1] if finding.refusal else "the app takes a target",
         }
-        if (
-            preference is not None
-            and preference.value == "app"
-            and finding.refusal is not None
-            and DELIVERY_EXIT_CODES[finding.refusal[0]] == PRESENT_NO_APP_EXIT_CODE
-        ):
+    no_app = (
+        finding is not None
+        and finding.refusal is not None
+        and DELIVERY_EXIT_CODES[finding.refusal[0]] == PRESENT_NO_APP_EXIT_CODE
+    )
+    try:
+        browser: bool | None = browser_delivery_allowed()
+    except CLIError as exc:
+        browser = None
+        problems.append(f"open_in: {exc}")
+    if preference is not None and finding is not None and finding.refusal is not None and no_app:
+        if preference.value == "app":
             problems.append(
                 f"open_in is app ({preference.source}), and no app takes a target: "
                 f"{finding.refusal[1]}"
             )
+        elif browser is False:
+            problems.append(
+                f"open_in is {preference.value} ({preference.source}), no app takes a target "
+                f"({finding.refusal[1]}), and {_BROWSER_OFF}: --present opens nothing"
+            )
+    if preference is not None and preference.value == "browser" and browser is False:
+        problems.append(
+            f"open_in is browser ({preference.source}), and {_BROWSER_OFF}: --present opens nothing"
+        )
     section: dict[str, object] = {
         "value": preference.value if preference else None,
         "source": preference.source if preference else None,
+        PRESENT_BROWSER_SETTING: browser,
         "app": app,
     }
     if finding is None:
@@ -1272,7 +1420,12 @@ def doctor_open_in() -> DoctorOpenIn:
     else:
         found = f"the app: none ({finding.refusal[0]})"
     named = f"{preference.value} ({preference.source})" if preference else "unreadable"
-    return DoctorOpenIn(section, f"metab --doctor: open_in {named}; {found}", tuple(problems))
+    off = (
+        f"; {PRESENT_BROWSER_SETTING}: false, so no server for a browser"
+        if browser is False
+        else ""
+    )
+    return DoctorOpenIn(section, f"metab --doctor: open_in {named}; {found}{off}", tuple(problems))
 
 
 # ── Reporting ───────────────────────────────────────────────────────
@@ -1416,6 +1569,12 @@ def _dry_run(
         decision = Decision(None, "none", "preference_unreadable", unreadable or "unreadable", None)
     else:
         decision = decide(target, *settings)
+        try:
+            decision = allow_browser(decision)
+        except CLIError as exc:
+            decision = Decision(
+                decision.preference, "none", "preference_unreadable", str(exc), decision.finding
+            )
     _print_decision(target, decision, as_json=as_json)
 
 
@@ -1449,9 +1608,19 @@ def run_present(
     target = resolve_target(value, path, local=local)
     if isinstance(target, Refusal):
         _refuse(target, as_json=as_json, dry_run=False, preference=preference)
-    decision = decide(target, preference, bundle_ids)
+    decision = allow_browser(decide(target, preference, bundle_ids))
     if decision.delivers_to == "browser":
-        delivery = serve_detached(value, path, fallback=decision.fallback)
+        delivery = serve_detached(target, value, path, fallback=decision.fallback)
+    elif decision.code == "browser_off":
+        found = decision.finding
+        delivery = Delivery(
+            "none",
+            found.bundle_id if found else None,
+            found.bundle_path if found else None,
+            "browser_off",
+            decision.message,
+            fallback=decision.fallback,
+        )
     else:
         # A decision for the app, or for nowhere, follows looking for the app.
         assert decision.finding is not None
@@ -1459,7 +1628,7 @@ def run_present(
     if as_json:
         _print_json(_report(delivery, target, delivery.code, delivery.message, preference))
     elif delivery.delivered_to == "none":
-        where = "served" if delivery.code == "server_failed" else "sent to the app"
+        where = "served" if delivery.code in {"server_failed", "browser_off"} else "sent to the app"
         typer.echo(f"Error: not {where}: {delivery.message} ({delivery.code})", err=True)
     else:
         lines = [f"delivered_to: {delivery.delivered_to}", _preference_line(preference)]
@@ -1511,9 +1680,9 @@ __all__ = [
     "app_refusal",
     "bundle_lookup",
     "decide",
-    "deliver",
     "DoctorOpenIn",
     "doctor_open_in",
+    "allow_browser",
     "find_app",
     "look_up_app",
     "install_locations",
