@@ -29,6 +29,11 @@
 //   in a Pulls tab mounted again nothing is read and no heading waits: a stack whose answer
 //   had no line does not pulse and go blank again (review of #484, A4).
 //
+// It then serves #286 a long line, exact and then estimated, at every width in the light
+// theme: while "(estimated)" shows, the statuses before it are whole and it follows the
+// totals at the line's gap; it gives way whole first, then the statuses, then the line; and
+// the estimated line goes from view where the exact one does (review A on #529, H2 and L1).
+//
 // It also lays out the brief change lines of this repository's own stacks
 // (`REAL_LINES`, measured 2026-11-16 with pull_stack_change.py's `comparison_sums`), to say
 // how wide a typical line is, which the placeholder's width is set from.
@@ -176,7 +181,8 @@ const MOUNT = `async (width, theme, fresh = true) => {
       const number = Number(url.searchParams.get("number"));
       asked.push(number);
       await new Promise((resolve) => held.push(resolve));
-      const found = Object.values(answers.changes).find((answer) => answer.body.number === number) ?? answers.changes.not_stacked;
+      // A sweep may set #286's answer for itself: a long line, exact or estimated.
+      const found = (number === 286 && window.__line286) || Object.values(answers.changes).find((answer) => answer.body.number === number) || answers.changes.not_stacked;
       return respond(found.body, found.status);
     }
     if (url.pathname === "/api/plugin/github/pulls") return respond(answers.list);
@@ -230,7 +236,7 @@ const READ = `(() => {
       icon: box(row.querySelector(".github-pull-stack-icon")), heading: box(heading),
       label: box(label), labelCut: label.scrollWidth > label.clientWidth + 0.5,
       change: box(change), pending: box(pending), pendingShown: pending !== null && getComputedStyle(pending).visibility === "visible",
-      line: box(line), stats: box(stats),
+      line: box(line), stats: box(stats), note: box(change.querySelector(".github-pulls-stack-change-note")),
       group: box(change.querySelector(".change-line-group")), statusesBox: box(statuses),
       statsWhole: stats === null || stats.scrollWidth <= stats.clientWidth + 0.5,
       statusesCut: statuses !== null && statuses.scrollWidth > statuses.clientWidth + 0.5,
@@ -542,6 +548,105 @@ async function main() {
       "a narrow pane shows the line's totals alone, its statuses out of view",
       Object.values(measured).some((at) => at?.shown === "totals only"),
       JSON.stringify(Object.fromEntries(Object.entries(measured).map(([k, v]) => [k, v?.shown]))),
+    );
+    // A long line, exact and then estimated (review A on #529, H2 and L1): while
+    // "(estimated)" shows, the statuses before it are whole and it follows the totals at the
+    // line's gap; it gives way whole before the statuses do, leaving no blank run; and the
+    // estimated line goes from view at the widths where the exact one does.
+    const long = (exact) => ({
+      status: 200,
+      body: {
+        ...ANSWERS.changes.inexact.body,
+        files: 43,
+        additions: 1234,
+        deletions: 567,
+        exact,
+        statuses: [
+          { status: "added", count: 21 },
+          { status: "removed", count: 7 },
+          { status: "modified", count: 15 },
+        ],
+      },
+    });
+    const states = { exact: {}, estimated: {} };
+    for (const [kind, exact] of [
+      ["exact", true],
+      ["estimated", false],
+    ]) {
+      await browser.evaluate(`(window.__line286 = ${JSON.stringify(long(exact))}, true)`);
+      for (const width of WIDTHS) {
+        const at = `${width} px ${kind} long line`;
+        await browser.evaluate(`(${MOUNT})(${width}, "light")`);
+        await browser.waitFor(
+          `(window.__release(), document.querySelector('.github-pulls-stack-row[data-stack="286"] .change-line') !== null)`,
+        );
+        await browser.evaluate(
+          `new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))`,
+        );
+        const now = (await browser.evaluate(READ))["286"];
+        const inView = (part) =>
+          part !== null &&
+          part.top >= now.heading.top - TOLERANCE_PX &&
+          part.bottom <= now.heading.bottom + TOLERANCE_PX &&
+          part.right <= now.heading.right + TOLERANCE_PX;
+        const shown = inView(now.line);
+        const noteShown = inView(now.note);
+        check(
+          `${at}: the note is there exactly when the line is estimated`,
+          (now.note !== null) === !exact,
+        );
+        const state = !shown
+          ? "dropped"
+          : noteShown
+            ? "whole, noted"
+            : now.statusesShown
+              ? "whole"
+              : "totals only";
+        states[kind][width] = state;
+        if (noteShown) {
+          check(
+            `${at}: the statuses before "(estimated)" are whole`,
+            shown && now.statusesShown && near(now.stats.left, now.group.right + 6),
+            JSON.stringify({ stats: now.stats, group: now.group }),
+          );
+          check(
+            `${at}: "(estimated)" follows the totals at the line's gap, no blank run`,
+            Math.abs(now.note.left - now.stats.right - 6) <= 1,
+            JSON.stringify({ stats: now.stats, note: now.note }),
+          );
+        }
+        if (shown) {
+          check(
+            `${at}: its totals follow its whole statuses, or start the line alone`,
+            now.statusesShown
+              ? near(now.stats.left, now.group.right + 6)
+              : near(now.stats.left, now.line.left),
+            JSON.stringify({ stats: now.stats, group: now.group, line: now.line }),
+          );
+        }
+        lap(`${at}: ${state}`);
+      }
+    }
+    await browser.evaluate(`(window.__line286 = null, true)`);
+    measured.long = states;
+    const order = ["whole, noted", "whole", "totals only", "dropped"];
+    const ranks = WIDTHS.map((width) => order.indexOf(states.estimated[width]));
+    check(
+      "the estimated line shows its note at the widest pane",
+      states.estimated[420] === "whole, noted",
+      JSON.stringify(states.estimated),
+    );
+    check(
+      "the estimated line gives way note first, then statuses, then the line, as the pane narrows",
+      ranks.every((rank, index) => index === 0 || rank >= ranks[index - 1]),
+      JSON.stringify(states.estimated),
+    );
+    check(
+      "the estimated line goes from view at the widths where the exact one does",
+      WIDTHS.every(
+        (width) => (states.exact[width] === "dropped") === (states.estimated[width] === "dropped"),
+      ),
+      JSON.stringify(states),
     );
     measured.real = await browser.evaluate(`(${REAL})(${JSON.stringify(REAL_LINES)})`);
     check("no page error", errors.length === 0, errors.join("\n"));

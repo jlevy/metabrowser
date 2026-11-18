@@ -29,7 +29,9 @@ from tests.test_github_pull_header_chrome import (
 SESSION = Path(__file__).resolve().parent / "dom" / "github-pulls-stack-lines-chrome.mjs"
 # Sixteen mounts, eight widths in two themes, each a mount, a wait past the quiet period,
 # and an arrival. On a Mac at a load average of 11 to 16 the session took 6 to 9 s after
-# Chrome's start; this is a cold start's bound and that six times over.
+# Chrome's start; this is a cold start's bound and that six times over. The sixteen
+# long-line mounts after them wait for no quiet period: at a load average of 8 to 14 they
+# added 1.6 s (9.3 s in all after Chrome's start), well inside the bound.
 SESSION_TIMEOUT_S = LAUNCH_TIMEOUT_S + 40
 LIFECYCLE_S = SESSION_TIMEOUT_S + GROUP_STOP_S + PROFILE_TEARDOWN_S
 pytestmark = pytest.mark.timeout(LIFECYCLE_S + 10)
