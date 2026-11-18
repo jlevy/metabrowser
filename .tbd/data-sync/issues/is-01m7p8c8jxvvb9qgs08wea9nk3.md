@@ -5,7 +5,7 @@ title: "Recent folders: persist them in Metabrowser's own configuration, shared 
 kind: feature
 status: in_progress
 priority: 1
-version: 4
+version: 5
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -13,12 +13,11 @@ parent_id: is-01m7ksbn803jhw15qjc6beg7qf
 hold: null
 hold_until: null
 created_at: 2026-11-18T02:39:36.028Z
-updated_at: 2026-11-18T03:01:40.577Z
+updated_at: 2026-11-18T03:38:01.662Z
 started_at: 2026-11-18T02:50:57.554Z
 ---
 Owner, 2026-11-18 in chat: 'Why do I not see all the recent folders in Open recent in the menu on the macos app? Can we save these in our configurations somewhere? It should be compatible with both the CLI and the native app so that the logic can be reused, e.g. for other shells in the future, around the CLI, or for features in the CLI where recently open folders are useful, even if right now it will primarily be a native app feature. Let's have a sub-agent design this out and implement end-to-end to make sure it's consistent.'
 
 ## Notes
 
-2026-11-18 owner decisions (chat): the recents file lives in the configuration directory (~/.config/metabrowser/recent-targets.json); no route serves the list yet (CLI only, metab --recent --json). Plan text pushed at claude/recent-folders 0e0a5cd8c.
-2026-11-18 owner (chat): configs carry a short self-describing format string (mf01, mf02, ..., like tbd's) and human-readable configs are YAML ('like we do for soft schemas or for tbd configs'). So the recents store should be YAML (e.g. ~/.config/metabrowser/recent-targets.yml) with the format string, per mb-3x6y, not JSON. metab --recent --json output stays JSON.
+2026-11-18: PR jlevy/metabrowser#546 (branch claude/recent-folders) holds the design (docs/project/architecture/arch-recent-targets.md, plan Phase 4, Open Modes), the store (recent-targets.yml, format mf01, in the configuration directory), metab --recent / --recent-add / --recent-forget / --recent-clear with a golden, the serve-start record, and the app's Open Recent drawn from metab --recent --json. Owner decisions recorded: configuration directory, no route yet, YAML with mfNN. Left for other beads: the mirror target (needs web_url from #540; mb-m4mg), the mode indicator (mb-wup3), the route and switcher (mb-a5ru, mb-9lf4), mfNN for layout.yml and config.yml (mb-3x6y). Not verified live in a running app. Awaiting review; do not close until merged.
