@@ -85,7 +85,7 @@ before one exists, windows, menus, the Dock, and file events.
 6. **Fail.** Every window of the folder shows the reason, the last lines of output, and
    Retry. Nothing restarts by itself; after Retry, each window returns to its page on the
    new port.
-7. **Stop.** Closing a folder’s last window stops its server: SIGTERM to the process
+7. **Stop.** Closing a folder’s last page stops its server: SIGTERM to the process
    group, `SupervisorPolicy.shutdownGrace`, SIGKILL, `killWait`, then SIGKILL to
    anything left in the group.
    The leader is reaped only after that, so its pid, which is the group’s id, cannot
@@ -415,20 +415,40 @@ Applications.
   print, and downloads.
   It belongs to the folder’s session, which counts its pages, not its windows, so the
   server stops when the last page closes.
+  The session and the window’s controller hold the page, and the page holds its window
+  weakly. AppKit holds a window’s controller and delegate weakly too (`NSWindow.h`), so
+  each controller keeps itself in `BrowserWindowController.open` from its creation until
+  its window closes. Without that, the controller is released as soon as its window is
+  made: closing the window then closes no page and stops no server, and the saved
+  session finds no windows.
+  The menus’ page actions are nil-targeted, and while the focus is in the page they
+  reach it along the responder chain, in which the page follows its view.
   A window (`BrowserWindowController`) holds only the window and its chrome, and shows
-  one page at a time; the menus’ page actions reach the page it shows through the window
+  one page; while the window itself is first responder, as it is before its page first
+  loads, the menus’ page actions still reach the page it shows through the window
   controller (`supplementalTarget(forAction:sender:)`).
-- **Open folders.** A folder is open while its session has a page, and **in the
-  background** while its one page has no window, because a window switched away from it.
-  `OpenFolders` keeps the order folders opened in and when each was last shown.
+- **Open folders.** A folder is open from when its session is made until its last page
+  closes, and **in the background** while its one page has no window, because a window
+  switched away from it.
+  `OpenFolders` keeps the order folders opened in and when each was last shown, by the
+  session’s one key, `SessionRoot.key`, which the open servers and the restore use too.
   A window switches to a folder by showing its background page, or a new page of it, in
   place of the page it showed (`FolderWindows.switchWindow`); the window stays the same
   `NSWindow`. The page left behind stays in the background, or closes if its folder has
   another page (`SwitchedAwayPage`), so a folder has at most one background page.
-  File > Close Folder switches each window showing the folder to the background folder
-  shown most recently (`OpenFolders.replacement`), or closes it, then closes the
-  folder’s pages. A folder in the background that is opened again, from Finder,
-  `open -a`, or a link, gets a window of its own, placed as a new folder’s is.
+  Every switch goes through `switchWindow`, which `FolderSwitch` decides: a window with
+  a sheet open keeps its page, and a tab hidden behind another of its group switches
+  without counting its new folder as shown until the tab is selected.
+  File > Close Folder switches each window showing the folder to the next background
+  folder, the one shown most recently first, or closes it, then closes the folder’s
+  pages (`OpenFolders.closing`); a sheet open on any of those windows holds it all up,
+  and the menu item is off while the key window has one.
+  A folder in the background that is opened again, from Finder, `open -a`, or a link,
+  gets a window of its own, placed as a new folder’s is, and so does the folder shown
+  most recently when a click on the Dock icon finds no window on screen.
+  A page no window shows opens no dialog: it answers its own `alert` with OK, `confirm`
+  and `prompt` with Cancel, and a file input with no file, and a download it starts
+  saves nothing.
 - **Title.** The folder’s short name, from `GET /api/identity` once the server is ready
   and from the path until then (`FolderIdentity.localFolder`). `window.title` is the
   short name too, or the full name while two open folders share a short name
@@ -476,8 +496,9 @@ Applications.
 
 `SessionStore` saves the folder windows, front first, with each window’s tabs, shown
 tab, and frame and each tab’s folder and page, then the folders open in the background
-with their pages, to `session.json` in `AppIdentity.supportDirectory`,
-`FolderWindows.saveDelay` after a change and at quit before the servers stop.
+with their pages, the one shown most recently first, to `session.json` in
+`AppIdentity.supportDirectory`, `FolderWindows.saveDelay` after a change and at quit
+before the servers stop.
 Each save renames a private temporary file over the old one, so a launch after a crash
 finds a whole session, and two copies saving at once leave the last one’s.
 
@@ -488,6 +509,9 @@ whose comment holds its measurement.
 Only each window’s shown tab loads its page.
 A folder in the background reopens with its page and no window, and its server waits, as
 a protected folder’s does, until a window shows it.
+A session with background folders and no window, as a quit after the last window closed
+saves, shows the first of them in a window of its own (`SavedSession.withFrontWindow`),
+so a launch never opens to nothing.
 Servers start one at a time, each after the one before is ready or has failed: the front
 tab’s first, then the tabs the other windows show, then the rest (`RestoreQueue`,
 `RestoreRun`). A tab selected meanwhile starts next.
@@ -500,8 +524,9 @@ protected location (`ProtectedLocations`); the folder it reaches must be on the 
 folder’s volume, and the kernel’s name for it is the root’s identity.
 Anything less certain waits for its tab under its saved spelling, and selecting the tab
 resolves the path then (`RootActivation`), moving its tabs to the folder it now leads
-to. A folder in a protected location starts only when one of its tabs is selected, so a
-launch raises no privacy prompt for a folder nobody is looking at.
+to; its page in the background moves too, unless that folder has one or is shown
+(`MovedPage`). A folder in a protected location starts only when one of its tabs is
+selected, so a launch raises no privacy prompt for a folder nobody is looking at.
 A background root is admitted again at its turn and just before its server spawns; a
 process that changes the path after that check can still win, and macOS enforces its
 privacy grants regardless.
@@ -523,7 +548,10 @@ mark in a trailing one (`TitleBarMarkController`).
 - **The folder chooser.** The title is a pop-up control (`TitleBarTitleView`): an
   always-shown `chevron.down` after it, and on hover the system’s fill for a control
   under the pointer, resolved as the mark’s is.
-  A click opens `FolderChooserMenu` under it, and a press that moves
+  Only that surface is the control: the title bar above and below it keeps its own drag
+  and double-click. Like the mark, the control takes the press that makes its window key,
+  since neither is a window-drag region, and that press opens or drags as in a key
+  window. A click opens `FolderChooserMenu` under it, and a press that moves
   `TitleBarPressInteraction.dragDistance` drags the window instead; VoiceOver reads a
   pop-up button whose Press and Show Menu open the chooser.
   `FolderChooser` decides the rows (the open folders in the order they opened, then the

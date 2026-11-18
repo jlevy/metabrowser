@@ -1,11 +1,13 @@
-/// The folders and repositories open in the app, by session key (`SessionRoot.key`, a
-/// folder's canonical path): the order they opened in, and when each was last shown.
+/// The folders and repositories open in the app, by session key (`SessionRoot.key`: a
+/// folder's canonical path, or a repository's URL): the order they opened in, and when
+/// each was last shown.
 ///
-/// A folder is open while its session has a page. It is **shown** while a window shows
-/// one of its pages, and **in the background** while its one page has no window, because
-/// a window switched away from it. The app knows which windows show which pages; this
-/// model keeps the order and recency that the chooser, the switcher, and File > Close
-/// Folder read, and decides what a switch does with the page left behind.
+/// A folder opens when its session is made, before it has a page, and closes when its
+/// last page does. It is **shown** while a window shows one of its pages, and **in the
+/// background** while its one page has no window, because a window switched away from
+/// it. The app knows which windows show which pages; this model keeps the order and
+/// recency that the chooser, the switcher, and File > Close Folder read, and decides what
+/// a switch (`FolderSwitch`) and a close (`closing`) do.
 public nonisolated struct OpenFolders: Equatable, Sendable {
     /// Every open folder, in the order it opened, so the chooser's rows stay put.
     public private(set) var inOrderOpened: [String] = []
@@ -42,11 +44,68 @@ public nonisolated struct OpenFolders: Equatable, Sendable {
         return shown + inOrderOpened.filter { lastShown[$0] == nil }
     }
 
-    /// The folder a window shows in place of `closing` when File > Close Folder closes it:
-    /// the background folder shown most recently, other than `closing`. Nil when there is
-    /// none, and the window closes.
-    public func replacement(closing: String, background: Set<String>) -> String? {
-        byRecency.first { $0 != closing && background.contains($0) }
+    /// What File > Close Folder does with each window showing the folder `key`.
+    ///
+    /// A sheet open on any of them holds up the whole close (`FolderSwitch.refused`), so a
+    /// folder never closes in some of its windows and stays open in others. Otherwise each
+    /// window in turn shows the next folder in the background, the one shown most recently
+    /// first, and closes once none is left: the windows on screen first, in the order
+    /// given, then the tabs hidden behind another of their group.
+    ///
+    /// - Parameters:
+    ///   - windows: the windows showing `key`, front to back.
+    ///   - background: the open folders in the background.
+    public func closing<ID>(
+        _ key: String, windows: [SwitchingWindow<ID>], background: Set<String>
+    ) -> CloseFolderPlan<ID> {
+        let blocked = windows.filter(\.hasSheet).map(\.id)
+        guard blocked.isEmpty else { return .refused(blocked) }
+        var replacements = byRecency.filter { $0 != key && background.contains($0) }[...]
+        let ordered = windows.filter(\.isOnScreen) + windows.filter { !$0.isOnScreen }
+        return .steps(ordered.map { CloseFolderStep(window: $0.id, showing: replacements.popFirst()) })
+    }
+}
+
+/// A window as a switch or File > Close Folder sees it.
+public nonisolated struct SwitchingWindow<ID: Hashable & Sendable>: Equatable, Sendable {
+    public var id: ID
+    /// On screen: not a tab hidden behind another of its group.
+    public var isOnScreen: Bool
+    /// A sheet is open on it: an `alert`, `confirm`, or `prompt`, a file input's open
+    /// panel, or the print panel, which the page it shows opened, or one of the app's own,
+    /// such as a download's save panel.
+    public var hasSheet: Bool
+
+    public init(id: ID, isOnScreen: Bool, hasSheet: Bool) {
+        self.id = id
+        self.isOnScreen = isOnScreen
+        self.hasSheet = hasSheet
+    }
+}
+
+/// What a window asked to show another folder does. Every switch, File > Close Folder's
+/// included, goes through `FolderWindows.switchWindow`, which asks this.
+public nonisolated enum FolderSwitch: Equatable, Sendable {
+    /// The window shows that folder already, so nothing changes.
+    case alreadyShown
+    /// A sheet is open on the window. The sheet is modal to the window and answers for the
+    /// page the window shows, so the window keeps that page until the sheet ends.
+    case refused
+    /// The window shows the folder's page in the background if it has one, else a new
+    /// page of it, and the page it leaves becomes `left`. The folder counts as shown only
+    /// if the window is on screen: a tab hidden behind another of its group does not
+    /// revive a discarded page, move its folder up in recency, or start a restored folder
+    /// as the user's choice until the tab is selected.
+    case show(left: SwitchedAwayPage, countsAsShown: Bool)
+
+    /// - Parameters:
+    ///   - showsFolder: whether the window shows that folder already.
+    ///   - leftFolderPages: how many pages the folder the window shows now has, the one
+    ///     the window shows included.
+    public static func decide<ID>(_ window: SwitchingWindow<ID>, showsFolder: Bool, leftFolderPages: Int) -> FolderSwitch {
+        if showsFolder { return .alreadyShown }
+        if window.hasSheet { return .refused }
+        return .show(left: .fate(otherPages: max(0, leftFolderPages - 1)), countsAsShown: window.isOnScreen)
     }
 }
 
@@ -62,5 +121,67 @@ public nonisolated enum SwitchedAwayPage: Equatable, Sendable {
     /// - Parameter otherPages: how many other pages the folder has, shown or not.
     public static func fate(otherPages: Int) -> SwitchedAwayPage {
         otherPages == 0 ? .keepInBackground : .close
+    }
+}
+
+/// What File > Close Folder does (`OpenFolders.closing`).
+public nonisolated enum CloseFolderPlan<ID: Hashable & Sendable>: Equatable, Sendable {
+    /// A sheet is open on these windows, so nothing switches or closes.
+    case refused([ID])
+    /// Each window in turn shows a folder in the background or closes; then the folder's
+    /// pages close, which stops its server.
+    case steps([CloseFolderStep<ID>])
+}
+
+public nonisolated struct CloseFolderStep<ID: Hashable & Sendable>: Equatable, Sendable {
+    public var window: ID
+    /// The folder in the background that the window shows instead, or nil: the window
+    /// closes.
+    public var showing: String?
+
+    public init(window: ID, showing: String?) {
+        self.window = window
+        self.showing = showing
+    }
+}
+
+/// What becomes of each page of a folder whose tabs move to another folder's session,
+/// because the folder's saved path now leads to that one (`RestoreRun`'s `moveTabs`).
+///
+/// Pages move, not windows: a page no window shows moves too, so the folder of the saved
+/// path is left with no page and closes, and the target keeps at most one page in the
+/// background, and only while no window shows it.
+public nonisolated enum MovedPage: Equatable, Sendable {
+    /// A window shows it: a page of the target, at the same address, takes its place in
+    /// the window's tab group, and it closes with its window.
+    case replaceInWindow
+    /// No window shows it, and the target will have no other page: a page of the target
+    /// at the same address takes its place in the background, and it closes.
+    case moveToBackground
+    /// No window shows it, and the target has a page already or is shown: it closes.
+    case close
+
+    /// What moving a folder's pages to a target does.
+    public struct Plan: Equatable, Sendable {
+        /// Each moved page's fate, in the order given.
+        public var pages: [MovedPage]
+        /// Whether the target's pages that no window shows close, because a window shows
+        /// the target once the pages have moved.
+        public var closesTargetBackgroundPages: Bool
+    }
+
+    /// - Parameters:
+    ///   - pages: whether a window shows each page that moves.
+    ///   - target: whether a window shows each page the target has now.
+    public static func plan(_ pages: [Bool], into target: [Bool]) -> Plan {
+        let targetShown = target.contains(true) || pages.contains(true)
+        var targetHasBackgroundPage = !targetShown && !target.isEmpty
+        let fates = pages.map { inWindow -> MovedPage in
+            if inWindow { return .replaceInWindow }
+            if targetShown || targetHasBackgroundPage { return .close }
+            targetHasBackgroundPage = true
+            return .moveToBackground
+        }
+        return Plan(pages: fates, closesTargetBackgroundPages: targetShown && target.contains(false))
     }
 }

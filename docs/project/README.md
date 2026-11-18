@@ -76,8 +76,7 @@ It links each document below and the contributor standards in `docs/`.
   scale benchmark, and checks that keep the set linked
 - [Switching folders in the macOS app](specs/active/plan-2026-11-18-macos-folder-switching.md):
   a window that can show any open folder, the title as a native chooser of open and
-  recent folders, a keyboard switcher, and marks shared with the page; a draft for the
-  owner’s review
+  recent folders, a keyboard switcher, and marks shared with the page
 - [Native macOS app](specs/active/plan-2026-11-10-native-macos-app.md): folder identity,
   the icon and release pipeline, warm folder switching, host mode and the agent front
   door, and the app-managed runtime

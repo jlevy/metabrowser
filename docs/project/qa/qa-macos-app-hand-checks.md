@@ -452,6 +452,42 @@ Markdown file open:
 4. **A file dragged onto the page** opens at its page, in the open folder that holds it
    or else in its own folder.
 
+## Menu Actions and Closing a Window
+
+A window shows its folder’s page (`FolderPage`), and the menus’ page actions are
+nil-targeted, so they reach the page by two routes
+([Windows](../architecture/arch-macos-app.md#windows)): the responder chain while the
+focus is in the page, and the window controller while the window itself is first
+responder.
+What each action does is unit-tested (`PageReloadTests`), but not which object
+AppKit sends it to: asking AppKit (`NSApp.target(forAction:to:from:)`) needs a key
+window, which a test process gets only by taking the focus from whoever is using the
+Mac. Nor is when AppKit releases a window’s controller, since no test target builds the
+app’s windows. With the folders and the app log from Files, Tabs, Recents, and Restore,
+after its check 1, so that `a`’s window shows `deep.md`, opened after `notes.md`:
+
+1. **Back, Forward, and Reload.** View > Back
+   (Command-[) shows `notes.md`, View > Forward (Command-]) shows `deep.md` again, and
+   View > Reload Page (Command-R) reloads it in place.
+2. **Find and zoom.** Command-F opens the find bar over the page, typing `deep`
+   highlights it, and Command-G moves to the next match.
+   Zoom In (Command-=) and Zoom Out (Command-Minus) zoom the page, and Actual Size
+   (Command-0) restores it.
+3. **The server’s items.** File > Reveal Server Log shows `a`’s log in Finder, File >
+   Open in Default Browser opens the page in the default browser, and File > Restart
+   Server (Option-Command-R) starts `a`’s server again, after which the window shows
+   `deep.md`.
+4. **The window as first responder.** Stop `a`’s server without ending it (`kill -STOP`
+   the pid `pgrep -f 'metab /private/tmp/mb-check/a'` prints), then Command-click a link
+   in the page. The new tab, whose page never loads, so its window stays first responder,
+   says “The server stopped answering” within `SupervisorPolicy.healthDeadline` and then
+   `shutdownGrace`. View > Reload Page is enabled there, and Command-R does what Retry
+   does: the server starts again, and the tab shows the clicked page.
+5. **Closing.** Close the new tab (Command-W):
+   `pgrep -fl 'metab /private/tmp/mb-check/a'` still lists `a`’s server, which the other
+   tab shows. Close that tab too, and within `SupervisorPolicy.shutdownGrace` it lists
+   none. Restore, check 5, covers what a quit saves.
+
 ## Presenting From metab
 
 `metab ROOT --present` hands the app a target with `open -b`

@@ -39,6 +39,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let runtimeModel = RuntimeModel()
     /// The runtime, and the folders waiting for one. `runtimeModel` only mirrors it.
     private lazy var selection = RuntimeSelection(settings: settings, setup: settings.usable())
+    /// The window each waiting folder was asked to open in (`request(_:into:)`).
+    private var waitingWindows = WaitingWindows<BrowserWindowController>()
     /// The searches, rechecks, and choices that change `selection`, and what follows each.
     private lazy var operations: RuntimeOperations = {
         let settings = self.settings
@@ -71,9 +73,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var folderWindows = FolderWindows(
         store: SessionStore(directory: appIdentity.supportDirectory()),
         openSessions: { [weak self] in self?.sessions.openServers.compactMap { $0 as? FolderSession } ?? [] },
-        session: { [weak self] path in
-            self?.sessions[URL(filePath: path, directoryHint: .isDirectory).path(percentEncoded: false)] as? FolderSession
-        })
+        session: { [weak self] key in self?.sessions[key] as? FolderSession })
     /// Set when a launch found no runtime, so the last session is restored once one is.
     private var restoreAfterDiscovery = false
     private var runtimeWindow: RuntimeWindowController?
@@ -252,9 +252,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.terminate(nil)
     }
 
+    /// A click on the Dock icon with no window on screen shows the open folder shown most
+    /// recently, which may be minimized or in the background, else offers the Open panel.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
         if !hasVisibleWindows {
-            if let session = sessions.openServers.first as? FolderSession {
+            if let session = folderWindows.mostRecentFolder() {
                 session.showFrontWindow()
             } else if selection.setup != nil {
                 openFolder(nil)
@@ -273,9 +275,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// says.
     ///
     /// With `window`, a folder that opens is shown in that window in place of the folder it
-    /// shows (`FolderWindows.switchWindow`), as the folder chooser opens a recent folder. A
-    /// link still opens in a window of its own: which repository it names is `metab`'s
-    /// answer, which arrives later.
+    /// shows (`FolderWindows.switchWindow`), as the folder chooser opens a recent folder,
+    /// and one that waits for a runtime still opens there (`WaitingWindows`). A link still
+    /// opens in a window of its own: which repository it names is `metab`'s answer, which
+    /// arrives later.
     func request(_ url: URL, into window: BrowserWindowController? = nil) {
         guard url.isFileURL else { return requestLink(url) }
         let path = FileChecks.canonicalPath(url.path(percentEncoded: false))
@@ -289,8 +292,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let reason = CLIServeLaunch.unservableReason(root) {
             return refuse("Metabrowser cannot open this folder", "\(root.lastPathComponent) cannot be served: \(reason).")
         }
-        recentFolders.noteOpened(root, isOpen: sessions[root.path(percentEncoded: false)] != nil)
-        if let session = sessions[root.path(percentEncoded: false)] as? FolderSession {
+        let open = sessions[SessionRoot.folder(root).key] as? FolderSession
+        recentFolders.noteOpened(root, isOpen: open != nil)
+        if let session = open {
             session.showFrontWindow(page: target.page)
             return
         }
@@ -299,15 +303,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             beginRecheck()
         }
         // A request waiting for a runtime is resolved again when one is found.
-        guard selection.setupForOpening(URL(filePath: path)) != nil, let session = session(for: .folder(root)) else {
+        let waiting = URL(filePath: path)
+        guard selection.setupForOpening(waiting) != nil, let session = session(for: .folder(root)) else {
+            if let window, selection.waitingFolders.contains(waiting) { waitingWindows.wait(waiting, in: window) }
             if !selection.isBusy { showSettings(nil) }
             return
         }
-        if let window {
-            folderWindows.switchWindow(window, to: session, page: target.page)
-        } else {
-            folderWindows.place(session.makeWindow(page: target.page))
-        }
+        // A window with a sheet open refuses the switch (`FolderWindows.switchWindow`); the
+        // folder, whose session now exists, then opens in a window of its own rather than
+        // in the background with no page.
+        let switched = window.map { folderWindows.switchWindow($0, to: session, page: target.page) } ?? false
+        if !switched { folderWindows.place(session.makeWindow(page: target.page)) }
         Task {
             await session.startServer()
             self.recentFolders.refreshAfterOpen()
@@ -621,7 +627,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let name = missing.served.identity().fullName
             if let alert = LinkAlert.selectionMissing(outcome, link: link, repository: name) { self?.noteLinkProblem(alert) }
         }
-        session.onAllWindowsClosed = { [weak self] closed in
+        session.onAllPagesClosed = { [weak self] closed in
             self?.sessions.retire(closed)
             self?.folderWindows.folderClosed(closed)
             self?.retitleWindows()
@@ -714,10 +720,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// File > Close Folder, for the folder the key window shows.
-    func closeFolder(_ session: FolderSession) {
+    /// File > Close Folder, for the folder the key window shows. Returns false, having
+    /// beeped, when a sheet open on one of the folder's windows holds it up
+    /// (`FolderWindows.closeFolder`).
+    @discardableResult
+    func closeFolder(_ session: FolderSession) -> Bool {
         AppLog.app.info("closing \(session.folderName, privacy: .public) in every window")
-        folderWindows.closeFolder(session)
+        return folderWindows.closeFolder(session)
     }
 
     private func restoreLastSession() {
@@ -744,7 +753,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func openPendingFolders() {
-        selection.takeWaitingFolders().forEach { request($0) }
+        openReleased(selection.takeWaitingFolders())
+    }
+
+    /// Opens the folders that waited for a runtime, each in the window it was asked to
+    /// open in if that window is still open.
+    private func openReleased(_ folders: [URL]) {
+        for (folder, window) in waitingWindows.release(folders) { request(folder, into: window) }
     }
 
     @objc func openFolder(_ sender: Any?) {
@@ -835,7 +850,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             restoreAfterDiscovery = false
             restoreLastSession()
         }
-        waiting.forEach { request($0) }
+        openReleased(waiting)
         let held = folderSessions.filter(\.isWaitingForRuntime)
         offerRestart(for: found.runtime)
         // A paused restore carries on in its own order, each root admitted again in its

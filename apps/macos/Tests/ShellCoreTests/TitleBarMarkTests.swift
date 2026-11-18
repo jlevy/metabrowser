@@ -123,6 +123,20 @@ import Testing
         #expect(mark.released(inside: true) == nil)
     }
 
+    /// A control drags a window that is not key from its first press, as the rest of the
+    /// title bar does: the title, which spans much of the title bar, is grabbed there most.
+    @Test func aFirstPressInAWindowThatIsNotKeyDragsAndNeverOpens() {
+        var title = TitleBarPressInteraction()
+        title.pressed(at: inside)
+        // The window becomes key under the held press, and its tracking area starts
+        // reporting the pointer; neither ends the press.
+        title.pointerEntered()
+        #expect(title.isPressed)
+        #expect(title.moved(to: CGPoint(x: inside.x, y: inside.y + 3)) == .drag)
+        #expect(title.released(inside: true) == nil)
+        #expect(!title.isPressed)
+    }
+
     @Test func theHoverGoesOutOnExitAndOnDeactivation() {
         var mark = TitleBarPressInteraction()
         mark.pointerEntered()
