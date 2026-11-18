@@ -25,12 +25,17 @@ Other for the rest; the table of every group, family, and type waits behind Deta
 On a folder of many types, Details starts closed, opens to the full table, stays open
 through a measure change, Show ignored, a refresh, and a rescan, closes back to the
 compact summary, and starts closed again on the next mount.
-Pointing at a legend entry marks what pointing at its family’s segment marks, in the
-tally row the legend’s shares are of, Total with Show ignored on and Files with it off:
-that segment, as hovered.
-The tooltip is anchored on the handle the pointer is on, the entry or the segment: on
-the segment it names the family and its counts, on the entry, which shows the name, the
-counts alone. Other draws nothing.
+Pointing at a legend entry marks every mark of its family on screen: its segment in each
+tally row that has one, Files, Ignored, and Total, and, while Details is open, its own
+row’s bar there, not its extensions’ rows.
+Pointing at a segment marks that segment alone, the one value it is.
+Either way the family’s legend entry is marked too.
+There is one tooltip, anchored on the handle the pointer is on, the entry or the
+segment: on the segment it names the family and its counts; on the entry, which shows
+the name, the counts alone of the family’s segment in the tally row the legend’s shares
+are of, Total with Show ignored on and Files with it off.
+Other draws nothing.
+Details opened or closed under a pointer still on an entry marks or unmarks its row.
 When the folder’s sums redraw the bars under the pointer, an entry keeps its hover.
 Show ignored, a rescan that empties the legend, a refresh, or the section’s disposal
 under the pointer puts it away, and the browser’s entering the rebuilt entry brings it
@@ -263,7 +268,7 @@ $ node tests/dom/file-overview-session.js
       "details": "false"
     }
   },
-  "a legend entry hovers its segment": {
+  "a legend entry hovers its family's marks": {
     "at rest": {
       "marked": [],
       "tooltip": null,
@@ -271,7 +276,10 @@ $ node tests/dom/file-overview-session.js
     },
     "pointer on the JSON entry, Show ignored on": {
       "marked": [
-        "Total family:json"
+        "Files family:json",
+        "Ignored family:json",
+        "Total family:json",
+        "legend family:json"
       ],
       "tooltip": "240 files · 100 B",
       "anchoredOn": "legend family:json"
@@ -283,7 +291,8 @@ $ node tests/dom/file-overview-session.js
     },
     "pointer on the Total row's JSON segment": {
       "marked": [
-        "Total family:json"
+        "Total family:json",
+        "legend family:json"
       ],
       "tooltip": "JSON 240 files · 100 B",
       "anchoredOn": "Total family:json"
@@ -293,6 +302,35 @@ $ node tests/dom/file-overview-session.js
       "tooltip": null,
       "anchoredOn": null
     },
+    "Details opened under the pointer on the JSON entry": {
+      "marked": [
+        "Files family:json",
+        "Ignored family:json",
+        "Total family:json",
+        "legend family:json",
+        "Details family:json"
+      ],
+      "tooltip": "240 files · 100 B",
+      "anchoredOn": "legend family:json"
+    },
+    "pointer on the Total row's JSON segment, Details open": {
+      "marked": [
+        "Total family:json",
+        "legend family:json"
+      ],
+      "tooltip": "JSON 240 files · 100 B",
+      "anchoredOn": "Total family:json"
+    },
+    "Details closed under the pointer on the JSON entry": {
+      "marked": [
+        "Files family:json",
+        "Ignored family:json",
+        "Total family:json",
+        "legend family:json"
+      ],
+      "tooltip": "240 files · 100 B",
+      "anchoredOn": "legend family:json"
+    },
     "Show ignored turned off under the pointer": {
       "marked": [],
       "tooltip": null,
@@ -300,14 +338,18 @@ $ node tests/dom/file-overview-session.js
     },
     "pointer on the Markdown entry, Show ignored off": {
       "marked": [
-        "Files family:markdown"
+        "Files family:markdown",
+        "Total family:markdown",
+        "legend family:markdown"
       ],
       "tooltip": "150 files · 300 B",
       "anchoredOn": "legend family:markdown"
     },
     "the folder's sums redrew the bars under the pointer": {
       "marked": [
-        "Files family:markdown"
+        "Files family:markdown",
+        "Total family:markdown",
+        "legend family:markdown"
       ],
       "tooltip": "150 files · 300 B",
       "anchoredOn": "legend family:markdown"
@@ -324,7 +366,9 @@ $ node tests/dom/file-overview-session.js
     },
     "the browser entered the rebuilt entry": {
       "marked": [
-        "Files family:markdown"
+        "Files family:markdown",
+        "Total family:markdown",
+        "legend family:markdown"
       ],
       "tooltip": "150 files · 300 B",
       "anchoredOn": "legend family:markdown"

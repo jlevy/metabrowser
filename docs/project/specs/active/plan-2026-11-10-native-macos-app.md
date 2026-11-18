@@ -107,6 +107,9 @@ through `metab --api`:
   is the repository name; `full_name` is the origin abbreviated to `host/owner/repo@ref`
   (or `@` and 12 hex digits for a commit pin), never the path in the cache; `kind_label`
   is “Cached mirror”.
+- **A repository folder showing a revision** keeps `kind: folder` and adds `@<ref>` to
+  `full_name`, by the design in
+  [Open Modes](../../architecture/arch-open-modes.md#views); it is not built.
 - **Title:** the short name, a bullet (U+2022), and “Metabrowser”.
   The served page uses it as its `<title>`, so browser tabs show it too.
 - Phase 3 extends the same route with the process id, boot id, and version that host
