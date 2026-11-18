@@ -159,9 +159,6 @@ type AppRefusalCode = Literal[
 
 type DeliveryCode = Literal[
     "not_confirmed",
-    "server_started",
-    "server_starting",
-    "server_failed",
     "not_macos",
     "app_not_found",
     "app_not_installed",
@@ -169,6 +166,9 @@ type DeliveryCode = Literal[
     "app_cannot_select_folder",
     "lookup_failed",
     "open_failed",
+    "server_started",
+    "server_starting",
+    "server_failed",
 ]
 """What became of a target that resolved: taken by LaunchServices, served for a browser,
 or why neither."""
@@ -196,9 +196,6 @@ app code that sends it nowhere."""
 # server that exited before it said where it serves is a failure like any other, 1.
 DELIVERY_EXIT_CODES: Final[dict[DeliveryCode, int]] = {
     "not_confirmed": 0,
-    "server_started": 0,
-    "server_starting": 0,
-    "server_failed": 1,
     "not_macos": PRESENT_NO_APP_EXIT_CODE,
     "app_not_found": PRESENT_NO_APP_EXIT_CODE,
     "app_not_installed": PRESENT_NO_APP_EXIT_CODE,
@@ -206,6 +203,9 @@ DELIVERY_EXIT_CODES: Final[dict[DeliveryCode, int]] = {
     "app_cannot_select_folder": PRESENT_NO_APP_EXIT_CODE,
     "lookup_failed": PRESENT_BLOCKED_EXIT_CODE,
     "open_failed": PRESENT_BLOCKED_EXIT_CODE,
+    "server_started": 0,
+    "server_starting": 0,
+    "server_failed": 1,
 }
 
 # How long `--present` waits for a server it started to print where it serves, the

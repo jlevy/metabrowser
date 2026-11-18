@@ -66,7 +66,12 @@ report, its codes, and `--dry-run`, which checks a target without sending it.
   A file named with `--path` inside a folder opens in that folder, unless a folder
   inside it that holds the file is open already, where the file then shows.
 - **A folder inside another:** the app opens each folder in a window of its own, so
-  `--path` naming a folder is not sent; present that folder itself.
+  `--path` naming a folder is not sent to it; present that folder itself.
+- **No app, or a browser by choice:** when no app takes the target, `--present` opens it
+  in your browser instead, on a `metab` server it starts and leaves running, and reports
+  the server’s address and process ID. Set `open_in` to `app` to send only to the app,
+  or to `browser` to skip it, in `config.yml`, `METABROWSER_OPEN_IN`, or `--open-in`
+  ([choosing the app or a browser](command-line.md#choosing-the-app-or-a-browser)).
 - **No confirmation yet:** the app does not answer, so `--present` reports what
   LaunchServices accepted, never that a window shows it.
 - **In an agent’s sandbox,** LaunchServices may not answer; the report says

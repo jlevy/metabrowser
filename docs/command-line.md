@@ -55,7 +55,7 @@ selected. Opening a path inside a Git repository at the repository’s root is p
 | 1 | A refusal or failure, printed as one `Error:` line on stderr; `--api` when the route answers outside 2xx; `--present` when the server it started exited first |
 | 2 | A usage error, such as two modes or an option the mode does not use; a `--diff` that cannot be computed |
 | 3 | `--present`: ROOT cannot be presented, and the refusal says why |
-| 4 | `--present` under `open_in` `app`: no app takes the target, so nothing was sent; the report’s `code` says why |
+| 4 | `--present`: no app takes the target under `open_in` `app`, so nothing was sent; the report’s `code` says why |
 | 5 | `--present`: LaunchServices could not be asked or did not take the target, as in a sandbox |
 | 129, 130 | Stopped by a terminal hangup or Ctrl-C |
 | 143 | Stopped by `SIGTERM` while cloning |
@@ -490,15 +490,14 @@ the URL of the file or folder itself.
 
 The `open_in` preference chooses where a target opens:
 
-| Value | Where |
-| --- | --- |
-| `auto`, the default | The app when an installed build takes the target; otherwise a browser |
-| `app` | The app, or nowhere, with [status](#exit-status) 4 |
-| `browser` | A browser, without looking for the app |
+- **`auto`**, the default: the app when an installed build takes the target, and
+  otherwise a browser.
+- **`app`**: the app, or nowhere, with [status](#exit-status) 4.
+- **`browser`**: a browser, without looking for the app.
 
-The first of these that is set is the preference: `--open-in WHERE`; the
-`METABROWSER_OPEN_IN` variable; and `open_in` in the `config` mapping of `config.yml`,
-in the [configuration directory](#storage-locations):
+It is read from the first of three places that sets it, and is `auto` when none does:
+`--open-in WHERE`; the `METABROWSER_OPEN_IN` variable; and `open_in` in the `config`
+mapping of `config.yml`, in the [configuration directory](#storage-locations):
 
 ```yaml
 softschema:
@@ -514,9 +513,9 @@ config:
 
 Metabrowser writes `config.yml` when it first clones a repository; add `open_in` to the
 `config` mapping there, or, before then, write the whole file as above.
-A value that is not one of the three is an `Error:` line that names where it was read,
-before anything is looked up or started; the flag and the variable are read first, so
-either still chooses while `config.yml` is broken.
+A value that is not `auto`, `app`, or `browser` is an `Error:` line that names where it
+was read, before anything is looked up or started; the flag and the variable are read
+first, so either still chooses while `config.yml` is broken.
 Under `auto`, a target LaunchServices cannot be asked about goes nowhere with
 `lookup_failed`, as under `app`: in a sandbox that keeps `metab` from LaunchServices, a
 browser it started would be kept from the screen as well.
@@ -632,7 +631,6 @@ still deliver what it was given:
 | Code | Meaning |
 | --- | --- |
 | `not_confirmed` | Sent: LaunchServices took the target, and nothing confirms a window shows it |
-| `server_started`, `server_starting`, `server_failed` | A browser’s, in the next section |
 | `not_macos` | The app runs on macOS only |
 | `app_not_found` | LaunchServices knows no Metabrowser app |
 | `app_not_installed` | The app LaunchServices names is not at an install location below, as a build left where it was built is not |
