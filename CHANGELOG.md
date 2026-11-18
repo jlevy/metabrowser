@@ -4,6 +4,19 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A link to one file of a pull request’s **Changes** on GitHub, such as
+  `https://github.com/o/r/pull/7/files#diff-<hash>R12`, now opens that file.
+  GitHub names the file in the link only as a hash of its path, so `metab` finds which
+  changed file it is in the list of changed files it has cached, or in the pull
+  request’s comparison in the repository it has cloned, without fetching, and the page
+  opens at `/pull/7/files/<path>`. `metab <URL>` says so with `file:` and, for a link to
+  a line, `diff_line:` lines, since the Changes tab opens at the file and not yet at the
+  line. Before, the anchor was ignored and the link opened the whole Changes tab, which
+  is still what it opens, with the reason, when the file is not one the pull request
+  changes or the cache cannot yet say.
+  `metab <URL> --present --dry-run` reports no page for such a link, since only the
+  cache can name the file, and hands the app the link with its anchor.
+
 - In a navigation pane too narrow for the Files toolbar’s controls, the Files tree no
   longer moves down as the page loads.
   The toolbar wraps to a second line when its controls arrive, and the tree, shown under

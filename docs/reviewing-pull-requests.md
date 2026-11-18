@@ -39,6 +39,9 @@ Serving https://github.com/pallets/click at http://127.0.0.1:8411/pull/3866
 
 A GitHub URL ending in `/pull/123/files` or `/pull/123/checks` opens that tab, and one
 ending in `/pull/123/commits` opens the conversation, where the commits appear.
+A Changes tab link to one file, ending in `#diff-` and a long hash, opens that file, or
+the Changes tab when the pull request’s changed files are not cached yet
+([pull requests](command-line.md#pull-requests) has the details).
 If you already have the repository checked out, `--checkout` lets the clone borrow its
 objects instead of copying them; see
 [beside a checkout](command-line.md#beside-a-checkout).
