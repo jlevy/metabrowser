@@ -62,11 +62,24 @@ links describe what was built.
   jlevy/metabrowser#559 then gave a checkout’s window the branch and tag chooser and
   `metab PATH --ref NAME`, so a repository folder shows any ref read-only beside its
   working tree.
+- **The `open_in` preference and browser delivery** (jlevy/metabrowser#582):
+  `--open-in`, `METABROWSER_OPEN_IN`, and `open_in` in `config.yml` choose `auto`,
+  `app`, or `browser`, and `--doctor` reports the value, its source, and the app found.
+  A browser delivery starts the ordinary server detached, waits for the URL it prints,
+  and reports `delivered_to: browser` with the URL, the pid, the log, and how to stop
+  it. It differs from the design in four ways:
+  - Under `auto`, a LaunchServices that cannot be asked stays blocked (exit 5) instead
+    of falling back to a browser, which the same sandbox would keep from the screen.
+  - A server that exits before it serves ends with exit 1 (`server_failed`); one still
+    starting when the wait ends is delivered (`server_starting`), with its pid and log.
+  - `--dry-run` adds a `decision` object, and a preference it cannot read is the
+    decision’s `preference_unreadable`, not a failure, so the app’s link check never
+    depends on a setting it does not use.
+  - Each browser delivery starts a new server; finding a running one waits on the server
+    registry (`mb-5xi4`).
 
 ### Remaining
 
-- Browser delivery with a detached server (`mb-kze0`), and the `open_in` preference that
-  chooses between the app and a browser (`mb-gh6l`).
 - The GitHub status check, its `--doctor` section and route, the check before a first
   clone or pull request read, and token scopes (`mb-si2g`).
 - GitHub’s anchor for one file in a pull request (`mb-j8a1`).
@@ -372,13 +385,13 @@ as written on 2026-11-17 follows.
 Release-scoped. Each item is a bead under this plan; `mb-idri` keeps the Phase 2
 transport.
 
-- [ ] `metab TARGET --present` as a client mode: resolution, the report, `--json`,
+- [x] `metab TARGET --present` as a client mode: resolution, the report, `--json`,
   `--dry-run`, browser delivery with a detached server, and the new exit codes.
-  Landed in jlevy/metabrowser#540 except browser delivery, with `--format json` for
-  `--json`. Remaining: browser delivery (`mb-kze0`).
-- [ ] The `open_in` preference in `config.yml`, `METABROWSER_OPEN_IN`, and `--open-in`,
+  Landed in jlevy/metabrowser#540, with `--format json` for `--json`, and browser
+  delivery in jlevy/metabrowser#582.
+- [x] The `open_in` preference in `config.yml`, `METABROWSER_OPEN_IN`, and `--open-in`,
   with `--doctor` reporting it.
-  Remaining (`mb-gh6l`).
+  Landed in jlevy/metabrowser#582.
 - [x] App detection through LaunchServices, and delivery by `open -b`, with the blocked
   and missing-app outcomes.
   Landed in jlevy/metabrowser#540, release identifier first and then dev.
@@ -474,12 +487,15 @@ Questions 1, 2, 5, and 6 are answered; 3 and 4 wait for the owner.
    an agent’s `--present` could raise a privacy prompt in the app’s name.
    Accept that for the first release, or send roots the app does not have open to the
    browser until Phase 2’s confirmation?
-   **Open.** As built, `--present` hands any folder to the app, which opens it as Open
-   Folder… would; with no browser delivery yet, there is nowhere else to send it.
+   **Open.** As built, `--present` hands any folder to the app under `open_in` `auto` or
+   `app`, which opens it as Open Folder… would.
+   Browser delivery (jlevy/metabrowser#582) is now somewhere else to send one, but
+   nothing routes a root the app does not have open there.
 4. **Bare `metab PATH`.** Should it follow `open_in` and hand off to the app, exiting at
    once with a one-line message?
    Recommendation: yes, when no server-shaping flag is given.
-   **Open**, and waits on `open_in` (`mb-gh6l`).
+   **Open.** `open_in` exists (jlevy/metabrowser#582), and bare `metab PATH` does not
+   read it.
 5. **Shorthand.** Accept `owner/repo` and `owner/repo#N` in `--present` and Open
    Location…, where no local path of that name exists?
    **Answered** by the owner on 2026-11-18 (bead `mb-m4mg`): no shorthand in the first
