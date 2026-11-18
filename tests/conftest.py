@@ -13,7 +13,7 @@ from urllib.parse import urljoin
 import pytest
 
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
-from tests import suite_gates
+from tests import suite_gates, suite_tiers, suite_timing, suite_workers
 from tests.github_pull_fixture import Origin, build_origin, copy_origin
 from tests.process_group import owned_profile
 from tests.required_tools import require_git, require_node
@@ -50,6 +50,23 @@ exit 1
 GH_GUARD_LOG_ENV = "METABROWSER_TEST_GH_LOG"
 
 
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--shard",
+        type=suite_tiers.parse_shard,
+        default=None,
+        metavar="I/N",
+        help="run the Ith of N disjoint parts of the selected tests (tests/suite_tiers.py)",
+    )
+    parser.addoption(
+        "--shard-by",
+        choices=suite_tiers.SHARD_UNITS,
+        default=suite_tiers.BY_TEST,
+        help="deal --shard's parts by single test, or by whole file (tests/suite_tiers.py)",
+    )
+    suite_timing.add_option(parser)
+
+
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers", "live_github: an opt-in test that talks to github.com with the real gh"
@@ -60,8 +77,19 @@ def pytest_configure(config: pytest.Config) -> None:
         "file system, or Apple's git shim; `make test-macos` runs these alone and fails "
         "if one skips",
     )
-    # The hooks that judge a skip against its tier; see tests/suite_gates.py.
+    for marker, meaning in suite_tiers.MARKER_HELP.items():
+        config.addinivalue_line("markers", f"{marker}: {meaning}")
+    # The hooks that judge a skip against its tier, and a marker against its meaning; see
+    # tests/suite_gates.py.
     config.pluginmanager.register(suite_gates)
+    # The chrome marker, --shard, and an empty tier; see tests/suite_tiers.py.
+    config.pluginmanager.register(suite_tiers)
+    config.pluginmanager.register(suite_tiers.EmptyTiers(), "suite-empty-tiers")
+    # --file-durations; see tests/suite_timing.py.
+    config.pluginmanager.register(suite_timing.FileTimes(), "suite-file-times")
+    # Reports a pytest-xdist worker can send; see tests/suite_workers.py.
+    config.pluginmanager.register(suite_workers)
+    config.pluginmanager.register(suite_workers.StackDumps(), "suite-stack-dumps")
 
 
 # ── Tests that must not be silently absent ─────────────────────────────────────
@@ -154,7 +182,10 @@ def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
 
     basetemp = terminalreporter.config._tmp_path_factory.getbasetemp()  # pyright: ignore[reportAttributeAccessIssue]
     # pytest also links ``no-real-ghcurrent`` to the numbered directory; read each once.
-    logs = {log.resolve() for log in basetemp.glob("no-real-gh*/calls.log")}
+    # Under pytest-xdist each worker's base is ``popen-gw<N>`` in this one, with its own
+    # stand-in and log, and the summary this process prints reads them all.
+    patterns = ("no-real-gh*/calls.log", "popen-gw*/no-real-gh*/calls.log")
+    logs = {log.resolve() for pattern in patterns for log in basetemp.glob(pattern)}
     calls = [line for log in sorted(logs) for line in log.read_text(encoding="utf-8").splitlines()]
     if calls:
         tests = sorted({line.split("\t", 1)[0].rsplit(" ", 1)[0] for line in calls})

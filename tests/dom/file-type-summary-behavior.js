@@ -421,6 +421,68 @@ function familyRow() {
     ) && !/#[0-9a-f]{3,8}\b|rgb\(|oklch\(/i.test(styles),
   );
 
+  // A family's entry says where the pointer is to the hover the population bars draw,
+  // naming its segment in the tally row the shares are of: Total while Show ignored is
+  // on, Files while it is off. Other names no one segment and says nothing. The entry
+  // itself is not restyled. An entry rebuilt or disposed under the pointer, which never
+  // hears it leave, lets go of the hover it entered (docs/design-system.md, "Aggregate
+  // Distributions").
+  const hoverCalls = [];
+  const recordingHover = {
+    enter: (target) => hoverCalls.push(`enter ${target.population} ${target.key}`),
+    leave: (target) => hoverCalls.push(`leave ${target.population} ${target.key}`),
+  };
+  const hoverHandle = view.mountDistributionView(
+    new Element("div"),
+    legendModel,
+    palette,
+    metricClasses,
+    fileTypeIcon,
+    recordingHover,
+  );
+  const [hoverPython, hoverOther] = hoverHandle.legend.children;
+  const pythonClassBefore = hoverPython.className;
+  hoverPython.listeners.mouseenter();
+  hoverPython.listeners.mouseleave();
+  // It hears the pointer enter and leave it, and nothing more: moving within it changes
+  // nothing, and a repaint of the bars draws its hover again without it (folder-totals.js).
+  check(
+    "a family's entry enters and leaves its Total segment's hover, and stays as it was",
+    JSON.stringify(hoverCalls) ===
+      JSON.stringify(["enter all family:python", "leave all family:python"]) &&
+      JSON.stringify(Object.keys(hoverPython.listeners)) ===
+        JSON.stringify(["mouseenter", "mouseleave"]) &&
+      hoverPython.className === pythonClassBefore &&
+      Object.keys(hoverPython.attributes).length === 0 &&
+      !("hovered" in hoverPython.dataset),
+    JSON.stringify(hoverCalls),
+  );
+  check(
+    "Other answers no hover and no entry is a tab stop",
+    Object.keys(hoverOther.listeners).length === 0 &&
+      hoverHandle.legend.children.every((item) => item.attributes.tabindex === undefined),
+    JSON.stringify(Object.keys(hoverOther.listeners)),
+  );
+  hoverCalls.length = 0;
+  view.updateDistributionView(hoverHandle, { ...legendModel, showIgnored: false });
+  hoverHandle.legend.children[0].listeners.mouseenter();
+  view.updateDistributionView(hoverHandle, { ...legendModel, showIgnored: false });
+  check(
+    "without ignored files the entry names its Files segment, and a rebuild lets go of it",
+    JSON.stringify(hoverCalls) ===
+      JSON.stringify(["enter files family:python", "leave files family:python"]),
+    JSON.stringify(hoverCalls),
+  );
+  hoverCalls.length = 0;
+  hoverHandle.legend.children[0].listeners.mouseenter();
+  view.disposeDistributionView(hoverHandle);
+  check(
+    "disposal lets go of the hover an entry under the pointer entered",
+    JSON.stringify(hoverCalls) ===
+      JSON.stringify(["enter files family:python", "leave files family:python"]),
+    JSON.stringify(hoverCalls),
+  );
+
   const pyRowBeforeDetails = handle.rows.get(".py").tr;
   handle.detailsToggle.listeners.click();
   check(

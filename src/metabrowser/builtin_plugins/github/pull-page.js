@@ -8,8 +8,8 @@
 // record is pending, slowly otherwise, with If-None-Match so an unchanged answer is a
 // 304), the refresh a stale page asks for and offers and an absent page offers
 // (`POST /api/plugin/github/pull-refresh`), the switch to the pull request's head
-// (`POST /api/source/pin`), the tab, and the Markdown of each text, asked for one part at
-// a time from
+// (`POST /api/source/pin`, through the diff plugin's one switch), the tab, and the Markdown
+// of each text, asked for one part at a time from
 // `GET /api/plugin/github/pull-markdown` and kept only for the record it was rendered
 // from. `mountPullPage` is the browser glue: real fetch, timers, and paint.
 // tests/dom/github-pull-page-session.js runs the same functions from the command line.
@@ -190,7 +190,6 @@ const MARKDOWN_ROUTE = "/api/plugin/github/pull-markdown";
 const TIMELINE_ROUTE = "/api/plugin/github/pull-timeline";
 // Give a transient queue or provider failure one chance to clear while the reader stays.
 export const TIMELINE_RETRY_MS = 1000;
-const PIN_ROUTE = "/api/source/pin";
 export const TABS = Object.freeze(["", "files", "checks"]);
 /** How far a title may overhang its two-line box and still be whole: its descenders. */
 const TITLE_OVERHANG_PX = 4;
@@ -285,7 +284,7 @@ const TRUNCATED = Object.freeze({
  *   preparing_comparison?: true,
  *   last_refresh: {outcome: string, message: string | null, reset_at: string | null, at: string} | null,
  *   comparison_route: string | null,
- *   snapshot_route: string | null,
+ *   image_route: string | null,
  *   rendered_route?: string | null,
  *   record: Record<string, any> | null,
  *   core_preview: {source: string, number: number, reader: string, observed_at: string,
@@ -355,9 +354,10 @@ const TRUNCATED = Object.freeze({
 /**
  * What Browse code is. One server has one pin, and other tabs share it, so opening a pull
  * request moves nothing: a `link` goes to the root of what is served, and a `switch` first
- * serves this pull request's head. `at` is the commit that opens, as a reader sees it.
+ * serves this pull request's head, by its commit and under its ref. `at` is the commit that
+ * opens, as a reader sees it.
  *
- * @typedef {{kind: "link", at: string} | {kind: "switch", ref: string, at: string}} BrowseCode
+ * @typedef {{kind: "link", at: string} | {kind: "switch", ref: string, head: string, at: string}} BrowseCode
  */
 
 /**
@@ -391,7 +391,7 @@ const TRUNCATED = Object.freeze({
  *   checks: {counts: Record<string, number>, items: CheckItem[]} | null,
  *   checkNotes: string[],
  *   notes: string[],
- *   comparison: {left: string, right: string, route?: string, snapshot_route?: string, rendered_route?: string, headMoved: boolean} | null,
+ *   comparison: {left: string, right: string, route?: string, image_route?: string, rendered_route?: string, headMoved: boolean, branch: {ref: string} | null} | null,
  *   comparisonComing: boolean,
  *   head: string | null,
  *   baseRef: string | null,
@@ -1439,7 +1439,7 @@ export function describePull(envelope, page) {
     } else if (envelope.pin !== head) {
       // Anything else, such as a branch, a tag, or another pull request. Nothing is wrong,
       // so nothing is said: reading a pull request does not need its code served.
-      model.browse = { kind: "switch", ref: headRef, at: head.slice(0, 12) };
+      model.browse = { kind: "switch", ref: headRef, head, at: head.slice(0, 12) };
     }
   }
   if (envelope.pin === null && head !== "" && page.checkoutHead === head) {
@@ -1471,11 +1471,16 @@ export function describePull(envelope, page) {
   if (comparison !== null) {
     // The Diff summary's head: the comparison's, which a record read at a newer head keeps.
     model.head = comparison.right;
+    const headMoved = model.headOffer !== null;
     model.comparison = {
       ...comparison,
       // The page's code is the served pin; a record read at a newer head says so
       // rather than moving what the reader sees.
-      headMoved: model.headOffer !== null,
+      headMoved,
+      // What View on branch opens: the pull request's head, under its ref, when the diff
+      // shows that head. A diff of another commit has no branch it is on, and a page whose
+      // pin is an earlier head of this pull request offers the newer one first.
+      branch: !headMoved && head !== "" && comparison.right === head ? { ref: headRef } : null,
     };
   }
   model.comparisonComing =
@@ -1491,7 +1496,7 @@ export function describePull(envelope, page) {
  * click (comparison-prefetch.js, `createComparisonWarmer`). Pure.
  *
  * @param {unknown} envelope
- * @returns {{left: string, right: string, route?: string, snapshot_route?: string, rendered_route?: string} | null}
+ * @returns {{left: string, right: string, route?: string, image_route?: string, rendered_route?: string} | null}
  */
 export function pullComparison(envelope) {
   const shaped = /** @type {Record<string, any> | null} */ (
@@ -1505,10 +1510,8 @@ export function pullComparison(envelope) {
     left: comparison.base,
     right: comparison.head,
     ...(typeof shaped?.comparison_route === "string" ? { route: shaped.comparison_route } : {}),
-    // Where View file opens a file of either end without changing the served pin.
-    ...(typeof shaped?.snapshot_route === "string"
-      ? { snapshot_route: shaped.snapshot_route }
-      : {}),
+    // Where rendered Markdown in Changes loads the head's images from.
+    ...(typeof shaped?.image_route === "string" ? { image_route: shaped.image_route } : {}),
     // Where Changes asks for one Markdown file's rendered redline.
     ...(typeof shaped?.rendered_route === "string"
       ? { rendered_route: shaped.rendered_route }
@@ -1748,6 +1751,7 @@ export function renderedTextsHeld() {
  *   listed?(source: string | null, number: number): {state: import("./pull-state.js").PullState, updatedAt: string} | null,
  *   timelineStateChanged?(): void,
  *   reload(): void,
+ *   switchPin(selection: {oid: string, under: string, view?: string}, wanted: () => boolean): Promise<{kind: "switched", href: string | null} | {kind: "busy"} | {kind: "abandoned"} | {kind: "refused", message: string}>,
  *   navigate(href: string): void,
  * }} PullDependencies
  */
@@ -2596,47 +2600,41 @@ export function createPullController(deps, options) {
     }
   }
 
-  let switching = false;
-
   /**
-   * Serve the pull request's head, and then go on. `POST /api/source/pin` is the freshness
-   * row's own switch; a refusal says why and the page stays as it was.
+   * Serve the pull request's head, by its commit and under its ref, and then go on. The
+   * switch is the page's one switch, which the diff's View on branch shares
+   * (`createPinSwitch` in the diff plugin): one at a time, and a refusal said in its words,
+   * after which the page stays as it was.
    *
-   * @param {string} ref
-   * @param {() => void} then
+   * @param {{head: string, ref: string}} at
+   * @param {string | null} view The `/view/` address the page goes to, or null for none.
+   * @param {(moved: string | null) => void} then Given where the server says *view* is on
+   *   the head, when it says.
    */
-  async function serveHead(ref, then) {
-    if (disposed || switching) {
+  async function serveHead(at, view, then) {
+    if (disposed) {
       return;
     }
-    switching = true;
-    try {
-      const response = await deps.request("POST", PIN_ROUTE, { body: { ref } });
-      if (disposed) {
-        return;
-      }
-      if (response.status === 200) {
-        then();
-        return;
-      }
-      const body = /** @type {{code?: unknown} | null} */ (response.body);
-      const code = body !== null && typeof body.code === "string" ? body.code : "";
-      error = `Could not switch to the head (${code || `HTTP ${response.status}`}).`;
-    } catch {
-      error = "The switch request failed.";
-    } finally {
-      switching = false;
+    const outcome = await deps.switchPin(
+      { oid: at.head, under: at.ref, ...(view === null ? {} : { view }) },
+      () => !disposed,
+    );
+    if (disposed || outcome.kind === "busy" || outcome.kind === "abandoned") {
+      return;
     }
-    if (!disposed) {
-      render();
+    if (outcome.kind === "switched") {
+      then(outcome.href);
+      return;
     }
+    error = outcome.message;
+    render();
   }
 
   /** The newer head the page offers: served, then reloaded so every view shows it. */
   async function switchToHead() {
     const offer = model().headOffer;
     if (offer !== null) {
-      await serveHead(offer.ref, deps.reload);
+      await serveHead(offer, null, deps.reload);
     }
   }
 
@@ -2650,7 +2648,11 @@ export function createPullController(deps, options) {
   async function browseCode(href) {
     const browse = model().browse;
     if (browse?.kind === "switch") {
-      await serveHead(browse.ref, () => deps.navigate(href));
+      await serveHead(browse, href, (moved) => {
+        // The server's address for the file on the head, or its root when the head has no
+        // such file; the address asked for when it is the same file, which keeps its line.
+        deps.navigate(moved !== null && moved !== href.split(/[?#]/, 1)[0] ? moved : href);
+      });
     }
   }
 
@@ -5911,7 +5913,7 @@ export function mountPullPage(container, ctx, mb) {
     }
   }
 
-  /** @param {{left: string, right: string, route?: string, snapshot_route?: string, rendered_route?: string}} comparison */
+  /** @param {{left: string, right: string, route?: string, image_route?: string, rendered_route?: string, branch?: {ref: string} | null}} comparison */
   async function mountDiff(comparison) {
     if (listening.signal.aborted) {
       return;
@@ -5970,12 +5972,14 @@ export function mountPullPage(container, ctx, mb) {
                 right: comparison.right,
                 base_policy: "merge_base",
                 ...(comparison.route === undefined ? {} : { route: comparison.route }),
-                ...(comparison.snapshot_route === undefined
+                ...(comparison.image_route === undefined
                   ? {}
-                  : { snapshot_route: comparison.snapshot_route }),
+                  : { image_route: comparison.image_route }),
                 ...(comparison.rendered_route === undefined
                   ? {}
                   : { rendered_route: comparison.rendered_route }),
+                // A pull request's comparison: what its View on branch opens, if anything.
+                branch: comparison.branch ?? null,
               },
               ...(prefetched === undefined ? {} : { raw: prefetched }),
               // The page draws the Diff summary at its top; the diff draws none (mb-pb35).
@@ -6819,6 +6823,27 @@ export function mountPullPage(container, ctx, mb) {
         painted(model);
       },
       reload: () => window.location.reload(),
+      // The diff plugin's one switch, which this page's Changes uses too, so a View on
+      // branch and a Browse code never race, and both say a refusal in the same words. The
+      // switch is in a module the diff plugin loads on demand, so the plugin's assets, or
+      // that module, failing to load is said as a failed request, never left unhandled.
+      async switchPin(selection, wanted) {
+        const failed = /** @type {const} */ ({
+          kind: "refused",
+          message: "The switch request failed.",
+        });
+        try {
+          await mb.ensureKindAssets("diff");
+          const view = /** @type {{switchPin?: PullDependencies["switchPin"]} | null} */ (
+            mb.getRegisteredView("diff", "diff")
+          );
+          return typeof view?.switchPin === "function"
+            ? await view.switchPin(selection, wanted)
+            : failed;
+        } catch {
+          return failed;
+        }
+      },
       navigate: (href) => window.location.assign(href),
       renderMarkdown,
       listed: listedState,
