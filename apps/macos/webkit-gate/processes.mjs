@@ -222,7 +222,8 @@ export async function startMetab(
       "--config-dir",
       path.join(scratch, "config"),
     ],
-    { stdio: ["pipe", "pipe", "pipe"] },
+    // A measured server is not an open: it records no recent target.
+    { stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, METABROWSER_RECORD_RECENT: "0" } },
   );
   cleanup.add(() => terminate(child));
   // Nothing is written to stdin; an EPIPE as it closes after the server has gone is the

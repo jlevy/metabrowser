@@ -1,4 +1,4 @@
-// A served mirror's branch and tag selector.
+// The branch and tag selector of a served mirror, and of a served checkout.
 //
 // A page on a mirror's pin shows a compact button naming the ref it was rendered for.
 // Opening it lists the mirror's branches or tags from GET /api/source/refs, the
@@ -8,6 +8,20 @@
 // behind the server's guard -- and names the page's own /view/ address, so the answer
 // says where the page goes: the same file or folder when the new revision has it,
 // else the root.
+//
+// A folder that is a repository's root has the same selector, on the same two routes.
+// Folder mode is a superset of mirror mode: any branch or tag of the checkout is shown
+// as a mirror shows one, a pinned revision read from its Git objects, and nothing is
+// checked out. What a checkout adds is told by the page (`METABROWSER_SOURCE_CHECKOUT`)
+// and by the listing:
+//
+// - a Working tree row above the refs, the live files on disk, which is what a folder
+//   opens on and the only choice that is not a ref. The checked-out branch is a ref like
+//   any other and shows its last commit, so it is marked "checked out", not "current";
+// - a third list, Remotes, its remote-tracking branches, beside its own branches and
+//   its tags;
+// - an offer to reload when the server comes to serve something else, which a mirror's
+//   freshness row makes and a checkout's page has no such row to make.
 //
 // Every decision lives here without a DOM: `describe` turns the selector's state into
 // what it shows, and `createSelector` owns loading, filtering, stale answers, and the
@@ -19,27 +33,53 @@
   const REFS_ROUTE = "/api/source/refs";
   const PIN_ROUTE = "/api/source/pin";
   const VIEW_PREFIX = "/view/";
+  // A mirror keeps its origin's branches where a checkout keeps a remote's: it has no
+  // branches of its own, so they are simply its branches.
   const BRANCH_PREFIX = "refs/remotes/origin/";
   const TAG_PREFIX = "refs/tags/";
+  const LOCAL_BRANCH_PREFIX = "refs/heads/";
+  const REMOTE_PREFIX = "refs/remotes/";
+  const WORKING_TREE = "Working tree";
   const PULL_HEAD = /^refs\/pull\/([1-9][0-9]{0,9})\/head$/;
   // Typing narrows the list through the server, which reads the mirror's refs once per
   // request; waiting for a short pause in typing asks once per word, not per key.
   const FILTER_DELAY_MS = 150;
 
   /** @type {Readonly<Record<MetabrowserSourceRefKind, string>>} */
-  const KIND_PLURAL = Object.freeze({ branch: "branches", tag: "tags" });
+  const KIND_PLURAL = Object.freeze({
+    branch: "branches",
+    tag: "tags",
+    remote: "remote branches",
+  });
+  /** @type {Readonly<Record<MetabrowserSourceRefKind, string>>} */
+  const KIND_LABEL = Object.freeze({ branch: "Branches", tag: "Tags", remote: "Remotes" });
+  /** The lists each subject has; the listing says the same in `kinds`.
+   * @type {readonly MetabrowserSourceRefKind[]} */
+  const MIRROR_KINDS = Object.freeze(["branch", "tag"]);
+  /** @type {readonly MetabrowserSourceRefKind[]} */
+  const CHECKOUT_KINDS = Object.freeze(["branch", "tag", "remote"]);
 
   /**
    * What the button says for the ref and commit a page was rendered for. Pure.
    *
+   * *checkout* is whether the page is a checkout's. Its page with no pin shows the
+   * working tree; its branches are its own, and a remote's keep the remote's name.
+   *
    * @param {MetabrowserSourcePage | null} shown
+   * @param {boolean} [checkout]
    * @returns {{kind: string, name: string}}
    */
-  function shownLabel(shown) {
+  function shownLabel(shown, checkout = false) {
     if (shown === null) {
-      return { kind: "Revision", name: "" };
+      return { kind: checkout ? WORKING_TREE : "Revision", name: "" };
     }
     const ref = shown.ref ?? "";
+    if (checkout && ref.startsWith(LOCAL_BRANCH_PREFIX)) {
+      return { kind: "Branch", name: ref.slice(LOCAL_BRANCH_PREFIX.length) };
+    }
+    if (checkout && ref.startsWith(REMOTE_PREFIX)) {
+      return { kind: "Remote branch", name: ref.slice(REMOTE_PREFIX.length) };
+    }
     if (ref.startsWith(BRANCH_PREFIX)) {
       return { kind: "Branch", name: ref.slice(BRANCH_PREFIX.length) };
     }
@@ -63,7 +103,7 @@
     }
     const record = /** @type {Record<string, unknown>} */ (value);
     return (
-      (record.kind === "branch" || record.kind === "tag") &&
+      (record.kind === "branch" || record.kind === "tag" || record.kind === "remote") &&
       typeof record.query === "string" &&
       typeof record.total === "number" &&
       typeof record.truncated === "boolean" &&
@@ -78,9 +118,13 @@
    * @returns {MetabrowserSourceRefSelectorModel}
    */
   function describe(state) {
-    const label = shownLabel(state.shown);
+    const checkout = state.checkout === true;
+    const label = shownLabel(state.shown, checkout);
     const plural = KIND_PLURAL[state.kind];
     const listing = state.listing;
+    // A mirror's branch is its origin's, a remote chip; a checkout's own is a local one.
+    const chip =
+      state.kind === "tag" ? "tag" : state.kind === "branch" && checkout ? "local" : "remote";
     /** @type {MetabrowserSourceRefSelectorModel["rows"]} */
     const rows =
       listing === null
@@ -90,37 +134,72 @@
             ref: row.ref,
             commit: row.commit.slice(0, 12),
             default: row.default,
+            checkedOut: row.checked_out === true,
             current: row.current,
+            chip,
           }));
     let note = "";
     if (state.loading && listing === null) {
       note = `Loading ${plural}…`;
     } else if (listing !== null && listing.refs.length === 0) {
-      note = listing.query === "" ? `The mirror has no ${plural}.` : `No ${plural} match.`;
+      note =
+        listing.query === ""
+          ? `The ${checkout ? "checkout" : "mirror"} has no ${plural}.`
+          : `No ${plural} match.`;
     } else if (listing?.truncated) {
       note = `Showing ${listing.refs.length} of ${listing.total} ${plural}; filter to narrow.`;
     }
+    // The working tree is a checkout's alone, and is no ref: it is listed whatever the
+    // list and the filter show. Until the first listing says whether it is served, the
+    // page does: a checkout's page with no pin shows it.
+    const tree = listing?.working_tree ?? null;
+    /** @type {MetabrowserSourceRefSelectorModel["workingTree"]} */
+    const workingTree = !checkout
+      ? null
+      : {
+          current: tree !== null ? tree.current : state.shown === null,
+          detail:
+            tree === null
+              ? "Live local files"
+              : tree.head_name !== null
+                ? `Live local files, on ${tree.head_name}`
+                : "Live local files, on no branch",
+        };
     return {
       button: label.name === "" ? label.kind : `${label.kind}: ${label.name}`,
       // A pull request's number, which the button sets in its own weight
       // (docs/design-system.md, "Pull Request Numbers").
       pullNumber: label.kind === "Pull request" ? label.name : null,
       selectedRef:
-        label.kind === "Branch" || label.kind === "Tag"
+        label.kind === "Branch" || label.kind === "Tag" || label.kind === "Remote branch"
           ? {
               name: label.name,
               label: label.name,
-              kind: label.kind === "Tag" ? "tag" : "remote",
+              kind:
+                label.kind === "Tag"
+                  ? "tag"
+                  : label.kind === "Branch" && checkout
+                    ? "local"
+                    : "remote",
             }
           : null,
       open: state.open,
       kind: state.kind,
+      kinds: [...(listing?.kinds ?? (checkout ? CHECKOUT_KINDS : MIRROR_KINDS))],
       query: state.query,
       loading: state.loading,
       switching: state.switching,
+      workingTree,
       rows,
       note,
       error: state.error,
+      removed: state.removed === true,
+      stale:
+        state.stale === null || state.stale === undefined
+          ? null
+          : state.stale === ""
+            ? "The server now shows the working tree"
+            : "The server now shows another revision",
     };
   }
 
@@ -163,8 +242,9 @@
    *
    * @param {number} status
    * @param {unknown} body
+   * @param {boolean} checkout Whether the refs are a checkout's, which fetches nothing.
    */
-  function switchFailure(status, body) {
+  function switchFailure(status, body, checkout) {
     const record = /** @type {{code?: unknown} | null} */ (
       body !== null && typeof body === "object" ? body : null
     );
@@ -173,7 +253,7 @@
       return "The mirror is fetching that ref; choose it again when the fetch ends.";
     }
     if (code === "selection_not_found") {
-      return "That ref is no longer in the mirror.";
+      return `That ref is no longer in the ${checkout ? "checkout" : "mirror"}.`;
     }
     return `Could not switch (${code || `HTTP ${status}`}).`;
   }
@@ -184,11 +264,14 @@
    * *options.shown* is the pin and ref the page was rendered for, which the server
    * writes into a pin's page. A switch that leaves the server serving exactly that
    * only closes the selector; any other answer opens where the server says.
+   * *options.checkout* is whether the page is a checkout's: with no pin it shows the
+   * working tree, which is then what a switch is compared with.
    *
    * @param {MetabrowserSourceRefSelectorDependencies} deps
-   * @param {{shown?: MetabrowserSourcePage | null}} [options]
+   * @param {{shown?: MetabrowserSourcePage | null, checkout?: boolean}} [options]
    */
   function createSelector(deps, options = {}) {
+    const checkout = options.checkout === true;
     /** @type {MetabrowserSourceRefSelectorState} */
     const state = {
       shown: options.shown ?? null,
@@ -199,6 +282,7 @@
       loading: false,
       switching: false,
       error: null,
+      ...(checkout ? { checkout, stale: null } : {}),
     };
     // Each listing request takes the next number; only the newest one's answer counts,
     // so a slow answer to an older filter never replaces a newer one. A newer request,
@@ -246,6 +330,7 @@
       let listing = null;
       /** @type {string | null} */
       let error = null;
+      let gone = false;
       try {
         const response = await deps.request(
           "GET",
@@ -253,8 +338,19 @@
           undefined,
           controller.signal,
         );
+        const refusal = /** @type {{code?: unknown, error?: unknown} | null} */ (
+          response.body !== null && typeof response.body === "object" ? response.body : null
+        );
         if (response.status === 200 && isListing(response.body)) {
           listing = response.body;
+        } else if (checkout && refusal?.code === "unsupported_for_subject") {
+          // The server drew the row for a folder holding a `.git`, and Git does not take
+          // that folder for a repository's root: there is nothing to choose among, so
+          // the row goes, as the Commits tab does when discovery says the same.
+          gone = true;
+        } else if (refusal?.code === "unsupported_git" && typeof refusal.error === "string") {
+          // The server's own words: which Git a checkout's revisions are read with.
+          error = refusal.error;
         } else {
           error = `The ${KIND_PLURAL[state.kind]} could not be listed (HTTP ${response.status}).`;
         }
@@ -268,6 +364,10 @@
       state.loading = false;
       state.listing = listing;
       state.error = error;
+      if (gone) {
+        state.open = false;
+        state.removed = true;
+      }
       render();
     }
 
@@ -325,7 +425,17 @@
     }
 
     /** @param {string} ref The full store ref a listed row names. */
-    async function choose(ref) {
+    function choose(ref) {
+      return switchTo({ ref });
+    }
+
+    /** Serve a checkout's working tree again: the one choice that is not a ref. */
+    function chooseWorkingTree() {
+      return checkout ? switchTo({ working_tree: true }) : Promise.resolve();
+    }
+
+    /** @param {Record<string, string | boolean>} body What the pin route is asked for. */
+    async function switchTo(body) {
       if (disposed || state.switching) {
         return;
       }
@@ -333,8 +443,6 @@
       state.error = null;
       render();
       const view = deps.currentView();
-      /** @type {Record<string, string>} */
-      const body = { ref };
       if (view?.startsWith(VIEW_PREFIX)) {
         body.view = view;
       }
@@ -350,11 +458,13 @@
         if (response.status === 200 && answer !== null) {
           const served = answer.status;
           const shown = state.shown;
+          // A checkout's page with no pin shows the working tree, which the status names
+          // by a null pin and ref.
           if (
             served !== undefined &&
-            shown !== null &&
-            served.pin === shown.pin &&
-            served.ref === shown.ref
+            (shown !== null || checkout) &&
+            served.pin === (shown?.pin ?? null) &&
+            served.ref === (shown?.ref ?? null)
           ) {
             state.switching = false;
             close();
@@ -366,11 +476,26 @@
           );
           return;
         }
-        state.error = switchFailure(response.status, response.body);
+        state.error = switchFailure(response.status, response.body, checkout);
       } catch {
         state.error = "The switch request failed.";
       }
       state.switching = false;
+      render();
+    }
+
+    /**
+     * A data request of this page was refused: the server serves something else.
+     * *served* is the commit it serves, or "" for the working tree. Only a checkout's
+     * page says so here; a mirror's freshness row does.
+     *
+     * @param {string} served
+     */
+    function servedChanged(served) {
+      if (disposed || !checkout) {
+        return;
+      }
+      state.stale = served;
       render();
     }
 
@@ -388,6 +513,8 @@
       setKind,
       setQuery,
       choose,
+      chooseWorkingTree,
+      servedChanged,
       dispose,
       snapshot: () => ({ ...state, filterPending: filterTimer !== null }),
     });
@@ -417,6 +544,11 @@
    * @param {(ref: string) => void} choose
    */
   function paint(parts, model, choose) {
+    // A folder Git does not take for a repository's root has no selector after all.
+    parts.root.hidden = model.removed;
+    // Shown while the list is closed too: the page is no longer what the server shows.
+    parts.staleText.textContent = model.stale ?? "";
+    parts.stale.hidden = model.stale === null;
     const refKey = JSON.stringify(model.selectedRef);
     if (parts.label.dataset.refKey !== refKey) {
       parts.releaseCopies?.();
@@ -451,6 +583,17 @@
       tab.setAttribute("aria-checked", String(kind === model.kind));
       tab.tabIndex = kind === model.kind ? 0 : -1;
     }
+    // A checkout's working tree, above its refs: the one choice that is not a ref.
+    parts.workingTree.hidden = model.workingTree === null;
+    if (model.workingTree !== null) {
+      parts.workingTree.disabled = model.switching;
+      parts.workingTreeDetail.textContent = model.workingTree.detail;
+      if (model.workingTree.current) {
+        parts.workingTree.setAttribute("aria-current", "true");
+      } else {
+        parts.workingTree.removeAttribute("aria-current");
+      }
+    }
     parts.filter.placeholder = `Filter ${KIND_PLURAL[model.kind]}`;
     parts.filter.setAttribute("aria-label", `Filter ${KIND_PLURAL[model.kind]}`);
     if (parts.filter.value !== model.query) {
@@ -473,22 +616,20 @@
       }
       const name = document.createElement("span");
       name.className = "source-ref-selector-name";
-      // A mirror's branch is a remote chip and its tag a tag chip, as on the button. The
-      // default branch is not drawn as trunk: trunk is the server's `is_trunk` on a Git
-      // ref, and the mirror's default need not be the branch the history draws solid.
-      // The badge below says "default" in words (docs/design-system.md, "Branch Chips").
+      // A mirror's branch is a remote chip and its tag a tag chip, as on the button; a
+      // checkout's own branch is a local chip. The default branch is not drawn as trunk:
+      // trunk is the server's `is_trunk` on a Git ref, and the mirror's default need not
+      // be the branch the history draws solid. The badge below says "default", or
+      // "checked out" for the branch a checkout's HEAD is on, in words
+      // (docs/design-system.md, "Branch Chips").
       name.appendChild(
-        window.metabrowser.refChip(row.ref, {
-          label: row.name,
-          kind: model.kind === "tag" ? "tag" : "remote",
-          copy: false,
-        }),
+        window.metabrowser.refChip(row.ref, { label: row.name, kind: row.chip, copy: false }),
       );
       button.append(name);
-      if (row.default) {
+      if (row.default || row.checkedOut) {
         const badge = document.createElement("span");
         badge.className = "source-ref-selector-badge";
-        badge.textContent = "default";
+        badge.textContent = row.default ? "default" : "checked out";
         button.append(badge);
       }
       const commit = document.createElement("span");
@@ -520,21 +661,45 @@
    * Build the selector's elements inside *element*. Browser only.
    *
    * @param {HTMLElement} element
+   * @param {boolean} checkout Whether the page is a checkout's, with its third list.
    * @returns {MetabrowserSourceRefSelectorParts}
    */
-  function build(element) {
-    const toggle = document.createElement("button");
+  function build(element, checkout) {
+    // A checkout's server draws the button with the row, so the row keeps its box from
+    // first paint. That button is adopted, not replaced: focus a reader put on it before
+    // this module arrived stays where it is. A mirror's row arrives empty.
+    const drawn = /** @type {HTMLButtonElement | null} */ (
+      element.querySelector("button.source-ref-selector-toggle")
+    );
+    const toggle = drawn ?? document.createElement("button");
     toggle.type = "button";
-    toggle.className = "chip chip-menu-trigger source-ref-selector-toggle disclosure-toggle";
     toggle.setAttribute("aria-haspopup", "dialog");
     toggle.dataset.tipText = "Switch branch or tag";
-    const label = document.createElement("span");
+    const label =
+      /** @type {HTMLElement | null} */ (toggle.querySelector(".source-ref-selector-label")) ??
+      document.createElement("span");
     label.className = "source-ref-selector-label";
-    const caret = document.createElement("span");
+    const caret =
+      /** @type {HTMLElement | null} */ (toggle.querySelector(".chip-menu-caret")) ??
+      document.createElement("span");
+    toggle.className = "chip chip-menu-trigger source-ref-selector-toggle disclosure-toggle";
     caret.className = "chip-menu-caret";
     caret.setAttribute("aria-hidden", "true");
     caret.innerHTML = window.MetabrowserIcons?.toggle ?? "";
-    toggle.append(label, caret);
+    if (drawn === null) {
+      toggle.append(label, caret);
+    }
+    // What a checkout's page says when the server comes to show something else.
+    const stale = document.createElement("span");
+    stale.className = "source-ref-selector-stale";
+    stale.setAttribute("role", "status");
+    stale.hidden = true;
+    const staleText = document.createElement("span");
+    const reload = document.createElement("button");
+    reload.type = "button";
+    reload.className = "btn source-ref-selector-reload";
+    reload.textContent = "Reload";
+    stale.append(staleText, reload);
     const panel = document.createElement("div");
     panel.className = "source-ref-selector-panel menu";
     panel.setAttribute("role", "dialog");
@@ -549,10 +714,10 @@
       select: "one",
       layout: "joined",
       label: "Show",
-      options: [
-        { value: "branch", label: "Branches" },
-        { value: "tag", label: "Tags" },
-      ],
+      options: (checkout ? CHECKOUT_KINDS : MIRROR_KINDS).map((value) => ({
+        value,
+        label: KIND_LABEL[value],
+      })),
       value: "branch",
     });
     const tabs = /** @type {Record<MetabrowserSourceRefKind, HTMLButtonElement>} */ ({});
@@ -572,10 +737,41 @@
     const error = document.createElement("p");
     error.className = "source-ref-selector-error";
     error.setAttribute("role", "alert");
-    panel.append(kinds, filter, list, note, error);
-    element.replaceChildren(toggle, panel);
+    // A menu row like a ref's, with what it is in place of a commit.
+    const workingTree = document.createElement("button");
+    workingTree.type = "button";
+    workingTree.className = "menu-item source-ref-selector-working-tree";
+    workingTree.hidden = true;
+    const workingTreeName = document.createElement("span");
+    workingTreeName.className = "source-ref-selector-name";
+    workingTreeName.textContent = WORKING_TREE;
+    const workingTreeDetail = document.createElement("span");
+    workingTreeDetail.className = "source-ref-selector-commit";
+    workingTree.append(workingTreeName, workingTreeDetail);
+    panel.append(workingTree, kinds, filter, list, note, error);
+    if (drawn === null) {
+      element.replaceChildren(toggle, stale, panel);
+    } else {
+      element.append(stale, panel);
+    }
     element.hidden = false;
-    return { root: element, toggle, label, panel, kinds, tabs, filter, list, note, error };
+    return {
+      root: element,
+      toggle,
+      label,
+      stale,
+      staleText,
+      reload,
+      panel,
+      workingTree,
+      workingTreeDetail,
+      kinds,
+      tabs,
+      filter,
+      list,
+      note,
+      error,
+    };
   }
 
   /** The selector this page mounted, kept for the branch or tag key, which runs the
@@ -589,7 +785,8 @@
    * @param {HTMLElement} element
    */
   function mount(element) {
-    const parts = build(element);
+    const checkout = Boolean(window.METABROWSER_SOURCE_CHECKOUT);
+    const parts = build(element, checkout);
     /** @type {ReturnType<typeof createSelector> | null} */
     let selector = null;
     const choose = (/** @type {string} */ ref) => void selector?.choose(ref);
@@ -617,11 +814,25 @@
         navigate: (href) => window.location.assign(href),
         currentView: () => window.location.pathname,
       },
-      { shown: window.METABROWSER_SOURCE_PIN ?? null },
+      { shown: window.METABROWSER_SOURCE_PIN ?? null, checkout },
     );
     const mounted = selector;
     const listening = new AbortController();
     const signal = listening.signal;
+    parts.workingTree.addEventListener("click", () => void mounted.chooseWorkingTree(), {
+      signal,
+    });
+    parts.reload.addEventListener("click", () => window.location.reload(), { signal });
+    // The pin guard announces a data request refused because the server serves
+    // something else (static/source-pin-guard.js); only a checkout's selector says so.
+    window.addEventListener(
+      "metabrowser:pin-changed",
+      (event) => {
+        const detail = /** @type {CustomEvent<{pin?: unknown}>} */ (event).detail;
+        mounted.servedChanged(typeof detail?.pin === "string" ? detail.pin : "");
+      },
+      { signal },
+    );
     // An open list takes focus in its filter box, so typing narrows it at once.
     const focusOpenFilter = () => {
       if (!parts.panel.hidden) {
@@ -674,6 +885,7 @@
         }
         /** @type {HTMLElement[]} */
         const stops = [
+          ...(parts.workingTree.hidden || parts.workingTree.disabled ? [] : [parts.workingTree]),
           // One stop: the group's arrow keys move within it.
           ...Object.values(parts.tabs).filter((tab) => tab.tabIndex === 0),
           parts.filter,

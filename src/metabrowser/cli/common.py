@@ -1,7 +1,7 @@
 """Helpers shared by the metab CLI modes (serve, walk, remote, plugins).
 
-Log-level plumbing, served-path containment checks, and broken-pipe
-handling live here so :mod:`metabrowser.cli.main` and the per-mode
+Log-level plumbing, the root a path opens, served-path containment checks,
+and broken-pipe handling live here so :mod:`metabrowser.cli.main` and the per-mode
 implementation modules can share them without import cycles.
 """
 
@@ -13,6 +13,7 @@ import os
 import threading
 from collections.abc import Callable, Generator
 from contextlib import AbstractContextManager, contextmanager, nullcontext
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final, NoReturn, TextIO
 
@@ -52,6 +53,36 @@ def apply_log_level(level: str | None) -> None:
             f"invalid --log-level {level!r}; expected one of {', '.join(VALID_LOG_LEVELS)}"
         )
     os.environ["METABROWSER_LOG_LEVEL"] = upper
+
+
+@dataclass(frozen=True, slots=True)
+class LocalOpen:
+    """The root a path opens, and where in it the page lands."""
+
+    root: Path
+    """The folder a server serves, resolved."""
+    place: Path | None
+    """The file or folder named inside :attr:`root`, or ``None`` when it is the root."""
+
+
+def resolve_local_open(path: Path) -> LocalOpen:
+    """The open root of *path*: the one rule a serve and ``--recent-add`` both ask.
+
+    Today a folder opens as itself and a file opens the folder that holds it, with
+    symbolic links resolved, which is what ``metab PATH`` has always served. The
+    open-modes design (``docs/project/architecture/arch-open-modes.md``) replaces this
+    with a resolver that opens the enclosing repository's root under its guards (bead
+    ``mb-2wfk``). That change replaces this function's body, and the server and the
+    recent targets list follow it, since neither decides a root itself. A path that is
+    neither a folder nor a file is a :class:`CLIError`.
+    """
+
+    resolved = path.expanduser().resolve()
+    if resolved.is_file():
+        return LocalOpen(resolved.parent, resolved)
+    if not resolved.is_dir():
+        raise CLIError(f"{resolved} is not a directory")
+    return LocalOpen(resolved, None)
 
 
 def validate_contained_path(root: Path, requested: str) -> Path:

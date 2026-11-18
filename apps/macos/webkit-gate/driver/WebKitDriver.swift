@@ -297,28 +297,43 @@ final class Driver: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
         exit(0)
     }
 
-    /// The page's Print button, which calls `window.print()`, and the print path it reaches.
+    /// The page's Print button, in the corner of the Markdown document's card, which calls
+    /// `window.print()`, and the print path it reaches.
     ///
     /// The app answers an allowed request with File > Print's path (`pageAskedToPrint`), so
     /// the print starts from the request here too. If no request starts it, the check runs
     /// that path itself, as File > Print does, and the record says which started it.
+    ///
+    /// The button is shown only where the pane holds KPress's card
+    /// (builtin_plugins/markdown/markdown.css), so the record carries the pane's width in
+    /// rem beside what was called, and run.mjs fails `--checks` when the page's
+    /// `window.print()` had to be called directly.
     func checkPrint() async throws {
         guard let webView else { return }
         let windowsBefore = NSApp.windows.count
-        let called = try await webView.callAsyncJavaScript(
+        let pressed = try await webView.callAsyncJavaScript(
             """
             const visible = () => {
-              const button = document.querySelector(".file-header-print");
-              return button && !button.hidden && !button.disabled && !button.closest("[hidden]") ? button : null;
+              const button = document.querySelector(
+                '[data-active-view="true"] .metabrowser-print-indicator[data-mb-owner]');
+              return button && getComputedStyle(button).display !== "none" && !button.closest("[hidden]")
+                ? button : null;
             };
             for (let waited = 0; !visible() && waited < 15000; waited += 100) {
               await new Promise((resolve) => setTimeout(resolve, 100));
             }
+            const pane = document.getElementById("preview-pane");
+            const rem = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
+            const paneRem = pane ? Math.round((pane.clientWidth / rem) * 10) / 10 : null;
             const button = visible();
-            if (button) { button.click(); return "the Print button (.file-header-print)"; }
+            if (button) {
+              button.click();
+              return { called: "the Print button (.metabrowser-print-indicator)", pane_rem: paneRem };
+            }
             window.print();
-            return "window.print() directly: no Print button appeared";
+            return { called: "window.print() directly: no Print button appeared", pane_rem: paneRem };
             """, arguments: [:], in: nil, contentWorld: .page)
+        let page = pressed as? [String: Any] ?? [:]
         // The same 3 s the check waited for a panel before the bridge existed.
         var waited = 0
         while !printing, waited < 30 {
@@ -326,7 +341,8 @@ final class Driver: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUID
             waited += 1
         }
         let pagePrint: [String: Any] = [
-            "called": called as? String ?? "",
+            "called": page["called"] as? String ?? "",
+            "pane_rem": page["pane_rem"] ?? NSNull(),
             "requests": pagePrintRequests,
             "reached_print_path": printing,
             "windows_before": windowsBefore,

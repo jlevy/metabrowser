@@ -11,7 +11,9 @@ files are diffed in a run of their own, with their drivers, exactly as before: n
 is read, so a named driver costs that run whether or not any file selects it.
 ``diff.submodule=diff`` counts as a driver too: Git diffs each changed submodule's files in
 a child ``git diff`` of the submodule's own, which honors the submodule's drivers whatever
-the parent run passes.
+the parent run passes. The last value listed is the one Git uses, so at a store target,
+whose reads set ``diff.submodule=short`` on the command line (``GitLocation.config_args``),
+it never counts.
 
 The answer is ``git config --list --show-origin -z``'s: any key ``diff.<driver>.textconv``,
 or ``diff.submodule`` set to ``diff``. It is kept per configuration, which is the directory
@@ -273,6 +275,8 @@ def _read(out: bytes, cwd: Path, env: dict[str, str]) -> tuple[bool, set[Path]]:
     """
     fields = out.split(b"\0")
     named = False
+    # The last listed value is the one Git uses: the command line's comes after the files'.
+    submodule_diff = False
     files: set[Path] = set()
     home = env.get("HOME", "")
     for origin, entry in zip(fields[0::2], fields[1::2], strict=False):
@@ -284,8 +288,8 @@ def _read(out: bytes, cwd: Path, env: dict[str, str]) -> tuple[bool, set[Path]]:
             files.add(holder)
         if name.startswith("diff.") and name.endswith(".textconv") and name.count(".") >= 2:
             named = True
-        if name == "diff.submodule" and value.strip().lower() == b"diff":
-            named = True
+        if name == "diff.submodule":
+            submodule_diff = value.strip().lower() == b"diff"
         if name.startswith("includeif.onbranch:"):
             raise _Unsure("an include follows the branch")
         included = name == "include.path" or (
@@ -306,7 +310,7 @@ def _read(out: bytes, cwd: Path, env: dict[str, str]) -> tuple[bool, set[Path]]:
                 raise _Unsure("a relative include held by no file")
             target = holder.parent / target
         files.add(target)
-    return named, files
+    return named or submodule_diff, files
 
 
 def kept_textconv_named(location: GitLocation) -> bool | None:
@@ -402,11 +406,10 @@ def _unchanged(before: _Stamp, after: _Stamp, started_ns: int) -> bool:
 def _read_named_only(out: bytes) -> bool:
     fields = out.split(b"\0")
     entries = [entry.partition(b"\n") for entry in fields[1::2]]
+    submodule = [value for name, _, value in entries if name == b"diff.submodule"]
     return any(
-        (name.startswith(b"diff.") and name.endswith(b".textconv"))
-        or (name == b"diff.submodule" and value.strip().lower() == b"diff")
-        for name, _, value in entries
-    )
+        name.startswith(b"diff.") and name.endswith(b".textconv") for name, _, _ in entries
+    ) or bool(submodule and submodule[-1].strip().lower() == b"diff")
 
 
 def forget() -> None:

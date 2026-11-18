@@ -49,6 +49,15 @@ nonisolated final class ChildLog: @unchecked Sendable {
         }
     }
 
+    /// How much has been written to the log since this child started, by anyone: its
+    /// stderr, its stdout the app appended, and the app's lifecycle events. Zero if the
+    /// descriptor cannot be read, which then shows no progress.
+    var length: Int {
+        var info = stat()
+        guard fstat(handle.fileDescriptor, &info) == 0 else { return 0 }
+        return Int(max(0, info.st_size - start))
+    }
+
     func noteFailure(_ reason: String) {
         failure.withLock { if $0 == nil { $0 = reason } }
     }
