@@ -4,28 +4,43 @@ The app copies a few of ``metab``'s constants into Swift, where nothing imports 
 the bounds on acquiring a source, which a repository's start must outlast; the port walk,
 which keeps the two launch gates' ranges apart; the hosts of the GitHub reducer; and the
 page size of the cache's sources route. Its ``Info.plist`` also declares the key
-``--present`` reads before it sends anything. These checks run in CI's Python jobs, which
-run on every change, so a change on either side fails here, where the macOS workflow's
-path filter would not have run the app's own tests (review A5 on #539).
+``--present`` reads before it sends anything. It also reads two kinds of ``metab``'s
+output: the clone report a repository's start writes to stderr, which its status view
+shows, and the state an ``Error:`` line names, which says when GitHub is why a start
+failed; its tests parse samples of each, which are held here to what ``metab`` writes.
+These checks run in CI's Python jobs, which run on every change, so a change on either
+side fails here, where the macOS workflow's path filter would not have run the app's own
+tests (review A5 on #539).
 """
 
 from __future__ import annotations
 
+import asyncio
+import io
 import os
 import plistlib
 import re
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, cast, get_args
 
 import pytest
 
+from metabrowser.builtin_plugins.github import gh as github_gh
+from metabrowser.builtin_plugins.github import provider as github_provider
 from metabrowser.builtin_plugins.github import urls as github_urls
 from metabrowser.cache.acquire import RESERVATION_WAIT_S
-from metabrowser.cache.origin import REMOTE_PROBE_TIMEOUT_S
+from metabrowser.cache.origin import (
+    REMOTE_PROBE_TIMEOUT_S,
+    RemoteFailureState,
+    describe_remote_failure,
+)
 from metabrowser.cache.projection import MAX_PAGE_LIMIT, sources_response
-from metabrowser.cli.clone_report import LOG_INTERVAL_S
+from metabrowser.cache.records import canonical_now
+from metabrowser.cli import clone_report
+from metabrowser.cli.clone_report import LOG_INTERVAL_S, CloneReport, saying_while_waiting
 from metabrowser.cli.present import OPENS_URLS_KEY, Presentable, resolve_target
 from metabrowser.git.process import GIT_ACQUISITION_TIMEOUT_S
+from metabrowser.git.progress import GitProgress
 from metabrowser.home import METABROWSER_CACHE_DIR_ENV
 from metabrowser.server_utils import DEFAULT_PORT_SEARCH_COUNT
 from metabrowser.settings import DEFAULT_BROWSER_PORT
@@ -33,6 +48,8 @@ from tests.cache_home_fixture import FLASK_HTTPS, build_populated_home
 
 APP = Path(__file__).resolve().parent.parent / "apps" / "macos"
 SHELL_CORE = APP / "Sources" / "ShellCore"
+SHELL_CORE_TESTS = APP / "Tests" / "ShellCoreTests"
+GOLDEN = Path(__file__).resolve().parent / "golden"
 
 
 def _swift_value(relative: str, declaration: str) -> str:
@@ -141,3 +158,105 @@ def test_the_app_declares_what_present_reads() -> None:
     assert info.get(OPENS_URLS_KEY) is True
     # File > Open Recent lists repositories only when the bundle declares the same key.
     assert _swift_value("Folders/RecentTargets.swift", "opensURLsKey") == f'"{OPENS_URLS_KEY}"'
+
+
+def _swift_test_strings(name: str) -> set[str]:
+    """The one-line string literals of ``Tests/ShellCoreTests/<name>``: its samples."""
+
+    source = (SHELL_CORE_TESTS / name).read_text(encoding="utf-8")
+    return set(re.findall(r'"((?:[^"\\\n]|\\.)*)"', source))
+
+
+def test_the_clone_report_the_app_reads_is_metabs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``StartProgress`` parses the lines a repository's start writes without a terminal.
+
+    ``CloneReport`` writes each sample ``StartProgressTests.swift`` parses, with the clock
+    fixed, so a change to what ``metab`` says while it clones fails here rather than
+    leaving the app's status view with nothing to say.
+    """
+
+    clock = [0.0]
+    monkeypatch.setattr(clone_report, "_monotonic", lambda: clock[0])
+    mib = 1024**2
+    stream = io.StringIO()
+    report = CloneReport(
+        "https://github.com/octo/demo",
+        "~/.cache/metabrowser",
+        then="starting the server",
+        stream=stream,
+    )
+    report.phase("fetching every object")
+    clock[0] = 12.0
+    report.tick()
+    clock[0] = 40.0
+    rate = int(9.5 * mib)
+    for received in (334, 742):
+        report.progress(
+            GitProgress(
+                stage="receiving",
+                done=received,
+                total=742,
+                received_bytes=received * mib,
+                bytes_per_second=rate,
+            )
+        )
+    clock[0] = 104.0
+    report.phase("done")
+    report.cache_hit(canonical_now())
+
+    async def read_pull_request() -> None:
+        clock[0] = 0.0
+        async with saying_while_waiting("reading pull request 12", stream=stream):
+            clock[0] = 5.5
+            await asyncio.sleep(clone_report.WAIT_QUIET_S + 0.2)
+
+    asyncio.run(read_pull_request())
+    written = stream.getvalue().splitlines()
+    assert len(written) == 6, written
+    missing = set(written) - _swift_test_strings("StartProgressTests.swift")
+    assert not missing, f"StartProgressTests.swift no longer parses what metab writes: {missing}"
+
+
+def test_the_github_failures_the_app_reads_are_metabs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``GitHubFailure`` reads states ``metab`` names, from the lines ``metab`` prints.
+
+    The states in its table are ``metab``'s, the samples ``GitHubFailureTests.swift``
+    diagnoses are messages ``metab`` builds, prefixed as the CLI prints an error, and the
+    hint it reads to tell that no ``gh`` was found is the one the GitHub provider gives.
+    A start that fails as ``cli-github-not-found.txt`` records ends with those lines.
+    """
+
+    swift = (SHELL_CORE / "Folders" / "GitHubFailure.swift").read_text(encoding="utf-8")
+    table = re.search(r"static let kinds: \[String: Kind\] = \[(.*?)\n    \]", swift, re.DOTALL)
+    assert table, "GitHubFailure.swift no longer declares its kinds"
+    named = set(re.findall(r'"([a-z_]+)": \.', table.group(1)))
+    states = set(get_args(RemoteFailureState.__value__)) | set(
+        get_args(github_gh.GhFailureState.__value__)
+    )
+    assert named, "GitHubFailure.kinds names no state"
+    assert named <= states, f"states metab never names: {named - states}"
+
+    prefix = _swift_value("Folders/GitHubFailure.swift", "errorPrefix").strip('"')
+    hint = _swift_value("Folders/GitHubFailure.swift", "installHint").strip('"')
+    repository = "https://github.com/octo/absent"
+    monkeypatch.setattr(github_provider, "gh_executable", lambda: "/opt/homebrew/bin/gh")
+    found = prefix + describe_remote_failure("not_found_or_private", repository)
+    monkeypatch.setattr(github_provider, "gh_executable", lambda: None)
+    without_gh = prefix + describe_remote_failure("not_found_or_private", repository)
+    assert hint in without_gh and hint not in found
+
+    printed = (GOLDEN / "cli-github-not-found.txt").read_text(encoding="utf-8").splitlines()
+    assert found in printed and without_gh in printed
+
+    demo = "https://github.com/octo/demo"
+    samples = _swift_test_strings("GitHubFailureTests.swift")
+    built = {
+        found,
+        without_gh,
+        prefix + describe_remote_failure("network_unreachable", demo),
+        prefix + describe_remote_failure("rate_limited", demo),
+        f"{prefix}{github_gh._SIGN_IN_MESSAGE} (not_logged_in)",
+        f"{prefix}{github_gh.GhUnavailableError()} (gh_missing)",
+    }
+    missing = built - samples
+    assert not missing, f"GitHubFailureTests.swift no longer diagnoses what metab prints: {missing}"
