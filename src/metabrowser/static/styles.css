@@ -528,6 +528,10 @@
   --icon-glyph: 14px;
   --icon-box: 16px;
   --icon-btn-size: 24px;
+  /* From a category's icon to its name in the heading (.category-icon): a tree row's
+     gap from its file icon to its name, so the mark sits off the word as it does in a
+     row. */
+  --category-icon-gap: 6px;
   /* A person's avatar box and the gap before the name (`.actor-identity`), on every page
      that names a person: a commit's author, a pull request's, a comment's; a Pulls row's
      is a tenth smaller (`.github-pulls-by`, github/styles.css).
@@ -2155,6 +2159,24 @@ summary {
   font-weight: var(--label-font-weight);
   letter-spacing: var(--label-letter-spacing);
   text-transform: var(--label-text-transform);
+}
+/* A file-type category's representative icon, leading the heading that names the
+   category: a Group by section, a type filter section, File Overview's Details
+   (docs/design-system.md, "File-Type Category Icons"). It is a mark beside text, so
+   --icon-glyph, and it takes the heading's ink through currentColor, the gray every
+   category heading reads in, never its format's colour. The heading's type is
+   unchanged. In a flex heading it centers on the line; in a block one it sits on the
+   text as a lowercase letter's descent does, the glyph's lower edge 2px under the
+   baseline, so its middle meets the capitals' middle. */
+.category-icon {
+  flex: none;
+  width: var(--icon-glyph);
+  height: var(--icon-glyph);
+  margin-right: var(--category-icon-gap);
+  vertical-align: -2px;
+}
+.tree-section-heading .category-icon {
+  align-self: center;
 }
 /* Segmented chooser: icon-only buttons sharing a row, applied instantly
    on click. The active segment fills with the selection surface; the rest

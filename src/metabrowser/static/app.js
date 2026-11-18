@@ -1697,7 +1697,7 @@ function treeSectionHtml(section, nodes, expandedPaths) {
     `<section class="tree-section" data-tree-group="${esc(section.key)}"` +
     ` aria-labelledby="${esc(headingId)}">` +
     `<div class="group-heading tree-section-heading" id="${esc(headingId)}">` +
-    `${treeSectionHeadingHtml(section)}</div>` +
+    `${ICONS.withClass?.(section.icon, "category-icon")}${treeSectionHeadingHtml(section)}</div>` +
     `${treeSectionTreeHtml(section, nodes, expandedPaths)}</section>`
   );
 }
@@ -5817,6 +5817,7 @@ function filterTypePresetSections() {
     ...groups.map((group) => ({
       id: `families:${group.id}`,
       label: group.label,
+      icon: ICONS.withClass?.(group.icon, "category-icon"),
       presets: filterTypeFamilies(group.id),
     })),
   ];
@@ -6278,11 +6279,6 @@ function onFilterStateChange(state) {
 // those leaves before render. This pass only handles tree leaves inserted by
 // the live event stream. It must never infer membership from mounted folders:
 // collapsed and paged descendants are deliberately absent from the DOM.
-
-function _childContainerFor(row) {
-  var next = row.nextElementSibling;
-  return next?.classList.contains("tree-children") ? next : null;
-}
 
 function applyTreeFilters() {
   return _perf.measure("applyTreeFilters", applyTreeFiltersInner);
