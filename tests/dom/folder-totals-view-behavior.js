@@ -137,7 +137,14 @@ document.body = new Element("body");
     unignored_size: 300,
   });
   const container = new Element("div");
-  const view = module.mountFolderTotalsView(container, totals, mb, "size");
+  // Bars with a hover of their own, as every caller gives them one to share.
+  const view = module.mountFolderTotalsView(
+    container,
+    totals,
+    mb,
+    "size",
+    createDistributionHover(),
+  );
   const table = container.children[0].children[0];
   const body = table.children[2];
   const filesRow = body.children[0];
@@ -282,7 +289,7 @@ document.body = new Element("body");
   const darkStart = sharedStyles.indexOf('[data-theme="dark"] {');
   check(
     "tooltip-bearing segments reuse the shared data-mark hover treatment",
-    styles.includes(".folder-totals .file-type-summary-fill[data-hovered]") &&
+    styles.includes(".file-type-summary-fill[data-hovered]") &&
       // One source of the hover: :hover too would mark a segment the hover has put away.
       !styles.includes(".file-type-summary-fill[data-segment-key]:hover") &&
       styles.includes("filter: var(--viz-data-mark-hover-filter);") &&
@@ -291,16 +298,16 @@ document.body = new Element("body");
       sharedStyles.lastIndexOf("--viz-data-mark-hover-filter:") > darkStart,
     styles,
   );
-  // Hover is drawn on the hovered segment and nowhere else. Nothing may key off
-  // the track to reach a segment's siblings, and no rule may dim one: that was
-  // the old treatment, and it made pointing at one segment restyle fifty.
-  // A tally track is eight pixels tall, so the lift needs the outline beside it
-  // to register at all — which is why both are asserted rather than either.
+  // Hover is drawn on the marks the hover names and nowhere else. Nothing may key
+  // off the track to reach a segment's siblings, and no rule may dim one: that was
+  // the old treatment, and it made pointing at one segment restyle fifty. Not
+  // scoped to the tally rows: a legend entry's hover marks its family's row in
+  // the Details table too.
   const flattened = styles.replace(/\s+/g, " ");
   check(
-    "the hovered segment grows and lifts its colour, and takes no outline",
+    "a hovered mark grows and lifts its colour, and takes no outline",
     flattened.includes(
-      ".folder-totals .file-type-summary-fill[data-hovered] { " +
+      " .file-type-summary-fill[data-hovered] { " +
         "filter: var(--viz-data-mark-hover-filter); " +
         "transform: scaleY(var(--viz-hover-grow)); z-index: 1; }",
     ) &&
@@ -312,22 +319,64 @@ document.body = new Element("body");
     flattened.slice(0, 240),
   );
   // A transform, never width: the widths are percentages summing to 100, so
-  // growing one in layout pushes the last segment past the end of the track.
-  // The overshoot is the point, so assert the property rather than the spelling:
-  // a cubic-bezier overshoots exactly when a control point's y exceeds 1.
-  const easing = /--viz-hover-grow-ease:\s*cubic-bezier\(([^)]*)\)/.exec(sharedStyles);
-  const controlYs = easing
-    ? easing[1]
-        .split(",")
-        .map(Number)
-        .filter((_, i) => i % 2 === 1)
-    : [];
+  // growing one in layout pushes the last segment past the end of the track. The
+  // lift and the growth ease in and out as one motion on the viz layout scale's
+  // plain ease, which does not overshoot: a spring that flicked past its target
+  // read as a snap (docs/design-system.md, "Hover Styles the Thing Under the
+  // Pointer").
+  const layoutEase = /--viz-layout-ease:\s*([^;]+);/.exec(sharedStyles)?.[1].trim();
   check(
-    "growth is a transform on a curve that overshoots",
-    flattened.includes("transform var(--viz-hover-grow-duration) var(--viz-hover-grow-ease)") &&
-      controlYs.length === 2 &&
-      Math.max(...controlYs) > 1,
-    `--viz-hover-grow-ease must overshoot; control y values were ${controlYs.join(", ")}`,
+    "the lift and the growth ease in and out together on the layout scale",
+    flattened.includes(
+      "filter var(--viz-hover-grow-duration) var(--viz-hover-grow-ease), " +
+        "transform var(--viz-hover-grow-duration) var(--viz-hover-grow-ease)",
+    ) &&
+      /--viz-hover-grow-duration:\s*var\(--viz-layout-duration\);/.test(sharedStyles) &&
+      /--viz-hover-grow-ease:\s*var\(--viz-layout-ease\);/.test(sharedStyles) &&
+      ["ease", "ease-in-out"].includes(layoutEase ?? ""),
+    `--viz-layout-ease is ${layoutEase}`,
+  );
+  // The shimmer: a sheen's opacity on a pseudo-element, so the compositor runs it, on
+  // its own tokens and keyframes beside the progress pulse's, which it is a gentler,
+  // slower sibling of. The marks and the legend entry's dot share it.
+  const shimmerKeyframes = /@keyframes viz-hover-shimmer \{([\s\S]*?)\n\}/.exec(sharedStyles);
+  check(
+    "a hovered mark and its entry's dot shimmer by opacity alone, on the shimmer's tokens",
+    flattened.includes(
+      ".file-type-summary-fill[data-hovered]::after, " +
+        ".file-type-summary-legend-item[data-hovered] .file-type-summary-legend-swatch::after { " +
+        'content: ""; position: absolute; inset: 0; border-radius: inherit; ' +
+        "background: var(--viz-hover-shimmer-sheen); opacity: 0; pointer-events: none; " +
+        "animation: viz-hover-shimmer var(--viz-hover-shimmer-period) ease-in-out " +
+        "var(--viz-hover-grow-duration) infinite; }",
+    ) &&
+      shimmerKeyframes !== null &&
+      new Set(shimmerKeyframes[1].match(/[a-z-]+(?=:)/g)).size === 1 &&
+      shimmerKeyframes[1].includes("opacity: var(--viz-hover-shimmer-strength);") &&
+      sharedStyles.indexOf("\n@keyframes viz-hover-shimmer {") >
+        sharedStyles.indexOf("\n@keyframes tally-pending-pulse {") &&
+      ["--viz-hover-shimmer-period:", "--viz-hover-shimmer-sheen:"].every(
+        (token) => sharedStyles.indexOf(token) > 0 && sharedStyles.indexOf(token) < darkStart,
+      ) &&
+      sharedStyles.indexOf("--viz-hover-shimmer-strength:") < darkStart &&
+      sharedStyles.lastIndexOf("--viz-hover-shimmer-strength:") > darkStart,
+    shimmerKeyframes?.[1] ?? "no viz-hover-shimmer keyframes",
+  );
+  // The legend entry naming the hovered family answers with its marks: its dot lifts
+  // as they do, and its name takes the family's ink, kept at 4.5:1 by the share
+  // (tests/test_design_vocabulary.py). Colour and a filter only, so nothing moves.
+  check(
+    "the hovered family's entry lifts its dot and inks its name",
+    flattened.includes(
+      ".file-type-summary-legend-item[data-hovered] .file-type-summary-legend-swatch { " +
+        "filter: var(--viz-data-mark-hover-filter); }",
+    ) &&
+      flattened.includes(
+        ".file-type-summary-legend-item[data-hovered] .file-type-summary-legend-label { " +
+          "color: color-mix( in oklab, var(--mb-distribution-color) " +
+          "var(--mb-distribution-ink-share), var(--text) ); }",
+      ),
+    flattened.slice(flattened.indexOf(".file-type-summary-legend-item[data-hovered]"), 400),
   );
   check(
     "no rule dims a segment to pick out one of its siblings",
@@ -336,14 +385,23 @@ document.body = new Element("body");
       !sharedStyles.includes("--mb-distribution-segment-recede"),
     styles.slice(0, 200),
   );
-  // An instant jump is worse than no growth.
+  // Reduced motion drops the motion, the transitions and the shimmer, and keeps the
+  // stronger, wider highlight, drawn at once: a darker, thicker mark is a state, not
+  // a movement.
+  const reduced = flattened.slice(flattened.lastIndexOf("@media (prefers-reduced-motion: reduce)"));
   check(
-    "reduced motion drops the growth rather than making it instant",
-    flattened.includes("prefers-reduced-motion") &&
-      flattened.includes(
-        ".folder-totals .file-type-summary-fill[data-hovered] { transform: none; }",
-      ),
-    flattened.slice(flattened.indexOf("prefers-reduced-motion"), 400),
+    "reduced motion drops the transitions and the shimmer, and keeps the lift and growth",
+    reduced.includes(
+      ".file-type-summary-fill, .file-type-summary-legend-swatch, " +
+        ".file-type-summary-legend-label { transition: none; }",
+    ) &&
+      reduced.includes(
+        ".file-type-summary-fill[data-hovered]::after, " +
+          ".file-type-summary-legend-item[data-hovered] .file-type-summary-legend-swatch::after " +
+          "{ content: none; }",
+      ) &&
+      !reduced.includes("transform: none"),
+    reduced.slice(0, 600),
   );
   // Segment widths are percentages that sum to 100, so the hairline between
   // them cannot occupy layout or the last segment leaves the track.
@@ -392,13 +450,15 @@ document.body = new Element("body");
   );
 
   // Bars that share their hover, as File Overview's do with the legend under them. A
-  // hover entered from an element outside the bars, as a legend entry enters it, marks
-  // that row's segment as the segment's own hover does and shows that segment's file
-  // count and byte size, anchored on that element, which shows the name; its leave puts
-  // away only the tooltip anchored there. A row with no such segment draws nothing. A
-  // draw puts away a hover held from a segment, which it replaces, and draws again one
-  // held from an element it outlives, while that element is in the document. Disposal
-  // lets go of the hover and stops listening.
+  // segment's hover marks that segment alone. A hover entered from an element outside
+  // the bars, as a legend entry enters it, names a family and marks the family's segment
+  // in every row drawn, and shows one tooltip, the file count and byte size of the
+  // segment in the row it names, anchored on that element, which shows the name; its
+  // leave puts away only the tooltip anchored there. A row with no such segment adds no
+  // mark, and if it is the named row, no tooltip. A draw puts away a hover held from a
+  // segment, which it replaces, and draws again one held from an element it outlives,
+  // while that element is in the document. Disposal lets go of the hover and stops
+  // listening.
   const shared = createDistributionHover();
   const sharedContainer = new Element("div");
   // A legend entry, beside the bars and outside them.
@@ -429,45 +489,79 @@ document.body = new Element("body");
             : "nothing",
     };
   const markdown = sharedTrack(0).children[1];
+  const filesPython = sharedTrack(0).children[0];
+  const ignoredPython = sharedTrack(1).children[0];
   tooltipCalls.length = 0;
   markdown.emit("mouseenter", hoverEvent);
   const fromSegment = { ...tooltipCalls[0] };
   markdown.emit("mouseleave", hoverEvent);
+  // Python has a segment in both rows; pointing at one marks it alone.
+  filesPython.emit("mouseenter", hoverEvent);
+  const segmentMarks = sharedMarked();
+  filesPython.emit("mouseleave", hoverEvent);
   tooltipCalls.length = 0;
-  const markdownFromEntry = { population: "files", key: "family:markdown", anchor: entry };
-  shared.enter(markdownFromEntry);
+  const pythonFromEntry = {
+    population: "files",
+    key: "family:python",
+    anchor: entry,
+    marks: "family",
+  };
+  shared.enter(pythonFromEntry);
   const fromOutside = { ...tooltipCalls[0], marked: sharedMarked() };
-  shared.leave(markdownFromEntry);
+  shared.leave(pythonFromEntry);
   check(
-    "a hover entered from outside marks the segment and shows its counts on that element",
+    "a segment marks itself; a hover from outside marks its family in every row, one tooltip",
     fromSegment.action === "show" &&
       fromSegment.html === "<strong>Markdown</strong><br>12 files · 120 B" &&
       fromSegment.anchor === markdown &&
+      segmentMarks.length === 1 &&
+      segmentMarks[0] === filesPython &&
       fromOutside.action === "show" &&
-      fromOutside.html === "12 files · 120 B" &&
+      fromOutside.html === "18 files · 180 B" &&
       fromOutside.anchor === entry &&
-      fromOutside.marked.length === 1 &&
-      fromOutside.marked[0] === markdown &&
+      fromOutside.marked.length === 2 &&
+      fromOutside.marked[0] === filesPython &&
+      fromOutside.marked[1] === ignoredPython &&
       sharedMarked().length === 0 &&
       tooltipCalls.length === 2 &&
       tooltipCalls[1].action === "hide" &&
       tooltipCalls[1].within === entry,
     JSON.stringify({
       fromSegment: named(fromSegment),
-      fromOutside: named(fromOutside),
+      segmentMarks: segmentMarks.length,
+      fromOutside: { ...named(fromOutside), marked: fromOutside.marked.length },
       calls: tooltipCalls.map(named),
     }),
   );
-  // The Ignored row has no Markdown segment.
+  // The Ignored row has no Markdown segment: the family's Files segment is marked, and the
+  // row the hover names has no segment to give a tooltip.
   tooltipCalls.length = 0;
-  const ignoredMarkdown = { population: "ignored", key: "family:markdown", anchor: entry };
+  const ignoredMarkdown = {
+    population: "ignored",
+    key: "family:markdown",
+    anchor: entry,
+    marks: "family",
+  };
   shared.enter(ignoredMarkdown);
   check(
-    "a hover whose row has no such segment marks nothing and shows no tooltip",
-    !tooltipCalls.some((call) => call.action === "show") && sharedMarked().length === 0,
+    "a family hover whose named row has no such segment marks the rest and shows no tooltip",
+    !tooltipCalls.some((call) => call.action === "show") &&
+      sharedMarked().length === 1 &&
+      sharedMarked()[0] === markdown,
     JSON.stringify(tooltipCalls.map(named)),
   );
   shared.leave(ignoredMarkdown);
+  // A handle that marks itself and is none of these segments, as a Treemap cell would
+  // be, draws nothing in the bars: no mark and no tooltip.
+  tooltipCalls.length = 0;
+  const elsewhere = { population: "files", key: "family:python", anchor: entry, marks: "self" };
+  shared.enter(elsewhere);
+  check(
+    "a hover marking a handle outside the bars draws nothing in them",
+    tooltipCalls.length === 0 && sharedMarked().length === 0,
+    JSON.stringify(tooltipCalls.map(named)),
+  );
+  shared.leave(elsewhere);
 
   // A draw replaces every segment. One the pointer is on is replaced under it, and the
   // browser enters the new one, so the hover it held goes.
@@ -483,19 +577,20 @@ document.body = new Element("body");
     JSON.stringify(tooltipCalls.map(named)),
   );
   // An element outside the bars outlives the draw and hears nothing, so the bars draw its
-  // hover again on the new segment, with the tooltip on the same element.
-  const pythonFromEntry = { population: "files", key: "family:python", anchor: entry };
+  // hover again on the new segments, with the tooltip on the same element.
   shared.enter(pythonFromEntry);
   tooltipCalls.length = 0;
   sharedView.update(totals);
-  const redrawnPython = sharedTrack(0).children[0];
+  const redrawnPython = [sharedTrack(0).children[0], sharedTrack(1).children[0]];
   const lastCall = tooltipCalls.at(-1);
   check(
     "a draw draws again a hover held from an element it outlives",
     shared.current()?.anchor === entry &&
       shared.current()?.key === "family:python" &&
-      sharedMarked().length === 1 &&
-      sharedMarked()[0] === redrawnPython &&
+      sharedMarked().length === 2 &&
+      sharedMarked()[0] === redrawnPython[0] &&
+      sharedMarked()[1] === redrawnPython[1] &&
+      redrawnPython[0] !== filesPython &&
       lastCall?.action === "show" &&
       lastCall.anchor === entry &&
       lastCall.html === "18 files · 180 B",

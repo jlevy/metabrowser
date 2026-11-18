@@ -1,10 +1,12 @@
 """The pull request header's reserved box, laid out by headless Chrome.
 
-The header keeps one height from first paint whatever its record holds, and that is
-layout: no browserless DOM computes it, and the stylesheet text passed while the state
-badge hung below its line. This mounts the production page module on
-recorded records in a real engine, with the shell's stylesheets and KPress's faces, and
-compares each row with the empty record's (tests/dom/github-pull-header-chrome.mjs). The
+The header keeps one height from first paint whatever its record holds, but for its
+labels row and its status line, which is there only while the page has a failure, a
+message, or an offer to say, and that is layout: no browserless DOM computes it, and the
+stylesheet text passed while the state badge hung below its line. This mounts the
+production page module on recorded records in a real engine, with the shell's stylesheets
+and KPress's faces, and compares each row with the empty record's
+(tests/dom/github-pull-header-chrome.mjs). The
 same session lays out Pulls rows as their stack places arrive, a file header as a run's
 status badge changes its label in place, and the Diff summary's row as its pending
 placeholder gives way to the summary, and checks that nothing moves. It runs in

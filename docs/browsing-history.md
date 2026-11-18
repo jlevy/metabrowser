@@ -156,6 +156,11 @@ option.
   [Git status plan](project/specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md).
 - **Ranges in the browser:** a page shows one commit against its first parent, or a pull
   request’s Changes. A range of commits is a terminal command.
+- **Branches of a local repository:** a local folder has no switcher, and a folder
+  inside a repository has no Commits tab.
+  Opening such a folder at its repository’s root, and viewing another branch or tag
+  there read-only with nothing checked out, are planned in
+  [Open Modes](project/architecture/arch-open-modes.md).
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
