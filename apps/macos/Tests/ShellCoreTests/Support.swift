@@ -40,9 +40,11 @@ nonisolated final class FakeProcess: ServerProcess, @unchecked Sendable {
     }
 
     /// Writes `text` where a real child's stderr goes, the log, which the app does not read
-    /// line by line: it shows only as `outputProgress`, as a clone's progress does.
+    /// line by line: it shows as `outputProgress`, as a clone's progress does, and its whole
+    /// lines in `recentOutput()`, which a real child reads from the log.
     func writeToLog(_ text: String) {
         written.withLock { $0 += text.utf8.count }
+        text.split(separator: "\n").forEach { tail.append(String($0)) }
     }
 
     private let written = OSAllocatedUnfairLock(initialState: 0)

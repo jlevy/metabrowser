@@ -1,0 +1,275 @@
+# Icon Catalog
+
+This is every icon Metabrowser draws, in the browser and in the macOS app, organized by
+what the icon stands for.
+Each row gives the icon’s name, where its drawing comes from, what it means, the one
+place it is defined, the ink it takes, and its size.
+An icon means one thing, and one thing has one icon, so a mark a reader learns in one
+place reads the same everywhere.
+
+[Icons and Icon Buttons](design-system.md#icons-and-icon-buttons) in the design system
+sets the rules every icon follows, such as
+[One Glyph Size](design-system.md#one-glyph-size); this catalog is the inventory those
+rules apply to. `tests/test_icon_catalog.py` holds the tables to the code in both
+directions ([The Check](#the-check)), so an icon drawn in code and missing here, or
+listed here and drawn nowhere, fails the build.
+
+## Where Icons Come From
+
+| Source | What it is | Where it lives |
+| --- | --- | --- |
+| Registry | A glyph a folder’s first paint can draw | `static/icons.js`, a startup script, as `window.MetabrowserIcons`; plugins read it as `mb.icons` |
+| Plugin | A glyph only one plugin draws | Beside that plugin’s code, loaded with it |
+| View bundle | A glyph only a shared view helper draws | `static/plugin-sdk-views.js`, loaded on demand |
+| CSS mask | A glyph a stylesheet draws as a mask over a color token | The stylesheet rule that draws it |
+| Text | A character typed in markup, where the mark is typography | Each file that types it |
+| Letter | A file change’s one-letter status | The status tables |
+| SF Symbol | An Apple system symbol the macOS app draws, in a menu or a SwiftUI view | The Swift code that draws it |
+| App mark | The app’s own icon and its mark | `apps/macos/AppIcon/` and the code generated from it |
+
+Drawn glyphs are [Lucide](https://lucide.dev) v1.17.0 (ISC) unless a row says otherwise,
+and each definition carries a comment naming its Lucide id, which the Icon column
+repeats. Every one is inline SVG that strokes or fills `currentColor`, so the element
+around it sets its ink.
+Rendered Markdown draws its own chrome from KPress’s icon set, the same Lucide release
+([KPress icons](https://github.com/jlevy/kpress/blob/v0.3.0/docs/kpress-icons.md)).
+
+A glyph enters the registry only when a folder’s first paint can draw it: every page
+fetches the registry before it paints, so each glyph there is paid for by every folder
+([asset loading tiers](project/architecture/arch-browser-shell.md#asset-loading-tiers)).
+A glyph that one view or plugin alone draws lives beside that code; two registry glyphs
+break this rule ([Known Departures](#known-departures)).
+
+## Choosing an Icon
+
+- **Use the cataloged icon for a concept.** Add an icon only for a concept no row has,
+  and add its row in the same change.
+- **Never choose a file’s icon by name.** Resolve it with
+  `window.metabrowser.fileTypeIcon(path)`, which returns the type registry’s shape and
+  the family’s color class; the tree, plugin views, the Treemap, and the File types
+  table change together when a type is added.
+- **A disclosure is the chevron.** A row-like target leads with the registry’s `toggle`;
+  a heading-like title ends with the section-disclosure mask.
+  Both point right when closed and rotate down when open
+  ([One Chevron, One Row Contract](design-system.md#one-chevron-one-row-contract)).
+- **Ink comes from the context, never the icon.** `--muted` at rest, `--text` on hover,
+  `--link` for the chosen value, and a status’s or a family’s own token where the icon
+  carries one. Color is never the only signal: the shapes differ, and a name is there.
+- **Size is `--icon-glyph`.** The Size column names each exception, and the rule that
+  sets one says why.
+- **A character is typography, not an icon.** An arrow between two names, a key cap’s
+  arrow, and a menu’s check mark are characters; a control’s or an object’s mark is a
+  drawn glyph.
+- **A pull request’s icon follows what the page knows.** Its state’s glyph where the
+  state is known, the neutral `pull` mark where only its address is, and the GitHub mark
+  for a View on GitHub action
+  ([External GitHub Links](design-system.md#external-github-links)).
+- **Some objects have no icon on purpose.** A folder row in the browser leads with its
+  chevron, and a Treemap folder’s label ends in `/`. A commit is the history graph’s
+  node, and a branch or a tag is a chip whose form carries its kind
+  ([Branch Chips](design-system.md#branch-chips)). Search and Close are words and keys,
+  and the filter drawer’s control is the chevron.
+
+## File Formats
+
+A format’s icon is its type family’s shape where the type registry
+(`data/file-rollup-format/recommended-file-types.toml`) declares one, and its category’s
+shape otherwise. The shape is the broad type and the family’s hue is the subtype
+([File Types](design-system.md#file-types)). These shapes are drawn by
+`.file-identity-icon`, in `--muted` or in the family’s color from its
+`.file-identity-color` class, at `--icon-glyph` in an `--icon-box`, or in a tree row’s
+`--tree-icon-slot`, and at `1em` of the page’s title beside a file’s name in its view
+header ([View Headers](design-system.md#view-headers)).
+
+| Icon | Source | Meaning | Defined in | Ink | Size |
+| --- | --- | --- | --- | --- | --- |
+| `fileText`, Lucide `file-text` | Registry | The PDF family’s own shape, the drawing `doc` is | `static/icons.js` | `--muted`, or the family’s color | `--icon-glyph` |
+| `grid`, Lucide `layout-grid` | Registry | Tables: the Delimited text, Parquet, Arrow, ORC, and SQLite families | `static/icons.js` | `--muted`, or the family’s color | `--icon-glyph` |
+| `activity`, Lucide `activity` | Registry | The Log files family | `static/icons.js` | `--muted`, or the family’s color | `--icon-glyph` |
+
+## File Type Categories
+
+Each category is a type registry group, and its `icon` is the shape every family in it
+takes unless the family declares its own.
+The same shape stands for the category wherever the app names one.
+
+| Icon | Source | Meaning | Defined in | Ink | Size |
+| --- | --- | --- | --- | --- | --- |
+| `alignLeft`, Lucide `align-left` | Registry | Lines of text: the Code category | `static/icons.js` | `--muted`, or the family’s color | `--icon-glyph` |
+| `doc`, Lucide `file-text` | Registry | A page of text: the Documentation category, and so Markdown | `static/icons.js` | `--muted`, or the family’s color | `--icon-glyph` |
+| `list`, Lucide `list` | Registry | Records: the Data category | `static/icons.js` | `--muted`, or the family’s color | `--icon-glyph` |
+
+The Archives category takes `copy` and the Media category `monitor`, glyphs that mean
+something else in the chrome ([Known Departures](#known-departures)); the Other category
+takes `file`.
+
+## Filesystem Objects
+
+| Icon | Source | Meaning | Defined in | Ink | Size |
+| --- | --- | --- | --- | --- | --- |
+| `file`, Lucide `file` | Registry | A file no type family claims, the Other category, and what `fileTypeIcon` returns with no registry | `static/icons.js` | `--muted` | `--icon-glyph` |
+| `fileSymlink`, Lucide `file-symlink` | Registry | A symbolic link in the Files tree | `static/icons.js` | `--muted` | `--icon-glyph` |
+| `folder`, Lucide `folder` | Registry | A folder, beside its name in its view header | `static/icons.js` | `--muted` | `1em` of the page’s title |
+| `folder` | SF Symbol | A folder in the app’s Open Recent, Dock, and title path menus | `apps/macos/Sources/Metabrowser/RecentTargetsMenu.swift` | The menu’s, as a template image | The menu font’s point size |
+| `cloud` | SF Symbol | A mirror, a repository served from its URL, in Open Recent and the Dock menu | `apps/macos/Sources/Metabrowser/RecentTargetsMenu.swift` | The menu’s, as a template image | The menu font’s point size |
+
+The app’s folder and cloud are outlines drawn as one set, rather than Finder’s colored
+folder beside a line-drawn cloud.
+In the browser a folder’s glyph is drawn only in its view header; a folder’s row leads
+with its chevron, and a repository and a mirror have no glyph.
+
+## Git and GitHub Objects
+
+| Icon | Source | Meaning | Defined in | Ink | Size |
+| --- | --- | --- | --- | --- | --- |
+| `gitPullRequest`, Lucide `git-pull-request` | Plugin | An open pull request | `builtin_plugins/github/pull-state.js` | `--github-pull-open` | `--icon-glyph` in a row; `1em` of the page’s title |
+| `gitPullRequestDraft`, Lucide `git-pull-request-draft` | Plugin | A draft pull request | `builtin_plugins/github/pull-state.js` | `--github-pull-draft` | `--icon-glyph` in a row; `1em` of the page’s title |
+| `gitMerge`, Lucide `git-merge` | Plugin | A merged pull request | `builtin_plugins/github/pull-state.js` | `--github-pull-merged` | `--icon-glyph` in a row; `1em` of the page’s title |
+| `gitPullRequestClosed`, Lucide `git-pull-request-closed` | Plugin | A closed pull request | `builtin_plugins/github/pull-state.js` | `--github-pull-closed` | `--icon-glyph` in a row; `1em` of the page’s title |
+| `pull`, Lucide `git-pull-request` | View bundle | A link to a pull request whose state the page does not know | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; smaller in a rendered document (`.kpress .external-link-icon`) |
+| `issue`, Lucide `circle-dot` | View bundle | A link to a GitHub issue | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; smaller in a rendered document (`.kpress .external-link-icon`) |
+| `github`, Octicons `mark-github-16` | View bundle | GitHub: View on GitHub, and a link to any other GitHub page | `static/plugin-sdk-views.js` | The link’s | `--icon-glyph`; smaller in a rendered document (`.kpress .external-link-icon`) |
+| `.view-header-toggle-mark`, Octicons `mark-github-16` | CSS mask | View on GitHub: the link segment of a view header’s GitHub toggle, the same drawing as `github` | `static/styles.css` | The link’s, `--text` | `--icon-glyph` |
+| `layers`, Lucide `layers` | Registry | A stack of pull requests: a stack’s row, the page’s stack button, and another stack a member is in | `static/icons.js` | `--muted` on a row, the button’s text ink on the stack button | `--icon-glyph`; the text’s `1em` in a member’s place |
+| `PERSON_GLYPH`, Lucide `circle-user-round` | View bundle | A person with no avatar, in an actor identity’s box | `static/plugin-sdk-views.js` | `--muted` | `--actor-avatar-size`, the avatar it stands in for |
+
+A pull request’s state glyph is one module’s, `pullStateIcon` in `pull-state.js`, so a
+Pulls row and its page cannot disagree
+([A Pull Request’s State](design-system.md#a-pull-requests-state)). The neutral `pull`
+mark is the open state’s drawing without the state’s color.
+
+## Status and Change Marks
+
+A file’s change is a letter, not a glyph: it replaces the file’s icon in a changed-files
+tree and is the letter in a count such as “10 A, 5 D, 4 M”
+([File Change Status](design-system.md#file-change-status)). The letter and the status’s
+accessible name carry the meaning without the color.
+
+| Icon | Source | Meaning | Defined in | Ink | Size |
+| --- | --- | --- | --- | --- | --- |
+| `A` | Letter | Added | `static/changed-files-tree.js`, `builtin_plugins/diff/diff-model.js` | `--git-status-added` | `--ui-small-font-size`, in a tree row’s `--tree-icon-slot` |
+| `C` | Letter | Copied | `static/changed-files-tree.js`, `builtin_plugins/diff/diff-model.js` | `--git-status-added` | `--ui-small-font-size`, in a tree row’s `--tree-icon-slot` |
+| `D` | Letter | Deleted | `static/changed-files-tree.js`, `builtin_plugins/diff/diff-model.js` | `--git-status-deleted` | `--ui-small-font-size`, in a tree row’s `--tree-icon-slot` |
+| `M` | Letter | Modified | `static/changed-files-tree.js`, `builtin_plugins/diff/diff-model.js` | `--git-status-modified` | `--ui-small-font-size`, in a tree row’s `--tree-icon-slot` |
+| `T` | Letter | Type changed | `static/changed-files-tree.js`, `builtin_plugins/diff/diff-model.js` | `--git-status-modified` | `--ui-small-font-size`, in a tree row’s `--tree-icon-slot` |
+| `R` | Letter | Renamed | `static/changed-files-tree.js`, `builtin_plugins/diff/diff-model.js` | `--git-status-renamed` | `--ui-small-font-size`, in a tree row’s `--tree-icon-slot` |
+| `U` | Letter | Unmerged | `static/changed-files-tree.js`, `builtin_plugins/diff/diff-model.js` | `--git-status-deleted` | `--ui-small-font-size`, in a tree row’s `--tree-icon-slot` |
+
+An ignored entry has no mark: its whole row, icon included, is dimmed to
+`--dimmed-content-opacity` and keeps its family’s hue.
+
+When the macOS app’s server cannot serve a folder, the app’s failure screen leads its
+heading with Apple’s warning triangle.
+
+| Icon | Source | Meaning | Defined in | Ink | Size |
+| --- | --- | --- | --- | --- | --- |
+| `exclamationmark.triangle.fill` | SF Symbol | The server could not serve the folder: the heading of the app’s failure screen | `apps/macos/Sources/Metabrowser/StatusView.swift` | Its own colors, as a multicolor symbol | The heading’s `.title3` font |
+
+## UI Chrome and Actions
+
+| Icon | Source | Meaning | Defined in | Ink | Size |
+| --- | --- | --- | --- | --- | --- |
+| `toggle`, Lucide `chevron-right` | Registry | Show or hide what a row holds: tree folders and containers, the tally tree, diff file bars, the Diff summary, Pulls rows, agent log events, fold expanders, the filter drawer, and a chip menu’s caret | `static/icons.js` | `--muted` | `--toggle-chevron-size`, centered in the `--tree-icon-slot` |
+| `.section-disclosure-trigger::after`, Lucide `chevron-right` | CSS mask | Show or hide a section, after its heading, and a rendered document’s `summary` | `static/styles.css` | `--section-disclosure-chevron-color` | `--section-disclosure-chevron-size`, in `em` of the heading |
+| `copy`, Lucide `copy` | Registry | Copy an identifier or a block’s content to the clipboard; also the Archives category’s shape | `static/icons.js` | `--muted` at rest, `--text` on hover | `--icon-glyph`; smaller in a branch chip (`.git-ref-copy`) |
+| `print`, Lucide `printer` | Registry | Print the document | `static/icons.js` | `--muted` at rest, `--text` on hover | `--icon-glyph` |
+| `gear`, Lucide `settings` | Registry | Open the Metabrowser menu | `static/icons.js` | `--muted` at rest, `--text` on hover | `--icon-glyph` |
+| `monitor`, Lucide `monitor` | Registry | The system theme, in the menu’s theme chooser; also the Media category’s shape | `static/icons.js` | `--muted`, `--link` when chosen | One step over `--icon-glyph`: a segment’s glyph is its whole label (`.menu-seg svg`) |
+| `sun`, Lucide `sun` | Registry | The light theme | `static/icons.js` | `--muted`, `--link` when chosen | One step over `--icon-glyph`, as `monitor` |
+| `moon`, Lucide `moon` | Registry | The dark theme | `static/icons.js` | `--muted`, `--link` when chosen | One step over `--icon-glyph`, as `monitor` |
+| `serif`, bespoke | Registry | The serif reading font: an “A” in the generic serif family | `static/icons.js` | `--muted`, `--link` when chosen | One step over `--icon-glyph`, as `monitor` |
+| `sans`, bespoke | Registry | The sans reading font: an “A” in the generic sans-serif family | `static/icons.js` | `--muted`, `--link` when chosen | One step over `--icon-glyph`, as `monitor` |
+| `↑` | Text | The parent folder, in the parent navigation button | `static/view-header.js`, `builtin_plugins/folder/treemap.js` | `--muted` | `--ui-small-font-size` |
+| `✓` | Text | A chosen value in a filter chip’s menu, and the current member in a stack’s menu | `static/filter-controls.js`, `builtin_plugins/github/pull-page.js` | `--link` in a chip menu, the text’s in a stack menu | The text’s, in a fixed column |
+| `→` | Text | From one to the other: a rename, a mode or type change, and a merge’s source and target | `builtin_plugins/diff/diff-model.js`, `static/git-panel.js`, `static/plugin-sdk-views.js` | The text’s | The text’s |
+| `→` | Text | An agent log’s tool call, going out, in an event’s kind | `builtin_plugins/agent_log/index.js` | The kind badge’s | The text’s |
+| `←` | Text | An agent log’s tool result, coming back, in an event’s kind | `builtin_plugins/agent_log/index.js` | The kind badge’s | The text’s |
+| `→` | Text | The Metabrowser menu title’s link to the project on GitHub, shown on hover | `server.py` | The title’s | The text’s |
+| `⏎` | Text | A line with no newline at its end, in a diff | `builtin_plugins/diff/diff-view.js` | `--muted` | The text’s |
+| `‹` | Text | Opens the hex code the binary view shows for a byte that is not printable ASCII, such as `‹FF›` | `builtin_plugins/binary/byte-format.js` | `--muted`, the code’s | `--mono-block-font-size`, the code block’s |
+| `›` | Text | Closes a byte’s hex code in the binary view | `builtin_plugins/binary/byte-format.js` | `--muted`, the code’s | `--mono-block-font-size`, the code block’s |
+| `☰` | Text | The table of contents toggle in an untrusted document’s render | `builtin_plugins/markdown/inert-toc.js` | KPress’s muted document ink | The text’s |
+| `▸` | Text | Show or hide a structured data tree’s object or array | `builtin_plugins/structured/tree.js` | `--color-syntax-punct` | The text’s |
+
+### Keyboard Hints
+
+A key is a `.kbd` key cap, and the shared shortcut formatter writes its label, so a
+caller never types an arrow or a modifier itself
+([Keyboard Keys](design-system.md#keyboard-keys)).
+
+| Icon | Source | Meaning | Defined in | Ink | Size |
+| --- | --- | --- | --- | --- | --- |
+| `⌃` | Text | The Control key, in a Control chord | `static/keyboard-shortcuts.js` | The key cap’s | The key cap’s |
+| `↑` | Text | The Up arrow key | `static/keyboard-shortcuts.js` | The key cap’s | The key cap’s |
+| `↓` | Text | The Down arrow key | `static/keyboard-shortcuts.js` | The key cap’s | The key cap’s |
+| `←` | Text | The Left arrow key | `static/keyboard-shortcuts.js` | The key cap’s | The key cap’s |
+| `→` | Text | The Right arrow key | `static/keyboard-shortcuts.js` | The key cap’s | The key cap’s |
+
+## The App’s Own Marks
+
+| Icon | Source | Meaning | Defined in | Ink | Size |
+| --- | --- | --- | --- | --- | --- |
+| `metabrowser-icon` | App mark | The macOS app’s icon: the MB mark on its squircle | `apps/macos/AppIcon/metabrowser-icon.json` | Its own fills, citrine and amethyst | The `.icns` sizes `scripts/build-icon.sh` writes |
+| `metabrowser-icon-dev` | App mark | A development build’s icon, with a gold rim | `apps/macos/AppIcon/metabrowser-icon-dev.json` | Its own fills | The `.icns` sizes `scripts/build-icon.sh` writes |
+| `.view-header-toggle-metabrowser > .view-header-toggle-mark`, `AppIconMark` | CSS mask | The Metabrowser view the page is in: the pressed segment of a view header’s GitHub toggle, the app’s mark framed to its ink | `static/styles.css` | `--muted` | `--icon-glyph` tall, `--icon-box` wide |
+| `AppIconMark` | App mark | The mark alone, in the app’s title bar | `apps/macos/Sources/ShellCore/App/AppIconMarkGeometry.swift` | `AppIconMark.titleBarFills`, for the title bar’s appearance | The title bar’s height |
+| `metabrowser-icon.png` | App mark | The README’s icon, the release icon at one size | `images/metabrowser-icon.png` | Its own fills | Its pixels |
+
+[Metabrowser App Icon](../apps/macos/AppIcon/README.md) has the design and how to
+regenerate every one of these from the masters.
+
+## Known Departures
+
+Each of these breaks a rule above, and is listed so that nobody copies it.
+
+- **Two category shapes mean something else in the chrome.** The Archives category takes
+  `copy`, the clipboard action, and the Media category takes `monitor`, the system
+  theme.
+- **One drawing, two names.** The PDF family declares `fileText`, which is the drawing
+  `doc` is, the Documentation category’s shape that PDF would take anyway.
+- **Characters stand in for two drawn glyphs.** An untrusted document’s table of
+  contents toggle types `☰` where a trusted render draws KPress’s Lucide `list`, and a
+  structured data tree types `▸` in syntax punctuation where every other disclosure
+  draws `toggle` in `--muted`.
+- **The Metabrowser menu’s GitHub link ends in `→`**, where a link to GitHub elsewhere
+  carries the GitHub mark.
+- **The check marks differ.** A chip menu’s `✓` is `--link` in a column narrower than
+  the glyph; a stack menu’s is the text’s ink in an `--icon-glyph` column.
+- **A branch chip’s copy glyph is smaller than `--icon-glyph`**, by its own rule, which
+  the size rule does not list as an exception.
+- **Two glyphs one plugin draws are in the registry.** Only the GitHub plugin draws
+  `layers`, and only the Markdown plugin’s print button draws `print`, yet both are
+  registry glyphs that every folder’s startup pays for.
+  `print` stayed when the print button moved from the shell’s header into a rendered
+  document.
+- **The app’s failure screen draws its warning triangle in color.**
+  `exclamationmark.triangle.fill` renders in Apple’s multicolor yellow, where every
+  other symbol takes its menu’s template ink and every other glyph `currentColor`.
+- **The browser’s tab shows no icon of the app’s own.** The page names no favicon, so
+  the browser asks for `/favicon.ico` and draws its default, though a view header’s
+  GitHub toggle draws the app’s mark.
+
+## The Check
+
+`tests/test_icon_catalog.py` reads the tables above, the rows under the header “Icon,
+Source, Meaning, Defined in, Ink, Size”, and holds them to the code:
+
+- the registry’s glyphs are the Registry rows, every one has a caller, and every name a
+  caller or the type registry asks for is one of them;
+- every other SVG glyph a browser source defines by name is a Plugin or View bundle row
+  in the file that defines it, every SVG a browser source draws is one it defines by
+  name, and the server’s page draws none;
+- every glyph character a browser source or the server’s page types, as itself or as an
+  escape, is a Text row with exactly the files that type it, except in a comment or a
+  console message;
+- the stylesheets’ masked glyphs, the SF Symbols the macOS app draws in AppKit or
+  SwiftUI, and the change letters of both status tables, which must agree, are rows;
+- two rows naming one upstream glyph draw it the same, and a row’s Lucide id is the one
+  its definition’s comment names;
+- a registry row names each category and family that takes its shape, and the type
+  registry’s schema permits exactly the shapes its categories and families take;
+- every token a row’s ink or size names is declared by a shipped stylesheet.
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->
