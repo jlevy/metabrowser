@@ -45,6 +45,10 @@ revisions are read with is refused in the server’s own words.
 (`static/source-pin-guard.js`), which is how a tab left behind is refused: a revision
 its commit, a checkout’s working tree the word `working-tree`, and a plain folder
 nothing, since its server can serve nothing else.
+`hold` is what the page’s own data requests do while it switches: the server may serve
+the other subject before the page has gone, so each waits for the answer and is held
+while the page goes; the guard sends them if the switch is refused, if the back/forward
+cache shows the page again, or if the page is still there after its bound.
 
 ```console
 $ node tests/dom/source-ref-selector-session.js
@@ -759,7 +763,50 @@ $ node tests/dom/source-ref-selector-session.js
       "a checkout's revision": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b; refused when another is served: true; while its own is: false",
       "a mirror's pin": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b; refused when another is served: true; while its own is: false",
       "a plain folder": "nothing"
-    }
+    },
+    "hold": [
+      {
+        "step": "a request made while the switch is asked waits for the answer",
+        "sent": [],
+        "timers": []
+      },
+      {
+        "step": "a page that goes holds its requests until it is gone",
+        "sent": [],
+        "timers": [
+          5000
+        ]
+      },
+      {
+        "step": "a page still here after the bound sends them, to be refused",
+        "sent": [
+          "/api/tree?depth=0 working-tree",
+          "/api/tree?depth=0 working-tree"
+        ],
+        "timers": []
+      },
+      {
+        "step": "a switch refused sends them when it is answered",
+        "sent": [
+          "/api/tree?depth=0 working-tree"
+        ],
+        "timers": []
+      },
+      {
+        "step": "a page the back/forward cache shows again sends them at once",
+        "sent": [
+          "/api/tree?depth=0 working-tree"
+        ],
+        "timers": [
+          5000
+        ]
+      },
+      {
+        "step": "and its bound, when it comes, sends nothing more",
+        "sent": [],
+        "timers": []
+      }
+    ]
   }
 }
 ? 0

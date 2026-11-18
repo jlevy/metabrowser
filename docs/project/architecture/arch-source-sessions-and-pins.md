@@ -233,6 +233,13 @@ revisions, so every data request from a pin’s page names its commit:
 - The page announces the refusal as a `metabrowser:pin-changed` event, and the freshness
   row offers a reload.
   Nothing changes under a reader who is looking at the page.
+- The page that makes a switch is left behind too, from the moment it asks the pin route
+  until it has gone, so its guarded requests wait out the switch (`createSwitchHold` in
+  `source-pin-guard.js`): they go when it is refused or changes nothing, and are held
+  while the page goes.
+  A page the back/forward cache shows again sends them, and so does one still there
+  after `LEAVING_BOUND_MS`, whose navigation the reader stopped; the server then refuses
+  them and the page offers a reload.
 
 The commit is the token rather than the generation, because a generation restarts with
 every server process while a commit names exactly the content the page shows.

@@ -45,6 +45,11 @@
 // the diff of the served pin in the page 204-541 ms after Back. With the back/forward
 // cache off the page loads from the HTTP cache (19-29 ms to pageshow) and reloads once
 // only after a switch.
+//
+// The page that switches the server (static/source-ref-selector.js) is left behind too,
+// from the moment it asks until it has gone: its refresh of the root's tallies, half a
+// second after its first rows, was refused so and showed the offer to reload on its way
+// out (mb-bio7). So its guarded requests wait out the switch (`createSwitchHold`).
 
 (() => {
   const PIN_HEADER = "x-metabrowser-pin";
@@ -52,6 +57,11 @@
   // What the page of a checkout's working tree names: `WORKING_TREE_PIN` in
   // source_routes.py. Not hexadecimal, so it is never a commit.
   const WORKING_TREE_PIN = "working-tree";
+  // How long a page that went to another address holds its requests, in case it stays.
+  // Measured 2026-11-18 in headless Chrome 152 at a load average of 90: the new document
+  // made its first request 39 ms after the switch's answer, and on CI the switch took
+  // 168 ms from the click to the new page's rows (tests/dom/checkout-ref-selector-chrome.mjs).
+  const LEAVING_BOUND_MS = 5000;
 
   /**
    * Whether a request to *url* names the page's commit.
@@ -80,13 +90,19 @@
    * @param {string} pin The full commit ID the page shows, or `WORKING_TREE_PIN`.
    * @param {() => string} base The page's current URL, read at each call.
    * @param {(served: string) => void} onPinChanged
+   * @param {() => Promise<void> | null} [waiting] What a guarded request waits for before
+   *   it is sent: a switch the page asked for (`createSwitchHold`), or null.
    * @returns {typeof fetch}
    */
-  function guardFetch(fetchImpl, pin, base, onPinChanged) {
+  function guardFetch(fetchImpl, pin, base, onPinChanged, waiting = () => null) {
     return async (input, init) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
       if (!guardedRequest(url, base())) {
         return fetchImpl(input, init);
+      }
+      const wait = waiting();
+      if (wait !== null) {
+        await wait;
       }
       const headers = new Headers(
         init?.headers ?? (input instanceof Request ? input.headers : undefined),
@@ -99,6 +115,49 @@
       }
       return response;
     };
+  }
+
+  /**
+   * The wait a page's guarded requests take while it switches what the server serves, which
+   * may serve the other subject before the page has gone. `hold(going)` starts it as the
+   * page asks; *going* settles false when the page stays, which ends it, and true when the
+   * page goes, which holds them until it has gone, or for LEAVING_BOUND_MS if the reader
+   * stops it: they are then refused, and the page offers a reload. `release()` ends it for
+   * a page the back/forward cache shows again; `waiting()` is what a request waits for now.
+   * No DOM: the glue below supplies the timer.
+   *
+   * @param {(callback: () => void, ms: number) => void} setTimer
+   */
+  function createSwitchHold(setTimer) {
+    /** @type {{wait: Promise<void>, open: () => void} | null} */
+    let held = null;
+
+    function release() {
+      const ending = held;
+      held = null;
+      ending?.open();
+    }
+
+    /** @param {Promise<boolean>} going */
+    function hold(going) {
+      release();
+      /** @type {() => void} */
+      let open = () => {};
+      /** @type {Promise<void>} */
+      const wait = new Promise((resolve) => {
+        open = () => resolve();
+      });
+      const mine = { wait, open };
+      held = mine;
+      const ends = () => {
+        if (held === mine) {
+          release();
+        }
+      };
+      void going.then((gone) => (gone ? setTimer(ends, LEAVING_BOUND_MS) : ends()), ends);
+    }
+
+    return Object.freeze({ hold, release, waiting: () => held?.wait ?? null });
   }
 
   /**
@@ -189,13 +248,18 @@
     return checkout && checkout.working_tree === true ? null : undefined;
   }
 
+  const switchHold = createSwitchHold((callback, ms) => void window.setTimeout(callback, ms));
+
   window.MetabrowserSourcePinGuard = Object.freeze({
     PIN_CHANGED_HEADER,
     PIN_HEADER,
     WORKING_TREE_PIN,
     createHistoryGuard,
+    createSwitchHold,
     guardFetch,
     guardedRequest,
+    // This page's switch, which the selector asks for: its requests wait for it.
+    hold: switchHold.hold,
     servesAnother,
     shownPin,
   });
@@ -223,8 +287,14 @@
           new CustomEvent("metabrowser:pin-changed", { detail: { pin: served } }),
         );
       },
+      switchHold.waiting,
     );
-    window.addEventListener("pageshow", (event) => void history.shown(event.persisted));
+    window.addEventListener("pageshow", (event) => {
+      if (event.persisted) {
+        switchHold.release();
+      }
+      void history.shown(event.persisted);
+    });
     const entry = window.performance?.getEntriesByType?.("navigation")[0];
     void history.loaded(
       entry ? /** @type {PerformanceNavigationTiming} */ (entry).type : "navigate",

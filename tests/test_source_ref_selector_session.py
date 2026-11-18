@@ -280,6 +280,16 @@ def test_the_session_runs_a_checkout_on_its_recording() -> None:
         "a mirror's pin": f"{pin}; {refused}",
         "a plain folder": "nothing",
     }
+    # The page's own data requests wait out its switch, and go with the page (mb-bio7).
+    tallies = "/api/tree?depth=0 working-tree"
+    assert [(step["sent"], step["timers"]) for step in checkout["hold"]] == [
+        ([], []),
+        ([], [5000]),
+        ([tallies, tallies], []),
+        ([tallies], []),
+        ([tallies], [5000]),
+        ([], []),
+    ]
 
 
 def test_the_session_runs_on_the_recording() -> None:

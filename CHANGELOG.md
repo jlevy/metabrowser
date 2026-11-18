@@ -4,6 +4,12 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- Choosing a branch or tag no longer flashes **Reload** on the page you are leaving.
+  The page went on asking the server for data while the switch was under way, and a
+  refresh of its Files totals that fell due then was refused, as a request from a page
+  left behind is, which the page took for a switch made in another tab.
+  A page now asks for nothing more once it has asked to switch, until it has gone.
+
 - In a navigation pane too narrow for the Files toolbar’s controls, the Files tree no
   longer moves down as the page loads.
   The toolbar wraps to a second line when its controls arrive, and the tree, shown under

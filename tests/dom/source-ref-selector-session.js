@@ -543,7 +543,74 @@ async function runCheckout() {
     "a mirror's pin": named({ pin, ref: "refs/remotes/origin/feature" }, undefined),
     "a plain folder": named(undefined, undefined),
   };
-  return { steps, labels, guard };
+  return { steps, labels, guard, hold: await runHold(recording, onReadme, options) };
+}
+
+// What the page's own data requests do while it switches (mb-bio7): from the moment the
+// server is asked, it may serve the other subject while the page is still here, and would
+// refuse them. So each waits for the answer, and goes with the page when the page goes;
+// a page still here after the guard's bound, or shown again from the back/forward cache,
+// sends them. The guard's own `fetch` wrapper and hold run here, over a network that logs
+// what reaches it, with the hold's timer kept for the step to fire.
+async function runHold(recording, onReadme, options) {
+  const pinGuard = loadPinGuard();
+  const timers = [];
+  const hold = pinGuard.createSwitchHold((callback, ms) => timers.push({ callback, ms }));
+  const network = [];
+  const guarded = pinGuard.guardFetch(
+    async (input, init) => {
+      network.push(`${input} ${new Headers(init?.headers).get(pinGuard.PIN_HEADER)}`);
+      return { status: 200, headers: new Headers() };
+    },
+    pinGuard.WORKING_TREE_PIN,
+    () => `http://127.0.0.1${onReadme.view}`,
+    () => {},
+    hold.waiting,
+  );
+  // The page refreshing its root's tallies, as app.js does after its first rows.
+  const ask = () => void guarded("/api/tree?depth=0");
+  const observed = [];
+  const note = async (step) => {
+    await settle();
+    observed.push({ step, sent: network.splice(0), timers: timers.map((timer) => timer.ms) });
+  };
+  const switching = () => {
+    const page = createPage(onReadme);
+    page.deps.hold = hold.hold;
+    return { page, selector: selectorRuntime.createSelector(page.deps, options(null)) };
+  };
+
+  let { page, selector } = switching();
+  const toBranch = selector.choose("refs/heads/feature");
+  ask();
+  await note("a request made while the switch is asked waits for the answer");
+  await page.answer(recording.switch_branch);
+  await toBranch;
+  ask();
+  await note("a page that goes holds its requests until it is gone");
+  timers.shift().callback();
+  await note("a page still here after the bound sends them, to be refused");
+  selector.dispose();
+
+  ({ page, selector } = switching());
+  const missing = selector.choose("refs/heads/gone");
+  ask();
+  await page.answer(recording.switch_missing);
+  await missing;
+  await note("a switch refused sends them when it is answered");
+  selector.dispose();
+
+  ({ page, selector } = switching());
+  const again = selector.choose("refs/heads/feature");
+  await page.answer(recording.switch_branch);
+  await again;
+  ask();
+  hold.release();
+  await note("a page the back/forward cache shows again sends them at once");
+  timers.shift().callback();
+  await note("and its bound, when it comes, sends nothing more");
+  selector.dispose();
+  return observed;
 }
 
 function emptyState() {
