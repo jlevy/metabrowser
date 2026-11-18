@@ -273,6 +273,9 @@ generation, one core job per source, a `visible` batch preempting a `background`
 `pull_cores.py`’s docstring gives its outcomes, retries, and waits.
 A reader who selects a pull request with no record may ask its refresh to wait for the
 core, and the envelope then carries a `core_preview` until the full record lands.
+The page renders the preview’s description through `GET pull-markdown` as it renders the
+record’s, so the description shows rendered from its first paint, and the record that
+follows with the same text reuses that render.
 
 ## Changed Files
 
@@ -342,15 +345,17 @@ image at the head of an admitted pair without changing the pin or the checkout; 
 links to a file of the head are that file’s `/view/` address, the same in every answer,
 which the page keeps only while its pin is the head and leaves as plain text otherwise.
 `pull_snapshot.py`’s docstring lists every outcome code.
-`GET pull-markdown` (`pull_markdown.py`) renders one text of the record through KPress
-in sanitized mode, then reduces it to the inert allowlist of `inert_html.py`, both in
-the server’s Markdown child under its deadline, the same child as the projections, which
-a served page’s first `GET pull` starts; a text past the deadline answers `422`
-`render_deadline`, one that arrives while the child has as many renders as it takes
-answers `503` `renderer_busy`, and the page keeps its plain text with a line saying why,
-which it keeps for that text until the text renders.
-Only KPress’s stylesheet manifest reaches the page, so no text chooses what loads.
-The trust model behind that allowlist is in
+`GET pull-markdown` (`pull_markdown.py`) renders one text of the record, or with no
+record cached the core preview’s description, through KPress in sanitized mode, then
+reduces it to the inert allowlist of `inert_html.py`, both in the server’s Markdown
+child under its deadline, the same child as the projections, which a served page’s first
+`GET pull` starts; a text past the deadline answers `422` `render_deadline`, one that
+arrives while the child has as many renders as it takes answers `503` `renderer_busy`,
+and the page shows its plain text with a line saying why, which it keeps for that text
+until the text renders.
+Until a text’s render answers, the page shows a placeholder in its place and never its
+Markdown source. Only KPress’s stylesheet manifest reaches the page, so no text chooses
+what loads. The trust model behind that allowlist is in
 [Server and Content](arch-server-and-content.md).
 
 ## Conversation Timeline
@@ -622,7 +627,7 @@ handler’s docstring in `sidekick.py`, or the module it names, holds its contra
 | `pull-image` | `GET` | An image at the comparison’s head, for its rendered Markdown |
 | `pull-rendered-diff` | `GET` | One changed Markdown file, rendered |
 | `pull-timeline` | `POST` | Conversation’s order of commits, comments, and reviews |
-| `pull-markdown` | `GET` | One text of the record, rendered inert |
+| `pull-markdown` | `GET` | One text of the record, or a core preview’s description, rendered inert |
 | `pulls` | `GET` | A catalog window, or a search with `q` |
 | `pulls-refresh` | `POST` | The catalog job |
 | `pull-files` | `GET` | A pull request’s changed files |

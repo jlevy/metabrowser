@@ -1240,6 +1240,35 @@ status: 200
 }
 --- stderr ---
 --- gh ---
+## The prepared description renders as Markdown from the core alone, without GitHub, so a page shows a preview's description rendered while its record is fetched (mb-d59o).
+# metab https://github.com/octo/demo --api '/api/plugin/github/pull-markdown?number=7&part=body'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-markdown?number=7&part=body
+status: 200
+{
+  "number": 7,
+  "fetched_at": null,
+  "record_revision": null,
+  "core_revision": "4455446187bfb5b01524426e74c7ca1aba9c25bfcdea28ec2b02718e53d347c4",
+  "part": "body",
+  "html": "\n<div><div><p>The app counts to one.</p>\n<p>This teaches it <strong>two</strong>.</p></div></div>"
+}
+--- stderr ---
+--- gh ---
+## A core holds the description alone, so any other part waits for the record.
+# metab https://github.com/octo/demo --api '/api/plugin/github/pull-markdown?number=7&part=review/1'
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pull-markdown?number=7&part=review/1
+status: 404
+{
+  "error": "no record of this pull request is cached",
+  "code": "not_cached"
+}
+--- stderr ---
+Error: /api/plugin/github/pull-markdown?number=7&part=review/1 returned HTTP 404
+--- gh ---
 # metab https://github.com/octo/demo --api /api/plugin/github/pull-cores-prepare --data request.json
 exit: 0
 --- stdout ---
