@@ -1,0 +1,62 @@
+exp-100 protocol: a held first screen's Markdown asked for all at once (H120, bead mb-g5wf)
+Registered 2026-11-17, before the first timed run.
+
+Question. exp-099 found that a pull request page opened from a warm cache holds its
+title, out of sight, until every text on its first screen has its rendered Markdown, and
+that those texts were asked for MARKDOWN_CONCURRENCY (2) at a time. On #487 (four texts)
+the title came 212 to 258 ms after the record's arrival, the four Markdown requests
+starting 7, 30, 73 and 102 ms after it. Does asking for the held texts at once shorten
+that wait?
+
+Builds (wheels built from `git archive <commit>` by pr-view-wheel.sh, hatchling from the
+locked `build` group):
+  control    metab 0.12.1.dev1621+c6aa0208  main at #513, c6aa02085763a23f7c96cda422cbb3e290518a19
+  candidate  metab 0.12.1.dev1623+b79bdafa  b79bdafa66565cd2ddef6d3442799e04bcdf2724
+             (claude/pr-markdown-held-at-once: control plus the pr-view benchmark and
+             requestMarkdown's `{now: true}` for the held texts)
+Later commits on the candidate branch may change comments beside the constants; no
+measured code changes after this registration without an amendment here.
+
+Environment. As exp-099: one virtual environment from the checkout's
+`uv export --frozen --no-dev --no-emit-project` constraints; each run installs only the
+build's wheel and the KPress it pins (kpress==0.3.8 for both), --no-deps
+--compile-bytecode --reinstall-package metabrowser, then `uv pip check` and an exact
+`metab --version` check. Subject: the same clean linked worktree of this repository at
+4eb299fd1 as exp-099 ($CHECKOUT), served as a folder against live jlevy/metabrowser.
+Headless Chrome 152, fresh profile per server, 1400x813 viewport, visibilityState
+visible. Apple M1 Pro, 10 cores.
+
+Series. `pr-view-pairs.sh 5 pr control <wheel> candidate <wheel>`: five rounds of
+pr-fresh (/pull/470, empty cache, then #514's store preparation), pr-store (/pull/487),
+pr-warm (/pull/487, all cached, fresh server) with pr-warm-reload (same server and
+browser), each step run for both builds back to back, the leading build alternating by
+round (odd rounds control first). Scripts: pr-view.mjs sha256
+11424f439879f6e6607df7aba93f86530cb8536478d96d6ace292378de189431, pr-view-pairs.sh
+9cc101329fbef69b90210d0b25951576ba40d33aca326a335702936f9c1a17f6, pr-view-wheel.sh
+6d4b1e67962c7d818ec9fd18d839332c6467ab59a696f1c5da0cd14505e69a25.
+
+Analysis. pr-view-stats.mjs sha256
+f290863c329c14e9a769a696cf20c8b379030ac0fa0f1500765f31d9006266e8, `--control control
+--candidate candidate`, default tolerance 1.3. No run is excluded; a run that timed out
+or failed keeps its row and is reported.
+
+Decision rule (rough cut, 1.3x, because other sessions keep the load at 5 to 20):
+  Deciding: pr-warm title_after_pull (the title's first frame minus the first GET pull's
+  response end). Accepted when the candidate/control pair ratio is under 1/1.3 in at
+  least 3 of 5 pairs and the candidate median is lower; rejected when it is under 1/1.3
+  in at most 1 pair and the medians do not differ by 1.3x; otherwise unresolved.
+  Mechanism check, not deciding: pr-warm markdown_after_pull lower, markdown_requests
+  unchanged (4).
+  Guards (each fails when beyond 1.3x in 3 or more of 5 pairs): pr-warm and
+  pr-warm-reload title, description_final and complete; pr-fresh and pr-store title and
+  description_final; pr-warm pull_ms.
+  Reported, not judged: pr-warm-reload title_after_pull (a warm server renders in 3 to
+  11 ms, so the saving there is under the rough cut's resolution).
+
+Budget. Stop before a round when GitHub's core budget is under 1500 or the disk under
+2 GB (the driver's defaults).
+
+Limits declared in advance. One pull request with four first-screen texts; a page whose
+first screen holds one or two texts gains nothing. A fresh server per run makes each
+first Markdown render cost 50 to 80 ms; a long-running server's is the reload step.
+Five pairs resolve a large effect only.
