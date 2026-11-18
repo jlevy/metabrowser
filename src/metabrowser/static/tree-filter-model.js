@@ -724,21 +724,11 @@
   }
 
   /**
-   * @typedef {object} TreeSection
-   * @property {string} key `<by>:<id>`, the group a folder inside it opens under
-   * @property {string} id
-   * @property {string} label
-   * @property {number | null} files
-   * @property {number | null} size
-   * @property {Array<Record<string, unknown>>} tree
-   */
-
-  /**
    * The sections a grouped answer paints, in the order the server gave: one per group
    * that holds anything. A malformed answer is refused rather than painted partly.
    *
    * @param {unknown} payload
-   * @returns {TreeSection[]}
+   * @returns {MetabrowserPublicTreeSection[]}
    */
   function groupSections(payload) {
     const answer = /** @type {{group_by?: unknown, groups?: unknown} | null} */ (payload);
@@ -758,6 +748,7 @@
         key: `${by}:${group.id}`,
         id: group.id,
         label: group.label,
+        icon: typeof group.icon === "string" ? group.icon : null,
         // A source that could not count a group says so with null (a truncated Git index).
         files: typeof group.files === "number" ? group.files : null,
         size: typeof group.size === "number" ? group.size : null,

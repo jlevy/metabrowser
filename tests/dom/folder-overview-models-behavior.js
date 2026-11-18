@@ -171,10 +171,11 @@ async function importSource(relative) {
       { id: "media", label: "Media" },
       { id: "other", label: "Other" },
     ],
-    // The order a view lists groups in; the same as the registry's here.
+    // The order a view lists groups in; the same as the registry's here. Each group's
+    // icon is its category's (file_type_filters.py, _REPRESENTATIVE_FAMILIES).
     displayGroups: [
-      { id: "media", label: "Media" },
-      { id: "other", label: "Other" },
+      { id: "media", label: "Media", icon: "monitor" },
+      { id: "other", label: "Other", icon: "file" },
     ],
     families: [
       { id: "images", label: "Images", groupId: "media", extensions: [".png"] },
@@ -234,6 +235,12 @@ async function importSource(relative) {
     breakdownModel.groups.map((group) => group.id).join(",") === "media,other" &&
       breakdownModel.rows.map((row) => row.key).join(",") ===
         "family:images,,family:log-files,(none)",
+  );
+  // Each group's heading names its category and carries the category's icon by name.
+  check(
+    "each group carries its category's icon",
+    breakdownModel.groups.map((group) => `${group.id}:${group.icon}`).join(",") ===
+      "media:monitor,other:file",
   );
   check(
     "singleton file-type families are disclosable",

@@ -202,6 +202,11 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         status.waitsForAnotherStart = waiting
     }
 
+    /// What a repository's start says it is doing, such as how far its clone has got.
+    func showStartProgress(_ progress: StartProgress?) {
+        status.progress = progress
+    }
+
     /// The page to save for the next launch.
     var currentPage: PageAddress? {
         loads.saved(showing: currentServerURL.flatMap(PageAddress.init))
@@ -290,8 +295,8 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         session?.pageShown(self)
     }
 
-    /// The page is gone for good: its window closed, or its folder did (Close Folder). Nothing it started may load or call
-    /// back after this.
+    /// The page is gone for good: its window closed, or its folder did (Close Folder).
+    /// Nothing it started may load or call back after this.
     func close() {
         loads.cancelAll()
         textFinder.client = nil
