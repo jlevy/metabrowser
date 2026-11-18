@@ -5,11 +5,11 @@ title: "KPress: an embeddable, reflow-free print indicator a host turns on (repl
 kind: feature
 status: open
 priority: 3
-version: 1
+version: 2
 labels: []
 dependencies: []
 created_at: 2026-11-18T03:36:57.866Z
-updated_at: 2026-11-18T03:36:57.866Z
+updated_at: 2026-11-18T04:52:09.419Z
 ---
 Follow-up to mb-07a1, which moved Metabrowser's print button from the file header into the upper right corner of a rendered document's card, behind a mount option (`printIndicator: true`, `builtin_plugins/markdown/rendered.js`), drawn by Metabrowser itself (`builtin_plugins/markdown/print-indicator.js`, placement in `markdown.css`). The owner asked that this become part of KPress, as an optional print indicator a host turns on, if that is cleaner. It is: KPress 0.3.8 already ships the nearest thing, the opt-in `doc-actions` widget (`format/static/js/doc-actions.js`, `components.css` "Document actions"), which pins a PDF and an MD badge to the card's corner. It does not fit an embedded document yet. This bead is the KPress change; then Metabrowser replaces its own button with KPress's and removes print-indicator.js and its CSS.
 
@@ -41,3 +41,7 @@ What KPress needs (proposed API and markup):
 5. Document the invariant hosts rely on beside the narrow TOC toggle: the indicator stays inside the card, the toggle in the trailing gutter `--kpress-toc-toggle-clearance` reserves (Metabrowser moves the toggle to the trailing side in `markdown.css`), so the two never meet; and in the wide band the rail is outside the card.
 
 Then in Metabrowser: raise the kpress pin and its SUPPLY-CHAIN-SECURITY.md record, map `printIndicator` to the new option in `render_kpress_view` / `fetchKpressRender`, bind the click and the owner mark in the inert path, delete print-indicator.js and its markdown.css block, and keep tests/dom/document-print-chrome.mjs and tests/dom/markdown-print-indicator-session.js passing against KPress's markup.
+
+## Notes
+
+From review A on #549 (A3): Metabrowser's button is last in the card, so last in focus and reading order though drawn at the top; placed first it would break the h1:first-child rules (KPress's own among them). Command-P is the keyboard route. KPress's markup should decide this deliberately: keep it last and say so, or give the card a leading slot that the first-heading rules skip. (A6) Show it only on a card KPress stamps data-kpress-card=on, under KPress's own card container query, as Metabrowser's markdown.css now does. (A5) Metabrowser's tooltip admits the button by identity (the elements ownDelegate marked), so a KPress button a host binds should be marked by the host the same way.
