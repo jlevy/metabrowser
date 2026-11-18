@@ -248,9 +248,9 @@ def test_pull_request_routes_load_only_for_a_pull_request_address(
 ) -> None:
     pull = session["shell"]["pullRouteLoadsOnDemand"]
     # A folder's page and its files never ask for the routes; what they ask for is the
-    # compositor and the view helpers, once, when the first file opens.
+    # compositor, the view helpers, and the view header, once, when the first file opens.
     assert pull["folderAddresses"] == {
-        "scriptRequests": ["view-composition.js", "plugin-sdk-views.js"],
+        "scriptRequests": ["view-composition.js", "plugin-sdk-views.js", "view-header.js"],
         "hostCreated": False,
     }
     # A page that loads at a pull-request address has the routes with its shell, so it
@@ -277,7 +277,11 @@ def test_a_cold_anchored_address_waits_for_the_module_that_reads_it(
     # The line anchors are no startup script, and the address still opens the Source
     # view: applying it waits for the bundle that brings them.
     assert cold["lineAnchorsAtStartup"] == "undefined"
-    assert cold["scriptRequests"] == ["view-composition.js", "plugin-sdk-views.js"]
+    assert cold["scriptRequests"] == [
+        "view-composition.js",
+        "plugin-sdk-views.js",
+        "view-header.js",
+    ]
     assert cold["renderedViews"] == ["a.py: source"]
     # That fetch overlaps revealing the row; a plain address asks for nothing first.
     revealing = cold["whileTheRowIsRevealed"]

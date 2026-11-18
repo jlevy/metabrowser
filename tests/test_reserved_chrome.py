@@ -250,14 +250,16 @@ def test_a_runs_status_badge_is_as_wide_as_its_widest_label() -> None:
     """
 
     css = _css()
+    # The view header draws the badge (view-header.js); the live tail in app.js relabels it.
+    header = (STATIC / "view-header.js").read_text(encoding="utf-8")
     app = (STATIC / "app.js").read_text(encoding="utf-8")
-    labels = set(re.findall(r'badge-(?:running|live|completed|failed)">([^<]+)<', app))
+    labels = set(re.findall(r'badge-(?:running|live|completed|failed)">([^<]+)<', header))
     labels |= set(re.findall(r'badge\.textContent = "([^"]+)"', app))
     assert labels == {"Running", "Live", "Done", "Failed", "Run ended"}, labels
-    sizers = re.search(r"const RUN_STATUS_SIZERS = \[([^\]]*)\]", app)
+    sizers = re.search(r"const RUN_STATUS_SIZERS = \[([^\]]*)\]", header)
     assert sizers is not None
     assert set(re.findall(r'"([^"]+)"', sizers.group(1))) == labels
-    render = _function(app, "renderBadges")
+    render = _function(header, "renderBadges")
     assert (
         '<span class="file-header-badge-slot">${statusBadge}${RUN_STATUS_SIZERS}</span>' in render
     )

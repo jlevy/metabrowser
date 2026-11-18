@@ -49,6 +49,10 @@ def _read_view_composition_js() -> str:
     return proc_browser.STATIC_DIR.joinpath("view-composition.js").read_text()
 
 
+def _read_view_header_js() -> str:
+    return proc_browser.STATIC_DIR.joinpath("view-header.js").read_text()
+
+
 def _read_design_system_md() -> str:
     return proc_browser.STATIC_DIR.parents[2].joinpath("docs/design-system.md").read_text()
 
@@ -258,8 +262,9 @@ def test_omitted_tally_facts_are_not_pending() -> None:
     chip_start = js.index("function treeDirChipHtml(totalFiles, totalSize, options)")
     chip_block = js[chip_start : chip_start + 500]
     assert "totalFiles === undefined && totalSize === undefined" in chip_block
-    header_start = js.index("function renderFolderHeader(data)")
-    header_block = js[header_start : header_start + 1400]
+    header_js = _read_view_header_js()
+    header_start = header_js.index("function renderFolderHeader(data)")
+    header_block = header_js[header_start : header_start + 1400]
     assert "data.dir || {}" not in header_block
     assert 'typeof data.dir === "object"' in header_block
     parse_start = js.index("function parseTipNumber(value)")
@@ -745,34 +750,35 @@ def test_index_progress_updates_by_file_count_bucket() -> None:
     assert "indexProgressBucket(meta.indexed_files)" in fn_block
 
 
-def test_main_view_address_dims_the_root_and_leaves_no_dead_segment() -> None:
-    """The file header carries the whole address; every segment is live.
+def test_view_header_eyebrow_dims_the_root_and_titles_the_item() -> None:
+    """The eyebrow carries the address of what holds the item; the item is the title.
 
-    The served root is a dimmed prefix because it is identical on every
-    page — context rather than content. Everything from the root slash
-    rightward navigates, including the last component: on the page you
-    are already looking at it changes nothing, but a run of links with
-    one dead segment in the middle reads as a bug rather than a rule.
+    The served root is a dimmed prefix because it is identical on every page — context
+    rather than content. Everything from the root slash rightward navigates. The item's own
+    name is the title under the eyebrow, not a crumb, so the address has no segment that
+    reopens the page it is on (docs/design-system.md, "View Headers").
     """
 
-    js = _read_app_js()
-    fn_start = js.index("function headerAddressHtml(path, isFile)")
-    fn_block = js[fn_start : fn_start + 1600]
+    app = _read_app_js()
+    js = _read_view_header_js()
+    fn_start = js.index("function headerEyebrowAddressHtml(path)")
+    fn_block = js[fn_start : js.index("\n    }\n", fn_start)]
     assert 'class="file-header-root"' in fn_block
     assert 'class="folder-crumb folder-crumb-root" data-nav-dir=""' in fn_block
     # Every crumb is an owner-marked control; the click delegate ignores unmarked
     # copies a document could write (tests/dom/shell-delegate-owner-session.js).
     assert fn_block.count("${ownedControlAttr()}") == 2
-    # The final component navigates too — as a file when it names one.
-    assert 'last && isFile ? "data-nav-file" : "data-nav-dir"' in fn_block
-    assert "folder-crumb-current" in fn_block
+    # The crumbs stop at the item's folder: the item is the title, so no crumb is current
+    # and none opens a file.
+    assert "i < segments.length - 1" in fn_block
+    assert "folder-crumb-current" not in js + app
+    assert "data-nav-file" not in js + app
 
-    # Both headers build their address from this one helper.
-    assert js.count("headerAddressHtml(") == 3
-
-    # A file crumb opens the file rather than a directory.
-    click_start = js.index('origin.closest("[data-nav-file]")')
-    assert "navigateToPath(fileBtn.dataset.navFile" in js[click_start : click_start + 300]
+    # Both headers build their eyebrow from this one helper, through one builder, and
+    # app.js builds none of its own.
+    assert "headerEyebrowAddressHtml(" not in app
+    assert js.count("headerEyebrowAddressHtml(") == 2
+    assert js.count("viewHeaderEyebrowHtml(path)") == 3
 
     # A narrow pane ellipsizes the crumbs, so each one names its whole
     # component on hover rather than only the head of it — through the app's
@@ -781,7 +787,9 @@ def test_main_view_address_dims_the_root_and_leaves_no_dead_segment() -> None:
     # which the shell shows only while the crumb is cut short: the trail already
     # shows the path (mb-8mpo, "Tooltips Add Information"). One name is the tip
     # and the text, so they cannot drift apart (mb-ex5r).
-    assert "var name = esc(window.MetabrowserNavigationRoute.displayPath(segments[i]));" in fn_block
+    assert (
+        "const name = esc(window.MetabrowserNavigationRoute.displayPath(segments[i]));" in fn_block
+    )
     assert 'data-tip-text="${name}">${name}</button>' in fn_block
     assert "displayPath(walked)" not in fn_block
     assert "title=" not in fn_block
@@ -791,10 +799,10 @@ def test_address_gives_way_from_the_root_end_and_never_cuts_a_segment() -> None:
     """A squeezed address loses width at the start, and shows that it did.
 
     The dimmed root prefix is the first to narrow, then the directories,
-    then the component you are standing on — the name you are reading is
-    the part worth keeping. Every part that can narrow ellipsizes, so the
-    header's clip never cuts a crumb mid-word, and nothing after the run
-    is pushed outside the clipped box where it cannot be reached.
+    then the folder that holds the item — the one its title is in. Every
+    part that can narrow ellipsizes, so the eyebrow's clip never cuts a crumb
+    mid-word, and nothing after the run is pushed outside the clipped box
+    where it cannot be reached.
 
     Pinned as the ordering between the shrink weights rather than as their
     values, which are free to move as long as the order survives.
@@ -811,7 +819,7 @@ def test_address_gives_way_from_the_root_end_and_never_cuts_a_segment() -> None:
 
     root = shrink(".file-header-root")
     directory = shrink(".folder-breadcrumb .folder-crumb")
-    current = shrink(".folder-breadcrumb .folder-crumb-current")
+    current = shrink(".folder-breadcrumb .folder-crumb:not(.folder-crumb-root):last-of-type")
     structure = shrink(
         ".folder-breadcrumb .folder-crumb-root,\n.folder-breadcrumb .folder-crumb-sep"
     )
@@ -1298,17 +1306,13 @@ def test_summary_refresh_is_not_gated_on_the_row_it_installs() -> None:
     assert "chromeHtml: truncationHtml," in js
 
 
-def test_both_panes_build_their_top_rows_from_one_height() -> None:
-    """The two sides of the divider share a structure, not a resemblance.
+def test_the_navigation_path_row_takes_one_height_and_the_view_header_its_rows() -> None:
+    """The navigation column's path row is a fixed height; the main view's header is rows.
 
-    Path row, hairline, tabs row, hairline — the same on both sides, with each
-    row the same height as its opposite number, so every rule meets its twin
-    across the divider and nothing steps up or down as the eye crosses it.
-
-    Asserted as "both read the same token" rather than as a measurement,
-    because a look-alike value on each side is exactly how they drifted: the
-    navigation header came out half a pixel taller than the file header, which
-    no review catches and which leaves the hairline broken at the divider.
+    The navigation's path row reads its height from one token, so its rule sits where it
+    sits whatever the path's font set measures. The main view's header is a view header
+    (docs/design-system.md, "View Headers"): rows on the main view's ground, with no rule of
+    its own and no fixed height, whose one rule is the tab bar's under it.
     """
 
     css = _read_styles_css()
@@ -1318,15 +1322,13 @@ def test_both_panes_build_their_top_rows_from_one_height() -> None:
         return css[start : css.index("}", start)]
 
     nav = block(".app-header")
-    view = block(".file-header")
-    for name, rule in (("nav", nav), ("view", view)):
-        assert "height: var(--pane-header-row-height)" in rule, (
-            f"the {name} path row must take its height from the shared token"
-        )
-        assert "border-bottom: 1px solid var(--border)" in rule, (
-            f"the {name} path row must carry the shared hairline"
-        )
-    # A floor is what let them differ, each side still growing to its own
-    # content. The token has to be the height, not a minimum.
+    assert "height: var(--pane-header-row-height)" in nav
+    assert "border-bottom: 1px solid var(--border)" in nav
     assert "min-height: var(--pane-header-row-height)" not in css
     assert "--pane-header-row-height:" in css
+    view = block(".view-header")
+    assert "background: var(--bg);" in view
+    assert "flex-direction: column;" in view
+    assert "border" not in view and "height" not in view
+    bar = block(":is(.preview-pane, .preview-file-stage) .tab-bar")
+    assert "background: var(--bg);" in bar
