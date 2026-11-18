@@ -30,8 +30,9 @@ An answer that arrives after the reader chose Source is kept, and choosing Rende
 again shows it without asking.
 
 Front matter is the Document view’s Frontmatter disclosure, keys sorted as it sorts
-them: open, with each changed key removed and added, when the front matter changed, and
-closed, as the Document view’s is, when it did not.
+them: open, with each changed key removed and added, when the front matter changed;
+closed, as the Document view’s is, above the body’s changes when it did not; and one
+open removed or added row, every key with it, when the file lost or gained it.
 Rendered blocks are removed, added, or unchanged, with changed words marked.
 A block whose source changed in a way its render does not show, here an HTML comment, is
 drawn like any other and never folds, and nothing is drawn to say that Source shows
@@ -116,6 +117,14 @@ $ node tests/dom/diff-markdown-session.js
         "f4 README.md": {
           "chooser": "*Rendered | Source",
           "shows": "nothing"
+        },
+        "f6 docs/notes.md": {
+          "chooser": "*Rendered | Source",
+          "shows": "nothing"
+        },
+        "f7 docs/plain.md": {
+          "chooser": "*Rendered | Source",
+          "shows": "nothing"
         }
       }
     },
@@ -135,6 +144,14 @@ $ node tests/dom/diff-markdown-session.js
           "shows": "source"
         },
         "f4 README.md": {
+          "chooser": "*Rendered | Source",
+          "shows": "source"
+        },
+        "f6 docs/notes.md": {
+          "chooser": "*Rendered | Source",
+          "shows": "source"
+        },
+        "f7 docs/plain.md": {
           "chooser": "*Rendered | Source",
           "shows": "source"
         }
@@ -293,6 +310,37 @@ $ node tests/dom/diff-markdown-session.js
       "step": "switching formats asks for nothing",
       "requests": [],
       "files": {}
+    },
+    {
+      "step": "front matter that did not change is closed above the body's change, and front matter removed is one removed row",
+      "requests": [
+        "f6",
+        "f7"
+      ],
+      "files": {
+        "f6 docs/notes.md": {
+          "chooser": "*Rendered | Source",
+          "shows": "rendered",
+          "rows": [
+            "[Frontmatter]",
+            "  context: title = Notes",
+            "context: <h1 id=\"user-content-53205693cc2502516bbe3652-new-notes\">Notes</h1>",
+            "removed: <p>The <del>old</del> body.</p>",
+            "added: <p>The <ins>new</ins> body.</p>"
+          ]
+        },
+        "f7 docs/plain.md": {
+          "chooser": "*Rendered | Source",
+          "shows": "rendered",
+          "rows": [
+            "[Frontmatter, open, removed]",
+            "  removed: draft = True",
+            "  removed: title = Plain",
+            "context: <h1 id=\"user-content-71ee10c56ecf50774ee672b1-new-plain\">Plain</h1>",
+            "context: <p>Text.</p>"
+          ]
+        }
+      }
     },
     {
       "step": "a page that learns another pin is served keeps no link to a file",

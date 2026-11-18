@@ -52,6 +52,30 @@
         "entry_type": "file",
         "path": "README.md"
       }
+    },
+    {
+      "id": "f6",
+      "availability": "ready",
+      "old": {
+        "entry_type": "file",
+        "path": "docs/notes.md"
+      },
+      "new": {
+        "entry_type": "file",
+        "path": "docs/notes.md"
+      }
+    },
+    {
+      "id": "f7",
+      "availability": "ready",
+      "old": {
+        "entry_type": "file",
+        "path": "docs/plain.md"
+      },
+      "new": {
+        "entry_type": "file",
+        "path": "docs/plain.md"
+      }
     }
   ],
   "answers": {
@@ -196,6 +220,75 @@
         }
       ],
       "source_only": false
+    },
+    "f6": {
+      "version": "markdown-diff-v1",
+      "status": "ready",
+      "blocks": [
+        {
+          "kind": "context",
+          "side": "new",
+          "html": "<h1 id=\"user-content-53205693cc2502516bbe3652-new-notes\">Notes</h1>",
+          "source_only": false
+        },
+        {
+          "kind": "removed",
+          "side": "old",
+          "html": "<p>The <del>old</del> body.</p>",
+          "source_only": false
+        },
+        {
+          "kind": "added",
+          "side": "new",
+          "html": "<p>The <ins>new</ins> body.</p>",
+          "source_only": false
+        }
+      ],
+      "source_only": false,
+      "frontmatter": {
+        "change": "context",
+        "entries": [
+          {
+            "key": "title",
+            "change": "context",
+            "text": "Notes"
+          }
+        ]
+      }
+    },
+    "f7": {
+      "version": "markdown-diff-v1",
+      "status": "ready",
+      "blocks": [
+        {
+          "kind": "context",
+          "side": "new",
+          "html": "<h1 id=\"user-content-71ee10c56ecf50774ee672b1-new-plain\">Plain</h1>",
+          "source_only": false
+        },
+        {
+          "kind": "context",
+          "side": "new",
+          "html": "<p>Text.</p>",
+          "source_only": false
+        }
+      ],
+      "source_only": false,
+      "frontmatter": {
+        "change": "removed",
+        "entries": [
+          {
+            "key": "draft",
+            "change": "removed",
+            "text": "True"
+          },
+          {
+            "key": "title",
+            "change": "removed",
+            "text": "Plain"
+          }
+        ]
+      }
     }
   },
   "trees": {
@@ -398,6 +491,77 @@
         "attrs": [],
         "children": [
           "Welcome."
+        ]
+      }
+    ],
+    "<h1 id=\"user-content-53205693cc2502516bbe3652-new-notes\">Notes</h1>": [
+      {
+        "tag": "h1",
+        "attrs": [
+          [
+            "id",
+            "user-content-53205693cc2502516bbe3652-new-notes"
+          ]
+        ],
+        "children": [
+          "Notes"
+        ]
+      }
+    ],
+    "<p>The <del>old</del> body.</p>": [
+      {
+        "tag": "p",
+        "attrs": [],
+        "children": [
+          "The ",
+          {
+            "tag": "del",
+            "attrs": [],
+            "children": [
+              "old"
+            ]
+          },
+          " body."
+        ]
+      }
+    ],
+    "<p>The <ins>new</ins> body.</p>": [
+      {
+        "tag": "p",
+        "attrs": [],
+        "children": [
+          "The ",
+          {
+            "tag": "ins",
+            "attrs": [],
+            "children": [
+              "new"
+            ]
+          },
+          " body."
+        ]
+      }
+    ],
+    "<h1 id=\"user-content-71ee10c56ecf50774ee672b1-new-plain\">Plain</h1>": [
+      {
+        "tag": "h1",
+        "attrs": [
+          [
+            "id",
+            "user-content-71ee10c56ecf50774ee672b1-new-plain"
+          ]
+        ],
+        "children": [
+          "Plain"
+        ]
+      }
+    ],
+    "<p>Text.</p>": [
+      {
+        "tag": "p",
+        "attrs": [],
+        "children": [
+          "Text."
         ]
       }
     ]

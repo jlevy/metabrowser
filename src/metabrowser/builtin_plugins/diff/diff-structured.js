@@ -4,20 +4,48 @@
 // (`renderRowHtml` and `materializeRows` of structured/tree.js), so a value reads as it
 // does in the file view; this module only decides which rows a merged tree has, which are
 // open, and what each row's change is.
+//
+// Paths are positional, as tree.js's are: the root's entries are "$", "$~2", and so on,
+// and each child appends "/" and its position among its parent's merged entries. A
+// removed key and the added key of the same name have two paths, and a path is as long
+// as the tree is deep, whatever its keys hold (mb-8274 review B1 and A14).
+//
+// One difference from the file view (review D7): a mapping or list that is an item of a
+// modified list reads `- `, where the file view gives its index (`0: `). The two sides
+// number a changed list's items differently, so neither side's index names the item.
+// Inside a whole added or removed value there is one side, and its items keep their
+// indexes as the file view draws them.
+//
+// What this module reads of tree.js (`materializeRows`, `renderRowHtml`, a row's
+// `change`, `text`, `hidden` and `changed`, and the "more" row) is internal to
+// Metabrowser and changes with it; `renderInlineTree` stays the stable embedding contract.
 
 /** @typedef {"context" | "modified" | "added" | "removed"} Change */
 /** @typedef {{
- *   key?: string, change: Change, value?: unknown,
+ *   key?: string, change: Change, value?: unknown, text?: string,
  *   type?: "map" | "list", entries?: Entry[]
  * }} Entry */
 /** @typedef {MetabrowserStructuredTreeRow} Row */
-/** @typedef {Pick<MetabrowserStructuredBuiltins, "materializeRows" | "calculateOptimalExpansion" | "renderRowHtml">} TreeHelpers */
+/** @typedef {Pick<MetabrowserStructuredBuiltins, "materializeRows" | "calculateOptimalExpansion" | "renderRowHtml" | "expansion">} TreeHelpers */
+/** @typedef {{open: Set<string>, shown: Map<string, number>, tree: TreeHelpers}} View */
 
-// The file view's own expansion (structured/index.js): a whole added or removed value
-// opens as the file view would open it.
-const MAX_LINES = 500;
-const MAX_EXPAND_THRESHOLD = 200;
-const INDENT_CHARS = 2;
+// Rows the first draw mounts. In document order, a modified mapping or list opens while
+// its page of rows fits, and a whole added or removed value opens as the file view would
+// open it (tree.js `EXPANSION`) while its rows fit; what does not fit stays closed, with
+// its change and a preview. Every real answer fits: the 552 of this repository's history
+// draw p50 78, p90 432, p99 741 and at most 2,077 rows (mb-8274 review C). Drawing N rows
+// in headless Chrome 152 to the next frame (Apple M1 Pro, 10 cores, load average 115 to
+// 117, 2026-11-18; medians of 3, `STRUCTURED_SWEEP=1` in tests/dom/diff-structured-chrome.mjs):
+// 1,000 rows of numbers, strings or open records took 24 to 30 ms, and of closed records,
+// each drawing its preview, 80 ms; 2,000 rows took 52 to 61 ms and 161 ms. Review A5's
+// answer of 39,962 rows took 1.6 s to mount and again on every click.
+export const ROW_BUDGET = 1_000;
+// Children an open container draws at a time. A "more" row stands for the rest and
+// draws the next page on a click; in a modified mapping or list it counts the changed
+// entries it holds. Measured with ROW_BUDGET: 500 rows took 20 to 21 ms to the next
+// frame, and 42 ms as closed records, whether mounted or inserted below a row as a click
+// inserts them.
+export const PAGE = 500;
 
 /** @param {unknown} value @returns {value is {version: string, status: string, format: string, root: Entry[], source_only: boolean}} */
 export function isStructuredProjection(value) {
@@ -42,6 +70,9 @@ function isEntry(value) {
   }
   const entry = /** @type {Record<string, unknown>} */ (value);
   if (entry.key !== undefined && typeof entry.key !== "string") {
+    return false;
+  }
+  if (entry.text !== undefined && typeof entry.text !== "string") {
     return false;
   }
   if (entry.change === "modified") {
@@ -73,64 +104,14 @@ function newValue(entry) {
   return Object.fromEntries(shown.map((child) => [child.key ?? "", newValue(child)]));
 }
 
-/** @param {unknown} value */
+/** @param {unknown} value @returns {value is object} */
 function isContainer(value) {
   return value !== null && typeof value === "object";
 }
 
-/**
- * Each entry's place: a key's under its mapping, an item's by its position, and a removed
- * entry beside an added one of the same key apart from it.
- * @param {string} parent
- * @param {Entry[]} entries
- * @param {boolean} list
- * @returns {string[]}
- */
-function childPaths(parent, entries, list) {
-  /** @type {Set<string>} */
-  const seen = new Set();
-  return entries.map((entry, index) => {
-    let path = list ? `${parent}[${index}]` : `${parent}.${entry.key ?? ""}`;
-    if (seen.has(path)) {
-      path += "~2";
-    }
-    seen.add(path);
-    return path;
-  });
-}
-
-/**
- * The paths a merged tree opens on its first draw: every modified mapping and list, and,
- * inside a whole added or removed value, what the file view would open. Unchanged values
- * stay closed, as a fold of unchanged blocks does in a Markdown file.
- * @param {Entry[]} root
- * @param {TreeHelpers} tree
- * @returns {Set<string>}
- */
-export function initialExpansion(root, tree) {
-  /** @type {Set<string>} */
-  const open = new Set();
-  /** @param {Entry[]} entries @param {string[]} paths */
-  const visit = (entries, paths) => {
-    entries.forEach((entry, index) => {
-      const path = paths[index];
-      if (entry.change === "modified") {
-        open.add(path);
-        const children = entry.entries ?? [];
-        visit(children, childPaths(path, children, entry.type === "list"));
-      } else if (entry.change !== "context" && isContainer(entry.value)) {
-        for (const inner of tree.calculateOptimalExpansion(entry.value, {
-          maxLines: MAX_LINES,
-          maxExpandThreshold: MAX_EXPAND_THRESHOLD,
-          indentChars: INDENT_CHARS,
-        })) {
-          open.add(path + inner.slice(1));
-        }
-      }
-    });
-  };
-  visit(root, rootPaths(root));
-  return open;
+/** @param {object} value */
+function childCount(value) {
+  return Array.isArray(value) ? value.length : Object.keys(value).length;
 }
 
 /** @param {Entry[]} root */
@@ -139,116 +120,303 @@ function rootPaths(root) {
 }
 
 /**
- * The rows a merged tree draws with *open* paths open, in document order, each with its
- * change. A whole value's rows come from the tree view's own `materializeRows`.
+ * The paths a merged tree opens on its first draw, within `ROW_BUDGET` rows: modified
+ * mappings and lists, and inside a whole added or removed value what the file view would
+ * open. Unchanged values stay closed, as a fold of unchanged blocks does in a Markdown
+ * file, and so does a whole value whose root holds more than the file view opens.
  * @param {Entry[]} root
- * @param {Set<string>} open
  * @param {TreeHelpers} tree
- * @returns {Row[]}
+ * @returns {Set<string>}
  */
-export function diffRows(root, open, tree) {
-  /** @type {Row[]} */
-  const rows = [];
-  /**
-   * @param {Entry} entry
-   * @param {string} path
-   * @param {number} level
-   * @param {boolean} item
-   */
-  const walk = (entry, path, level, item) => {
-    const key = entry.key ?? null;
+export function initialExpansion(root, tree) {
+  const { maxLines, maxExpandThreshold } = tree.expansion;
+  /** @type {Set<string>} */
+  const open = new Set();
+  let rows = root.length;
+  /** @param {Entry} entry @param {string} path */
+  const visit = (entry, path) => {
     if (entry.change === "modified") {
       const children = entry.entries ?? [];
-      const list = entry.type === "list";
-      const expanded = open.has(path);
-      rows.push({
-        path,
-        level,
-        kind: "open",
-        key,
-        isArrayIndex: item,
-        isArray: list,
-        childCount: children.filter((child) => child.change !== "removed").length,
-        expanded,
-        ...(expanded ? {} : { value: newValue(entry) }),
-        change: "modified",
-      });
-      if (expanded) {
-        const paths = childPaths(path, children, list);
-        children.forEach((child, index) => {
-          walk(child, paths[index], level + 1, list);
-        });
+      const drawn = Math.min(children.length, PAGE);
+      const cost = drawn + (drawn < children.length ? 1 : 0);
+      if (rows + cost > ROW_BUDGET) {
+        return;
+      }
+      open.add(path);
+      rows += cost;
+      for (let index = 0; index < drawn; index++) {
+        visit(children[index], `${path}/${index}`);
       }
       return;
     }
-    /** @type {Set<string>} */
-    const inside = new Set();
-    for (const each of open) {
-      if (each === path || each.startsWith(`${path}.`) || each.startsWith(`${path}[`)) {
-        inside.add(`$${each.slice(path.length)}`);
-      }
+    if (entry.change === "context" || !isContainer(entry.value)) {
+      return;
     }
-    const value = tree.materializeRows(entry.value, inside);
-    value.forEach((row, index) => {
-      const first = index === 0;
-      rows.push({
-        ...row,
-        path: path + row.path.slice(1),
-        level: row.level + level,
-        ...(first
-          ? {
-              key,
-              isArrayIndex: item,
-              kind: row.kind === "kv" && item ? "item" : row.kind,
-            }
-          : {}),
-        change: entry.change,
-      });
+    const remaining = Math.min(maxLines, ROW_BUDGET - rows);
+    const count = childCount(entry.value);
+    if (count === 0 || count > maxExpandThreshold || count > remaining) {
+      return;
+    }
+    const inner = tree.calculateOptimalExpansion(entry.value, {
+      maxLines: remaining,
+      maxExpandThreshold,
     });
+    const cost = tree.materializeRows(entry.value, inner, { limit: PAGE }).length - 1;
+    if (cost > remaining) {
+      return;
+    }
+    rows += cost;
+    for (const each of inner) {
+      open.add(path + each.slice(1));
+    }
   };
-  const paths = rootPaths(root);
-  root.forEach((entry, index) => {
-    walk(entry, paths[index], 0, false);
+  rootPaths(root).forEach((path, index) => {
+    visit(root[index], path);
+  });
+  return open;
+}
+
+/**
+ * An entry's rows at *path*, with its view's open paths open and its pages drawn.
+ * @param {Entry} entry
+ * @param {string} path
+ * @param {number} level
+ * @param {boolean} item
+ * @param {View} view
+ * @param {Row[]} rows
+ */
+function entryRows(entry, path, level, item, view, rows) {
+  const key = entry.key ?? null;
+  if (entry.change === "modified") {
+    const children = entry.entries ?? [];
+    const list = entry.type === "list";
+    const expanded = view.open.has(path);
+    rows.push({
+      path,
+      level,
+      kind: "open",
+      key,
+      isArrayIndex: item,
+      isArray: list,
+      childCount: children.filter((child) => child.change !== "removed").length,
+      expanded,
+      ...(expanded ? {} : { value: newValue(entry) }),
+      change: "modified",
+    });
+    if (!expanded) {
+      return;
+    }
+    const drawn = Math.min(children.length, view.shown.get(path) ?? PAGE);
+    for (let index = 0; index < drawn; index++) {
+      entryRows(children[index], `${path}/${index}`, level + 1, list, view, rows);
+    }
+    if (drawn < children.length) {
+      let changed = 0;
+      for (let index = drawn; index < children.length; index++) {
+        changed += children[index].change === "context" ? 0 : 1;
+      }
+      rows.push({
+        path: `${path}/+`,
+        level: level + 1,
+        kind: "more",
+        key: null,
+        isArrayIndex: false,
+        hidden: children.length - drawn,
+        changed,
+        ...(changed ? { change: "modified" } : {}),
+      });
+    }
+    return;
+  }
+  const value = view.tree.materializeRows(entry.value, view.open, {
+    path,
+    level,
+    key,
+    isArrayIndex: item,
+    limit: PAGE,
+    shown: view.shown,
+  });
+  for (const row of value) {
+    rows.push({ ...row, change: entry.change });
+  }
+  if (typeof entry.text === "string" && !isContainer(entry.value)) {
+    rows[rows.length - 1].text = entry.text;
+  }
+}
+
+/**
+ * The rows a merged tree draws with *open* paths open, in document order, each with its
+ * change, and each open container's children a page at a time (*shown* maps a
+ * container's path to how many it draws instead). A whole value's rows come from the
+ * tree view's own `materializeRows`.
+ * @param {Entry[]} root
+ * @param {Set<string>} open
+ * @param {TreeHelpers} tree
+ * @param {Map<string, number>} [shown]
+ * @returns {Row[]}
+ */
+export function diffRows(root, open, tree, shown = new Map()) {
+  /** @type {View} */
+  const view = { open, shown, tree };
+  /** @type {Row[]} */
+  const rows = [];
+  rootPaths(root).forEach((path, index) => {
+    entryRows(root[index], path, 0, false, view, rows);
   });
   return rows;
 }
 
 /**
- * Draw a merged tree into *container*, which the caller has emptied; a closed row opens
- * on a click, as in the file view.
+ * The rows of the container drawn as *anchor*, the anchor's own row first: an entry of
+ * the merged tree, or a mapping or list inside a whole value.
+ * @param {Entry[]} root
+ * @param {Row} anchor
+ * @param {View} view
+ * @returns {Row[]}
+ */
+function subtreeRows(root, anchor, view) {
+  const [head, ...steps] = anchor.path.split("/");
+  let entry = root[head === "$" ? 0 : Number(head.slice(2)) - 1];
+  /** @type {unknown} */
+  let value;
+  let inside = false;
+  for (const step of steps) {
+    const position = Number(step);
+    if (!inside && entry.change === "modified") {
+      entry = (entry.entries ?? [])[position];
+      continue;
+    }
+    if (!inside) {
+      value = entry.value;
+      inside = true;
+    }
+    const node = /** @type {Record<string, unknown>} */ (value);
+    value = Array.isArray(node) ? node[position] : node[Object.keys(node)[position]];
+  }
+  /** @type {Row[]} */
+  const rows = [];
+  if (!inside) {
+    entryRows(entry, anchor.path, anchor.level, anchor.isArrayIndex, view, rows);
+    return rows;
+  }
+  for (const row of view.tree.materializeRows(value, view.open, {
+    path: anchor.path,
+    level: anchor.level,
+    key: anchor.key,
+    isArrayIndex: anchor.isArrayIndex,
+    limit: PAGE,
+    shown: view.shown,
+  })) {
+    rows.push({ ...row, change: entry.change });
+  }
+  return rows;
+}
+
+/** @param {Row} a @param {Row} b */
+function sameRow(a, b) {
+  return (
+    a.path === b.path && a.kind === b.kind && a.expanded === b.expanded && a.hidden === b.hidden
+  );
+}
+
+/**
+ * Draw a merged tree into *container*, which the caller has emptied. A closed row opens on
+ * a click, as in the file view, and a "more" row draws the next page; either replaces
+ * only the rows below the container it changes.
  * @param {HTMLElement} container
  * @param {Entry[]} root
  * @param {TreeHelpers} tree
+ * @param {{sourceOnly?: boolean}} [options] *sourceOnly*: the answer's `source_only`, said
+ *   in one line above the tree, since every row of it is unchanged.
  * @returns {{dispose: () => void}}
  */
-export function mountStructuredDiff(container, root, tree) {
-  const open = initialExpansion(root, tree);
+export function mountStructuredDiff(container, root, tree, options = {}) {
+  /** @type {View} */
+  const view = { open: initialExpansion(root, tree), shown: new Map(), tree };
+  const indent = tree.expansion.indentChars;
+  /** @param {Row[]} rows */
+  const html = (rows) => rows.map((row) => tree.renderRowHtml(row, indent)).join("");
   const viewport = document.createElement("div");
   viewport.className = "tree-viewport tree-viewport-flat";
-  const draw = () => {
-    viewport.innerHTML = diffRows(root, open, tree)
-      .map((row) => tree.renderRowHtml(row, INDENT_CHARS))
-      .join("");
+  let rows = diffRows(root, view.open, tree, view.shown);
+  viewport.innerHTML = html(rows);
+
+  /**
+   * Redraw the container drawn at rows[at], replacing only the rows that differ.
+   * @param {number} at
+   */
+  const redraw = (at) => {
+    const anchor = rows[at];
+    let end = at + 1;
+    while (end < rows.length && rows[end].level > anchor.level) {
+      end++;
+    }
+    const fresh = subtreeRows(root, anchor, view);
+    let same = 0;
+    while (at + same < end && same < fresh.length && sameRow(rows[at + same], fresh[same])) {
+      same++;
+    }
+    const start = at + same;
+    /** @type {Element | null} */
+    let node = viewport.children[start] ?? null;
+    /** @type {Element[]} */
+    const stale = [];
+    for (let index = start; index < end && node; index++) {
+      stale.push(node);
+      node = node.nextElementSibling;
+    }
+    const added = html(fresh.slice(same));
+    if (node) {
+      node.insertAdjacentHTML("beforebegin", added);
+    } else {
+      viewport.insertAdjacentHTML("beforeend", added);
+    }
+    for (const each of stale) {
+      each.remove();
+    }
+    rows = rows.slice(0, start).concat(fresh.slice(same), rows.slice(end));
   };
+
   /** @param {Event} event */
   const onClick = (event) => {
     const origin = /** @type {{closest?: (selector: string) => Element | null}} */ (event.target);
-    const row = origin?.closest?.(".srow-container");
-    const path = row?.getAttribute("data-path");
-    if (!path || !viewport.contains(row ?? null)) {
+    const element = origin?.closest?.(".srow");
+    const path = element?.getAttribute("data-path");
+    if (!element || !path || !viewport.contains(element)) {
       return;
     }
-    if (open.has(path)) {
-      open.delete(path);
+    let at = rows.findIndex((row) => row.path === path);
+    const row = rows[at];
+    if (row?.kind === "more") {
+      const parent = path.slice(0, -2);
+      while (at >= 0 && rows[at].path !== parent) {
+        at--;
+      }
+      if (at < 0) {
+        return;
+      }
+      view.shown.set(parent, (view.shown.get(parent) ?? PAGE) + PAGE);
+    } else if (row?.kind === "open") {
+      if (view.open.has(path)) {
+        view.open.delete(path);
+      } else {
+        view.open.add(path);
+      }
     } else {
-      open.add(path);
+      return;
     }
-    draw();
+    redraw(at);
   };
   viewport.addEventListener("click", onClick);
   container.classList.add("structured-tree");
-  container.replaceChildren(viewport);
-  draw();
+  if (options.sourceOnly) {
+    const note = document.createElement("p");
+    note.className = "diff-structured-note";
+    note.textContent = "The tree shows no change. Source shows what changed in the text.";
+    container.replaceChildren(note, viewport);
+  } else {
+    container.replaceChildren(viewport);
+  }
   return {
     dispose() {
       viewport.removeEventListener("click", onClick);

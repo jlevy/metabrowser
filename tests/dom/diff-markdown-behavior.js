@@ -208,8 +208,72 @@ async function main() {
     createMarkdownViews,
     firstScreenRendered,
     markdownTargets,
+    renderedFormat,
     supportsRenderedChange,
   } = await import(pathToFileURL(path.join(plugin, "diff-markdown.js")));
+  // The format a change renders as, from both its sides' names, as the server's route
+  // reads them (`_rendered_format` in github/pull_rendered_diff.py): an extension in any
+  // case, one format on both sides, files only, and a dotfile's name is no extension.
+  const side = (name) => ({ entry_type: "file", path: name });
+  const formats = [
+    ...["md", "markdown", "mdown", "mkd", "MD", "Markdown", "MDOWN", "MKD"].map((ext) => [
+      `docs/a.${ext}`,
+      "markdown",
+    ]),
+    ...["yaml", "yml", "YAML", "Yml"].map((ext) => [`deploy/a.${ext}`, "yaml"]),
+    ...["json", "JSON", "Json"].map((ext) => [`data/a.${ext}`, "json"]),
+    ["a.tar.json", "json"],
+    [".json", null],
+    ["config/.yml", null],
+    [".md", null],
+    ["notes.txt", null],
+    ["a.json.bak", null],
+    ["Makefile", null],
+  ];
+  for (const [name, format] of formats) {
+    assert.equal(
+      renderedFormat({ availability: "ready", old: null, new: side(name) }),
+      format,
+      name,
+    );
+    assert.equal(
+      renderedFormat({ availability: "deferred", old: side(name), new: side(name) }),
+      format,
+      `${name}, deferred`,
+    );
+  }
+  for (const [old, now, format] of [
+    ["a.md", "b.markdown", "markdown"],
+    ["a.yml", "a.YAML", "yaml"],
+    ["a.md", "a.yaml", null],
+    ["a.yaml", "a.json", null],
+    ["a.json", "a.txt", null],
+  ]) {
+    assert.equal(
+      renderedFormat({ availability: "ready", old: side(old), new: side(now) }),
+      format,
+      `renamed ${old} to ${now}`,
+    );
+  }
+  for (const entry_type of ["symlink", "submodule", "directory"]) {
+    assert.equal(
+      renderedFormat({ availability: "ready", old: null, new: { entry_type, path: "a.json" } }),
+      null,
+      `a ${entry_type}`,
+    );
+  }
+  assert.equal(
+    renderedFormat({
+      availability: "ready",
+      old: side("a.json"),
+      new: { entry_type: "symlink", path: "a.json" },
+    }),
+    null,
+    "a file that became a symlink",
+  );
+  for (const availability of ["binary", "too_large", "unavailable", undefined]) {
+    assert.equal(renderedFormat({ availability, new: side("a.json") }), null, `${availability}`);
+  }
   const md = { entry_type: "file", path: "docs/readme.MD" };
   assert.equal(supportsRenderedChange({ availability: "ready", old: null, new: md }), true);
   assert.equal(supportsRenderedChange({ availability: "deferred", old: md, new: null }), true);

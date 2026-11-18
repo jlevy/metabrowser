@@ -1159,10 +1159,15 @@ type MetabrowserPluginData = {
   [key: string]: unknown;
 };
 
-/** A row of the structured tree (structured/tree.js `materializeRows`). */
+/**
+ * A row of the structured tree (structured/tree.js `materializeRows`). Its path is
+ * positional ("$/3/0"). Internal to Metabrowser's own views: `renderInlineTree` is the
+ * stable embedding contract, and a row's fields change with the views that draw them.
+ */
 type StructuredTreeRow = {
   path: string;
   level: number;
+  /** "kv", "item", "open", "empty", or "more" for the children a page leaves out. */
   kind: string;
   key: string | null;
   value?: unknown;
@@ -1172,16 +1177,44 @@ type StructuredTreeRow = {
   expanded?: boolean;
   /** How a rendered diff marks the row; the file view sets none. */
   change?: "context" | "modified" | "added" | "removed";
+  /** A number's JSON text, drawn in place of its value (a diff answer's entry `text`). */
+  text?: string;
+  /** A "more" row's count of children left out. */
+  hidden?: number;
+  /** A "more" row's count of changed entries among those left out (a rendered diff). */
+  changed?: number;
 };
+
+/** Where `materializeRows` places a value and how many children an open container draws. */
+type StructuredMaterializeOptions = {
+  path?: string;
+  level?: number;
+  key?: string | null;
+  isArrayIndex?: boolean;
+  limit?: number;
+  shown?: ReadonlyMap<string, number>;
+};
+
+/** The file view's first-draw expansion (structured/tree.js `EXPANSION`). */
+type StructuredExpansion = Readonly<{
+  maxLines: number;
+  maxExpandThreshold: number;
+  indentChars: number;
+}>;
 
 type StructuredBuiltins = {
   calculateOptimalExpansion: (
     parsed: unknown,
     options: { maxLines?: number; maxExpandThreshold?: number; indentChars?: number },
   ) => Set<string>;
+  expansion: StructuredExpansion;
   formatValue: (...args: Array<unknown>) => unknown;
   generateStructuredPreview: (...args: Array<unknown>) => unknown;
-  materializeRows: (parsed: unknown, expandedPaths: Set<string>) => StructuredTreeRow[];
+  materializeRows: (
+    parsed: unknown,
+    expandedPaths: ReadonlySet<string>,
+    options?: StructuredMaterializeOptions,
+  ) => StructuredTreeRow[];
   renderRowHtml: (row: StructuredTreeRow, indentChars: number) => string;
   renderInlineTree(
     container: HTMLElement,
@@ -1648,6 +1681,7 @@ type StructuredPreviewGlobal = {
 };
 
 type StructuredTreeGlobal = {
+  expansion: StructuredExpansion;
   materializeRows: StructuredBuiltins["materializeRows"];
   renderRowHtml: StructuredBuiltins["renderRowHtml"];
   renderInlineTree: (

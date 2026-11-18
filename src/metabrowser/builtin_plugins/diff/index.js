@@ -78,8 +78,13 @@ function pluginComparisonRoute(route) {
  * mount waits for it, and mounts its views only when the manifest lists a Markdown file.
  * A failed import leaves every file in Source.
  *
- * diff-markdown.js is an on-demand tier: a pull request's Changes loads it, and no other
- * diff does: 25,267 bytes, 7,861 gzipped.
+ * The layer is an on-demand tier: a pull request's Changes loads it, and no other diff
+ * does. It is two modules, diff-markdown.js and the diff-structured.js it imports
+ * statically: on 2026-11-18, 34,717 and 14,341 bytes, 10,373 and 4,637 gzipped at
+ * `delivery.GZIP_LEVEL` (`gzip -6 -c FILE | wc -c` reports them). The static import stays:
+ * importing diff-structured.js at the first YAML or JSON file would spare a pull request
+ * with only Markdown under 5 KB, and the second request starts only once the first is
+ * parsed, 4 to 11 ms later on localhost (mb-8274 review C7).
  *
  * @param {Comparison | undefined} comparison
  */
@@ -132,7 +137,22 @@ async function prefetchMarkdown(markdown, payload, signal) {
   if (views === null || !Array.isArray(files)) {
     return;
   }
-  for (const fileId of views.firstScreenRendered(files)) {
+  const first = views.firstScreenRendered(files);
+  // A tree's renderer is the structured plugin's, which loads on demand: ask for it now
+  // too, so Changes finds it loaded (mb-8274 review C1).
+  const ids = new Set(first);
+  const trees = files.some((file) => {
+    const change = /** @type {Record<string, unknown> | null} */ (file);
+    return (
+      typeof change?.id === "string" &&
+      ids.has(change.id) &&
+      views.renderedFormat(change) !== "markdown"
+    );
+  });
+  if (trees) {
+    mb.ensureKindAssets?.("structured").catch(() => {});
+  }
+  for (const fileId of first) {
     if (signal?.aborted) {
       return;
     }

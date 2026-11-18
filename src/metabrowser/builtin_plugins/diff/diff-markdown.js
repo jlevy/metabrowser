@@ -10,11 +10,13 @@ import { isStructuredProjection, mountStructuredDiff } from "./diff-structured.j
 const CONTEXT_BLOCKS = 2;
 // The formats a changed file renders as, by its extension, as the server's route admits
 // them (github/pull_rendered_diff.py), each with the name its chooser and progress use.
+// An extension follows at least one character of its name, as Python's `Path.suffix`
+// reads it, so a dotfile named `.json` has none.
 /** @type {ReadonlyArray<[RegExp, RenderedFormat, string]>} */
 const FORMATS = [
-  [/\.(?:md|markdown|mdown|mkd)$/i, "markdown", "Markdown"],
-  [/\.ya?ml$/i, "yaml", "YAML"],
-  [/\.json$/i, "json", "JSON"],
+  [/[^/]\.(?:md|markdown|mdown|mkd)$/i, "markdown", "Markdown"],
+  [/[^/]\.ya?ml$/i, "yaml", "YAML"],
+  [/[^/]\.json$/i, "json", "JSON"],
 ];
 // How far below the viewport a projection is requested: one viewport. A projection
 // answers in 12 ms at the median and 31-33 ms at p90 of server CPU (434 real pairs), plus
@@ -457,6 +459,8 @@ export function createMarkdownViews(deps) {
   let inertReady;
   /** @type {Promise<void> | undefined} */
   let stylesReady;
+  /** @type {Promise<TreeHelpers | undefined> | undefined} */
+  let structuredReady;
   let disposed = false;
   let observed = false;
   let reported = false;
@@ -624,6 +628,20 @@ export function createMarkdownViews(deps) {
     );
   }
 
+  // The structured plugin's assets, asked for when the first YAML or JSON file is added,
+  // so they load beside its first request; every load awaits this one promise, and
+  // index.js asks for them too with the first screen's prefetch. They are four files,
+  // preview.js, tree.js, index.js and styles.css: 37,324 bytes, 12,373 gzipped at
+  // `delivery.GZIP_LEVEL` on 2026-11-18. Loaded inside the first-screen hold, as they were
+  // before, the hold took a median 130 ms cold against 106 ms warm in the live app (mb-8274
+  // review C1). A failure is not kept: the next load asks again.
+  function ensureStructured() {
+    structuredReady ??= Promise.resolve()
+      .then(() => deps.ensureStructured?.())
+      .catch(() => undefined);
+    return structuredReady;
+  }
+
   /** @param {FileView} file @param {AbortSignal} signal */
   async function load(file, signal) {
     let settled = false;
@@ -639,8 +657,9 @@ export function createMarkdownViews(deps) {
           fallBack(file, true);
           return;
         }
-        const tree = await deps.ensureStructured?.();
+        const tree = await ensureStructured();
         if (tree === undefined) {
+          structuredReady = undefined;
           throw new Error("The structured tree renderer is unavailable.");
         }
         if (signal.aborted || disposed) {
@@ -649,7 +668,9 @@ export function createMarkdownViews(deps) {
         settled = true;
         deps.mutate(() => {
           file.tree?.dispose();
-          file.tree = mountStructuredDiff(file.rendered, projection.root, tree);
+          file.tree = mountStructuredDiff(file.rendered, projection.root, tree, {
+            sourceOnly: projection.source_only,
+          });
           file.state = "ready";
           file.pending = false;
           file.retries = 0;
@@ -770,6 +791,7 @@ export function createMarkdownViews(deps) {
         rendered.className = "kpress kpress-inert diff-markdown";
       } else {
         rendered.className = "diff-structured";
+        ensureStructured();
       }
       rendered.id = `${source.id}-rendered`;
       const progress = document.createElement("span");

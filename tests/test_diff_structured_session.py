@@ -1,9 +1,10 @@
 """The rendered YAML and JSON session runs production browser code on the server's trees.
 
-``tests/dom/diff-structured-session.js`` loads ``builtin_plugins/diff/diff-structured.js``
-and the structured plugin's ``preview.js`` and ``tree.js`` whole, and draws each merged
-tree as a pull request's Changes does: which rows it has, which open first, what a click
-opens and closes, and how each row is marked. ``tests/golden/cli-ui-diff-structured.tryscript.md``
+``tests/dom/diff-structured-session.js`` loads ``builtin_plugins/diff/diff-structured.js``,
+``diff-markdown.js`` and the structured plugin's ``preview.js`` and ``tree.js`` whole, and
+mounts each file through the page's views as a pull request's Changes does: which rows a
+merged tree has, which open first, what a click opens and closes, how each row is marked,
+and the chooser, refusal and disposal around it. ``tests/golden/cli-ui-diff-structured.tryscript.md``
 pins its transcript. So that the trees are the server's and not ones a test wrote by hand,
 they come from ``tests/fixtures/diff-structured-responses.json``: what
 :func:`metabrowser.diff.structured_projection.project_structured_diff` answers for these
@@ -46,6 +47,12 @@ flags:
   - fast
   - safe
 """
+# An alias is refused before the side is loaded, so the file shows only Source.
+_ANCHORS_OLD = b"base: &base {replicas: 1}\nworker: *base\n"
+_ANCHORS_NEW = b"base: &base {replicas: 2}\nworker: *base\n"
+# Only a comment changed: the tree shows no change, and the page says Source does.
+_COMMENTS_OLD = b"# settings\nmode: fast\nretries: 3\n"
+_COMMENTS_NEW = b"# the service's settings\nmode: fast\nretries: 3\n"
 
 
 def _answer(old: bytes | None, new: bytes | None, fmt: Format) -> dict[str, Any]:
@@ -57,28 +64,45 @@ def _recording() -> dict[str, Any]:
         "config/app.yaml": _answer(_CONFIG_OLD, _CONFIG_NEW, "yaml"),
         "package.json": _answer(None, b'{"name": "demo", "scripts": {"test": "make"}}\n', "json"),
         "data/swap.json": _answer(b"[1, 2]\n", b'"text"\n', "json"),
+        "deploy/anchors.yaml": _answer(_ANCHORS_OLD, _ANCHORS_NEW, "yaml"),
+        "config/comments.yaml": _answer(_COMMENTS_OLD, _COMMENTS_NEW, "yaml"),
     }
 
 
 def test_recording_matches_the_production_projection() -> None:
     recording = _recording()
-    assert {path: answer["status"] for path, answer in recording.items()} == dict.fromkeys(
-        recording, "ready"
-    )
+    assert {path: answer["status"] for path, answer in recording.items()} == {
+        **dict.fromkeys(recording, "ready"),
+        "deploy/anchors.yaml": "unsupported",
+    }
+    assert recording["config/comments.yaml"]["source_only"] is True
     check_recording(_RECORDING, recording, transcript="cli-ui-diff-structured.tryscript.md")
 
 
 def test_session_replays_the_recording() -> None:
     transcript = run_session("diff-structured-session.js")
-    config = transcript["config/app.yaml"]
-    assert config["opens"] == [
-        "$",
-        "$.services",
-        "$.services.db",
-        "$.services.web",
-        "$.services.web.ports",
+    first, *_ = transcript["steps"]
+    assert first["renderer asked before the first answer"] == 1
+    assert first["renderer asked in all"] == 1
+    files = first["files"]
+    config = files["config/app.yaml"]
+    assert config["chooser"] == "YAML diff format: *Rendered | Source"
+    assert config["shows"] == "rendered"
+    assert "  removed leaf version: 3" in config["rows"]
+    assert "  added leaf version: 4" in config["rows"]
+    assert '  context closed flags: ["fast", "safe"]' in config["rows"]
+    assert files["package.json"]["chooser"] == "JSON diff format: *Rendered | Source"
+    assert files["data/swap.json"]["rows"][0].startswith("removed open")
+    assert files["deploy/anchors.yaml"] == {"chooser": "none", "shows": "source"}
+    comments = files["config/comments.yaml"]["rows"]
+    assert comments[0].startswith("note: ")
+    assert comments[1].startswith("context closed ")
+    by_step = {step["step"]: step for step in transcript["steps"]}
+    missing = by_step[
+        "a tree renderer that failed to load leaves the file in Source, its chooser kept"
     ]
-    assert "  removed kv version: 3" in config["first draw"]
-    assert "  added kv version: 4" in config["first draw"]
-    assert '  context open flags: ["fast", "safe"]' in config["first draw"]
-    assert transcript["data/swap.json"]["first draw"][0].startswith("removed open")
+    assert missing["files"]["config/app.yaml"] == {
+        "chooser": "YAML diff format: Rendered | *Source",
+        "shows": "source",
+    }
+    assert by_step["disposal removes each tree's click listener"]["listeners"] == 0

@@ -5,15 +5,24 @@
 // the container the shell hands us at render time.
 //
 // Public surface (assigned to window.__structuredTree):
-//   materializeRows(parsed, expandedPaths) -> Row[]
-//   renderRowHtml(row, indentChars) -> string; a row's optional `change` ("added",
-//     "removed" or "modified") marks it, as a rendered diff draws it (diff-structured.js)
+//   materializeRows(parsed, expandedPaths, opts?) -> Row[]
+//     opts: {path, level, key, isArrayIndex, limit, shown}; see materializeRows
+//   renderRowHtml(row, indentChars) -> string
 //   renderInlineTree(container, parsed, opts) -> {dispose}
 //     opts: {maxLines, maxExpandThreshold, indentChars, virtualize}
+//   expansion: the file view's first-draw expansion options
+//
+// A row's path is positional: the root is "$" and each child appends "/" and its
+// index among its parent's entries, so "$/3/0" is the first entry of the root's fourth.
+// A path is as long as the value is deep, whatever its keys are, and two entries never
+// share one (mb-8274 review B1 and A14).
 //
 // renderInlineTree is the stable embedding contract that other
 // plugins (agent-log, future schema-aware variants) consume via
-// mb.builtins.structured.renderInlineTree.
+// mb.builtins.structured.renderInlineTree. materializeRows, renderRowHtml, a row's
+// fields (`change`, `text`, `hidden` and `changed` among them), and the "more" row are
+// internal to Metabrowser's own views (the rendered diff, diff-structured.js) and change
+// with them.
 ((global) => {
   var pv = global.__structuredPreview;
   if (!pv) {
@@ -29,6 +38,14 @@
   // Below this row count we skip virtualization — the DOM cost is
   // trivial and the windowed-list scroll-listener overhead is wasted.
   var VIRTUALIZE_ROW_THRESHOLD = 200;
+  // The file view's first-draw expansion, which a pull request's rendered diff reads
+  // too (diff-structured.js), so a value opens alike in both. The JsonViewer reference
+  // picked 8 lines for a sidebar embed; the structured browser is a full pane. With
+  // virtualization the DOM cost of an open row bottoms out at zero (only visible rows
+  // are mounted), so maxLines is a UX choice: how many lines of context the reader
+  // expects on first paint. 500 makes the 16k-node MSFT bundle browseable without a
+  // click on every nested object; maxExpandThreshold keeps a 5,000-item list closed.
+  var EXPANSION = Object.freeze({ maxLines: 500, maxExpandThreshold: 200, indentChars: 2 });
 
   function escHtml(s) {
     if (s === null || s === undefined) {
@@ -69,12 +86,23 @@
     return oo;
   }
 
-  function _childPath(parentPath, entry) {
-    return entry.isArrayIndex ? `${parentPath}[${entry.key}]` : `${parentPath}.${entry.key}`;
+  // A child's path: its parent's and its position among the parent's entries.
+  function _childPath(parentPath, index) {
+    return `${parentPath}/${index}`;
   }
 
-  function materializeRows(parsed, expandedPaths) {
+  // The rows of `parsed` with the containers at `expandedPaths` open, in document order.
+  // `opts` places the value inside a larger tree, as a rendered diff draws one entry's
+  // value under its key: `path` (default "$"), `level`, and the root row's `key` and
+  // `isArrayIndex`. `limit` bounds the children an open container draws, and `shown`
+  // maps a container's path to how many it draws instead; the rest are one "more" row
+  // (path: the container's and "/+", `hidden`: how many), which the diff opens a page of
+  // at a time. Without a limit every child is drawn, as the file view draws them.
+  function materializeRows(parsed, expandedPaths, opts) {
+    opts = opts || {};
     var rows = [];
+    var limit = opts.limit === undefined ? Infinity : opts.limit;
+    var shown = opts.shown;
 
     function walk(value, key, isArrayIndex, level, path) {
       if (!_isContainer(value)) {
@@ -82,7 +110,7 @@
           path: path,
           level: level,
           kind: isArrayIndex ? "item" : "kv",
-          key: isArrayIndex ? null : String(key),
+          key: isArrayIndex || key === null ? null : String(key),
           value: value,
           isArrayIndex: isArrayIndex,
         });
@@ -116,24 +144,30 @@
       if (!isExpanded) {
         return;
       }
-      for (var i = 0; i < entries.length; i++) {
+      var drawn = Math.min(entries.length, shown?.get(path) || limit);
+      for (var i = 0; i < drawn; i++) {
         var e = entries[i];
-        walk(e.value, e.key, e.isArrayIndex, level + 1, _childPath(path, e));
+        walk(e.value, e.key, e.isArrayIndex, level + 1, _childPath(path, i));
+      }
+      if (drawn < entries.length) {
+        rows.push({
+          path: `${path}/+`,
+          level: level + 1,
+          kind: "more",
+          key: null,
+          isArrayIndex: false,
+          hidden: entries.length - drawn,
+        });
       }
     }
 
-    if (!_isContainer(parsed)) {
-      rows.push({
-        path: "$",
-        level: 0,
-        kind: "kv",
-        key: null,
-        value: parsed,
-        isArrayIndex: false,
-      });
-      return rows;
-    }
-    walk(parsed, null, false, 0, "$");
+    walk(
+      parsed,
+      opts.key === undefined ? null : opts.key,
+      opts.isArrayIndex === true,
+      opts.level || 0,
+      opts.path || "$",
+    );
     return rows;
   }
 
@@ -186,6 +220,9 @@
       rowClass += " srow-empty";
       chevronHtml = '<span class="srow-chevron srow-chevron-empty"></span>';
     } else {
+      if (row.kind === "more") {
+        rowClass += " srow-more";
+      }
       chevronHtml = '<span class="srow-chevron srow-chevron-leaf"></span>';
     }
 
@@ -209,9 +246,16 @@
     }
 
     var bodyHtml = "";
-    if (row.kind === "kv" || row.kind === "item") {
+    if ((row.kind === "kv" || row.kind === "item") && typeof row.text === "string") {
+      // A number JSON spells past what a double keeps, as the diff's answer gives it.
+      bodyHtml = `<span class="tok-number">${escHtml(row.text)}</span>`;
+    } else if (row.kind === "kv" || row.kind === "item") {
       var fv = pv.formatValue(row.value);
       bodyHtml = `<span class="${fv.colorClass}">${escHtml(fv.text)}</span>`;
+    } else if (row.kind === "more") {
+      // Chrome metadata, not content, as a preview's "(N more)" is.
+      var changed = row.changed ? `, ${escHtml(row.changed)} changed` : "";
+      bodyHtml = `<span class="tok-meta">… ${escHtml(row.hidden)} more${changed}</span>`;
     } else if (row.kind === "open") {
       if (row.expanded) {
         var label = row.isArray ? `${row.childCount} items` : `${row.childCount} keys`;
@@ -422,5 +466,6 @@
     materializeRows: materializeRows,
     renderRowHtml: renderRowHtml,
     renderInlineTree: renderInlineTree,
+    expansion: EXPANSION,
   };
 })(typeof window !== "undefined" ? window : globalThis);

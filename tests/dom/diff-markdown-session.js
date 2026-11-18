@@ -423,17 +423,23 @@ function rows(article) {
 }
 
 // Front matter is the Document view's Frontmatter disclosure: its summary, whether it is
-// open, and each key with its value and, when it changed, its change.
+// open, whether it was added or removed whole, and each key with its value and, when it
+// changed, its change.
 function frontmatter(row) {
   const [details] = row.childNodes.filter((node) => node.className !== "sr-only");
   assert(details.tagName === "DETAILS" && details.className === "kpress-frontmatter");
+  const whole = ["added", "removed"].find((change) =>
+    row.classList.contains(`diff-markdown-${change}`),
+  );
   const [summary, list] = details.childNodes;
-  const shown = [`[${summary.textContent}${details.open ? ", open" : ""}]`];
+  const shown = [
+    `[${summary.textContent}${details.open ? ", open" : ""}${whole ? `, ${whole}` : ""}]`,
+  ];
   for (let index = 0; index < list.childNodes.length; index += 2) {
     const [term, value] = list.childNodes.slice(index, index + 2);
     const change = term.className.replace("diff-frontmatter-", "");
     const key = term.childNodes.filter((node) => node.className !== "sr-only")[0].textContent;
-    shown.push(`  ${change || "context"}: ${key} = ${value.textContent}`);
+    shown.push(`  ${change || whole || "context"}: ${key} = ${value.textContent}`);
   }
   return shown;
 }
@@ -722,6 +728,18 @@ async function main() {
   await choose(byId.f1, "rendered");
   near("f1");
   step("switching formats asks for nothing", [byId.f1]);
+
+  near("f6", "f7");
+  await settle();
+  answer("f6");
+  await settle();
+  answer("f7");
+  await settle();
+  step(
+    "front matter that did not change is closed above the body's change, " +
+      "and front matter removed is one removed row",
+    [byId.f6, byId.f7],
+  );
 
   // Another tab switched the server's pin: a link to a file of the head would open that
   // path at the other pin, so every one drawn becomes plain text, and so does any drawn

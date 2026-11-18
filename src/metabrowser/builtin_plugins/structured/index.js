@@ -27,6 +27,9 @@
     return;
   }
   const renderInlineTree = tree.renderInlineTree;
+  // tree.js's `expansion` says why the file view opens what it opens; a rendered diff
+  // reads it too.
+  const expansion = tree.expansion;
 
   // Track the currently mounted tree-view instance so dispose can
   // tear down its scroll listener when the preview pane is replaced.
@@ -103,18 +106,7 @@
 
       _activeTreeHandle = renderInlineTree(treeMount, data.parsed, {
         virtualize: true,
-        // Auto-expand budget. The JsonViewer reference picked 8 for a
-        // sidebar embed; the structured browser is a full pane. With
-        // virtualization the DOM cost of a "row in expandedPaths"
-        // bottoms out at zero (only visible rows are mounted), so the
-        // budget is really a UX choice: how many lines of context
-        // does the operator expect to see on first paint? 500 makes
-        // the 16k-node MSFT bundle browseable without click-to-expand
-        // on every nested object; the per-container threshold still
-        // keeps individual 5000-item arrays collapsed by default.
-        maxLines: 500,
-        maxExpandThreshold: 200,
-        indentChars: 2,
+        ...expansion,
       });
     });
   }
@@ -139,6 +131,7 @@
     formatValue: preview.formatValue,
     generateStructuredPreview: preview.generateStructuredPreview,
     calculateOptimalExpansion: preview.calculateOptimalExpansion,
+    expansion,
   };
 
   mb.registerView("structured", "tree", {

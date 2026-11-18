@@ -113,5 +113,26 @@
       }
     ],
     "source_only": false
+  },
+  "deploy/anchors.yaml": {
+    "version": "structured-diff-v1",
+    "status": "unsupported",
+    "root": [],
+    "source_only": false
+  },
+  "config/comments.yaml": {
+    "version": "structured-diff-v1",
+    "status": "ready",
+    "format": "yaml",
+    "root": [
+      {
+        "change": "context",
+        "value": {
+          "mode": "fast",
+          "retries": 3
+        }
+      }
+    ],
+    "source_only": true
   }
 }
