@@ -14,6 +14,10 @@ def _app_js() -> str:
     return proc_browser.STATIC_DIR.joinpath("app.js").read_text()
 
 
+def _view_header_js() -> str:
+    return proc_browser.STATIC_DIR.joinpath("view-header.js").read_text()
+
+
 def _styles_css() -> str:
     return proc_browser.STATIC_DIR.joinpath("styles.css").read_text()
 
@@ -66,8 +70,9 @@ def test_tree_emit_attaches_data_logical_ext_attr_when_present() -> None:
 
 def test_render_badges_emits_compressed_badge_for_compressed_files() -> None:
     """Preview-pane file header gets a Compressed (or Gzip) badge whenever
-    the server response says ``compressed: true``."""
-    js = _app_js()
+    the server response says ``compressed: true``. The header's builders are
+    view-header.js's."""
+    js = _view_header_js()
     assert "if (data?.compressed)" in js
     assert "badge-compressed" in js
 
