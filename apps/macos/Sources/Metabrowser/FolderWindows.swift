@@ -116,12 +116,12 @@ final class FolderWindows {
         let tabs = controllers.map { controller in
             TabActivity(
                 id: ObjectIdentifier(controller), isBackground: Self.isBackgroundTab(controller.window),
-                isLive: !controller.isDiscarded, lastShown: lastShown[ObjectIdentifier(controller)] ?? 0)
+                isLive: !controller.page.isDiscarded, lastShown: lastShown[ObjectIdentifier(controller)] ?? 0)
         }
         let discards = Set(discardPolicy.discards(tabs))
         for controller in controllers where discards.contains(ObjectIdentifier(controller)) {
             AppLog.app.info("discarding the page of background tab \(controller.window?.title ?? "", privacy: .public)")
-            controller.discardPage()
+            controller.page.discardPage()
         }
     }
 
@@ -160,7 +160,7 @@ final class FolderWindows {
             let tabs = group.compactMap { owners[ObjectIdentifier($0)] }
             let shown = window.tabGroup?.selectedWindow ?? window
             windows.append(SavedWindow(
-                tabs: tabs.map { SavedTab(root: $0.session.path, page: $0.controller.currentPage) },
+                tabs: tabs.map { SavedTab(root: $0.session.path, page: $0.controller.page.currentPage) },
                 selected: tabs.firstIndex { $0.controller.window === shown } ?? 0,
                 frame: shown.frameDescriptor))
         }
@@ -264,7 +264,7 @@ final class FolderWindows {
         }
         let queue = RestoreQueue(session, isProtected: admitted.deferred.contains)
         for path in queue.deferred {
-            sessionForPath(path)?.windows.forEach { $0.showWaitingForSelection() }
+            sessionForPath(path)?.pages.forEach { $0.showWaitingForSelection() }
         }
         let run = RestoreRun(
             queue, folder: { [weak self] in self?.sessionForPath($0) },
@@ -291,15 +291,15 @@ final class FolderWindows {
         case .changedBeforeItsTurn(let path):
             AppLog.app.info(
                 "\(path, privacy: .public) changed since the launch admitted it; it starts when its tab is selected")
-            sessionForPath(path)?.windows.forEach { $0.showWaitingForSelection() }
+            sessionForPath(path)?.pages.forEach { $0.showWaitingForSelection() }
         case .changedWhileWaiting(let path):
             AppLog.app.info(
                 "\(path, privacy: .public) changed while it waited to start; it starts when its tab is selected")
-            sessionForPath(path)?.windows.forEach { $0.showWaitingForSelection() }
+            sessionForPath(path)?.pages.forEach { $0.showWaitingForSelection() }
         case .waitingForRuntime(let pending):
             AppLog.app.info("the restore waits for a metab Metabrowser can run")
             for waiting in pending {
-                sessionForPath(waiting)?.windows.forEach { $0.showWaitingForRuntime() }
+                sessionForPath(waiting)?.pages.forEach { $0.showWaitingForRuntime() }
             }
         case .moved(let saved, let canonical):
             AppLog.app.info(
@@ -328,7 +328,7 @@ final class FolderWindows {
     /// selected and key if `old` was. Then closes `old`.
     private func replace(_ old: BrowserWindowController, with session: FolderSession) {
         guard let oldWindow = old.window else { return }
-        let page = old.currentPage
+        let page = old.page.currentPage
         let isShown = !Self.isBackgroundTab(oldWindow)
         let wasKey = oldWindow.isKeyWindow
         let replacement = session.makeWindow(page: page, discarded: !isShown)
@@ -338,7 +338,7 @@ final class FolderWindows {
             window.tabGroup?.selectedWindow = window
             // Joining a server that is ready loads nothing by itself. Without a page of its
             // own, the tab shows the folder's own page, the server's entry page.
-            replacement.show(page ?? .view(of: ""))
+            replacement.page.show(page ?? .view(of: ""))
         }
         lastShown[ObjectIdentifier(replacement)] = lastShown[ObjectIdentifier(old)]
         if wasKey { window.makeKeyAndOrderFront(nil) }

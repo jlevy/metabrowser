@@ -410,6 +410,14 @@ Applications.
 
 ## Windows
 
+- **Pages and windows.** A folder’s page (`FolderPage`) holds its web view and
+  everything per page: the navigation policy, the loads, the status view, sheets, find,
+  print, and downloads.
+  It belongs to the folder’s session, which counts its pages, not its windows, so the
+  server stops when the last page closes.
+  A window (`BrowserWindowController`) holds only the window and its chrome, and shows
+  one page at a time; the menus’ page actions reach the page it shows through the window
+  controller (`supplementalTarget(forAction:sender:)`).
 - **Title.** The folder’s short name, from `GET /api/identity` once the server is ready
   and from the path until then (`FolderIdentity.localFolder`). `window.title` is the
   short name too, or the full name while two open folders share a short name
@@ -526,8 +534,7 @@ The page is the one any browser opens, and the app handles what WebKit does diff
 - **`javaScriptCanOpenWindowsAutomatically`** defaults to on in macOS, so
   `WebConfiguration.restrict` turns it off and a previewed HTML file cannot open tabs by
   itself.
-- **Printing** runs modally for the window, which `BrowserWindowController.printPage`
-  explains.
+- **Printing** runs modally for the window, which `FolderPage.printPage` explains.
 
 ### Measured in WebKit
 

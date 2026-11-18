@@ -2,14 +2,13 @@ import AppKit
 import ShellCore
 import WebKit
 
-/// One opened folder or GitHub repository (`SessionRoot`): one server, and the windows
-/// that show it.
+/// One opened folder or GitHub repository (`SessionRoot`): one server, and its pages
+/// (`FolderPage`), each shown in a window.
 ///
-/// The first window opens before the server starts and shows its progress; windows the
-/// page opens (`target=_blank`, Command-click) join it as tabs. When the last window
-/// closes, the server stops: a folder nobody is looking at keeps no process running.
-/// A restored folder's windows open before its server starts, which `FolderWindows`
-/// schedules.
+/// The first page opens before the server starts and shows its progress; pages the page
+/// opens (`target=_blank`, Command-click) join it as tabs. When the last page closes, the
+/// server stops: a folder nobody is looking at keeps no process running. A restored
+/// folder's pages open before its server starts, which `FolderWindows` schedules.
 final class FolderSession: ManagedServer {
     /// What the session serves, which keys it.
     let served: SessionRoot
@@ -22,7 +21,10 @@ final class FolderSession: ManagedServer {
     /// The supervisor, behind the gate every start and restart passes.
     private let server: FolderServer
     private var supervisor: ServerSupervisor { server.supervisor }
-    private(set) var windows: [BrowserWindowController] = []
+    /// The folder's pages, in the order they opened.
+    private(set) var pages: [FolderPage] = []
+    /// The windows showing the folder's pages.
+    var windows: [BrowserWindowController] { pages.compactMap(\.host) }
     private var endpoint: ServerEndpoint?
     private var failure: ServerFailure?
     /// What every window of the folder calls itself: from the folder's path until the
@@ -32,7 +34,7 @@ final class FolderSession: ManagedServer {
     /// folder shares the short name, which the app delegate decides across folders
     /// (`WindowTitle.windowTitles`).
     var windowTitle: String {
-        didSet { if windowTitle != oldValue { windows.forEach { $0.showTitle(title, windowTitle: windowTitle) } } }
+        didSet { if windowTitle != oldValue { showTitleInWindows() } }
     }
     private var identityRequest: Task<Void, Never>?
     /// What the server is started with: the folder, or the repository link `open(link:)`
@@ -45,13 +47,14 @@ final class FolderSession: ManagedServer {
     /// Whether the start waits for another repository's, which the status view says, and
     /// the windows that asked for a restart, which say so while the old server serves the
     /// other tabs.
-    private var restartWait = RestartWait<BrowserWindowController>()
+    private var restartWait = RestartWait<FolderPage>()
     /// Asks the ready server whether it found what the link it started on names.
     private var selectionWatch: Task<Void, Never>?
     /// The folder's title changed, so every open folder's window title may change.
     var onTitleChange: ((FolderSession) -> Void)?
     var onAllWindowsClosed: ((FolderSession) -> Void)?
-    /// A window became key, which is how a tab is selected.
+    /// A window showing one of the folder's pages became key, which is how a tab is
+    /// selected.
     var onWindowShown: ((FolderSession, BrowserWindowController) -> Void)?
     /// A window opened or closed, or a page changed: what the saved session records.
     var onLayoutChange: (() -> Void)?
@@ -110,7 +113,7 @@ final class FolderSession: ManagedServer {
                 // A restart of the ready server waits while it serves: the window that
                 // asked stops showing the old page and says it waits; the other tabs serve on.
                 restartWait.gateWait(waiting, state: self.supervisor.state).forEach { $0.showStarting() }
-                windows.forEach { $0.showWaitingAtGate(waiting) }
+                pages.forEach { $0.showWaitingAtGate(waiting) }
             }
         }
     }
@@ -202,8 +205,8 @@ final class FolderSession: ManagedServer {
     /// - Parameter window: the window it was asked from, which says it waits while the
     ///   restart of a ready server waits at the launch gate (`RestartWait`); nil, as for
     ///   the restart an upgrade offers, is the front window.
-    func retry(from window: BrowserWindowController? = nil) {
-        restartWait.asked(from: window ?? frontWindow, state: supervisor.state)?.showStarting()
+    func retry(from page: FolderPage? = nil) {
+        restartWait.asked(from: page ?? frontPage, state: supervisor.state)?.showStarting()
         restartsInFlight += 1
         Task {
             settle(await server.restart())
@@ -224,7 +227,7 @@ final class FolderSession: ManagedServer {
         case .refusedByRoot:
             AppLog.app.info(
                 "\(self.root.lastPathComponent, privacy: .public) changed since it was restored; it starts when its tab is selected")
-            windows.forEach { $0.showWaitingForSelection() }
+            pages.forEach { $0.showWaitingForSelection() }
             onRootRefused?(self)
         }
     }
@@ -233,7 +236,7 @@ final class FolderSession: ManagedServer {
         AppLog.app.info("\(self.root.lastPathComponent, privacy: .public): waiting for a metab Metabrowser can run")
         switch supervisor.state {
         case .ready, .starting, .stopping: break  // a running server keeps running
-        case .stopped, .failed: windows.forEach { $0.showWaitingForRuntime() }
+        case .stopped, .failed: pages.forEach { $0.showWaitingForRuntime() }
         }
         onWaitingForRuntime?()
     }
@@ -249,18 +252,18 @@ final class FolderSession: ManagedServer {
     /// and checks that its server still answers: a hung one is stopped, and its windows
     /// say so and offer Retry.
     func showFrontWindow(page: PageAddress? = nil) {
-        let front = frontWindow
+        let front = frontPage
         if let page, let front {
             front.show(page)  // which checks before it loads
         } else {
             Task { _ = await checkHealth() }
         }
-        front?.window?.makeKeyAndOrderFront(nil)
+        front?.host?.window?.makeKeyAndOrderFront(nil)
     }
 
-    /// The window a link or a reopen brings forward: the first one on screen.
-    private var frontWindow: BrowserWindowController? {
-        windows.first { $0.window?.isVisible == true } ?? windows.first
+    /// The page a link or a reopen brings forward: the first one a window on screen shows.
+    private var frontPage: FolderPage? {
+        pages.first { $0.host?.window?.isVisible == true } ?? pages.first
     }
 
     /// A link into this repository, which its front window is to show: the server starts
@@ -275,7 +278,7 @@ final class FolderSession: ManagedServer {
     /// that start already runs on starts nothing more, and the window loads that start's
     /// entry page, whoever began it (`RepositoryLinks`).
     func open(link: URL) {
-        frontWindow?.window?.makeKeyAndOrderFront(nil)
+        frontPage?.host?.window?.makeKeyAndOrderFront(nil)
         let name = root.lastPathComponent
         switch target.links.receive(link, state: supervisor.state, restarting: restartsInFlight > 0) {
         case .restart:
@@ -294,19 +297,19 @@ final class FolderSession: ManagedServer {
     /// starting on the link, the link's page, and says it waits while a restart of the ready
     /// server waits at the launch gate (`RestartWait`).
     private func showLinkPage() {
-        let window = frontWindow
-        window?.showEntryPage()
-        restartWait.asked(from: window, state: supervisor.state)?.showStarting()
+        let page = frontPage
+        page?.showEntryPage()
+        restartWait.asked(from: page, state: supervisor.state)?.showStarting()
     }
 
     /// Starts the server again on `target`, which a link just set: the front window loads
     /// the new server's entry page, and until then shows no page from the old one.
     private func restart() {
         selectionWatch?.cancel()
-        let window = frontWindow
-        window?.showEntryPage()
+        let page = frontPage
+        page?.showEntryPage()
         AppLog.app.info("\(self.root.lastPathComponent, privacy: .public): starting its server again on a link it was sent")
-        retry(from: window)
+        retry(from: page)
     }
 
     /// Whether the server still answers, asked before a window joins it
@@ -322,29 +325,32 @@ final class FolderSession: ManagedServer {
     /// Command-click on a link to this folder's server. The new tab holds the page before
     /// the health check runs, so a server that fails the check, and comes back with Retry,
     /// still shows it.
-    func openWindow(at url: URL, besides parent: BrowserWindowController) {
-        let page = PageAddress(url)
-        let controller = makeWindow(page: page)
+    func openWindow(at url: URL, besides parent: FolderPage) {
+        let address = PageAddress(url)
+        let controller = makeWindow(page: address)
         addTab(controller, besides: parent)
-        if let page { controller.show(page) }
+        if let address { controller.page.show(address) }
     }
 
     /// `target=_blank` and `window.open`: WebKit loads the request into the view returned,
     /// at once, so it cannot wait for a health check; the page asking for it was just
     /// served.
-    func openChildWindow(configuration: WKWebViewConfiguration, besides parent: BrowserWindowController) -> WKWebView {
+    func openChildWindow(configuration: WKWebViewConfiguration, besides parent: FolderPage) -> WKWebView {
         let controller = makeWindow(configuration: configuration)
         addTab(controller, besides: parent)
-        return controller.webView
+        return controller.page.webView
     }
 
-    func windowClosed(_ controller: BrowserWindowController) {
-        windows.removeAll { $0 === controller }
-        if windows.isEmpty { onAllWindowsClosed?(self) }
+    /// One of the folder's pages is gone for good (`FolderPage.close`).
+    func pageClosed(_ page: FolderPage) {
+        pages.removeAll { $0 === page }
+        if pages.isEmpty { onAllWindowsClosed?(self) }
         onLayoutChange?()
     }
 
-    func windowShown(_ controller: BrowserWindowController) {
+    /// A window showing `page` became key, or began to show it.
+    func pageShown(_ page: FolderPage) {
+        guard let controller = page.host else { return }
         onWindowShown?(self, controller)
     }
 
@@ -352,26 +358,38 @@ final class FolderSession: ManagedServer {
         onLayoutChange?()
     }
 
-    /// A window not yet shown. It loads `page`, or the entry page, once the server is
-    /// ready, and a `discarded` one only once it is shown.
+    /// A page not yet shown, in a window of its own not yet ordered in. It loads `page`, or
+    /// the entry page, once the server is ready, and a `discarded` one only once it is
+    /// shown.
     func makeWindow(
-        configuration: WKWebViewConfiguration? = nil, page: PageAddress? = nil, discarded: Bool = false
+        configuration: WKWebViewConfiguration? = nil, page address: PageAddress? = nil, discarded: Bool = false
     ) -> BrowserWindowController {
-        let controller = BrowserWindowController(
-            session: self, configuration: configuration, page: page, discarded: discarded)
-        windows.append(controller)
-        defer { onLayoutChange?() }
-        controller.adoptServer(endpoint)
-        if let failure { controller.showFailure(failure) }
-        if isWaitingForRuntime, endpoint == nil { controller.showWaitingForRuntime() }
-        if restartWait.isWaiting { controller.showWaitingAtGate(true) }
-        return controller
+        BrowserWindowController(page: makePage(configuration: configuration, page: address, discarded: discarded))
     }
 
-    private func addTab(_ controller: BrowserWindowController, besides parent: BrowserWindowController) {
+    /// A page of the folder's, which no window shows yet.
+    func makePage(
+        configuration: WKWebViewConfiguration? = nil, page address: PageAddress? = nil, discarded: Bool = false
+    ) -> FolderPage {
+        let page = FolderPage(session: self, configuration: configuration, page: address, discarded: discarded)
+        pages.append(page)
+        defer { onLayoutChange?() }
+        page.adoptServer(endpoint)
+        if let failure { page.showFailure(failure) }
+        if isWaitingForRuntime, endpoint == nil { page.showWaitingForRuntime() }
+        if restartWait.isWaiting { page.showWaitingAtGate(true) }
+        return page
+    }
+
+    private func addTab(_ controller: BrowserWindowController, besides parent: FolderPage) {
         guard let window = controller.window else { return }
-        parent.window?.addTabbedWindow(window, ordered: .above)
+        parent.host?.window?.addTabbedWindow(window, ordered: .above)
         window.makeKeyAndOrderFront(nil)
+    }
+
+    /// Every window showing one of the folder's pages takes the folder's title.
+    private func showTitleInWindows() {
+        windows.forEach { $0.showTitle(title, windowTitle: windowTitle) }
     }
 
     private func serverChanged(_ state: ServerState) {
@@ -392,18 +410,18 @@ final class FolderSession: ManagedServer {
         case .starting:
             endpoint = nil
             failure = nil
-            windows.forEach { $0.showStarting() }
+            pages.forEach { $0.showStarting() }
         case .ready(let ready):
             endpoint = ready
             failure = nil
             let authorization = supervisor.launch.authorization(for: ready)
-            windows.forEach { $0.attach(ready, authorization: authorization) }
+            pages.forEach { $0.attach(ready, authorization: authorization) }
             requestIdentity(from: ready, authorization: authorization)
             if !served.isLocal { watchSelection(of: ready, authorization: authorization) }
         case .failed(let failed):
             endpoint = nil
             failure = failed
-            windows.forEach { $0.showFailure(failed) }
+            pages.forEach { $0.showFailure(failed) }
         case .stopping, .stopped:
             break
         }
@@ -457,7 +475,7 @@ final class FolderSession: ManagedServer {
         // The app delegate retitles every open folder's windows, since this one's short name
         // may now be shared or no longer shared.
         if let onTitleChange { onTitleChange(self) } else { windowTitle = next.text }
-        windows.forEach { $0.showTitle(next, windowTitle: windowTitle) }
+        showTitleInWindows()
     }
 }
 

@@ -37,11 +37,11 @@ enum MainMenu {
             .separator(),
             item("Close Window", #selector(NSWindow.performClose(_:)), "w"),
             .separator(),
-            item("Restart Server", #selector(BrowserWindowController.restartServer(_:)), "r", [.command, .option]),
-            item("Open in Default Browser", #selector(BrowserWindowController.openInDefaultBrowser(_:))),
-            item("Reveal Server Log", #selector(BrowserWindowController.revealServerLog(_:))),
+            item("Restart Server", #selector(FolderPage.restartServer(_:)), "r", [.command, .option]),
+            item("Open in Default Browser", #selector(FolderPage.openInDefaultBrowser(_:))),
+            item("Reveal Server Log", #selector(FolderPage.revealServerLog(_:))),
             .separator(),
-            item("Print…", #selector(BrowserWindowController.printPage(_:)), "p"),
+            item("Print…", #selector(FolderPage.printPage(_:)), "p"),
         ])
 
         let find = NSMenu(title: "Find")
@@ -51,7 +51,7 @@ enum MainMenu {
             ("Find Previous", .previousMatch, "g", [.command, .shift]),
             ("Use Selection for Find", .setSearchString, "e", .command),
         ] {
-            let findItem = item(title, #selector(BrowserWindowController.performFindAction(_:)), key, modifiers)
+            let findItem = item(title, #selector(FolderPage.performFindAction(_:)), key, modifiers)
             findItem.tag = action.rawValue
             find.addItem(findItem)
         }
@@ -70,13 +70,13 @@ enum MainMenu {
         ])
 
         main.addSubmenu("View", [
-            item("Back", #selector(BrowserWindowController.navigateBack(_:)), "["),
-            item("Forward", #selector(BrowserWindowController.navigateForward(_:)), "]"),
-            item("Reload Page", #selector(BrowserWindowController.reloadPage(_:)), "r"),
+            item("Back", #selector(FolderPage.navigateBack(_:)), "["),
+            item("Forward", #selector(FolderPage.navigateForward(_:)), "]"),
+            item("Reload Page", #selector(FolderPage.reloadPage(_:)), "r"),
             .separator(),
-            item("Actual Size", #selector(BrowserWindowController.actualSize(_:)), "0"),
-            item("Zoom In", #selector(BrowserWindowController.zoomIn(_:)), "="),
-            item("Zoom Out", #selector(BrowserWindowController.zoomOut(_:)), "-"),
+            item("Actual Size", #selector(FolderPage.actualSize(_:)), "0"),
+            item("Zoom In", #selector(FolderPage.zoomIn(_:)), "="),
+            item("Zoom Out", #selector(FolderPage.zoomOut(_:)), "-"),
             .separator(),
             item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]),
         ])
