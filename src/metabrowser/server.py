@@ -2070,13 +2070,15 @@ async def index(
         # made for the refs until a reader opens it. A pin's page carries the pin guard
         # inline. A checkout's working-tree page takes it here, ahead of the selector
         # that can make the server serve something else, so that a folder's first paint
-        # carries none of it: inline it would be 3,354 compressed bytes on the page of
-        # every checkout, most of which never switch. Measured 2026-11-18 in headless
-        # Chrome 152 from 127.0.0.1, three runs on a 10-core Mac at a load average of
-        # 13 to 16: the guard 3,354 compressed bytes in 8.6 to 10.5 ms and the selector
-        # 9,879 in 7.0 to 9.7 ms, both asked for 124 to 142 ms after the navigation
-        # began, once the first tree rows were in; the selector was mounted 170 to
-        # 181 ms after it (tests/dom/checkout-ref-selector-chrome.mjs prints them).
+        # carries none of it: inline it would add its compressed size to the page of
+        # every checkout, most of which never switch. That is 4,751 bytes and the
+        # selector's 10,538, at gzip -6 (`delivery.GZIP_LEVEL`), as of the switch hold
+        # (mb-bio7, 2026-11-18). Measured 2026-11-18 in headless Chrome 152 from
+        # 127.0.0.1, three runs on a 10-core Mac at a load average of 13 to 16, when they
+        # were 3,354 and 9,879 bytes: the guard in 8.6 to 10.5 ms and the selector in 7.0
+        # to 9.7 ms, both asked for 124 to 142 ms after the navigation began, once the
+        # first tree rows were in; the selector was mounted 170 to 181 ms after it
+        # (tests/dom/checkout-ref-selector-chrome.mjs prints them).
         "source-ref-selector": [
             *(
                 [{"src": _static_asset_url("source-pin-guard.js")}]

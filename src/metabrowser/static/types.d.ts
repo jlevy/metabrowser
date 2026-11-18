@@ -3437,6 +3437,8 @@ declare global {
     navigate(href: string): void;
     /** The page's own pathname, sent so a switch can keep it. */
     currentView(): string | null;
+    /** A switch is asked: *going* settles true when the page goes, false when it stays. */
+    hold?(going: Promise<boolean>): void;
   };
 
   /** The elements the ref selector paints into. */
@@ -4119,13 +4121,22 @@ declare global {
         page: { pin?: unknown } | null | undefined,
         checkout: { working_tree?: unknown } | null | undefined,
       ): string | null | undefined;
+      createSwitchHold(setTimer: (callback: () => void, ms: number) => void): Readonly<{
+        hold(going: Promise<boolean>): void;
+        release(): void;
+        waiting(): Promise<void> | null;
+      }>;
       guardFetch(
         fetchImpl: typeof fetch,
         pin: string,
         base: () => string,
         onPinChanged: (served: string) => void,
+        waiting?: () => Promise<void> | null,
       ): typeof fetch;
       guardedRequest(url: string, base: string): boolean;
+      /** This page's switch: its guarded requests wait until *going* says it stays, and
+       * go with the page when it goes. */
+      hold(going: Promise<boolean>): void;
     }>;
     /** The pin and ref a pin's page was rendered for; absent on a folder. */
     METABROWSER_SOURCE_PIN?: MetabrowserSourcePage;

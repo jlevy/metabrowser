@@ -4,6 +4,13 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- Choosing a branch or tag in the branch and tag chooser no longer flashes **Reload** on
+  the page you are leaving.
+  That page went on asking the server for data during the switch, and a refresh of its
+  Files totals that fell due then was refused, as a request from a page left behind is,
+  which the page took for a switch made in another tab.
+  It now holds its requests while the switch is under way.
+
 - The macOS app shows a first clone’s progress in the window of the repository being
   opened: how far the clone has got, how fast, and for how long, as `metab` reports it
   in Terminal, then that it is reading the pull request the link names.
