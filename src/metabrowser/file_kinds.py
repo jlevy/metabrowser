@@ -13,18 +13,22 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
-from frontmatter_format import FmFormatError, FmStyle, fmf_read_frontmatter, from_yaml_string
-from ruamel.yaml.error import YAMLError
+from frontmatter_format import FmFormatError, FmStyle, fmf_split_frontmatter
 
 from metabrowser.content_sniff import ContentClass, sniff_artifact
-from metabrowser.gz_io import ArtifactPath
-
-# Bounds the decompressed bytes read while looking for a compressed Markdown
-# file's frontmatter, so a large `.md.gz` cannot turn classification into an
-# unbounded decode.
-_FRONTMATTER_MAX_BYTES = 256 * 1024
+from metabrowser.frontmatter_yaml import (
+    FRONTMATTER_MAX_BYTES,
+    FrontmatterError,
+    load_frontmatter_yaml,
+    unclosed_frontmatter_error,
+)
+from metabrowser.gz_io import (
+    ArtifactDecompressionLimitError,
+    ArtifactDecompressionTimeoutError,
+    ArtifactPath,
+)
 
 # VIEW_REGISTRY carries the built-in kinds owned by metabrowser core.
 # Third-party plugins contribute additional kinds and views through their
@@ -73,15 +77,58 @@ VIEW_REGISTRY: dict[str, list[dict[str, Any]]] = {
 }
 
 
+def _frontmatter_mapping(metadata_text: str) -> dict[str, Any]:
+    parsed = load_frontmatter_yaml(metadata_text)
+    if not isinstance(parsed, dict):
+        raise FrontmatterError(f"Expected YAML metadata to be a dict, got {type(parsed)}")
+    return cast("dict[str, Any]", parsed)
+
+
+def _read_plain_frontmatter(path: Path) -> dict[str, Any] | None:
+    """Parse the frontmatter at the head of an uncompressed file, in any fmf style.
+
+    Reads at most FRONTMATTER_MAX_BYTES, so an opening fence that is never closed
+    costs one bounded read. Bytes that are not UTF-8 inside the frontmatter mean the
+    file has none, as ``fmf_read_frontmatter`` treats a binary file; outside it, in
+    the body, they do not matter.
+    """
+
+    with path.open("rb") as source:
+        head = source.read(FRONTMATTER_MAX_BYTES + 1)
+    complete = len(head) <= FRONTMATTER_MAX_BYTES
+    text = head[:FRONTMATTER_MAX_BYTES].decode("utf-8", "surrogateescape")
+    try:
+        metadata_text, _, _ = fmf_split_frontmatter(text, strict=True)
+    except FmFormatError as exc:
+        if complete:
+            raise
+        raise unclosed_frontmatter_error() from exc
+    if not metadata_text:
+        return None
+    try:
+        metadata_text.encode("utf-8")
+    except UnicodeEncodeError:
+        return None
+    return _frontmatter_mapping(metadata_text)
+
+
 def _read_compressed_markdown_frontmatter(path: Path) -> dict[str, Any] | None:
-    """Parse YAML frontmatter from a bounded compressed Markdown stream."""
+    """Parse YAML frontmatter from a bounded compressed Markdown stream.
+
+    The decode stops at FRONTMATTER_MAX_BYTES. Reaching it after the opening fence
+    means the fence is not closed within the bound; reaching it on the first line means
+    the file has no front matter; and a decode past its CPU-time budget keeps its own
+    meaning, an unreadable file.
+    """
+    in_fence = False
     try:
         with ArtifactPath(path).open_text(
-            errors="strict", max_output_bytes=_FRONTMATTER_MAX_BYTES
+            errors="strict", max_output_bytes=FRONTMATTER_MAX_BYTES
         ) as source:
             first_line = source.readline()
             if not first_line or first_line.rstrip() != FmStyle.yaml.start:
                 return None
+            in_fence = True
 
             metadata_lines: list[str] = []
             for line in source:
@@ -89,24 +136,18 @@ def _read_compressed_markdown_frontmatter(path: Path) -> dict[str, Any] | None:
                     metadata_text = "".join(metadata_lines)
                     if not metadata_text:
                         return None
-                    try:
-                        parsed = from_yaml_string(metadata_text)
-                    except YAMLError as exc:
-                        raise FmFormatError(
-                            f"Error parsing YAML metadata: `{path}`: {exc}"
-                        ) from exc
-                    if not isinstance(parsed, dict):
-                        raise FmFormatError(
-                            f"Expected YAML metadata to be a dict, got {type(parsed)}: `{path}`"
-                        )
-                    return parsed
+                    return _frontmatter_mapping(metadata_text)
                 metadata_lines.append(line)
     except UnicodeDecodeError:
         return None
+    except ArtifactDecompressionTimeoutError:
+        raise
+    except ArtifactDecompressionLimitError as exc:
+        if not in_fence:
+            return None
+        raise unclosed_frontmatter_error() from exc
 
-    raise FmFormatError(
-        f"Delimiter `{FmStyle.yaml.end}` for end of frontmatter not found: `{path}`"
-    )
+    raise FmFormatError(f"Delimiter `{FmStyle.yaml.end}` for end of frontmatter not found")
 
 
 class FileContext:
@@ -183,11 +224,12 @@ class FileContext:
                 if self.ext == ".md" and artifact.is_compressed:
                     raw = _read_compressed_markdown_frontmatter(self.path)
                 else:
-                    raw = fmf_read_frontmatter(self.path)
+                    raw = _read_plain_frontmatter(self.path)
             except (OSError, ValueError) as exc:
                 # OSError on unreadable file — leave parse_error unset
                 # (we'll get a separate error elsewhere); record YAML
-                # parse failures so callers can surface them.
+                # parse failures and refused frontmatter (FrontmatterError)
+                # so callers can surface them.
                 if not isinstance(exc, OSError):
                     self._frontmatter_parse_error = str(exc)
                 raw = None
@@ -221,14 +263,12 @@ class FileContext:
         the classifier's ``yaml_has_key`` /
         ``yaml_value_prefix`` matchers. Cached per FileContext so multiple
         rules consulting the same file don't trigger multiple bounded reads
-        + PyYAML parses. Returns None when the file is unreadable, the
+        + parses. Returns None when the file is unreadable, the
         prefix doesn't parse, or the top-level value is not a mapping.
         """
         if not self._yaml_top_level_loaded:
             self._yaml_top_level_loaded = True
-            # Import locally so the classifier can call this without
-            # forcing a pyyaml import on the hot path of agent-log or
-            # markdown classification.
+            # Import locally: the classifier module imports this one.
             from metabrowser.plugin_loader.classify import (
                 _yaml_top_level,
             )
