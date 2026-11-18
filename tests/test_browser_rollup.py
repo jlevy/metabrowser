@@ -30,6 +30,7 @@ from metabrowser.inventory_engine.providers.python_inventory import (
 )
 from metabrowser.watch_backends import _emit_for_path
 from metabrowser.wire_models import RollupDirNode, RollupResult, validate_rollup_node
+from tests.loop_gate import held_until
 
 
 def _build_index(root: Path, *, gitignore: str | None = None) -> PythonInventoryStore:
@@ -589,7 +590,7 @@ def test_rollup_retries_when_child_topology_moves_between_aggregate_and_emit(
             None,
             lambda: index.rollup("", depth=2, top=40, ext_top=12),
         )
-        assert await asyncio.to_thread(aggregated.wait, 5), "rollup never aggregated root"
+        assert await held_until(aggregated, 5), "rollup never aggregated root"
         index._replace_index_entry(FsEntry.for_observed_dir(path="new", parent="", name="new"))
         index._replace_index_entry(
             FsEntry.for_observed_file(

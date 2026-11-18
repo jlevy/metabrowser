@@ -144,14 +144,18 @@ class ListedRepository:
 
 @dataclass(frozen=True, slots=True)
 class LocalComparison:
-    """A store that holds both of a record's comparison commits, and those commits.
+    """A store that holds both of a comparison's commits, and those commits.
 
-    ``base`` is the comparison's merge base, so the two name the page's Files changed.
+    ``base`` is the comparison's merge base, so the two name the page's Files changed. It is
+    the record's comparison, or, with ``base_ref``, the base branch it was computed from, one
+    the prefetch computed from the list of pull requests' head and base branch before any
+    record was read (:mod:`.pull_prefetch`).
     """
 
     git_dir: Path
     base: str
     head: str
+    base_ref: str | None = None
 
 
 def write_list_refresh(
@@ -332,8 +336,10 @@ class PullFileList(_Model):
     most files it lists, :data:`MAX_PULL_FILES`, so the pull request may have more.
     ``truncated`` says an item could not be read or had a path past
     :data:`MAX_FILE_PATH_BYTES`, and was left out. ``head`` is the comparison's head for a
-    local list and the pull request's head as last known before the read for GitHub's,
-    which alone has ``base_ref``, the base branch's name then.
+    local list and the pull request's head as last known before the read for GitHub's.
+    ``base_ref`` is the base branch's name then for GitHub's, and for a local list computed
+    from the list of pull requests' head rather than a record's comparison, the branch its
+    merge base was computed from; a record's local list has none.
     """
 
     schema_version: int
@@ -369,7 +375,7 @@ class PullFileList(_Model):
             if (
                 self.reader is not None
                 or self.head is None
-                or self.base_ref is not None
+                or (self.base is None and self.base_ref is not None)
                 or self.marks
                 or self.pages
             ):

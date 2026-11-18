@@ -258,8 +258,9 @@ core, and the envelope then carries a `core_preview` until the full record lands
 
 `refresh_pull_files` in `pull_files_refresh.py` has two sources for one list:
 
-- **The local comparison:** when the store holds both of the record’s comparison
-  commits, the list is that manifest’s, from `git diff --raw` and `--numstat`, with no
+- **The local comparison:** when the store holds both of a comparison’s commits, the
+  record’s or one the prefetch computed from an open pull request’s head and base
+  branch, the list is that manifest’s, from `git diff --raw` and `--numstat`, with no
   patch and no network.
 - **GitHub’s list:** otherwise, or when the manifest is cut at `MAX_MANIFEST_FILES`
   (`diff/adapters/git.py`) or Git cannot list it, as when the lender has gone or
@@ -278,8 +279,10 @@ The job runs under `<slug>:pull/<n>/files`, takes no turn at the store, and hold
 network slot only for each `gh` request.
 
 `pull_files_route.py` answers from the cache alone; its docstring states the freshness
-rule. A local list is current while the record names its exact comparison; a GitHub list
-while the head and base branch it was read for are the newest known.
+rule. A local list from the record is current while the record names its exact
+comparison; a GitHub list, or a local list from a head and base branch, while the head
+and base branch it was read for are the newest known, and for the local one while the
+pull request is open.
 When source admission refuses the cache, no stamp can be written, so the outcome
 `cache_unwritable` is kept in bounded memory and holds automatic retries without
 contacting GitHub or touching the refused cache; it does not survive a restart.
@@ -444,12 +447,20 @@ step with `pull_stacks.py` (`repository_snapshot.py`).
 A visible page names what the reader is likely to open next with `POST pulls-prefetch`
 (`pull_prefetch.py`), which replaces the repository’s lane queue; nothing on the server
 starts that work by itself, so a hidden or offline page spends nothing.
-The lane is one coordinator job per served repository that runs one item at a time,
-alternating records and file lists, rereads each from disk before it runs, and stops
-when the governor refuses; the module docstring works out its caps and the GitHub points
-they cost. A background job takes no network slot, waits behind every other job at a
-store turn and is cancelled when one starts waiting, and is joined and promoted by a
-reader’s request for the same pull request.
+The lane is one coordinator job per served repository that runs one item at a time.
+It first makes the queued file lists local where the store can give them: an open pull
+request with no current comparison is listed from the head and base branch the list of
+pull requests names, with every head the store lacks fetched in one Git command
+(`fetch_pull_heads` in `cache/pull_refs.py`), and a served checkout attaches its store
+for that if no reader has yet.
+Those lists cost no GitHub request and go first; the rest alternate records and file
+lists from GitHub.
+The lane rereads each item from disk before it runs and stops when the
+governor refuses; the module docstring works out its caps, the GitHub points they cost,
+and the measurements behind the order.
+A background job takes no network slot, waits behind every other job at a store turn and
+is cancelled when one starts waiting, and is joined and promoted by a reader’s request
+for the same pull request.
 `GET pulls-prefetch` reports the lane, the caps, the governor, and recent outcomes, and
 `pulls-panel.js` chooses what to name and when.
 

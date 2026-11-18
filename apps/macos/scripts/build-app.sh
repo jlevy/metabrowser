@@ -10,6 +10,8 @@
 #   VARIANT        dev (the default) or release; scripts/common.sh lists what each sets.
 #   SIGN_IDENTITY  codesign identity; "-" or empty (the default) signs ad hoc, which runs
 #                  on this Mac but is refused by notarization and by Gatekeeper elsewhere.
+#   SIGN_KEYCHAIN  the keychain any SIGN_IDENTITY but "-" is found in, and only there
+#                  (default: release_keychain in common.sh), whatever kind it is.
 #   BUILD          CFBundleVersion (default: the commit count of HEAD).
 #   ARCHES         space-separated architectures (default arm64); "arm64 x86_64" builds
 #                  each slice and merges them with lipo.
