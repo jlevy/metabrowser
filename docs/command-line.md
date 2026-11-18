@@ -43,6 +43,10 @@ Two rules decide between a path and a source, in this order:
 A path that exists but cannot be read is a usage error.
 An empty argument is refused; write `.` for the current directory.
 
+A path is served exactly as named: a folder as itself, and a file’s folder with the file
+selected. Opening a path inside a Git repository at the repository’s root is planned in
+[Open Modes](project/architecture/arch-open-modes.md#resolving-a-target-to-a-root).
+
 ### Exit Status
 
 | Status | Meaning |
@@ -278,8 +282,8 @@ you name its new place with `--checkout`.
 lists every case: a partial or shallow checkout, a full mirror already in the cache, and
 a remote that names another repository.
 
-This is a pinned view of the URL. `metab ~/src/repo` instead serves your working folder,
-which can review pull requests too.
+This is a pinned view of the URL. `metab ~/src/repo` instead serves your checkout’s
+working tree, which can review pull requests too.
 
 ## Acquiring a Git Source: `--no-serve`
 
