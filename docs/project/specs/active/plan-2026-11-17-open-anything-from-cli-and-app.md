@@ -4,13 +4,78 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Draft. Nothing here has been implemented.
-Epic `mb-jl8o` tracks every item below as a bead.
+**Status:** Phase 1 partly built, Phase 2 not started; [Progress](#progress) says what
+landed where. Epic `mb-jl8o` tracks every item below as a bead.
 It assesses what exists and sets the path for one invocation that opens any folder,
 file, or GitHub URL in the native app or a browser, whichever applies.
 It takes a first-release slice out of Phase 3 of the
 [native macOS app plan](plan-2026-11-10-native-macos-app.md) and leaves the rest of that
 phase where it is. [Open Questions](#open-questions) lists the owner’s decisions.
+
+## Progress
+
+As of 2026-11-18. Background and Design below record the code and the intent as of
+2026-11-17; where what shipped differs, this section and the architecture documents it
+links describe what was built.
+
+### Landed
+
+- **`metab TARGET --present`** (jlevy/metabrowser#540): resolution with no clone and no
+  server import, `--dry-run`, the report, detection through LaunchServices, delivery by
+  `open -b`, and distinct exit codes for a refusal, no app, and a blocked LaunchServices
+  (`cli/exit_codes.py`). A commit URL now opens at `/commit/<id>`. It differs from the
+  design in four ways:
+  - JSON is `--format json`; `--json` is refused with `--present`.
+  - Delivery is to the app or nowhere (`delivered_to` is `app` or `none`), and the
+    report never claims a window showed the target.
+  - Detection tries the release bundle identifier and then the dev one, unless
+    `--app-bundle-id` or `METABROWSER_APP_BUNDLE_ID` names one.
+  - It sends only to a build installed in an Applications folder whose `Info.plist`
+    declares `MetabrowserOpensURLs` (`cli/present.py`).
+- **GitHub links in the app** (jlevy/metabrowser#539): `AppDelegate` accepts `https`
+  GitHub links, resolves each with `--present --dry-run --format json`, and shows
+  `metab`’s refusal. `SessionRoot` is the plan’s `RootIdentity`: it keys a session by a
+  folder’s path or a repository’s canonical URL, never by the pin.
+  A link into a repository that has a window switches that window to the link’s
+  revision, and a repository the cache does not hold asks before it clones.
+  Repository tabs stay out of the saved session.
+  The app’s setup refuses a `metab` without `--present`
+  (`MetabRequirement.requiredFlags`).
+  [GitHub Links](../../architecture/arch-macos-app.md#github-links) describes it.
+- **File > Open URL…** (jlevy/metabrowser#560), on Command-L, is the plan’s Open
+  Location…. It takes a full GitHub URL, with no local path and no `owner/repo`
+  shorthand. The app checks the URL with the gate it applies to a sent link, then asks
+  `--present --dry-run --format json`, and opens it in its mirror, always.
+  File > Open… became Open Folder….
+- **Recent targets** (jlevy/metabrowser#546), in place of a recents section drawn from
+  the saved session: `metab` keeps one list of recent folders and mirrors in its
+  configuration directory, recorded at serve start, and the app’s Open Recent and Dock
+  menu draw it, mirrors included
+  ([Recent Targets](../../architecture/arch-recent-targets.md)).
+- **The skill and its docs** (jlevy/metabrowser#562): “Hand the User a Page” uses
+  `--present`, falls back to the `--no-open` server, and documents the Claude Code and
+  Codex sandbox settings.
+- **Open Modes** (jlevy/metabrowser#558):
+  [Open Modes](../../architecture/arch-open-modes.md) defines plain folder, repository
+  folder, and mirror, records the owner’s decisions that answer Questions 1 and 2 below,
+  and tracks the shared work in its Implementation Status table.
+  jlevy/metabrowser#559 then gave a checkout’s window the branch and tag chooser and
+  `metab PATH --ref NAME`, so a repository folder shows any ref read-only beside its
+  working tree.
+
+### Remaining
+
+- Browser delivery with a detached server (`mb-kze0`), and the `open_in` preference that
+  chooses between the app and a browser (`mb-gh6l`).
+- The GitHub status check, its `--doctor` section and route, the check before a first
+  clone or pull request read, and token scopes (`mb-si2g`).
+- GitHub’s anchor for one file in a pull request (`mb-j8a1`).
+- Clone progress and GitHub failure states in the app’s status view (`mb-m0ry`).
+- Saved tabs for repository windows (`mb-682q`).
+- Outside this epic, on the same path: the walk-up resolver that `--present` and the app
+  will resolve through (`mb-2wfk`), Open URL…’s offer of a known checkout (`mb-bkk2`),
+  and a mirror entry’s target in the recent list, so that Open Recent can reopen a pull
+  request (`mb-8bds`).
 
 ## Overview
 
@@ -239,6 +304,10 @@ combination on Linux CI.
 
 ### GitHub URLs in the App
 
+Built in a different shape, which [Progress](#progress) summarizes and
+[GitHub Links](../../architecture/arch-macos-app.md#github-links) describes; the design
+as written on 2026-11-17 follows.
+
 - **Entry.** `AppDelegate.request` accepts `https` URLs as well as file URLs, from
   `open -a`/`open -b` and from File > Open Location…, a sheet with one field that takes
   a GitHub URL or a local path and validates it with `--present --dry-run --json`. An
@@ -305,29 +374,43 @@ transport.
 
 - [ ] `metab TARGET --present` as a client mode: resolution, the report, `--json`,
   `--dry-run`, browser delivery with a detached server, and the new exit codes.
+  Landed in jlevy/metabrowser#540 except browser delivery, with `--format json` for
+  `--json`. Remaining: browser delivery (`mb-kze0`).
 - [ ] The `open_in` preference in `config.yml`, `METABROWSER_OPEN_IN`, and `--open-in`,
   with `--doctor` reporting it.
-- [ ] App detection through LaunchServices, and delivery by `open -b`, with the blocked
+  Remaining (`mb-gh6l`).
+- [x] App detection through LaunchServices, and delivery by `open -b`, with the blocked
   and missing-app outcomes.
+  Landed in jlevy/metabrowser#540, release identifier first and then dev.
 - [ ] GitHub status: the check, its `--doctor` section and route, the check before a
   first clone or pull request read, and token scopes.
+  Remaining (`mb-si2g`).
 - [ ] Map `/pull/N/files#diff-<hash>` to `/pull/<n>/files/<path>`, and open a commit URL
-  at `/commit/<sha>`.
-- [ ] App: `RootIdentity` replaces the local-path key everywhere a session, log, title,
+  at `/commit/<sha>`. The commit URL landed in jlevy/metabrowser#540. Remaining: the
+  anchor (`mb-j8a1`).
+- [x] App: `RootIdentity` replaces the local-path key everywhere a session, log, title,
   saved tab, or waiting folder uses one.
-- [ ] App: accept `https` URLs in `AppDelegate.request`; show `metab`’s reason for any
-  URL it refuses.
-- [ ] App: File > Open Location… with validation through `--present --dry-run --json`.
+  Landed in jlevy/metabrowser#539 as `SessionRoot`, keyed by repository without the pin;
+  a saved tab still names a folder, since repository tabs are not saved.
+- [x] App: accept `https` URLs in `AppDelegate.request`; show `metab`’s reason for any
+  URL it refuses. Landed in jlevy/metabrowser#539, for GitHub links.
+- [x] App: File > Open Location… with validation through `--present --dry-run --json`.
+  Landed in jlevy/metabrowser#560 as File > Open URL…, for GitHub URLs only.
 - [ ] App: clone progress and GitHub failure states in the status view, with Copy and
   Retry, and recheck on activation.
+  Remaining (`mb-m0ry`).
 - [ ] App: saved tabs and a recents section for source roots.
-- [ ] Skill: “Hand the User a Page” becomes `--present`, keeping the `--no-open` server
+  Recents landed in jlevy/metabrowser#546 as `metab`’s recent targets.
+  Remaining: saved tabs (`mb-682q`).
+- [x] Skill: “Hand the User a Page” becomes `--present`, keeping the `--no-open` server
   for when it reports a browser fallback is not wanted; document the sandbox settings
   (Claude Code `excludedCommands`, Codex prefix approval).
   This is `mb-ko5d`’s Phase 1 part.
-- [ ] Docs: [command line](../../../command-line.md), [the app](../../../macos-app.md),
+  Landed in jlevy/metabrowser#562.
+- [x] Docs: [command line](../../../command-line.md), [the app](../../../macos-app.md),
   [the app’s architecture](../../architecture/arch-macos-app.md), and
   [the CLI architecture](../../architecture/arch-cli.md).
+  Each describes what has landed; each remaining item updates them in its own change.
 
 ### Phase 2: Round Trip, Live Pages, and Named Commands
 
@@ -369,24 +452,42 @@ points.
 
 ## Open Questions
 
+Questions 1, 2, 5, and 6 are answered; 3 and 4 wait for the owner.
+
 1. **Window identity for a repository.** One window per repository and pin, or per
    repository? Pull request pages may not depend on the pin, in which case a pull request
    URL could join any window of its repository.
    Recommendation: per repository and pin for `/view/`, and verify before deciding the
-   pull request case.
+   pull request case. **Answered** on 2026-11-17 in bead `mb-87j0`: one window per
+   repository, never keyed by the pin, and, by the owner’s decision recorded there, a
+   link naming another branch, commit, or pull request head switches that window to the
+   link’s revision. Built in jlevy/metabrowser#539.
 2. **An open checkout of the same repository.** Should a GitHub URL join an open window
    of a local checkout whose `origin` is that repository, which already has the Pulls
    tab? Recommendation: yes for pull request URLs, no for file URLs at another ref.
+   **Answered** by the owner on 2026-11-18, against the recommendation: a URL always
+   opens the mirror. When a checkout of its repository is known, Open URL… is to offer
+   “borrow from the checkout” or “open the checkout instead”
+   ([The File Menu](../../architecture/arch-open-modes.md#the-file-menu)). The mirror is
+   built (jlevy/metabrowser#560); the offer is not (`mb-bkk2`).
 3. **New local roots from an agent in Phase 1.** `open -a` admits any folder today, so
    an agent’s `--present` could raise a privacy prompt in the app’s name.
    Accept that for the first release, or send roots the app does not have open to the
    browser until Phase 2’s confirmation?
+   **Open.** As built, `--present` hands any folder to the app, which opens it as Open
+   Folder… would; with no browser delivery yet, there is nowhere else to send it.
 4. **Bare `metab PATH`.** Should it follow `open_in` and hand off to the app, exiting at
    once with a one-line message?
    Recommendation: yes, when no server-shaping flag is given.
+   **Open**, and waits on `open_in` (`mb-gh6l`).
 5. **Shorthand.** Accept `owner/repo` and `owner/repo#N` in `--present` and Open
    Location…, where no local path of that name exists?
+   **Answered** by the owner on 2026-11-18 (bead `mb-m4mg`): no shorthand in the first
+   release, only full GitHub URLs.
+   Open URL… refuses one with its own message, and `--present` reads it as a local path.
 6. **Shortcut for Open Location….** Command-L, as browsers use it, or Shift-Command-O?
+   **Answered** by the owner on 2026-11-18 (bead `mb-m4mg`): Command-L, which was free.
+   Built in jlevy/metabrowser#560.
 
 ## References
 
