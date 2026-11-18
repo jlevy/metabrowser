@@ -758,6 +758,247 @@ async function windowedSummaryChecks(repoRoot) {
   }
 }
 
+// Another tab switched the server's pin. A mounted diff hears it from its View file opener,
+// and its rendered Markdown keeps no link to a file of the head, whose `/view/` address
+// would now open the same path at the other pin (A2 of review A on #511). The production
+// opener (diff-view-file.js), Markdown views (diff-markdown.js), and inert sanitizer
+// (static/inert-html.js) load whole, mounted by the production view; the projection is the
+// server's, recorded with Python's parse of each block for the Markdown session
+// (tests/fixtures/diff-markdown-responses.json), and is drawn for the corpus's added
+// Markdown file. Which addresses a page keeps is the plugin's rule, pinned by that session;
+// here the page shows the head, so the link is drawn, until the pin changes.
+async function headLinkChecks(mountDiffView, byName) {
+  const vm = require("node:vm");
+  const recording = JSON.parse(
+    fs.readFileSync(path.join(repoRoot, "tests/fixtures/diff-markdown-responses.json"), "utf8"),
+  );
+  const ORIGIN = "http://127.0.0.1:8123";
+  // The DOM the Markdown views and the sanitizer read, beside what the view uses.
+  class MarkupElement extends FakeElement {
+    get childNodes() {
+      return this.children;
+    }
+    get nodeType() {
+      return this.tagName === "#TEXT" ? 3 : 1;
+    }
+    get nodeValue() {
+      return this.tagName === "#TEXT" ? this.textContent : null;
+    }
+    get parentElement() {
+      return this.parentNode;
+    }
+    append(...nodes) {
+      for (const node of nodes) {
+        if (node instanceof FakeElement && node.tagName === "#FRAGMENT") {
+          this.append(...node.children.splice(0));
+        } else if (typeof node === "string") {
+          super.append(markupText(node));
+        } else {
+          super.append(node);
+        }
+      }
+    }
+    replaceChildren(...nodes) {
+      for (const child of this.children) {
+        child.parentNode = null;
+      }
+      this.children = [];
+      this.append(...nodes);
+    }
+    after(...nodes) {
+      this.#insert(1, nodes);
+    }
+    before(...nodes) {
+      this.#insert(0, nodes);
+    }
+    #insert(offset, nodes) {
+      const siblings = this.parentNode.children;
+      const at = siblings.indexOf(this) + offset;
+      for (const node of nodes) {
+        node.parentNode = this.parentNode;
+      }
+      siblings.splice(at, 0, ...nodes);
+    }
+    querySelectorAll(selector) {
+      const wanted =
+        {
+          "button[data-chip-value]": (node) =>
+            node.tagName === "BUTTON" && node.dataset.chipValue !== undefined,
+          "a[href], img[src]": (node) =>
+            (node.tagName === "A" && node.getAttribute("href") !== null) ||
+            (node.tagName === "IMG" && node.getAttribute("src") !== null),
+          'a[href^="/view/"]': (node) =>
+            node.tagName === "A" && (node.getAttribute("href") ?? "").startsWith("/view/"),
+        }[selector] ?? ((node) => node.tagName === selector.toUpperCase());
+      return [...this.walk()].filter((node) => node !== this && wanted(node));
+    }
+  }
+  const markupText = (value) => {
+    const node = new MarkupElement("#text");
+    node.textContent = String(value);
+    return node;
+  };
+  const parsed = (nodes) =>
+    nodes.map((node) => {
+      if (typeof node === "string") {
+        return markupText(node);
+      }
+      const built = new MarkupElement(node.tag);
+      for (const [name, value] of node.attrs) {
+        built.setAttribute(name, value);
+      }
+      built.append(...parsed(node.children));
+      return built;
+    });
+  const template = () => {
+    const made = new MarkupElement("template");
+    Object.defineProperty(made, "innerHTML", {
+      set(html) {
+        if (!(html in recording.trees)) {
+          throw new Error(`no recorded parse for ${html}`);
+        }
+        const content = new MarkupElement("#fragment");
+        content.append(...parsed(recording.trees[html]));
+        made.content = content;
+      },
+    });
+    return made;
+  };
+  const inertPath = path.join(repoRoot, "src/metabrowser/static/inert-html.js");
+  const realm = { window: {}, URL };
+  vm.runInNewContext(fs.readFileSync(inertPath, "utf8"), realm, { filename: inertPath });
+  const markdownViews = await import(
+    pathToFileURL(path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/diff-markdown.js")).href
+  );
+  const { createPinSwitch, createViewFileOpener } = await import(
+    pathToFileURL(path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/diff-view-file.js"))
+      .href
+  );
+
+  const saved = {
+    document: global.document,
+    window: global.window,
+    IntersectionObserver: global.IntersectionObserver,
+  };
+  const observers = [];
+  global.IntersectionObserver = class IntersectionObserver {
+    constructor(callback) {
+      this.callback = callback;
+      this.targets = new Set();
+      observers.push(this);
+    }
+    observe(target) {
+      this.targets.add(target);
+    }
+    unobserve(target) {
+      this.targets.delete(target);
+    }
+    disconnect() {
+      this.targets.clear();
+    }
+  };
+  global.document = {
+    ...saved.document,
+    activeElement: null,
+    createElement: (tag) => (tag === "template" ? template() : new MarkupElement(tag)),
+    createTextNode: markupText,
+    createDocumentFragment: () => new MarkupElement("#fragment"),
+    implementation: {
+      createHTMLDocument: () => ({
+        createElement: (tag) => new MarkupElement(tag),
+        createTextNode: markupText,
+      }),
+    },
+  };
+  global.window = {
+    location: { origin: ORIGIN },
+    MetabrowserInertHtml: realm.window.MetabrowserInertHtml,
+  };
+  try {
+    const { head } = Object.fromEntries(
+      new URL(recording.image_route, ORIGIN).searchParams
+        .entries()
+        .map(([key, value]) => [key === "right" ? "head" : key, value]),
+    );
+    // The page's opener, on a pin at the head: the pin guard's news reaches the diff as the
+    // shell's listener on the window hands it on (builtin_plugins/diff/index.js).
+    let pinChanged = null;
+    const pinSwitch = createPinSwitch({
+      post: () => new Promise(() => {}),
+      onRestored: () => () => {},
+    });
+    const viewFile = (callbacks) =>
+      createViewFileOpener(
+        {
+          kind: "pin",
+          pin: head,
+          branch: "refs/pull/7/head",
+          href: (address) => (typeof address === "string" ? `/view/${address}` : null),
+          navigate() {},
+          onPinChanged(listener) {
+            pinChanged = listener;
+            return () => {
+              pinChanged = null;
+            };
+          },
+          pinSwitch,
+        },
+        callbacks,
+      );
+    const requested = [];
+    const container = new MarkupElement("div");
+    const handle = mountDiffView(
+      container,
+      byName.get("added-text-file"),
+      {
+        filterControls: { groupHtml: () => "", bind: () => () => {} },
+        ensureAsset: async () => {},
+      },
+      {
+        viewFile,
+        markdownViews,
+        renderMarkdown: async (fileId) => {
+          requested.push(fileId);
+          return structuredClone(recording.answers.f1);
+        },
+        markdownTargets: markdownViews.markdownTargets(recording.image_route, () => true),
+        markdownHoldMs: 0,
+      },
+    );
+    for (const observer of observers) {
+      observer.callback(
+        [...observer.targets].map((target) => ({ target, isIntersecting: true })),
+        observer,
+      );
+    }
+    for (let turn = 0; turn < 20; turn += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    const drawn = () =>
+      container.querySelectorAll("a").filter((link) => link.closest(".diff-markdown") !== null);
+    const toHead = drawn().filter((link) => (link.getAttribute("href") ?? "").startsWith("/view/"));
+    check(
+      "a page at the head draws rendered Markdown's link to a file of the head",
+      requested.length === 1 && toHead.length === 1,
+      JSON.stringify({ requested, hrefs: drawn().map((link) => link.getAttribute("href")) }),
+    );
+    check("the page heard no pin change yet", typeof pinChanged === "function");
+    pinChanged?.();
+    check(
+      "a pin another tab changed makes each drawn link to a file of the head plain text",
+      toHead.length === 1 &&
+        toHead.every((link) => link.getAttribute("href") === null && drawn().includes(link)),
+      JSON.stringify(drawn().map((link) => link.getAttribute("href"))),
+    );
+    handle.dispose();
+    check("disposal lets the page's pin-change news go", pinChanged === null);
+  } finally {
+    global.document = saved.document;
+    global.window = saved.window;
+    global.IntersectionObserver = saved.IntersectionObserver;
+  }
+}
+
 async function main() {
   const documentListeners = new Map();
   let hydrationObserver = null;
@@ -1569,6 +1810,7 @@ async function main() {
   await diffSummaryChecks(mountDiffView, twoFiles);
   await repeatedPathChecks(mountDiffView, twoFiles);
   await windowedSummaryChecks(repoRoot);
+  await headLinkChecks(mountDiffView, byName);
   // A host that cuts the header's breakdown short, as a pull request's header does to keep
   // its one line, gives the header its whole words as a tooltip while it is cut, and none
   // while it is whole (A7 of review A on #470). It runs after the checks of a tree that did

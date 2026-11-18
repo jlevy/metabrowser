@@ -39,6 +39,7 @@ from metabrowser.cancellable_thread import run_acquiring_thread
 from metabrowser.home import ensure_home
 from tests.admitted_git import required_admitted_git
 from tests.child_io import read_line
+from tests.loop_gate import held_until
 from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git, _file_source, _origin
 
@@ -183,13 +184,13 @@ def test_work_a_cancelled_task_abandoned_is_released_when_it_finishes() -> None:
     async def scenario() -> None:
         waiting = asyncio.create_task(run_acquiring_thread(work, release=release))
         # 20 s, so that with the 30 s wait below the two stay within 50 s.
-        assert await asyncio.to_thread(working.wait, 20)
+        assert await held_until(working, 20)
         waiting.cancel()
         with pytest.raises(asyncio.CancelledError):
             await waiting
         assert released == []
         proceed.set()
-        await asyncio.to_thread(done.wait, CHILD_TIMEOUT)
+        await held_until(done, CHILD_TIMEOUT)
 
     asyncio.run(scenario())
     assert released == ["acquired"]

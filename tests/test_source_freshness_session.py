@@ -59,6 +59,7 @@ from tests.golden_harness import (
     serve_published,
     stand_in_sandbox,
 )
+from tests.loop_gate import held_until
 from tests.required_tools import needs_git
 from tests.source_mirror_fixture import FETCHED_AT, build_origin
 from tests.test_cache_acquire import _allow_installed_git, _file_source
@@ -190,7 +191,7 @@ class _Beside:
         return self.stale
 
     async def refresh(self) -> None:
-        await asyncio.to_thread(self._released.wait)
+        await held_until(self._released, 30)
         self.stale = False
 
 

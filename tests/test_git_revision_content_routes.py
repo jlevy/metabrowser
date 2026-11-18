@@ -592,6 +592,53 @@ def test_git_file_and_kpress_surface_markdown_frontmatter(
     asyncio.run(_run())
 
 
+@pytest.mark.parametrize("trusted", [False, True], ids=["untrusted", "trusted"])
+def test_git_kpress_render_shows_fenced_code_plain_under_the_untrusted_profile(
+    trusted: bool, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pin runs under the untrusted profile, and there a fence never reaches a lexer.
+
+    The inert render keeps no class a highlighter writes, so a mirror's fence already showed
+    as plain text; a lexer can cost far more than its input (review G on #348 timed a
+    1.6 KB ``console`` line at 12 s), so the render asks for plain code. A trusting profile
+    still highlights.
+    """
+
+    from kpress.format import markdown as kpress_markdown
+    from pygments import highlight
+
+    lexed: list[str] = []
+
+    def counted(code: str, *args: Any) -> Any:
+        lexed.append(code)
+        return highlight(code, *args)
+
+    # KPress highlights each fence with Pygments' `highlight`, imported into its module.
+    monkeypatch.setattr(kpress_markdown, "highlight", counted)
+    kpress_adapter.clear_render_cache()
+    fence = b"```console\n$ echo [a@] <b>\n```\n"
+    store, commit = fast_import_store(tmp_path, {b"README.md": b"# Fenced\n\n" + fence})
+
+    async def _run() -> tuple[int, str]:
+        async with _pinned_client(store, commit) as (client, _subject):
+            set_capabilities(Capabilities(active_content=trusted, mutations=False))
+            rendered = await client.get(
+                "/api/kpress/render", params={"path": _wire(b"README.md"), "view": "rendered"}
+            )
+            return rendered.status_code, str(rendered.json().get("html", ""))
+
+    status, html = asyncio.run(_run())
+    assert status == 200, html
+    code = html.split("<pre", 1)[1].split("</pre>", 1)[0]
+    if trusted:
+        assert lexed == ["$ echo [a@] <b>\n"]
+        assert '<span class="' in code
+    else:
+        assert lexed == []
+        assert "<span" not in code
+        assert "$ echo [a@] &lt;b&gt;" in code
+
+
 def test_git_text_preview_windows_match_filesystem_highlight_bound(tmp_path: Path) -> None:
     work = tmp_path / "work"
     store = tmp_path / "store.git"

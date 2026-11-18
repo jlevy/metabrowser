@@ -145,6 +145,18 @@ def is_valid_ref_name(name: str) -> bool:
     )
 
 
+def is_pinnable_ref(ref: str) -> bool:
+    """Whether *ref* is a full name a mirror holds and a pin may be served under.
+
+    The origin's branches (``refs/remotes/origin/…``), its tags (``refs/tags/…``), and a
+    pull request's head (``refs/pull/<n>/head``), each a valid ref name.
+    """
+
+    return (
+        ref.startswith((BRANCH_MIRROR_PREFIX, TAG_PREFIX)) or _PULL_HEAD.fullmatch(ref) is not None
+    ) and is_valid_ref_name(ref)
+
+
 def _folded(name: str) -> str:
     """How a case- and normalization-insensitive filesystem compares a name, as APFS does."""
 
@@ -513,9 +525,10 @@ async def resolve_pin(
     pinned by ID has no ref, unless it is the tip of one of *keep_refs* in the mirror
     now: the refs a server was serving, which a reader who went to another commit and
     came back by ID is still on. The first such ref is kept, so the selector names it
-    and freshness keeps following it. Otherwise it is served under a pull request's head
-    when it is the tip of one the mirror holds, which View file on any pull request's
-    Files changed reaches. ``HEAD`` is the default branch, *default_ref*, as in a URL.
+    and freshness keeps following it. A request names its own first such ref, as View on
+    branch names the pull request's head. Otherwise it is served under a pull request's
+    head when it is the tip of one the mirror holds. ``HEAD`` is the default branch,
+    *default_ref*, as in a URL.
     A name the mirror holds that is not a commit, such as a tag of a tree, is refused
     at once, as URL opening refuses it. Raises a
     :class:`~metabrowser.mirror_refresh.SelectionError`; Git failures other than "not
@@ -672,6 +685,7 @@ __all__ = [
     "case_colliding_refs",
     "describe_case_collision",
     "folded_refs",
+    "is_pinnable_ref",
     "is_valid_ref_name",
     "list_mirror_refs",
     "mirror_refs",

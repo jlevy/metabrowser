@@ -455,13 +455,15 @@ sessions (#349): `GET github/pull-rendered-diff`, `diff/markdown_projection.py`,
 `builtin_plugins/diff/diff-markdown.js`. Open items are listed under
 [Acceptance](#acceptance).
 
-The implementation links directly to each admitted revision file and keeps the server’s
-current subject in place.
-Each side is parsed once by KPress’s own MarkdownIt core, and every top-level block is
-rendered from its own tokens, so a block’s source range is the token map that rendered
-it; a test checks the joined blocks against KPress’s `parse_markdown`. One changed list
-item or quoted paragraph is shown on its own, and changed words are marked by a bounded
-word diff whose span must occur exactly once in the changed source lines.
+The rendered answer keeps the server’s current subject in place: its images load from
+the admitted pair’s image route, and its links to files of the head are their `/view/`
+addresses, which the page keeps only while it shows the head
+([View on branch](plan-2026-11-17-view-on-branch.md)). Each side is parsed once by
+KPress’s own MarkdownIt core, and every top-level block is rendered from its own tokens,
+so a block’s source range is the token map that rendered it; a test checks the joined
+blocks against KPress’s `parse_markdown`. One changed list item or quoted paragraph is
+shown on its own, and changed words are marked by a bounded word diff whose span must
+occur exactly once in the changed source lines.
 These remain readable only in Source:
 
 - raw HTML, including inline tags such as `<br>` (HTML comments are allowed),
@@ -532,8 +534,7 @@ Type changes and paths without a renderer use Source.
 **Source** uses the existing diff and its Unified or Split preference, source anchors,
 and exact line text.
 Keep the reader’s choice while reviewing that file in the displayed comparison.
-Keep the full-page **View file** and **View at base** links separate from the
-presentation toggle.
+Keep the file bar’s **View on branch** separate from the presentation toggle.
 
 Defaulting to Rendered does not eagerly mount every document.
 The file bar can paint with the manifest.
@@ -582,6 +583,14 @@ Use Source when a structural edit cannot be represented with trustworthy block-l
 markers.
 
 #### Full File at the Reviewed Revision
+
+**Status:** Superseded on 2026-11-17 by
+[View on branch](plan-2026-11-17-view-on-branch.md).
+The standalone revision page this section specified (`GET github/pull-snapshot`) is
+deleted: a changed file opens at the pull request’s head in the main UI, and the old
+side, a merge base on no branch, has no control.
+What remains of this section is the admission it describes, which the rendered diff and
+its images (`GET github/pull-image`) still use; the text below is the design as it was.
 
 Open the complete file in the normal Document or Source view at the comparison’s exact
 snapshot.
@@ -789,8 +798,8 @@ commit.
 - [ ] Superseded in part: comparison views injected into changed files’ view descriptors
   (`mb-p2mi`, which took over `mb-yv0g`’s Phase 2 half).
   An inner change opens with Diff as its default view, and the file bar’s **View file**
-  controls open either side’s whole file (#248, on `main` through #260) in place of an
-  After tab
+  control opens the whole file the change makes (#248, on `main` through #260; one side
+  since the View on branch plan) in place of an After tab
 - [x] Commit detail in the Git panel links into the comparison rather than re-rendering
   (`mb-3syc`)
 - [ ] Moved: watcher-driven `stale` for uncommitted comparisons is Git-status Phase 2
