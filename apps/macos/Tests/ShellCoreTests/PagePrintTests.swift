@@ -5,7 +5,12 @@ import WebKit
 
 private final class LoadWatcher: NSObject, WKNavigationDelegate {
     var loaded = false
+    /// Whether WebKit's network process ended under the load (`isNetworkProcessLoss`).
+    var networkProcessEnded = false
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { loaded = true }
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: any Error) {
+        if isNetworkProcessLoss(error) { networkProcessEnded = true }
+    }
 }
 
 /// The page's Print button in a real `WKWebView` (mb-j3eu). WebKit on macOS hands a
@@ -65,6 +70,8 @@ private final class LoadWatcher: NSObject, WKNavigationDelegate {
 /// Review G1: a page print is authorized by the document's security origin, through the
 /// same check the window uses (`PagePrintRequests.allows`). A `/raw` response has the
 /// server's URL but, under its CSP sandbox, an opaque origin.
+/// A test runs again on a new page if WebKit's network process ends under its load
+/// (`NetworkProcessLost`).
 @Suite struct PagePrintAuthorizationTests {
     init() { ignoreSIGPIPELikeTheApp() }
 
@@ -92,7 +99,12 @@ private final class LoadWatcher: NSObject, WKNavigationDelegate {
         let watcher = LoadWatcher()
         webView.navigationDelegate = watcher
         webView.load(URLRequest(url: url))
-        #expect(await eventually { watcher.loaded })
+        do {
+            #expect(try await eventually(unlessLost: { watcher.networkProcessEnded }) { watcher.loaded })
+        } catch {
+            server.stop()  // the caller stops it otherwise
+            throw error
+        }
         withExtendedLifetime(watcher) {}
         return (webView, server, received, accepted)
     }
@@ -106,24 +118,28 @@ private final class LoadWatcher: NSObject, WKNavigationDelegate {
             ask(); ask(); setTimeout(ask, 0);
             </script>
             """
-        let (webView, server, received, accepted) = try await serve(page, headers: [rawSandbox])
-        defer { server.stop() }
-        _ = try await webView.evaluateJavaScript("for (let i = 0; i < 3; i++) window.webkit.messageHandlers.metabrowserPrint.postMessage(null); 0")
-        #expect(await eventually { received.count >= 6 }, "the requests reach the handler: \(received.count)")
-        #expect(received.all.allSatisfy { $0 }, "from the main frame")
-        #expect(accepted.count == 0)
-        withExtendedLifetime(webView) {}
+        try await rerunningIfTheNetworkProcessEnds {
+            let (webView, server, received, accepted) = try await serve(page, headers: [rawSandbox])
+            defer { server.stop() }
+            _ = try await webView.evaluateJavaScript("for (let i = 0; i < 3; i++) window.webkit.messageHandlers.metabrowserPrint.postMessage(null); 0")
+            #expect(await eventually { received.count >= 6 }, "the requests reach the handler: \(received.count)")
+            #expect(received.all.allSatisfy { $0 }, "from the main frame")
+            #expect(accepted.count == 0)
+            withExtendedLifetime(webView) {}
+        }
     }
 
     /// The control: the server's own page, through the same check, prints.
     @Test func theServersOwnPagePrintsThroughTheSameCheck() async throws {
         let page = #"<button id="print" onclick="window.print()">Print</button>"#
-        let (webView, server, received, accepted) = try await serve(page, headers: [])
-        defer { server.stop() }
-        _ = try await webView.evaluateJavaScript("document.getElementById('print').click(); 0")
-        #expect(await eventually { accepted.count == 1 })
-        #expect(received.count == 1)
-        withExtendedLifetime(webView) {}
+        try await rerunningIfTheNetworkProcessEnds {
+            let (webView, server, received, accepted) = try await serve(page, headers: [])
+            defer { server.stop() }
+            _ = try await webView.evaluateJavaScript("document.getElementById('print').click(); 0")
+            #expect(await eventually { accepted.count == 1 })
+            #expect(received.count == 1)
+            withExtendedLifetime(webView) {}
+        }
     }
 }
 
