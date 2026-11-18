@@ -4,6 +4,10 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- The macOS app’s File > Open Folder… shows hidden folders and files, so a folder such
+  as `~/.claude`, where Claude Code keeps its logs, can be chosen without first pressing
+  Command-Shift-Period, which still hides them.
+
 - With the Files tab grouped by age, each section’s name is drawn in the age color its
   files’ ages show: Past hour in the yellow of a file changed minutes ago, then quieter
   yellow-greens through Past month, Older in the oldest age’s gray, and Live in Live’s
