@@ -37,6 +37,7 @@ def test_discovers_bounded_github_identity_for_served_subdirectory(tmp_path: Pat
 
     assert discover_repository_context(served) == {
         "branch": "feature/navigation",
+        "branch_on_origin": False,
         "host": "github.com",
         "name": "docs",
         "owner": "example",
@@ -76,11 +77,15 @@ def test_reads_packed_branch_revision(tmp_path: Path) -> None:
     (git_dir / "config").write_text(
         '[remote "origin"]\n\turl = https://github.com/example/docs.git\n'
     )
-    (git_dir / "HEAD").write_text("ref: refs/heads/main\n")
-    (git_dir / "packed-refs").write_text(f"{revision} refs/heads/main\n")
+    (git_dir / "HEAD").write_text("ref: refs/heads/trunk\n")
+    (git_dir / "packed-refs").write_text(
+        f"{revision} refs/heads/trunk\n{revision} refs/remotes/origin/trunk\n"
+    )
 
+    # A packed `refs/remotes/origin/trunk` says origin has the branch.
     assert discover_repository_context(tmp_path) == {
-        "branch": "main",
+        "branch": "trunk",
+        "branch_on_origin": True,
         "host": "github.com",
         "name": "docs",
         "owner": "example",
@@ -107,6 +112,7 @@ def test_index_exposes_only_public_repository_identity(tmp_path: Path) -> None:
     assert match is not None
     assert json.loads(match.group(1)) == {
         "branch": "main",
+        "branch_on_origin": False,
         "host": "github.com",
         "name": "docs",
         "owner": "example",
@@ -114,3 +120,19 @@ def test_index_exposes_only_public_repository_identity(tmp_path: Path) -> None:
         "served_prefix": "docs",
     }
     assert str(tmp_path) not in match.group(1)
+
+
+def test_says_whether_origin_has_the_branch(tmp_path: Path) -> None:
+    """A link to the branch on github.com exists only where origin has the branch."""
+
+    revision = "e" * 40
+    _write_repository(
+        tmp_path, remote="https://github.com/example/docs.git", head="topic", revision=revision
+    )
+    context = discover_repository_context(tmp_path)
+    assert context is not None and context["branch_on_origin"] is False
+    remote = tmp_path / ".git" / "refs" / "remotes" / "origin"
+    remote.mkdir(parents=True)
+    (remote / "topic").write_text(f"{revision}\n")
+    context = discover_repository_context(tmp_path)
+    assert context is not None and context["branch_on_origin"] is True

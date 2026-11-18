@@ -294,10 +294,11 @@ async function checkPage(page, label, address, band, overview) {
   check(`${label}: a render without the card has no button shown`, unmarked === "none", unmarked);
 
   if (band === "narrow" && parts.toggle) {
-    // Where the toggle shows with the button still on screen: just past the threshold in a
-    // file, and just past the README's beginning on the Overview.
+    // Where the toggle shows with the button still on screen: just past the threshold or
+    // the document's beginning, whichever is further. A file's document starts below its
+    // view header and the README below File Overview, so in both it is the beginning.
     const documentTop = parts.card.top - parts.paneTop + parts.scrollTop;
-    const scrollTop = overview ? Math.ceil(documentTop) + 5 : THRESHOLD + 5;
+    const scrollTop = Math.max(THRESHOLD, Math.ceil(documentTop)) + 5;
     const read = await scrollTo(page, scrollTop);
     const visible = read.button.bottom > read.paneTop;
     check(

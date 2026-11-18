@@ -22,6 +22,10 @@ class RepositoryContext(TypedDict):
     """Public-safe GitHub identity used to verify localizable repository URLs."""
 
     branch: str | None
+    # Whether ``origin`` has the branch, as far as the checkout last fetched: its
+    # ``refs/remotes/origin/<branch>``. A link to the branch on github.com exists only
+    # then; a mirror's branch is the origin's by construction.
+    branch_on_origin: bool
     host: str
     name: str
     owner: str
@@ -48,12 +52,17 @@ def discover_repository_context(served_root: Path) -> RepositoryContext | None:
     if head is None:
         return None
     branch, revision = head
+    on_origin = (
+        branch is not None
+        and _read_reference(git_dir, common_dir, f"refs/remotes/origin/{branch}") is not None
+    )
     try:
         served_prefix = root.relative_to(git_root).as_posix()
     except ValueError:
         return None
     return RepositoryContext(
         branch=branch,
+        branch_on_origin=on_origin,
         host="github.com",
         name=name,
         owner=owner,
