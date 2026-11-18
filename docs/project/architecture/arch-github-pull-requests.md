@@ -70,8 +70,8 @@ Every file is disposable and carries its own schema version.
   together under the same lock, and `pull_catalog.py`’s docstring says when a catalog
   this release cannot use is replaced.
 - **The prepared manifests** beside a store are written atomically without a lock: each
-  key has one of a fixed set of slots, so a collision replaces a slot and costs only a
-  later miss (`pull_manifest.py`).
+  pull request has one, so a comparison of it at another pair replaces it and costs only
+  a later miss (`pull_manifest.py`).
 
 | File | Holds | Module |
 | --- | --- | --- |
@@ -83,7 +83,7 @@ Every file is disposable and carries its own schema version.
 | `<n>.timeline.json` | The Conversation timeline projection | `pull_timeline.py` |
 | `catalog.sqlite3`, `list-<filter>.refresh.json` | The repository catalog, and how its refreshes ended | `pull_catalog.py`, `pull_list.py` |
 | `stacks.json` | The native stack snapshot | `pull_stacks.py` |
-| `repository-stores/<store key>/github-pull-manifests/`, `github-pull-manifest-<slot>.epoch` | Prepared comparison manifests, and each slot’s epoch | `pull_manifest.py` |
+| `repository-stores/<store key>/github-pull-manifests/pull-<n>.json`, `github-pull-manifest-<slot>.epoch` | Each pull request’s prepared comparison manifest, and the epochs, direct-mapped by comparison | `pull_manifest.py` |
 
 `cache/paths.py` spells the source-side names.
 
@@ -125,11 +125,20 @@ the origin’s branches and tags, so a fork’s commits arrive with it:
   fetching the moving base branch; the next refresh compares against the branch again.
 
 Before the record is published, `pull_manifest.py` prepares its comparison manifest in a
-disposable bank beside the store: `MANIFEST_SLOTS` direct-mapped slots, each holding a
-File Diff Format document without patches and the full build, store, endpoint, and
-base-policy identity, so a collision evicts and never answers another comparison.
-A slot’s epoch makes old data miss after detected corruption even when the slot itself
-cannot be rewritten.
+disposable bank beside the store, one manifest for each pull request, so preparing one
+replaces no other’s. Each is a File Diff Format document without patches and the full
+identity: the document’s schema, the listing (`MANIFEST_LISTING` in
+`diff/adapters/git.py`), how the store’s Git is run, the store, both endpoints, and the
+base policy, so a comparison of the pull request at another pair replaces it and never
+answers for it. The bank holds one for each pull request ever prepared, about a third of
+a record each, and clearing the cache leaves it; the measurement is in
+`pull_manifest.py`. The identity names no build, so a manifest outlives an upgrade and
+an edit of the source.
+A change to the listing’s options or to the store read’s isolation moves it, and so does
+raising `MANIFEST_READING`, which a change to how a listing is read must do (a test pins
+it). An epoch, direct-mapped by comparison (`EPOCH_SLOTS`), makes old data miss after
+detected corruption for every pull request that keeps that comparison, even when its
+manifest cannot be rewritten.
 A read-only bank still serves recomputed comparisons.
 
 A mirror’s record write also keeps `<n>.snapshots.json`, the pairs earlier records
@@ -561,6 +570,10 @@ failing, the remote unreachable, every Git transport command refused, and every 
 that would leave the machine refused.
 `JOBS` names every other route, each of which starts or reports work, so a new route is
 classified before it lands.
+`test_a_diff_summary_answers_from_disk_after_the_build_changed` reads a Diff summary
+after the build’s tag changes, as an upgrade or an edit of an editable install’s source
+changes it, and `test_every_pull_requests_diff_summary_answers_from_disk` reads several
+pull requests’ Diff summaries after each was prepared.
 
 Four routes compute from local data rather than read a stored answer: `pull-comparison`
 takes its manifest from the bank and runs Git only to check that the store answers for
@@ -569,19 +582,12 @@ reads an image from the head’s tree; `pull-rendered-diff` renders both sides o
 event loop; and `pull-markdown` renders the record’s text through KPress, which keeps
 the render for the process.
 
-What a surface draws that does not answer from disk is in `GAPS`, each a strict expected
+What a surface draws that does not answer from disk is in `GAPS`, a strict expected
 failure:
 
 - **Avatars.** Records and the catalog keep the URL; the image comes from GitHub’s
   avatar host, and only the browser’s HTTP cache keeps it
   ([Chrome](../../design-system.md#chrome) in the design system).
-- **A replaced manifest.** The bank’s slots are direct-mapped (`MANIFEST_SLOTS` in
-  `pull_manifest.py`), so a repository with more than a few pull requests replaces one’s
-  manifest with another’s, and that one’s next Diff summary is listed by Git again.
-- **A manifest from another build.** A manifest’s identity names `BUILD_TAG`, which an
-  editable install derives from its newest source change (`http_caching.py`), so after
-  an upgrade, or any edit of a checkout `metab` runs from, every Diff summary is listed
-  by Git again; the changed-files lists name only their schema and still answer.
 
 ## Clearing the Cache
 

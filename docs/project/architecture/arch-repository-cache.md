@@ -214,8 +214,9 @@ processes.
 
 ### Provider Records
 
-The files under `sources/<slug>/pulls/` and a store’s `github-pull-manifests/` belong to
-the GitHub plugin and are not SoftSchema contracts.
+The files under `sources/<slug>/pulls/`, a store’s `github-pull-manifests/`, and its
+`github-pull-manifest-<slot>.epoch` files belong to the GitHub plugin and are not
+SoftSchema contracts.
 Nothing in the cache enumerates them, so the layout, probe, sweep, and `/api/cache/`
 projections leave them alone.
 [GitHub Pull Requests](arch-github-pull-requests.md#files-beside-a-source) lists them

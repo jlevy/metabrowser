@@ -124,6 +124,7 @@ CHROME_TESTS = (
     "tests.test_staged_fonts_chrome",
     "tests.test_title_prefix_chrome",
     "tests.test_transitions_instrument",
+    "tests.test_treemap_legend_hover_chrome",
     "tests.test_type_scale_chrome",
 )
 CHROME_TESTS_EXEMPT = ("tests.test_process_group", "tests.test_suite_tiers")

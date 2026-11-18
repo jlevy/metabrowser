@@ -419,23 +419,28 @@ function threeLines(r) {
       middle(r.icon) <= r.title.bottom + TOLERANCE_PX,
     titleAbove:
       r.title.bottom <= r.meta.top + TOLERANCE_PX && r.title.bottom <= r.age.top + TOLERANCE_PX,
-    // The state icon is in the second icon slot; the link holds no chevron.
-    iconInSecond: near(r.icon.left, r.inset + r.slot + r.gap),
+    // The state icon is in the one icon slot, on the row's inset (mb-3vil); the link holds no
+    // chevron.
+    iconOnInset: near(r.icon.left, r.inset),
     noLinkChevron: r.rowToggles === 0,
     // The change line is under the link, and the item is the two.
     changeUnder:
       r.change.top >= r.row.bottom - TOLERANCE_PX && r.change.top >= r.meta.bottom - TOLERANCE_PX,
     itemIsBoth: near(r.item.height, r.row.height + r.change.height),
-    // The chevron is on the change line, in the first icon slot, and the line in the title's column.
+    // The chevron is on the change line, in the row's one slot under the state icon, and the
+    // line's values in the text column under the title and the number's line, one column gap
+    // after the chevron's slot (mb-3vil): the three lines share two columns.
     chevronOnThird:
       within(r.chevron, r.change) &&
       within(r.toggle, r.change) &&
       r.chevron.top >= r.meta.bottom - TOLERANCE_PX,
-    chevronInFirst:
+    chevronUnderIcon:
       near(r.toggle.left, r.changeInset) &&
       near(r.toggle.width, r.slot) &&
-      near(r.changeInset, r.inset),
-    lineInTitleColumn: near(r.changeLine.left, r.title.left),
+      near(r.changeInset, r.inset) &&
+      near(r.toggle.left, r.icon.left),
+    textColumnShared: near(r.changeLine.left, r.title.left) && near(r.meta.left, r.title.left),
+    chevronGap: near(r.changeLine.left - r.toggle.right, r.gap),
   };
   return { ok: Object.values(parts).every(Boolean), parts };
 }
