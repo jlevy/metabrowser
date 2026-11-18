@@ -89,6 +89,18 @@ leaves nothing running.
 `ServerFleet` holds the open and still-stopping servers, and quitting waits for all of
 them, also on SIGTERM, SIGINT, or SIGHUP (`AppDelegate.installTerminationSignals`).
 
+`metab ROOT --present` reaches the app the way `open -a` does: it asks LaunchServices
+for the bundle and sends the paths or URL with `open -b`
+([Presenting to the App](arch-cli.md#presenting-to-the-app)). A file named alone arrives
+alone, and `AppDelegate.request` places it with `OpenTarget.resolve` as it places any
+file; a file `--path` names arrives after its ROOT, in one `application(_:open:)` call,
+so `request` opens the root first and then places the file in the most specific open
+folder, which is that root unless a folder inside it holding the file is open.
+It sends only to a bundle at one of `APP_INSTALL_LOCATIONS` whose `Info.plist` names it
+Metabrowser and sets `MetabrowserOpensURLs` to true, so a build that cannot yet open a
+URL, a build registered where it was built, or another app receives nothing, and it
+learns nothing back.
+
 `ServerLaunch` is the seam for host mode: it owns the arguments, the stdin line, the
 readiness parser and URL, and what a window installs before loading
 (`WebAuthorization`), so a host-mode launch replaces `CLIServeLaunch` without changing

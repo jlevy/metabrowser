@@ -20,8 +20,8 @@ Each aim ships in part today; the planned rest links its plan.
   the page draws, which the
   [Parity Registry](project/architecture/arch-parity-registry.md) enforces, and the
   `agent-log` plugin draws coding-agent logs as timelines.
-  Planned: `metab --present`, one command that shows content in the running app or
-  browser
+  `metab --present` hands a folder, a file, or a GitHub URL to the macOS app; planned: a
+  reply from the app, and a browser when there is no app
   ([native macOS app plan](project/specs/active/plan-2026-11-10-native-macos-app.md),
   Phase 3).
 - **Local, in your browser or a Mac app.** `metab` serves on `127.0.0.1` by default to
