@@ -5,7 +5,7 @@ title: "Coordinate landing the open PRs, Fast CI Phases 1-2, plan currency and 0
 kind: epic
 status: in_progress
 priority: 1
-version: 39
+version: 40
 delegate: claude-code@vm
 labels: []
 dependencies: []
@@ -39,10 +39,11 @@ child_order_hints:
   - is-01m7pg5xfxged1tw9c86yy0w12
   - is-01m7pk3bscmhvp7jcf22xwp2r3
   - is-01m7pk99cegx2xz0sc5wwddsdj
+  - is-01m7pme15tmgzne6mwwnr1jykp
 hold: null
 hold_until: null
 created_at: 2026-11-17T03:38:38.720Z
-updated_at: 2026-11-18T05:50:44.441Z
+updated_at: 2026-11-18T06:10:16.889Z
 started_at: 2026-11-17T03:38:54.763Z
 ---
 
