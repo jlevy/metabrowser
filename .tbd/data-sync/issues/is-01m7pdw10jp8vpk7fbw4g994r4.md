@@ -5,12 +5,12 @@ title: "View headers step 2: pull requests and commits onto the shared view head
 kind: task
 status: open
 priority: 2
-version: 2
+version: 3
 labels: []
 dependencies: []
 parent_id: is-01m7pab7r3k7xe521vyg5xmrgb
 created_at: 2026-11-18T04:15:35.441Z
-updated_at: 2026-11-18T05:54:25.091Z
+updated_at: 2026-11-18T22:03:22.305Z
 ---
 Owner, 2026-11-18: "make sure that the headers are better organized for consistency on files, PRs, and commits"; "the overall layout of the header material, the heading, and the metadata below it, and then the tabs ... should all be similarly styled"; "Eyebrow should be optional"; "about white versus gray backgrounds and border lines all of this should have a consistent design system."
 
@@ -26,4 +26,4 @@ Wait for #506 (PR author line and freshness note), which rewrites the same PR he
 
 ## Notes
 
-2026-11-18, review A on #552, A11: a pull request page's View on GitHub is a numbered header control (docs/keyboard-shortcuts.md), and the view header's GitHub toggle has no key on files and folders, as Print and Copy path have none. Decide here, before pull requests move onto the view header, whether the toggle takes that number on all four kinds. Also from #550's review: A2 (a plugin shares the header by its class structure; the builder is app.js's own) and A6 (a pull request's tab bar is on --bg since #550 but spans only its reading column).
+Owner decision 2026-11-18 (object model plan, Decision 12 C): ship the shared view header to the pull request and commit pages as an SDK frame that plugins call, not as .view-header-* classes plugins write, so moving pages onto the object model later has nothing to undo. See docs/project/specs/active/plan-2026-11-14-object-data-model-and-views.md, Decision 12.

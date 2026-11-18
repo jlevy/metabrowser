@@ -3,9 +3,9 @@ type: is
 id: is-01m7pac84jxgvafgawtsn1wgn0
 title: "View header: a small, clear toggle in the upper right between a gray Metabrowser icon (this view) and the GitHub icon (the same item's page on github.com)"
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 5
+version: 6
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -15,8 +15,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-18T03:14:32.720Z
-updated_at: 2026-11-18T04:15:23.623Z
+updated_at: 2026-11-18T22:04:06.578Z
 started_at: 2026-11-18T03:15:32.467Z
+closed_at: 2026-11-18T22:04:06.577Z
+close_reason: Landed in jlevy/metabrowser#552 (8b8ef2ec7); the app's in-window GitHub view stays mb-lxgw
+resolution: null
+duplicate_of: null
 ---
 Owner, 2026-11-18 in chat: 'then we want the upper right to be a toggle between a gray version of the metabrowser icon and the github icon. it should be small but clear.' Asked what it does, the owner chose: switch between Metabrowser's view and the item's page on github.com (like an always-visible View on GitHub). Lands with mb-6x33 in one PR. Shown only where a GitHub page exists for the item; hidden otherwise.
 
