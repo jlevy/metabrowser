@@ -150,8 +150,8 @@ The app writes nothing itself.
 | `metab FOLDER` or `metab FILE` | `folder`, the served folder | `serve_until_interrupted`, just before the `Serving` line |
 | `metab URL` | `mirror`, the source’s address | The same, once the source is acquired and its pin resolved |
 | The macOS app opening a folder | `folder` | The server the app starts is `metab FOLDER`, so the line above does it |
-| The app showing a folder that is already open | `folder` | `metab FOLDER --recent-add`, because no server starts |
-| The app restoring its last session | `folder`, as each restored server starts | The first line again; a tab that waits for its selection is not recorded until then |
+| The app showing a folder that is already open, because the user opened it again | `folder` | `metab FOLDER --recent-add`, because no server starts |
+| The app restoring its last session, Retry, Restart Server, or an upgrade’s restart | Nothing | None of them is an open, so the app starts each such server with `METABROWSER_RECORD_RECENT=0` (`FolderServer`) |
 
 A root is recorded before its server’s `Serving` line, so whoever reads that line finds
 the root already listed.
@@ -159,6 +159,33 @@ the root already listed.
 a reader and record nothing.
 A server that fails before that point records nothing, so a mistyped path never enters
 the list.
+
+**The order changes only when the user opens something**, which the owner decided on
+2026-11-18: Open Folder…, Open URL…, Open Recent, a drop, or `metab` run in Terminal.
+In the app, `FolderServer` lets a server record only on the first start of something the
+user just opened, through a wait for a runtime if there is one, and tells every other
+server it starts not to.
+
+### Opting Out
+
+`METABROWSER_RECORD_RECENT=0` (`RECORD_ENV` in `recent_targets.py`) keeps a process from
+recording: its serve records nothing and touches no file, and `--recent-add` records
+nothing and says so.
+Listing, forgetting, and clearing still work.
+It is for a server nobody opened to read, and four things set it:
+
+- the app, for the servers above that are not opens;
+- the test run (`tests/conftest.py`) and the golden that serves, so no test’s folder
+  enters anyone’s list; a test of the record itself turns it back on;
+- `make macos-run`, through `open --env`: the app passes its own setting on to every
+  `metab` it runs (`ChildEnvironment.passedThrough`), so a development run records
+  nothing at all;
+- the benchmarks: `devtools/bench_serving.py`, `devtools/compare_builds.py`, the
+  performance loop’s harnesses, and the WebKit gate, which also keeps the write out of
+  the startup they time.
+
+A `.env` file cannot set it, as it cannot set any name outside `metabrowser.dotenv`’s
+list.
 
 ## The `metab` Modes
 
@@ -184,17 +211,23 @@ settle first.
 File > Open Recent is drawn from `metab --recent --json` (`RecentTargets` in
 `ShellCore`, `RecentTargetsMenu` in the app):
 
-- The app runs the selected `metab` when it becomes active and when the menu opens, and
-  the menu shows the last answer at once, then the new one.
+- The app runs the selected `metab` when it becomes active, when the menu opens, and
+  when the Dock menu is asked for, and a menu shows the last answer at once, then the
+  new one.
 - It lists every entry it can open: folders, and repositories once the build opens
   links, which its `Info.plist` says with `MetabrowserOpensURLs`.
 - Titles come from the root, as a window is titled before its server answers
   (`FolderIdentity`), and no listed folder is touched to draw the menu.
 - Clear Menu runs `metab --recent-clear`. Choosing a folder that is gone shows the app’s
   usual message and runs `metab FOLDER --recent-forget`.
-- The Dock icon’s menu is macOS’s own: the app still registers each folder it opens with
-  `NSDocumentController`, and macOS keeps that list, in its own order and length, for
-  each build of the app.
+- **The Dock icon’s menu lists the same targets**, in the same order, which the owner
+  decided on 2026-11-18: `applicationDockMenu` draws it from the answer File > Open
+  Recent is drawn from (`RecentTargets.rows`), without Clear Menu.
+  The Dock takes a copy of the menu, so it shows the list as the app last read it, and
+  only while the app runs.
+  The app no longer registers folders with `NSDocumentController`, which would add
+  macOS’s own list beside this one, and clears at launch what an earlier build
+  registered.
 
 The app does not pass a storage override to the `metab` it runs, so the list it reads is
 the one its servers write.

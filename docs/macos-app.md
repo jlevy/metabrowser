@@ -64,19 +64,22 @@ The mark at the title bar’s trailing end opens the project on GitHub.
 
 ## Recent Items
 
-File > Open Recent lists what Metabrowser opened lately, most recent first: the folders
-you opened in the app, in either build of it, and the folders `metab` served in
-Terminal. It is `metab`’s own list of [recent targets](command-line.md#recent-targets),
-so `metab --recent` shows the same entries, and a folder stays in it however many others
-you open, up to the list’s length.
+File > Open Recent and the Dock icon’s menu list what you opened lately, most recent
+first: the folders you opened in the app, in either build of it, and the folders `metab`
+served in Terminal. It is `metab`’s own list of
+[recent targets](command-line.md#recent-targets), so `metab --recent` shows the same
+entries, and a folder stays in it however many others you open, up to the list’s length.
 
 - **A file** adds the folder it opened in.
 - **A folder that is gone** stays listed, since the app never looks at a listed folder
   until you choose it; choosing it says the folder is gone, and removes it.
 - **Clear Menu** empties the list, for `metab` too.
-- **The Dock icon’s menu** is macOS’s own recent-documents list for this build of the
-  app: only folders the app opened, in the order and at the length macOS keeps, which
-  System Settings > Desktop & Dock sets.
+- **Only an open changes the order:** File > Open…, Open Recent, a drop, Open With, or
+  `metab` in Terminal.
+  The windows the app brings back at launch, and a server it restarts, leave the list as
+  it was.
+- **The Dock icon’s menu** lists the same items while the app is running, as the app
+  last read them; it reads them again each time the menu is opened, for the next time.
 
 ## The Last Session
 

@@ -77,8 +77,10 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
    a switch back to the app, File > Open Recent lists `c` first.
    Opening `a` again, while its window is open, moves it to the top.
    After `rm -r /tmp/mb-check/c`, choosing `c` shows the alert and removes it.
-   Clear Menu empties both menus and `metab --recent`.
-   `defaults read io.github.jlevy.metabrowser.dev` shows no `recentFolders` key.
+   Clear Menu empties both menus and `metab --recent`. After a quit and a relaunch that
+   restores `a` and `b`, both menus and `metab --recent` list them in the order they had
+   before the quit. `defaults read io.github.jlevy.metabrowser.dev` shows no
+   `recentFolders` key.
 3. **Tabs.** With Settings > Open folders in set to Tabs, opening `c` and `d` adds them
    as tabs of the front window; set to Windows, opening `e` gives it a window, and
    Window > Merge All Windows then merges every folder into one window.

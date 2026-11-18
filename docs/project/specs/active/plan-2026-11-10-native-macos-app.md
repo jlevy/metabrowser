@@ -477,11 +477,15 @@ The owner asked, on 2026-11-18:
    `SessionRoot.key` (jlevy/metabrowser#539): a folder’s resolved path, or exactly
    `https://github.com/<owner>/<repo>`, never a ref, a pull request, or a pin.
    One entry is therefore one window, and reopening one that is open brings it forward.
-4. **Every serve records itself.** `metab ROOT` records its root as its `Serving` line
-   is printed, so the command line, the app, and the session restore all record through
-   the one server start they share.
-   The app adds one call, `metab FOLDER --recent-add`, for a folder that is already
-   open, where no server starts.
+4. **A serve records itself, and only an open changes the order.** `metab ROOT` records
+   its root just before its `Serving` line, so the command line and the app record
+   through the one server start they share.
+   The app adds one call, `metab FOLDER --recent-add`, for a folder the user opens while
+   it is already open, where no server starts.
+   The owner decided on 2026-11-18 that a restore is not an open: the windows brought
+   back at launch, Retry, Restart Server, and an upgrade’s restart do not record, so the
+   app starts those servers with `METABROWSER_RECORD_RECENT=0`. The same variable keeps
+   benchmark, test, and development servers out of the list, also the owner’s decision.
 5. **Repository windows are recent targets.** jlevy/metabrowser#539 kept them out of
    Open Recent because the app registered only folders with macOS. The server it starts
    for a link now records the repository, with no code in the app, so that rule is
@@ -498,9 +502,11 @@ The owner asked, on 2026-11-18:
 7. **Nothing looks at a listed folder.** Listing never checks whether a folder still
    exists, because a look can raise a macOS privacy prompt or hang on a dead volume.
    A folder that is gone is forgotten when the reader tries to open it.
-8. **The Dock menu stays macOS’s.** The app still registers folders with
-   `NSDocumentController`, so the Dock icon’s menu works as on any Mac app, with macOS’s
-   own cap, also when the app is not running.
+8. **The Dock menu lists the same targets.** The owner decided on 2026-11-18 that the
+   Dock icon’s menu and File > Open Recent list the same items while the app runs, so
+   `applicationDockMenu` draws from the same answer and the app no longer registers
+   folders with `NSDocumentController`. The first version of this decision, on the pull
+   request, kept macOS’s own list in the Dock; it is superseded.
 9. **The file is YAML with a format string.** The owner asked, on 2026-11-18, for
    configuration files that a person can read and that carry “a very simple format
    string … that is self-describing but simple”, updated only “when a new incompatible

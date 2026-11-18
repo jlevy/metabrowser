@@ -456,6 +456,9 @@ metab --recent-clear                # empty the list
   on a drive that is not there.
 - **`--recent-add`** records `ROOT` without serving it, for a shell that shows something
   already open.
+- **`METABROWSER_RECORD_RECENT=0`** keeps a `metab` from recording: it serves as usual
+  and leaves the list alone, and `--recent-add` records nothing.
+  Set it for a server nobody opened to read, such as a benchmark’s or a script’s.
 
 The list is `recent-targets.yml` in the [configuration directory](#storage-locations),
 readable only by you.
@@ -559,6 +562,7 @@ Every variable is read from the process environment, so export it in the shell t
 | `METABROWSER_CACHE_DIR`, `METABROWSER_CONFIG_DIR` | [Storage locations](#storage-locations) |
 | `METABROWSER_ALLOWED_HOSTS` | Comma-separated host names the server accepts besides the one it binds, for reaching it by another trusted name; see the [security policy](../SECURITY.md) |
 | `METABROWSER_PLUGINS_DIRS` | Plugin directories, separated by `:`, loaded before any `--plugins-dir` |
+| `METABROWSER_RECORD_RECENT` | `0` keeps a serve, and `--recent-add`, from recording a [recent target](#recent-targets) |
 | `METABROWSER_LOG_LEVEL` | Log verbosity, as `--log-level`, which overrides it |
 | `METABROWSER_REQUEST_LOG` | `verbose` logs every request with its arrival and completion times |
 | `METABROWSER_SLOW_SERVER_MS` | The time, in milliseconds, past which a request is logged as slow, 2,000 by default |

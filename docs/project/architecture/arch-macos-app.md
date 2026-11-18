@@ -225,8 +225,8 @@ Applications.
 - **Recents.** File > Open Recent lists `metab`’s
   [recent targets](arch-recent-targets.md#the-macos-app), which every server records as
   it starts, so the app decides nothing about the list and keeps none of its own.
-  The Dock menu is macOS’s: opening a folder still registers it with
-  `NSDocumentController`.
+  The Dock menu lists the same targets (`applicationDockMenu`), and a restored folder’s
+  server, like any restart, is told not to record.
 
 ### Session Restore
 

@@ -72,7 +72,7 @@ Both are named Metabrowser:
 | About box | “Development build · VERSION (BUILD) · COMMIT” | “Release · VERSION (BUILD) · COMMIT” |
 | Server logs | `~/Library/Logs/Metabrowser/` | the same folder |
 | App data (the saved session) | `~/Library/Application Support/Metabrowser/` | the same folder |
-| Settings, and the Dock menu’s recent folders | user defaults `io.github.jlevy.metabrowser.dev`, and macOS’s recent documents for that identifier | the same, for `io.github.jlevy.metabrowser` |
+| Settings | user defaults `io.github.jlevy.metabrowser.dev` | the same, for `io.github.jlevy.metabrowser` |
 | URL schemes | each declared scheme with `-dev` (none yet) | as declared |
 | DMG | `build/Metabrowser-Dev-<VERSION>-arm64.dmg` | `build/Metabrowser-<VERSION>-arm64.dmg` |
 
@@ -113,7 +113,7 @@ the About box’s first line tell it from an installed release.
 Both keep their files in folders named for the app, so they write one logs folder and
 restore the same windows, and File > Open Recent lists the same folders in both, since
 `metab` keeps that list.
-Their settings and the Dock menu’s recent folders stay apart by bundle identifier.
+Their settings stay apart by bundle identifier.
 Two copies can run at once: each claims a folder’s log before its server writes there
 (`ServerLogLease`), each save of the session replaces the whole file (`SessionStore`),
 and nothing on disk names a server to stop, so no copy can stop another’s.
@@ -165,8 +165,10 @@ decide, is checked by hand against a built development app with the
   Each variant has its own defaults domain, named by its bundle identifier.
   Deleting `~/Library/Application Support/Metabrowser/session.json` forgets the last
   session, a release’s too, since both variants share it, and File > Open Recent > Clear
-  Menu the recent targets, which `metab` keeps for both, with the Dock menu’s list,
-  which macOS keeps for each bundle identifier.
+  Menu the recent targets, which `metab` keeps for both.
+  `make run` starts the app with `METABROWSER_RECORD_RECENT=0`, so what a development
+  run opens stays out of that list; a copy that is already running keeps the setting it
+  started with.
 
 ### The WebKit Gate
 
