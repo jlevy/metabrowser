@@ -322,7 +322,6 @@ test-live-github:
 GOLDEN_RECORDERS := \
 	tests/test_source_kind_session.py \
 	tests/test_mirror_heading_session.py \
-	tests/test_github_page_session.py \
 	tests/test_source_freshness_session.py \
 	tests/test_source_ref_selector_session.py \
 	tests/test_key_reveal_session.py \

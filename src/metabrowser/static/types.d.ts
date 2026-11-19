@@ -1035,6 +1035,30 @@ type MetabrowserThemeChange = {
   resolved: "dark" | "light";
 };
 
+/** static/nav-collapse.js: hiding and showing the navigation pane. */
+type MetabrowserNavCollapseController = Readonly<{
+  button: HTMLButtonElement;
+  isCollapsed(): boolean;
+  setCollapsed(collapsed: boolean): void;
+  toggle(): void;
+  subscribe(listener: () => void): () => void;
+  dispose(): void;
+}>;
+
+type MetabrowserNavCollapseRuntime = Readonly<{
+  create(options: {
+    anchor?: HTMLElement | null;
+    button: HTMLButtonElement;
+    container: HTMLElement;
+    document?: Document;
+    focusFallback?: () => HTMLElement | null;
+    frame: HTMLElement;
+    onHide?: () => void;
+    pane: HTMLElement;
+    reducedMotion?: () => boolean;
+  }): MetabrowserNavCollapseController;
+}>;
+
 type MetabrowserThemeRuntime = {
   notifyChanged(detail: MetabrowserThemeChange): void;
   subscribe(listener: (detail: MetabrowserThemeChange) => void): () => void;
@@ -1573,6 +1597,15 @@ type MetabrowserSdk = {
     name: string,
     options?: Pick<MetabrowserActorIdentityOptions, "className" | "nameClass">,
   ): string;
+  /** A page's external counterpart as a split button: its link, and a menu of Copy Link
+   *  and Open in Browser (docs/design-system.md, "View on GitHub"). */
+  counterpartButton(counterpart: MetabrowserCounterpart): HTMLElement;
+  /** Ask `GET /api/counterpart` for `page`'s counterpart and put its button in `corner`,
+   *  a header's `.view-header-end`; resolves to the button, or null when there is none. */
+  mountCounterpart(corner: Element, page: string): Promise<HTMLElement | null>;
+  /** Start asking for `page`'s counterpart before its header is drawn; `mountCounterpart`
+   *  waits for this request rather than making another. */
+  prefetchCounterpart(page: string): void;
   /** View-phase destination mark; a state icon may come only from trusted view metadata. */
   decorateExternalLink<T extends HTMLElement>(
     anchor: T,
@@ -2845,6 +2878,10 @@ type MetabrowserShellKeymapShell = Readonly<{
   /** Home: the served folder's home view, as the folder's name's click goes there. */
   goHome(): void;
   openFolder(dir: string): void;
+  /** Hide or show the navigation pane, as its chevron's click does. */
+  toggleNav(): void;
+  /** The chevron that hides and shows the navigation pane, the key's target. */
+  navToggle(): HTMLElement | null;
   selectPreviewTab(bar: HTMLElement, tabId: string): boolean;
   /** Open or close a filter dropdown, `types` or `recency`, as its trigger's click does. */
   toggleFilterMenu(key: string, open: boolean): void;
@@ -3071,7 +3108,7 @@ declare global {
   type MetabrowserViewHeaderParts = {
     /** Extra classes on the header, as `folder-header`. */
     className?: string;
-    /** The item's path identity, the header's `data-path`, which the GitHub toggle reads. */
+    /** The item's path identity, written as the header's `data-path`. */
     path: string;
     /** The eyebrow's markup; an empty eyebrow is left out of the header's rhythm. */
     eyebrow: string;
@@ -3079,8 +3116,6 @@ declare global {
     iconClass?: string;
     iconStyle?: string;
     title: string;
-    /** The heading row's end: its controls. */
-    end: string;
     /** The metadata line's markup. */
     line: string;
   };
@@ -3829,6 +3864,7 @@ declare global {
   type MetabrowserPublicKeyRevealApi = MetabrowserKeyRevealApi;
   type MetabrowserPublicShellKeymapApi = MetabrowserShellKeymapApi;
   type MetabrowserPublicShellKeymapShell = MetabrowserShellKeymapShell;
+  type MetabrowserPublicNavCollapseController = MetabrowserNavCollapseController;
   type MetabrowserPublicTreeSection = MetabrowserTreeSection;
   type MetabrowserPublicGroupedLoad = MetabrowserGroupedLoad;
   type MetabrowserPublicShortcutRegistry = MetabrowserShortcutRegistry;
@@ -3948,6 +3984,17 @@ declare global {
    * and its text is the parts joined, a status count's as "2 A".
    */
   type MetabrowserCountParts = ReadonlyArray<MetabrowserCountPart>;
+
+  /** A page's external counterpart, as `GET /api/counterpart` answers it. */
+  type MetabrowserCounterpart = {
+    /** Who hosts it, `github`; it names the markup's `data-view-on-<provider>` hooks. */
+    provider: string;
+    /** What its button says, "View on GitHub". */
+    label: string;
+    /** The counterpart's https URL. */
+    url: string;
+  };
+
   /** The served root's tracked and ignored files and bytes, the server's `summary` shape. */
   type MetabrowserRootTotals = {
     files: number;
@@ -4180,6 +4227,7 @@ declare global {
     }>;
     MetabrowserSearchPalette: MetabrowserSearchPaletteRuntime;
     MetabrowserTheme: MetabrowserThemeRuntime;
+    MetabrowserNavCollapse?: MetabrowserNavCollapseRuntime;
     MetabrowserTreeExpansion: MetabrowserTreeExpansion;
     MetabrowserTreeFilterModel: MetabrowserTreeFilterModel;
     MetabrowserTreeKeyboardNavigation: MetabrowserTreeKeyboardRuntime;
@@ -4247,20 +4295,6 @@ declare global {
     }>;
     /** The pin and ref a pin's page was rendered for; absent on a folder. */
     METABROWSER_SOURCE_PIN?: MetabrowserSourcePage;
-    /** static/github-page.js, which only a page with a repository on github.com carries. */
-    MetabrowserGithubPage?: Readonly<{
-      pageRef(
-        context: MetabrowserRepositoryContext,
-        onOrigin: boolean,
-      ): { ref: string; note: string };
-      pageUrl(
-        context: MetabrowserRepositoryContext | null,
-        path: string,
-        item: { folder: boolean; sourceKind: string; ref: string },
-      ): string | null;
-      sync(doc: Document): HTMLElement | null;
-      toggle(doc: Document, url: string, note?: string, shown?: string): HTMLElement;
-    }>;
     /** Present on a checkout's page, a folder that is a repository's root: on its working
      * tree (`working_tree` true) and on each revision it shows. */
     METABROWSER_SOURCE_CHECKOUT?: { working_tree: boolean };

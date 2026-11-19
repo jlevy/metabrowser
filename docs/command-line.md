@@ -369,6 +369,7 @@ metab ./notes --api /api/routes
 ```shell
 metab ./notes --api '/api/tree?depth=2&types=.md'   # a query string as the browser sends it
 metab ./notes --api /api/identity                    # what the window is called
+metab ./notes --api '/api/counterpart?page=/view/README.md'   # where View on GitHub goes
 metab ./notes --api /api/cache/sources               # repositories in the cache
 metab ./notes --api /api/git/refs --format json      # the answer alone, as JSON
 metab ./notes --api /api/kpress/render --data request.json   # a POST body
