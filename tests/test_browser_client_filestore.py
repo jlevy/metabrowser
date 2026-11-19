@@ -1297,11 +1297,13 @@ def test_summary_refresh_is_not_gated_on_the_row_it_installs() -> None:
     assert "paintTreeSummary(" in block
     start = js.index("function paintTreeSummary(html)")
     block = js[start : js.index("\n}\n", start)]
-    # The cached chrome is rewritten by regex; if it only matches the split
-    # spelling, the cache keeps a stale summary after the live row is replaced.
-    assert "tree-summary(?: tree-summary-split)?" in block, (
-        "the chrome-cache regex must match the fallback row as well"
-    )
+    # Either row is replaced in place, in the Files metadata band outside the panel, and no
+    # cached copy of the panel's chrome holds one to go stale after it is replaced: a
+    # source swap repaints the panel and leaves the band as it is.
+    assert 'document.querySelector(".tree-summary")' in block
+    assert 'filesMetadataBand()?.insertAdjacentHTML("afterbegin", html)' in block
+    assert "_lastTreeSummaryHtml" not in js
+    assert "chromeHtml: truncationHtml," in js
 
 
 def test_the_navigation_path_row_takes_one_height_and_the_view_header_its_rows() -> None:

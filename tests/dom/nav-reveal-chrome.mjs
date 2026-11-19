@@ -610,13 +610,13 @@ try {
   await load(`${base}/pull/106`);
   await revealed("a pull request with 250 changed files", pullRow(106), "pulls");
   await evaluate(`document.querySelector(${JSON.stringify(pullRow(106))}).focus()`);
-  // Right goes to the row's change line, and Right there opens its changed files (mb-d0a3).
+  // Right on the row opens its changed files, as on a folder's, and focus stays on the row: a
+  // pull request's three lines are one item and one stop (mb-1z7j).
   await press("ArrowRight", { code: "ArrowRight", keyCode: 39 });
   await waitFor(
-    `document.activeElement?.matches?.('#tab-pulls .github-pulls-change[data-number="106"]') === true`,
-    "Right goes to #106's change line",
+    `document.querySelector(${JSON.stringify(pullRow(106))})?.getAttribute("aria-expanded") === "true"`,
+    "Right opens #106's changed files",
   );
-  await press("ArrowRight", { code: "ArrowRight", keyCode: 39 });
   const FILE_ROW = (name) =>
     `#tab-pulls a.github-pull-file-row[href="/pull/106/files/src/app/plugins/github/${name}"]`;
   const clicked = FILE_ROW("mod_040.py");

@@ -14,11 +14,14 @@
 // `lane` drives the lane alone over those answers, with the browser's idle time and its clock
 // in the session's hands, and prints what each row shows at each step and what was asked.
 // `row` mounts the production panel over a stand-in for the DOM with the SDK's own painters
-// (tests/dom/sdk-ref-fixture.js) and prints each row's third line in its three states, then
-// what a press and each key do: a press on the row opens it and expands nothing, a press on
-// its change line toggles its files, Up and Down walk the rows and expand nothing, Right goes
-// to a row's change line, and there Enter and Space toggle its files, Left closes them and
-// goes back, and Up and Down leave it. `invariants` are the relations every step holds.
+// (tests/dom/sdk-ref-fixture.js) and prints each row's third line in its three states. `tree`
+// goes on in that panel and prints what a press and each key do on a pull request, one item
+// of three lines (mb-1z7j): a press on its title or number's line opens it and expands
+// nothing, a press anywhere on its change line toggles its files, Up and Down walk whole
+// items and expand nothing, Space toggles the files, Right opens them, Left closes them, and
+// Enter opens the pull request. `focus` goes on from there: every key acts on the item with
+// focus, even after a poll has moved the list's Tab stop to the current pull request.
+// `invariants` are the relations every step holds.
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -334,11 +337,19 @@ async function rowStory(lines) {
     Promise.resolve({ status, headers: { get: () => null }, json: async () => body });
   const requests = [];
   const opened = [];
+  // The panel's timers, kept and never run on their own, each with where it was set: the
+  // story fires the list's next poll when it says (`firePoll`), as the poll's delay ending
+  // would. A tree of changed files polls its own list too, so a timer is told by the stack
+  // that set it, the list's `scheduleNext` in pulls-panel.js.
+  const timers = [];
   const globals = {
     document,
     window: {
       addEventListener() {},
-      setTimeout: () => 0,
+      setTimeout: (callback) => {
+        timers.push({ callback, from: new Error().stack ?? "" });
+        return 0;
+      },
       clearTimeout() {},
       requestAnimationFrame(callback) {
         frames.push(callback);
@@ -455,10 +466,17 @@ async function rowStory(lines) {
       );
     const childByClass = (node, name) =>
       node.childNodes.find((child) => child.classList?.contains(name));
-    const rowOf = (number) => item(number).childNodes[0];
-    const changeOf = (number) =>
-      childByClass(item(number), "github-pulls-change-group").firstElementChild;
+    // The item's three lines are one zone (`.github-pulls-entry`, mb-1z7j): the link, the
+    // row of the tree, and under it the change line, which carries the toggle.
+    const zoneOf = (number) => childByClass(item(number), "github-pulls-entry");
+    const rowOf = (number) => zoneOf(number).childNodes[0];
+    const changeOf = (number) => childByClass(zoneOf(number), "github-pulls-change");
     const lineOf = (number) => childByClass(changeOf(number), "github-pulls-change-line");
+    // The line's words, hidden, which describe the row (`aria-describedby`).
+    const wordsOf = (number) => childByClass(changeOf(number), "github-pulls-change-words");
+    /** Which way the line's chevron points: `.expanded` or `.collapsed`. */
+    const turnOf = (number) =>
+      changeOf(number).classList.contains("expanded") ? "expanded" : "collapsed";
     /** Nodes as data: text as its string, an element its class, attributes, and content. */
     const shape = (nodes) =>
       nodes.map((node) =>
@@ -488,34 +506,54 @@ async function rowStory(lines) {
               parts: change.childNodes.map((node) => node.className),
               text: textOf(lineOf(number)),
               ...(number === 106 ? { line: shape(lineOf(number).childNodes) } : {}),
-              name: change.getAttribute("aria-label"),
-              expanded: change.getAttribute("aria-expanded"),
+              words: textOf(wordsOf(number)),
+              chevron: turnOf(number),
             },
           ];
         }),
       );
-    /** One item as drawn: its name, role, level, place, expansion, Tab stop, and focus. */
-    const said = (element, name) =>
-      [
+    /** One element as drawn: its name, role, level, place, expansion, what it owns, describes,
+     * or controls, whether it is a stop of the tree's, and focus. */
+    const said = (element, name) => {
+      const attribute = (label, attr) =>
+        element.getAttribute(attr) === null ? null : `${label} ${element.getAttribute(attr)}`;
+      const tabindex = element.getAttribute("tabindex");
+      return [
         name,
         element.getAttribute("role"),
-        `level ${element.getAttribute("aria-level")}`,
-        `${element.getAttribute("aria-posinset")}/${element.getAttribute("aria-setsize")}`,
-        `expanded ${element.getAttribute("aria-expanded")}`,
-        element.getAttribute("aria-owns") === null
+        attribute("level", "aria-level"),
+        element.getAttribute("aria-posinset") === null
           ? null
-          : `owns ${element.getAttribute("aria-owns")}`,
-        element.getAttribute("tabindex") === "0" ? "Tab stop" : null,
+          : `${element.getAttribute("aria-posinset")}/${element.getAttribute("aria-setsize")}`,
+        `expanded ${element.getAttribute("aria-expanded")}`,
+        attribute("owns", "aria-owns"),
+        attribute("described by", "aria-describedby"),
+        attribute("controls", "aria-controls"),
+        tabindex === "0" ? "Tab stop" : tabindex === null ? "no stop" : null,
         document.activeElement === element ? "focused" : null,
       ]
         .filter(Boolean)
         .join(" · ");
-    /** The tree as drawn for the four rows: each row, then its change line, the row's child. */
+    };
+    /** The line under a row: hidden from assistive technology or not, which way its chevron
+     * points, whether it is a stop of the tree's, and focus. */
+    const saidLine = (number) => {
+      const line = changeOf(number);
+      return [
+        `  #${number}'s change line`,
+        line.getAttribute("aria-hidden") === "true" ? "hidden" : "exposed",
+        line.getAttribute("role"),
+        `chevron ${turnOf(number)}`,
+        line.getAttribute("tabindex") === null ? "no stop" : "a stop",
+        document.activeElement === line ? "focused" : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+    };
+    /** The tree as drawn for the four rows: each item's row, then the line under it that
+     * carries its toggle. */
     const tree = () =>
-      SHOWN.flatMap((number) => [
-        said(rowOf(number), `#${number}`),
-        said(changeOf(number), `  #${number}'s change line`),
-      ]);
+      SHOWN.flatMap((number) => [said(rowOf(number), `#${number}`), saidLine(number)]);
     const runIdle = async () => {
       while (idle.length > 0) {
         idle.shift()();
@@ -559,7 +597,12 @@ async function rowStory(lines) {
       shape([...sdk.changeLineNodes(said106)]),
       "the row draws the component",
     );
-    assert.equal(arrived["#106"].name, `Changed files: ${said106.label}`);
+    assert.equal(arrived["#106"].words, `Changed files: ${said106.label}`);
+    assert.equal(
+      rowOf(106).getAttribute("aria-describedby"),
+      wordsOf(106).getAttribute("id"),
+      "the row is described by its line's words",
+    );
     // No file total: the brief line alone (its spaces between items are the layout's gap).
     assert.equal(arrived["#106"].text.replace(/\s/g, ""), said106.text.replace(/\s/g, ""));
     assert.ok(!/file/.test(arrived["#106"].text), "the line names no file total");
@@ -569,11 +612,12 @@ async function rowStory(lines) {
       tree: tree(),
       requests: requests.splice(0),
     });
-    const keyStep = (what, act) => {
+    const keyStep = (what, act, pressed) => {
       const handled = act();
       return paint().then(() => {
         steps.push({
           step: what,
+          ...(pressed === undefined ? {} : { pressed }),
           ...(handled === undefined ? {} : { handled }),
           tree: tree(),
           ...(opened.length > 0 ? { opened: opened.splice(0) } : {}),
@@ -581,53 +625,121 @@ async function rowStory(lines) {
         });
       });
     };
-    const title = childByClass(rowOf(106), "github-pulls-title");
-    await keyStep("a press on #106's title opens it, and its files stay closed", () =>
-      list.listeners.get("click")({ target: title, button: 0, preventDefault() {} }),
+    /** A plain press on *target*, a part of #*number*'s item named *part*. */
+    const press = (what, number, part, target) =>
+      keyStep(what, () => list.listeners.get("click")({ target, button: 0, preventDefault() {} }), {
+        item: number,
+        on: part,
+      });
+    // The item's other lines, which include no toggle of their own: a press opens the pull
+    // request and expands nothing (docs/design-system.md, "A Click on the Toggle's Line
+    // Toggles").
+    await press(
+      "a press on #106's title opens it, and its files stay closed",
+      106,
+      "title",
+      childByClass(rowOf(106), "github-pulls-title"),
     );
-    assert.equal(changeOf(106).getAttribute("aria-expanded"), "false");
-    const chevron = childByClass(changeOf(106), "github-pulls-toggle");
-    await keyStep("a press on its chevron opens its files, and opens no page", () => {
-      chevron.focus();
-      list.listeners.get("click")({ target: chevron, button: 0, preventDefault() {} });
-    });
-    assert.equal(changeOf(106).getAttribute("aria-expanded"), "true");
-    await keyStep("a press on its change line closes them", () =>
-      list.listeners.get("click")({ target: lineOf(106), button: 0, preventDefault() {} }),
+    await press(
+      "a press on #105's number's line opens it, and its files stay closed",
+      105,
+      "number's line",
+      childByClass(rowOf(105), "github-pulls-meta"),
     );
+    await press(
+      "a press on #106's state icon opens it again, and its files stay closed",
+      106,
+      "state icon",
+      rowOf(106).childNodes[0],
+    );
+    assert.equal(rowOf(106).getAttribute("aria-expanded"), "false");
+    // The line that carries the toggle, anywhere on it: a press toggles, opens no page, and
+    // leaves the focus on the item, the tree's one stop, so Space and the arrows go on from it.
+    await press(
+      "a press on #106's chevron opens its files, opens no page, and focuses its item",
+      106,
+      "chevron",
+      childByClass(changeOf(106), "github-pulls-toggle"),
+    );
+    assert.equal(turnOf(106), "expanded");
+    assert.equal(rowOf(106).getAttribute("aria-expanded"), "true");
+    assert.equal(document.activeElement, rowOf(106), "the item takes the focus, not its line");
+    await press(
+      "a press on the values of its change line closes them: the whole line carries the toggle",
+      106,
+      "change line",
+      lineOf(106),
+    );
+    await press(
+      "a press on the change line itself, past its values, opens them again",
+      106,
+      "change line",
+      changeOf(106),
+    );
+    await press("and closes them", 106, "change line", changeOf(106));
     rowOf(106).focus();
     list.listeners.get("focusin")({ target: rowOf(106) });
-    await keyStep("Down walks to #105, which opens, and expands nothing", () => handle.move(1));
+    await keyStep("Down walks to #105, a whole item, which opens and expands nothing", () =>
+      handle.move(1),
+    );
     await keyStep("Down again to #104: nothing expands", () => handle.move(1));
     await keyStep("Up back to #105", () => handle.move(-1));
-    await keyStep("Right on #105 goes to its change line, and opens nothing", () =>
-      handle.expand(),
-    );
-    await keyStep("Enter on the change line opens its files", () => handle.activateAnchor());
-    await keyStep("Enter again closes them", () => handle.activateAnchor());
-    await keyStep("Space on it (the handle's toggleFiles) opens them", () =>
-      handle.toggleFiles(105),
-    );
-    await keyStep("Left closes them, and keeps the change line", () => handle.collapse());
-    await keyStep("Right opens them again", () => handle.expand());
     await keyStep(
-      "Down from the open change line, its files not yet listed, goes on to #104, which opens",
+      "Space on #105 (the handle's toggleFiles) opens its files in place, and keeps the focus",
+      () => handle.toggleFiles(105),
+    );
+    await keyStep("Space again closes them", () => handle.toggleFiles(105));
+    await keyStep("Enter opens #105 again, and expands nothing", () => handle.activateAnchor());
+    await keyStep("Right opens #105's files, as on a folder", () => handle.expand());
+    await keyStep(
+      "Right again, its files not yet listed, has no file to go to: the focus stays",
+      () => handle.expand(),
+    );
+    await keyStep(
+      "Down from #105, its files open, goes on to #104, a whole item: the files are Right's",
       () => handle.move(1),
     );
-    await keyStep("Up back to #105, which opens", () => handle.move(-1));
-    await keyStep("Right to its change line, then Left: its files close", () => {
-      handle.expand();
-      return handle.collapse();
-    });
-    await keyStep("Left again goes back to #105's row", () => handle.collapse());
-    await keyStep("Right, then Up from the change line: back to #105's row", () => {
-      handle.expand();
-      return handle.move(-1);
-    });
-    await keyStep("Right, then Down from its closed change line: on to #104, which opens", () => {
-      handle.expand();
-      return handle.move(1);
-    });
+    await keyStep("Up back to #105, its files still open", () => handle.move(-1));
+    await keyStep("Left closes #105's files, as on a folder", () => handle.collapse());
+    await keyStep(
+      "Left again, on a pull request in no stack, goes nowhere, and is the list's",
+      () => handle.collapse(),
+    );
+    // A press on #103's change line focuses #103, whose page is not the one open. A poll then
+    // settles the list's anchor, its Tab stop, on #105, the current pull request, and leaves
+    // focus on #103; each key still acts on #103, the item with focus (mb-1z7j).
+    const focusFrom = steps.length;
+    const firePoll = () => {
+      const poll = timers.filter(({ from }) => /scheduleNext .*pulls-panel\.js/.test(from)).at(-1);
+      assert.ok(poll !== undefined, "the list has a poll waiting");
+      timers.length = 0;
+      poll.callback();
+    };
+    const drifted = (step) =>
+      step.tree.some((line) => /^#105 .*· Tab stop/.test(line)) &&
+      step.tree.some((line) => /^#103 .*· focused$/.test(line));
+    await press(
+      "a press on #103's change line opens its files and focuses #103, while #105's page is open",
+      103,
+      "change line",
+      lineOf(103),
+    );
+    await keyStep("a poll: the Tab stop goes back to #105, and focus stays on #103", firePoll);
+    assert.ok(drifted(steps.at(-1)), "the poll moves the Tab stop and leaves the focus");
+    await keyStep("Left closes #103's files: the item with focus, not the Tab stop", () =>
+      handle.collapse(),
+    );
+    assert.equal(rowOf(103).getAttribute("aria-expanded"), "false", "Left closes #103's files");
+    assert.equal(rowOf(105).getAttribute("aria-expanded"), "false", "and leaves #105's");
+    await keyStep("a poll again: the Tab stop goes back to #105", firePoll);
+    assert.ok(drifted(steps.at(-1)), "the poll moves the Tab stop again");
+    await keyStep("Right opens #103's files again", () => handle.expand());
+    assert.equal(rowOf(103).getAttribute("aria-expanded"), "true", "Right opens #103's files");
+    assert.equal(rowOf(105).getAttribute("aria-expanded"), "false", "and not #105's");
+    await keyStep("a poll again", firePoll);
+    assert.ok(drifted(steps.at(-1)), "and again");
+    await keyStep("Enter opens #103, the item with focus", () => handle.activateAnchor());
+    assert.deepEqual(steps.at(-1).opened, ["#103"], "Enter opens the focused item");
     await keyStep("Tab reaches #103's row, and Enter opens it: nothing expands", () => {
       rowOf(103).focus();
       list.listeners.get("focusin")({ target: rowOf(103) });
@@ -635,7 +747,7 @@ async function rowStory(lines) {
     });
     handle.dispose();
     restore();
-    return { steps, said: { text: said106.text, label: said106.label } };
+    return { steps, focusFrom, said: { text: said106.text, label: said106.label } };
   } catch (error) {
     restore();
     throw error;
@@ -662,31 +774,101 @@ async function rowStory(lines) {
     }
   }
   const row = await rowStory(lines);
-  // No step of the row story expands a row's files but a press on its change line, Enter or
-  // Space on it, or Right from it.
+  // Every step of the row story holds the item's one zone (mb-1z7j) and the rule for a row
+  // with a disclosure toggle (docs/design-system.md, "A Click on the Toggle's Line Toggles"):
+  // a press on the line that carries the toggle toggles that item's files, and a press on the
+  // larger item that includes it toggles nothing. Only those presses and Space, Right, and
+  // Left change what is open; a walk, Enter, Tab, or a line's arrival opens nothing.
+  const expansionOf = (tree) =>
+    Object.fromEntries(
+      tree.flatMap((line) => {
+        const found = /^#(\d+) · .* · expanded (\w+)/.exec(line);
+        return found === null ? [] : [[found[1], found[2]]];
+      }),
+    );
+  let before = null;
   for (const step of row.steps) {
-    const opens = /chevron|Enter on the change line|Space on it|Right opens/.test(step.step);
-    if (!opens && step.tree !== undefined) {
-      const before = row.steps[row.steps.indexOf(step) - 1]?.tree ?? [];
-      for (const [at, line] of step.tree.entries()) {
-        if (line.includes("change line") && line.includes("expanded true")) {
-          assert.ok(
-            before[at]?.includes("expanded true"),
-            `${step.step}: nothing opens a row's files on its own`,
-          );
-        }
+    if (step.tree === undefined) {
+      continue;
+    }
+    const now = expansionOf(step.tree);
+    for (const [at, line] of step.tree.entries()) {
+      if (line.startsWith("  ")) {
+        // The line under each item turns its chevron with the item's one state, is hidden
+        // from assistive technology with no role, so the tree holds only its items and their
+        // groups, and is never a stop of its own.
+        const number = /#(\d+)/.exec(line)[1];
+        const turn = now[number] === "true" ? "expanded" : "collapsed";
+        assert.ok(line.includes(`· chevron ${turn}`), `${step.step}: ${line}`);
+        assert.ok(
+          line.includes("· hidden · chevron") && line.endsWith("no stop"),
+          `${step.step}: ${line}`,
+        );
+      } else {
+        assert.ok(step.tree[at + 1].startsWith("  "), "each item's row has its line under it");
       }
     }
+    if (before !== null) {
+      const changed = Object.keys(now).filter((number) => now[number] !== before[number]);
+      if (step.pressed !== undefined) {
+        const onToggle = ["chevron", "change line"].includes(step.pressed.on);
+        assert.deepEqual(
+          changed,
+          onToggle ? [String(step.pressed.item)] : [],
+          `${step.step}: a press on the toggle's line toggles, and on the item's other lines does not`,
+        );
+        if (onToggle) {
+          assert.equal(step.opened, undefined, `${step.step}: the toggle's line opens no page`);
+        }
+      } else if (/^(Space|Right|Left)\b/.test(step.step)) {
+        // A key toggles at most the item with focus.
+        const focusedItem = step.tree.find((line) => / · focused$/.test(line));
+        const focusedNumber = focusedItem === undefined ? null : /^#(\d+)/.exec(focusedItem)?.[1];
+        assert.ok(
+          changed.every((number) => number === focusedNumber),
+          `${step.step}: a key acts on the item with focus`,
+        );
+      } else {
+        assert.deepEqual(changed, [], `${step.step}: nothing opens a row's files on its own`);
+      }
+    }
+    before = now;
   }
-  // One part a run, so each transcript block stays one reviewable size: `lane` or `row`.
-  // With neither, the run holds every part's invariants and says how many steps each took.
+  const pressedParts = new Set(row.steps.flatMap((step) => step.pressed?.on ?? []));
+  assert.deepEqual(
+    [...pressedParts].sort(),
+    ["change line", "chevron", "number's line", "state icon", "title"],
+    "the story presses every part of an item",
+  );
+  // One part a run, so each transcript block stays one reviewable size: `lane`, `row`,
+  // `tree`, or `focus`. (A block also has to stay under the size at which the transcript
+  // runner's matcher, a regular expression built from the block, is too large to compile.)
+  // With none, the run holds every part's invariants and says how many steps each took.
+  const lineSteps = row.steps.filter((step) => "lines" in step);
+  const treeSteps = row.steps.slice(lineSteps.length, row.focusFrom);
+  const focusSteps = row.steps.slice(row.focusFrom);
+  assert.ok(
+    [...treeSteps, ...focusSteps].every((step) => !("lines" in step)),
+    "the row's line steps come first",
+  );
   const part = process.argv[2];
   const printed =
     part === "lane"
       ? { lane }
       : part === "row"
-        ? { row }
-        : { steps: { lane: lane.length, row: row.steps.length } };
+        ? { row: { steps: lineSteps, said: row.said } }
+        : part === "tree"
+          ? { tree: treeSteps }
+          : part === "focus"
+            ? { focus: focusSteps }
+            : {
+                steps: {
+                  lane: lane.length,
+                  row: lineSteps.length,
+                  tree: treeSteps.length,
+                  focus: focusSteps.length,
+                },
+              };
   process.stdout.write(`${JSON.stringify({ ...printed, invariants: true }, null, 2)}\n`);
 })().catch((error) => {
   process.stderr.write(`${error.stack || error}\n`);
