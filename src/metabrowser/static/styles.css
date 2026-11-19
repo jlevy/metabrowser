@@ -705,8 +705,11 @@
   /* The height of the navigation column's path row, border included: a fixed
      height rather than its content's, so the column's rules sit where they sit
      whatever the path's font set measures. The row is border-box, so this is the
-     whole row. The main view's header is a view header (below), not a twin of it. */
-  --pane-header-row-height: 41px;
+     whole row. The main view's header is a view header (below), not a twin of it.
+     34 px centers the path's 18.5 px line with 7.25 px above and below it, the inset the
+     tabs under it give their labels (7 px above, measured 2026-11-18 in Chrome); 41 px
+     left 10.75 px, which read as loose beside the tabs. */
+  --pane-header-row-height: 34px;
   /* A view header's rhythm (docs/design-system.md, "View Headers"): the pads above
      its first row and below its last, the gap between rows, the eyebrow's and
      the metadata line's heights, which a row holds whatever fills it, so nothing
@@ -1601,7 +1604,9 @@ body {
 .app-header {
   background: var(--header-bg);
   color: var(--header-text);
-  padding: var(--pane-header-padding-y) var(--pane-header-padding-x);
+  /* No vertical padding: the fixed height and the centering place the row's line, and
+     the Metabrowser menu's 24 px button fits the row without it. */
+  padding: 0 var(--pane-header-padding-x);
   height: var(--pane-header-row-height);
   border-bottom: 1px solid var(--border);
   display: flex;
