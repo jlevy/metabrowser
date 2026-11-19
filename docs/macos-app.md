@@ -49,8 +49,8 @@ metab https://github.com/owner/repo/pull/123 --present
 
 `metab ROOT --present` hands a folder, a file, or a GitHub URL to the app and says what
 it sent; the app opens it as it opens a folder from Finder, and starts if it is not
-running. [The command-line guide](command-line.md#handing-a-target-to-the-app---present)
-has the report, its codes, and `--dry-run`, which checks a target without sending it.
+running. [The command-line guide](command-line.md#presenting-a-target---present) has the
+report, its codes, and `--dry-run`, which checks a target without sending it.
 
 - **Which app:** `--present` asks LaunchServices, so it finds the app wherever macOS has
   registered it: an installed release first, then a development build, which is what
@@ -61,14 +61,19 @@ has the report, its codes, and `--dry-run`, which checks a target without sendin
   A build elsewhere, such as one left where it was built, is refused with
   `app_not_installed`, and an older build, or another app an override names, with
   `app_not_marked`, rather than send what it would drop or run.
-  [The command-line guide](command-line.md#handing-a-target-to-the-app---present) lists
-  the checks and the developer setting that lifts the first.
+  [The command-line guide](command-line.md#presenting-a-target---present) lists the
+  checks and the developer setting that lifts the first.
 - **A file:** a file named alone joins the most specific folder the app has open that
   holds it, and otherwise opens in its own folder.
   A file named with `--path` inside a folder opens in that folder, unless a folder
   inside it that holds the file is open already, where the file then shows.
 - **A folder inside another:** the app opens each folder in a window of its own, so
-  `--path` naming a folder is not sent; present that folder itself.
+  `--path` naming a folder is not sent to it; present that folder itself.
+- **No app, or a browser by choice:** when no app takes the target, `--present` opens it
+  in your browser instead, on a `metab` server it starts and leaves running, and reports
+  the server’s address and process ID. Set `open_in` to `app` to send only to the app,
+  or to `browser` to skip it, in `config.yml`, `METABROWSER_OPEN_IN`, or `--open-in`
+  ([choosing the app or a browser](command-line.md#choosing-the-app-or-a-browser)).
 - **No confirmation yet:** the app does not answer, so `--present` reports what
   LaunchServices accepted, never that a window shows it.
 - **In an agent’s sandbox,** LaunchServices may not answer; the report says

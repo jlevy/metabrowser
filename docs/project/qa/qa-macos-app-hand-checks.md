@@ -436,13 +436,16 @@ The build stays where `make macos-app` leaves it, so `present` sets
 `METABROWSER_ALLOW_UNINSTALLED_APP=1`, which lifts `--present`’s install-location check
 for a developer; `make macos-run` launches the app with `open -a` and runs no
 `--present`, so it needs no such setting.
+`present` also passes `--open-in app`, so a target no app takes is refused, as these
+checks expect, instead of opening in a browser on a server started for it, as the
+default `auto` does; checks 11 and 12 cover `auto`.
 
 ```shell
 APP_ID=io.github.jlevy.metabrowser.dev
 folder="$(mktemp -d)" && mkdir -p "$folder/docs" && echo '# Guide' > "$folder/docs/guide.md"
 present() {
   METABROWSER_ALLOW_UNINSTALLED_APP=1 \
-    /usr/bin/time -p metab "$@" --present --app-bundle-id "$APP_ID" --format json
+    /usr/bin/time -p metab "$@" --present --open-in app --app-bundle-id "$APP_ID" --format json
 }
 ```
 
@@ -474,15 +477,28 @@ present() {
    page, as the GitHub Links checks do with `open -b`.
 8. **Inside an agent’s sandbox.** From an agent session whose sandbox is on,
    `metab "$folder" --present` exits 5 with `lookup_failed` or `open_failed`, never
-   `app_not_found`. Record which, and what the reason says.
+   `app_not_found`, under the default `auto` too, which starts no server then.
+   Record which, and what the reason says.
 9. **An older copy running.** With a build without the marker running and a newer one
    registered, `present https://github.com/jlevy/metabrowser`: record which copy takes
    the URL and whether a window shows it, since the marker is read from the bundle
    LaunchServices prefers, not from the running copy.
-10. **Not installed.** `metab "$folder" --present --app-bundle-id "$APP_ID"`, without
-    the setting, exits 4 with `app_not_installed`, naming the build’s path under
+10. **Not installed.**
+    `metab "$folder" --present --open-in app --app-bundle-id "$APP_ID"`, without the
+    setting, exits 4 with `app_not_installed`, naming the build’s path under
     `apps/macos/build/` and the two install locations, and asking for nothing to be done
     with that build; nothing opens.
+11. **No app, under `auto`.**
+    `metab "$folder" --present --app-bundle-id "$APP_ID" --format json`, without the
+    setting, exits 0 with `delivered_to: browser`, `code: server_started`, and
+    `fallback.code: app_not_installed`; a browser tab opens on the folder at the
+    report’s `url`. `kill` with the report’s `pid` stops the server, and the page then
+    fails to load.
+12. **Browser delivery turned off.** With `present_browser: false` in `config.yml`’s
+    `config` mapping, the command of check 11 exits 4 with `browser_off`, and so does
+    `metab "$folder" --present --open-in browser --format json`; nothing opens and no
+    server starts (`pgrep -f metabrowser.cli.main` finds none).
+    Remove the line after.
 
 ## Setup Flows
 

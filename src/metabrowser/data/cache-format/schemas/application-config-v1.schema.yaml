@@ -23,6 +23,12 @@ $defs:
     minLength: 1
     pattern: ^[0-9A-Za-z.+!_-]+$
     type: string
+  OpenInChoice:
+    enum:
+    - auto
+    - app
+    - browser
+    type: string
 $schema: https://json-schema.org/draft/2020-12/schema
 additionalProperties: true
 description: |-
@@ -34,6 +40,17 @@ description: |-
 properties:
   format:
     $ref: '#/$defs/LayoutFormat'
+  open_in:
+    anyOf:
+    - $ref: '#/$defs/OpenInChoice'
+    - type: 'null'
+    default: null
+  present_browser:
+    anyOf:
+    - type: boolean
+    - type: 'null'
+    default: null
+    title: Present Browser
   upgrades:
     items:
       $ref: '#/$defs/ConfigUpgrade'
@@ -49,4 +66,4 @@ title: ApplicationConfig
 type: object
 x-softschema:
   contract: metabrowser.config:ApplicationConfig/v1
-  schema_sha256: 2a950fe7fd3f3e50ea6aa6703f03b6af7584fe4ab47825f381e5530b396a3d9c
+  schema_sha256: 8bdb93b443fbf9c793f8795e23408e6e6705fb5a5960a0f73cd970829073d6a8

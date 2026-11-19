@@ -293,7 +293,8 @@ def _view_key_problems(plugins: list[LoadedPlugin]) -> list[str]:
 
 
 def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = False) -> None:
-    """Validate every discovered plugin and the packaged cache record contracts.
+    """Validate every discovered plugin and the packaged cache record contracts, and
+    report where ``--present`` opens a target.
 
     Exit non-zero on any problem.
     """
@@ -355,6 +356,12 @@ def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = Fal
     # Cross-plugin: view keys stay clear of each other and the shell within a kind.
     problems.extend(_view_key_problems(result.plugins))
 
+    # Where `--present` opens a target, and the app it would find (`cli/present.py`).
+    from metabrowser.cli.present import doctor_open_in
+
+    open_in = doctor_open_in()
+    problems.extend(open_in.problems)
+
     if as_json:
         typer.echo(
             json.dumps(
@@ -362,6 +369,7 @@ def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = Fal
                     "ok": not problems,
                     "plugin_count": len(result.plugins),
                     "problems": problems,
+                    "open_in": open_in.section,
                 },
                 indent=2,
             )
@@ -376,6 +384,9 @@ def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = Fal
             typer.echo(f"  • {problem}", err=True)
         raise typer.Exit(code=1)
 
+    # A run with a problem writes nothing to stdout, so the preference's line is part of
+    # the answer of a clean one.
+    typer.echo(open_in.line)
     typer.echo(f"metab --doctor: {len(result.plugins)} plugin(s) OK")
 
 

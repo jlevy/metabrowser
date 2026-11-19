@@ -1746,6 +1746,9 @@ async def index(
     ) + (
         '\n      <div class="nav-toolbar" id="nav-toolbar-pulls" data-nav-toolbar="pulls"'
         f"{'' if pulls_in_front else ' hidden'}>{pending_tally}</div>"
+        # The band under the Pulls filters, which the list's count and connection lines
+        # fill (builtin_plugins/github/pulls-panel.js), as the Files totals fill theirs.
+        '\n      <div class="nav-metadata-band" id="nav-metadata-pulls"></div>'
         if pulls_tab
         else ""
     )
@@ -2290,8 +2293,16 @@ async def index(
       </div>
       <!-- Filter bar lives outside #tab-files: a tree reload replaces
            that container's contents wholesale, and the bar must also
-           stay put while .tree-content scrolls. app.js fills it. -->
-      <div class="nav-filter-bar" id="nav-filter-bar" data-nav-toolbar="files"{filter_bar_behind}>{pending_tally}</div>{toolbars}
+           stay put while .tree-content scrolls. app.js fills it.
+
+           Under it, the Files totals and the remarks on them, a band of
+           navigation metadata lines that app.js fills. It is outside
+           .tree-content too: that scroller reserves its scrollbar's gutter
+           and clips what it holds short of it, so a line inside it drew its
+           rule short of the pane's edge. The band shows with its toolbar
+           (`.nav-metadata-band` in styles.css). -->
+      <div class="nav-filter-bar" id="nav-filter-bar" data-nav-toolbar="files"{filter_bar_behind}>{pending_tally}</div>
+      <div class="nav-metadata-band" id="nav-metadata-files"></div>{toolbars}
       <div class="tree-content" id="tree-content">
         <div id="tab-files" data-tab-content="files"{files_behind}>
           <div class="loading mb-delayed-loading"><div class="spinner"></div><span

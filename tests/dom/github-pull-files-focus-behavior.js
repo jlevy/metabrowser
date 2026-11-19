@@ -135,13 +135,15 @@ async function run() {
     };
     document.body = new Element("body");
     document.activeElement = document.body;
+    // A pull request's item: its row owns the tree and its change line controls it.
     const parent = new Element("li"),
       owner = new Element("a"),
+      changeLine = new Element("div"),
       elsewhere = new Element("button");
     owner.dataset.id = "owner";
     elsewhere.dataset.id = "elsewhere";
     document.body.append(parent, elsewhere);
-    parent.append(owner);
+    parent.append(owner, changeLine);
     let generation = 0;
     let reads = 0;
     let releaseRetry = null;
@@ -221,7 +223,7 @@ async function run() {
       leave: () => owner.focus(),
       focusedIn() {},
     });
-    view.attach(parent, owner);
+    view.attach(parent, owner, changeLine);
     view.controller.expand();
     await settle();
     if (scenario.startsWith("retry")) {
@@ -324,9 +326,10 @@ async function offerFocus(mountFileTree, detail) {
     document.activeElement = document.body;
     const parent = new Element("li");
     const owner = new Element("a");
+    const changeLine = new Element("div");
     owner.dataset.id = "owner";
     document.body.append(parent);
-    parent.append(owner);
+    parent.append(owner, changeLine);
     /** The reads of the list not yet answered, oldest first. */
     const reads = [];
     const view = mountFileTree({
@@ -397,7 +400,7 @@ async function offerFocus(mountFileTree, detail) {
         },
       };
     };
-    view.attach(parent, owner);
+    view.attach(parent, owner, changeLine);
     view.controller.expand();
     await settle();
     // The opening's bound passes: the tree opens on its loading line, and the list comes late.
@@ -499,8 +502,9 @@ async function refreshingPaint(mountFileTree) {
   document.activeElement = document.body;
   const parent = new Painted("li");
   const owner = new Painted("a");
+  const changeLine = new Painted("div");
   document.body.append(parent);
-  parent.append(owner);
+  parent.append(owner, changeLine);
   const listing = (state, refreshing, rows) => ({
     state,
     reason: null,
@@ -561,7 +565,7 @@ async function refreshingPaint(mountFileTree) {
     leave() {},
     focusedIn() {},
   });
-  view.attach(parent, owner);
+  view.attach(parent, owner, changeLine);
   view.controller.expand();
   await settle();
   const [line, , list] = view.group.children;
@@ -622,8 +626,9 @@ async function walkClaims(mountFileTree) {
   document.activeElement = document.body;
   const parent = new Element("li");
   const owner = new Element("a");
+  const changeLine = new Element("div");
   document.body.append(parent);
-  parent.append(owner);
+  parent.append(owner, changeLine);
   const files = ["a.py", "b.py", "c\\d.py"];
   const claims = [];
   const view = mountFileTree({
@@ -686,7 +691,7 @@ async function walkClaims(mountFileTree) {
     leave() {},
     focusedIn() {},
   });
-  view.attach(parent, owner);
+  view.attach(parent, owner, changeLine);
   view.controller.expand();
   await settle();
   view.controller.focused("a.py");

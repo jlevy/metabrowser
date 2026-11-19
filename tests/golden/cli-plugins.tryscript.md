@@ -5,6 +5,7 @@ env:
   TERM: "dumb"
   TZ: "UTC"
   METABROWSER_PLUGINS_DIRS: ""
+  METABROWSER_OPEN_IN: "browser"
 patterns:
   BUILTIN: '\S+/builtin_plugins'
 ---
@@ -13,6 +14,10 @@ patterns:
 `--plugins`, `--plugin NAME`, and `--doctor` in text and JSON. The builtin plugin set is
 stable; the absolute checkout prefix of each plugin’s `static_root` is elided with the
 `[BUILTIN]` pattern.
+`--doctor` also reports where `metab --present` opens a target, the `open_in`
+preference, and the app it finds; this file sets `METABROWSER_OPEN_IN=browser`, which
+looks for no app, so the report is the same on every machine.
+`tests/golden/cli-present-browser.txt` shows what it finds with a stand-in app.
 
 ## Test: --plugins lists every discovered plugin
 
@@ -386,6 +391,7 @@ recorded on its own: the answer is on stdout, and stderr is empty.
 
 ```console
 $ metab --doctor 2>/dev/null
+metab --doctor: open_in browser (environment); --present looks for no app
 metab --doctor: 11 plugin(s) OK
 ? 0
 ```
@@ -404,7 +410,13 @@ $ metab --doctor --json 2>/dev/null
 {
   "ok": true,
   "plugin_count": 11,
-  "problems": []
+  "problems": [],
+  "open_in": {
+    "value": "browser",
+    "source": "environment",
+    "present_browser": true,
+    "app": null
+  }
 }
 ? 0
 ```
