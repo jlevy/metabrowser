@@ -3,9 +3,9 @@ type: is
 id: is-01m7r5cpdc6a2t69qm9095k7yk
 title: Shared root marks between the page and the app's menus
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-11-18-macos-folder-switching.md
 delegate: claude-code@spud10
 labels: []
@@ -18,7 +18,11 @@ parent_id: is-01m7r5cmz107gb7jxq0y6pp7fe
 hold: null
 hold_until: null
 created_at: 2026-11-18T20:25:53.323Z
-updated_at: 2026-11-18T21:23:10.333Z
+updated_at: 2026-11-19T01:31:42.942Z
 started_at: 2026-11-18T21:23:10.332Z
+closed_at: 2026-11-19T01:31:42.941Z
+close_reason: Merged in stack 579 (jlevy/metabrowser#565-#578) as 74d8d61
+resolution: null
+duplicate_of: null
 ---
 PR 3. RootMark names each root kind's Lucide id; the app loads the glyph SVGs as template NSImages; a test holds the app's copies to static/icons.js; File > Open Recent and the Dock menu draw them (Q3, Q5 decide the details).
