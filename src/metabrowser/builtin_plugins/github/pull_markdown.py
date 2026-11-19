@@ -24,6 +24,17 @@ once while the server runs; the page then shows it as plain text and says why.
 It reads the record the pull route reads and never runs gh or Git. One part is one
 render of at most one body, which the record bounds, so a page with many comments asks
 for the ones a reader sees rather than the server rendering them all at once.
+
+With no record cached, the description is the core preview's, the one the pull route
+serves (``core_preview`` in its envelope, "Lightweight Cores" in
+docs/project/architecture/arch-github-pull-requests.md), so a page that shows a preview
+shows its description rendered rather than as Markdown source while the full record is
+fetched. That answer carries the preview's ``revision`` as ``core_revision``, with
+``record_revision`` and ``fetched_at`` null, and every other part is refused as the record's
+absence. Measured 2026-11-18 in headless Chrome 152 on jlevy/metabrowser through the Pulls
+tab, load average 14 to 19: a preview's description showed as source for 1.0 and 2.0 s
+before this, the full record's fetch through gh and the page's next poll, and the owner saw
+3 to 4 s (mb-d59o).
 """
 
 from __future__ import annotations
@@ -31,7 +42,8 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import re
-from typing import Any, Final
+from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING, Any, Final
 
 from metabrowser import kpress_adapter
 from metabrowser.builtin_plugins.github.pull_record import PullRecord
@@ -42,6 +54,9 @@ from metabrowser.diff.markdown_projection_worker import (
     shared_worker,
     text_identity,
 )
+
+if TYPE_CHECKING:
+    from metabrowser.builtin_plugins.github.served_pull import PullCorePreview
 
 PART_PATTERN: Final = re.compile(r"^(?:body|(?:issue_comment|review|review_comment)/[0-9]{1,20})$")
 
@@ -61,8 +76,17 @@ def part_text(record: PullRecord, part: str) -> str | None:
     return next((item.body for item in items if item.id == wanted), None)
 
 
-async def render_part(view: PullView, part: str) -> tuple[int, dict[str, Any]]:
-    """The status and body for one part."""
+async def render_part(
+    view: PullView,
+    part: str,
+    *,
+    current_core: Callable[[], Awaitable[PullCorePreview | None]] | None = None,
+) -> tuple[int, dict[str, Any]]:
+    """The status and body for one part.
+
+    *current_core* answers the core preview the pull route would serve now, or ``None``; it
+    is asked only for the description of a pull request with no record cached.
+    """
 
     if PART_PATTERN.fullmatch(part) is None:
         return 400, {"error": "name a part of the pull request", "code": "invalid_part"}
@@ -73,14 +97,35 @@ async def render_part(view: PullView, part: str) -> tuple[int, dict[str, Any]]:
     record, _dumped, revision = await asyncio.to_thread(
         cached_pull_record, served.home, served.slug, number
     )
-    if not isinstance(record, PullRecord):
+    preview = (
+        await current_core()
+        if not isinstance(record, PullRecord) and part == "body" and current_core is not None
+        else None
+    )
+    if preview is not None:
+        text = str(preview["pull"].get("body") or "")
+        link_base = str(preview["pull"].get("html_url") or "")
+        answered = {
+            "fetched_at": None,
+            "record_revision": None,
+            "core_revision": preview["revision"],
+        }
+    elif not isinstance(record, PullRecord):
         return 404, {"error": "no record of this pull request is cached", "code": record}
-    text = part_text(record, part)
-    if text is None:
-        return 404, {"error": "the record has no such part", "code": "unknown_part"}
-    # KPress caches a render by this key, so a page that asks again, or a reload, costs
-    # nothing until a refresh changes the text.
-    key = hashlib.sha256(f"{record.fetched_at}\0{part}\0{text}".encode()).hexdigest()[:16]
+    else:
+        found = part_text(record, part)
+        if found is None:
+            return 404, {"error": "the record has no such part", "code": "unknown_part"}
+        text = found
+        link_base = record.pull.html_url
+        answered = {"fetched_at": record.fetched_at, "record_revision": revision}
+    # KPress caches a render by this key, and the Markdown child joins a request to one in
+    # flight with the same key (`InertRender.flight_key`). A render is of the part's text
+    # and the page its links resolve against alone, so the key is those and not when the
+    # text was read: a page that asks again, a reload, a refresh that left the text as it
+    # was, and the record that follows a core preview with its description unchanged all
+    # reuse one render (mb-d59o).
+    key = hashlib.sha256(f"{part}\0{link_base}\0{text}".encode()).hexdigest()[:16]
     try:
         # KPress's sanitized mode keeps what a document may load; in the page it must not,
         # so the child reduces the HTML to the allowlist against the pull request's page.
@@ -95,7 +140,7 @@ async def render_part(view: PullView, part: str) -> tuple[int, dict[str, Any]]:
                 mtime_hash=key,
                 size=len(text.encode()),
                 include_toc="off",
-                link_base=record.pull.html_url,
+                link_base=link_base,
             )
         )
     except InertRenderRefused as refused:
@@ -104,8 +149,7 @@ async def render_part(view: PullView, part: str) -> tuple[int, dict[str, Any]]:
         return 422, {"error": f"the text could not be rendered: {exc}", "code": "render_failed"}
     return 200, {
         "number": number,
-        "fetched_at": record.fetched_at,
-        "record_revision": revision,
+        **answered,
         "part": part,
         "html": str(rendered["html"]),
         "assets": await asyncio.to_thread(kpress_adapter.document_stylesheets),

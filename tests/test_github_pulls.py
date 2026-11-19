@@ -794,6 +794,66 @@ def test_the_markdown_route_names_a_part_before_it_reads_anything(
     assert (status, body["code"]) == answer
 
 
+def test_a_core_description_and_its_record_share_one_render(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A text renders by its part, its page, and itself, not by when it was read (mb-d59o).
+
+    The record that follows a core preview usually carries the same description. Keyed by
+    the core's ``observed_at`` and the record's ``fetched_at``, the two asked the Markdown
+    child for two renders of one text, so the record's could not join the core's in flight.
+    """
+
+    from types import SimpleNamespace
+
+    from metabrowser.builtin_plugins.github import pull_markdown
+
+    fixtures = Path(__file__).parent / "fixtures" / "github-pull-page-responses.json"
+    recorded = json.loads(fixtures.read_text(encoding="utf-8"))
+    record = PullRecord.model_validate(recorded["current"]["body"]["record"])
+    asked: list[Any] = []
+
+    class Child:
+        async def render_inert(self, request: Any) -> dict[str, Any]:
+            asked.append(request)
+            return {"html": "<p>rendered</p>"}
+
+    cached: list[Any] = ["not_cached", record]
+    monkeypatch.setattr(pull_markdown, "shared_worker", Child)
+    monkeypatch.setattr(pull_markdown.kpress_adapter, "document_stylesheets", dict)
+    monkeypatch.setattr(
+        pull_markdown, "cached_pull_record", lambda *_: (cached.pop(0), None, "f" * 64)
+    )
+    preview: Any = {
+        "pull": record.pull.model_dump(mode="json"),
+        "observed_at": "2026-09-17T11:59:00Z",
+        "revision": "a" * 64,
+    }
+
+    async def core() -> Any:
+        return preview
+
+    view = PullView(
+        number=7,
+        host=SimpleNamespace(pulls=SimpleNamespace(home=Path(), slug="octo/demo")),  # pyright: ignore[reportArgumentType]
+        pin=None,
+        pin_ref=None,
+        refreshing=False,
+        kept=None,
+    )
+    early = asyncio.run(render_part(view, "body", current_core=core))
+    later = asyncio.run(render_part(view, "body", current_core=core))
+    assert (early[0], early[1]["core_revision"], later[0], later[1]["record_revision"]) == (
+        200,
+        "a" * 64,
+        200,
+        "f" * 64,
+    )
+    assert record.fetched_at != preview["observed_at"]
+    assert len(asked) == 2
+    assert asked[0].flight_key == asked[1].flight_key
+
+
 def test_a_record_that_is_gone_or_replaced_stops_being_answered(
     pinned_pull: tuple[_Stand, TestClient],
 ) -> None:

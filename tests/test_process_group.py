@@ -110,6 +110,7 @@ CHROME_TESTS = (
     "tests.test_files_tab_chrome",
     "tests.test_files_totals_stable_chrome",
     "tests.test_git_commit_summary_chrome",
+    "tests.test_github_pull_core_markdown_chrome",
     "tests.test_github_pull_header_chrome",
     "tests.test_github_pull_text_chrome",
     "tests.test_github_pull_timeline_chrome",
