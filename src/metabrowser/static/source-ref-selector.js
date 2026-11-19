@@ -268,26 +268,33 @@
   /**
    * Which of *count* rows, each *rowHeight* tall, a list scrolled to *scrollTop* draws in
    * a view *viewHeight* tall: those in view and ROWS_OVERSCAN more on either side, as the
-   * range from *start* up to *end*. Until a row has been measured, *rowHeight* is 0 and
-   * the first rows are drawn, as many as the overscan on both sides. Pure.
+   * range from *start* up to *end*, and the row at *roving*, the one that takes Tab, as
+   * *also* when the range leaves it out, else -1. That row may have focus, and Tab from
+   * the filter box goes to it, so it stays drawn however far the list scrolls from it.
+   * Until a row has been measured, *rowHeight* is 0 and the first rows are drawn, as many
+   * as the overscan on both sides. Pure.
    *
    * @param {number} count
    * @param {number} rowHeight
    * @param {number} scrollTop
    * @param {number} viewHeight
-   * @returns {{start: number, end: number}}
+   * @param {number} roving
+   * @returns {{start: number, end: number, also: number}}
    */
-  function rowWindow(count, rowHeight, scrollTop, viewHeight) {
+  function rowWindow(count, rowHeight, scrollTop, viewHeight, roving) {
     if (count <= 0) {
-      return { start: 0, end: 0 };
+      return { start: 0, end: 0, also: -1 };
     }
-    if (!(rowHeight > 0)) {
-      return { start: 0, end: Math.min(count, 2 * ROWS_OVERSCAN) };
+    let start = 0;
+    let end = Math.min(count, 2 * ROWS_OVERSCAN);
+    if (rowHeight > 0) {
+      const first = Math.floor(scrollTop / rowHeight) - ROWS_OVERSCAN;
+      const last = Math.ceil((scrollTop + viewHeight) / rowHeight) + ROWS_OVERSCAN;
+      start = Math.max(0, Math.min(count, first));
+      end = Math.max(start, Math.min(count, last));
     }
-    const first = Math.floor(scrollTop / rowHeight) - ROWS_OVERSCAN;
-    const last = Math.ceil((scrollTop + viewHeight) / rowHeight) + ROWS_OVERSCAN;
-    const start = Math.max(0, Math.min(count, first));
-    return { start, end: Math.max(start, Math.min(count, last)) };
+    const outside = roving >= 0 && roving < count && (roving < start || roving >= end);
+    return { start, end, also: outside ? roving : -1 };
   }
 
   /**
@@ -770,23 +777,23 @@
     const rows = parts.rows;
     const count = rows.shown.length;
     parts.sizer.style.height = `${count * rows.rowHeight}px`;
-    const { start, end } = rowWindow(
+    const { start, end, also } = rowWindow(
       count,
       rows.rowHeight,
       parts.list.scrollTop || 0,
       parts.list.clientHeight || 0,
+      rows.roving,
     );
     /** @type {number[]} */
     const wanted = [];
-    const roving = rows.roving < count ? rows.roving : -1;
-    if (roving >= 0 && roving < start) {
-      wanted.push(roving);
+    if (also >= 0 && also < start) {
+      wanted.push(also);
     }
     for (let at = start; at < end; at += 1) {
       wanted.push(at);
     }
-    if (roving >= end) {
-      wanted.push(roving);
+    if (also >= end) {
+      wanted.push(also);
     }
     const keep = new Set(wanted);
     for (const [at, item] of rows.drawn) {
@@ -825,10 +832,12 @@
       active !== null && parts.list.contains(active) && active.dataset.index !== undefined
         ? rows.shown[Number(active.dataset.index)]?.ref
         : undefined;
-    // A new list, or a new filter, starts at its top, its newest refs.
+    // A new list, or a new filter, starts at its top, its newest refs, unless it shows
+    // the served ref: then at that ref's row, once its rows arrive (below).
     const shows = `${model.kind}\0${model.query}`;
     if (rows.listing !== shows) {
       rows.listing = shows;
+      rows.revealed = false;
       parts.list.scrollTop = 0;
     }
     for (const item of rows.drawn.values()) {
@@ -852,10 +861,37 @@
       }
       drawWindow(parts);
     }
+    if (!rows.revealed && model.rows.length > 0 && rows.rowHeight > 0) {
+      rows.revealed = true;
+      if (current > 0 && kept < 0) {
+        revealRow(parts, current);
+        drawWindow(parts);
+      }
+    }
     if (kept >= 0) {
       /** @type {HTMLElement | null | undefined} */ (
         rows.drawn.get(kept)?.firstElementChild
       )?.focus({ preventScroll: true });
+    }
+  }
+
+  /**
+   * Scroll the list the least that brings the row at *at* into its view; nothing until a
+   * row has been measured. Browser only.
+   *
+   * @param {MetabrowserSourceRefSelectorParts} parts
+   * @param {number} at
+   */
+  function revealRow(parts, at) {
+    const { list, rows } = parts;
+    if (!(rows.rowHeight > 0)) {
+      return;
+    }
+    const top = at * rows.rowHeight;
+    if (top < list.scrollTop) {
+      list.scrollTop = top;
+    } else if (top + rows.rowHeight > list.scrollTop + list.clientHeight) {
+      list.scrollTop = top + rows.rowHeight - list.clientHeight;
     }
   }
 
@@ -868,16 +904,8 @@
    */
   function focusRow(parts, at) {
     const rows = parts.rows;
-    const list = parts.list;
     rows.roving = at;
-    if (rows.rowHeight > 0) {
-      const top = at * rows.rowHeight;
-      if (top < list.scrollTop) {
-        list.scrollTop = top;
-      } else if (top + rows.rowHeight > list.scrollTop + list.clientHeight) {
-        list.scrollTop = top + rows.rowHeight - list.clientHeight;
-      }
-    }
+    revealRow(parts, at);
     drawWindow(parts);
     for (const [index, item] of rows.drawn) {
       /** @type {HTMLElement} */ (item.firstElementChild).tabIndex = index === at ? 0 : -1;
@@ -969,6 +997,8 @@
     filter.spellcheck = false;
     const list = document.createElement("ul");
     list.className = "source-ref-selector-list";
+    // `list-style: none` drops a list's role in WebKit; the rows' places need it.
+    list.setAttribute("role", "list");
     // As tall as every row together; the rows near the view are placed over it.
     const sizer = document.createElement("li");
     sizer.className = "source-ref-selector-sizer";
@@ -1053,6 +1083,7 @@
         roving: 0,
         rowHeight: 0,
         listing: "",
+        revealed: false,
         switching: false,
         choose,
       },

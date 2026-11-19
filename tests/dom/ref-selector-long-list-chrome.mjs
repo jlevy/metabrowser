@@ -11,7 +11,12 @@
 //      drawn, the note, the list's and a row's height, and how many rows are drawn;
 //   2. scrolls the list to its middle and reads which row is under the list's center;
 //   3. focuses the first row and presses End, then Home;
-//   4. types a filter and reads the narrowed list.
+//   4. moves focus down to row KEPT, scrolls the list far from it, and reads that it
+//      keeps focus, that Tab from the filter box reaches it, and that ArrowDown brings
+//      the next row into view;
+//   5. types a filter and reads the narrowed list;
+//   6. switches to the oldest branch, and on its page opens the list, which shows the
+//      served branch's row, at the foot of the list, rather than the newest.
 //
 // It times opening, from the click to the frame after the rows; End, from the key to the
 // frame after; and the filter, from its last key to the frame after the narrowed rows.
@@ -36,8 +41,12 @@ if (!process.env.CHROME_BIN || !profiles || !state) {
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // The server's first line names the port it took, which a port in use moves.
 const SERVING = /Serving .* at http:\/\/127\.0\.0\.1:(\d+)\/view\//;
-// The filter typed in step 4, a key at a time, as a reader types.
+// The filter typed in step 5, a key at a time, as a reader types.
 const FILTER = "b-19";
+// The row, by its index, that step 4 focuses and scrolls away from.
+const KEPT = 5;
+// The oldest branch, which step 6 switches to: the last row of every branch.
+const OLDEST = "b-0000";
 
 /** Start the server searching from *at*, resolving once it says where it serves. */
 async function serve(root, at, dir) {
@@ -125,6 +134,20 @@ const LISTED = `(() => {
     focusedIndex: list.contains(focused) && focused.dataset.index !== undefined
       ? Number(focused.parentElement.getAttribute("aria-posinset"))
       : null,
+    role: list.getAttribute("role"),
+    // The served ref's row, where the list says it is, and whether it is in view.
+    served: (() => {
+      const row = list.querySelector('button[aria-current="true"]');
+      if (row === null) {
+        return null;
+      }
+      const at = row.getBoundingClientRect();
+      return {
+        index: Number(row.parentElement.getAttribute("aria-posinset")),
+        name: row.querySelector(".source-ref-selector-name").textContent,
+        inView: at.top >= box.top - 0.5 && at.bottom <= box.bottom + 0.5,
+      };
+    })(),
     focusedName: list.contains(focused)
       ? focused.querySelector(".source-ref-selector-name")?.textContent ?? null
       : null,
@@ -164,6 +187,7 @@ try {
   );
   const result = {
     overscan: await chrome.evaluate("window.MetabrowserSourceRefSelector.ROWS_OVERSCAN"),
+    keptIndex: KEPT,
   };
 
   // 1. Open: from the click to the frame after the rows.
@@ -200,11 +224,16 @@ try {
     };
   })()`);
 
-  // 3. End and Home, from the first row: End's row was never drawn before the key.
+  // 3. End and Home, from the first row: End's row was never drawn before the key. The
+  // row is focused without the scroll a focus brings, which the list is already at, and a
+  // frame passes before End: once, in a run of the suite at a load average of 46, a
+  // list that End had scrolled to its foot read as scrolled to its top, with the foot's
+  // rows drawn, as if that scroll had come after End's.
   await chrome.evaluate(`(async () => {
     ${LIST}.scrollTop = 0;
     await ${FRAMES};
-    ${LIST}.querySelector("button").focus();
+    ${LIST}.querySelector("button").focus({ preventScroll: true });
+    await ${FRAMES};
     return true;
   })()`);
   started = Date.now();
@@ -214,7 +243,25 @@ try {
   await press("Home", "Home", 36);
   result.home = await chrome.evaluate(LISTED);
 
-  // 4. A filter, typed a key at a time, from its last key to the frame after its rows.
+  // 4. The row that has focus stays drawn, and keeps focus, however far the list
+  // scrolls from it; Tab from the filter box goes back to it.
+  for (let at = 0; at < KEPT; at += 1) {
+    await press("ArrowDown", "ArrowDown", 40);
+  }
+  await chrome.evaluate(`(async () => {
+    const list = ${LIST};
+    list.scrollTop = list.scrollHeight / 2;
+    await ${FRAMES};
+    return true;
+  })()`);
+  result.kept = await chrome.evaluate(LISTED);
+  await chrome.evaluate(`${ROOT}.querySelector(".source-ref-selector-filter").focus(), true`);
+  await press("Tab", "Tab", 9);
+  result.tabbed = await chrome.evaluate(LISTED);
+  await press("ArrowDown", "ArrowDown", 40);
+  result.next = await chrome.evaluate(LISTED);
+
+  // 5. A filter, typed a key at a time, from its last key to the frame after its rows.
   await chrome.evaluate(`${ROOT}.querySelector(".source-ref-selector-filter").focus(), true`);
   for (const key of FILTER) {
     await chrome.send("Input.insertText", { text: key });
@@ -226,6 +273,24 @@ try {
   await chrome.evaluate(FRAMES);
   result.filterMs = Date.now() - started;
   result.filtered = await chrome.evaluate(LISTED);
+
+  // 6. The oldest branch, chosen from the filtered list; its page's list opens on its row.
+  await chrome.evaluate(
+    `(() => { const box = ${ROOT}.querySelector(".source-ref-selector-filter"); box.focus(); box.select(); return true; })()`,
+  );
+  await chrome.send("Input.insertText", { text: OLDEST });
+  await chrome.waitFor(
+    `${SETTLED} && window.MetabrowserSourceRefSelector.mounted().snapshot().listing?.query === ${JSON.stringify(OLDEST)}`,
+  );
+  await press("ArrowDown", "ArrowDown", 40);
+  await chrome.evaluate("window.__left = true; document.activeElement.click(); true");
+  await chrome.waitFor(
+    `!window.__left && ${MOUNTED} && document.querySelectorAll("#tree-content .tree-item").length > 0`,
+  );
+  await chrome.evaluate(`${ROOT}.querySelector(".source-ref-selector-toggle").click(); true`);
+  await chrome.waitFor(`${SETTLED} && ${LIST}.querySelectorAll("button").length > 0`);
+  await chrome.evaluate(FRAMES);
+  result.switched = await chrome.evaluate(LISTED);
   console.log(JSON.stringify(result));
 } finally {
   await chrome.close();

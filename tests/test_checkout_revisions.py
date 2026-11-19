@@ -25,6 +25,7 @@ import subprocess
 import time
 from collections.abc import Generator
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -42,6 +43,7 @@ from metabrowser.checkout_revisions import (
     PARTIAL_CLONE_GIT_MINIMUM,
     open_on_ref,
 )
+from metabrowser.git import repo as git_repo
 from metabrowser.git.process import (
     GIT_NO_CONFIGURED_FORMAT_ARGS,
     GIT_NO_DRIVER_ARGS,
@@ -54,6 +56,7 @@ from metabrowser.git.process import (
     run_git,
     run_git_at,
 )
+from metabrowser.settings import GIT_REPO_INFO_TTL_S
 from metabrowser.source import (
     SubjectOpenError,
     attach_subject,
@@ -187,6 +190,37 @@ def test_a_checkout_lists_its_branches_tags_and_remotes(served: TestClient, chec
         "refs/remotes/origin/topic",
     ]
     assert _names(_refs(served, kind="remote", q="FEAT")) == ["origin/feature"]
+
+
+def test_a_kept_listing_follows_head_to_another_branch(
+    served: TestClient, checkout: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A listing is kept under the branch ``HEAD`` is on as well as the refs' state.
+
+    The listing reads ``HEAD`` through ``repo_info``, which keeps it for
+    ``GIT_REPO_INFO_TTL_S``, while the refs' state reads it afresh. Keyed on the state
+    alone, the listing made within the TTL of a switch, from the ``HEAD`` kept before it,
+    was kept under the new state and served past the TTL, until some ref moved (review A
+    of #614). Here the identity cache's clock stands still until it is moved past the TTL.
+    """
+
+    standing = time.monotonic()
+    clock = {"offset": 0.0}
+    monkeypatch.setattr(
+        git_repo,
+        "time",
+        SimpleNamespace(monotonic=lambda: standing + clock["offset"]),
+    )
+    git_repo.clear_repo_cache()
+    assert _refs(served)["working_tree"]["head"] == "refs/heads/topic"
+    git(checkout, "symbolic-ref", "HEAD", "refs/heads/feature")
+    # Within the TTL the listing names the HEAD repo_info kept, as /api/git/refs does.
+    assert _refs(served)["working_tree"]["head"] == "refs/heads/topic"
+    clock["offset"] = GIT_REPO_INFO_TTL_S + 1
+    after = _refs(served)
+    assert after["working_tree"]["head"] == "refs/heads/feature"
+    assert _names(after)[0] == "feature"
+    assert [row["name"] for row in after["refs"] if row["checked_out"]] == ["feature"]
 
 
 def test_a_detached_head_is_on_no_branch(checkout: Path) -> None:

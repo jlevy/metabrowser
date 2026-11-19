@@ -2866,13 +2866,16 @@ html.theme-anim .menu {
 }
 /* The list holds every ref and draws only the rows near its view
    (static/source-ref-selector.js, `drawWindow`): the sizer is as tall as every row, and
-   each drawn row is placed over it by its index. */
+   each drawn row is placed over it by its index. It sets its own scroll position, and
+   adds and removes rows on every scroll, so the browser's scroll anchoring, which moves
+   a scroll position to keep a row in place when the rows around it change, is off. */
 .source-ref-selector-list {
   position: relative;
   max-height: min(50vh, 320px);
   margin: 0;
   padding: 0;
   overflow-y: auto;
+  overflow-anchor: none;
   list-style: none;
 }
 .source-ref-selector-item {

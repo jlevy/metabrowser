@@ -33,6 +33,7 @@ is and reports it not found. The pin route's answers are
 
 from __future__ import annotations
 
+import asyncio
 import bisect
 import re
 import unicodedata
@@ -467,13 +468,24 @@ async def list_mirror_refs(
     Git version, where ``%(*objecttype)`` peels one level on older Git and the whole
     chain on newer. A name that is not valid UTF-8 or not a valid ref name is left out
     too: it could not be shown, or sent back to the pin route, as JSON text. The
-    listing is bounded by the store-read policy's output cap and deadline.
+    listing is bounded by the store-read policy's output cap and deadline, and Git's
+    output is read and ordered off the event loop, since that work grows with every ref.
     """
 
     prefix = namespaces.prefix(kind)
     if prefix is None:
         return ()
     out = await _git(target, ["for-each-ref", f"--format={_LIST_FORMAT}", "--", prefix])
+    return await asyncio.to_thread(
+        _listed_refs, out, kind=kind, prefix=prefix, default_ref=default_ref
+    )
+
+
+def _listed_refs(
+    out: bytes, *, kind: RefKind, prefix: str, default_ref: str | None
+) -> tuple[MirrorRef, ...]:
+    """The rows of :func:`list_mirror_refs`'s ``for-each-ref`` output, in their order."""
+
     listed: list[MirrorRef] = []
     for line in out.split(b"\n"):
         try:

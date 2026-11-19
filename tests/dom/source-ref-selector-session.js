@@ -394,19 +394,29 @@ async function run() {
   keys.push(`ArrowDown from -1 in an empty list: ${selectorRuntime.moveRow("ArrowDown", -1, 0)}`);
 
   // Which rows a list draws: those in its view and the overscan on either side, however
-  // many it holds, so a listing of every ref costs the page what its view holds. A view
-  // 320 px tall over rows 28 px tall, at the top, partway, and at the end of 10,001 rows;
-  // a short list; and a list whose rows have not been measured.
+  // many it holds, so a listing of every ref costs the page what its view holds, and the
+  // row that takes Tab wherever it is, since focus may be on it and Tab from the filter
+  // box goes to it. A view 320 px tall over rows 28 px tall, at the top, partway, and at
+  // the end of 10,001 rows, with that row in the window or far from it; a short list;
+  // and a list whose rows have not been measured.
   const overscan = selectorRuntime.ROWS_OVERSCAN;
   const windows = [
-    [10001, 28, 0, 320],
-    [10001, 28, 28 * 5000 + 10, 320],
-    [10001, 28, 28 * 10001 - 320, 320],
-    [3, 28, 0, 320],
-    [10001, 0, 0, 0],
-    [0, 28, 0, 320],
-  ].map(([count, rowHeight, scrollTop, viewHeight]) => {
-    const { start, end } = selectorRuntime.rowWindow(count, rowHeight, scrollTop, viewHeight);
+    [10001, 28, 0, 320, 0],
+    [10001, 28, 0, 320, 9000],
+    [10001, 28, 28 * 5000 + 10, 320, 0],
+    [10001, 28, 28 * 5000 + 10, 320, 5003],
+    [10001, 28, 28 * 10001 - 320, 320, 10000],
+    [3, 28, 0, 320, 1],
+    [10001, 0, 0, 0, 0],
+    [0, 28, 0, 320, 0],
+  ].map(([count, rowHeight, scrollTop, viewHeight, roving]) => {
+    const { start, end, also } = selectorRuntime.rowWindow(
+      count,
+      rowHeight,
+      scrollTop,
+      viewHeight,
+      roving,
+    );
     const inView =
       rowHeight > 0
         ? Math.min(count, Math.ceil((scrollTop + viewHeight) / rowHeight)) -
@@ -417,7 +427,12 @@ async function run() {
       "a window is its view and the overscan",
     );
     assert(start >= 0 && end <= count && start <= end, "a window is inside the list");
-    return `${count} rows ${rowHeight} px tall, scrolled ${scrollTop} px in ${viewHeight} px: rows ${start} to ${end}`;
+    assert(
+      count === 0 || (start <= roving && roving < end ? also === -1 : also === roving),
+      "the row that takes Tab is drawn, in the window or as well as it",
+    );
+    const beside = also >= 0 ? ` and row ${also}` : "";
+    return `${count} rows ${rowHeight} px tall, scrolled ${scrollTop} px in ${viewHeight} px, Tab on row ${roving}: rows ${start} to ${end}${beside}`;
   });
 
   return { steps, labels, copies, keys, overscan, windows, checkout: await runCheckout() };

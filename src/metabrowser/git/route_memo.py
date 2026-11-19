@@ -124,12 +124,20 @@ def keep_answer(request: Request, key: tuple[str, ...] | None, payload: dict[str
 
     if key is None:
         return JSONResponse(payload)
+    return keep_body(request, key, bytes(JSONResponse(payload).body))
+
+
+def keep_body(request: Request, key: tuple[str, ...] | None, body: bytes) -> Response:
+    """:func:`keep_answer` for a JSON *body* already encoded, as one encoded off the event
+    loop is: kept under *key* when there is one, on the loop, and answered with."""
+
+    if key is None:
+        return Response(body, media_type="application/json")
     headers = etag_headers(answer_tag(key))
-    response = JSONResponse(payload, headers=headers)
-    GIT_ANSWERS.put(key, bytes(response.body))
+    GIT_ANSWERS.put(key, body)
     if matches_if_none_match(request, headers["ETag"]):
         return Response(status_code=304, headers=headers)
-    return response
+    return Response(body, media_type="application/json", headers=headers)
 
 
 # Another root is another repository; nothing kept for the previous one applies.
@@ -144,5 +152,6 @@ __all__ = [
     "MAX_ENTRY_BYTES",
     "answer_tag",
     "keep_answer",
+    "keep_body",
     "kept_answer",
 ]

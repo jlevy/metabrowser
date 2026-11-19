@@ -5285,9 +5285,13 @@ list chooser, a filter box, and one row for each ref (`static/source-ref-selecto
   Each row is placed by its index at one row’s height over a box as tall as the whole
   list (`ROWS_OVERSCAN` and `drawWindow` in `static/source-ref-selector.js`), so nothing
   in a row may make it taller than the rest: the badge’s border reaches into the row’s
-  padding. `tests/test_ref_selector_long_list_chrome.py` measures in headless Chrome over
+  padding. The row that takes Tab stays drawn however far the list scrolls from it, so
+  focus on it is never lost, and a list that holds the served ref opens scrolled to its
+  row. The `ul` says `role="list"`, which WebKit drops from a list drawn without markers.
+  `tests/test_ref_selector_long_list_chrome.py` measures in headless Chrome over
   thousands of branches that the rows are one height and abut, that a scroll and End
-  draw the rows they bring into view, and that the filter narrows the list.
+  draw the rows they bring into view, that a focused row keeps focus, and that the
+  filter narrows the list.
 
 A checkout adds three things, and each uses a primitive the control already had:
 

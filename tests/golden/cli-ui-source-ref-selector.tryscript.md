@@ -30,7 +30,8 @@ key the list leaves alone.
 `windows` is which rows a list draws (`rowWindow`): those in its view and `overscan`
 more on either side, at the top, the middle, and the end of 10,001 rows, so the page
 draws about as many rows for every ref as for a few; before a row is measured, the first
-rows.
+rows. The row that takes Tab is drawn too wherever the list is scrolled, since focus may
+be on it and Tab from the filter box goes to it.
 
 `checkout` is the same module as a served checkout’s selector: a folder that is a
 repository’s root, recorded in
@@ -400,12 +401,14 @@ $ node tests/dom/source-ref-selector-session.js
   ],
   "overscan": 20,
   "windows": [
-    "10001 rows 28 px tall, scrolled 0 px in 320 px: rows 0 to 32",
-    "10001 rows 28 px tall, scrolled 140010 px in 320 px: rows 4980 to 5032",
-    "10001 rows 28 px tall, scrolled 279708 px in 320 px: rows 9969 to 10001",
-    "3 rows 28 px tall, scrolled 0 px in 320 px: rows 0 to 3",
-    "10001 rows 0 px tall, scrolled 0 px in 0 px: rows 0 to 40",
-    "0 rows 28 px tall, scrolled 0 px in 320 px: rows 0 to 0"
+    "10001 rows 28 px tall, scrolled 0 px in 320 px, Tab on row 0: rows 0 to 32",
+    "10001 rows 28 px tall, scrolled 0 px in 320 px, Tab on row 9000: rows 0 to 32 and row 9000",
+    "10001 rows 28 px tall, scrolled 140010 px in 320 px, Tab on row 0: rows 4980 to 5032 and row 0",
+    "10001 rows 28 px tall, scrolled 140010 px in 320 px, Tab on row 5003: rows 4980 to 5032",
+    "10001 rows 28 px tall, scrolled 279708 px in 320 px, Tab on row 10000: rows 9969 to 10001",
+    "3 rows 28 px tall, scrolled 0 px in 320 px, Tab on row 1: rows 0 to 3",
+    "10001 rows 0 px tall, scrolled 0 px in 0 px, Tab on row 0: rows 0 to 40",
+    "0 rows 28 px tall, scrolled 0 px in 320 px, Tab on row 0: rows 0 to 0"
   ],
   "checkout": {
     "steps": [

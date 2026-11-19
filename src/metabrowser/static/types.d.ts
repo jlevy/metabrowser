@@ -3615,6 +3615,8 @@ declare global {
     rowHeight: number;
     /** The list and filter the rows are of, so a new one starts at its top. */
     listing: string;
+    /** Whether this listing has been scrolled to the served ref's row, which it is once. */
+    revealed: boolean;
     switching: boolean;
     choose: (ref: string) => void;
   };
@@ -3658,7 +3660,8 @@ declare global {
       rowHeight: number,
       scrollTop: number,
       viewHeight: number,
-    ): { start: number; end: number };
+      roving: number,
+    ): { start: number; end: number; also: number };
     shownLabel(
       shown: MetabrowserSourcePage | null,
       checkout?: boolean,

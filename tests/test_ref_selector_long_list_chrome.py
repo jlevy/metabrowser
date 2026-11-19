@@ -4,19 +4,22 @@ The owner, 2026-11-19: "the branch selector shows: Showing 100 of 1292 branches;
 narrow. 1. We should not truncate at such an arbitrarily low number as 1,000. We can show
 all the branches. 2. We should sort them by recency, with most recently modified branches
 first". So the listing has every ref, newest first (``tests/test_source_refs.py``), and
-the list draws only the rows near its view (``drawWindow`` in
+the list draws only the rows near its view and the row that takes Tab (``drawWindow`` in
 ``static/source-ref-selector.js``), which ``tests/dom/source-ref-selector-session.js``
-holds as a pure range. Which rows are in the document at a scroll position, where each is
-placed, and whether a key reaches a row not yet drawn are layout, so this serves a
-checkout of :data:`BRANCHES` branches with ``metab`` and reads, in one Chrome
-(``tests/dom/ref-selector-long-list-chrome.mjs``):
+holds as a pure range (``rowWindow``). How tall a row is, where each is placed, which
+rows a scroll position puts in view, and where focus lands are layout and the browser's,
+so this serves a checkout of :data:`BRANCHES` branches with ``metab`` and reads, in one
+Chrome (``tests/dom/ref-selector-long-list-chrome.mjs``):
 
 - the open list: every branch counted, the checked-out one first and the rest newest
-  first, no note, and no more rows drawn than the view and the overscan;
+  first, no note, the list's role, and no more rows drawn than the view and the overscan;
 - a scroll to the middle, after which the row under the list's center is drawn where its
   index puts it;
 - End, which focuses the last branch, in view, and Home the first;
-- a filter, which narrows the list to its matches, newest first.
+- a row given focus by the keys, which keeps it when the list scrolls far from it, and
+  which Tab from the filter box reaches, and ArrowDown, which brings the next into view;
+- a filter, which narrows the list to its matches, newest first;
+- the oldest branch's page, whose list opens on that branch's row, the last.
 
 It prints how long opening, End, and the filter took, and bounds them loosely
 (``STEP_BOUND_MS``). Without Chrome this skips (``require_chrome`` in
@@ -182,11 +185,28 @@ def test_a_list_of_every_branch_draws_only_its_view_in_chrome(
     assert end["drawn"] <= in_view + 2 * overscan + 2
     assert result["home"]["focusedIndex"] == 1
 
+    # A row with focus stays drawn, and focused, however far the list scrolls from it;
+    # Tab from the filter box reaches it, and ArrowDown brings the next row into view
+    # (review A of #614).
+    kept_at = result["keptIndex"] + 1
+    assert (result["kept"]["focusedIndex"], result["kept"]["inView"]) == (kept_at, False)
+    assert result["kept"]["drawn"] <= in_view + 2 * overscan + 2
+    assert result["tabbed"]["focusedIndex"] == kept_at
+    assert (result["next"]["focusedIndex"], result["next"]["inView"]) == (kept_at + 1, True)
+    # A list to assistive technology, whatever its style says (WebKit drops the role of a
+    # list drawn without markers).
+    assert opened["role"] == "list"
+
     filtered = result["filtered"]
     # b-19 matches b-1900 to b-1999 and nothing else; newest first.
     assert filtered["setSize"] == 100
     assert filtered["names"] == newest[: len(filtered["names"])]
     assert filtered["note"] == ""
+
+    # On the oldest branch's page the list opens on its row, the last, not on the newest.
+    switched = result["switched"]
+    assert switched["setSize"] == BRANCHES + 1
+    assert switched["served"] == {"index": BRANCHES + 1, "name": newest[-1], "inView": True}
 
     for step in ("openMs", "endMs", "filterMs"):
         assert result[step] < STEP_BOUND_MS, (step, result[step])
