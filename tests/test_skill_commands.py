@@ -34,8 +34,9 @@ commit, the build the skill is written for:
    ``not_found_or_private``, names only words of the source under ``src/``: a key, a
    field, or a value the code spells. A word the code also uses elsewhere passes, so
    this catches a misspelling and not a name moved to another meaning.
-6. **Presenting.** Each ``--present`` recipe under "Present It in the App" is a command
-   of ``tests/golden/cli-present-delivery.txt``, with the placeholders
+6. **Presenting.** Each ``--present`` recipe under "Present It in the App" and "When a
+   Sandbox Blocks It" is a command of ``tests/golden/cli-present-delivery.txt``, with the
+   placeholders
    :data:`PRESENT_SPELLING` names filled in. That transcript runs the production CLI
    with a stand-in LaunchServices and ``open``, never a real app, and runs the skill's
    shape of command for each status the skill tells apart; every field path the
@@ -43,7 +44,9 @@ commit, the build the skill is written for:
    for each status a delivery code ends with, exactly the codes ``DELIVERY_EXIT_CODES``
    in ``cli/present.py`` maps to it, so a new code fails here until the skill says what
    to do about it, and every other status it restates is the constant behind its row:
-   a refusal's, a usage error's, and an ``Error:`` line's.
+   a refusal's, a usage error's, and an ``Error:`` line's. Each rerun outside the
+   sandbox carries ``--open-in app``: without it, the default ``auto`` falls back to a
+   browser when no app takes the target, and starts a server outside the sandbox.
 
 ``docs/working-with-agents.md`` repeats the skill's commands for a person, so checks 1,
 2, 3, and 5 read it too. Outside every check: the names of query parameters, page
@@ -60,6 +63,7 @@ import re
 import shlex
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
+from itertools import pairwise
 from pathlib import Path
 from typing import Any, Final
 
@@ -133,6 +137,8 @@ REFRESH_ROUTE: Final = "/api/plugin/github/pull-refresh"
 # The section of the `--present` recipes, the transcript that runs them against a
 # stand-in app, and how that transcript spells their placeholders.
 PRESENT_SECTION: Final = "Present It in the App"
+# The section of the rerun outside the sandbox, whose recipes the transcript runs too.
+RERUN_SECTION: Final = "When a Sandbox Blocks It"
 PRESENT_GOLDEN: Final = REPO_ROOT / "tests" / "golden" / "cli-present-delivery.txt"
 PRESENT_SPELLING: Final = {
     "<invocation>": "metab",
@@ -388,13 +394,33 @@ def refresh_body(number: int, text: str | None = None) -> dict[str, Any]:
 
 
 def present_recipes(text: str) -> list[Code]:
-    """The commands of :data:`PRESENT_SECTION`'s blocks that present a target."""
+    """The commands of :data:`PRESENT_SECTION`'s and :data:`RERUN_SECTION`'s blocks that
+    present a target."""
 
     return [
         piece
         for piece in code_pieces(text)
-        if piece.block and piece.section == PRESENT_SECTION and "--present" in _tokens(piece.text)
+        if piece.block
+        and piece.section in (PRESENT_SECTION, RERUN_SECTION)
+        and "--present" in _tokens(piece.text)
     ]
+
+
+def rerun_findings(text: str) -> list[str]:
+    """Reruns outside the sandbox that lack ``--open-in app``, which keeps them to the app."""
+
+    reruns = [piece for piece in present_recipes(text) if piece.section == RERUN_SECTION]
+    if not reruns:
+        return [f"SKILL.md has no --present rerun under {RERUN_SECTION!r}"]
+    found: list[str] = []
+    for piece in reruns:
+        tokens = _tokens(piece.text)
+        if ("--open-in", "app") not in pairwise(tokens):
+            found.append(
+                f"SKILL.md:{piece.line}: {piece.text!r} reruns outside the sandbox without "
+                "--open-in app, so under auto it can start a server there"
+            )
+    return found
 
 
 def _section(text: str, heading: str) -> str:
@@ -813,7 +839,7 @@ def test_the_skill_is_read_as_commands(skill: str, guide: str) -> None:
     assert read >= RECIPE_ROUTES and named >= PROSE_ROUTES, (read, named)
     assert any(not command.whole for command in found)
     assert len(_recipes(skill)) == 3
-    assert len(present_recipes(skill)) == 2
+    assert len(present_recipes(skill)) == 4
     assert len([c for c in commands(guide, GUIDE.name) if c.whole]) >= 8
 
 
@@ -863,6 +889,10 @@ def test_the_present_table_gives_each_status_its_codes(skill: str) -> None:
     assert status_code_findings(skill) == []
 
 
+def test_every_rerun_outside_the_sandbox_is_kept_to_the_app(skill: str) -> None:
+    assert rerun_findings(skill) == []
+
+
 # ── Each check fails its mutation ───────────────────────────────────
 
 
@@ -872,6 +902,13 @@ def _mutated(skill: str, old: str, new: str) -> str:
 
 
 DETECT: Final = "--api '/api/plugin/github/pull?number=<n>' --format json > <tmp>/pull.json"
+
+
+def test_a_rerun_without_open_in_app_fails(skill: str) -> None:
+    rerun = "<invocation> --present <target> --open-in app --format json"
+    mutated = _mutated(skill, rerun, rerun.replace(" --open-in app", ""))
+    findings = rerun_findings(mutated)
+    assert len(findings) == 1 and "without --open-in app" in findings[0]
 
 
 def test_a_recipe_without_format_json_fails(skill: str) -> None:
@@ -1015,7 +1052,7 @@ def test_a_present_recipe_the_delivery_golden_does_not_run_fails(skill: str) -> 
 def test_a_report_field_the_golden_lacks_fails(skill: str) -> None:
     mutated = _mutated(skill, "`.target.page`, the address", "`.target.address`, the address")
     assert present_findings(mutated, PRESENT_GOLDEN.read_text(encoding="utf-8")) == [
-        "the report of status [0, 3, 4, 5] has no .target.address, which SKILL.md reads"
+        "the report of status [0, 1, 3, 4, 5] has no .target.address, which SKILL.md reads"
     ]
 
 

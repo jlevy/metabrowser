@@ -455,7 +455,7 @@ def test_the_values_check_sees_what_it_must() -> None:
     assert _series(["a", "b"]) == "a and b"
 
 
-_PRESENT_SECTION = "Handing a Target to the App: `--present`"
+_PRESENT_SECTION = "Presenting a Target: `--present`"
 
 
 def test_the_present_guide_names_every_delivery_code_and_kind() -> None:
