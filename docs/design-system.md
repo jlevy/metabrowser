@@ -1703,8 +1703,9 @@ it.**
   of sizes would match one engine only.
   At one nominal size the mono face read larger than the sans, and a size one step down
   the ramp matched only the line it was chosen for: the navigation heading’s ID read
-  larger than the name beside it (mb-qq4e). No context sets an ID’s size, and its line
-  box is its glyphs’ (`line-height: normal`), so it never makes its line taller.
+  larger than the name beside it.
+  No context sets an ID’s size, and its line box is its glyphs’ (`line-height: normal`),
+  so it never makes its line taller.
 
 It holds in the branch and tag chooser’s button and rows, the navigation heading, a
 commit’s page and hover card, a mirror’s freshness row, and a pull request’s timeline
@@ -5291,7 +5292,7 @@ list chooser, a filter box, and one row for each ref (`static/source-ref-selecto
 - **On a mirror, the button names the ref and the heading does not.** A served mirror’s
   navigation heading is the repository’s name alone (`_pin_label_html` in `server.py`):
   this button names its ref, and the heading’s tooltip its full commit, so a ref and a
-  commit beside the name only repeated them, and the owner found them clutter (mb-qq4e).
+  commit beside the name only repeated them, and the owner found them clutter.
 
 A checkout adds three things, and each uses a primitive the control already had:
 
