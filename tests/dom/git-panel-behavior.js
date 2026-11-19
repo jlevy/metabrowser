@@ -1911,11 +1911,14 @@ async function run() {
     assertContains("selection: switches to the newer commit", previewHtml, "second");
     assertTrue("selection: issued a request", fetchCount > before);
 
-    // Re-selecting a cached commit must not hit the network again.
-    const cachedBefore = fetchCount;
+    // Re-selecting a cached commit must not ask for its detail again. Its body's Markdown,
+    // which this stub never answers, is asked for again, as a failed request is.
+    const detailRequests = () =>
+      fetchRequests.filter((request) => request.url.startsWith("/api/git/commit/")).length;
+    const cachedBefore = detailRequests();
     rows[0].dispatch("click");
     await new Promise((resolve) => setTimeout(resolve, 0));
-    assertEqual("selection: cache avoids a refetch", fetchCount, cachedBefore);
+    assertEqual("selection: cache avoids a refetch", detailRequests(), cachedBefore);
 
     // A shell navigation owns the preview after it happens. A late Git
     // response must not replace the newer file/navigation surface.

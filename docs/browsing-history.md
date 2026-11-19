@@ -51,7 +51,10 @@ The page begins with the commit’s summary, laid out as a pull request’s head
 - the **Diff summary**, on every commit, one file or many: the files changed, counted by
   status, and the lines added and deleted; it starts collapsed and opens into the tree
   of changed files, where a file takes you to its diff
-- the full commit message, when there is more than a subject
+- the rest of the commit message, when there is more than a subject, as Markdown, as a
+  pull request’s description is: wrapped lines join into paragraphs, `-` and `*` lines
+  are lists, and indented or fenced code stays code; trailers such as `Signed-off-by:`
+  follow as written, one per line
 
 Below it is the diff against the commit’s first parent, one section per file with its
 `+N` and `−N` counts.
