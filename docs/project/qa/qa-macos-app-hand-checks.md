@@ -145,10 +145,11 @@ log stream --predicate 'subsystem == "io.github.jlevy.metabrowser.dev"' &  # the
 11. **View on GitHub.** Open a checkout of a repository on github.com whose commit is
     pushed, such as this repository, and open `README.md`. The header’s upper right
     holds the GitHub mark, “View on GitHub”, and a chevron.
-    Click View on GitHub: `README.md` opens on github.com at the commit, and the app’s
-    window still shows Metabrowser’s view.
-    Open the chevron’s menu: Copy Link puts the same address on the clipboard, and Open
-    in Browser opens it in the default browser.
+    Click View on GitHub: a popover below the button shows `README.md` on github.com at
+    the commit, and the window behind it still shows Metabrowser’s view
+    ([View on GitHub](#view-on-github) checks the popover).
+    Open the chevron’s menu: Copy Link puts the same address on the clipboard; Open in
+    Browser opens it in the default browser, and no popover opens.
     The same button is in the same place on a folder, a pull request’s page, and a
     commit’s page. A file you have edited and not committed shows none, and a folder with
     no GitHub remote shows none and leaves no gap for one.
@@ -359,6 +360,78 @@ What the panel decides is unit-tested in `OpenURLPanelTests`, and against the re
     `$REPO/blob/main/README`, then U+3164 HANGUL FILLER pasted from a character viewer,
     then `.md`, shows a reason that names U+3164 and `%E3%85%A4` under the field, and no
     window opens.
+
+## View on GitHub
+
+With the development build open on a checkout of this repository at a pushed commit,
+`README.md` shown, and `APP_ID` and `REPO` set as in [GitHub Links](#github-links).
+Start signed out: choose Metabrowser > Clear GitHub Data… and Clear.
+
+1. **The popover.** Scroll `README.md` a little, then click View on GitHub.
+   A popover opens below the button, pointing at it, over most of the window, with a
+   one-line header: Back, Forward, `github.com/jlevy/metabrowser/blob/COMMIT/README.md`
+   in gray, with `COMMIT` the checkout’s commit, Copy Link, and Open in Browser.
+   Behind it, the page has not moved.
+   Escape closes it; open it again and Command-W closes it, not the window; open it
+   again and a click on the page outside it closes it.
+   Make the window larger and open it again: the popover is larger.
+2. **It keeps its place for a while.** In the popover, follow a link to `docs/` on
+   github.com, close the popover, and open it again at once: it is still at `docs/`, and
+   Back returns to `README.md`. Close it, wait longer than
+   `GitHubPopoverState.keptAfterClosing`, and open it: it loads `README.md` again, with
+   Back dimmed. Open `CHANGELOG.md` in the page and click View on GitHub: the popover
+   shows `CHANGELOG.md`. Turn Wi-Fi off, open `CHANGELOG.md`’s parent folder in the
+   page, and click View on GitHub: the header says the page did not load.
+   Turn Wi-Fi on, close the popover, and open it again: the folder loads; do it again
+   offline and press Command-R once back online: it loads too.
+   On a pull request, type a comment without sending it, close the popover, wait longer
+   than `keptAfterClosing`, and open it: the comment is still there.
+3. **The header and the menus.** With the popover open, Command-[ and Command-] go back
+   and forward in it, Command-R reloads it, and Command-+ zooms it; Command-0 returns it
+   to actual size. The page behind keeps its own zoom, and a new tab opens at the page’s
+   remembered zoom, not the popover’s. File > Print and Edit > Find are dimmed.
+   The header’s Copy Link puts the shown github.com address on the clipboard; Open in
+   Browser opens it in the default browser and closes the popover.
+4. **Links, downloads, and drops.** In the popover, a link in the README to another site
+   opens in the default browser, and the popover stays where it was.
+   Command-click on a github.com link opens it in the default browser.
+   A file’s Raw button shows the raw file in the popover, on raw.githubusercontent.com.
+   Download ZIP, from the repository’s Code menu, opens the default browser, which
+   downloads it. Signed in, drag a screenshot from Finder onto a pull request’s comment
+   box in the popover: GitHub attaches it, and Metabrowser opens no folder.
+   Click “Paste, drop, or click to add files” under the same box: a file panel opens
+   over the popover, which stays open, and the file chosen is attached.
+   Edit one of your own comments, change it, and click Cancel: GitHub asks whether to
+   discard the change, over the popover, and Cancel there keeps the edit.
+5. **Only the button.** With the popover open,
+   `open -b "$APP_ID" "$REPO/blob/main/README.md"` brings the window forward at that
+   page, and the popover closes.
+   A github.com link in a Markdown page, which is not the button, opens in the default
+   browser.
+6. **Sign in once.** In the popover, sign in to github.com with a password and the
+   two-factor code. Open a second folder of a repository on github.com as a tab, and a
+   third in a window of its own (Settings > Open folders in), and click View on GitHub
+   in each: both are signed in.
+   Quit Metabrowser, open it again, open `README.md`, and click View on GitHub: still
+   signed in. The default browser’s own sign-in did not change.
+   Note whether a passkey or a security key is offered and works, and what an
+   organization’s single sign-on does; neither is checked yet.
+7. **Switching and closing folders.** With Settings > Open folders in set to Windows,
+   open a second checkout of a repository on github.com, so two such folders are open,
+   and show the first in a window.
+   With the popover open, press Shift-Command-O and choose the second folder: the window
+   shows it, and no popover is left over it.
+   Click View on GitHub there, go to a pull request in the popover, and type a comment
+   without sending it. Switch the window to the first folder and back to the second
+   within `GitHubPopoverState.keptAfterClosing`, and click View on GitHub: the comment
+   is still there. With the popover open, choose File > Close Folder: the folder closes,
+   and the popover with it.
+8. **Clear GitHub Data.** Metabrowser > Clear GitHub Data… asks first, with Cancel the
+   default: Return keeps the sign-in.
+   Clear signs you out: an open popover reloads, signed out, and so does every other
+   folder’s popover the next time it opens, in a window or in the background.
+   Metabrowser’s own settings, such as its theme, are unchanged, and so is
+   `gh auth status`.
 
 ## Switching Folders
 

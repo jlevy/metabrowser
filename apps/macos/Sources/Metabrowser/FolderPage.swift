@@ -22,8 +22,11 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
     private(set) weak var session: FolderSession?
     /// The window showing the page, while one is. Its controller sets it when it hosts the
     /// page, and clears it when the window closes or shows another page in its place
-    /// (`BrowserWindowController.show`).
-    weak var host: BrowserWindowController?
+    /// (`BrowserWindowController.show`). A page that leaves its window closes its View on
+    /// GitHub popover, which points into it.
+    weak var host: BrowserWindowController? {
+        didSet { if host !== oldValue { gitHubPopover?.close() } }
+    }
     private var policy = NavigationPolicy()
     private let container: WebContainerView
     private let status = WindowStatus()
@@ -42,6 +45,8 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
     private(set) var isDiscarded = false
     /// Reloads after the web content process dies, then the status view.
     private var contentRecoveries = RecoveryBudget.webContent
+    /// View on GitHub's popover, from the button's first use until the page closes.
+    private var gitHubPopover: GitHubPopover?
     /// The sheets the page opened, which Command-R cancels before it reloads.
     private var pageSheets = PageSheets<NSWindow>()
     /// The print panel, while a print the page started runs.
@@ -55,7 +60,7 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         discarded: Bool = false
     ) {
         self.session = session
-        webView = Self.makeWebView(configuration ?? WebConfiguration.make(pagePrints: Self.pagePrints))
+        webView = Self.makeWebView(configuration ?? Self.pageConfiguration())
         loads = PageLoads(requested: address)
         isDiscarded = discarded
 
@@ -99,6 +104,12 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         webView.allowsMagnification = true
         webView.pageZoom = PageZoom.restored(UserDefaults.standard.double(forKey: zoomKey))
         return webView
+    }
+
+    /// A page's configuration: the folder's own, with the page's Print and View on GitHub
+    /// buttons answered by the page that asked.
+    private static func pageConfiguration() -> WKWebViewConfiguration {
+        WebConfiguration.make(pagePrints: pagePrints, gitHubViews: gitHubViews)
     }
 
     private func wire(_ webView: DropAwareWebView) {
@@ -181,6 +192,7 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
 
     /// Shows `address` now if the server is ready and still answers, or once it is ready.
     func show(_ address: PageAddress) {
+        gitHubPopover?.close()
         loads.request(address)
         isDiscarded = false
         if let endpoint { loadNextPageOnceAnswered(from: endpoint) }
@@ -192,6 +204,7 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
     /// forward, is superseded, since the old server can go on serving while the restart
     /// waits at the launch gate (`ServerSupervisor.restart`).
     func showEntryPage() {
+        gitHubPopover?.close()
         loads.cancelAll()
         loads.requestEntry()
         isDiscarded = false
@@ -225,7 +238,8 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
         discarded.navigationDelegate = nil
         discarded.uiDelegate = nil
         discarded.onFileDrop = nil
-        webView = Self.makeWebView(WebConfiguration.make(pagePrints: Self.pagePrints))
+        gitHubPopover?.discard()
+        webView = Self.makeWebView(Self.pageConfiguration())
         wire(webView)
         container.replaceWebView(webView)
         if endpoint != nil { status.phase = .reloading }
@@ -299,6 +313,8 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
     /// Nothing it started may load or call back after this.
     func close() {
         loads.cancelAll()
+        gitHubPopover?.discard()
+        gitHubPopover = nil
         textFinder.client = nil
         textFinder.findBarContainer = nil
         webView.stopLoading()
@@ -417,6 +433,34 @@ final class FolderPage: NSViewController, NSMenuItemValidation {
             return
         }
         printPage(nil)
+    }
+
+    /// Every page's View on GitHub buttons (`GitHubViewRequests`): each opens the popover
+    /// of the page that asked, while a window shows it.
+    static let gitHubViews = GitHubViewRequests { webView, frame, request in
+        guard let page = (webView.window?.windowController as? BrowserWindowController)?.page,
+              page.webView === webView
+        else { return }
+        page.pageAskedToViewOnGitHub(request, from: frame)
+    }
+
+    /// Opens View on GitHub's popover below the page's button, on the item's page on
+    /// github.com, for a click in the main frame of the server's own page.
+    private func pageAskedToViewOnGitHub(_ request: GitHubViewRequests.Request, from frame: WKFrameInfo) {
+        guard GitHubViewRequests.allows(frame, under: policy) else {
+            AppLog.app.info("a View on GitHub click was not answered: not from this server's own page")
+            return
+        }
+        let popover = gitHubPopover ?? GitHubPopover(isInspectable: Self.isInspectable)
+        gitHubPopover = popover
+        let anchor = GitHubPopoverLayout.anchor(
+            request.link, viewportWidth: request.viewportWidth, in: webView.bounds, flipped: webView.isFlipped)
+        popover.show(request.page, at: anchor, of: webView)
+    }
+
+    /// After Metabrowser > Clear GitHub Data…: the popover's page loads again, signed out.
+    func reloadGitHubPopover() {
+        gitHubPopover?.reload()
     }
 
     /// Menu items carry the `NSTextFinder.Action` in their tag.

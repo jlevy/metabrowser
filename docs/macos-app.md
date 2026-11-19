@@ -5,13 +5,15 @@ The Metabrowser app is an alpha preview built from source;
 [Installation](installation.md#the-macos-app) says how to build it.
 
 The app is a native shell over `metab`. Everything inside a window is the page `metab`
-serves, the same page a browser shows.
+serves, the same page a browser shows; View on GitHub shows the item’s page on
+github.com in a popover over it.
 What the app adds is what a browser tab cannot give:
 
 - a window per folder or GitHub repository, each with its own server, which the app
   starts and stops;
 - a Dock icon, and folders opened from Finder with Open With or dropped on the icon;
-- native menus, tabs across folders, recent items, and the last session restored.
+- native menus, tabs across folders, recent items, and the last session restored;
+- the item’s page on github.com a click away, with one GitHub sign-in for every window.
 
 ## Opening Folders and Files
 
@@ -200,7 +202,8 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
 - **Links:** a link to the same server stays in the window, and Command-click opens it
   in a new tab of that folder’s window.
   A clicked link to another site opens in your default browser; a page cannot open one
-  by itself.
+  by itself. The page’s View on GitHub button is the exception: it opens the item’s page
+  on github.com in a popover ([View on GitHub](#view-on-github)).
 - **Background tabs:** the tab each window shows keeps its page, and so do the three
   background tabs shown most recently, a folder open in the background counting as one.
   Any other background tab gives up its page to save memory and reloads it when shown,
@@ -211,6 +214,62 @@ Reveal Server Log (each folder has its own log), and Print; View > Back, Forward
 Page, and zoom, which the app remembers; Edit > Find; and Help > Metabrowser
 Documentation and Reveal Logs Folder.
 The mark at the title bar’s trailing end opens the project on GitHub.
+
+## View on GitHub
+
+A page whose file, folder, pull request, or commit has a page on github.com shows a View
+on GitHub button in its upper right ([Browsing Files](browsing-files.md)). In the app,
+clicking it opens that page on github.com in a popover below the button, over most of
+the window, without leaving Metabrowser’s page.
+
+- **Closing it:** Escape, Command-W, or a click outside the popover closes it.
+  Opened again soon after for the same item, it is as you left it, with its Back and
+  Forward history; after it has stayed closed a while, it loads the page again, unless
+  you had typed a comment or other text there and not sent it, which it keeps.
+  A page that did not load, offline say, loads again when you open the popover or press
+  Command-R.
+- **In the popover:** a header holds Back and Forward, the github.com location the
+  popover shows, Copy Link, and Open in Browser, which opens that page in your default
+  browser and closes the popover.
+  While the popover has the keyboard, View > Back, Forward, Reload Page, and zoom act on
+  it, and so does File > Open in Default Browser; File > Print and Edit > Find are off.
+  Its zoom is its own: it starts at actual size and is not remembered.
+- **The button’s menu:** Copy Link copies the github.com address, and Open in Browser
+  opens it in your default browser instead of the popover.
+  A Command-click on the button opens your browser too.
+- **Files and dialogs:** a file panel GitHub asks for, such as “click to add files” on a
+  comment box, and a question it asks, such as whether to discard an edit, open over the
+  popover, which stays open behind them.
+- **Links in the popover:** pages on github.com and on GitHub’s content and asset sites
+  (githubusercontent.com and githubassets.com) stay in the popover.
+  A link to any other site, and a download, opens in your default browser.
+  A file you drop on the popover, such as a screenshot on a comment box, goes to
+  github.com.
+- **Only the button:** a GitHub link you send to the app, with File > Open URL…,
+  `metab URL --present`, or `open -b`, still opens Metabrowser’s own view of it
+  ([Opening GitHub Links](#opening-github-links)), and a link to github.com anywhere
+  else in a page opens in your default browser.
+
+### Signing In to GitHub
+
+Sign in to github.com once, in any window’s popover, and you stay signed in in every
+window and tab, and after you quit and reopen the app.
+The popover keeps what github.com stores, its sign-in cookies, cache, and other site
+data, in one store of the app’s own, which macOS keeps under `~/Library/WebKit` in the
+app’s folder. It is apart from your browser, from Metabrowser’s own pages and settings,
+and from your `gh` sign-in, which is what Metabrowser reads repositories and pull
+requests with. A development build keeps a store of its own.
+
+- **Who can use it:** as with a browser, anyone using your Mac account can open the app
+  and act as you on github.com.
+- **Signing out:** sign out on github.com in the popover, or choose Metabrowser > Clear
+  GitHub Data…, which removes everything github.com stored in the app, signs you out in
+  every window, and reloads any popover’s page.
+  It leaves your `gh` sign-in, your browser, and Metabrowser’s settings as they were.
+- **Ways to sign in:** a password, with GitHub’s two-factor code, signs in within the
+  popover. A sign-in that goes through another site, such as an organization’s single
+  sign-on, opens that site in your default browser, so it signs you in there and not in
+  the app.
 
 ## Recent Items
 
@@ -331,6 +390,11 @@ The app moves nothing itself.
 
 - The tab bar has no new-tab button: a new tab comes from File > Open Folder… or Open
   URL… with Settings set to tabs, or from Merge All Windows.
+- The View on GitHub popover cannot be resized: it takes most of the window each time it
+  opens, so a larger window gives a larger popover.
+- Text typed in the View on GitHub popover and not sent is lost when its window or its
+  folder closes, when its window switches to another folder while another window shows
+  this one, or when its tab or background folder gives up its page to save memory.
 - A restarted server comes back on a new port, and local storage is per origin, so what
   a page kept there starts fresh, as with the CLI.
 - The app does not pass state-location variables (`XDG_CACHE_HOME`,
