@@ -38,3 +38,5 @@
   `message`, `remedy`, `gh_path`, `gh_version`, `gh_minimum`, and `account`. It sets
   `METABROWSER_DOCTOR_APP` to its own bundle, whose `MetabrowserMinimumMetab` the
   `metab` check compares with.
+  The doctor’s configuration and cache checks rely on the app giving its servers none of
+  the storage variables (`STORAGE_OVERRIDES` in `cli/doctor.py`).

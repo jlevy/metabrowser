@@ -5,7 +5,8 @@ import Foundation
 /// sentence, details, and the step that fixes it.
 ///
 /// The shape is `metab`'s, documented in `src/metabrowser/cli/doctor.py` and pinned by
-/// `tests/golden/cli-doctor.tryscript.md`: `ok`, `problems`, `checks`, and the `github`
+/// `tests/golden/cli-doctor.tryscript.md`, and what the app reads of it is declared in
+/// `apps/macos/metab-contract.toml`: `ok`, `problems`, `checks`, and the `github`
 /// object of the GitHub status check. Every row comes from those structured entries and
 /// their `remedy` objects; no row is chosen by, and no step read from, a sentence's
 /// words. A key the app does not read is ignored. A check or `github` object the app

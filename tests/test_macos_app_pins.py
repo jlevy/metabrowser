@@ -47,6 +47,7 @@ from metabrowser.cli.doctor import (
     CHECKOUT_VENV,
     METAB_UPGRADE_COMMANDS,
     PIPX_METADATA,
+    STORAGE_OVERRIDES,
     UV_RECEIPT,
 )
 from metabrowser.cli.present import (
@@ -262,6 +263,35 @@ def test_the_app_declares_its_minimum_metab_for_the_doctor() -> None:
 
     info = plistlib.loads((APP / "Resources" / "Info.plist").read_bytes())
     assert info.get(MINIMUM_METAB_KEY) == ".".join(str(part) for part in _minimum_metab())
+
+
+def test_the_apps_servers_get_no_storage_variable() -> None:
+    """``ChildEnvironment.passedThrough`` passes none of ``STORAGE_OVERRIDES``.
+
+    The doctor's configuration and cache checks warn that a storage variable set in a
+    terminal names a directory the app's servers never read, because the app gives its
+    children none of them; a name added to the allowlist would make that warning false.
+    The allowlist's one entry that is not a literal names the recent-targets variable.
+    """
+
+    source = (SHELL_CORE / "Runtime" / "ChildEnvironment.swift").read_text(encoding="utf-8")
+    body = re.search(
+        r"static let passedThrough: Set<String> = \[\n(.*?)\n    \]\n", source, re.DOTALL
+    )
+    assert body is not None, "ChildEnvironment.passedThrough not found"
+    entries = [
+        entry.strip()
+        for line in body.group(1).splitlines()
+        if not line.strip().startswith("//")
+        for entry in line.split(",")
+        if entry.strip()
+    ]
+    names = {entry.strip('"') for entry in entries if entry.startswith('"')}
+    assert {entry for entry in entries if not entry.startswith('"')} == {
+        "RecentTargets.recordVariable"
+    }
+    assert "HOME" in names, f"ChildEnvironment.passedThrough read as {sorted(names)}"
+    assert not names & STORAGE_OVERRIDES
 
 
 # The MetabInstall case for each of the doctor's install methods.

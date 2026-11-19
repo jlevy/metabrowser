@@ -118,10 +118,50 @@ note = "Whether the cache holds a repository, asked before a link clones one. Th
 
 [[command]]
 id = "doctor"
-argv = ["--doctor"]
-source = "Sources/Metabrowser/AppDelegate.swift"
-output = "shown"
-note = "Settings shows the report as written."
+argv = ["--doctor", "--json"]
+source = "Sources/ShellCore/Setup/DoctorReport.swift"
+json = [
+    "ok",
+    "problems[]",
+    "checks[].id",
+    "checks[].title",
+    "checks[].state",
+    "checks[].summary",
+    "checks[].details[].name",
+    "checks[].details[].value",
+    "checks[].remedy.text",
+    "checks[].remedy.command",
+    "checks[].remedy.url",
+    "github.state",
+    "github.message",
+    "github.remedy.text",
+    "github.remedy.command",
+    "github.remedy.url",
+    "github.gh_path",
+    "github.gh_version",
+    "github.gh_minimum",
+    "github.account",
+]
+values = { "checks[].state" = ["ok", "warning", "problem"], "github.state" = ["ok"] }
+shown = [
+    "problems[]",
+    "checks[].title",
+    "checks[].summary",
+    "checks[].details[].name",
+    "checks[].details[].value",
+    "checks[].remedy.text",
+    "checks[].remedy.command",
+    "checks[].remedy.url",
+    "github.message",
+    "github.remedy.text",
+    "github.remedy.command",
+    "github.remedy.url",
+    "github.gh_path",
+    "github.gh_version",
+    "github.gh_minimum",
+    "github.account",
+]
+note = "Help > Check Setup…: one row per entry of `checks`, the plugins and `open_in` among them, then GitHub CLI, each with its step from a `remedy` object; `problems` is read only from a report without `checks`, and a check's `id` names its row. A report with a problem exits 1 and is still a report. It runs with a server's environment (`ChildEnvironment`, the behavior python-environment) and no working directory, so a folder's `.env` never reaches it, and it names the app's bundle in METABROWSER_DOCTOR_APP."
 
 [[command]]
 id = "acquire"
@@ -237,6 +277,12 @@ name = "METABROWSER_RECORD_RECENT"
 source = "Sources/ShellCore/Folders/RecentTargets.swift"
 metab = "src/metabrowser/recent_targets.py"
 note = "Set to 0 for every server that is not the first start of something the user just opened."
+
+[[env]]
+name = "METABROWSER_DOCTOR_APP"
+source = "Sources/ShellCore/Setup/DoctorReport.swift"
+metab = "src/metabrowser/cli/doctor.py"
+note = "Set to the app's own bundle when Check Setup… runs the doctor, whose metab check then compares with that build's MetabrowserMinimumMetab rather than the app LaunchServices finds first."
 
 [[env]]
 name = "METABROWSER_CONFIG_DIR"
@@ -372,6 +418,18 @@ values = [
 ]
 
 [[copy]]
+swift = "MetabInstall.upgradeCommand(minimum:), uvReceipt, pipxMetadata, checkoutVenv, checkoutProject"
+source = "Sources/ShellCore/Setup/MetabVersion.swift"
+metab = "METAB_UPGRADE_COMMANDS, UV_RECEIPT, PIPX_METADATA, CHECKOUT_VENV, and CHECKOUT_PROJECT in cli/doctor.py: the step that upgrades each install, and the files that tell the installs apart"
+pinned_by = "tests/test_macos_app_pins.py::test_the_apps_upgrade_steps_are_the_doctors"
+values = [
+    "metabrowser.cli.doctor:METAB_UPGRADE_COMMANDS",
+    "metabrowser.cli.doctor:UV_RECEIPT",
+    "metabrowser.cli.doctor:PIPX_METADATA",
+    "metabrowser.cli.doctor:CHECKOUT_VENV",
+]
+
+[[copy]]
 swift = "MetabVersion.pattern"
 source = "Sources/ShellCore/Setup/MetabVersion.swift"
 metab = "the version `metab --version` prints"
@@ -406,6 +464,18 @@ pinned_by = "tests/test_present.py::test_the_bundle_identifiers_are_the_ones_the
 values = ["metabrowser.cli.present:RELEASE_BUNDLE_ID", "metabrowser.cli.present:DEV_BUNDLE_ID"]
 
 [[app_side]]
+id = "minimum-metab"
+what = "Resources/Info.plist declares MetabrowserMinimumMetab, the app's MetabRequirement.minimumRelease, which metab --doctor reads from the app --present would open, or from the bundle METABROWSER_DOCTOR_APP names, to say whether this metab is new enough."
+pinned_by = "tests/test_macos_app_pins.py::test_the_app_declares_its_minimum_metab_for_the_doctor"
+values = ["metabrowser.cli.present:MINIMUM_METAB_KEY"]
+
+[[app_side]]
+id = "storage-variables"
+what = "ChildEnvironment passes the app's servers, and the doctor it runs, none of STORAGE_OVERRIDES in cli/doctor.py, so the doctor's configuration and cache checks warn when one set in a terminal names a directory the app's servers never read."
+pinned_by = "tests/test_macos_app_pins.py::test_the_apps_servers_get_no_storage_variable"
+values = ["metabrowser.cli.doctor:STORAGE_OVERRIDES"]
+
+[[app_side]]
 id = "opens-urls-marker"
 what = "Resources/Info.plist declares MetabrowserOpensURLs, which --present reads before it sends a URL, and RecentTargets.opensURLsKey names the same key."
 pinned_by = "tests/test_macos_app_pins.py::test_the_app_declares_what_present_reads"
@@ -424,7 +494,7 @@ values = ["metabrowser.cli.present:OPENS_URLS_KEY"]
 "Sources/ShellCore/Folders/PresentPlan.swift" = { sites = 1, runs = ["present-dry-run"] }
 "Sources/ShellCore/Folders/RecentTargets.swift" = { sites = 1, runs = ["recent-list", "recent-add", "recent-forget", "recent-clear"] }
 "Sources/ShellCore/Folders/RepositoryCache.swift" = { sites = 1, runs = ["cache-sources"] }
-"Sources/Metabrowser/AppDelegate.swift" = { sites = 1, runs = ["doctor"] }
+"Sources/ShellCore/Setup/DoctorReport.swift" = { sites = 1, runs = ["doctor"] }
 
 # In a file that reads one of the contract's answers, every key it names in a subscript
 # or as a coding key's raw value is one the answer's entry declares. A subscript of
@@ -435,6 +505,7 @@ values = ["metabrowser.cli.present:OPENS_URLS_KEY"]
 "Sources/ShellCore/Folders/RepositoryCache.swift" = ["cache-sources"]
 "Sources/ShellCore/Folders/FolderIdentity.swift" = ["identity"]
 "Sources/ShellCore/Folders/LinkSelection.swift" = ["source-status"]
+"Sources/ShellCore/Setup/DoctorReport.swift" = ["doctor"]
 "Sources/ShellCore/Folders/SavedSession.swift" = ["own: the app's saved session"]
 "Sources/ShellCore/Runtime/Runtime.swift" = ["own: the runtime the app last settled on"]
 
@@ -459,6 +530,7 @@ flags = [
     "--bin",       # uv tool dir --bin
     "--upgrade",   # uv tool install --upgrade, shown at setup
     "--reinstall", # uv tool install --reinstall, shown at setup
+    "--force",     # pipx install --force, shown for a pipx metab too old to run
     "--hostname",  # gh auth login, status, and refresh, shown when GitHub refuses
     "--scopes",    # gh auth refresh --scopes, shown when GitHub refuses
 ]

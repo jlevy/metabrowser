@@ -121,8 +121,9 @@ LOW_FREE_SPACE_BYTES: Final[int] = int(MAX_FIRST_CLONE_KB * 1024 * _PACK_PER_REP
 # keeps a terminal's lookup, since it says where `--present` in a terminal opens a target.
 DOCTOR_APP_ENV: Final = "METABROWSER_DOCTOR_APP"
 # What the app's servers get of the storage variables: none (ChildEnvironment's allowlist,
-# apps/macos/Sources/ShellCore/Runtime/ChildEnvironment.swift).
-_STORAGE_OVERRIDES: Final = frozenset(
+# apps/macos/Sources/ShellCore/Runtime/ChildEnvironment.swift, which
+# tests/test_macos_app_pins.py holds to this set).
+STORAGE_OVERRIDES: Final = frozenset(
     {"METABROWSER_CONFIG_DIR", "XDG_CONFIG_HOME", "METABROWSER_CACHE_DIR", "XDG_CACHE_HOME"}
 )
 
@@ -400,7 +401,7 @@ def _servers_directory(
 
     if source == "default" or app_path is None:
         return None
-    environ = {name: value for name, value in os.environ.items() if name not in _STORAGE_OVERRIDES}
+    environ = {name: value for name, value in os.environ.items() if name not in STORAGE_OVERRIDES}
     try:
         theirs = application_cache(environ) if cache else configuration_directory(environ)
     except StorageDirectoryError:
@@ -684,6 +685,7 @@ __all__ = [
     "LOW_FREE_SPACE_BYTES",
     "METAB_UPGRADE_COMMANDS",
     "PIPX_METADATA",
+    "STORAGE_OVERRIDES",
     "UV_RECEIPT",
     "Check",
     "CheckState",
