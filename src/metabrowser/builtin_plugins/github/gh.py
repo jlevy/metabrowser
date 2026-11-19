@@ -114,7 +114,10 @@ _NETWORK_TEXT: Final[tuple[str, ...]] = (
 )
 _LOGIN_TEXT: Final = ("gh auth login", "not logged in", "bad credentials", "http 401:")
 _SERVER_ERROR_TEXT = re.compile(r"\bhttp (5[0-9]{2}):")
-_SIGN_IN_MESSAGE: Final = "GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry."
+SIGN_IN_COMMAND: Final = f"gh auth login --hostname {GH_HOSTNAME}"
+_SIGN_IN_MESSAGE: Final = (
+    f"GitHub CLI is not signed in to {GH_HOSTNAME}. Run {SIGN_IN_COMMAND}, then retry."
+)
 
 
 class GhError(Exception):
@@ -139,6 +142,33 @@ class GhUnavailableError(GhError):
         ),
     ) -> None:
         super().__init__(message, state="gh_missing")
+
+
+# The environment variables gh reads a github.com token from, in its order. gh names
+# the one it used as the account's ``tokenSource``.
+ENVIRONMENT_TOKENS: Final[tuple[str, ...]] = ("GH_TOKEN", "GITHUB_TOKEN")
+
+
+class GhTokenRefusedError(GhError):
+    """GitHub refused a token gh read from *variable*, one of :data:`ENVIRONMENT_TOKENS`.
+
+    gh names no account for such a token, and refuses ``gh auth login`` while the
+    variable is set, so the step is to replace the token or unset the variable.
+    """
+
+    def __init__(self, variable: str) -> None:
+        self.variable = variable
+        self.fix = replace_token_step(variable)
+        super().__init__(
+            f"GitHub refused the token in {variable}. To sign in again: {self.fix}.",
+            state="not_logged_in",
+        )
+
+
+def replace_token_step(variable: str) -> str:
+    """The step for a refused token from *variable*: gh will not sign in while it is set."""
+
+    return f"replace the token in {variable}, or unset it and run {SIGN_IN_COMMAND}"
 
 
 class GhServerError(GhError):
@@ -735,6 +765,11 @@ def parse_active_account(stdout: bytes) -> GhAccount | None:
                 and isinstance(diagnostic, str)
                 and (failure := _diagnosed_failure(diagnostic))
             ):
+                # gh 2.98.0 answers a refused GH_TOKEN with an empty login, its
+                # tokenSource, and the 401 (checked 2026-11-18).
+                source = entry.get("tokenSource")
+                if failure.state == "not_logged_in" and source in ENVIRONMENT_TOKENS:
+                    raise GhTokenRefusedError(str(source)) from failure
                 raise failure
         raise GhError("gh auth status named an account that is not a GitHub login")
     return None
@@ -790,16 +825,19 @@ async def gh_version(*, timeout_s: float) -> str | None:
 
 
 __all__ = [
+    "ENVIRONMENT_TOKENS",
     "GH_API_MAX_BYTES",
     "GH_API_TIMEOUT_S",
     "GH_MAX_BYTES",
     "GH_TIMEOUT_S",
+    "SIGN_IN_COMMAND",
     "GhAccount",
     "GhCursorError",
     "GhError",
     "GhFailureState",
     "GhResponse",
     "GhServerError",
+    "GhTokenRefusedError",
     "GhUnavailableError",
     "gh_account",
     "gh_active_account",
@@ -811,5 +849,6 @@ __all__ = [
     "parse_active_account",
     "parse_included_response",
     "rate_limit_reset",
+    "replace_token_step",
     "run_gh",
 ]

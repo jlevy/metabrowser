@@ -11,7 +11,7 @@ provider reads it before a first clone, so a pull request that cannot be read wi
 | ``ok`` | signed in, and the token can read private repositories or gh reports no scopes | none |
 | ``gh_missing`` | no ``gh`` on ``PATH`` | the install page |
 | ``gh_too_old`` | this ``gh`` has no ``auth status --json`` | the install page |
-| ``not_logged_in`` | no active github.com account, or GitHub refused its token | ``gh auth login`` |
+| ``not_logged_in`` | no active github.com account, or GitHub refused its token | ``gh auth login``, or replacing a refused token in ``GH_TOKEN`` or ``GITHUB_TOKEN`` |
 | ``missing_scope`` | signed in, but the token lacks :data:`REQUIRED_SCOPE` | ``gh auth refresh`` |
 | ``network_error`` | gh could not reach GitHub, or did not answer in time | none |
 | ``gh_failed`` | gh answered something else | ``gh auth status`` |
@@ -23,7 +23,9 @@ a public repository clones without ``gh``, and offline a cached record still ans
 
 The answer is kept for :data:`GH_STATUS_TTL_S` per ``gh`` and configuration, and callers
 in one event loop share a check in flight, so a page and the app asking at once run
-``gh`` once. Like everything in :mod:`.gh`, it never reads, stores, or logs a token.
+``gh`` once. :func:`forget_github_status`, which a ``fresh`` request calls, starts a new
+check rather than join or keep one that began before it. Like everything in :mod:`.gh`,
+it never reads, stores, or logs a token.
 """
 
 from __future__ import annotations
@@ -37,13 +39,17 @@ from dataclasses import dataclass, replace
 from typing import Any, Final, Literal
 
 from metabrowser.builtin_plugins.github.gh import (
+    ENVIRONMENT_TOKENS,
     GH_HOSTNAME,
+    SIGN_IN_COMMAND,
     GhAccount,
     GhError,
+    GhTokenRefusedError,
     GhUnavailableError,
     gh_active_account,
     gh_executable,
     gh_version,
+    replace_token_step,
 )
 from metabrowser.cache.providers import ProviderStatus
 
@@ -61,14 +67,12 @@ GH_STATUS_TTL_S: Final[float] = 10.0
 # requests. Public ones need no scope.
 REQUIRED_SCOPE: Final = "repo"
 INSTALL_PAGE: Final = "https://cli.github.com/"
-SIGN_IN_COMMAND: Final = f"gh auth login --hostname {GH_HOSTNAME}"
 SCOPE_COMMAND: Final = f"gh auth refresh --hostname {GH_HOSTNAME} --scopes {REQUIRED_SCOPE}"
 REPORT_COMMAND: Final = f"gh auth status --hostname {GH_HOSTNAME}"
 # What gh reads its configuration and token from, besides the keychain: an answer is
 # reused only while these and the gh found on PATH are the same. Only whether a token
 # variable is set is compared, never its value.
 _CONFIGURATION_ENV: Final = ("HOME", "XDG_CONFIG_HOME", "GH_CONFIG_DIR")
-_TOKEN_ENV: Final = ("GH_TOKEN", "GITHUB_TOKEN")
 
 type GithubStatusState = Literal[
     "ok",
@@ -147,7 +151,7 @@ def _environment_token(account: GhAccount) -> str | None:
     """The environment variable gh read the token from, when it was one of its own."""
 
     source = account.token_source
-    return source if source in _TOKEN_ENV else None
+    return source if source in ENVIRONMENT_TOKENS else None
 
 
 def _signed_in(path: str, account: GhAccount) -> GithubStatus:
@@ -165,11 +169,7 @@ def _signed_in(path: str, account: GhAccount) -> GithubStatus:
     from_env = _environment_token(account)
     problem = account.problem
     if problem is not None and problem.state == "not_logged_in":
-        fix = (
-            f"replace the token in {from_env}, or unset it and run {SIGN_IN_COMMAND}"
-            if from_env
-            else SIGN_IN_COMMAND
-        )
+        fix = replace_token_step(from_env) if from_env else SIGN_IN_COMMAND
         message = f"GitHub refused gh's token for {login}. To sign in again: {fix}."
         return replace(found, state="not_logged_in", message=message, fix=fix)
     if problem is not None and problem.state == "network_error":
@@ -206,6 +206,10 @@ def _refused(path: str | None, exc: GhError) -> GithubStatus:
         return GithubStatus("gh_missing", message, INSTALL_PAGE)
     if exc.state == "gh_too_old":
         return GithubStatus("gh_too_old", message, INSTALL_PAGE, gh_path=path)
+    if isinstance(exc, GhTokenRefusedError):
+        return GithubStatus(
+            "not_logged_in", message, exc.fix, gh_path=path, token_source=exc.variable
+        )
     if exc.state == "not_logged_in":
         return GithubStatus("not_logged_in", message, SIGN_IN_COMMAND, gh_path=path)
     if exc.state == "network_error":
@@ -239,18 +243,22 @@ class _Kept:
 
 _kept: _Kept | None = None
 _versions: dict[str, tuple[float, str | None]] = {}
+# Bumped by forget_github_status: a check that started before is neither joined nor kept,
+# since it may have run before the reader signed in.
+_generation = 0
 # The checks in flight, per event loop: a task belongs to the loop that made it, and the
 # CLI and a server each run their own. Callers asking for the same answer at once await
 # one task.
-_in_flight: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, dict[_Key, asyncio.Task[Any]]] = (
-    weakref.WeakKeyDictionary()
-)
+type _FlightKey = tuple[object, ...]
+_in_flight: weakref.WeakKeyDictionary[
+    asyncio.AbstractEventLoop, dict[_FlightKey, asyncio.Task[Any]]
+] = weakref.WeakKeyDictionary()
 
 
 def _key() -> _Key:
     path = gh_executable()
     configuration = tuple(os.environ.get(name) for name in _CONFIGURATION_ENV)
-    tokens = tuple("set" if os.environ.get(name) else None for name in _TOKEN_ENV)
+    tokens = tuple("set" if os.environ.get(name) else None for name in ENVIRONMENT_TOKENS)
     return (path, *configuration, *tokens)
 
 
@@ -268,14 +276,16 @@ def kept_github_status() -> GithubStatus | None:
 
 
 def forget_github_status() -> None:
-    """Drop every kept answer, so the next check runs gh again."""
+    """Drop every kept answer, so the next check runs gh again rather than join or keep
+    one already running."""
 
-    global _kept
+    global _kept, _generation
     _kept = None
     _versions.clear()
+    _generation += 1
 
 
-async def _once[T](key: _Key, run: Callable[[], Coroutine[Any, Any, T]]) -> T:
+async def _once[T](key: _FlightKey, run: Callable[[], Coroutine[Any, Any, T]]) -> T:
     """*run*'s answer, from the one task in this event loop running it for *key*.
 
     A caller that is cancelled leaves the task to the others; it ends within its own
@@ -301,8 +311,10 @@ async def _sign_in() -> GithubStatus:
     kept = _kept
     if kept is not None and kept.key == key and time.monotonic() - kept.at < GH_STATUS_TTL_S:
         return kept.status
-    status = await _once(("auth", *key), _check)
-    _kept = _Kept(key, time.monotonic(), status)
+    generation = _generation
+    status = await _once(("auth", generation, *key), _check)
+    if generation == _generation:
+        _kept = _Kept(key, time.monotonic(), status)
     return status
 
 
@@ -317,8 +329,10 @@ async def _version(path: str) -> str | None:
     known = _versions.get(path)
     if known is not None and time.monotonic() - known[0] < GH_STATUS_TTL_S:
         return known[1]
-    version = await _once(("version", path), _read_version)
-    _versions[path] = (time.monotonic(), version)
+    generation = _generation
+    version = await _once(("version", generation, path), _read_version)
+    if generation == _generation:
+        _versions[path] = (time.monotonic(), version)
     return version
 
 

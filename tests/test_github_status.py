@@ -14,6 +14,9 @@ import os
 from pathlib import Path
 
 import pytest
+from starlette.applications import Starlette
+from starlette.routing import Route
+from starlette.testclient import TestClient
 
 from metabrowser.builtin_plugins.github import gh_status
 from metabrowser.builtin_plugins.github.gh_status import (
@@ -21,18 +24,21 @@ from metabrowser.builtin_plugins.github.gh_status import (
     github_status,
     kept_github_status,
 )
+from metabrowser.builtin_plugins.github.sidekick import status_handler
 from tests.golden_harness import run_metab
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="the stand-in gh is a shell script")
 
 FIXTURE = Path(__file__).parent / "fixtures" / "github-status"
 
+# An auth call reads its answer before it logs, so a logged call has its answer.
 _LOGGING_GH = """#!/bin/sh
+if [ "$1" = auth ]; then answer=$(cat "$STATUS_GH_ANSWER"); fi
 printf '%s\\n' "$*" >> "$STATUS_GH_LOG"
 if [ "$1" = --version ]; then echo 'gh version 2.98.0 (2026-08-20)'; exit 0; fi
 if [ "$1" = auth ]; then
   if [ -n "$STATUS_GH_DELAY" ]; then sleep "$STATUS_GH_DELAY"; fi
-  cat "$STATUS_GH_ANSWER"
+  printf '%s\\n' "$answer"
   exit 0
 fi
 exit 2
@@ -94,7 +100,7 @@ def _status(variant: str, monkeypatch: pytest.MonkeyPatch) -> GithubStatus:
             ("gist", "read:org"),
             "gh auth refresh --hostname github.com --scopes repo",
         ),
-        ("env-token", "ok", "octo-reader", None, None),
+        ("fine-grained-token", "ok", "octo-reader", None, None),
         ("signed-out", "not_logged_in", None, None, "gh auth login --hostname github.com"),
         (
             "token-refused",
@@ -102,6 +108,13 @@ def _status(variant: str, monkeypatch: pytest.MonkeyPatch) -> GithubStatus:
             "octo-reader",
             None,
             "gh auth login --hostname github.com",
+        ),
+        (
+            "env-token-refused",
+            "not_logged_in",
+            None,
+            None,
+            "replace the token in GH_TOKEN, or unset it and run gh auth login --hostname github.com",
         ),
         ("offline", "network_error", "octo-reader", None, None),
         ("too-old", "gh_too_old", None, None, "https://cli.github.com/"),
@@ -135,18 +148,37 @@ def test_each_answer_gh_gives_has_one_state_and_its_fix(
     assert status.to_json()["state"] == state
 
 
+@pytest.mark.parametrize("variable", ["GH_TOKEN", "GITHUB_TOKEN"])
 def test_an_environment_token_that_is_refused_names_the_variable(
-    logging_gh: Path, monkeypatch: pytest.MonkeyPatch
+    logging_gh: Path, variable: str
 ) -> None:
+    # The shape gh 2.98.0 printed for a refused GH_TOKEN (2026-11-18): no login, the
+    # variable as tokenSource, and the 401 body as the error. gh refuses
+    # `gh auth login` while the variable is set, so the fix names it.
     answer = Path(os.environ["STATUS_GH_ANSWER"])
-    host = {"state": "error", "error": "HTTP 401: Bad credentials", "active": True}
-    host |= {"login": "octo-reader", "tokenSource": "GH_TOKEN"}
+    refusal = '{\r\n  "message": "Bad credentials",\r\n  "status": "401"\r\n}'
+    host = {
+        "state": "error",
+        "error": f'non-200 OK status code: 401 Unauthorized body: "{refusal}"',
+        "active": True,
+        "host": "github.com",
+        "login": "",
+        "tokenSource": variable,
+        "gitProtocol": "https",
+    }
     answer.write_text(json.dumps({"hosts": {"github.com": [host]}}), encoding="utf-8")
     status = asyncio.run(github_status())
-    assert status.state == "not_logged_in"
-    assert status.fix == (
-        "replace the token in GH_TOKEN, or unset it and run gh auth login --hostname github.com"
+    fix = (
+        f"replace the token in {variable}, or unset it and run gh auth login --hostname github.com"
     )
+    assert (status.state, status.account, status.token_source, status.fix) == (
+        "not_logged_in",
+        None,
+        variable,
+        fix,
+    )
+    assert status.message == f"GitHub refused the token in {variable}. To sign in again: {fix}."
+    assert "gh auth login" not in status.message.replace(fix, "")
 
 
 def test_no_gh_on_path_is_gh_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -203,6 +235,38 @@ def test_a_kept_answer_is_dropped_when_gh_or_its_configuration_changes(
     assert len(_calls(logging_gh)) == 2
 
 
+def test_a_fresh_check_neither_joins_nor_keeps_one_that_started_before(
+    logging_gh: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A Retry after signing in sends `fresh` while an earlier check may still be
+    running: that check started before the sign-in, so its answer is not the Retry's,
+    and it is not kept when it ends after the Retry's."""
+
+    answer = Path(os.environ["STATUS_GH_ANSWER"])
+    auth = "auth status --active --hostname github.com --json hosts"
+
+    async def retry_during_a_check() -> tuple[GithubStatus, GithubStatus]:
+        monkeypatch.setenv("STATUS_GH_DELAY", "1.5")
+        earlier = asyncio.ensure_future(github_status(version=False))
+        for _ in range(500):
+            if auth in _calls(logging_gh):
+                break
+            await asyncio.sleep(0.01)
+        # The earlier gh has read its answer, signed in; now the reader signs out, and
+        # the Retry's gh answers at once.
+        answer.write_text('{"hosts":{}}', encoding="utf-8")
+        monkeypatch.delenv("STATUS_GH_DELAY")
+        gh_status.forget_github_status()
+        retried = await github_status(version=False)
+        return await earlier, retried
+
+    earlier, retried = asyncio.run(retry_during_a_check())
+    assert (earlier.state, retried.state) == ("ok", "not_logged_in")
+    assert _calls(logging_gh).count(auth) == 2
+    kept = kept_github_status()
+    assert kept is not None and kept.state == "not_logged_in"
+
+
 def test_a_gh_that_does_not_answer_in_time_is_a_network_error(
     logging_gh: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -214,7 +278,7 @@ def test_a_gh_that_does_not_answer_in_time_is_a_network_error(
 
 
 @pytest.mark.usefixtures("fixture_gh")
-def test_the_route_serves_the_doctors_section_and_fresh_runs_gh_again(
+def test_the_route_serves_the_doctors_section_and_refuses_another_body(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("METABROWSER_LOG_LEVEL", "ERROR")
@@ -222,8 +286,6 @@ def test_the_route_serves_the_doctors_section_and_fresh_runs_gh_again(
     root.mkdir()
     empty = tmp_path / "empty.json"
     empty.write_text("{}", encoding="utf-8")
-    fresh = tmp_path / "fresh.json"
-    fresh.write_text('{"fresh": true}', encoding="utf-8")
     route = ["--api", "/api/plugin/github/status", "--data"]
 
     monkeypatch.setenv("FAKE_GH_STATUS", "signed-out")
@@ -233,12 +295,6 @@ def test_the_route_serves_the_doctors_section_and_fresh_runs_gh_again(
     doctor = run_metab(["--doctor", "--json"])
     assert json.loads(doctor.stdout)["github"] == served.payload()
 
-    # After signing in, a kept answer could say signed out for a few seconds more;
-    # `fresh` asks gh again, as the app's Retry does.
-    monkeypatch.setenv("FAKE_GH_STATUS", "signed-in")
-    assert run_metab([str(root), *route, str(empty)]).payload()["state"] == "not_logged_in"
-    assert run_metab([str(root), *route, str(fresh)]).payload()["state"] == "ok"
-
     other = tmp_path / "other.json"
     other.write_text('{"fresh": "yes"}', encoding="utf-8")
     refused = run_metab([str(root), *route, str(other)])
@@ -246,6 +302,24 @@ def test_the_route_serves_the_doctors_section_and_fresh_runs_gh_again(
         "error": "a status request names only fresh, true or false",
         "code": "invalid_request",
     }
+
+
+@pytest.mark.usefixtures("fixture_gh")
+def test_a_server_keeps_an_answer_until_a_fresh_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each `metab` command is a process of its own; a server is one process for many
+    requests, so after signing in, a kept answer says signed out for a few seconds
+    more, and `fresh` asks gh again, as the app's Retry does."""
+
+    app = Starlette(routes=[Route("/status", status_handler, methods=["POST"])])
+    client = TestClient(app)
+    monkeypatch.setenv("FAKE_GH_STATUS", "signed-out")
+    assert client.post("/status", json={}).json()["state"] == "not_logged_in"
+    monkeypatch.setenv("FAKE_GH_STATUS", "signed-in")
+    assert client.post("/status", json={}).json()["state"] == "not_logged_in"
+    assert client.post("/status", json={"fresh": True}).json()["state"] == "ok"
+    assert client.post("/status", json={}).json()["state"] == "ok"
 
 
 @pytest.mark.usefixtures("fixture_gh")

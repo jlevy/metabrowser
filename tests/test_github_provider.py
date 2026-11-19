@@ -14,11 +14,16 @@ import os
 import stat
 from collections.abc import Sequence
 from pathlib import Path
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
 from metabrowser.builtin_plugins.github import gh as gh_module
+from metabrowser.builtin_plugins.github import provider as provider_module
 from metabrowser.builtin_plugins.github.gh import GhError, gh_executable, run_gh
+from metabrowser.builtin_plugins.github.gh_lists import PullDataError
+from metabrowser.builtin_plugins.github.gh_status import kept_github_status
 from metabrowser.builtin_plugins.github.provider import (
     MAX_FIRST_CLONE_ENV,
     MAX_FIRST_CLONE_KB,
@@ -28,6 +33,7 @@ from metabrowser.builtin_plugins.github.provider import (
 from metabrowser.cache.acquire import RepositoryTooLargeError
 from metabrowser.cache.origin import describe_remote_failure
 from metabrowser.cache.providers import (
+    PullRequestUnavailableError,
     installed_providers,
     provider_git_config,
     repository_context_for,
@@ -35,10 +41,19 @@ from metabrowser.cache.providers import (
 from metabrowser.cache.urls import GitSource, RepositorySelection
 from metabrowser.git.process import GIT_ACQUISITION_TIMEOUT_S, terminate_git_process
 
+if TYPE_CHECKING:
+    from metabrowser.cache.acquire import PublishedSource
+
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="the fake gh is a POSIX shell script")
 
 _FAKE_GH = """#!/bin/sh
-if [ "$1" = auth ]; then printf '%s\\n' "$FAKE_GH_AUTH"; exit 0; fi
+if [ "$1" = auth ]; then
+  case "$FAKE_GH_AUTH" in
+    too-old) echo 'unknown flag: --json' >&2; exit 1 ;;
+    broken) exit 1 ;;
+  esac
+  printf '%s\\n' "$FAKE_GH_AUTH"; exit 0
+fi
 env > "$FAKE_GH_LOG.env"
 printf '%s\\n' "$@" > "$FAKE_GH_LOG.args"
 if [ -t 0 ]; then echo tty > "$FAKE_GH_LOG.stdin"; else cat > "$FAKE_GH_LOG.stdin"; fi
@@ -197,6 +212,23 @@ def test_a_small_repository_or_an_unanswered_check_does_not_refuse(
     asyncio.run(GithubProvider().check_first_clone(SOURCE))
 
 
+@pytest.mark.parametrize(("auth", "state"), [("too-old", "gh_too_old"), ("broken", "gh_failed")])
+def test_a_gh_the_status_check_cannot_type_still_reads_the_size(
+    fake_gh: Path, monkeypatch: pytest.MonkeyPatch, auth: str, state: str
+) -> None:
+    """A gh too old for `auth status --json`, or one whose answer the check cannot type,
+    may still read the API, so the size guard still runs; only no gh, no account, or no
+    network skips it."""
+
+    monkeypatch.setenv("FAKE_GH_AUTH", auth)
+    monkeypatch.setenv("FAKE_GH_MODE", "size")
+    monkeypatch.setenv("FAKE_GH_SIZE", str(MAX_FIRST_CLONE_KB + 1))
+    with pytest.raises(RepositoryTooLargeError):
+        asyncio.run(GithubProvider().check_first_clone(SOURCE))
+    kept = kept_github_status()
+    assert kept is not None and kept.state == state
+
+
 def test_no_gh_and_other_hosts_skip_the_check(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -348,6 +380,29 @@ def test_a_token_without_the_repo_scope_is_named_when_a_repository_is_not_found(
         "https://github.com/octo/demo was not found, or it is private and could not be read "
         "(not_found_or_private); if it is private, gh's token for octo-reader lacks the repo "
         "scope: gh auth refresh --hostname github.com --scopes repo; nothing was published"
+    )
+
+
+def test_a_pull_request_on_a_cached_mirror_names_a_missing_scope(
+    fake_gh: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A cached mirror skips the first-clone check, so no recent answer is kept; a pull
+    request GitHub does not show still names the scope, whatever ran before."""
+
+    async def not_shown(*_args: object, **_kwargs: object) -> None:
+        raise PullDataError("not_found_or_private", "pull request 9 was not found")
+
+    monkeypatch.setattr(provider_module, "open_pull_request", not_shown)
+    monkeypatch.setenv("FAKE_GH_AUTH", _signed_in("gist, read:org"))
+    assert kept_github_status() is None
+    published = cast("PublishedSource", SimpleNamespace(source=SOURCE))
+    with pytest.raises(PullRequestUnavailableError) as unavailable:
+        asyncio.run(GithubProvider().pull_request(published, 9, fetch="if_missing"))
+    assert not unavailable.value.blocking
+    assert str(unavailable.value) == (
+        "pull request 9 of https://github.com/octo/demo: pull request 9 was not found "
+        "(not_found_or_private); if it is private, gh's token for octo-reader lacks the "
+        "repo scope: gh auth refresh --hostname github.com --scopes repo"
     )
 
 

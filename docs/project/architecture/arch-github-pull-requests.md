@@ -75,19 +75,23 @@ account stop together.
 `gh_status.py` answers what GitHub work needs from `gh`: its path and version, the
 active account, the account’s token scopes, and one state with the step that fixes it.
 Its docstring tabulates the states.
-Three readers share it:
+These read it:
 
 - `metab --doctor` prints it after the plugin verdict, and `--doctor --json` carries it
   as `github`. It never changes the exit status, since a machine without `gh` has
   nothing wrong with its plugins.
 - `POST status` serves the same object, a `POST` because it runs `gh`; `{"fresh": true}`
-  asks `gh` again rather than reuse a recent answer.
+  asks `gh` again rather than reuse a recent answer or join a check already running.
 - `check_first_clone` reads it before the size check, without the version.
   A pull-request URL stops before anything is cloned when the state is `gh_missing`,
   `gh_too_old`, or `not_logged_in` (`SIGN_IN_STATES`), since only `gh` reads a pull
   request; a repository URL goes on, since a public one clones anonymously.
-  A clone that then fails as not found takes its hint from the kept answer
+  The size check is skipped only for `gh_missing`, `not_logged_in`, and `network_error`,
+  where its read cannot succeed; a `gh` too old for the status check may still read the
+  size. A clone that then fails as not found takes its hint from the kept answer
   (`credential_hint`), so a token without the `repo` scope is named.
+- `GithubProvider.pull_request` asks it when GitHub does not show a pull request, which
+  on a cached mirror no first-clone check preceded, and names a missing `repo` scope.
 
 A pull request with no usable cached record whose read fails in one of those states also
 stops the command, with `PullRequestUnavailableError.blocking`, rather than fall back to
@@ -96,6 +100,8 @@ asked for. A page already open shows the reason and offers **Fetch**, as for any
 
 The answer is kept for `GH_STATUS_TTL_S` per `gh` path and configuration, and callers in
 one event loop share a check in flight; `GH_STATUS_TIMEOUT_S` bounds a `gh` that hangs.
+A token GitHub refuses in `GH_TOKEN` or `GITHUB_TOKEN` is `not_logged_in` with a fix
+that names the variable, since `gh auth login` refuses to run while it is set.
 A token whose scopes `gh` does not report, such as a fine-grained one from `GH_TOKEN`,
 is `ok`, since only a repository’s own read can tell what it reaches.
 

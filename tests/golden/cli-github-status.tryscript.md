@@ -106,13 +106,14 @@ status: 200
 ? 0
 ```
 
-## Test: a token from the environment reports no scopes, and that is not a problem
+## Test: a fine-grained token reports no scopes, and that is not a problem
 
-gh does not list the scopes of a token it was handed in `GH_TOKEN`, so `scopes` is null
-rather than empty.
+A fine-grained or GitHub App token has no OAuth scopes, so gh lists none and `scopes` is
+null rather than empty.
+gh lists a classic token’s scopes, whether it was saved or handed over in `GH_TOKEN`.
 
 ```console
-$ FAKE_GH_STATUS=env-token metab statusroot --api /api/plugin/github/status --data empty.json
+$ FAKE_GH_STATUS=fine-grained-token metab statusroot --api /api/plugin/github/status --data empty.json
 api: /api/plugin/github/status
 status: 200
 {
@@ -164,6 +165,30 @@ status: 200
   "gh_version": "2.98.0",
   "account": "octo-reader",
   "token_source": "keyring",
+  "scopes": null
+}
+? 0
+```
+
+## Test: a refused token from the environment names its variable
+
+gh names no account for a token GitHub refuses in `GH_TOKEN`, and refuses
+`gh auth login` while the variable is set, so the fix is to replace the token or unset
+the variable.
+
+```console
+$ FAKE_GH_STATUS=env-token-refused metab statusroot --api /api/plugin/github/status --data empty.json
+api: /api/plugin/github/status
+status: 200
+{
+  "host": "github.com",
+  "state": "not_logged_in",
+  "message": "GitHub refused the token in GH_TOKEN. To sign in again: replace the token in GH_TOKEN, or unset it and run gh auth login --hostname github.com.",
+  "fix": "replace the token in GH_TOKEN, or unset it and run gh auth login --hostname github.com",
+  "gh_path": "[FAKE_GH]",
+  "gh_version": "2.98.0",
+  "account": null,
+  "token_source": "GH_TOKEN",
   "scopes": null
 }
 ? 0

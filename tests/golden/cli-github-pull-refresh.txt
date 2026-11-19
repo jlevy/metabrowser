@@ -868,6 +868,7 @@ using the clone of https://github.com/octo/demo cached in <HOME>, fetched less t
 --- gh ---
 gh auth status
 gh api repos/octo/demo/pulls/11
+gh auth status
 # metab https://github.com/octo/demo/pull/11 --no-serve
 exit: 1
 --- stdout ---

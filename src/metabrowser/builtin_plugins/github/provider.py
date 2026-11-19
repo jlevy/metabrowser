@@ -18,9 +18,16 @@ import logging
 import os
 from typing import TYPE_CHECKING, Final
 
-from metabrowser.builtin_plugins.github.gh import GhError, gh_executable, run_gh
+from metabrowser.builtin_plugins.github.gh import (
+    ENVIRONMENT_TOKENS,
+    GhError,
+    gh_executable,
+    replace_token_step,
+    run_gh,
+)
 from metabrowser.builtin_plugins.github.gh_status import (
     REQUIRED_SCOPE,
+    SIGN_IN_COMMAND,
     SIGN_IN_STATES,
     GithubStatus,
     github_status,
@@ -140,8 +147,11 @@ def _first_clone_limit_kb() -> int:
     return MAX_FIRST_CLONE_KB
 
 
-# The status states in which gh can read GitHub's API, so the size read can be asked.
-_SIZE_CHECK_STATES: Final = frozenset({"ok", "missing_scope"})
+# The status states in which the size read cannot succeed: no gh, no account, or no
+# network. In every other state it is asked, since a gh too old for the status check,
+# or one whose answer the check could not type, may still read the API; a read that
+# fails steps aside.
+_NO_SIZE_READ_STATES: Final = frozenset({"gh_missing", "not_logged_in", "network_error"})
 
 
 class GithubSignInRequiredError(AcquisitionError):
@@ -172,14 +182,13 @@ def _status_hint(status: GithubStatus | None) -> str | None:
     if status.state == "not_logged_in":
         return f"if it is private, gh is not signed in: {status.fix}"
     if status.state == "gh_too_old":
-        return (
-            "if it is private, update GitHub CLI (gh) from https://cli.github.com/ "
-            "and sign in with gh auth login"
-        )
+        return f"if it is private, update GitHub CLI (gh): {status.fix}"
     if status.state == "ok":
+        source = status.token_source
+        step = replace_token_step(source) if source in ENVIRONMENT_TOKENS else SIGN_IN_COMMAND
         return (
             f"if it is private, gh is signed in as {status.account}, which cannot read it; "
-            "sign in with gh auth login to an account that can"
+            f"to use an account that can: {step}"
         )
     return None
 
@@ -218,6 +227,8 @@ class GithubProvider:
         hint = _status_hint(kept_github_status())
         if hint is not None:
             return hint
+        # The macOS app's GitHubFailureTests.swift holds these two lines as the CLI
+        # prints them, so they change together.
         if gh_executable() is None:
             return "if it is private, install GitHub CLI (gh) and sign in with gh auth login"
         return "if it is private, sign in with gh auth login to an account that can read it"
@@ -234,9 +245,9 @@ class GithubProvider:
         number = selection.pull_request if selection is not None else None
         if number is not None and status.stops_github_work:
             raise GithubSignInRequiredError(source.normalized, number, status)
-        if status.state not in _SIZE_CHECK_STATES or gh_executable() is None:
-            # Signed out, offline, or gh cannot say: the size read would fail too, and
-            # the clone itself reports what is wrong.
+        if status.state in _NO_SIZE_READ_STATES or gh_executable() is None:
+            # No gh, signed out, or offline: the size read would fail too, and the clone
+            # itself reports what is wrong.
             log.debug("skipped the size check for %s: %s", source.normalized, status.state)
             return
         owner, repository = parsed
@@ -284,9 +295,12 @@ class GithubProvider:
             return await open_pull_request(published, number, fetch=fetch)
         except PullDataError as exc:
             message = _unavailable(published, number, exc)
-            status = kept_github_status()
-            if exc.state == "not_found_or_private" and status and status.state == "missing_scope":
-                message += f"; {_status_hint(status)}"
+            if exc.state == "not_found_or_private":
+                # A cached mirror skips the first-clone check, so ask here; a fresh
+                # answer from that check is reused rather than asked again.
+                status = await github_status(version=False)
+                if status.state == "missing_scope":
+                    message += f"; {_status_hint(status)}"
             raise PullRequestUnavailableError(
                 exc.state, message, blocking=exc.state in SIGN_IN_STATES
             ) from exc

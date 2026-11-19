@@ -2,6 +2,8 @@
   its version, the account it is signed in to, that account’s token scopes, and one
   state (`ok`, `gh_missing`, `gh_too_old`, `not_logged_in`, `missing_scope`,
   `network_error`, or `gh_failed`) with the command or page that fixes it.
+  A token GitHub refuses in `GH_TOKEN` or `GITHUB_TOKEN` names that variable, since `gh`
+  will not sign in while it is set.
   `--doctor --json` carries the same report as `github`, and
   `POST /api/plugin/github/status` serves it to any page or tool.
   The report never changes the doctor’s exit status.
