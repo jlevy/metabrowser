@@ -460,6 +460,12 @@
     // A conventional-commit prefix is regular and the rest bold (docs/design-system.md,
     // "Titles").
     html += `<${subjectTag} class="${subjectClass}">${subjectHtml(commit.subject)}</${subjectTag}>`;
+    if (!compact && window.METABROWSER_REPOSITORY_CONTEXT) {
+      // The header's corner, as a view header's (view-header.js): on a page whose repository
+      // is on github.com it holds the View on GitHub button, which renderCommitDetail asks
+      // for, and the subject leaves it room from first paint.
+      html += '<span class="view-header-end" data-counterpart></span>';
+    }
     // The revision and its refs, `.git-commit-identity`: the commit's own identity, not its
     // author's, which is the shell's `.actor-identity` below.
     let revisionGroup = '<span class="git-commit-identity">';
@@ -2785,6 +2791,7 @@
       const previousHandle = commitDiffHandle;
       commitDiffHandle = nextHandle || null;
       previousHandle?.dispose?.();
+      mountCommitCounterpart(stage, commit.id);
       const identity = stage.querySelector(".git-commit-identity");
       // A detail the cache did not hand out is the caller's, which vouches for it.
       const generation = refsReadIn.get(detail) ?? historyGeneration;
@@ -2803,6 +2810,27 @@
     } finally {
       unstage();
     }
+  }
+
+  /**
+   * Ask for the commit page's View on GitHub button (plugin-sdk-views.js, mountCounterpart),
+   * which the server answers for the page: the commit, or one of its files when the address
+   * names one. The page is the address when the address names this commit, and the commit's
+   * own route otherwise.
+   *
+   * @param {HTMLElement} root
+   * @param {string} revision
+   */
+  function mountCommitCounterpart(root, revision) {
+    const corner = root.querySelector(".git-commit-header > .view-header-end[data-counterpart]");
+    const routes = window.MetabrowserNavigationRoute;
+    if (!corner || !routes || typeof window.metabrowser?.mountCounterpart !== "function") {
+      return;
+    }
+    const pathname = window.location?.pathname ?? "";
+    const page =
+      routes.parseCommit(pathname)?.revision === revision ? pathname : routes.commitHref(revision);
+    void window.metabrowser.mountCounterpart(corner, page);
   }
 
   /** @param {HTMLElement} root */
