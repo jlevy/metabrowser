@@ -65,7 +65,7 @@ route named here, the build is older than the skill: report that, and use a sour
 or the build’s own `--help`. Use one build for one cache: an older `metab` reads a
 record a newer one wrote as `absent`, with the reason `schema_mismatch` or `unreadable`.
 The macOS app is a separate front end over the same server, and this skill hands it
-pages with `--present`; the app needs `metab` 0.12.1 or later, the first release with
+pages with `--present`; the app needs `metab` 0.13.0 or later, the first release with
 `--present`, and no release on PyPI has it yet.
 
 ## Route the Task

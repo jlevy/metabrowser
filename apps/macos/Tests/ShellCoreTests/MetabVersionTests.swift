@@ -25,21 +25,32 @@ import Testing
     }
 
     @Test func theMinimumIsTheFirstReleaseWithTheIdentityRoute() throws {
-        #expect(MetabRequirement.minimum == "0.12.1")
-        // 0.12.0, the release before the route, and anything older is refused.
+        #expect(MetabRequirement.minimum == "0.13.0")
+        // 0.12.0, the release before the route, a patch of it, and anything older is refused.
         #expect(!MetabRequirement.accepts(try #require(MetabVersion("0.12.0"))))
+        #expect(!MetabRequirement.accepts(try #require(MetabVersion("0.12.1"))))
         #expect(!MetabRequirement.accepts(try #require(MetabVersion("0.12.0.post3"))))
         #expect(!MetabRequirement.accepts(try #require(MetabVersion("0.9.9"))))
-        #expect(MetabRequirement.accepts(try #require(MetabVersion("0.12.1"))))
         #expect(MetabRequirement.accepts(try #require(MetabVersion("0.13.0"))))
+        #expect(MetabRequirement.accepts(try #require(MetabVersion("0.13.1"))))
         #expect(MetabRequirement.accepts(try #require(MetabVersion("1"))))
     }
 
-    /// A source checkout reports the next release with `.devN`, which PEP 440 orders
+    /// The contract is at the minor release (`MetabRequirement`, `docs/publishing.md`): a
+    /// change the app needs ships in a minor or major release, so a patch never raises the
+    /// minimum. `tests/test_macos_app_pins.py` holds the same in every CI run.
+    @Test func theMinimumIsAMinorRelease() {
+        #expect(MetabRequirement.minimumRelease.count == 3)
+        #expect(MetabRequirement.minimumRelease.last == 0)
+    }
+
+    /// A source checkout reports the next minor release with `.devN`, which PEP 440 orders
     /// before that release; it still runs, or no development build would.
     @Test func aDevelopmentBuildOfTheMinimumCountsAsIt() throws {
-        #expect(MetabRequirement.accepts(try #require(MetabVersion("0.12.1.dev214+8b0603f7 (+214 commits, 8b0603f78)"))))
-        #expect(MetabRequirement.accepts(try #require(MetabVersion("0.12.1rc1"))))
+        #expect(MetabRequirement.accepts(try #require(MetabVersion("0.13.0.dev214+8b0603f7 (+214 commits, 8b0603f78)"))))
+        #expect(MetabRequirement.accepts(try #require(MetabVersion("0.13.0rc1"))))
+        // A checkout built before the minor bump reported the next patch, which is too old.
+        #expect(!MetabRequirement.accepts(try #require(MetabVersion("0.12.1.dev1833+69420ed8a"))))
         #expect(!MetabRequirement.accepts(try #require(MetabVersion("0.12.0.post1.dev2"))))
     }
 
@@ -48,10 +59,11 @@ import Testing
     /// `--recent`, so that is what the screens say about it.
     @Test func aTooOldBuildThatMeetsTheNumberLacksTheFlag() {
         #expect(MetabRequirement.requiredFlags == ["--exit-on-eof", "--present", "--recent"])
-        #expect(MetabRequirement.flagShortfall("0.12.1.dev38+5f0c2a1 (+38 commits, 5f0c2a1)")
+        #expect(MetabRequirement.flagShortfall("0.13.0.dev38+5f0c2a1 (+38 commits, 5f0c2a1)")
             == "built before --recent")
         #expect(MetabRequirement.flagShortfall("0.13.0") == "built before --recent")
         #expect(MetabRequirement.flagShortfall("0.12.0") == nil)
+        #expect(MetabRequirement.flagShortfall("0.12.1.dev38+5f0c2a1 (+38 commits, 5f0c2a1)") == nil)
         #expect(MetabRequirement.flagShortfall("0.12.0.post1.dev2") == nil)
         #expect(MetabRequirement.flagShortfall("soon") == nil)
     }
@@ -59,7 +71,7 @@ import Testing
     /// A floor rather than an exact pin: uv keeps the requirement in the tool's receipt,
     /// so a pin would stop every later `uv tool upgrade`.
     @Test func theUpgradeCommandAsksForTheMinimumAsAFloor() {
-        #expect(MetabRequirement.upgradeCommand == "uv tool install --upgrade 'metabrowser>=0.12.1'")
+        #expect(MetabRequirement.upgradeCommand == "uv tool install --upgrade 'metabrowser>=0.13.0'")
     }
 
     @Test func validationRefusesAnOlderMetabAndAnUnreadableVersion() async {
@@ -71,7 +83,8 @@ import Testing
             return await RuntimeDiscovery.validate("/opt/metab", env)
         }
         #expect(await validate("metab 0.12.0") == .tooOld(version: "0.12.0"))
-        #expect(await validate("metab 0.12.1") == .valid(version: "0.12.1"))
+        #expect(await validate("metab 0.12.1") == .tooOld(version: "0.12.1"))
+        #expect(await validate("metab 0.13.0") == .valid(version: "0.13.0"))
         #expect(await validate("metab soon") == .rejected("--version printed a version this app cannot read: soon"))
     }
 }

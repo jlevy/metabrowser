@@ -386,7 +386,9 @@ plugin manifest, and the built-in plugin interfaces are therefore internal contr
 reads `GET /api/identity`. Metabrowser keeps no compatibility with an older app: change
 a flag or the route and the app in the same commit, and raise
 `MetabRequirement.minimumRelease` when the app needs the newer `metab`
-([the version floor](project/architecture/arch-macos-app.md#the-version-floor)).
+([the version floor](project/architecture/arch-macos-app.md#the-version-floor)). The
+floor is a minor release, so the `metab` release that carries such a change is a minor
+or major one ([Choosing a Version](publishing.md#choosing-a-version)).
 
 **The one external artifact** is an exported File Rollup Format packet, which leaves the
 repository for another implementation.

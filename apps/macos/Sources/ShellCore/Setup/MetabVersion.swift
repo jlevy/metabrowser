@@ -45,15 +45,24 @@ public nonisolated struct MetabVersion: Equatable, Sendable, CustomStringConvert
 /// A CLI install updates independently of the app, so this is the app's side of a
 /// versioned boundary: below the minimum the app starts no server and shows
 /// `upgradeCommand`. The host-protocol version replaces it once host mode exists.
+///
+/// **The contract is at the minor release.** A `metab` change the app depends on, a flag,
+/// route, JSON field, output line, or exit status it reads, is released as a new minor or
+/// major version, never as a patch; a patch only fixes bugs and keeps what the app reads.
+/// So `minimumRelease` is always a minor release, `X.Y.0`, and a patch never raises it
+/// (`tests/test_macos_app_pins.py` holds it to that). A source checkout reports the next
+/// minor release as a development build (`bump` in `pyproject.toml`'s
+/// `[tool.uv-dynamic-versioning]`), so a checkout built after the change meets the
+/// minimum it raised. `docs/publishing.md` has the release rule.
 public nonisolated enum MetabRequirement {
     /// The first release with `GET /api/identity`, which names each window, with
     /// `--exit-on-eof`, which ends a server with the app, with `--present`, whose dry run
     /// resolves a GitHub link (`PresentDryRun`), and with `--recent`, which File > Open
-    /// Recent lists. 0.12.0, the latest published release, lacks all four; until a release
-    /// that has them is on PyPI, only builds from a source checkout meet this, and
-    /// `RuntimeDiscovery.validate` finds one built before any of the flags too old,
-    /// whatever its number: the check runs with them all (`requiredFlags`).
-    public static let minimumRelease = [0, 12, 1]
+    /// Recent lists. 0.12.0, the latest published release, lacks all four, so the next
+    /// release is a minor one. Until it is on PyPI, only builds from a source checkout meet
+    /// this, and `RuntimeDiscovery.validate` finds one built before any of the flags too
+    /// old, whatever its number: the check runs with them all (`requiredFlags`).
+    public static let minimumRelease = [0, 13, 0]
 
     /// The flags a `metab` must take that its number cannot show (`flagShortfall`), oldest
     /// first: `RuntimeDiscovery.validate` passes them all with `--version`. `--exit-on-eof`

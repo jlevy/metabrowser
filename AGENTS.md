@@ -69,7 +69,12 @@ this repository’s structural facts and standing answers.
   user or plugin author can observe the change.
 - The macOS app is internal too: change a `metab` flag or route it uses and the app in
   the same commit, and raise `MetabRequirement.minimumRelease` when the app needs the
-  newer `metab`.
+  newer `metab`. The app’s contract is at the minor release: a `metab` change the app
+  depends on ships in a minor or major release, never a patch, so the minimum is always
+  `X.Y.0` ([Choosing a Version](docs/publishing.md#choosing-a-version)). A tool `metab`
+  runs, such as `git` or `gh`, has its minimum in `metab`, beside the code that needs
+  it, with the reason; the app reads it from `metab` and never copies it, since `metab`
+  is what runs the tool and a copy drifts.
 - `PLUGIN_SDK_VERSION` is a hard gate, not a compatibility layer: bump it on a break and
   update every built-in manifest in the same commit.
 

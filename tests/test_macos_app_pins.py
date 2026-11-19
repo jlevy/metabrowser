@@ -20,6 +20,7 @@ import io
 import os
 import plistlib
 import re
+import tomllib
 from pathlib import Path
 from typing import Any, cast, get_args
 
@@ -50,6 +51,7 @@ APP = Path(__file__).resolve().parent.parent / "apps" / "macos"
 SHELL_CORE = APP / "Sources" / "ShellCore"
 SHELL_CORE_TESTS = APP / "Tests" / "ShellCoreTests"
 GOLDEN = Path(__file__).resolve().parent / "golden"
+PYPROJECT = Path(__file__).resolve().parent.parent / "pyproject.toml"
 
 
 def _swift_value(relative: str, declaration: str) -> str:
@@ -81,6 +83,31 @@ def _swift_int(relative: str, declaration: str) -> int:
 
 
 DEADLINE = "Supervision/StartupDeadline.swift"
+
+
+def test_the_apps_minimum_metab_is_a_minor_release() -> None:
+    """The app's contract with ``metab`` is at the minor release (``docs/publishing.md``).
+
+    A change to ``metab`` that the app depends on ships in a minor or major release, never
+    a patch, so ``MetabRequirement.minimumRelease`` names ``X.Y.0``. A checkout reports
+    the next minor release as a development build, so a checkout built after the change
+    that raised the minimum meets it; with the default patch bump, a ``0.12.1.devN`` would
+    be below a ``0.13.0`` minimum and the app would refuse every development build.
+    """
+
+    value = _swift_value("Setup/MetabVersion.swift", "minimumRelease")
+    match = re.fullmatch(r"\[(\d+), (\d+), (\d+)\]", value)
+    assert match, f"MetabRequirement.minimumRelease is not [X, Y, Z]: {value}"
+    assert int(match.group(3)) == 0, (
+        f"MetabRequirement.minimumRelease is {value}, a patch release: a change the app "
+        "needs ships in a new minor or major release (docs/publishing.md), so the minimum "
+        "is X.Y.0"
+    )
+    versioning = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))["tool"]
+    assert versioning["uv-dynamic-versioning"]["bump"] == {"enable": True, "index": 1}, (
+        "a checkout must report the next minor release as its development version, so it "
+        "meets a minimum raised to that release"
+    )
 
 
 def test_the_acquisition_bounds_are_metabs() -> None:

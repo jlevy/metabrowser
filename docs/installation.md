@@ -89,7 +89,7 @@ uv --config-file uv.toml run --frozen metab ./path/to/directory
 - **The macOS app:** an alpha preview that you build from source.
   Its release pipeline can build a disk image and a Homebrew cask, but neither is
   published, so there is no signed, notarized download.
-- **The `metab` the app runs:** the app needs `metab` 0.12.1 or later, and no release on
+- **The `metab` the app runs:** the app needs `metab` 0.13.0 or later, and no release on
   PyPI has it yet. Until one does, the app runs the `metab` of a source checkout, as
   [The macOS App](#the-macos-app) describes.
 

@@ -85,8 +85,9 @@ Confirm the repository’s public-hygiene gate is green before changing visibili
    differing tallies confined to what the changelog describes is the explicit acceptance
    this step allows.
 
-4. Review changes since the previous release, choose a semantic version, and assemble
-   the changelog in the release-preparation pull request:
+4. Review changes since the previous release, choose a semantic version
+   ([Choosing a Version](#choosing-a-version)), and assemble the changelog in the
+   release-preparation pull request:
 
    ```shell
    uv --config-file uv.toml run --frozen python -m devtools.changelog assemble
@@ -186,6 +187,27 @@ Confirm the repository’s public-hygiene gate is green before changing visibili
 For the first release, the intended tag and package version are `v0.1.0` and `0.1.0`.
 The macOS app releases on its own, under its own tags, with the
 [App Release Checklist](#app-release-checklist).
+
+## Choosing a Version
+
+Versions are semantic, `X.Y.Z`. The macOS app adds one rule: its contract with `metab`
+is at the minor release.
+
+- **A change the app depends on is a minor or major release.** When the app needs a
+  newer `metab`, because it reads a flag, route, JSON field, output line, or exit status
+  that `metab` added or changed, the `metab` release that carries the change is a new
+  minor or major version, and `MetabRequirement.minimumRelease` in
+  `apps/macos/Sources/ShellCore/Setup/MetabVersion.swift` names it as `X.Y.0`.
+  [Development](development.md#compatibility-and-legacy-code) lists what the app reads.
+- **A patch only fixes bugs, and keeps what the app reads.** A patch never raises the
+  app’s minimum, so a fix the app cannot work without ships as a minor release.
+- **Before 1.0, the minor release is the boundary for both.** A `0.Y.0` release may add
+  what the app needs and may change what an older app read; it says so in its notes.
+
+A checkout reports the next minor release as its development version (`bump` in
+`pyproject.toml`), so a checkout built after a change that raised the minimum meets it.
+`tests/test_macos_app_pins.py` holds the minimum to `X.Y.0` and the bump to the minor
+position.
 
 ## macOS App Releases
 

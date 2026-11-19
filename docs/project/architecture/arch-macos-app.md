@@ -424,6 +424,13 @@ line. Below the floor, discovery tries the next place.
 `MetabRequirement.upgradeCommand` asks uv for a floor rather than a pin, because uv
 keeps the requirement in the tool’s receipt.
 
+The floor is always a minor release, `X.Y.0`: a `metab` change the app depends on ships
+in a new minor or major release, never a patch
+([Choosing a Version](../../publishing.md#choosing-a-version)). A checkout reports the
+next minor release as its development version (`bump` in `pyproject.toml`), so a
+checkout built after the change that raised the floor meets it.
+`tests/test_macos_app_pins.py` holds both.
+
 The app notices an upgrade by the executable’s fingerprint (`FileFingerprint`: device,
 inode, size, modification time, and mode), compared every `SetupWatch.interval` and when
 the app becomes active.
