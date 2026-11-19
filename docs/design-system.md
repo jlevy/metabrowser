@@ -3798,8 +3798,9 @@ the drawer behind the chevron.** Group by splits the tree into sections and remo
 nothing, so it needs no drawer and no badge.
 The drawer holds Modified within, File type, and Minimum file size, then Show ignored,
 whose tick states its own direction.
-The chevron’s badge counts the ones set, Show ignored turned off among them, since the
-closed drawer hides it.
+The chevron shows no count, so Clear and the chevron fit beside Group by; its accessible
+name counts the ones set, Show ignored turned off among them, since the closed drawer
+hides it, and Clear says that some are set.
 A Git revision has no gitignored entries, so its drawer has no Show ignored.
 Clear sits beside the chevron and shows while any filter is set, Show ignored included;
 it resets them all, Show ignored back on, and keeps the grouping.
@@ -3894,12 +3895,12 @@ it resets them all, Show ignored back on, and keeps the grouping.
   and runs once they paint; started at once, it would discard them and begin again, and
   on a folder whose files keep changing each refresh would restart the wait.
 - **Width.** The row fits the default pane width at its widest, “No grouping” with Clear
-  and the badge showing, in both font sets; the measurements are beside
-  `.nav-filter-bar-end > .chip-badge` in `styles.css`. In a narrower pane the row wraps,
-  Clear and the chevron moving down together
-  ([Navigation Toolbars Wrap](#navigation-toolbars-wrap)). The open drawer wraps the
-  same way: at the default pane its three menus take its first line and Show ignored its
-  second.
+  showing, in the default font set, in a Git checkout whose branch chooser shares the
+  row; the measurements are beside `.nav-filter-bar-end` in `styles.css`. In a narrower
+  pane, or in the system font set in a checkout, the row wraps, Clear and the chevron
+  moving down together ([Navigation Toolbars Wrap](#navigation-toolbars-wrap)). The open
+  drawer wraps the same way: at the default pane its three menus take its first line and
+  Show ignored its second.
 
 The server decides membership, order, and counts (`/api/tree?group_by=` and `?group=`,
 `metabrowser/tree_groups.py`), pinned by

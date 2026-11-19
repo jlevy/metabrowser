@@ -87,7 +87,7 @@ The bar above the tree groups and narrows it:
   **No grouping** is the default.
   While its menu is open, `N`, `A`, and `T` choose No grouping, By age, and By file
   type.
-- The chevron opens the filters, and its badge counts the ones set:
+- The chevron opens the filters, and Clear beside it shows while any is set:
   - **Modified within** keeps files changed within a window, from Live to the past
     month. Live means changed in the last 90 seconds.
   - **File type** keeps the categories, families, or exact extensions you choose.
