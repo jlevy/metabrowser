@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import AsyncIterator
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -1287,6 +1288,84 @@ def test_rewalk_subtree_replaces_file_without_double_counting_root(tmp_path: Pat
         b"new-child-data"
     )
     assert non_file_paths == ("replacement",)
+
+
+def _make_newdir(root: Path) -> None:
+    """Create ``newdir/`` holding two files, 30 bytes in all, under *root*."""
+
+    (root / "newdir").mkdir()
+    (root / "newdir" / "x.txt").write_bytes(b"x" * 10)
+    (root / "newdir" / "nested").mkdir()
+    (root / "newdir" / "nested" / "y.txt").write_bytes(b"y" * 20)
+
+
+def test_concurrent_rewalks_of_one_new_directory_count_it_once(tmp_path: Path) -> None:
+    """The watcher and an activity, priority, or explicit refresh can rewalk the same
+    new directory at once. Each rewalk awaits before it indexes anything, so a delta
+    taken from the directory as it stood before the walk let both add the whole subtree
+    to the root: the e2e flake's ``(6, 210) == (4, 180)``."""
+
+    _build_tree(tmp_path)
+
+    async def _run() -> tuple[FsEntry, FsEntry]:
+        inv = await _drive_inventory(tmp_path)
+        _make_newdir(tmp_path)
+        await asyncio.gather(inv.rewalk_subtree("newdir"), inv.rewalk_subtree("newdir"))
+        root = inv.get("")
+        subtree = inv.get("newdir")
+        assert root is not None
+        assert subtree is not None
+        return root, subtree
+
+    root, subtree = asyncio.run(_run())
+    assert (subtree.total_files, subtree.total_size) == (2, 30)
+    assert (root.total_files, root.total_size) == (6, 280)
+    assert (root.unignored_files, root.unignored_size) == (6, 280)
+
+
+def test_live_write_during_a_rewalk_counts_the_file_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A watcher write inside a directory that a rewalk has not finalized yet reaches
+    the root at once, and the rewalk's own result counts the same file again."""
+
+    _build_tree(tmp_path)
+    walker_paused = asyncio.Event()
+    resume_walker = asyncio.Event()
+    real_walk_tree = inventory_module.walk_tree
+
+    async def _pausing_walk(*args: Any, **kwargs: Any) -> AsyncIterator[FsEntry]:
+        # Pause once the rewalk has stored its placeholder for the new directory.
+        paused = False
+        async for entry in real_walk_tree(*args, **kwargs):
+            yield entry
+            if not paused:
+                paused = True
+                walker_paused.set()
+                await resume_walker.wait()
+
+    async def _run() -> tuple[FsEntry, FsEntry]:
+        inv = await _drive_inventory(tmp_path)
+        _make_newdir(tmp_path)
+        monkeypatch.setattr(inventory_module, "walk_tree", _pausing_walk)
+        rewalk = asyncio.create_task(inv.rewalk_subtree("newdir"))
+        await walker_paused.wait()
+        live = tmp_path / "newdir" / "x.txt"
+        inv.apply_live_entry(
+            FsEntry.for_stat(path="newdir/x.txt", parent="newdir", name="x.txt", stat=live.stat())
+        )
+        resume_walker.set()
+        await rewalk
+        root = inv.get("")
+        subtree = inv.get("newdir")
+        assert root is not None
+        assert subtree is not None
+        return root, subtree
+
+    root, subtree = asyncio.run(_run())
+    assert (subtree.total_files, subtree.total_size) == (2, 30)
+    assert (root.total_files, root.total_size) == (6, 280)
+    assert (root.unignored_files, root.unignored_size) == (6, 280)
 
 
 # ── remove ────────────────────────────────────────────────────

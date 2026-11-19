@@ -3660,7 +3660,6 @@ class _PythonInventoryStore:
         if self._root is None:
             return
         root = self._root
-        previous_subtree = self._entries.get(rel)
         if not rel:
             # The whole-root re-walk is what start() does; refuse to
             # avoid two walkers writing into the index simultaneously.
@@ -3755,33 +3754,7 @@ class _PythonInventoryStore:
 
         current_subtree = self._entries.get(rel)
         if current_subtree is not None and current_subtree.type == "dir":
-            previous_files = 0
-            previous_size = 0
-            previous_unignored_files = 0
-            previous_unignored_size = 0
-            if previous_subtree is not None:
-                if previous_subtree.type == "file":
-                    previous_files = 1
-                    previous_size = previous_subtree.size
-                    if not previous_subtree.gitignored:
-                        previous_unignored_files = 1
-                        previous_unignored_size = previous_subtree.size
-                else:
-                    previous_files = previous_subtree.total_files or 0
-                    previous_size = previous_subtree.total_size or 0
-                    previous_unignored_files = previous_subtree.unignored_files or 0
-                    previous_unignored_size = previous_subtree.unignored_size or 0
-            current_files = current_subtree.total_files or 0
-            current_size = current_subtree.total_size or 0
-            current_unignored_files = current_subtree.unignored_files or 0
-            current_unignored_size = current_subtree.unignored_size or 0
-            aggregate_updates = self._update_ancestor_aggregates(
-                parent=current_subtree.parent,
-                delta_files=current_files - previous_files,
-                delta_size=current_size - previous_size,
-                delta_unignored_files=current_unignored_files - previous_unignored_files,
-                delta_unignored_size=current_unignored_size - previous_unignored_size,
-            )
+            aggregate_updates = self._update_ancestor_aggregates(parent=current_subtree.parent)
             if aggregate_updates:
                 self._emit(FsChange(ops=tuple(FsUpsert(entry=e) for e in aggregate_updates)))
 
@@ -3821,9 +3794,6 @@ class _PythonInventoryStore:
             ]
         else:
             removed = [path]
-        removed_entries = [self._entries[cur] for cur in removed]
-        removed_files = [entry for entry in removed_entries if entry.type == "file"]
-        removed_unignored_files = [entry for entry in removed_files if not entry.gitignored]
         outer_parent = target.parent
         for cur in removed:
             entry = self._pop_index_entry(cur)
@@ -3854,13 +3824,7 @@ class _PythonInventoryStore:
             # this path with a captured WriteToken is dropped on
             # store rather than resurrecting a removed entry.
             self.invalidate(cur)
-        aggregate_updates = self._update_ancestor_aggregates(
-            parent=outer_parent,
-            delta_files=-len(removed_files),
-            delta_size=-sum(entry.size for entry in removed_files),
-            delta_unignored_files=-len(removed_unignored_files),
-            delta_unignored_size=-sum(entry.size for entry in removed_unignored_files),
-        )
+        aggregate_updates = self._update_ancestor_aggregates(parent=outer_parent)
         ops: list[FsChangeOp] = [FsRemove(path=cur) for cur in removed]
         ops.extend(FsUpsert(entry=entry) for entry in aggregate_updates)
         self._emit(FsChange(ops=tuple(ops)))
@@ -4190,36 +4154,29 @@ class _PythonInventoryStore:
         stored = self._store_walker_entry(entry)
         if stored is None:
             return
-        old_file = existing if existing is not None and existing.type == "file" else None
-        new_file = stored if stored.type == "file" else None
-        aggregate_updates = self._update_ancestor_aggregates(
-            parent=stored.parent,
-            delta_files=int(new_file is not None) - int(old_file is not None),
-            delta_size=(new_file.size if new_file is not None else 0)
-            - (old_file.size if old_file is not None else 0),
-            delta_unignored_files=int(new_file is not None and not new_file.gitignored)
-            - int(old_file is not None and not old_file.gitignored),
-            delta_unignored_size=(
-                new_file.size if new_file is not None and not new_file.gitignored else 0
-            )
-            - (old_file.size if old_file is not None and not old_file.gitignored else 0),
-        )
+        aggregate_updates = self._update_ancestor_aggregates(parent=stored.parent)
         ops = [FsUpsert(entry=stored)]
         ops.extend(FsUpsert(entry=ancestor) for ancestor in aggregate_updates)
         self._emit(
             FsChange(ops=tuple(ops)),
-            non_file_paths=(stored.path,) if old_file is not None and new_file is None else (),
+            non_file_paths=(stored.path,)
+            if existing is not None and existing.type == "file" and stored.type != "file"
+            else (),
         )
 
-    def _update_ancestor_aggregates(
-        self,
-        *,
-        parent: str,
-        delta_files: int,
-        delta_size: int,
-        delta_unignored_files: int,
-        delta_unignored_size: int,
-    ) -> list[FsEntry]:
+    def _update_ancestor_aggregates(self, *, parent: str) -> list[FsEntry]:
+        """Restate every finalized directory from *parent* to the root from the index.
+
+        The totals come from the descendant counters, which every write moves exactly
+        once per indexed file, not from a caller's delta. A delta is right only if
+        nothing else counted the same files first, and ``rewalk_subtree`` cannot promise
+        that: its walk awaits, and meanwhile a second refresh of the same new directory,
+        or a live write inside it, can add part of the subtree to these ancestors.
+        Adding the walk's delta afterwards counted that part twice. Restating is
+        idempotent, so concurrent writers leave the true totals in whatever order they
+        finish.
+        """
+
         updates: list[FsEntry] = []
         cursor = parent
         while True:
@@ -4231,22 +4188,12 @@ class _PythonInventoryStore:
                 and existing.total_size is not None
             ):
                 newest_mtime_ns = self._direct_child_newest(cursor)
-                current_unignored_files = (
-                    existing.unignored_files
-                    if existing.unignored_files is not None
-                    else existing.total_files
-                )
-                current_unignored_size = (
-                    existing.unignored_size
-                    if existing.unignored_size is not None
-                    else existing.total_size
-                )
                 updated = replace(
                     existing,
-                    total_files=max(0, existing.total_files + delta_files),
-                    total_size=max(0, existing.total_size + delta_size),
-                    unignored_files=max(0, current_unignored_files + delta_unignored_files),
-                    unignored_size=max(0, current_unignored_size + delta_unignored_size),
+                    total_files=self._descendant_file_counts.get(cursor, 0),
+                    total_size=self._descendant_file_sizes.get(cursor, 0),
+                    unignored_files=self._descendant_unignored_file_counts.get(cursor, 0),
+                    unignored_size=self._descendant_unignored_file_sizes.get(cursor, 0),
                     newest_mtime_ns=newest_mtime_ns,
                     empty=self._descendant_leaf_counts.get(cursor, 0) == 0,
                     write_token=WriteToken(self._generation.get(cursor, 0)),

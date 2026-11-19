@@ -157,6 +157,12 @@ and test fixtures use `conftest.SyntheticIndexWriter` for the same reason.
 
 - **The children index is maintained**, so a rollup or tree expansion reads only the
   buckets on its own path.
+- **Directory totals are restated, not shifted.** After a live write, a removal, or a
+  rewalk, `_update_ancestor_aggregates` sets each finalized ancestor’s totals from the
+  descendant counters, which a write moves once per indexed file.
+  A rewalk awaits while it walks, so a delta taken before the walk would count a new
+  directory twice once a second refresh, or a live write inside it, had counted it first
+  (`tests/test_browser_inventory.py::test_concurrent_rewalks_of_one_new_directory_count_it_once`).
 - **Subtree aggregates are evicted, not rebuilt.** A write drops the changed path and
   its ancestors; sibling subtrees stay valid, so a rollup recomputes only what moved.
   Eviction walks the whole ancestor chain, recording an epoch even for a directory that
