@@ -643,17 +643,22 @@ async function textRefusal() {
       part: "body",
     },
   });
-  // What the description's Markdown answers next.
+  // What the description's Markdown answers next. One that waits answers when the session
+  // says, with what the route answers then: the route always answers, within its deadline.
   let markdown = refusal("render_deadline", 422);
+  /** @type {(() => void) | null} */
+  let answerWaiting = null;
+  const response = (status, body) => ({
+    status,
+    headers: { get: () => null },
+    json: async () => body,
+  });
   globalThis.fetch = async (route) => {
-    const response = (status, body) => ({
-      status,
-      headers: { get: () => null },
-      json: async () => body,
-    });
     if (route.startsWith("/api/plugin/github/pull-markdown")) {
       return markdown === "waits"
-        ? new Promise(() => {})
+        ? new Promise((resolve) => {
+            answerWaiting = () => resolve(response(markdown.status, markdown.body));
+          })
         : response(markdown.status, markdown.body);
     }
     return route.startsWith("/api/plugin/github/pull?")
@@ -721,6 +726,10 @@ async function textRefusal() {
   current = record("c", "plain A");
   markdown = refusal("renderer_unavailable", 503);
   await poll();
+  // The newer record's same text joined the render on its way (mb-d59o), which is refused
+  // now; the page asks again under the newer record, which refuses it too.
+  answerWaiting?.();
+  await settle();
   look("a newer record, the same text refused again as unavailable");
   current = record("d", "plain A");
   markdown = {
