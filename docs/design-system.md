@@ -404,8 +404,9 @@ path row across the divider: that row’s height, `--pane-header-row-height`, it
 across the window and the two rows’ text sits on one baseline.
 Up is an icon button, the arrow alone at rest and the hover surface and its hairline
 only while hovered or focused, as the navigation’s chevron is.
-Both are 24 px targets, `--view-header-up-size`, WCAG 2.2’s minimum, with 4 px between
-them; at 20 px and 2 px apart, a press just left of Up hid the navigation pane.
+Both are targets of `--view-header-up-size`, WCAG 2.2’s minimum target size, with space
+between them (`.view-header-eyebrow > .folder-up` in `static/styles.css`); at 20 px and
+2 px apart, a press just left of Up hid the navigation pane.
 It is optional by kind.
 A file’s and a folder’s always have one, because where a file is matters: Up, which
 keeps its place disabled at the served root, and the folders above the item, but not the
@@ -4576,7 +4577,7 @@ muted at rest with the hover surface, pointing left at the pane it hides.
 It fills the main frame’s gutter at the start of the top row, before a file’s or a
 folder’s Up and address, centered on that row as the navigation title’s gear is across
 the divider, so the two read as the one top bar’s ends.
-It is a 24 px target, Up’s size, 4 px before Up, and the divider’s resize reach stops
+It is a target of Up’s size, with space before Up, and the divider’s resize reach stops
 under the row, so a press anywhere in it hides the pane.
 A pull request’s and a commit’s page, which have no eyebrow, have it in the same place,
 in the gutter at the page’s top.
