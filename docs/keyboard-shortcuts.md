@@ -44,8 +44,13 @@ every filter and Group by at its default, and every tab back at its first view.
 What has been read, such as pull requests and history, stays in memory, so only the tree
 and the folder’s view are read again.
 
-`\` does what a click on the chevron at the foot of the main page’s left edge does: it hides the navigation pane, and the page slides over it to fill the window, or shows the pane again. Shift-`\`,
-which types `|` on a US keyboard, is the same key.
+Backslash does what a click on the chevron at the foot of the main page’s left edge
+does: it hides the navigation pane, and the page slides over it to fill the window, or
+shows the pane again.
+Shift-Backslash, which types `|` on a US keyboard, does the same.
+The key is read by the character it types, so the key in the same place on a UK or
+German keyboard, which types `#`, does nothing; where Backslash needs Option or AltGr,
+the chevron is the way to hide the pane.
 While the pane is hidden, the keys of its controls, such as `0`, `F`, and the filters’
 numbers, do nothing until it is shown again.
 

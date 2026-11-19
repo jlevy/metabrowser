@@ -62,7 +62,7 @@ with no key, an agent log, structured data, and HTML without active content, and
 view tab letters following the committed bar through a cancelled stage.
 
 `cli-ui-modified-keys.tryscript.md` shows every chord left to the browser, and
-`cli-ui-nav-collapse.tryscript.md` hiding the navigation pane with `\`.
+`cli-ui-nav-collapse.tryscript.md` hiding the navigation pane with Backslash.
 
 ```console
 $ node tests/dom/key-reveal-session.js

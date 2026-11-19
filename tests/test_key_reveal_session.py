@@ -407,26 +407,50 @@ def test_backslash_hides_the_navigation_pane_and_its_keys() -> None:
     the Navigation Pane").
     """
     steps = {step["step"]: step for step in run_session("nav-collapse-session.js")["steps"]}
-    shown, hidden, back = steps.values()
+    shown, hidden, back, other_key, turned, menu = steps.values()
     commands = {
         name: [command for _key, command, _target in step["keys"]] for name, step in steps.items()
     }
-
-    assert ["\\", "shell.nav-toggle", "Hide navigation"] in shown["keys"]
-    assert hidden["pressed"] == {"key": "\\", "handled": True}
-    assert hidden["nav"] == {
+    shown_nav = {
+        "inert": False,
+        "inLayout": True,
+        "expanded": "true",
+        "label": "Hide navigation",
+    }
+    hidden_nav = {
         "inert": True,
+        "inLayout": False,
         "expanded": "false",
         "label": "Show navigation",
         "focus": "preview-pane",
     }
+
+    assert shown["nav"] == shown_nav
+    assert ["\\", "shell.nav-toggle", "Hide navigation"] in shown["keys"]
+    assert hidden["pressed"] == {"key": "\\", "handled": True}
+    assert hidden["nav"] == hidden_nav
+    # The slide runs the pane's whole width over --motion-reveal's time.
+    assert (hidden["slide"]["from"], hidden["slide"]["to"]) == (300, 0)
     assert ["\\", "shell.nav-toggle", "Show navigation"] in hidden["keys"]
     hidden_commands = commands[hidden["step"]]
     # The pane's own keys are gone while it is hidden; the main page's stay.
     for gone in ("shell.home", "main-tabs.files", "numbered"):
         assert gone in commands[shown["step"]] and gone not in hidden_commands, gone
     assert {"help.open", "view-tabs.v", "header.parent"} <= set(hidden_commands)
-    # Shift-\, `|` by its physical key, shows it again with every key it had.
+    # Shift-\, which types `|`, shows it again with every key it had: the pane is live as
+    # the slide starts and back in the layout when it ends.
     assert back["pressed"] == {"key": "|", "handled": True}
-    assert back["nav"] == {"inert": False, "expanded": "true", "label": "Hide navigation"}
+    assert back["sliding"]["nav"] == {**shown_nav, "inLayout": False}
+    assert back["nav"] == shown_nav
     assert commands[back["step"]] == commands[shown["step"]]
+    # The ISO key in US `\`'s place types `#`, which is not `\`.
+    assert other_key["pressed"] == {"key": "#", "handled": False}
+    assert other_key["slide"] is None and other_key["nav"] == shown_nav
+    # Turned back halfway, the slide runs from where the frame is, for half the time.
+    assert turned["slide"]["from"] == 150 and turned["slide"]["to"] == 300
+    assert turned["slide"]["duration"] * 2 == hidden["slide"]["duration"]
+    assert turned["slide"]["cancelled"] == 1
+    assert turned["nav"] == shown_nav
+    # Hiding the pane closes the menu it held open.
+    assert menu["menu"] == {"before": "group", "after": None}
+    assert menu["nav"] == hidden_nav

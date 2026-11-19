@@ -16,12 +16,39 @@
 
 /** @param {Window} global */
 ((global) => {
-  // How long the frame takes to slide, the duration of `--motion-reveal` in styles.css,
-  // the shell's motion for chrome that appears. Long enough to read as the page moving
-  // over the pane, short enough that a key press feels immediate; reduced motion skips it.
-  const SLIDE_MS = 180;
-  const SLIDE_EASING = "cubic-bezier(0.2, 0, 0, 1)";
+  // The slide's timing is `--motion-reveal` in styles.css, the shell's motion for chrome
+  // that appears, read from the stylesheet when a slide starts: a duration, then an easing.
+  const MOTION_TOKEN = "--motion-reveal";
   const COLLAPSED_ATTRIBUTE = "data-nav-collapsed";
+
+  /**
+   * The x offset a computed `transform` moves by: `matrix(a, b, c, d, e, f)`'s `e`, or
+   * `matrix3d(...)`'s thirteenth value; 0 for `none` or anything else.
+   *
+   * @param {string} transform
+   */
+  function translationX(transform) {
+    const match = /^matrix(3d)?\((.+)\)$/.exec(transform.trim());
+    if (!match) {
+      return 0;
+    }
+    const value = Number.parseFloat(match[2].split(",")[match[1] ? 12 : 4] ?? "");
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  /**
+   * A token's `<duration> <easing>`, as `{ duration, easing }` in milliseconds, or null.
+   *
+   * @param {string} value
+   */
+  function parseMotion(value) {
+    const match = /^(\d+(?:\.\d+)?)(ms|s)\s+(.+)$/.exec(value.trim());
+    if (!match) {
+      return null;
+    }
+    const duration = Number.parseFloat(match[1]) * (match[2] === "s" ? 1000 : 1);
+    return { duration, easing: match[3] };
+  }
 
   /**
    * @param {{
@@ -31,6 +58,7 @@
    *   document?: Document,
    *   focusFallback?: () => HTMLElement | null,
    *   frame: HTMLElement,
+   *   onHide?: () => void,
    *   pane: HTMLElement,
    *   reducedMotion?: () => boolean,
    * }} options
@@ -42,6 +70,8 @@
       throw new TypeError("Hiding the navigation needs its button, container, frame, and pane");
     }
     const doc = options.document || global.document;
+    // The registry reads styles through the document's own window too.
+    const view = doc.defaultView || global;
     const reducedMotion =
       options.reducedMotion ||
       (() => {
@@ -75,15 +105,15 @@
 
     /** The frame's current horizontal offset, mid-slide, or 0. */
     function currentOffset() {
-      const transform = global.getComputedStyle?.(frame).transform || "none";
-      if (transform === "none") {
-        return 0;
-      }
-      try {
-        return new DOMMatrixReadOnly(transform).m41;
-      } catch (_error) {
-        return 0;
-      }
+      return translationX(view.getComputedStyle?.(frame).transform || "none");
+    }
+
+    /** The slide's duration and easing, from the motion token, or null without one. */
+    function motion() {
+      const root = doc.documentElement;
+      return root
+        ? parseMotion(view.getComputedStyle?.(root).getPropertyValue?.(MOTION_TOKEN) ?? "")
+        : null;
     }
 
     /** End a slide in progress at its end state. */
@@ -103,7 +133,8 @@
      * @param {() => void} settle
      */
     function slideFrame(from, to, settle) {
-      if (typeof frame.animate !== "function" || reducedMotion() || from === to) {
+      const timing = typeof frame.animate === "function" && !reducedMotion() ? motion() : null;
+      if (timing === null || from === to) {
         settle();
         return;
       }
@@ -114,8 +145,9 @@
           { transform: `translate3d(${to}px, 0, 0)` },
         ],
         {
-          duration: SLIDE_MS * (Math.abs(to - from) / Math.max(1, pane.offsetWidth)),
-          easing: SLIDE_EASING,
+          // A slide picked up mid-way takes the share of the time its distance is.
+          duration: timing.duration * (Math.abs(to - from) / Math.max(1, pane.offsetWidth)),
+          easing: timing.easing,
         },
       );
       slide = animation;
@@ -152,6 +184,9 @@
       collapsed = next;
       renderButton();
       if (collapsed) {
+        // A menu the pane opened, a filter's or the branch chooser, would stay open under
+        // the frame with its trigger inert, so the shell closes it first.
+        options.onHide?.();
         // Focus inside the pane would be stranded in an inert subtree.
         const active = doc.activeElement;
         const focusMoves = active instanceof HTMLElement && pane.contains(active);
@@ -227,5 +262,5 @@
     });
   }
 
-  global.MetabrowserNavCollapse = Object.freeze({ create, SLIDE_MS });
+  global.MetabrowserNavCollapse = Object.freeze({ create });
 })(window);

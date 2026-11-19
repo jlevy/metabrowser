@@ -1050,10 +1050,10 @@ type MetabrowserNavCollapseRuntime = Readonly<{
     document?: Document;
     focusFallback?: () => HTMLElement | null;
     frame: HTMLElement;
+    onHide?: () => void;
     pane: HTMLElement;
     reducedMotion?: () => boolean;
   }): MetabrowserNavCollapseController;
-  SLIDE_MS: number;
 }>;
 
 type MetabrowserThemeRuntime = {

@@ -10076,6 +10076,11 @@ function startNavCollapse() {
     container: container,
     focusFallback: () => document.getElementById("preview-pane"),
     frame: frame,
+    // A filter's menu and the branch chooser close, as hiding the Files panel closes them.
+    onHide: () => {
+      closeFilterMenu();
+      window.MetabrowserSourceRefSelector?.mounted()?.close();
+    },
     pane: pane,
   });
   return navCollapse;

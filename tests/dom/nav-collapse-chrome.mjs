@@ -31,7 +31,7 @@ const started = Date.now();
 const phase = (name) => process.stderr.write(`phase ${name} ${Date.now() - started}\n`);
 // Layout places boxes in a 64th of a pixel; under half a pixel is not a different place.
 const TOLERANCE_PX = 0.5;
-// How long a slide is sampled: SLIDE_MS in static/nav-collapse.js, with room for frames a
+// How long a slide is sampled: --motion-reveal in static/styles.css, with room for frames a
 // loaded machine drops.
 const SAMPLE_MS = 900;
 const STEP_MS = 30000;

@@ -2312,6 +2312,8 @@ html.theme-anim body,
 html.theme-anim .container,
 html.theme-anim .tree-pane,
 html.theme-anim .preview-pane,
+html.theme-anim .preview-frame,
+html.theme-anim .nav-collapse-toggle,
 html.theme-anim .app-header,
 html.theme-anim .tree-content,
 html.theme-anim .preview-empty,
@@ -3075,7 +3077,8 @@ html[data-prose-font="sans"] .kpress-prose h2,
   z-index: var(--z-pane);
   box-shadow: var(--shadow-pane-left);
   transform: translateZ(0);
-  /* Opaque, so a hidden navigation pane under it does not show through. */
+  /* Opaque, so a hidden navigation pane under it does not show through. It is the page's
+     ground the reader sees, so it is in the theme crossfade above. */
   background: var(--bg);
 }
 .preview-pane {

@@ -66,6 +66,13 @@ const TAB_LABELS = { files: "Files", git: "Commits", pulls: "Pulls" };
 // and its Up control are the shell's own, so a change to either reaches the keymap here.
 // The collaborators that do not branch on the structure are stubs.
 const appSource = fs.readFileSync(path.join(staticDir, "app.js"), "utf8");
+// The shell's motion for chrome that appears, which the navigation pane's slide reads from
+// the stylesheet: read from styles.css here too, so the session runs the value it ships.
+const MOTION_REVEAL = /^\s*--motion-reveal:\s*([^;]+);/m.exec(
+  fs.readFileSync(path.join(staticDir, "styles.css"), "utf8"),
+)[1];
+// The navigation pane's width in the stand-in, which lays nothing out: the slide runs it.
+const NAV_PANE_WIDTH = 300;
 const liftApp = (name) => {
   const match = appSource.match(new RegExp(`\\nfunction ${name}\\([^)]*\\) \\{[\\s\\S]*?\\n\\}`));
   if (!match) {
@@ -198,6 +205,16 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
   const computedStyle = browserWindow.getComputedStyle.bind(browserWindow);
   browserWindow.getComputedStyle = (node) => {
     const style = computedStyle(node);
+    // The root's custom properties, and the main frame's transform mid-slide, are the two
+    // computed values static/nav-collapse.js reads.
+    if (node === document.documentElement) {
+      return Object.assign(Object.create(style), {
+        getPropertyValue: (name) => (name === "--motion-reveal" ? MOTION_REVEAL : ""),
+      });
+    }
+    if (node === frame) {
+      return Object.assign(Object.create(style), { transform: frameTransform() });
+    }
     if (!node.hasAttribute?.("aria-keyshortcuts")) {
       return style;
     }
@@ -354,14 +371,100 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
   const frame = element(document, "div", { class: "preview-frame" }, preview, navToggleButton);
   const app = element(document, "div", { class: "app" }, navPane, selectorHost, frame);
   document.body.append(app);
+  Object.defineProperty(navPane, "offsetWidth", { value: NAV_PANE_WIDTH });
+  // The frame's slide, as Web Animations runs it, held at the share of its way the session
+  // sets: nav-collapse.js reads the frame's transform when a key turns a slide back, and
+  // the session finishes each slide as its end would.
+  /** @type {any[]} */
+  const slides = [];
+  const offsetOf = (keyframe) =>
+    Number.parseFloat(/translate3d\((-?[\d.]+)px/.exec(keyframe.transform)?.[1] ?? "0");
+  frame.animate = (keyframes, timing) => {
+    let resolve = () => {};
+    let reject = () => {};
+    const slide = {
+      from: offsetOf(keyframes[0]),
+      to: offsetOf(keyframes.at(-1)),
+      duration: timing.duration,
+      easing: timing.easing,
+      progress: 0,
+      state: "running",
+      finished: new Promise((onFinish, onCancel) => {
+        resolve = onFinish;
+        reject = onCancel;
+      }),
+      cancel() {
+        if (slide.state === "running") {
+          slide.state = "cancelled";
+          reject(new Error("The slide was cancelled"));
+        }
+      },
+      finish() {
+        slide.progress = 1;
+        slide.state = "finished";
+        resolve(slide);
+      },
+    };
+    slides.push(slide);
+    return slide;
+  };
+  const runningSlide = () => slides.find((slide) => slide.state === "running") ?? null;
+  function frameTransform() {
+    const slide = runningSlide();
+    return slide
+      ? `matrix(1, 0, 0, 1, ${slide.from + (slide.to - slide.from) * slide.progress}, 0)`
+      : "none";
+  }
   const navCollapse = context.MetabrowserNavCollapse.create({
     button: navToggleButton,
     container: app,
     document,
     focusFallback: () => preview,
     frame,
+    // app.js closes an open filter menu, as hiding the Files panel does.
+    onHide: () => {
+      if (filterOpenMenu !== null) {
+        shell.toggleFilterMenu(filterOpenMenu, false);
+      }
+    },
     pane: navPane,
   });
+  /** The slide running now, as its ends and timing, or null. */
+  function slide() {
+    const running = runningSlide();
+    return (
+      running && {
+        from: running.from,
+        to: running.to,
+        duration: running.duration,
+        easing: running.easing,
+        cancelled: slides.filter((each) => each.state === "cancelled").length,
+      }
+    );
+  }
+  /** Move the running slide to a share of its way. */
+  function slideTo(progress) {
+    const running = runningSlide();
+    if (running) {
+      running.progress = progress;
+    }
+  }
+  /** End every running slide, as the time passing would, and let it settle. */
+  async function finishSlides() {
+    for (const running of slides.filter((each) => each.state === "running")) {
+      running.finish();
+    }
+    await settle();
+  }
+  /** The navigation pane's state, as the chevron and the layout say it. */
+  function nav() {
+    return {
+      inert: navPane.hasAttribute("inert"),
+      inLayout: !app.hasAttribute("data-nav-collapsed"),
+      expanded: navToggleButton.getAttribute("aria-expanded"),
+      label: navToggleButton.getAttribute("aria-label"),
+    };
+  }
 
   // ── What app.js does around the modules ───────────────────────
   /** @type {any} */
@@ -1068,6 +1171,13 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     location,
     mainTabs,
     navCollapse,
+    nav,
+    slide,
+    slideTo,
+    finishSlides,
+    get filterOpenMenu() {
+      return filterOpenMenu;
+    },
     measure,
     menuFocus,
     drawerOpen,
@@ -1589,40 +1699,73 @@ const PARTS = {
     const steps = [];
     const page = plainPage();
     page.open(files["data.json"]);
-    steps.push(page.record("a file is open with the navigation pane shown"));
+    steps.push(page.record("a file is open with the navigation pane shown", { nav: page.nav() }));
     // `\` hides the navigation pane from anywhere, through the chevron's own path. Hidden,
     // the pane is inert, so its keys leave the live keymap and focus on one of its rows
-    // goes to the main page; `\` stays live on the chevron, which the main frame holds.
-    // Shift-\, which types | on a US keyboard, is `\` by its key, and shows the pane again.
-    const navRow = page.document.querySelector(".tree-item");
-    navRow?.focus();
+    // goes to the main page; `\` stays live on the chevron, which the main frame holds. The
+    // frame slides over the pane for --motion-reveal's time, read from styles.css.
+    page.document.querySelector(".tree-item")?.focus();
+    const hide = { key: "\\", handled: page.press("\\", { code: "Backslash" }) };
+    const hiding = page.slide();
+    await page.finishSlides();
     steps.push(
       page.record("\\ hides the navigation pane, and only the main page's keys stay live", {
-        pressed: { key: "\\", handled: page.press("\\", { code: "Backslash" }) },
-        nav: {
-          inert: page.document.querySelector(".tree-pane").hasAttribute("inert"),
-          expanded: page.document
-            .getElementById("nav-collapse-toggle")
-            .getAttribute("aria-expanded"),
-          label: page.document.getElementById("nav-collapse-toggle").getAttribute("aria-label"),
-          // Focus was on a tree row, which the inert pane cannot hold: the main page takes it.
-          focus: page.document.activeElement.id,
-        },
+        pressed: hide,
+        slide: hiding,
+        // Focus was on a tree row, which the inert pane cannot hold: the main page takes it.
+        nav: { ...page.nav(), focus: page.document.activeElement.id },
       }),
     );
+    // Shift-\ types | on a US keyboard, and | is \'s Shift form, so it shows the pane
+    // again. The pane is live as the slide starts and takes its place in the layout when
+    // the slide ends.
+    const show = {
+      key: "|",
+      handled: page.press("|", { code: "Backslash", shiftKey: true }),
+    };
+    const showing = { slide: page.slide(), nav: page.nav() };
+    await page.finishSlides();
     steps.push(
       page.record("Shift-\\, which types | on a US keyboard, shows it again", {
-        pressed: {
-          key: "|",
-          handled: page.press("|", { code: "Backslash", shiftKey: true }),
-        },
-        nav: {
-          inert: page.document.querySelector(".tree-pane").hasAttribute("inert"),
-          expanded: page.document
-            .getElementById("nav-collapse-toggle")
-            .getAttribute("aria-expanded"),
-          label: page.document.getElementById("nav-collapse-toggle").getAttribute("aria-label"),
-        },
+        pressed: show,
+        sliding: showing,
+        nav: page.nav(),
+      }),
+    );
+    // The same physical key is # on a UK or German keyboard: a key is its character, so
+    // that is not \.
+    steps.push(
+      page.record("# on the key US keyboards have \\ on is not \\", {
+        pressed: { key: "#", handled: page.press("#", { code: "Backslash" }) },
+        slide: page.slide(),
+        nav: page.nav(),
+      }),
+    );
+    // A second `\` mid-slide turns the frame back from where it is, for the share of the
+    // time that distance is, and leaves the pane shown, live, and in the layout.
+    page.press("\\", { code: "Backslash" });
+    page.slideTo(0.5);
+    const back = { key: "\\", handled: page.press("\\", { code: "Backslash" }) };
+    const turned = page.slide();
+    await page.finishSlides();
+    steps.push(
+      page.record("\\ again halfway through the slide turns it back from there", {
+        pressed: back,
+        slide: turned,
+        nav: page.nav(),
+      }),
+    );
+    // A menu the pane holds would stay open under the frame with its trigger inert, so
+    // hiding the pane closes it.
+    page.press("1");
+    const opened = page.filterOpenMenu;
+    const closing = { key: "\\", handled: page.press("\\", { code: "Backslash" }) };
+    await page.finishSlides();
+    steps.push(
+      page.record("\\ with Group by open closes the menu as it hides the pane", {
+        pressed: closing,
+        menu: { before: opened, after: page.filterOpenMenu },
+        nav: { ...page.nav(), focus: page.document.activeElement.id },
       }),
     );
 
