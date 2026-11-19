@@ -11,8 +11,9 @@ both sides:
   declared, and every file that starts a process, decodes JSON, sends a request, or
   scripts a page is listed with what it runs or reads. So a new dependency fails here
   until it is declared, and a declared one the sources no longer name fails as stale.
-  The sources are read as text (``devtools/swift_text.py``), because this runs in every
-  CI job and the app's own tests run only on macOS.
+  The sources are read as text (``devtools/swift_text.py``), because this runs in the
+  lint job of every pull request, whatever it changes, and the app's own tests run only
+  on macOS, on a change to a path their workflow names.
 - **The goldens.** Every declared command and route has a block whose command line is
   the declared argument list, and a block holds exactly the declared keys and lines,
   with text the app only shows recorded as present and not word for word. Every value
@@ -31,7 +32,9 @@ aspect in the parity registry:
 - a new reader of a line of output, which is ordinary string handling;
 - a key a listed JSON file comes to read through an Optional property of a ``Decodable``
   type: a subscript and a coding key's raw value are searched, a bare property is not,
-  and a missing Optional reads as nil, so the app's tests pass without it;
+  and a missing Optional reads as nil, so the app's tests pass without it. A subscript
+  or a coding key in such a file that is no key of ``metab``'s says so on its line, with
+  ``// not-contract: <why>``, and ``report`` lists each;
 - a command built as ``.init(…)`` where the type is inferred, which is not spelled
   ``LaunchSpec(``; and a request made as ``webView.load(.init(url:))`` or
   ``Data(contentsOf:)``, which names neither ``URLRequest`` nor ``URLSession``;
@@ -54,6 +57,7 @@ import re
 import subprocess
 import sys
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, cast
 
@@ -88,9 +92,12 @@ _FLAG: Final = re.compile(r"(?<![\w-])--[a-z][a-z0-9-]*")
 # A variable of metab's, or of the interpreter that runs it.
 _VARIABLE: Final = re.compile(r"\b(?:METAB(?:ROWSER)?_[A-Z0-9_]+|PYTHON[A-Z]+)\b")
 # A key a Swift file reads of a JSON object: a subscript, or a coding key's raw value.
-_SUBSCRIPT_KEY: Final = re.compile(r'\[\s*"([a-z][a-z0-9_]*)"\s*\]')
 _CODING_KEYS: Final = re.compile(r"\benum\s+CodingKeys\b[^{]*\{([^}]*)\}")
-_RAW_VALUE: Final = re.compile(r'\bcase\s+\w+\s*=\s*"([a-z][a-z0-9_]*)"')
+_KEY: Final = re.compile(r"[a-z][a-z0-9_]*")
+_RAW_VALUE_BEFORE: Final = re.compile(r"\bcase\s+\w+\s*=\s*$")
+# What a line says after a key that is not one of metab's: `// not-contract: <why>`.
+NOT_CONTRACT: Final = "not-contract:"
+_NOT_CONTRACT: Final = re.compile(rf"//\s*{NOT_CONTRACT}\s*(.*)$")
 _ROUTE: Final = re.compile(r"/?\bapi/[a-z0-9_-]+(?:/[a-z0-9_-]+)*")
 _FILE_USE: Final = {
     "launch": re.compile(r"\bLaunchSpec\("),
@@ -115,6 +122,7 @@ _FILE_USE_OWN: Final = {
 }
 _SPAWN: Final = re.compile(r"\bposix_spawnp?\(|\bProcess\(\)|\bNSTask\b")
 _REQUIRED_FLAGS: Final = re.compile(r"static\s+let\s+requiredFlags\s*=\s*\[([^\]]*)\]")
+_ROUTE_BLOCK: Final = re.compile(r"status: \d+\n\{")
 _RELEASE_HEADING: Final = re.compile(r"^## (\d+)\.(\d+)\.(\d+)\b.*$", re.MULTILINE)
 _SECTION_END: Final = re.compile(r"^#{1,2} ", re.MULTILINE)
 # A short `metab` command that starts no server answers in under a second.
@@ -332,12 +340,66 @@ def _file_line(kind: str, path: str, count: int) -> str:
     )
 
 
+@dataclass(frozen=True, slots=True)
+class ReadKey:
+    """A key a Swift file names in a subscript or as a coding key's raw value."""
+
+    key: str
+    line: int
+    # Why its line says it is no key of metab's, or None when the line does not say.
+    not_contract: str | None
+
+
+def read_keys(source: str) -> tuple[list[ReadKey], list[int]]:
+    """The keys *source* reads of a JSON object, and the lines whose ``not-contract``
+    comment marks no key.
+
+    A key is a string literal in a subscript (``page["sources"]``) or the raw value of a
+    case of a ``CodingKeys`` enum (``case openedAt = "opened_at"``). Comments are prose,
+    and a key in one reads nothing.
+    """
+
+    segments = swift_text.segments(source)
+    said = {
+        segment.line: found[1].strip()
+        for segment in segments
+        if segment.kind == "comment" and (found := _NOT_CONTRACT.match(segment.text))
+    }
+    # The code with each literal in quotes, and where each literal starts in it.
+    parts: list[str] = []
+    literals: list[tuple[int, swift_text.Segment]] = []
+    length = 0
+    for segment in segments:
+        if segment.kind == "string":
+            literals.append((length, segment))
+        if segment.kind in ("code", "string"):
+            part = f'"{segment.text}"' if segment.kind == "string" else segment.text
+            parts.append(part)
+            length += len(part)
+    text = "".join(parts)
+    coding_keys = [found.span(1) for found in _CODING_KEYS.finditer(text)]
+    keys: list[ReadKey] = []
+    for start, segment in literals:
+        if not _KEY.fullmatch(segment.text):
+            continue
+        before, after = text[:start], text[start + len(segment.text) + 2 :]
+        subscript = before.rstrip().endswith("[") and after.lstrip().startswith("]")
+        coded = any(low <= start < high for low, high in coding_keys) and bool(
+            _RAW_VALUE_BEFORE.search(before)
+        )
+        if subscript or coded:
+            keys.append(ReadKey(segment.text, segment.line, said.get(segment.line)))
+    marked = {key.line for key in keys}
+    return keys, sorted(line for line in said if line not in marked)
+
+
 def _read_key_problems(contract: Contract, sources: Mapping[str, str]) -> list[str]:
     """A key a listed file reads of a JSON answer, which that answer's entry lacks.
 
-    In a file `[files.json]` lists with a contract id, every key in a subscript
-    (``page["sources"]``) or a coding key's raw value (``case openedAt = "opened_at"``)
-    is a segment of a path that one of its entries declares.
+    In a file `[files.json]` lists with a contract id, every key the file reads
+    (:func:`read_keys`) is a segment of a path that one of its entries declares, unless
+    its line says it is no key of ``metab``'s: ``// not-contract: <why>``, for a
+    subscript of the app's own, such as a notification's ``userInfo``.
     """
 
     problems: list[str] = []
@@ -352,22 +414,44 @@ def _read_key_problems(contract: Contract, sources: Mapping[str, str]) -> list[s
             for declared_path in surface.json
             for segment in declared_path.split(".")
         }
-        # Comments are prose, and a key in one reads nothing.
-        text = "".join(
-            f'"{segment.text}"' if segment.kind == "string" else segment.text
-            for segment in swift_text.segments(source)
-            if segment.kind in ("code", "string")
-        )
-        read = set(_SUBSCRIPT_KEY.findall(text))
-        for body in _CODING_KEYS.findall(text):
-            read |= set(_RAW_VALUE.findall(body))
-        for key in sorted(read - declared):
-            ids = ", ".join(surface.id for surface in surfaces)
+        ids = ", ".join(surface.id for surface in surfaces)
+        keys, unused = read_keys(source)
+        for key in keys:
+            where = f"{path}:{key.line}"
+            if key.not_contract is not None:
+                if not key.not_contract:
+                    problems.append(
+                        f"{where}: says `{key.key}` is no key of metab's and not why; "
+                        f"write `// {NOT_CONTRACT} <why>`"
+                    )
+            elif key.key not in declared:
+                problems.append(
+                    f"{where}: reads the key `{key.key}`, which {ids} does not declare. If "
+                    f"it is a key of metab's answer, add its path to that entry's `json` "
+                    f"in {DECLARATION}. If it is a key of something of the app's own, end "
+                    f"its line with `// {NOT_CONTRACT} <why>`"
+                )
+        for line in unused:
             problems.append(
-                f"{path}: reads the key `{key}`, which {ids} does not declare. Add its path "
-                f"to that entry's `json` in {DECLARATION}"
+                f"{path}:{line}: says `{NOT_CONTRACT}` on a line that reads no key; take "
+                "the comment out"
             )
     return problems
+
+
+def not_contract_keys(contract: Contract, sources: Mapping[str, str]) -> list[str]:
+    """Each key a listed file reads that its line says is none of ``metab``'s, with why."""
+
+    listed: list[str] = []
+    for path, use in contract.files["json"].items():
+        source = sources.get(path)
+        if use.ids and source is not None:
+            listed += [
+                f"{path}:{key.line} `{key.key}`: {key.not_contract}"
+                for key in read_keys(source)[0]
+                if key.not_contract
+            ]
+    return listed
 
 
 def _source_references(contract: Contract) -> list[tuple[str, str]]:
@@ -492,11 +576,25 @@ def _block_problems(contract: Contract, block: Block) -> list[str]:
                         f"{where}: records what `{path}` says, and the app only shows it or "
                         f"keeps it unread; the golden holds `{mask}` there"
                     )
+        for path, values in surface.values.items():
+            for value in app_contract.values_at(answer, path):
+                if isinstance(value, str) and value not in (*values, app_contract.OTHER):
+                    problems.append(
+                        f"{where}: records `{path}` as `{value}`, which is none of the values "
+                        f"the app tells apart; the golden holds `{app_contract.OTHER}` there"
+                    )
+        if surface.kind == "route":
+            # The status the app checks, in the driver's own words, and then the answer.
+            if not _ROUTE_BLOCK.match(block.stdout) or block.stderr:
+                problems.append(
+                    f"{where}: a route's block is `status: N`, the answer, and nothing else"
+                )
+            return problems
         for line in block.stderr.splitlines():
-            if line != app_contract.TEXT and not line.strip().startswith(("{", "}")):
+            if not app_contract.is_framing_line(line):
                 problems.append(
                     f"{where}: records the stderr line `{line}`, which no reader of a JSON "
-                    f"answer takes; the golden holds `{app_contract.TEXT}` for it"
+                    "answer takes"
                 )
         return problems
     for stream, names, text in (
@@ -718,15 +816,23 @@ def _at(root: Path, revision: str, path: str) -> str | None:
         return None
 
 
-def declared_surface(text: str | None) -> object:
-    """What a declaration's *text* says the app depends on, or None for no declaration
-    or one that does not parse: what it sends and reads, and each behavior, copied value,
-    and thing ``metab`` reads of the app, with the definitions it names.
+def declared_surface(text: str | None, copies: str | None) -> object:
+    """What a declaration's *text* says the app depends on, with what the copies golden
+    *copies* records for each definition it names; None for no declaration or one that
+    does not parse.
 
-    Two declarations with the same surface differ only in what a release need not name:
-    a note, the test that pins an entry, or which Swift file holds a reader. What a pin
-    file must contain is part of it: that is the text of the page or the transcript that
-    the app depends on.
+    It is what the app sends and reads, and each behavior, copied value, and thing
+    ``metab`` reads of the app, by what ``metab`` defines for it. Two declarations with
+    the same surface differ only in what a release need not name:
+
+    - the order entries are written in, and the order of keys, values, and lines in one;
+    - a note, the test that pins an entry, or which Swift file holds a reader;
+    - the label of a copy, which is the app's name for it, and where in ``metab`` a
+      definition lives: a constant that moves to another module, or is renamed, with the
+      same value is the same contract.
+
+    What a pin file must contain is part of it: that is the text of the page or the
+    transcript that the app depends on.
     """
 
     if text is None:
@@ -735,25 +841,32 @@ def declared_surface(text: str | None) -> object:
         contract = app_contract.parse(text)
     except ContractError:
         return None
+    defined = app_contract.read_copies(copies or "")
+
+    def pinned(item: app_contract.Pinned) -> tuple[object, ...]:
+        # A copy is known by its values alone; any other entry by its id too.
+        values = tuple(sorted(defined.get(name, "") for name in item.values))
+        return (item.kind, "" if item.kind == "copy" else item.id, values, item.holds)
+
     return (
-        tuple(
+        frozenset(
             (
                 surface.id,
                 surface.argv,
-                surface.json,
-                tuple(sorted(surface.values.items())),
-                surface.stdout,
-                surface.stderr,
+                frozenset(surface.json),
+                frozenset((key, frozenset(values)) for key, values in surface.values.items()),
+                frozenset(surface.stdout),
+                frozenset(surface.stderr),
                 surface.shown,
                 surface.app_runs,
-                surface.shown_keys,
-                surface.opaque,
+                frozenset(surface.shown_keys),
+                frozenset(surface.opaque),
             )
             for surface in contract.surfaces
         ),
-        tuple((line.id, line.pattern.pattern) for line in contract.lines),
-        tuple(variable.name for variable in contract.variables),
-        tuple((item.kind, item.id, item.values, item.holds) for item in contract.pinned),
+        frozenset((line.id, line.pattern.pattern) for line in contract.lines),
+        frozenset(variable.name for variable in contract.variables),
+        tuple(sorted(map(pinned, contract.pinned), key=repr)),
     )
 
 
@@ -781,13 +894,12 @@ def _branch_marks(root: Path, base: str) -> set[str]:
 def change_problems(root: Path, against: str) -> list[str]:
     """A branch that changes the contract and does not say so in a changelog fragment.
 
-    A file changed when it differs from the merge base of *against* and ``HEAD``, and
+    Something changed when it differs from the merge base of *against* and ``HEAD``, and
     from *against* itself, which a merge of it in progress brings. A change to the
-    declared surface, what the app depends on, is a change to the contract, and a
-    fragment the branch adds or edits must name it with :data:`CHANGE_MARK`. A change to
-    a golden alone is ``metab`` answering the same surface differently, or defining a
-    value the app copies differently, which is either that or a bug fix, so either mark
-    names it.
+    declared surface (:func:`declared_surface`), a copied value among it, is a change to
+    the contract, and a fragment the branch adds or edits must name it with
+    :data:`CHANGE_MARK`. A change to the golden alone is ``metab`` answering the same
+    surface differently, which is either that or a bug fix, so either mark names it.
     """
 
     try:
@@ -795,14 +907,16 @@ def change_problems(root: Path, against: str) -> list[str]:
     except changelog.ChangelogError as error:
         return [f"{error}\nThe app contract check compares with the merge base of {against}."]
 
-    def differs(path: str, read: Callable[[str | None], object]) -> bool:
-        now = read(_read(root, path))
-        return now != read(_at(root, base, path)) and now != read(_at(root, against, path))
+    def differs(now: Callable[[Callable[[str], str | None]], object]) -> bool:
+        here = now(lambda path: _read(root, path))
+        return here != now(lambda path: _at(root, base, path)) and here != now(
+            lambda path: _at(root, against, path)
+        )
 
-    surface = differs(DECLARATION, declared_surface)
-    goldens = [path for path in GOLDENS if differs(path, lambda text: text)]
+    surface = differs(lambda read: declared_surface(read(DECLARATION), read(COPIES)))
+    golden = differs(lambda read: read(GOLDEN))
     marks = _branch_marks(root, base)
-    if not (surface or goldens) or CHANGE_MARK in marks or (FIX_MARK in marks and not surface):
+    if not (surface or golden) or CHANGE_MARK in marks or (FIX_MARK in marks and not surface):
         return []
     where = f"since the merge base with {against} ({base[:12]})"
     remedy = (
@@ -816,14 +930,15 @@ def change_problems(root: Path, against: str) -> list[str]:
     if surface:
         fix = f" An entry marked `{FIX_MARK}` does not name it: a fix keeps what the app reads."
         return [
-            f"{DECLARATION} declares a different surface {where}, so this branch changes what "
-            f"the macOS app depends on in metab. {remedy}."
+            f"{DECLARATION} declares a different surface {where}, or {COPIES} a different "
+            "value for one the app copies, so this branch changes what the macOS app "
+            f"depends on in metab. {remedy}."
             f"{fix if FIX_MARK in marks else ''} {after}"
         ]
     return [
-        f"{' and '.join(goldens)} changed {where}, so metab answers the macOS app differently "
-        f"in something the app reads, or defines a value the app copies differently. {remedy}, "
-        f"or `{FIX_MARK}` when the old answer was a bug, which may ship in a patch. {after}"
+        f"{GOLDEN} changed {where}, so metab answers the macOS app differently in something "
+        f"the app reads. {remedy}, or `{FIX_MARK}` when the old answer was a bug, which may "
+        f"ship in a patch. {after}"
     ]
 
 
@@ -849,8 +964,9 @@ def check(root: Path = REPO_ROOT, against: str | None = None) -> list[str]:
     return problems
 
 
-def report(contract: Contract) -> str:
-    """The inventory, a line for each thing the app depends on."""
+def report(contract: Contract, sources: Mapping[str, str]) -> str:
+    """The inventory, a line for each thing the app depends on, and each key a listed
+    file reads that its line says is none of ``metab``'s."""
 
     lines: list[str] = []
     commands = [surface for surface in contract.surfaces if surface.kind == "command"]
@@ -882,6 +998,7 @@ def report(contract: Contract) -> str:
         lines.append(f"env     {variable.name}")
     for item in contract.pinned:
         lines.append(f"{item.kind:9}{item.id}: {item.pinned_by}")
+    lines += [f"{NOT_CONTRACT:9} {key}" for key in not_contract_keys(contract, sources)]
     return "\n".join(lines) + "\n"
 
 
@@ -989,7 +1106,7 @@ def main(argv: Sequence[str] | None = None, root: Path = REPO_ROOT) -> int:
         print(error, file=sys.stderr)
         return 1
     if args.command == "report":
-        print(report(contract), end="")
+        print(report(contract, app_sources(root)), end="")
         return 0
     refused = accepts(contract, args.metab)
     if refused:

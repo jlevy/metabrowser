@@ -224,11 +224,44 @@ def test_a_copy_of_what_the_check_reads_passes(tmp_path: Path) -> None:
         # A key a listed file reads of an answer, by a subscript or a coding key.
         (
             _append(CACHE, '\nfunc slug(_ source: [String: Any]) -> Any? { source["slug"] }\n'),
-            "RepositoryCache.swift: reads the key `slug`, which cache-sources does not declare",
+            "reads the key `slug`, which cache-sources does not declare",
         ),
         (
             _replace(RECENT, 'case openedAt = "opened_at"', 'case openedAt = "opened"'),
-            "RecentTargets.swift: reads the key `opened`, which recent-list does not declare",
+            "reads the key `opened`, which recent-list does not declare",
+        ),
+        # A value that is none of those the app tells apart is recorded as another.
+        (
+            _replace(GOLDEN, '"publication": "<other>"', '"publication": "unattached"'),
+            "records `sources[].publication` as `unattached`, which is none of the values",
+        ),
+        # A route's block is the status and the answer; a command's stderr, only what a
+        # reader of JSON would take.
+        (
+            _replace(
+                GOLDEN, "--- stdout ---\nstatus: 200\n", "--- stdout ---\napi: /x\nstatus: 200\n"
+            ),
+            "a route's block is `status: N`, the answer, and nothing else",
+        ),
+        (
+            _replace(
+                GOLDEN,
+                '  "problem": null\n}\n--- stderr ---\n',
+                '  "problem": null\n}\n--- stderr ---\n<text>\n',
+            ),
+            "records the stderr line `<text>`, which no reader of a JSON answer takes",
+        ),
+        # A `not-contract` comment says why, and sits on a line that reads a key.
+        (
+            _append(
+                RECENT,
+                '\nfunc why(_ n: Notification) -> Any? { n.userInfo?["reason"] }  // not-contract:\n',
+            ),
+            "says `reason` is no key of metab's and not why",
+        ),
+        (
+            _append(RECENT, "\nlet unrelated = 1  // not-contract: nothing here reads a key\n"),
+            "says `not-contract:` on a line that reads no key",
         ),
         # The interpreter's variables are named too.
         (
@@ -297,6 +330,30 @@ def test_a_problem_says_the_line_to_add(tmp_path: Path) -> None:
     assert check_app_contract.check(root) == []
 
 
+def test_a_key_of_the_apps_own_says_so_on_its_line(tmp_path: Path) -> None:
+    """A subscript in a listed file that is no key of metab's answer has a way to say so."""
+
+    root = _copy(tmp_path)
+    reads = '\nfunc why(_ note: Notification) -> Any? { note.userInfo?["reason"] }'
+    _append(RECENT, reads + "\n")(root)
+    problems = check_app_contract.check(root)
+    assert len(problems) == 1, problems
+    assert "reads the key `reason`, which recent-list does not declare" in problems[0]
+    assert "end its line with `// not-contract: <why>`" in problems[0]
+
+    _append(RECENT, reads + "  // not-contract: a notification's userInfo\n")(root)
+    _replace(RECENT, reads + "\n", "\n")(root)
+    assert check_app_contract.check(root) == []
+    contract = app_contract.load(root / DECLARATION)
+    listed = check_app_contract.not_contract_keys(contract, check_app_contract.app_sources(root))
+    assert len(listed) == 1
+    assert listed[0].startswith("Sources/ShellCore/Folders/RecentTargets.swift:")
+    assert listed[0].endswith("`reason`: a notification's userInfo")
+    assert "not-contract: Sources/ShellCore/Folders/RecentTargets.swift" in (
+        check_app_contract.report(contract, check_app_contract.app_sources(root))
+    )
+
+
 def test_a_behavior_is_pinned_by_a_session_or_a_golden_that_holds_it(tmp_path: Path) -> None:
     """What the app's own script relies on in a page has no Python or Swift test to name."""
 
@@ -356,7 +413,9 @@ def test_projection_keeps_the_declared_keys_and_refuses_a_missing_one() -> None:
 def test_text_the_app_only_shows_is_recorded_as_present() -> None:
     answer = {"targets": [{"root": "/a", "opened_at": "2026-11-18T03:14:15Z"}], "problem": None}
     paths = ["targets[].root", "targets[].opened_at", "problem"]
-    masks = {"targets[].opened_at": app_contract.OPAQUE, "problem": app_contract.TEXT}
+    masks = app_contract.Recording(
+        {"targets[].opened_at": app_contract.OPAQUE, "problem": app_contract.TEXT}
+    )
     assert app_contract.project(answer, paths, masks) == {
         "targets": [{"root": "/a", "opened_at": "<opaque>"}],
         "problem": None,
@@ -365,6 +424,23 @@ def test_text_the_app_only_shows_is_recorded_as_present() -> None:
     assert cast("dict[str, object]", said)["problem"] == "<text>"
     with pytest.raises(ContractError, match="problem: is declared as text"):
         app_contract.project({**answer, "problem": 3}, paths, masks)
+
+
+def test_a_value_the_app_does_not_tell_apart_is_recorded_as_another() -> None:
+    """The app asks only whether a source is published, so which other state it is in is
+    the cache's to choose and no part of what the app reads."""
+
+    page = {
+        "sources": [
+            {"publication": "published"},
+            {"publication": "unattached"},
+            {"publication": None},
+        ]
+    }
+    told_apart = app_contract.Recording(choices={"sources[].publication": ("published",)})
+    assert app_contract.project(page, ["sources[].publication"], told_apart) == {
+        "sources": [{"publication": "published"}, {"publication": "<other>"}, {"publication": None}]
+    }
 
 
 def test_a_line_is_recorded_as_the_part_the_app_parses() -> None:
@@ -397,10 +473,9 @@ def test_a_json_answer_keeps_the_framing_it_was_printed_in() -> None:
         )
     with pytest.raises(ContractError, match="a framing this driver does not know"):
         app_contract.framing_of(json.dumps(answer, indent="\t"), answer)
-    # What a reader of both streams would take as part of an answer is kept as written.
-    assert app_contract.framing_lines('a warning\n{\n  {"x": 1}\n}\n') == (
-        '<text>\n{\n  {"x": 1}\n}\n'
-    )
+    # What a reader of both streams would take as part of an answer is kept as written,
+    # and a line it passes over is not recorded at all.
+    assert app_contract.framing_lines('a warning\n{\n  {"x": 1}\n}\n') == '{\n  {"x": 1}\n}\n'
 
 
 def test_a_command_line_is_held_to_the_declared_words() -> None:
@@ -536,7 +611,10 @@ def test_a_copied_value_and_a_behavior_are_part_of_the_contract(tmp_path: Path) 
     root = _repository(tmp_path)
     _write(root, {COPIES: "metabrowser.server_utils:DEFAULT_PORT_SEARCH_COUNT = 16\n"})
     problems = check_app_contract.change_problems(root, "main")
-    assert len(problems) == 1 and COPIES in problems[0] and "copies differently" in problems[0]
+    assert len(problems) == 1 and "a different value for one the app copies" in problems[0]
+    # An app already installed keeps the old number, so it is no fix either.
+    _write(root, {"changelog.d/mb-new1.md": f"{FIX_MARK} The port walk tries 16 ports.\n"})
+    assert check_app_contract.change_problems(root, "main")
     _write(root, {"changelog.d/mb-new1.md": f"{CHANGE_MARK} The port walk tries 16 ports.\n"})
     assert check_app_contract.change_problems(root, "main") == []
 
@@ -555,6 +633,52 @@ def test_a_copied_value_and_a_behavior_are_part_of_the_contract(tmp_path: Path) 
     _write(root, {DECLARATION: renamed})
     problems = check_app_contract.change_problems(root, "main")
     assert len(problems) == 1 and "declares a different surface" in problems[0]
+
+
+def test_a_name_or_an_order_is_no_part_of_the_contract(tmp_path: Path) -> None:
+    """A refactor that moves a constant, and tidying the declaration, change nothing the
+    app reads, so neither is asked for a changelog entry."""
+
+    root = _repository(tmp_path)
+    declaration = (ROOT / DECLARATION).read_text(encoding="utf-8")
+
+    def unchanged(text: str, copies: str | None = None) -> None:
+        assert text != declaration
+        _write(root, {DECLARATION: text})
+        if copies is not None:
+            _write(root, {COPIES: copies})
+        assert check_app_contract.change_problems(root, "main") == []
+
+    # A copied definition moves to another module, with its value.
+    here = "metabrowser.server_utils:DEFAULT_PORT_SEARCH_COUNT"
+    there = "metabrowser.settings:DEFAULT_PORT_SEARCH_COUNT"
+    assert here in declaration
+    unchanged(declaration.replace(here, there), f"{there} = 32\n")
+    _write(root, {COPIES: f"{here} = 32\n"})
+
+    # Two entries change places, and the keys of one do.
+    first = declaration.index('[[command]]\nid = "recent-add"')
+    second = declaration.index('[[command]]\nid = "recent-forget"')
+    third = declaration.index('[[command]]\nid = "recent-clear"')
+    unchanged(
+        declaration[:first]
+        + declaration[second:third]
+        + declaration[first:second]
+        + declaration[third:]
+    )
+    unchanged(
+        declaration.replace(
+            '["short_name", "full_name", "kind", "kind_label", "title"]',
+            '["title", "kind_label", "kind", "full_name", "short_name"]',
+        )
+    )
+
+    # The app renames the constant that holds a copy.
+    unchanged(
+        declaration.replace(
+            'swift = "RepositoryCache.pageLimit"', 'swift = "RepositoryCache.limit"'
+        )
+    )
 
 
 def test_a_change_main_made_is_not_this_branchs(tmp_path: Path) -> None:

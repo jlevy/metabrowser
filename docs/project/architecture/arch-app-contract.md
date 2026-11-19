@@ -76,15 +76,25 @@ the exit status and what the declaration says the app reads.
   The transcript holds `<text>` or `<opaque>` for each, after the driver has checked
   that a string is there, so rewording a message changes nothing here.
   A value stays exact where the app branches on it or compares it: a `kind`, a state, a
-  URL it matches.
+  URL it matches. Where the app tells a few values of a key apart, any other value is
+  `<other>`: the app asks only whether a source is `published`, so which other state one
+  is in is the cache’s to choose.
 - **A command’s answer keeps its framing.** The app finds a JSON answer by the lines of
   one pipe that carries both streams: a line that is exactly `{`, and one that is
   exactly `}`. So the driver writes the declared keys in the framing `metab` printed the
   whole answer in, with whatever it printed before and after, and records the lines of
-  stderr that such a reader would take.
+  stderr that such a reader would take, and no others.
   An answer printed on one line changes the transcript, and then fails the app’s reader
-  in `AppContractTests`. A route’s answer is re-serialized, because the app decodes a
-  response whole.
+  in `AppContractTests`.
+- **A route’s block is its status and its declared keys.** The app checks a response’s
+  status and decodes its body whole, so what `--api` prints around the answer, and how
+  it frames it, is `--api`’s own and is not recorded.
+- **The fixtures are the driver’s own.** It builds the origin it serves and the cache it
+  asks about, holding what the app tells apart and nothing more: a published source, the
+  same repository under another address, one that is listed and not published, and
+  enough for a page of two to end with a cursor.
+  A fixture other tests share would change this transcript whenever one of them needed
+  another source, and a change here is one a release has to name.
 - **The command line is the app’s.** The Swift tests require the app’s own builders to
   write each one.
 - **Each block names its scenario** in a `contract` section, which is how the Swift
@@ -92,6 +102,7 @@ the exit status and what the declaration says the app reads.
 
 `tests/golden/app-contract-copies.txt` is a second, small golden: a line for each
 definition of `metab`’s that an entry names in `values`, as `metab` has it.
+A console script is recorded as defined, and not by where it points.
 The pin tests already make the app’s copy follow a changed value in the same commit.
 The line makes that change visible to the release rule, since an app already installed
 keeps the old value.
@@ -108,11 +119,11 @@ writes, and each such `[[line]]` names its test.
 
 | Check | Runs in | Fails when |
 | --- | --- | --- |
-| `tests/test_app_contract_golden.py` | Every Python job | `metab` answers a declared command or route differently in anything the app reads, the lines of a JSON answer included; an answer lacks a declared key; a value the app copies is defined differently; `metab --version` prints a version `MetabVersion` cannot read; the console script or the distribution is renamed |
+| `tests/test_app_contract_golden.py` | The unit and admitted-Git jobs of every pull request | `metab` answers a declared command or route differently in anything the app reads, the lines of a JSON answer included; an answer lacks a declared key; a value the app copies is defined differently; `metab --version` prints a version `MetabVersion` cannot read; the console script or the distribution is renamed |
 | `AppContractTests` | The macOS workflow, on a change under `apps/macos` or to the golden | A builder in the app writes a command line the golden does not have; a reader in the app reads a recorded answer as anything but its scenario; the golden gains or loses a scenario the suite does not follow |
-| `check_app_contract.py`, the sources | `make lint-check`, in every job | A Swift source names a flag, a route, or a variable of `metab`’s or the interpreter’s that the declaration lacks; a file starts a process, decodes JSON, sends a request, or scripts a page and is not listed; a listed file reads a key by subscript or coding key that its entry lacks; the declaration names something the sources no longer do; the declared probe is not `MetabRequirement.requiredFlags` and `--version` |
+| `check_app_contract.py`, the sources | `make lint-check`, in the lint job of every pull request, whatever it changes | A Swift source names a flag, a route, or a variable of `metab`’s or the interpreter’s that the declaration lacks; a file starts a process, decodes JSON, sends a request, or scripts a page and is not listed; a listed file reads a key by subscript or coding key that its entry lacks; the declaration names something the sources no longer do; the declared probe is not `MetabRequirement.requiredFlags` and `--version` |
 | `check_app_contract.py`, the goldens | The same | A declared command or route has no block; a block’s command line is not the declared argument list; a block holds a key or a line the declaration does not, or the words of text the app only shows; a declared value or line is shown nowhere; a copied value has no line in the copies golden; a `pinned_by` names no test, or a file that lacks its `holds`; the macOS workflow’s path filter does not name the golden |
-| `check_app_contract.py`, the changelog | The same | A branch changes the declared surface or a golden and no changelog fragment says so; a fragment calls a change to the declared surface a fix; a patch release’s section holds a change to the contract |
+| `check_app_contract.py`, the changelog | The same | A branch changes the declared surface, a copied value among it, or the golden, and no changelog fragment says so; a fragment calls a change to the declared surface a fix; a patch release’s section holds a change to the contract |
 
 A problem that asks for a line in the declaration prints the line.
 
@@ -126,6 +137,9 @@ What no search here finds, so review declares it:
 - **A key read through an Optional property.** A subscript and a coding key’s raw value
   are searched; a bare property of a `Decodable` type is not, and a missing Optional
   reads as nil, so the app’s tests pass without it.
+  A subscript or a coding key in a listed file that is no key of `metab`’s, such as one
+  into a notification’s `userInfo`, ends its line `// not-contract: <why>`, and
+  `check_app_contract report` lists each.
 - **A command or a request the search’s words do not spell:** a `LaunchSpec` built as
   `.init(…)`, `webView.load(.init(url:))`, or `Data(contentsOf:)` on a server’s URL.
 - **A short flag,** and a flag or a route assembled from parts.
@@ -154,14 +168,17 @@ what the app reads from `metab` ships in a minor or major release, and a bug fix
 keeps what the app reads may ship in a patch.
 Two checks hold a release to it, and a tool asks any `metab`.
 
-- **A change to the contract is named.** A branch whose declared surface or goldens
-  differ from its merge base with `main` adds a changelog fragment with an entry that
+- **A change to the contract is named.** A branch whose declared surface or golden
+  differs from its merge base with `main` adds a changelog fragment with an entry that
   starts `- **App contract:**`. The declared surface is what the app depends on:
   commands, routes, keys, values, lines, variables, and each behavior, copied value, and
-  thing `metab` reads of the app, and not a note or the test that pins an entry.
-  A copied value that changes, such as the number of ports a walk tries, changes the
-  copies golden, so it is named too and cannot ship as a patch.
-  When only a golden differs, `metab` answers the same surface differently; if the old
+  thing `metab` reads of the app, by what `metab` defines for it.
+  It is compared by those values, and not by a note, the test that pins an entry, the
+  order entries are written in, the app’s label for a copy, or the module a definition
+  lives in: a constant that moves with its value is the same contract.
+  A copied value that changes, such as the number of ports a walk tries, is a different
+  surface, so it is named and cannot ship as a patch.
+  When only the golden differs, `metab` answers the same surface differently; if the old
   answer was a bug, the entry may start `- **App contract fix:**`, which is the fix that
   keeps what the app reads.
   A reworded message is neither, and changes no golden.

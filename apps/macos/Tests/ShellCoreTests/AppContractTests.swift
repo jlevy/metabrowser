@@ -359,17 +359,18 @@ nonisolated enum ContractGolden {
 
     @Test func theCacheIsAskedPageByPage() throws {
         let folder = ContractGolden.sandbox + "/support"
-        let flask = try #require(URL(string: "https://github.com/pallets/flask"))
-        let click = try #require(URL(string: "https://github.com/pallets/click"))
+        // The golden's cache holds `demo`, under two addresses, and lists `alpha`, which
+        // it never published.
+        let listedOnly = try #require(URL(string: "https://github.com/octo/alpha"))
         let none = try block("cache-sources/none")
         #expect(none.words == RepositoryCache.arguments(folder: folder, after: nil))
-        #expect(RepositoryCache.read(none.result, looking: flask) == .end)
+        #expect(RepositoryCache.read(none.result, looking: demo) == .end)
 
         let held = try block("cache-sources/held")
         #expect(held.words == RepositoryCache.arguments(folder: folder, after: nil))
-        #expect(RepositoryCache.read(held.result, looking: flask) == .found)
+        #expect(RepositoryCache.read(held.result, looking: demo) == .found)
         // Listed, and not published: a link to it still asks before it clones.
-        #expect(RepositoryCache.read(held.result, looking: click) == .end)
+        #expect(RepositoryCache.read(held.result, looking: listedOnly) == .end)
 
         // The golden asks for a page shorter than the app's, to show a cursor.
         func short(_ arguments: [String]) -> [String] {
@@ -377,14 +378,14 @@ nonisolated enum ContractGolden {
         }
         let first = try block("cache-sources/first-page")
         #expect(first.words == short(RepositoryCache.arguments(folder: folder, after: nil)))
-        guard case .next(let cursor) = RepositoryCache.read(first.result, looking: flask) else {
+        guard case .next(let cursor) = RepositoryCache.read(first.result, looking: demo) else {
             Issue.record("a short page gave no cursor")
             return
         }
         #expect(cursor == ContractGolden.opaque)
         let next = try block("cache-sources/next-page")
         #expect(next.words == short(RepositoryCache.arguments(folder: folder, after: cursor)))
-        #expect(RepositoryCache.read(next.result, looking: flask) == .found)
+        #expect(RepositoryCache.read(next.result, looking: demo) == .found)
     }
 
     // MARK: - Shown, not read

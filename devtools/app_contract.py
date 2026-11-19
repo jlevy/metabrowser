@@ -13,11 +13,12 @@ must agree on:
   omission.
 - **Presence, not wording.** Text the app shows a person, and a value it keeps or hands
   back unread, is recorded as :data:`TEXT` or :data:`OPAQUE`: that it is there, and a
-  string. A reworded message is no change to what the app reads.
+  string. A reworded message is no change to what the app reads. A value of a key whose
+  values the app tells apart is :data:`OTHER` when it is none of them.
 - **Framing.** The app finds a command's JSON answer by the lines of its output, so the
   golden records the projection as ``metab`` framed the whole answer
   (:func:`framing_of`, :func:`dump`), and the lines of stderr that a reader of those
-  lines would take (:func:`framing_lines`).
+  lines would take, and no others (:func:`framing_lines`).
 - **Reading the golden back.** A block is one command, written by
   ``tests/golden_harness.py`` ``block`` with a ``contract`` section that names its
   scenario (:func:`read_blocks`), and its command line is held to the declared argument
@@ -54,6 +55,9 @@ SHOWN_OUTPUT: Final = "<shown as written, not read>"
 # back unread.
 TEXT: Final = "<text>"
 OPAQUE: Final = "<opaque>"
+# What stands for a value of a key whose values the app tells apart, when it is none of
+# those: the app treats every other value alike.
+OTHER: Final = "<other>"
 OWN_PREFIX: Final = "own:"
 # Where a `pinned_by` that is a file, not a test function, may be: a browserless session
 # or a golden. Such a pin says in `holds` what the file must contain.
@@ -109,6 +113,10 @@ class Surface:
         """Each key recorded by its presence, with what stands for its value."""
 
         return {**dict.fromkeys(self.shown_keys, TEXT), **dict.fromkeys(self.opaque, OPAQUE)}
+
+    @property
+    def recording(self) -> Recording:
+        return Recording(self.masks, self.values)
 
 
 @dataclass(frozen=True, slots=True)
@@ -544,24 +552,45 @@ def _path_tree(paths: Iterable[str]) -> dict[str, Any]:
     return tree
 
 
-def _masked(value: object, mask: str | None, where: str) -> object:
-    """*value* as the golden records it: itself, or *mask* for a string that is there."""
+@dataclass(frozen=True, slots=True)
+class Recording:
+    """How a surface's values are recorded: what stands for a key the app only shows or
+    keeps unread, and the values of a key that the app tells apart."""
 
-    if mask is None or value is None:
+    masks: Mapping[str, str] = field(default_factory=dict[str, str])
+    choices: Mapping[str, tuple[str, ...]] = field(default_factory=dict[str, tuple[str, ...]])
+
+
+def _recorded(value: object, path: str, recording: Recording, where: str) -> object:
+    """*value* as the golden records it.
+
+    Itself, except that a key the app only shows or keeps unread is its mask, once a
+    string is there, and a key whose values the app tells apart is :data:`OTHER` for any
+    value but those: the app treats every other value alike, so which one it is, is the
+    fixture's or ``metab``'s to choose.
+    """
+
+    if value is None:
         return value
-    if not isinstance(value, str) or not value:
-        raise ContractError(
-            f"{where}: is declared as text the app shows or keeps unread, and the answer "
-            f"holds {value!r}"
-        )
-    return mask
+    mask = recording.masks.get(path)
+    if mask is not None:
+        if not isinstance(value, str) or not value:
+            raise ContractError(
+                f"{where}: is declared as text the app shows or keeps unread, and the "
+                f"answer holds {value!r}"
+            )
+        return mask
+    choices = recording.choices.get(path)
+    if choices is not None and isinstance(value, str) and value not in choices:
+        return OTHER
+    return value
 
 
 def _project(
-    value: object, tree: Mapping[str, Any], where: str, path: str, masks: Mapping[str, str]
+    value: object, tree: Mapping[str, Any], where: str, path: str, recording: Recording
 ) -> object:
     if not tree:
-        return _masked(value, masks.get(path), where)
+        return _recorded(value, path, recording, where)
     if value is None:
         return value
     if not isinstance(value, dict):
@@ -579,25 +608,25 @@ def _project(
             if not isinstance(inner, list):
                 raise ContractError(f"{here}: the app reads it as a list, and it is not one")
             kept[key] = [
-                _project(item, below, f"{here}[{index}]", declared, masks)
+                _project(item, below, f"{here}[{index}]", declared, recording)
                 for index, item in enumerate(cast("list[object]", inner))
             ]
         else:
-            kept[key] = _project(inner, below, here, declared, masks)
+            kept[key] = _project(inner, below, here, declared, recording)
     return kept
 
 
-def project(answer: object, paths: Sequence[str], masks: Mapping[str, str] | None = None) -> object:
+def project(answer: object, paths: Sequence[str], recording: Recording | None = None) -> object:
     """*answer* with only the keys *paths* name, in the order they are declared.
 
     A key the declaration names and the answer lacks is a :class:`ContractError`: the app
     would read nothing where it expects a value. A null where an object or a list is
-    declared stays null, as ``refusal`` is for a plan. A key in *masks* is recorded as its
-    mask when the answer holds a string there, and is an error when it holds anything
-    else but null.
+    declared stays null, as ``refusal`` is for a plan. *recording* says which values are
+    written as a placeholder (:class:`Recording`); a masked key that holds anything but a
+    string or null is an error.
     """
 
-    return _project(answer, _path_tree(paths), "", "", masks or {})
+    return _project(answer, _path_tree(paths), "", "", recording or Recording())
 
 
 def read_lines(text: str, patterns: Sequence[re.Pattern[str]]) -> str:
@@ -695,13 +724,17 @@ def framing_of(raw: str, answer: object) -> Framing:
     )
 
 
-def framing_lines(text: str) -> str:
-    """The lines of *text* as a reader that looks for a JSON answer sees them: a line it
-    would take as part of one as written, and :data:`TEXT` for each it passes over."""
+def is_framing_line(line: str) -> bool:
+    """Whether a reader that looks for a JSON answer would take *line* as part of one."""
 
-    return "".join(
-        f"{line if line.strip().startswith(('{', '}')) else TEXT}\n" for line in text.splitlines()
-    )
+    return line.strip().startswith(("{", "}"))
+
+
+def framing_lines(text: str) -> str:
+    """The lines of *text* that a reader looking for a JSON answer would take as part of
+    one, as written. Any other line it passes over, so a warning there is not recorded."""
+
+    return "".join(f"{line}\n" for line in text.splitlines() if is_framing_line(line))
 
 
 # ── The golden ──────────────────────────────────────────────────────

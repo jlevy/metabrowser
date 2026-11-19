@@ -26,7 +26,9 @@
 # `shown` lists keys whose text the app shows a person and never reads, and `opaque` keys
 # whose value it keeps or hands back unread: the golden records that each is there, as
 # `<text>` or `<opaque>`, and not what it says, so a reworded message is no change to the
-# contract. `output = "shown"` is a whole output the app shows as written.
+# contract. A value of a `values` key that is none of the values listed is recorded as
+# `<other>`: the app treats every such value alike. `output = "shown"` is a whole output
+# the app shows as written.
 # `app_runs = false` is a command the app never runs, kept because the golden needs it to
 # show something the app depends on; `because` says what.
 
@@ -151,6 +153,7 @@ literal = "api/source/status"
 source = "Sources/ShellCore/Folders/LinkSelection.swift"
 json = ["ref_name", "selection_state"]
 values = { selection_state = ["pending", "not_found", "fetch_failed"] }
+shown = ["ref_name"]
 values_in = "cli-github-url-waits.txt"
 note = "Whether a repository's server found what its link names. The three states need a refresh against an origin, which cli-github-url-waits.txt records; any other value reads as found."
 
@@ -276,7 +279,7 @@ id = "executable-name"
 source = "Sources/ShellCore/Runtime/RuntimeDiscovery.swift"
 what = "The package installs a console script named `metab`, which is the file the app looks for in each place it searches."
 pinned_by = "tests/test_app_contract_golden.py::test_the_names_the_app_runs_and_installs_are_the_packages"
-values = ["pyproject.toml:project.scripts"]
+values = ["pyproject.toml:project.scripts.metab"]
 
 [[behavior]]
 id = "distribution-name"
@@ -424,7 +427,8 @@ values = ["metabrowser.cli.present:OPENS_URLS_KEY"]
 "Sources/Metabrowser/AppDelegate.swift" = { sites = 1, runs = ["doctor"] }
 
 # In a file that reads one of the contract's answers, every key it names in a subscript
-# or as a coding key's raw value is one the answer's entry declares.
+# or as a coding key's raw value is one the answer's entry declares. A subscript of
+# something of the app's own in such a file ends its line `// not-contract: <why>`.
 [files.json]
 "Sources/ShellCore/Folders/PresentPlan.swift" = ["present-dry-run"]
 "Sources/ShellCore/Folders/RecentTargets.swift" = ["recent-list"]

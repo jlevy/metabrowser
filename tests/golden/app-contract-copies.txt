@@ -1,4 +1,4 @@
-pyproject.toml:project.scripts = ["metab", "metabrowser"]
+pyproject.toml:project.scripts.metab = "defined"
 pyproject.toml:project.name = "metabrowser"
 metabrowser.cache.origin:REMOTE_PROBE_TIMEOUT_S = 30.0
 metabrowser.git.process:GIT_ACQUISITION_TIMEOUT_S = 900.0

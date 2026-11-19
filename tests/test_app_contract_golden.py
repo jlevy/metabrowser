@@ -15,7 +15,9 @@ app reads of the answer and nothing else (``devtools/app_contract.py``):
   value it keeps or hands back unread: ``<text>`` and ``<opaque>``. A reworded message
   changes nothing here;
 - **the lines of stderr that a reader looking for a JSON answer would take,** since one
-  pipe carries both streams to the app.
+  pipe carries both streams to the app, and no other line of it;
+- **``<other>`` for a value that is none of those the app tells apart,** such as a
+  source that is not ``published``: the app treats every other value alike.
 
 So the transcript changes only when something the app reads changes, and never because
 ``metab`` added a field for another reader. ``tests/golden/app-contract-copies.txt``
@@ -31,12 +33,17 @@ What differs from the app's own runs, and why:
   over, with the port search answering the port asked for, as ``tests/test_cli_golden.py``
   runs it. The stdin watch ``--exit-on-eof`` starts is replaced, since it would read this
   process's stdin; ``tests/test_stdin_lifeline.py`` runs the real one.
-- **A route is asked with ``--api``,** which issues the request the app issues and prints
-  the status the app checks. The app decodes a route's answer whole, so its framing is
-  ``--api``'s and not part of the contract. ``--api`` writes the folder it serves as
-  ``<ROOT>``, which is ``<SERVED>`` here, where ``<ROOT>`` is the sandbox.
+- **A route is asked with ``--api``,** which issues the request the app issues. The app
+  checks the response's status and decodes its body whole, so a route's block is the
+  status, written here as ``status: N``, and the declared keys; what ``--api`` prints
+  around them, and how it frames them, is its own. ``--api`` writes the folder it
+  serves as ``<ROOT>``, which is ``<SERVED>`` here, where ``<ROOT>`` is the sandbox.
 - **A repository is a ``file://`` origin** built here. The app's is a GitHub URL, which
   no test may clone; the clone report and the mirror's identity are the same code.
+- **The fixtures are this module's own:** the origin, and the cache the sources route is
+  asked about, which holds what the app tells apart and nothing more. A fixture that
+  other tests share would change this transcript whenever one of them needed another
+  source, and a change here is one a release has to name.
 - **The sandbox names its own configuration and cache directories,** as the app's live
   tests do, so nothing is read from or written to the account that runs the tests.
 - **A link's dry run looks for no app.** Where ``--present`` would deliver a target is
@@ -66,7 +73,14 @@ from metabrowser import recent_targets
 from metabrowser.home import METABROWSER_CACHE_DIR_ENV
 from metabrowser.normalize import ROOT_PLACEHOLDER
 from metabrowser.open_in import OPEN_IN_ENV
-from tests.cache_home_fixture import build_populated_home
+from tests.cache_home_fixture import (
+    ALIASED_AT,
+    FixtureSource,
+    _attach,
+    _stage_and_publish_source,
+    _stage_and_publish_store,
+    build_empty_home,
+)
 from tests.golden_harness import (
     Invocation,
     block,
@@ -80,8 +94,7 @@ from tests.golden_harness import (
     stable_console,
 )
 from tests.required_tools import needs_git
-from tests.test_cache_acquire import _allow_installed_git
-from tests.test_serve_pin import _origin
+from tests.test_cache_acquire import _allow_installed_git, _git
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="the owner-only cache is POSIX-only")
 
@@ -177,8 +190,9 @@ def _defined(reference: str) -> str:
 
     ``module:NAME`` is a module's attribute: a ``type`` alias of literals is its members,
     and a set is its members in order. ``pyproject.toml:dotted.key`` is that key of the
-    project file, a table as its keys: the app depends on which console scripts there
-    are, not on where each points.
+    project file. A console script is recorded as defined, and not by where it points:
+    the app looks for a file of that name, and a script added beside it, or an entry
+    point that moves, is nothing to the app.
     """
 
     source, _, name = reference.partition(":")
@@ -186,9 +200,10 @@ def _defined(reference: str) -> str:
     if source == "pyproject.toml":
         value = tomllib.loads((REPO_ROOT / source).read_text(encoding="utf-8"))
         for key in name.split("."):
+            assert isinstance(value, dict) and key in value, f"pyproject.toml has no {name}"
             value = cast("dict[str, object]", value)[key]
-        if isinstance(value, dict):
-            value = sorted(cast("dict[str, object]", value))
+        if name.startswith("project.scripts."):
+            value = "defined"
     else:
         value = getattr(importlib.import_module(source), name)
         if isinstance(value, TypeAliasType):
@@ -214,6 +229,47 @@ def test_golden_app_contract_copies() -> None:
 # ── The transcript ───────────────────────────────────────────────────
 
 
+# The cache the sources route is asked about: what the app tells apart of a page, and
+# enough of it for a page of two to end with a cursor. In the order the route lists them:
+# a repository that is listed and not published, one that is published, and the app's
+# own, held under two addresses. The app looks for the last by its HTTPS address.
+LISTED_ONLY: Final = FixtureSource("https", "https://github.com/octo/alpha")
+ANOTHER: Final = FixtureSource("https", "https://github.com/octo/beta")
+HELD_BY_SSH: Final = FixtureSource("ssh", "git@github.com:octo/demo.git")
+HELD: Final = FixtureSource("https", "https://github.com/octo/demo")
+
+
+def _cache(home: Path) -> None:
+    """A cache that holds :data:`HELD` and :data:`ANOTHER`, and lists :data:`LISTED_ONLY`."""
+
+    build_empty_home(home)
+    for store, sources in ((HELD, (HELD, HELD_BY_SSH)), (ANOTHER, (ANOTHER,))):
+        _stage_and_publish_store(home, store.store_key(), with_revision=True)
+        for source in sources:
+            _stage_and_publish_source(home, source, opened=False)
+            _attach(home, source, store.store_key(), generation=1, at=ALIASED_AT)
+    # Acquired, and never attached to its store: the route lists it as not published.
+    _stage_and_publish_store(home, LISTED_ONLY.store_key(), with_revision=False)
+    _stage_and_publish_source(home, LISTED_ONLY, opened=False)
+
+
+def _origin(root: Path) -> str:
+    """A bare origin with one commit on ``main``, and its ``file://`` address."""
+
+    work = root / "work"
+    work.mkdir()
+    _git(work, "init", "-q", "-b", "main")
+    (work / "README.md").write_text("# Origin\n", encoding="utf-8")
+    _git(work, "add", ".")
+    _git(work, "commit", "-qm", "first")
+    origin = root / "origin.git"
+    _git(work, "clone", "--bare", "--template=", "--", str(work), str(origin))
+    return f"file://{origin.resolve()}"
+
+
+_STATUS_LINE: Final = re.compile(r"^status: (\d+)$", re.MULTILINE)
+
+
 class _Sandbox:
     """The folders, the origin, and the homes the transcript's commands run against."""
 
@@ -234,8 +290,8 @@ class _Sandbox:
         self.support.mkdir()
         # Where a mirror is cloned, and two caches the sources route is asked about.
         self.home = tmp_path / "home"
-        self.populated = tmp_path / "populated"
-        build_populated_home(self.populated)
+        self.held = tmp_path / "held"
+        _cache(self.held)
         self.absent = tmp_path / "absent"
         self.config = tmp_path / "config"
         stable_console(monkeypatch)
@@ -334,15 +390,19 @@ class _Sandbox:
 
         A command's answer keeps the framing it was printed in, and what was printed
         before and after it, because the app finds it among the lines of both streams. A
-        route's is re-serialized: the app decodes the response whole.
+        route's is its status and its declared keys, re-serialized: the app checks the
+        one and decodes the other whole.
         """
 
         try:
             before, answer, raw, after = app_contract.split_json(result.stdout)
-            read = app_contract.project(answer, surface.json, surface.masks)
+            read = app_contract.project(answer, surface.json, surface.recording)
             self.answer = answer
             if surface.kind == "route":
-                printed = before + json.dumps(read, indent=2, ensure_ascii=False) + "\n"
+                status = _STATUS_LINE.search(before)
+                assert status, f"{scenario}: --api printed no status above the answer"
+                body = json.dumps(read, indent=2, ensure_ascii=False)
+                printed = f"status: {status[1]}\n{body}\n"
                 return printed.replace(ROOT_PLACEHOLDER, SERVED_PLACEHOLDER), ""
             framed = app_contract.dump(read, app_contract.framing_of(raw, answer))
         except app_contract.ContractError as error:
@@ -361,7 +421,7 @@ def test_golden_app_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     sandbox = _Sandbox(tmp_path, monkeypatch)
     run = sandbox.run
     served = str(sandbox.served)
-    mirror = sandbox.origin.url
+    mirror = sandbox.origin
     folder = {"root": served, "port": FOLDER_PORT}
     repository = {"root": mirror, "port": REPOSITORY_PORT}
     blocks = [
@@ -418,8 +478,8 @@ def test_golden_app_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     page = {"folder": support, "limit": "100", "after": ""}
     short = {"folder": support, "limit": "2", "after": ""}
     blocks.append(run("cache-sources/none", page, cache=sandbox.absent))
-    blocks.append(run("cache-sources/held", page, cache=sandbox.populated))
-    blocks.append(run("cache-sources/first-page", short, cache=sandbox.populated))
+    blocks.append(run("cache-sources/held", page, cache=sandbox.held))
+    blocks.append(run("cache-sources/first-page", short, cache=sandbox.held))
     # The cursor is the cache's to choose, so the transcript shows that the page gave one
     # and that handing it back gives the next page, and not what it is.
     cursor = cast("dict[str, object]", sandbox.answer)["next_after"]
@@ -429,7 +489,7 @@ def test_golden_app_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
         run(
             "cache-sources/next-page",
             {**short, "after": f"&after={cursor}"},
-            cache=sandbox.populated,
+            cache=sandbox.held,
         )
     )
     assert cast("dict[str, object]", sandbox.answer)["next_after"] is None

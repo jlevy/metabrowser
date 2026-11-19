@@ -118,7 +118,6 @@ serve-path/file
 # metab <ROOT>/served --api /api/identity
 exit: 0
 --- stdout ---
-api: /api/identity
 status: 200
 {
   "short_name": "served",
@@ -133,7 +132,6 @@ identity/folder
 # HOME=<ROOT> metab <ROOT>/served --api /api/identity
 exit: 0
 --- stdout ---
-api: /api/identity
 status: 200
 {
   "short_name": "served",
@@ -148,7 +146,6 @@ identity/under-home
 # metab <ROOT>/served --api /api/source/status
 exit: 0
 --- stdout ---
-api: /api/source/status
 status: 200
 {
   "ref_name": null,
@@ -177,11 +174,10 @@ serve/repository-cached
 # metab file://<ROOT>/origin.git --api /api/identity
 exit: 0
 --- stdout ---
-api: /api/identity
 status: 200
 {
   "short_name": "origin",
-  "full_name": "<ROOT>/origin.git@topic",
+  "full_name": "<ROOT>/origin.git@main",
   "kind": "mirror",
   "kind_label": "Cached mirror",
   "title": "origin • Metabrowser"
@@ -192,10 +188,9 @@ identity/mirror
 # metab file://<ROOT>/origin.git --api /api/source/status
 exit: 0
 --- stdout ---
-api: /api/source/status
 status: 200
 {
-  "ref_name": "topic",
+  "ref_name": "<text>",
   "selection_state": null
 }
 --- stderr ---
@@ -310,21 +305,28 @@ exit: 0
   "sources": [
     {
       "identity": {
-        "display_url": "https://github.com/pallets/click"
+        "display_url": "https://github.com/octo/alpha"
       },
-      "publication": "unattached",
+      "publication": "<other>",
       "problems": []
     },
     {
       "identity": {
-        "display_url": "git@github.com:pallets/flask.git"
+        "display_url": "https://github.com/octo/beta"
       },
       "publication": "published",
       "problems": []
     },
     {
       "identity": {
-        "display_url": "https://github.com/pallets/flask"
+        "display_url": "git@github.com:octo/demo.git"
+      },
+      "publication": "published",
+      "problems": []
+    },
+    {
+      "identity": {
+        "display_url": "https://github.com/octo/demo"
       },
       "publication": "published",
       "problems": []
@@ -342,14 +344,14 @@ exit: 0
   "sources": [
     {
       "identity": {
-        "display_url": "https://github.com/pallets/click"
+        "display_url": "https://github.com/octo/alpha"
       },
-      "publication": "unattached",
+      "publication": "<other>",
       "problems": []
     },
     {
       "identity": {
-        "display_url": "git@github.com:pallets/flask.git"
+        "display_url": "https://github.com/octo/beta"
       },
       "publication": "published",
       "problems": []
@@ -367,7 +369,14 @@ exit: 0
   "sources": [
     {
       "identity": {
-        "display_url": "https://github.com/pallets/flask"
+        "display_url": "git@github.com:octo/demo.git"
+      },
+      "publication": "published",
+      "problems": []
+    },
+    {
+      "identity": {
+        "display_url": "https://github.com/octo/demo"
       },
       "publication": "published",
       "problems": []
