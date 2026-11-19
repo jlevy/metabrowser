@@ -2786,17 +2786,21 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert (title_icon["width"], title_icon["height"]) == ("1em", "1lh")
     title_glyph = github[".github-pull-title > .github-pull-state-icon svg"]
     assert (title_glyph["width"], title_glyph["height"]) == ("1em", "1em")
-    # Links take the link token rather than the browser's blue.
-    assert github[".github-pull-header a"]["color"] == "var(--link)"
-    # A GitHub action (View on GitHub, a check's action on GitHub, a conversation commit
-    # hash) is quiet: muted at rest, the link token on hover and focus. The header's and a
-    # check's are at their row's size; a commit hash is one step below its row (below).
-    for place in (".github-pull-header", ".github-pull-checks", ".github-pull-commit"):
+    # Links take the link token rather than the browser's blue, all but the corner's View on
+    # GitHub button, which is a chip and takes a chip's ink (mb-4wqh).
+    assert github[".github-pull-header a:not(:where(.view-header-end *))"]["color"] == (
+        "var(--link)"
+    )
+    # A GitHub action (a check's action on GitHub, a conversation commit hash) is quiet:
+    # muted at rest, the link token on hover and focus. A check's is at its row's size; a
+    # commit hash is one step below its row (below). View on GitHub is the header corner's
+    # button, a chip (mb-4wqh), and not one of them.
+    for place in (".github-pull-checks", ".github-pull-commit"):
         action = f"{place} .github-pull-external-action"
         assert github[action] == {"color": "var(--muted)"}, action
         for state in (":hover", ":focus-visible"):
             assert github[action + state]["color"] == "var(--link)", action + state
-    assert page.count('"github-pull-external-action"') == 2, "the header's and a check's"
+    assert page.count('"github-pull-external-action"') == 1, "a check's"
     assert '"github-pull-commit-id git-commit-sha github-pull-external-action"' in page
     # A check's own site is an ordinary link, so it never reads as the description after it.
     assert github[".github-pull-checks a"]["color"] == "var(--link)"

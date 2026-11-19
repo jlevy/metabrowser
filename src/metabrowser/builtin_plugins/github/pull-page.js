@@ -4228,6 +4228,8 @@ export function mountPullPage(container, ctx, mb) {
     for (const listener of currentFileListeners) {
       listener(file);
     }
+    // The shell's listener moved the address to the file; the button follows it.
+    followCounterpart();
   }
   /** The mounted diff's answer, without asking it to render anything. */
   function currentDiffFile() {
@@ -4951,6 +4953,19 @@ export function mountPullPage(container, ctx, mb) {
     }
   }
 
+  // The header's corner, which holds the View on GitHub button every page with a github.com
+  // counterpart has (docs/design-system.md, "View on GitHub"): a view header's corner, right
+  // after the title in the reading order, placed in the page's upper right
+  // (github/styles.css). Each tab, and each changed file the Files tab is at, has its own
+  // counterpart, so the button follows the page's address: the SDK asks once per address.
+  const counterpartCorner = h("span", { class: "view-header-end", "data-counterpart": "" });
+  /** Ask for the button of the address the page is at now. */
+  function followCounterpart() {
+    if (typeof mb.mountCounterpart === "function") {
+      void mb.mountCounterpart(counterpartCorner, window.location.pathname);
+    }
+  }
+
   /** @param {PullModel} model */
   function paintHeader(model) {
     holdColdPage(model);
@@ -4964,9 +4979,9 @@ export function mountPullPage(container, ctx, mb) {
     // is nothing to refresh: it came and went with the tab, moving the tab bar 8 px. It is a
     // text action, as Browse code before it is, so its line is a metadata line's height: as a
     // bordered .btn it was 26 px where the line's text is 18 (mb-2u08). Numbers go in reading
-    // order, so it takes the number after View on GitHub's and Browse code's and renumbers
-    // neither as it comes or goes; on the author's row, before them, it took theirs (review A
-    // on #506). With no row of ages, a pull request that cannot be shown, it ends the status
+    // order, so it takes the number after Browse code's and renumbers it neither as it comes
+    // nor as it goes; on the author's row, before it, it took Browse code's (review A on
+    // #506). With no row of ages, a pull request that cannot be shown, it ends the status
     // line.
     const refreshLabel = model.status === "absent" ? "Fetch" : "Refresh";
     const refresh = headerPart("refresh", refreshLabel, () => {
@@ -5048,18 +5063,10 @@ export function mountPullPage(container, ctx, mb) {
           pull.closedLabel,
           repeatsOpened,
           repeatsClosed,
-          pull.htmlUrl,
           model.browse,
           root,
         ],
         () => {
-          const onGitHub = mb.decorateExternalLink(
-            outside(mb, pull.htmlUrl, "", ["View on GitHub"], "github-pull-external-action"),
-            {
-              icon: "github",
-              position: "before",
-            },
-          );
           const browse = model.browse === null ? null : browseControl(model.browse);
           // The ages give way first, cut short at their end, and the links after them stay
           // whole: cut at the row's end, the row lost Browse code before any age (B4 of
@@ -5073,24 +5080,14 @@ export function mountPullPage(container, ctx, mb) {
                 ? []
                 : [` · ${pull.closedLabel} `, age(closedAt, repeatsClosed ? also : null)]),
             ]),
-            h("span", { class: "github-pull-ages-links" }, [
-              " · ",
-              onGitHub,
-              ...(browse === null ? [] : [" · ", browse]),
-            ]),
+            ...(browse === null
+              ? []
+              : [h("span", { class: "github-pull-ages-links" }, [" · ", browse])]),
           ]);
-          return { row, onGitHub, browse };
+          return { row, browse };
         },
       );
       retellAges(opened.row);
-      const onGitHub = opened.onGitHub;
-      if (onGitHub.tagName === "A") {
-        numbered.set("github", {
-          element: onGitHub,
-          run: () =>
-            window.open(onGitHub.getAttribute("href") ?? "", "_blank", "noopener,noreferrer"),
-        });
-      }
       if (opened.browse !== null) {
         numbered.set("browse", {
           element: opened.browse,
@@ -5101,7 +5098,7 @@ export function mountPullPage(container, ctx, mb) {
         });
       }
       placeChildren(openedRow, [stateBadge, opened.row, refresh]);
-      children.push(title, paintStateRow(pull), branchesRow, openedRow);
+      children.push(title, counterpartCorner, paintStateRow(pull), branchesRow, openedRow);
       // A pull request with no labels has no labels row, and no gap for it: the next row
       // shown follows the row of ages as the next metadata line (mb-2u08). Its labels come
       // with its record or core, so the row is decided with the record's first paint; a
@@ -5119,6 +5116,7 @@ export function mountPullPage(container, ctx, mb) {
         headerPart("loading title", model.number, () =>
           h("h1", { class: "page-heading github-pull-title" }, [`Pull request #${model.number}`]),
         ),
+        counterpartCorner,
       );
       // While the record is on its way the header keeps the rows it will have, empty, at
       // their heights, so the record lands without moving the tab bar. The labels row is
@@ -5266,6 +5264,7 @@ export function mountPullPage(container, ctx, mb) {
     }
     paintSummaryWait(model);
     placeChildren(header, children);
+    followCounterpart();
     if (model.pull === null && model.status === "unavailable") {
       tabColumn.remove();
     } else {

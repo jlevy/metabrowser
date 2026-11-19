@@ -15,6 +15,8 @@
   --github-pull-rhythm: 20px;
   /* The column includes the pane gutter on each side. */
   --page-reading-gutter: var(--content-padding-x);
+  /* The box the header's corner is placed in (below). */
+  position: relative;
   display: flex;
   flex-direction: column;
   padding: 0;
@@ -31,6 +33,22 @@
    from 137.6 to 202.6 px, and the tab bar moved on 26 of 26 switches between PRs. */
 .github-pull-title {
   min-height: 2lh;
+}
+/* The header's corner, its View on GitHub button (pull-page.js; docs/design-system.md, "View
+   on GitHub"), is a view header's, `.view-header-end` in static/styles.css, placed in the
+   page rather than in the header: the page is as wide as the main view, so the button is at
+   the same inset from its top and right edges as a file's and a folder's, and where it will
+   be once the header is a view header as wide as the view (mb-7t5s). The header is the
+   reading column, which in a wide pane ends left of the button; where it does not, the
+   title leaves the button its room, less the space beside the column: the page's width,
+   `100cqi` of the main view, which is the query container, less the header's, the title's
+   `100%` and the header's pads. */
+.github-pull-header:has(> .view-header-end[data-counterpart]) > .github-pull-title {
+  padding-inline-end: max(
+    0px,
+    var(--view-header-corner-room) -
+    (100cqi - 100% - 2 * var(--content-padding-x))
+  );
 }
 /* A page mounted with no record in hand holds its cold header and tab column out of sight
    for the shell's quiet period, and pull-page.js lifts the hold with the first header that
@@ -70,6 +88,17 @@
   column-gap: 0.35em;
 }
 .github-pull-title-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+/* The title while the record is on its way, "Pull request #7", is cut short at the record's
+   two lines too. Where the title leaves the corner's button its room in a narrow pane it
+   wrapped to three: at 320 px, 90 px tall where a record's title is 60, so the tab bar moved
+   30 px as the record landed (Chrome 152, mb-4wqh). */
+.github-pull-title:not(.github-pull-title-with-state) {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -257,9 +286,10 @@
   overflow: hidden;
   white-space: nowrap;
 }
-/* The ages give way first, cut short with an ellipsis, and View on GitHub and Browse code
-   after them stay whole, down to 420 px with ages of a record's length; below that the ages
-   have no width left and the links are clipped at the row's end. Cut at the row's end, with
+/* The ages give way first, cut short with an ellipsis, and Browse code after them stays
+   whole, down to 420 px with ages of a record's length, measured when View on GitHub stood
+   beside it too, before it moved to the header's corner; below that the ages have no width
+   left and the links are clipped at the row's end. Cut at the row's end, with
    Refresh's slot there, the row drew Browse code "…" from 560 px for an open pull request,
    and lost it from 580 px for a merged one, with every age whole (Chrome 152). */
 .github-pull-quiet > .github-pull-ages {
@@ -272,21 +302,23 @@
   flex: none;
   white-space: pre;
 }
-.github-pull-header a,
+/* The header's links, but not the button in its corner, a chip that takes a chip's ink,
+   hover, and focus ring; `:where` keeps the exclusion from adding to the specificity. */
+.github-pull-header a:not(:where(.view-header-end *)),
 .github-pull-card-head a,
 .github-pull-commit-id,
 .github-pull-checks a {
   color: var(--link);
   text-decoration: none;
 }
-.github-pull-header a:hover,
+.github-pull-header a:not(:where(.view-header-end *)):hover,
 .github-pull-card-head a:hover,
 .github-pull-commit-id:hover,
 .github-pull-checks a:hover,
 .github-pull-text-action:hover {
   text-decoration: underline;
 }
-.github-pull-header a:focus-visible,
+.github-pull-header a:not(:where(.view-header-end *)):focus-visible,
 .github-pull-card-head a:focus-visible,
 .github-pull-commit-id:focus-visible,
 .github-pull-checks a:focus-visible,
@@ -903,15 +935,12 @@
   font-size: var(--body-font-size);
 }
 .github-pull-commit .github-pull-external-action,
-.github-pull-header .github-pull-external-action,
 .github-pull-checks .github-pull-external-action {
   color: var(--muted);
 }
 .github-pull-commit .github-pull-external-action:hover,
-.github-pull-header .github-pull-external-action:hover,
 .github-pull-checks .github-pull-external-action:hover,
 .github-pull-commit .github-pull-external-action:focus-visible,
-.github-pull-header .github-pull-external-action:focus-visible,
 .github-pull-checks .github-pull-external-action:focus-visible {
   color: var(--link);
 }

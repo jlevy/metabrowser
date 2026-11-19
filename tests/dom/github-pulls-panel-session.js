@@ -1528,7 +1528,7 @@ async function paintStory(panel, selection = false) {
 // them, and the panel's `mb.shortcuts.attach` is the facade's. Around the panel is a page
 // shaped as the shell's: the navigation pane, with the Files tab's filter bar, whose triggers
 // the shell numbers through `attachNumbered()`, and the Pulls tab, before the main pane, with a
-// pull request header's View on GitHub. Switching tabs hides the other with `display: none`, as
+// pull request header's Browse code. Switching tabs hides the other with `display: none`, as
 // main-tabs.js does. The elements answer what the registry reads of one in a browser:
 // connection, `hidden` and `display: none` up the tree, `inert`, and document order.
 
@@ -1687,9 +1687,9 @@ async function numberStory(panel) {
     const pullsTab = new NumberedElement("div");
     const navigation = new NumberedElement("div");
     navigation.append(filterBar, filesTab, pullsTab);
-    const onGitHub = element("a", "View on GitHub");
+    const browseCode = element("a", "Browse code");
     const main = new NumberedElement("div");
-    main.append(onGitHub);
+    main.append(browseCode);
     body.append(navigation, main);
     const show = (tab) => {
       filterBar.style.display = tab === "files" ? "" : "none";
@@ -1702,9 +1702,9 @@ async function numberStory(panel) {
     for (const trigger of [recency, types]) {
       registry.attachNumbered(trigger, { activate: () => ran.push(name(trigger)) });
     }
-    facade.attachShortcut(onGitHub, {
-      activate: () => ran.push(name(onGitHub)),
-      id: "github.pull.header.github",
+    facade.attachShortcut(browseCode, {
+      activate: () => ran.push(name(browseCode)),
+      id: "github.pull.header.browse",
       numbered: true,
     });
     const heard = [];
@@ -1823,7 +1823,7 @@ async function numberStory(panel) {
     // The Pulls tab shows, the Files tab's filter bar is hidden, and the list is loading.
     story["the Pulls tab, loading"] = numbers();
     assert(
-      numbers().join() === "1 Open,2 Closed,3 All,4 Reload,5 View on GitHub",
+      numbers().join() === "1 Open,2 Closed,3 All,4 Reload,5 Browse code",
       "the chips and Reload take 1 to 4 in reading order, before the page's link",
     );
     assert(
@@ -1883,7 +1883,7 @@ async function numberStory(panel) {
     );
     // Holding Shift shows each live number on its control.
     registry.setRevealed(true);
-    story["the keycaps while Shift is held"] = [...chips, reload, recency, types, onGitHub]
+    story["the keycaps while Shift is held"] = [...chips, reload, recency, types, browseCode]
       .map((node) => {
         const badge = node.childNodes.find((child) => child.classList?.contains("kbd-badge"));
         return `${name(node)} ${badge?.textContent ?? "none"}`;
@@ -1894,7 +1894,7 @@ async function numberStory(panel) {
     show("files");
     story["the Files tab"] = numbers();
     assert(
-      numbers().join() === "1 Modified within,2 File type,3 View on GitHub",
+      numbers().join() === "1 Modified within,2 File type,3 Browse code",
       "the hidden panel's controls hold no number",
     );
     story["on the Files tab"] = [await press("1"), await press("3"), await press("4")];
@@ -1906,7 +1906,7 @@ async function numberStory(panel) {
     story["the Pulls tab, disposed"] = numbers();
     pullsTab.append(filters);
     assert(
-      numbers().join() === "1 View on GitHub",
+      numbers().join() === "1 Browse code",
       "a disposed panel's chips and Reload hold no number",
     );
     filters.remove();

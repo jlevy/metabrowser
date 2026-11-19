@@ -48,9 +48,11 @@ def test_the_header_keeps_its_nodes_and_each_avatar_loads_by_its_placement() -> 
                 # its block, built once at mount and kept across the waits (mb-onr2). The
                 # author is the shell's identity, its avatar in a box of its own (mb-nunw).
                 # The author's row's lead holds the sentence and the freshness note, its dot,
-                # slot, and sizer (mb-ne91); the row of ages its ages and its links, each a span
-                # of its own, so the ages give way before the links (B4 of review B on #506).
-                "built": 53,
+                # slot, and sizer (mb-ne91); the row of ages its ages, a span of their own so
+                # they give way before Browse code's span, which this record has none of (B4 of
+                # review B on #506). The View on GitHub button's corner is an empty span here:
+                # the SDK draws the button (mb-4wqh), and this page has none to draw it with.
+                "built": 52,
                 "detached": 0,
                 "created": {"header": 1, "conversation": 6},
                 "shown": 7,
@@ -130,11 +132,9 @@ def test_the_header_keeps_its_nodes_and_each_avatar_loads_by_its_placement() -> 
                     "identity",
                     "action",
                     "opened row",
-                    "GitHub link",
                 ],
-                # The row of ages is its ages and its links, a span each (B4 of review B on
-                # #506), two of these.
-                "built": 19,
+                # The row of ages is its ages, a span of their own (B4 of review B on #506).
+                "built": 17,
                 "detached": 0,
                 "created": {"header": 1, "conversation": 6},
                 "shown": 7,

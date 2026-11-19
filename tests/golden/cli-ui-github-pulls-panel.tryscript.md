@@ -951,7 +951,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "2 Closed",
       "3 All",
       "4 Reload",
-      "5 View on GitHub"
+      "5 Browse code"
     ],
     "Reload waits": [
       {
@@ -967,7 +967,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "2 Closed",
       "3 All",
       "4 Reload",
-      "5 View on GitHub"
+      "5 Browse code"
     ],
     "Reload": [
       {
@@ -1041,11 +1041,11 @@ $ node tests/dom/github-pulls-panel-second-session.js
         "what": "click All"
       }
     ],
-    "the keycaps while Shift is held": "Open 1, Closed 2, All 3, Reload 4, Modified within none, File type none, View on GitHub 5",
+    "the keycaps while Shift is held": "Open 1, Closed 2, All 3, Reload 4, Modified within none, File type none, Browse code 5",
     "the Files tab": [
       "1 Modified within",
       "2 File type",
-      "3 View on GitHub"
+      "3 Browse code"
     ],
     "on the Files tab": [
       {
@@ -1059,7 +1059,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
         "what": "press 3",
         "handled": true,
         "ran": [
-          "View on GitHub"
+          "Browse code"
         ]
       },
       {
@@ -1068,14 +1068,14 @@ $ node tests/dom/github-pulls-panel-second-session.js
       }
     ],
     "the Pulls tab, disposed": [
-      "1 View on GitHub"
+      "1 Browse code"
     ],
     "after disposal": [
       {
         "what": "press 1",
         "handled": true,
         "ran": [
-          "View on GitHub"
+          "Browse code"
         ]
       },
       {
@@ -1086,7 +1086,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "the Files tab, after disposal": [
       "1 Modified within",
       "2 File type",
-      "3 View on GitHub"
+      "3 Browse code"
     ]
   }
 }

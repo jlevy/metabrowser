@@ -1145,10 +1145,11 @@ async function tabKeys(page) {
   assert.ok(container.querySelector(".tab-bar"), "the record kept the tab column in");
   steps.push(`the record arrives and paintHeader keeps the column: ${keyed().join(", ")}`);
   steps.push(`live: ${live().join(" ")}`);
-  // The header's links and actions are situational: numbered by their place, 1 to 9.
+  // The header's links and actions are situational: numbered by their place, 1 to 9. View
+  // on GitHub is the header's corner's button, which is not numbered (mb-4wqh), so Browse
+  // code is 1.
   steps.push(`numbered: ${numbered()}`);
   steps.push(await numberResult("1"));
-  steps.push(await numberResult("2"));
   steps.push(result("c"));
   steps.push(result("g"));
   arrive("files");
@@ -1156,41 +1157,41 @@ async function tabKeys(page) {
   // Changes offers Refresh, which takes the next number.
   steps.push(`numbered on Changes: ${numbered()}`);
   // A refresh whose answer serves the pull request's head repaints Browse code as a link:
-  // 2 now opens the code in the page, the action of this paint, where it asked the server
+  // 1 now opens the code in the page, the action of this paint, where it asked the server
   // to serve the head before.
   const atHead = structuredClone(recorded.current.body);
   atHead.pin = atHead.record.pull.head.sha;
   atHead.pin_ref = "refs/pull/7/head";
   answer = atHead;
-  steps.push(await numberResult("3"));
-  steps.push(`numbered after a refresh serves the head: ${numbered()}`);
   steps.push(await numberResult("2"));
+  steps.push(`numbered after a refresh serves the head: ${numbered()}`);
+  steps.push(await numberResult("1"));
   // A refresh whose answer has no pin repaints the header without Browse code: Refresh
-  // moves up to 2, and 2 runs it, and 3 reaches nothing.
+  // moves up to 1, and 1 runs it, and 2 reaches nothing.
   const unpinned = structuredClone(recorded.current.body);
   unpinned.pin = null;
   unpinned.pin_ref = null;
   answer = unpinned;
-  steps.push(await numberResult("3"));
-  steps.push(`numbered after a refresh with no pin: ${numbered()}`);
   steps.push(await numberResult("2"));
-  steps.push(await numberResult("3"));
+  steps.push(`numbered after a refresh with no pin: ${numbered()}`);
+  steps.push(await numberResult("1"));
+  steps.push(await numberResult("2"));
   // Served code behind the pull request's head offers to switch to it, on the status line,
-  // after the row of ages: its number follows Refresh's. While the refresh 3 asks for runs,
-  // Refresh waits, shown and disabled, and keeps 3, so the offer keeps 4, and a second 3
-  // asks nothing (B2 of review B on #506): hidden as it waited, it gave 3 to the offer.
+  // after the row of ages: its number follows Refresh's. While the refresh 2 asks for runs,
+  // Refresh waits, shown and disabled, and keeps 2, so the offer keeps 3, and a second 2
+  // asks nothing (B2 of review B on #506): hidden as it waited, it gave 2 to the offer.
   const behind = structuredClone(recorded.current.body);
   behind.pin = "1".repeat(40);
   behind.pin_ref = "refs/pull/7/head";
   answer = behind;
-  steps.push(await numberResult("2"));
+  steps.push(await numberResult("1"));
   steps.push(`numbered with the code behind the head: ${numbered()}`);
   answer = { ...structuredClone(behind), refreshing: true };
-  steps.push(await numberResult("3"));
+  steps.push(await numberResult("2"));
   steps.push(`numbered while that refresh runs: ${numbered()}`);
-  steps.push(await numberResult("3"));
-  // The refresh ends. On Changes Refresh is offered again, and the offer keeps 4; on
-  // Conversation nothing is left to refresh, so Refresh is not shown, and the offer takes 3
+  steps.push(await numberResult("2"));
+  // The refresh ends. On Changes Refresh is offered again, and the offer keeps 3; on
+  // Conversation nothing is left to refresh, so Refresh is not shown, and the offer takes 2
   // (C2 of review C on #506, accepted: a Refresh waits only while its refresh runs).
   answer = behind;
   for (const callback of [...timers.values()]) {
@@ -1204,7 +1205,7 @@ async function tabKeys(page) {
   steps.push(`numbered on Conversation once the refresh ends: ${numbered()}`);
   arrive("files");
   await settle();
-  steps.push(await numberResult("4"));
+  steps.push(await numberResult("3"));
   // H is the Commits tab's, so Checks is E.
   steps.push(result("h", { shiftKey: true }));
   steps.push(result("e", { shiftKey: true }));
@@ -1436,18 +1437,17 @@ async function headerAges(page) {
     const line = container
       .querySelector(".github-pull-opened")
       .children.find((node) => node.classes?.has("github-pull-quiet"));
-    // The ages, cut short before the links after them (B4 of review B on #506).
+    // The ages, cut short before the link after them, Browse code where there is code to
+    // browse (B4 of review B on #506). View on GitHub is not among them: it is the header's
+    // corner's (mb-4wqh).
     const [agesText, links] = line.children;
-    assert.ok(
-      agesText.classes.has("github-pull-ages") && links.classes.has("github-pull-ages-links"),
-    );
+    assert.ok(agesText.classes.has("github-pull-ages"));
+    assert.ok(links === undefined || links.classes.has("github-pull-ages-links"));
+    assert.ok(!line.textContent.includes("View on GitHub"), "no View on GitHub in the ages");
     const ages = agesText.children.filter((node) => node.classes?.has("github-pull-age"));
-    const link = links.children.find((node) => node.tag === "a");
-    assert.ok(link.classes.has("github-pull-external-action"), "View on GitHub is quiet");
-    assert.equal(link.children[0].getAttribute("data-external-kind"), "github");
     handle.dispose();
     return {
-      text: line.textContent.split(" · View on GitHub")[0],
+      text: agesText.textContent,
       tips: ages.map((node) => node.getAttribute("data-tip-text")),
     };
   };
@@ -1496,10 +1496,12 @@ async function headerAges(page) {
 // has its slot at the row of ages' end on every tab. tests/dom/github-pull-header-chrome.mjs
 // measures that a late chip moves nothing.
 async function headerShape(page) {
+  // The header's corner, the View on GitHub button's, is no row: it is placed in the page's
+  // upper right, out of the rows' flow (mb-4wqh).
   const rows = (container) =>
     container
       .querySelector(".github-pull-header")
-      .children.filter((node) => node.hidden !== true)
+      .children.filter((node) => node.hidden !== true && !node.classes.has("view-header-end"))
       .map((node) =>
         node.tag === "h1"
           ? "title"
@@ -1675,8 +1677,8 @@ async function headerShape(page) {
         stacks.children.length > 0 && !stacks.hidden,
         `${name} ${tab}: the stack slot is held while no stack is known`,
       );
-      // Refresh's slot ends the row of ages, after View on GitHub and Browse code, whatever
-      // the record's state (A1 of review A on #506).
+      // Refresh's slot ends the row of ages, after Browse code, whatever the record's state
+      // (A1 of review A on #506).
       const opened = container.querySelector(".github-pull-opened");
       assert.equal(opened.children.at(-1), refresh, `${name} ${tab}: Refresh ends the row of ages`);
       // The note ends the author's row's lead: the record's one time, or what is said in its
@@ -1943,6 +1945,11 @@ async function mountScripted(page, tab, options = {}) {
       navigation: { href: () => "/view/", async open() {} },
       sourceKind: () => "filesystem",
       icons: { toggle: "" },
+      // With *mountCounterpart*, the SDK's View on GitHub button (plugin-sdk-views.js);
+      // without, an SDK that has none.
+      ...(options.mountCounterpart === undefined
+        ? {}
+        : { mountCounterpart: options.mountCounterpart }),
       // With *brief*, the change line's painters, as text, and the tree's breakdown, so the
       // page draws the cached list's brief line (mb-z8ea).
       ...(options.brief === undefined && options.briefPainters !== true
@@ -2653,6 +2660,64 @@ async function coldHold(page) {
   return told;
 }
 
+// The View on GitHub button on a pull request's page (mb-4wqh): the header's corner, a
+// `.view-header-end` marked `data-counterpart`, right after the title, so the reading order is
+// the title and then the button, from the cold header on. The page asks the SDK's
+// `mountCounterpart` for the button of the address it is at after each header paint, the SDK
+// asking the server once per address (plugin-sdk-views.js): the tab's own address, and the
+// changed file's once the shell moves the address to it. It is one corner for the page's
+// life, so a repaint moves nothing. An SDK with no button leaves the corner empty. Where the
+// corner is drawn is paint, measured by tests/dom/github-pull-header-chrome.mjs (`corner`).
+// Told in order for the golden.
+async function counterpartSteps(page) {
+  const told = [];
+  const asked = [];
+  let corner = null;
+  const mountCounterpart = async (_element, address) => {
+    asked.push(address);
+    return null;
+  };
+  const tell = (step, container) => {
+    const header = container.querySelector(".github-pull-header");
+    const corners = header === null ? [] : header.querySelectorAll(":scope > .view-header-end");
+    const asks = `asked ${asked.length === 0 ? "for none" : asked.join(", ")}`;
+    asked.length = 0;
+    if (corners.length === 0) {
+      told.push(`${step}: no corner; ${asks}`);
+      return;
+    }
+    assert.equal(corners.length, 1, "the header has one corner");
+    const [shown] = corners;
+    assert.equal(shown.getAttribute("data-counterpart"), "", "the corner leaves the button room");
+    const before = header.children[header.children.indexOf(shown) - 1];
+    const after = before.classes.has("github-pull-title")
+      ? `the title "${before.children[1]?.textContent ?? before.textContent}"`
+      : before.className;
+    const kept = corner === null ? "" : shown === corner ? ", the same corner" : ", a new corner";
+    corner = shown;
+    told.push(`${step}: the corner after ${after}${kept}; ${asks}`);
+  };
+  const cold = await mountScripted(page, "", { cold: true, mountCounterpart, routes: true });
+  tell("mounted with no record in hand", cold.container);
+  await cold.poll(recorded.current.body);
+  tell("its record lands", cold.container);
+  const retitled = structuredClone(recorded.current.body);
+  retitled.record.pull.title = "Count to three in the app";
+  await cold.poll(retitled);
+  tell("a poll brings a new title", cold.container);
+  window.location.pathname = "/pull/7/checks";
+  cold.handle.setTab("checks");
+  await settle();
+  tell("the route shows Checks", cold.container);
+  cold.handle.dispose();
+  corner = null;
+  const none = await mountScripted(page, "");
+  tell("an SDK with no button", none.container);
+  assert.equal(corner.children.length, 0, "an SDK with no button leaves the corner empty");
+  none.handle.dispose();
+  return told;
+}
+
 async function run() {
   const timers = new Map();
   const frames = new Map();
@@ -2785,9 +2850,13 @@ async function run() {
     assert.ok(number.classes.has("github-pull-number"));
     assert.equal(title.textContent.endsWith("Count to two in the app #7"), true);
     const meta = container.querySelector(".github-pull-meta");
+    // The header's corner, for the View on GitHub button, follows the title (mb-4wqh), and
+    // the author's row the corner.
+    const corner = title.parentNode.children[title.parentNode.children.indexOf(title) + 1];
+    assert.ok(corner.classes.has("view-header-end"));
     assert.equal(
       title.parentNode.children.indexOf(meta),
-      title.parentNode.children.indexOf(title) + 1,
+      title.parentNode.children.indexOf(title) + 2,
     );
     // The author's row is its lead, the details then the freshness note (mb-ne91), then the
     // stack's slot at its end (mb-cf0l), which holds a strut while no stack is known: a late
@@ -2810,8 +2879,7 @@ async function run() {
     const [stateBadgeSlot, ages, refreshSlot] = opened.children;
     assert.ok(stateBadgeSlot.classes.has("github-pull-state-slot"));
     assert.ok(ages.classes.has("github-pull-quiet") && ages.textContent.startsWith("Opened "));
-    // Refresh's slot ends the row of ages, after View on GitHub and Browse code (A1 of review A
-    // on #506).
+    // Refresh's slot ends the row of ages, after Browse code (A1 of review A on #506).
     assert.ok(refreshSlot.classes.has("github-pull-refresh"));
     assert.equal(opened.children.length, 3);
     const stateBadge = stateBadgeSlot.children[0];
@@ -2835,12 +2903,13 @@ async function run() {
     assert.equal(source.dataset.tipText, "forker:count-to-two");
     assert.equal(target.dataset.tipText, "octo:topic");
     assert.equal(arrow.getAttribute("aria-label"), "merges into");
-    const githubAction = [...container.descendants()].find(
-      (node) => node.tag === "a" && node.textContent === "View on GitHub",
+    // View on GitHub is the corner's button, which this SDK does not draw, and no link in
+    // the header's rows (mb-4wqh).
+    assert.ok(
+      ![...container.descendants()].some(
+        (node) => node.tag === "a" && node.textContent === "View on GitHub",
+      ),
     );
-    assert(githubAction);
-    assert.equal(githubAction.firstChild.getAttribute("data-external-kind"), "github");
-    assert.equal(githubAction.lastChild, "View on GitHub");
 
     assert.equal(stateBadge.getAttribute("aria-hidden"), null);
     assert.deepEqual(
@@ -3325,6 +3394,7 @@ async function run() {
   const headerSummarySteps = await headerSummary(page);
   const summaryBriefSteps = await summaryBrief(page);
   const coldHoldSteps = await coldHold(page);
+  const counterpartStepsTold = await counterpartSteps(page);
   const tabKeySteps = await tabKeys(page);
   const textRefusalSteps = await textRefusal();
   const switchUnavailableSteps = await switchUnavailable(page);
@@ -3355,6 +3425,7 @@ async function run() {
     headerSummary: headerSummarySteps,
     summaryBrief: summaryBriefSteps,
     coldHold: coldHoldSteps,
+    counterpart: counterpartStepsTold,
     tabKeys: tabKeySteps,
     textRefusal: textRefusalSteps,
     switchUnavailable: switchUnavailableSteps,
