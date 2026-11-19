@@ -5,14 +5,18 @@ title: Draw Mermaid in pull-request text beside a trusted checkout, laid out in 
 kind: task
 status: in_progress
 priority: 2
-version: 2
+version: 3
 delegate: claude-code@macbookpro
 labels: []
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-19T19:43:01.079Z
-updated_at: 2026-11-19T19:43:02.775Z
+updated_at: 2026-11-19T20:11:05.469Z
 started_at: 2026-11-19T19:43:02.773Z
 ---
 PR-text diagrams draw only on pinned-revision pages, whose untrusted CSP bounds what Mermaid loads while it lays a diagram out. Without a page CSP, KPress image placement still loads URLs from themeCSS (init directive and front matter), a fontFamily directive, state classDef, block-beta style, and the image shape (measured in headless Chrome). Lay PR-text diagrams out in a same-origin srcdoc frame whose meta CSP is default-src 'none', img-src data:, script-src the frame entry and Mermaid's directory, so nothing loads under either profile, and draw them on every page.
+
+## Notes
+
+PR https://github.com/jlevy/metabrowser/pull/616 (branch claude/pr-text-diagrams-frame). Measurement and design in the PR body.
