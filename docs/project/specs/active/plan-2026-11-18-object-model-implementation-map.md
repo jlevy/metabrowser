@@ -12,24 +12,25 @@ the parent plan below, and its companions
 requests, and slots the [host mode plan](plan-2026-11-18-host-mode.md)’s steps among
 them. The owner decided the order, Ordering 2, on 2026-11-18: safe groundwork first, a
 checkout’s uncommitted changes as the first object type, then the larger surfaces.
-The decisions it rests on were taken the same day, and
-[Decisions This Map Follows](#decisions-this-map-follows) lists them.
+The decisions it rests on were taken the same day, the host mode plan’s the next day,
+and [Decisions This Map Follows](#decisions-this-map-follows) lists them.
 What can still change it is marked **(if …)** at each place.
 
 ## Decisions This Map Follows
 
 Numbered decisions are the parent plan’s, and VM decisions the view model plan’s.
 
-| Standing, as of 2026-11-18 | Decisions |
+| Standing, as of 2026-11-19 | Decisions |
 | --- | --- |
 | Taken by the owner on 2026-11-18 | 1 and VM-8: SoftSchema contracts for objects and UI state. 2 A, 3 A, 4 A, 6 A, 7 A, 9 A, 10 A, 13 to 18 A, 21 A, and 23 A. 5: `pull-request` everywhere, with `--present`’s kind and `SelectionKind` renamed with the macOS app in one commit, `repository` and `tree` to `folder`, `blob` to `file`, and a separate field that keeps a repository’s root apart from a named tree. 8: UTC strings at second precision. 11 A: a closed set of shapes, with the `card` frame built at its first real use, which is C5. 12: the host frame, with the header through an SDK frame that mb-7t5s builds. 19 C: a main tab named Recent, designed in the Recent tab plan, with option B’s address kept as `/recent`. 20: no SDK bump for an addition, and #380’s versioning rule if #380 is accepted. 22 D: the contract half after several types exist. VM-1 A, VM-2 B, VM-3 C, VM-5 A (VM-4 is folded into it), VM-6 B, VM-7 A, VM-9 A, and VM-10 A, with the view slice first or beside the object slice. The Recent tab plan’s RT-1 to RT-7, the plugin authoring plan’s PS-1 to PS-7, and the agent interface plan’s AI-1 to AI-6. [Ordering 2](#orderings) |
-| Open | The host mode plan’s [HM-1](plan-2026-11-18-host-mode.md#decision-hm-1-when-discovery-lands): whether discovery, the listing of live servers, lands ahead of host mode’s credential |
+| Taken by the owner on 2026-11-19 | The [host mode plan](plan-2026-11-18-host-mode.md#key-decisions)’s HM-1 to HM-6, each as it recommended. [HM-1](plan-2026-11-18-host-mode.md#decision-hm-1-when-discovery-lands) A: discovery, the listing of live servers, lands ahead of host mode’s credential |
+| Open | None |
 
 - **(if #380 is accepted)** C3 is a patch bump with an `sdk-changes.toml` entry.
 - **(if mb-r5gn finds a path the `/view/` codec cannot spell)** T1.5 keeps the git
   plan’s `/status/<scope>/<entry-id>` address, as the Recent tab plan’s RT-3 allows.
-- **(if HM-1 is taken as A)** [Stack H](#stack-h-host-mode) lands discovery beside Tiers
-  0 and 1 and Stack V, and `--live` and the later V slice no longer wait for mb-qzny.
+- **By HM-1 A,** [Stack H](#stack-h-host-mode) lands discovery beside Tiers 0 and 1 and
+  Stack V, and `--live` and the later V slice do not wait for mb-qzny.
 
 ## The Working Tree Today
 
@@ -125,7 +126,7 @@ delivery; a surface’s part of a view state is a facet.
 | V2 `feat(ui): ViewState and Intent as the metabrowser.ui contracts` | `ui/` with T0.2’s reference; the two contracts, with the outcome left as the intents route’s internal envelope; `data/ui-format/`; the family registry; T0.7’s second pair; `arch-view-model.md` | Drift, corpus, round trip, source and wheel | M |
 | V3 `feat(ui): a viewer registry, /api/ui/viewers, /api/ui/viewer, and POST /api/ui/intents` | In-memory registry with V1’s caps; `GET` and `POST /api/ui/viewers`; the record route `GET /api/ui/viewer`; origin proof; the `control` setting, held in `ui/` outside `Capabilities`, with `--ui-control` and a default set by the caller and not by `--untrusted`; the event stream’s `?viewer=<id>`, served for every subject, with `ui` events alone where the subject has no `watcher` capability (`events_route.py:773`) | `--api` goldens for every refusal a server gives without a page; serving loads no schema library | M |
 | V4 `feat(shell): each tab publishes what it shows and applies present intents` | Deferred `static/ui-state.js`: the summary’s `describe` functions, publisher, `openAddress`, applier, notice, `sessionStorage` viewer | `tests/dom/ui-view-state-session.js`; the notice in headless Chrome | L |
-| V5 `feat(cli): --api --server, and artifacts from --format yaml` | `cli/api_cli.py` as a client; a `softschema:` header. `--present` does not change: every change to it waits on the live-server registry, mb-5xi4 | `ui.viewer-order` against a harness server | M |
+| V5 `feat(cli): --api --server, and artifacts from --format yaml` | `cli/api_cli.py` as a client; a `softschema:` header. `--present` does not change: every change to it waits on the live-server registry, mb-baee, split from mb-5xi4 | `ui.viewer-order` against a harness server | M |
 | V6 `test(ui): --show and the page agree, and the parity check counts facets` | Agreement test; a `devtools/check_parity.py` coverage rule over facets | Both fail on a planted mismatch | S |
 | V7 `feat(cli): every agent-facing route and contract is discoverable from metab` | The agent interface plan’s [Self-Description](plan-2026-11-18-agent-interface.md#self-description): the agent paragraph in `--help`; a contract identifier in each `/api/routes` entry that has one; `GET /api/contracts` and `GET /api/contract`, which build no validator | Goldens and parity rows for both routes; a test that every `/api/ui` route, object route, and contract is listed; serving loads no schema library | M |
 
@@ -178,8 +179,8 @@ X5, the Files tree’s rows.
 
 The [host mode plan](plan-2026-11-18-host-mode.md)’s steps H1 to H9, which its
 [Implementation Plan](plan-2026-11-18-host-mode.md#implementation-plan) defines with
-their beads. **(if HM-1 is taken as A)** They slot into Ordering 2 as below; under
-another option that plan’s order changes, and this section with it.
+their beads. By HM-1 A, which the owner took on 2026-11-19, they slot into Ordering 2 as
+below.
 
 | Step | Work, in brief | Slot |
 | --- | --- | --- |
@@ -225,8 +226,8 @@ beside P4.
 | #550, #552 | Merged on 2026-11-18. The header’s builders are in an on-demand `view-header` bundle | T0.8, then T1.5 and P6 |
 | mb-7t5s | Open, not started; #506, which it waited on, merged | Is T0.8 |
 | #380 | Open draft, awaiting the owner’s decisions | C3 |
-| mb-qzny, mb-5xi4 | Open; mb-qzny blocks mb-5xi4 and mb-1zyp | `--live` and every change to `--present`, as Stack H’s H4 and H5; forged publishes. The host mode plan’s [Implementation Plan](plan-2026-11-18-host-mode.md#implementation-plan) splits both under HM-1 A |
-| mb-1zyp, mb-54r1, mb-idri | Open, each blocked (mb-qzny; mb-1zyp; mb-5xi4, mb-1zyp, mb-56nq) | Should carry V2’s `Intent` and the intents route’s outcome, not a separate `navigate`. The host mode plan’s [Implementation Plan](plan-2026-11-18-host-mode.md#implementation-plan) places them in Stack H |
+| mb-qzny, mb-5xi4 | Open. Split on 2026-11-19 under HM-1 A: mb-qzny keeps the token, after mb-1zyp; mb-5xi4 keeps the lock, after discovery (mb-baee); the rest became mb-hhzd, mb-wpel, mb-baee, mb-77x9, mb-k3yz, and mb-e74k | `--live` (mb-77x9) and every change to `--present`, as Stack H’s H4 and H5; forged publishes. The host mode plan’s [Implementation Plan](plan-2026-11-18-host-mode.md#implementation-plan) maps each bead to its step |
+| mb-1zyp, mb-54r1, mb-idri | Open, each blocked, as of 2026-11-19 (mb-baee; mb-hhzd; mb-baee, mb-77x9, mb-5xi4, mb-k3yz) | Should carry V2’s `Intent` and the intents route’s outcome, not a separate `navigate`. The host mode plan’s [Implementation Plan](plan-2026-11-18-host-mode.md#implementation-plan) places them in Stack H |
 | #498, #501–#503, #507, #508, #518–#520 | Open drafts (the fdu stack) | C1, C4, Recent’s changed-files source |
 | #577 | Merged; it changed the Git routes and the Commits tab | T0.5 starts from it |
 

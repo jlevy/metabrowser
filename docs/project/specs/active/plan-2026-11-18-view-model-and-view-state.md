@@ -442,7 +442,7 @@ agent ◄── outcome: a status and the view state ── server ◄── a p
   Today the command sends no intent.
   It starts no server and hands its target to the app through `open -b`
   (`cli/present.py:4-6`, `:38-40`), so it has no server address to send an intent to
-  until the live-server registry (`mb-5xi4`) exists.
+  until the live-server registry (`mb-baee`, split from `mb-5xi4` on 2026-11-19) exists.
   An intent also admits no root, and opening a root is most of what `--present`
   delivers. So every change to `--present` waits for the slice that has the registry.
   There, where it resolves a `page` (`cli/present.py`, `cli/selection_href.py:16`) and
@@ -864,8 +864,9 @@ validation of objects, and the two parity rules.
 
 **Decided 2026-11-18: A.** Under host mode the same payloads move to its owner-only
 socket and credential with the control verbs; what that socket speaks is the host mode
-plan’s open
-[HM-4](plan-2026-11-18-host-mode.md#decision-hm-4-what-the-control-socket-speaks).
+plan’s
+[HM-4](plan-2026-11-18-host-mode.md#decision-hm-4-what-the-control-socket-speaks),
+decided 2026-11-19 as A: HTTP, on an allowlist of registered routes.
 
 ### Decision VM-10: The View Model’s First Slice
 
@@ -883,7 +884,7 @@ with the object slice of
   Phase 1 list host lands, and nothing for a navigation panel until its Phase 3 moves it
   onto the host.
 - **D. Confirmation for `--present` alone.** It waits for the live-server registry
-  (`mb-5xi4`), builds the relay, and leaves it with one caller.
+  (`mb-baee`, split from `mb-5xi4`), builds the relay, and leaves it with one caller.
 
 **Decided 2026-11-18: A.** Every later slice is a facet or a settable field added to
 these contracts, which is not a break.
@@ -1010,9 +1011,10 @@ Agent control ships under the `control` setting of
 - **Finding a running server.** Reading from ROOT, and every change to `--present`, need
   the listing of live servers, which is planned and not built.
   Until it lands, the view slice serves a caller that knows the server’s address,
-  through `--api --server`. The host mode plan’s open
-  [Decision HM-1](plan-2026-11-18-host-mode.md#decision-hm-1-when-discovery-lands) asks
-  whether discovery lands ahead of host mode’s credential.
+  through `--api --server`. The host mode plan’s
+  [Decision HM-1](plan-2026-11-18-host-mode.md#decision-hm-1-when-discovery-lands),
+  taken 2026-11-19 as A, lands discovery ahead of host mode’s credential (`mb-baee`, and
+  `--live` as `mb-77x9`).
 
 - **What publishing costs.** One request per settled change, and one held stream on a
   pinned page that has none today.

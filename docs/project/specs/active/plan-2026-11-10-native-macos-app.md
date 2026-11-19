@@ -407,8 +407,9 @@ Outside the milestone, each for a stated reason:
 ### Phase 3: Host Mode, the Registry, and the Agent Front Door
 
 The [host mode plan](plan-2026-11-18-host-mode.md) designs this phase for any host, a
-browser tab and VS Code as well as the app, and orders its steps; its decisions are
-open. This section keeps the beads and the rules that plan cites as settled.
+browser tab and VS Code as well as the app, and orders its steps; the owner took its
+decisions on 2026-11-19, and its HM-1 A split the host mode and registry beads below.
+This section keeps the beads and the rules that plan cites as settled.
 
 A release-scoped slice of the front door, delivered through LaunchServices before host
 mode, with GitHub URLs in the app, is
@@ -421,8 +422,9 @@ one with a live server the app can attach to.
 For any other root, the app starts a server as its own child only after the user
 confirms that root in the app.
 
-- [ ] Host mode: a ready line after bind, sticky ports, a stdin token, and idle exit
-  (`mb-qzny`), generalizing the VS Code host design (`mb-x4y5`); its stdin-EOF exit
+- [ ] Host mode, generalizing the VS Code host design (`mb-x4y5`): a ready line after
+  bind (`mb-hhzd`, `mb-wpel`), sticky ports (`mb-e74k`), a stdin token (`mb-qzny`), and
+  idle exit (`mb-k3yz`), one bead, `mb-qzny`, until 2026-11-19; its stdin-EOF exit
   already ships as `metab --exit-on-eof` (jlevy/metabrowser#366). No client’s
   credential, the app’s web views included, is a cookie, since a page can send a cookie
   to every port on its host whatever its data store or host name.
@@ -430,7 +432,8 @@ confirms that root in the app.
   only to requests for the page’s own origin, with redirects refused; host mode also
   gates the first page load and the event stream (the topology brief’s Tokens across
   ports) and passes the cross-port check under Testing Strategy.
-- [ ] The live-server registry with a per-root find-or-start lock (`mb-5xi4`).
+- [ ] The live-server registry (`mb-baee`, once part of `mb-5xi4`) with a per-root
+  find-or-start lock (`mb-5xi4`).
 - [ ] Control verbs on an owner-only socket: identity, present, clients, close
   (`mb-1zyp`).
 - [ ] Pages follow `navigate` events and reload once on a new boot id (`mb-54r1`).
@@ -572,10 +575,10 @@ left of that bead is the route below and which roots skip Phase 3’s confirmati
 
 #### The Switcher
 
-The host mode plan’s open
-[HM-3](plan-2026-11-18-host-mode.md#decision-hm-3-a-mode-or-a-route) asks the same
-question of the listing of live servers that the switcher reads, a `metab` mode or a
-route, and recommends a route only once host mode’s credential exists.
+The host mode plan’s
+[HM-3](plan-2026-11-18-host-mode.md#decision-hm-3-a-mode-or-a-route), decided
+2026-11-19, answers the same question of the listing of live servers that the switcher
+reads: a `metab` mode now, and a route only once host mode’s credential exists.
 
 - [ ] A route that serves recent targets to a page, for a switcher in the browser, once
   the security model says what a page may learn of the user’s other roots: a route would
@@ -630,7 +633,8 @@ The two standard setup flows come first; see the
 - [ ] Later, once both flows pass: `metab` installs, reports, and removes the app from
   the notarized release ZIP, verifying it itself because a command-line download carries
   no quarantine (`mb-92d9`), with the ZIP and a release manifest beside the DMG
-  (`mb-5jr9`) and a bundle-id lookup filtered to Applications folders (`mb-56nq`).
+  (`mb-5jr9`) and a bundle-id lookup filtered to Applications folders (`mb-56nq`, which
+  shipped as `find_app` in `cli/present.py` for `--present`).
 
 ### Phase 6: Measured Follow-Ups
 

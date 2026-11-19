@@ -4,10 +4,11 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Draft. Of what it describes, only the stdin lifeline, `--exit-on-eof`, is
-built. Decisions HM-1 to HM-6 under [Key Decisions](#key-decisions) are open for the
-owner’s review, and [HM-1](#decision-hm-1-when-discovery-lands), on whether agents can
-find a server before the credential is built, most needs an answer.
+**Status:** Decided, and nothing but the stdin lifeline, `--exit-on-eof`, is built.
+The owner took Decisions HM-1 to HM-6 under [Key Decisions](#key-decisions) on
+2026-11-19, each as this plan recommended, and the beads were split the same day to
+follow [HM-1](#decision-hm-1-when-discovery-lands) A, so agents can find a server before
+the credential is built.
 What the [native macOS app plan](plan-2026-11-10-native-macos-app.md) decided stays
 decided, and [Settled Decisions](#settled-decisions) cites it.
 A companion to
@@ -94,7 +95,8 @@ Host mode is planned in the macOS plan’s
 from the
 [topology brief](../../research/research-2026-11-10-native-app-server-topology.md#phasing-from-the-spike),
 as beads `mb-qzny`, `mb-5xi4`, `mb-1zyp`, `mb-54r1`, `mb-idri`, `mb-rtgh`, and
-`mb-ko5d`.
+`mb-ko5d`, which [HM-1](#decision-hm-1-when-discovery-lands) A split into the beads of
+the [Implementation Plan](#implementation-plan).
 [Opening Anything from the CLI and the App](plan-2026-11-17-open-anything-from-cli-and-app.md)
 took a first-release slice of its front door, `--present` through LaunchServices, and
 its Phase 2, the round trip, rests on the same beads.
@@ -158,13 +160,13 @@ it relies on the part named:
 | Part | What the server does | State |
 | --- | --- | --- |
 | Lifeline | Stops when its stdin reaches EOF | Shipped: `--exit-on-eof` |
-| Ready line | Prints one JSON line, its **server record**, once its socket accepts connections, so a host polls nothing and a folder’s name can forge nothing | Planned (`mb-qzny`) |
-| Registry entry | Writes the same record, owner-only, and removes it at an orderly exit | Planned (`mb-5xi4`) |
-| Sticky port | Binds the port its root had last, else one the OS chooses, which the ready line reports | Planned (`mb-qzny`) |
+| Ready line | Prints one JSON line, its **server record**, once its socket accepts connections, so a host polls nothing and a folder’s name can forge nothing | Planned (`mb-hhzd`, the moment; `mb-wpel`, the line) |
+| Registry entry | Writes the same record, owner-only, and removes it at an orderly exit | Planned (`mb-baee`) |
+| Sticky port | Binds the port its root had last, else one the OS chooses, which the ready line reports | Planned (`mb-e74k`) |
 | Token | Reads a per-launch token from the first line of stdin and requires it in `Authorization` on every content route. The token appears nowhere else: no argument, variable, log, or record | Planned (`mb-qzny`) |
 | Gates | Serves a first page that holds no root data, and an event stream that a streamed `fetch` reads with the header | Planned, with the token |
 | Control socket | Serves the control routes on an owner-only Unix socket that the record names | Planned (`mb-1zyp`) |
-| Idle exit | Stops after a window, defined in code, with no viewer’s stream held and no request | Planned (`mb-qzny`) |
+| Idle exit | Stops after a window, defined in code, with no viewer’s stream held and no request | Planned (`mb-k3yz`) |
 
 The ready line is a contract: the server record that [Discovery](#discovery) defines,
 whose schema `metab` serves.
@@ -177,7 +179,7 @@ A server from the command line and one a host owns differ in who answers for eac
 | Lifetime | Ctrl-C or `kill`; idle exit when detached | The lifeline, and the host’s warm policy |
 | Readiness | The `Serving` line, for a person | The ready line |
 | Port | A walk from `--port` | The root’s sticky port |
-| Credential | None, unless [HM-5](#decision-hm-5-which-servers-are-gated) adds one | The host’s per-launch token |
+| Credential | None until [HM-5](#decision-hm-5-which-servers-are-gated) C gates every server, after the hosts | The host’s per-launch token |
 | Privacy prompts name | The terminal, or the agent’s host | The host |
 | The record’s owner | The command line | The host, by name |
 
@@ -309,9 +311,10 @@ Each surface arrives with its row in the
 
 ## Key Decisions
 
-All are open.
+Decided. The owner took all six on 2026-11-19, each as this plan recommended; each
+section below keeps the options weighed and the reasoning.
 
-| Decision | Recommended |
+| Decision | Decided 2026-11-19 |
 | --- | --- |
 | **HM-1** When discovery lands | A: ahead of the token |
 | **HM-2** One server record | A: one contract for the ready line, the entry, and the listing |
@@ -327,7 +330,8 @@ often in a server the agent did not start.
 This is the agent interface plan’s
 [AI-7](plan-2026-11-18-agent-interface.md#decision-ai-7-finding-a-server-the-agent-did-not-start),
 which this plan now owns.
-The beads record `mb-qzny`, host mode, as blocking `mb-5xi4`, the registry.
+Until this decision, the beads recorded `mb-qzny`, host mode, as blocking `mb-5xi4`, the
+registry.
 
 - **A. Split the beads, and land discovery first.** The record, the entry, the listing,
   and `--live` land beside the view slice.
@@ -343,12 +347,15 @@ The beads record `mb-qzny`, host mode, as blocking `mb-5xi4`, the registry.
   the registry replaces.
 - **D. The agent scans ports.** It is slow, and a sandbox blocks it.
 
-**Recommendation: A.** From first principles the dependency is not real.
+**Decided 2026-11-19: A,** over keeping the macOS plan’s order (B), a publisher per host
+(C), and port scans (D). From first principles the dependency is not real.
 Discovery needs a moment after bind, a boot ID, an owner-only place, and a client mode.
-None is the token, the sticky port, or the idle exit, which `mb-qzny` bundles with the
+None is the token, the sticky port, or the idle exit, which `mb-qzny` bundled with the
 ready line. The real order runs the other way: gating a server before the socket and the
 listing exist would remove agent access that the view slice gave.
 So the token waits for discovery, and discovery waits for nothing.
+The beads were split the same day, as the [Implementation Plan](#implementation-plan)
+lists.
 
 ### Decision HM-2: One Server Record
 
@@ -361,9 +368,10 @@ So the token waits for discovery, and discovery waits for nothing.
 - **C. An internal envelope with a format string,** as recent targets has.
   It is simpler, and no route serves its schema.
 
-**Recommendation: A.** The consumers that cannot update with the producer are named: a
-running server of another release, and the macOS app, which is replaced by hand and
-reads `metab` through [its contract](../../architecture/arch-app-contract.md).
+**Decided 2026-11-19: A,** over three shapes (B) and an internal envelope (C). The
+consumers that cannot update with the producer are named: a running server of another
+release, and the macOS app, which is replaced by hand and reads `metab` through
+[its contract](../../architecture/arch-app-contract.md).
 
 ### Decision HM-3: A Mode or a Route
 
@@ -377,7 +385,8 @@ The parity rule prefers a route.
 - **C. A route behind the credential,** added when a switcher in the page needs it
   (`mb-9lf4`).
 
-**Recommendation: A now, and C when the token lands.**
+**Decided 2026-11-19: A now, and C when the token lands.** B, a route on every server,
+would leak every open folder’s name over a port that asks for no credential.
 
 ### Decision HM-4: What the Control Socket Speaks
 
@@ -387,7 +396,7 @@ The parity rule prefers a route.
 - **B. A protocol of its own,** with named verbs: a second vocabulary to keep in step,
   which AI-1 ruled out.
 
-**Recommendation: A.**
+**Decided 2026-11-19: A,** over a protocol of its own (B).
 
 ### Decision HM-5: Which Servers Are Gated
 
@@ -402,7 +411,8 @@ permissions.
 - **C. Hosts first, then every server,** once the first-load gate is measured in each
   engine the Credentials check names.
 
-**Recommendation: C.** The socket serves an agent under any of them.
+**Decided 2026-11-19: C,** over gating hosts alone (A) or every server at once (B). The
+socket serves an agent under any of them.
 
 ### Decision HM-6: How a Host Asks
 
@@ -413,7 +423,8 @@ permissions.
   It is simpler to type, and no part can ship before the token.
 - **C. Both,** with the one flag as an alias: two spellings to test.
 
-**Recommendation: A.**
+**Decided 2026-11-19: A,** over one flag (B), which would hold every part until the
+token, and both (C).
 
 ## Implementation Plan
 
@@ -421,16 +432,17 @@ The steps form a stack of their own, H, beside the stacks of the implementation 
 [Ordering 2](plan-2026-11-18-object-model-implementation-map.md#orderings), whose
 [Stack H](plan-2026-11-18-object-model-implementation-map.md#stack-h-host-mode) slots
 them. Under HM-1 A, `mb-qzny` keeps the token and its gates, `mb-5xi4` keeps the lock,
-and the rest of each becomes new beads.
+and the rest of each became the new beads below on 2026-11-19, children of the native
+macOS app epic like the beads they split from.
 
 | Step | Work | Bead | Slot in Ordering 2 |
 | --- | --- | --- | --- |
-| H1 | The ready moment after bind; the boot ID; `pid`, `boot_id`, and `version` on `/api/identity` | New, from `mb-qzny` and `mb-1zyp` | Beside Tier 0: additive, and no page changes |
-| H2 | The server record’s contract and the ready-line flag, which the app adopts through its `ServerLaunch` seam in place of the `serving` line [its contract](../../architecture/arch-app-contract.md) declares | New, from `mb-qzny` | After T0.7 and V2, whose family registry it follows |
-| H3 | The registry entry, the liveness tests, and the listing mode | New, from `mb-5xi4` | Beside Tier 1, before V5 |
-| H4 | `--live` on `--api` | New | Stack V, after V5 |
-| H5 | The find-or-start lock; `--present` finds the root’s server, sends the `present` intent, and reports `confirmed` from the view state; idle exit for a detached server; the skill and the guide follow | `mb-5xi4`, `mb-idri`, `mb-ko5d`, and new from `mb-qzny` | The later V slice, after V7 |
-| H6 | The sticky port; pages reload once on a new boot ID and refuse a root mismatch | New from `mb-qzny`; `mb-54r1`, whose follow half is V4’s applier | After Stack V |
+| H1 | The ready moment after bind; the boot ID; `pid`, `boot_id`, and `version` on `/api/identity` | `mb-hhzd`, from `mb-qzny` and `mb-1zyp` | Beside Tier 0: additive, and no page changes |
+| H2 | The server record’s contract and the ready-line flag, which the app adopts through its `ServerLaunch` seam in place of the `serving` line [its contract](../../architecture/arch-app-contract.md) declares | `mb-wpel`, from `mb-qzny` | After T0.7 and V2, whose family registry it follows |
+| H3 | The registry entry, the liveness tests, and the listing mode | `mb-baee`, from `mb-5xi4` | Beside Tier 1, before V5 |
+| H4 | `--live` on `--api` | `mb-77x9` | Stack V, after V5 |
+| H5 | The find-or-start lock; `--present` finds the root’s server, sends the `present` intent, and reports `confirmed` from the view state; idle exit for a detached server; the skill and the guide follow | `mb-5xi4`, `mb-idri`, `mb-ko5d`, and `mb-k3yz`, from `mb-qzny` | The later V slice, after V7 |
+| H6 | The sticky port; pages reload once on a new boot ID and refuse a root mismatch | `mb-e74k`, from `mb-qzny`; `mb-54r1`, whose follow half is V4’s applier | After Stack V |
 | H7 | The control socket, with `close` | `mb-1zyp` | After H3 |
 | H8 | The token: a measurement first, then the stdin token, the shell’s helper, the first-load and event-stream gates, and the Credentials check | `mb-qzny` | Last, after H7 |
 | H9 | The app’s link scheme, rendezvous, attach, and confirmation; the VS Code host on the same contract | `mb-rtgh`, `mb-x4y5` | After H8 |
@@ -438,6 +450,10 @@ and the rest of each becomes new beads.
 - **Tier 0** keeps its cap, and **Tier 1** and **Stack P** need nothing here.
 - **Stack V** gains `--live` after V5, and its later slice, H5, stops waiting on the
   token.
+- **Beads outside Stack H** that waited on the old `mb-qzny` or `mb-5xi4` now wait on
+  the part they use: the app’s relaunch on its root’s port (`mb-w4kd`) on the sticky
+  port, the resident server (`mb-obgj`) on the control socket, the rootless spare
+  (`mb-bbod`) on both, and the page’s folder switcher (`mb-9lf4`) on discovery.
 
 ## Testing Strategy
 

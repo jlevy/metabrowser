@@ -98,8 +98,8 @@ It links each document below and the contributor standards in `docs/`.
   request, through `metab` and the agent skill; decided 2026-11-18, and not built
 - [Host mode](specs/active/plan-2026-11-18-host-mode.md): how any host launches, owns,
   and reaches a `metab` server, and how an agent finds one however it was started: the
-  host contract, the live-server listing, and the owner-only control socket; a draft
-  whose decisions are open
+  host contract, the live-server listing, and the owner-only control socket; decided
+  2026-11-19, and only the stdin lifeline is built
 - [Documentation from first principles](specs/active/plan-2026-11-14-documentation-from-first-principles.md):
   one owner per fact, task guides, architecture documents for every layer, a baseline
   scale benchmark, and checks that keep the set linked

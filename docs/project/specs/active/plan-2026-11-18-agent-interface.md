@@ -9,7 +9,8 @@ The owner took Decisions AI-1 to AI-6 on 2026-11-18, and none of this plan’s d
 is open. Finding a server the agent did not start, drafted here as
 [AI-7](#decision-ai-7-finding-a-server-the-agent-did-not-start), is the
 [host mode plan](plan-2026-11-18-host-mode.md)’s
-[HM-1](plan-2026-11-18-host-mode.md#decision-hm-1-when-discovery-lands), open there.
+[HM-1](plan-2026-11-18-host-mode.md#decision-hm-1-when-discovery-lands), which the owner
+took there on 2026-11-19 as A: discovery lands ahead of the credential.
 It is written against
 [View Model and View State](plan-2026-11-18-view-model-and-view-state.md), “the parent
 plan” below, and that plan’s own parent,
@@ -425,7 +426,7 @@ Each gives the slice that needs it, the options it weighed, and the decision.
 | Standing, as of 2026-11-18 | Decisions |
 | --- | --- |
 | Taken by the owner on 2026-11-18 | **AI-1:** the command line, taught by the skill, is the complete agent surface. **AI-2** A: `--server URL` on `--api`. **AI-3** A: the intents route. **AI-4** B: the verb is `present`. **AI-5** B: a record route beside the list. **AI-6** A: a bounded wait on the read |
-| Moved | **AI-7** is the host mode plan’s [HM-1](plan-2026-11-18-host-mode.md#decision-hm-1-when-discovery-lands), open there |
+| Moved | **AI-7** is the host mode plan’s [HM-1](plan-2026-11-18-host-mode.md#decision-hm-1-when-discovery-lands), taken there on 2026-11-19 as A: discovery lands ahead of the credential |
 | Open | None |
 
 ### Decision AI-1: The Agent Surface
@@ -448,7 +449,8 @@ narrow rule under [Surfaces](#surfaces).
 - **A. `--server URL` on `--api`,** loopback only.
   It serves an agent that knows the address, which is mostly one that started the
   server.
-- **B. Wait for `--live`.** Nothing for an agent until `mb-qzny` and `mb-5xi4` land.
+- **B. Wait for `--live`.** Nothing for an agent until it lands (`mb-77x9`), which then
+  waited on `mb-qzny` and `mb-5xi4`, and since HM-1 A waits on discovery (`mb-baee`).
 - **C. `curl` recipes in the skill.** No change to `metab`, no validation, and a client
   the skill’s test cannot hold to the option table.
 
@@ -525,9 +527,10 @@ defines the route.
 
 **Moved** to the [host mode plan](plan-2026-11-18-host-mode.md) as
 [Decision HM-1](plan-2026-11-18-host-mode.md#decision-hm-1-when-discovery-lands), which
-weighs the same options and is open there.
-Until it is taken and built, the view slice answers only for a server the agent started
-and a page the reader then opened there.
+weighs the same options.
+The owner took it there on 2026-11-19 as A: discovery lands ahead of the credential.
+Until discovery is built, the view slice answers only for a server the agent started and
+a page the reader then opened there.
 
 ## Implementation Plan
 
@@ -553,11 +556,13 @@ it serves a caller that knows the server’s address.
 
 - [ ] The bounded wait, which needs nothing more.
 - [ ] The listing of live servers and `--live`: the host mode plan’s steps H3 and H4
-  ([Implementation Plan](plan-2026-11-18-host-mode.md#implementation-plan)), whose place
-  in the order [HM-1](plan-2026-11-18-host-mode.md#decision-hm-1-when-discovery-lands)
-  decides.
+  (`mb-baee`, `mb-77x9`;
+  [Implementation Plan](plan-2026-11-18-host-mode.md#implementation-plan)), which
+  [HM-1](plan-2026-11-18-host-mode.md#decision-hm-1-when-discovery-lands) A puts ahead
+  of the token.
 - [ ] `--present` sends the intent and reports `confirmed: true`, and the skill’s recipe
-  becomes that one command: the host mode plan’s step H5 (`mb-idri`, `mb-ko5d`).
+  becomes that one command: the host mode plan’s step H5 (`mb-idri`, `mb-ko5d`, with the
+  lock `mb-5xi4` and idle exit `mb-k3yz`).
 - [ ] The same records over the owner-only socket: the host mode plan’s step H7
   (`mb-1zyp`), with step H6’s reload on a new boot ID (`mb-54r1`).
 - [ ] A recipe for each of the parent’s later slices, none of which adds a surface.
