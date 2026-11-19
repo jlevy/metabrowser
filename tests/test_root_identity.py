@@ -376,8 +376,15 @@ def test_the_route_and_the_shell_name_a_served_folder(
 
     assert answer.status_code == 200
     # The contract the native app reads, in its order.
-    assert list(answer.json()) == ["short_name", "full_name", "kind", "kind_label", "title"]
-    assert answer.json() == _folder("a<b>&c", "~/wrk/a<b>&c")
+    assert list(answer.json()) == [
+        "short_name",
+        "full_name",
+        "kind",
+        "kind_label",
+        "title",
+        "repository",
+    ]
+    assert answer.json() == {**_folder("a<b>&c", "~/wrk/a<b>&c"), "repository": None}
     for address in ("/view/", "/pulls", "/pull/7"):
         shell = client.get(address)
         assert shell.status_code == 200, address
@@ -396,8 +403,50 @@ def test_the_shell_titles_a_folder_outside_the_home_folder(
     server._set_root_dir(root)
     client = TestClient(server.app)
 
-    assert client.get("/api/identity").json() == _folder("elsewhere", str(root.resolve()))
+    assert client.get("/api/identity").json() == {
+        **_folder("elsewhere", str(root.resolve())),
+        "repository": None,
+    }
     assert "<title>elsewhere \u2022 Metabrowser</title>" in client.get("/view/").text
+
+
+def _checkout(root: Path, origin: str | None) -> Path:
+    """A checkout at *root* whose ``origin`` is *origin*, written as Git writes one."""
+
+    git = root / ".git"
+    (git / "refs" / "heads").mkdir(parents=True)
+    (git / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    (git / "refs" / "heads" / "main").write_text(f"{COMMIT}\n", encoding="utf-8")
+    remote = "" if origin is None else f'[remote "origin"]\n\turl = {origin}\n'
+    (git / "config").write_text(f"[core]\n\tbare = false\n{remote}", encoding="utf-8")
+    return root
+
+
+@pytest.mark.parametrize(
+    ("origin", "repository"),
+    [
+        # Lowercase, as `metab URL --present --dry-run` names a link's root, in every
+        # form an origin on github.com takes.
+        ("git@github.com:Octo/Demo.git", "https://github.com/octo/demo"),
+        ("https://github.com/octo/demo", "https://github.com/octo/demo"),
+        ("ssh://git@github.com/octo/demo.git", "https://github.com/octo/demo"),
+        # No repository on github.com, or no origin: nothing to put a link beside.
+        ("https://gitlab.com/octo/demo.git", None),
+        (None, None),
+    ],
+)
+def test_a_checkout_belongs_to_the_github_repository_its_origin_names(
+    tmp_path: Path, origin: str | None, repository: str | None
+) -> None:
+    checkout = _checkout(tmp_path / "demo", origin)
+    for served in (checkout, checkout / "docs"):
+        served.mkdir(exist_ok=True)
+        server._set_root_dir(served)
+
+        answer = TestClient(server.app).get("/api/identity").json()
+
+        # A folder below the checkout's root belongs to its repository too.
+        assert answer["repository"] == repository, served
 
 
 def test_the_route_is_a_get(tmp_path: Path) -> None:

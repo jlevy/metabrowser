@@ -131,7 +131,8 @@ status: 200
   "full_name": "[CWD]/origin.git@topic",
   "kind": "mirror",
   "kind_label": "Cached mirror",
-  "title": "origin • Metabrowser"
+  "title": "origin • Metabrowser",
+  "repository": null
 }
 ? 0
 ```
@@ -147,7 +148,8 @@ status: 200
   "full_name": "~/origin.git@topic",
   "kind": "mirror",
   "kind_label": "Cached mirror",
-  "title": "origin • Metabrowser"
+  "title": "origin • Metabrowser",
+  "repository": null
 }
 ? 0
 ```

@@ -157,6 +157,18 @@ and the server, which resolves the link against its mirror, announces the right 
   A new session starts `metab HANDOFF`, so `metab` pins what the link selects and reads
   a pull request it names, and its window loads the entry page the server announces;
   Retry and Restart Server run the session’s latest link again.
+- **Beside an open checkout.** A new session’s window joins the window of an open
+  checkout of the same repository as a tab (`CheckoutWindow`,
+  `FolderWindows.place(_:besides:)`), whatever the placement preference says, since the
+  link names the repository that window shows; with none, it is placed as a new
+  folder’s. A checkout’s repository is the `repository` its server reports in
+  `GET /api/identity`, the GitHub repository its `origin` names, compared with the
+  plan’s `root`; a folder name never decides it.
+  Of several matches the one shown most recently wins (`OpenFolders.byRecency`), and its
+  window shown most recently among its own.
+  A checkout with no window on screen, or no answer yet, is passed over.
+  The checkout’s `.git/config` can name any repository, so a planted one can at most
+  choose which window a mirror’s tab joins; what the tab serves is still the mirror.
 - **A link into an open repository.** The window may show another branch, commit, or
   pull request’s head than the link names, and the app cannot tell, since the dry run
   reports no ref, so it never only navigates: `FolderSession.open(link:)` starts the

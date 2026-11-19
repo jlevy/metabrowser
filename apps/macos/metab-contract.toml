@@ -182,9 +182,9 @@ id = "identity"
 route = "/api/identity"
 literal = "api/identity"
 source = "Sources/ShellCore/Folders/FolderIdentity.swift"
-json = ["short_name", "full_name", "kind", "kind_label", "title"]
+json = ["short_name", "full_name", "kind", "kind_label", "title", "repository"]
 values = { kind = ["folder", "mirror"] }
-note = "Names each window. Status 200, or the window keeps the name it derived."
+note = "Names each window. Status 200, or the window keeps the name it derived. `repository` puts a link's new mirror window beside an open checkout of the same GitHub repository (`CheckoutWindow`)."
 
 [[route]]
 id = "source-status"
