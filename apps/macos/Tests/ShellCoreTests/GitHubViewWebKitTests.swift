@@ -9,6 +9,8 @@ import WebKit
 private final class PageWatcher: NSObject, WKUIDelegate, WKNavigationDelegate {
     var loaded = false
     var windows = 0
+    /// The modifier keys of each new window's request, in order.
+    var windowModifiers: [NSEvent.ModifierFlags] = []
     var departures: [URL] = []
     var departureModifiers: [NSEvent.ModifierFlags] = []
     /// Other loads away from the fixture, such as a GitHub view loading a page in place,
@@ -39,6 +41,7 @@ private final class PageWatcher: NSObject, WKUIDelegate, WKNavigationDelegate {
         for action: WKNavigationAction, windowFeatures: WKWindowFeatures
     ) -> WKWebView? {
         windows += 1
+        windowModifiers.append(action.modifierFlags)
         return nil
     }
 }
@@ -52,15 +55,18 @@ private final class PageWatcher: NSObject, WKUIDelegate, WKNavigationDelegate {
     private let readme = "https://github.com/octo/demo/blob/main/README.md"
     /// The View on GitHub button as the page's contract has it: a root marked
     /// `data-view-on-github`, its main link marked `open`, and its menu's Open in Browser
-    /// marked `external`, which opens a new window. Below it, a plain link to the same page,
-    /// which is neither. Each link is a 200 by 100 block at a known place in a 600 by 400
-    /// web view: `open` from (300, 20), `external` from (300, 120), and the plain link
-    /// from (300, 250), in CSS pixels from the top left.
-    private var page: String {
+    /// marked `external`, each a link that opens a new window, as in the page's own markup.
+    /// Below it, a plain link to the same page, which is neither. Each link is a 200 by 100
+    /// block at a known place in a 600 by 400 web view: `open` from (300, 20), `external`
+    /// from (300, 120), and the plain link from (300, 250), in CSS pixels from the top left.
+    private var page: String { buttonPage(opening: readme) }
+
+    /// `page`, with `href` as the `open` link's.
+    private func buttonPage(opening href: String) -> String {
         """
         <body style="margin:0">
         <div data-view-on-github style="position:absolute;left:300px;top:20px">
-          <a id="open" data-view-on-github="open" href="\(readme)"
+          <a id="open" data-view-on-github="open" target="_blank" rel="noopener" href="\(href)"
             style="display:block;width:200px;height:100px"><span id="mark">View on GitHub</span></a>
           <a id="external" data-view-on-github="external" target="_blank" rel="noopener" href="\(readme)"
             style="display:block;width:200px;height:100px">Open in Browser</a>
@@ -159,17 +165,19 @@ private final class PageWatcher: NSObject, WKUIDelegate, WKNavigationDelegate {
             requests.append(request)
         })
         _ = try await webView.evaluateJavaScript("document.getElementById('mark').click()")
-        #expect(await eventually { watcher.departures.map(\.absoluteString) == [readme] })
-        _ = try await webView.evaluateJavaScript("document.getElementById('external').click()")
         #expect(await eventually { watcher.windows == 1 })
+        _ = try await webView.evaluateJavaScript("document.getElementById('external').click()")
+        #expect(await eventually { watcher.windows == 2 })
+        #expect(watcher.departures.isEmpty)
         #expect(requests.count == 0)
         withExtendedLifetime(webView) {}
     }
 
     /// The user's click on the button reaches the app with its page and where the button
-    /// is, and the page goes nowhere. A Command-click on it, a click on the menu's Open in
-    /// Browser, and a click on a plain link to the same page are each left to the link: the
-    /// marker, not the address, picks the button.
+    /// is, and the page goes nowhere: the script cancels the link's new window. A
+    /// Command-click on it, a click on the menu's Open in Browser, and a click on a plain
+    /// link to the same page are each left to the link: the marker, not the address, picks
+    /// the button.
     @Test func theUsersClickOnTheButtonReachesTheAppAlone() async throws {
         let requests = Recorder<GitHubViewRequests.Request>()
         let gitHubViews = GitHubViewRequests { _, frame, request in
@@ -200,18 +208,73 @@ private final class PageWatcher: NSObject, WKUIDelegate, WKNavigationDelegate {
         #expect(webView.convert(anchor, to: nil) == NSRect(x: 300, y: 400 - 120, width: 200, height: 100))
         #expect(watcher.departures.isEmpty && watcher.windows == 0)
 
-        // WebKit follows a Command-click on a link in place, with the modifier for the app's
-        // policy to see (`NavigationPolicy.decide`, `wantsNewWindow`).
+        // A Command-click on the button asks for the link's new window, with the modifier.
         click(webView, at: onOpen, in: window, modifiers: .command)
-        #expect(await eventually(within: .seconds(10)) { watcher.departures.count == 1 })
-        #expect(watcher.departures.map(\.absoluteString) == [readme])
-        #expect(watcher.departureModifiers == [.command])
-        click(webView, at: onExternal, in: window)
         #expect(await eventually(within: .seconds(10)) { watcher.windows == 1 })
-        click(webView, at: onPlain, in: window)
+        #expect(watcher.windowModifiers == [.command])
+        click(webView, at: onExternal, in: window)
         #expect(await eventually(within: .seconds(10)) { watcher.windows == 2 })
-        #expect(watcher.departures.count == 1)
+        click(webView, at: onPlain, in: window)
+        #expect(await eventually(within: .seconds(10)) { watcher.windows == 3 })
+        #expect(watcher.departures.isEmpty)
         #expect(requests.count == 1)
+    }
+
+    /// A click on a button whose link the app would not open, such as one longer than
+    /// `GitHubLink.maximumLength`, is left to the link, which opens a new window, as a click
+    /// on the menu's Open in Browser does, rather than cancelled for a request the window
+    /// would drop.
+    @Test func aLinkTheAppWouldNotOpenIsLeftToTheLink() async throws {
+        let requests = Recorder<GitHubViewRequests.Request>()
+        let gitHubViews = GitHubViewRequests { _, _, request in requests.append(request) }
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 600, height: 400), styleMask: [.titled], backing: .buffered,
+            defer: false)
+        let long = "https://github.com/octo/demo/blob/main/" + String(repeating: "a", count: GitHubLink.maximumLength)
+        let (webView, watcher) = await load(
+            buttonPage(opening: long), requests: gitHubViews, in: NSRect(x: 0, y: 0, width: 600, height: 400))
+        window.contentView = webView
+        window.orderFrontRegardless()
+        defer { window.orderOut(nil) }
+
+        click(webView, at: NSPoint(x: 400, y: 400 - 70), in: window)
+        #expect(await eventually(within: .seconds(10)) { watcher.windows == 1 })
+        #expect(watcher.windowModifiers == [[]])
+        #expect(requests.count == 0)
+    }
+
+    /// Each link the script takes is one the window opens, at the same address: the script's
+    /// test (`GitHubViewRequests.opensHere`) passes only an `href`, as WebKit serializes it,
+    /// that `GitHubView.page` accepts unchanged. One that test leaves to the link, which
+    /// opens in the default browser: over the length, another host or scheme, a user name,
+    /// or a character Foundation would encode again (`|`, `^`, `[`, a second `#`).
+    @Test func everyLinkTheScriptTakesIsOneTheWindowOpens() async throws {
+        let (webView, _) = await load(page, requests: GitHubViewRequests { _, _, _ in })
+        let longest = "https://github.com/" + String(repeating: "a", count: GitHubLink.maximumLength - 19)
+        let cases: [(href: String, taken: Bool)] = [
+            (readme, true), ("https://GitHub.com:443/octo/demo/tree/main", true),
+            ("https://github.com/octo/demo/blob/main/docs/a b/雪 (1).md", true),
+            ("https://github.com/octo/demo/blob/main/a.md?plain=1#L3-L9", true),
+            ("https://github.com/octo/demo/blob/main/a'(b)!*~_.md", true), (longest, true),
+            (longest + "a", false), ("https://github.com/octo/demo/blob/main/x|y^z.md", false),
+            ("https://github.com/octo/demo/pulls?q=[1]", false), ("https://github.com/octo/demo#a#b", false),
+            ("https://www.github.com/octo/demo", false), ("https://example.com/octo/demo", false),
+            ("http://github.com/octo/demo", false), ("https://user@github.com/octo/demo", false),
+            ("https://github.com.example.com/octo/demo", false),
+        ]
+        for (href, taken) in cases {
+            let result = try await webView.callAsyncJavaScript(
+                """
+                const link = document.createElement("a");
+                link.href = href;
+                return [link.href, (\(GitHubViewRequests.opensHere))(link.href)];
+                """, arguments: ["href": href], in: nil, contentWorld: .page)
+            let pair = try #require(result as? [Any])
+            let serialized = try #require(pair.first as? String)
+            let takes = try #require(pair.last as? Bool)
+            #expect(takes == taken, "\(href.prefix(80))")
+            if takes { #expect(GitHubView.page(serialized)?.absoluteString == serialized, "\(href.prefix(80))") }
+        }
     }
 
     // MARK: - The popover's web view as a UI delegate

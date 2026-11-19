@@ -5,9 +5,10 @@ import WebKit
 ///
 /// The button's main link, marked `data-view-on-github="open"` (`marker`), names the item's
 /// page on github.com. A user script, installed by `WebConfiguration.make` in each page's
-/// main frame, takes a trusted primary click with no modifier key on that link, cancels the
-/// link's own navigation, and posts its `href` and where it sits on screen to this handler,
-/// and the window opens its GitHub popover there instead (`Request`).
+/// main frame, takes a trusted primary click with no modifier key on that link, when its
+/// `href` is one the app opens (`opensHere`), cancels the link's own navigation, and posts
+/// its `href` and where it sits on screen to this handler, and the window opens its GitHub
+/// popover there instead (`Request`).
 ///
 /// The script and the handler live in a content world of the app's own (`world`), so the
 /// page's scripts cannot post to the handler, and a click a script dispatches is not
@@ -24,6 +25,20 @@ public final class GitHubViewRequests: NSObject, WKScriptMessageHandler {
     /// The app's own content world, where the script runs and the handler answers.
     public static var world: WKContentWorld { .defaultClient }
 
+    /// Whether the script takes a click on the button, from its link's `href` as WebKit
+    /// serializes it: a JavaScript function that is true only for an `href` that
+    /// `GitHubView.page` accepts as it is. It begins `https://github.com/`, is at most
+    /// `GitHubLink.maximumLength` long, and holds only the characters RFC 3986 allows in a
+    /// path, a query, and one fragment, so Foundation reads it without encoding any of it
+    /// again, which would lengthen it. The script leaves a click on any other `href`, such as
+    /// one over the length, to the link, which opens it in the default browser
+    /// (`NavigationPolicy.decideNewWindow`), rather than cancel it for a request the window
+    /// would drop.
+    static let opensHere = #"""
+        (href) => href.length <= \#(GitHubLink.maximumLength)
+            && /^https:\/\/github\.com\/(?:[\w\-.~!$&'()*+,;=:@\/?]|%[0-9A-Fa-f]{2})*(?:#(?:[\w\-.~!$&'()*+,;=:@\/?]|%[0-9A-Fa-f]{2})*)?$/.test(href)
+        """#
+
     static let source = """
         window.addEventListener("click", (event) => {
             if (!event.isTrusted || event.button !== 0 || event.metaKey || event.ctrlKey
@@ -31,7 +46,7 @@ public final class GitHubViewRequests: NSObject, WKScriptMessageHandler {
                 return;
             }
             const link = event.target instanceof Element ? event.target.closest('\(marker)') : null;
-            if (!(link instanceof HTMLAnchorElement)) {
+            if (!(link instanceof HTMLAnchorElement) || !(\(opensHere))(link.href)) {
                 return;
             }
             event.preventDefault();

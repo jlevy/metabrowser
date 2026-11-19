@@ -598,15 +598,18 @@ view first built for `mb-lxgw`).
 
 - **The page’s contract.** The page marks the button’s root `data-view-on-github`, its
   main link `data-view-on-github="open"`, with the github.com page as its `href`, and
-  its menu’s Open in Browser link `data-view-on-github="external"`, with
+  its menu’s Open in Browser link `data-view-on-github="external"`, each with
   `target=_blank`. Only the `open` link is the app’s: Copy Link is the page’s own, and
   the `external` link is a link to another site, which `NavigationPolicy` opens in the
   default browser.
 - **Only the button.** `GitHubViewRequests` installs a user script in the page’s main
   frame, in the app’s own content world, that takes a trusted primary click with no
-  modifier key on the `open` link, cancels the link’s navigation, and posts its `href`,
+  modifier key on the `open` link, cancels the link’s new window, and posts its `href`,
   its client rectangle, and the viewport’s width to a handler in that world, which the
   page’s scripts cannot reach.
+  It takes only an `href` the window opens as it is (`GitHubViewRequests.opensHere`),
+  and leaves any other, such as one longer than `GitHubLink.maximumLength`, to the link,
+  which opens in the default browser, rather than cancel a click the window would drop.
   The window opens the popover only for the main frame of a document of the server’s own
   origin (`GitHubViewRequests.allows`, the check the page’s Print button has) and only
   for an `https` page on github.com (`GitHubView.page`). A modified click on the button,
@@ -677,10 +680,12 @@ view first built for `mb-lxgw`).
   cookie one popover’s web view sets reaching another and not the pages, the web view’s
   own drops and zoom, its dialogs, file panel, and new windows, the unsent-text probe,
   and the script in a real `WKWebView`: a user’s click on the button reaches the handler
-  with where the button is, and a scripted click, a Command-click, the menu’s Open in
-  Browser, and a plain link to the same page do not, and the page cannot see the
-  handler. [The hand checks](../qa/qa-macos-app-hand-checks.md#view-on-github) cover the
-  popover and signing in.
+  with where the button is and cancels the link’s new window, and a scripted click, a
+  Command-click, the menu’s Open in Browser, a plain link to the same page, and a button
+  whose `href` the window would not open do not; every `href` the script takes is one
+  `GitHubView.page` accepts as it is; and the page cannot see the handler.
+  [The hand checks](../qa/qa-macos-app-hand-checks.md#view-on-github) cover the popover
+  and signing in.
 
 ## The Title-Bar Accessory
 
