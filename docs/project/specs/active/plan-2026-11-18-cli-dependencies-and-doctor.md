@@ -7,10 +7,11 @@
 **Status:** Phase 1 (the versioning contract) is in the pull request that adds this
 plan; Phases 2 and 3 are not started.
 Bead `mb-bxli` tracks the work.
-Phase 2 waits for the GitHub status check (`mb-si2g`,
-jlevy/metabrowserjlevy/metabrowser#581), which rewrites the same doctor function and
-owns `gh`’s minimum.
-[Open Questions](#open-questions) lists the owner’s decisions.
+Phase 2 waits for the GitHub status check (`mb-si2g`, jlevy/metabrowser#581), which
+rewrites the same doctor function.
+jlevy/metabrowser#581 declares no `gh` minimum; Phase 2 of this plan declares it, as
+review A6 on jlevy/metabrowser#581 asks.
+[Owner Decisions](#owner-decisions) lists what the owner decides.
 
 ## The Owner’s Words
 
@@ -131,62 +132,89 @@ Each command-line tool has one declared minimum, in one place: the program that 
   (`MetabRequirement`). This is what the owner proposed and what exists.
 - **`git` and `gh`: `metab`.** `metab` runs them; the app only finds them and passes
   their directories on `PATH`. So their minimums live in `metab`, beside the code that
-  needs them, with the reason: `git`’s already do, and `gh`’s goes in
-  jlevy/metabrowser#581’s `gh_status.py` (Phase 2). The app reads them from
-  `metab --doctor --json` and never copies them.
+  needs them, with the reason.
+  `git`’s already do. `gh`’s is new in Phase 2: one constant in `gh_status.py`, with its
+  reason, which is the only `gh` minimum anywhere.
+- **The app reads them, never a second way.** The app gets `gh`’s path, version,
+  minimum, state, and remedy from the doctor’s `github` object, and `git`’s from its
+  `git` check. It runs neither tool and parses neither version itself, and ShellCore
+  declares no `gh` or `git` version.
 
 Why `metab` and not the app for `gh`: the code that calls `gh auth status --json` or
 `gh stack` knows which release it needs; a copy in Swift would drift from it; a `metab`
 upgrade that needs a newer `gh` would otherwise need an app release; and the CLI, the
 skill, and the page all need the same answer without the app.
 `--doctor --json` is already the one report the app reads.
-AGENTS.md states the rule.
+
+Review A6 on jlevy/metabrowser#581 sets how `gh_status` uses the minimum:
+
+- `gh_too_old` compares `gh_version` with the minimum.
+  `_VERSION_LINE` stays the one `gh` version parser, and the probe that finds an unknown
+  flag stays as a fallback.
+- `gh_too_old`’s fix is the upgrade for the install method found.
+- The doctor’s `github` object gains the minimum; no second `gh` entry is added.
+
+Phase 2 adds a check that ShellCore holds no version literal for `gh` or `git`, and
+AGENTS.md gains the rule with it, not before.
 
 ### The Versioning Contract
 
-The owner’s rule, as written into
-[Publishing](../../../publishing.md#choosing-a-version), AGENTS.md, and
-`MetabRequirement`’s doc comment:
+The rule, its reason, and how to raise the minimum are written once, in
+[Choosing a Version](../../../publishing.md#choosing-a-version); AGENTS.md,
+`MetabRequirement`’s doc comment, and the architecture document link to it.
+In short, a `metab` change the app depends on is a new minor or major release, a bug fix
+that keeps what the app reads may be a patch, and so `MetabRequirement.minimumRelease`
+is always `X.Y.0`. How 0.x, 1.0 and later, and a fix the app needs are treated are
+[Owner Decisions](#owner-decisions).
 
-- A `metab` change the app depends on is released as a new minor or major version, never
-  as a patch. A patch only fixes bugs, and keeps what the app reads.
-- So `MetabRequirement.minimumRelease` is always `X.Y.0`, and a patch never raises it.
-- **What the app reads** is its contract: the serve flags in `CLIServeLaunch` (`--host`,
-  `--port`, `--no-open`, `--exit-on-eof`); `--present … --dry-run --format json`
-  (`PresentDryRun`); `--recent --json`, `--recent-add`, `--recent-forget`, and
-  `--recent-clear` (`RecentTargets`); `--api /api/cache/sources --format json`
-  (`RepositoryCache`); `GET /api/identity`; `--version`’s line; `--doctor`; a failed
-  start’s `Error:` line and the clone report (`GitHubFailure`, `StartProgress`); the
-  exit statuses in `cli/exit_codes.py`; and the `Info.plist` key `--present` reads.
-  The app contract golden (separate PR) pins this list; this plan does not.
+Examples of what the app reads, for the app contract (follow-up) to settle: the serve
+flags in `CLIServeLaunch`, `--present … --dry-run --format json`, the `--recent` modes,
+`--api /api/cache/sources --format json`, `GET /api/identity`, `--version`’s line,
+`--doctor`, a failed start’s `Error:` line and the clone report, the exit statuses in
+`cli/exit_codes.py`, and the `Info.plist` key `--present` reads.
+This plan keeps no list of its own.
 
-Checks, both in Phase 1:
+Phase 1’s checks, all in `tests/test_macos_app_pins.py`, which runs in every CI Python
+job, where the macOS workflow’s path filter would not run the app’s own tests:
 
-- `tests/test_macos_app_pins.py` fails when `minimumRelease` names a patch, and when
-  `pyproject.toml` stops bumping the minor position for a development build.
-  It runs in every CI Python job, where the macOS workflow’s path filter would not run
-  the app’s own tests.
-  `MetabVersionTests.theMinimumIsAMinorRelease` holds the same in Swift.
-- The bump matters: with the default patch bump, a checkout past `v0.12.0` reported
-  `0.12.1.devN`, below a `0.13.0` minimum, and the app would refuse every development
-  build. With `bump = { enable = true, index = 1 }` it reports `0.13.0.devN`.
+- the minimum names no patch;
+- it is at most the next minor release after the latest release, the first `## X.Y.Z`
+  heading in `CHANGELOG.md`, and `isReleased` is false while it is newer than that
+  release;
+- `pyproject.toml` bumps the minor position for a development build, so a checkout past
+  `v0.12.0` reports `0.13.0.devN`, not `0.12.1.devN`, which is below `0.13.0`;
+- `[tool.uv]` `cache-keys` include the commit and the tags, so `make install` rebuilds a
+  checkout’s version after each commit or tag.
+  By default uv rebuilds it only when `pyproject.toml` changes, so after the next raise
+  of the minimum every checkout would keep its old version and the app would refuse it.
 
+`MetabVersionTests.theMinimumIsAMinorRelease` checks only the first of these in Swift.
 A check that flags a change to a contract surface without a raised minimum is not in
 this plan: the app contract golden (separate PR) covers the surface.
 
 ### One Requirement Declaration per Tool
 
-Phase 3 generalizes `MetabRequirement` into a `ToolRequirement` value in ShellCore with,
-for each tool:
+Each tool’s requirement is declared once, by the program that runs it, with the same
+fields:
 
-- **name**, and **minimum** with **the reason it was last raised**: for `metab`, from
-  the app’s own constant; for `git` and `gh`, from the doctor’s report.
-- **how it is found**: for `metab`, the discovery order above; for `git` and `gh`,
-  `resolveTools`.
-- **how its version is read**: `metab --version` (with the flag probe), `git --version`,
-  `gh --version`, by the app for `metab` and by `metab` for the rest.
+- **name**, and **minimum** with **the reason it was last raised**;
+- **how it is found**;
+- **how its version is read**;
 - **upgrade instructions by install method**, chosen from the canonical path of the
-  executable found:
+  executable found.
+
+| Tool | Declared in | Found by | Version read by |
+| --- | --- | --- | --- |
+| `metab` | `MetabRequirement` in ShellCore | the app’s discovery order above | the app: the flag probe and `--version` |
+| `gh` | `gh_status.py` (Phase 2) | `gh_executable`, on the `PATH` the app gives a server | `gh_version` and `_VERSION_LINE` |
+| `git` | `git/process.py` and `checkout_revisions.py` | `git` on that `PATH` | `parse_git_version` |
+
+Only `metab`’s requirement is in Swift, since only `metab` is checked by the app.
+Phase 3 adds the install-method commands to it; Phase 2 adds them to `gh`’s and `git`’s
+in `metab`, and the doctor reports them as each check’s remedy.
+A Swift `gh` or `git` entry would be a second read path, which review A6 on
+jlevy/metabrowser#581 rules out, unless the app itself starts to run the tool, which
+would then be the reason for it.
 
 | Tool | Install method | Detected from | Upgrade command |
 | --- | --- | --- | --- |
@@ -207,6 +235,10 @@ only `metab`’s own, since it must work when no `metab` runs.
 
 Phase 2 makes `metab --doctor` the one report on everything a setup needs, keeping
 today’s keys and adding a `checks` list.
+GitHub stays where jlevy/metabrowser#581 puts it, the top-level `github` object, which
+gains the `gh` minimum and its reason, and whose `fix` for `gh_too_old` becomes the
+upgrade for the install method found.
+`checks` has no `github` entry, so `gh` is reported once.
 Each check has an `id`, a `title`, a `state` (`ok`, `warning`, `problem`, or `skipped`),
 a one-line `summary`, `details`, and a `remedy` (`text`, and a `command` or `url` when
 one fixes it). The text output prints one line per check and the remedy under it.
@@ -216,7 +248,6 @@ one fixes it). The text output prints one line per check and the remedy under it
 | `metab` | Version, executable, install method, and whether the editable install is stale | none |
 | `python` | Interpreter path and version against `requires-python` | none |
 | `git` | Path and version against the acquisition and partial-clone floors | `git --version` timeout |
-| `github` | jlevy/metabrowser#581’s check, plus the declared `gh` minimum | jlevy/metabrowser#581’s deadlines |
 | `config` | Configuration directory resolves, is private, and `config.yml` parses | file size cap |
 | `cache` | Cache directory resolves, is private and writable, and its free space | one `statvfs` |
 | `plugins` | Today’s plugin and contract checks | none |
@@ -251,12 +282,16 @@ one fixes it). The text output prints one line per check and the remedy under it
 - **What it runs.** `metab --doctor --json` from the selected runtime, in a server’s
   environment with the tool directories (`ChildEnvironment`), bounded by
   `RuntimeDiscovery.doctorTimeout`.
-- **What it shows.** One row per check, with its state’s symbol, summary, and remedy; a
-  command has Copy, as jlevy/metabrowser#571’s `GitHubFailureDetails` steps do.
+- **What it shows.** One row per check and one for the `github` object, with its state’s
+  symbol, summary, and remedy; a command has Copy, as jlevy/metabrowser#571’s
+  `GitHubFailureDetails` steps do.
   Copy Report copies the text form; Check Again runs it again.
-- **Rows only the app knows,** first: the app’s version and minimum `metab`, the `metab`
-  it runs and how it was found, and the `git` and `gh` it found, so a mismatch with
-  Terminal’s shows.
+- **`gh` and `git` come from the report.** The `github` row reads `gh_path`,
+  `gh_version`, and the minimum from the doctor, and the `git` row its `git` check.
+  The doctor runs with the directories the app found first on `PATH`, so these are the
+  tools the app’s servers use, and the app never runs `gh --version` or parses it.
+- **Rows only the app knows,** first: the app’s version and minimum `metab`, and the
+  `metab` it runs and how it was found, so a mismatch with Terminal’s shows.
 - **No `metab`.** The window shows the `metab` requirement and `SetupGuide`’s steps
   instead of a report.
 - **An older `metab` without `checks`** cannot occur: the app needs the minimum that
@@ -266,23 +301,29 @@ one fixes it). The text output prints one line per check and the remedy under it
 
 ### Phase 1: The Contract (in this plan’s pull request)
 
-- [x] `MetabRequirement.minimumRelease` becomes `0.13.0`, with the contract in its doc
-  comment. The next `metab` release is therefore `0.13.0`, not `0.12.1`.
-- [x] `pyproject.toml` bumps the minor position for a development build.
-- [x] `tests/test_macos_app_pins.py` and `MetabVersionTests` hold the minimum to `X.Y.0`
-  and the bump to the minor position.
+- [x] `MetabRequirement.minimumRelease` becomes `0.13.0`. The next `metab` release is
+  therefore `0.13.0`, not `0.12.1`.
+- [x] `pyproject.toml` bumps the minor position for a development build, and its
+  `[tool.uv]` `cache-keys` rebuild a checkout’s version after each commit or tag.
+- [x] `tests/test_macos_app_pins.py` checks the four things above, and
+  `MetabVersionTests` the first.
 - [x] [Choosing a Version](../../../publishing.md#choosing-a-version) in Publishing,
-  AGENTS.md, [Development](../../../development.md), and
-  [the version floor](../../architecture/arch-macos-app.md#the-version-floor).
+  linked from AGENTS.md, [Development](../../../development.md),
+  [the version floor](../../architecture/arch-macos-app.md#the-version-floor), and
+  `MetabRequirement`’s doc comment.
 - [x] The guides and the skill that state the minimum, held by
   `tests/test_user_guide_values.py`.
 
 ### Phase 2: A Complete Doctor (after jlevy/metabrowser#581 merges)
 
-- [ ] `gh`’s minimum in `gh_status.py`, with the reason, and `gh_too_old` decided by it
-  as well as by a rejected subcommand.
+- [ ] `gh`’s minimum, one constant in `gh_status.py` with its reason; `gh_too_old`
+  decided by comparing `gh_version` with it, with the unknown-flag probe as a fallback;
+  its fix the install-method upgrade; and the `github` object extended with it (review
+  A6 on jlevy/metabrowser#581).
 - [ ] The `checks` list and each check in the table above, in a new `cli/doctor.py` that
   `doctor_plugins` calls; text and JSON; bounded.
+- [ ] A check that ShellCore holds no version literal for `gh` or `git`, and the rule in
+  AGENTS.md beside it.
 - [ ] The app’s `Info.plist` key for its minimum `metab`, and its pin.
 - [ ] The golden, the parity rows, and the installed-wheel smoke run.
 - [ ] `docs/command-line.md` and [installation](../../../installation.md) name the
@@ -290,8 +331,9 @@ one fixes it). The text output prints one line per check and the remedy under it
 
 ### Phase 3: Requirements and Check Setup… in the App
 
-- [ ] `ToolRequirement` in ShellCore, `MetabRequirement` becoming its `metab` entry,
-  with the install-method detection and commands above, and tests for each method.
+- [ ] `MetabRequirement` gains `metab`’s install-method detection and commands above,
+  with tests for each method.
+  ShellCore gets no `gh` or `git` requirement.
 - [ ] A `DoctorReport` decoded from `--doctor --json`, and the Check Setup… window, menu
   item, Copy Report, and Check Again; Settings’ Run Doctor opens it.
 - [ ] `MetabRequirement.minimumRelease` raised to the release that adds `checks`, which
@@ -303,28 +345,35 @@ one fixes it). The text output prints one line per check and the remedy under it
 - The app contract golden (separate PR): one golden over every flag, route, JSON field,
   output line, and exit status the app reads.
 
-## Open Questions
+## Owner Decisions
 
-1. **The 0.x period.** Proposed: before 1.0 the minor release is the boundary for both
+Each is a proposal until the owner decides it.
+
+1. **The 0.x period.** Proposed: before 1.0 the minor release is the boundary in both
    directions, so a `0.Y.0` may add what the app needs and may also change what an older
    app read, and says so in its notes; the app declares a minimum and no maximum.
    The alternative is a ceiling, the app refusing a `metab` of a later minor than it was
    built for, which would make every `metab` minor release need an app release.
-2. **A bug fix the app needs.** Proposed: it ships as a minor release, so the minimum
-   never names a patch.
-   The alternative is to allow a patch minimum for fixes only, which the check would
-   then have to tell apart.
-3. **The next release is 0.13.0, not 0.12.1.** Phase 1 raises the app’s minimum to
+2. **1.0 and later.** Proposed: a change that removes or alters what a released app
+   reads is a major release, and one that only adds what a newer app needs is a minor
+   release, as semantic versioning has it.
+3. **A bug fix the app cannot work without.** The owner’s words allow a bug fix as a
+   patch, and a fix that keeps what the app reads stays one.
+   Proposed: a fix the app needs, which would raise the minimum, ships as a minor
+   release, so the minimum never names a patch, as Phase 1’s check holds.
+   The alternative is a patch minimum for such fixes, which the check would then have to
+   allow.
+4. **The next release is 0.13.0, not 0.12.1.** Phase 1 raises the app’s minimum to
    `0.13.0`, so the release that carries `--present`, `--recent`, and the identity route
    is `0.13.0`.
-4. **A released app with a newer `metab`.** AGENTS.md keeps no compatibility with an
+5. **A released app with a newer `metab`.** AGENTS.md keeps no compatibility with an
    older app. Once the app is published, a user can update `metab` without updating the
    app. Should a `metab` minor release keep what the last published app reads until an
    app release that no longer needs it has shipped?
-5. **The network check.** Proposed: `--doctor` opens one TLS connection to github.com,
-   which `gh auth status` already does when `gh` is signed in, and a `--doctor` run with
-   `METABROWSER_OFFLINE=1` or no network reports `skipped`, not `problem`.
-6. **Where Check Setup… lives.** Proposed: Help > Check Setup…. The alternative is
+6. **The network check.** Proposed: `--doctor` opens one TLS connection to github.com,
+   which `gh auth status` already does when `gh` is signed in, and reports `skipped`,
+   not `problem`, with no network.
+7. **Where Check Setup… lives.** Proposed: Help > Check Setup…. The alternative is
    Metabrowser > Check Setup…, beside Settings….
 
 ## References

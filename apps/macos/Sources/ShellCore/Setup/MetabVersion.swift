@@ -46,14 +46,10 @@ public nonisolated struct MetabVersion: Equatable, Sendable, CustomStringConvert
 /// versioned boundary: below the minimum the app starts no server and shows
 /// `upgradeCommand`. The host-protocol version replaces it once host mode exists.
 ///
-/// **The contract is at the minor release.** A `metab` change the app depends on, a flag,
-/// route, JSON field, output line, or exit status it reads, is released as a new minor or
-/// major version, never as a patch; a patch only fixes bugs and keeps what the app reads.
-/// So `minimumRelease` is always a minor release, `X.Y.0`, and a patch never raises it
-/// (`tests/test_macos_app_pins.py` holds it to that). A source checkout reports the next
-/// minor release as a development build (`bump` in `pyproject.toml`'s
-/// `[tool.uv-dynamic-versioning]`), so a checkout built after the change meets the
-/// minimum it raised. `docs/publishing.md` has the release rule.
+/// The contract is at the minor release: `minimumRelease` is always `X.Y.0`, at most the
+/// next minor release after the latest one, and `isReleased` stays false until it is on
+/// PyPI. "Choosing a Version" in `docs/publishing.md` has the rule and its reason, and
+/// `tests/test_macos_app_pins.py` checks it.
 public nonisolated enum MetabRequirement {
     /// The first release with `GET /api/identity`, which names each window, with
     /// `--exit-on-eof`, which ends a server with the app, with `--present`, whose dry run
@@ -74,7 +70,8 @@ public nonisolated enum MetabRequirement {
 
     /// Whether `minimum` is on PyPI, so that uv can install a `metab` this app runs. Until
     /// it is, the first-run screen points to the source checkout the app was built from
-    /// instead of `uv tool install`. Set it with the release that publishes `minimum`.
+    /// instead of `uv tool install`. Set it with the release that publishes `minimum`, and
+    /// back to false whenever `minimumRelease` is raised to an unpublished release.
     public static let isReleased = false
 
     /// A pre-release or development build of the minimum counts as the minimum. A source

@@ -36,9 +36,9 @@ import Testing
         #expect(MetabRequirement.accepts(try #require(MetabVersion("1"))))
     }
 
-    /// The contract is at the minor release (`MetabRequirement`, `docs/publishing.md`): a
-    /// change the app needs ships in a minor or major release, so a patch never raises the
-    /// minimum. `tests/test_macos_app_pins.py` holds the same in every CI run.
+    /// The contract is at the minor release (`docs/publishing.md`), so the minimum is
+    /// `X.Y.0`. `tests/test_macos_app_pins.py` checks this too, in every CI run, with the
+    /// bounds, the bump, and the cache keys this test cannot see.
     @Test func theMinimumIsAMinorRelease() {
         #expect(MetabRequirement.minimumRelease.count == 3)
         #expect(MetabRequirement.minimumRelease.last == 0)

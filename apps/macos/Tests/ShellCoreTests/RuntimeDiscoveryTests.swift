@@ -46,7 +46,7 @@ private struct Machine {
 
 /// What a `metab` built before the flag prints, to stderr, in the app's minimal
 /// environment for `--exit-on-eof --present --recent --version`, as measured on a
-/// 0.13.0.dev38: click's usage error for an option it does not know, boxed, before the
+/// 0.12.1.dev38: click's usage error for an option it does not know, boxed, before the
 /// eager `--version` runs. It then exits with status 2.
 nonisolated private let clickUsageError = [
     "Usage: metab [OPTIONS] [ROOT]", "Try 'metab --help' for help.",
@@ -387,10 +387,10 @@ private func loginShellOutput(path: String) -> [String] {
     }
 }
 
-/// Validation ran `metab --version` alone, and `MetabRequirement` counts any development
-/// build of the minimum as the minimum, so a 0.12.1.dev38, when 0.12.1 was the minimum,
-/// built before `--exit-on-eof` passed; every window then failed on click's "No such option: --exit-on-eof" with no
-/// remedy (mb-sugi). Validation now runs `metab --exit-on-eof --present --recent
+/// Validation ran `metab --version` alone, and `MetabRequirement` counted any 0.12.1
+/// development build as the minimum, 0.12.1 then, so a 0.12.1.dev38 built before
+/// `--exit-on-eof` passed; every window then failed on click's "No such option:
+/// --exit-on-eof" with no remedy (mb-sugi). Validation now runs `metab --exit-on-eof --present --recent
 /// --version`, and a `metab` that rejects a flag as an unknown option but answers
 /// `--version` alone is too old.
 ///
