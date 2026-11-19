@@ -9,17 +9,23 @@
 // the same functions from the command line.
 //
 // The list is a tree: a row is one anchor in the role of a tree's item, in a list item with no
-// role of its own. Its third line, the pull request's brief change line (row-lines.js), is the
-// row's one child item, in a group the anchor owns, and the row's changed files hang off that
-// item (pull-files-view.js): the chevron before the line, a `.tree-children[role="group"]`
-// after it, which it owns, and `aria-expanded` on it. A click on the row's title or number's
-// line opens the pull request and expands nothing; a click on the change line, its chevron
-// included, toggles the files. No row expands on its own: not on an open, a selection, or a
-// key's walk. Up and Down walk the pull requests; Right goes to a row's change line, where
-// Enter and Space toggle its files, Right opens them or goes to the first, Left closes them or
-// goes back to the row, Up goes back to the row, and Down goes into its open files or on to
-// the next row. The walk goes by `rows`, not by the DOM, so it reads the same however a row is
-// drawn.
+// role of its own, and the row's changed files hang off it as a folder's children do
+// (pull-files-view.js): a `.tree-children[role="group"]` after it, which it owns, and
+// `aria-expanded` on it. A pull request is one item of three lines (mb-1z7j): the anchor's
+// two, its title and its number's line, and under them its brief change line (row-lines.js),
+// which carries the chevron, as a folder's line does. The three are one hover, one selection,
+// and one keyboard stop (`.github-pulls-entry`). The rule for a row with a disclosure toggle
+// (docs/design-system.md, "A Click on the Toggle's Line Toggles"): a click on the line that
+// carries the toggle toggles, and a click on the larger item that includes it does not. So a
+// click on the change line, anywhere on it, toggles the files and opens no page, and a click
+// on the title or the number's line opens the pull request and expands nothing. No row expands
+// on its own: not on an open, a selection, or a key's walk. Up and Down walk the pull requests
+// as wholes, and bring the whole item into view; on one, Space toggles its files, Right opens
+// them or goes to the first, Left closes them or goes to its stack's row, and Enter opens it.
+// Every key acts on the row that has focus (`anchorFocusedRow`). The change line is the
+// pointer's alone: hidden from assistive technology, it leaves the tree its items and groups,
+// and its words describe the row. The walk goes by `rows`, not by the DOM, so it reads the
+// same however a row is drawn.
 //
 // What starts a fetch (plan-2026-10-01-github-pulls-tab.md, "What starts a fetch"): a list's
 // `GET` never does. Idle startup may warm the catalog and lightweight PR metadata in both
@@ -3443,6 +3449,7 @@ export function mountPullsPanel(container, ctx, mb) {
    *
    * @typedef {{
    *   item: HTMLElement,
+   *   zone: HTMLElement,
    *   row: HTMLAnchorElement,
    *   age: HTMLElement,
    *   stack: HTMLElement,
@@ -3451,6 +3458,7 @@ export function mountPullsPanel(container, ctx, mb) {
    *   meta: HTMLElement,
    *   change: HTMLElement,
    *   changeLine: HTMLElement,
+   *   changeWords: HTMLElement,
    *   changePending: HTMLElement | null,
    *   changeKey: string,
    *   info: PullRow,
@@ -3497,6 +3505,12 @@ export function mountPullsPanel(container, ctx, mb) {
   /** A drawn row's treeitem by its key: a pull request's number, or a stack's row key. */
   const rowElement = (/** @type {number} */ key) =>
     key < 0 ? paintedStacks.get(key)?.row : painted.get(key)?.row;
+  /**
+   * What a row's item is on screen: a pull request's three lines, its zone, which hovers and
+   * takes the ring as one (mb-1z7j), or a stack's one row.
+   */
+  const itemElement = (/** @type {number} */ key) =>
+    key < 0 ? paintedStacks.get(key)?.row : painted.get(key)?.zone;
   const rowWindow = createPullsWindow({
     estimate: ROW_ESTIMATE_PX,
     overscan: PULL_ROWS_OVERSCAN,
@@ -3705,14 +3719,8 @@ export function mountPullsPanel(container, ctx, mb) {
         open: ({ file, replace, jumped }) => {
           void tab.open({ number, tab: "files", file, replace, jumped });
         },
-        // Left from a file at the tree's top goes to the change line the tree hangs from.
-        leave: () => {
-          const change = painted.get(number)?.change;
-          if (change !== undefined) {
-            controller.focused(number);
-            change.focus({ preventScroll: true });
-          }
-        },
+        // Left from a file at the tree's top goes to the pull request the tree hangs from.
+        leave: () => void focusItem(number),
         focusedIn: () => {
           if (focusedTree !== null && focusedTree !== number) {
             trees.get(focusedTree)?.controller.cancelWalk();
@@ -3728,7 +3736,7 @@ export function mountPullsPanel(container, ctx, mb) {
       trees.set(number, tree);
       const entry = painted.get(number);
       if (entry !== undefined) {
-        tree.attach(entry.item, entry.change);
+        tree.attach(entry.item, entry.row, entry.change);
       }
       trimClosedTrees();
     }
@@ -3761,7 +3769,7 @@ export function mountPullsPanel(container, ctx, mb) {
 
   /**
    * The reader is about to open or close a row's files, by a press on its change line, or
-   * Enter, Space, Right, or Left there: the row stays where it is, under the pointer or the
+   * Space, Right, or Left on the row: the row stays where it is, under the pointer or the
    * focus, and the files open or close below it. A reveal's place gives way to it, as a
    * reader's scroll ends one, so opening a row above the one a reveal placed does not move
    * the row the reader acted on. Called before the files change, while the row is where the
@@ -3778,7 +3786,7 @@ export function mountPullsPanel(container, ctx, mb) {
     }
   }
 
-  /** A press, Enter, or Space on a row's change line: its files open or close in place.
+  /** A press on a row's change line, or Space on the row: its files open or close in place.
    * @param {number} number */
   function toggleRowFiles(number) {
     holdRowPlace(number);
@@ -3968,10 +3976,12 @@ export function mountPullsPanel(container, ctx, mb) {
     const stack = h("span", { class: "github-pulls-place", role: "img", hidden: "" });
     const meta = rowMeta(row, stack);
     const icon = pullStateIcon(row.state);
-    const groupId = `github-pull-change-${row.number}`;
+    const changeId = `github-pull-change-${row.number}`;
     // A link, so a new tab and a copied address are the browser's, in the role of a tree's
-    // item: its level is the list's one, and `placeRows` tells its place. It owns its one
-    // child, its change line, which is always shown, so it is always expanded.
+    // item: its level is the list's one, and `placeRows` tells its place. Its changed files
+    // are its children, as a folder's are, closed until the reader opens them; the tree that
+    // draws them owns them from it (pull-files-view.js, `attach`). Its change line's words
+    // describe it, so they are read with it, as the line is no stop and no node of the tree.
     const anchor = /** @type {HTMLAnchorElement} */ (
       h(
         "a",
@@ -3980,8 +3990,8 @@ export function mountPullsPanel(container, ctx, mb) {
           href: row.href,
           role: "treeitem",
           "aria-level": "1",
-          "aria-expanded": "true",
-          "aria-owns": groupId,
+          "aria-expanded": "false",
+          "aria-describedby": changeId,
           tabindex: "-1",
         },
         [icon, title, updated, meta],
@@ -3994,33 +4004,35 @@ export function mountPullsPanel(container, ctx, mb) {
     if (row.number === anchorRow) {
       anchor.setAttribute("tabindex", "0");
     }
-    // The row's third line, its brief change line (`paintChange`), the row's one child: a
-    // row of the tree that opens and closes the changed files under it, as a folder's does,
-    // with the registry's chevron in the slot the row's own took. It opens no page, so it is
-    // not a link, and it is closed until the reader opens it.
+    // The row's third line, its brief change line (`paintChange`): the line that carries the
+    // toggle, as a folder's line does, with the registry's chevron in the slot under the state
+    // icon. A press anywhere on it opens or closes the changed files and opens no page, so it
+    // is not a link; it is the item's inner target, for the pointer alone. Space, Right, and
+    // Left on the row are its keys, and the row's `aria-expanded` its state, so the line is
+    // hidden from assistive technology, and the tree it sits in holds only its items and their
+    // groups (mb-1z7j). Its words, the line said in full, stay out of view in it, and describe
+    // the row, which reads them though they are hidden. Its `.expanded` follows the files.
     const changeLine = h("span", { class: "github-pulls-change-line" });
+    const changeWords = h("span", { class: "github-pulls-change-words", id: changeId, hidden: "" });
     const change = h(
       "div",
-      {
-        class: "github-pulls-change disclosure-toggle collapsed",
-        role: "treeitem",
-        "aria-level": "2",
-        "aria-posinset": "1",
-        "aria-setsize": "1",
-        "aria-expanded": "false",
-        tabindex: "-1",
-      },
-      [h("span", { class: "github-pulls-toggle", "aria-hidden": "true" }, [chevron()]), changeLine],
+      { class: "github-pulls-change disclosure-toggle collapsed", "aria-hidden": "true" },
+      [
+        h("span", { class: "github-pulls-toggle", "aria-hidden": "true" }, [chevron()]),
+        changeLine,
+        changeWords,
+      ],
     );
     change.dataset.number = String(row.number);
-    const group = h("div", { class: "github-pulls-change-group", role: "group", id: groupId }, [
-      change,
-    ]);
-    const item = h("li", { class: "github-pulls-item", role: "none" }, [anchor, group]);
+    // The item's three lines, one hover, one selection, and one focus ring (github/styles.css,
+    // `.github-pulls-entry`); its files follow, outside it, as a folder's follow its row.
+    const zone = h("div", { class: "github-pulls-entry" }, [anchor, change]);
+    const item = h("li", { class: "github-pulls-item", role: "none" }, [zone]);
     // Its files, kept across a row built again for what it shows.
-    trees.get(row.number)?.attach(item, change);
+    trees.get(row.number)?.attach(item, anchor, change);
     return {
       item,
+      zone,
       row: anchor,
       age: updated,
       stack,
@@ -4029,6 +4041,7 @@ export function mountPullsPanel(container, ctx, mb) {
       meta,
       change,
       changeLine,
+      changeWords,
       changePending: null,
       changeKey: "",
       info: row,
@@ -4042,15 +4055,13 @@ export function mountPullsPanel(container, ctx, mb) {
    * A row's third line as it is now (row-lines.js): the pull request's brief change line,
    * "21 A, 7 D, 15 M · +1,234 −567", the shell's one component for it, with no file total;
    * the shell's pending placeholder while it is read or its list is listed, so nothing moves
-   * when it arrives; or nothing but the chevron where it cannot be had. The line's item is
-   * named in words, as a stack's row says its line (`rowLineHint`), and is a level under the
-   * row's.
+   * when it arrives; or nothing but the chevron where it cannot be had. The line is said in
+   * words, as a stack's row says its line (`rowLineHint`), in the hidden text that describes
+   * the row, so the row is read with them.
    *
    * @param {PaintedRow} entry
-   * @param {number} level The row's level.
    */
-  function paintChange(entry, level) {
-    entry.change.setAttribute("aria-level", String(level + 1));
+  function paintChange(entry) {
     const line = rowLines?.line({ number: entry.info.number, head: entry.info.head }) ?? {
       phase: "none",
     };
@@ -4086,7 +4097,7 @@ export function mountPullsPanel(container, ctx, mb) {
     } else {
       entry.changeLine.replaceChildren();
     }
-    entry.change.setAttribute("aria-label", rowLineHint(words));
+    entry.changeWords.textContent = rowLineHint(words);
   }
 
   /**
@@ -4515,7 +4526,7 @@ export function mountPullsPanel(container, ctx, mb) {
       entry.item.dataset.level = String(placed.level);
       entry.row.setAttribute("aria-posinset", String(placed.posinset ?? part.index + 1));
       entry.row.setAttribute("aria-setsize", String(placed.setsize ?? placedSize));
-      paintChange(entry, placed.level);
+      paintChange(entry);
       nodes.push(entry.item);
     }
     for (const [key, gap] of gaps) {
@@ -4917,14 +4928,16 @@ export function mountPullsPanel(container, ctx, mb) {
             movingFocus = true;
             row.focus({ preventScroll: true });
             movingFocus = false;
-            row.scrollIntoView({ block: "nearest" });
+            // The whole item, its three lines and the ring round them, not the link's two.
+            itemElement(next)?.scrollIntoView({ block: "nearest" });
           }
         }
       },
       reveal(number) {
         paintViewport();
         const entry = painted.get(number);
-        entry?.row.scrollIntoView({ block: "nearest" });
+        // The whole item, as a walk brings it (`markAnchor`).
+        entry?.zone.scrollIntoView({ block: "nearest" });
         const view = tab.scrollRoot?.getBoundingClientRect();
         revealedPlace = null;
         // A hidden panel's rows have no place, and its tab's reveal comes when it is shown.
@@ -5096,36 +5109,49 @@ export function mountPullsPanel(container, ctx, mb) {
       ? /** @type {HTMLElement | null} */ (target.closest(".github-pulls-change"))
       : null;
 
-  /** The pull request whose change line has focus, or null. */
-  const focusedChange = () => {
-    const number = Number(changeOf(document.activeElement)?.dataset.number);
-    return Number.isInteger(number) && number > 0 && painted.has(number) ? number : null;
-  };
-
-  /** Focus *number*'s change line, which the walk's anchor stays the row of.
-   * @param {number} number */
-  function focusChange(number) {
-    const entry = painted.get(number);
-    if (entry === undefined) {
-      return false;
-    }
-    controller.focused(number);
-    entry.change.focus({ preventScroll: true });
-    entry.change.scrollIntoView({ block: "nearest" });
-    return true;
-  }
-
-  /** Focus *number*'s row from its change line or its files, opening nothing.
-   * @param {number} number */
-  function focusRow(number) {
+  /**
+   * Focus *number*'s row, the item's one stop, reading nothing and opening nothing: after a
+   * press on its change line, or Left from the top of its files. The pointer is on the item,
+   * or the files were under it, so nothing scrolls.
+   *
+   * @param {number} number
+   */
+  function focusItem(number) {
     const row = painted.get(number)?.row;
     if (row === undefined) {
       return false;
     }
     controller.focused(number);
+    movingFocus = true;
     row.focus({ preventScroll: true });
-    row.scrollIntoView({ block: "nearest" });
+    movingFocus = false;
     return true;
+  }
+
+  /**
+   * The keys act on the row that has focus, which a pull request's or a stack's row has as
+   * the tree's one stop: each makes it the anchor first, as focus reaching it by Tab does.
+   * A poll, a window's read, a regroup, or a reveal settles the anchor on the current pull
+   * request (`settleAnchor`) and moves its Tab stop there, but leaves focus where the reader
+   * put it, on a row a press on a change line focused, say; without this, Right, Left,
+   * Enter, Up, and Down would act on that other row while Space, which reads the focused
+   * row, acted on this one (mb-1z7j).
+   */
+  function anchorFocusedRow() {
+    const active = document.activeElement;
+    const stackRow = stackRowOf(active);
+    if (stackRow !== null) {
+      const key = stackRowKey(Number(stackRow.dataset.stack));
+      if (paintedStacks.get(key)?.row === stackRow) {
+        controller.focused(key);
+      }
+      return;
+    }
+    const row = rowOf(active);
+    const number = row === null ? Number.NaN : Number(row.dataset.number);
+    if (row !== null && painted.get(number)?.row === row) {
+      controller.focused(number);
+    }
   }
 
   /** @param {EventTarget | null} target */
@@ -5144,20 +5170,22 @@ export function mountPullsPanel(container, ctx, mb) {
         controller.setStackOpen(number);
         return;
       }
-      // A press on a row's change line, its chevron included, opens or closes its changed
-      // files, as a folder's row does, and opens no page.
+      // A press anywhere on a row's change line, the line that carries its toggle, opens or
+      // closes its changed files, as a press on a folder's line does, and opens no page; the
+      // item takes the focus, so Space and the arrows go on from it.
       const change = changeOf(event.target);
       if (change !== null) {
         const number = Number(change.dataset.number);
-        controller.focused(number);
+        focusItem(number);
         toggleRowFiles(number);
         return;
       }
       const row = rowOf(event.target);
-      // A new tab and a copied address are the browser's own.
+      // A press on the item's other lines, which include no toggle of their own, opens the
+      // pull request, and its changed files stay as they were. A new tab and a copied address
+      // are the browser's own.
       if (row !== null && isPlainClick(event)) {
         event.preventDefault();
-        // The pull request opens; its changed files stay as they were.
         controller.activate(Number(row.dataset.number));
       }
     },
@@ -5169,12 +5197,6 @@ export function mountPullsPanel(container, ctx, mb) {
       const stackRow = stackRowOf(event.target);
       if (stackRow !== null && !movingFocus) {
         controller.focused(stackRowKey(Number(stackRow.dataset.stack)));
-        return;
-      }
-      // A row's change line is its child: its row keeps the Tab stop, and nothing is read.
-      const change = changeOf(event.target);
-      if (change !== null) {
-        controller.focused(Number(change.dataset.number));
         return;
       }
       const row = rowOf(event.target);
@@ -5356,46 +5378,25 @@ export function mountPullsPanel(container, ctx, mb) {
     },
     setFilter: (/** @type {string} */ state) => controller.setFilter(state, { fromAddress: true }),
     /**
-     * Up and Down walk the pull requests, and expand nothing. On a row's change line, Up goes
-     * back to its row, and Down into its open files, or else on to the next row.
+     * Up and Down walk the pull requests as wholes, and expand nothing: a row's open files
+     * are reached by Right, as its other keys are its row's (mb-1z7j).
      *
      * @param {-1 | 1} delta @param {{repeat?: boolean}} [how]
      */
     move(delta, how) {
-      const number = focusedChange();
-      if (number === null) {
-        return controller.move(delta, how);
-      }
-      if (delta < 0) {
-        return focusRow(number);
-      }
-      if (expansion.isExpanded(number)) {
-        const tree = treeFor(number).controller;
-        // Its files are still opening, hidden for their first read (FILES_OPEN_HOLD_MS): the
-        // key is the tree's, and does nothing until they show, rather than leaving the row.
-        if (tree.snapshot().opening) {
-          return true;
-        }
-        if (tree.enter()) {
-          return true;
-        }
-      }
+      anchorFocusedRow();
       return controller.move(delta, how);
     },
     released() {
       controller.released();
       focused()?.released();
     },
-    /** Enter: on a row it opens the pull request; on its change line, its files open or close. */
+    /** Enter: on a row it opens the pull request; on a stack's row, the stack opens or closes. */
     activateAnchor() {
-      const number = focusedChange();
-      if (number !== null) {
-        toggleRowFiles(number);
-        return true;
-      }
+      anchorFocusedRow();
       return controller.activateAnchor();
     },
-    /** Space on a row's change line toggles its files in place. @param {number} number */
+    /** Space on a pull request's row toggles its files in place. @param {number} number */
     toggleFiles(number) {
       if (!painted.has(number)) {
         return false;
@@ -5406,23 +5407,11 @@ export function mountPullsPanel(container, ctx, mb) {
     /** Space on a stack's row opens or closes it. @param {number} number */
     toggleStack: (number) => controller.setStackOpen(number),
     /**
-     * Right on a pull request's row: focus goes to its change line, and nothing opens. On its
-     * change line: its files open, or focus goes to the first. On a stack's row: it opens, or
-     * focus goes to its first pull request.
+     * Right, as on a folder: on a pull request's row its files open, or, open, focus goes to
+     * the first. On a stack's row: it opens, or focus goes to its first pull request.
      */
     expand() {
-      const line = focusedChange();
-      if (line !== null) {
-        const open = expansion.isExpanded(line);
-        // The files are the reader's from here, whoever opened them: an address's own close
-        // with it, and these stay.
-        expansion.expand(line);
-        if (!open || !treeFor(line).controller.enter()) {
-          holdRowPlace(line);
-          setExpanded(line, true);
-        }
-        return true;
-      }
+      anchorFocusedRow();
       const number = controller.snapshot().anchor;
       if (number === null) {
         return false;
@@ -5430,31 +5419,34 @@ export function mountPullsPanel(container, ctx, mb) {
       if (number < 0) {
         return controller.enterStack();
       }
-      focusChange(number);
+      const open = expansion.isExpanded(number);
+      // The files are the reader's from here, whoever opened them: an address's own close
+      // with it, and these stay.
+      expansion.expand(number);
+      if (!open || !treeFor(number).controller.enter()) {
+        holdRowPlace(number);
+        setExpanded(number, true);
+      }
       return true;
     },
     /**
-     * Left on a pull request's change line: its files close, or, closed, focus goes back to
-     * its row. On a row: focus goes to the stack's row it is under. On a stack's row: it
-     * closes.
+     * Left, as on a folder: on a pull request's row its open files close, or, closed, focus
+     * goes to the stack's row it is under. On a stack's row: it closes.
      */
     collapse() {
-      const line = focusedChange();
-      if (line !== null) {
-        if (expansion.isExpanded(line)) {
-          holdRowPlace(line);
-          expansion.collapse(line);
-          setExpanded(line, false);
-        } else {
-          focusRow(line);
-        }
+      anchorFocusedRow();
+      const number = controller.snapshot().anchor;
+      if (number === null) {
+        return false;
+      }
+      if (number > 0 && expansion.isExpanded(number)) {
+        holdRowPlace(number);
+        expansion.collapse(number);
+        setExpanded(number, false);
         return true;
       }
-      const number = controller.snapshot().anchor;
-      if (number !== null) {
-        controller.leaveToStack();
-      }
-      return number !== null;
+      controller.leaveToStack();
+      return true;
     },
     /** @param {-1 | 1} delta @param {{repeat?: boolean}} [how] */
     moveFile: (delta, how) => focused()?.move(delta, how) ?? false,

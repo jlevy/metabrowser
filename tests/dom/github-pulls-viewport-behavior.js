@@ -94,6 +94,12 @@ function height(node) {
   return 0;
 }
 FakeElement.prototype.getBoundingClientRect = function () {
+  // A pull request's three lines, the link's two and its change line, are its item's top
+  // (`.github-pulls-entry`, mb-1z7j); its link is their first 41 px.
+  if (this.classList.contains("github-pulls-entry")) {
+    const { top, left, right, width } = this.parentNode.getBoundingClientRect();
+    return { top, bottom: top + 61, height: 61, left, right, width };
+  }
   if (this.classList.contains("github-pulls-row")) {
     const { top, left, right, width } = this.parentNode.getBoundingClientRect();
     return { top, bottom: top + 41, height: 41, left, right, width };
@@ -115,6 +121,8 @@ FakeElement.prototype.getBoundingClientRect = function () {
   }
   return { top, bottom: top + h, height: h, left: 0, right: 800, width: 800 };
 };
+/** A list item's pull request row: the link, first in its three lines' zone (mb-1z7j). */
+const rowOfItem = (item) => item?.firstElementChild.firstElementChild;
 const frames = new Map(),
   timers = new Map(),
   observers = [];
@@ -376,7 +384,7 @@ async function paint() {
   scroll.listeners.get("scroll")();
   await paint();
   const visible = items().find((item) => item.getBoundingClientRect().bottom > 0);
-  const focused = visible.firstElementChild;
+  const focused = rowOfItem(visible);
   focused.focus();
   scroll.scrollTop = 18000;
   scroll.listeners.get("scroll")();
@@ -402,7 +410,7 @@ async function paint() {
   scroll.scrollTop = 0;
   scroll.listeners.get("scroll")();
   await paint();
-  const row = items()[0].firstElementChild;
+  const row = rowOfItem(items()[0]);
   list.listeners.get("focusin")({ target: row });
   await settle();
   assert.deepEqual(detailReads, [500]);
@@ -515,7 +523,7 @@ async function paint() {
     await paint();
   };
   const rowFor = (number) =>
-    items().find((item) => item.dataset.number === String(number))?.firstElementChild;
+    rowOfItem(items().find((item) => item.dataset.number === String(number)));
   const publish = async () => {
     catalogTop += 1;
     created.set(catalogTop, new Date(Date.now() + catalogTop).toISOString());
@@ -570,10 +578,10 @@ async function paint() {
   assert.equal(preview.tab, "");
   handle.setCurrent(preview.number);
   await settle();
-  // The row's files hang from its change line, which an arrow and a route leave closed.
+  // The row's files open from its change line, which an arrow and a route leave closed.
   const changeFor = (number) =>
-    items().find((item) => item.dataset.number === String(number))?.childNodes[1].firstElementChild;
-  assert.equal(changeFor(preview.number).getAttribute("aria-expanded"), "false");
+    items().find((item) => item.dataset.number === String(number))?.firstElementChild.childNodes[1];
+  assert.ok(changeFor(preview.number).classList.contains("collapsed"));
   assert.deepEqual(fileReads, [], "arrow and route selection read no changed-file metadata");
 
   // Which titles breathe ("Refreshing Content" in docs/design-system.md): those of the rows
@@ -581,13 +589,13 @@ async function paint() {
   // receipt ends it, a replaced window moves it, and so does losing the network (A1 of review
   // A on #354: offline cancelled the retry but left the titles breathing). Titles are paint
   // only: no row is marked busy. A title drawn into a breathing window joins its beat.
-  const titleOf = (item) => item.firstElementChild.childNodes[1];
+  const titleOf = (item) => rowOfItem(item).childNodes[1];
   const breathingTitles = () =>
     items()
       .filter((item) => titleOf(item).classList.contains("mb-refreshing"))
       .map((item) => Number(item.dataset.number));
   const busyRows = () =>
-    items().filter((item) => item.firstElementChild.getAttribute("aria-busy") !== null).length;
+    items().filter((item) => rowOfItem(item).getAttribute("aria-busy") !== null).length;
   const titleBreathing = {};
   // The stand-in has no Web Animations API; count the panel's calls to align the beat.
   let aligned = 0;

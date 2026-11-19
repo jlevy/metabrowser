@@ -465,8 +465,7 @@
         bindings: [{ key: "ArrowUp" }, { key: "k" }],
         copy: {
           action: "Previous pull request",
-          description:
-            "Open the previous pull request in the list, or go to a stack's row; from a change line, go back to its pull request.",
+          description: "Open the previous pull request in the list, or go to a stack's row.",
           hint: "Browse",
         },
         group: "pull-requests",
@@ -481,8 +480,7 @@
         bindings: [{ key: "ArrowDown" }, { key: "j" }],
         copy: {
           action: "Next pull request",
-          description:
-            "Open the next pull request in the list, or go to a stack's row; from a change line, into its open changed files.",
+          description: "Open the next pull request in the list, or go to a stack's row.",
           hint: "Browse",
         },
         group: "pull-requests",
@@ -497,8 +495,7 @@
         bindings: [{ key: "Enter" }],
         copy: {
           action: "Open pull request",
-          description:
-            "Open the focused pull request; on its change line, show or hide its changed files; on a stack, open or close it.",
+          description: "Open the focused pull request, or open or close the focused stack.",
           hint: "Open",
         },
         group: "pull-requests",
@@ -513,7 +510,7 @@
         copy: {
           action: "Toggle changed files",
           description:
-            "Expand or collapse the changed files of the focused change line, or the focused stack.",
+            "Expand or collapse the changed files of the focused pull request, or the focused stack.",
           hint: "Changes",
         },
         group: "pull-requests",
@@ -521,20 +518,21 @@
           const event = /** @type {{event?: KeyboardEvent}} */ (context).event;
           const target = event?.target;
           // Consume held Space without toggling again. The element's actual focus can
-          // outlast a catalog update that changes the tab stop. A pull request's change
-          // line and a stack's row carry their numbers. A pull request's own row toggles
-          // nothing, and Space there is consumed all the same, as every row collection's
-          // is, so it does not scroll the list a page from under the focused row.
+          // outlast a catalog update that changes the tab stop, so the focused row says
+          // which: a stack's row carries its stack's number, and a pull request's row, the
+          // item of its three lines, its own, whose changed files Space opens or closes as
+          // it does a folder's (mb-1z7j). Space is consumed either way, as every row
+          // collection's is, so it does not scroll the list a page from under the row.
           if (!(target instanceof HTMLElement)) {
             return false;
-          }
-          if (target.matches(".github-pulls-change")) {
-            return event?.repeat === true || nav.toggleFiles(Number(target.dataset.number));
           }
           if (target.matches(".github-pulls-stack-row")) {
             return event?.repeat === true || nav.toggleStack(Number(target.dataset.stack));
           }
-          return target.matches(".github-pulls-row");
+          if (target.matches(".github-pulls-row")) {
+            return event?.repeat === true || nav.toggleFiles(Number(target.dataset.number));
+          }
+          return false;
         },
         id: "pulls.toggle-files",
         order: 35,
@@ -547,7 +545,7 @@
         copy: {
           action: "Show changed files",
           description:
-            "Go to the focused pull request's change line; there, show its changed files or go to the first; on a stack, its pull requests.",
+            "Show the focused pull request's changed files, or go to the first; on a stack, its pull requests.",
           hint: "Changes",
         },
         group: "pull-requests",
@@ -562,7 +560,7 @@
         copy: {
           action: "Hide changed files",
           description:
-            "On a change line, hide its changed files or go back to its pull request; on a pull request, go to its stack; on a stack, close it.",
+            "Hide the focused pull request's changed files, or go to its stack; on a stack, close it.",
           hint: "Changes",
         },
         group: "pull-requests",
@@ -667,7 +665,7 @@
   let activeScope = null;
 
   /**
-   * Which keys a focused element takes: a pull request's row's, which its change line shares, a
+   * Which keys a focused element takes: a pull request's row's, a stack's row's among them, a
    * changed file's row's, or none.
    *
    * @param {EventTarget | null} target
@@ -675,8 +673,7 @@
   const scopeOf = (target) =>
     !(target instanceof Element)
       ? null
-      : target.closest(".github-pulls-row") !== null ||
-          target.closest(".github-pulls-change") !== null
+      : target.closest(".github-pulls-row") !== null
         ? KEY_SCOPE
         : target.closest(".github-pull-file-row, .github-pull-folder-row") !== null
           ? FILE_KEY_SCOPE
