@@ -156,7 +156,8 @@ status: 200
   "full_name": "<ROOT>",
   "kind": "folder",
   "kind_label": "Local folder",
-  "title": "shellroot • Metabrowser"
+  "title": "shellroot • Metabrowser",
+  "repository": null
 }
 ? 0
 ```
@@ -172,7 +173,8 @@ status: 200
   "full_name": "~/shellroot",
   "kind": "folder",
   "kind_label": "Local folder",
-  "title": "shellroot • Metabrowser"
+  "title": "shellroot • Metabrowser",
+  "repository": null
 }
 ? 0
 ```
@@ -186,7 +188,8 @@ status: 200
   "full_name": "~",
   "kind": "folder",
   "kind_label": "Local folder",
-  "title": "~ • Metabrowser"
+  "title": "~ • Metabrowser",
+  "repository": null
 }
 ? 0
 ```
@@ -204,7 +207,8 @@ status: 200
   "full_name": "~/odd�name",
   "kind": "folder",
   "kind_label": "Local folder",
-  "title": "odd�name • Metabrowser"
+  "title": "odd�name • Metabrowser",
+  "repository": null
 }
 ? 0
 ```

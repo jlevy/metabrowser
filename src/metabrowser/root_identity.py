@@ -55,6 +55,7 @@ the life of a document, and no page fetches this route.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 from pathlib import Path
@@ -78,6 +79,7 @@ from metabrowser.mirror_refresh import (
     pull_head_number,
 )
 from metabrowser.paths_safe import tilde_path
+from metabrowser.repository_context import RepositoryContext, discover_repository_context
 from metabrowser.source import (
     UnsupportedSourceCapabilityError,
     as_git_revision_subject,
@@ -122,7 +124,7 @@ _NO_NAME: Final = frozenset({"", ".", ".."})
 
 
 class RootIdentity(TypedDict):
-    """The envelope of ``GET /api/identity``.
+    """What the served subject is called, which ``GET /api/identity`` answers.
 
     ``short_name`` is what a window is called, ``full_name`` the longer name that tells
     two of the same short name apart, and ``kind`` whether the subject is a local
@@ -300,14 +302,65 @@ def root_identity(
     return folder_identity(session_filesystem_root(), home=user_home())
 
 
-async def api_identity(request: Request) -> JSONResponse:
-    """``GET /api/identity`` -- what this server's subject is called, as a window titles it."""
+class IdentityEnvelope(RootIdentity):
+    """The envelope of ``GET /api/identity``: the subject's names, and its repository.
 
+    ``repository`` is the GitHub repository the subject belongs to, as the canonical URL
+    ``https://github.com/<owner>/<repo>`` in lowercase, which is how
+    ``metab URL --present --dry-run`` names a link's ``root``, or ``None`` when it has none
+    on github.com. A folder belongs to the repository its checkout's ``origin`` names,
+    found by :func:`~metabrowser.repository_context.discover_repository_context`, which
+    walks up from a folder below the checkout's root, so a subfolder's window belongs to
+    it too. A mirror belongs to the repository it mirrors. The macOS app reads it to put
+    a link's mirror beside an open checkout of the same repository. It is a name to
+    compare, not a promise: a checkout's ``.git/config`` can name any repository.
+    """
+
+    repository: str | None
+
+
+def _canonical_repository(context: RepositoryContext | None) -> str | None:
+    """*context*'s repository as ``github/urls.py``'s ``repository_url`` spells it."""
+
+    if context is None:
+        return None
+    return f"https://{context['host']}/{context['owner'].lower()}/{context['name'].lower()}"
+
+
+async def served_repository(
+    mirror: MirrorSession | None, checkout: CheckoutRevisions | None = None
+) -> str | None:
+    """The GitHub repository the active session's subject belongs to, or ``None``.
+
+    A folder's is read from its checkout's Git files, bounded and off the event loop, as
+    the shell's repository context is; a mirror's is its provider's, which runs no Git.
+    """
+
+    pin = as_git_revision_subject(get_source_session().subject)
+    if pin is None:
+        root = session_filesystem_root()
+        return _canonical_repository(await asyncio.to_thread(discover_repository_context, root))
+    if checkout is not None and checkout.serves(pin):
+        context = await asyncio.to_thread(discover_repository_context, checkout.root)
+        return _canonical_repository(context)
+    if mirror is None:
+        return None
+    return _canonical_repository(
+        mirror.mirror.repository_context(revision=pin.commit_oid, branch=None)
+    )
+
+
+async def api_identity(request: Request) -> JSONResponse:
+    """``GET /api/identity`` -- what this server's subject is called, as a window titles it,
+    and the GitHub repository it belongs to."""
+
+    mirror, checkout = mirror_session(request.app), checkout_revisions()
     try:
-        identity = root_identity(mirror_session(request.app), checkout_revisions())
+        identity = root_identity(mirror, checkout)
+        repository = await served_repository(mirror, checkout)
     except UnsupportedSourceCapabilityError as exc:
         return JSONResponse(unsupported_source_payload(exc), status_code=409)
-    return JSONResponse(dict(identity))
+    return JSONResponse(dict(IdentityEnvelope(**identity, repository=repository)))
 
 
 IDENTITY_ROUTES = [Route("/api/identity", api_identity)]

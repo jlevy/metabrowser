@@ -668,8 +668,8 @@ def test_a_name_or_an_order_is_no_part_of_the_contract(tmp_path: Path) -> None:
     )
     unchanged(
         declaration.replace(
-            '["short_name", "full_name", "kind", "kind_label", "title"]',
-            '["title", "kind_label", "kind", "full_name", "short_name"]',
+            '["short_name", "full_name", "kind", "kind_label", "title", "repository"]',
+            '["repository", "title", "kind_label", "kind", "full_name", "short_name"]',
         )
     )
 

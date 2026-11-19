@@ -331,6 +331,11 @@ class _Sandbox:
         opened = iter(f"2026-11-18T03:14:{second:02d}Z" for second in range(15, 60))
         monkeypatch.setattr(recent_targets, "now", lambda: next(opened))
         self.origin = _origin(tmp_path)
+        # A checkout of a GitHub repository, whose window a link's new mirror window of
+        # that repository joins as a tab: its origin is what names the repository.
+        self.checkout = tmp_path / "checkout"
+        _git(tmp_path, "clone", "-q", "--template=", "--", self.origin, str(self.checkout))
+        _git(self.checkout, "remote", "set-url", "origin", "git@github.com:Octo/Demo.git")
 
     def run(
         self,
@@ -471,6 +476,7 @@ def test_golden_app_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
         run("serve-path/file", {**folder, "path": ESCAPED_FILE}),
         run("identity/folder", {"root": served}),
         run("identity/under-home", {"root": served}, env={"HOME": str(tmp_path)}),
+        run("identity/checkout", {"root": str(sandbox.checkout)}),
         run("source-status/folder", {"root": served}),
         # A repository: its first start clones, and the next finds the clone.
         run("serve/repository-cloned", repository),

@@ -112,6 +112,16 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
 - **Always the mirror:** a link opens Metabrowser’s own copy of the repository, its
   mirror in `metab`’s cache, never a checkout of it that you have open
   ([Open Modes](project/architecture/arch-open-modes.md)).
+- **Beside your checkout:** when the mirror has no window yet but a window shows a
+  checkout of the same GitHub repository, the mirror opens as a new tab of that window
+  instead of a window of its own, whatever Settings says about new folders.
+  A checkout belongs to the repository its `origin` names on github.com, not to the
+  repository its folder is named after, and a folder inside a checkout belongs to it
+  too. If several open windows show checkouts of the repository, the tab joins the one
+  you used most recently.
+  The checkout’s own tab keeps showing your working tree.
+  A checkout whose window is minimized, or whose server has not started yet, is passed
+  over, and the mirror opens as any new folder does.
 - **Asked once before a clone:** a link to a repository the cache does not hold yet asks
   first, naming the repository: opening it clones the repository into the cache and
   reads it, and its pull requests, with your `gh` sign-in.

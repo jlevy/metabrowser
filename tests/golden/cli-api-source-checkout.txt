@@ -579,7 +579,8 @@ status: 200
   "full_name": "~/checkout@v1",
   "kind": "folder",
   "kind_label": "Local folder",
-  "title": "checkout • Metabrowser"
+  "title": "checkout • Metabrowser",
+  "repository": null
 }
 --- stderr ---
 
@@ -593,7 +594,8 @@ status: 200
   "full_name": "~/checkout@origin/feature",
   "kind": "folder",
   "kind_label": "Local folder",
-  "title": "checkout • Metabrowser"
+  "title": "checkout • Metabrowser",
+  "repository": null
 }
 --- stderr ---
 
@@ -661,7 +663,8 @@ status: 200
   "full_name": "<ROOT>",
   "kind": "folder",
   "kind_label": "Local folder",
-  "title": "checkout • Metabrowser"
+  "title": "checkout • Metabrowser",
+  "repository": null
 }
 --- stderr ---
 

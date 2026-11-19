@@ -584,6 +584,8 @@ def test_the_status_and_the_page_say_where_the_mirror_is_kept(
             "kind": "mirror",
             "kind_label": "Cached mirror",
             "title": "origin \u2022 Metabrowser",
+            # A file:// origin is on no host the macOS app opens links of.
+            "repository": None,
         }
 
         page = client.get(f"/view/{_wire('README.md')}")
