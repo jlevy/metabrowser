@@ -3,17 +3,21 @@ type: is
 id: is-01m7r7k24sbwrkavevnpb6xrvp
 title: "Files view: the border under the file tally stops short of the full width, unlike the other section borders"
 kind: bug
-status: in_progress
+status: closed
 priority: 2
-version: 6
+version: 7
 delegate: claude-code@spud10
 labels: []
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-18T21:04:19.094Z
-updated_at: 2026-11-19T00:22:41.967Z
+updated_at: 2026-11-19T00:25:04.755Z
 started_at: 2026-11-18T21:06:44.438Z
+closed_at: 2026-11-19T00:25:04.754Z
+close_reason: "Landed in #573 (1a2cabe60)"
+resolution: null
+duplicate_of: null
 ---
 Owner, 2026-11-18: in the files view, the border line below the file tally and above the files does not extend the full width; it stops a little short, unlike the other border lines between the sections. Make it consistent with the other section borders.
 
