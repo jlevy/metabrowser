@@ -215,6 +215,15 @@ Page, and zoom, which the app remembers; Edit > Find; and Help > Metabrowser
 Documentation, Check Setup…, and Reveal Logs Folder.
 The mark at the title bar’s trailing end opens the project on GitHub.
 
+Edit > Find (Command-F) opens a find bar above the page.
+It searches as a browser’s find does: the whole page, the navigation pane included,
+without regard to case, wrapping at either end, and it searches the page as it is now,
+after you open another file in place.
+Typing searches as you go; Return or Command-G finds the next match, Shift-Return or
+Shift-Command-G the previous one; Command-E makes the selected text the search string;
+and Escape or Done closes the bar.
+The search string is the one other apps’ Find shares.
+
 ## View on GitHub
 
 A page whose file, folder, pull request, or commit has a page on github.com shows a View
