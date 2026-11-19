@@ -5,14 +5,14 @@ title: "Branch chooser: list every branch, most recently committed first (no 100
 kind: task
 status: in_progress
 priority: 2
-version: 3
+version: 4
 delegate: claude-code@spud10
 labels: []
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-19T17:19:15.166Z
-updated_at: 2026-11-19T18:07:42.986Z
+updated_at: 2026-11-19T19:31:01.474Z
 started_at: 2026-11-19T17:55:57.990Z
 ---
 Owner, 2026-11-19, verbatim: "the branch selector shows: Showing 100 of 1292 branches; filter to narrow. 1. We should not truncate at such an arbitrarily low number as 1,000. We can show all the branches. 2. We should sort them by recency, with most recently modified branches first"
@@ -25,3 +25,4 @@ Decisions (2026-11-19, branch claude/branch-chooser-all-recent):
 - Caching: none existed on the refs route (comment said not memoized; browser fetches no-store). Reused the existing Git routes memo (git/route_memo.py GIT_ANSWERS) keyed on ref_state + kind + query + served pin/ref + mirror default branch (_refs_answer_key). Bodies over MAX_ENTRY_BYTES (about 9,000 branches) are served, not kept; a repo with more than MAX_REF_ENTRIES loose refs has no key.
 - Browser: drawing every row cost 0.6-0.8 s of main thread at 10,001 rows (content-visibility worse), so the list is a window: rows near the view plus ROWS_OVERSCAN (20) on each side, absolutely placed over a sizer; aria-posinset/setsize on each row; keys move by index (focusRow). Badge border made the first row 2px taller, which left gaps; fixed with margin-block -1px on the badge, held by tests/test_ref_selector_long_list_chrome.py.
 - Measurements (M1 Pro, load avg 17-35): server for-each-ref 1,301 loose/packed 56-77/25-29 ms, 10,001 loose/packed 383-478/120-124 ms; JSON 291 KB / 2.2 MB. Chrome open painted: 1,301 = 68 ms; 10,001 packed = 249 ms (route 206); 10,001 loose = 666 ms (route 572). No long task over 50 ms; End/ArrowDown/scroll 30-34 ms to the next frame. Screenshot attic/refs-bench/chooser-1300-newest-first.png in the worktree.
+- PR #614. Review A (0 High, 1 Medium, 4 Low) folded at c7979a7e3. A1: the checkout listing's memo key now includes HEAD's ref as repo_info reads it (repo_info's 5 s TTL made a switch's listing keep the old checked-out branch). A3: parse/sort and filter/encode run in asyncio.to_thread (route_memo.keep_body). A4: rowWindow takes the roving row. A5: role="list", the served row is revealed on first listing, and overflow-anchor: none. Dispositions comment posted.
