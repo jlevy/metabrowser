@@ -4977,9 +4977,11 @@ function initNavTabs() {
 function shellKeymapShell() {
   return Object.freeze({
     goHome,
+    navToggle: () => navCollapse?.button ?? null,
     openFolder: navigateToFolder,
     selectPreviewTab,
     toggleFilterMenu,
+    toggleNav: () => navCollapse?.toggle(),
   });
 }
 
@@ -9948,6 +9950,8 @@ async function initDeferredShellTools() {
   }
   await _perf.measureAsync("loadShellTools", () => assets.ensureAsset("shell-tools"));
   attachMainTabs();
+  // Before the keymap, whose backslash key targets the chevron.
+  startNavCollapse();
   initKeyboardInfrastructure();
   initQuickFileFinder();
   window.MetabrowserPullsNav?.init().catch((error) => {
@@ -10029,6 +10033,64 @@ if (isGitRevisionSource() && !window.MetabrowserGitPath) {
 }
 renderNavFilterBar();
 renderInitialTreeRows();
+/** @type {MetabrowserPublicNavCollapseController | null} */
+var navCollapse = null;
+drawNavCollapseButton();
+
+/**
+ * The chevron that hides and shows the navigation pane, drawn before the first paint.
+ * Its module, static/nav-collapse.js, arrives in the `shell-tools` bundle, which owns
+ * every decision; a click before then loads the bundle and then hides the pane.
+ */
+function drawNavCollapseButton() {
+  var button = document.getElementById("nav-collapse-toggle");
+  if (!button) {
+    return;
+  }
+  // The chevron of the "icon-btn nav-collapse-toggle disclosure-toggle" server.py writes.
+  button.innerHTML = `${ICONS.toggle}`;
+  button.addEventListener("click", onEarlyNavCollapseClick);
+}
+
+/** @param {MouseEvent} event */
+function onEarlyNavCollapseClick(event) {
+  event.preventDefault();
+  window.MetabrowserAssets?.ensureAsset("shell-tools").then(
+    () => startNavCollapse()?.toggle(),
+    (error) => console.error("metabrowser: could not load the navigation toggle", error),
+  );
+}
+
+/** Run the chevron with its module, once the `shell-tools` bundle has loaded it. */
+function startNavCollapse() {
+  if (navCollapse) {
+    return navCollapse;
+  }
+  var button = /** @type {HTMLButtonElement | null} */ (
+    document.getElementById("nav-collapse-toggle")
+  );
+  var pane = document.getElementById("tree-pane");
+  var frame = queryHtml(".preview-frame");
+  var container = queryHtml(".container");
+  if (!window.MetabrowserNavCollapse || !button || !pane || !frame || !container) {
+    return null;
+  }
+  button.removeEventListener("click", onEarlyNavCollapseClick);
+  navCollapse = window.MetabrowserNavCollapse.create({
+    anchor: document.getElementById("nav-shortcut-hints"),
+    button: button,
+    container: container,
+    focusFallback: () => document.getElementById("preview-pane"),
+    frame: frame,
+    // A filter's menu and the branch chooser close, as hiding the Files panel closes them.
+    onHide: () => {
+      closeFilterMenu();
+      window.MetabrowserSourceRefSelector?.mounted()?.close();
+    },
+    pane: pane,
+  });
+  return navCollapse;
+}
 
 document.addEventListener("DOMContentLoaded", async () => {
   initTooltip();

@@ -2315,6 +2315,8 @@ html.theme-anim body,
 html.theme-anim .container,
 html.theme-anim .tree-pane,
 html.theme-anim .preview-pane,
+html.theme-anim .preview-frame,
+html.theme-anim .nav-collapse-toggle,
 html.theme-anim .app-header,
 html.theme-anim .tree-content,
 html.theme-anim .preview-empty,
@@ -2551,6 +2553,8 @@ html.theme-anim .menu {
   display: flex;
   min-height: 0;
   overflow: hidden;
+  /* The containing block of the navigation pane while it is hidden. */
+  position: relative;
 }
 
 /* ── Tree pane ───────────────────────────────────────────────── */
@@ -2993,6 +2997,47 @@ html.theme-anim .menu {
 .resizing .resize-handle {
   background: var(--link);
 }
+/* ── Hiding the navigation pane ──────────────────────────────── */
+
+/* Hidden (static/nav-collapse.js), the pane leaves the flow and stays where it was, at
+   its width, under the main frame, which then starts at the window's edge and covers it;
+   it is inert, so nothing in it takes focus or a key. The frame slides over it with a
+   transform the module runs, so the pane's own layout never changes. */
+.container[data-nav-collapsed] > .tree-pane {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+}
+.container[data-nav-collapsed] > .resize-handle {
+  display: none;
+}
+/* The chevron: an icon button on the main page's left edge, beside the pane's shadow,
+   on the shortcut strip's row. The module centers it on the strip; `bottom` holds it
+   near there until the first measurement. It has the page's ground at rest, as a plate,
+   since the page's content can run under it, and the hover surface over that. The shared
+   chevron points right; turned, it points left, at the pane it hides, and it turns back
+   when the pane is hidden. */
+.nav-collapse-toggle {
+  position: absolute;
+  left: 4px;
+  bottom: 5px;
+  z-index: var(--z-resize-handle);
+  background: var(--bg);
+}
+.nav-collapse-toggle svg {
+  transform: rotate(180deg);
+  transition: transform var(--motion-reveal);
+}
+.nav-collapse-toggle[aria-expanded="false"] svg {
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-collapse-toggle svg {
+    transition: none;
+  }
+}
+
 .resizing {
   cursor: col-resize;
   -webkit-user-select: none;
@@ -3089,6 +3134,9 @@ html[data-prose-font="sans"] .kpress-prose h2,
   z-index: var(--z-pane);
   box-shadow: var(--shadow-pane-left);
   transform: translateZ(0);
+  /* Opaque, so a hidden navigation pane under it does not show through. It is the page's
+     ground the reader sees, so it is in the theme crossfade above. */
+  background: var(--bg);
 }
 .preview-pane {
   flex: 1;
@@ -6669,6 +6717,7 @@ pre.code-block.metabrowser-source-lines > code {
 
   .tree-pane,
   .resize-handle,
+  .nav-collapse-toggle,
   .app-header,
   .file-header,
   .tab-bar,

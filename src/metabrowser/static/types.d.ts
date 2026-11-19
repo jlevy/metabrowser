@@ -1035,6 +1035,30 @@ type MetabrowserThemeChange = {
   resolved: "dark" | "light";
 };
 
+/** static/nav-collapse.js: hiding and showing the navigation pane. */
+type MetabrowserNavCollapseController = Readonly<{
+  button: HTMLButtonElement;
+  isCollapsed(): boolean;
+  setCollapsed(collapsed: boolean): void;
+  toggle(): void;
+  subscribe(listener: () => void): () => void;
+  dispose(): void;
+}>;
+
+type MetabrowserNavCollapseRuntime = Readonly<{
+  create(options: {
+    anchor?: HTMLElement | null;
+    button: HTMLButtonElement;
+    container: HTMLElement;
+    document?: Document;
+    focusFallback?: () => HTMLElement | null;
+    frame: HTMLElement;
+    onHide?: () => void;
+    pane: HTMLElement;
+    reducedMotion?: () => boolean;
+  }): MetabrowserNavCollapseController;
+}>;
+
 type MetabrowserThemeRuntime = {
   notifyChanged(detail: MetabrowserThemeChange): void;
   subscribe(listener: (detail: MetabrowserThemeChange) => void): () => void;
@@ -2845,6 +2869,10 @@ type MetabrowserShellKeymapShell = Readonly<{
   /** Home: the served folder's home view, as the folder's name's click goes there. */
   goHome(): void;
   openFolder(dir: string): void;
+  /** Hide or show the navigation pane, as its chevron's click does. */
+  toggleNav(): void;
+  /** The chevron that hides and shows the navigation pane, the key's target. */
+  navToggle(): HTMLElement | null;
   selectPreviewTab(bar: HTMLElement, tabId: string): boolean;
   /** Open or close a filter dropdown, `types` or `recency`, as its trigger's click does. */
   toggleFilterMenu(key: string, open: boolean): void;
@@ -3829,6 +3857,7 @@ declare global {
   type MetabrowserPublicKeyRevealApi = MetabrowserKeyRevealApi;
   type MetabrowserPublicShellKeymapApi = MetabrowserShellKeymapApi;
   type MetabrowserPublicShellKeymapShell = MetabrowserShellKeymapShell;
+  type MetabrowserPublicNavCollapseController = MetabrowserNavCollapseController;
   type MetabrowserPublicTreeSection = MetabrowserTreeSection;
   type MetabrowserPublicGroupedLoad = MetabrowserGroupedLoad;
   type MetabrowserPublicShortcutRegistry = MetabrowserShortcutRegistry;
@@ -4180,6 +4209,7 @@ declare global {
     }>;
     MetabrowserSearchPalette: MetabrowserSearchPaletteRuntime;
     MetabrowserTheme: MetabrowserThemeRuntime;
+    MetabrowserNavCollapse?: MetabrowserNavCollapseRuntime;
     MetabrowserTreeExpansion: MetabrowserTreeExpansion;
     MetabrowserTreeFilterModel: MetabrowserTreeFilterModel;
     MetabrowserTreeKeyboardNavigation: MetabrowserTreeKeyboardRuntime;
