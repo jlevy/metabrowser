@@ -3,9 +3,9 @@ type: is
 id: is-01m7nnxnedw2fvq6ef6p0ka73z
 title: "GitHub status check: gh path, version, account, scopes; --doctor section, route, and preflight"
 kind: feature
-status: in_progress
+status: closed
 priority: 2
-version: 7
+version: 8
 spec_path: docs/project/specs/active/plan-2026-11-17-open-anything-from-cli-and-app.md
 delegate: claude-code@spud10
 labels: []
@@ -22,8 +22,12 @@ parent_id: is-01m7nnxhaqce1g2ewec3wbaf7e
 hold: null
 hold_until: null
 created_at: 2026-11-17T21:17:03.309Z
-updated_at: 2026-11-18T22:06:50.817Z
+updated_at: 2026-11-19T01:12:00.552Z
 started_at: 2026-11-18T21:02:21.507Z
+closed_at: 2026-11-19T01:12:00.549Z
+close_reason: "Landed in #581"
+resolution: null
+duplicate_of: null
 ---
 Phase 1. gh auth status --active --hostname github.com --json hosts; report GhFailureState; registered route plus --doctor --json; check before a first clone or pull request read and stop with the fixing command instead of a silent fallback; read token scopes where gh reports them.
 
