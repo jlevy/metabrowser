@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import json
 import random
+import sys
+import threading
 import time
 import warnings
+from collections.abc import Callable
 from typing import Any
 
 import pytest
@@ -20,10 +23,96 @@ from metabrowser.diff.structured_projection import (
     structured_format,
 )
 
-# What a bounded projection may take in these tests. The shapes the reviews measured took
-# 1.1 s and more before their bounds (mb-8274 reviews A1, A4 and C3), and take about
-# 0.1 s with them at a load average near 35; this leaves room for a loaded machine.
+# What a bounded YAML parse may take in these tests: a smoke check only, with room for a
+# loaded machine. Whether the merge's work is bounded is asserted by counting it
+# (_loop_iterations), which load does not change (mb-8274 review E2).
 _CEILING_S = 3.0
+
+# The Python loop iterations one JSON projection may make. Each unit its budgets meter (a
+# value, an entry, an alignment or a pairing step) is a pass or two of a loop, so a
+# projection that meters all its work stays within a small multiple of their sum. The
+# most any shape below makes on Python 3.14 is 0.97 million, the 111 KB pair of review
+# E1, against 642,000 budgeted units; with E1's pairing walking the long side it made
+# more than 2 million in 0.4 s, and A1's and C3's shapes made 2.4 to more than 8 million
+# on the round-1 module (785ff2e94).
+_WORK_LIMIT = 3 * (
+    structured_projection._MAX_NODES  # pyright: ignore[reportPrivateUsage]
+    + structured_projection._MAX_ENTRIES  # pyright: ignore[reportPrivateUsage]
+    + structured_projection._MAX_ALIGNMENT_STEPS  # pyright: ignore[reportPrivateUsage]
+    + structured_projection._MAX_PAIRING_STEPS  # pyright: ignore[reportPrivateUsage]
+)
+
+
+class _TooMuchWork(BaseException):
+    """Stops a projection past its loop limit; a BaseException, so no handler in the
+    projection mistakes it for a parse error."""
+
+
+def _loop_iterations(run: Callable[[], object], limit: int) -> int:
+    """The Python loop iterations *run* makes on this thread, stopping it past *limit*.
+
+    Each pass of a ``for`` or ``while`` loop, a comprehension or a generator ends in an
+    unconditional jump, which ``sys.monitoring`` reports as a JUMP event, so the count is
+    the work pure-Python code does, the same on a loaded machine as on an idle one. Past
+    *limit* an exception stops *run*, so a quadratic regression fails in the time the
+    limit takes rather than its own.
+    """
+
+    monitoring = sys.monitoring
+    tool = next(each for each in range(6) if monitoring.get_tool(each) is None)
+    thread = threading.get_ident()
+    count = 0
+    stopped = False
+
+    def jumped(code: object, offset: int, destination: int) -> None:
+        nonlocal count, stopped
+        if stopped or threading.get_ident() != thread:
+            return
+        count += 1
+        if count > limit:
+            stopped = True
+            raise _TooMuchWork
+
+    monitoring.use_tool_id(tool, "loop iterations")
+    try:
+        monitoring.register_callback(tool, monitoring.events.JUMP, jumped)
+        monitoring.set_events(tool, monitoring.events.JUMP)
+        try:
+            run()
+        except _TooMuchWork:
+            pass
+        finally:
+            monitoring.set_events(tool, monitoring.events.NO_EVENTS)
+    finally:
+        monitoring.register_callback(tool, monitoring.events.JUMP, None)
+        monitoring.free_tool_id(tool)
+    return count
+
+
+def _compact(value: object) -> bytes:
+    return json.dumps(value, separators=(",", ":")).encode()
+
+
+def _projected_within(old: bytes, new: bytes, limit: int) -> tuple[int, str | None]:
+    """The loop iterations a JSON projection of *old* and *new* makes, and its status, or
+    None when it was stopped past *limit*."""
+
+    statuses: list[str] = []
+    work = _loop_iterations(
+        lambda: statuses.append(project_structured_diff(old=old, new=new, fmt="json")["status"]),
+        limit,
+    )
+    return work, statuses[0] if statuses else None
+
+
+def _values(value: object) -> int:
+    """The values *value* holds, itself included: what the node budget counts."""
+
+    if isinstance(value, dict):
+        return 1 + sum(_values(item) for item in value.values())  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
+    if isinstance(value, list):
+        return 1 + sum(_values(item) for item in value)  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
+    return 1
 
 
 def _yaml(old: str | None, new: str | None) -> dict[str, Any]:
@@ -311,15 +400,11 @@ def test_trees_past_the_node_and_entry_budgets_are_too_large() -> None:
     assert _json(old[:1_000], new[:1_000])["status"] == "ready"
 
 
-def test_a_long_run_of_repeated_values_aligns_within_the_work_budget() -> None:
-    old = [{"k": index % 10} for index in range(3_000)]
-    new = [{"k": (index * 7) % 10} for index in range(3_000)]
-    start = time.perf_counter()
-    answer = project_structured_diff(
-        old=json.dumps(old).encode(), new=json.dumps(new).encode(), fmt="json"
-    )
-    assert time.perf_counter() - start < _CEILING_S
-    assert answer["status"] in {"ready", "too_large"}
+def test_a_long_run_of_repeated_mappings_aligns_within_the_work_budget() -> None:
+    old = _compact([{"k": index % 10} for index in range(3_000)])
+    new = _compact([{"k": (index * 7) % 10} for index in range(3_000)])
+    work, _ = _projected_within(old, new, _WORK_LIMIT)
+    assert work <= _WORK_LIMIT, work
 
 
 def test_structured_format_names_the_plugins_extensions() -> None:
@@ -329,20 +414,22 @@ def test_structured_format_names_the_plugins_extensions() -> None:
     assert structured_format(".md") is None
 
 
-def test_a_long_run_of_repeated_values_aligns_quickly() -> None:
-    # mb-8274 review A1: difflib's matcher is cubic in repeated values.
-    for size in (1_000, 2_000):
-        old = [index % 10 for index in range(size)]
-        new = [(index * 7) % 10 for index in range(size)]
-        start = time.perf_counter()
-        answer = _json(old, new)
-        assert time.perf_counter() - start < _CEILING_S
-        assert answer["status"] in {"ready", "too_large"}
+def test_a_long_run_of_repeated_values_aligns_within_the_work_budget() -> None:
+    # mb-8274 review A1: difflib's matcher is cubic in repeated values; this pair made
+    # more than 8 million loop iterations on the round-1 module, and makes 0.65 million.
+    old = _compact([index % 10 for index in range(1_000)])
+    new = _compact([(index * 7) % 10 for index in range(1_000)])
+    work, status = _projected_within(old, new, _WORK_LIMIT)
+    assert work <= _WORK_LIMIT, work
+    assert status == "ready"
 
 
 def test_nesting_does_not_multiply_the_work() -> None:
-    # mb-8274 review C3: an 80 KB pair of nested lists took 1.1-1.7 s.
-    inner = [index % 10 for index in range(19_900)]
+    # mb-8274 review C3: comparing each level walked everything under it. A list of
+    # 19,000 fits the node budget at both depths, so each pair reaches the merge; at
+    # depth 15 the round-1 module made 2.4 million loop iterations, and this makes about
+    # three for each value.
+    inner = [index % 10 for index in range(19_000)]
 
     def nest(last: int, depth: int) -> object:
         value: object = [inner, last]
@@ -351,10 +438,24 @@ def test_nesting_does_not_multiply_the_work() -> None:
         return value
 
     for depth in (15, 60):
-        start = time.perf_counter()
-        answer = _json(nest(1, depth), nest(2, depth))
-        assert time.perf_counter() - start < _CEILING_S
-        assert answer["status"] in {"ready", "too_large"}
+        old, new = nest(1, depth), nest(2, depth)
+        limit = 8 * (_values(old) + _values(new))
+        work, status = _projected_within(_compact(old), _compact(new), limit)
+        assert work <= limit, (depth, work)
+        assert status == "ready", depth
+
+
+@pytest.mark.parametrize(("long", "short"), [(5_000, 2_000), (15_000, 8_000)])
+def test_a_long_list_against_many_short_ones_pairs_within_the_work_budget(
+    long: int, short: int
+) -> None:
+    # mb-8274 review E1: pairing charged one step for each pair of lists but walked the
+    # long removed list for each, so a 111 KB pair took 10-11 s; it made more than
+    # 2 million loop iterations in 0.4 s, and makes under 1 million.
+    old, new = _compact([list(range(long))]), _compact([[0]] * short)
+    assert len(old) + len(new) <= STRUCTURED_DIFF_MAX_BYTES
+    work, _ = _projected_within(old, new, _WORK_LIMIT)
+    assert work <= _WORK_LIMIT, work
 
 
 def test_past_the_alignment_budget_equal_items_stay_unchanged(

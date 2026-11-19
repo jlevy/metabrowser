@@ -51,12 +51,15 @@ synthetic cases are the lowest and highest of three.
 | A list of 10,000, one item changed | 115 KiB pair | 34-55 ms | too large |
 | 4,000 items, nothing shared | 49 KiB pair | 132-251 ms | too large |
 | 100 mappings of 40 keys, half of each changed | 101 KiB pair | 35-66 ms | too large |
+| One list of 15,000 against 8,000 lists of one (E1) | 108 KiB pair | 137-140 ms | too large |
 
 The real answers that encode are p90 11 KiB and at most 15 KiB for YAML, and p90 34 KiB
 and at most 119 KiB for JSON. They draw p50 19, p90 90, and at most 223 entries for
 YAML, and p50 16, p90 121, p99 681, and at most 940 for JSON. Every refused synthetic
 case is inside its byte bound, so a work budget refused it, and the time is what the
 projection spent before it stopped.
+The E1 row was measured after review E’s fix, the lowest and highest of five at a load
+average of 37 to 40; with the fix backed out, the same pair took 9.7 s.
 
 Pure-Python parsing costs follow the nodes, not the bytes.
 A list of one-digit integers costs several times what nested mappings of the same size

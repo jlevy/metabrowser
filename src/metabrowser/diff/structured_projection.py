@@ -104,7 +104,9 @@ _MAX_ALIGNMENT_STEPS: Final = 400_000
 # replaced runs, across all its runs; a run whose removed and added items make more pairs
 # than _MAX_PAIRING_CELLS is paired in order. A run of 100 removed and 100 added mappings
 # of 40 keys spends it and answers, too_large by its entries, in 27 ms at a load average
-# of 33-41.
+# of 33-41. A step is one entry of the smaller side `_shared` walks: one removed list of
+# 15,000 against 8,000 added lists of one took 9.7 s when the intersection walked the
+# removed list for each pair, and takes 137-140 ms (review E1, load average 37-40).
 _MAX_PAIRING_STEPS: Final = 200_000
 _MAX_PAIRING_CELLS: Final = 10_000
 # Nesting deeper than this is refused: the merge recurses once per level. YAML's loader
@@ -461,6 +463,7 @@ class _Projection:
         for i, members in enumerate(old):
             for j, others in enumerate(new):
                 if members is not None and others is not None and type(members) is type(others):
+                    # What _shared walks: the smaller side's distinct entries.
                     self.budget.pairing -= min(len(members), len(others))
                     if self.budget.pairing < 0:
                         return []
@@ -495,8 +498,15 @@ def _shared(
     members: frozenset[tuple[str, int]] | Counter[int],
     others: frozenset[tuple[str, int]] | Counter[int],
 ) -> int:
+    """The entries two mappings or two lists share, walking only the smaller of the two:
+    the work `_likeness` charges for. A set intersection walks the smaller in C, but
+    ``Counter.__and__`` walks its left operand in Python, so one long removed list
+    against many short added ones cost the long list's length for every pair while
+    being charged one (mb-8274 review E1: a 111 KB pair took 10-11 s)."""
+
     if isinstance(members, Counter) and isinstance(others, Counter):
-        return sum((members & others).values())
+        small, large = (members, others) if len(members) <= len(others) else (others, members)
+        return sum(min(count, large.get(item, 0)) for item, count in small.items())
     if isinstance(members, frozenset) and isinstance(others, frozenset):
         return len(members & others)
     return 0

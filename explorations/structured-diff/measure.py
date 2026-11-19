@@ -243,6 +243,13 @@ def _budgets() -> None:
         *_json_pair(list(range(4_000)), [-i - 1 for i in range(4_000)]),
         "json",
     )
+    # Review E1: pairing walked the long removed list for each short added one.
+    _report(
+        "one list of 15,000 against 8,000 lists of one (E1)",
+        json.dumps([list(range(15_000))], separators=(",", ":")).encode(),
+        json.dumps([[0]] * 8_000, separators=(",", ":")).encode(),
+        "json",
+    )
     maps = [{f"k{j}": i * 1_000 + j for j in range(40)} for i in range(100)]
     halves = [{f"k{j}": (i * 1_000 + j if j % 2 else -1) for j in range(40)} for i in range(100)]
     _report("100 mappings of 40 keys, each half changed", *_json_pair(maps, halves), "json")
