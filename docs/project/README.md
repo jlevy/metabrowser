@@ -65,6 +65,9 @@ It links each document below and the contributor standards in `docs/`.
 
 ## Active Plans
 
+- [The app’s command-line dependencies and a complete doctor](specs/active/plan-2026-11-18-cli-dependencies-and-doctor.md):
+  where each tool’s minimum version lives, the app’s versioning contract with `metab`, a
+  doctor that checks everything a setup needs, and Check Setup… in the macOS app
 - [View on branch](specs/active/plan-2026-11-17-view-on-branch.md): one control on a
   pull request’s Changes that opens a changed file at the pull request’s head in the
   main UI, replacing the standalone revision page; approved 2026-11-17
@@ -74,6 +77,9 @@ It links each document below and the contributor standards in `docs/`.
 - [Documentation from first principles](specs/active/plan-2026-11-14-documentation-from-first-principles.md):
   one owner per fact, task guides, architecture documents for every layer, a baseline
   scale benchmark, and checks that keep the set linked
+- [Switching folders in the macOS app](specs/active/plan-2026-11-18-macos-folder-switching.md):
+  a window that can show any open folder, the title as a native chooser of open and
+  recent folders, a keyboard switcher, and marks shared with the page
 - [Native macOS app](specs/active/plan-2026-11-10-native-macos-app.md): folder identity,
   the icon and release pipeline, warm folder switching, host mode and the agent front
   door, and the app-managed runtime

@@ -69,7 +69,9 @@ this repository’s structural facts and standing answers.
   user or plugin author can observe the change.
 - The macOS app is internal too: change a `metab` flag or route it uses and the app in
   the same commit, and raise `MetabRequirement.minimumRelease` when the app needs the
-  newer `metab`.
+  newer `metab`. Release that `metab` as a minor or major version, never a patch, so a
+  patch is always safe for an app in use; how to raise the minimum is in
+  [Choosing a Version](docs/publishing.md#choosing-a-version).
 - `PLUGIN_SDK_VERSION` is a hard gate, not a compatibility layer: bump it on a break and
   update every built-in manifest in the same commit.
 

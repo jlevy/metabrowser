@@ -394,7 +394,7 @@ async function main() {
           frames: window.__frames,
           shifts: window.__shifts,
           treeAt: window.__treeAt ?? null,
-          barPending: !!document.querySelector('#nav-filter-bar > .tally-pending'),
+          barPending: !!document.querySelector('#nav-filter-bar .tally-pending'),
           inline: !!window.METABROWSER_INITIAL_TREE?.summary,
           paneWidth: Math.round(document.querySelector('.tree-pane').getBoundingClientRect().width),
           scheme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',

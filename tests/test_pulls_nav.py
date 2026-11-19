@@ -61,13 +61,27 @@ def _tabs(html: str) -> dict[str, bool]:
     return tabs
 
 
+def _div_body(html: str, start: int) -> str:
+    """The markup inside the div whose opening tag ends at *start*, its nested divs included.
+
+    The Files toolbar ships its row, with the branch and tag chooser in it, on a page that
+    has one, so a toolbar's body is not what comes before the first ``</div>``.
+    """
+
+    depth = 1
+    for tag in re.finditer(r"<div\b|</div>", html[start:]):
+        depth += 1 if tag.group(0) == "<div" else -1
+        if depth == 0:
+            return html[start : start + tag.start()]
+    raise AssertionError(f"a div that is never closed: {html[start : start + 200]}")
+
+
 def _toolbars(html: str) -> dict[str, bool]:
     """Each toolbar in the navigation's slot, and whether it is shown; one per tab, never empty."""
 
     toolbars: dict[str, bool] = {}
-    for opening, body in re.findall(
-        r'(<div [^>]*data-nav-toolbar="[a-z]+"[^>]*>)(.*?)</div>', html
-    ):
+    for match in re.finditer(r'<div [^>]*data-nav-toolbar="[a-z]+"[^>]*>', html):
+        opening, body = match.group(0), _div_body(html, match.end())
         name = re.search(r'data-nav-toolbar="([a-z]+)"', opening)
         assert name is not None
         toolbars[name.group(1)] = " hidden" not in opening

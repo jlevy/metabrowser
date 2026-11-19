@@ -86,7 +86,7 @@ before one exists, windows, menus, the Dock, and file events.
    Retry. Nothing restarts by itself, except a repository whose start failed on GitHub,
    when the app becomes active ([GitHub Links](#github-links)); after Retry, each window
    returns to its page on the new port.
-7. **Stop.** Closing a folder’s last window stops its server: SIGTERM to the process
+7. **Stop.** Closing a folder’s last page stops its server: SIGTERM to the process
    group, `SupervisorPolicy.shutdownGrace`, SIGKILL, `killWait`, then SIGKILL to
    anything left in the group.
    The leader is reaped only after that, so its pid, which is the group’s id, cannot
@@ -424,6 +424,11 @@ line. Below the floor, discovery tries the next place.
 `MetabRequirement.upgradeCommand` asks uv for a floor rather than a pin, because uv
 keeps the requirement in the tool’s receipt.
 
+The floor is a minor release, raised as
+[Choosing a Version](../../publishing.md#choosing-a-version) says.
+`accepts` compares only the release segments, so a checkout’s development build of the
+floor, `X.Y.0.devN`, counts as `X.Y.0`.
+
 The app notices an upgrade by the executable’s fingerprint (`FileFingerprint`: device,
 inode, size, modification time, and mode), compared every `SetupWatch.interval` and when
 the app becomes active.
@@ -459,6 +464,45 @@ Applications.
 
 ## Windows
 
+- **Pages and windows.** A folder’s page (`FolderPage`) holds its web view and
+  everything per page: the navigation policy, the loads, the status view, sheets, find,
+  print, and downloads.
+  It belongs to the folder’s session, which counts its pages, not its windows, so the
+  server stops when the last page closes.
+  The session and the window’s controller hold the page, and the page holds its window
+  weakly. AppKit holds a window’s controller and delegate weakly too (`NSWindow.h`), so
+  each controller keeps itself in `BrowserWindowController.open` from its creation until
+  its window closes. Without that, the controller is released as soon as its window is
+  made: closing the window then closes no page and stops no server, and the saved
+  session finds no windows.
+  The menus’ page actions are nil-targeted, and while the focus is in the page they
+  reach it along the responder chain, in which the page follows its view.
+  A window (`BrowserWindowController`) holds only the window and its chrome, and shows
+  one page; while the window itself is first responder, as it is before its page first
+  loads, the menus’ page actions still reach the page it shows through the window
+  controller (`supplementalTarget(forAction:sender:)`).
+- **Open folders.** A folder is open from when its session is made until its last page
+  closes, and **in the background** while its one page has no window, because a window
+  switched away from it.
+  `OpenFolders` keeps the order folders opened in and when each was last shown, by the
+  session’s one key, `SessionRoot.key`, which the open servers and the restore use too.
+  A window switches to a folder by showing its background page, or a new page of it, in
+  place of the page it showed (`FolderWindows.switchWindow`); the window stays the same
+  `NSWindow`. The page left behind stays in the background, or closes if its folder has
+  another page (`SwitchedAwayPage`), so a folder has at most one background page.
+  Every switch goes through `switchWindow`, which `FolderSwitch` decides: a window with
+  a sheet open keeps its page, and a tab hidden behind another of its group switches
+  without counting its new folder as shown until the tab is selected.
+  File > Close Folder switches each window showing the folder to the next background
+  folder, the one shown most recently first, or closes it, then closes the folder’s
+  pages (`OpenFolders.closing`); a sheet open on any of those windows holds it all up,
+  and the menu item is off while the key window has one.
+  A folder in the background that is opened again, from Finder, `open -a`, or a link,
+  gets a window of its own, placed as a new folder’s is, and so does the folder shown
+  most recently when a click on the Dock icon finds no window on screen.
+  A page no window shows opens no dialog: it answers its own `alert` with OK, `confirm`
+  and `prompt` with Cancel, and a file input with no file, and a download it starts
+  saves nothing.
 - **Title.** The folder’s short name, from `GET /api/identity` once the server is ready
   and from the path until then (`FolderIdentity.localFolder`). `window.title` is the
   short name too, or the full name while two open folders share a short name
@@ -485,7 +529,7 @@ Applications.
   tab dragging combine any folders.
   `FolderPlacement` puts a new folder in a tab, a window, or as System Settings prefers.
 - **Background tabs.** Each window’s shown tab keeps its page, and so do the most
-  recently shown background tabs up to
+  recently shown background pages, of tabs and of folders in the background, up to
   [`TabDiscardPolicy`](../../../apps/macos/Sources/ShellCore/Web/TabDiscardPolicy.swift)’s
   limit, whose comment holds its measurement.
   Every other background tab gives up its web view, which ends its WebContent process,
@@ -496,16 +540,17 @@ Applications.
   (`NextPage`). By design the open folder that takes a file never lies above the file’s
   repository root, and a file with no such folder opens its open root
   ([Open Modes](arch-open-modes.md#what-keys-on-the-root)).
-- **Recents.** File > Open Recent lists `metab`’s
-  [recent targets](arch-recent-targets.md#the-macos-app), which every server records as
-  it starts, so the app decides nothing about the list and keeps none of its own.
-  The Dock menu lists the same targets (`applicationDockMenu`), and a restored folder’s
-  server, like any restart, is told not to record.
+- **Recents.** File > Open Recent, and the folder chooser’s Recent section, list
+  `metab`’s [recent targets](arch-recent-targets.md#the-macos-app), which every server
+  records as it starts, so the app decides nothing about the list and keeps none of its
+  own. The Dock menu lists the same targets (`applicationDockMenu`), and a restored
+  folder’s server, like any restart, is told not to record.
 
 ### Session Restore
 
 `SessionStore` saves the folder windows, front first, with each window’s tabs, shown
-tab, and frame and each tab’s folder and page, to `session.json` in
+tab, and frame and each tab’s folder and page, then the folders open in the background
+with their pages, the one shown most recently first, to `session.json` in
 `AppIdentity.supportDirectory`, `FolderWindows.saveDelay` after a change and at quit
 before the servers stop.
 Each save renames a private temporary file over the old one, so a launch after a crash
@@ -516,6 +561,11 @@ rebuilds at most
 [`RestoreBudget.standard`](../../../apps/macos/Sources/ShellCore/Folders/SavedSession.swift),
 whose comment holds its measurement.
 Only each window’s shown tab loads its page.
+A folder in the background reopens with its page and no window, and its server waits, as
+a protected folder’s does, until a window shows it.
+A session with background folders and no window, as a quit after the last window closed
+saves, shows the first of them in a window of its own (`SavedSession.withFrontWindow`),
+so a launch never opens to nothing.
 Servers start one at a time, each after the one before is ready or has failed: the front
 tab’s first, then the tabs the other windows show, then the rest (`RestoreQueue`,
 `RestoreRun`). A tab selected meanwhile starts next.
@@ -528,8 +578,9 @@ protected location (`ProtectedLocations`); the folder it reaches must be on the 
 folder’s volume, and the kernel’s name for it is the root’s identity.
 Anything less certain waits for its tab under its saved spelling, and selecting the tab
 resolves the path then (`RootActivation`), moving its tabs to the folder it now leads
-to. A folder in a protected location starts only when one of its tabs is selected, so a
-launch raises no privacy prompt for a folder nobody is looking at.
+to; its page in the background moves too, unless that folder has one or is shown
+(`MovedPage`). A folder in a protected location starts only when one of its tabs is
+selected, so a launch raises no privacy prompt for a folder nobody is looking at.
 A background root is admitted again at its turn and just before its server spawns; a
 process that changes the path after that check can still win, and macOS enforces its
 privacy grants regardless.
@@ -546,8 +597,41 @@ mark in a trailing one (`TitleBarMarkController`).
   A centered toolbar item would make the title bar taller and center the title, which
   macOS 26 puts at the leading edge.
 - **No proxy icon.** AppKit drops the proxy icon when a leading accessory is present, so
-  Command-click, right-click, or VoiceOver’s Show Menu on a local folder’s title opens
-  its path menu, from `representedURL`.
+  Command-click, right-click, or VoiceOver’s Show Path action on a local folder’s title
+  opens its path menu, from `representedURL`.
+- **The folder chooser.** The title is a pop-up control (`TitleBarTitleView`): an
+  always-shown `chevron.down` after it, and on hover the system’s fill for a control
+  under the pointer, resolved as the mark’s is.
+  Only that surface is the control: the title bar above and below it keeps its own drag
+  and double-click. Like the mark, the control takes the press that makes its window key,
+  since neither is a window-drag region, and that press opens or drags as in a key
+  window. A click opens `FolderChooserMenu` under it, and a press that moves
+  `TitleBarPressInteraction.dragDistance` drags the window instead; VoiceOver reads a
+  pop-up button whose Press and Show Menu open the chooser.
+  `FolderChooser` decides the rows (the open folders in the order they opened, then the
+  recent targets not open), each row’s check mark and subtitle, and what each choice
+  does, which `AppDelegate.choose` carries out; Option alternates open a choice in a new
+  window. The menu is native chrome, so it is an `NSMenu` with section headers and
+  subtitles.
+- **The Switch Folder panel.** View > Switch Folder… opens
+  `SwitchFolderWindowController`, an `NSPanel` with a search field and a table over the
+  window, the chooser’s keyboard route.
+  Its rows are `FolderChooser.panelRows` (the open folders most recently shown first,
+  this window’s last), and its search, selection, and where it opens are
+  `FolderSwitcher`’s; a choice goes through `AppDelegate.choose`, as the chooser’s does.
+  The search field keeps the focus, since the table refuses it, and passes each key
+  command to `FolderSwitcher.command`, which decides what the key does: Command-Delete,
+  for one, deletes typed text as in any field, and closes the selected open folder only
+  with the field empty.
+  The field shares its focus with the table for VoiceOver, and each row reads as one
+  cell by its label. View > Switch Folder… is disabled, and the panel does not open, over
+  a window with a sheet; the panel lists the folders again when they change under it
+  (`foldersChanged`).
+- **Shared marks.** The menus that list roots (the chooser, File > Open Recent, and the
+  Dock menu) draw each root’s `RootMark` as a template image: the page’s own Lucide
+  glyph for a folder, copied from `static/icons.js` and held to it by `RootMarkTests`,
+  and Lucide `cloud` for a repository, which the page draws no mark for.
+  The Switch Folder panel draws the same marks.
 - **The mark.** The partial M and the B, drawn as paths from the icon masters’ glyph
   group, which `AppIcon/make-glyphs.swift` copies into `AppIconMarkGeometry.swift`; a
   test checks the copy against both masters.
@@ -555,8 +639,8 @@ mark in a trailing one (`TitleBarMarkController`).
   bar deeper tints that meet WCAG contrast for graphics; both comments hold their
   measurements.
 - **A link.** A click opens `ProjectLinks.repository` in the default browser, and a
-  press that moves `TitleBarMarkInteraction.dragDistance` drags the window instead.
-  `TitleBarMarkInteraction` decides each pointer event and is tested event by event.
+  press that moves `TitleBarPressInteraction.dragDistance` drags the window instead.
+  `TitleBarPressInteraction` decides each pointer event and is tested event by event.
 - **System behavior.** The title dims when its window is not main in the active app,
   AppKit dims the mark with it, and both follow light and dark mode.
 
@@ -575,8 +659,7 @@ The page is the one any browser opens, and the app handles what WebKit does diff
 - **`javaScriptCanOpenWindowsAutomatically`** defaults to on in macOS, so
   `WebConfiguration.restrict` turns it off and a previewed HTML file cannot open tabs by
   itself.
-- **Printing** runs modally for the window, which `BrowserWindowController.printPage`
-  explains.
+- **Printing** runs modally for the window, which `FolderPage.printPage` explains.
 
 ### Measured in WebKit
 

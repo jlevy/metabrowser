@@ -199,7 +199,7 @@ from metabrowser.recent import (
     recent_result_from_projection,
 )
 from metabrowser.repository_context import discover_repository_context
-from metabrowser.root_identity import IDENTITY_ROUTES, root_identity
+from metabrowser.root_identity import IDENTITY_ROUTES, root_identity, short_commit
 from metabrowser.settings import (
     DOC_MAX_CHARS_DEFAULT,
     FOLDER_DISCOVERY_MAX_ENTRIES,
@@ -287,6 +287,8 @@ from metabrowser.view_routes import (
 if TYPE_CHECKING:
     from kpress.models import KPressAsset
     from starlette.requests import Request
+
+    from metabrowser.git.tree_source import GitRevisionSubject
 
 
 # Direct ASGI imports bypass the CLI bootstrap. Load the working tree's
@@ -1282,21 +1284,22 @@ def _pin_label_html(status: SourceStatus) -> str:
     A served mirror's is the repository's name, where a folder's name stands and with
     the same `.path-base` emphasis, then the ref and the short commit, muted: the page
     is called what a checkout of the repository would be, and the commit it is pinned
-    to stays in sight beside it. The full commit is in the heading's tooltip.
+    to stays in sight beside it, in the commit-ID face (`.git-commit-sha`) a commit has
+    wherever it appears. The full commit is in the heading's tooltip.
 
     A pin with no mirror has no origin to take a name from. Its ref stands as the name
     with the short commit after it, or the short commit alone when no ref is known,
     and the full commit is its served root.
     """
 
-    short = html_escape((status["pin"] or "")[:12])
+    short = html_escape(short_commit(status["pin"] or ""))
     name = status["name"]
     ref_name = status["ref_name"]
 
     def base(text: str) -> str:
         return f'<span class="path"><span class="path-base">{text}</span></span>'
 
-    commit = f'<span class="header-revision">{short}</span>'
+    commit = f'<span class="header-revision git-commit-sha">{short}</span>'
     if name is None:
         return base(short) if ref_name is None else base(html_escape(ref_name)) + commit
     ref = (
@@ -1506,6 +1509,40 @@ def _startup_script_tags(names: tuple[str, ...]) -> str:
     return "".join(f'\n  <script src="{_static_asset_url(name)}"></script>' for name in names)
 
 
+_PULL_HEAD_REF: Final = re.compile(r"refs/pull/([1-9][0-9]{0,9})/head")
+
+
+def _source_ref_label_html(pin: GitRevisionSubject | None, *, checkout: bool) -> str:
+    """What the branch and tag selector's button says before its module mounts, as markup.
+
+    The words ``shownLabel`` in static/source-ref-selector.js gives the button, in the faces
+    its ``paint`` sets them in: a pull request's number in its own weight and a commit's ID
+    in the commit-ID face. The module then draws a branch or tag as its chip, from the same
+    name, so the button keeps about its width. A checkout's page with no pin shows its
+    working tree.
+    """
+
+    if pin is None:
+        return "Working tree" if checkout else "Revision"
+    if checkout:
+        from metabrowser.checkout_revisions import checkout_ref_name
+
+        name = checkout_ref_name(pin.ref)
+    else:
+        from metabrowser.git.tree_source import ref_short_name
+
+        pull = _PULL_HEAD_REF.fullmatch(pin.ref or "")
+        if pull is not None:
+            return f'Pull request: <span class="source-ref-selector-pull-number">#{pull[1]}</span>'
+        name = ref_short_name(pin.ref)
+    if name:
+        return html_escape(name)
+    # As much of the ID as the navigation heading shows: the page has the full ID alone.
+    return (
+        f'Commit: <span class="git-commit-sha">{html_escape(short_commit(pin.commit_oid))}</span>'
+    )
+
+
 async def index(
     request: Request,
     *,
@@ -1665,33 +1702,29 @@ async def index(
     # The branch and tag selector, filled by static/source-ref-selector.js: on a pin
     # served from a mirror, and on a checkout, whose working tree and revisions it
     # switches between. A plain folder and a pin with no mirror have nothing to switch to.
-    if checkout is not None:
-        # A checkout's row is drawn here with the button it will have, so that nothing
-        # below it moves when its module mounts, a moment after the tree's first rows:
-        # hidden until then, the row pushed the filter bar and every tree row down by its
-        # height (33 px in the default pane, which tests/test_files_totals_stable_chrome.py
-        # caught on a folder holding a `.git`). The module adopts this button, so focus a
-        # reader put on it stays (static/source-ref-selector.js#build), and removes the
-        # row when Git says the root is no repository.
-        if pin is None:
-            shown_ref = "Working tree"
-        else:
-            from metabrowser.checkout_revisions import checkout_ref_name
-
-            shown_ref = checkout_ref_name(pin.ref) or f"Commit: {pin.commit_oid[:12]}"
-        source_ref_selector_row = (
-            '\n      <div class="source-ref-selector" id="source-ref-selector">'
+    # It chooses what the Files tab shows and nothing else, so it leads the Files
+    # toolbar's row, beside Group by, and Pulls and Commits do without it.
+    #
+    # It is drawn here with the button it will have, so that nothing beside or below it
+    # moves when its module mounts, a moment after the tree's first rows: drawn later, it
+    # widened the row, which in a pane too narrow for both wraps a line. The module
+    # adopts this button, so focus a reader put on it stays
+    # (static/source-ref-selector.js#build), and app.js refills the row around it rather
+    # than over it (renderNavFilterBar). It removes the button when Git says a checkout's
+    # root is no repository. The button has a span of its own, which a ref chip's copy
+    # control is placed against (`mountRefCopies`), so the list still has the toolbar for
+    # its containing block and spans the pane, on a ref's page as on the working tree's.
+    source_ref_selector = ""
+    if checkout is not None or (git_pin and mirror is not None):
+        source_ref_selector = (
+            '<div class="source-ref-selector" id="source-ref-selector">'
+            '<span class="source-ref-selector-button">'
             '<button type="button" class="chip chip-menu-trigger source-ref-selector-toggle'
             ' disclosure-toggle" aria-haspopup="dialog" aria-expanded="false"'
             ' data-tip-text="Switch branch or tag">'
-            f'<span class="source-ref-selector-label">{html_escape(shown_ref)}</span>'
-            '<span class="chip-menu-caret" aria-hidden="true"></span></button></div>'
-        )
-    else:
-        source_ref_selector_row = (
-            '\n      <div class="source-ref-selector" id="source-ref-selector" hidden></div>'
-            if git_pin and mirror is not None
-            else ""
+            '<span class="source-ref-selector-label">'
+            f"{_source_ref_label_html(pin, checkout=checkout is not None)}</span>"
+            '<span class="chip-menu-caret" aria-hidden="true"></span></button></span></div>'
         )
     # The Pulls tab is decided here, from what the page already knows: a pin whose mirror is a
     # hosted repository, or a checkout, a subdirectory of one too, whose `origin` is on
@@ -1720,6 +1753,14 @@ async def index(
     # toolbar its script fills later ships the shared pending tally, never an empty slot.
     filter_bar_behind = "" if files_in_front else " hidden"
     pending_tally = '<span class="count tally-pending"></span>'
+    # The Files toolbar's row begins with the branch and tag selector where there is one,
+    # and the pending tally stands where the rest of the row will be.
+    filter_bar_content = (
+        f'<div class="nav-filter-bar-main nav-toolbar-row">{source_ref_selector}'
+        f"{pending_tally}</div>"
+        if source_ref_selector
+        else pending_tally
+    )
     commits_button = (
         f'\n        <button class="tab-btn{" active" if commits_in_front else ""}" type="button"'
         f' role="tab" data-tab="git" aria-selected="{"true" if commits_in_front else "false"}">'
@@ -2291,7 +2332,7 @@ async def index(
             <div class="menu-version">{version_line}</div>
           </div>
         </div>
-      </header>{source_ref_selector_row}
+      </header>
       <div class="tab-bar nav-tab-bar" role="tablist">
         <button class="tab-btn{files_active}" type="button" role="tab" data-tab="files" aria-selected="{files_selected}">Files</button>{pulls_button}{commits_button}
       </div>
@@ -2305,7 +2346,7 @@ async def index(
            and clips what it holds short of it, so a line inside it drew its
            rule short of the pane's edge. The band shows with its toolbar
            (`.nav-metadata-band` in styles.css). -->
-      <div class="nav-filter-bar" id="nav-filter-bar" data-nav-toolbar="files"{filter_bar_behind}>{pending_tally}</div>
+      <div class="nav-filter-bar" id="nav-filter-bar" data-nav-toolbar="files"{filter_bar_behind}>{filter_bar_content}</div>
       <div class="nav-metadata-band" id="nav-metadata-files"></div>{toolbars}
       <div class="tree-content" id="tree-content">
         <div id="tab-files" data-tab-content="files"{files_behind}>

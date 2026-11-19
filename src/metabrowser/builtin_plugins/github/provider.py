@@ -1,6 +1,12 @@
-"""The GitHub repository provider: reducer, ``gh`` credential helper, size check, context,
-the head a pull-request URL pins, the changed file its anchor names, and the pull
-requests a server serves.
+"""The GitHub repository provider: reducer, ``gh`` credential helper, first-clone checks,
+context, the head a pull-request URL pins, the changed file its anchor names, and the
+pull requests a server serves.
+
+Before a first clone it runs the GitHub status check (:mod:`.gh_status`): a pull-request
+URL that gh cannot read stops there, before anything is cloned, and a repository that
+is then not found is explained from that answer, so a token without the ``repo`` scope
+says so. A pull request that cannot be read for the same reasons later stops the open
+rather than falling back to the default branch (``PullRequestUnavailableError.blocking``).
 
 Core reaches this class only through
 :class:`~metabrowser.cache.providers.RepositoryProvider`.
@@ -12,7 +18,21 @@ import logging
 import os
 from typing import TYPE_CHECKING, Final
 
-from metabrowser.builtin_plugins.github.gh import GhError, gh_executable, run_gh
+from metabrowser.builtin_plugins.github.gh import (
+    ENVIRONMENT_TOKENS,
+    GhError,
+    gh_executable,
+    replace_token_step,
+    run_gh,
+)
+from metabrowser.builtin_plugins.github.gh_status import (
+    REQUIRED_SCOPE,
+    SIGN_IN_COMMAND,
+    SIGN_IN_STATES,
+    GithubStatus,
+    github_status,
+    kept_github_status,
+)
 from metabrowser.builtin_plugins.github.pull_file_anchor import pull_file_for_anchor
 from metabrowser.builtin_plugins.github.pulls import PullDataError, open_pull_request
 from metabrowser.builtin_plugins.github.served_pull import ServedPulls
@@ -21,7 +41,7 @@ from metabrowser.builtin_plugins.github.urls import (
     GithubUrlReducer,
     parse_repository_url,
 )
-from metabrowser.cache.acquire import RepositoryTooLargeError
+from metabrowser.cache.acquire import AcquisitionError, RepositoryTooLargeError
 from metabrowser.cache.providers import PullRequestUnavailableError
 from metabrowser.git.process import GIT_ACQUISITION_TIMEOUT_S
 from metabrowser.git.wire import is_full_revision
@@ -127,6 +147,52 @@ def _first_clone_limit_kb() -> int:
     return MAX_FIRST_CLONE_KB
 
 
+# The status states in which the size read cannot succeed: no gh, no account, or no
+# network. In every other state it is asked, since a gh too old for the status check,
+# or one whose answer the check could not type, may still read the API; a read that
+# fails steps aside.
+_NO_SIZE_READ_STATES: Final = frozenset({"gh_missing", "not_logged_in", "network_error"})
+
+
+class GithubSignInRequiredError(AcquisitionError):
+    """A pull-request URL whose first clone would be wasted: gh cannot read the pull
+    request until it is installed, updated, or signed in, which the message names."""
+
+    def __init__(self, source_url: str, number: int, status: GithubStatus) -> None:
+        super().__init__(
+            f"pull request {number} of {source_url} cannot be read: {status.message} "
+            f"({status.state}); nothing was cloned"
+        )
+        self.state = status.state
+
+
+def _status_hint(status: GithubStatus | None) -> str | None:
+    """What a repository that was not found tells a reader, from the status check.
+
+    ``None`` when there is no fresh answer, or it adds nothing to the generic hint.
+    """
+
+    if status is None:
+        return None
+    if status.state == "missing_scope":
+        return (
+            f"if it is private, gh's token for {status.account} lacks the "
+            f"{REQUIRED_SCOPE} scope: {status.fix}"
+        )
+    if status.state == "not_logged_in":
+        return f"if it is private, gh is not signed in: {status.fix}"
+    if status.state == "gh_too_old":
+        return f"if it is private, update GitHub CLI (gh): {status.fix}"
+    if status.state == "ok":
+        source = status.token_source
+        step = replace_token_step(source) if source in ENVIRONMENT_TOKENS else SIGN_IN_COMMAND
+        return (
+            f"if it is private, gh is signed in as {status.account}, which cannot read it; "
+            f"to use an account that can: {step}"
+        )
+    return None
+
+
 def _unavailable(published: PublishedSource, number: int, exc: PullDataError) -> str:
     """``<what failed> (<state>)``, naming the pull request, for the CLI to print."""
 
@@ -158,13 +224,31 @@ class GithubProvider:
     def credential_hint(self, source_url: str) -> str | None:
         if not _is_github_remote(source_url):
             return None
+        hint = _status_hint(kept_github_status())
+        if hint is not None:
+            return hint
+        # The macOS app's GitHubFailureTests.swift holds these two lines as the CLI
+        # prints them, so they change together.
         if gh_executable() is None:
             return "if it is private, install GitHub CLI (gh) and sign in with gh auth login"
         return "if it is private, sign in with gh auth login to an account that can read it"
 
     async def check_first_clone(self, source: GitSource) -> None:
         parsed = parse_repository_url(source.normalized)
-        if parsed is None or gh_executable() is None:
+        if parsed is None:
+            return
+        # The GitHub status check comes first, and its answer is kept for the hint a
+        # failed clone adds. A public repository clones without gh, so only a pull
+        # request, which gh alone can read, stops here.
+        status = await github_status(version=False)
+        selection = source.selection
+        number = selection.pull_request if selection is not None else None
+        if number is not None and status.stops_github_work:
+            raise GithubSignInRequiredError(source.normalized, number, status)
+        if status.state in _NO_SIZE_READ_STATES or gh_executable() is None:
+            # No gh, signed out, or offline: the size read would fail too, and the clone
+            # itself reports what is wrong.
+            log.debug("skipped the size check for %s: %s", source.normalized, status.state)
             return
         owner, repository = parsed
         try:
@@ -210,8 +294,15 @@ class GithubProvider:
         try:
             return await open_pull_request(published, number, fetch=fetch)
         except PullDataError as exc:
+            message = _unavailable(published, number, exc)
+            if exc.state == "not_found_or_private":
+                # A cached mirror skips the first-clone check, so ask here; a fresh
+                # answer from that check is reused rather than asked again.
+                status = await github_status(version=False)
+                if status.state == "missing_scope":
+                    message += f"; {_status_hint(status)}"
             raise PullRequestUnavailableError(
-                exc.state, _unavailable(published, number, exc)
+                exc.state, message, blocking=exc.state in SIGN_IN_STATES
             ) from exc
 
     async def pull_request_file(
@@ -248,5 +339,6 @@ __all__ = [
     "MAX_FIRST_CLONE_ENV",
     "MAX_FIRST_CLONE_KB",
     "GithubProvider",
+    "GithubSignInRequiredError",
     "credential_helper_args",
 ]

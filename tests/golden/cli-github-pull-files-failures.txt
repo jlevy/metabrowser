@@ -70,6 +70,7 @@ cloned https://github.com/octo/demo in 0.0 s
 --- body ---
 {"number": 106}
 --- gh ---
+gh auth status
 gh api repos/octo/demo --jq .size
 gh auth status
 gh api repos/octo/demo/pulls/106/files?per_page=100&page=1

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import gc
 import io
 import json
 import os
@@ -15,6 +16,10 @@ import pytest
 from metabrowser.diff import markdown_projection_worker as worker_module
 from metabrowser.diff.markdown_projection import bind_markdown_diff, prepare_markdown_diff
 from metabrowser.diff.markdown_projection_worker import ProjectionWorker, serve
+from metabrowser.diff.structured_projection import (
+    project_structured_diff,
+    unavailable_structured_diff,
+)
 from tests.test_markdown_diff_projection import (
     _patch,  # pyright: ignore[reportPrivateUsage]
 )
@@ -309,6 +314,9 @@ def test_a_new_event_loop_replaces_the_child_the_old_loop_started() -> None:
     asyncio.run(first())
     asyncio.run(second())
     for _ in range(50):
+        # The killed child is reaped when the closed loop's transport is finalized, which
+        # waits for the collector: the test does not depend on when that runs.
+        gc.collect()
         if not _alive(pids[0]):
             break
         time.sleep(0.05)
@@ -367,5 +375,39 @@ def test_a_child_no_projection_reaches_is_stopped_when_idle(
                 assert await process.wait() is not None
         finally:
             await worker.aclose()
+
+    asyncio.run(run())
+
+
+@_needs_child
+def test_the_child_answers_structured_projections_as_a_thread_would() -> None:
+    old, new = b"a: 1\nb: [x]\n", b"a: 2\nb: [x, y]\n"
+    expected = project_structured_diff(old=old, new=new, fmt="yaml")
+    assert worker_module._answer(  # pyright: ignore[reportPrivateUsage]
+        json.loads(
+            json.dumps(
+                {
+                    "op": "structured",
+                    "format": "yaml",
+                    "old": worker_module._blob(old),  # pyright: ignore[reportPrivateUsage]
+                    "new": worker_module._blob(new),  # pyright: ignore[reportPrivateUsage]
+                }
+            )
+        )
+    ) == {"structured": expected}
+
+    async def run() -> None:
+        worker = ProjectionWorker()
+        try:
+            assert await worker.project_structured(old=old, new=new, fmt="yaml") == expected
+            worker.start()
+            async with asyncio.timeout(60):
+                assert await worker.started()
+            assert await worker.project_structured(old=old, new=new, fmt="yaml") == expected
+            assert await worker.project_structured(old=None, new=b"{", fmt="json") == (
+                unavailable_structured_diff("unsupported")
+            )
+        finally:
+            worker.stop()
 
     asyncio.run(run())

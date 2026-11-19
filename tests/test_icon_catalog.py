@@ -47,7 +47,7 @@ MACOS_SOURCES = REPO_ROOT / "apps" / "macos" / "Sources"
 HEADER = ("Icon", "Source", "Meaning", "Defined in", "Ink", "Size")
 # The sources a row may name, by what defines its drawing.
 DRAWN = ("Registry", "Plugin", "View bundle")
-SOURCES = frozenset({*DRAWN, "CSS mask", "Text", "Letter", "SF Symbol", "App mark"})
+SOURCES = frozenset({*DRAWN, "CSS mask", "Text", "Letter", "SF Symbol", "App glyph", "App mark"})
 
 # What the registry's callers write: a property of the registry, by its global's name or the
 # `ICONS` and `ICON_SVG` aliases the shell's scripts give it, or of the SDK's proxy of it,
@@ -327,7 +327,7 @@ def test_every_row_is_well_formed() -> None:
         assert row.defined_in, f"{row.icon} names no file"
         for path in row.defined_in:
             _resolve(path)
-        drawn_once = row.source in {*DRAWN, "CSS mask", "SF Symbol", "App mark"}
+        drawn_once = row.source in {*DRAWN, "CSS mask", "SF Symbol", "App glyph", "App mark"}
         assert not drawn_once or len(row.defined_in) == 1, f"{row.icon} is defined in one place"
     drawn = [(row.icon, row.defined_in) for row in rows if row.source != "Text"]
     assert len(drawn) == len(set(drawn)), "a drawn icon has one row per place it is defined"

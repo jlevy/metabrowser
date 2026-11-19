@@ -225,6 +225,159 @@ async function heldPostCadence(page, full) {
   await check({ peek: true });
 }
 
+// The record that follows a core preview, at the controller (mb-d59o, review A on #589). Its
+// description is the core's, so it is rendered once: a render on its way when the record
+// lands serves it, one that fails is asked again under the record, and one the route answers
+// from a record the page has not read yet waits for the page's read of it. In each, the text
+// stays pending, a placeholder and never its source, until its render serves it.
+async function coreRecordHandoff(page, full, preview) {
+  const answer = (revision, extra = {}) => ({
+    status: 200,
+    body: {
+      number: 7,
+      part: "body",
+      fetched_at: null,
+      record_revision: null,
+      core_revision: null,
+      ...revision,
+      html: "rendered description",
+      assets: {},
+      ...extra,
+    },
+  });
+  // Each case its own text: a render kept by an earlier case would answer at once.
+  async function session(label) {
+    const text = `${preview.core_preview.pull.body} (${label})`;
+    const core = structuredClone(preview);
+    core.core_preview.pull.body = text;
+    const record = structuredClone(full);
+    record.record.pull.body = text;
+    let now = 0;
+    const box = { current: core };
+    const tasks = new Map();
+    const asked = [];
+    const told = [];
+    const controller = page.createPullController(
+      {
+        request: async (method, route) => {
+          if (route.includes("pull-markdown")) {
+            return new Promise((resolve) => asked.push(resolve));
+          }
+          if (method === "POST") {
+            return { status: 202, etag: null, body: { pull: box.current } };
+          }
+          return { status: 200, etag: null, body: box.current };
+        },
+        schedule(callback, delay) {
+          const token = Symbol();
+          tasks.set(token, { callback, at: now + delay });
+          return token;
+        },
+        cancel: (token) => tasks.delete(token),
+        now: () => now,
+        isVisible: () => true,
+        render() {},
+        renderMarkdown(part, _rendered, shown) {
+          told.push(["rendered", part, shown === text]);
+        },
+        textUnavailable(part, shown) {
+          told.push(["unavailable", part, shown === text]);
+        },
+        reload() {},
+        navigate() {},
+      },
+      { number: 7, tab: "", reader: null },
+    );
+    async function advance(target) {
+      for (;;) {
+        const next = [...tasks]
+          .filter(([, task]) => task.at <= target)
+          .sort((a, b) => a[1].at - b[1].at)[0];
+        if (!next) {
+          break;
+        }
+        now = next[1].at;
+        tasks.delete(next[0]);
+        next[1].callback();
+        await settle();
+      }
+      now = target;
+    }
+    await controller.start();
+    await settle();
+    controller.requestMarkdown("body", text);
+    await settle();
+    assert.equal(asked.length, 1, "the core's description is asked for");
+    assert.equal(controller.pending("body", text), true);
+    return {
+      controller,
+      asked,
+      told,
+      box,
+      record,
+      text,
+      advance,
+      now: () => now,
+    };
+  }
+  const core = { core_revision: preview.core_preview.revision };
+  const record = { record_revision: full.record_revision };
+
+  // The record lands while the core's render is on its way; the page asks again for its
+  // description, the same text, and that joins the core's render.
+  {
+    const s = await session("joined");
+    s.box.current = s.record;
+    await s.advance(1000);
+    s.controller.requestMarkdown("body", s.text);
+    await settle();
+    assert.equal(s.asked.length, 1, "the record's description joins the core's render");
+    assert.equal(s.controller.pending("body", s.text), true, "and stays a placeholder");
+    s.asked[0](answer(core));
+    await settle();
+    assert.deepEqual(s.told, [["rendered", "body", true]], "the core's render serves the record");
+    assert.equal(s.controller.pending("body", s.text), false);
+    s.controller.dispose();
+  }
+  // The core's render fails after the record joined it: the record's is asked for, and the
+  // text stays a placeholder until it renders, saying nothing of the failure.
+  {
+    const s = await session("joined, failed");
+    s.box.current = s.record;
+    await s.advance(1000);
+    s.controller.requestMarkdown("body", s.text);
+    await settle();
+    s.asked[0]({ status: 503, body: { code: "renderer_busy" } });
+    await settle();
+    assert.equal(s.asked.length, 2, "the record's description is asked for in its own right");
+    assert.deepEqual(s.told, [], "the failed render shows no source");
+    assert.equal(s.controller.pending("body", s.text), true);
+    s.asked[1](answer(record));
+    await settle();
+    assert.deepEqual(s.told, [["rendered", "body", true]]);
+    assert.equal(s.controller.pending("body", s.text), false);
+    s.controller.dispose();
+  }
+  // The record lands between the page's read and the route's: the render comes from a
+  // revision the page has not read. The text stays a placeholder, the page reads at once,
+  // and the render serves the record it reads, asking nothing again.
+  {
+    const s = await session("unread record");
+    s.asked[0](answer(record));
+    await settle();
+    assert.deepEqual(s.told, [], "a render from an unread record shows no source");
+    assert.equal(s.controller.pending("body", s.text), true, "the text stays a placeholder");
+    s.box.current = s.record;
+    await s.advance(s.now());
+    s.controller.requestMarkdown("body", s.text);
+    await settle();
+    assert.deepEqual(s.told, [["rendered", "body", true]], "read at once, the record renders");
+    assert.equal(s.asked.length, 1, "from the render already answered");
+    assert.equal(s.controller.pending("body", s.text), false);
+    s.controller.dispose();
+  }
+}
+
 async function retentionCapability(routes) {
   for (const retainable of [true, false]) {
     let claim = 0,
@@ -356,6 +509,7 @@ async function run() {
       comparison_state: "no_store",
     },
   };
+  await coreRecordHandoff(page, full, preview);
   const absent = {
     ...preview,
     state: "absent",
@@ -386,16 +540,44 @@ async function run() {
     }
     if (route.includes("pull-markdown")) {
       markdownRequests++;
-      return { status: 404, headers: { get: () => null }, json: async () => ({}) };
+      // The route renders the description of what the pull route serves: the record's, or
+      // with none the core preview's (pull_markdown.render_part).
+      const answer =
+        current.record === null
+          ? { record_revision: null, core_revision: current.core_preview?.revision ?? null }
+          : { record_revision: current.record_revision };
+      return {
+        status: current.record === null && current.core_preview === null ? 404 : 200,
+        headers: { get: () => null },
+        json: async () => ({
+          number: 7,
+          part: "body",
+          fetched_at: null,
+          ...answer,
+          html: "rendered description",
+          assets: {},
+        }),
+      };
     }
     if (route.includes("wait_full_after=")) {
       settlementSignal = options.signal;
     }
     return { status: 200, headers: { get: () => null }, json: async () => current };
   };
+  const inert = {
+    sanitizeHtml: (html) => html,
+    kpressProse(html) {
+      const node = document.createElement("p");
+      node.textContent = html;
+      return node;
+    },
+  };
   const mb = {
     perf,
-    ensureAsset: async () => {},
+    ensureAsset: async () => {
+      window.MetabrowserInertHtml = inert;
+    },
+    loadKpressAssets: () => Promise.resolve(),
     whenIdle: require("./sdk-idle-fixture.js").whenIdle,
     ensureKindAssets: async () => {},
     ...require("./sdk-ref-fixture.js").refHelpers(document),
@@ -438,7 +620,14 @@ async function run() {
   await settle();
   await handle.ready;
   assert.equal(container.dataset.corePreview, "true");
-  assert.equal(container.querySelector(".github-pull-plain").textContent, full.record.pull.body);
+  // The preview's description is held for its Markdown, rendered from the core, so its source
+  // never shows (mb-d59o).
+  assert.equal(container.querySelector(".github-pull-plain"), null, "no source shows");
+  assert.equal(
+    container.querySelector(".github-pull-text").textContent,
+    "rendered description",
+    "the preview's description shows rendered at its first paint",
+  );
   const body = container.querySelector(".github-pull-body");
   assert.doesNotMatch(body.textContent, /Checks and statuses|No checks or statuses reported/);
   assert.doesNotMatch(container.textContent, /still loading|Loading details/);
@@ -482,7 +671,7 @@ async function run() {
   assert.ok(body.querySelector(".github-pull-section-loading"));
   assert.ok(body.classes.has("page-reading-column"), "Checks uses the reading column");
   land("");
-  assert.equal(markdownRequests, 0, "preview stays plain and never asks for full-record Markdown");
+  assert.equal(markdownRequests, 1, "the preview asks once, for its own description's Markdown");
   const model = page.describePull(preview, { number: 7, tab: "", nowMs: Date.now() });
   assert.equal(model.browse, null);
   assert.equal(model.canRetryComparison, false);
@@ -601,13 +790,14 @@ async function run() {
   timers.delete(poll[0]);
   poll[1].callback();
   await settle();
-  // The full record's first paint waits for its description's Markdown, which this server
-  // answers with a 404: plain then, at once, and in place of the preview it replaces.
+  // The full record's description is the preview's text, rendered already: it shows at once,
+  // in place of the preview it replaces, with no wait and no request.
   assert.equal(
     [...timers].some(([, task]) => task.delay === page.DESCRIPTION_HOLD_MS),
     false,
-    "a description whose Markdown cannot come does not wait out the bound",
+    "the full record's description, rendered with the preview, does not wait",
   );
+  assert.equal(container.querySelector(".github-pull-plain"), null, "and never shows source");
   assert.equal(
     body.querySelector(".github-pull-card"),
     previewDescription,
@@ -621,7 +811,11 @@ async function run() {
   assert.equal(settledAge.getAttribute("aria-busy"), null, "with no busy attribute left behind");
   assert.doesNotMatch(body.textContent, /No checks or statuses reported/);
   const fullMarkdownRequests = markdownRequests;
-  assert.equal(fullMarkdownRequests, 1, "full-record arrival enables the normal Markdown path");
+  assert.equal(
+    fullMarkdownRequests,
+    1,
+    "the full record's unchanged description is not asked again",
+  );
   land("checks");
   assert.match(body.textContent, /No checks or statuses reported/);
   assert.equal(body.querySelector(".spinner"), null, "an empty complete Checks pane is settled");
@@ -1074,11 +1268,11 @@ async function run() {
   assert.equal(pane.textContent, "new file");
 
   return {
-    description: "plain preview before full conversation",
+    description: "rendered preview before full conversation",
     pendingParts: ["discussion", "checks"],
     checkResults,
     waitCorePost,
-    previewMarkdownRequests: 0,
+    previewMarkdownRequests: 1,
     fullMarkdownRequests,
     fullRecordWins: true,
     crossOwnerRetirement: true,

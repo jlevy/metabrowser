@@ -2,8 +2,9 @@
 one pull request's (``pull``, ``pull-refresh``, and the routes of its texts, timeline,
 comparison, rendered diffs, and their images), the catalog's (``pulls``, ``pulls-refresh``,
 ``pull-cores-prepare``), changed files (``pull-files``, ``pull-files-refresh``), stacks
-(``stacks``, ``stacks-refresh``), background prefetch (``pulls-prefetch``), and
-``cache-clear``, which discards all of a repository's. The table in
+(``stacks``, ``stacks-refresh``), background prefetch (``pulls-prefetch``),
+``cache-clear``, which discards all of a repository's, and ``status``, the GitHub status
+check, which any served root answers. The table in
 ``docs/project/architecture/arch-github-pull-requests.md``, checked against the manifest
 by ``tests/test_github_route_table.py``, names each one.
 
@@ -247,6 +248,7 @@ async def pull_markdown_handler(request: Request) -> Response:
     from metabrowser.builtin_plugins.github.pull_markdown import render_part
     from metabrowser.builtin_plugins.github.pull_route import (
         PullRequestError,
+        pull_answer,
         pull_host,
         pull_view,
         requested_number,
@@ -258,10 +260,21 @@ async def pull_markdown_handler(request: Request) -> Response:
         return _invalid_request(str(exc))
     await _resolve(request)
     view = pull_view(pull_host(request.app), get_source_session().subject, number)
+
+    async def current_core() -> PullCorePreview | None:
+        # The preview the pull route would answer now, revoked ones dropped as it drops them,
+        # so the description renders only what a page may show.
+        envelope, _freshness = await asyncio.to_thread(pull_answer, view)
+        preview = envelope["core_preview"]
+        if envelope["record"] is not None or preview is None:
+            return None
+        return preview if await _preview_current(view, preview) else None
+
     # A page that goes away, or scrolls past a text, leaves the render to no one, and an
     # abandoned render must not hold the Markdown child.
     answer = await unless_disconnected(
-        request, render_part(view, request.query_params.get("part", ""))
+        request,
+        render_part(view, request.query_params.get("part", ""), current_core=current_core),
     )
     if answer is None:
         return Response(status_code=CLIENT_CLOSED, headers=_NO_STORE)
@@ -929,6 +942,35 @@ async def cache_clear_handler(request: Request) -> JSONResponse:
             headers=_NO_STORE,
         )
     return JSONResponse({"cleared": cleared, "source": repository.source}, headers=_NO_STORE)
+
+
+async def status_handler(request: Request) -> JSONResponse:
+    """``POST /api/plugin/github/status`` — the GitHub status check (:mod:`.gh_status`).
+
+    ``gh``'s path and version, the active github.com account, its token's scopes, and one
+    state with the step that fixes it: the ``github`` section ``metab --doctor --json``
+    prints. It runs ``gh``, which asks GitHub, so it is a ``POST`` with a JSON object
+    body, as every route that starts work is. The body is empty, or names ``fresh: true``
+    to run gh again rather than reuse an answer from the last
+    :data:`~.gh_status.GH_STATUS_TTL_S`, as a retry after signing in does. Every state
+    answers ``200``.
+    """
+
+    from metabrowser.builtin_plugins.github.gh_status import (
+        forget_github_status,
+        github_status,
+    )
+
+    body = await _json_body(request)
+    if isinstance(body, tuple):
+        return _invalid_request(*body)
+    fresh = body.get("fresh", False)
+    if set(body) - {"fresh"} or not isinstance(fresh, bool):
+        return _invalid_request("a status request names only fresh, true or false")
+    if fresh:
+        forget_github_status()
+    status = await github_status()
+    return JSONResponse(status.to_json(), headers=_NO_STORE)
 
 
 async def pull_files_handler(request: Request) -> Response:

@@ -149,7 +149,7 @@ case "$scenario" in
   no-metab)
     launch "$copy" "$folder"
     step "No uv and no metab" \
-      "Settings opens: \"Metabrowser needs metab 0.12.1 or later\" (0.12.1 is not on PyPI yet)." \
+      "Settings opens: \"Metabrowser needs metab 0.13.0 or later\" (0.13.0 is not on PyPI yet)." \
       "1. Install uv, with the curl command and Copy (and \"brew install uv\" if Homebrew is installed)." \
       "2. Build metab in the source checkout … then choose its .venv/bin/metab with Choose metab… below." \
       "   \"In a new Terminal window, so that it finds uv, at the root of the checkout:\" and make install." \
@@ -169,9 +169,9 @@ case "$scenario" in
     install_stand_in metab-0.12.0 "$home/.local/bin/metab"
     launch "$copy" "$folder"
     step "An older metab (a stand-in that reports 0.12.0)" \
-      "Settings opens: \"Metabrowser needs metab 0.12.1 or later\"." \
+      "Settings opens: \"Metabrowser needs metab 0.13.0 or later\"." \
       "1. Build metab in the source checkout …: ~/.local/bin/metab is metab 0.12.0, and Metabrowser needs" \
-      "   metab 0.12.1 or later, which is not on PyPI yet. The command is make install, with Copy." \
+      "   metab 0.13.0 or later, which is not on PyPI yet. The command is make install, with Copy." \
       "No folder window opens."
     if [[ -n "$(server_pids)" ]]; then
       check_fail "a server started from the older metab: $(server_pids | tr '\n' ' ')"
