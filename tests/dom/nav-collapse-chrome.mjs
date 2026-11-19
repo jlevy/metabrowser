@@ -61,7 +61,10 @@ const READ = `(() => {
   const pane = document.getElementById("tree-pane");
   const frame = document.querySelector(".preview-frame");
   const strip = document.getElementById("nav-shortcut-hints");
-  const up = document.querySelector("#preview-pane .view-header-eyebrow > .folder-up");
+  // The committed view's Up, never a staged view's copy, which takes no pointer.
+  const up = [...document.querySelectorAll("#preview-pane .view-header-eyebrow > .folder-up")].find(
+    (each) => !each.closest(".preview-file-stage"),
+  ) ?? null;
   const button = document.getElementById("nav-collapse-toggle");
   const box = (element) => {
     const rect = element.getBoundingClientRect();
@@ -92,8 +95,15 @@ const READ = `(() => {
     pointsRight: Math.abs(turn.a - 1) < 0.01,
     animations: frame.getAnimations().length,
     buttonGround: getComputedStyle(button).backgroundColor,
-    // Whether a press anywhere in each box, its corners and middle a pixel in, lands on it.
+    // Whether a press anywhere in each box, its corners and middle a pixel in, lands on it:
+    // true, or each press that missed and what it landed on, so a failure names the cover.
     owns: (() => {
+      const named = (node) =>
+        node
+          ? node.tagName.toLowerCase() +
+            (node.id ? "#" + node.id : "") +
+            [...node.classList].map((name) => "." + name).join("")
+          : null;
       const owns = (element) => {
         if (!element) {
           return null;
@@ -101,7 +111,16 @@ const READ = `(() => {
         const rect = element.getBoundingClientRect();
         const xs = [rect.left + 1, rect.left + rect.width / 2, rect.right - 1];
         const ys = [rect.top + 1, rect.top + rect.height / 2, rect.bottom - 1];
-        return xs.every((x) => ys.every((y) => element.contains(document.elementFromPoint(x, y))));
+        const missed = [];
+        for (const x of xs) {
+          for (const y of ys) {
+            const hit = document.elementFromPoint(x, y);
+            if (!element.contains(hit)) {
+              missed.push({ x, y, hit: named(hit) });
+            }
+          }
+        }
+        return missed.length === 0 || missed;
       };
       return { button: owns(button), up: owns(up) };
     })(),
@@ -345,9 +364,15 @@ try {
   phase("load");
   await browser.send("Page.enable");
   await browser.send("Page.navigate", { url: `${base}/view/` });
+  // The shell's tools are ready before the folder's view is in the page: the view is built
+  // in the pane's staging layer (`.preview-file-stage`, app.js), inert, unseen, and taking
+  // no pointer, while the loading placeholder is what a press lands on, and is committed
+  // after. Its Up is read once the view is committed and the layer gone (mb-hujg).
   await browser.waitFor(
     `document.documentElement?.dataset.shellToolsReady === "true" &&
-     document.getElementById("nav-shortcut-hints")?.hidden === false`,
+     document.getElementById("nav-shortcut-hints")?.hidden === false &&
+     document.querySelector("#preview-pane > .preview-file-stage") === null &&
+     document.querySelector("#preview-pane .view-header-eyebrow > .folder-up") !== null`,
     STEP_MS,
   );
   // Focus on the main page, as a reader's would be, outside every text field.
