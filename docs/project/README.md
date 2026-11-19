@@ -68,6 +68,9 @@ It links each document below and the contributor standards in `docs/`.
 
 ## Active Plans
 
+- [Tabular data browsing and live SQLite](specs/active/plan-2026-11-19-tabular-data-and-live-sqlite.md):
+  a draft for one generic table plugin over CSV, record lists, and SQLite, with
+  nondestructive reads of live databases and live reload for open files
 - [The app’s command-line dependencies and a complete doctor](specs/active/plan-2026-11-18-cli-dependencies-and-doctor.md):
   where each tool’s minimum version lives, the app’s versioning contract with `metab`, a
   doctor that checks everything a setup needs, and Check Setup… in the macOS app
