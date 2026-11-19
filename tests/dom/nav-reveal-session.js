@@ -44,9 +44,12 @@
 // request named again moves nothing unless `again` says it was opened again, `again` ends
 // a tab landing's kept place, one the filter leaves out moves the list to a filter that
 // draws it, a filter the reader picks says nothing of the pull request it leaves out, and
-// only one the list still cannot show is named under the band. `beyond the rows read`
-// serves lists longer than the panel draws, a catalog still being read from GitHub, and
-// failing reads, over the route's windows and the catalog's one-row lookups.
+// only one the list still cannot show is named under the band. `beyond the rows read`, the
+// part `pulls-depth` prints, serves lists longer than the panel draws, a catalog still being read from GitHub,
+// failing reads, a number the route refuses, and slow answers that come after a newer
+// navigation, a filter the reader picks, or the panel was hidden, over the route's windows
+// and the catalog's one-row lookups; a row the list moved for takes focus only while focus
+// is where the move left it.
 //
 // `invariants` are relations every step holds.
 
@@ -1073,18 +1076,24 @@ async function pullsStory() {
       "in the catalog, further down than the list draws": panel.outsideText(8, true),
       "not in the catalog, which has been read in full": panel.outsideText(8, false),
     },
-    "beyond the rows read": await pullsDepthStory(),
   };
 }
+
+/** The largest number the pulls route takes for `after` (cache/paths.py). */
+const MAX_PULL_REQUEST_NUMBER = 9_999_999_999;
 
 /**
  * A repository whose lists run past what the panel draws (pulls-panel.js `DISPLAY_ROWS`),
  * served in windows as the route serves them: Open is #3000 to #2901 and an old #1000,
  * Closed is #2900 down to #1001, and All is both. *catalog* is what the server's catalog
  * holds: how many of All's rows, newest first, as a catalog being read from GitHub holds
- * them, whether it is complete, and which reads fail (a list's name, or `lookup` for the
- * one-row indexed reads). Each story's steps name pull requests as a link or Back does, and
- * "time passes" runs what the panel scheduled, its next poll among them.
+ * them, the newest number it has read (`newest`, for pull requests opened since), whether
+ * it is complete, which reads fail (a list's name, or `lookup` for the one-row indexed
+ * reads), and which are slow (`held`, the same names): those wait for `release`, and
+ * answer then even when the panel has let them go, as an answer already on its way does. A read the panel lets go before it answers is listed as `let go`. `focus`
+ * is where focus is, as the view's `focusPlace` reports it, and a row the controller
+ * focuses is told. Each story's steps name pull requests as a link or Back does, and "time
+ * passes" runs what the panel scheduled, its next poll among them.
  */
 async function pullsDepthController(catalog, filter) {
   const panel = await import(pathToFileURL(path.join(GITHUB, "pulls-panel.js")).href);
@@ -1102,10 +1111,13 @@ async function pullsDepthController(catalog, filter) {
   });
   const reads = [];
   const told = [];
+  const letGo = [];
   const pending = new Set();
+  /** @type {{kind: string, answer: () => void}[]} */
+  const waiting = [];
   const controller = panel.createPullsController(
     {
-      request(method, route) {
+      request(method, route, options) {
         if (method !== "GET" || !route.startsWith("/api/plugin/github/pulls?")) {
           return Promise.resolve({ status: 404, etag: null, body: null });
         }
@@ -1114,34 +1126,25 @@ async function pullsDepthController(catalog, filter) {
         const limit = Number(query.get("limit"));
         const after = query.has("after") ? Number(query.get("after")) : null;
         const lookup = limit === 1;
-        reads.push(
-          lookup
-            ? after === null
-              ? "lookup: the newest"
-              : `lookup: #${after - 1} or the next older`
-            : `${name}${after === null ? "" : ` after #${after}`}`,
-        );
-        if (catalog.down.has(lookup ? "lookup" : name)) {
-          return Promise.resolve({ status: 500, etag: null, body: null });
-        }
-        const cached = every.slice(0, catalog.cached);
-        const all = cached.filter((number) => name === "all" || state(number) === name);
-        const from = after === null ? 0 : all.findIndex((number) => number < after);
-        const rows = from < 0 ? [] : all.slice(from, from + limit);
-        const last = from >= 0 && from + limit < all.length ? rows[rows.length - 1] : null;
-        const body = {
-          ...template,
-          list: name,
-          total: every.filter((number) => name === "all" || state(number) === name).length,
-          fetched: all.length,
-          catalog_fetched: cached.length,
-          complete: catalog.complete,
-          generation: `${template.generation.split(":")[0]}:${cached.length}`,
-          filter_totals: { all: every.length, open: 101, closed: 1900 },
-          rows: rows.map(row),
-          next_after: last,
+        const kind = lookup ? "lookup" : name;
+        const read = lookup
+          ? after === null
+            ? "lookup: the newest"
+            : `lookup: #${after - 1} or the next older`
+          : `${name}${after === null ? "" : ` after #${after}`}`;
+        reads.push(read);
+        let answered = false;
+        options?.signal?.addEventListener("abort", () => answered || letGo.push(read), {
+          once: true,
+        });
+        const answer = () => {
+          answered = true;
+          return answerOf(name, limit, after, kind);
         };
-        return Promise.resolve({ status: 200, etag: `"${name}:${cached.length}"`, body });
+        if (catalog.held?.has(kind)) {
+          return new Promise((resolve) => waiting.push({ kind, answer: () => resolve(answer()) }));
+        }
+        return Promise.resolve(answer());
       },
       schedule(callback) {
         const handle = { callback };
@@ -1154,7 +1157,12 @@ async function pullsDepthController(catalog, filter) {
       formatTime: (iso) => iso,
       render() {},
       markCurrent() {},
-      markAnchor() {},
+      markAnchor(_previous, number, focus) {
+        if (focus) {
+          told.push(`focused #${number}`);
+        }
+      },
+      focusPlace: () => catalog.focus ?? "body",
       open() {},
       reveal: (number) => told.push(`revealed #${number}`),
       markOutside: (text) => told.push(text === null ? "note gone" : `note: ${text}`),
@@ -1162,15 +1170,51 @@ async function pullsDepthController(catalog, filter) {
     },
     { filter, current: null },
   );
+  /** The route's answer, from the catalog as it stands when it answers. */
+  function answerOf(name, limit, after, kind) {
+    if (catalog.down.has(kind)) {
+      return { status: 500, etag: null, body: null };
+    }
+    if (after !== null && after > MAX_PULL_REQUEST_NUMBER) {
+      // pull_list_route.py refuses an `after` past the largest pull request number.
+      return { status: 400, etag: null, body: { code: "invalid_request" } };
+    }
+    const cached = every
+      .filter((number) => number <= (catalog.newest ?? Number.POSITIVE_INFINITY))
+      .slice(0, catalog.cached);
+    const all = cached.filter((number) => name === "all" || state(number) === name);
+    const from = after === null ? 0 : all.findIndex((number) => number < after);
+    const rows = from < 0 ? [] : all.slice(from, from + limit);
+    const last = from >= 0 && from + limit < all.length ? rows[rows.length - 1] : null;
+    const body = {
+      ...template,
+      list: name,
+      total: every.filter((number) => name === "all" || state(number) === name).length,
+      fetched: all.length,
+      catalog_fetched: cached.length,
+      complete: catalog.complete,
+      generation: `${template.generation.split(":")[0]}:${cached.length}`,
+      filter_totals: { all: every.length, open: 101, closed: 1900 },
+      rows: rows.map(row),
+      next_after: last,
+    };
+    return { status: 200, etag: `"${name}:${cached.length}"`, body };
+  }
   await controller.start({ shown: true });
   await settle();
   const steps = [];
   const step = async (what, act) => {
     reads.length = 0;
     told.length = 0;
+    letGo.length = 0;
     act();
     await settle();
-    steps.push({ step: what, read: [...new Set(reads)], told: [...told] });
+    steps.push({
+      step: what,
+      read: [...new Set(reads)],
+      told: [...told],
+      ...(letGo.length > 0 ? { "let go": [...new Set(letGo)] } : {}),
+    });
   };
   const timePasses = () => {
     const due = [...pending];
@@ -1179,7 +1223,16 @@ async function pullsDepthController(catalog, filter) {
       handle.callback();
     }
   };
-  return { controller, steps, step, timePasses };
+  /** The slow reads of *kind* answer, and reads of it are no longer slow. */
+  const release = (kind) => {
+    catalog.held?.delete(kind);
+    const due = waiting.filter((held) => held.kind === kind);
+    waiting.splice(0, waiting.length, ...waiting.filter((held) => held.kind !== kind));
+    for (const held of due) {
+      held.answer();
+    }
+  };
+  return { controller, steps, step, timePasses, release };
 }
 
 async function pullsDepthStory() {
@@ -1210,6 +1263,22 @@ async function pullsDepthStory() {
   await step("the reader picks Open: the filter is theirs, and the note goes", () =>
     controller.setFilter("open"),
   );
+  await step(
+    "the reader picks Closed, and a link names open #2950: the list goes to All and reveals it",
+    () => {
+      controller.setFilter("closed");
+      controller.setCurrent(2950);
+    },
+  );
+  await step(
+    "a link from #2950 names open #1000: All's 500 rows do not reach it, so the list goes on to Open, which draws it, and reveals it",
+    () => controller.setCurrent(1000),
+  );
+  await step("the reader picks All", () => controller.setFilter("all"));
+  await step(
+    "closed #1500 named under All: All's rows do not reach it, so the list goes to Closed, which reaches furthest, and says it is further down than Closed draws too",
+    () => controller.setCurrent(1500),
+  );
   controller.dispose();
 
   const crawling = { cached: 200, complete: false, down: new Set() };
@@ -1227,6 +1296,21 @@ async function pullsDepthStory() {
     },
   );
   crawl.controller.dispose();
+
+  const behind = { cached: 2001, complete: true, down: new Set(), newest: 2990 };
+  const newer = await pullsDepthController(behind, "open");
+  await newer.step(
+    "a link names open #2995, opened since the catalog's last read: the catalog, read to its end, lacks it, so the list says so",
+    () => newer.controller.setCurrent(2995),
+  );
+  await newer.step(
+    "the catalog reads it, and time passes: the next poll brings its row, so the note goes and the row is revealed",
+    () => {
+      behind.newest = undefined;
+      newer.timePasses();
+    },
+  );
+  newer.controller.dispose();
 
   const failing = { cached: 2001, complete: true, down: new Set(["closed"]) };
   const failed = await pullsDepthController(failing, "closed");
@@ -1253,10 +1337,142 @@ async function pullsDepthStory() {
     },
   );
   failed.controller.dispose();
-  return { "past what the list draws": deep.steps, crawling: crawl.steps, failing: failed.steps };
+
+  const failingThere = { cached: 2001, complete: true, down: new Set(["all"]) };
+  const moved = await pullsDepthController(failingThere, "closed");
+  await moved.step(
+    "open #2950 named under Closed while All answers HTTP 500: the list goes to All, whose first read fails, so nothing is revealed and nothing noted",
+    () => moved.controller.setCurrent(2950),
+  );
+  await moved.step(
+    "All answers again, and time passes: the next poll brings #2950's row, and reveals it",
+    () => {
+      failingThere.down.clear();
+      moved.timePasses();
+    },
+  );
+  await moved.step("time passes again: #2950 is revealed once, not at every poll", () =>
+    moved.timePasses(),
+  );
+  moved.controller.dispose();
+
+  const slow = { cached: 2001, complete: true, down: new Set(), held: new Set(["lookup"]) };
+  const late = await pullsDepthController(slow, "closed");
+  await late.step(
+    "a link names open #1000 under Closed while the catalog is slow to answer: the list waits and says nothing",
+    () => late.controller.setCurrent(1000),
+  );
+  await late.step(
+    "a second link names open #2950 before that answer: the first lookup is let go, and the second waits",
+    () => late.controller.setCurrent(2950),
+  );
+  await late.step(
+    "both answers come: the one for #1000 is ignored, and #2950 is among All's first 500, so the list goes to All and reveals it",
+    () => late.release("lookup"),
+  );
+  await late.step(
+    "the reader picks Closed, and a link names open #1000 while the catalog is slow again",
+    () => {
+      slow.held.add("lookup");
+      late.controller.setFilter("closed");
+      late.controller.setCurrent(1000);
+    },
+  );
+  await late.step(
+    "the reader picks All before the answer: the lookup is let go, and the filter is theirs",
+    () => late.controller.setFilter("all"),
+  );
+  await late.step(
+    "the answer comes: it is ignored, so the list stays under All and says nothing",
+    () => late.release("lookup"),
+  );
+  await late.step(
+    "the reader picks Closed, and a link names open #2950 while the catalog is slow",
+    () => {
+      slow.held.add("lookup");
+      late.controller.setFilter("closed");
+      late.controller.setCurrent(2950);
+    },
+  );
+  await late.step(
+    "the panel is hidden before the answer: its reads end, the lookups among them",
+    () => late.controller.setShown(false),
+  );
+  await late.step("the answer comes while the panel is hidden: it is ignored", () =>
+    late.release("lookup"),
+  );
+  await late.step(
+    "the panel is shown again: its next poll asks again, so the list goes to All and reveals #2950",
+    () => late.controller.setShown(true),
+  );
+  late.controller.dispose();
+
+  const focusing = { cached: 2001, complete: true, down: new Set(), held: new Set(["all"]) };
+  const focus = await pullsDepthController(focusing, "closed");
+  await focus.step(
+    "with focus on a row, open #2950 named under Closed, as Control-N names it: the list goes to All, whose rows are slow",
+    () => {
+      focusing.focus = "list";
+      focus.controller.setCurrent(2950);
+    },
+  );
+  await focus.step(
+    "the reader moves focus out of the list, and All's rows come: #2950 is revealed, and focus stays where the reader put it",
+    () => {
+      focusing.focus = "elsewhere";
+      focus.release("all");
+    },
+  );
+  await focus.step("the reader picks Closed, and puts focus on a row", () => {
+    focusing.focus = "list";
+    focus.controller.setFilter("closed");
+  });
+  await focus.step(
+    "open #2940 named, as Control-N names it: the list goes to All, whose rows are slow again",
+    () => {
+      focusing.held.add("all");
+      focus.controller.setCurrent(2940);
+    },
+  );
+  await focus.step(
+    "All's rows come with focus where the move left it, on no element: #2940 is revealed, and takes focus",
+    () => {
+      focusing.focus = "body";
+      focus.release("all");
+    },
+  );
+  focus.controller.dispose();
+
+  const refused = await pullsDepthController(
+    { cached: 2001, complete: true, down: new Set() },
+    "closed",
+  );
+  await refused.step(
+    "a link names #9999999999, the largest number a pull request may have: the route refuses a read from above it, and the newest pull request is older, so the catalog lacks it and the list says so",
+    () => refused.controller.setCurrent(MAX_PULL_REQUEST_NUMBER),
+  );
+  await refused.step("time passes: the next poll does not ask again", () => refused.timePasses());
+  refused.controller.dispose();
+  return {
+    "past what the list draws": deep.steps,
+    crawling: [...crawl.steps, ...newer.steps],
+    failing: [...failed.steps, ...moved.steps],
+    "answers that come late": late.steps,
+    focus: focus.steps,
+    "a number the route refuses": refused.steps,
+  };
 }
 
-(async () => {
+/** The parts the command line names; with none, every part but `pulls-depth`. */
+async function main(part = process.argv[2] ?? null) {
+  if (part === "pulls-depth") {
+    const transcript = { "beyond the rows read": await pullsDepthStory() };
+    process.stdout.write(`${JSON.stringify(transcript, null, 2)}\n`);
+    return;
+  }
+  if (part !== null) {
+    throw new Error(`Unknown part ${part}; the one part to name is pulls-depth`);
+  }
   const transcript = {
     ...ruleStory(),
     tabs: await tabsStory(),
@@ -1277,7 +1493,9 @@ async function pullsDepthStory() {
     "a step within the pull request shown reveals no row, and Quick Search for it does": true,
   };
   process.stdout.write(`${JSON.stringify(transcript, null, 2)}\n`);
-})().catch((error) => {
+}
+
+main().catch((error) => {
   process.stderr.write(`${error.stack}\n`);
   process.exit(1);
 });

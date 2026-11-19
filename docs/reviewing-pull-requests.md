@@ -52,7 +52,7 @@ objects instead of copying them; see
 Choose **Pulls** beside Files and Commits, or press `P`. The list starts on **Open**;
 **Closed** includes merged pull requests, and **All** shows both.
 Each filter shows its total when the catalog knows it.
-When you open a pull request the filter leaves out, by a link, Quick Search, Back, or a
+When you open a pull request the list does not show, by a link, Quick Search, Back, or a
 stack key, the list moves to **All**, or to the pull request’s own filter when it is too
 far down All, and selects it there.
 A filter you choose stays as you chose it.
