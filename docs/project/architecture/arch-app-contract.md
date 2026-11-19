@@ -6,8 +6,8 @@
 `AppContractTests` in the app’s Swift tests reads it back, and
 `tests/test_check_app_contract.py` checks the checker.
 The release rule that [Versioning](#versioning) enforces is written in
-[Choosing a Version](../../publishing.md#choosing-a-version), where two of its points
-are proposals the owner has not yet decided.
+[Choosing a Version](../../publishing.md#choosing-a-version), which marks the points the
+owner has not yet decided.
 
 The [macOS app](arch-macos-app.md) runs the `metab` a user installed, as a subprocess,
 and talks to the server it starts.
