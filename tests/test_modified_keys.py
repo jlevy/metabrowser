@@ -96,6 +96,12 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
     ),
     "static/source-ref-selector.js": (
         Listener(
+            "the list chooser's arrows, Home, and End going no further than the chooser, "
+            "since the Files toolbar's own binding would take them for a filter's",
+            None,
+            cancels=False,
+        ),
+        Listener(
             "the open list's Escape and Tab trap, which keeps Option-Tab",
             'parts.panel.hidden || event.ctrlKey || event.metaKey || (event.altKey && event.key !== "Tab")',
             checks=("tests/dom/source-ref-selector-keys-session.js",),
@@ -137,6 +143,17 @@ _LISTENERS: dict[str, tuple[Listener, ...]] = {
             _GUARD,
             via=("handleGutterKey",),
             unmounted="the gutter's own guard, which this PR did not change",
+        ),
+        Listener(
+            "the View on GitHub chevron's ArrowDown and ArrowUp, which open its menu",
+            _GUARD,
+            checks=("tests/dom/counterpart-session.js",),
+        ),
+        Listener(
+            "the View on GitHub menu's arrows, Home, End, and Escape, and Tab and Option-Tab "
+            "closing it, which cancel nothing",
+            _GUARD,
+            checks=("tests/dom/counterpart-session.js",),
         ),
     ),
     "static/plugin-sdk.js": (Listener("the idle-work input clock", None),),
@@ -359,10 +376,11 @@ def test_the_app_menus_leave_control_n_and_control_p_to_the_page() -> None:
     took one would never fire, since the web view hands the page each key first.
 
     A key equivalent is Command unless its item's modifier mask says otherwise, and the app
-    sets a mask in one place, ``MainMenu.item``, so every Control equivalent is a key
-    passed with its modifiers beside it. Those pairs are read with the source's whitespace
-    removed, so an item written over several lines is read too, and in either case, since
-    AppKit reads ``"N"`` as Shift-N and the page takes Control-Shift-N as Control-N.
+    sets a mask in one place, ``MainMenu.item``, which the main menu and the folder
+    chooser call, so every Control equivalent is a key passed with its modifiers beside it.
+    Those pairs are read from every app source, with the source's whitespace removed, so an
+    item written over several lines is read too, and in either case, since AppKit reads
+    ``"N"`` as Shift-N and the page takes Control-Shift-N as Control-N.
     """
     sources = _REPO / "apps" / "macos" / "Sources"
     masks = [
@@ -374,7 +392,9 @@ def test_the_app_menus_leave_control_n_and_control_p_to_the_page() -> None:
     assert masks == [("MainMenu.swift", "menuItem.keyEquivalentModifierMask = modifiers")], (
         "a modifier mask set outside MainMenu.item is a Control equivalent this cannot read"
     )
-    menu = _squeezed((sources / "Metabrowser" / "MainMenu.swift").read_text(encoding="utf-8"))
+    menu = "".join(
+        _squeezed(path.read_text(encoding="utf-8")) for path in sorted(sources.rglob("*.swift"))
+    )
     # Each one-character key with the modifiers after it: an `item(` call's arguments, or a
     # row of the Find menu's table.
     equivalents = re.findall(r'"([^"\\])",(\[[^\]]*\]|[\w.]+)', menu)

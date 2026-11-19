@@ -1,6 +1,6 @@
-// The shell's own keys: Home, the main pane's view tabs, the header's Up, a pin's branch
-// switcher, the numbers of the navigation pane's filters, and the letters of their menus'
-// rows.
+// The shell's own keys: Home, hiding the navigation pane, the main pane's view tabs, the
+// header's Up, a pin's branch switcher, the numbers of the navigation pane's filters, and
+// the letters of their menus' rows.
 //
 // Each command runs the activation path its control's click runs, which the shell
 // injects, plus the focus a keyboard user needs next; none synthesizes a click. Each is
@@ -119,24 +119,13 @@
     }
 
     /**
-     * The committed header's control for Up: the folder header's Up button, which has
-     * no parent to open at the root, or for a file the crumb of its folder.
+     * The committed view header's control for Up: the Up button in its eyebrow, a file's
+     * and a folder's alike, which has no parent to open at the served root.
      */
     function headerParent() {
       const header = committed().find((child) => child.classList.contains("file-header"));
-      if (header?.classList.contains("folder-header")) {
-        return /** @type {HTMLElement | null} */ (
-          header.querySelector(".folder-up[data-nav-dir]:not([disabled])")
-        );
-      }
-      if (!header) {
-        return null;
-      }
-      return (
-        Array.from(
-          header.querySelectorAll(".folder-breadcrumb [data-nav-dir]"),
-          (crumb) => /** @type {HTMLElement} */ (crumb),
-        ).at(-1) ?? null
+      return /** @type {HTMLElement | null} */ (
+        header?.querySelector(".folder-up[data-nav-dir]:not([disabled])") ?? null
       );
     }
 
@@ -230,9 +219,38 @@
       ? shortcuts.attachTarget("shell.home", homeHeading, { placement: "beside" })
       : null;
 
+    // `\` hides the navigation pane and shows it again; Shift+\, `|` on a US keyboard, is
+    // the same key. Its target is the chevron on the main page's left edge, which stays on
+    // screen while the pane is hidden, so the key is live either way, and its badge sits
+    // beside the icon button (docs/design-system.md, "Hiding the Navigation Pane").
+    const releaseNavToggle = registerCommand({
+      copy: {
+        action: "Hide or show navigation",
+        description: "Hide the navigation pane so the page fills the window, or show it again.",
+        hint: "Navigation",
+      },
+      group: "anywhere",
+      handler: () => {
+        shell.toggleNav();
+        return true;
+      },
+      id: "shell.nav-toggle",
+      key: "\\",
+      order: 40,
+      // Not on the revealed strip, whose seven items are measured (REVEAL_STRIP_MAX_ITEMS
+      // in keyboard-help.js): Shift badges the chevron itself, so the key is shown where
+      // it acts, and the strip keeps its room for keys that have no badge.
+      surfaces: { help: "always" },
+    });
+    const navToggle = shell.navToggle();
+    /** @type {MetabrowserPublicShortcutTarget | null} */
+    let navToggleTarget = navToggle
+      ? shortcuts.attachTarget("shell.nav-toggle", navToggle, { placement: "beside" })
+      : null;
+
     /**
-     * Read the main-pane header again: Up's target is the folder header's Up button or,
-     * for a file, the crumb of its folder, and none at the root.
+     * Read the main-pane header again: Up's target is the view header's Up button, a
+     * file's and a folder's alike, and none at the root.
      */
     function syncHeader() {
       if (disposed) {
@@ -596,6 +614,9 @@
         homeTarget?.detach();
         homeTarget = null;
         releaseHome();
+        navToggleTarget?.detach();
+        navToggleTarget = null;
+        releaseNavToggle();
       });
       disposed = true;
     }

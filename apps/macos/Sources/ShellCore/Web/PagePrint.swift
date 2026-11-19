@@ -55,7 +55,14 @@ extension NavigationPolicy {
     /// server's own origin, never an opaque one, which has no scheme or host, and not
     /// while a sheet, such as an earlier print panel, is open.
     public func allowsPagePrint(scheme: String, host: String, port: Int, isMainFrame: Bool, sheetOpen: Bool) -> Bool {
-        guard isMainFrame, !sheetOpen, !scheme.isEmpty, !host.isEmpty, origin != nil else { return false }
+        !sheetOpen && isAppDocument(scheme: scheme, host: host, port: port, isMainFrame: isMainFrame)
+    }
+
+    /// Whether a document whose security origin is `scheme`, `host`, and `port` (0 for the
+    /// scheme's default, as WebKit reports it) is the main frame of a page of the server's
+    /// own origin: never an opaque origin, which has no scheme or host.
+    public func isAppDocument(scheme: String, host: String, port: Int, isMainFrame: Bool) -> Bool {
+        guard isMainFrame, !scheme.isEmpty, !host.isEmpty, origin != nil else { return false }
         var parts = URLComponents()
         parts.scheme = scheme
         parts.host = host

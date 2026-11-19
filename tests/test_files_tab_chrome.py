@@ -6,13 +6,16 @@ opens the Modified within menu in both. This judges what it measured against
 ``docs/design-system.md``, "Groups in a Menu" and "Menu Height":
 
 - a group heading starts on the menu's row inset, the edge its rows' check column starts
-  on, and names its rows as an ARIA group;
+  on, and names its rows as an ARIA group; a category's heading starts there with its
+  icon, the glyph size and in the heading's ink, its name the gap after it ("File-Type
+  Category Icons");
 - an open menu is its rows' natural height up to 16 rows, and stops 8 px short of the
   window's bottom edge, measured again when it opens and when the window resizes;
 - the Modified within menu, with few rows, keeps its natural height in both windows;
-- Group by and Show ignored are the row and the three filters wait in the closed drawer;
-  the row fits the default pane at its widest, under every Group by value with Clear and
-  the chevron's badge showing, and the badge leaves Show ignored out; Group by's rows read
+- Group by is the row, and the three filters and Show ignored wait in the closed drawer,
+  which opens to hold them whole on lines one row's height and gap apart; the row fits
+  the default pane at its widest, under every Group by value with Clear and the
+  chevron's badge showing, and the badge counts Show ignored turned off; Group by's rows read
   as its trigger does, and its open menu's letters choose them while T stays Quick
   Search's with the menu closed; every key that opens a menu focuses its checked row,
   Escape and a choice that closes it give focus back to its trigger, and a pick in File
@@ -21,9 +24,9 @@ opens the Modified within menu in both. This judges what it measured against
 - in a narrower pane the row wraps by the toolbar rule, at every width from the narrowest
   in both font sets, read in Tab order, its numbers working, and the closed drawer adding
   nothing to it ("Navigation Toolbars Wrap");
-- each File type section's heading starts on its tree's row inset and names its section
-  and tree, Documentation first, and a folder opened in a section lists its group's
-  files only;
+- each File type section's heading starts on its tree's row inset with its category's
+  icon and names its section and tree, Documentation first, and a folder opened in a
+  section lists its group's files only;
 - each section heading's tally sits beside its name after the separator, its dot one
   space's advance after the name, on its one line at the default pane and the 180 px
   minimum, its numeral at a count's numeral weight, and the section and its tree are
@@ -63,6 +66,7 @@ import json
 import os
 import socket
 import sys
+from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
@@ -139,6 +143,19 @@ def _close(actual: float, expected: float) -> bool:
     return abs(actual - expected) <= TOLERANCE
 
 
+def _category_icon_drawn(icon: dict[str, Any] | None, menu: dict[str, Any]) -> bool:
+    """Whether a heading's category icon is the glyph size, in the heading's ink, with
+    its name the gap after it (docs/design-system.md, "File-Type Category Icons")."""
+
+    if icon is None:
+        return False
+    return (
+        icon["width"] == icon["height"] == menu["glyph"]
+        and _close(icon["textFromIcon"], menu["categoryIconGap"])
+        and icon["inHeadingInk"]
+    )
+
+
 def _row(menu: dict[str, Any]) -> float:
     heights = menu["rowHeights"]
     assert isinstance(heights, list) and len(heights) == 1, (
@@ -192,8 +209,14 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
         "Code",
     ]
     for heading in tall["headings"]:
-        # On the rows' inset, the edge the check column starts on, not the label column.
+        # On the rows' inset, the edge the check column starts on, not the label column:
+        # a category's heading starts there with its icon, in the heading's ink, and its
+        # name follows by the gap; the Groups heading names no category and has none
+        # (docs/design-system.md, "File-Type Category Icons").
         assert _close(heading["fromRowInset"], 0), heading
+        assert (heading["icon"] is None) == (heading["text"] == "Groups"), heading
+        if heading["icon"] is not None:
+            assert _category_icon_drawn(heading["icon"], tall), heading
         assert heading["namesItsGroup"], heading
         # Every group follows the "Any type" row, so each draws its own 1 px divider.
         assert heading["divider"] == 1, heading
@@ -227,20 +250,20 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
         assert _close(age["height"], age["rows"] * _row(age) + age["frame"]), age
     assert measured["ageTall"]["height"] == measured["ageShort"]["height"]
 
-    # Group by and Show ignored are the row; the three filters are in the drawer, which
-    # starts closed and inert (mb-sogv, mb-x1h6).
+    # Group by is the row; the three filters and Show ignored are in the drawer, which
+    # starts closed and inert (mb-sogv, mb-x1h6, mb-ey0d).
     row = measured["row"]
-    assert row["row"] == ["menu:group", "filter-check", "nav-filter-bar-end"], row
-    assert row["drawer"] == ["recency", "types", "size"], row
+    assert row["row"] == ["menu:group", "nav-filter-bar-end"], row
+    assert row["drawer"] == ["recency", "types", "size", "showIgnored"], row
     assert row["drawerOpen"] == "false" and row["drawerInert"] is True, row
     # The row fits the default pane at its widest, a filter set so Clear and the badge
     # show, under every Group by value: nothing overflows or is clipped, and the row's gap
-    # is left between Show ignored and Clear. "No grouping" is the widest trigger, with
-    # 1.89 px to spare on 2026-11-15 (the measurements are beside
+    # is left between Group by and Clear. "No grouping" is the widest trigger, with
+    # 95.05 px to spare on 2026-11-18 (the measurements are beside
     # `.nav-filter-bar-end > .chip-badge` in styles.css).
     for group, fit in measured["rowFit"].items():
         assert fit["content"] <= fit["row"], (group, fit)
-        assert not fit["triggerClipped"] and not fit["checkClipped"], (group, fit)
+        assert not fit["triggerClipped"], (group, fit)
         assert fit["spare"] >= 0, (group, fit)
         assert fit["clear"] and fit["badge"] == "1", (group, fit)
     assert [fit["trigger"] for fit in measured["rowFit"].values()] == [
@@ -248,10 +271,29 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
         "By age",
         "By file type",
     ], measured["rowFit"]
-    # Show ignored off alone: Clear shows, since it resets every filter, and the badge does
-    # not count it, since the row shows it.
+    # Show ignored off alone: Clear shows, since it resets every filter, and the badge
+    # counts it, since the closed drawer hides it.
     off = measured["ignoredOff"]
-    assert off["clear"] and off["badge"] is None, off
+    assert off["clear"] and off["badge"] == "1", off
+    # The open drawer holds the three filters, then Show ignored, each whole inside the bar
+    # and one line tall, the checkbox centred in its line as the row's controls are, and
+    # its lines the toolbar's line and gap apart: two lines at the default pane, the three
+    # menus and then Show ignored, and three at the narrowest.
+    for drawer in (measured["drawer"], measured["narrowDrawer"]):
+        assert [control["name"] for control in drawer["controls"]] == [
+            "menu:recency",
+            "menu:types",
+            "menu:size",
+            "check:showIgnored",
+        ], drawer
+        assert drawer["content"] <= drawer["width"], drawer
+        for control in drawer["controls"]:
+            assert control["inside"] and not control["clipped"], drawer
+            assert control["height"] == 24, drawer
+        tops = sorted({control["top"] for control in drawer["controls"]})
+        assert all(below - above == 24 + 6 for above, below in pairwise(tops)), drawer
+    assert measured["drawer"]["lines"] == 2, measured["drawer"]
+    assert measured["narrowDrawer"]["lines"] == 3, measured["narrowDrawer"]
     # In a narrower pane the row wraps by the toolbar rule (tests/dom/nav-toolbar-wrap.mjs
     # says what it holds): at every width from the narrowest, 179 px, to 420, in both font
     # sets, with no filter set and with one set under each Group by value, nothing is cut,
@@ -267,20 +309,25 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
     for case, verdict in wrap.items():
         assert verdict["failures"] == [], (case, verdict["failures"][:10])
         assert verdict["tokens"] == {"gap": 6, "line": 24}, (case, verdict["tokens"])
-        # Group by leads at every width, and the narrowest pane wraps the row.
-        assert verdict["narrowest"][0] == ["group"], (case, verdict["narrowest"])
-        assert len(verdict["narrowest"]) >= 2, (case, verdict["narrowest"])
-    # The default pane holds the row on one line in the default font set, at its widest.
+        # Group by leads at every width.
+        assert verdict["narrowest"][0][0] == "group", (case, verdict["narrowest"])
+    # At its widest, a filter set under No grouping, the narrowest pane wraps the row, Clear
+    # and the chevron moving down together, in both font sets.
+    for fonts in ("clean", "system"):
+        narrowest = wrap[f"No grouping, {fonts}"]["narrowest"]
+        assert narrowest == [["group"], ["nav-filter-bar-end"]], (fonts, narrowest)
+    # The default pane holds the row on one line in both font sets, at its widest.
     for state in ("no filter", "No grouping", "By age", "By file type"):
-        assert wrap[f"{state}, clean"]["oneLineFrom"] <= 299, (state, wrap)
+        for fonts in ("clean", "system"):
+            assert wrap[f"{state}, {fonts}"]["oneLineFrom"] <= 299, (state, fonts, wrap)
     assert measured["themesAlike"], "the themes lay the row out alike"
-    # At the narrowest, a filter set, the row is three lines, read in Tab order; the numbers
+    # At the narrowest, a filter set, the row is two lines, read in Tab order; the numbers
     # still open Group by and, with the drawer, File type; and the drawer closes back to the
     # lines with no gap left standing.
     narrow = measured["narrow"]
-    assert narrow["stops"] == ["group", "showIgnored", "clear", "drawer"], narrow
-    assert narrow["lines"] == 3 and narrow["readInTabOrder"], narrow
-    assert narrow["height"] == 3 * 24 + 2 * 6 + 2 * 6 + 1, narrow
+    assert narrow["stops"] == ["group", "clear", "drawer"], narrow
+    assert narrow["lines"] == 2 and narrow["readInTabOrder"], narrow
+    assert narrow["height"] == 2 * 24 + 1 * 6 + 2 * 6 + 1, narrow
     assert measured["narrowKeyOne"] == {"menu": "group", "drawerOpen": "false"}
     assert measured["narrowKeyThree"] == {"menu": "types", "drawerOpen": "true"}
     assert measured["narrowOpen"]["height"] > narrow["height"], measured["narrowOpen"]
@@ -406,13 +453,18 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
     assert [section["tally"] for section in sections] == [f" · {tally}" for tally in tallies]
     for index, section in enumerate(sections):
         assert "group-heading" in section["headingClasses"], section
+        # The heading leads with its category's icon on the tree's row inset, as a menu's
+        # does on its rows' inset.
         assert _close(section["fromRowInset"], 0), section
+        assert _category_icon_drawn(section["icon"], tall), section
         assert section["namesItsTree"], section
         assert section["divider"] == (0 if index == 0 else 1), section
         assert _close(section["tallyFromLabel"], 0), section
         # One space's advance at the tally's size: the tally keeps its spaces.
         assert 2 < section["dotFromLabel"] < 6, section
-        assert section["tallyToEnd"] > 100, section
+        # A tally at the far end would leave none; Documentation, the longest name after its
+        # icon, leaves about 100 px at the default pane.
+        assert section["tallyToEnd"] > 50, section
         assert section["lines"] == 1, section
         assert not section["nameCut"] and section["tallyWhole"], section
         assert section["weights"] == {
@@ -471,8 +523,10 @@ def test_the_files_filter_menus_in_chrome(tmp_path: Path, chrome_profile: Path) 
     assert not refresh["before"]["written"], refresh
     assert refresh["after"] == {**refresh["before"], "written": True}, refresh
     # Code's heading is the one it had, its tally counting the new file beside its name.
+    # A refresh rewrites the heading it keeps, which still leads with its category's icon.
     assert measured["refreshedHeading"] == {
         "kept": True,
+        "icon": True,
         "tally": f" · {len(_CODE) * 3 + _LIB_FILES + 1} files",
     }, measured["refreshedHeading"]
     # No grouping is the one Files tree again.

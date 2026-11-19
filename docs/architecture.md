@@ -163,6 +163,7 @@ In `docs/project/architecture/`:
 | [arch-plugin-system.md](project/architecture/arch-plugin-system.md) | Manifests, discovery, classification, the SDK gate, containers, and adding a file type |
 | [arch-browser-shell.md](project/architecture/arch-browser-shell.md) | Shell modules, stores, lifecycle, and asset loading tiers |
 | [arch-macos-app.md](project/architecture/arch-macos-app.md) | Server supervision, windows and tabs, restore, and WebKit differences |
+| [arch-app-contract.md](project/architecture/arch-app-contract.md) | What the macOS app reads of `metab`: the declaration, the golden of the whole surface, and the checks on both sides |
 | [arch-recent-targets.md](project/architecture/arch-recent-targets.md) | The recent targets store, what records an open, its `metab` modes, and the app’s Open Recent |
 | [file-diff-format/](project/architecture/file-diff-format/file-diff-format.md) | File Diff Format v1, a tool-neutral change-set format |
 | [file-rollup-format/](project/architecture/file-rollup-format/file-rollup-format.md) | File Rollup Format, file classification and directory totals |

@@ -242,6 +242,7 @@ _FOLDER_ROUTES = (
     "/api/git/repo",
     "/api/source/status",
     "/api/identity",
+    "/api/counterpart?page=/view/README.md",
 )
 
 
@@ -332,9 +333,24 @@ def test_a_local_folders_page_does_not_load_git_source_modules(
 # against `--version` fails for anything added, where a list of forbidden modules fails
 # only for what someone thought to list. Standard-library packages are named by their
 # top-level name, since their submodules differ between Python versions.
-_PRESENT_LOCAL_EXTRA = frozenset({"metabrowser.cli.present", "metabrowser.invisible_chars"})
-# The property-list reader, for a bundle's Info.plist, and the XML parser it uses.
-_PRESENT_STDLIB_EXTRA = frozenset({"plistlib", "pyexpat", "xml"})
+# The `open_in` preference's reader (`metabrowser.open_in`) adds config.yml's name and
+# bound and the owner-only file helpers it is read through, with what they import from
+# the standard library: `secrets` and the `hmac` under it, and the layout of a `ctypes`
+# structure. Importing them took 4 to 24 ms on 2026-11-18 on an Apple silicon Mac under
+# a load average near 300 (`python -X importtime`).
+_PRESENT_LOCAL_EXTRA = frozenset(
+    {
+        "metabrowser.cli.present",
+        "metabrowser.config_file",
+        "metabrowser.home",
+        "metabrowser.invisible_chars",
+    }
+)
+# The property-list reader, for a bundle's Info.plist, and the XML parser it uses; and
+# what the preference's reader adds.
+_PRESENT_STDLIB_EXTRA = frozenset(
+    {"_hmac", "ctypes", "hmac", "plistlib", "pyexpat", "secrets", "xml"}
+)
 # A link adds the URL grammar, each provider's reducer without its provider, and the path
 # encoding and revision grammar a page is spelled with.
 _PRESENT_LINK_EXTRA = frozenset(

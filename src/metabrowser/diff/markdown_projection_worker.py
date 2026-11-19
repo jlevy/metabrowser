@@ -1,9 +1,13 @@
 """Run Markdown off the server's interpreter, in one long-lived child process.
 
-The child does two jobs. It projects Markdown diffs, and it renders the Markdown
-documents an untrusted author wrote that a page asks the server for: a pinned mirror's
-files, a folder served with ``--untrusted``, and a pull request's texts
-(:meth:`ProjectionWorker.render_inert`).
+The child does two jobs. It projects the diffs a changed file's Rendered view draws,
+Markdown (:mod:`metabrowser.diff.markdown_projection`) and YAML or JSON
+(:mod:`metabrowser.diff.structured_projection`, a request whose ``op`` is
+``structured``), and it renders the Markdown documents an untrusted author wrote that a
+page asks the server for: a pinned mirror's files, a folder served with ``--untrusted``,
+and a pull request's texts (:meth:`ProjectionWorker.render_inert`). Parsing YAML and
+JSONC is pure Python as well, so a structured projection holds the GIL as a Markdown
+projection does, and takes the same path.
 
 **Projections.** A projection is pure Python. In a thread it holds the GIL, and every
 other request on the server waits up to the interpreter's switch interval at each of its
@@ -16,8 +20,11 @@ unrelated request's delay (``inventory_engine/providers/python_inventory.py``), 
 request with more wake-ups pays the switch interval at each. A projection starts the
 child at the second one an event loop asks for, or when :meth:`ProjectionWorker.start`
 is called (a page's ``prefetch=1`` request), and until it has imported the renderer each
-projection runs in a thread, so the first screen of a Changes tab never waits for it. A
-build without the GIL, or a platform where the child cannot start, keeps the thread.
+projection a reader waits for runs in a thread, so the first screen of a Changes tab
+never waits for it. A prefetch has no reader waiting, so the route lets it wait for the
+child (``pull_rendered_diff``): the first screen's projections then run under the
+child's deadline rather than on the server's interpreter. A build without the GIL, or a
+platform where the child cannot start, keeps the thread.
 
 **Inert renders.** KPress's cost depends on what a document contains, not only on its
 size, and a document's author can choose it: the review of mb-273l timed 23.1 s for
@@ -115,11 +122,12 @@ from metabrowser.diff.format import FilePatch
 
 if TYPE_CHECKING:
     from metabrowser.diff.markdown_projection import MarkdownDiffProjection, PreparedMarkdownDiff
+    from metabrowser.diff.structured_projection import Format, StructuredDiffProjection
 
 LOG = logging.getLogger(__name__)
 
-# A request frame larger than this is a protocol fault. A projection is at most 48 KiB
-# of blobs and their patch; a render is the route's text, at most
+# A request frame larger than this is a protocol fault. A projection is at most 128 KiB
+# of blobs and their patch (``STRUCTURED_DIFF_MAX_BYTES``, for strict JSON); a render is the route's text, at most
 # ``settings.TEXT_PREVIEW_REQUEST_MAX_BYTES`` (16 MiB) of UTF-8, base64-encoded to a
 # third more, beside its front matter: the loader's value, within
 # ``FRONTMATTER_MAX_EXPANDED_SIZE`` (``frontmatter_yaml.py``), at most twelve bytes of
@@ -137,9 +145,11 @@ _MAX_ANSWER_FRAME: Final = 256 * 1024 * 1024
 # The child was ready 0.57 s after it started at load average 4 (review C of #349 saw
 # about 2 s under heavier load); it is given far longer before it counts as failed.
 _START_TIMEOUT_S = 30.0
-# A projection answers within its budgets in well under a second (the slowest input
-# measured inside every budget took 222-268 ms); a child that has not after this is
-# stopped.
+# A projection answers within its budgets in well under a second: the slowest Markdown
+# input measured inside every budget took 222-268 ms, front matter adds at most what
+# ``markdown_projection._FRONTMATTER_MAX_NODES`` records, and the slowest structured
+# shapes, recorded beside the budgets in ``structured_projection.py``, take about as long
+# as the slowest Markdown input. A child that has not answered after this is stopped.
 _PROJECTION_TIMEOUT_S = 10.0
 # The longest one untrusted document's render may run in the child before the child is
 # stopped and the document refused. Measured 2026-11-17 on an Apple M1 Pro
@@ -383,19 +393,28 @@ def _frame(payload: object) -> bytes:
     return len(data).to_bytes(4, "big") + data
 
 
+def _blob(data: bytes | None) -> str | None:
+    return None if data is None else base64.b64encode(data).decode()
+
+
+def _unblob(value: object) -> bytes | None:
+    return None if value is None else base64.b64decode(str(value), validate=True)
+
+
 def _encode(
     old: bytes | None, new: bytes | None, patch: FilePatch, namespace: str
 ) -> dict[str, Any]:
-    def blob(data: bytes | None) -> str | None:
-        return None if data is None else base64.b64encode(data).decode()
-
     return {
         "op": "project",
-        "old": blob(old),
-        "new": blob(new),
+        "old": _blob(old),
+        "new": _blob(new),
         "patch": patch.model_dump(mode="json"),
         "namespace": namespace,
     }
+
+
+def _encode_structured(old: bytes | None, new: bytes | None, fmt: Format) -> dict[str, Any]:
+    return {"op": "structured", "format": fmt, "old": _blob(old), "new": _blob(new)}
 
 
 def _encode_render(request: InertRender, asset_url_prefix: str) -> dict[str, Any]:
@@ -418,6 +437,8 @@ def _encode_render(request: InertRender, asset_url_prefix: str) -> dict[str, Any
 
 
 def _decode(answer: dict[str, Any]) -> PreparedMarkdownDiff:
+    """A Markdown projection's answer."""
+
     from metabrowser.diff.markdown_projection import LocalReference, PreparedMarkdownDiff
 
     projection = cast("MarkdownDiffProjection", answer["projection"])
@@ -428,15 +449,18 @@ def _decode(answer: dict[str, Any]) -> PreparedMarkdownDiff:
     return PreparedMarkdownDiff(projection, references)
 
 
+def _decode_structured(answer: dict[str, Any]) -> StructuredDiffProjection:
+    """A YAML or JSON projection's answer."""
+
+    return cast("StructuredDiffProjection", answer["structured"])
+
+
 def _project(request: dict[str, Any]) -> dict[str, Any]:
     from metabrowser.diff.markdown_projection import prepare_markdown_diff
 
-    def blob(value: object) -> bytes | None:
-        return None if value is None else base64.b64decode(str(value), validate=True)
-
     prepared = prepare_markdown_diff(
-        old=blob(request["old"]),
-        new=blob(request["new"]),
+        old=_unblob(request["old"]),
+        new=_unblob(request["new"]),
         patch=FilePatch.model_validate(request["patch"]),
         namespace=str(request["namespace"]),
     )
@@ -486,16 +510,37 @@ def _render(request: dict[str, Any]) -> dict[str, Any]:
     return {"rendered": inert}
 
 
+def _project_structured(request: dict[str, Any]) -> dict[str, Any]:
+    from metabrowser.diff.structured_projection import project_structured_diff
+
+    return {
+        "structured": project_structured_diff(
+            old=_unblob(request["old"]),
+            new=_unblob(request["new"]),
+            fmt=cast("Format", request["format"]),
+        )
+    }
+
+
 def _answer(request: dict[str, Any]) -> dict[str, Any]:
-    return _render(request) if request.get("op") == "render" else _project(request)
+    op = request.get("op")
+    if op == "render":
+        return _render(request)
+    if op == "structured":
+        return _project_structured(request)
+    return _project(request)
 
 
 def _warm() -> None:
     """Import and exercise both jobs once, as the child's first work."""
 
     from metabrowser.diff.markdown_projection import warm_markdown_projection
+    from metabrowser.diff.structured_projection import warm_structured_projection
 
     warm_markdown_projection()
+    # The YAML loader and json5 cost the first file that reads them 26-29 ms otherwise
+    # (mb-8274 review C9).
+    warm_structured_projection()
     _render(
         _encode_render(
             InertRender(
@@ -740,6 +785,13 @@ class _Failed:
 type _Outcome = dict[str, Any] | _Failed
 
 
+@dataclass(frozen=True, slots=True)
+class _Answered[T]:
+    """A projection's decoded answer from the child."""
+
+    value: T
+
+
 @dataclass(slots=True)
 class _Flight:
     """One render and the requests waiting for it."""
@@ -793,6 +845,22 @@ class ProjectionWorker:
 
         if self._starting is not None:
             await asyncio.shield(self._starting)
+        return self.ready
+
+    async def settle(self) -> bool:
+        """Wait for a start in progress, at most as long as an inert render waits for one
+        (:data:`_START_WAIT_S`); whether the child is now ready.
+
+        A request no reader waits on, a page's prefetch, waits here, so its projection
+        runs in the child under :data:`_PROJECTION_TIMEOUT_S` rather than in a thread that
+        nothing stops (mb-8274 review C2: the first screen's four files were answered from
+        threads by 150-207 ms, and the child was ready at 312-488 ms).
+        """
+
+        if self._starting is not None:
+            with contextlib.suppress(TimeoutError):
+                async with asyncio.timeout(_START_WAIT_S):
+                    await asyncio.shield(self._starting)
         return self.ready
 
     def _bind(self, loop: asyncio.AbstractEventLoop) -> _ChildLock:
@@ -988,6 +1056,39 @@ class ProjectionWorker:
             unavailable_markdown_diff,
         )
 
+        return await self._projection(
+            lambda: _frame(_encode(old, new, patch, namespace)),
+            _decode,
+            unavailable_markdown_diff,
+            lambda: prepare_markdown_diff(old=old, new=new, patch=patch, namespace=namespace),
+        )
+
+    async def project_structured(
+        self, *, old: bytes | None, new: bytes | None, fmt: Format
+    ) -> StructuredDiffProjection:
+        """A YAML or JSON file's projection
+        (:func:`~metabrowser.diff.structured_projection.project_structured_diff`), where
+        and as :meth:`prepare` runs a Markdown one."""
+
+        from metabrowser.diff.structured_projection import (
+            project_structured_diff,
+            unavailable_structured_diff,
+        )
+
+        return await self._projection(
+            lambda: _frame(_encode_structured(old, new, fmt)),
+            _decode_structured,
+            unavailable_structured_diff,
+            lambda: project_structured_diff(old=old, new=new, fmt=fmt),
+        )
+
+    async def _projection[T](
+        self,
+        frame: Callable[[], bytes],
+        decode: Callable[[dict[str, Any]], T],
+        refused: Callable[[Literal["unsupported", "too_large"]], T],
+        local: Callable[[], T],
+    ) -> T:
         loop = asyncio.get_running_loop()
         if self._counted is not loop:
             # Each event loop counts its own: a command that runs one request per loop
@@ -999,7 +1100,7 @@ class ProjectionWorker:
             self.start()
         lock = self._lock if self._loop is loop else None
         if self._processes and self.ready and lock is not None and not lock.rendering:
-            frame = _frame(_encode(old, new, patch, namespace))
+            request = frame()
             async with lock.hold("projection"):
                 for attempt in (1, 2):
                     if attempt == 1:
@@ -1016,12 +1117,12 @@ class ProjectionWorker:
                         process = await self._ready_child()
                         if process is None:
                             break
-                    outcome = await self._exchange_projection(process, frame)
-                    if not isinstance(outcome, str):
-                        return outcome
+                    outcome = await self._exchange_projection(process, request, decode)
+                    if isinstance(outcome, _Answered):
+                        return outcome.value
                     if outcome == "timeout":
                         self._kill(process)
-                        return unavailable_markdown_diff("too_large")
+                        return refused("too_large")
                     if self._process is not process:
                         # Stopped from here, by a new loop or the server's end.
                         break
@@ -1029,16 +1130,17 @@ class ProjectionWorker:
                     if outcome == "died" and attempt == 2:
                         # Twice on two children: the input may be what stops it, so it is
                         # not run in this process.
-                        return unavailable_markdown_diff("unsupported")
+                        return refused("unsupported")
                     # Gone before the request reached it, or dead on arrival or killed from
                     # outside as easily as by this input: once more, on a fresh child.
-        return await asyncio.to_thread(
-            prepare_markdown_diff, old=old, new=new, patch=patch, namespace=namespace
-        )
+        return await asyncio.to_thread(local)
 
-    async def _exchange_projection(
-        self, process: asyncio.subprocess.Process, frame: bytes
-    ) -> PreparedMarkdownDiff | Literal["unreached", "died", "timeout"]:
+    async def _exchange_projection[T](
+        self,
+        process: asyncio.subprocess.Process,
+        frame: bytes,
+        decode: Callable[[dict[str, Any]], T],
+    ) -> _Answered[T] | Literal["unreached", "died", "timeout"]:
         assert process.stdin is not None and process.stdout is not None
         self._touch()
         try:
@@ -1051,7 +1153,7 @@ class ProjectionWorker:
             self._kill(process)
             raise
         try:
-            answer = _decode(await asyncio.wait_for(_read(process.stdout), _PROJECTION_TIMEOUT_S))
+            answer = decode(await asyncio.wait_for(_read(process.stdout), _PROJECTION_TIMEOUT_S))
         except TimeoutError:
             return "timeout"
         except (ConnectionError, asyncio.IncompleteReadError, ValueError, KeyError, TypeError):
@@ -1061,7 +1163,7 @@ class ProjectionWorker:
             self._kill(process)
             raise
         self._touch()
-        return answer
+        return _Answered(answer)
 
     def refusal(self, request: InertRender) -> InertRenderRefused | None:
         """The kept refusal of *request*'s document, if an earlier render was refused

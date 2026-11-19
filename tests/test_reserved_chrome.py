@@ -122,7 +122,7 @@ def test_the_files_tree_holds_its_first_paint_until_its_toolbar_is_filled() -> N
     css = _css()
     hold = _rule(
         css,
-        ".nav-filter-bar:not([hidden]):has(> .tally-pending) ~ .tree-content:not(:has(> "
+        ".nav-filter-bar:not([hidden]):has(.tally-pending) ~ .tree-content:not(:has(> "
         '[role="alert"]))',
     )
     assert "visibility: hidden;" in hold
@@ -134,7 +134,13 @@ def test_the_files_tree_holds_its_first_paint_until_its_toolbar_is_filled() -> N
     # app.js draws replaces it.
     server = (REPO_ROOT / "src" / "metabrowser" / "server.py").read_text(encoding="utf-8")
     assert "pending_tally = '<span class=\"count tally-pending\"></span>'" in server
-    assert 'data-nav-toolbar="files"{filter_bar_behind}>{pending_tally}</div>' in server
+    assert 'data-nav-toolbar="files"{filter_bar_behind}>{filter_bar_content}</div>' in server
+    # A page with the branch and tag chooser ships the row, the chooser leading it and the
+    # placeholder after it, which the hold finds at any depth; the filled bar has none.
+    assert (
+        "f'<div class=\"nav-filter-bar-main nav-toolbar-row\">{source_ref_selector}'\n"
+        '        f"{pending_tally}</div>"'
+    ) in server
     app = (STATIC / "app.js").read_text(encoding="utf-8")
     assert "bar.innerHTML = main + drawer;" in _function(app, "renderNavFilterBar")
     # Filled in the task that draws the first rows, before them, so the rows are never
@@ -250,14 +256,16 @@ def test_a_runs_status_badge_is_as_wide_as_its_widest_label() -> None:
     """
 
     css = _css()
+    # The view header draws the badge (view-header.js); the live tail in app.js relabels it.
+    header = (STATIC / "view-header.js").read_text(encoding="utf-8")
     app = (STATIC / "app.js").read_text(encoding="utf-8")
-    labels = set(re.findall(r'badge-(?:running|live|completed|failed)">([^<]+)<', app))
+    labels = set(re.findall(r'badge-(?:running|live|completed|failed)">([^<]+)<', header))
     labels |= set(re.findall(r'badge\.textContent = "([^"]+)"', app))
     assert labels == {"Running", "Live", "Done", "Failed", "Run ended"}, labels
-    sizers = re.search(r"const RUN_STATUS_SIZERS = \[([^\]]*)\]", app)
+    sizers = re.search(r"const RUN_STATUS_SIZERS = \[([^\]]*)\]", header)
     assert sizers is not None
     assert set(re.findall(r'"([^"]+)"', sizers.group(1))) == labels
-    render = _function(app, "renderBadges")
+    render = _function(header, "renderBadges")
     assert (
         '<span class="file-header-badge-slot">${statusBadge}${RUN_STATUS_SIZERS}</span>' in render
     )
@@ -342,7 +350,7 @@ def test_the_state_row_is_one_line_held_by_a_strut() -> None:
     assert "text-overflow" not in ages
     assert "text-overflow: ellipsis;" in _rule(css, ".github-pull-quiet > .github-pull-ages")
     assert "flex: none;" in _rule(css, ".github-pull-quiet > .github-pull-ages-links")
-    # Refresh ends it, after View on GitHub and Browse code (A1 of review A on #506).
+    # Refresh ends it, after Browse code (A1 of review A on #506).
     assert "placeChildren(openedRow, [stateBadge, opened.row, refresh]);" in page
     assert "margin-inline-start: auto;" in _rule(css, ".github-pull-opened > .github-pull-refresh")
     assert 'h("div", { class: "github-pull-branches page-header-line" })' in page

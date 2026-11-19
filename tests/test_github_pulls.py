@@ -38,10 +38,11 @@ from metabrowser.builtin_plugins.github.gh import (
     GhResponse,
     gh_account,
     gh_api,
-    parse_account,
+    parse_active_account,
     parse_included_response,
     rate_limit_reset,
 )
+from metabrowser.builtin_plugins.github.pull_file_anchor import path_digest
 from metabrowser.builtin_plugins.github.pull_markdown import render_part
 from metabrowser.builtin_plugins.github.pull_record import (
     MAX_BODY_BYTES,
@@ -336,12 +337,13 @@ def test_gh_api_returns_304_and_types_refusals(stand: _Stand) -> None:
 
 
 def test_account_is_the_active_login_even_in_an_error_state() -> None:
-    assert parse_account(account("octo", state="error")["stdout"].encode()) == "octo"
-    assert parse_account(b'{"hosts":{}}') is None
+    errored = parse_active_account(account("octo", state="error")["stdout"].encode())
+    assert errored is not None and errored.login == "octo"
+    assert parse_active_account(b'{"hosts":{}}') is None
     inactive = {"hosts": {"github.com": [{"active": False, "login": "other", "state": "success"}]}}
-    assert parse_account(json.dumps(inactive).encode()) is None
+    assert parse_active_account(json.dumps(inactive).encode()) is None
     with pytest.raises(GhError):
-        parse_account(b'{"hosts":{"github.com":[{"active":true,"login":"bad login"}]}}')
+        parse_active_account(b'{"hosts":{"github.com":[{"active":true,"login":"bad login"}]}}')
 
 
 @pytest.mark.parametrize(
@@ -360,7 +362,7 @@ def test_environment_token_login_resolution_failure_is_typed(
     active = {"active": True, "login": "", "state": state, "error": diagnostic}
     payload = {"hosts": {"github.com": [active]}}
     with pytest.raises(GhError) as failure:
-        parse_account(json.dumps(payload).encode())
+        parse_active_account(json.dumps(payload).encode())
     assert failure.value.state == outcome
     assert message in str(failure.value) and "private diagnostic" not in str(failure.value)
 
@@ -791,6 +793,66 @@ def test_the_markdown_route_names_a_part_before_it_reads_anything(
     nothing = PullView(number=7, host=None, pin=None, pin_ref=None, refreshing=False, kept=None)
     status, body = asyncio.run(render_part(nothing, part))
     assert (status, body["code"]) == answer
+
+
+def test_a_core_description_and_its_record_share_one_render(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A text renders by its part, its page, and itself, not by when it was read (mb-d59o).
+
+    The record that follows a core preview usually carries the same description. Keyed by
+    the core's ``observed_at`` and the record's ``fetched_at``, the two asked the Markdown
+    child for two renders of one text, so the record's could not join the core's in flight.
+    """
+
+    from types import SimpleNamespace
+
+    from metabrowser.builtin_plugins.github import pull_markdown
+
+    fixtures = Path(__file__).parent / "fixtures" / "github-pull-page-responses.json"
+    recorded = json.loads(fixtures.read_text(encoding="utf-8"))
+    record = PullRecord.model_validate(recorded["current"]["body"]["record"])
+    asked: list[Any] = []
+
+    class Child:
+        async def render_inert(self, request: Any) -> dict[str, Any]:
+            asked.append(request)
+            return {"html": "<p>rendered</p>"}
+
+    cached: list[Any] = ["not_cached", record]
+    monkeypatch.setattr(pull_markdown, "shared_worker", Child)
+    monkeypatch.setattr(pull_markdown.kpress_adapter, "document_stylesheets", dict)
+    monkeypatch.setattr(
+        pull_markdown, "cached_pull_record", lambda *_: (cached.pop(0), None, "f" * 64)
+    )
+    preview: Any = {
+        "pull": record.pull.model_dump(mode="json"),
+        "observed_at": "2026-09-17T11:59:00Z",
+        "revision": "a" * 64,
+    }
+
+    async def core() -> Any:
+        return preview
+
+    view = PullView(
+        number=7,
+        host=SimpleNamespace(pulls=SimpleNamespace(home=Path(), slug="octo/demo")),  # pyright: ignore[reportArgumentType]
+        pin=None,
+        pin_ref=None,
+        refreshing=False,
+        kept=None,
+    )
+    early = asyncio.run(render_part(view, "body", current_core=core))
+    later = asyncio.run(render_part(view, "body", current_core=core))
+    assert (early[0], early[1]["core_revision"], later[0], later[1]["record_revision"]) == (
+        200,
+        "a" * 64,
+        200,
+        "f" * 64,
+    )
+    assert record.fetched_at != preview["observed_at"]
+    assert len(asked) == 2
+    assert asked[0].flight_key == asked[1].flight_key
 
 
 def test_a_record_that_is_gone_or_replaced_stops_being_answered(
@@ -1617,6 +1679,44 @@ def test_a_switch_by_commit_id_back_to_the_head_keeps_the_pull_requests_ref(
             assert pin({"oid": base})["ref"] is None
             again = pin({"oid": head})
             assert (again["pin"], again["ref"]) == (head, "refs/pull/7/head")
+    finally:
+        serve_mirror(None)
+        git_repo.clear_repo_cache()
+
+
+def test_a_changes_url_anchoring_one_file_is_served_at_that_file(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GitHub's `#diff-<sha256 of the path>` opens the file it names on the Changes tab.
+
+    The first open fetches the record, whose comparison lists the changed files; an
+    anchor that names none of them opens the tab itself, and the banner says why.
+    """
+
+    monkeypatch.setattr("metabrowser.cli.git_pin_cli.stop_on_interrupt", lambda: None)
+    app_txt = path_digest("src/app.txt")
+    try:
+        result = _serve(f"{CANONICAL}/pull/7/files#diff-{app_txt}R2")
+        assert result.exit_code == 0, result.output
+        served = next(line for line in result.stdout.splitlines() if line.startswith("Serving "))
+        assert served.split()[3] == "http://127.0.0.1:8411/pull/7/files/src/app.txt"
+        assert "Selection: pull_request files\nFile: src/app.txt\n" in result.stdout
+        assert "Diff line: R2 (the Changes tab opens at the file, not the line)\n" in (
+            result.stdout
+        )
+        with TestClient(app) as client:
+            assert client.get("/pull/7/files/src/app.txt").status_code == 200
+    finally:
+        serve_mirror(None)
+        git_repo.clear_repo_cache()
+    try:
+        result = _serve(f"{CANONICAL}/pull/7/files#diff-{path_digest('README.md')}")
+        assert result.exit_code == 0, result.output
+        served = next(line for line in result.stdout.splitlines() if line.startswith("Serving "))
+        assert served.split()[3] == "http://127.0.0.1:8411/pull/7/files"
+        note = next(line for line in result.stdout.splitlines() if line.startswith("File: "))
+        assert note.startswith("File: not resolved: no file pull request 7 changes ")
+        assert note.endswith("(file_not_changed); opening the Changes tab")
     finally:
         serve_mirror(None)
         git_repo.clear_repo_cache()

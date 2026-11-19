@@ -28,6 +28,7 @@ from metabrowser.cache.urls import GitSource
 from tests.github_pull_fixture import (
     CANONICAL,
     FETCHED_AT,
+    FIRST_CLONE_GH_CALLS,
     TREE_PULL,
     Origin,
     files_scenario,
@@ -85,10 +86,9 @@ def test_golden_pull_files_summary(
         shown = [arg.removeprefix(f"{tmp_path}/") for arg in args]
         calls = in_a_stable_order(logged_gh_calls(tmp_path))
         if gh_free:
-            # A first command clones the mirror, which asks GitHub the repository's size.
-            assert [call for call in calls if "--jq .size" not in call] == [], (
-                "a summary asked GitHub"
-            )
+            # A first command clones the mirror, which checks gh and asks GitHub the
+            # repository's size.
+            assert calls in ([], FIRST_CLONE_GH_CALLS), "a summary asked GitHub"
         blocks.append(result.block(" ".join(quoted(arg) for arg in shown), **sections, gh=calls))
         return result
 

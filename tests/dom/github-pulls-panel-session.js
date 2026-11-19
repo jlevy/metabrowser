@@ -1000,24 +1000,28 @@ async function paintStory(panel, selection = false) {
     );
     const list = container.childNodes.find((node) => node.localName === "ul");
     const [hostile, shown] = list.childNodes;
-    const row = (item) => item.firstElementChild;
-    // A row's third line, its change line, the row's one child, which owns its files.
+    // A pull request's three lines are one zone, its item's first child (mb-1z7j): the row,
+    // the link and the tree's item, which owns its files; and its third line, the change line,
+    // which carries their toggle.
+    const row = (item) => item.firstElementChild.firstElementChild;
     const change = (item) =>
-      item.childNodes.find((node) => node.classList?.contains("github-pulls-change-group"))
-        .firstElementChild;
+      item.firstElementChild.childNodes.find((node) =>
+        node.classList?.contains("github-pulls-change"),
+      );
     const fileWindow = () => answers.findIndex((request) => request.route.includes("/pull-files?"));
-    const previewDisclosure = change(shown).getAttribute("aria-expanded");
+    // The row says whether its files are open: its change line is hidden from assistive
+    // technology, and only turns its chevron (mb-1z7j).
+    const previewDisclosure = row(shown).getAttribute("aria-expanded");
     if (!selection) {
       assert(previewDisclosure === "false", "a PR preview stays collapsed");
       assert(fileWindow() === -1, "a PR preview reads no changed-file metadata");
-      // Right goes to the row's change line and opens nothing; Right again opens its files.
-      mounted.expand();
-      assert(
-        document.activeElement === change(shown) && fileWindow() === -1,
-        "Right on a row goes to its change line, and reads no files",
-      );
+      // Right on a row opens its files, as on a folder's (mb-1z7j).
       mounted.expand();
       await settle();
+      assert(
+        document.activeElement !== change(shown),
+        "Right on a row leaves the focus off its change line, which is no stop",
+      );
       const group = shown.childNodes.find((node) => node.classList?.contains("github-pull-files"));
       const [progress] = group.firstElementChild.childNodes;
       assert(!progress.hidden && progress.firstElementChild.classList.contains("spinner"));
@@ -1129,8 +1133,7 @@ async function paintStory(panel, selection = false) {
           .map((node) => node.getAttribute("href"));
       assert(selected(current).length === 1, "initial page observation selects its actual file");
       list.listeners.get("focusin")({ target: row(shown) });
-      // Right to the change line, then Right into its files.
-      mounted.expand();
+      // Right on the row, whose files the address opened: into its files, as on a folder's.
       mounted.expand();
       const oldAnchor = walk(container).find(
         (node) =>
@@ -1157,7 +1160,7 @@ async function paintStory(panel, selection = false) {
       await settle();
       observations.leaving = selected(current);
       assert(
-        change(shown).getAttribute("aria-expanded") === "true",
+        row(shown).getAttribute("aria-expanded") === "true",
         "reader-expanded old tree remains open",
       );
       assert(oldAnchor.getAttribute("tabindex") === "0", "leaving keeps the old roving anchor");
@@ -1263,11 +1266,16 @@ async function paintStory(panel, selection = false) {
       `the row's link is the state icon, the title, the age, and the muted line: ${order}`,
     );
     assert(
-      JSON.stringify(classesOf(hostile).slice(0, 2)) ===
-        JSON.stringify(["github-pulls-row", "github-pulls-change-group"]) &&
+      JSON.stringify(classesOf(hostile).slice(0, 1)) === JSON.stringify(["github-pulls-entry"]) &&
+        JSON.stringify(classesOf(hostile.firstElementChild)) ===
+          JSON.stringify(["github-pulls-row", "github-pulls-change"]) &&
         JSON.stringify(classesOf(change(hostile))) ===
-          JSON.stringify(["github-pulls-toggle", "github-pulls-change-line"]),
-      "under the link, the change line: the chevron, then the line",
+          JSON.stringify([
+            "github-pulls-toggle",
+            "github-pulls-change-line",
+            "github-pulls-change-words",
+          ]),
+      "one zone of three lines: the link, then under it the change line, the chevron, the line, and its words, which describe the row",
     );
     assert(
       id.childNodes[0].classList.contains("github-pulls-place") &&
@@ -1341,9 +1349,12 @@ async function paintStory(panel, selection = false) {
         .textContent.trim()
         .startsWith(row(shown).childNodes[1].textContent),
       "a PR preview leaves its files expanded": previewDisclosure === "true",
-      "Right to its change line, and Right again, opens its cached changed files": filesRead,
-      "they hang under it as a group it owns": shown.childNodes.map(described),
-      "its change line, the row's child, owns them": described(change(shown)),
+      "Right on its row opens its cached changed files": filesRead,
+      "they hang under its three lines as a group": shown.childNodes.map(described),
+      "its row owns them, and its change line, hidden, only turns its chevron": [
+        described(row(shown)),
+        described(change(shown)),
+      ],
       "a title written as markup is one text node": row(hostile).childNodes[1].childNodes.map(
         (node) => ({ node: node.nodeName, data: node.data }),
       ),
@@ -1455,12 +1466,12 @@ async function paintStory(panel, selection = false) {
     const afterClosingAll = retained();
     assert(afterClosingAll === panel.MAX_HELD_TREES + 1, "closed trees must be bounded on close");
     assert(
-      change(many[0]).getAttribute("aria-owns") === null,
+      row(many[0]).getAttribute("aria-owns") === null,
       "the longest-closed tree must go first",
     );
-    assert(change(shown).getAttribute("aria-owns") !== null, "the shown page's tree must remain");
+    assert(row(shown).getAttribute("aria-owns") !== null, "the shown page's tree must remain");
     assert(
-      change(many.at(-1)).getAttribute("aria-owns") !== null,
+      row(many.at(-1)).getAttribute("aria-owns") !== null,
       "the most recently closed tree must remain",
     );
     story["closing twelve expanded trees enforces retention immediately"] = {
@@ -1506,6 +1517,59 @@ async function paintStory(panel, selection = false) {
     );
     inSlot.dispose();
     assert(slot.childNodes.length === 0, "a disposed list leaves the toolbar");
+    // With the band under the toolbar too, as the shell draws it (server.py), the count and
+    // connection lines are the band's, outside the scroller that holds the list, so their rule
+    // runs the pane's width and they stay in view while the list scrolls (mb-vgx3); a
+    // disposed list leaves the band as it leaves the slot.
+    const bandSlot = new FakeElement("div");
+    const band = new FakeElement("div");
+    const banded = new FakeElement("div");
+    const inBand = panel.mountPullsPanel(
+      banded,
+      {
+        kind: "pull-request-list",
+        pullsNav: {
+          filter: "all",
+          current: null,
+          shown: true,
+          refreshAhead: false,
+          toolbar: bandSlot,
+          metadata: band,
+          scrollRoot: null,
+          open() {},
+          file: null,
+          fileHref: () => null,
+          pageFor: () => null,
+          onPageChange: () => () => {},
+          filterChanged() {},
+        },
+      },
+      mb,
+    );
+    await settle();
+    const firstClass = (node) => node.className.split(" ")[0];
+    story["with the host's toolbar and band: what each holds"] = {
+      toolbar: bandSlot.childNodes.map(firstClass),
+      band: band.childNodes.map(firstClass),
+      tab: banded.childNodes.slice(0, 2).map(firstClass),
+    };
+    assert(
+      band.childNodes.length === 2 &&
+        band.childNodes[0].classList.contains("github-pulls-status") &&
+        band.childNodes[1].classList.contains("github-pulls-connection"),
+      "the count and connection lines fill the host's band",
+    );
+    assert(
+      !banded.childNodes.some((node) => node.classList?.contains("nav-metadata")),
+      "the list's container holds no metadata line",
+    );
+    inBand.dispose();
+    story["with the host's toolbar and band: what each holds once disposed"] = {
+      toolbar: bandSlot.childNodes.length,
+      band: band.childNodes.length,
+      tab: banded.childNodes.length,
+    };
+    assert(band.childNodes.length === 0, "a disposed list leaves the band");
     return story;
   } finally {
     Date.now = realNow;
@@ -1528,7 +1592,7 @@ async function paintStory(panel, selection = false) {
 // them, and the panel's `mb.shortcuts.attach` is the facade's. Around the panel is a page
 // shaped as the shell's: the navigation pane, with the Files tab's filter bar, whose triggers
 // the shell numbers through `attachNumbered()`, and the Pulls tab, before the main pane, with a
-// pull request header's View on GitHub. Switching tabs hides the other with `display: none`, as
+// pull request header's Browse code. Switching tabs hides the other with `display: none`, as
 // main-tabs.js does. The elements answer what the registry reads of one in a browser:
 // connection, `hidden` and `display: none` up the tree, `inert`, and document order.
 
@@ -1687,9 +1751,9 @@ async function numberStory(panel) {
     const pullsTab = new NumberedElement("div");
     const navigation = new NumberedElement("div");
     navigation.append(filterBar, filesTab, pullsTab);
-    const onGitHub = element("a", "View on GitHub");
+    const browseCode = element("a", "Browse code");
     const main = new NumberedElement("div");
-    main.append(onGitHub);
+    main.append(browseCode);
     body.append(navigation, main);
     const show = (tab) => {
       filterBar.style.display = tab === "files" ? "" : "none";
@@ -1702,9 +1766,9 @@ async function numberStory(panel) {
     for (const trigger of [recency, types]) {
       registry.attachNumbered(trigger, { activate: () => ran.push(name(trigger)) });
     }
-    facade.attachShortcut(onGitHub, {
-      activate: () => ran.push(name(onGitHub)),
-      id: "github.pull.header.github",
+    facade.attachShortcut(browseCode, {
+      activate: () => ran.push(name(browseCode)),
+      id: "github.pull.header.browse",
       numbered: true,
     });
     const heard = [];
@@ -1823,7 +1887,7 @@ async function numberStory(panel) {
     // The Pulls tab shows, the Files tab's filter bar is hidden, and the list is loading.
     story["the Pulls tab, loading"] = numbers();
     assert(
-      numbers().join() === "1 Open,2 Closed,3 All,4 Reload,5 View on GitHub",
+      numbers().join() === "1 Open,2 Closed,3 All,4 Reload,5 Browse code",
       "the chips and Reload take 1 to 4 in reading order, before the page's link",
     );
     assert(
@@ -1883,7 +1947,7 @@ async function numberStory(panel) {
     );
     // Holding Shift shows each live number on its control.
     registry.setRevealed(true);
-    story["the keycaps while Shift is held"] = [...chips, reload, recency, types, onGitHub]
+    story["the keycaps while Shift is held"] = [...chips, reload, recency, types, browseCode]
       .map((node) => {
         const badge = node.childNodes.find((child) => child.classList?.contains("kbd-badge"));
         return `${name(node)} ${badge?.textContent ?? "none"}`;
@@ -1894,7 +1958,7 @@ async function numberStory(panel) {
     show("files");
     story["the Files tab"] = numbers();
     assert(
-      numbers().join() === "1 Modified within,2 File type,3 View on GitHub",
+      numbers().join() === "1 Modified within,2 File type,3 Browse code",
       "the hidden panel's controls hold no number",
     );
     story["on the Files tab"] = [await press("1"), await press("3"), await press("4")];
@@ -1906,7 +1970,7 @@ async function numberStory(panel) {
     story["the Pulls tab, disposed"] = numbers();
     pullsTab.append(filters);
     assert(
-      numbers().join() === "1 View on GitHub",
+      numbers().join() === "1 Browse code",
       "a disposed panel's chips and Reload hold no number",
     );
     filters.remove();

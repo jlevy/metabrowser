@@ -431,6 +431,7 @@ status: 200
       "name": "topic",
       "ref": "refs/remotes/origin/topic",
       "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "committed_at": 1767229200.0,
       "default": true,
       "checked_out": false,
       "current": true
@@ -439,6 +440,7 @@ status: 200
       "name": "feature",
       "ref": "refs/remotes/origin/feature",
       "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+      "committed_at": 1767232800.0,
       "default": false,
       "checked_out": false,
       "current": false
@@ -472,6 +474,7 @@ status: 200
       "name": "v1",
       "ref": "refs/tags/v1",
       "commit": "fcb9d63c3c8533d1b929861f451a066e6d4f2d9e",
+      "committed_at": 1767225600.0,
       "default": false,
       "checked_out": false,
       "current": false
@@ -507,6 +510,7 @@ status: 200
       "name": "topic",
       "ref": "refs/remotes/origin/topic",
       "commit": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+      "committed_at": 1767229200.0,
       "default": true,
       "checked_out": false,
       "current": true

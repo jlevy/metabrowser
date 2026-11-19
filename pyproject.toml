@@ -104,7 +104,20 @@ source = "uv-dynamic-versioning"
 [tool.uv-dynamic-versioning]
 vcs = "git"
 style = "pep440"
-bump = true
+# A build past the last tag reports the next minor release as a development build
+# (0.12.0 + commits -> 0.13.0.devN), not the next patch, so it meets the macOS app's
+# minimum metab, which is a minor release (docs/publishing.md#choosing-a-version).
+bump = { enable = true, index = 1 }
+
+[tool.uv]
+# An editable install records its version once, when uv builds it, and uv rebuilds it
+# only when a cache key changes. With these keys, a sync after a new commit or tag
+# (make install, or any uv run) rebuilds it, so a checkout reports the version its
+# commit and the tags give, which the macOS app holds to its minimum. Measured
+# 2026-11-18 in a worktree at a load average of 100 to 170: a sync with nothing changed
+# took 0.05 to 0.09 s, and the rebuild it does once after each commit or tag 2.4 to
+# 3.6 s; a tag added or deleted in a worktree, where .git is a file, rebuilt it.
+cache-keys = [{ file = "pyproject.toml" }, { git = { commit = true, tags = true } }]
 
 [tool.hatch.build]
 exclude = [

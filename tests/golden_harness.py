@@ -69,11 +69,13 @@ from pathlib import Path
 from typing import Any, Final
 
 import pytest
+import typer.rich_utils
 from click import unstyle
 
 import metabrowser
 from devtools.check_parity import IN_PROCESS_COMMAND
 from metabrowser import mirror_refresh
+from metabrowser.builtin_plugins.github.gh_status import forget_github_status
 from metabrowser.cache import records
 from metabrowser.cache.acquire import PublishedSource
 from metabrowser.cache.identity import cache_slug, repository_store_id, source_identity
@@ -193,6 +195,21 @@ def run_session(script: str, *args: str) -> Any:
 # ── Console transcripts ─────────────────────────────────────────────
 
 
+def stable_console(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin how Rich renders, so a transcript is the same in every terminal.
+
+    Typer reads FORCE_TERMINAL and MAX_WIDTH from the environment at import (GitHub
+    Actions forces terminal mode, which makes Rich ignore COLUMNS and render 80 wide), so
+    the module globals are pinned rather than the variables. Without this a usage error's
+    box is as wide as the shell that ran ``make golden-update``.
+    """
+
+    monkeypatch.setattr(typer.rich_utils, "FORCE_TERMINAL", None)
+    monkeypatch.setattr(typer.rich_utils, "MAX_WIDTH", 100)
+    monkeypatch.setenv("COLUMNS", "100")
+    monkeypatch.setenv("TERM", "dumb")
+
+
 def strip_logs(text: str) -> str:
     """Console output without ANSI styling or logger lines."""
 
@@ -303,8 +320,12 @@ def run_metab(args: Sequence[str]) -> Invocation:
 
     ``_run_cli`` is what the ``metab`` script calls, so a refusal is the ``Error:`` line
     and exit status a user sees rather than a test-only rendering of the exception.
+    Each ``metab`` is a process of its own, so it starts with no GitHub status kept from
+    the command before; otherwise the ``gh`` calls a golden records would depend on how
+    long that command took.
     """
 
+    forget_github_status()
     out = io.StringIO()
     err = io.StringIO()
     exit_code = 0

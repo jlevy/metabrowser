@@ -15,8 +15,9 @@ public nonisolated struct SetupGuide: Equatable, Sendable {
         /// A `metab` in uv's tool directory that does not run.
         case reinstallMetab(path: String, reason: String, inNewTerminal: Bool)
         /// A working `metab` older than `MetabRequirement.minimum`, or built before the flag
-        /// the app needs (`CandidateResult.tooOld`).
-        case upgradeMetab(path: String, version: String, inNewTerminal: Bool)
+        /// the app needs (`CandidateResult.tooOld`), and how it was installed, which picks
+        /// the command that upgrades it (`MetabInstall`).
+        case upgradeMetab(path: String, version: String, install: MetabInstall, inNewTerminal: Bool)
         /// The minimum is not on PyPI yet: `make install` in the checkout, then Choose
         /// metab…. `oldPath` and `oldVersion` name an older `metab` found, if any.
         case buildFromCheckout(oldPath: String?, oldVersion: String?, inNewTerminal: Bool)
@@ -31,7 +32,7 @@ public nonisolated struct SetupGuide: Equatable, Sendable {
                 return "Install metab."
             case .reinstallMetab(let path, let reason, _):
                 return "Reinstall metab: \(shown(path)) does not run (\(reason))."
-            case .upgradeMetab(let path, let version, _):
+            case .upgradeMetab(let path, let version, _, _):
                 let found = "Upgrade metab: \(shown(path)) is metab \(MetabVersion(version)?.text ?? version),"
                 if let shortfall = MetabRequirement.flagShortfall(version) {
                     return found + " \(shortfall), which Metabrowser needs."
@@ -49,14 +50,14 @@ public nonisolated struct SetupGuide: Equatable, Sendable {
             }
         }
 
-        /// uv's official installer, uv's documented tool commands, or the checkout's
-        /// install target.
+        /// uv's official installer, uv's documented tool commands, the upgrade by the tool
+        /// that installed the `metab` found, or the checkout's install target.
         public var command: String {
             switch self {
             case .installUv: "curl -LsSf https://astral.sh/uv/install.sh | sh"
             case .installMetab: RuntimeDiscovery.installCommand
             case .reinstallMetab: "uv tool install --reinstall metabrowser"
-            case .upgradeMetab: MetabRequirement.upgradeCommand
+            case .upgradeMetab(_, _, let install, _): MetabRequirement.upgradeCommand(for: install)
             case .buildFromCheckout: "make install"
             }
         }
@@ -73,9 +74,17 @@ public nonisolated struct SetupGuide: Equatable, Sendable {
         public var note: String? {
             switch self {
             case .installUv: nil
-            case .installMetab(let inNewTerminal), .reinstallMetab(_, _, let inNewTerminal),
-                 .upgradeMetab(_, _, let inNewTerminal):
+            case .installMetab(let inNewTerminal), .reinstallMetab(_, _, let inNewTerminal):
                 inNewTerminal ? "In a new Terminal window, so that it finds uv:" : nil
+            case .upgradeMetab(_, _, let install, let inNewTerminal):
+                switch install {
+                case .checkout(let root):
+                    inNewTerminal
+                        ? "In a new Terminal window, so that it finds uv, at the root of the checkout \(root):"
+                        : install.note
+                case .uvTool, .other: inNewTerminal ? "In a new Terminal window, so that it finds uv:" : nil
+                case .pipx: nil
+                }
             case .buildFromCheckout(_, _, let inNewTerminal):
                 inNewTerminal
                     ? "In a new Terminal window, so that it finds uv, at the root of the checkout:"
@@ -118,20 +127,25 @@ public nonisolated struct SetupGuide: Equatable, Sendable {
 
     /// `tried` is the last search's candidates, `uv` the uv found, if any, whether or
     /// not the app may run it, and `loginPath` the login shell's `PATH`, when the search
-    /// read it. `refusedUv` lists the uvs the app would not run, and why.
+    /// read it. `refusedUv` lists the uvs the app would not run, and why. `install` reads
+    /// how an older `metab` found was installed.
     public init(
         tried: [CandidateOutcome], uv: String?, binDirectory: String, home: String, loginPath: [String]?,
-        hasHomebrew: Bool, minimumIsReleased: Bool = MetabRequirement.isReleased, refusedUv: [UvRefusal] = []
+        hasHomebrew: Bool, minimumIsReleased: Bool = MetabRequirement.isReleased, refusedUv: [UvRefusal] = [],
+        install: (String) -> MetabInstall = { MetabInstall.of(executable: $0) }
     ) {
         // A Terminal finds the uv only if its directory is on the login shell's PATH, and
         // the window that ran the installer has not read the PATH the installer added.
         let inNewTerminal = uv.map { !(loginPath?.contains(($0 as NSString).deletingLastPathComponent) ?? false) } ?? true
-        var steps: [Step] = uv == nil ? [.installUv(homebrew: hasHomebrew)] : []
         let toolMetab = binDirectory + "/metab"
         let old = tried.lazy.compactMap { outcome -> (String, String)? in
             if case .tooOld(let version) = outcome.result { return (outcome.path, version) }
             return nil
         }.first
+        let oldInstall = old.map { install($0.0) }
+        // Only pipx's upgrade runs without uv.
+        let needsUv = !(minimumIsReleased && oldInstall.map { !$0.needsUv } == true)
+        var steps: [Step] = uv == nil && needsUv ? [.installUv(homebrew: hasHomebrew)] : []
         let broken = tried.lazy.compactMap { outcome -> String? in
             if case .rejected(let reason) = outcome.result, outcome.path == toolMetab { return reason }
             return nil
@@ -139,7 +153,8 @@ public nonisolated struct SetupGuide: Equatable, Sendable {
         if !minimumIsReleased {
             steps.append(.buildFromCheckout(oldPath: old?.0, oldVersion: old?.1, inNewTerminal: inNewTerminal))
         } else if let old {
-            steps.append(.upgradeMetab(path: old.0, version: old.1, inNewTerminal: inNewTerminal))
+            steps.append(.upgradeMetab(
+                path: old.0, version: old.1, install: oldInstall ?? .other, inNewTerminal: inNewTerminal))
         } else if let broken {
             steps.append(.reinstallMetab(path: toolMetab, reason: broken, inNewTerminal: inNewTerminal))
         } else {

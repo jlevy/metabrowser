@@ -109,6 +109,12 @@ public final class DownloadCoordinator: NSObject, WKDownloadDelegate {
 
     /// Stops `download` and removes what it staged. `WKDownload.cancel` itself calls no
     /// delegate method, so a cancel that bypassed this would leave the staging file.
+    ///
+    /// Cancel only once the download has received bytes (`progress.completedUnitCount`).
+    /// WebKit's network process announces the destination it created after the decision
+    /// returns. On macOS 26, if a cancel arrives first, WebKit rejects that message as
+    /// invalid and ends the network process, failing every page load in progress in
+    /// every window (mb-1cd0).
     public func cancel(_ download: WKDownload) async {
         _ = await download.cancel()
         pending.removeValue(forKey: ObjectIdentifier(download))?.replacement?.discard()

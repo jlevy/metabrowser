@@ -407,6 +407,14 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/counterpart",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/diagnostics/pending-tallies",
       "methods": [
         "POST"
@@ -703,6 +711,13 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/github/status",
+      "methods": [
+        "POST"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/structured/parsed",
       "methods": [
         "GET",
@@ -874,7 +889,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 67
+  "count": 69
 }
 ? 0
 ```

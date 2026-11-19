@@ -142,6 +142,13 @@ METABROWSER_SHELL_TEST_METAB="$PWD/.venv/bin/metab" make macos-test  # at the re
 
 The live tests check that `metab` against the version the app requires.
 
+`AppContractTests` needs no `metab`: it reads `tests/golden/app-contract.txt`, which
+records what `metab` answers each command the app runs, and requires the app’s own
+builders to write those command lines and its own readers to read those answers.
+[The App’s Contract with metab](../../docs/project/architecture/arch-app-contract.md)
+describes the contract, `metab-contract.toml` here declares it, and a change to what the
+app runs or reads starts there.
+
 What the unit tests cannot reach, the platform behavior that AppKit, WebKit, and macOS
 decide, is checked by hand against a built development app with the
 [macOS app hand checks](../../docs/project/qa/qa-macos-app-hand-checks.md), including
@@ -181,7 +188,8 @@ instead. Its method and its last results are in
 ### Continuous Integration
 
 `.github/workflows/macos-app.yml` runs on pushes to `main` and on every pull request
-that changes `apps/macos`, the root `Makefile`, or the workflow.
+that changes a path its filters name: `apps/macos`, the root `Makefile`, the workflow,
+`metab`’s half of handing the app a target, and the app contract’s golden.
 It uses no secrets and signs only ad hoc.
 It runs on one pinned runner image, with its Xcode selected explicitly, both named in
 its matrix: the toolchain the app is built with, on the oldest macOS it supports.

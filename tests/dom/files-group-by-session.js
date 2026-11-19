@@ -115,12 +115,20 @@ const sections = model.groupSections(answer);
 transcript.sections = sections.map((section) => ({
   key: section.key,
   label: section.label,
+  icon: section.icon,
   files: section.files,
   topLevel: section.tree.map((node) => node.path),
 }));
 check(
   "sections keep the server's order, Documentation first",
   sections.map((section) => section.id).join() === "docs,code,data,other",
+  transcript.sections,
+);
+// Each section carries its category's icon, which leads its heading (docs/design-system.md,
+// "File-Type Category Icons").
+check(
+  "each section carries its category's icon",
+  sections.map((section) => section.icon).join() === "doc,alignLeft,list,file",
   transcript.sections,
 );
 check(
@@ -149,8 +157,9 @@ check(
   transcript.steps.at(-1).request.includes("recency=1h"),
   transcript.steps.at(-1),
 );
-// Show ignored, on the row beside Group by, narrows every group too. Clear counts it, so
-// it shows; the chevron's badge leaves it out, since the row shows its own state (mb-x1h6).
+// Show ignored, in the drawer beside the filters, narrows every group too. Clear counts
+// it, so it shows, and the chevron's badge counts it, since the closed drawer hides it
+// (mb-ey0d).
 check(
   "Show ignored off reloads the groups",
   choose("Show ignored off", { showIgnored: false }) === "load-groups",
@@ -161,8 +170,8 @@ check(
   transcript.steps.at(-1),
 );
 check(
-  "Clear counts Show ignored and the badge does not",
-  transcript.steps.at(-1).activeFilters === 3 && transcript.steps.at(-1).drawerFilters === 2,
+  "Clear and the badge both count Show ignored",
+  transcript.steps.at(-1).activeFilters === 3 && transcript.steps.at(-1).drawerFilters === 3,
   transcript.steps.at(-1),
 );
 // Clear undoes the filters, Show ignored included, and keeps the grouping.

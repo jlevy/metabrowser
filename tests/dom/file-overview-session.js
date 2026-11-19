@@ -229,12 +229,13 @@ const FILE_TYPES = {
     { id: "other", label: "Other" },
   ],
   // The order the app lists groups in, Documentation first (file_type_filters.py,
-  // FILE_TYPE_GROUP_DISPLAY_ORDER): File Overview's rows and bars follow it.
+  // FILE_TYPE_GROUP_DISPLAY_ORDER): File Overview's rows and bars follow it. Each group's
+  // icon is its category's, which leads its heading in Details (_REPRESENTATIVE_FAMILIES).
   displayGroups: [
-    { id: "docs", label: "Documentation" },
-    { id: "code", label: "Code" },
-    { id: "data", label: "Data" },
-    { id: "other", label: "Other" },
+    { id: "docs", label: "Documentation", icon: "doc" },
+    { id: "code", label: "Code", icon: "alignLeft" },
+    { id: "data", label: "Data", icon: "list" },
+    { id: "other", label: "Other", icon: "file" },
   ],
   families: [
     { id: "typescript", label: "TypeScript", groupId: "code", extensions: [".ts"] },
@@ -304,6 +305,10 @@ const rollupError = (status) =>
       escapeHtml: String,
       fileTypeIcon: () => ({ className: "", svg: "" }),
       fileTypes: FILE_TYPES,
+      // The shell's icon registry, each icon standing in as markup that names it.
+      icons: {
+        withClass: (name, cls) => (name ? `<svg class="${cls}" data-icon="${name}"></svg>` : ""),
+      },
       filterControls: { bind: () => () => {}, checkHtml: () => "", groupHtml: () => "" },
       formatFileCount: (value) => `${value.toLocaleString("en-US")} files`,
       formatInteger: (value) => value.toLocaleString("en-US"),
@@ -399,6 +404,20 @@ const rollupError = (status) =>
       },
       retry() {
         summary().querySelector("[data-file-types-retry]").listeners.click();
+      },
+      /**
+       * Each group heading in Details, as the icon that leads it, by name, and the
+       * category it names: "doc Documentation".
+       */
+      detailsHeadings() {
+        return container
+          .descendants()
+          .filter((element) => element.className === "file-type-summary-group-row")
+          .map((row) => {
+            const heading = row.children[0];
+            const icon = /data-icon="([^"]*)"/.exec(heading.html)?.[1] ?? "no icon";
+            return `${icon} ${heading.textContent}`;
+          });
       },
       /** The Details toggle the compact summary offers. */
       details() {
@@ -763,8 +782,14 @@ const rollupError = (status) =>
       `the compact summary: ${closed.distribution}`,
     );
     toggle().listeners.click();
-    const opened = state("Details opened");
+    const opened = { ...state("Details opened"), headings: view.detailsHeadings() };
     assert(opened.details === "true", "Details did not open");
+    // Each group's heading leads with its category's icon (docs/design-system.md,
+    // "File-Type Category Icons").
+    assert(
+      opened.headings.join(", ") === "doc Documentation, alignLeft Code, list Data, file Other",
+      `Details' headings: ${opened.headings.join(", ")}`,
+    );
     for (const shown of ["Code", "Documentation", "Data", "Other", "No extension", "Other types"]) {
       assert(opened.distribution.includes(shown), `open Details does not show ${shown}`);
     }
@@ -1020,7 +1045,8 @@ const rollupError = (status) =>
   }
 
   // The shell's folder header reads the same envelope: pending aggregates are a skeleton
-  // until they arrive, and a folder the inventory leaves out has no tally to wait for.
+  // until they arrive, and a folder the inventory leaves out has no tally to wait for. The
+  // line is view-header.js's, over app.js's own cell helpers, lifted verbatim.
   {
     const appSource = fs.readFileSync(path.join(sourceRoot, "static/app.js"), "utf8");
     const lift = (name) => {
@@ -1030,16 +1056,36 @@ const rollupError = (status) =>
       assert(match, `${name} not found in app.js`);
       return match[0];
     };
-    const summaryHtml = vm.runInNewContext(
+    const shellPage = {
+      MetabrowserFormatters: { age: () => ({ className: "age", label: "3h" }) },
+    };
+    shellPage.window = shellPage;
+    vm.createContext(shellPage);
+    vm.runInContext(
+      fs.readFileSync(path.join(sourceRoot, "static/view-header.js"), "utf8"),
+      shellPage,
+    );
+    const summaryHtml = vm.runInContext(
       `function sizeClass() { return ""; }
        function countClass() { return ""; }
        function formatSize(value) { return value + " B"; }
        function formatCount(value) { return value + " files"; }
-       ${["isPendingNumber", "sizeHtml", "countHtml", "formatAge", "folderHeaderSummaryHtml"]
-         .map(lift)
-         .join("\n")}
-       folderHeaderSummaryHtml;`,
-      { window: { MetabrowserFormatters: { age: () => ({ className: "age", label: "3h" }) } } },
+       function notDrawnHere() { throw new Error("the folder line draws only its cells"); }
+       ${["isPendingNumber", "sizeHtml", "countHtml", "formatAge"].map(lift).join("\n")}
+       MetabrowserViewHeader.create({
+         esc: notDrawnHere,
+         servedRoot: notDrawnHere,
+         pathBaseName: notDrawnHere,
+         ownedControlAttr: notDrawnHere,
+         mirrorHeading: notDrawnHere,
+         getFileIcon: notDrawnHere,
+         getLogicalName: notDrawnHere,
+         sizeHtml,
+         countHtml,
+         formatAge,
+         activeFiles: new Map(),
+       }).folderHeaderSummaryHtml;`,
+      shellPage,
     );
     const header = (dir) => {
       const html = summaryHtml(dir);

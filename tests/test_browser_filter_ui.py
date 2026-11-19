@@ -474,21 +474,20 @@ def test_group_by_and_the_three_filters_are_dropdowns() -> None:
         assert label in fn_block, f"missing any-label {label}"
 
 
-def test_group_by_and_show_ignored_ride_the_row_and_the_filters_sit_in_the_drawer() -> None:
-    """Group by leads the row: it removes nothing, so it needs no drawer. Show ignored
-    follows it, its tick stating its own direction. The three filters sit behind the
-    disclosure, whose badge counts only them; Clear, which resets Show ignored too,
-    shows while any filter is set (mb-sogv, mb-x1h6)."""
+def test_group_by_rides_the_row_and_the_filters_and_show_ignored_sit_in_the_drawer() -> None:
+    """Group by leads the row: it removes nothing, so it needs no drawer. The three
+    filters sit behind the disclosure, and Show ignored follows them there, its tick
+    stating its own direction; the badge counts the ones set, Show ignored turned off
+    among them. Clear, on the row, shows while any of them is set (mb-sogv, mb-x1h6,
+    mb-ey0d)."""
 
     fn_block = _render_nav_filter_bar()
     main = fn_block[fn_block.index("var main =") : fn_block.index("var drawer =")]
     drawer = fn_block[fn_block.index("var drawer =") :]
-    group_at = main.index('key: "group"')
-    assert group_at < main.index('"Show ignored"') < main.index("nav-filter-bar-end")
-    for menu in ("recencyMenu", "typeMenu", "sizeMenu"):
-        assert menu not in main
-    assert "recencyMenu +\n    typeMenu +\n    sizeMenu +" in drawer
-    assert '"Show ignored"' not in drawer
+    assert main.index('key: "group"') < main.index("nav-filter-bar-end")
+    for control in ("recencyMenu", "typeMenu", "sizeMenu", "ignoredCheck", '"Show ignored"'):
+        assert control not in main
+    assert "recencyMenu +\n    typeMenu +\n    sizeMenu +\n    ignoredCheck +" in drawer
     assert "badge: drawerCount," in main
     assert "treeFilterModel.drawerFilterCount(st)" in fn_block
 
@@ -571,13 +570,15 @@ def test_every_icon_only_control_carries_the_icon_button_primitive() -> None:
 
     server = Path(proc_browser.__file__).read_text()
     app = _read("app.js")
+    header = _read("view-header.js")
     sdk = _read("plugin-sdk-views.js")
     controls = _read("filter-controls.js")
 
     assert 'class="icon-btn settings-btn"' in server
-    assert 'class="icon-btn icon-btn-reveal file-header-copy"' in app
+    assert 'class="icon-btn icon-btn-reveal file-header-copy"' in header
     # The print button left the header for the rendered document's card (mb-07a1).
     assert "file-header-print" not in app
+    assert "file-header-print" not in header
     printer = (
         proc_browser.STATIC_DIR.parent / "builtin_plugins" / "markdown" / "print-indicator.js"
     ).read_text(encoding="utf-8")
@@ -600,17 +601,19 @@ def test_every_icon_only_control_carries_the_icon_button_primitive() -> None:
 
 def test_plain_text_actions_use_the_shared_button_primitive() -> None:
     app = _read("app.js")
+    header = _read("view-header.js")
     css = _read("styles.css")
 
     # The text view's Load more moved out of the file header and into the
     # shared partial-content notice, but it is still the `.btn` primitive.
     sdk = _read("plugin-sdk-views.js")
     assert 'class="btn metabrowser-load-more"' in sdk
-    assert "file-header-action" not in app, (
-        "the header no longer restates partial progress; the notice owns it"
-    )
-    assert 'class="btn parent-nav-btn parent-nav-btn-icon-only folder-up"' in app
-    assert '<span class="parent-nav-arrow" aria-hidden="true">↑</span>' in app
+    for source in (app, header):
+        assert "file-header-action" not in source, (
+            "the header no longer restates partial progress; the notice owns it"
+        )
+    assert 'class="btn parent-nav-btn parent-nav-btn-icon-only folder-up"' in header
+    assert '<span class="parent-nav-arrow" aria-hidden="true">↑</span>' in header
     assert ".btn {" in css
     assert ".btn:focus-visible {" in css
     assert ".parent-nav-btn {" in css
@@ -618,7 +621,7 @@ def test_plain_text_actions_use_the_shared_button_primitive() -> None:
     parent_nav = css[css.index(".parent-nav-btn {") : css.index(".parent-nav-btn-icon-only {")]
     assert "height: var(--icon-btn-size);" in parent_nav
     assert "border-color: var(--viz-border-strong);" in parent_nav
-    assert 'aria-label="Open parent folder ${esc(parentLabel)}"' in app
+    assert 'aria-label="Open parent folder ${esc(label)}"' in header
 
 
 def test_every_core_button_declares_non_submit_behavior() -> None:
@@ -626,7 +629,13 @@ def test_every_core_button_declares_non_submit_behavior() -> None:
     for tag in re.findall(r"<button\b[^>]*>", html):
         assert 'type="button"' in tag
 
-    for name in ("app.js", "filter-controls.js", "plugin-sdk.js", "plugin-sdk-views.js"):
+    for name in (
+        "app.js",
+        "view-header.js",
+        "filter-controls.js",
+        "plugin-sdk.js",
+        "plugin-sdk-views.js",
+    ):
         source = _read(name)
         for match in re.finditer(r"<button\b", source):
             nearby_markup = source[match.start() : match.start() + 320]
@@ -830,11 +839,11 @@ def test_the_first_tree_row_clears_the_tally_rule() -> None:
     tally's border while every band above kept 6px."""
 
     css = _read("styles.css")
-    start = css.index(".nav-metadata + .tree-root > .tree-item:first-child,")
+    start = css.index(".tree-content > * > .tree-root:first-child > .tree-item:first-child {")
     block = css[start : css.index("}", start)]
-    # Both leading cases: the metadata band, whichever of its lines is last, and
-    # rows alone under a recency window.
-    assert ".tree-content > * > .tree-root:first-child > .tree-item:first-child" in block
+    # The metadata band stands over the scroller, so the tree's first row leads it under
+    # every source, the tree's and a recency window's, and nothing in the panel precedes it.
+    assert ".nav-metadata + .tree-root" not in css
     # Margin, so the hover fill and selected border stay row-height.
     assert "margin-top" in block
     assert "padding-top" not in block
@@ -894,7 +903,7 @@ def test_the_recency_tally_is_recomputed_not_cached() -> None:
     start = js.index("function renderRecentFromBase()")
     block = js[start : start + 1900]
     assert "var entries = view.entries;" in block
-    assert "_renderFilteredTally(results, state, entries.length);" in block
+    assert "_renderFilteredTally(state, entries.length);" in block
 
 
 def test_the_filtered_tally_shows_whenever_anything_is_filtered() -> None:
@@ -902,7 +911,7 @@ def test_the_filtered_tally_shows_whenever_anything_is_filtered() -> None:
     time, not only when a response was capped."""
 
     js = _read("app.js")
-    start = js.index("function _renderFilteredTally(panel, state, count)")
+    start = js.index("function _renderFilteredTally(state, count)")
     block = js[start : start + 1800]
     assert "filterHasConstraints(state)" in block
     # One model says the remark for the tree and for Recent, in parts, and the shell paints
@@ -947,7 +956,7 @@ def test_the_filtered_tally_counts_a_subtree_not_rendered_rows() -> None:
     paint = js[
         js.index("function paintRecentView(") : js.index("function clearRecentExpiryRecheck()")
     ]
-    assert "_renderFilteredTally(results, state, entries.length);" in paint
+    assert "_renderFilteredTally(state, entries.length);" in paint
     assert "querySelectorAll" not in recent
     leaf_start = js.index("function _applyTreeSourceFilters(panel, state)")
     assert (
@@ -1086,13 +1095,15 @@ def test_the_summary_poll_does_not_disturb_an_open_menu() -> None:
     # of an 1800-character window and failed a behavior that had not changed.
     block = js[start : js.index("\nfunction ", start + 1)]
     assert "filterOpenMenu === null" in block
-    # Both caches move together, or the tally reverts to first-paint
-    # figures under a recency filter.
+    # The tally is painted in place in the Files metadata band, outside the panel, so no
+    # cached copy of it can revert to first-paint figures under a recency filter: no source
+    # paints the panel with a tally of its own.
     assert "paintTreeSummary(" in block
     paint = js[js.index("function paintTreeSummary(html)") :]
     paint = paint[: paint.index("\n}\n")]
-    assert "_lastTreeSummaryHtml = html;" in paint
-    assert "_lastTreeRender.chromeHtml = _lastTreeRender.chromeHtml.replace(" in paint
+    assert "row.outerHTML = html;" in paint
+    assert "filesMetadataBand()" in paint
+    assert "_lastTreeSummaryHtml" not in js
 
 
 def _provider_tree_source() -> str:
@@ -1546,5 +1557,11 @@ def test_scroll_shadow_rides_the_filter_bar() -> None:
     fn_block = js[fn_start : fn_start + 900]
     assert 'document.getElementById("nav-filter-bar")' in fn_block
     css = _read("styles.css")
-    # Each main tab's toolbar in the slot takes the same shadow as the filter bar.
-    assert ".nav-filter-bar.scrolled,\n.nav-toolbar.scrolled {" in css
+    # Each main tab's toolbar in the slot takes the same shadow as the filter bar, and hands
+    # it to the metadata band under it, which is then the chrome over the content.
+    assert (
+        ".nav-filter-bar.scrolled,\n.nav-toolbar.scrolled,\n"
+        ".scrolled + .nav-metadata-band:not(:empty) {"
+    ) in css
+    handed = css[css.index(".scrolled:has(+ .nav-metadata-band:not(:empty)) {") :]
+    assert "box-shadow: none;" in handed[: handed.index("}")]

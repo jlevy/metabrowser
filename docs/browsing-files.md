@@ -13,6 +13,24 @@ This guide covers Files.
 
 The Files tab is a tree of the served folder beside the selected file or folder.
 
+The selected file or folder has a header above its views: a quiet line with the Up
+button and the folders that hold it, then its icon and its name, then its size and age,
+and a folder’s file count, “4.7 MB · 138 files · 8m ago”.
+In a narrow pane a long name is cut short, with the whole name in its tooltip, and the
+values that do not fit leave the line from its end, each whole.
+When the folder is a checkout of a repository on github.com, or a mirror of one, the
+header’s upper right holds two marks: Metabrowser’s, the view you are in, and GitHub’s,
+which opens the same file or folder on github.com.
+A browser opens it in a new tab, since github.com cannot be shown inside the page, and
+the macOS app opens it in your default browser.
+In a narrow pane only the GitHub mark is shown.
+It opens the page at the branch you are on when your last fetch saw that branch on
+`origin`; otherwise it opens your commit, and its tooltip says that origin had no such
+branch at your last fetch, so that commit may not be on github.com either.
+It opens a page whether or not github.com has one: a file Git ignores or has not been
+told about, or a file inside an archive, opens a missing page there.
+The link is set when the page loads, so after switching branches, reload the page.
+
 - **Rows:** a file row shows its size and age; a folder row shows its file count, total
   size, and newest change, for everything beneath it.
   Age is drawn in a color that runs from the freshest files to the oldest.
@@ -22,7 +40,8 @@ The Files tab is a tree of the served folder beside the selected file or folder.
 - **Addresses:** each file and folder has its own `/view/<path>` address, so the
   browser’s Back, Forward, new tab, and copied links work as they do anywhere.
   A fragment selects a place in a document, such as a heading.
-- **Up:** `U`, or the folder header’s Up button, opens the parent folder.
+- **Up:** `U`, or the header’s Up button, opens the folder that holds the file or
+  folder.
 - **Home:** the folder’s name at the top of the navigation pane, or `0`, shows the
   folder as a fresh load shows it: Files in front, every filter and Group by at its
   default, and every tab back at its first view.
@@ -68,13 +87,13 @@ The bar above the tree groups and narrows it:
   **No grouping** is the default.
   While its menu is open, `N`, `A`, and `T` choose No grouping, By age, and By file
   type.
-- **Show ignored**, beside it, is on by default and shows gitignored files dimmed; turn
-  it off to hide them.
-- The chevron opens the filters:
+- The chevron opens the filters, and its badge counts the ones set:
   - **Modified within** keeps files changed within a window, from Live to the past
     month. Live means changed in the last 90 seconds.
   - **File type** keeps the categories, families, or exact extensions you choose.
   - **Minimum file size** keeps files at least that large.
+  - **Show ignored** is on by default and shows gitignored files dimmed; turn it off to
+    hide them.
 - **Clear** removes every filter and turns Show ignored back on; it keeps the grouping.
 
 A type or size filter keeps the tree’s shape, shows only matching files and the folders

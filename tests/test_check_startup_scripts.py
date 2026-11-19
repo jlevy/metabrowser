@@ -23,7 +23,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from devtools import check_startup_scripts as check
-from metabrowser import server
+from metabrowser import paths_safe, server
 from tests.required_tools import needs_node, require_node
 
 pytestmark = needs_node
@@ -52,6 +52,8 @@ def test_the_shell_fits_the_budget(capsys: pytest.CaptureFixture[str]) -> None:
     # The two shells with a script more are reported beside the same budget, by name.
     assert summary[1].startswith("  a pull-request address adds pull-route.js: ")
     assert summary[2].startswith("  a pinned revision adds git-path.js: ")
+    # And a github.com checkout's shell, which carries its repository context in its HTML.
+    assert summary[3].startswith("  a github.com checkout's shell is ")
     assert all(line.endswith("not gated)") for line in summary[1:])
 
 
@@ -81,6 +83,35 @@ def test_a_pull_request_address_has_its_routes_as_a_startup_script() -> None:
     # And nothing on either page asks for a script itself before the first tree.
     assert check.script_requests(folder_html, check.FOLDER_ADDRESS) == []
     assert check.script_requests(pull_html, check.PULL_ADDRESS) == []
+
+
+def test_a_github_checkouts_shell_is_measured_as_the_application_sends_it(
+    tmp_path: Path,
+) -> None:
+    # The checkout's line reports how much more the application sends for its shell than
+    # for a plain folder's: the two pages as sent, the repository context among what
+    # differs, and not only some of the scripts that differ (review B2 on #552).
+    plain, checkout = tmp_path / "plain", tmp_path / "check"
+    plain.mkdir()
+    checkout.mkdir()
+    check._github_checkout(checkout)  # pyright: ignore[reportPrivateUsage]
+    original = paths_safe.ROOT_DIR
+    shells: dict[str, str] = {}
+    sent: dict[str, int] = {}
+    try:
+        for name, folder in (("plain", plain), ("checkout", checkout)):
+            server._set_root_dir(folder.resolve())  # pyright: ignore[reportPrivateUsage]
+            with TestClient(server.app, base_url="http://127.0.0.1") as client:
+                response = client.get("/view/", headers={"Accept-Encoding": "gzip"})
+            assert response.status_code == 200, name
+            assert response.headers.get("content-encoding") == "gzip", name
+            shells[name], sent[name] = response.text, response.num_bytes_downloaded
+    finally:
+        server._set_root_dir(original)  # pyright: ignore[reportPrivateUsage]
+    assert '"host": "github.com"' in shells["checkout"]
+    assert "window.METABROWSER_REPOSITORY_CONTEXT=null;" in shells["plain"]
+    growth = check.shell_growth_bytes(shells["checkout"], shells["plain"])
+    assert growth == sent["checkout"] - sent["plain"] > 0
 
 
 def test_the_ceilings_are_the_budget_files() -> None:

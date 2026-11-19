@@ -104,12 +104,14 @@ CHROME_TESTS = (
     "tests.test_chrome_starts",
     "tests.test_control_chords_chrome",
     "tests.test_diff_markdown_fold_chrome",
+    "tests.test_diff_structured_chrome",
     "tests.test_document_print_chrome",
     "tests.test_folder_home_chrome",
     "tests.test_folder_overview_alignment",
     "tests.test_files_tab_chrome",
     "tests.test_files_totals_stable_chrome",
     "tests.test_git_commit_summary_chrome",
+    "tests.test_github_pull_core_markdown_chrome",
     "tests.test_github_pull_header_chrome",
     "tests.test_github_pull_text_chrome",
     "tests.test_github_pull_timeline_chrome",
@@ -117,6 +119,7 @@ CHROME_TESTS = (
     "tests.test_github_pulls_stack_lines_chrome",
     "tests.test_github_pulls_stacks_chrome",
     "tests.test_inert_render_refusal_chrome",
+    "tests.test_nav_collapse_chrome",
     "tests.test_nav_metadata_chrome",
     "tests.test_nav_reveal_chrome",
     "tests.test_overview_legend_hover_chrome",
@@ -130,6 +133,7 @@ CHROME_TESTS = (
     "tests.test_transitions_instrument",
     "tests.test_treemap_legend_hover_chrome",
     "tests.test_type_scale_chrome",
+    "tests.test_view_header_chrome",
 )
 CHROME_TESTS_EXEMPT = ("tests.test_process_group", "tests.test_suite_tiers")
 # Creating the profile and the test's own setup, before its bounds start.

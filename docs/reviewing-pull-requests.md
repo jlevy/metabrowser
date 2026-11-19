@@ -37,8 +37,12 @@ cloned https://github.com/pallets/click in 4.9 s (5.3 MiB); starting the server
 Serving https://github.com/pallets/click at http://127.0.0.1:8411/pull/3866
 ```
 
-A GitHub URL ending in `/pull/123/files` or `/pull/123/checks` opens that tab, and one
-ending in `/pull/123/commits` opens the conversation, where the commits appear.
+A GitHub URL ending in `/pull/123/changes` (or the older `/pull/123/files`) or
+`/pull/123/checks` opens that tab, and one ending in `/pull/123/commits` opens the
+conversation, where the commits appear.
+A Changes tab link to one file, ending in `#diff-` and a long hash, opens that file, or
+the Changes tab when the pull request’s changed files are not cached yet
+([pull requests](command-line.md#pull-requests) has the details).
 If you already have the repository checked out, `--checkout` lets the clone borrow its
 objects instead of copying them; see
 [beside a checkout](command-line.md#beside-a-checkout).
@@ -63,14 +67,13 @@ already reads behind you for the rows in view and from trees you open, and a gra
 placeholder holds the line’s place until one arrives.
 
 Click a row’s title or number to open its pull request; its files stay as they were.
-The change line carries the chevron for the files, which start collapsed: click it to
-show or hide them under the row.
+The change line carries the chevron for the files, which start collapsed: click anywhere
+on that line to show or hide them under the row.
 No row expands on its own.
 Click a file to open **Changes** at that file.
-Move between rows with `J` and `K` or the arrow keys, and Enter opens the focused pull
-request. Right moves to the row’s change line, where Enter or Space shows or hides the
-files, Right shows them or moves into them, Left hides them and then returns to the row,
-and Up returns to the row.
+Move between pull requests with `J` and `K` or the arrow keys; each one’s three lines
+are one row. Enter opens the focused pull request, and Space shows or hides its files.
+Right shows them, or moves into them once shown, and Left hides them.
 The file list says **Listing changed files…** until GitHub answers.
 Once the files show, a later page or an updated list does not move the rows you are
 reading: it is offered as **Show N more files** or **Show the updated list of N files**.
@@ -104,17 +107,19 @@ Metabrowser reads stacks and never changes them.
 
 The header gives the title and number; the author’s sentence, such as “octo wants to
 merge 2 commits”, with any stack button at its end; the head and base branches on a line
-of their own, head → base; the state and dates, with **View on GitHub**; and the labels,
-each in the color GitHub gives it, with its description, if any, shown on hover.
+of their own, head → base; the state and dates; and the labels, each in the color GitHub
+gives it, with its description, if any, shown on hover.
 The author’s GitHub avatar is beside the name, and a neutral person icon holds its place
 where GitHub gave none, as on a commit’s page; a Pulls row shows none.
-Its last row is the **Diff summary**, on every tab, collapsed: the files and lines
-changed, such as “35 files changed · 2 A, 3 D, 30 M · +1,234 −3,423”, which opens into
-the tree of changed files with rolled-up line counts, and a file there opens **Changes**
-at that file.
-While the comparison it counts is on its way, as when Conversation prepares
-it in the background, the row holds a gray pulsing block after a moment; that block is
-the only sign of the background work.
+**View on GitHub**, in the page’s upper right as on a file’s, a folder’s, and a commit’s
+page, opens the tab’s own page on github.com, and its menu copies that link or opens it
+in the browser. Its last row is the **Diff summary**, on every tab, collapsed: the files
+and lines changed, such as “35 files changed · 2 A, 3 D, 30 M · +1,234 −3,423”, which
+opens into the tree of changed files with rolled-up line counts, and a file there opens
+**Changes** at that file.
+While the comparison it counts is on its way, as when Conversation prepares it in the
+background, the row holds a gray pulsing block after a moment; that block is the only
+sign of the background work.
 A cached page shows at once and refreshes in the background; the
 [design system](design-system.md#the-pull-request-page) describes how it draws.
 
@@ -179,6 +184,43 @@ These files open in **Source**:
 
 Rendered also shows math and Mermaid diagrams as their source text, and does not
 highlight code blocks.
+
+A Markdown file’s front matter shows as the Frontmatter disclosure the file’s Document
+view shows above it.
+It stays closed when the front matter did not change, and opens with each changed key’s
+old value removed and new value added when it did.
+Front matter that does not load, or is too large for the rendered view, shows no
+disclosure, and its change appears only in **Source**; the rest of the file still
+renders. So does a value whose type changed and whose text did not, such as `false` that
+became `"False"`.
+
+### Rendered YAML and JSON in Changes
+
+A changed `.yaml`, `.yml`, or `.json` file opens in **Rendered** as the tree its file
+view draws.
+An added or removed key or item is marked in the change gutter, and a changed
+value shows its old row removed and its new row added.
+Every mapping and list that holds a change is open, as far as the first screen’s row
+budget allows; an unchanged one is closed with the file view’s preview of it, and a
+click opens it. A long mapping or list draws its entries a page at a time, and its last
+row, `… N more`, draws the next page and counts the changes the rest holds.
+A changed value wraps, so a long string shows where it changed.
+An alias (`*name`) and a merge key (`<<`) read as the values they name.
+
+The tree shows what the data says, so a change to a comment, quoting, indentation, or
+the order of a mapping’s keys appears only in **Source**, and a file whose only change
+is of that kind says so above its tree.
+The tree reads YAML 1.2, where `no`, `off`, and `y` are strings, so a change between
+`no` and `"no"`, which a YAML 1.1 reader takes as `false` and a string, shows only in
+**Source** too. A value whose type changed and whose text did not, such as a date that
+became the string that spells it, or the key `1` that became `"1"`, is drawn unchanged,
+and the tree says above it that **Source** shows a change it draws as unchanged.
+
+These files open in **Source**:
+
+- YAML or JSON that does not parse
+- a file with a key twice in one mapping, which two programs may read differently
+- files too large, or too deeply nested, for the rendered view
 
 ## Find a Pull Request with Quick Search
 
@@ -279,17 +321,21 @@ repository. The cache-related failures below name this command.
 
 ## When Something Does Not Open
 
-A clone that fails stops the command with an `Error:` line and exit status 1. A pull
-request that cannot be read does not: `metab` serves the default branch, exits 0 in the
-one-shot modes, and says why on its `pull_request` line.
+A clone that fails stops the command with an `Error:` line and exit status 1. So does a
+pull request not yet cached while `gh` is missing, too old, or not signed in, with the
+step that fixes it, without cloning anything.
+Any other pull request that cannot be read does not stop it: `metab` serves the default
+branch, exits 0 in the one-shot modes, and says why on its `pull_request` line.
 The page says why too, and offers **Fetch** to try again once the cause is fixed.
+`metab --doctor` shows what `gh` reports: its path and version, the account, and the
+account’s scopes.
 
 | Name | What it means | What to do |
 | --- | --- | --- |
 | `gh_missing` | `gh` is not on `PATH` | Install `gh` |
 | `gh_too_old` | This `gh` cannot report its active account | Upgrade `gh` |
 | `not_logged_in` | `gh` is not signed in to github.com | Run `gh auth login --hostname github.com` |
-| `not_found_or_private` | It does not exist, or the account cannot read it; GitHub does not say which | Check the URL, and that `gh auth status` names an account with access |
+| `not_found_or_private` | It does not exist, or the account cannot read it; GitHub does not say which | Check the URL, and that `metab --doctor` names an account with access and the `repo` scope |
 | `rate_limited` | GitHub’s rate limit, with its reset time when GitHub gives one | Wait; the page tries again after the reset |
 | `network_error`, `network_unreachable`, `connection_interrupted`, `timed_out` | GitHub could not be reached, by `gh` or by Git | Restore the network, then **Refresh** |
 | `too_large` | The first clone is over the size limit | See [large repositories](#large-repositories) |

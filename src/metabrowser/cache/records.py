@@ -37,6 +37,7 @@ from metabrowser.cache.identity import (
     slug_matches_identity,
     source_identity,
 )
+from metabrowser.open_in import OpenInChoice
 
 CONFIG_CONTRACT_ID: Final = "metabrowser.config:ApplicationConfig/v1"
 CACHE_LAYOUT_CONTRACT_ID: Final = "metabrowser.cache:CacheLayout/v1"
@@ -183,6 +184,21 @@ class ApplicationConfig(_UserRecord):
     format: LayoutFormat
     written_by: MetabrowserVersion
     upgrades: list[ConfigUpgrade]
+    open_in: OpenInChoice | None = None
+    """Where ``metab TARGET --present`` opens a target (:mod:`metabrowser.open_in`), a
+    setting only the user writes; absent, which this release reads as ``auto``."""
+    present_browser: bool | None = None
+    """Whether ``--present`` may start a server for a browser
+    (:func:`metabrowser.open_in.browser_delivery_allowed`), a setting only the user
+    writes and no flag overrides; absent, which allows it."""
+
+    @model_serializer(mode="wrap")
+    def _unset_settings_have_no_key(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        dumped = cast(dict[str, Any], handler(self))
+        for setting in ("open_in", "present_browser"):
+            if dumped.get(setting) is None:
+                dumped.pop(setting, None)
+        return dumped
 
     @model_validator(mode="before")
     @classmethod

@@ -88,6 +88,7 @@ from metabrowser.charts import clear_charts_cache
 from metabrowser.checkout_revisions import checkout_revisions, lifespan_checkout
 from metabrowser.client_disconnect import CLIENT_CLOSED, unless_disconnected
 from metabrowser.content_sniff import ContentClass, sniff_artifact
+from metabrowser.counterpart import COUNTERPART_ROUTES
 from metabrowser.diff.markdown_projection_worker import (
     InertRender,
     InertRenderRefused,
@@ -199,7 +200,7 @@ from metabrowser.recent import (
     recent_result_from_projection,
 )
 from metabrowser.repository_context import discover_repository_context
-from metabrowser.root_identity import IDENTITY_ROUTES, root_identity
+from metabrowser.root_identity import IDENTITY_ROUTES, root_identity, short_commit
 from metabrowser.settings import (
     DOC_MAX_CHARS_DEFAULT,
     FOLDER_DISCOVERY_MAX_ENTRIES,
@@ -287,6 +288,8 @@ from metabrowser.view_routes import (
 if TYPE_CHECKING:
     from kpress.models import KPressAsset
     from starlette.requests import Request
+
+    from metabrowser.git.tree_source import GitRevisionSubject
 
 
 # Direct ASGI imports bypass the CLI bootstrap. Load the working tree's
@@ -1282,21 +1285,22 @@ def _pin_label_html(status: SourceStatus) -> str:
     A served mirror's is the repository's name, where a folder's name stands and with
     the same `.path-base` emphasis, then the ref and the short commit, muted: the page
     is called what a checkout of the repository would be, and the commit it is pinned
-    to stays in sight beside it. The full commit is in the heading's tooltip.
+    to stays in sight beside it, in the commit-ID face (`.git-commit-sha`) a commit has
+    wherever it appears. The full commit is in the heading's tooltip.
 
     A pin with no mirror has no origin to take a name from. Its ref stands as the name
     with the short commit after it, or the short commit alone when no ref is known,
     and the full commit is its served root.
     """
 
-    short = html_escape((status["pin"] or "")[:12])
+    short = html_escape(short_commit(status["pin"] or ""))
     name = status["name"]
     ref_name = status["ref_name"]
 
     def base(text: str) -> str:
         return f'<span class="path"><span class="path-base">{text}</span></span>'
 
-    commit = f'<span class="header-revision">{short}</span>'
+    commit = f'<span class="header-revision git-commit-sha">{short}</span>'
     if name is None:
         return base(short) if ref_name is None else base(html_escape(ref_name)) + commit
     ref = (
@@ -1490,6 +1494,40 @@ def _startup_script_tags(names: tuple[str, ...]) -> str:
     return "".join(f'\n  <script src="{_static_asset_url(name)}"></script>' for name in names)
 
 
+_PULL_HEAD_REF: Final = re.compile(r"refs/pull/([1-9][0-9]{0,9})/head")
+
+
+def _source_ref_label_html(pin: GitRevisionSubject | None, *, checkout: bool) -> str:
+    """What the branch and tag selector's button says before its module mounts, as markup.
+
+    The words ``shownLabel`` in static/source-ref-selector.js gives the button, in the faces
+    its ``paint`` sets them in: a pull request's number in its own weight and a commit's ID
+    in the commit-ID face. The module then draws a branch or tag as its chip, from the same
+    name, so the button keeps about its width. A checkout's page with no pin shows its
+    working tree.
+    """
+
+    if pin is None:
+        return "Working tree" if checkout else "Revision"
+    if checkout:
+        from metabrowser.checkout_revisions import checkout_ref_name
+
+        name = checkout_ref_name(pin.ref)
+    else:
+        from metabrowser.git.tree_source import ref_short_name
+
+        pull = _PULL_HEAD_REF.fullmatch(pin.ref or "")
+        if pull is not None:
+            return f'Pull request: <span class="source-ref-selector-pull-number">#{pull[1]}</span>'
+        name = ref_short_name(pin.ref)
+    if name:
+        return html_escape(name)
+    # As much of the ID as the navigation heading shows: the page has the full ID alone.
+    return (
+        f'Commit: <span class="git-commit-sha">{html_escape(short_commit(pin.commit_oid))}</span>'
+    )
+
+
 async def index(
     request: Request,
     *,
@@ -1595,6 +1633,7 @@ async def index(
     icons_url = _static_asset_url("icons.js")
     charts_url = _static_asset_url("charts.js")
     tree_expansion_url = _static_asset_url("tree-expansion.js")
+    nav_collapse_url = _static_asset_url("nav-collapse.js")
     tree_filter_model_url = _static_asset_url("tree-filter-model.js")
     pending_tally_diagnostics_url = _static_asset_url("pending-tally-diagnostics.js")
     known_file_catalog_url = _static_asset_url("known-file-catalog.js")
@@ -1648,33 +1687,29 @@ async def index(
     # The branch and tag selector, filled by static/source-ref-selector.js: on a pin
     # served from a mirror, and on a checkout, whose working tree and revisions it
     # switches between. A plain folder and a pin with no mirror have nothing to switch to.
-    if checkout is not None:
-        # A checkout's row is drawn here with the button it will have, so that nothing
-        # below it moves when its module mounts, a moment after the tree's first rows:
-        # hidden until then, the row pushed the filter bar and every tree row down by its
-        # height (33 px in the default pane, which tests/test_files_totals_stable_chrome.py
-        # caught on a folder holding a `.git`). The module adopts this button, so focus a
-        # reader put on it stays (static/source-ref-selector.js#build), and removes the
-        # row when Git says the root is no repository.
-        if pin is None:
-            shown_ref = "Working tree"
-        else:
-            from metabrowser.checkout_revisions import checkout_ref_name
-
-            shown_ref = checkout_ref_name(pin.ref) or f"Commit: {pin.commit_oid[:12]}"
-        source_ref_selector_row = (
-            '\n      <div class="source-ref-selector" id="source-ref-selector">'
+    # It chooses what the Files tab shows and nothing else, so it leads the Files
+    # toolbar's row, beside Group by, and Pulls and Commits do without it.
+    #
+    # It is drawn here with the button it will have, so that nothing beside or below it
+    # moves when its module mounts, a moment after the tree's first rows: drawn later, it
+    # widened the row, which in a pane too narrow for both wraps a line. The module
+    # adopts this button, so focus a reader put on it stays
+    # (static/source-ref-selector.js#build), and app.js refills the row around it rather
+    # than over it (renderNavFilterBar). It removes the button when Git says a checkout's
+    # root is no repository. The button has a span of its own, which a ref chip's copy
+    # control is placed against (`mountRefCopies`), so the list still has the toolbar for
+    # its containing block and spans the pane, on a ref's page as on the working tree's.
+    source_ref_selector = ""
+    if checkout is not None or (git_pin and mirror is not None):
+        source_ref_selector = (
+            '<div class="source-ref-selector" id="source-ref-selector">'
+            '<span class="source-ref-selector-button">'
             '<button type="button" class="chip chip-menu-trigger source-ref-selector-toggle'
             ' disclosure-toggle" aria-haspopup="dialog" aria-expanded="false"'
             ' data-tip-text="Switch branch or tag">'
-            f'<span class="source-ref-selector-label">{html_escape(shown_ref)}</span>'
-            '<span class="chip-menu-caret" aria-hidden="true"></span></button></div>'
-        )
-    else:
-        source_ref_selector_row = (
-            '\n      <div class="source-ref-selector" id="source-ref-selector" hidden></div>'
-            if git_pin and mirror is not None
-            else ""
+            '<span class="source-ref-selector-label">'
+            f"{_source_ref_label_html(pin, checkout=checkout is not None)}</span>"
+            '<span class="chip-menu-caret" aria-hidden="true"></span></button></span></div>'
         )
     # The Pulls tab is decided here, from what the page already knows: a pin whose mirror is a
     # hosted repository, or a checkout, a subdirectory of one too, whose `origin` is on
@@ -1703,6 +1738,14 @@ async def index(
     # toolbar its script fills later ships the shared pending tally, never an empty slot.
     filter_bar_behind = "" if files_in_front else " hidden"
     pending_tally = '<span class="count tally-pending"></span>'
+    # The Files toolbar's row begins with the branch and tag selector where there is one,
+    # and the pending tally stands where the rest of the row will be.
+    filter_bar_content = (
+        f'<div class="nav-filter-bar-main nav-toolbar-row">{source_ref_selector}'
+        f"{pending_tally}</div>"
+        if source_ref_selector
+        else pending_tally
+    )
     commits_button = (
         f'\n        <button class="tab-btn{" active" if commits_in_front else ""}" type="button"'
         f' role="tab" data-tab="git" aria-selected="{"true" if commits_in_front else "false"}">'
@@ -1730,6 +1773,9 @@ async def index(
     ) + (
         '\n      <div class="nav-toolbar" id="nav-toolbar-pulls" data-nav-toolbar="pulls"'
         f"{'' if pulls_in_front else ' hidden'}>{pending_tally}</div>"
+        # The band under the Pulls filters, which the list's count and connection lines
+        # fill (builtin_plugins/github/pulls-panel.js), as the Files totals fill theirs.
+        '\n      <div class="nav-metadata-band" id="nav-metadata-pulls"></div>'
         if pulls_tab
         else ""
     )
@@ -1976,6 +2022,9 @@ async def index(
             {"src": overlay_layer_url},
             {"src": keyboard_help_url},
             {"src": key_reveal_url},
+            # Hiding the navigation pane: app.js draws its chevron at first paint, and a
+            # click before this bundle arrives loads it and then hides the pane.
+            {"src": nav_collapse_url},
             {"src": shell_keymap_url},
             {"src": plugin_shortcuts_url},
             {"src": tree_keyboard_navigation_url},
@@ -1990,6 +2039,19 @@ async def index(
         # first tree is usable. renderFile awaits this bundle and rechecks its
         # ownership claim before preparing or mounting a view.
         "view-composition": [{"src": view_composition_url}],
+        # A file's and a folder's view header: its builders, and the folder line's live
+        # refresh. renderFile draws a header only after loadViewComposition, which fetches
+        # this beside the compositor and the SDK's view helpers, so the first tree never
+        # waits for it. What that costs a view, measured in Chrome on 2026-11-18 against
+        # the builders in app.js, 36 cold loads of a folder and of a file a side in
+        # alternating back-to-back pairs, at load averages of 24 to 33 on 10 cores: the
+        # bundle is 14,102 bytes, 4,514 as a gzip client receives it; its request starts
+        # with the other two and ended no later than both in 48 of 72 loads; and the
+        # header's median time after DOMContentLoaded went from 40 to 41 ms on a folder
+        # and stayed at 58 ms on a file.
+        "view-header": [
+            {"src": _static_asset_url("view-header.js"), "provides": "MetabrowserViewHeader"}
+        ],
         # What a view's renderer calls: the line-number gutter with its `#L` anchors,
         # and the SDK helpers a renderer builds its markup with (the Source surface,
         # the copy wrapper, the partial-content notice, the syntax service). Nothing
@@ -2039,13 +2101,15 @@ async def index(
         # made for the refs until a reader opens it. A pin's page carries the pin guard
         # inline. A checkout's working-tree page takes it here, ahead of the selector
         # that can make the server serve something else, so that a folder's first paint
-        # carries none of it: inline it would be 3,354 compressed bytes on the page of
-        # every checkout, most of which never switch. Measured 2026-11-18 in headless
-        # Chrome 152 from 127.0.0.1, three runs on a 10-core Mac at a load average of
-        # 13 to 16: the guard 3,354 compressed bytes in 8.6 to 10.5 ms and the selector
-        # 9,879 in 7.0 to 9.7 ms, both asked for 124 to 142 ms after the navigation
-        # began, once the first tree rows were in; the selector was mounted 170 to
-        # 181 ms after it (tests/dom/checkout-ref-selector-chrome.mjs prints them).
+        # carries none of it: inline it would add its compressed size to the page of
+        # every checkout, most of which never switch. That is 4,751 bytes and the
+        # selector's 10,538, at gzip -6 (`delivery.GZIP_LEVEL`), as of the switch hold
+        # (mb-bio7, 2026-11-18). Measured 2026-11-18 in headless Chrome 152 from
+        # 127.0.0.1, three runs on a 10-core Mac at a load average of 13 to 16, when they
+        # were 3,354 and 9,879 bytes: the guard in 8.6 to 10.5 ms and the selector in 7.0
+        # to 9.7 ms, both asked for 124 to 142 ms after the navigation began, once the
+        # first tree rows were in; the selector was mounted 170 to 181 ms after it
+        # (tests/dom/checkout-ref-selector-chrome.mjs prints them).
         "source-ref-selector": [
             *(
                 [{"src": _static_asset_url("source-pin-guard.js")}]
@@ -2251,14 +2315,22 @@ async def index(
             <div class="menu-version">{version_line}</div>
           </div>
         </div>
-      </header>{source_ref_selector_row}
+      </header>
       <div class="tab-bar nav-tab-bar" role="tablist">
         <button class="tab-btn{files_active}" type="button" role="tab" data-tab="files" aria-selected="{files_selected}">Files</button>{pulls_button}{commits_button}
       </div>
       <!-- Filter bar lives outside #tab-files: a tree reload replaces
            that container's contents wholesale, and the bar must also
-           stay put while .tree-content scrolls. app.js fills it. -->
-      <div class="nav-filter-bar" id="nav-filter-bar" data-nav-toolbar="files"{filter_bar_behind}>{pending_tally}</div>{toolbars}
+           stay put while .tree-content scrolls. app.js fills it.
+
+           Under it, the Files totals and the remarks on them, a band of
+           navigation metadata lines that app.js fills. It is outside
+           .tree-content too: that scroller reserves its scrollbar's gutter
+           and clips what it holds short of it, so a line inside it drew its
+           rule short of the pane's edge. The band shows with its toolbar
+           (`.nav-metadata-band` in styles.css). -->
+      <div class="nav-filter-bar" id="nav-filter-bar" data-nav-toolbar="files"{filter_bar_behind}>{filter_bar_content}</div>
+      <div class="nav-metadata-band" id="nav-metadata-files"></div>{toolbars}
       <div class="tree-content" id="tree-content">
         <div id="tab-files" data-tab-content="files"{files_behind}>
           <div class="loading mb-delayed-loading"><div class="spinner"></div><span
@@ -2288,6 +2360,13 @@ async def index(
       <div class="preview-pane" id="preview-pane" data-kpress-viewport tabindex="-1">
         {preview_loading}
       </div>
+      <!-- Hides and shows the navigation pane, as the backslash key does: on the main
+           page's left edge, beside the pane's shadow, on the shortcut strip's row. It
+           is in the frame, not the pane, so it stays when the pane is hidden and slides
+           with the page. app.js draws its chevron; static/nav-collapse.js runs it. -->
+      <button class="icon-btn nav-collapse-toggle disclosure-toggle" id="nav-collapse-toggle" type="button"
+              aria-controls="tree-pane" aria-expanded="true"
+              aria-label="Hide navigation"></button>
     </div>
   </main>
   <!-- Core shell scripts are local and first-paint critical. Optional
@@ -3239,6 +3318,26 @@ class JSONResponse(_StarletteJSONResponse):
 # ``starlette.responses.JSONResponse`` directly is unaffected.
 
 
+def _file_mtime(target: Path) -> float | None:
+    """A served file's modification time in epoch seconds, or ``None`` if it cannot be read.
+
+    The envelope's ``mtime`` is what a file's view header shows as its age, in the unit a
+    folder envelope's ``dir.mtime`` and a tree row's ``mtime`` use.
+    """
+
+    try:
+        return target.stat().st_mtime
+    except OSError:
+        return None
+
+
+def _mtime_field(mtime: float | None) -> dict[str, float]:
+    """``{"mtime": ...}``, or nothing when the time could not be read: never a null,
+    which the browser reads as a value still on its way."""
+
+    return {} if mtime is None else {"mtime": mtime}
+
+
 def _compression_identity_fields(artifact: ArtifactPath) -> dict[str, Any]:
     """Compression fields that do not require reading the decoded stream."""
     if not artifact.is_compressed:
@@ -3463,6 +3562,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
         return _file_unavailable_response(subpath, target)
 
     artifact = ArtifactPath(target)
+    file_mtime = _file_mtime(target)
     ext = artifact.logical_ext
     logical_size: int | None
     try:
@@ -3479,6 +3579,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                 "views": _views_for_kind("binary"),
                 "path": subpath,
                 "size": disk_size,
+                **_mtime_field(file_mtime),
                 **_compression_identity_fields(artifact),
             }
         )
@@ -3504,6 +3605,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                     "views": [],
                     "path": subpath,
                     "size": disk_size,
+                    **_mtime_field(file_mtime),
                     "error": str(exc),
                     **_compression_identity_fields(artifact),
                 }
@@ -3516,6 +3618,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                 "views": _views_for_kind("binary"),
                 "path": subpath,
                 "size": disk_size,
+                **_mtime_field(file_mtime),
                 **_compression_identity_fields(artifact),
             }
         )
@@ -3592,6 +3695,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                     "views": views,
                     "path": subpath,
                     "size": disk_size,
+                    **_mtime_field(file_mtime),
                     "mtime_hash": mtime_hash,
                     **compression_fields,
                     **parsed,
@@ -3617,6 +3721,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                 "views": _views_for_kind("image"),
                 "path": subpath,
                 "size": disk_size,
+                **_mtime_field(file_mtime),
                 "mtime_hash": mtime_hash,
                 **compression_fields,
             },
@@ -3652,6 +3757,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                         "views": _views_for_kind("binary"),
                         "path": subpath,
                         "size": disk_size,
+                        **_mtime_field(file_mtime),
                         **_compression_identity_fields(artifact),
                     }
                 )
@@ -3662,6 +3768,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                     "views": [],
                     "path": subpath,
                     "size": disk_size,
+                    **_mtime_field(file_mtime),
                     "error": str(exc),
                     **compression_fields,
                 }
@@ -3672,6 +3779,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                     "type": "binary",
                     "path": subpath,
                     "size": disk_size,
+                    **_mtime_field(file_mtime),
                     **compression_fields,
                 }
             )
@@ -3682,6 +3790,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                     "type": "text_chunk",
                     "path": subpath,
                     "size": disk_size,
+                    **_mtime_field(file_mtime),
                     "mtime_hash": mtime_hash,
                     "content": content,
                     "content_offset": text_offset,
@@ -3730,6 +3839,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             "path": subpath,
             "ext": ext,
             "size": disk_size,
+            **_mtime_field(file_mtime),
             "mtime_hash": mtime_hash,
             "content": content,
             "content_offset": 0,
@@ -3760,6 +3870,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             "views": _views_for_kind("binary"),
             "path": subpath,
             "size": disk_size,
+            **_mtime_field(file_mtime),
             "mtime_hash": mtime_hash,
             **compression_fields,
         },
@@ -5111,6 +5222,8 @@ routes = [
     *SOURCE_ROUTES,
     # What the served subject is called, as the shell's title and a native window say.
     *IDENTITY_ROUTES,
+    # A page's github.com counterpart, which every View on GitHub control links to.
+    *COUNTERPART_ROUTES,
     *build_plugin_routes(_LOADED_PLUGINS, asset_trees=_PLUGIN_ASSET_TREES),
 ]
 

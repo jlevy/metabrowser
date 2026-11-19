@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 import tarfile
+import tempfile
 import zipfile
 from pathlib import Path
 from textwrap import dedent
@@ -126,6 +127,7 @@ WHEEL_SMOKE_SCRIPT = dedent(
         "static/plugin-sdk-views.js",
         "static/tree-keyboard-navigation.js",
         "static/view-composition.js",
+        "static/view-header.js",
         "builtin_plugins/folder/overview.js",
         "builtin_plugins/diff/diff-view.js",
         "builtin_plugins/image/index.js",
@@ -378,7 +380,31 @@ def _smoke_install(wheel: Path) -> None:
         "metab",
         "--doctor",
     ]
-    subprocess.run(doctor_command, cwd=ROOT, env=env, check=True)
+    # `--doctor` counts an `open_in` it cannot read, or `app` where no app takes a target,
+    # as a problem, so the developer's own preference and config.yml would decide this
+    # step. `browser` looks for no app, and an empty configuration directory sets nothing.
+    # Its setup checks find a shared or unwritable cache directory a problem too, so the
+    # cache is a private directory of its own. The doctor's GitHub section runs `gh auth
+    # status`, so the failing stand-in the goldens use comes first on PATH: no build
+    # reaches a developer's signed-in gh. Its state, and Git's, are reported and never
+    # change the doctor's exit status.
+    no_real_gh = ROOT / "tests" / "no-real-gh"
+    with (
+        tempfile.TemporaryDirectory(prefix="metab-doctor-config-") as configuration,
+        tempfile.TemporaryDirectory(prefix="metab-doctor-cache-") as cache,
+    ):
+        subprocess.run(
+            doctor_command,
+            cwd=ROOT,
+            env={
+                **env,
+                "METABROWSER_OPEN_IN": "browser",
+                "METABROWSER_CONFIG_DIR": configuration,
+                "METABROWSER_CACHE_DIR": cache,
+                "PATH": f"{no_real_gh}{os.pathsep}{env.get('PATH', '')}",
+            },
+            check=True,
+        )
 
     api_check_command = [
         *uv_command,

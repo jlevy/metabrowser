@@ -241,7 +241,7 @@ def test_a_pin_with_no_mirror_is_headed_as_before_and_carries_nothing_of_one(
         "module": False,
         "heading": [
             '<span class="path"><span class="path-base">topic</span></span>'
-            f'<span class="header-revision">{commit[:12]}</span>'
+            f'<span class="header-revision git-commit-sha">{commit[:12]}</span>'
         ],
         "status": [None, None, None],
     }
@@ -250,7 +250,10 @@ def test_a_pin_with_no_mirror_is_headed_as_before_and_carries_nothing_of_one(
 def test_the_session_names_a_mirror_and_says_where_it_is_kept() -> None:
     folder, mirror, hostile = run_session("mirror-heading-session.js")
 
-    assert folder["mainHeading"]["file"]["text"] == "~/wrk/squares / docs / guide.md"
+    # A file's eyebrow is its Up control and its folder's address; its name is the title.
+    assert folder["mainHeading"]["file"]["text"] == "\u2191 ~/wrk/squares / docs"
+    assert folder["mainHeading"]["file"]["title"] == "guide.md"
+    assert folder["mainHeading"]["root"] == "\u2191 ~/wrk squares"
     location = f"~/.cache/metabrowser/repository-stores/{STORE_KEY_STAND_INS[0]}/repository.git"
     pin = mirror["status"]["pin"]
     sentence = (
@@ -258,10 +261,8 @@ def test_the_session_names_a_mirror_and_says_where_it_is_kept() -> None:
         "a bare Git repository, with no checked-out files."
     )
     assert mirror["navigationHeading"]["text"] == f"squares topic {pin[:12]}"
-    assert (
-        mirror["mainHeading"]["file"]["text"] == f"squares / docs / guide.md mirror in {location}"
-    )
-    assert mirror["mainHeading"]["root"] == f"\u2191 squares / mirror in {location}"
+    assert mirror["mainHeading"]["file"]["text"] == f"\u2191 squares / docs mirror in {location}"
+    assert mirror["mainHeading"]["root"] == f"\u2191 mirror in {location} squares"
     assert mirror["tooltips"] == {
         "navigationHeading": {
             "served": f"squares {sentence}",
@@ -276,7 +277,7 @@ def test_the_session_names_a_mirror_and_says_where_it_is_kept() -> None:
     assert copy["attributes"]["aria-label"] == f"Copy commit {pin}"
     assert folder["navigationHeading"]["commitCopy"] is None
     assert folder["tooltips"]["rootName"] is None and folder["tooltips"]["note"] is None
-    assert hostile["mainHeading"]["file"]["text"].startswith("a<b>&\ufffdx / docs / guide.md ")
+    assert hostile["mainHeading"]["file"]["text"].startswith("\u2191 a<b>&\ufffdx / docs ")
     for page, title in (
         (folder, "squares \u2022 Metabrowser"),
         (mirror, "squares \u2022 Metabrowser"),

@@ -226,9 +226,9 @@
 
   /**
    * The filters set behind the Files drawer's chevron, which its badge counts: Modified
-   * within, File type, and Minimum file size. Show ignored sits on the row beside Group
-   * by and shows its own state, so the badge leaves it out; Clear, which resets every
-   * filter, still counts it (`filterState.activeCount`).
+   * within, File type, Minimum file size, and Show ignored turned off, since the closed
+   * drawer hides each of them. Group by, on the row, removes nothing and is no filter.
+   * Clear counts the same four (`filterState.activeCount`).
    *
    * @param {FilterSnapshot | null} state
    * @returns {number}
@@ -237,7 +237,12 @@
     if (!state) {
       return 0;
     }
-    return Number(state.recency !== "all") + Number(!!state.types) + Number(state.size !== "all");
+    return (
+      Number(state.recency !== "all") +
+      Number(!!state.types) +
+      Number(state.size !== "all") +
+      Number(state.showIgnored === false)
+    );
   }
 
   /**
@@ -724,21 +729,11 @@
   }
 
   /**
-   * @typedef {object} TreeSection
-   * @property {string} key `<by>:<id>`, the group a folder inside it opens under
-   * @property {string} id
-   * @property {string} label
-   * @property {number | null} files
-   * @property {number | null} size
-   * @property {Array<Record<string, unknown>>} tree
-   */
-
-  /**
    * The sections a grouped answer paints, in the order the server gave: one per group
    * that holds anything. A malformed answer is refused rather than painted partly.
    *
    * @param {unknown} payload
-   * @returns {TreeSection[]}
+   * @returns {MetabrowserPublicTreeSection[]}
    */
   function groupSections(payload) {
     const answer = /** @type {{group_by?: unknown, groups?: unknown} | null} */ (payload);
@@ -758,6 +753,7 @@
         key: `${by}:${group.id}`,
         id: group.id,
         label: group.label,
+        icon: typeof group.icon === "string" ? group.icon : null,
         // A source that could not count a group says so with null (a truncated Git index).
         files: typeof group.files === "number" ? group.files : null,
         size: typeof group.size === "number" ? group.size : null,

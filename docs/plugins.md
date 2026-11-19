@@ -47,9 +47,11 @@ metab --doctor --plugins-dir ./examples
 `--doctor` validates manifests, `index.js` files, installed-plugin data-hook imports,
 operator-directory JavaScript-only boundaries, view keys, and high-priority kind
 conflicts, and checks that the packaged repository-cache record schemas are intact.
-All three modes take `--json`, write data to standard output and errors to standard
-error, and exit nonzero on any problem, including a discovery error beside plugins that
-loaded, so a script cannot mistake a partial registry for a complete one.
+After the verdict it reports GitHub CLI’s state, which never changes the exit status
+([diagnostics](command-line.md#diagnostics-and-plugins)). All three modes take `--json`,
+write data to standard output and errors to standard error, and exit nonzero on any
+problem, including a discovery error beside plugins that loaded, so a script cannot
+mistake a partial registry for a complete one.
 
 ## Path Identity
 
@@ -490,6 +492,17 @@ Useful helpers include:
   `nameClass` add classes; `placeholder: false` draws no box for a person with no
   avatar, for a dense list row.
   `actorIdentityHtml` writes the same markup, its box holding the glyph;
+- `mountCounterpart(corner, page)` and `counterpartButton(counterpart)` for a page’s
+  [View on GitHub](design-system.md#view-on-github) button.
+  `mountCounterpart` asks the server for the counterpart of `page`, an address as
+  `location.pathname` spells it, once per address, and puts the button in `corner`, a
+  header’s `.view-header-end`, or leaves it empty.
+  A page answered before is drawn at once with its last answer, which a new one replaces
+  only when it differs; `prefetchCounterpart(page)` starts the request before the header
+  exists, and `mountCounterpart` waits for it.
+  `counterpartButton` draws one from the server’s answer, `{provider, label, url}`. Mark
+  the corner `data-counterpart` from first paint, so the header leaves it its room, and
+  never build a github.com address yourself;
 - `renderSourceView(container, data, options)` for the standard bounded, copyable Source
   surface, with truncation controls, the shared language mapping, a line-number gutter,
   and `#L10`-style line anchors; `options.parts`, a list of `{text, language}` that
@@ -865,7 +878,8 @@ refused when it loads, with a message naming the required version, and `metab --
 reports the same problem first.
 There is no negotiation and no shim for an older surface: update the plugin against the
 release it targets and set `sdk_version` to match.
-A break is recorded in `CHANGELOG.md`;
+A break is recorded in `CHANGELOG.md`, and until its release in
+[`changelog.d/`](../changelog.d/README.md);
 [Compatibility and Legacy Code](development.md#compatibility-and-legacy-code) explains
 the policy.
 

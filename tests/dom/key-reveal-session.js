@@ -50,6 +50,7 @@ const MODULES = [
   "overlay-layer.js",
   "keyboard-help.js",
   "key-reveal.js",
+  "nav-collapse.js",
   "shell-keymap.js",
   "tree-keyboard-navigation.js",
   "search-palette.js",
@@ -59,6 +60,51 @@ const SOURCES = new Map(
   MODULES.map((name) => [name, fs.readFileSync(path.join(staticDir, name), "utf8")]),
 );
 const TAB_LABELS = { files: "Files", git: "Commits", pulls: "Pulls" };
+
+// The view header's builders, from the production view-header.js over app.js's own `esc`,
+// lifted verbatim, since app.js cannot load without a document: the header's structure
+// and its Up control are the shell's own, so a change to either reaches the keymap here.
+// The collaborators that do not branch on the structure are stubs.
+const appSource = fs.readFileSync(path.join(staticDir, "app.js"), "utf8");
+// The shell's motion for chrome that appears, which the navigation pane's slide reads from
+// the stylesheet: read from styles.css here too, so the session runs the value it ships.
+const MOTION_REVEAL = /^\s*--motion-reveal:\s*([^;]+);/m.exec(
+  fs.readFileSync(path.join(staticDir, "styles.css"), "utf8"),
+)[1];
+// The navigation pane's width in the stand-in, which lays nothing out: the slide runs it.
+const NAV_PANE_WIDTH = 300;
+const liftApp = (name) => {
+  const match = appSource.match(new RegExp(`\\nfunction ${name}\\([^)]*\\) \\{[\\s\\S]*?\\n\\}`));
+  if (!match) {
+    throw new Error(`${name} not found in app.js`);
+  }
+  return match[0];
+};
+const viewHeader = (() => {
+  const page = {
+    MetabrowserNavigationRoute: { displayPath: (/** @type {string} */ p) => p },
+  };
+  page.window = page;
+  vm.createContext(page);
+  vm.runInContext(fs.readFileSync(path.join(staticDir, "view-header.js"), "utf8"), page);
+  const esc = vm.runInContext(`${liftApp("esc")}\nesc;`, page);
+  const notDrawnHere = () => {
+    throw new Error("this session's headers draw only their structure and Up");
+  };
+  return page.MetabrowserViewHeader.create({
+    esc,
+    servedRoot: notDrawnHere,
+    pathBaseName: notDrawnHere,
+    ownedControlAttr: () => "",
+    mirrorHeading: notDrawnHere,
+    getFileIcon: notDrawnHere,
+    getLogicalName: notDrawnHere,
+    sizeHtml: notDrawnHere,
+    countHtml: notDrawnHere,
+    formatAge: notDrawnHere,
+    activeFiles: new Map(),
+  });
+})();
 const HOLD_MS = 200;
 const REVISION = "0123456789abcdef0123456789abcdef01234567";
 
@@ -159,6 +205,16 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
   const computedStyle = browserWindow.getComputedStyle.bind(browserWindow);
   browserWindow.getComputedStyle = (node) => {
     const style = computedStyle(node);
+    // The root's custom properties, and the main frame's transform mid-slide, are the two
+    // computed values static/nav-collapse.js reads.
+    if (node === document.documentElement) {
+      return Object.assign(Object.create(style), {
+        getPropertyValue: (name) => (name === "--motion-reveal" ? MOTION_REVEAL : ""),
+      });
+    }
+    if (node === frame) {
+      return Object.assign(Object.create(style), { transform: frameTransform() });
+    }
     if (!node.hasAttribute?.("aria-keyshortcuts")) {
       return style;
     }
@@ -302,8 +358,113 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
   );
   const selectorHost = element(document, "div", { id: "source-ref-selector" });
   const preview = element(document, "main", { id: "preview-pane" });
-  const app = element(document, "div", { class: "app" }, navPane, selectorHost, preview);
+  // The chevron that hides the navigation pane, in the main frame beside the page, as
+  // server.py writes it; static/nav-collapse.js runs on it as app.js creates it.
+  const navToggleButton = element(document, "button", {
+    "aria-controls": "tree-pane",
+    "aria-expanded": "true",
+    "aria-label": "Hide navigation",
+    class: "icon-btn nav-collapse-toggle disclosure-toggle",
+    id: "nav-collapse-toggle",
+    type: "button",
+  });
+  const frame = element(document, "div", { class: "preview-frame" }, preview, navToggleButton);
+  const app = element(document, "div", { class: "app" }, navPane, selectorHost, frame);
   document.body.append(app);
+  Object.defineProperty(navPane, "offsetWidth", { value: NAV_PANE_WIDTH });
+  // The frame's slide, as Web Animations runs it, held at the share of its way the session
+  // sets: nav-collapse.js reads the frame's transform when a key turns a slide back, and
+  // the session finishes each slide as its end would.
+  /** @type {any[]} */
+  const slides = [];
+  const offsetOf = (keyframe) =>
+    Number.parseFloat(/translate3d\((-?[\d.]+)px/.exec(keyframe.transform)?.[1] ?? "0");
+  frame.animate = (keyframes, timing) => {
+    let resolve = () => {};
+    let reject = () => {};
+    const slide = {
+      from: offsetOf(keyframes[0]),
+      to: offsetOf(keyframes.at(-1)),
+      duration: timing.duration,
+      easing: timing.easing,
+      progress: 0,
+      state: "running",
+      finished: new Promise((onFinish, onCancel) => {
+        resolve = onFinish;
+        reject = onCancel;
+      }),
+      cancel() {
+        if (slide.state === "running") {
+          slide.state = "cancelled";
+          reject(new Error("The slide was cancelled"));
+        }
+      },
+      finish() {
+        slide.progress = 1;
+        slide.state = "finished";
+        resolve(slide);
+      },
+    };
+    slides.push(slide);
+    return slide;
+  };
+  const runningSlide = () => slides.find((slide) => slide.state === "running") ?? null;
+  function frameTransform() {
+    const slide = runningSlide();
+    return slide
+      ? `matrix(1, 0, 0, 1, ${slide.from + (slide.to - slide.from) * slide.progress}, 0)`
+      : "none";
+  }
+  const navCollapse = context.MetabrowserNavCollapse.create({
+    button: navToggleButton,
+    container: app,
+    document,
+    focusFallback: () => preview,
+    frame,
+    // app.js closes an open filter menu, as hiding the Files panel does.
+    onHide: () => {
+      if (filterOpenMenu !== null) {
+        shell.toggleFilterMenu(filterOpenMenu, false);
+      }
+    },
+    pane: navPane,
+  });
+  /** The slide running now, as its ends and timing, or null. */
+  function slide() {
+    const running = runningSlide();
+    return (
+      running && {
+        from: running.from,
+        to: running.to,
+        duration: running.duration,
+        easing: running.easing,
+        cancelled: slides.filter((each) => each.state === "cancelled").length,
+      }
+    );
+  }
+  /** Move the running slide to a share of its way. */
+  function slideTo(progress) {
+    const running = runningSlide();
+    if (running) {
+      running.progress = progress;
+    }
+  }
+  /** End every running slide, as the time passing would, and let it settle. */
+  async function finishSlides() {
+    for (const running of slides.filter((each) => each.state === "running")) {
+      running.finish();
+    }
+    await settle();
+  }
+  /** The navigation pane's state, as the chevron and the layout say it. */
+  function nav() {
+    return {
+      inert: navPane.hasAttribute("inert"),
+      inLayout: !app.hasAttribute("data-nav-collapsed"),
+      expanded: navToggleButton.getAttribute("aria-expanded"),
+      label: navToggleButton.getAttribute("aria-label"),
+    };
+  }
 
   // ── What app.js does around the modules ───────────────────────
   /** @type {any} */
@@ -329,6 +490,12 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     // runs it.
     goHome() {
       did.push("went home");
+    },
+    navToggle: () => navToggleButton,
+    // app.js toggleNav, the chevron's click, through the production nav-collapse.js.
+    toggleNav() {
+      navCollapse.toggle();
+      did.push(`${navCollapse.isCollapsed() ? "hid" : "showed"} the navigation pane`);
     },
     openFolder(dir) {
       did.push(`opened the folder "${dir}"`);
@@ -376,63 +543,35 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     keymap?.syncPane();
   }
 
-  /** renderFolderHeader and the file header, as app.js renders them. */
+  /** renderFolderHeader and renderFileHeader, through app.js's own builders. */
   function header(data) {
     const segments = data.path ? data.path.split("/") : [];
-    const crumbs = [
-      element(document, "button", { class: "folder-crumb", "data-nav-dir": "" }, "/"),
-    ];
-    segments.forEach((segment, index) => {
-      const walked = segments.slice(0, index + 1).join("/");
-      const last = index === segments.length - 1;
-      crumbs.push(
-        element(
-          document,
-          "button",
-          {
-            class: "folder-crumb",
-            [last && data.kind !== "folder" ? "data-nav-file" : "data-nav-dir"]: walked,
-          },
-          segment,
-        ),
-      );
+    // The eyebrow's address: the root, then each folder above the item.
+    const crumbs =
+      segments.length === 0 ? "" : '<button class="folder-crumb" data-nav-dir="">/</button>';
+    const folders = segments
+      .slice(0, -1)
+      .map(
+        (segment, index) =>
+          `<button class="folder-crumb" data-nav-dir="${segments.slice(0, index + 1).join("/")}">${segment}</button>`,
+      )
+      .join("");
+    const copy =
+      data.kind === "folder"
+        ? ""
+        : `<button class="icon-btn icon-btn-reveal file-header-copy" aria-label="Copy path" data-mb-copy="text" data-mb-copy-text="${data.path}"></button>`;
+    const holder = element(document, "div");
+    holder.innerHTML = viewHeader.viewHeaderHtml({
+      className: data.kind === "folder" ? "folder-header" : "",
+      eyebrow:
+        viewHeader.viewHeaderUpHtml(data.path ?? "") +
+        `<span class="file-header-path folder-breadcrumb">${crumbs}${folders}</span>${copy}`,
+      iconHtml: "",
+      title: segments.at(-1) ?? "root",
+      end: "",
+      line: "",
     });
-    const breadcrumb = element(
-      document,
-      "span",
-      { class: "file-header-path folder-breadcrumb" },
-      ...crumbs,
-    );
-    if (data.kind === "folder") {
-      const parent = segments.length > 0 ? segments.slice(0, -1).join("/") : null;
-      const up = element(document, "button", {
-        "aria-label": parent === null ? "No parent folder" : "Open parent folder",
-        class: "btn parent-nav-btn folder-up",
-        "data-nav-dir": parent ?? false,
-        disabled: parent === null,
-      });
-      return element(
-        document,
-        "div",
-        { class: "file-header folder-header", "data-kbd-badge-anchor": true },
-        up,
-        breadcrumb,
-      );
-    }
-    breadcrumb.append(
-      element(document, "button", {
-        "aria-label": "Copy path",
-        class: "icon-btn icon-btn-reveal file-header-copy",
-        "data-mb-copy": "text",
-        "data-mb-copy-text": data.path,
-      }),
-    );
-    return element(
-      document,
-      "div",
-      { class: "file-header", "data-kbd-badge-anchor": true },
-      breadcrumb,
-    );
+    return holder.firstElementChild;
   }
 
   /**
@@ -1031,6 +1170,14 @@ function createPage({ tabs = ["files"], repository = false, pin = null, address 
     },
     location,
     mainTabs,
+    navCollapse,
+    nav,
+    slide,
+    slideTo,
+    finishSlides,
+    get filterOpenMenu() {
+      return filterOpenMenu;
+    },
     measure,
     menuFocus,
     drawerOpen,
@@ -1544,6 +1691,88 @@ const PARTS = {
   },
 
   /**
+   * Hiding the navigation pane: `\` and Shift-\ from the main page and from a tree row,
+   * through the production static/nav-collapse.js. tests/dom/nav-collapse-session.js runs
+   * it, and cli-ui-nav-collapse.tryscript.md pins it.
+   */
+  async nav() {
+    const steps = [];
+    const page = plainPage();
+    page.open(files["data.json"]);
+    steps.push(page.record("a file is open with the navigation pane shown", { nav: page.nav() }));
+    // `\` hides the navigation pane from anywhere, through the chevron's own path. Hidden,
+    // the pane is inert, so its keys leave the live keymap and focus on one of its rows
+    // goes to the main page; `\` stays live on the chevron, which the main frame holds. The
+    // frame slides over the pane for --motion-reveal's time, read from styles.css.
+    page.document.querySelector(".tree-item")?.focus();
+    const hide = { key: "\\", handled: page.press("\\", { code: "Backslash" }) };
+    const hiding = page.slide();
+    await page.finishSlides();
+    steps.push(
+      page.record("\\ hides the navigation pane, and only the main page's keys stay live", {
+        pressed: hide,
+        slide: hiding,
+        // Focus was on a tree row, which the inert pane cannot hold: the main page takes it.
+        nav: { ...page.nav(), focus: page.document.activeElement.id },
+      }),
+    );
+    // Shift-\ types | on a US keyboard, and | is \'s Shift form, so it shows the pane
+    // again. The pane is live as the slide starts and takes its place in the layout when
+    // the slide ends.
+    const show = {
+      key: "|",
+      handled: page.press("|", { code: "Backslash", shiftKey: true }),
+    };
+    const showing = { slide: page.slide(), nav: page.nav() };
+    await page.finishSlides();
+    steps.push(
+      page.record("Shift-\\, which types | on a US keyboard, shows it again", {
+        pressed: show,
+        sliding: showing,
+        nav: page.nav(),
+      }),
+    );
+    // The same physical key is # on a UK or German keyboard: a key is its character, so
+    // that is not \.
+    steps.push(
+      page.record("# on the key US keyboards have \\ on is not \\", {
+        pressed: { key: "#", handled: page.press("#", { code: "Backslash" }) },
+        slide: page.slide(),
+        nav: page.nav(),
+      }),
+    );
+    // A second `\` mid-slide turns the frame back from where it is, for the share of the
+    // time that distance is, and leaves the pane shown, live, and in the layout.
+    page.press("\\", { code: "Backslash" });
+    page.slideTo(0.5);
+    const back = { key: "\\", handled: page.press("\\", { code: "Backslash" }) };
+    const turned = page.slide();
+    await page.finishSlides();
+    steps.push(
+      page.record("\\ again halfway through the slide turns it back from there", {
+        pressed: back,
+        slide: turned,
+        nav: page.nav(),
+      }),
+    );
+    // A menu the pane holds would stay open under the frame with its trigger inert, so
+    // hiding the pane closes it.
+    page.press("1");
+    const opened = page.filterOpenMenu;
+    const closing = { key: "\\", handled: page.press("\\", { code: "Backslash" }) };
+    await page.finishSlides();
+    steps.push(
+      page.record("\\ with Group by open closes the menu as it hides the pane", {
+        pressed: closing,
+        menu: { before: opened, after: page.filterOpenMenu },
+        nav: { ...page.nav(), focus: page.document.activeElement.id },
+      }),
+    );
+
+    return { steps, pages: [page] };
+  },
+
+  /**
    * Command, Control, and Option chords are the browser's (mb-i1wy): Command-R reloads
    * wherever focus is, and so does every other chord. Each place focus can be is entered
    * once, and every letter, digit, and named key is pressed there with each chord; none
@@ -1818,16 +2047,20 @@ const PARTS = {
   },
 };
 
-async function main() {
-  const part = process.argv[2] ?? "keymap";
+/** Run one part and print its transcript: the command line's, or the one a caller names. */
+async function main(part = process.argv[2] ?? "keymap") {
   if (!Object.hasOwn(PARTS, part)) {
     throw new Error(`Unknown part ${part}; the parts are ${Object.keys(PARTS).join(", ")}`);
   }
   const { steps, pages, chords, keys } = await PARTS[part]();
+  // The keymap's parts print the shell keys they registered; these register the same
+  // keymap and print only what their keys did.
   if (part === "modified") {
-    // The keymap's parts print the shell keys they registered; this one registers the
-    // same keymap and prints only what the chords did.
     process.stdout.write(`${render({ part, chords, keys, steps })}\n`);
+    return;
+  }
+  if (part === "nav") {
+    process.stdout.write(`${render({ part, steps })}\n`);
     return;
   }
   const shellKeys = new Set(pages.flatMap((page) => [...page.shellKeys]));
@@ -1837,7 +2070,11 @@ async function main() {
   );
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+// tests/dom/nav-collapse-session.js runs the `nav` part as a session of its own.
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
+module.exports = { main };

@@ -17,6 +17,7 @@ work.
 | `?` | Help | Always |
 | `T` or `/` | Quick Search, the file finder | Always |
 | `0` | Home: the served folder’s home view, every tab at its first | Always |
+| `\` | Hide or show the navigation pane | Always |
 | `F` | The Files tab | Always |
 | `P` | The Pulls tab | The Pulls tab is shown, for a GitHub repository |
 | `H` | The Commits tab: commit History | The served folder is a Git repository’s root, or a repository opened by its URL |
@@ -43,6 +44,16 @@ every filter and Group by at its default, and every tab back at its first view.
 What has been read, such as pull requests and history, stays in memory, so only the tree
 and the folder’s view are read again.
 
+Backslash does what a click on the chevron at the foot of the main page’s left edge
+does: it hides the navigation pane, and the page slides over it to fill the window, or
+shows the pane again.
+Shift-Backslash, which types `|` on a US keyboard, does the same.
+The key is read by the character it types, so the key in the same place on a UK or
+German keyboard, which types `#`, does nothing; where Backslash needs Option or AltGr,
+the chevron is the way to hide the pane.
+While the pane is hidden, the keys of its controls, such as `0`, `F`, and the filters’
+numbers, do nothing until it is shown again.
+
 ## Keys in a Menu
 
 Opening a filter’s menu or a pull request’s stack menu, by a click, or by Enter, Space,
@@ -63,7 +74,7 @@ Each control is numbered only while it is shown:
 | --- | --- |
 | The Files tab | Group by, Modified within (Any age), and File type (Any type), whether the filter drawer is open or closed; a Git pin has no Modified within |
 | The Pulls tab | Open, Closed, and All, then Reload, which keeps its number while it waits |
-| A pull request page | The header’s links and actions, such as View on GitHub, Browse code, and Refresh, in the order the header shows them; Refresh keeps its number while it waits |
+| A pull request page | The header’s links and actions, such as Browse code and Refresh, in the order the header shows them; Refresh keeps its number while it waits |
 
 The navigation pane’s numbers come first, so a pull request page’s numbers continue
 after those of the tab beside it.
@@ -85,8 +96,9 @@ In the file tree:
 In the Commits list, Up and Down or `K` and `J` move a row, and Enter or Space opens the
 commit.
 
-In the Pulls list, Up and Down or `K` and `J` move a row, Enter opens the pull request,
-and Space shows or hides its changed files; Right shows them and Left hides them.
+In the Pulls list, Up and Down or `K` and `J` move a row, a pull request’s three lines
+being one, Enter opens the pull request, and Space shows or hides its changed files;
+Right shows them or moves into them, and Left hides them.
 Grouped by stack, a stack’s row opens nothing: Enter and Space open or close it, Right
 opens it or goes to its first pull request, and Left closes it or returns to it from a
 pull request inside it whose files are closed.

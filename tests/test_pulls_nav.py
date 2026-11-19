@@ -61,13 +61,27 @@ def _tabs(html: str) -> dict[str, bool]:
     return tabs
 
 
+def _div_body(html: str, start: int) -> str:
+    """The markup inside the div whose opening tag ends at *start*, its nested divs included.
+
+    The Files toolbar ships its row, with the branch and tag chooser in it, on a page that
+    has one, so a toolbar's body is not what comes before the first ``</div>``.
+    """
+
+    depth = 1
+    for tag in re.finditer(r"<div\b|</div>", html[start:]):
+        depth += 1 if tag.group(0) == "<div" else -1
+        if depth == 0:
+            return html[start : start + tag.start()]
+    raise AssertionError(f"a div that is never closed: {html[start : start + 200]}")
+
+
 def _toolbars(html: str) -> dict[str, bool]:
     """Each toolbar in the navigation's slot, and whether it is shown; one per tab, never empty."""
 
     toolbars: dict[str, bool] = {}
-    for opening, body in re.findall(
-        r'(<div [^>]*data-nav-toolbar="[a-z]+"[^>]*>)(.*?)</div>', html
-    ):
+    for match in re.finditer(r'<div [^>]*data-nav-toolbar="[a-z]+"[^>]*>', html):
+        opening, body = match.group(0), _div_body(html, match.end())
         name = re.search(r'data-nav-toolbar="([a-z]+)"', opening)
         assert name is not None
         toolbars[name.group(1)] = " hidden" not in opening
@@ -207,6 +221,15 @@ def test_a_mirror_of_github_draws_the_tab_and_puts_it_in_front_at_its_addresses(
                 # slot holds the Pulls toolbar in its filters' place, never empty.
                 assert 'id="tab-files" data-tab-content="files" style="display: none"' in html
                 assert _toolbars(html) == {"files": False, "git": False, "pulls": True}, route
+                # Directly under the Pulls toolbar, and outside the scroller, the empty band
+                # the list's count and connection lines fill (pulls-panel.js), which shows
+                # only while that toolbar does.
+                assert re.search(
+                    r'id="nav-toolbar-pulls"[^>]*>.*?</div>\s*'
+                    r'<div class="nav-metadata-band" id="nav-metadata-pulls"></div>',
+                    html,
+                ), route
+                assert html.index('id="nav-metadata-pulls"') < html.index('id="tree-content"')
                 sidebar = html.split('id="tab-pulls"', 1)[1].split('id="preview-pane"', 1)[0]
                 assert sidebar.count('class="spinner spinner-sm"') == 1
                 assert sidebar.count("Fetching pull requests…") == 1

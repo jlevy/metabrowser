@@ -88,7 +88,8 @@ every chromatic token defined in both themes carries the same hue in each.
 ## File Age
 
 File age is one shared primitive across navigation rows, file headers, recent-filter
-menus, Live badges, and plugin-rendered age labels.
+menus, Live badges, Group by’s age sections
+([Grouping the Files Tree](#grouping-the-files-tree)), and plugin-rendered age labels.
 Each state owns two parallel OKLCH tokens in `static/styles.css`:
 
 - `--file-age-<state>` is an accessible text foreground
@@ -126,8 +127,9 @@ a header line’s ([Type Scale](#type-scale)). Dense navigation uses the compact
 (`<1m`, `5m`, `2h`, `3d`, `2w`). Full metadata and conversation cards use the relative
 style: `2h ago`, `just now`, or `in 2h` for a future timestamp.
 Unknown times have no age label.
-The Pulls sidebar, file tree and compact Git history remain condensed navigation; PR
-headers, comments, reviews, full commit summaries and folder headers use relative ages.
+The Pulls sidebar, file tree, compact Git history, and the ref selector’s list remain
+condensed navigation; PR headers, comments, reviews, full commit summaries and file and
+folder view headers use relative ages.
 Call sites choose the presentation style and positioning, never their own suffix,
 abbreviation, color, weight, or size.
 A plugin reaches the same primitive as `metabrowser.formatAge` and puts the exact time
@@ -248,8 +250,8 @@ The chrome has two text sizes, and the one region set apart is the navigation co
 which takes the smaller one throughout, its metadata and its header path included: it is
 a dense list in a pane narrower than the main view, read by scanning rather than at
 length. Everything else in the main view reads at the body size, its text and its
-metadata, a file’s or a folder’s header and a diff file bar among them; a tree drawn
-there is the navigation’s own component and keeps its rows’ size.
+metadata, a file’s or a folder’s view header and a diff file bar among them; a tree
+drawn there is the navigation’s own component and keeps its rows’ size.
 The column sets its size once, on `.tree-pane`, so a primitive it shares with the main
 view, a notice or an age, sets no size and takes the column’s there and the body’s in
 the main view.
@@ -258,9 +260,9 @@ it.
 
 | Role | Token | Where |
 | --- | --- | --- |
-| Page title | `--page-title-font-size` | The title of a page no file stands behind, a pull request’s or a commit’s. It stands above the regular first heading of the text below by its bold weight, not by its size |
+| Page title | `--page-title-font-size` | The title of every [view header](#view-headers): a file’s or a folder’s name, a pull request’s title, a commit’s subject. It stands above the regular first heading of the text below by its bold weight, not by its size |
 | Document prose | `--document-body-font-size` | A rendered document and a message, one step above the app body, with KPress’s ramp under it (below) |
-| Reading text | `--body-font-size` | The main view’s lines, cards, tables, inputs, notes, and empty and error states; a file’s or a folder’s header, its path, size, count, age, and mirror note; a diff file bar; a commit’s files outside the served folder; every line under a page header’s title, the Diff summary’s header among them ([Page Headers](#page-headers)); a dialog’s prose; a [section heading](#section-headings), in caps |
+| Reading text | `--body-font-size` | The main view’s lines, cards, tables, inputs, notes, and empty and error states; a view header’s eyebrow, its address and mirror note, and its metadata line, a file’s or a folder’s size, count, and age; a diff file bar; a commit’s files outside the served folder; every line under a page header’s title, the Diff summary’s header among them ([Page Headers](#page-headers)); a dialog’s prose; a [section heading](#section-headings), in caps |
 | Tooltip | `--tooltip-font-size` | The body size; its detail lines set none and read at it ([One Tooltip, and It Is Ours](#one-tooltip-and-it-is-ours)) |
 | List text | `--nav-font-size` | The navigation column throughout: its header path, the Files, Pulls, and Commits rows, the [navigation metadata line](#navigation-metadata-line), and the freshness line at its foot; a tree’s rows wherever one is drawn, the Diff summary’s file list among them; and Quick Search’s results and Help’s commands, the lists in those dialogs |
 | Secondary metadata | The token of the text it accompanies | Ages, update and fetch times, counts, sizes, a row’s second line, notes, and captions |
@@ -273,11 +275,11 @@ it.
 | Micro marks | `--micro-font-size` | Marks set deliberately under the controls, never running text: a chip’s count badge, a filled mark inside the chip, and the dot between a stack’s badges |
 
 A path reads at its region’s size, and its metadata with it.
-The navigation column’s header path is list text, the size of the rows it heads, and the
-band it shares with the file header keeps one height across the divider at the two
-sizes. In the main view a file’s or a folder’s header, a diff file bar, and a review
-comment’s file, in its card’s head, read at the body size, and a header’s size, count,
-age, and mirror note share its path’s size and baseline.
+The navigation column’s header path is list text, the size of the rows it heads, in a
+row of one fixed height.
+In the main view a view header’s eyebrow and metadata line, a diff file bar, and a
+review comment’s file, in its card’s head, read at the body size, and a view header’s
+size, count, age, and mirror note share their line’s size.
 [Design Rule Measurements](../explorations/performance-loop/design-rule-measurements.md#type-by-role)
 has the inventory behind this table.
 
@@ -352,6 +354,148 @@ Keep these roles distinct:
 
 Do not shrink essential text to fit.
 Prefer truncation with an accessible full-value tooltip or allow a panel to scroll.
+
+### View Headers
+
+Every page the main view shows opens with one block above its content, a **view
+header**, and each kind of page fills the same parts with what it has: a file, a folder,
+a pull request, and a commit.
+
+```text
++--------------------------------------------------------------------+
+| [Up] ~/wrk/project / docs / specs  [copy]  [GitHub View on GitHub v]  |  1 eyebrow, optional; the corner
+| [icon] Title, at the page title's size  33.9 KB · 2h ago            |  2 heading row, 3 metadata
+| DOCUMENT   SOURCE                                                  |  4 tab bar
++--------------------------------------------------------------------+  the one rule, the tab bar's
+| content                                                            |
+```
+
+| Part | A file | A folder | A pull request | A commit |
+| --- | --- | --- | --- | --- |
+| 1. Eyebrow | Up, the address of the folder that holds it, and Copy path | Up, and the address of its parent; at the served root, the directory that holds the root | Only where it says something the rows under it do not (planned) | The same (planned) |
+| 2. Heading row | The navigation row’s icon for its type, and its name and the metadata after it | The folder icon, and its name and the metadata after it | Its state icon, its title, and its number | The commit icon, its subject (planned) |
+| 3. Metadata | Its badges, size, and age, after its name | Its size, file count, and age, after its name | Its author line, branches, and ages, lines under the title ([Page Headers](#page-headers)) | Its author, revision, and age, lines under the title ([Page Headers](#page-headers)) |
+| 4. Tab bar | Its views: Document, Source, and so on | Overview and Treemap | Conversation, Changes, and Checks | None |
+| The corner | [View on GitHub](#view-on-github) | The same | The same | The same |
+
+Files and folders draw these parts today (`viewHeaderHtml` in `static/view-header.js`,
+an on-demand bundle the shell fetches beside the view compositor).
+A pull request’s page and a commit’s draw their title and lines as
+[Page Headers](#page-headers) says, and move onto the same rows, icon, and ground next
+(planned). What another kind shares is the class structure, not that builder, which is
+the shell’s own: a `.view-header` block holding `.view-header-eyebrow`,
+`.view-header-heading`, which holds `.view-header-icon` and `.view-header-title-group`
+(the title, `.view-header-title`, and its metadata line, `.view-header-line`), and
+`.view-header-end`, the corner, whose rules are the rhythm and the ground below.
+A plugin that draws a header, as the GitHub plugin draws a pull request’s, writes those
+classes.
+
+**The eyebrow** is a quiet line above the title: context, at the body size, its served
+root dimmed and its crumbs links.
+It is optional by kind.
+A file’s and a folder’s always have one, because where a file is matters: Up, which
+keeps its place disabled at the served root, and the folders above the item, but not the
+item, which is the title under it.
+A pull request’s or a commit’s has one only when it carries something the rows under it
+do not, such as the repository and branch it belongs to.
+Where a kind has no eyebrow, it writes it empty, and an empty eyebrow is left out: the
+heading row starts the header and nothing holds empty space for one.
+Where it has one, the eyebrow is its token’s height from first paint, so nothing under
+it moves as it fills in.
+A file’s eyebrow ends in Copy path, revealed on hover, so the heading row’s width is the
+title’s and its metadata’s.
+
+**The heading row** is the kind’s icon, then the title at `--page-title-font-size`,
+bold, then a file’s or a folder’s metadata line.
+The icon is the one the rest of the app draws for the item, at the title’s size: a
+file’s is its navigation row’s icon for its type, through the same function, and a pull
+request’s is its state icon.
+A file’s or a folder’s name is whole, never cut short: a name too long for the row
+wraps, anywhere, so it has no tooltip, since none of it is hidden
+([Tooltips Add Information](#tooltips-add-information)), and the icon stays beside its
+first line. A pull request’s title holds two lines.
+The row holds no controls: the header’s are in its corner.
+The header has no print button ([Print](#print)).
+
+**The corner**, the header’s upper right, holds the page’s
+[View on GitHub](#view-on-github) button.
+It is at a fixed inset from the header’s top and right edges and a fixed height, level
+with the eyebrow (`--view-header-corner-inset-top`, `--view-header-corner-inset-end`,
+and `--view-header-corner-height` in `static/styles.css`), whatever the rows under it
+hold, so a title that wraps or an address that fills the eyebrow never moves it, and a
+native bar that draws the same button can match it from the same three tokens.
+The corner follows the heading row in the reading order.
+On a page whose repository is on github.com the corner is marked `data-counterpart`
+before the server has answered, and the header’s first row, the eyebrow or else the
+heading row, leaves it `--view-header-corner-room` from first paint, so the button
+arriving moves nothing; the rows under the first keep the header’s whole width.
+A page with no counterpart keeps that room empty: a file that is not committed has none,
+and its corner says nothing.
+A plain folder, a checkout whose `origin` is on another host or that has none, and a
+mirror of a repository elsewhere mark no corner and hold no room.
+A pull request’s page and a commit’s place the same corner in the page, at the same
+insets from its top and right edges, and their title leaves it room only where the
+reading column reaches it.
+
+**The metadata line** of a file or a folder follows its name in the heading row,
+`--view-header-title-gap` after the name’s last letter and on its baseline, at the body
+size, in muted ink; a pull request’s and a commit’s lines sit under their titles
+([Page Headers](#page-headers)). Each value keeps its own primitive: a size its chip, a
+count its count, an age its freshness ink ([File Age](#file-age)), the same helpers a
+navigation row draws them with.
+Badges lead and the values follow, each after a muted dot, `.summary-punctuation`, with
+the age last: it is the one value that changes while nothing on disk does, “just now”
+becoming “1m ago”, and last on its line it moves nothing when it does.
+
+Where the room after the name’s last line does not hold the line, the line wraps whole
+to the next line, at the name’s start.
+The gap is the title’s end padding, so it stays behind, unseen, at the end of the line
+above, rather than indenting the wrapped line.
+A line wider than the row wraps between its items: an item and the dot before it are one
+box that does not wrap, so no value is cut mid-number, and none is hidden.
+
+While the line stays after the name, the heading row is the title’s line high, and a
+value arriving, a skeleton becoming a number, or an age changing width moves nothing but
+the values after it on the line.
+Each item is one line of text at the line’s token’s height, so its baseline is its
+text’s whatever it holds, and a pending skeleton sits the line where its number will.
+At the width where the line no longer fits after the name, it wraps to the next line,
+and what is under the header moves down by the line’s height.
+That takes a name that nearly fills its row, which is rare, and wrapping keeps every
+value in sight where a row of fixed height would cut one.
+A folder’s line follows the inventory as it changes (`startFolderHeaderSubscription` in
+`static/app.js`); a file’s line describes the content the view loaded, its size and age
+when it was read, and a reload refreshes it (planned: following the file’s own change).
+
+**The tab bar** is the one tab style, `.tab-bar` and `.tab-btn`, its labels on the
+content’s inset, where a folder’s Overview labels start
+([Folder Overview Is a Panel Stack](#folder-overview-is-a-panel-stack)), one tab’s
+padding in from the header’s rows.
+Every tab bar in the main view sits on `--bg`, a pull request’s among them; a pull
+request’s spans its reading column rather than the pane, and moves onto the pane’s width
+with the rest of its header (planned).
+
+**Ground and rules.** The header and its tab bar sit on the main view’s ground, `--bg`,
+the ground the content under them has: `--sidebar-bg` is the navigation column’s, and
+stops at the divider.
+The header has no rule of its own and none between its rows; the one rule is the tab
+bar’s, `1px solid var(--border)`, under the tabs, across the pane.
+A kind with no tab bar ends its header without one (planned for a commit’s page).
+Every ink on the header is one the main view already sets on `--bg`: `--text`,
+`--muted`, `--link`, the size chip’s, and the age inks, whose contrast on every age
+surface, `--bg` among them, `tests/test_file_age_palette.py` holds.
+
+The rhythm is tokens in `static/styles.css`, `--view-header-*`: the pads above the first
+row and under the last, the gap between rows, the eyebrow’s and the metadata line’s
+heights, and the gap between the title and the line after it.
+`tests/test_view_header_chrome.py` draws a file’s, a folder’s, and the served root’s
+header, and the header of a file whose name no pane holds on one line, in headless
+Chrome at four pane widths in both themes.
+It holds the rows to those tokens, the title and the line to their sizes and ink, the
+line to the title’s baseline and gap or to the next line’s start, the long name whole
+over several lines, the header and its tabs to one ground with the tab bar’s one rule,
+every value whole and in sight, and every box but the line’s own still while the line’s
+values change and it stays after the name.
 
 ### Page Headers
 
@@ -512,8 +656,8 @@ keeps it.
 The rule does not reach a number that is not a count summary’s:
 
 - row metadata, as the right-aligned size and count of a tree row, and the size, count,
-  and age of a folder’s header strip, which the size and count chips set by their own
-  threshold;
+  and age of a view header’s metadata line, which the size and count chips set by their
+  own threshold;
 - a control’s label or a chip’s tally, as “Show 40 more” or the Pulls filters’ “Open
   30”;
 - prose or a notice, as “wants to merge 6 commits” or “This commit changes 900 files;
@@ -683,9 +827,9 @@ The overlay’s toggle belongs to its document.
 It fades in once the pane has scrolled past KPress’s threshold and the reader has
 reached the document, whose top is at or above the pane’s, and fades out above the
 document or past its end.
-An opened file starts within the threshold, so the threshold decides, as in KPress; a
-folder Overview’s README starts below File Overview, so the toggle appears as the reader
-scrolls to the README’s beginning.
+An opened file’s document starts below its view header and tab bar, and a folder
+Overview’s README below File Overview, both further down than the threshold, so the
+toggle appears as the reader scrolls to the document’s beginning.
 One rule in `builtin_plugins/markdown/toc-toggle.js` serves KPress’s table of contents
 and an inert render’s.
 
@@ -739,6 +883,108 @@ the button belongs once KPress can carry it in an embedded document, as an optio
 host turns on.
 Until then `builtin_plugins/markdown/print-indicator.js` draws it, and its
 header says what KPress lacks.
+
+## View on GitHub
+
+Every page that github.com has a page for has one **View on GitHub** button, in the same
+place: its header’s [corner](#view-headers), the upper right.
+It is the one way to a page’s github.com counterpart, so no page also links to it from
+its metadata.
+
+```text
+ ( [GitHub] View on GitHub | v )
+                          +-----------------+
+                          | Copy Link       |
+                          | Open in Browser |
+                          +-----------------+
+```
+
+It is a split button, a [joined chip group](#control-families) of two parts:
+
+- **The link**, the provider’s mark and its label, in the text ink.
+  It is a real link to the counterpart, so a new tab, a copied address, and a screen
+  reader all get the address; in a browser it opens the page in a new tab, and its
+  tooltip is the address.
+- **The chevron**, a chip menu’s trigger with the shell’s caret, muted until the pointer
+  is on it or its menu is open, whose menu holds **Copy Link** and **Open in Browser**.
+  Copy Link puts the address on the clipboard and says “Link copied”, or “Copy failed”,
+  for a moment in a status line under the button, where the menu was, which a screen
+  reader announces as a polite live region; Open in Browser is a link to the same
+  address in a new tab.
+
+Both parts take a chip’s hover fill and focus ring, from tokens in both themes.
+The menu is the shell’s `.menu` of `.menu-item` rows, opened under the button with its
+right edge on the button’s. It is a menu button’s menu: a click or Enter on the chevron
+opens it with focus on its first item, ArrowDown or ArrowUp on the chevron opens it at
+its first or last item, and the arrow keys, Home, and End move among the items.
+Escape, a second click on the chevron, or choosing an item closes it and gives focus
+back to the chevron; Tab or a press outside the button closes it and leaves focus where
+the key or the press puts it, and so does focus that moves to another element, such as a
+framed preview, which sends the page no press.
+A key held with Command, Control, or Option is the browser’s and the app’s, as on every
+page, but Option-Tab, with which Safari moves focus, closes the menu as Tab does.
+The button is not numbered for the header’s number keys: it is the page’s, not a control
+in a row.
+
+The provider supplies the label, the mark, and the address, so the same component draws
+another host’s counterpart; GitHub is the one provider today.
+The button is `counterpartButton` in `static/plugin-sdk-views.js`, the on-demand view
+helpers, and `mountCounterpart` asks the server for a page’s counterpart and puts the
+button in a corner, once per address; both are on `window.metabrowser` for a plugin, as
+the pull request page uses them.
+The button comes with its header when it can: the shell asks for a file’s or a folder’s
+counterpart as the page starts loading (`prefetchCounterpart`), and a page drawn again
+shows its last answer at once and replaces it only when the server’s new one differs.
+Another place that shows a page can hold the same button by giving it a corner.
+
+**The macOS app** shows a counterpart in a native popover of its own rather than leaving
+the app. The web page does nothing for it; the app reads three hooks in the button’s
+markup, which are a contract between the two: the root carries `data-view-on-github`,
+the link is `<a data-view-on-github="open" href="…" target="_blank" rel="noopener">`,
+and Open in Browser is
+`<a data-view-on-github="external" href="…" target="_blank" rel="noopener">`. The app
+takes a trusted primary click on the link for its popover; Open in Browser, a modified
+click, and Copy Link do what they do in a browser.
+
+### Where It Appears
+
+A page has a View on GitHub control when github.com has a page for the same thing.
+`GET /api/counterpart?page=<page>` (`src/metabrowser/counterpart.py`) is the one source
+of where it goes: it answers the URL, or `null` and the reason there is none, and no
+page builds a github.com URL itself.
+`PAGES` in that module is this table, and `tests/test_counterpart.py` holds the two
+together.
+
+Each counterpart is `https://github.com/<owner>/<repository>/` followed by the shape
+below. `<sha>` is the commit the page shows its content from: a pin’s, or, for the
+working tree, the newest commit origin has in `HEAD`’s history.
+That is `HEAD`’s own commit once it is pushed, and before then its merge base with the
+upstream branch, or else with origin’s default branch.
+So neither unpushed commits nor a file’s local edits take a page’s button away: it links
+to the version origin has.
+Only a path no commit origin has holds goes without one.
+`<hash>` is GitHub’s anchor for a changed file, the SHA-256 of its path.
+Every page also has none when the served folder has no repository on github.com
+(`no_repository`), and an address that is none of these pages has none (`not_a_page`).
+
+| Page | Counterpart | Other reasons it has none |
+| --- | --- | --- |
+| `/view/<path>` | `blob/<sha>/<repo path>` | `uncommitted`, `untracked`, `ignored`, `missing`, `not_on_origin` |
+| `/view/<path>/` | `tree/<sha>/<repo path>` | `uncommitted`, `untracked`, `ignored`, `missing`, `not_on_origin` |
+| `/view/` | `tree/<sha>/<served prefix>`, or `tree/<sha>` at the repository root | `uncommitted`, `untracked`, `ignored`, `missing`, `not_on_origin` |
+| `/pull/<n>`, `/pull/<n>/files`, `/pull/<n>/checks` | `pull/<n>`, `pull/<n>/files`, `pull/<n>/checks` | None |
+| `/pull/<n>/files/<path>` | `pull/<n>/files#diff-<hash>` | None |
+| `/commit/<sha>` | `commit/<sha>` | `not_on_origin` |
+| `/commit/<sha>/<path>` | `commit/<sha>#diff-<hash>` | `not_on_origin` |
+| `/pulls` | `pulls` | None |
+
+`CounterpartReason`, beside `PAGES`, says what each reason means.
+A file and a folder are told apart by the commit’s tree, not by the trailing slash.
+There is no page of a branch’s commits to map: the Commits tab is a pane, not an
+address. The pull requests’ list, `/pulls`, has a counterpart but no header to hold the
+button yet. Every other page in the table draws it: a file’s, a folder’s, and the served
+root’s view header, each of a pull request’s tabs and the changed file Changes is at,
+and a commit’s page.
 
 ## Control Families
 
@@ -879,6 +1125,49 @@ what kind of row it is.
 See
 [navigation containers](project/architecture/arch-plugin-system.md#navigation-containers).
 
+### A Click on the Toggle’s Line Toggles
+
+**A click on a line that carries a disclosure toggle toggles it; a click on a larger
+element that holds that line, and a toggle with it, does not.** This is the one rule for
+every row with a disclosure toggle, and it is why a folder’s row and a Pulls item behave
+differently under one design.
+
+- **A folder’s row is one line, and the chevron is on it**, so a click anywhere on the
+  row toggles its children ([Navigation Tree Folders](#navigation-tree-folders)), as a
+  container file’s row does ([Container Rows](#container-rows)).
+- **A pull request in the Pulls tab is one item of three lines**, and only the third,
+  its change line, carries the chevron.
+  A click anywhere on the change line, the chevron or the values beside it, opens or
+  closes the changed files and opens no page.
+  A click on the title or the number’s line selects and opens the pull request and
+  expands nothing, because those lines belong to the item, not to the toggle
+  ([The Pulls Tab](#the-pulls-tab)).
+
+The keyboard sees the item, not its lines: an item is one stop and one selection, and
+its keys are a folder’s ([Navigational Row Collections](#navigational-row-collections)).
+Space on the item toggles, as a press on its toggle’s line does, and no line inside the
+item takes focus of its own.
+
+The item shows that it holds a narrower target.
+The whole item takes one `--hover-bg` ground under the pointer, as a Files row does, and
+while the pointer is on the toggle’s line the chevron also stands on a `--border` plate
+in `--text` ink, as an icon button’s glyph does on a plain ground.
+The plate covers the chevron’s slot alone, so the line’s status inks keep the grounds
+their contrast is held on.
+For assistive technology the toggle is the item’s, as it is for the keyboard.
+Where the line is the item, as a folder’s row is, the line carries `aria-expanded`.
+Where the item is a tree’s item holding the line, as a Pulls item is, its stop carries
+`aria-expanded` and owns what it opens, and the toggle’s line is hidden (`aria-hidden`):
+a tree’s item may own only items and groups, so a button inside it would make the tree
+invalid. The line’s words, hidden too, describe the item’s stop (`aria-describedby`).
+
+`tests/dom/github-pulls-row-lines-session.js` pins the rule for the Pulls item: a press
+on the chevron or the change line flips exactly that item and opens no page, a press on
+any other part changes no expansion, and only Space, Right, and Left change it from the
+keyboard, each on the item with focus.
+`tests/dom/github-pulls-row-lines-chrome.mjs` measures the two hovers and the real
+presses in Chrome, and reads the line’s place in Chrome’s accessibility tree.
+
 ### Section Disclosure Headers
 
 Use the section-disclosure primitive when a labelled section may hide its body without
@@ -929,9 +1218,8 @@ unsettled rather than consistently offset.
 | --- | --- | --- |
 | File tree row, in Files and Recent | Name, age, size, and a container child’s change letter | Icon, chevron, activity spinner, loading skeletons |
 | Git history row | Subject, author, and age | Graph gutter, ref chips |
-| File and folder header | Path, file size, and folder summary | Parent button, badges, copy button, a summary still loading |
 | Pull request row, in [the Pulls tab](#the-pulls-tab) | The title, alone on the first line; the number’s line and the age, on the second | State icon, on the first line; chevron, on the change line |
-| Diff file bar | Change letter, path, change stats, and notes | Chevron, Markdown **Rendered** \| **Source** chooser, View file or View on branch control, copy button |
+| Diff file bar | Change letter, path, change stats, and notes | Chevron, a Markdown, YAML, or JSON file’s **Rendered** \| **Source** chooser, View file or View on branch control, copy button |
 
 The row keeps `align-items: center`, and each text child opts in with
 `align-self: baseline`. A box aligned to the baseline would sit its bottom edge on the
@@ -944,8 +1232,6 @@ Baseline alignment places the text group at the top of the row’s content box, 
 group reads as centered only while that box is no taller than the group.
 A tree row’s `--ui-row-height` is the name’s line box plus the row’s 2px pads, so change
 the row height and the name’s line height together.
-The header’s path fills the header’s content box and centers its own crumbs, so the
-header’s text stays where centering put it at any header height.
 
 A header badge whose label changes in place sits in a slot as wide as its widest label
 from first paint, so the change moves nothing after it: a one-column grid of the badge,
@@ -959,10 +1245,11 @@ text inside it, so it is set at the path’s own size and line height: text of o
 and one line height centers onto one baseline.
 
 Two rows are deliberately not in the table.
-A mirror’s location note at the far end of the file header is whole or absent, by
-wrapping inside a box of its own one line tall, so it is centered rather than
-baseline-aligned, with the rest of the row between it and the path; at the header’s one
-size, that box is the path’s line, so the note sits on the path’s baseline.
+A [view header](#view-headers)’s eyebrow sets its text at one size and centers it.
+Its heading row sets the title and the metadata line after it at two sizes, and puts the
+line on the title’s baseline by setting both as one run of inline text rather than by
+these rules: aligned as a flex item, an item holding only a pending skeleton would sit
+the skeleton’s bottom edge on the baseline.
 The Git commit summary’s metadata line sets a monospace revision at `--nav-font-size`
 beside body-size sans text, and aligning the two faces on one baseline would grow the
 line, so it stays centered.
@@ -1132,7 +1419,7 @@ together.
 The notice is the only place a view reports how much of a file is loaded.
 A second readout in the pane chrome would say the same sentence twice in two boxes and
 give a reader two things to reconcile where there is one fact.
-The file header states the file’s **size**, which is identity; the notice states
+The view header states the file’s **size**, which is identity; the notice states
 **progress**, which is state.
 The two controls at the ends of the content are not a second statement: they bracket the
 same content so the reader meets one of them wherever they are.
@@ -2057,7 +2344,13 @@ A text stays inert. The server and `static/inert-html.js` reduce it to the allow
 KPress script loads, and every class in the article is the page’s, chosen by element.
 The route’s answer names KPress’s stylesheets, and that list is the same for every text,
 so a comment does not choose what the page loads.
-Until its render arrives a text shows as plain text in the same face and size.
+Until its render arrives, a text in or near the view holds the loading blocks’ gray rows
+in the box its plain text would take, shown after the quiet period and pulsing unless
+the reader asks for reduced motion, so it first shows rendered and never as Markdown
+source. A text farther than `MARKDOWN_AHEAD` (`pull-page.js`) from the view stays plain
+until it nears the view, so find in page reaches it.
+A text whose render will not come shows as plain text in the same face and size, with
+the line that says why.
 
 ### Conversation Timeline
 
@@ -2137,7 +2430,8 @@ Its measurements in Chrome and the app’s WebKit are in
 | Opened, updated, commented | `metabrowser.formatAge` with relative style, exact time in the tooltip | [Age](#age); condensed navigation uses compact style |
 | File of a review comment | Sans, bold, at the card head’s size | A path is chrome, and in the main view it reads at the body size, as a diff file bar’s does ([Type Scale](#type-scale)) |
 | Link, including a check’s action off GitHub | `--link`, underline on hover, the focus ring | As the freshness row’s link is, so a check’s action never reads as the muted description after it |
-| GitHub action: View on GitHub, a check’s action on GitHub, a conversation commit hash | `.github-pull-external-action`: `--muted`, with the leading GitHub mark in the same ink; `--link` on hover and focus | Quiet beside the metadata it follows, and the same in each of the three. A check is GitHub’s by the rule that gives a link the GitHub mark, so its look and its mark agree |
+| View on GitHub | The [View on GitHub](#view-on-github) button in the header’s corner, the page’s own counterpart on github.com | One button in one place on every page that has a counterpart, so it is never a link in the metadata |
+| GitHub action: a check’s action on GitHub, a conversation commit hash | `.github-pull-external-action`: `--muted`, with the leading GitHub mark in the same ink; `--link` on hover and focus | Quiet beside the metadata it follows, and the same in both. A check is GitHub’s by the rule that gives a link the GitHub mark, so its look and its mark agree |
 | Conversation commit hash | `.git-commit-sha` at its own `--nav-font-size` | A [revision](#git-commit-summary) sits one step below the sans beside it, and a commit row is set at `--body-font-size` ([Conversation Timeline](#conversation-timeline)) |
 | Browse code, and a review comment’s file | [Text action](#control-families): a link, or `.github-pull-text-action` on a button where it first serves the pull request’s head | The look of the Link row in both forms, so moving the pin never looks like something else |
 | Section title | [`.section-heading`](#section-headings) |  |
@@ -2251,18 +2545,23 @@ The list beside Files and Commits, on a GitHub repository, shows every pull requ
 newest first. Like the page it opens, it has almost no vocabulary of its own.
 `test_the_pulls_tab_carries_the_shells_primitives` holds what follows.
 
-A pull request’s row is a container whose one child is its change line, the row’s third
-line: the pull request’s [brief change line](#brief-change-line), “21 A, 7 D, 15 M ·
-+1,234 −567”, with no file total, after the registry’s chevron.
-The change line opens and closes the pull request’s changed-files tree, which hangs
-under it, connected by `aria-owns`, and starts collapsed.
-Clicking the row’s title or number’s line opens the page and expands nothing; clicking
-the chevron or the change line toggles the tree and opens no page.
-A press there, or Enter, Space, Right, or Left on the change line, keeps the row where
-it is, under the pointer or the focus, even above a row a reveal placed, whose place
-gives way to it. No row expands on its own: not when it opens, not when it is selected,
-and not on a key’s walk, so Up, Down, J, and K walk the pull requests and each row shows
-the size of its change.
+A pull request is one item of three lines, with one hover, one selection, and one
+keyboard stop: its link, the first two lines, and its change line, the third, the pull
+request’s [brief change line](#brief-change-line), “21 A, 7 D, 15 M · +1,234 −567”, with
+no file total, after the registry’s chevron.
+The item holds the pull request’s changed-files tree, which hangs under it, is owned by
+the row’s link through `aria-owns`, whose `aria-expanded` alone says whether it is open,
+and starts collapsed.
+The change line is the line with the toggle, so clicking anywhere on it, the chevron or
+the line, toggles the tree and opens no page; clicking the title or the number’s line
+opens the page and expands nothing
+([A Click on the Toggle’s Line Toggles](#a-click-on-the-toggles-line-toggles)). A press
+there, or Space, Right, or Left on the item, keeps the row where it is, under the
+pointer or the focus, even above a row a reveal placed, whose place gives way to it.
+No row expands on its own: not when it opens, not when it is selected, and not on a
+key’s walk, so Up, Down, J, and K walk the pull requests and each row shows the size of
+its change. A walk or a reveal brings the whole item into view, its three lines and the
+focus ring round them, clear of the sticky filters, not only its link’s two lines.
 An address naming a changed file opens its owner’s tree if needed
 ([Navigation Reveals the Item](#navigation-reveals-the-item)). Moving to another PR
 closes a tree opened only for that address; trees the reader opened stay open.
@@ -2286,9 +2585,11 @@ arrives.
 The line stays one line at every pane width: its statuses and their dot give way
 first, whole, never cut short with an ellipsis, so a narrow row shows its totals alone;
 where even its totals have no room the whole line goes.
-The change line’s accessible name says it in words, “Changed files: 21 added, 7 deleted,
-15 modified; 1,234 lines added, 567 deleted”, and only “Changed files” while there is
-none.
+The change line is the pointer’s alone: never focused, and hidden from assistive
+technology (`aria-hidden`), since a tree’s item may own only items and groups.
+Its words, hidden too, say it, “Changed files: 21 added, 7 deleted, 15 modified; 1,234
+lines added, 567 deleted”, and only “Changed files” while there is none, and the row’s
+link, the item’s one stop, describes itself by them (`aria-describedby`).
 
 A pull request’s title is always bold in normal text ink, wherever it appears: the
 page’s heading, a Pulls row, the page’s stack menu, and a search result.
@@ -2487,9 +2788,9 @@ holds the one helper and the one rule in source.
 | Part | Primitive | Why |
 | --- | --- | --- |
 | Tab | `.tab-btn` in the nav’s `.tab-bar` | [The Tab Bar](#the-tab-bar) |
-| Row | `min-height: --ui-row-height`, `--hover-bg`, `--highlight-bg` and `--highlight-bar` when current, which its change line takes too | [One Row Contract](#one-chevron-one-row-contract) |
+| Row | The item, `.github-pulls-entry`, around the link and its change line: the link’s `min-height: --ui-row-height`; one `--hover-bg` under all three lines, the -2px focus ring round them, and `--highlight-bg` when current, with the 2px `--highlight-bar` down the link’s and the change line’s edge, as on a Files row (`.tree-item`) | [One Row Contract](#one-chevron-one-row-contract) |
 | State icon | The tree’s icon slot, `--tree-icon-slot`, around `--icon-glyph`, on the row’s inset, on the first line before the title | [One Glyph Size](#one-glyph-size) |
-| Change line | The third line, `.github-pulls-change`, one `--ui-row-height` less 4 px: the registry’s chevron in the row’s one slot, under the state icon, then the [brief change line](#brief-change-line) in the text column, under the title and the number’s line, to the row’s end, or the pending placeholder (`.tally-pending` in `.mb-delayed-loading`) while it is read; its own hover and focus ring | The row’s one child and the one target that toggles its changed files ([The Pulls Tab](#the-pulls-tab)) |
+| Change line | The third line, `.github-pulls-change`, one `--ui-row-height` less 4 px: the registry’s chevron in the row’s one slot, under the state icon, then the [brief change line](#brief-change-line) in the text column, under the title and the number’s line, to the row’s end, or the pending placeholder (`.tally-pending` in `.mb-delayed-loading`) while it is read; no ground or stop of its own, and hidden from assistive technology, its words describing the link: under the pointer its chevron stands on a `--border` plate in `--text` ink, the inner target’s hover inside the item’s | The line with the toggle, so a click on it toggles the changed files ([A Click on the Toggle’s Line Toggles](#a-click-on-the-toggles-line-toggles)) |
 | Title | `--nav-font-size`, `--weight-bold` in `--text`, set on the title itself; the first line, alone, from the text column to the row’s end, over the age, cut there with an ellipsis, the whole of it on the page it opens | It is the row’s identity, and a pull request’s title is bold wherever it appears, with a conventional-commit prefix regular ([Titles](#titles)) |
 | Updated time | `metabrowser.formatAge`, at the second line’s end, on the number’s baseline; the page gives the exact time | [Age](#age), with no tooltip ([Tooltips Add Information](#tooltips-add-information)) |
 | PR number | `--nav-font-size`, text ink, bold (`--pull-number-weight`) | Shares the title’s primary navigation size, and names the pull request ([Pull Request Numbers](#pull-request-numbers)) |
@@ -2503,12 +2804,13 @@ holds the one helper and the one rule in source.
 | Progress below the rows | The navigation’s scan indicator, `.index-progress-spinner` and `.index-progress-text`, in `.github-pulls-progress` with `.mb-delayed-loading`: “~N pull requests fetched” while GitHub’s pages for the filter arrive, or “Fetching pull requests…” while a page is read | One progress language for a crawl, after the quiet period, and only below rows, never over them. It leaves with the filter’s last row. |
 | Reload | `.btn` | Reload checks GitHub for updates. See [Control Families](#control-families). |
 
-A row is three lines and two targets, because a pane is narrower than its parts.
-Its link is the first two: the state icon and the title alone, from the text column to
-the row’s end; then the number’s line, a stack member’s place, the number, and the
-author, with the age at the row’s end on its baseline.
-The third is its change line, the chevron and the brief change line, which opens and
-closes the files and opens no page.
+A pull request is three lines, one item, and two targets, because a pane is narrower
+than its parts. Its link is the first two: the state icon and the title alone, from the
+text column to the row’s end; then the number’s line, a stack member’s place, the
+number, and the author, with the age at the row’s end on its baseline.
+The third is its change line, the chevron and the brief change line, a click on which
+opens and closes the files and opens no page.
+The keys see the item as one row of the list.
 The title is the link’s first text, so the row’s accessible name gives the state, from
 the state icon’s label, and then the title, before the number’s line.
 It is one link, so a new tab and a copied address are the browser’s own, and all of its
@@ -3064,10 +3366,10 @@ names for it:
   A keycap is wider than a tab’s padding, so it covers the label’s last letter, which
   reads through the translucent fill.
   A `beside` badge also sits over its target’s own inline end, but is positioned within
-  the nearest `[data-kbd-badge-anchor]`: the file header, the folder header, or the
+  the nearest `[data-kbd-badge-anchor]`: a file’s or a folder’s view header, or the
   commit view’s heading.
-  It serves icon buttons and targets in a row that clips, such as the Copy path button
-  and the breadcrumbs, where a badge inside the target would be cut off.
+  It serves icon buttons and targets in a row that clips, such as the view header’s Up
+  control, where a badge inside the target would be cut off.
   It covers the icon or the crumb’s last letter, never the file name, note, size, path,
   or author that follows.
   A crumb narrower than a keycap, such as the root’s `/`, lets the keycap reach back
@@ -3130,19 +3432,20 @@ it passed. The collections differ in the rest:
   (`static/git-panel.js`, `selectCommit`).
 - **Enter** in the Pulls tab opens the focused pull request and pushes an entry if it
   opens a different row.
-  **Space** on a pull request’s change line toggles its changed files and keeps the
-  current preview, focus, and history.
-  On a file tree row, both keys toggle a folder or container file or show the next page
-  and leave history alone.
+  **Space** on a pull request toggles its changed files and keeps the current preview,
+  focus, and history. On a file tree row, both keys toggle a folder or container file or
+  show the next page and leave history alone.
   On a commit row, both keys select it again, replacing the entry.
-- **A pull request’s change line** is its row’s one child item.
-  Up, Down, `J`, and `K` walk the pull requests and expand nothing; Right on a row goes
-  to its change line and opens nothing; there Enter and Space open or close the files in
-  place, Right opens them or goes to the first, Left closes them or goes back to the
-  row, Up goes back to the row, and Down goes into the open files, or on to the next
-  row. On the row itself Space toggles nothing and is consumed, as every row collection’s
-  is, so the list does not scroll from under the focused row; Left goes to the stack’s
-  row it is under.
+- **A pull request** is one item of three lines and one stop: its change line is never
+  focused
+  ([A Click on the Toggle’s Line Toggles](#a-click-on-the-toggles-line-toggles)). Up,
+  Down, `J`, and `K` walk whole pull requests, past any open files, and expand nothing.
+  Every key acts on the item with focus, even after a poll or a reveal has moved the
+  list’s Tab stop to the open pull request.
+  Its changed files are a folder’s children: Right opens them, or, open, goes to the
+  first; Left closes them, or, closed, goes to the stack’s row it is under; and Space
+  opens or closes them in place, and is consumed, so the list does not scroll from under
+  the focused row. In its files, Left on a top-level row goes back to the pull request.
 - **A stack’s row** in the Pulls tab, grouped by stack, is a stop of its own that opens
   nothing: Enter, Space, Right, and Left open, close, enter, and leave it as a folder’s
   ([Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab)).
@@ -3232,6 +3535,11 @@ key ([Scopes and Collisions](#scopes-and-collisions)). A reserved letter passed 
 [Keyboard Shortcuts in docs/plugins.md](plugins.md#keyboard-shortcuts) has the API.
 
 ## Icons and Icon Buttons
+
+The [Icon Catalog](design-system-icons.md) lists every icon the product draws, by what
+it stands for, with its meaning, the one place it is defined, its ink, and its size, and
+says how to choose between similar ones; `tests/test_icon_catalog.py` holds it to the
+code.
 
 Icons come from one Lucide-derived set in `static/icons.js`, rendered as inline SVG that
 inherits `currentColor`. An icon never carries its own color.
@@ -3440,10 +3748,11 @@ A known canonical suffix matches declared compound tails, while an unknown raw e
 remains exact.
 
 Where a row stands for an exact extension, it carries that type’s icon and leaves the
-label plain. Aggregate category and family rows are text-only.
-The icon is what identifies a type everywhere else in the app, and tinting a whole
-column of labels makes the hues compete with the selected-state mark instead of helping
-anyone scan the list.
+label plain. Aggregate category and family rows are text-only; the heading of a family
+section names a category and leads with its icon
+([File-Type Category Icons](#file-type-category-icons)). The icon is what identifies a
+type everywhere else in the app, and tinting a whole column of labels makes the hues
+compete with the selected-state mark instead of helping anyone scan the list.
 
 ### Selection Kind Is Visible Before the Click
 
@@ -3484,14 +3793,14 @@ stop, because each is an independent control.
 
 ### Grouping the Files Tree
 
-**The Files tab’s filter row holds Group by and Show ignored; the three filters sit in
+**The Files tab’s filter row holds Group by; the three filters and Show ignored sit in
 the drawer behind the chevron.** Group by splits the tree into sections and removes
 nothing, so it needs no drawer and no badge.
-Show ignored follows it: its tick states its own direction, so the row shows its state
-and the badge need not.
-A Git revision has no gitignored entries, so its row has no Show ignored.
-The drawer holds Modified within, File type, and Minimum file size, and the chevron’s
-badge counts the ones set.
+The drawer holds Modified within, File type, and Minimum file size, then Show ignored,
+whose tick states its own direction.
+The chevron’s badge counts the ones set, Show ignored turned off among them, since the
+closed drawer hides it.
+A Git revision has no gitignored entries, so its drawer has no Show ignored.
 Clear sits beside the chevron and shows while any filter is set, Show ignored included;
 it resets them all, Show ignored back on, and keeps the grouping.
 
@@ -3511,11 +3820,22 @@ it resets them all, Show ignored back on, and keeps the grouping.
   tree of the group’s members after the filters.
   The heading starts on the tree’s row inset, as a menu’s starts on its rows’, and names
   the section and its tree; sections after the first draw the divider above themselves.
-  A folder opened inside a section lists only that group’s members.
+  A file type section’s heading starts with its category’s icon
+  ([File-Type Category Icons](#file-type-category-icons)); an age band names no category
+  and has none. A folder opened inside a section lists only that group’s members.
   A section is a fixed heading that never closes, where the Pulls tab’s
   [stack group](#stack-groups-in-the-pulls-tab) is a row that opens and closes, and the
   difference is deliberate: a grouping splits the whole tree into sections, while a
   stack gathers some rows of one list like a folder.
+- **Age inks.** By age, a section’s name takes its band’s [file age](#file-age) ink.
+  Each elapsed band lies inside one age tier, so its name reads in the ink of every file
+  age it holds and of Modified within’s row for that window; Older takes the oldest
+  tier’s, and Live the Live ink, as Live’s row and badge do.
+  Only the ink changes: the heading keeps its size, weight, caps, and tracking, and its
+  tally stays muted, so the name is a band’s name and not an age.
+  The section carries the route’s group id, so the ink is paint, keyed by that id in
+  `static/styles.css`; `tests/test_tree_groups.py` holds the mapping to Modified
+  within’s and to `AGE_TIERS`. File type sections keep the heading’s own ink.
 - **One order.** Every surface that lists the file type groups lists them in one
   presentation order, Documentation first: the type filter’s Groups and sections, Group
   by, and File Overview’s type table and bars.
@@ -3574,11 +3894,12 @@ it resets them all, Show ignored back on, and keeps the grouping.
   and runs once they paint; started at once, it would discard them and begin again, and
   on a folder whose files keep changing each refresh would restart the wait.
 - **Width.** The row fits the default pane width at its widest, “No grouping” with Clear
-  and the badge showing, in the default font set.
-  The badge sits against the chevron to make that room; the measurements are beside
-  `.nav-filter-bar-end > .chip-badge` in `styles.css`. In a narrower pane, or in the
-  system font set, the row wraps: Show ignored moves down, then Clear and the chevron
-  ([Navigation Toolbars Wrap](#navigation-toolbars-wrap)).
+  and the badge showing, in both font sets; the measurements are beside
+  `.nav-filter-bar-end > .chip-badge` in `styles.css`. In a narrower pane the row wraps,
+  Clear and the chevron moving down together
+  ([Navigation Toolbars Wrap](#navigation-toolbars-wrap)). The open drawer wraps the
+  same way: at the default pane its three menus take its first line and Show ignored its
+  second.
 
 The server decides membership, order, and counts (`/api/tree?group_by=` and `?group=`,
 `metabrowser/tree_groups.py`), pinned by
@@ -3709,6 +4030,66 @@ correspondence, the separation floor, and the tone.
 Adding a family GitHub has no color for starts with `--suggest`, which prints the widest
 free hue.
 
+### File-Type Category Icons
+
+**A file-type category is named one way wherever it appears: the category heading, gray,
+all caps, bold, and tracked, led by the category’s icon in the same gray.** The icon is
+the one its representative format draws, typically the category’s most important format:
+Documentation leads with Markdown’s icon.
+The heading draws it in its own ink, never the format’s color, because it names the
+category and not a format.
+A specific format, a family or an extension, keeps its own icon and its own color.
+
+- **Type.** The heading is the label register category headings already read in,
+  `--label-color`, `--label-font-size`, `--label-font-weight`, `--label-letter-spacing`,
+  and `--label-text-transform`; the icon changes none of it.
+- **Icon.** `.category-icon` in `styles.css`: `--icon-glyph` square, in `currentColor`,
+  with `--category-icon-gap` between it and the name.
+  A heading that starts on a row inset starts there with the icon, and the name follows.
+  In Details the icon stands in its rows’ icon box, so the heading’s icon and name start
+  where its family rows’ do.
+- **Where.** Every heading that names a category: a section of Group by’s By file type
+  ([Grouping the Files Tree](#grouping-the-files-tree)), each family section of the type
+  chooser ([Groups Or Dropdowns](#groups-or-dropdowns)), and each group of File
+  Overview’s Details table ([Aggregate Distributions](#aggregate-distributions)).
+
+| Category | Representative | Icon | Why |
+| --- | --- | --- | --- |
+| Documentation | Markdown | `doc` | Markdown is what a repository’s documentation is written in: READMEs and guides. |
+| Code | Python | `alignLeft` | Python leads the registry’s Code families, and every Code family takes its shape. |
+| Data | JSON | `list` | JSON is a repository’s commonest data: configuration, manifests, and payloads; the tabular formats keep their own grid. |
+| Archives | Archives | `copy` | Archives has one family, which holds every archive format. |
+| Media | Images | `monitor` | Images are the media a repository holds most: screenshots, diagrams, and icons. |
+| Other | None | `file` | Other is mostly files the registry does not recognize, so the plain file shape stands for it; its one family, Log files, would misname the rest. |
+
+The table is `_REPRESENTATIVE_FAMILIES` in `file_type_filters.py`, and
+`tests/test_category_icons.py` holds this copy to it.
+The registry already draws each group’s families in one shape, the group’s `icon`,
+unless a family declares its own, so a category’s icon is that shape:
+`file_type_filters.py` refuses a representative that is not one of its group’s families
+or that declares an icon of its own, and the choice and the shape cannot disagree.
+Which format represents a category is presentation, as the display order is, so it lives
+beside the categories and not in the registry, whose groups the File Rollup Format
+fingerprints. The browser reads the icon as each group’s `icon` in
+`fileTypes.displayGroups`, and a grouped tree’s answer carries it on each type group
+(`/api/tree?group_by=type`, null for an age group), pinned by
+`tests/golden/cli-api-tree-groups.tryscript.md`, and
+`tests/dom/files-group-by-session.js` pins that each section carries it.
+`tests/dom/file-overview-session.js` and `tests/dom/filter-controls-behavior.js` pin
+that a Details heading and a menu heading lead with it.
+In Chrome, `tests/test_files_tab_chrome.py` measures the icon’s size, ink, and place in
+a menu’s headings and a section’s, and in a section’s after a refresh rewrites it, and
+`tests/test_overview_legend_hover_chrome.py` measures it in Details.
+
+Some places name a category without a heading, and keep their own style:
+
+- The type chooser’s Groups section lists the categories as rows to pick, text-only as
+  every aggregate row in it is ([Groups Or Dropdowns](#groups-or-dropdowns)): a row is a
+  value, not a heading.
+- The File type trigger names a selected category as its value, in the trigger’s words.
+- The Overview legend’s Other is the families it does not name, not the Other category,
+  and the legend and tracks name families, so they take the families’ colors.
+
 ### Aggregate Distributions
 
 An aggregate distribution relates exact categories through one selected metric column in
@@ -3742,11 +4123,12 @@ A caption naming the population labels the legend and the table for assistive te
 only. Legend items wrap whole.
 The table sits behind a **Details** toggle, the same trigger and bold label as an **N
 more** row, which starts closed on each mount and keeps its state through repaints.
-Every row names its category and reports absolute values and percentages; fills are not
-tab stops, carry no duplicate tooltips, and are hidden from the accessibility tree, and
-no label relies on color or sits on a fill.
-Membership comes from the File Rollup Format type definitions that rollups, filters, and
-Treemap colors also use, by the format’s
+Each group of rows is headed by its category, led by the category’s icon
+([File-Type Category Icons](#file-type-category-icons)). Every row names its category
+and reports absolute values and percentages; fills are not tab stops, carry no duplicate
+tooltips, and are hidden from the accessibility tree, and no label relies on color or
+sits on a fill. Membership comes from the File Rollup Format type definitions that
+rollups, filters, and Treemap colors also use, by the format’s
 [Logical Extension](project/architecture/file-rollup-format/file-rollup-format.md#logical-extension)
 rule, and the row grammar, from family parents to **N more**, is in
 `builtin_plugins/folder/file-type-summary-model.js` beside
@@ -4071,6 +4453,44 @@ Source view, Commits, and the root at Treemap.
 It also checks that the pane never blanks on the way, that the tooltip survives the
 click, and that the name is called “Home: <folder>”.
 
+### Hiding the Navigation Pane
+
+**A chevron on the main page’s left edge hides the navigation pane, and so does the
+Backslash key.** The page slides left over the pane to fill the window, and the chevron
+turns to point right; a second press slides the page back and shows the pane as it was.
+Shift-Backslash, which types `|` on a US keyboard, does the same, as Shift changes no
+key ([Keyboard Shortcuts](#keyboard-shortcuts)); the key is read by the character it
+types, so the key in its place on a UK or German keyboard, which types `#`, is not it.
+
+The chevron is the shared disclosure chevron in an icon button
+([Every Icon-Only Control Is the Same Control](#every-icon-only-control-is-the-same-control)),
+muted at rest with the hover surface, pointing left at the pane it hides.
+It sits in the main frame, just right of the pane’s shadow, centered on the shortcut
+strip’s row, so it reads as the strip’s neighbour while belonging to the page; it stays
+there, and on that row, while the pane is hidden.
+It has no plate of its own, so the page’s edge and the pane’s shadow show through it;
+only the hover surface fills it.
+Holding Shift badges it with Backslash, over its inline end, as every icon button’s
+badge sits.
+
+The pane does not shrink.
+Hidden, it leaves the layout, keeps its width under the frame, and is `inert`, so no Tab
+stop or key reaches a control in it: `0`, the main tabs’ letters, and the filters’
+numbers do nothing until it is shown, and focus in it moves to the main page.
+Backslash stays live on the chevron, and closes a filter menu the pane held open as it
+hides it. The frame keeps its full width for the whole slide and reflows once, at the
+start of a hide or the end of a show, so a long document is laid out once per toggle;
+the slide is a transform on the frame, which already carries one for KPress’s floating
+UI. It takes `--motion-reveal`’s time and easing, and a press during a slide turns it
+back from where the frame is, for the share of the time that distance is.
+Under reduced motion the page moves at once.
+The state belongs to the page and is not kept across a reload.
+
+`static/nav-collapse.js` owns it, and `static/shell-keymap.js` binds the key.
+`tests/dom/key-reveal-session.js`, pinned by `cli-ui-nav-collapse.tryscript.md`, runs
+both on the production code; `tests/test_nav_collapse_chrome.py` measures the chevron’s
+place and the slide in headless Chrome with real keys.
+
 ### Navigation Reveals the Item
 
 Navigating to an item by any route shows it in the navigation pane.
@@ -4188,7 +4608,8 @@ The Files row and the Pulls filters are one primitive, `.nav-toolbar-row` in
   controls do not fit, and never adds space when they do.
 - **Where it breaks.** Between controls, in their order, each line as full as it can be,
   so a control moves down only when it must.
-  The leading controls stay first.
+  The leading controls stay first: on a served mirror or checkout, the
+  [ref selector](#the-ref-selector) leads the Files row, before Group by.
   The trailing group, which takes the line’s end with an auto margin, moves down whole
   and stays right-aligned: Clear and the chevron on Files, Reload on Pulls.
   The Commits tally breaks between its phrases, “12,345 commits”, then “begun 1y ago”,
@@ -4202,11 +4623,12 @@ The Files row and the Pulls filters are one primitive, `.nav-toolbar-row` in
   That is also the gap between controls along a line and above the first line and below
   the last, so a wrapped toolbar is a grid of one spacing and reads as one toolbar, and
   it grows by a line and a gap for each line it adds.
-  Every control is one line tall: a shorter one, Show ignored’s checkbox, is centered in
-  a line’s height, and a taller one, a `.btn` such as Reload, is held to it, so no line
-  is cramped and none stands taller than the rest.
-  An open drawer’s menus wrap on the same gap, and a closed drawer adds nothing under
-  the lines. The Commits tally is text, so its lines are its line height apart,
+  Every control is one line tall: a shorter one is centered in a line’s height, and a
+  taller one, a `.btn` such as Reload, is held to it, so no line is cramped and none
+  stands taller than the rest.
+  An open drawer’s controls wrap on the same gap and are one line tall too, Show
+  ignored’s checkbox centered in its line, and a closed drawer adds nothing under the
+  lines. The Commits tally is text, so its lines are its line height apart,
   `--nav-metadata-line-height`, as any metadata line’s are; a tab is its own line, so
   the tab bar’s lines are a tab’s height apart.
 - **A segmented group.** One that its whole line cannot hold joined takes the cluster
@@ -4262,6 +4684,23 @@ in the Commits slot, and 12px muted text with no space above it under the Pulls 
   of its own, the line stands in the slot and its text sits as far from either rule as
   it does under the Files and Pulls toolbars.
   Consecutive lines are one band: padding above the first, below the last, and one rule.
+- **Placement.** Every line stands in the fixed chrome over its panel, never in the
+  panel’s scroller, so it stays in view while the tree or the list scrolls, and its rule
+  runs the pane’s full width, as the tab bar’s and the toolbar’s do.
+  On Commits the line is the toolbar slot; on Files and Pulls the lines are a band of
+  their own directly under the toolbar, `.nav-metadata-band`, which the shell draws
+  empty under each toolbar, the tab fills, and which shows only while its toolbar does.
+  The scroller reserves its scrollbar’s gutter (`scrollbar-gutter: stable`) and clips
+  what it holds at its padding box, so a line inside it ended its rule a gutter short of
+  the pane’s edge, 11 px with classic scrollbars, at every pane width.
+  While the panel says it could not load, the band gives way to that alert, as the lines
+  went with it when they were the panel’s; they show again with the next list.
+  The cost, accepted: a line that comes or goes while the reader has scrolled, such as a
+  recency window’s note that its list may be out of date, moves the scroller’s top and
+  the rows with it, by a line’s height.
+  In the scroller, scroll anchoring held the rows still.
+  Holding them from the band takes a script that watches the band’s height on every
+  page, which the move out of the scroller did not add to the shell’s startup scripts.
 - **Spacing.** `--nav-metadata-gap` between a line’s items and between the words of an
   item built of spans, about a word space and a half.
 - **Pending.** A figure still being counted is the pending tally inside the span its
@@ -4270,8 +4709,8 @@ in the Commits slot, and 12px muted text with no space above it under the Pulls 
 - **The Files totals.** The tracked count is the first line and the gitignored count a
   line of its own under it.
   Each is one line in every pane: in a pane too narrow for it, its size is cut short at
-  its end, “+ 7,906 ignored (133.4 …” at the 180 px minimum, never wrapped, and its
-  whole phrase is its tooltip, which the shell shows only while it is cut
+  its end, as “+ 10,000 ignored (1001.4 MB)” is at the 180 px minimum, never wrapped,
+  and its whole phrase is its tooltip, which the shell shows only while it is cut
   ([Tooltips Add Information](#tooltips-add-information)). So the band’s height is
   decided by whether it has the ignored line, never by the figures’ lengths.
   The shell inlines the root’s totals with its first rows (the root’s own entry carries
@@ -4323,7 +4762,10 @@ at one wide enough for every text: the Files totals settled, pending, counting,
 filtered, with the outside-filter note, and with the stale recent-files note; the
 Commits tally settled, as the server ships it pending, and failed; and the Pulls lines
 loading, updated, unreachable, signed out, and with no gh; and the Pulls count cut short
-in a narrow pane.
+in a narrow pane. It also holds every section rule on Files, Commits, and Pulls, the tab
+bar’s, the toolbar’s, and the band’s, to the pane’s full width, at the narrowest pane,
+the default, and a wide one, with the content under them overflowing its scroller and
+not.
 
 ### Section Headings
 
@@ -4527,7 +4969,7 @@ A pull request’s changed files under its row keep the tooltips the tree gives 
 its full path when its row shows only its name, “not in this comparison”, the name it
 was renamed from, and what a folder’s sums leave out, the counts alone.
 
-**Restating is not adding.** A “Show ignored” check, in the Files filter row and a
+**Restating is not adding.** A “Show ignored” check, in the Files filter drawer and a
 folder’s rollup, has no tooltip, as its label says it; nor has the treemap’s parent
 button, which shows the folder it opens; nor a merge’s arrow, beside the two names it
 would restate; and a crumb’s tooltip is its own name, cut short, not the path the trail
@@ -4693,22 +5135,51 @@ A menu renderer supplies menu roles and roving focus; a dialog renderer supplies
 label relationship and modal state; a tooltip renderer never accepts interactive
 children. Visually similar surfaces do not borrow the wrong role merely to share CSS.
 
-### The Ref Selector’s Working Tree Row
+### The Ref Selector
 
 The ref selector is one control for a served mirror and a served checkout: a
-`.chip-menu-trigger` under the navigation header that names what is shown, over a
-`.menu` panel with a list chooser, a filter box, and one row for each ref
-(`static/source-ref-selector.js`). A checkout adds three things, and each uses a
-primitive the control already had:
+`.chip-menu-trigger` that names what the Files tab shows, over a `.menu` panel with a
+list chooser, a filter box, and one row for each ref (`static/source-ref-selector.js`).
+
+- **It leads the Files tab’s toolbar,** before Group by, because it chooses what that
+  tab shows and nothing else, and it wraps with the row as any control there does
+  ([Navigation Toolbars Wrap](#navigation-toolbars-wrap)). The Pulls tab does not depend
+  on it, and a checkout’s Commits tab shows the checkout’s history whichever revision
+  Files shows, so neither tab carries it
+  ([Source Sessions and Pins](project/architecture/arch-source-sessions-and-pins.md)).
+  Its list opens under the toolbar and across the pane, not under the button, because a
+  ref’s name, its commit, and the commit’s age need the room.
+
+- **A ref’s row is its name, its commit, and its age.** The name is its
+  [chip](#branch-chips), the commit is its short ID in the commit-ID face
+  (`.git-commit-sha`), muted, and the age is `MetabrowserFormatters.age` in the compact
+  style, in its tier’s ink, with the commit’s time as its tooltip ([Age](#age)). A tag’s
+  age is its commit’s. The ID sits one step below the text beside it, as it does in a
+  history, and since this list is at the small size, the ramp’s last step before the
+  micro marks, it takes the ratio a chip takes to its text.
+  The ages end the rows in one column, so the IDs line up.
+  A pin that names no ref puts “Commit:” and the same face on the button.
+
+- **A commit reads the same wherever a line names it.** The navigation heading, the
+  button, the rows, and a mirror’s offer of its ref’s newer commit all show the first
+  `SHORT_COMMIT_CHARS` characters of its ID, from one formatter:
+  `MetabrowserFormatters.shortCommit` on the page and `short_commit` in
+  `root_identity.py` on the server, which `tests/test_short_commit.py` holds equal.
+  A Commits tab’s row keeps Git’s own abbreviation, which grows in a large repository so
+  that it stays unique.
+
+A checkout adds three things, and each uses a primitive the control already had:
 
 - **The working tree is a row, above the lists, and not in them.** It is a `.menu-item`
   like a ref’s (`.source-ref-selector-working-tree`), ruled off from the list chooser
   below it, because it is the one choice that is not a ref: the filter and the list
   shown do not apply to it, so it stays where it is whichever list is open.
-  Its name is “Working tree”.
-  Where a ref’s row has its commit, this one says what it is in the same muted ink,
-  “Live local files, on topic”, so the two kinds of row read as one column of names and
-  one of what each name is.
+  Its name is “Working tree”, and where a ref’s row has its commit and age, this one has
+  the folder’s path as the page names the folder, with the home directory as `~`, in the
+  same muted ink, and the folder’s own name in the row’s ink.
+  It has no age, since it is the files on disk now.
+  Where the pane is too narrow, the path before the folder’s name gives way, and the
+  folder’s name stays whole.
 
 - **The served choice is marked one way.** A ref’s row and the working-tree row both
   carry `aria-current` and the medium weight when they are what the server shows, and
@@ -4718,29 +5189,34 @@ primitive the control already had:
 
 - **The button says “Working tree” in words,** with no chip, since a chip is a ref.
   On a revision it is the ref’s chip, as on a mirror, and the navigation heading carries
-  the ref and the short commit beside the folder’s name, so a revision’s page is told
-  from the working tree’s in two places before the list is opened.
+  the ref and the short commit, in the commit-ID face, beside the folder’s name, so a
+  revision’s page is told from the working tree’s in two places before the list is
+  opened.
 
-- **A page the server has moved on from says so beside the button,** in the text ink
-  with one `.btn`, “Reload” (`.source-ref-selector-stale`): the offer a mirror’s
-  freshness row makes at the foot of the pane.
-  It is the one state in which the selector’s row grows, to a second line in the default
-  pane, and it appears only after another tab has switched the server.
+- **A page the server has moved on from says so at the foot of the pane,** in the
+  freshness row a mirror offers its reload in, with one `.btn`, “Reload”
+  (`.source-ref-selector-stale`). Every tab shows it, not only Files: the Pulls tab’s
+  requests and a comparison’s are refused as the Files tab’s are, and the button is in
+  the Files toolbar, which the other tabs hide.
+  A checkout’s Commits tab is answered whichever revision is served (`SourcePinGuard` in
+  `source_routes.py`). It appears only after another tab has switched the server.
 
-- **The row keeps its box from first paint.** The module arrives after the tree’s first
-  rows, so a checkout’s server draws the row with the button it will have, and the
-  module adopts that button and never swaps it, so focus put on it early stays
-  ([Regions Keep Their Boxes](#regions-keep-their-boxes)). Hidden until the module
-  mounted, the row pushed the filter bar and every tree row down by its own height.
-  `tests/test_checkout_ref_selector_chrome.py` records the row’s height and the first
-  tree row’s place in every frame of the working tree’s page and of a revision’s, and
-  each has one value; `tests/test_files_totals_stable_chrome.py` holds the same for
-  every box of the Files navigation on a folder that holds a `.git`.
+- **The selector keeps its box from first paint.** The module arrives after the tree’s
+  first rows, so the server draws the selector in the Files toolbar with the button it
+  will have, and the module adopts that button and never swaps it, so focus put on it
+  early stays ([Regions Keep Their Boxes](#regions-keep-their-boxes)). The toolbar is
+  drawn again whenever a filter or a tally changes, and it carries the selector over
+  rather than drawing it, so an open list keeps what was typed and the control that had
+  focus keeps it. `tests/test_checkout_ref_selector_chrome.py` records the selector’s
+  height and the first tree row’s place in every frame of the working tree’s page and of
+  a revision’s, and each has one value; `tests/test_files_totals_stable_chrome.py` holds
+  the same for every box of the Files navigation on a folder that holds a `.git`.
 
 What each state shows is pinned by
 `tests/golden/cli-ui-source-ref-selector.tryscript.md`, and
 `tests/test_checkout_ref_selector_chrome.py` measures in headless Chrome that the panel
-stays inside the navigation pane with no row wider than it.
+stays inside the navigation pane with no row wider than it, that every ref’s ID is in
+the commit-ID face with an age, and that the folder’s name is whole.
 
 ### Groups in a Menu
 
@@ -4750,7 +5226,7 @@ and a plugin’s use the same markup:
 
 ```html
 <div class="menu-group" role="group" aria-labelledby="types-section-1">
-  <div class="group-heading" id="types-section-1">Code</div>
+  <div class="group-heading" id="types-section-1"><svg class="category-icon">…</svg>Code</div>
   <!-- the group's .menu-item rows -->
 </div>
 ```
@@ -4761,6 +5237,8 @@ and a plugin’s use the same markup:
   labelled `.menu-row`, and `.menu-version` start on.
   It is not indented to the rows’ labels: a heading on the label column reads as a row
   of its group rather than its name.
+  A heading that names a file-type category starts there with the category’s icon, and
+  its name follows ([File-Type Category Icons](#file-type-category-icons)).
 - **Separator.** A `.menu-group` draws its own divider as its top edge, in the
   `.menu-separator` geometry, unless it is the menu’s first child, where the menu’s edge
   already sets it off, or follows a `.menu-separator`, which already draws the rule.
@@ -4779,10 +5257,10 @@ and a plugin’s use the same markup:
   A menu with two or more groups names each one, as above.
 
 `tests/test_files_tab_chrome.py` and the stack part of
-`tests/test_github_pull_header_chrome.py` measure in Chrome that each heading’s text
-starts on its rows’ inset and names its group or its menu;
-`tests/test_browser_filter_ui.py` pins that the row, title, labelled row, foot, and
-heading all read the one token.
+`tests/test_github_pull_header_chrome.py` measure in Chrome that each heading starts on
+its rows’ inset, with its icon where it names a category, and names its group or its
+menu; `tests/test_browser_filter_ui.py` pins that the row, title, labelled row, foot,
+and heading all read the one token.
 
 ### Heading Tallies
 

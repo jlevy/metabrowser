@@ -46,6 +46,7 @@ const context = {
   document,
   location: { pathname: "/view/", assign() {} },
   metabrowser: {
+    formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
     mountRefCopies: () => () => {},
     refChip: (name) => element(document, "span", { class: "ref-chip" }, name),
   },
@@ -65,7 +66,9 @@ const context = {
 context.window = context;
 context.globalThis = context;
 vm.createContext(context);
-for (const name of ["filter-controls.js", "source-ref-selector.js"]) {
+// formatters.js gives each row's commit its short ID and age, as the shell's startup
+// scripts do.
+for (const name of ["formatters.js", "filter-controls.js", "source-ref-selector.js"]) {
   vm.runInContext(fs.readFileSync(path.join(staticDir, name), "utf8"), context, {
     filename: path.join(staticDir, name),
   });

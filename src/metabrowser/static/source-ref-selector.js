@@ -16,12 +16,20 @@
 // and by the listing:
 //
 // - a Working tree row above the refs, the live files on disk, which is what a folder
-//   opens on and the only choice that is not a ref. The checked-out branch is a ref like
-//   any other and shows its last commit, so it is marked "checked out", not "current";
+//   opens on and the only choice that is not a ref. It names the folder by its path, and
+//   has no commit or age: what is on disk is not one commit. The checked-out branch is a
+//   ref like any other and shows its last commit, so it is marked "checked out", not
+//   "current";
 // - a third list, Remotes, its remote-tracking branches, beside its own branches and
 //   its tags;
 // - an offer to reload when the server comes to serve something else, which a mirror's
 //   freshness row makes and a checkout's page has no such row to make.
+//
+// The selector chooses what the Files tab shows and nothing else, so it leads that tab's
+// toolbar row, beside Group by, where the server draws its button (server.py); the Pulls
+// and Commits tabs do not follow it. Each listed ref shows its commit as the history
+// does, Git's short ID in the commit-ID face, and the commit's age by the shared
+// formatter (docs/design-system.md, "Age").
 //
 // Every decision lives here without a DOM: `describe` turns the selector's state into
 // what it shows, and `createSelector` owns loading, filtering, stale answers, and the
@@ -90,7 +98,8 @@
     if (pull !== null) {
       return { kind: "Pull request", name: `#${pull[1]}` };
     }
-    return { kind: "Commit", name: shown.pin.slice(0, 12) };
+    // As the navigation heading and every row name a commit (`shortCommit`).
+    return { kind: "Commit", name: window.MetabrowserFormatters.shortCommit(shown.pin) };
   }
 
   /**
@@ -132,7 +141,8 @@
         : listing.refs.map((row) => ({
             name: row.name,
             ref: row.ref,
-            commit: row.commit.slice(0, 12),
+            commit: window.MetabrowserFormatters.shortCommit(row.commit),
+            committedAt: row.committed_at,
             default: row.default,
             checkedOut: row.checked_out === true,
             current: row.current,
@@ -150,26 +160,31 @@
       note = `Showing ${listing.refs.length} of ${listing.total} ${plural}; filter to narrow.`;
     }
     // The working tree is a checkout's alone, and is no ref: it is listed whatever the
-    // list and the filter show. Until the first listing says whether it is served, the
-    // page does: a checkout's page with no pin shows it.
+    // list and the filter show, named by the folder's path. Until the first listing says
+    // whether it is served, the page does: a checkout's page with no pin shows it. The
+    // branch it is on is not repeated here: the Branches list marks it "checked out".
     const tree = listing?.working_tree ?? null;
+    const location = tree?.location ?? "";
+    // The folder's own name, which the row keeps whole: the path ends with it, in the
+    // platform's separator, except at the home directory, whose path is `~` alone.
+    const name = tree?.name ?? "";
+    const cut = name !== "" && location.endsWith(name) ? location.length - name.length : 0;
     /** @type {MetabrowserSourceRefSelectorModel["workingTree"]} */
     const workingTree = !checkout
       ? null
       : {
           current: tree !== null ? tree.current : state.shown === null,
-          detail:
-            tree === null
-              ? "Live local files"
-              : tree.head_name !== null
-                ? `Live local files, on ${tree.head_name}`
-                : "Live local files, on no branch",
+          location,
+          directory: location.slice(0, cut),
+          base: location.slice(cut),
         };
     return {
       button: label.name === "" ? label.kind : `${label.kind}: ${label.name}`,
       // A pull request's number, which the button sets in its own weight
       // (docs/design-system.md, "Pull Request Numbers").
       pullNumber: label.kind === "Pull request" ? label.name : null,
+      // A bare commit's ID, which the button sets in the commit-ID face.
+      commitId: label.kind === "Commit" ? label.name : null,
       selectedRef:
         label.kind === "Branch" || label.kind === "Tag" || label.kind === "Remote branch"
           ? {
@@ -446,6 +461,16 @@
       if (view?.startsWith(VIEW_PREFIX)) {
         body.view = view;
       }
+      // From here the server may serve the other subject while this page is still here,
+      // and would refuse what it asks as a page left behind: its requests wait for the
+      // answer, and go with the page when it goes (static/source-pin-guard.js).
+      /** @type {(gone: boolean) => void} */
+      let decided = () => {};
+      deps.hold?.(
+        new Promise((resolve) => {
+          decided = resolve;
+        }),
+      );
       try {
         const response = await deps.request("POST", PIN_ROUTE, body);
         if (disposed) {
@@ -474,11 +499,14 @@
           deps.navigate(
             typeof href === "string" && href.startsWith(VIEW_PREFIX) ? href : VIEW_PREFIX,
           );
+          decided(true);
           return;
         }
         state.error = switchFailure(response.status, response.body, checkout);
       } catch {
         state.error = "The switch request failed.";
+      } finally {
+        decided(false);
       }
       state.switching = false;
       render();
@@ -567,10 +595,17 @@
         number.className = "source-ref-selector-pull-number";
         number.textContent = model.pullNumber;
         parts.label.append(model.button.slice(0, -model.pullNumber.length), number);
+      } else if (model.commitId !== null) {
+        // A commit's ID is set in the commit-ID face wherever it appears
+        // (docs/design-system.md, "Git Commit Summary").
+        const id = document.createElement("span");
+        id.className = "git-commit-sha";
+        id.textContent = model.commitId;
+        parts.label.append(model.button.slice(0, -model.commitId.length), id);
       } else {
         parts.label.textContent = model.button;
       }
-      parts.releaseCopies = window.metabrowser.mountRefCopies(parts.toggle, parts.root);
+      parts.releaseCopies = window.metabrowser.mountRefCopies(parts.toggle, parts.buttonHost);
     }
     parts.toggle.setAttribute("aria-expanded", String(model.open));
     parts.panel.hidden = !model.open;
@@ -583,11 +618,14 @@
       tab.setAttribute("aria-checked", String(kind === model.kind));
       tab.tabIndex = kind === model.kind ? 0 : -1;
     }
-    // A checkout's working tree, above its refs: the one choice that is not a ref.
+    // A checkout's working tree, above its refs: the one choice that is not a ref, named
+    // by the folder's path. The folder's own name, the path's last part, is kept whole,
+    // and what is before it shortens with an ellipsis.
     parts.workingTree.hidden = model.workingTree === null;
     if (model.workingTree !== null) {
       parts.workingTree.disabled = model.switching;
-      parts.workingTreeDetail.textContent = model.workingTree.detail;
+      parts.workingTreeDirectory.textContent = model.workingTree.directory;
+      parts.workingTreeBase.textContent = model.workingTree.base;
       if (model.workingTree.current) {
         parts.workingTree.setAttribute("aria-current", "true");
       } else {
@@ -632,10 +670,22 @@
         badge.textContent = row.default ? "default" : "checked out";
         button.append(badge);
       }
+      // The commit as the history shows one: Git's short ID in the commit-ID face, then
+      // its age, in the compact style of navigation, with the exact time as its tooltip
+      // (docs/design-system.md, "Age"). A date Git did not give has no age.
       const commit = document.createElement("span");
-      commit.className = "source-ref-selector-commit";
+      commit.className = "git-commit-sha source-ref-selector-commit";
       commit.textContent = row.commit;
-      button.append(commit);
+      const age = document.createElement("span");
+      if (row.committedAt !== null) {
+        const shown = window.MetabrowserFormatters.age(row.committedAt);
+        age.className = `source-ref-selector-age ${shown.className}`;
+        age.textContent = shown.label;
+        age.dataset.tipText = window.metabrowser.formatTimestamp(row.committedAt);
+      } else {
+        age.className = "source-ref-selector-age";
+      }
+      button.append(commit, age);
       button.addEventListener("click", () => choose(row.ref));
       // The row's name is cut short with an ellipsis when it is wider than the list;
       // the tooltip then carries the whole name. pointerenter comes before the
@@ -665,9 +715,9 @@
    * @returns {MetabrowserSourceRefSelectorParts}
    */
   function build(element, checkout) {
-    // A checkout's server draws the button with the row, so the row keeps its box from
-    // first paint. That button is adopted, not replaced: focus a reader put on it before
-    // this module arrived stays where it is. A mirror's row arrives empty.
+    // The server draws the button in the Files toolbar's row, so the row keeps its layout
+    // from first paint. That button is adopted, not replaced: focus a reader put on it
+    // before this module arrived stays where it is.
     const drawn = /** @type {HTMLButtonElement | null} */ (
       element.querySelector("button.source-ref-selector-toggle")
     );
@@ -689,17 +739,24 @@
     if (drawn === null) {
       toggle.append(label, caret);
     }
-    // What a checkout's page says when the server comes to show something else.
-    const stale = document.createElement("span");
-    stale.className = "source-ref-selector-stale";
+    // What a checkout's page says when the server comes to show something else, as a
+    // freshness row: at the foot of the navigation pane, where a mirror's makes the same
+    // offer, so every tab shows it. The Pulls tab's requests and a comparison's are
+    // refused as the Files tab's are, and this button is in the Files toolbar, which the
+    // other tabs hide.
+    const stale = document.createElement("div");
+    stale.className = "source-freshness source-ref-selector-stale";
     stale.setAttribute("role", "status");
     stale.hidden = true;
+    const staleOffer = document.createElement("span");
+    staleOffer.className = "source-freshness-offer";
     const staleText = document.createElement("span");
     const reload = document.createElement("button");
     reload.type = "button";
     reload.className = "btn source-ref-selector-reload";
     reload.textContent = "Reload";
-    stale.append(staleText, reload);
+    staleOffer.append(staleText, reload);
+    stale.append(staleOffer);
     const panel = document.createElement("div");
     panel.className = "source-ref-selector-panel menu";
     panel.setAttribute("role", "dialog");
@@ -737,26 +794,56 @@
     const error = document.createElement("p");
     error.className = "source-ref-selector-error";
     error.setAttribute("role", "alert");
-    // A menu row like a ref's, with what it is in place of a commit.
+    // A menu row like a ref's, with the folder's path in place of a commit, in the path
+    // markup the shell names a folder by (`.path`, its last part `.path-base`).
     const workingTree = document.createElement("button");
     workingTree.type = "button";
     workingTree.className = "menu-item source-ref-selector-working-tree";
     workingTree.hidden = true;
     const workingTreeName = document.createElement("span");
-    workingTreeName.className = "source-ref-selector-name";
+    workingTreeName.className = "source-ref-selector-working-tree-name";
     workingTreeName.textContent = WORKING_TREE;
-    const workingTreeDetail = document.createElement("span");
-    workingTreeDetail.className = "source-ref-selector-commit";
-    workingTree.append(workingTreeName, workingTreeDetail);
+    const workingTreeLocation = document.createElement("span");
+    workingTreeLocation.className = "path source-ref-selector-location";
+    const workingTreeDirectory = document.createElement("span");
+    workingTreeDirectory.className = "source-ref-selector-location-directory";
+    const workingTreeBase = document.createElement("span");
+    workingTreeBase.className = "path-base";
+    workingTreeLocation.append(workingTreeDirectory, workingTreeBase);
+    workingTree.append(workingTreeName, workingTreeLocation);
+    // The path is shortened when the list is narrower than it; the tooltip then carries
+    // all of it. pointerenter comes before the mouseenter the shell's tooltip listens for.
+    workingTree.addEventListener("pointerenter", () => {
+      if (workingTreeDirectory.scrollWidth > workingTreeDirectory.clientWidth) {
+        workingTree.dataset.tipText = workingTreeLocation.textContent ?? "";
+      } else {
+        delete workingTree.dataset.tipText;
+      }
+    });
     panel.append(workingTree, kinds, filter, list, note, error);
+    // The button's own box, which a ref chip's copy control is placed against, so that
+    // the list's containing block stays the toolbar and the list spans the pane. Drawn
+    // by the server around its button, and adopted with it.
+    const buttonHost =
+      /** @type {HTMLElement | null} */ (
+        toggle.parentElement?.closest(".source-ref-selector-button")
+      ) ?? document.createElement("span");
+    buttonHost.className = "source-ref-selector-button";
+    // The list is put in by `mount`, once its kinds are bound.
     if (drawn === null) {
-      element.replaceChildren(toggle, stale, panel);
+      buttonHost.append(toggle);
+      element.replaceChildren(buttonHost);
+    }
+    const foot = document.getElementById("index-progress");
+    if (foot) {
+      foot.after(stale);
     } else {
-      element.append(stale, panel);
+      element.append(stale);
     }
     element.hidden = false;
     return {
       root: element,
+      buttonHost,
       toggle,
       label,
       stale,
@@ -764,7 +851,8 @@
       reload,
       panel,
       workingTree,
-      workingTreeDetail,
+      workingTreeDirectory,
+      workingTreeBase,
       kinds,
       tabs,
       filter,
@@ -772,6 +860,64 @@
       note,
       error,
     };
+  }
+
+  /**
+   * Keep focus in the selector across the Files toolbar's refills. Browser only.
+   *
+   * The selector leads the toolbar's row, which app.js draws again whenever a filter or a
+   * tally changes, while the index warms up too (renderNavFilterBar). It carries this
+   * element over rather than drawing it, so the list stays open with what was typed, but
+   * the element is out of the page for that moment, and an element taken out loses focus.
+   * So the control that had it gets it back, unless the reader has since put focus
+   * somewhere else: elsewhere by a key, or anywhere by a press outside the selector.
+   * Focus events do not fire in a page that is not focused, a background window's or a
+   * headless test's, so a refill that finds nothing recorded asks *fallback*: an open
+   * list's filter box, since a key or a press that takes focus out of the selector closes
+   * the list.
+   *
+   * @param {HTMLElement} element
+   * @param {() => HTMLElement | null} fallback
+   * @param {AbortSignal} signal
+   * @returns {() => void} What stops it.
+   */
+  function keepFocusAcross(element, fallback, signal) {
+    const bar = element.closest("[data-nav-toolbar]");
+    if (bar === null) {
+      return () => {};
+    }
+    /** @type {HTMLElement | null} */
+    let focused = null;
+    element.addEventListener(
+      "focusin",
+      (event) => {
+        focused = /** @type {HTMLElement} */ (event.target);
+      },
+      { signal },
+    );
+    for (const type of ["focusin", "pointerdown"]) {
+      document.addEventListener(
+        type,
+        (event) => {
+          if (!element.contains(/** @type {Node | null} */ (event.target))) {
+            focused = null;
+          }
+        },
+        { signal, capture: true },
+      );
+    }
+    // The refill replaces the bar's children and puts this element back before the
+    // observer is told, so focus is back before the frame paints.
+    const refills = new MutationObserver(() => {
+      const active = document.activeElement;
+      if (active === null || active === document.body) {
+        (focused?.isConnected && element.contains(focused) ? focused : fallback())?.focus({
+          preventScroll: true,
+        });
+      }
+    });
+    refills.observe(bar, { childList: true });
+    return () => refills.disconnect();
   }
 
   /** The selector this page mounted, kept for the branch or tag key, which runs the
@@ -813,6 +959,7 @@
         render: (model) => paint(parts, model, choose),
         navigate: (href) => window.location.assign(href),
         currentView: () => window.location.pathname,
+        hold: (going) => window.MetabrowserSourcePinGuard?.hold(going),
       },
       { shown: window.METABROWSER_SOURCE_PIN ?? null, checkout },
     );
@@ -839,14 +986,32 @@
         parts.filter.focus();
       }
     };
+    // One popup at a time. The toolbar's filter menus close on a press outside the
+    // toolbar, and this button is in it, so opening the list closes an open filter menu
+    // the way a reader would, by its trigger.
+    const closeToolbarMenu = () => {
+      if (parts.panel.hidden) {
+        /** @type {HTMLElement | null | undefined} */ (
+          element
+            .closest("[data-nav-toolbar]")
+            ?.querySelector('.chip-menu[aria-expanded="true"] [data-chip-menu-toggle]')
+        )?.click();
+      }
+    };
     parts.toggle.addEventListener(
       "click",
       () => {
+        closeToolbarMenu();
         void mounted.toggle();
         focusOpenFilter();
       },
       { signal },
     );
+    // Bound before the list joins the toolbar, so the toolbar's own binding is the one that
+    // fits the kinds' joined group to its line. A binding made inside a toolbar fits the
+    // groups under it too (filter-controls.js#keepJoinedGroupsFitted), and two fitting one
+    // group each took the other's measuring for a change to fit again, without end: the
+    // page stopped answering when the list opened.
     const unbindKinds = chipControls().bind(parts.kinds, {
       onChange(key, value, select) {
         if (key === KIND_GROUP && select === "one") {
@@ -854,6 +1019,25 @@
         }
       },
     });
+    element.append(parts.panel);
+    // The toolbar's own chip controls are bound on the whole toolbar (app.js,
+    // initFilterBar), and would take a kind for a filter's value: a click or an arrow key
+    // on the kinds, which the binding above has handled, goes no further.
+    parts.kinds.addEventListener("click", (event) => event.stopPropagation(), { signal });
+    parts.kinds.addEventListener(
+      "keydown",
+      (event) => {
+        if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+          event.stopPropagation();
+        }
+      },
+      { signal },
+    );
+    const stopKeepingFocus = keepFocusAcross(
+      element,
+      () => (parts.panel.hidden ? null : parts.filter),
+      signal,
+    );
     parts.filter.addEventListener("input", () => mounted.setQuery(parts.filter.value), {
       signal,
     });
@@ -959,15 +1143,18 @@
       // except that it opens the list rather than toggling it.
       button: parts.toggle,
       activate() {
+        closeToolbarMenu();
         const opened = mounted.open();
         focusOpenFilter();
         return opened;
       },
       dispose() {
         listening.abort();
+        stopKeepingFocus();
         unbindKinds();
         mounted.dispose();
         parts.releaseCopies?.();
+        parts.stale.remove();
         element.replaceChildren();
         element.hidden = true;
         if (mountedSelector === handle) {

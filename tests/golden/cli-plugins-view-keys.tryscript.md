@@ -1,14 +1,17 @@
 ---
 sandbox: true
 path:
+  - ../fixtures/github-status
   - ../../.venv/bin
 env:
   TERM: "dumb"
   TZ: "UTC"
   METABROWSER_PLUGINS_DIRS: ""
   METABROWSER_LOG_LEVEL: "WARNING"
+  METABROWSER_OPEN_IN: "browser"
 patterns:
   PYDANTIC_URL: 'https://errors\.pydantic\.dev/\d+\.\d+/v/value_error'
+  FAKE_GH: '[^\s"]+/fixtures/github-status/gh'
 before: >-
   mkdir -p viewroot mdroot pair/alpha pair/beta stack/prnotes pulls/pullkey reserved/reskey override/steal &&
   printf 'mine\n' > viewroot/b.myk &&
@@ -29,7 +32,8 @@ every key the shell reserves ("Keyboard Shortcuts" in `docs/design-system.md`).
 `keymap.check_view_keys` checks a kind’s merged view list, which spans manifests: the
 first view in tab order keeps a shared key, and the view that loses it is still served.
 `--show` prints what the server serves, and `--doctor` reports each dropped key and
-exits 1.
+exits 1. The setup checks that end its report are elided (`...`);
+`cli-doctor.tryscript.md` pins them.
 
 The `before:` block writes six operator plugins, loaded with `--plugins-dir`:
 
@@ -66,6 +70,11 @@ The problem is on stderr.
 $ metab --doctor --plugins-dir pair >/dev/null
 metab --doctor: 1 problem(s):
   • plugin 'beta': view 'more' of kind 'myk' declares key 'm', but view 'main' (plugin 'alpha') already holds it; the view is served without a key
+github: ok: GitHub CLI is signed in to github.com as octo-reader.
+  gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
+  account: octo-reader (token from keyring)
+  scopes: gist, read:org, repo, workflow
+...
 ? 1
 ```
 
@@ -85,7 +94,32 @@ $ metab --doctor --json --plugins-dir pair 2>/dev/null
   "plugin_count": 13,
   "problems": [
     "plugin 'beta': view 'more' of kind 'myk' declares key 'm', but view 'main' (plugin 'alpha') already holds it; the view is served without a key"
-  ]
+  ],
+  "open_in": {
+    "value": "browser",
+    "source": "environment",
+    "present_browser": true,
+    "app": null
+  },
+  "github": {
+    "host": "github.com",
+    "state": "ok",
+    "message": "GitHub CLI is signed in to github.com as octo-reader.",
+    "fix": null,
+    "remedy": null,
+    "gh_path": "[FAKE_GH]",
+    "gh_version": "2.98.0",
+    "gh_minimum": "2.81.0",
+    "account": "octo-reader",
+    "token_source": "keyring",
+    "scopes": [
+      "gist",
+      "read:org",
+      "repo",
+      "workflow"
+    ]
+  },
+...
 }
 ? 1
 ```
@@ -100,7 +134,32 @@ $ metab --doctor --json --plugins-dir stack 2>/dev/null
 {
   "ok": true,
   "plugin_count": 12,
-  "problems": []
+  "problems": [],
+  "open_in": {
+    "value": "browser",
+    "source": "environment",
+    "present_browser": true,
+    "app": null
+  },
+  "github": {
+    "host": "github.com",
+    "state": "ok",
+    "message": "GitHub CLI is signed in to github.com as octo-reader.",
+    "fix": null,
+    "remedy": null,
+    "gh_path": "[FAKE_GH]",
+    "gh_version": "2.98.0",
+    "gh_minimum": "2.81.0",
+    "account": "octo-reader",
+    "token_source": "keyring",
+    "scopes": [
+      "gist",
+      "read:org",
+      "repo",
+      "workflow"
+    ]
+  },
+...
 }
 ? 0
 ```
@@ -117,7 +176,32 @@ $ metab --doctor --json --plugins-dir pulls 2>/dev/null
   "plugin_count": 11,
   "problems": [
     "[CWD]/pulls/pullkey/manifest.toml: 1 validation error for PluginManifest\nview.0.key\n  Value error, key 'P' is reserved for the shell's Pulls tab [type=value_error, input_value='P', input_type=str]\n    For further information visit [PYDANTIC_URL]"
-  ]
+  ],
+  "open_in": {
+    "value": "browser",
+    "source": "environment",
+    "present_browser": true,
+    "app": null
+  },
+  "github": {
+    "host": "github.com",
+    "state": "ok",
+    "message": "GitHub CLI is signed in to github.com as octo-reader.",
+    "fix": null,
+    "remedy": null,
+    "gh_path": "[FAKE_GH]",
+    "gh_version": "2.98.0",
+    "gh_minimum": "2.81.0",
+    "account": "octo-reader",
+    "token_source": "keyring",
+    "scopes": [
+      "gist",
+      "read:org",
+      "repo",
+      "workflow"
+    ]
+  },
+...
 }
 ? 1
 ```
@@ -133,7 +217,32 @@ $ metab --doctor --json --plugins-dir reserved 2>/dev/null
   "plugin_count": 11,
   "problems": [
     "[CWD]/reserved/reskey/manifest.toml: 1 validation error for PluginManifest\nview.0.key\n  Value error, key 'T' is reserved for the shell's Quick Search [type=value_error, input_value='T', input_type=str]\n    For further information visit [PYDANTIC_URL]"
-  ]
+  ],
+  "open_in": {
+    "value": "browser",
+    "source": "environment",
+    "present_browser": true,
+    "app": null
+  },
+  "github": {
+    "host": "github.com",
+    "state": "ok",
+    "message": "GitHub CLI is signed in to github.com as octo-reader.",
+    "fix": null,
+    "remedy": null,
+    "gh_path": "[FAKE_GH]",
+    "gh_version": "2.98.0",
+    "gh_minimum": "2.81.0",
+    "account": "octo-reader",
+    "token_source": "keyring",
+    "scopes": [
+      "gist",
+      "read:org",
+      "repo",
+      "workflow"
+    ]
+  },
+...
 }
 ? 1
 ```
@@ -162,6 +271,11 @@ The problem names the built-in `markdown` plugin, whose Source lost the key, and
 $ metab --doctor --plugins-dir override >/dev/null
 metab --doctor: 1 problem(s):
   • plugin 'markdown': view 'source' of kind 'markdown' declares key 's', but view 'rendered' (plugin 'steal') already holds it; the view is served without a key
+github: ok: GitHub CLI is signed in to github.com as octo-reader.
+  gh: [FAKE_GH] (version 2.98.0; needs 2.81.0 or later)
+  account: octo-reader (token from keyring)
+  scopes: gist, read:org, repo, workflow
+...
 ? 1
 ```
 

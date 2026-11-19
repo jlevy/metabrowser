@@ -14,7 +14,7 @@ macOS. Every other operation is a mode flag on the same command:
     metab https://github.com/owner/repo/blob/main/README.md --show README.md
     metab https://github.com/owner/repo/pull/1 --checkout ~/src/repo  # borrow, not clone
     metab --remote example-host --path /srv/shared-files  # SSH-tunnel a remote host
-    metab ./notes --present            # hand a folder, file, or GitHub URL to the macOS app
+    metab ./notes --present            # open a folder, file, or GitHub URL in the app or a browser
     metab --plugins                    # what's discovered?
     metab --plugin example             # one plugin's manifest
     metab --doctor                     # validate all plugins
@@ -56,6 +56,7 @@ from metabrowser.cli.walk_cli import (
     validate_min_size,
 )
 from metabrowser.errors import CLIError
+from metabrowser.open_in import OPEN_IN_CHOICES, OPEN_IN_ENV
 from metabrowser.server_utils import MAX_TCP_PORT
 from metabrowser.settings import DEFAULT_BROWSER_PORT
 
@@ -153,7 +154,7 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
     "plugins": frozenset({"plugins_dir", "as_json"}),
     "plugin": frozenset({"plugins_dir", "as_json"}),
     "doctor": frozenset({"plugins_dir", "as_json"}),
-    "present": frozenset({"path", "fmt", "dry_run", "app_bundle_id"}),
+    "present": frozenset({"path", "fmt", "dry_run", "app_bundle_id", "open_in"}),
     "recent": frozenset({"as_json"}),
     "recent-add": frozenset(),
     "recent-forget": frozenset(),
@@ -213,6 +214,7 @@ _OPTION_LABELS: dict[str, str] = {
     "ref": "--ref",
     "dry_run": "--dry-run",
     "app_bundle_id": "--app-bundle-id",
+    "open_in": "--open-in",
 }
 
 
@@ -223,6 +225,14 @@ def _version_callback(ctx: typer.Context, value: bool) -> None:
         # See metabrowser.build_version.
         typer.echo(display_version_line(ctx.info_name or "metab", __version__))
         raise typer.Exit()
+
+
+def _validate_open_in(value: str | None) -> str | None:
+    if value is not None and value not in OPEN_IN_CHOICES:
+        raise typer.BadParameter(
+            f"{value!r} is not one of {', '.join(OPEN_IN_CHOICES)}", param_hint="--open-in"
+        )
+    return value
 
 
 def _explicit_params(ctx: typer.Context) -> frozenset[str]:
@@ -641,7 +651,8 @@ def _metab(
     doctor: bool = typer.Option(
         False,
         "--doctor",
-        help="Validate every discovered plugin; exit non-zero on any problem.",
+        help="Validate every discovered plugin, exiting non-zero on any problem, and report "
+        "GitHub CLI's path, version, account, and scopes.",
         rich_help_panel=_PANEL_MODES,
     ),
     present: bool = typer.Option(
@@ -904,8 +915,8 @@ def _metab(
     dry_run: bool = typer.Option(
         False,
         "--dry-run",
-        help="Resolve ROOT and print what --present would hand the app, without looking "
-        "for the app or sending anything.",
+        help="Resolve ROOT and print where --present would open it and why, looking the "
+        "app up but sending nothing and starting no server.",
         rich_help_panel=_PANEL_PRESENT,
     ),
     app_bundle_id: str | None = typer.Option(
@@ -914,6 +925,18 @@ def _metab(
         metavar="ID",
         help="The app to hand ROOT to, by bundle identifier, instead of the release build "
         "and then the development build. Env: METABROWSER_APP_BUNDLE_ID.",
+        rich_help_panel=_PANEL_PRESENT,
+        show_default=False,
+    ),
+    open_in: str | None = typer.Option(
+        None,
+        "--open-in",
+        metavar="WHERE",
+        callback=_validate_open_in,
+        help="Where --present opens ROOT: auto (the app when an installed build takes it, "
+        "otherwise a browser on a metab server started for it), app (the app or "
+        f"nowhere), or browser. Env: {OPEN_IN_ENV}; otherwise open_in in config.yml; "
+        "default auto.",
         rich_help_panel=_PANEL_PRESENT,
         show_default=False,
     ),
@@ -939,7 +962,7 @@ def _metab(
     or checked at the commit it selects under the untrusted profile; --no-serve
     only acquires it into the cache. Diagnostics: --check-api, --plugins,
     --plugin, --doctor.
-    Remote serving: --remote. The macOS app: --present hands it ROOT.
+    Remote serving: --remote. --present opens ROOT in the macOS app or a browser.
     Recent targets: --recent, --recent-add, --recent-forget, --recent-clear.
     """
     for variable, directory in (
@@ -1186,8 +1209,13 @@ def _metab(
                 checkout=checkout,
             )
     elif mode == "present":
-        if dry_run and "app_bundle_id" in explicit:
-            ctx.fail("--app-bundle-id not valid with --present --dry-run, which looks for no app")
+        if open_in == "browser" and "app_bundle_id" in explicit:
+            ctx.fail("--app-bundle-id not valid with --open-in browser, which looks for no app")
+        # A sandbox rule for `metab --present` matches whatever follows it, so an option
+        # that chose another configuration directory would let the command it limits lift
+        # `present_browser: false` (`open_in.py` `browser_delivery_allowed`).
+        if "config_dir" in explicit:
+            ctx.fail("--config-dir not valid with --present, so no option lifts present_browser")
         if root is None:
             _root_required(ctx, mode)
         from metabrowser.cli.present import run_present
@@ -1199,6 +1227,7 @@ def _metab(
             dry_run=dry_run,
             as_json=fmt == "json",
             app_bundle_id=app_bundle_id,
+            open_in=open_in,
         )
     elif remote is not None:
         _reject_root(ctx, root, mode)

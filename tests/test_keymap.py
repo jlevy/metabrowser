@@ -340,10 +340,10 @@ def test_the_documented_keymap_is_the_keys_the_app_binds() -> None:
     """The documented table and the bound keys are one set, and each row names its targets.
 
     Every reserved shell letter, every manifest view key, and every letter a built-in plugin
-    attaches has a row; every row's letter is one of those, ``?``, or ``/``; each Control
+    attaches has a row; every row's letter is one of those, ``?``, ``/``, or ``\\``; each Control
     chord the registry allows has a row; a view's or a plugin control's row names its label;
-    the numbers are one row, ``1`` to ``9``, never a fixed digit; and ``0``, the one digit
-    with a fixed meaning, is Home's row.
+    the numbers are one row, ``1`` to ``9``, never a fixed digit; ``0``, the one digit
+    with a fixed meaning, is Home's row; and ``\\`` hides the navigation pane.
     """
     rows = _documented_keymap()
     documented = {key for keys, _meaning in rows for key in keys if len(key) == 1}
@@ -353,7 +353,8 @@ def test_the_documented_keymap_is_the_keys_the_app_binds() -> None:
     views = _manifest_views()
     plugins = _builtin_plugin_letters()
     bound = shell | {key for _kind, _label, key in views} | set(plugins)
-    assert documented - {"?", "/"} == bound
+    assert documented - {"?", "/", "\\"} == bound
+    assert ["\\"] in [keys for keys, _meaning in rows], "the navigation pane's key has its row"
     for _kind, label, key in views:
         assert any(key in keys and label in meaning for keys, meaning in rows), (key, label)
     pull_page = (_BUILTIN_PLUGINS / "github" / "pull-page.js").read_text(encoding="utf-8")

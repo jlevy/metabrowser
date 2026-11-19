@@ -637,8 +637,99 @@
   text-decoration-color: var(--diff-del-gutter);
 }
 
+/* A changed YAML or JSON file's tree is the file view's (structured/styles.css), at its
+   own height, with each added or removed row in the change gutter Markdown blocks use. */
+.metabrowser-diff-host .diff-structured {
+  padding-block: 4px;
+}
+
+.metabrowser-diff-host .diff-structured.structured-tree,
+.metabrowser-diff-host .diff-structured .tree-viewport-flat {
+  height: auto;
+  overflow: visible;
+}
+
+.metabrowser-diff-host .diff-structured .srow {
+  border-inline-start: var(--diff-change-gutter-width) solid transparent;
+}
+
+.metabrowser-diff-host :is(.diff-structured .srow-change-added, .diff-frontmatter-added) {
+  border-inline-start-color: var(--diff-add-gutter);
+  background: var(--diff-add-row-bg);
+}
+
+.metabrowser-diff-host :is(.diff-structured .srow-change-removed, .diff-frontmatter-removed) {
+  border-inline-start-color: var(--diff-del-gutter);
+  background: var(--diff-del-row-bg);
+}
+
+/* A changed value's row wraps, so a long value shows where it changed. The file view's
+   row is one clipped line, and an old and a new string that differ past the clip read
+   the same there (mb-8274 review C8). A newline in the value breaks its line, as the
+   file holds it. A container's row keeps the one line its preview is written for.
+   tests/test_diff_structured_chrome.py measures a long changed string. */
+.metabrowser-diff-host .diff-structured
+  :is(.srow-change-added, .srow-change-removed):not(.srow-container, .srow-more) {
+  height: auto;
+  min-height: var(--tree-row-height);
+  align-items: flex-start;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.metabrowser-diff-host
+  .diff-structured
+  :is(.srow-change-added, .srow-change-removed):not(.srow-container, .srow-more)
+  .srow-content {
+  overflow: visible;
+}
+
+/* The row that stands for the children a page leaves out draws the next page. */
+.metabrowser-diff-host .diff-structured .srow-more {
+  cursor: pointer;
+}
+
+.metabrowser-diff-host .diff-structured .srow-more:hover {
+  background: var(--hover-bg);
+}
+
+/* The one line above a tree whose rows are all unchanged though the file's text changed
+   (`source_only`): chrome, quiet as a fold's label is, at the size of the rows it notes. */
+.metabrowser-diff-host .diff-structured-note {
+  margin: 0;
+  padding-block: 2px 4px;
+  padding-inline-start: var(--diff-change-gutter-width);
+  font-family: var(--font-sans);
+  color: var(--muted);
+}
+
+/* A changed key of front matter: its term carries the gutter, and its value the row's
+   ground, across the disclosure's two columns. */
+.metabrowser-diff-host .diff-markdown-frontmatter dl {
+  column-gap: 0;
+}
+
+/* The disclosure's column gap, as the term's padding, so a changed key's band is one. */
+.metabrowser-diff-host .diff-markdown-frontmatter dt {
+  border-inline-start: var(--diff-change-gutter-width) solid transparent;
+  padding-inline: 4px 0.75rem;
+}
+
+.metabrowser-diff-host .diff-markdown-frontmatter .kpress-frontmatter {
+  margin: 0;
+}
+
 @media (forced-colors: active) {
   .metabrowser-diff-host :is(.diff-markdown-added, .diff-markdown-removed) {
+    border-inline-start-color: CanvasText;
+  }
+  .metabrowser-diff-host
+    :is(
+      .diff-structured .srow-change-added,
+      .diff-structured .srow-change-removed,
+      .diff-frontmatter-added,
+      .diff-frontmatter-removed
+    ) {
     border-inline-start-color: CanvasText;
   }
   .metabrowser-diff-host .diff-markdown-removed del {

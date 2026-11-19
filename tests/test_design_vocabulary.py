@@ -28,9 +28,9 @@ def _rule(css: str, selector: str) -> str:
 def test_disclosure_chevron_is_one_glyph_everywhere() -> None:
     icons = (STATIC / "icons.js").read_text(encoding="utf-8")
     styles = (STATIC / "styles.css").read_text(encoding="utf-8")
-    # The registry's leading chevrons (tree rows, tally tree, diff bars);
+    # The registry's one leading chevron (tree rows, tally tree, diff bars, log events);
     # icons.js quotes attributes with double quotes.
-    assert icons.count(f'd="{CHEVRON_PATH}"') >= 2, "registry chevron glyphs changed shape"
+    assert icons.count(f'd="{CHEVRON_PATH}"') == 1, "the registry's chevron forked or changed"
     # The section-disclosure mask draws the same path (single-quoted
     # inside the data URI).
     assert f"d='{CHEVRON_PATH}'" in styles, "section-disclosure mask forked the glyph"
@@ -247,7 +247,6 @@ def _baseline_rows() -> list[tuple[str, str, _El]]:
     """
     el, text, box = _El, _text, _box
     tree = "File tree row"  # renderTreeNodes, _buildRowHtml, renderContainerChildren
-    header = "File and folder header"  # the file view header and renderFolderHeader
     diff_host = ".metabrowser-diff-host"
     rows = [
         (
@@ -335,51 +334,6 @@ def _baseline_rows() -> list[tuple[str, str, _El]]:
                 text("git-graph-meta", el("git-graph-age age-min")),
             ),
         ),
-        (
-            header,
-            ".file-header",
-            el(
-                "file-header",
-                text("file-header-path folder-breadcrumb", el("folder-crumb folder-crumb-current")),
-                box("file-header-badge-slot", el("file-header-badge badge-live")),
-                text("size file-header-size"),
-            ),
-        ),
-        (
-            header,
-            ".file-header",
-            el("file-header", text("file-header-path"), box("size tally-pending file-header-size")),
-        ),
-        (
-            header,
-            ".file-header",
-            el(
-                "file-header folder-header",
-                box("btn parent-nav-btn parent-nav-btn-icon-only folder-up"),
-                text("file-header-path folder-breadcrumb"),
-                text(
-                    "folder-header-summary",
-                    el("size file-header-size"),
-                    el("count folder-header-count"),
-                    el("folder-header-age", el("age-min")),
-                ),
-            ),
-        ),
-        (
-            header,
-            ".file-header",
-            el(
-                "file-header folder-header",
-                box("btn parent-nav-btn folder-up"),
-                text("file-header-path"),
-                box(
-                    "folder-header-summary",
-                    el("size tally-pending file-header-size"),
-                    el("count tally-pending folder-header-count"),
-                    el("folder-header-age", el("tally-pending tally-pending-narrow")),
-                ),
-            ),
-        ),
     ]
     # Diff file bar: renderFileBar in the diff plugin, inside its host.
     toggle = el(
@@ -458,11 +412,15 @@ def test_row_text_shares_one_baseline() -> None:
                 assert applying, f"{label}: text slot .{name} does not opt in to the baseline"
             elif child.role == "box":
                 assert not applying, f"{label}: box .{name} is baseline-aligned by {applying}"
-    # The header's path fills the header's content box, so the baseline
-    # group lands where centering put it at any header height.
-    assert "min-height: 100%;" in _rule(styles, ".file-header > .file-header-path"), (
-        "the header path no longer fills the header, so its text rides to the top"
-    )
+    # A view header's eyebrow sets its text at one size and centers it, and its heading row
+    # sets the title and the metadata line after it as one run of inline text, so the line
+    # sits on the title's baseline as text does (docs/design-system.md, "View Headers"). No
+    # flex baseline rule reaches either: an item holding only a pending skeleton, aligned
+    # as a flex item, would sit the skeleton's bottom edge on the baseline.
+    for selector, _is_items in rules:
+        assert not re.search(r"\.(?:file-header|view-header)", selector), (
+            f"{selector} aligns a view header's text to a baseline"
+        )
     # The diff bar's View file controls are centered boxes beside the toggle, so they
     # land on the path's baseline only at the path's own size: the toggle's, which its
     # path inherits, and the view's, both the main view's body size.
@@ -657,6 +615,8 @@ def test_copyable_identifiers_share_the_copy_contract() -> None:
     """Paths and revisions use one explicit-value copy delegate."""
     design = (REPO_ROOT / "docs" / "design-system.md").read_text(encoding="utf-8")
     app = (STATIC / "app.js").read_text(encoding="utf-8")
+    # A file's view header writes its Copy path control (view-header.js).
+    header = (STATIC / "view-header.js").read_text(encoding="utf-8")
     sdk = (STATIC / "plugin-sdk.js").read_text(encoding="utf-8")
     git = (STATIC / "git-panel.js").read_text(encoding="utf-8")
     diff = (REPO_ROOT / "src/metabrowser/builtin_plugins/diff/diff-view.js").read_text(
@@ -667,11 +627,11 @@ def test_copyable_identifiers_share_the_copy_contract() -> None:
     assert "test_copyable_identifiers_share_the_copy_contract" in design
     assert 'target.closest("[data-mb-copy]")' in sdk
     assert 'mode === "text"' in sdk and 'mode === "wrap"' in sdk
-    assert 'data-mb-copy="text"' in app
+    assert 'data-mb-copy="text"' in header
     assert 'setAttribute("data-mb-copy", "text")' in diff
     assert 'data-mb-copy="text"' in git and "commit.id" in git
     assert "git-commit-revision-copy" in git
-    for source in (app, diff, git):
+    for source in (app, header, diff, git):
         assert "data-copy-path" not in source, "a local path-copy contract reappeared"
 
 
@@ -1589,9 +1549,10 @@ _SMALL_SIZE_ROLES: dict[tuple[str, str], str] = {
     ("styles.css", ".menu-select"): "a menu's control",
     ("styles.css", ".menu-row"): "a menu's line",
     ("styles.css", ".menu-number"): "a menu's control",
-    ("styles.css", ".source-ref-selector"): "a chip and its menu",
+    ("styles.css", ".source-ref-selector-panel"): "a chip's menu",
     ("styles.css", ".chip"): "a chip",
     ("styles.css", ".chip-menu-count"): "a chip menu's count",
+    ("styles.css", ".counterpart-status"): "a split button's result, where its menu was",
     ("styles.css", ".filter-check"): "a filter",
     ("styles.css", ".chip-clear"): "a chip's control",
     ("styles.css", ".file-header-badge"): "a badge",
@@ -1642,7 +1603,7 @@ _INHERITED_METADATA: tuple[tuple[str, str], ...] = (
     ("styles.css", ".file-header-mirror"),
     ("styles.css", ".file-header-size"),
     ("styles.css", ".folder-header-count"),
-    ("styles.css", ".folder-header-age"),
+    ("styles.css", ".view-header-age"),
     ("diff/styles.css", ".metabrowser-diff-host .diff-file-path"),
     ("diff/styles.css", ".metabrowser-diff-host .diff-file-note"),
     ("github/styles.css", ".github-pulls-by"),
@@ -1937,13 +1898,13 @@ def test_section_headings_and_fold_expanders_are_primitives() -> None:
 _TOGGLE_MARKER = re.compile(
     r"aria-expanded|ariaExpanded|<summary|createElement\(\"summary\"\)|h\(\s*\"summary\""
     r"|ICONS\.toggle|icons\.toggle|MetabrowserIcons\?\.toggle|shellIcon\(\"toggle\"\)"
-    r"|registryIcon\(\"toggle\"\)|icons\.chevron|host\.chevron\(\)|srow-chevron\""
+    r"|registryIcon\(\"toggle\"\)|host\.chevron\(\)|srow-chevron\""
 )
 # A chevron or summary going into markup, each of which `_TOGGLE_GLYPHS` lists.
 _TOGGLE_GLYPH = re.compile(
     r"\$\{ICONS\.toggle\}|ICONS\.toggle \+|icon: ICONS\.toggle|ICONS\.toggle,|"
     r"\$\{menuChevron\}|MetabrowserIcons\?\.toggle \?\?|shellIcon\(\"toggle\"\)|"
-    r"mb\.icons\.chevron|host\.chevron\(\)|\[chevron\(\)\]|^\s*chevron\(\),|srow-chevron\""
+    r"mb\.icons\.toggle \+|host\.chevron\(\)|\[chevron\(\)\]|^\s*chevron\(\),|srow-chevron\""
     r"|<summary|createElement\(\"summary\"\)|h\(\s*\"summary\"",
     re.MULTILINE,
 )
@@ -1958,12 +1919,15 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
         '" tree-container disclosure-toggle collapsed"',
         "'<div class=\"tree-item tree-folder disclosure-toggle collapsed'",
         'className: "filter-drawer-toggle disclosure-toggle"',
+        '"icon-btn nav-collapse-toggle disclosure-toggle"',
     ),
     "charts.js": ("'<div class=\"tally-node disclosure-toggle'",),
     "filter-controls.js": ('class="chip chip-menu-trigger disclosure-toggle"',),
     "source-ref-selector.js": (
         '"chip chip-menu-trigger source-ref-selector-toggle disclosure-toggle"',
     ),
+    # The View on GitHub button's chevron, which opens its menu.
+    "plugin-sdk-views.js": ('"chip chip-menu-trigger counterpart-more disclosure-toggle"',),
     "agent_log/index.js": ('class="log-event-header disclosure-toggle"',),
     "structured/tree.js": ('" srow-container disclosure-toggle"',),
     "markdown/inert-toc.js": ('"kpress-toc-toggle disclosure-toggle"',),
@@ -1983,7 +1947,10 @@ _DISCLOSURE_TOGGLES: dict[str, tuple[str, ...]] = {
     "diff/diff-summary.js": (
         '"changed-file-row diff-summary-row diff-summary-folder disclosure-toggle"',
     ),
-    "diff/diff-markdown.js": ('summary.className = "disclosure-toggle"',),
+    "diff/diff-markdown.js": (
+        'heading.className = "disclosure-toggle"',
+        'summary.className = "disclosure-toggle"',
+    ),
     "github/pulls-panel.js": (
         '"github-pulls-change disclosure-toggle collapsed"',
         '"github-pulls-row github-pulls-stack-row disclosure-toggle"',
@@ -2000,7 +1967,8 @@ _NOT_TOGGLES: dict[str, str] = {
     "overlay-layer.js": "a dialog's trigger, an icon or labelled button, is not a disclosure",
     "search-palette.js": "the search field is a combobox, and its text stays editable",
     "shell-keymap.js": "reads which filter dropdown is open, for its rows' letters",
-    "server.py": "the settings gear is an icon-only menu button with no chevron",
+    "nav-collapse.js": "reflects aria-expanded on the chevron server.py writes and app.js draws",
+    "server.py": "the gear has no chevron; the navigation chevron is .disclosure-toggle",
 }
 # Each chevron and `summary` a source builds, in source order, with the builder whose
 # element it goes into. Whitespace in a glyph is collapsed to one space.
@@ -2010,6 +1978,7 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
         ("${ICONS.toggle}", '" tree-container disclosure-toggle collapsed"'),
         ("icon: ICONS.toggle", 'className: "filter-drawer-toggle disclosure-toggle"'),
         ("ICONS.toggle +", "'<div class=\"tree-item tree-folder disclosure-toggle collapsed'"),
+        ("${ICONS.toggle}", '"icon-btn nav-collapse-toggle disclosure-toggle"'),
     ),
     "charts.js": (("ICONS.toggle +", "'<div class=\"tally-node disclosure-toggle'"),),
     "filter-controls.js": (("${menuChevron}", 'class="chip chip-menu-trigger disclosure-toggle"'),),
@@ -2019,7 +1988,13 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
             '"chip chip-menu-trigger source-ref-selector-toggle disclosure-toggle"',
         ),
     ),
-    "agent_log/index.js": (("mb.icons.chevron", 'class="log-event-header disclosure-toggle"'),),
+    "plugin-sdk-views.js": (
+        (
+            "MetabrowserIcons?.toggle ??",
+            '"chip chip-menu-trigger counterpart-more disclosure-toggle"',
+        ),
+    ),
+    "agent_log/index.js": (("mb.icons.toggle +", 'class="log-event-header disclosure-toggle"'),),
     "structured/tree.js": (('srow-chevron"', '" srow-container disclosure-toggle"'),),
     "markdown/rendered.js": (
         ("<summary", 'class="section-disclosure-trigger disclosure-toggle">Diagnostics'),
@@ -2036,6 +2011,7 @@ _TOGGLE_GLYPHS: dict[str, tuple[tuple[str, str], ...]] = {
         ),
     ),
     "diff/diff-markdown.js": (
+        ('createElement("summary")', 'heading.className = "disclosure-toggle"'),
         ('createElement("summary")', 'summary.className = "disclosure-toggle"'),
     ),
     "github/pulls-panel.js": (
@@ -2357,12 +2333,29 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     assert "## The Pulls Tab" in doc
     assert "test_the_pulls_tab_carries_the_shells_primitives" in doc
     github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
-    # One Chevron, One Row Contract: the row height, the hover, and a row's own focus ring.
+    # One Chevron, One Row Contract: the row height, the hover, and a row's own focus ring. A
+    # pull request's three lines are one item (mb-1z7j): its zone hovers, carries the current
+    # mark, and takes the ring of the link inside it, as a Files row's `.tree-item` does.
     row = github[".github-pulls-row"]
     assert row["min-height"] == "var(--ui-row-height)"
-    assert github[".github-pulls-row:hover"]["background"] == "var(--hover-bg)"
-    assert github[".github-pulls-row.selected"]["background"] == "var(--highlight-bg)"
-    assert github[".github-pulls-row:focus-visible"]["outline"] == "2px solid var(--link)"
+    item = ".github-pulls-entry"
+    assert github[f"{item}:hover"]["background"] == "var(--hover-bg)"
+    assert github[".github-pulls-stack-row:hover"]["background"] == "var(--hover-bg)"
+    assert (
+        github[f"{item}:has(> .github-pulls-row.selected)"]["background"] == "var(--highlight-bg)"
+    )
+    assert github[".github-pulls-row.selected"]["border-left-color"] == "var(--highlight-bar)"
+    ring = github[f"{item}:has(> .github-pulls-row:focus-visible)"]
+    assert ring["outline"] == "2px solid var(--link)"
+    assert ring["outline-offset"] == "-2px"
+    assert github[".github-pulls-stack-row:focus-visible"]["outline"] == "2px solid var(--link)"
+    assert github[f"{item} > .github-pulls-row:focus-visible"]["outline"] == "none"
+    # The change line is the item's inner target: no ground of its own, and only its chevron's
+    # plate answers the pointer, so its status inks keep the grounds their contrast is held on.
+    assert ".github-pulls-change:hover" not in github
+    assert github[".github-pulls-change:hover > .github-pulls-toggle"]["background"] == (
+        "var(--border)"
+    )
     assert "transition" not in row, "a row crossed by a held key answers with no easing"
     # Icons: the app's glyph, in the state's color and never its own. The four shapes are the
     # plugin's, Lucide's, and drawn only on a GitHub repository's page, so no folder's startup
@@ -2821,17 +2814,21 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert (title_icon["width"], title_icon["height"]) == ("1em", "1lh")
     title_glyph = github[".github-pull-title > .github-pull-state-icon svg"]
     assert (title_glyph["width"], title_glyph["height"]) == ("1em", "1em")
-    # Links take the link token rather than the browser's blue.
-    assert github[".github-pull-header a"]["color"] == "var(--link)"
-    # A GitHub action (View on GitHub, a check's action on GitHub, a conversation commit
-    # hash) is quiet: muted at rest, the link token on hover and focus. The header's and a
-    # check's are at their row's size; a commit hash is one step below its row (below).
-    for place in (".github-pull-header", ".github-pull-checks", ".github-pull-commit"):
+    # Links take the link token rather than the browser's blue, all but the corner's View on
+    # GitHub button, which is a chip and takes a chip's ink (mb-4wqh).
+    assert github[".github-pull-header a:not(:where(.view-header-end *))"]["color"] == (
+        "var(--link)"
+    )
+    # A GitHub action (a check's action on GitHub, a conversation commit hash) is quiet:
+    # muted at rest, the link token on hover and focus. A check's is at its row's size; a
+    # commit hash is one step below its row (below). View on GitHub is the header corner's
+    # button, a chip (mb-4wqh), and not one of them.
+    for place in (".github-pull-checks", ".github-pull-commit"):
         action = f"{place} .github-pull-external-action"
         assert github[action] == {"color": "var(--muted)"}, action
         for state in (":hover", ":focus-visible"):
             assert github[action + state]["color"] == "var(--link)", action + state
-    assert page.count('"github-pull-external-action"') == 2, "the header's and a check's"
+    assert page.count('"github-pull-external-action"') == 1, "a check's"
     assert '"github-pull-commit-id git-commit-sha github-pull-external-action"' in page
     # A check's own site is an ordinary link, so it never reads as the description after it.
     assert github[".github-pull-checks a"]["color"] == "var(--link)"
@@ -3738,11 +3735,12 @@ def test_key_badges_are_positioned_paint_over_layer_three_markup() -> None:
     assert (beside["top"], beside["translate"]) == ("var(--kbd-badge-block)", "0 -50%")
     assert selected[":where(.kbd-badge-host)"] == {"position": "relative"}
     assert selected[":where([data-kbd-badge-anchor])"] == {"position": "relative"}
-    # The anchors: the file header and the folder header, for Up's crumb and button. The
+    # The anchor: the view header, a file's and a folder's alike, for Up's button. The
     # commit heading anchored Copy revision's badge, and copying has no key any more.
-    app = (STATIC / "app.js").read_text(encoding="utf-8")
-    assert app.count('class="file-header" data-kbd-badge-anchor') == 1
-    assert app.count('class="file-header folder-header" data-kbd-badge-anchor') == 1
+    header = (STATIC / "view-header.js").read_text(encoding="utf-8")
+    assert header.count("data-kbd-badge-anchor") == 1
+    assert '`<div class="file-header view-header${' in header
+    assert "data-kbd-badge-anchor" not in (STATIC / "app.js").read_text(encoding="utf-8")
     git_panel = (STATIC / "git-panel.js").read_text(encoding="utf-8")
     assert "data-kbd-badge-anchor" not in git_panel
 

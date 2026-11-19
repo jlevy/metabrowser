@@ -9,21 +9,22 @@ env:
 This session runs the production filter state and tree filter model from a command line.
 It pins which request each Group by and filter choice makes, how the server’s grouped
 answer becomes sections in its order, how a folder inside a section opens under that
-section’s group, which filters Clear and the chevron’s badge each count (Show ignored,
-on the row beside Group by, counts for Clear only), that Clear resets Show ignored and
-keeps the grouping, which band a file’s age falls in, and that a malformed answer is
-refused. It also pins the shell’s Group by decisions, held in the model: each section’s
-share of the first paint’s rows, the order a revealed row is looked for in, the reopen
-plan after a refresh, which grouping a pressed row asks for ahead, the prefetch’s keep,
-drop, abort, and take, how a file change makes its answers stale without dropping them
-or restarting one still on its way, that the keyboard asks only for a row it rests on (a
-row passed over asks for nothing, and the next key, a choice, or the menu closing
-cancels the wait), which loads wait for first sections on their way and what the wait
-says, and the loads’ lifecycle: a refresh during a first load runs once after it, a
-newer choice aborts the load and its answer never paints, a stale prefetch paints and
-then refreshes once, and the wait for first sections ends on a paint, a failure, or a
-cancel. The answer it paints is read from
-`tests/golden/cli-api-tree-groups.tryscript.md`, its first one.
+section’s group, which filters Clear and the chevron’s badge each count (both count Show
+ignored turned off, which sits in the drawer beside the filters), that Clear resets Show
+ignored and keeps the grouping, which band a file’s age falls in, and that a malformed
+answer is refused. It also pins the shell’s Group by decisions, held in the model: each
+section’s share of the first paint’s rows, the order a revealed row is looked for in,
+the reopen plan after a refresh, which grouping a pressed row asks for ahead, the
+prefetch’s keep, drop, abort, and take, how a file change makes its answers stale
+without dropping them or restarting one still on its way, that the keyboard asks only
+for a row it rests on (a row passed over asks for nothing, and the next key, a choice,
+or the menu closing cancels the wait), which loads wait for first sections on their way
+and what the wait says, and the loads’ lifecycle: a refresh during a first load runs
+once after it, a newer choice aborts the load and its answer never paints, a stale
+prefetch paints and then refreshes once, and the wait for first sections ends on a
+paint, a failure, or a cancel.
+The answer it paints is read from `tests/golden/cli-api-tree-groups.tryscript.md`, its
+first one.
 
 ```console
 $ node tests/dom/files-group-by-session.js
@@ -59,7 +60,7 @@ $ node tests/dom/files-group-by-session.js
       "action": "load-groups",
       "request": "/api/tree?group_by=type&types=.md%2C.py&include_ignored=0&recency=1h&depth=2",
       "activeFilters": 3,
-      "drawerFilters": 2
+      "drawerFilters": 3
     },
     {
       "chose": "Clear",
@@ -98,6 +99,7 @@ $ node tests/dom/files-group-by-session.js
     {
       "key": "type:docs",
       "label": "Documentation",
+      "icon": "doc",
       "files": 3,
       "topLevel": [
         "docs",
@@ -108,6 +110,7 @@ $ node tests/dom/files-group-by-session.js
     {
       "key": "type:code",
       "label": "Code",
+      "icon": "alignLeft",
       "files": 3,
       "topLevel": [
         "src",
@@ -117,6 +120,7 @@ $ node tests/dom/files-group-by-session.js
     {
       "key": "type:data",
       "label": "Data",
+      "icon": "list",
       "files": 1,
       "topLevel": [
         "data"
@@ -125,6 +129,7 @@ $ node tests/dom/files-group-by-session.js
     {
       "key": "type:other",
       "label": "Other",
+      "icon": "file",
       "files": 2,
       "topLevel": [
         "logs",
@@ -509,6 +514,7 @@ $ node tests/dom/files-group-by-session.js
     "key": "type:docs",
     "id": "docs",
     "label": "Documentation",
+    "icon": null,
     "files": null,
     "size": null,
     "tree": []

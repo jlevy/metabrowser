@@ -65,11 +65,13 @@ this repository’s structural facts and standing answers.
   pull request, or do not add the layer.
 - The server, browser shell, and built-in plugins ship as one artifact, so `/api/*`,
   `window.metabrowser`, `METABROWSER_SETTINGS`, and the plugin manifest are internal
-  contracts. Change one everywhere in one commit, and note it in `CHANGELOG.md` when a
+  contracts. Change one everywhere in one commit, and write a changelog fragment when a
   user or plugin author can observe the change.
 - The macOS app is internal too: change a `metab` flag or route it uses and the app in
   the same commit, and raise `MetabRequirement.minimumRelease` when the app needs the
-  newer `metab`.
+  newer `metab`. Release that `metab` as a minor or major version, never a patch, so a
+  patch is always safe for an app in use; how to raise the minimum is in
+  [Choosing a Version](docs/publishing.md#choosing-a-version).
 - `PLUGIN_SDK_VERSION` is a hard gate, not a compatibility layer: bump it on a break and
   update every built-in manifest in the same commit.
 
@@ -137,6 +139,13 @@ this repository’s structural facts and standing answers.
   [the map](docs/project/architecture/arch-views-models-routes.md) in the same change.
 - Never add credentials, private organization or repository names, private issue IDs,
   personal absolute paths, customer data, or copied operational artifacts.
+- Write a changelog entry as a fragment, its own file `changelog.d/<bead>.md` holding
+  the bullets Unreleased would have had, and never add one to `CHANGELOG.md`; a release
+  assembles them. One file per change, because `CHANGELOG.md` conflicted on every merge
+  to `main` while each open pull request added at the top of Unreleased, and GitHub’s
+  server-side merge ignores `merge=union`. `make lint-check` fails a branch whose
+  Unreleased section gains an entry; [changelog.d/README.md](changelog.d/README.md) has
+  the rules.
 
 ## Durable Storage
 

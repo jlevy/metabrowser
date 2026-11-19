@@ -1574,15 +1574,6 @@
       : "";
   }
 
-  // Copy-icon SVG. Defined here (not pulled from window.MetabrowserIcons)
-  // so plugins don't depend on the icons.js bundle being loaded first.
-  const ICON_COPY =
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"' +
-    ' stroke-linecap="round" stroke-linejoin="round">' +
-    '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>' +
-    '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>' +
-    "</svg>";
-
   /** @param {string} innerHtml */
   function wrapWithCopy(innerHtml) {
     // A delegated click listener (installed once at SDK init) handles
@@ -1594,7 +1585,7 @@
       ' type="button" data-mb-copy="wrap"' +
       delegateOwnerAttribute() +
       ' data-tip-text="Copy content" aria-label="Copy content">' +
-      ICON_COPY +
+      (global.MetabrowserIcons?.copy ?? "") +
       "</button>" +
       innerHtml +
       "</div>"
@@ -1854,6 +1845,365 @@
     return anchor;
   }
 
+  /** Each counterpart provider's mark, drawn before its label. */
+  /** @type {Record<string, string>} */
+  const counterpartMarks = { github: destinationGlyphs.github };
+  /** How long a copied link's confirmation stays under the button, as a code copy's does. */
+  const COUNTERPART_COPIED_MS = 1500;
+
+  /**
+   * A page's external counterpart as a split button (docs/design-system.md, "View on
+   * GitHub"): a link to the counterpart, its provider's mark and label, joined to a
+   * chevron that opens a menu of Copy Link and Open in Browser. *counterpart* is what
+   * `GET /api/counterpart` answers, so the provider supplies the label and the URL, and
+   * another provider draws the same control.
+   *
+   * The markup is the macOS app's contract (mb-4wqh): the root carries
+   * `data-view-on-<provider>`, the link `data-view-on-<provider>="open"`, and the menu's
+   * Open in Browser `data-view-on-<provider>="external"`. In a browser the link opens the
+   * page in a new tab; the app shows a plain click on it in a popover of its own. Nothing
+   * here knows of the app.
+   *
+   * The menu is a menu button's: the chevron opens it with focus on its first item, the
+   * arrow keys, Home, and End move among the items, and Escape, a second click on the
+   * chevron, or an item closes it and gives focus back to the chevron, where a focused item
+   * the menu hid would leave it nowhere (WebKit does not focus a clicked button). Tab or a
+   * press outside closes it and leaves focus to the key or the press. A chord held with
+   * Command, Control, or Option is left to the browser, but for Option-Tab, which closes
+   * it as Tab does. Its one listener outside the button, for that press, is held only
+   * while the menu is open. Focus that leaves the button for another element, such as a
+   * framed preview a click went into, which sends this document no press, closes it too.
+   *
+   * Copy Link's result, "Link copied" or "Copy failed", shows under the button for
+   * `COUNTERPART_COPIED_MS` in a status line, a polite live region a screen reader
+   * announces, and on the chevron's tooltip.
+   *
+   * @param {MetabrowserCounterpart} counterpart
+   * @returns {HTMLElement}
+   */
+  function counterpartButton(counterpart) {
+    const doc = global.document;
+    const hook = `data-view-on-${counterpart.provider}`;
+    const root = doc.createElement("span");
+    root.className = "counterpart";
+    root.setAttribute(hook, "");
+    const group = doc.createElement("span");
+    group.className = "chip-group counterpart-group";
+    group.dataset.layout = "joined";
+    const open = doc.createElement("a");
+    open.className = "chip counterpart-open";
+    open.setAttribute(hook, "open");
+    open.setAttribute("href", counterpart.url);
+    open.setAttribute("target", "_blank");
+    open.setAttribute("rel", "noopener");
+    open.dataset.tipText = counterpart.url.replace(/^https:\/\//, "");
+    const mark = doc.createElement("span");
+    mark.className = "counterpart-mark";
+    mark.setAttribute("aria-hidden", "true");
+    mark.innerHTML = counterpartMarks[counterpart.provider] ?? "";
+    const label = doc.createElement("span");
+    label.className = "counterpart-label";
+    label.textContent = counterpart.label;
+    open.append(mark, label);
+    const more = doc.createElement("button");
+    more.type = "button";
+    more.className = "chip chip-menu-trigger counterpart-more disclosure-toggle";
+    more.setAttribute("aria-haspopup", "menu");
+    more.setAttribute("aria-expanded", "false");
+    more.setAttribute("aria-label", `${counterpart.label}: Copy Link or Open in Browser`);
+    const restingTip = "Copy Link or Open in Browser";
+    more.dataset.tipText = restingTip;
+    const caret = doc.createElement("span");
+    caret.className = "chip-menu-caret";
+    caret.setAttribute("aria-hidden", "true");
+    caret.innerHTML = global.MetabrowserIcons?.toggle ?? "";
+    more.append(caret);
+    group.append(open, more);
+    const menu = doc.createElement("div");
+    menu.className = "menu counterpart-menu";
+    menu.setAttribute("role", "menu");
+    menu.setAttribute("aria-label", counterpart.label);
+    menu.hidden = true;
+    /** @param {HTMLElement} item @param {string} text */
+    const menuItem = (item, text) => {
+      item.className = "menu-item";
+      item.setAttribute("role", "menuitem");
+      item.setAttribute("tabindex", "-1");
+      const words = doc.createElement("span");
+      words.className = "menu-item-label";
+      words.textContent = text;
+      item.append(words);
+      return item;
+    };
+    const copy = menuItem(doc.createElement("button"), "Copy Link");
+    copy.setAttribute("type", "button");
+    copy.dataset.counterpartAction = "copy";
+    const external = menuItem(doc.createElement("a"), "Open in Browser");
+    external.setAttribute(hook, "external");
+    external.setAttribute("href", counterpart.url);
+    external.setAttribute("target", "_blank");
+    external.setAttribute("rel", "noopener");
+    menu.append(copy, external);
+    // Empty until a copy, and in the page from the start: a live region made and filled at
+    // once is not announced.
+    const status = doc.createElement("span");
+    status.className = "counterpart-status";
+    status.setAttribute("role", "status");
+    root.append(group, menu, status);
+
+    const items = [copy, external];
+    /** @type {((event: Event) => void) | null} */
+    let outside = null;
+    /** @param {boolean} refocus whether focus goes back to the chevron */
+    function close(refocus) {
+      if (!menu.hidden) {
+        menu.hidden = true;
+        more.setAttribute("aria-expanded", "false");
+      }
+      if (outside !== null) {
+        doc.removeEventListener("pointerdown", outside, true);
+        outside = null;
+      }
+      if (refocus) {
+        more.focus();
+      }
+    }
+    /** @param {number} at the item to focus, from the end when negative */
+    function show(at) {
+      if (menu.hidden) {
+        menu.hidden = false;
+        more.setAttribute("aria-expanded", "true");
+        outside = (event) => {
+          const target = /** @type {Node | null} */ (event.target);
+          if (!root.isConnected || target === null || !root.contains(target)) {
+            close(false);
+          }
+        };
+        doc.addEventListener("pointerdown", outside, true);
+      }
+      items[((at % items.length) + items.length) % items.length].focus();
+    }
+    more.addEventListener("click", () => (menu.hidden ? show(0) : close(true)));
+    // Focus has moved by the time a later task runs: to an element outside the button, a
+    // frame among them, the menu closes; to nothing, a press outside has closed it already.
+    root.addEventListener("focusout", () => {
+      global.setTimeout(() => {
+        const now = doc.activeElement;
+        if (!menu.hidden && now && now !== doc.body && !root.contains(now)) {
+          close(false);
+        }
+      }, 0);
+    });
+    // A chord is the browser's and the app's, Command-Up among them (mb-i1wy).
+    more.addEventListener("keydown", (event) => {
+      if (event.altKey || event.ctrlKey || event.metaKey) {
+        return;
+      }
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        show(event.key === "ArrowDown" ? 0 : -1);
+      }
+    });
+    menu.addEventListener("keydown", (event) => {
+      // Tab leaves the menu, and so does Option-Tab, with which Safari moves focus: either
+      // closes it and cancels nothing. Any other chord is the browser's and the app's.
+      if (event.key === "Tab") {
+        close(false);
+        return;
+      }
+      if (event.altKey || event.ctrlKey || event.metaKey) {
+        return;
+      }
+      const at = items.indexOf(/** @type {HTMLElement} */ (doc.activeElement));
+      const moves = { ArrowDown: at + 1, ArrowUp: at - 1, Home: 0, End: -1 };
+      if (event.key in moves) {
+        event.preventDefault();
+        show(moves[/** @type {keyof typeof moves} */ (event.key)]);
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        close(true);
+      }
+    });
+    let copies = 0;
+    copy.addEventListener("click", () => {
+      close(true);
+      /** @param {"copied" | "failed"} result */
+      const confirm = (result) => {
+        const words = result === "copied" ? "Link copied" : "Copy failed";
+        const copied = ++copies;
+        status.dataset.result = result;
+        status.textContent = words;
+        more.dataset.tipText = words;
+        global.setTimeout(() => {
+          // A later copy's confirmation keeps its own time.
+          if (copied === copies) {
+            delete status.dataset.result;
+            status.textContent = "";
+            more.dataset.tipText = restingTip;
+          }
+        }, COUNTERPART_COPIED_MS);
+      };
+      const clipboard = global.navigator?.clipboard;
+      if (!clipboard || typeof clipboard.writeText !== "function") {
+        confirm("failed");
+        return;
+      }
+      clipboard.writeText(counterpart.url).then(
+        () => confirm("copied"),
+        () => confirm("failed"),
+      );
+    });
+    external.addEventListener("click", () => close(true));
+    return root;
+  }
+
+  /** The page each corner last asked for, so a repaint of the same page asks once. */
+  /** @type {WeakMap<Element, string>} */
+  const counterpartAsked = new WeakMap();
+  /**
+   * The pages answered or asked for lately, most recent last: the last answer, whether no
+   * drawing has used it yet (`fresh`), and the request in flight. Each answer serves one
+   * drawing as it is: a page drawn again, by a return to it or a repaint with a new header,
+   * draws its last answer with the header and asks again, unless that answer is fresh, as
+   * one `prefetchCounterpart` asked for is. The button had come about 30 ms after the
+   * header on a return to a file's page (median of 7, a mutation observer timing both,
+   * Chrome 152, 2026-11-18).
+   * @type {Map<string, {answer?: MetabrowserCounterpart | null, fresh?: boolean, asking?: Promise<MetabrowserCounterpart | null>}>}
+   */
+  const counterpartPages = new Map();
+  /**
+   * How many pages `counterpartPages` keeps: more than a session goes back to. An entry is
+   * the address and the answer's three strings. In Node 24 on 2026-11-18, 64 entries of
+   * typical addresses held 39 KB of heap, and 64 of the longest the server reads,
+   * `MAX_PAGE_CHARS` (16 KiB), 2.1 MB, with every string flat and distinct.
+   */
+  const COUNTERPART_PAGES_MAX = 64;
+
+  /** @param {string} page @returns {NonNullable<ReturnType<typeof counterpartPages.get>>} */
+  function counterpartPage(page) {
+    const kept = counterpartPages.get(page) ?? {};
+    counterpartPages.delete(page);
+    counterpartPages.set(page, kept);
+    for (const oldest of counterpartPages.keys()) {
+      if (counterpartPages.size <= COUNTERPART_PAGES_MAX) {
+        break;
+      }
+      counterpartPages.delete(oldest);
+    }
+    return kept;
+  }
+
+  /**
+   * Ask for *page*'s counterpart, once while a request is in flight.
+   * @param {string} page
+   * @returns {Promise<MetabrowserCounterpart | null>}
+   */
+  function askCounterpart(page) {
+    const kept = counterpartPage(page);
+    if (kept.asking === undefined) {
+      const asking = (async () => {
+        /** @type {{counterpart?: MetabrowserCounterpart | null} | null} */
+        let answer = null;
+        try {
+          const response = await global.fetch(`/api/counterpart?page=${encodeURIComponent(page)}`);
+          answer = response.ok ? await response.json() : null;
+        } catch {
+          // A server that went away draws no button; the next page asks again.
+          answer = null;
+        }
+        const counterpart = answer?.counterpart ?? null;
+        return counterpart !== null && /^https:\/\//.test(counterpart.url) ? counterpart : null;
+      })();
+      kept.asking = asking;
+      // Registered before any drawing waits for the request, so it runs first.
+      asking.then((counterpart) => {
+        kept.answer = counterpart;
+        kept.fresh = true;
+        if (kept.asking === asking) {
+          delete kept.asking;
+        }
+      });
+    }
+    return /** @type {Promise<MetabrowserCounterpart | null>} */ (kept.asking);
+  }
+
+  /**
+   * Start asking for *page*'s counterpart before its header is drawn, so the answer can
+   * arrive with it: the shell calls this as a file's or a folder's page starts loading.
+   * `mountCounterpart` then waits for this request rather than making another.
+   * @param {string} page
+   */
+  function prefetchCounterpart(page) {
+    void askCounterpart(page);
+  }
+
+  /**
+   * Put *counterpart*'s button in *corner*, keeping the one there when it is the same.
+   * @param {Element} corner
+   * @param {MetabrowserCounterpart | null} counterpart
+   * @returns {HTMLElement | null}
+   */
+  function drawCounterpart(corner, counterpart) {
+    const shown = /** @type {HTMLElement | null} */ (corner.querySelector(".counterpart"));
+    if (counterpart === null) {
+      corner.replaceChildren();
+      return null;
+    }
+    const link = shown?.querySelector(".counterpart-open") ?? null;
+    if (
+      shown !== null &&
+      link?.getAttribute("href") === counterpart.url &&
+      shown.hasAttribute(`data-view-on-${counterpart.provider}`) &&
+      link.textContent === counterpart.label
+    ) {
+      return shown;
+    }
+    const button = counterpartButton(counterpart);
+    corner.replaceChildren(button);
+    return button;
+  }
+
+  /**
+   * Ask the server for *page*'s counterpart (`GET /api/counterpart`, the one place a
+   * github.com URL is made) and put its button in *corner*, a header's
+   * `.view-header-end`. *page* is the page's address as `location.pathname` spells it.
+   * A page with none, or an answer that does not arrive, leaves the corner empty. Asked
+   * again for the page a corner already asked for, it asks nothing; a corner asked for
+   * another page before an answer lands drops that answer. A page answered before is
+   * drawn at once, before this returns its promise, and asked again unless its answer is
+   * fresh; the new answer replaces the button only when it differs. A request
+   * `prefetchCounterpart` started is waited for, not repeated.
+   *
+   * @param {Element} corner
+   * @param {string} page
+   * @returns {Promise<HTMLElement | null>}
+   */
+  async function mountCounterpart(corner, page) {
+    if (counterpartAsked.get(corner) === page) {
+      return /** @type {HTMLElement | null} */ (corner.querySelector(".counterpart"));
+    }
+    counterpartAsked.set(corner, page);
+    const kept = counterpartPages.get(page);
+    if (kept?.answer !== undefined) {
+      const drawn = drawCounterpart(corner, kept.answer);
+      if (kept.fresh && kept.asking === undefined) {
+        kept.fresh = false;
+        counterpartPage(page);
+        return drawn;
+      }
+    }
+    const counterpart = await askCounterpart(page);
+    if (counterpartAsked.get(corner) !== page) {
+      return null;
+    }
+    const answered = counterpartPages.get(page);
+    if (answered !== undefined) {
+      answered.fresh = false;
+    }
+    return drawCounterpart(corner, counterpart);
+  }
+
   /**
    * The tree of a change set's files, which the Pulls tab and a diff's Diff summary both
    * draw: static/changed-files-tree.js, the `changed-files-tree` on-demand bundle. Loaded
@@ -1875,8 +2225,11 @@
   Object.assign(mb, {
     actorIdentity,
     actorIdentityHtml,
+    counterpartButton,
     decorateExternalLink,
     loadChangedFilesTree,
+    mountCounterpart,
+    prefetchCounterpart,
     refChipHtml,
     refChip,
     mergeRefs,

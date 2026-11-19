@@ -544,9 +544,8 @@ def test_what_the_session_would_insert_is_inside_the_allowlist() -> None:
     assert transcript["hunks"] and transcript["place"]
 
 
-# What the header's numbers ask for in the mount session: the pull request's page on
-# GitHub, and a refresh that recovers the comparison on screen.
-_PULL_URL = "https://github.com/octo/demo/pull/7"
+# What the header's Refresh asks for in the mount session: a refresh that recovers the
+# comparison on screen.
 _REFRESH_BODY = (
     '{"number":7,"retry":true,"recovery":'
     '{"base":"f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",'
@@ -680,6 +679,22 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "its record lands: header shown, tab column shown",
             "mounted with its record in hand: header shown, tab column shown",
         ],
+        # The header's corner, for the View on GitHub button (mb-4wqh): right after the
+        # title from the cold header on, one corner for the page's life, and the page asks
+        # the SDK for the button of the address it is at after each header paint. An SDK
+        # with no button leaves the corner empty.
+        "counterpart": [
+            'mounted with no record in hand: the corner after the title "Pull request #7"; '
+            "asked /pull/7",
+            'its record lands: the corner after the title "Count to two in the app", '
+            "the same corner; asked /pull/7",
+            'a poll brings a new title: the corner after the title "Count to three in the app", '
+            "the same corner; asked /pull/7",
+            'the route shows Checks: the corner after the title "Count to three in the app", '
+            "the same corner; asked /pull/7/checks",
+            'an SDK with no button: the corner after the title "Count to two in the app"; '
+            "asked for none",
+        ],
         # C, G, and E run the page's setTab through the shortcut facade, with or without
         # Shift. H is the Commits tab's, so Checks is E. The header keeps the tab column
         # unless its first read fails, so they are live from first paint, as the links
@@ -687,10 +702,10 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
         # page is staged inert. The links come back badged at once while Shift is held,
         # which paintHeader's retarget does. The header's links and actions are numbered
         # by their place, through the same facade, and a number runs what its place's
-        # control does in the paint on screen: View on GitHub opens the pull request on
-        # GitHub, Browse code asks to serve the head, by its commit and under its ref, and,
-        # once a refresh serves it, opens the code; Refresh asks for a refresh, and moves up
-        # to 2 when Browse code goes.
+        # control does in the paint on screen: Browse code asks to serve the head, by its
+        # commit and under its ref, and, once a refresh serves it, opens the code; Refresh
+        # asks for a refresh, and moves up to 1 when Browse code goes. View on GitHub, the
+        # corner's button, is not numbered (mb-4wqh).
         "tabKeys": [
             "before the record, the tab column in the page: "
             "Conversation C, Changes G, Checks E; live conversation files checks",
@@ -699,40 +714,36 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "the record arrives and paintHeader keeps the column: "
             "Conversation C, Changes G, Checks E",
             "live: conversation files checks",
-            "numbered: 1 View on GitHub, 2 Browse code",
-            f"1: window.open {_PULL_URL} _blank noopener,noreferrer",
-            "2: POST /api/source/pin "
+            "numbered: 1 Browse code",
+            "1: POST /api/source/pin "
             '{"oid":"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a","under":"refs/pull/7/head",'
             '"view":"/view/"}',
             "C: showed Conversation",
             "G: opened the files route",
             "the route arrives: Changes",
-            "numbered on Changes: 1 View on GitHub, 2 Browse code, 3 Refresh",
-            f"3: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
-            "numbered after a refresh serves the head: 1 View on GitHub, 2 Browse code, 3 Refresh",
-            "2: navigation.open /view/",
-            f"3: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
-            "numbered after a refresh with no pin: 1 View on GitHub, 2 Refresh",
+            "numbered on Changes: 1 Browse code, 2 Refresh",
             f"2: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
-            "3: not handled",
+            "numbered after a refresh serves the head: 1 Browse code, 2 Refresh",
+            "1: navigation.open /view/",
+            f"2: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
+            "numbered after a refresh with no pin: 1 Refresh",
+            f"1: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
+            "2: not handled",
             # Code behind the head offers to switch to it, numbered after Refresh; while the
-            # refresh 3 asks for runs, Refresh waits, shown and disabled, and keeps 3, so the
-            # offer keeps 4 and a second 3 asks nothing (B2 of review B on #506).
-            f"2: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
+            # refresh 2 asks for runs, Refresh waits, shown and disabled, and keeps 2, so the
+            # offer keeps 3 and a second 2 asks nothing (B2 of review B on #506).
+            f"1: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
             "numbered with the code behind the head: "
-            "1 View on GitHub, 2 Browse code, 3 Refresh, 4 Switch to the head",
-            f"3: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
-            "numbered while that refresh runs: "
-            "1 View on GitHub, 2 Browse code, 3 Refresh, 4 Switch to the head",
-            "3: nothing asked",
-            # Once the refresh ends Refresh is offered again on Changes, and the offer keeps 4;
+            "1 Browse code, 2 Refresh, 3 Switch to the head",
+            f"2: POST /api/plugin/github/pull-refresh {_REFRESH_BODY}",
+            "numbered while that refresh runs: 1 Browse code, 2 Refresh, 3 Switch to the head",
+            "2: nothing asked",
+            # Once the refresh ends Refresh is offered again on Changes, and the offer keeps 3;
             # on Conversation nothing is left to refresh, so Refresh is not shown and the offer
-            # takes 3 (C2 of review C on #506, accepted).
-            "numbered once the refresh ends: "
-            "1 View on GitHub, 2 Browse code, 3 Refresh, 4 Switch to the head",
-            "numbered on Conversation once the refresh ends: "
-            "1 View on GitHub, 2 Browse code, 3 Switch to the head",
-            "4: POST /api/source/pin "
+            # takes 2 (C2 of review C on #506, accepted).
+            "numbered once the refresh ends: 1 Browse code, 2 Refresh, 3 Switch to the head",
+            "numbered on Conversation once the refresh ends: 1 Browse code, 2 Switch to the head",
+            "3: POST /api/source/pin "
             '{"oid":"85fcb2fa9e77eb5db485ffef445cbbc645d6db4a","under":"refs/pull/7/head"}',
             "Shift+H: not handled",
             "Shift+E: opened the checks route",
@@ -832,7 +843,7 @@ def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
         "firstVisit": "held, then final",
         "refreshedSameText": "kept",
         "revisit": "final at first paint",
-        "pastTheBound": "plain, then Markdown",
+        "pastTheBound": "a placeholder, then Markdown",
         # The comments and reviews the first screen shows wait with the description, so none is
         # plain at the paint that makes the page ready (review A6).
         "comments": {"texts": 5, "asked": 5, "plainAtReady": 0},
@@ -900,6 +911,10 @@ def test_description_is_final_at_first_paint_and_on_a_revisit() -> None:
                 "rounds": 4,
             },
         },
+        # The record that follows a core preview asks for its comments in view as it paints,
+        # each a placeholder at that paint and never its source (review A5 on #589); before,
+        # the observer asked after the frame, which showed them as source.
+        "recordAfterCore": {"commentsInView": 4, "pendingAtPaint": True},
         # Kept cards tell their ages as of the paint, not as of when they were built (review A5).
         "ages": ["186 min", "185 min", "4 min"],
         # A stale record paints the list's state when the list saw a later update.
@@ -960,11 +975,11 @@ def test_selected_core_preview_waits_for_description_and_keeps_parts_pending() -
     """A cold selected page retains prior content until its honest core is ready."""
 
     assert run_session("github-pull-core-preview-behavior.js") == {
-        "description": "plain preview before full conversation",
+        "description": "rendered preview before full conversation",
         "pendingParts": ["discussion", "checks"],
         "checkResults": {"route": "/pull/7/checks", "links": 2, "empty": True, "pending": True},
         "waitCorePost": {"number": 7, "retry": True, "wait_core": True},
-        "previewMarkdownRequests": 0,
+        "previewMarkdownRequests": 1,
         "fullMarkdownRequests": 1,
         "fullRecordWins": True,
         "crossOwnerRetirement": True,

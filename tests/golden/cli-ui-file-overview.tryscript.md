@@ -231,7 +231,13 @@ $ node tests/dom/file-overview-session.js
       "details": "true",
       "caption": "Share of Total (1,000 files)",
       "distribution": "JSON 24% YAML 17% Markdown 15% TypeScript 6% Python 3.3% Other 34.7% Details Documentation Markdown 150 files 15% Code TypeScript 60 files 6% Python 33 files 3.3% JavaScript 25 files 2.5% 1 more 8 files 0.8% Data JSON 240 files 24% YAML 170 files 17% Other Other types 253 files 25.3% No extension 40 files 4% Log files 21 files 2.1%",
-      "step": "Details opened"
+      "step": "Details opened",
+      "headings": [
+        "doc Documentation",
+        "alignLeft Code",
+        "list Data",
+        "file Other"
+      ]
     },
     "bySize": {
       "details": "true",
@@ -382,11 +388,11 @@ $ node tests/dom/file-overview-session.js
   "the folder header's tally": {
     "still scanning": {
       "skeleton": true,
-      "text": ""
+      "text": "· ·"
     },
     "complete": {
       "skeleton": false,
-      "text": "3000 B 3 files 3h"
+      "text": "3000 B · 3 files · 3h"
     },
     "hidden": {
       "skeleton": false,

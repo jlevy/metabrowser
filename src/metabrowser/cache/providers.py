@@ -1,23 +1,32 @@
 """The built-in repository providers and the few places core asks them anything.
 
 Core code names no provider and never branches on one. It asks the providers listed
-here, through :class:`RepositoryProvider`, for six things: URL reducers for the root
-argument, extra Git configuration for a remote URL (a credential helper), a check to run
-before a first clone, the ``repository_context`` of a mirrored source, the commit a
-pull-request URL pins, and the pull requests a server keeps fresh beside the mirror. The
-list is fixed, as the built-in browser plugin directories are; there is no public
-registration surface for the alpha.
+here, through :class:`RepositoryProvider`, for: URL reducers for the root argument, extra
+Git configuration for a remote URL (a credential helper), what to say when a source was
+not found or needs credentials (``credential_hint``), a check to run before a first
+clone, the ``repository_context`` of a mirrored source, the commit a pull-request URL
+pins, the changed file a pull-request URL's anchor names, the pull requests a server
+keeps fresh beside the mirror, and the page on the provider's own site that shows what a
+Metabrowser page shows (:func:`counterpart_host_for`); and, for ``metab --doctor``, a
+report on the provider's own tools (:func:`provider_statuses`). The list is fixed, as the built-in browser plugin
+directories are; there is no public registration surface for the alpha.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cache
 from typing import TYPE_CHECKING, Literal, Protocol
 
 if TYPE_CHECKING:
     from metabrowser.cache.acquire import PublishedSource
-    from metabrowser.cache.urls import GitSource, ProviderUrlReducer
+    from metabrowser.cache.urls import (
+        FileAnchor,
+        GitSource,
+        ProviderUrlReducer,
+        RepositorySelection,
+    )
     from metabrowser.mirror_refresh import PullRequestSet
     from metabrowser.repository_context import RepositoryContext
 
@@ -35,15 +44,79 @@ class PullRequestPin:
     summary: str
 
 
+@dataclass(frozen=True, slots=True)
+class PullRequestFile:
+    """The changed file a pull-request URL's anchor names, or why none is named.
+
+    ``path`` is the file's path in the pull request's comparison, which
+    ``/pull/<n>/files/<path>`` addresses. Without one, ``unresolved`` says why for the
+    user, ending in a ``(code)``, and the URL opens the Changes tab itself.
+    """
+
+    path: str | None
+    unresolved: str | None = None
+
+
 class PullRequestUnavailableError(Exception):
     """A pull request's data could not be read or fetched; ``state`` says why.
 
-    ``str()`` is written for the user and names no local path.
+    ``str()`` is written for the user and names no local path. ``blocking`` is true when
+    only the step it names, installing or signing in to the provider's own tools, can
+    make the pull request readable, so an open stops there rather than falling back to
+    the default branch.
     """
 
-    def __init__(self, state: str, message: str) -> None:
+    def __init__(self, state: str, message: str, *, blocking: bool = False) -> None:
         super().__init__(message)
         self.state = state
+        self.blocking = blocking
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderStatus:
+    """What one provider's own tools report, as ``metab --doctor`` prints it.
+
+    ``name`` is the key of its ``--doctor --json`` section, ``report`` that section,
+    which the provider's own status route also serves, and ``lines`` its text.
+    """
+
+    name: str
+    report: Mapping[str, object]
+    lines: tuple[str, ...]
+
+
+class CounterpartHost(Protocol):
+    """How one hosting provider names a served repository's pages on its own site.
+
+    ``GET /api/counterpart`` (``metabrowser/counterpart.py``) reads a page's link from it,
+    through :func:`counterpart_host_for`, so the route names no provider.
+    """
+
+    @property
+    def provider(self) -> str:
+        """The provider's name, which the control's ``data-view-on-<provider>`` spells."""
+        ...
+
+    @property
+    def label(self) -> str:
+        """What the link says, such as "View on GitHub"."""
+        ...
+
+    def clone_url(self, context: RepositoryContext) -> str | None:
+        """The canonical URL of *context*'s repository, or ``None`` when it is not hosted here."""
+        ...
+
+    def web_url(self, clone_url: str, selection: RepositorySelection) -> str | None:
+        """The page that shows *selection* of the repository at *clone_url*."""
+        ...
+
+    def pulls_url(self, clone_url: str) -> str | None:
+        """The page that lists the pull requests of the repository at *clone_url*."""
+        ...
+
+    def file_anchor(self, path: bytes) -> FileAnchor:
+        """The anchor of the changed file at repository path *path* on a comparison's page."""
+        ...
 
 
 class RepositoryProvider(Protocol):
@@ -52,6 +125,11 @@ class RepositoryProvider(Protocol):
     @property
     def reducer(self) -> ProviderUrlReducer:
         """The reducer for this provider's web URL spellings."""
+        ...
+
+    @property
+    def counterpart(self) -> CounterpartHost:
+        """How this provider names a served repository's pages on its own site."""
         ...
 
     def git_config(self, remote_url: str) -> tuple[str, ...]:
@@ -83,6 +161,16 @@ class RepositoryProvider(Protocol):
 
         Return ``None`` for a source this provider does not own; raise
         :class:`PullRequestUnavailableError` when its data cannot be had.
+        """
+        ...
+
+    async def pull_request_file(
+        self, published: PublishedSource, number: int, anchor: FileAnchor
+    ) -> PullRequestFile | None:
+        """The changed file of pull request *number* that *anchor* names.
+
+        Read from the cache and the store alone: it never fetches. Return ``None`` for a
+        source this provider does not own.
         """
         ...
 
@@ -119,6 +207,42 @@ def url_reducers() -> tuple[ProviderUrlReducer, ...]:
     from metabrowser.builtin_plugins.github.urls import GithubUrlReducer
 
     return (GithubUrlReducer(),)
+
+
+@cache
+def counterpart_hosts() -> tuple[CounterpartHost, ...]:
+    """Every provider's :class:`CounterpartHost`, each imported alone, as a reducer is.
+
+    ``GET /api/counterpart`` needs a URL's grammar, not the mirror machinery, so this
+    imports what :func:`url_reducers` imports. ``tests/test_cache_urls.py`` holds this
+    list to the providers'.
+    """
+
+    from metabrowser.builtin_plugins.github.urls import GithubCounterpartHost
+
+    return (GithubCounterpartHost(),)
+
+
+def counterpart_host_for(context: RepositoryContext) -> tuple[CounterpartHost, str] | None:
+    """The provider hosting *context*'s repository and the repository's URL, or ``None``."""
+
+    for host in counterpart_hosts():
+        clone_url = host.clone_url(context)
+        if clone_url is not None:
+            return host, clone_url
+    return None
+
+
+async def provider_statuses() -> tuple[ProviderStatus, ...]:
+    """Every provider's status report, for ``metab --doctor``.
+
+    Each is imported alone, without its provider, as :func:`url_reducers` imports each
+    reducer: the doctor needs the status check, not the mirror machinery.
+    """
+
+    from metabrowser.builtin_plugins.github.gh_status import doctor_status
+
+    return (await doctor_status(),)
 
 
 def provider_git_config(remote_url: str) -> tuple[str, ...]:
@@ -176,6 +300,21 @@ async def open_pull_request(
     )
 
 
+async def pull_request_file(
+    published: PublishedSource, number: int, anchor: FileAnchor
+) -> PullRequestFile:
+    """The changed file of pull request *number* that *anchor* names, from its provider."""
+
+    for provider in installed_providers():
+        found = await provider.pull_request_file(published, number, anchor)
+        if found is not None:
+            return found
+    return PullRequestFile(
+        None,
+        f"{published.source.normalized} has no pull requests Metabrowser can read (unsupported)",
+    )
+
+
 def served_pull_requests_for(published: PublishedSource) -> PullRequestSet | None:
     """The pull requests a server serves beside the mirror, from the provider that owns it."""
 
@@ -187,15 +326,22 @@ def served_pull_requests_for(published: PublishedSource) -> PullRequestSet | Non
 
 
 __all__ = [
+    "CounterpartHost",
+    "ProviderStatus",
     "PullRequestFetch",
+    "PullRequestFile",
     "PullRequestPin",
     "PullRequestUnavailableError",
     "RepositoryProvider",
     "check_first_clone",
+    "counterpart_host_for",
+    "counterpart_hosts",
     "installed_providers",
     "open_pull_request",
     "provider_credential_hint",
     "provider_git_config",
+    "provider_statuses",
+    "pull_request_file",
     "served_pull_requests_for",
     "repository_context_for",
     "url_reducers",

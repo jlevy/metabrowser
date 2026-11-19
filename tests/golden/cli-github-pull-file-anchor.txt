@@ -1,0 +1,250 @@
+## No list is cached. Opening the pull request fetches its record, whose comparison in the store names the file.
+# metab 'https://github.com/octo/demo/pull/7/files#diff-be97662273fac8ac301e8dfa98ba5d8d90d390bfa9419746155382b7ace0a3c2R2' --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: c691256511d05858850bc7684ae062fea0d41132
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+tab: files
+file: src/app.txt
+diff_line: R2 (the Changes tab opens at the file, not the line)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- stderr ---
+cloning https://github.com/octo/demo into <HOME>
+cloned https://github.com/octo/demo in 0.0 s
+--- gh ---
+gh auth status
+gh api repos/octo/demo --jq .size
+gh auth status
+gh api repos/octo/demo/pulls/7
+gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1
+gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1
+gh api repos/octo/demo/issues/7/comments?per_page=100&page=1
+gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1
+gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1
+gh auth status
+## Once the list is cached, the files route's own list names it, with no Git.
+# metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-files-refresh
+status: 202
+{
+  "refresh": "started",
+  "files": {
+    "state": "pending",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "number": 7,
+    "listed_from": null,
+    "fetched_at": null,
+    "generation": null,
+    "reader": null,
+    "head": null,
+    "base": null,
+    "base_ref": null,
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": null,
+    "fetched": 0,
+    "pages": 0,
+    "last_page": null,
+    "complete": false,
+    "capped": false,
+    "truncated": false,
+    "offset": 0,
+    "limit": 0,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pull-files?number=7&limit=0"
+}
+after: /api/plugin/github/pull-files?number=7&limit=0
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 7,
+  "listed_from": "comparison",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "generation": "00000000000000000000000000000001",
+  "reader": null,
+  "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+  "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
+  "base_ref": null,
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "fetched": 2,
+  "pages": 0,
+  "last_page": null,
+  "complete": true,
+  "capped": false,
+  "truncated": false,
+  "offset": 0,
+  "limit": 0,
+  "rows": []
+}
+--- stderr ---
+--- body ---
+{"number": 7}
+--- gh ---
+# metab 'https://github.com/octo/demo/pull/7/files#diff-eae8d22bc4fc6d599e92d3cc7266ae3adb0e1ffa3c89a8d9cbbb33eec9462386L1-R1' --api '/api/plugin/github/pull-files?number=7'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-files?number=7
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 7,
+  "listed_from": "comparison",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "generation": "00000000000000000000000000000001",
+  "reader": null,
+  "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+  "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
+  "base_ref": null,
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "fetched": 2,
+  "pages": 0,
+  "last_page": null,
+  "complete": true,
+  "capped": false,
+  "truncated": false,
+  "offset": 0,
+  "limit": 3000,
+  "rows": [
+    {
+      "path": "docs/new.md",
+      "previous_path": null,
+      "status": "added",
+      "additions": 1,
+      "deletions": 0,
+      "display": "docs/new.md",
+      "previous_display": null
+    },
+    {
+      "path": "src/app.txt",
+      "previous_path": null,
+      "status": "modified",
+      "additions": 1,
+      "deletions": 0,
+      "display": "src/app.txt",
+      "previous_display": null
+    }
+  ]
+}
+--- stderr ---
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+tab: files
+file: docs/new.md
+diff_line: L1-R1 (the Changes tab opens at the file, not the line)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- gh ---
+## GitHub's Changes page is `/changes` since 2026-01-22, and `/files` its older spelling: both carry the same anchor.
+# metab 'https://github.com/octo/demo/pull/7/changes#diff-be97662273fac8ac301e8dfa98ba5d8d90d390bfa9419746155382b7ace0a3c2R2' --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: c691256511d05858850bc7684ae062fea0d41132
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+tab: files
+file: src/app.txt
+diff_line: R2 (the Changes tab opens at the file, not the line)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/7 (If-None-Match)
+gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
+gh auth status
+## A file the pull request does not change, and a hash GitHub never writes.
+# metab 'https://github.com/octo/demo/pull/7/files#diff-b335630551682c19a781afebcf4d07bf978fb1f8ac04c6bf87428ed5106870f5' --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: c691256511d05858850bc7684ae062fea0d41132
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+tab: files
+file: not resolved: no file pull request 7 changes has the path the URL's anchor hashes (file_not_changed); opening the Changes tab
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/7 (If-None-Match)
+gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
+gh auth status
+# metab 'https://github.com/octo/demo/pull/7/files#diff-be97662273fac8ac301e8dfa98ba5d8d' --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: c691256511d05858850bc7684ae062fea0d41132
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+tab: files
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/7 (If-None-Match)
+gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
+gh auth status
+## Offline, a pull request with no record and no list: nothing names the file, and the pin is the default branch.
+# metab 'https://github.com/octo/demo/pull/11/files#diff-be97662273fac8ac301e8dfa98ba5d8d90d390bfa9419746155382b7ace0a3c2' --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: c691256511d05858850bc7684ae062fea0d41132
+selection: pull_request
+pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
+tab: files
+file: not resolved: pull request 11's changed files are not known offline: no list of them is cached, and no cached record names a comparison the store can list in full (files_unknown); opening the Changes tab
+pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: gh could not reach api.github.com (network_error); the pin is the default branch)
+--- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/11

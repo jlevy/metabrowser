@@ -23,6 +23,7 @@ from typing import get_args
 import click
 from watchfiles import DefaultFilter
 
+from metabrowser.builtin_plugins.github.gh_status import GH_MINIMUM_LABEL
 from metabrowser.builtin_plugins.github.provider import MAX_FIRST_CLONE_ENV
 from metabrowser.cli.exit_codes import (
     INTERRUPTED_EXIT_CODE,
@@ -329,6 +330,12 @@ def stated_values() -> list[Stated]:
         ),
         Stated(
             "docs/installation.md",
+            "the GitHub CLI minimum",
+            r"the doctor.s GitHub check, need `gh` (\d+\.\d+\.\d+) or later",
+            (GH_MINIMUM_LABEL,),
+        ),
+        Stated(
+            "docs/installation.md",
             "the app's minimum metab",
             r"the app needs `metab` (\d+\.\d+\.\d+) or later",
             (".".join(app_minimum.groups()),),
@@ -455,7 +462,7 @@ def test_the_values_check_sees_what_it_must() -> None:
     assert _series(["a", "b"]) == "a and b"
 
 
-_PRESENT_SECTION = "Handing a Target to the App: `--present`"
+_PRESENT_SECTION = "Presenting a Target: `--present`"
 
 
 def test_the_present_guide_names_every_delivery_code_and_kind() -> None:

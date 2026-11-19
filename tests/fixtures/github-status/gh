@@ -1,0 +1,44 @@
+#!/bin/sh
+# A gh that answers `gh --version` and `gh auth status --json hosts` as the variant
+# FAKE_GH_STATUS names, and fails anything else. It is first on PATH in
+# tests/golden/cli-github-status.tryscript.md and the goldens that run `metab --doctor`,
+# and tests/test_github_status.py, so no command there reaches a gh a developer has
+# signed in. Each answer has the shape gh 2.98.0 gives (2026-11-18): with
+# --json, auth status exits 0 whatever the account's state, and a gh without --json
+# says "unknown flag". `old-version` answers auth status as a signed-in gh does but names a
+# release below GH_MINIMUM in gh_status.py, so the version comparison, not the probe,
+# finds it too old.
+variant="${FAKE_GH_STATUS:-signed-in}"
+host() {
+  printf '{"hosts":{"github.com":[{%s,"active":true,"host":"github.com","login":"octo-reader","gitProtocol":"https"}]}}\n' "$1"
+}
+if [ "$1" = "--version" ]; then
+  case "$variant" in
+    broken) exit 1 ;;
+    too-old) printf 'gh version 2.20.2 (2022-11-01)\nhttps://github.com/cli/cli/releases/tag/v2.20.2\n' ;;
+    old-version) printf 'gh version 2.80.0 (2025-09-23)\nhttps://github.com/cli/cli/releases/tag/v2.80.0\n' ;;
+    *) printf 'gh version 2.98.0 (2026-08-20)\nhttps://github.com/cli/cli/releases/tag/v2.98.0\n' ;;
+  esac
+  exit 0
+fi
+if [ "$1 $2" = "auth status" ]; then
+  case "$variant" in
+    signed-in | old-version) host '"state":"success","tokenSource":"keyring","scopes":"gist, read:org, repo, workflow"' ;;
+    no-repo-scope) host '"state":"success","tokenSource":"keyring","scopes":"gist, read:org"' ;;
+    # A fine-grained or GitHub App token has no OAuth scopes, so gh names none; it
+    # lists a classic token's scopes wherever the token came from.
+    fine-grained-token) host '"state":"success","tokenSource":"GH_TOKEN"' ;;
+    signed-out) printf '{"hosts":{}}\n' ;;
+    token-refused) host '"state":"error","error":"HTTP 401: Bad credentials (https://api.github.com/)","tokenSource":"keyring"' ;;
+    # GitHub refused the token in GH_TOKEN: gh names no login, only the variable.
+    env-token-refused)
+      printf '%s\n' '{"hosts":{"github.com":[{"state":"error","error":"non-200 OK status code: 401 Unauthorized body: \"{\\r\\n  \\\"message\\\": \\\"Bad credentials\\\",\\r\\n  \\\"status\\\": \\\"401\\\"\\r\\n}\"","active":true,"host":"github.com","login":"","tokenSource":"GH_TOKEN","gitProtocol":"https"}]}}' ;;
+    offline) host '"state":"error","error":"dial tcp: lookup api.github.com: no such host","tokenSource":"keyring"' ;;
+    too-old) printf 'unknown flag: --json\n\nUsage:  gh auth status [flags]\n' >&2; exit 1 ;;
+    broken) exit 1 ;;
+    *) echo "fake gh: unknown FAKE_GH_STATUS $variant" >&2; exit 2 ;;
+  esac
+  exit 0
+fi
+echo "fake gh: unexpected arguments" >&2
+exit 2

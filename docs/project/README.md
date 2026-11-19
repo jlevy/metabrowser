@@ -50,6 +50,9 @@ It links each document below and the contributor standards in `docs/`.
   and asset loading tiers
 - [macOS app](architecture/arch-macos-app.md): server supervision, windows and tabs,
   restore, and WebKit differences
+- [App contract](architecture/arch-app-contract.md): what the macOS app reads of
+  `metab`, the one file that declares it, the golden that records it, and the checks
+  that hold both sides to it
 - [Recent targets](architecture/arch-recent-targets.md): the list of folders and
   repositories opened lately, what records an open, and the shells that read it
 
@@ -65,6 +68,9 @@ It links each document below and the contributor standards in `docs/`.
 
 ## Active Plans
 
+- [The app’s command-line dependencies and a complete doctor](specs/active/plan-2026-11-18-cli-dependencies-and-doctor.md):
+  where each tool’s minimum version lives, the app’s versioning contract with `metab`, a
+  doctor that checks everything a setup needs, and Check Setup… in the macOS app
 - [View on branch](specs/active/plan-2026-11-17-view-on-branch.md): one control on a
   pull request’s Changes that opens a changed file at the pull request’s head in the
   main UI, replacing the standalone revision page; approved 2026-11-17
@@ -93,6 +99,9 @@ It links each document below and the contributor standards in `docs/`.
 - [Documentation from first principles](specs/active/plan-2026-11-14-documentation-from-first-principles.md):
   one owner per fact, task guides, architecture documents for every layer, a baseline
   scale benchmark, and checks that keep the set linked
+- [Switching folders in the macOS app](specs/active/plan-2026-11-18-macos-folder-switching.md):
+  a window that can show any open folder, the title as a native chooser of open and
+  recent folders, a keyboard switcher, and marks shared with the page
 - [Native macOS app](specs/active/plan-2026-11-10-native-macos-app.md): folder identity,
   the icon and release pipeline, warm folder switching, host mode and the agent front
   door, and the app-managed runtime
@@ -101,6 +110,9 @@ It links each document below and the contributor standards in `docs/`.
   splitting it into unit, golden, and browser jobs, and cutting what a flake costs; the
   owner approved Phases 1 and 2 on 2026-11-16, and they are implemented by
   jlevy/metabrowser#499 and jlevy/metabrowser#504
+- [Opening anything from the CLI and the app](specs/active/plan-2026-11-17-open-anything-from-cli-and-app.md):
+  `metab TARGET --present`, the `open_in` preference, GitHub URLs and Open URL… in the
+  app, GitHub sign-in checks, and named UI commands; Phase 1 partly built
 - [Publishing the macOS app](specs/active/plan-2026-11-16-macos-app-publishing.md):
   Developer ID signing, notarization, the DMG, provenance, a tag-driven release job, and
   the checks of a downloaded copy, with the owner-only steps

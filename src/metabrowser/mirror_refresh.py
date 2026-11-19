@@ -219,13 +219,15 @@ class MirrorRef:
 
     ``name`` is the name a reader knows it by, ``ref`` the full ref a pin request names
     it with, and ``default`` marks the branch that lists first: the origin's default
-    branch in a mirror, the checked-out branch in a checkout.
+    branch in a mirror, the checked-out branch in a checkout. ``committed_at`` is the
+    commit's committer date in epoch seconds, ``None`` when Git printed none.
     """
 
     name: str
     ref: str
     commit: str
     default: bool = False
+    committed_at: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -315,6 +317,14 @@ class ServedMirror(Protocol):
 
     async def ref_tip(self, ref: str) -> str | None:
         """The commit *ref* names in the mirror now, or ``None`` when it is gone."""
+        ...
+
+    async def default_tip(self) -> str | None:
+        """The commit the origin's default branch names in the mirror now, or ``None``.
+
+        ``None`` when the mirror has recorded no default branch or no longer holds it.
+        The Commits tab walks it, whichever pin the Files tab shows.
+        """
         ...
 
     async def list_refs(self, kind: RefKind) -> tuple[MirrorRef, ...]:

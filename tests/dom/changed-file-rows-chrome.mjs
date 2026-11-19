@@ -34,7 +34,7 @@ const PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>changed fi
 <script src="/static/changed-files-tree.js"></script>
 <style>body { display: flex; gap: 24px; margin: 0; } .host { width: 360px; }</style>
 </head><body>
-<div class="host github-pulls"><div class="tree-content" id="pulls-scroll"><ul><li id="pulls-item"><a id="pulls-owner" aria-level="1" href="#">#7</a></li></ul></div></div>
+<div class="host github-pulls"><div class="tree-content" id="pulls-scroll"><ul><li id="pulls-item"><a id="pulls-owner" aria-level="1" href="#">#7</a><div id="pulls-line"></div></li></ul></div></div>
 <div class="host metabrowser-diff-host" id="diff-host"></div>
 </body></html>`;
 const TYPES = { ".css": "text/css", ".js": "text/javascript", ".svg": "image/svg+xml" };
@@ -95,7 +95,12 @@ const MOUNT = `(async () => {
     page: () => null, open() {}, leave() {}, focusedIn() {},
     tree, formatCount,
   });
-  pulls.attach(document.getElementById("pulls-item"), document.getElementById("pulls-owner"));
+  // A pull request's item: its row owns the tree, and its change line controls it (mb-1z7j).
+  pulls.attach(
+    document.getElementById("pulls-item"),
+    document.getElementById("pulls-owner"),
+    document.getElementById("pulls-line"),
+  );
   pulls.controller.expand();
   // The Diff summary's tree, as diff-view.js mounts it under its header.
   const { mountSummaryTree } = await import("/diff/diff-summary.js");

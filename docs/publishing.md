@@ -85,10 +85,28 @@ Confirm the repository’s public-hygiene gate is green before changing visibili
    differing tallies confined to what the changelog describes is the explicit acceptance
    this step allows.
 
-4. Confirm CI is green for the exact commit to be tagged and record its full SHA as
-   `RELEASE_COMMIT`.
+4. Review changes since the previous release, choose a semantic version
+   ([Choosing a Version](#choosing-a-version)), and assemble the changelog in the
+   release-preparation pull request:
 
-5. Review changes since the previous release and choose a semantic version.
+   ```shell
+   uv --config-file uv.toml run --frozen python -m devtools.changelog assemble
+   ```
+
+   It writes every fragment in `changelog.d/` at the top of `CHANGELOG.md`’s Unreleased
+   section, the most recently landed first, and deletes the fragments.
+   Then add a `## X.Y.Z` heading right below the Unreleased section’s note, so the
+   entries fall under the version and Unreleased keeps only its note.
+   The changelog check in `make lint-check` lets this pull request through, because the
+   entries it adds come from the fragments it deletes.
+
+5. Once that lands, confirm CI is green for the exact commit to be tagged and record its
+   full SHA as `RELEASE_COMMIT`. Confirm that the commit holds no fragment, which this
+   command shows by listing only `changelog.d/README.md`:
+
+   ```shell
+   git ls-tree --name-only "$RELEASE_COMMIT" changelog.d/
+   ```
 
 6. After approval of the exact commit and notes, check the version tag as described
    above and create a GitHub release with a `vX.Y.Z` tag targeting `RELEASE_COMMIT`.
@@ -169,6 +187,45 @@ Confirm the repository’s public-hygiene gate is green before changing visibili
 For the first release, the intended tag and package version are `v0.1.0` and `0.1.0`.
 The macOS app releases on its own, under its own tags, with the
 [App Release Checklist](#app-release-checklist).
+
+## Choosing a Version
+
+Versions are semantic, `X.Y.Z`. The macOS app’s contract with `metab` is at the minor
+release, as the owner set on 2026-11-18; this section is where that rule is written.
+
+- **A change the app depends on is a new minor or major release, never a patch.** That
+  is any change to what the app reads from `metab`: a flag, route, JSON field, output
+  line, or exit status.
+  [The app’s contract](project/architecture/arch-app-contract.md) declares all of it,
+  and its checks make a branch name such a change in the changelog and fail a patch
+  release that holds one
+  ([Versioning](project/architecture/arch-app-contract.md#versioning)). The app’s
+  minimum, `MetabRequirement.minimumRelease` in
+  `apps/macos/Sources/ShellCore/Setup/MetabVersion.swift`, names that release as
+  `X.Y.0`.
+- **A bug fix that keeps what the app reads may be a patch.**
+
+The reason: a patch is then always safe for an app already in use, and a checkout’s
+development version lines up with the minimum.
+A checkout reports the next minor release as its development version (`bump` in
+`pyproject.toml`) and rebuilds that version after each commit or tag (`cache-keys` in
+its `[tool.uv]`), so after `make install` it meets a minimum raised to that release.
+
+To raise the minimum, name the next minor release after the latest one, since no
+checkout reports a newer one, and leave `MetabRequirement.isReleased` false until that
+release is on PyPI, since the app’s upgrade command asks PyPI for it.
+`tests/test_macos_app_pins.py` checks the form, both bounds, the bump, and the cache
+keys.
+
+Proposed and not yet decided by the owner
+([Owner Decisions](project/specs/active/plan-2026-11-18-cli-dependencies-and-doctor.md#owner-decisions)):
+
+- **Before 1.0**, the minor release is the boundary in both directions: a `0.Y.0` may
+  add what the app needs and may change what an older app read, and its notes say so.
+- **From 1.0**, a change that removes or alters what a released app reads is a major
+  release, and one that only adds what a newer app needs is a minor release.
+- **A fix the app cannot work without** ships as a minor release, so the minimum stays
+  `X.Y.0`.
 
 ## macOS App Releases
 

@@ -53,8 +53,12 @@ function loadProductionModule() {
   };
   context.window.window = context.window;
   vm.createContext(context);
-  const file = path.join(staticDir, "source-ref-selector.js");
-  vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
+  // formatters.js names each commit as every line does, as the shell's startup scripts
+  // load it first.
+  for (const name of ["formatters.js", "source-ref-selector.js"]) {
+    const file = path.join(staticDir, name);
+    vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
+  }
   return context.window.MetabrowserSourceRefSelector;
 }
 
@@ -161,10 +165,19 @@ function createPage(page) {
   };
 }
 
-// What the selector would show, one line per row, so a transcript reads as the page does.
-// A checkout's selector adds what a mirror's has none of: the lists it offers, its
-// working-tree row, the checked-out branch's badge, each row's chip, and its offer to
-// reload. A mirror's paint is printed as it always was.
+// When a row's commit was made, as the model holds it. The page shows it as an age, which
+// depends on the clock, so the transcript prints the time itself.
+function committedOf(seconds) {
+  return seconds === null
+    ? "(no date)"
+    : new Date(seconds * 1000).toISOString().replace(".000Z", "Z");
+}
+
+// What the selector would show, one line per row, so a transcript reads as the page does:
+// a row's name, its commit's short ID, and when the commit was made. A checkout's selector
+// adds what a mirror's has none of: the lists it offers, its working-tree row, named by
+// the folder's path, the checked-out branch's badge, each row's chip, and its offer to
+// reload.
 function paintOf(model) {
   if (model === null) {
     return null;
@@ -182,7 +195,7 @@ function paintOf(model) {
     open: true,
     ...(checkout
       ? {
-          workingTree: `Working tree: ${model.workingTree.detail}${model.workingTree.current ? " [current]" : ""}`,
+          workingTree: `Working tree${model.workingTree.location === "" ? "" : `: ${model.workingTree.location} (kept whole: ${model.workingTree.base})`}${model.workingTree.current ? " [current]" : ""}`,
           lists: model.kinds,
         }
       : {}),
@@ -192,7 +205,7 @@ function paintOf(model) {
     switching: model.switching,
     rows: model.rows.map(
       (row) =>
-        `${row.name} ${row.commit}${row.default ? " [default]" : ""}${row.checkedOut ? " [checked out]" : ""}${row.current ? " [current]" : ""}${checkout ? ` (${row.chip} chip)` : ""}`,
+        `${row.name} ${row.commit} ${committedOf(row.committedAt)}${row.default ? " [default]" : ""}${row.checkedOut ? " [checked out]" : ""}${row.current ? " [current]" : ""}${checkout ? ` (${row.chip} chip)` : ""}`,
     ),
     note: model.note,
     error: model.error,
@@ -543,7 +556,174 @@ async function runCheckout() {
     "a mirror's pin": named({ pin, ref: "refs/remotes/origin/feature" }, undefined),
     "a plain folder": named(undefined, undefined),
   };
-  return { steps, labels, guard };
+
+  // Where the Working tree row cuts a folder's path, keeping the folder's own name whole:
+  // at the name the server sends, in whatever separator the platform joined the path with,
+  // and nowhere at the home directory, whose path is `~` alone.
+  const folders = Object.fromEntries(
+    [
+      ["under the home directory", "~/src/checkout", "checkout"],
+      ["with the platform's other separator", "~\\src\\checkout", "checkout"],
+      ["the home directory itself", "~", "reader"],
+      ["outside the home directory", "/srv/checkout", "checkout"],
+    ].map(([where, location, name]) => {
+      const listing = {
+        ...recording.branches.body,
+        working_tree: { current: true, head: null, head_name: null, name, location },
+      };
+      const tree = selectorRuntime.describe({
+        ...emptyState(),
+        listing,
+        checkout: true,
+      }).workingTree;
+      return [where, `${tree.directory}[${tree.base}]`];
+    }),
+  );
+  return {
+    steps,
+    labels,
+    guard,
+    folders,
+    hold: await runHold(recording, onReadme, options),
+  };
+}
+
+// What the page's own data requests do while it switches (mb-bio7): from the moment the
+// server is asked, it may serve the other subject while the page is still here, and would
+// refuse them. So each waits: it goes at once when the page stays, and is held while the
+// page goes, or until the guard's bound if the page is still there. The guard's own `fetch`
+// wrapper and hold run here, over a network that logs what reaches it, with each hold's
+// bound kept for a step to fire. A request whose signal is aborted is not sent, as `fetch`
+// would not send it.
+async function runHold(recording, onReadme, options) {
+  const pinGuard = loadPinGuard();
+  const timers = [];
+  const hold = pinGuard.createSwitchHold((callback, ms) => timers.push({ callback, ms }));
+  const network = [];
+  const guarded = pinGuard.guardFetch(
+    async (input, init) => {
+      if (init?.signal?.aborted) {
+        throw init.signal.reason;
+      }
+      network.push(`${input} ${new Headers(init?.headers).get(pinGuard.PIN_HEADER)}`);
+      return { status: 200, headers: new Headers() };
+    },
+    pinGuard.WORKING_TREE_PIN,
+    () => `http://127.0.0.1${onReadme.view}`,
+    () => {},
+    hold.waiting,
+  );
+  // The page refreshing its root's tallies, as app.js does after its first rows.
+  const ask = (init) => guarded("/api/tree?depth=0", init);
+  const observed = [];
+  // *more* is read once the step has settled.
+  const note = async (step, more = () => ({})) => {
+    await settle();
+    observed.push({
+      step,
+      sent: network.splice(0),
+      bounds: timers.map((timer) => timer.ms),
+      ...more(),
+    });
+  };
+  // The oldest bound still to come, as its timer would fire it.
+  const fireBound = () => timers.shift().callback();
+  // The bounds of holds already ended, which find nothing left to release.
+  const spendBounds = () => {
+    for (const timer of timers.splice(0)) {
+      timer.callback();
+    }
+  };
+  const switching = () => {
+    const page = createPage(onReadme);
+    page.deps.hold = hold.hold;
+    return { page, selector: selectorRuntime.createSelector(page.deps, options(null)) };
+  };
+
+  // A branch: the page goes, and the reader stops its navigation.
+  let { page, selector } = switching();
+  const toBranch = selector.choose("refs/heads/feature");
+  void ask();
+  await note("a request made while the switch is asked waits for the answer");
+  await page.answer(recording.switch_branch);
+  await toBranch;
+  void ask();
+  await note("a page that goes holds its requests until it is gone");
+  fireBound();
+  await note("a page still there at the bound sends them, to be refused");
+  selector.dispose();
+
+  // The working tree, which the page already shows: nothing changes.
+  ({ page, selector } = switching());
+  const same = selector.chooseWorkingTree();
+  void ask();
+  await page.answer(recording.switch_working_tree_same);
+  await same;
+  await note("choosing what the page shows sends them when it is answered");
+  spendBounds();
+  selector.dispose();
+
+  ({ page, selector } = switching());
+  const missing = selector.choose("refs/heads/gone");
+  void ask();
+  await page.answer(recording.switch_missing);
+  await missing;
+  await note("a switch refused sends them when it is answered");
+  spendBounds();
+  selector.dispose();
+
+  // The page takes its selector away while the switch is asked: it stays where it is.
+  ({ page, selector } = switching());
+  const leftAlone = selector.choose("refs/heads/feature");
+  void ask();
+  selector.dispose();
+  await page.answer(recording.switch_branch);
+  await leftAlone;
+  await note("a selector taken away during its switch sends them when it is answered");
+  spendBounds();
+
+  // A request given up while it is held, as a newer search or a timeout gives one up.
+  ({ page, selector } = switching());
+  const givenUp = selector.choose("refs/heads/gone");
+  const controller = new AbortController();
+  let settled = "pending";
+  ask({ signal: controller.signal }).then(
+    () => {
+      settled = "answered";
+    },
+    (error) => {
+      settled = error.name;
+    },
+  );
+  controller.abort();
+  await note("a request given up while it is held settles at once", () => ({ settled }));
+  await page.answer(recording.switch_missing);
+  await givenUp;
+  await note("and is not sent when the hold ends");
+  spendBounds();
+  selector.dispose();
+
+  // The back/forward cache shows the page again, and it switches once more before the
+  // first switch's bound has fired.
+  ({ page, selector } = switching());
+  const first = selector.choose("refs/heads/feature");
+  await page.answer(recording.switch_branch);
+  await first;
+  void ask();
+  hold.release();
+  await note("a page the back/forward cache shows again sends them at once");
+  selector.dispose();
+  ({ page, selector } = switching());
+  const second = selector.choose("refs/heads/gone");
+  void ask();
+  fireBound();
+  await note("the first switch's bound, firing during a second, sends nothing");
+  await page.answer(recording.switch_missing);
+  await second;
+  await note("and the second sends them when it is answered");
+  spendBounds();
+  selector.dispose();
+  return observed;
 }
 
 function emptyState() {

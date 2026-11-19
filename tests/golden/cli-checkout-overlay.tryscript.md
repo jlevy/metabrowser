@@ -94,6 +94,7 @@ status: 200
       "name": "trunk",
       "ref": "refs/remotes/origin/trunk",
       "commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+      "committed_at": 1577836800.0,
       "default": true,
       "checked_out": false,
       "current": true

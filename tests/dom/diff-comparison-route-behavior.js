@@ -103,8 +103,16 @@ async function main() {
     [["pull-comparison", undefined, undefined]],
     "a prefetch of a comparison asked for Markdown",
   );
+  // A tree in the first screen asks for the structured plugin's assets beside its
+  // projection, so Changes finds them loaded; Markdown alone asks for none (C1 of
+  // mb-8274 review).
+  const kinds = [];
+  window.metabrowser.ensureKindAssets = async (kind) => {
+    kinds.push(kind);
+  };
   const page = new AbortController();
   await registered.prefetchMarkdown(pull, read, page.signal);
+  assert.deepEqual(kinds, [], "a first screen of Markdown asked for the tree's assets");
   assert.deepEqual(
     requests.map(({ hook, params }) => [hook, params.file, params.prefetch]),
     [
@@ -120,6 +128,16 @@ async function main() {
   assert.equal(requests.length, 0, "a page that went still asked for Markdown");
   await registered.prefetchMarkdown(comparison, read, new AbortController().signal);
   assert.equal(requests.length, 0, "a comparison with no rendered route asked for Markdown");
+  const yaml = {
+    id: "tree-file",
+    availability: "ready",
+    old: null,
+    new: { entry_type: "file", path: "config/app.yaml" },
+  };
+  const trees = { ...read, manifest: { ...read.manifest, files: [yaml, ...read.manifest.files] } };
+  await registered.prefetchMarkdown(pull, trees, new AbortController().signal);
+  assert.deepEqual(kinds, ["structured"], "a first screen with a tree asks for its assets once");
+  assert.equal(requests[0].params.file, "tree-file", "and for its projection first");
   requests.length = 0;
   // The route codec a page has loaded; View on branch's own behavior is its session's.
   window.MetabrowserGitPath = { wire: () => "g1-UkVBRE1FLm1k" };
