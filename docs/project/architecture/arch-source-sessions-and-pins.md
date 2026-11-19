@@ -222,10 +222,11 @@ revisions, so every data request from a pin’s page names its commit:
   same-origin `/api/` request outside `/api/source/` carries the commit in
   `x-metabrowser-pin`.
 - `SourcePinGuard` in `source_routes.py` refuses a request that names another commit
-  with 409 `pin_changed` and the served commit in `x-metabrowser-pin-changed`. A request
-  that names no commit, from `curl`, `metab --api`, or a plain folder’s page, is not
-  checked. A repository folder’s working-tree page names the working tree the same way,
-  so a tab left on either view is refused when the other is served
+  with 409 `pin_changed` and the served commit in `x-metabrowser-pin-changed`, except a
+  checkout’s `/api/git/` requests, whose answers no switch changes.
+  A request that names no commit, from `curl`, `metab --api`, or a plain folder’s page,
+  is not checked. A repository folder’s working-tree page names the working tree the same
+  way, so a tab left on either view is refused when the other is served
   ([Open Modes](arch-open-modes.md#views)). Where that page’s guard can arrive after its
   first requests, a checkout’s server also refuses a page’s own request that names
   nothing ([Revisions of a Checkout](#revisions-of-a-checkout)); a mirror’s server
@@ -333,8 +334,14 @@ Which modes exist, what each shows, and why is [Open Modes](arch-open-modes.md).
   branches are its origin’s under `refs/remotes/origin/`, a checkout’s are
   `refs/heads/`, and its remote-tracking branches are a third list, `kind=remote`.
   `kinds` names the lists a subject has, `working_tree` is null for a mirror and
-  otherwise says whether the working tree is served and which branch `HEAD` is on, and a
-  row’s `checked_out` marks that branch, which lists first.
+  otherwise says whether the working tree is served, which branch `HEAD` is on, and the
+  folder’s `name` and `location`, as the page names the folder, and a row’s
+  `checked_out` marks that branch, which lists first.
+  Each row has its commit and `committed_at`, the committer date a row’s age is read
+  from: a tag’s is its commit’s, by `for-each-ref`’s `*committerdate`, in the same one
+  process. The page shortens the commit as every line names one (`shortCommit` in
+  `static/formatters.js`), and keeps the folder’s `name` whole at the end of its
+  `location`.
 - **Showing one.** `POST /api/source/pin` resolves a selection in the checkout’s refs
   with the mirror’s resolver, a branch, then a tag, then a remote-tracking branch, then
   a commit ID, never revision syntax, and `replace_owned_subject` attaches a
@@ -343,6 +350,19 @@ Which modes exist, what each shows, and why is [Open Modes](arch-open-modes.md).
   Nothing is fetched for a selection the checkout lacks.
   The folder’s inventory and watcher are not closed, so they are current when the
   working tree is served again.
+- **The Commits tab is the checkout’s.** The chooser is the Files tab’s, so while a
+  revision is served, the history routes, `/api/git/repo`, `/api/git/refs`,
+  `/api/git/summary`, and `/api/git/log`, read the folder as its working tree’s page
+  does (`history_git_location` in `git/routes.py`): `HEAD`, its upstream, and the trunk
+  refs, or every ref with `scope=all`. Those commands diff nothing, so no driver can
+  run, and each sets `log.showSignature=false`. A commit’s page and its diffs stay at
+  the revision’s store target (`session_git_location`), under the policies below.
+  Since none of these answers depends on the revision served, the guard answers a
+  checkout’s `/api/git/` routes whatever revision a page names, so a switch made in
+  another tab never stops a Commits tab.
+  A mirror’s Commits tab is independent of its pin in the same way: it walks the
+  origin’s default branch as the mirror holds it (`ServedMirror.default_tip`), and the
+  pin only when the mirror has recorded no default branch or no longer holds it.
 - **Returning.** `{"working_tree": true}` on the same route calls
   `restore_filesystem_subject`, which attaches the folder under a new generation and
   then closes the revision’s batch readers.
@@ -415,7 +435,10 @@ Which modes exist, what each shows, and why is [Open Modes](arch-open-modes.md).
   The refusal is a checkout’s server’s alone: a mirror has no working-tree page, its
   pages carry the guard inline, and a request there that names nothing, a plugin’s
   worker’s or a preload’s, is answered as it was.
-  A checkout’s page has no freshness row, so its selector makes the offer to reload.
+  A checkout’s page has no freshness row, so its selector makes the offer to reload in
+  one of its own at the foot of the pane, where every tab shows it: the Pulls tab’s
+  requests and a comparison’s are refused as the Files tab’s are, and the selector is in
+  the Files toolbar, which the other tabs hide.
 - **Not yet.** A revision of a checkout has no Pulls tab; a branch that moves while it
   is shown is not followed; and a revision is read in place, never through a store that
   borrows the checkout’s objects.

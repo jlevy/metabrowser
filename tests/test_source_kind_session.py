@@ -198,4 +198,4 @@ def test_source_kind_session_agrees_with_the_served_kind() -> None:
     # The tree load keeps a pin's served ref-and-commit heading.
     assert pin["heading"]["afterTreeLoad"] == pin["heading"]["served"]
     assert '<span class="path-base">topic</span>' in pin["heading"]["served"]
-    assert 'class="header-revision"' in pin["heading"]["served"]
+    assert 'class="header-revision git-commit-sha"' in pin["heading"]["served"]
