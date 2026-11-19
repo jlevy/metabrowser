@@ -89,6 +89,8 @@ enum MainMenu {
         ])
         NSApp.helpMenu = main.addSubmenu("Help", [
             item("Metabrowser Documentation", #selector(AppDelegate.openDocumentation(_:))),
+            .separator(),
+            item("Check Setup…", #selector(AppDelegate.showCheckSetup(_:))),
             item("Reveal Logs Folder", #selector(AppDelegate.revealLogsFolder(_:))),
         ])
         return main

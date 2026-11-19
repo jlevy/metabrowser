@@ -4,10 +4,12 @@ The app copies a few of ``metab``'s constants into Swift, where nothing imports 
 the bounds on acquiring a source, which a repository's start must outlast; the port walk,
 which keeps the two launch gates' ranges apart; the hosts of the GitHub reducer; and the
 page size of the cache's sources route. Its ``Info.plist`` also declares the key
-``--present`` reads before it sends anything. It also reads two kinds of ``metab``'s
-output: the clone report a repository's start writes to stderr, which its status view
-shows, and the state an ``Error:`` line names, which says when GitHub is why a start
-failed; its tests parse samples of each, which are held here to what ``metab`` writes.
+``--present`` reads before it sends anything, and the oldest ``metab`` it runs, which
+``--doctor`` reads; each install's upgrade step is the doctor's. It also reads two kinds
+of ``metab``'s output: the clone report a repository's start writes to stderr, which its
+status view shows, and the state an ``Error:`` line names, which says when GitHub is why
+a start failed; its tests parse samples of each, which are held here to what ``metab``
+writes.
 These checks run in CI's Python jobs, which run on every change, so a change on either
 side fails here, where the macOS workflow's path filter would not have run the app's own
 tests (review A5 on #539).
@@ -39,7 +41,13 @@ from metabrowser.cache.projection import MAX_PAGE_LIMIT, sources_response
 from metabrowser.cache.records import canonical_now
 from metabrowser.cli import clone_report
 from metabrowser.cli.clone_report import LOG_INTERVAL_S, CloneReport, saying_while_waiting
-from metabrowser.cli.present import OPENS_URLS_KEY, Presentable, resolve_target
+from metabrowser.cli.doctor import METAB_UPGRADE_COMMANDS
+from metabrowser.cli.present import (
+    MINIMUM_METAB_KEY,
+    OPENS_URLS_KEY,
+    Presentable,
+    resolve_target,
+)
 from metabrowser.git.process import GIT_ACQUISITION_TIMEOUT_S
 from metabrowser.git.progress import GitProgress
 from metabrowser.home import METABROWSER_CACHE_DIR_ENV
@@ -231,6 +239,30 @@ def test_the_app_declares_what_present_reads() -> None:
     assert info.get(OPENS_URLS_KEY) is True
     # File > Open Recent lists repositories only when the bundle declares the same key.
     assert _swift_value("Folders/RecentTargets.swift", "opensURLsKey") == f'"{OPENS_URLS_KEY}"'
+
+
+def test_the_app_declares_its_minimum_metab_for_the_doctor() -> None:
+    """``metab --doctor`` reads the oldest ``metab`` the app it finds runs from that app's
+    ``Info.plist`` (``MINIMUM_METAB_KEY``), so Terminal can say whether its ``metab`` is
+    new enough; the value is the app's own ``MetabRequirement.minimumRelease``.
+    """
+
+    info = plistlib.loads((APP / "Resources" / "Info.plist").read_bytes())
+    assert info.get(MINIMUM_METAB_KEY) == ".".join(str(part) for part in _minimum_metab())
+
+
+def test_the_apps_upgrade_steps_are_the_doctors() -> None:
+    """The app names the step that upgrades a ``metab`` too old to run (``MetabInstall``),
+    and ``metab --doctor`` names the same step for one older than the app it finds
+    (``METAB_UPGRADE_COMMANDS``): each install's command is the same on both sides.
+    """
+
+    source = (SHELL_CORE / "Setup" / "MetabVersion.swift").read_text(encoding="utf-8")
+    for method, template in METAB_UPGRADE_COMMANDS.items():
+        swift = template.replace("{minimum}", "\\(minimum)")
+        assert f'"{swift}"' in source, (
+            f"MetabInstall.upgradeCommand has no {swift!r}, the doctor's step for {method}"
+        )
 
 
 def _swift_samples(name: str, enum: str) -> set[str]:

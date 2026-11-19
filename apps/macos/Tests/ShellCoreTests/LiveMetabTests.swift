@@ -299,6 +299,26 @@ struct LiveMetabTests {
         #expect(answer == .notCached)
     }
 
+    /// Help > Check Setup… end to end: the report `metab --doctor --json` prints in a
+    /// server's environment is one the app reads, with every setup check.
+    @Test func checkSetupReadsTheDoctorsReport() async throws {
+        let path = try #require(liveMetab)
+        let configuration = try temporaryDirectory("configuration")
+        defer { try? FileManager.default.removeItem(at: configuration) }
+        let tools = RuntimeDiscovery.resolveTools(loginPath: nil, isExecutable: FileChecks.isExecutableFile)
+        let setup = RuntimeSetup(
+            runtime: Runtime(executable: path, version: "live", source: .chosen, fingerprint: nil), tools: tools)
+        var spec = DoctorRun.spec(setup: setup, inherited: ProcessInfo.processInfo.environment)
+        spec.environment = liveEnvironment(configuration: configuration, toolDirectories: tools.directories)
+        let answer = DoctorRun.answer(await CommandRunner.run(spec, timeout: DoctorRun.timeout))
+        guard case .report(let report) = answer else {
+            Issue.record("Check Setup… could not read the doctor's report: \(answer)")
+            return
+        }
+        #expect(report.hasChecks)
+        #expect(Set(["plugins", "open_in", "github", "metab", "git", "config", "cache"]) == Set(report.rows.map(\.id)))
+    }
+
     /// File > Open URL… asks the command a link sent to the app is resolved with: a
     /// supported URL closes the panel on `metab`'s plan, and one `metab` refuses keeps the
     /// panel open with `metab`'s own message.

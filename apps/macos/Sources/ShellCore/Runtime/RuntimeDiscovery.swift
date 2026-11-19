@@ -106,7 +106,7 @@ public nonisolated enum RuntimeDiscovery {
     /// A login shell whose startup files take longer is given up on, and setup goes on
     /// without its `PATH`.
     static let shellTimeout: Duration = .seconds(8)
-    /// Settings > Run Doctor stops `metab --doctor` after this, so a check stuck on a
+    /// Check Setup… stops `metab --doctor --json` after this, so a check stuck on a
     /// hung tool or network leaves the window usable.
     public static let doctorTimeout: Duration = .seconds(60)
     static let beginMarker = "__METABROWSER_LOGIN_ENV_BEGIN__"

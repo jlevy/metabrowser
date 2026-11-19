@@ -64,6 +64,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Set when a launch found no runtime, so the last session is restored once one is.
     private var restoreAfterDiscovery = false
     private var runtimeWindow: RuntimeWindowController?
+    /// Help > Check Setup…, made the first time it is chosen and kept.
+    private var checkSetupWindow: CheckSetupWindowController?
+    private let checkSetupModel = CheckSetupModel()
+    /// The `metab --doctor --json` run Check Setup… awaits: at most one.
+    private var checkSetupRun: Task<Void, Never>?
     private var signalSources: [any DispatchSourceSignal] = []
     private var showPanelAfterDiscovery = false
     private var isTerminating = false
@@ -778,7 +783,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 actions: RuntimeActions(
                     findAgain: { [weak self] in self?.beginDiscovery() },
                     choose: { [weak self] in self?.chooseRuntime() },
-                    runDoctor: { [weak self] in Task { await self?.runDoctor() } },
+                    checkSetup: { [weak self] in self?.showCheckSetup(nil) },
                     revealLogs: { [weak self] in self?.revealLogsFolder(nil) }))
         }
         runtimeWindow?.showWindow(nil)
@@ -808,17 +813,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         await operations.choose(path)
     }
 
-    private func runDoctor() async {
-        guard let setup = selection.setup else { return }
-        runtimeModel.isRunningDoctor = true
-        let result = await CommandRunner.run(
-            LaunchSpec(
-                executable: setup.runtime.executable, arguments: ["--doctor"],
-                environment: ChildEnvironment.build(
-                    inherited: ProcessInfo.processInfo.environment, toolDirectories: setup.tools.directories)),
-            timeout: RuntimeDiscovery.doctorTimeout)
-        runtimeModel.isRunningDoctor = false
-        runtimeModel.doctorOutput = result.transcript(timeout: RuntimeDiscovery.doctorTimeout).joined(separator: "\n")
+    /// Help > Check Setup…: runs `metab --doctor --json` each time the window comes on
+    /// screen, unless a run is under way, and shows its report (`DoctorRun`).
+    @objc func showCheckSetup(_ sender: Any?) {
+        if checkSetupWindow == nil {
+            checkSetupWindow = CheckSetupWindowController(
+                model: checkSetupModel,
+                actions: CheckSetupActions(
+                    checkAgain: { [weak self] in self?.runCheckSetup() },
+                    openSettings: { [weak self] in self?.showSettings(nil) }))
+        }
+        runCheckSetup()
+        checkSetupWindow?.showWindow(nil)
+        checkSetupWindow?.window?.makeKeyAndOrderFront(nil)
+    }
+
+    private func runCheckSetup() {
+        guard checkSetupRun == nil else { return }
+        let setup = selection.setup
+        let model = checkSetupModel
+        model.header = DoctorRun.header(app: appIdentity, setup: setup)
+        model.hasRuntime = setup != nil
+        guard let setup else {
+            model.answer = nil
+            return
+        }
+        let install = MetabInstall.of(executable: setup.runtime.executable)
+        model.upgrade = (MetabRequirement.upgradeCommand(for: install), install.note)
+        model.isRunning = true
+        checkSetupRun = Task { [weak self] in
+            let result = await CommandRunner.run(
+                DoctorRun.spec(setup: setup, inherited: ProcessInfo.processInfo.environment),
+                timeout: DoctorRun.timeout)
+            let answer = DoctorRun.answer(result)
+            if case .unreadable(let reason, _) = answer {
+                AppLog.app.error("metab --doctor --json \(reason, privacy: .public)")
+            }
+            model.answer = answer
+            model.isRunning = false
+            self?.checkSetupRun = nil
+        }
     }
 
     // MARK: - Watching the Runtime

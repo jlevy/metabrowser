@@ -97,8 +97,77 @@ public nonisolated enum MetabRequirement {
         return "built before \(newest)"
     }
 
-    /// Replaces an older CLI install with one this app runs. It asks for a floor, not an
-    /// exact version: uv records the requirement in the tool's receipt and every later
-    /// `uv tool upgrade` keeps to it, so an exact pin would hold the install there.
-    public static var upgradeCommand: String { "uv tool install --upgrade 'metabrowser>=\(minimum)'" }
+    /// Replaces an older CLI install with one this app runs, by the install's own tool
+    /// (`MetabInstall.upgradeCommand`).
+    public static func upgradeCommand(for install: MetabInstall) -> String {
+        install.upgradeCommand(minimum: minimum)
+    }
+}
+
+/// How a `metab` was installed, read from its executable's canonical path, so the step
+/// that upgrades it uses the tool that installed it rather than adding a second copy.
+///
+/// `metab --doctor` reads the same of itself (`METAB_UPGRADE_COMMANDS` in
+/// `src/metabrowser/cli/doctor.py`), and `tests/test_macos_app_pins.py` holds the
+/// commands here to those. The app's own copies are what it shows when no `metab` runs.
+public nonisolated enum MetabInstall: Equatable, Sendable {
+    /// `uv tool install`: the tool environment holds `uv-receipt.toml`.
+    case uvTool
+    /// `pipx install`: the environment holds `pipx_metadata.json`.
+    case pipx
+    /// A source checkout's `.venv/bin/metab`, beside the checkout's `pyproject.toml`.
+    case checkout(root: String)
+    /// Anything else, which uv replaces with an install the app finds.
+    case other
+
+    public static let uvReceipt = "uv-receipt.toml"
+    public static let pipxMetadata = "pipx_metadata.json"
+
+    /// Reads the files beside the canonical executable: `<prefix>/bin/metab`, where a tool
+    /// environment's prefix holds its receipt and a checkout's `.venv` sits in the
+    /// checkout. A uv receipt wins over a checkout, as `uv tool install --editable` makes
+    /// both.
+    public static func of(
+        executable: String,
+        canonicalPath: (String) -> String = FileChecks.canonicalPath,
+        fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+    ) -> MetabInstall {
+        let bin = (canonicalPath(executable) as NSString).deletingLastPathComponent
+        let prefix = (bin as NSString).deletingLastPathComponent
+        guard prefix.hasPrefix("/"), prefix != "/" else { return .other }
+        if fileExists(prefix + "/" + uvReceipt) { return .uvTool }
+        if fileExists(prefix + "/" + pipxMetadata) { return .pipx }
+        let root = (prefix as NSString).deletingLastPathComponent
+        if (prefix as NSString).lastPathComponent == ".venv", fileExists(root + "/pyproject.toml") {
+            return .checkout(root: root)
+        }
+        return .other
+    }
+
+    /// The command that brings this install to `minimum` or later. uv's and pipx's ask
+    /// for a floor, not an exact version: uv records the requirement in the tool's receipt
+    /// and every later `uv tool upgrade` keeps to it, so an exact pin would hold the
+    /// install there. A checkout builds its own source, run at its root (`note`).
+    public func upgradeCommand(minimum: String) -> String {
+        switch self {
+        case .uvTool, .other: "uv tool install --upgrade 'metabrowser>=\(minimum)'"
+        case .pipx: "pipx install --force 'metabrowser>=\(minimum)'"
+        case .checkout: "git pull && make install"
+        }
+    }
+
+    /// Where to run `upgradeCommand`, when it matters: a checkout's root.
+    public var note: String? {
+        guard case .checkout(let root) = self else { return nil }
+        return "At the root of the checkout \(root):"
+    }
+
+    /// Whether `upgradeCommand` runs uv, so a Terminal must find it: a checkout's
+    /// `make install` does too.
+    public var needsUv: Bool {
+        switch self {
+        case .uvTool, .other, .checkout: true
+        case .pipx: false
+        }
+    }
 }
