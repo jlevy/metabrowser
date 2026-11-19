@@ -2341,7 +2341,6 @@ html.theme-anim .container,
 html.theme-anim .tree-pane,
 html.theme-anim .preview-pane,
 html.theme-anim .preview-frame,
-html.theme-anim .nav-collapse-toggle,
 html.theme-anim .app-header,
 html.theme-anim .tree-content,
 html.theme-anim .preview-empty,
@@ -3039,16 +3038,20 @@ html.theme-anim .menu {
 }
 /* The chevron: an icon button on the main page's left edge, beside the pane's shadow,
    on the shortcut strip's row. The module centers it on the strip; `bottom` holds it
-   near there until the first measurement. It has the page's ground at rest, as a plate,
-   since the page's content can run under it, and the hover surface over that. The shared
-   chevron points right; turned, it points left, at the pane it hides, and it turns back
-   when the pane is hidden. */
+   near there until the first measurement. It sits 1px in from the edge and has no
+   plate, so the edge and the pane's shadow show through it: only the hover surface
+   fills it. The shared chevron points right; turned, it points left, at the pane it
+   hides, and it turns back when the pane is hidden. */
 .nav-collapse-toggle {
   position: absolute;
-  left: 4px;
+  left: 1px;
   bottom: 5px;
   z-index: var(--z-resize-handle);
-  background: var(--bg);
+}
+/* Its Shift badge is in the frame, over the button's inline end like every `beside`
+   badge, and needs the button's level to paint over it rather than under it. */
+.nav-collapse-toggle ~ .kbd-badge {
+  z-index: var(--z-resize-handle);
 }
 .nav-collapse-toggle svg {
   transform: rotate(180deg);
@@ -3969,7 +3972,7 @@ a.tab-btn {
    Sits between the nav tab bar and the scrolling tree, outside the
    replaceable #tab-files container so a tree reload never destroys
    it and so it never scrolls away. The always-visible row carries
-   Group by and Show ignored; the three filters live in the drawer one
+   Group by; the three filters and Show ignored live in the drawer one
    toggle down. */
 .nav-filter-bar {
   display: flex;
@@ -4084,18 +4087,19 @@ a.tab-btn {
    Lines are `--nav-toolbar-line-height` tall and `--nav-toolbar-gap` apart, the gap
    between controls and above the first line and below the last, so a toolbar grows
    by a line and a gap for each line it adds, and a wrapped toolbar reads as one. A
-   control is one line tall: a shorter one, Show ignored's checkbox, is centred in a
-   line's height rather than making its line shorter, and a taller one, a `.btn` such
-   as Reload (26 px at the default size, two over a chip), is held to it rather than
-   making its line, and so the one-line toolbar, taller. A cluster's own lines are a
-   row's apart.
+   control is one line tall: a shorter one is centred in a line's height rather than
+   making its line shorter, as Show ignored's checkbox is in the Files drawer
+   (`.filter-drawer-row`), and a taller one, a `.btn` such as Reload (26 px at the
+   default size, two over a chip), is held to it rather than making its line, and so
+   the one-line toolbar, taller. A cluster's own lines are a row's apart.
 
-   Measured in headless Chrome on 2026-11-15, pane widths 179 px (the narrowest, 180
-   less the pane's border) to 420 px, both font sets; the themes lay out alike. The
-   widths each row fits one line from, default set / system set, the Pulls tallies
-   "Open 100, Closed 2, All 102" unless four-digit:
-     Files, no filter set                             246 / 262
-     Files, a filter set, "No grouping" (its widest)  298 / 317
+   Measured in headless Chrome on 2026-11-15, and the Files rows again on 2026-11-18
+   once Show ignored moved into the drawer (mb-ey0d), pane widths 179 px (the
+   narrowest, 180 less the pane's border) to 420 px, both font sets; the themes lay out
+   alike. The widths each row fits one line from, default set / system set, the Pulls
+   tallies "Open 100, Closed 2, All 102" unless four-digit:
+     Files, no filter set                             179 / 179 (the narrowest)
+     Files, a filter set, "No grouping" (its widest)  204 / 216
      Pulls, Show and Reload                           276 / 308
      Pulls, Show and Reload, four-digit tallies       303 / 341
    Before this rule, the Files row ran up to 17.69 px past the default pane in the
@@ -4103,7 +4107,7 @@ a.tab-btn {
    the default pane in the system set, scrolled out of sight (35.77 px in the default
    set while it held a Stacks chip). The Pulls Show group alone is joined from
    218 / 245 with three-digit tallies and 244 / 278 with four, and the cluster below.
-   At the narrowest pane, with a filter set, the Files row is three lines (97 px) and
+   At the narrowest pane, with a filter set, the Files row is two lines (67 px) and
    the Pulls toolbar three or four. tests/test_files_tab_chrome.py and
    tests/test_github_pulls_stacks_chrome.py sweep those widths and hold the wrap to
    this rule (tests/dom/nav-toolbar-wrap.mjs). */
@@ -4235,8 +4239,8 @@ a.tab-btn {
   row-gap: var(--nav-toolbar-gap);
 }
 /* The Files tab's toolbar row (`.nav-toolbar-row`), the bar's first line, over the
-   drawer. It wraps by the toolbar rows' rule: Group by, then Show ignored, then Clear
-   and the chevron, which stay together at the line's end. */
+   drawer. It wraps by the toolbar rows' rule: Group by, then Clear and the chevron,
+   which stay together at the line's end. */
 .nav-filter-bar-main {
   width: 100%;
 }
@@ -4265,13 +4269,16 @@ a.tab-btn {
    (filter-controls.js#toggleHtml) and counts the chevron's filters, so it
    sits against the chevron: the margin cancels the span's gap on that
    side, and the 5 px a badge keeps from a chip's label goes, since the
-   gap already parts it from Clear. That gives the row 9 px (mb-x1h6).
+   gap already parts it from Clear. That gave the row 9 px (mb-x1h6).
    Measured in headless Chrome on 2026-11-15 at the default 299 px bar
    (a 275 px row), in the default font set, with a filter set so Clear
-   and the badge "1" show: "No grouping", the widest trigger, overflowed
-   by 7.11 px and now has 1.89 px to spare; "By file type" overflowed by
-   about 1 px and has 7.83; "By age" has 30.7. In a narrower pane, or in
-   the system font set's wider face, the row wraps (`.nav-toolbar-row`). */
+   and the badge "1" show, while Show ignored was on the row: "No
+   grouping", the widest trigger, overflowed by 7.11 px and then had
+   1.89 px to spare; "By file type" overflowed by about 1 px and had
+   7.83; "By age" had 30.7. With Show ignored in the drawer (mb-ey0d),
+   measured the same way on 2026-11-18, "No grouping" has 95.05 px to
+   spare, "By file type" 100.98, and "By age" 123.86. In a pane narrower
+   than the widths beside `.nav-toolbar-row`, the row wraps. */
 .nav-filter-bar-end > .chip-badge {
   margin-left: 0;
   margin-right: -4px;
@@ -4333,14 +4340,22 @@ a.tab-btn {
 }
 /* No section headings in here: its three menus, Modified within, File
    type, and Minimum file size, already say what they are on their
-   triggers, and uppercase labels cost more vertical space in a 300px pane
-   than they were paying for. Its menus wrap on the toolbar's spacing, so
-   an open drawer's lines sit as far apart as the row's over them. */
+   triggers, as Show ignored's label does after them, and uppercase labels
+   cost more vertical space in a 300px pane than they were paying for. Its
+   controls wrap on the toolbar's spacing and each is one line tall, as
+   the row's are (`.nav-toolbar-row`): Show ignored's checkbox, shorter
+   than a chip, is centred in a line's height, so an open drawer's lines
+   sit as far apart as the row's over them. At the default 299 px bar the
+   three menus take the first line and Show ignored the second (measured
+   in headless Chrome on 2026-11-18; tests/test_files_tab_chrome.py). */
 .filter-drawer-row {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: var(--nav-toolbar-gap);
+}
+.filter-drawer-row > * {
+  min-block-size: var(--nav-toolbar-line-height);
 }
 .filter-drawer-actions {
   display: flex;

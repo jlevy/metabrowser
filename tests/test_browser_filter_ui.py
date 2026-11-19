@@ -474,21 +474,20 @@ def test_group_by_and_the_three_filters_are_dropdowns() -> None:
         assert label in fn_block, f"missing any-label {label}"
 
 
-def test_group_by_and_show_ignored_ride_the_row_and_the_filters_sit_in_the_drawer() -> None:
-    """Group by leads the row: it removes nothing, so it needs no drawer. Show ignored
-    follows it, its tick stating its own direction. The three filters sit behind the
-    disclosure, whose badge counts only them; Clear, which resets Show ignored too,
-    shows while any filter is set (mb-sogv, mb-x1h6)."""
+def test_group_by_rides_the_row_and_the_filters_and_show_ignored_sit_in_the_drawer() -> None:
+    """Group by leads the row: it removes nothing, so it needs no drawer. The three
+    filters sit behind the disclosure, and Show ignored follows them there, its tick
+    stating its own direction; the badge counts the ones set, Show ignored turned off
+    among them. Clear, on the row, shows while any of them is set (mb-sogv, mb-x1h6,
+    mb-ey0d)."""
 
     fn_block = _render_nav_filter_bar()
     main = fn_block[fn_block.index("var main =") : fn_block.index("var drawer =")]
     drawer = fn_block[fn_block.index("var drawer =") :]
-    group_at = main.index('key: "group"')
-    assert group_at < main.index('"Show ignored"') < main.index("nav-filter-bar-end")
-    for menu in ("recencyMenu", "typeMenu", "sizeMenu"):
-        assert menu not in main
-    assert "recencyMenu +\n    typeMenu +\n    sizeMenu +" in drawer
-    assert '"Show ignored"' not in drawer
+    assert main.index('key: "group"') < main.index("nav-filter-bar-end")
+    for control in ("recencyMenu", "typeMenu", "sizeMenu", "ignoredCheck", '"Show ignored"'):
+        assert control not in main
+    assert "recencyMenu +\n    typeMenu +\n    sizeMenu +\n    ignoredCheck +" in drawer
     assert "badge: drawerCount," in main
     assert "treeFilterModel.drawerFilterCount(st)" in fn_block
 
