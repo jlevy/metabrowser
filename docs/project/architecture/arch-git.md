@@ -171,8 +171,11 @@ octal escapes. Commands that must carry any byte use `-z` NUL framing, where Git
 quoting at all.
 
 Object IDs are full: SHA-1 or SHA-256 hexadecimal, checked by `is_full_revision` in
-`git/wire.py`. Abbreviations come from Git as `short_id`, which respects `core.abbrev`
-and grows with the repository; truncating in the browser would eventually collide.
+`git/wire.py`. Every address and copy carries the full ID. Git’s own abbreviation comes
+as `short_id`, which respects `core.abbrev` and grows with the repository, for a caller
+that hands it back to Git; the page shows a commit by a fixed length cut from `id`, as
+GitHub does ([Short Commit IDs](../../design-system.md#short-commit-ids)), since a shown
+ID is read, not resolved.
 
 ## Discovery and the Exact-Root Gate
 

@@ -31,6 +31,7 @@ from httpx2 import ASGITransport, AsyncClient
 
 from metabrowser import frontmatter_yaml, jsonl_view, kpress_adapter
 from metabrowser.capabilities import Capabilities, set_capabilities
+from metabrowser.commit_ids import short_commit
 from metabrowser.diff.format import validate_document
 from metabrowser.diff.markdown_projection_worker import InertRender, ProjectionWorker
 from metabrowser.git.content_routes import split_git_container_wire
@@ -1558,7 +1559,7 @@ def test_git_view_shell_honors_gitpath_and_refuses_filesystem_spelling(tmp_path:
             assert root.status_code == 200
             assert "text/html" in root.headers.get("content-type", "")
             assert str(store) not in root.text
-            assert commit[:12] in root.text
+            assert short_commit(commit) in root.text
             assert "METABROWSER_REPOSITORY_CONTEXT=null" in root.text
             assert 'METABROWSER_SOURCE_KIND="git_revision"' in root.text
             blob = await client.get(f"/view/{readme}")

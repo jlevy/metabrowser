@@ -1090,18 +1090,22 @@ expect_identity() {
   fi
 }
 expect_identity "the release variant, version, and commit pass" "" \
-  io.github.jlevy.metabrowser "$version_now" "${tag_sha:0:7}"
+  io.github.jlevy.metabrowser "$version_now" "$tag_sha"
 expect_identity "a development build is not the release" "not the release variant" \
-  io.github.jlevy.metabrowser.dev "$version_now" "${tag_sha:0:7}"
+  io.github.jlevy.metabrowser.dev "$version_now" "$tag_sha"
 expect_identity "another version is not the release" "not $version_now" \
-  io.github.jlevy.metabrowser 9.9.9 "${tag_sha:0:7}"
+  io.github.jlevy.metabrowser 9.9.9 "$tag_sha"
 expect_identity "another commit, with the same VERSION, is not the release" "not from $tag_sha" \
-  io.github.jlevy.metabrowser "$version_now" 89abcde
+  io.github.jlevy.metabrowser "$version_now" 89abcdef0123456789abcdef0123456789abcdef
 expect_identity "a build with uncommitted changes is not the release" "with uncommitted changes" \
-  io.github.jlevy.metabrowser "$version_now" "${tag_sha:0:7}-dirty"
+  io.github.jlevy.metabrowser "$version_now" "$tag_sha-dirty"
 expect_identity "a build that records no commit is not the release" "records no source commit" \
   io.github.jlevy.metabrowser "$version_now" ""
-expect_identity "a commit shorter than git's short hash is not taken as a match" "not from $tag_sha" \
+# The build records the full ID, so a prefix of the tag's commit, as an older build
+# recorded, is another commit as far as the check can tell.
+expect_identity "a short commit ID is not taken as a match" "not from $tag_sha" \
+  io.github.jlevy.metabrowser "$version_now" "${tag_sha:0:7}"
+expect_identity "a shorter prefix is not taken as a match" "not from $tag_sha" \
   io.github.jlevy.metabrowser "$version_now" 0123
 
 # ── check-release.sh, end to end, as far as Linux goes ───────

@@ -306,9 +306,14 @@
    hover, and focus ring; `:where` keeps the exclusion from adding to the specificity. */
 .github-pull-header a:not(:where(.view-header-end *)),
 .github-pull-card-head a,
-.github-pull-commit-id,
 .github-pull-checks a {
   color: var(--link);
+  text-decoration: none;
+}
+/* A commit's ID links to the commit on GitHub and keeps the commit-ID gray, under the
+   pointer too: its underline says it is a link (docs/design-system.md, "Short Commit
+   IDs"). */
+.github-pull-commit-id {
   text-decoration: none;
 }
 .github-pull-header a:not(:where(.view-header-end *)):hover,
@@ -971,13 +976,10 @@
   padding: 3px 0;
   font-size: var(--body-font-size);
 }
-.github-pull-commit .github-pull-external-action,
 .github-pull-checks .github-pull-external-action {
   color: var(--muted);
 }
-.github-pull-commit .github-pull-external-action:hover,
 .github-pull-checks .github-pull-external-action:hover,
-.github-pull-commit .github-pull-external-action:focus-visible,
 .github-pull-checks .github-pull-external-action:focus-visible {
   color: var(--link);
 }

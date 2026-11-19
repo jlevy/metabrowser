@@ -1148,7 +1148,7 @@ api: /api/identity
 status: 200
 {
   "short_name": "demo",
-  "full_name": "github.com/octo/demo@07b55f07793d",
+  "full_name": "github.com/octo/demo@07b55f0",
   "kind": "mirror",
   "kind_label": "Cached mirror",
   "title": "demo • Metabrowser",
