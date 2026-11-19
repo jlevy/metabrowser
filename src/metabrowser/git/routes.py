@@ -48,6 +48,7 @@ from metabrowser.git.history import (
     current_history_scope,
 )
 from metabrowser.git.log import read_history_summary, read_refs
+from metabrowser.git.message import read_commit_message, render_commit_body
 from metabrowser.git.process import GitError, GitLocation, GitTimeoutError, failure_detail
 from metabrowser.git.ref_state import ref_state
 from metabrowser.git.repo import RepoContext, repo_info
@@ -368,6 +369,41 @@ async def api_git_commit(request: Request) -> JSONResponse:
     return JSONResponse(dict(detail))
 
 
+async def api_git_commit_markdown(request: Request) -> JSONResponse:
+    """``GET /api/git/commit-markdown/{revision}`` -- a commit message's body as Markdown.
+
+    The commit page asks for it beside ``/api/git/commit/{revision}``, which keeps the
+    message as written; :mod:`metabrowser.git.message` says how a body is rendered.
+    """
+    revision = request.path_params.get("revision", "")
+    if not isinstance(revision, str) or not is_full_revision(revision):
+        # Not echoed back, as the commit route does not echo it.
+        return JSONResponse(
+            {
+                "error": "revision must be a full 40- or 64-character object id",
+                "code": "revision_not_full",
+            },
+            status_code=400,
+        )
+
+    location = session_git_location()
+    context, info = await _resolve(location)
+    if context is None:
+        return JSONResponse(_negative_payload(info))
+
+    try:
+        message = await read_commit_message(context.command_location(), revision)
+    except GitError as exc:
+        log.warning("git commit message failed for %s: %s", revision, failure_detail(exc))
+        return _git_failure_response(exc)
+    if message is None:
+        return JSONResponse(
+            {"error": "unknown revision", "code": "commit_not_found"}, status_code=404
+        )
+    status, payload = await render_commit_body(message, revision)
+    return JSONResponse(payload, status_code=status)
+
+
 def _clamped_limit(raw: str) -> int:
     """Parse and clamp a ``limit`` query parameter."""
     try:
@@ -386,12 +422,14 @@ GIT_ROUTES: list[Route] = [
     Route("/api/git/summary", api_git_summary),
     Route("/api/git/log", api_git_log),
     Route("/api/git/commit/{revision}", api_git_commit),
+    Route("/api/git/commit-markdown/{revision}", api_git_commit_markdown),
 ]
 
 
 __all__ = [
     "GIT_ROUTES",
     "api_git_commit",
+    "api_git_commit_markdown",
     "api_git_log",
     "api_git_refs",
     "api_git_repo",

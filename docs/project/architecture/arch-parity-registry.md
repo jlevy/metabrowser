@@ -47,6 +47,7 @@ registered, any other status, and a golden that never runs the route.
 | `/api/git/summary` | covered | `--api` | `cli-api-git.tryscript.md` |
 | `/api/git/log` | covered | `--api` | `cli-api-git.tryscript.md` |
 | `/api/git/commit` | covered | `--api` | `cli-api-git.tryscript.md` |
+| `/api/git/commit-markdown` | covered | `--api` | `cli-api-git-commit-markdown.tryscript.md` |
 | `/api/kpress/render` | covered | `--api`, `--api --data` | `cli-api-shell.tryscript.md`, `cli-api-untrusted-markdown.tryscript.md`, `cli-api-render-diagnostics.tryscript.md`, `cli-api-frontmatter-bounds.tryscript.md` |
 | `/api/kpress/export` | covered | `--api --data` | `cli-api-shell.tryscript.md` |
 | `/api/plugin/agent-log/charts` | covered | `--api` | `cli-api-plugins.tryscript.md` |
@@ -144,6 +145,7 @@ interaction session and fails when a named function did not execute.
 | `source.checkout-commits-unpinned` | data | `/api/git/log` | `owned-route` | `metab checkout --ref feature --api '/api/git/log?limit=2'` | `cli-api-source-checkout.txt` |
 | `source.checkout-selector` | interaction | `static/source-ref-selector.js#createSelector`, `static/source-ref-selector.js#describe`, `static/source-ref-selector.js#shownLabel`, `static/source-pin-guard.js#shownPin`, `static/source-pin-guard.js#servesAnother`, `static/source-pin-guard.js#createSwitchHold` | `/api/source/refs`, `/api/source/pin` | `node tests/dom/source-ref-selector-session.js` | `cli-ui-source-ref-selector.tryscript.md` |
 | `git.commit-history-landing` | interaction | `static/git-panel.js#restoreCommitLanding`, `static/git-panel.js#selectCommit`, `static/git-panel.js#revealWaitingCommit`, `static/git-panel.js#loadedOrdinalOf`, `static/navigation.js#createController` | `/api/git/repo`, `/api/git/log`, `/api/git/commit` | `node tests/dom/git-commit-history-session.js` | `cli-ui-git-commit-history.tryscript.md` |
+| `git.commit-body-markdown` | interaction | `static/git-panel.js#placeCommitBody`, `static/git-panel.js#fetchCommitBody`, `static/git-panel.js#insertableBody`, `static/git-panel.js#showCommitBody`, `static/git-panel.js#commitKpressHost`, `static/git-panel.js#commitBodyNote`, `static/inert-html.js#sanitizeNodes`, `static/inert-html.js#kpressProse` | `/api/git/commit-markdown` | `node tests/dom/git-commit-body-session.js` | `cli-ui-git-commit-body.tryscript.md` |
 | `git.commit-comparison-reuse` | interaction | `static/git-panel.js#fetchComparison`, `static/git-panel.js#comparisonCacheKey` | `/api/plugin/diff/comparison` | `node tests/dom/git-commit-history-session.js` | `cli-ui-git-commit-history.tryscript.md` |
 | `git.newest-commit-landing` | interaction | `static/git-panel.js#landOnNewestCommit`, `static/git-panel.js#selectNewestWhenReady`, `static/git-panel.js#revealNewestRow`, `static/git-panel.js#restoreCommitLanding` | `/api/git/repo`, `/api/git/log`, `/api/git/commit` | `node tests/dom/git-commit-history-session.js` | `cli-ui-git-commit-history.tryscript.md` |
 | `git.history-stale-cursor` | interaction | `static/git-history-window.js#classifyPageFailure` | `/api/git/log` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |

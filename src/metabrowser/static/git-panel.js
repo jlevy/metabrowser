@@ -516,7 +516,11 @@
       : `<div class="git-commit-diff-summary metabrowser-diff-host page-header-line">${renderCommitTotals(stats)}</div>`;
     html += "</div>";
     if (!compact && detail.body) {
-      html += `<pre class="git-commit-body page-card chrome-prose">${escapeHtml(detail.body)}</pre>`;
+      // The message as written, until its Markdown replaces it (`placeCommitBody`): a
+      // description's place on a pull request's page, in its type and face.
+      html +=
+        '<div class="git-commit-body page-card chrome-prose">' +
+        `<div class="git-commit-body-plain">${escapeHtml(detail.body)}</div></div>`;
     }
     html += "</section>";
     return html;
@@ -1215,6 +1219,256 @@
     }
   }
 
+  // ── Commit bodies as Markdown ──────────────────────────────
+
+  /**
+   * A commit body's Markdown, from `GET /api/git/commit-markdown/{revision}`
+   * (src/metabrowser/git/message.py), as a pull request's description takes it from its own
+   * route: KPress's render, reduced to the inert allowlist on the server, and here again by
+   * static/inert-html.js, which builds the nodes the page inserts; the trailers as written,
+   * a block of their own lines; and the base the body's links resolve against. Or the
+   * message stays as written, with the sentence that says why when one is owed.
+   *
+   * @typedef {{kind: "rendered", html: string, trailers: string, linkBase: string}
+   *   | {kind: "plain", note: string | null}} CommitBodyOutcome
+   */
+
+  // Bodies whose outcome cannot change while the page is open, by commit ID, bounded as the
+  // detail cache is: a render, and a body too long to render. A refusal the renderer may
+  // not repeat, and a request that failed, are asked again on the next visit.
+  /** @type {Map<string, CommitBodyOutcome>} */
+  const bodyCache = new Map();
+  /** @type {Map<string, Promise<CommitBodyOutcome>>} */
+  const bodyInFlight = new Map();
+  // KPress's stylesheets, loaded once for every body, as a pull request's page loads them
+  // once for its texts. A load that failed is tried again by the next body.
+  /** @type {Promise<void> | null} */
+  let bodyStyles = null;
+
+  /**
+   * What the notice under a body shown as written says, from the route's refusal, or null
+   * when the answer says nothing a reader needs, such as a request that never arrived.
+   * The words of a pull request's text notices (`refusedTextNote` in
+   * builtin_plugins/github/pull-page.js), said of a message.
+   *
+   * @param {Record<string, any> | null} body
+   * @returns {string | null}
+   */
+  function commitBodyNote(body) {
+    switch (typeof body?.code === "string" ? body.code : null) {
+      case "body_too_large": {
+        const kib = typeof body?.max_bytes === "number" ? Math.floor(body.max_bytes / 1024) : null;
+        const bound = kib === null ? "too long" : `longer than ${kib} KiB`;
+        return `This message is ${bound}, so it is shown as written rather than as Markdown.`;
+      }
+      case "render_deadline": {
+        const seconds = typeof body?.deadline_ms === "number" ? body.deadline_ms / 1000 : null;
+        const took =
+          seconds === null
+            ? "too long"
+            : `longer than ${seconds} second${seconds === 1 ? "" : "s"}`;
+        return `This message took ${took} to render, so it is shown as written.`;
+      }
+      case "renderer_exited":
+        return "The renderer stopped while rendering this message, so it is shown as written.";
+      case "renderer_unavailable":
+        return "The renderer could not start, so this message is shown as written. Reload to try again.";
+      case "renderer_busy":
+        return "The renderer is busy with other texts, so this message is shown as written. Reload to try again.";
+      case "render_failed":
+        return "This message could not be rendered, so it is shown as written.";
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * One commit body's outcome, asked once however many callers want it, and kept when it
+   * cannot change. A render is answered only once the allowlist and KPress's stylesheets
+   * have loaded, so a caller can insert it at once.
+   *
+   * @param {string} revision A full commit ID.
+   * @returns {Promise<CommitBodyOutcome>}
+   */
+  function fetchCommitBody(revision) {
+    const kept = bodyCache.get(revision);
+    if (kept) {
+      return Promise.resolve(kept);
+    }
+    const existing = bodyInFlight.get(revision);
+    if (existing) {
+      return existing;
+    }
+    const request = measureAsync(
+      "gitRevision:bodyMarkdown",
+      async () => {
+        /** @type {CommitBodyOutcome} */
+        let outcome;
+        let durable = false;
+        try {
+          const response = await apiFetch(`/api/git/commit-markdown/${revision}`);
+          /** @type {Record<string, any> | null} */
+          const body = await response.json().catch(() => null);
+          if (response.ok && body?.is_repo === true && typeof body.html === "string") {
+            outcome = await insertableBody(body);
+            durable = outcome.kind === "rendered";
+          } else {
+            outcome = { kind: "plain", note: commitBodyNote(body) };
+            durable = body?.code === "body_too_large";
+          }
+        } catch {
+          outcome = { kind: "plain", note: null };
+        }
+        if (durable) {
+          if (bodyCache.size >= DETAIL_CACHE_SIZE) {
+            const oldest = bodyCache.keys().next();
+            if (!oldest.done) {
+              bodyCache.delete(oldest.value);
+            }
+          }
+          bodyCache.set(revision, outcome);
+        }
+        return outcome;
+      },
+      { revision },
+    );
+    bodyInFlight.set(revision, request);
+    void request.finally(() => {
+      if (bodyInFlight.get(revision) === request) {
+        bodyInFlight.delete(revision);
+      }
+    });
+    return request;
+  }
+
+  /**
+   * A render the page can insert now: the allowlist loaded, and KPress's stylesheets when
+   * there is prose to set. Plain, with no notice, when either cannot load, as a pull
+   * request's text stays plain then.
+   *
+   * @param {Record<string, any>} body The route's answer.
+   * @returns {Promise<CommitBodyOutcome>}
+   */
+  async function insertableBody(body) {
+    const pluginSdk = sdk();
+    try {
+      await pluginSdk.ensureAsset("inert-html");
+      if (body.html !== "") {
+        bodyStyles ??= pluginSdk.loadKpressAssets(body.assets);
+        await bodyStyles.catch((/** @type {unknown} */ error) => {
+          bodyStyles = null;
+          throw error;
+        });
+      }
+    } catch (error) {
+      console.warn("metabrowser git: a commit body's Markdown could not be shown", error);
+      return { kind: "plain", note: null };
+    }
+    if (!window.MetabrowserInertHtml) {
+      return { kind: "plain", note: null };
+    }
+    return {
+      kind: "rendered",
+      html: body.html,
+      trailers: typeof body.trailers === "string" ? body.trailers : "",
+      linkBase: typeof body.link_base === "string" ? body.link_base : "about:blank",
+    };
+  }
+
+  /**
+   * Show a commit's body as Markdown in the summary *root* holds: at once when its render is
+   * kept, and otherwise when it comes, the message as written held out of sight meanwhile,
+   * so the body's first sight is its Markdown, as a pull request's description's is
+   * (mb-d59o). A body that will not render shows as written.
+   *
+   * @param {ParentNode} root
+   * @param {MetabrowserGitCommitDetail} detail
+   * @returns {Promise<void>} Settles once the body shows, as Markdown or as written.
+   */
+  function placeCommitBody(root, detail) {
+    const box = root.querySelector(".git-commit-body");
+    const plain = box?.querySelector(".git-commit-body-plain");
+    if (!(box instanceof HTMLElement) || !(plain instanceof HTMLElement) || !detail.body) {
+      return Promise.resolve();
+    }
+    const kept = bodyCache.get(detail.commit.id);
+    if (kept) {
+      showCommitBody(box, kept);
+      return Promise.resolve();
+    }
+    plain.classList.add("git-commit-body-plain-pending");
+    return fetchCommitBody(detail.commit.id).then((outcome) => showCommitBody(box, outcome));
+  }
+
+  /**
+   * Put *outcome* in a body's *box*, in place of the message as written: the Markdown in a
+   * KPress article, as a pull request's page sets a description (`kpressHost` in
+   * builtin_plugins/github/pull-page.js), then the trailers, one block of their lines. A
+   * body shown as written is shown, with its notice.
+   *
+   * @param {HTMLElement} box `.git-commit-body`
+   * @param {CommitBodyOutcome} outcome
+   */
+  function showCommitBody(box, outcome) {
+    const plain = box.querySelector(".git-commit-body-plain");
+    if (!(plain instanceof HTMLElement)) {
+      return;
+    }
+    const inert = window.MetabrowserInertHtml;
+    /** @type {HTMLElement[]} */
+    const parts = [];
+    if (outcome.kind === "rendered" && inert) {
+      if (outcome.html !== "") {
+        parts.push(commitKpressHost(inert, outcome.html, outcome.linkBase));
+      }
+      if (outcome.trailers !== "") {
+        const trailers = document.createElement("div");
+        trailers.className = "git-commit-trailers";
+        trailers.textContent = outcome.trailers;
+        parts.push(trailers);
+      }
+    }
+    if (parts.length > 0) {
+      plain.replaceWith(...parts);
+      return;
+    }
+    plain.classList.remove("git-commit-body-plain-pending");
+    const note = outcome.kind === "plain" ? outcome.note : null;
+    if (note !== null && !box.querySelector(".git-commit-body-notice")) {
+      const notice = document.createElement("div");
+      notice.className = "notice git-commit-body-notice";
+      notice.dataset.severity = "warning";
+      notice.setAttribute("role", "status");
+      notice.textContent = note;
+      box.append(notice);
+    }
+  }
+
+  /**
+   * A body's sanitized nodes in a KPress article, as a pull request's page builds one for a
+   * description: the page's own article and classes, KPress's stylesheets setting the type,
+   * and each kept link decorated as an outside link.
+   *
+   * @param {MetabrowserInertHtmlRuntime} inert
+   * @param {string} html The route's hardened HTML.
+   * @param {string} linkBase What the server resolved the body's links against.
+   * @returns {HTMLElement}
+   */
+  function commitKpressHost(inert, html, linkBase) {
+    const article = document.createElement("article");
+    article.className = "kpress kpress-inert";
+    article.append(inert.kpressProse(inert.sanitizeHtml(html, linkBase), document));
+    for (const anchor of article.querySelectorAll("a[href]")) {
+      if (anchor instanceof HTMLElement) {
+        sdk()?.decorateExternalLink?.(anchor);
+      }
+    }
+    const host = document.createElement("div");
+    host.className = "metabrowser-kpress-host";
+    host.append(article);
+    return host;
+  }
+
   /**
    * The key a comparison request is kept under, or null when its answer can change.
    *
@@ -1375,9 +1629,17 @@
     abortPreparation(preparationSlot);
     const controller = typeof AbortController === "undefined" ? null : new AbortController();
     const diff = beginDiffPreparation(revision, controller);
+    const detail = fetchCommitDetail(revision, controller?.signal);
+    // The body's Markdown is asked for once the detail says there is a body, beside the
+    // comparison, so a commit a hover prepared shows its body as Markdown when it opens.
+    void detail.then((read) => {
+      if (read?.body && controller?.signal.aborted !== true) {
+        void fetchCommitBody(revision);
+      }
+    });
     preparationSlot = {
       revision,
-      detail: fetchCommitDetail(revision, controller?.signal),
+      detail,
       assets: diff.assets,
       comparison: diff.comparison,
       controller,
@@ -2759,6 +3021,9 @@
       },
       { revision: commit.id },
     );
+    // Before the stage is shown: a kept render is in place at once, and one on its way
+    // lands in the stage or the page, whichever holds the body when it comes.
+    void placeCommitBody(stage, detail);
     const diffPreparation = preparation ?? {
       ...beginDiffPreparation(commit.id, null),
     };
@@ -3315,6 +3580,8 @@
     state = emptyState();
     detailCache.clear();
     detailInFlight.clear();
+    bodyCache.clear();
+    bodyInFlight.clear();
     mountedSummary = null;
     missingRevisions.clear();
     clearComparisonCache();
@@ -3726,6 +3993,10 @@
       retryFailedPage,
       selectCommit,
       fetchCommitDetail,
+      fetchCommitBody,
+      placeCommitBody,
+      commitBodyNote,
+      keptCommitBodies: () => [...bodyCache.keys()],
       mountedSummaryRevision: () => mountedSummary?.revision ?? null,
       wireCommitFileNavigation,
       setStateForTests: (/** @type {PanelState} */ next) => {

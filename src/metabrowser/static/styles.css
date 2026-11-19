@@ -7476,15 +7476,82 @@ pre.code-block.metabrowser-source-lines > code {
   gap: 4px;
 }
 
+/* A commit's body: its Markdown in a KPress article, as a pull request's description is set
+   (git-panel.js, `placeCommitBody`), then its trailers; or, until the Markdown comes and
+   where it will not, the message as written, wrapped where it was written. */
 .git-commit-body {
   margin: 16px 0;
   padding: var(--pane-header-padding-y) var(--pane-header-padding-x);
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
   overflow-x: auto;
   font-size: var(--document-body-font-size);
   font-weight: var(--weight-normal);
   line-height: var(--kpress-line-height-normal);
+}
+
+.git-commit-body-plain,
+.git-commit-trailers {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+/* The card's padding is the space around the body, so the first and last block have none of
+   their own, as in a pull request's text (builtin_plugins/github/styles.css). */
+.git-commit-body .kpress-prose > :first-child {
+  margin-block-start: 0;
+}
+
+.git-commit-body .kpress-prose > :last-child {
+  margin-block-end: 0;
+}
+
+/* Git's trailers, a block of their own lines under the prose, a paragraph's gap below it
+   (KPress's `.kpress-prose p`), in the muted ink of metadata. */
+.git-commit-trailers {
+  color: var(--muted);
+}
+
+.git-commit-body .metabrowser-kpress-host + .git-commit-trailers {
+  margin-block-start: 0.75rem;
+}
+
+.git-commit-body-notice {
+  margin-block: var(--pane-header-padding-y) 0;
+}
+
+/* A body whose Markdown is on its way keeps its box out of sight, and past the shell's quiet
+   period shows the loading blocks' gray rows and pulse, so its first sight is its Markdown,
+   as a pull request's text's is (`.github-pull-plain-pending`). */
+.git-commit-body-plain-pending {
+  position: relative;
+  visibility: hidden;
+}
+
+.git-commit-body-plain-pending::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 4px,
+    var(--tally-skeleton-bg) 4px,
+    var(--tally-skeleton-bg) calc(var(--ui-row-height) - 4px),
+    transparent calc(var(--ui-row-height) - 4px),
+    transparent var(--ui-row-height)
+  );
+  background-size: 70% 100%;
+  background-repeat: repeat-y;
+  animation:
+    mb-delayed-loading-reveal 0s linear var(--loading-state-delay) forwards,
+    tally-pending-pulse 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .git-commit-body-plain-pending::after {
+    animation: mb-delayed-loading-reveal 0s linear var(--loading-state-delay) forwards;
+    opacity: 0.7;
+  }
 }
 
 .git-commit-files {

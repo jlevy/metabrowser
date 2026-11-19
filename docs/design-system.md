@@ -1580,7 +1580,17 @@ mono at body size renders optically larger than the sans text beside it, so it u
 The compact tooltip is bounded by width and subject line count, not made denser with
 smaller type. The optional full-summary description is chrome prose, as a PR description
 is (`.chrome-prose`), at `--document-body-font-size` and `--kpress-line-height-normal`.
-It preserves authored newlines and wraps long text.
+It is Markdown, set as a PR description is: the body after the subject line, rendered by
+`GET /api/git/commit-markdown/<rev>` through KPress and the inert allowlist, in a KPress
+article (`placeCommitBody`), so a body hard-wrapped at 72 columns reflows into
+paragraphs, `-` and `*` lines are lists, and indented and fenced code stays code.
+Git’s trailers, such as `Signed-off-by:`, follow the prose as written, one per line, in
+the muted ink (`.git-commit-trailers`). `src/metabrowser/git/message.py` says how a body
+differs from a description: which lines are trailers, why only an absolute link keeps
+its address, and the size past which a body is not rendered.
+Until its Markdown comes the message as written is held out of sight, as a PR text’s
+source is, and where the Markdown will not come it shows as written, wrapping long text,
+with a notice when the reason is the reader’s to know.
 Commit descriptions and PR discussion cards share `.page-card`: the normal page
 background, text ink, border, and chrome radius.
 Each content type owns its inner padding; code blocks and diffs keep their source
