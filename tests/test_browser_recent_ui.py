@@ -227,6 +227,21 @@ def test_dom_contract_filter_bar_sits_outside_the_scrolling_tree() -> None:
     assert html.index('class="tab-bar nav-tab-bar"') < html.index('id="nav-filter-bar"')
 
 
+def _div_end(html: str, start: int) -> int:
+    """Where the div whose opening tag ends at *start* ends, just past its own ``</div>``.
+
+    On a checkout the Files toolbar ships its row, with the branch and tag chooser in it,
+    so the bar does not end at the first ``</div>`` after it.
+    """
+
+    depth = 1
+    for tag in re.finditer(r"<div\b|</div>", html[start:]):
+        depth += 1 if tag.group(0) == "<div" else -1
+        if depth == 0:
+            return start + tag.end()
+    raise AssertionError(f"a div that is never closed: {html[start : start + 200]}")
+
+
 def test_dom_contract_files_totals_band_sits_under_the_bar_outside_the_scroller() -> None:
     """The Files totals and their remarks are a metadata band directly under the filter bar,
     outside #tree-content: that scroller reserves its scrollbar's gutter and clips what it
@@ -237,10 +252,10 @@ def test_dom_contract_files_totals_band_sits_under_the_bar_outside_the_scroller(
     for app.js to fill, so its scroll shadow waits for its lines (`:not(:empty)`)."""
 
     html = _render_index_html()
-    bar = html.index('id="nav-filter-bar"')
+    bar_end = _div_end(html, html.index(">", html.index('id="nav-filter-bar"')) + 1)
     band = html.index('<div class="nav-metadata-band" id="nav-metadata-files"></div>')
-    assert html.index("</div>", bar) < band < html.index('id="tree-content"')
-    assert html[html.index("</div>", bar) + len("</div>") : band].strip() == ""
+    assert bar_end <= band < html.index('id="tree-content"')
+    assert html[bar_end:band].strip() == ""
     assert 'getElementById("nav-metadata-files")' in _read_app_js()
 
 

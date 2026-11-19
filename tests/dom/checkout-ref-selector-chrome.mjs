@@ -598,16 +598,25 @@ try {
   })`);
   // Another tab switches the server while Commits is in front: the tab's history still
   // answers, since it is the checkout's whichever revision is served, and the Files
-  // tree's is refused, and the offer to reload shows on this tab.
+  // tree's is refused, and the offer to reload shows on this tab. The history request is
+  // the one the tab itself made for its list, the route's `/log` under `/api/`, asked
+  // again as the tab's next page would ask it.
   await chrome.evaluate(`fetch("/api/source/pin", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ working_tree: true }),
   }).then((response) => response.status)`);
-  const statuses = await chrome.evaluate(
-    `Promise.all([fetch("/api/tree?depth=1"), fetch("/api/git/log?limit=1")])
-      .then((answers) => answers.map((answer) => answer.status))`,
-  );
+  const statuses = await chrome.evaluate(`(() => {
+    const history = performance
+      .getEntriesByType("resource")
+      .map((entry) => new URL(entry.name))
+      .find((url) => {
+        const [, api, , route] = url.pathname.split("/");
+        return api === "api" && route === "log";
+      });
+    return Promise.all([fetch("/api/tree?depth=1"), fetch(history.pathname + history.search)])
+      .then((answers) => answers.map((answer) => answer.status));
+  })()`);
   await chrome.waitFor(`!document.querySelector(".source-ref-selector-stale").hidden`);
   result.commitsSwitched = { statuses, at: await chrome.evaluate(STALE_AT) };
   await capture("commits-stale");
