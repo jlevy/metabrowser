@@ -180,7 +180,7 @@ def test_a_copy_of_what_the_check_reads_passes(tmp_path: Path) -> None:
             "AppContractTests.swift::noSuchTest` names no test",
         ),
         # The golden and the declaration.
-        (_drop_block("doctor"), f"command doctor: {GOLDEN} has no block for it"),
+        (_drop_block("recent-clear"), f"command recent-clear: {GOLDEN} has no block for it"),
         (
             _replace(
                 GOLDEN, '  "kind": "pull_request",\n', '  "kind": "pull_request",\n  "page": 1,\n'

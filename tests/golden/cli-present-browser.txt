@@ -719,7 +719,8 @@ exit: 0
       "bundle_id": "io.github.jlevy.metabrowser.dev",
       "bundle_path": "<ROOT>/Applications/Metabrowser.app",
       "code": "app_found",
-      "reason": "the app takes a target"
+      "reason": "the app takes a target",
+      "minimum_metab": null
     }
   },
   "problems": []
@@ -752,7 +753,8 @@ exit: 0
       "bundle_id": null,
       "bundle_path": null,
       "code": "app_not_found",
-      "reason": "LaunchServices knows no app io.github.jlevy.metabrowser or io.github.jlevy.metabrowser.dev; install or build the Metabrowser app and open it once, or serve the target with metab ROOT"
+      "reason": "LaunchServices knows no app io.github.jlevy.metabrowser or io.github.jlevy.metabrowser.dev; install or build the Metabrowser app and open it once, or serve the target with metab ROOT",
+      "minimum_metab": null
     }
   },
   "problems": []
@@ -789,7 +791,8 @@ exit: 1
       "bundle_id": null,
       "bundle_path": null,
       "code": "app_not_found",
-      "reason": "LaunchServices knows no app io.github.jlevy.metabrowser or io.github.jlevy.metabrowser.dev; install or build the Metabrowser app and open it once, or serve the target with metab ROOT"
+      "reason": "LaunchServices knows no app io.github.jlevy.metabrowser or io.github.jlevy.metabrowser.dev; install or build the Metabrowser app and open it once, or serve the target with metab ROOT",
+      "minimum_metab": null
     }
   },
   "problems": [
@@ -828,7 +831,8 @@ exit: 1
       "bundle_id": null,
       "bundle_path": null,
       "code": "app_not_found",
-      "reason": "LaunchServices knows no app io.github.jlevy.metabrowser or io.github.jlevy.metabrowser.dev; install or build the Metabrowser app and open it once, or serve the target with metab ROOT"
+      "reason": "LaunchServices knows no app io.github.jlevy.metabrowser or io.github.jlevy.metabrowser.dev; install or build the Metabrowser app and open it once, or serve the target with metab ROOT",
+      "minimum_metab": null
     }
   },
   "problems": [
@@ -857,7 +861,8 @@ exit: 1
       "bundle_id": null,
       "bundle_path": null,
       "code": "app_not_found",
-      "reason": "LaunchServices knows no app io.github.jlevy.metabrowser or io.github.jlevy.metabrowser.dev; install or build the Metabrowser app and open it once, or serve the target with metab ROOT"
+      "reason": "LaunchServices knows no app io.github.jlevy.metabrowser or io.github.jlevy.metabrowser.dev; install or build the Metabrowser app and open it once, or serve the target with metab ROOT",
+      "minimum_metab": null
     }
   },
   "problems": [

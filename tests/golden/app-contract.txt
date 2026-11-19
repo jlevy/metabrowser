@@ -387,10 +387,299 @@ exit: 0
 --- stderr ---
 --- contract ---
 cache-sources/next-page
-# metab --doctor
+# metab --doctor --json
 exit: 0
 --- stdout ---
-<shown as written, not read>
+{
+  "ok": true,
+  "problems": [],
+  "checks": [
+    {
+      "id": "plugins",
+      "title": "<text>",
+      "state": "ok",
+      "summary": "<text>",
+      "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        }
+      ],
+      "remedy": null
+    },
+    {
+      "id": "open_in",
+      "title": "<text>",
+      "state": "ok",
+      "summary": "<text>",
+      "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        }
+      ],
+      "remedy": null
+    },
+    {
+      "id": "metab",
+      "title": "<text>",
+      "state": "ok",
+      "summary": "<text>",
+      "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        }
+      ],
+      "remedy": null
+    },
+    {
+      "id": "git",
+      "title": "<text>",
+      "state": "ok",
+      "summary": "<text>",
+      "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        }
+      ],
+      "remedy": null
+    },
+    {
+      "id": "config",
+      "title": "<text>",
+      "state": "ok",
+      "summary": "<text>",
+      "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        }
+      ],
+      "remedy": null
+    },
+    {
+      "id": "cache",
+      "title": "<text>",
+      "state": "ok",
+      "summary": "<text>",
+      "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        }
+      ],
+      "remedy": null
+    }
+  ],
+  "github": {
+    "state": "ok",
+    "message": "<text>",
+    "remedy": null,
+    "gh_path": "<text>",
+    "gh_version": "<text>",
+    "gh_minimum": "<text>",
+    "account": "<text>"
+  }
+}
 --- stderr ---
 --- contract ---
-doctor
+doctor/clean
+# METABROWSER_DOCTOR_APP=<ROOT>/Metabrowser.app FAKE_GH_STATUS=signed-out metab --doctor --json
+exit: 1
+--- stdout ---
+{
+  "ok": false,
+  "problems": [
+    "<text>"
+  ],
+  "checks": [
+    {
+      "id": "plugins",
+      "title": "<text>",
+      "state": "ok",
+      "summary": "<text>",
+      "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        }
+      ],
+      "remedy": null
+    },
+    {
+      "id": "open_in",
+      "title": "<text>",
+      "state": "ok",
+      "summary": "<text>",
+      "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        }
+      ],
+      "remedy": null
+    },
+    {
+      "id": "metab",
+      "title": "<text>",
+      "state": "warning",
+      "summary": "<text>",
+      "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        }
+      ],
+      "remedy": {
+        "text": "<text>",
+        "command": "<text>",
+        "url": null
+      }
+    },
+    {
+      "id": "git",
+      "title": "<text>",
+      "state": "ok",
+      "summary": "<text>",
+      "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        }
+      ],
+      "remedy": null
+    },
+    {
+      "id": "config",
+      "title": "<text>",
+      "state": "warning",
+      "summary": "<text>",
+      "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        },
+        {
+          "name": "<text>",
+          "value": "<text>"
+        }
+      ],
+      "remedy": {
+        "text": "<text>",
+        "command": null,
+        "url": null
+      }
+    },
+    {
+      "id": "cache",
+      "title": "<text>",
+      "state": "problem",
+      "summary": "<text>",
+      "details": [
+        {
+          "name": "<text>",
+          "value": "<text>"
+        }
+      ],
+      "remedy": null
+    }
+  ],
+  "github": {
+    "state": "<other>",
+    "message": "<text>",
+    "remedy": {
+      "text": "<text>",
+      "command": "<text>",
+      "url": null
+    },
+    "gh_path": "<text>",
+    "gh_version": "<text>",
+    "gh_minimum": "<text>",
+    "account": null
+  }
+}
+--- stderr ---
+--- contract ---
+doctor/as-the-app

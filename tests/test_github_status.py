@@ -337,4 +337,6 @@ def test_the_doctors_github_section_never_changes_its_exit_status(
         "github: not_logged_in: GitHub CLI is not signed in to github.com. "
         "Run gh auth login --hostname github.com, then retry."
     )
-    assert lines[-1] == "  fix: gh auth login --hostname github.com"
+    # The GitHub section ends at the first setup check (`cli/doctor.py`), which follows it.
+    section = lines[2 : lines.index(next(line for line in lines if line.startswith("metab: ")))]
+    assert section[-1] == "  fix: gh auth login --hostname github.com"

@@ -5,7 +5,9 @@
 # and tests/test_github_status.py, so no command there reaches a gh a developer has
 # signed in. Each answer has the shape gh 2.98.0 gives (2026-11-18): with
 # --json, auth status exits 0 whatever the account's state, and a gh without --json
-# says "unknown flag".
+# says "unknown flag". `old-version` answers auth status as a signed-in gh does but names a
+# release below GH_MINIMUM in gh_status.py, so the version comparison, not the probe,
+# finds it too old.
 variant="${FAKE_GH_STATUS:-signed-in}"
 host() {
   printf '{"hosts":{"github.com":[{%s,"active":true,"host":"github.com","login":"octo-reader","gitProtocol":"https"}]}}\n' "$1"
@@ -14,13 +16,14 @@ if [ "$1" = "--version" ]; then
   case "$variant" in
     broken) exit 1 ;;
     too-old) printf 'gh version 2.20.2 (2022-11-01)\nhttps://github.com/cli/cli/releases/tag/v2.20.2\n' ;;
+    old-version) printf 'gh version 2.80.0 (2025-09-23)\nhttps://github.com/cli/cli/releases/tag/v2.80.0\n' ;;
     *) printf 'gh version 2.98.0 (2026-08-20)\nhttps://github.com/cli/cli/releases/tag/v2.98.0\n' ;;
   esac
   exit 0
 fi
 if [ "$1 $2" = "auth status" ]; then
   case "$variant" in
-    signed-in) host '"state":"success","tokenSource":"keyring","scopes":"gist, read:org, repo, workflow"' ;;
+    signed-in | old-version) host '"state":"success","tokenSource":"keyring","scopes":"gist, read:org, repo, workflow"' ;;
     no-repo-scope) host '"state":"success","tokenSource":"keyring","scopes":"gist, read:org"' ;;
     # A fine-grained or GitHub App token has no OAuth scopes, so gh names none; it
     # lists a classic token's scopes wherever the token came from.

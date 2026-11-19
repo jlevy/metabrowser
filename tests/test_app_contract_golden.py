@@ -50,6 +50,14 @@ What differs from the app's own runs, and why:
   part of its answer and no part of what the app reads, and deciding it asks
   LaunchServices about the Mac the tests run on, so the sandbox sets
   ``METABROWSER_OPEN_IN=browser``, as ``cli-present.tryscript.md`` does.
+- **The doctor asks stand-ins and an app the sandbox builds.** Its Git and GitHub CLI
+  checks ask the ``git`` in ``tests/fixtures/doctor`` and the ``gh`` in
+  ``tests/fixtures/github-status``, as ``cli-doctor.tryscript.md`` does, so a check's
+  state is the one the block chose and not the host's. The app it is told it runs for is
+  a bundle holding only an ``Info.plist`` whose minimum ``metab`` no release meets, so
+  the ``metab`` check's warning does not move with this checkout's version. Its
+  free-space floor follows ``METABROWSER_MAX_FIRST_CLONE_KB``, set to 1 here, so the
+  disk the tests run on never makes the cache a problem.
 """
 
 from __future__ import annotations
@@ -57,6 +65,7 @@ from __future__ import annotations
 import importlib
 import json
 import os
+import plistlib
 import re
 import tomllib
 from collections.abc import Mapping
@@ -70,6 +79,9 @@ import metabrowser
 from devtools import app_contract, swift_text
 from devtools.app_contract import OPAQUE, SCENARIO_SECTION, SHOWN_OUTPUT, Surface
 from metabrowser import recent_targets
+from metabrowser.cli.doctor import DOCTOR_APP_ENV
+from metabrowser.cli.present import MINIMUM_METAB_KEY
+from metabrowser.git import process as git_process
 from metabrowser.home import METABROWSER_CACHE_DIR_ENV
 from metabrowser.normalize import ROOT_PLACEHOLDER
 from metabrowser.open_in import OPEN_IN_ENV
@@ -102,6 +114,10 @@ CONTRACT: Final = app_contract.load()
 REPO_ROOT: Final = Path(__file__).resolve().parent.parent
 SHELL_CORE: Final = app_contract.APP_ROOT / "Sources" / "ShellCore"
 GH_STAND_IN: Final = Path(__file__).resolve().parent / "fixtures" / "github-status"
+GIT_STAND_IN: Final = Path(__file__).resolve().parent / "fixtures" / "doctor"
+# A minimum `metab` no release meets, so the doctor's `metab` check warns whatever this
+# checkout's version is.
+UNMET_MINIMUM: Final = "99.0.0"
 VERSION_PLACEHOLDER: Final = "<VERSION>"
 SERVED_PLACEHOLDER: Final = "<SERVED>"
 # `metab VERSION`, then for a checkout a description in parentheses.
@@ -493,6 +509,44 @@ def test_golden_app_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
         )
     )
     assert cast("dict[str, object]", sandbox.answer)["next_after"] is None
-    blocks.append(run("doctor"))
+    blocks += _doctor(sandbox)
     assert app_contract.GOLDEN_NAME == "app-contract.txt"
     check_golden("app-contract.txt", "".join(blocks))
+
+
+def _doctor(sandbox: _Sandbox) -> list[str]:
+    """Help > Check Setup…: a setup with nothing to fix, and one with something of each
+    kind, as the app runs it.
+
+    The second names the app's bundle as the app does, which holds a minimum no
+    ``metab`` meets; asks a ``gh`` that no account signed in to; and finds the cache at a
+    relative path, which is a problem. The ``git`` is the stand-in's, and the Git
+    executable ``metab`` keeps for its lifetime is found again before and after, so
+    neither the host's ``git`` reaches these blocks nor the stand-in a later test.
+    """
+
+    bundle = sandbox.root / "Metabrowser.app"
+    (bundle / "Contents").mkdir(parents=True)
+    (bundle / "Contents" / "Info.plist").write_bytes(
+        plistlib.dumps(
+            {"CFBundleIdentifier": "io.github.jlevy.metabrowser", MINIMUM_METAB_KEY: UNMET_MINIMUM}
+        )
+    )
+    with sandbox.monkeypatch.context() as patched:
+        patched.setenv("PATH", f"{GIT_STAND_IN}{os.pathsep}{os.environ['PATH']}")
+        patched.setenv("METABROWSER_MAX_FIRST_CLONE_KB", "1")
+        git_process.git_executable.cache_clear()
+        git_process.detect_git_version.cache_clear()
+        try:
+            return [
+                sandbox.run("doctor/clean"),
+                sandbox.run(
+                    "doctor/as-the-app",
+                    env={DOCTOR_APP_ENV: str(bundle), "FAKE_GH_STATUS": "signed-out"},
+                    cache=Path("relative"),
+                    status=1,
+                ),
+            ]
+        finally:
+            git_process.git_executable.cache_clear()
+            git_process.detect_git_version.cache_clear()

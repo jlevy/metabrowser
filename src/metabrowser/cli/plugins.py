@@ -41,6 +41,7 @@ from metabrowser.plugin_loader.manifest import DataHookSpec, merge_views, view_e
 
 if TYPE_CHECKING:
     from metabrowser.cache.providers import ProviderStatus
+    from metabrowser.cli.doctor import Check
 
 
 def _format_table(rows: list[list[str]], headers: list[str]) -> str:
@@ -312,13 +313,13 @@ def _provider_sections() -> tuple[ProviderStatus, ...]:
 
 def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = False) -> None:
     """Validate every discovered plugin and the packaged cache record contracts, report
-    where ``--present`` opens a target, and report each repository provider's tools, such
-    as GitHub CLI's sign-in.
+    where ``--present`` opens a target, report each repository provider's tools, such as
+    GitHub CLI's sign-in, and run the setup checks of :mod:`metabrowser.cli.doctor`.
 
-    Exit non-zero on any plugin, contract, or preference problem; a provider's state never
-    changes it.
-    The provider sections follow the verdict, on stdout after a clean run and on stderr
-    after the problems.
+    Exit non-zero on any plugin, contract, or preference problem, or a setup check's
+    ``problem``; a provider's state and a check's ``warning`` never change it.
+    The provider sections and the checks follow the verdict, on stdout after a clean run
+    and on stderr after the problems.
     """
     extra = resolve_extra_plugin_dirs(plugins_dir)
     result = discover_plugins(extra_dirs=extra)
@@ -379,11 +380,25 @@ def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = Fal
     problems.extend(_view_key_problems(result.plugins))
 
     providers = _provider_sections()
+    plugin_problems = tuple(problems)
     # Where `--present` opens a target, and the app it would find (`cli/present.py`).
     from metabrowser.cli.present import doctor_open_in
 
     open_in = doctor_open_in()
-    problems.extend(open_in.problems)
+    # The plugins, open_in, this metab, Git, and the two directories as checks
+    # (`cli/doctor.py`); imported here, as the registry is, so `--version` loads none of it.
+    from metabrowser.cli.doctor import doctor_checks
+
+    checks = doctor_checks(
+        plugin_count=len(result.plugins), plugin_problems=plugin_problems, open_in=open_in
+    )
+    # The plugins' problems are listed already; open_in's are its own, less any the config
+    # check reports at their cause; the setup checks add one line each.
+    open_in_check = checks[1]
+    problems.extend(
+        problem for problem in open_in.problems if ("problem", problem) in open_in_check.details
+    )
+    problems.extend(check.problem for check in checks[2:] if check.problem is not None)
 
     if as_json:
         report: dict[str, object] = {
@@ -393,28 +408,37 @@ def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = Fal
             "open_in": open_in.section,
         }
         report.update((section.name, dict(section.report)) for section in providers)
+        report["checks"] = [check.to_json() for check in checks]
         typer.echo(json.dumps(report, indent=2))
         if problems:
             raise typer.Exit(code=1)
         return
 
+    # The plugin verdict and open_in's line say what their checks would, so the text
+    # prints the other checks after the provider sections.
+    setup = checks[2:]
     if problems:
         typer.echo(f"metab --doctor: {len(problems)} problem(s):", err=True)
         for problem in problems:
             typer.echo(f"  • {problem}", err=True)
-        _echo_provider_sections(providers, err=True)
+        _echo_sections(providers, setup, err=True)
         raise typer.Exit(code=1)
 
     # A run with a problem writes nothing to stdout, so the preference's line is part of
     # the answer of a clean one.
     typer.echo(open_in.line)
     typer.echo(f"metab --doctor: {len(result.plugins)} plugin(s) OK")
-    _echo_provider_sections(providers, err=False)
+    _echo_sections(providers, setup, err=False)
 
 
-def _echo_provider_sections(providers: tuple[ProviderStatus, ...], *, err: bool) -> None:
+def _echo_sections(
+    providers: tuple[ProviderStatus, ...], checks: tuple[Check, ...], *, err: bool
+) -> None:
     for section in providers:
         for line in section.lines:
+            typer.echo(line, err=err)
+    for check in checks:
+        for line in check.lines():
             typer.echo(line, err=err)
 
 

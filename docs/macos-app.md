@@ -212,7 +212,7 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
 The menus add what a browser would: File > Restart Server, Open in Default Browser,
 Reveal Server Log (each folder has its own log), and Print; View > Back, Forward, Reload
 Page, and zoom, which the app remembers; Edit > Find; and Help > Metabrowser
-Documentation and Reveal Logs Folder.
+Documentation, Check Setup…, and Reveal Logs Folder.
 The mark at the title bar’s trailing end opens the project on GitHub.
 
 ## View on GitHub
@@ -321,9 +321,10 @@ minimized windows, or each tab’s Back and Forward history.
 
 Metabrowser > Settings… shows the `metab` in use, its path, how the app found it, and
 the `git` and `gh` it hands each server.
-Its buttons are **Find Again**, **Choose metab…**, **Run Doctor** (`metab --doctor`),
-and **Reveal Logs**; **Places looked** lists each place the last search tried and what
-it found; and below them are Open folders in and the session setting.
+Its buttons are **Find Again**, **Choose metab…**, **Check Setup…**
+([Checking the Setup](#checking-the-setup)), and **Reveal Logs**; **Places looked**
+lists each place the last search tried and what it found; and below them are Open
+folders in and the session setting.
 
 At first launch, and again on Find Again, the app looks for `metab` in several places,
 among them the one it used last, `METABROWSER_METAB`, and where uv and Homebrew install
@@ -348,6 +349,30 @@ which can take seconds.
   An upgrade run in Terminal reaches those servers before the app notices, so restart
   them when it asks.
 
+## Checking the Setup
+
+Help > Check Setup… runs `metab --doctor --json` with the `metab`, `git`, and `gh` the
+app hands its servers, and shows the report: one row each for the plugins, opening from
+a terminal, `metab`, Git, the configuration directory, the cache directory, and GitHub
+CLI, with its state, what it found, and the step that fixes it, a command to copy or a
+page to open.
+[Diagnostics](command-line.md#diagnostics-and-plugins) says what each check
+covers. Settings’ Check Setup… opens the same window.
+The `metab` row compares with the oldest `metab` this build of the app runs.
+
+- **Check Again** runs it again, as after following a step or choosing a `metab` in
+  Settings.
+- **Copy Report** copies the report as text, headed by the app’s build and the `metab`
+  it ran, for a bug report.
+- **A `metab` built before the setup checks** shows its problems as it words them, says
+  the checks are missing, and offers the upgrade for how it was installed.
+- **A row this app cannot read,** such as a check from a later `metab`, says so, and the
+  other rows still show.
+- **No report:** when `metab` cannot run, does not finish within a minute, or prints
+  something other than a report, the window says so and shows what it printed.
+
+The check changes nothing, and only GitHub CLI’s sign-in check reaches the network.
+
 ## What the App Shows Without a Usable metab
 
 If the app finds no `metab` it can run, Settings opens and lists only the steps still
@@ -366,8 +391,9 @@ Once a release meets it, the steps end in uv:
 - with uv, `uv tool install metabrowser`;
 - with a `metab` in uv’s tool directory that does not run,
   `uv tool install --reinstall metabrowser`;
-- with an older `metab`, an upgrade command that asks for the minimum or later rather
-  than an exact version, so a later `uv tool upgrade` can move past it.
+- with an older `metab`, the upgrade by the tool that installed it: uv or pipx, asking
+  for the minimum or later rather than an exact version, so a later upgrade can move
+  past it, or `git pull && make install` at the root of a source checkout.
 
 The app keeps watching, and when a usable `metab` appears, it opens the folders you
 asked for by itself.

@@ -144,7 +144,7 @@ nonisolated enum ContractGolden {
         "present-dry-run/repository", "present-dry-run/pull-request", "present-dry-run/commit",
         "present-dry-run/tree", "present-dry-run/file", "present-dry-run/refused",
         "cache-sources/none", "cache-sources/held", "cache-sources/first-page", "cache-sources/next-page",
-        "doctor", "acquire/in-terminal",
+        "doctor/clean", "doctor/as-the-app", "acquire/in-terminal",
     ]
 
     @Test func everyScenarioOfTheGoldenIsReadHere() {
@@ -388,14 +388,52 @@ nonisolated enum ContractGolden {
         #expect(RepositoryCache.read(next.result, looking: demo) == .found)
     }
 
+    // MARK: - Check Setup
+
+    /// Help > Check Setup… runs the doctor as `DoctorRun.spec` writes it, naming this
+    /// app's bundle, and reads one row per check and one for GitHub CLI, with the step
+    /// that fixes each. A report with a problem exits 1 and is still a report.
+    @Test func checkSetupReadsEachCheckOfTheDoctorsReport() throws {
+        let bundle = "\(ContractGolden.sandbox)/Metabrowser.app"
+        let spec = DoctorRun.spec(
+            setup: RuntimeSetup(
+                runtime: Runtime(executable: "/opt/metab", version: MetabRequirement.minimum, source: .chosen),
+                tools: ToolPaths()),
+            inherited: [:], appBundle: bundle)
+        let ids = ["plugins", "open_in", "metab", "git", "config", "cache", "github"]
+
+        let clean = try block("doctor/clean")
+        #expect(clean.words == spec.arguments)
+        guard case .report(let report) = DoctorRun.answer(clean.result) else {
+            Issue.record("a report with nothing to fix was not read")
+            return
+        }
+        #expect(report.ok && report.hasChecks)
+        #expect(report.rows.map(\.id) == ids)
+        #expect(report.rows.allSatisfy { $0.state == .ok && $0.remedy == nil })
+
+        let app = try block("doctor/as-the-app")
+        #expect(app.words == spec.arguments)
+        #expect(app.environment[DoctorRun.appVariable] == spec.environment[DoctorRun.appVariable])
+        guard case .report(let found) = DoctorRun.answer(app.result) else {
+            Issue.record("a report with a problem was not read")
+            return
+        }
+        #expect(!found.ok && found.hasChecks)
+        #expect(found.rows.map(\.id) == ids)
+        #expect(found.rows.map(\.state) == [.ok, .ok, .warning, .ok, .warning, .problem, .warning])
+        let fixes = Dictionary(uniqueKeysWithValues: found.rows.map { ($0.id, $0.remedy) })
+        let step = DoctorReport.Remedy(text: ContractGolden.text, command: ContractGolden.text)
+        #expect(fixes["metab"] == step, "the upgrade the app's minimum calls for")
+        #expect(fixes["github"] == step, "signing in to GitHub CLI")
+        #expect(fixes["config"] == DoctorReport.Remedy(text: ContractGolden.text))
+    }
+
     // MARK: - Shown, not read
 
-    /// The app reads nothing of these: Settings shows the doctor's report as written, and
-    /// the status view shows the clone command for a person to run.
+    /// The app reads nothing of this: the status view shows the clone command for a person
+    /// to run.
     @Test func whatTheAppOnlyShowsIsNotRecorded() throws {
-        let doctor = try block("doctor")
-        #expect(doctor.words == ["--doctor"])
-        #expect(doctor.stdout == [ContractGolden.shown])
         let acquire = try block("acquire/in-terminal")
         #expect(acquire.stdout == [ContractGolden.shown])
         let failure = GitHubFailure(kind: .network, state: "timed_out", message: "", repository: demo)
