@@ -443,9 +443,12 @@ Strict mode is off on a developer machine, which can add these:
   `tests/test_checkout_ref_selector_chrome.py`, which serves a checkout with `metab` and
   switches it between its working tree and its branches and tags from the page, reading
   each document’s policy and the selector’s panel, and then compares every file under
-  the checkout with what it was; `tests/test_control_chords_chrome.py`, which presses
-  Control-N and Control-P through Chrome’s input under a navigator overridden to name a
-  Mac and then Linux, on every host, and reads that only the Mac’s binds them;
+  the checkout with what it was; `tests/test_ref_selector_long_list_chrome.py`, which
+  serves a checkout of thousands of branches and reads which of the branch chooser’s
+  rows are drawn, and where, when it opens, scrolls, takes End and Home, and is
+  filtered; `tests/test_control_chords_chrome.py`, which presses Control-N and Control-P
+  through Chrome’s input under a navigator overridden to name a Mac and then Linux, on
+  every host, and reads that only the Mac’s binds them;
   `tests/test_overview_legend_hover_chrome.py`, which moves Chrome’s pointer onto a File
   Overview legend entry and a bar segment and reads which bars and entry are marked,
   what they compute to, where the tooltip lands, and that nothing moves;

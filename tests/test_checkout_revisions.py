@@ -158,8 +158,9 @@ def test_a_checkout_lists_its_branches_tags_and_remotes(served: TestClient, chec
     }
     assert (branches["pin"], branches["ref"]) == (None, None)
     # The checked-out branch lists first, as a mirror's default does, and is not "current":
-    # picked as a ref it shows its commit, which is not the working tree.
-    assert _names(branches) == ["topic", "feature", "local-work"]
+    # picked as a ref it shows its commit, which is not the working tree. The rest read
+    # newest first: local-work's commit was made here a month after feature's.
+    assert _names(branches) == ["topic", "local-work", "feature"]
     # Each row's commit and the date it was committed, read in the same for-each-ref. The
     # page shortens the ID as every line does (`shortCommit` in static/formatters.js).
     assert branches["refs"][0] == {
@@ -297,8 +298,7 @@ def test_a_tag_a_remote_branch_and_a_commit_are_shown_and_a_miss_fetches_nothing
     )
     assert served.get("/api/identity").json()["full_name"].endswith("@origin/feature")
     # A commit no remote has, by its abbreviated ID, under no ref.
-    local = _refs(served)["refs"][2]
-    assert local["name"] == "local-work"
+    local = next(row for row in _refs(served)["refs"] if row["name"] == "local-work")
     by_id = _pin(served, oid=local["commit"][:10])["status"]
     assert (by_id["pin"], by_id["ref"]) == (local["commit"], None)
     assert "LOCAL.md" in _tree(served)

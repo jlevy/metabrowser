@@ -97,8 +97,6 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             recorded["tags"] = listing(kind="tag")
             recorded["filtered"] = listing(kind="branch", q="feat")
             recorded["nothing"] = listing(kind="branch", q="zzz")
-            # The selector sends no limit; this is the page a longer list would answer.
-            recorded["page"] = listing(kind="branch", limit="1")
             recorded["refused"] = listing(kind="commit")
             # NOTES.md is only on topic, so a page on it goes to the root on feature.
             recorded["switch_away"] = switch({"ref": FEATURE, "view": _view("NOTES.md")})
@@ -118,7 +116,6 @@ def test_recording_is_what_a_served_mirror_answers(
     branches = recorded["branches"]["body"]
     assert [row["name"] for row in branches["refs"]] == ["topic", "feature"]
     assert branches["refs"][0]["default"] and branches["refs"][0]["current"]
-    assert recorded["page"]["body"]["truncated"] is True
     assert recorded["refused"]["status"] == 400
     assert recorded["switch_away"]["body"]["view_href"] == "/view/"
     keep = recorded["switch_keep"]["body"]
@@ -189,8 +186,11 @@ def test_recording_is_what_a_served_checkout_answers(
         # The checkout's path is the sandbox's, and stands in as the recording's.
         "location": "/sandbox/checkout",
     }
-    assert [row["name"] for row in branches["refs"]] == ["topic", "feature", "local-work"]
+    # The checked-out branch first, then newest first: local-work was committed in
+    # February, after feature's commit.
+    assert [row["name"] for row in branches["refs"]] == ["topic", "local-work", "feature"]
     assert branches["refs"][0]["checked_out"] and not branches["refs"][0]["current"]
+    # origin/feature's commit is an hour newer than origin/topic's.
     assert [row["name"] for row in recorded["remotes"]["body"]["refs"]] == [
         "origin/feature",
         "origin/topic",

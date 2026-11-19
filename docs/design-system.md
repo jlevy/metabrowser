@@ -5279,6 +5279,16 @@ list chooser, a filter box, and one row for each ref (`static/source-ref-selecto
   button, the rows, and a mirror’s offer of its ref’s newer commit all show it by the
   one rule in [Short Commit IDs](#short-commit-ids).
 
+- **The list holds every ref, newest first, and draws only the rows near its view.** It
+  reads by the age its rows show, after the mirror’s default branch or the checkout’s
+  checked-out one, and states no count, since it leaves nothing out.
+  Each row is placed by its index at one row’s height over a box as tall as the whole
+  list (`ROWS_OVERSCAN` and `drawWindow` in `static/source-ref-selector.js`), so nothing
+  in a row may make it taller than the rest: the badge’s border reaches into the row’s
+  padding. `tests/test_ref_selector_long_list_chrome.py` measures in headless Chrome over
+  thousands of branches that the rows are one height and abut, that a scroll and End
+  draw the rows they bring into view, and that the filter narrows the list.
+
 A checkout adds three things, and each uses a primitive the control already had:
 
 - **The working tree is a row, above the lists, and not in them.** It is a `.menu-item`

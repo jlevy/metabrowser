@@ -81,8 +81,10 @@ A repository opened by its URL is pinned to one commit, its default branch’s u
 URL names another. The button under the navigation header names the served branch, tag,
 pull request, or commit; click it or press `W` to switch.
 
-It lists the mirror’s branches, default first, or its tags, newest first, and the filter
-box narrows either list by name.
+It lists every one of the mirror’s branches, or every one of its tags.
+The default branch is first, and the rest are newest first, by the date of each one’s
+last commit, which its row shows as an age.
+The filter box narrows either list by name.
 Choosing one serves it and reloads the page on the same file or folder when the new
 commit has it, or at the root when it does not.
 The switch lasts until the server stops.
@@ -101,9 +103,9 @@ Click it or press `W` to see any other branch or tag without checking it out.
 - **Working tree** is the first row, and the only one that shows your live files.
 - **Branches** are the checkout’s own, with the one you have checked out first and
   marked “checked out”.
-  **Tags** are its tags, newest first.
+  **Tags** are its tags.
   **Remotes** are its remote-tracking branches, such as `origin/main`, as your last
-  fetch left them.
+  fetch left them. Each list holds every one, newest first by its last commit.
 - Choosing a branch or tag shows its last commit, read from the repository’s Git
   objects. The button and the navigation header then name it, with its short commit.
   This includes the checked-out branch: choosing it shows what is committed, without

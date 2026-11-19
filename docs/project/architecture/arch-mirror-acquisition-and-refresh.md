@@ -328,10 +328,14 @@ Each handler’s docstring in `source_routes.py` holds its contract; the route i
   `{"for": "commit"}` is the fetch a missing commit waits on, fetched only outside the
   freshness window unless `"retry": true`; its `pull_refresh` says how the attended pull
   request’s refresh was answered.
-- **`GET /api/source/refs`** lists the mirror’s branches or tags for the ref selector
-  from one `for-each-ref`, filtered and clamped (`REFS_DEFAULT_LIMIT`, `REFS_MAX_LIMIT`,
-  `REFS_MAX_QUERY_CHARS`), each with its commit, Git’s short form of it, and that
-  commit’s committer date, from which the selector shows its age.
+- **`GET /api/source/refs`** lists every one of the mirror’s branches or tags for the
+  ref selector from one `for-each-ref`, filtered by name (`REFS_MAX_QUERY_CHARS`), each
+  with its commit and that commit’s committer date, from which the selector shows its
+  age. The default branch lists first, then the rest newest first by that date, then by
+  name (`_newest_first` in `cache/resolve.py`); nothing pages the list, and the measured
+  cost of listing every ref is beside the constants in `source_routes.py`. The answer is
+  kept in the Git routes’ memo under the store’s ref state and the recorded default
+  branch (`_refs_answer_key`), so asking again while no ref moved runs no Git.
   A folder that is a repository’s root answers it and the pin route for its own
   checkout;
   [Revisions of a Checkout](arch-source-sessions-and-pins.md#revisions-of-a-checkout)

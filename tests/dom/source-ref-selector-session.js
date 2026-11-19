@@ -264,9 +264,9 @@ async function run() {
   steps.push(page.observe("tags list newest first"));
 
   const back = selector.setKind("branch");
-  await page.answer(recorded.page);
+  await page.answer(recorded.branches);
   await back;
-  steps.push(page.observe("a list longer than a page says it stops short"));
+  page.observe("back to branches");
 
   const refused = selector.setKind("tag");
   await page.answer(recorded.refused);
@@ -393,7 +393,34 @@ async function run() {
   }
   keys.push(`ArrowDown from -1 in an empty list: ${selectorRuntime.moveRow("ArrowDown", -1, 0)}`);
 
-  return { steps, labels, copies, keys, checkout: await runCheckout() };
+  // Which rows a list draws: those in its view and the overscan on either side, however
+  // many it holds, so a listing of every ref costs the page what its view holds. A view
+  // 320 px tall over rows 28 px tall, at the top, partway, and at the end of 10,001 rows;
+  // a short list; and a list whose rows have not been measured.
+  const overscan = selectorRuntime.ROWS_OVERSCAN;
+  const windows = [
+    [10001, 28, 0, 320],
+    [10001, 28, 28 * 5000 + 10, 320],
+    [10001, 28, 28 * 10001 - 320, 320],
+    [3, 28, 0, 320],
+    [10001, 0, 0, 0],
+    [0, 28, 0, 320],
+  ].map(([count, rowHeight, scrollTop, viewHeight]) => {
+    const { start, end } = selectorRuntime.rowWindow(count, rowHeight, scrollTop, viewHeight);
+    const inView =
+      rowHeight > 0
+        ? Math.min(count, Math.ceil((scrollTop + viewHeight) / rowHeight)) -
+          Math.floor(scrollTop / rowHeight)
+        : 0;
+    assert(
+      end - start <= Math.max(inView, 0) + 2 * overscan + 1,
+      "a window is its view and the overscan",
+    );
+    assert(start >= 0 && end <= count && start <= end, "a window is inside the list");
+    return `${count} rows ${rowHeight} px tall, scrolled ${scrollTop} px in ${viewHeight} px: rows ${start} to ${end}`;
+  });
+
+  return { steps, labels, copies, keys, overscan, windows, checkout: await runCheckout() };
 }
 
 // A served checkout: a folder that is a repository's root.
