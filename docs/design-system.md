@@ -3608,10 +3608,11 @@ A known canonical suffix matches declared compound tails, while an unknown raw e
 remains exact.
 
 Where a row stands for an exact extension, it carries that type’s icon and leaves the
-label plain. Aggregate category and family rows are text-only.
-The icon is what identifies a type everywhere else in the app, and tinting a whole
-column of labels makes the hues compete with the selected-state mark instead of helping
-anyone scan the list.
+label plain. Aggregate category and family rows are text-only; the heading of a family
+section names a category and leads with its icon
+([File-Type Category Icons](#file-type-category-icons)). The icon is what identifies a
+type everywhere else in the app, and tinting a whole column of labels makes the hues
+compete with the selected-state mark instead of helping anyone scan the list.
 
 ### Selection Kind Is Visible Before the Click
 
@@ -3679,7 +3680,9 @@ it resets them all, Show ignored back on, and keeps the grouping.
   tree of the group’s members after the filters.
   The heading starts on the tree’s row inset, as a menu’s starts on its rows’, and names
   the section and its tree; sections after the first draw the divider above themselves.
-  A folder opened inside a section lists only that group’s members.
+  A file type section’s heading starts with its category’s icon
+  ([File-Type Category Icons](#file-type-category-icons)); an age band names no category
+  and has none. A folder opened inside a section lists only that group’s members.
   A section is a fixed heading that never closes, where the Pulls tab’s
   [stack group](#stack-groups-in-the-pulls-tab) is a row that opens and closes, and the
   difference is deliberate: a grouping splits the whole tree into sections, while a
@@ -3886,6 +3889,66 @@ correspondence, the separation floor, and the tone.
 Adding a family GitHub has no color for starts with `--suggest`, which prints the widest
 free hue.
 
+### File-Type Category Icons
+
+**A file-type category is named one way wherever it appears: the category heading, gray,
+all caps, bold, and tracked, led by the category’s icon in the same gray.** The icon is
+the one its representative format draws, typically the category’s most important format:
+Documentation leads with Markdown’s icon.
+The heading draws it in its own ink, never the format’s color, because it names the
+category and not a format.
+A specific format, a family or an extension, keeps its own icon and its own color.
+
+- **Type.** The heading is the label register category headings already read in,
+  `--label-color`, `--label-font-size`, `--label-font-weight`, `--label-letter-spacing`,
+  and `--label-text-transform`; the icon changes none of it.
+- **Icon.** `.category-icon` in `styles.css`: `--icon-glyph` square, in `currentColor`,
+  with `--category-icon-gap` between it and the name.
+  A heading that starts on a row inset starts there with the icon, and the name follows.
+  In Details the icon stands in its rows’ icon box, so the heading’s icon and name start
+  where its family rows’ do.
+- **Where.** Every heading that names a category: a section of Group by’s By file type
+  ([Grouping the Files Tree](#grouping-the-files-tree)), each family section of the type
+  chooser ([Groups Or Dropdowns](#groups-or-dropdowns)), and each group of File
+  Overview’s Details table ([Aggregate Distributions](#aggregate-distributions)).
+
+| Category | Representative | Icon | Why |
+| --- | --- | --- | --- |
+| Documentation | Markdown | `doc` | Markdown is what a repository’s documentation is written in: READMEs and guides. |
+| Code | Python | `alignLeft` | Python leads the registry’s Code families, and every Code family takes its shape. |
+| Data | JSON | `list` | JSON is a repository’s commonest data: configuration, manifests, and payloads; the tabular formats keep their own grid. |
+| Archives | Archives | `copy` | Archives has one family, which holds every archive format. |
+| Media | Images | `monitor` | Images are the media a repository holds most: screenshots, diagrams, and icons. |
+| Other | None | `file` | Other is mostly files the registry does not recognize, so the plain file shape stands for it; its one family, Log files, would misname the rest. |
+
+The table is `_REPRESENTATIVE_FAMILIES` in `file_type_filters.py`, and
+`tests/test_category_icons.py` holds this copy to it.
+The registry already draws each group’s families in one shape, the group’s `icon`,
+unless a family declares its own, so a category’s icon is that shape:
+`file_type_filters.py` refuses a representative that is not one of its group’s families
+or that declares an icon of its own, and the choice and the shape cannot disagree.
+Which format represents a category is presentation, as the display order is, so it lives
+beside the categories and not in the registry, whose groups the File Rollup Format
+fingerprints. The browser reads the icon as each group’s `icon` in
+`fileTypes.displayGroups`, and a grouped tree’s answer carries it on each type group
+(`/api/tree?group_by=type`, null for an age group), pinned by
+`tests/golden/cli-api-tree-groups.tryscript.md`, and
+`tests/dom/files-group-by-session.js` pins that each section carries it.
+`tests/dom/file-overview-session.js` and `tests/dom/filter-controls-behavior.js` pin
+that a Details heading and a menu heading lead with it.
+In Chrome, `tests/test_files_tab_chrome.py` measures the icon’s size, ink, and place in
+a menu’s headings and a section’s, and in a section’s after a refresh rewrites it, and
+`tests/test_overview_legend_hover_chrome.py` measures it in Details.
+
+Some places name a category without a heading, and keep their own style:
+
+- The type chooser’s Groups section lists the categories as rows to pick, text-only as
+  every aggregate row in it is ([Groups Or Dropdowns](#groups-or-dropdowns)): a row is a
+  value, not a heading.
+- The File type trigger names a selected category as its value, in the trigger’s words.
+- The Overview legend’s Other is the families it does not name, not the Other category,
+  and the legend and tracks name families, so they take the families’ colors.
+
 ### Aggregate Distributions
 
 An aggregate distribution relates exact categories through one selected metric column in
@@ -3919,11 +3982,12 @@ A caption naming the population labels the legend and the table for assistive te
 only. Legend items wrap whole.
 The table sits behind a **Details** toggle, the same trigger and bold label as an **N
 more** row, which starts closed on each mount and keeps its state through repaints.
-Every row names its category and reports absolute values and percentages; fills are not
-tab stops, carry no duplicate tooltips, and are hidden from the accessibility tree, and
-no label relies on color or sits on a fill.
-Membership comes from the File Rollup Format type definitions that rollups, filters, and
-Treemap colors also use, by the format’s
+Each group of rows is headed by its category, led by the category’s icon
+([File-Type Category Icons](#file-type-category-icons)). Every row names its category
+and reports absolute values and percentages; fills are not tab stops, carry no duplicate
+tooltips, and are hidden from the accessibility tree, and no label relies on color or
+sits on a fill. Membership comes from the File Rollup Format type definitions that
+rollups, filters, and Treemap colors also use, by the format’s
 [Logical Extension](project/architecture/file-rollup-format/file-rollup-format.md#logical-extension)
 rule, and the row grammar, from family parents to **N more**, is in
 `builtin_plugins/folder/file-type-summary-model.js` beside
@@ -4927,7 +4991,7 @@ and a plugin’s use the same markup:
 
 ```html
 <div class="menu-group" role="group" aria-labelledby="types-section-1">
-  <div class="group-heading" id="types-section-1">Code</div>
+  <div class="group-heading" id="types-section-1"><svg class="category-icon">…</svg>Code</div>
   <!-- the group's .menu-item rows -->
 </div>
 ```
@@ -4938,6 +5002,8 @@ and a plugin’s use the same markup:
   labelled `.menu-row`, and `.menu-version` start on.
   It is not indented to the rows’ labels: a heading on the label column reads as a row
   of its group rather than its name.
+  A heading that names a file-type category starts there with the category’s icon, and
+  its name follows ([File-Type Category Icons](#file-type-category-icons)).
 - **Separator.** A `.menu-group` draws its own divider as its top edge, in the
   `.menu-separator` geometry, unless it is the menu’s first child, where the menu’s edge
   already sets it off, or follows a `.menu-separator`, which already draws the rule.
@@ -4956,10 +5022,10 @@ and a plugin’s use the same markup:
   A menu with two or more groups names each one, as above.
 
 `tests/test_files_tab_chrome.py` and the stack part of
-`tests/test_github_pull_header_chrome.py` measure in Chrome that each heading’s text
-starts on its rows’ inset and names its group or its menu;
-`tests/test_browser_filter_ui.py` pins that the row, title, labelled row, foot, and
-heading all read the one token.
+`tests/test_github_pull_header_chrome.py` measure in Chrome that each heading starts on
+its rows’ inset, with its icon where it names a category, and names its group or its
+menu; `tests/test_browser_filter_ui.py` pins that the row, title, labelled row, foot,
+and heading all read the one token.
 
 ### Heading Tallies
 

@@ -4,6 +4,8 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+New entries live in [`changelog.d/`](changelog.d/README.md) until a release adds them.
+
 - An agent log event’s chevron and a code block’s copy button draw the app’s one chevron
   and copy icon. The chevron was larger and thinner than every other one, and the copy
   button an older shape than the app’s other copy buttons.

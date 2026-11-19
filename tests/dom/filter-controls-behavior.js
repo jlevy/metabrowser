@@ -406,6 +406,8 @@ const menuSections = fc.menuGroupHtml({
     {
       id: "families",
       label: "Code",
+      // The category's icon, as markup from the shell's icon registry.
+      icon: '<svg class="category-icon"></svg>',
       presets: [
         { id: "family:javascript", label: "JavaScript", values: [".js", ".mjs"], count: 10 },
       ],
@@ -439,7 +441,20 @@ assertContains(
   "a preset section is the menu group",
   menuSections,
   '<div class="menu-group" role="group" aria-labelledby="m-section-1" data-chip-menu-section="families">' +
-    '<div class="group-heading" id="m-section-1">Code</div>',
+    '<div class="group-heading" id="m-section-1">',
+);
+// A category's section leads its heading with the category's icon, before the name; a
+// section with no icon, Groups, has none (docs/design-system.md, "File-Type Category
+// Icons").
+assertContains(
+  "a category's heading leads with its icon",
+  menuSections,
+  '<div class="group-heading" id="m-section-1"><svg class="category-icon"></svg>Code</div>',
+);
+assertContains(
+  "a heading without an icon is its name alone",
+  menuSections,
+  '<div class="group-heading" id="m-section-0">Groups</div>',
 );
 assertEqual(
   "only the raw rows are set off by a separator",

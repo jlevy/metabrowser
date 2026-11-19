@@ -29,6 +29,9 @@ COMMON_DOC_EXEMPT_FILES = {
     # Generated index for forked tbd docs; `tbd docs` commands rewrite it.
     ROOT / "docs" / "tbd" / "README.md",
 }
+# Changelog fragments hold only the bullets a release folds into CHANGELOG.md, which
+# carries the footer for them (devtools/changelog.py); their README is a document.
+CHANGELOG_FRAGMENTS = ROOT / "changelog.d"
 BANNED_TOKEN_HASHES: dict[str, str] = {
     "31523fdddcd5294e2bc6cc775fba79e2597e6d45bc0a995c548493038ebea33f": "private name",
     "431c8f4eb977db1139192b703a0dbb36e9e3d89352c6983851ead2faf62a40a8": "private name",
@@ -254,6 +257,8 @@ def find_documentation_findings(path: Path, text: str) -> list[str]:
     if path in COMMON_DOC_EXEMPT_FILES:
         return []
     if any(path.is_relative_to(root) for root in COMMON_DOC_EXEMPT_ROOTS):
+        return []
+    if path.parent == CHANGELOG_FRAGMENTS and path.name != "README.md":
         return []
     if COMMON_DOC_FOOTER not in text:
         return [f"{path.relative_to(ROOT)}: missing common-doc-guidelines footer"]

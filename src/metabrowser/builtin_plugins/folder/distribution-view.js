@@ -33,8 +33,13 @@ function createMetricCell() {
   return { cell, fill, percent, value };
 }
 
-/** @param {string} className @param {string} label */
-function createGroupBody(className, label) {
+/**
+ * A group's rows under its heading. The heading names the category in the shared
+ * category heading's type, led by the category's icon, `iconSvg`, when it has one
+ * (docs/design-system.md, "File-Type Category Icons").
+ * @param {string} className @param {string} label @param {string} iconSvg
+ */
+function createGroupBody(className, label, iconSvg) {
   const body = document.createElement("tbody");
   body.className = className;
   const headingRow = document.createElement("tr");
@@ -42,7 +47,11 @@ function createGroupBody(className, label) {
   const heading = document.createElement("th");
   heading.scope = "rowgroup";
   heading.colSpan = 2;
-  heading.textContent = label;
+  // The icon's markup is the shell's own icon registry's, never the folder's data.
+  heading.innerHTML = iconSvg;
+  const name = document.createElement("span");
+  name.textContent = label;
+  heading.append(name);
   headingRow.append(heading);
   body.append(headingRow);
   return body;
@@ -56,6 +65,7 @@ function createGroupBody(className, label) {
  * @param {FileTypeIconResolver} fileTypeIcon
  * @param {DistributionHover} hover The hover the legend shares with the population bars
  *   above it, which draw it, as the Details table's rows do while it is open.
+ * @param {CategoryIconResolver} categoryIcon A category's icon, by the name a group gives.
  */
 export function mountDistributionView(
   container,
@@ -64,6 +74,7 @@ export function mountDistributionView(
   metricClasses,
   fileTypeIcon,
   hover,
+  categoryIcon,
 ) {
   const root = document.createElement("div");
   root.className = "file-type-summary";
@@ -75,6 +86,7 @@ export function mountDistributionView(
     palette,
     metricClasses,
     fileTypeIcon,
+    categoryIcon,
     hover,
     // The legend, bound to the hover while the body shows one (distribution-legend.js).
     legendView: /** @type {DistributionLegend | null} */ (null),
@@ -377,13 +389,15 @@ function updateMetricValue(element, metric, value, text, metricClasses) {
   element.textContent = text;
 }
 
-/** @param {DistributionHandle} handle @param {string} groupId @param {string} label */
-function ensureGroup(handle, groupId, label) {
+/** @param {DistributionHandle} handle @param {SummaryGroup} descriptor */
+function ensureGroup(handle, descriptor) {
+  const groupId = descriptor.id;
   let group = handle.groups.get(groupId);
   if (group || !handle.table) {
     return group;
   }
-  const body = createGroupBody("file-type-summary-group", label);
+  const icon = descriptor.icon ? handle.categoryIcon(descriptor.icon) : "";
+  const body = createGroupBody("file-type-summary-group", descriptor.label, icon);
   body.dataset.category = groupId;
   group = { body };
   handle.groups.set(groupId, group);
@@ -441,7 +455,7 @@ function updateRows(handle, rows, groupOrder, metric = "files") {
       continue;
     }
     liveCategories.add(category);
-    const group = ensureGroup(handle, category, descriptor.label);
+    const group = ensureGroup(handle, descriptor);
     if (!group) {
       continue;
     }
@@ -586,15 +600,16 @@ function updateRows(handle, rows, groupOrder, metric = "files") {
   }
 }
 
-/** @typedef {{id: string, label: string}} SummaryGroup */
+/** @typedef {{id: string, label: string, icon?: string | null}} SummaryGroup */
 /** @typedef {{key: string, label: string, paletteKey: string, kind: "family" | "other", value: number, percent: string, share: number}} SummaryLegendEntry */
 /** @typedef {{key: string, rawKey?: string | null, extension?: string | null, iconPath?: string | null, label: string, category: string, kind?: string, child?: boolean, paletteKey?: string, disclosable?: boolean, children?: ReadonlyArray<SummaryRow>, files: number, bytes: number, filesText: string, bytesText: string, filePercent: string, bytePercent: string, fileShare: number, byteShare: number}} SummaryRow */
 /** @typedef {{classFor: (key: string) => string, styleFor: (key: string) => string, paint: (element: HTMLElement, key: string) => void}} Palette */
 /** @typedef {{countClass: (value: number) => string, sizeClass: (value: number) => string}} MetricClasses */
 /** @typedef {(path: string) => {svg: string, className: string}} FileTypeIconResolver */
+/** @typedef {(name: string) => string} CategoryIconResolver */
 /** @typedef {{state: "pending" | "failed" | "unavailable" | "populated" | "empty" | "ignored-only" | "zero-bytes" | "truncated", metric?: "files" | "size", rows: ReadonlyArray<SummaryRow>, legend?: ReadonlyArray<SummaryLegendEntry>, groups?: ReadonlyArray<SummaryGroup>, caption?: string, files?: number, bytes?: number, filesText?: string, allFilesText?: string, bytesText?: string, showIgnored?: boolean, ignoredFiles?: number, ignoredBytes?: number, ignoredFilesText?: string, ignoredBytesText?: string, ignoredFilePercent?: string, ignoredBytePercent?: string, ignoredFileShare?: number, ignoredByteShare?: number, scanning?: boolean, indexFailed?: boolean, indexedFiles?: number, maxFiles?: number}} SummaryModel */
 /** @typedef {{body: HTMLTableSectionElement}} SummaryGroupHandle */
 /** @typedef {{tr: HTMLTableRowElement, icon: HTMLElement, label: HTMLElement, disclosure: HTMLButtonElement, disclosureLabel: HTMLElement, metricCell: HTMLTableCellElement, metricValue: HTMLElement, metricFill: HTMLElement, metricPercent: HTMLElement}} SummaryRowHandle */
 /** @typedef {import("./distribution-hover.js").DistributionHover} DistributionHover */
 /** @typedef {import("./distribution-legend.js").DistributionLegend} DistributionLegend */
-/** @typedef {{body: HTMLElement, container: HTMLElement, root: HTMLElement, palette: Palette, metricClasses: MetricClasses, fileTypeIcon: FileTypeIconResolver, hover: DistributionHover, legendView: DistributionLegend | null, hovered: Array<HTMLElement>, unsubscribeHover: () => void, idPrefix: string, rows: Map<string, SummaryRowHandle>, groups: Map<string, SummaryGroupHandle>, expandedFamilies: Set<string>, lastRows: ReadonlyArray<SummaryRow>, lastGroupOrder: ReadonlyArray<SummaryGroup>, table: HTMLTableElement | null, metricHeader: HTMLTableCellElement | null, caption: HTMLElement | null, detailsToggle: HTMLButtonElement | null, detailsExpanded: boolean, metric: "files" | "size", status: HTMLElement | null, mode: string}} DistributionHandle */
+/** @typedef {{body: HTMLElement, container: HTMLElement, root: HTMLElement, palette: Palette, metricClasses: MetricClasses, fileTypeIcon: FileTypeIconResolver, categoryIcon: CategoryIconResolver, hover: DistributionHover, legendView: DistributionLegend | null, hovered: Array<HTMLElement>, unsubscribeHover: () => void, idPrefix: string, rows: Map<string, SummaryRowHandle>, groups: Map<string, SummaryGroupHandle>, expandedFamilies: Set<string>, lastRows: ReadonlyArray<SummaryRow>, lastGroupOrder: ReadonlyArray<SummaryGroup>, table: HTMLTableElement | null, metricHeader: HTMLTableCellElement | null, caption: HTMLElement | null, detailsToggle: HTMLButtonElement | null, detailsExpanded: boolean, metric: "files" | "size", status: HTMLElement | null, mode: string}} DistributionHandle */

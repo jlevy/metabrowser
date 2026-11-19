@@ -98,6 +98,7 @@ $ node tests/dom/files-group-by-session.js
     {
       "key": "type:docs",
       "label": "Documentation",
+      "icon": "doc",
       "files": 3,
       "topLevel": [
         "docs",
@@ -108,6 +109,7 @@ $ node tests/dom/files-group-by-session.js
     {
       "key": "type:code",
       "label": "Code",
+      "icon": "alignLeft",
       "files": 3,
       "topLevel": [
         "src",
@@ -117,6 +119,7 @@ $ node tests/dom/files-group-by-session.js
     {
       "key": "type:data",
       "label": "Data",
+      "icon": "list",
       "files": 1,
       "topLevel": [
         "data"
@@ -125,6 +128,7 @@ $ node tests/dom/files-group-by-session.js
     {
       "key": "type:other",
       "label": "Other",
+      "icon": "file",
       "files": 2,
       "topLevel": [
         "logs",
@@ -509,6 +513,7 @@ $ node tests/dom/files-group-by-session.js
     "key": "type:docs",
     "id": "docs",
     "label": "Documentation",
+    "icon": null,
     "files": null,
     "size": null,
     "tree": []
