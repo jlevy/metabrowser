@@ -1,7 +1,7 @@
-// Hiding the navigation pane: the chevron at the start of the main page's top row, and
-// `\` (docs/keyboard-shortcuts.md), close the pane and open it again. The stylesheet
-// places the chevron (`.nav-collapse-toggle`), on the row's fixed height, so nothing here
-// measures it.
+// Hiding the navigation pane: the chevron on the shortcut strip's row at the main page's
+// foot, and `\` (docs/keyboard-shortcuts.md), close the pane and open it again. app.js
+// (`alignNavCollapseButton`) and the stylesheet (`.nav-collapse-toggle`) place the
+// chevron, so nothing here measures it.
 //
 // The pane does not shrink. Hidden, it leaves the layout, and the main frame, which
 // already floats over it with its left shadow, slides left over it to the window's
