@@ -708,16 +708,19 @@
      whole row. The main view's header is a view header (below), not a twin of it. */
   --pane-header-row-height: 41px;
   /* A view header's rhythm (docs/design-system.md, "View Headers"): the pads above
-     its first row and below its last, the gap between rows, and the eyebrow's and
+     its first row and below its last, the gap between rows, the eyebrow's and
      the metadata line's heights, which a row holds whatever fills it, so nothing
-     under it moves as a value arrives. 22 px is the body size's line (21 px) with
-     room for a badge's box, 22 px, on the metadata line, and the Up control's box,
-     20 px, on the eyebrow. */
+     under it moves as a value arrives, and the gap between the title and the metadata
+     line after it. 22 px is the body size's line (21 px) with room for a badge's box,
+     22 px, on the metadata line, and the Up control's box, 20 px, on the eyebrow. The
+     title gap is half the title's size, wider than the line's own 8 px between items,
+     so the line reads as its own phrase after the name rather than as more of it. */
   --view-header-padding-top: 12px;
   --view-header-padding-bottom: 8px;
   --view-header-row-gap: 4px;
   --view-header-eyebrow-height: 22px;
   --view-header-line-height: 22px;
+  --view-header-title-gap: 12px;
   --view-header-up-size: 20px;
   /* A toggle segment's width: the up control's height and a few pixels for the wide
      Metabrowser mark's ink, so the pair reads as two equal buttons. */
@@ -4391,10 +4394,11 @@ a.tab-btn {
 /* ── View headers ────────────────────────────────────────────── */
 
 /* The block above a file's or a folder's tab bar (docs/design-system.md, "View
-   Headers"; view-header.js, viewHeaderHtml): the eyebrow, the heading row, and the
-   metadata line, on the main view's own ground, --bg, with no rule of its own. The one
-   rule under a view's header is the tab bar's, under the tabs. Every row holds its
-   height whatever fills it, so a value arriving or changing moves nothing below it.
+   Headers"; view-header.js, viewHeaderHtml): the eyebrow, then the heading row, which
+   holds the title and the metadata line after it, on the main view's own ground, --bg,
+   with no rule of its own. The one rule under a view's header is the tab bar's, under
+   the tabs. Every row holds its height whatever fills it, so a value arriving or
+   changing moves nothing below it.
    The block's rules are on .view-header, the structure a kind's header takes;
    .file-header names a file's or a folder's for the keymap and the key badges. */
 .view-header {
@@ -4436,11 +4440,13 @@ a.tab-btn {
   width: var(--view-header-up-size);
   height: var(--view-header-up-size);
 }
-/* The heading row: the kind's icon, the title at the page title's size, what follows
-   the title, and the row's end, its controls, at the far end. */
+/* The heading row: the kind's icon, the title at the page title's size with the metadata
+   line after it, and the row's end, its controls, at the far end. The icon and the end
+   are each the title's first line's height and start the row, so a name that wraps keeps
+   them beside its first line. */
 .view-header-heading {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   min-width: 0;
 }
@@ -4457,56 +4463,69 @@ a.tab-btn {
   width: 1em;
   height: 1em;
 }
-/* A file's or a folder's name is one line, cut short at its end with its whole name as
-   its tooltip, so the rows under it start at one height for every name.
-   The block padding holds the name's glyphs, so a whole name does not read as cut: Source
-   Sans 3's are 1.42em tall in the 1.25em line, and in its 30 px box a whole name's
-   scroll height was 32 px, which `tipAnchorIsCut` (app.js) took for a clamp, showing
-   the name as its own tooltip (measured in Chrome 152). The equal negative margin keeps
-   the row the line's height, and the padding stays inside the row gap. */
-.view-header-title.page-heading {
+/* The name, then the metadata line on its baseline, --view-header-title-gap after it
+   (docs/design-system.md, "View Headers"): one run of inline text, the title inline and
+   the line one box after it, so neither is cut. A name too long for the row wraps
+   anywhere (`.page-heading`) and the line follows its last line; a row with no room for
+   the line after the name wraps the line, whole, to the next line, at the name's start.
+   The gap is the title's end padding, not the line's start margin, so a wrapped line
+   starts on the name's edge and the gap trails, unseen, at the end of the line above.
+   While both fit on one line the row is the title's line high, the line's 22 px inside
+   its 30 px, so a value arriving or changing width moves nothing but the line's items. */
+.view-header-title-group {
   flex: 0 1 auto;
   min-width: 0;
-  margin: -0.125em 0;
-  padding: 0.125em 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
+.view-header-title.page-heading {
+  display: inline;
+  padding-inline-end: var(--view-header-title-gap);
+}
+/* The row's end, its controls, the title's first line high, as the icon is, so the
+   controls center on that line however many the name takes. */
 .view-header-end {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   flex: none;
   margin-inline-start: auto;
+  font-size: var(--page-title-font-size);
+  line-height: 1.25;
+  height: 1lh;
 }
-/* The metadata line: badges, then the item's values after muted dots, at the body
-   size. It is one line at its height whatever fills it. A pane too narrow for an item
-   wraps that item, with its dot, to a second line, which is clipped away, so an item
-   is whole or absent, never cut mid-number; the last items go first. */
+/* The metadata line: badges, then the item's values after muted dots, at the body size,
+   on the title's baseline. A line wider than its row wraps between items, each item whole
+   with its dot, so no value is cut mid-number or pushed out of the pane. A line with
+   nothing in it, a folder the inventory leaves out, takes no room. */
 .view-header-line {
-  display: flex;
+  display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
   column-gap: 8px;
-  min-width: 0;
-  height: var(--view-header-line-height);
-  overflow: hidden;
+  max-width: 100%;
+  vertical-align: baseline;
   color: var(--muted);
+}
+.view-header-line:empty,
+.view-header-line:has(> .folder-header-summary:empty) {
+  display: none;
 }
 .view-header-line > .folder-header-summary {
   display: contents;
 }
-/* An item is the line's height, so a wrapped item starts its own row a whole line
-   down, where the line's clip hides all of it: at its text's 21 px a wrapped row
-   showed its top pixel. */
+/* An item is the line's height, so a line that wraps steps a whole line down. It is one
+   line of text, not a row of boxes, so its baseline is its line's whatever it holds: as a
+   row of boxes, an item holding only a pending skeleton had the skeleton's bottom edge
+   for its baseline, and the line, which takes its baseline from its first item, sat
+   2.44 px higher on the title until the size arrived (Chrome 152, 2026-11-18). */
 .view-header-item {
-  display: inline-flex;
-  align-items: center;
-  column-gap: 8px;
+  display: inline-block;
   flex: none;
   height: var(--view-header-line-height);
+  line-height: var(--view-header-line-height);
   white-space: nowrap;
+}
+.view-header-item > .view-header-sep {
+  margin-inline-end: 8px;
 }
 /* The GitHub toggle at the heading row's end (static/github-page.js; docs/design-system.md,
    "View Headers"), on a page whose repository is on github.com: a joined pair, as a
