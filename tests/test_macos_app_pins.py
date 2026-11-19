@@ -2,9 +2,8 @@
 
 The app copies a few of ``metab``'s constants into Swift, where nothing imports them:
 the bounds on acquiring a source, which a repository's start must outlast; the port walk,
-which keeps the two launch gates' ranges apart; the hosts of the GitHub reducer, and its
-owner and repository names, which Open URL… reads as ``owner/repo``; and the page size of
-the cache's sources route. Its ``Info.plist`` also declares the key
+which keeps the two launch gates' ranges apart; the hosts of the GitHub reducer; and the
+page size of the cache's sources route. Its ``Info.plist`` also declares the key
 ``--present`` reads before it sends anything, and the oldest ``metab`` it runs, which
 ``--doctor`` reads; each install's upgrade step is the doctor's. It also reads two kinds
 of ``metab``'s output: the clone report a repository's start writes to stderr, which its
@@ -199,16 +198,6 @@ def test_the_link_hosts_are_the_github_reducers() -> None:
     value = _swift_value("Folders/PresentPlan.swift", "hosts")
     hosts = set(re.findall(r'"([^"]+)"', value))
     assert hosts == set(github_urls._WEB_HOSTS) | {github_urls._RAW_HOST}
-
-
-def test_the_panels_shorthand_is_the_github_reducers_owner_and_repository() -> None:
-    # Open URL… reads `owner/repo` as a repository only when the reducer would read the
-    # two names as an owner and a repository (`OpenURLEntry.corrected`).
-    source = (SHELL_CORE / "Folders/OpenURLPanel.swift").read_text(encoding="utf-8")
-    found = re.findall(r"static let shorthandPattern = #/(.+)/#$", source, re.MULTILINE)
-    owner = github_urls.OWNER.pattern.removeprefix("^").removesuffix("$")
-    repository = github_urls.REPOSITORY.pattern.removeprefix("^").removesuffix("$")
-    assert found == [rf"^({owner})\/({repository})\/?$"]
 
 
 def test_the_cache_page_is_the_routes_largest() -> None:

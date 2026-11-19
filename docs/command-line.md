@@ -42,6 +42,8 @@ Two rules decide between a path and a source, in this order:
    `https://`, such as `github.com/owner/repo`, which opens as the full URL; or a
    malformed source, which is refused.
    `owner/repo` alone is a path.
+   So `github.com/owner/repo` is a folder of that name when one exists; write the
+   `https://` to open the repository whatever is on disk.
 
 A path that exists but cannot be read is a usage error.
 An empty argument is refused; write `.` for the current directory.

@@ -398,10 +398,9 @@ def _root_in_full(value: str) -> str:
     ``github.com/octo/demo`` in the working directory is served as before. Core names no
     host: which hosts are a provider's is its reducer's to say.
 
-    Only a host is completed. ``octo/demo`` is as much a relative path as a repository,
-    so it stays a path; the macOS app's Open URL…, which takes nothing but GitHub URLs,
-    reads it as a repository (``OpenURLEntry.corrected`` in
-    ``apps/macos/Sources/ShellCore/Folders/OpenURLPanel.swift``).
+    Only a host is completed, as the macOS app's Open URL… completes it
+    (``OpenURLEntry.corrected`` in ``apps/macos/Sources/ShellCore/Folders/OpenURLPanel.swift``):
+    ``octo/demo`` is as much a relative path as a repository, so it stays a path.
     """
     if _LEADING_HOST.match(value) is None or os.path.lexists(value):
         return value

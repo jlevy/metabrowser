@@ -108,7 +108,7 @@ def test_api_catalog_lists_the_complete_nonignored_file_universe(tmp_path: Path)
 
     body = asyncio.run(run())
     paths = {file["p"] for file in body["files"]}
-    assert {"README.md", "docs/notes.md", "docs/deep/nested/leaf.txt"} <= paths
+    assert {"README.md", "docs/macos-app.md", "docs/deep/nested/leaf.txt"} <= paths
     assert "ignored/secret.txt" not in paths
     assert "scratch.tmp" not in paths
     assert set(body["files"][0]) == {"p", "e"}
@@ -208,7 +208,7 @@ def test_catalog_identity_ignores_changes_the_catalog_does_not_carry(
                 RefreshRequest(
                     observations=(
                         RefreshObservation(
-                            path="docs/notes.md",
+                            path="docs/macos-app.md",
                             kind=ObservationKind.MODIFIED,
                         ),
                     )
@@ -267,7 +267,7 @@ def test_catalog_live_add_ignore_and_remove_deltas(tmp_path: Path) -> None:
                     RefreshRequest(
                         observations=(
                             RefreshObservation(
-                                path="docs/notes.md",
+                                path="docs/macos-app.md",
                                 kind=ObservationKind.DELETED,
                             ),
                         )
@@ -287,7 +287,7 @@ def test_catalog_live_add_ignore_and_remove_deltas(tmp_path: Path) -> None:
     assert ignored.removes == ()
     assert ignored.remove_files == ("ignored/other.txt",)
     assert ignored.non_file_paths == ()
-    assert removed.removes == ("docs/notes.md",)
+    assert removed.removes == ("docs/macos-app.md",)
     assert removed.remove_files == ()
     assert removed.non_file_paths == ()
 

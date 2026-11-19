@@ -58,11 +58,11 @@
       "availability": "ready",
       "old": {
         "entry_type": "file",
-        "path": "docs/notes.md"
+        "path": "docs/macos-app.md"
       },
       "new": {
         "entry_type": "file",
-        "path": "docs/notes.md"
+        "path": "docs/macos-app.md"
       }
     },
     {

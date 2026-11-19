@@ -331,7 +331,7 @@ What the panel decides is unit-tested in `OpenURLPanelTests`, and against the re
 3. **Each kind.** `$REPO`, `$REPO/tree/main/docs`, `$REPO/blob/main/README.md`, and
    `$REPO/commit/dcf2bcfa8` each bring the repository’s window forward at that page, as
    GitHub Links check 2 does.
-4. **The app’s refusals.** `gitlab.com/jlevy/metabrowser`,
+4. **The app’s refusals.** `jlevy/metabrowser`, `gitlab.com/jlevy/metabrowser`,
    `git@github.com:jlevy/metabrowser.git`, `http://gitlab.com/jlevy/metabrowser`,
    `https://user:secret@github.com/jlevy/metabrowser`,
    `https://github.com:8443/jlevy/metabrowser`, and
@@ -340,12 +340,12 @@ What the panel decides is unit-tested in `OpenURLPanelTests`, and against the re
    reason, and `log show --last 2m --predicate "subsystem == '$APP_ID'"` has no
    `Open URL…` line for any of them, since no `metab` ran.
 5. **An obvious URL is written in full.** `github.com/jlevy/metabrowser`,
-   `http://github.com/jlevy/metabrowser`, and `jlevy/metabrowser` each show
-   `https://github.com/jlevy/metabrowser` in the field when Return is pressed, with no
-   message, and open the repository as check 3 does.
-   `github.com/jlevy/metabrowser/issues/1` shows
-   `https://github.com/jlevy/metabrowser/issues/1` in the field and `metab`’s message
-   about issues pages under it.
+   `http://github.com/jlevy/metabrowser`, and `//github.com/jlevy/metabrowser` each show
+   `https://github.com/jlevy/metabrowser` in the field when Return is pressed, all of it
+   selected and the field still focused, with no message, and open the repository as
+   check 3 does. `github.com/jlevy/metabrowser/issues/1` shows
+   `https://github.com/jlevy/metabrowser/issues/1` in the field, selected, and `metab`’s
+   message about issues pages under it.
 6. **`metab`’s refusals.** `$REPO/issues/1` shows `metab`’s message about issues pages,
    and `$REPO/pull/0` its message about pull request numbers, under the field, with no
    alert and no window, and never JSON or a traceback; then editing the text to

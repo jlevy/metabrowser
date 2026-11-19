@@ -53,10 +53,6 @@ nonisolated private let metab = "metab 0.13.0 at /opt/metab"
         ("http://raw.githubusercontent.com/jlevy/metabrowser/main/README.md",
          "https://raw.githubusercontent.com/jlevy/metabrowser/main/README.md"),
         ("//github.com/jlevy/kpress", "https://github.com/jlevy/kpress"),
-        ("jlevy/kpress", "https://github.com/jlevy/kpress"),
-        ("jlevy/kpress/", "https://github.com/jlevy/kpress/"),
-        ("jlevy/kpress.git", "https://github.com/jlevy/kpress.git"),
-        ("Octo-Cat/my_repo.v2", "https://github.com/Octo-Cat/my_repo.v2"),
         ("  github.com/jlevy/kpress\n", "https://github.com/jlevy/kpress"),
     ])
     func plainlyAGitHubURLIsWrittenInFull(_ text: String, _ full: String) {
@@ -72,8 +68,7 @@ nonisolated private let metab = "metab 0.13.0 at /opt/metab"
     }
 
     /// Anything not plainly a GitHub URL is left as it is: another host, a host with a user
-    /// name, a password, or a port, an SSH address, a path, and a GitHub path longer than
-    /// `owner/repo`.
+    /// name, a password, or a port, an SSH address, a path, and `owner/repo`.
     @Test(arguments: [
         "https://github.com/jlevy/kpress",
         "gitlab.com/jlevy/kpress",
@@ -96,6 +91,10 @@ nonisolated private let metab = "metab 0.13.0 at /opt/metab"
         "/srv/git/kpress",
         "./jlevy/kpress",
         "jlevy",
+        "jlevy/kpress",
+        "jlevy/kpress/",
+        "docs/macos-app.md",
+        "src/main.py",
         "jlevy/kpress/pull/1",
         "jlevy/kpress#12",
         "jlevy/.",
@@ -105,6 +104,21 @@ nonisolated private let metab = "metab 0.13.0 at /opt/metab"
     ])
     func anythingElseIsLeftAsItIs(_ text: String) {
         #expect(OpenURLEntry.corrected(text) == text)
+    }
+
+    /// The owner's answer of 2026-11-18 (bead `mb-m4mg`), which 2026-11-19 kept: the panel
+    /// takes no shorthand. `owner/repo` is refused as a relative path such as
+    /// `docs/macos-app.md` is, with the same words, and neither reaches `metab`.
+    @Test(arguments: ["jlevy/kpress", "docs/macos-app.md"])
+    func aShorthandIsRefusedAsAPathIs(_ text: String) {
+        #expect(OpenURLEntry.corrected(text) == text)
+        #expect(OpenURLEntry.link(text) == .failure(.notAFullURL))
+        var panel = OpenURLPanel()
+        panel.edit(text)
+        let opened = panel.open()
+        #expect(opened == nil)
+        #expect(panel.text == text)
+        #expect(panel.message == OpenURLEntry.Problem.notAFullURL.message)
     }
 
     /// Anything else is said in the panel and never reaches `metab`, which would read
@@ -288,7 +302,7 @@ nonisolated private let metab = "metab 0.13.0 at /opt/metab"
         _ = panel.answered(.refused(refusal), for: issues, metab: metab)
         #expect(panel.text == issues.absoluteString)
         #expect(panel.message == refusal.message)
-        let dropped = panel.edit("jlevy/metabrowser")
+        let dropped = panel.edit("github.com/jlevy/metabrowser")
         #expect(dropped == nil)
         let reopened = panel.open()
         #expect(reopened == repository)

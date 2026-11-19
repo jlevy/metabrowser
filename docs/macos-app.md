@@ -100,9 +100,9 @@ one to the app, and so does `open -b io.github.jlevy.metabrowser URL`
 
 - **File > Open URL…** takes a GitHub URL. It writes one typed without its scheme in
   full, and the field shows what it opens: `github.com/owner/repo` and
-  `//github.com/owner/repo` get `https://`, `http://github.com/…` becomes `https://`,
-  and `owner/repo` becomes `https://github.com/owner/repo`. Another site’s address, a
-  local path, and an SSH address are not opened.
+  `//github.com/owner/repo` get `https://`, and `http://github.com/…` becomes
+  `https://`. Another site’s address, a local path, an SSH address, and a shorthand such
+  as `owner/repo` are not opened.
   A space or a letter outside ASCII in the path is sent encoded, as a browser sends it,
   so a file named `Design Notes.md` opens as it does with `metab URL`. Open checks the
   URL with `metab`, and a URL it accepts opens as a sent link does, below.
