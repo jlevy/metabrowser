@@ -1012,6 +1012,49 @@ what kind of row it is.
 See
 [navigation containers](project/architecture/arch-plugin-system.md#navigation-containers).
 
+### A Click on the Toggle’s Line Toggles
+
+**A click on a line that carries a disclosure toggle toggles it; a click on a larger
+element that holds that line, and a toggle with it, does not.** This is the one rule for
+every row with a disclosure toggle, and it is why a folder’s row and a Pulls item behave
+differently under one design.
+
+- **A folder’s row is one line, and the chevron is on it**, so a click anywhere on the
+  row toggles its children ([Navigation Tree Folders](#navigation-tree-folders)), as a
+  container file’s row does ([Container Rows](#container-rows)).
+- **A pull request in the Pulls tab is one item of three lines**, and only the third,
+  its change line, carries the chevron.
+  A click anywhere on the change line, the chevron or the values beside it, opens or
+  closes the changed files and opens no page.
+  A click on the title or the number’s line selects and opens the pull request and
+  expands nothing, because those lines belong to the item, not to the toggle
+  ([The Pulls Tab](#the-pulls-tab)).
+
+The keyboard sees the item, not its lines: an item is one stop and one selection, and
+its keys are a folder’s ([Navigational Row Collections](#navigational-row-collections)).
+Space on the item toggles, as a press on its toggle’s line does, and no line inside the
+item takes focus of its own.
+
+The item shows that it holds a narrower target.
+The whole item takes one `--hover-bg` ground under the pointer, as a Files row does, and
+while the pointer is on the toggle’s line the chevron also stands on a `--border` plate
+in `--text` ink, as an icon button’s glyph does on a plain ground.
+The plate covers the chevron’s slot alone, so the line’s status inks keep the grounds
+their contrast is held on.
+For assistive technology the toggle is the item’s, as it is for the keyboard.
+Where the line is the item, as a folder’s row is, the line carries `aria-expanded`.
+Where the item is a tree’s item holding the line, as a Pulls item is, its stop carries
+`aria-expanded` and owns what it opens, and the toggle’s line is hidden (`aria-hidden`):
+a tree’s item may own only items and groups, so a button inside it would make the tree
+invalid. The line’s words, hidden too, describe the item’s stop (`aria-describedby`).
+
+`tests/dom/github-pulls-row-lines-session.js` pins the rule for the Pulls item: a press
+on the chevron or the change line flips exactly that item and opens no page, a press on
+any other part changes no expansion, and only Space, Right, and Left change it from the
+keyboard, each on the item with focus.
+`tests/dom/github-pulls-row-lines-chrome.mjs` measures the two hovers and the real
+presses in Chrome, and reads the line’s place in Chrome’s accessibility tree.
+
 ### Section Disclosure Headers
 
 Use the section-disclosure primitive when a labelled section may hide its body without
@@ -2381,18 +2424,23 @@ The list beside Files and Commits, on a GitHub repository, shows every pull requ
 newest first. Like the page it opens, it has almost no vocabulary of its own.
 `test_the_pulls_tab_carries_the_shells_primitives` holds what follows.
 
-A pull request’s row is a container whose one child is its change line, the row’s third
-line: the pull request’s [brief change line](#brief-change-line), “21 A, 7 D, 15 M ·
-+1,234 −567”, with no file total, after the registry’s chevron.
-The change line opens and closes the pull request’s changed-files tree, which hangs
-under it, connected by `aria-owns`, and starts collapsed.
-Clicking the row’s title or number’s line opens the page and expands nothing; clicking
-the chevron or the change line toggles the tree and opens no page.
-A press there, or Enter, Space, Right, or Left on the change line, keeps the row where
-it is, under the pointer or the focus, even above a row a reveal placed, whose place
-gives way to it. No row expands on its own: not when it opens, not when it is selected,
-and not on a key’s walk, so Up, Down, J, and K walk the pull requests and each row shows
-the size of its change.
+A pull request is one item of three lines, with one hover, one selection, and one
+keyboard stop: its link, the first two lines, and its change line, the third, the pull
+request’s [brief change line](#brief-change-line), “21 A, 7 D, 15 M · +1,234 −567”, with
+no file total, after the registry’s chevron.
+The item holds the pull request’s changed-files tree, which hangs under it, is owned by
+the row’s link through `aria-owns`, whose `aria-expanded` alone says whether it is open,
+and starts collapsed.
+The change line is the line with the toggle, so clicking anywhere on it, the chevron or
+the line, toggles the tree and opens no page; clicking the title or the number’s line
+opens the page and expands nothing
+([A Click on the Toggle’s Line Toggles](#a-click-on-the-toggles-line-toggles)). A press
+there, or Space, Right, or Left on the item, keeps the row where it is, under the
+pointer or the focus, even above a row a reveal placed, whose place gives way to it.
+No row expands on its own: not when it opens, not when it is selected, and not on a
+key’s walk, so Up, Down, J, and K walk the pull requests and each row shows the size of
+its change. A walk or a reveal brings the whole item into view, its three lines and the
+focus ring round them, clear of the sticky filters, not only its link’s two lines.
 An address naming a changed file opens its owner’s tree if needed
 ([Navigation Reveals the Item](#navigation-reveals-the-item)). Moving to another PR
 closes a tree opened only for that address; trees the reader opened stay open.
@@ -2416,9 +2464,11 @@ arrives.
 The line stays one line at every pane width: its statuses and their dot give way
 first, whole, never cut short with an ellipsis, so a narrow row shows its totals alone;
 where even its totals have no room the whole line goes.
-The change line’s accessible name says it in words, “Changed files: 21 added, 7 deleted,
-15 modified; 1,234 lines added, 567 deleted”, and only “Changed files” while there is
-none.
+The change line is the pointer’s alone: never focused, and hidden from assistive
+technology (`aria-hidden`), since a tree’s item may own only items and groups.
+Its words, hidden too, say it, “Changed files: 21 added, 7 deleted, 15 modified; 1,234
+lines added, 567 deleted”, and only “Changed files” while there is none, and the row’s
+link, the item’s one stop, describes itself by them (`aria-describedby`).
 
 A pull request’s title is always bold in normal text ink, wherever it appears: the
 page’s heading, a Pulls row, the page’s stack menu, and a search result.
@@ -2617,9 +2667,9 @@ holds the one helper and the one rule in source.
 | Part | Primitive | Why |
 | --- | --- | --- |
 | Tab | `.tab-btn` in the nav’s `.tab-bar` | [The Tab Bar](#the-tab-bar) |
-| Row | `min-height: --ui-row-height`, `--hover-bg`, `--highlight-bg` and `--highlight-bar` when current, which its change line takes too | [One Row Contract](#one-chevron-one-row-contract) |
+| Row | The item, `.github-pulls-entry`, around the link and its change line: the link’s `min-height: --ui-row-height`; one `--hover-bg` under all three lines, the -2px focus ring round them, and `--highlight-bg` when current, with the 2px `--highlight-bar` down the link’s and the change line’s edge, as on a Files row (`.tree-item`) | [One Row Contract](#one-chevron-one-row-contract) |
 | State icon | The tree’s icon slot, `--tree-icon-slot`, around `--icon-glyph`, on the row’s inset, on the first line before the title | [One Glyph Size](#one-glyph-size) |
-| Change line | The third line, `.github-pulls-change`, one `--ui-row-height` less 4 px: the registry’s chevron in the row’s one slot, under the state icon, then the [brief change line](#brief-change-line) in the text column, under the title and the number’s line, to the row’s end, or the pending placeholder (`.tally-pending` in `.mb-delayed-loading`) while it is read; its own hover and focus ring | The row’s one child and the one target that toggles its changed files ([The Pulls Tab](#the-pulls-tab)) |
+| Change line | The third line, `.github-pulls-change`, one `--ui-row-height` less 4 px: the registry’s chevron in the row’s one slot, under the state icon, then the [brief change line](#brief-change-line) in the text column, under the title and the number’s line, to the row’s end, or the pending placeholder (`.tally-pending` in `.mb-delayed-loading`) while it is read; no ground or stop of its own, and hidden from assistive technology, its words describing the link: under the pointer its chevron stands on a `--border` plate in `--text` ink, the inner target’s hover inside the item’s | The line with the toggle, so a click on it toggles the changed files ([A Click on the Toggle’s Line Toggles](#a-click-on-the-toggles-line-toggles)) |
 | Title | `--nav-font-size`, `--weight-bold` in `--text`, set on the title itself; the first line, alone, from the text column to the row’s end, over the age, cut there with an ellipsis, the whole of it on the page it opens | It is the row’s identity, and a pull request’s title is bold wherever it appears, with a conventional-commit prefix regular ([Titles](#titles)) |
 | Updated time | `metabrowser.formatAge`, at the second line’s end, on the number’s baseline; the page gives the exact time | [Age](#age), with no tooltip ([Tooltips Add Information](#tooltips-add-information)) |
 | PR number | `--nav-font-size`, text ink, bold (`--pull-number-weight`) | Shares the title’s primary navigation size, and names the pull request ([Pull Request Numbers](#pull-request-numbers)) |
@@ -2633,12 +2683,13 @@ holds the one helper and the one rule in source.
 | Progress below the rows | The navigation’s scan indicator, `.index-progress-spinner` and `.index-progress-text`, in `.github-pulls-progress` with `.mb-delayed-loading`: “~N pull requests fetched” while GitHub’s pages for the filter arrive, or “Fetching pull requests…” while a page is read | One progress language for a crawl, after the quiet period, and only below rows, never over them. It leaves with the filter’s last row. |
 | Reload | `.btn` | Reload checks GitHub for updates. See [Control Families](#control-families). |
 
-A row is three lines and two targets, because a pane is narrower than its parts.
-Its link is the first two: the state icon and the title alone, from the text column to
-the row’s end; then the number’s line, a stack member’s place, the number, and the
-author, with the age at the row’s end on its baseline.
-The third is its change line, the chevron and the brief change line, which opens and
-closes the files and opens no page.
+A pull request is three lines, one item, and two targets, because a pane is narrower
+than its parts. Its link is the first two: the state icon and the title alone, from the
+text column to the row’s end; then the number’s line, a stack member’s place, the
+number, and the author, with the age at the row’s end on its baseline.
+The third is its change line, the chevron and the brief change line, a click on which
+opens and closes the files and opens no page.
+The keys see the item as one row of the list.
 The title is the link’s first text, so the row’s accessible name gives the state, from
 the state icon’s label, and then the title, before the number’s line.
 It is one link, so a new tab and a copied address are the browser’s own, and all of its
@@ -3260,19 +3311,20 @@ it passed. The collections differ in the rest:
   (`static/git-panel.js`, `selectCommit`).
 - **Enter** in the Pulls tab opens the focused pull request and pushes an entry if it
   opens a different row.
-  **Space** on a pull request’s change line toggles its changed files and keeps the
-  current preview, focus, and history.
-  On a file tree row, both keys toggle a folder or container file or show the next page
-  and leave history alone.
+  **Space** on a pull request toggles its changed files and keeps the current preview,
+  focus, and history. On a file tree row, both keys toggle a folder or container file or
+  show the next page and leave history alone.
   On a commit row, both keys select it again, replacing the entry.
-- **A pull request’s change line** is its row’s one child item.
-  Up, Down, `J`, and `K` walk the pull requests and expand nothing; Right on a row goes
-  to its change line and opens nothing; there Enter and Space open or close the files in
-  place, Right opens them or goes to the first, Left closes them or goes back to the
-  row, Up goes back to the row, and Down goes into the open files, or on to the next
-  row. On the row itself Space toggles nothing and is consumed, as every row collection’s
-  is, so the list does not scroll from under the focused row; Left goes to the stack’s
-  row it is under.
+- **A pull request** is one item of three lines and one stop: its change line is never
+  focused
+  ([A Click on the Toggle’s Line Toggles](#a-click-on-the-toggles-line-toggles)). Up,
+  Down, `J`, and `K` walk whole pull requests, past any open files, and expand nothing.
+  Every key acts on the item with focus, even after a poll or a reveal has moved the
+  list’s Tab stop to the open pull request.
+  Its changed files are a folder’s children: Right opens them, or, open, goes to the
+  first; Left closes them, or, closed, goes to the stack’s row it is under; and Space
+  opens or closes them in place, and is consumed, so the list does not scroll from under
+  the focused row. In its files, Left on a top-level row goes back to the pull request.
 - **A stack’s row** in the Pulls tab, grouped by stack, is a stop of its own that opens
   nothing: Enter, Space, Right, and Left open, close, enter, and leave it as a folder’s
   ([Stack Groups in the Pulls Tab](#stack-groups-in-the-pulls-tab)).
@@ -3575,10 +3627,11 @@ A known canonical suffix matches declared compound tails, while an unknown raw e
 remains exact.
 
 Where a row stands for an exact extension, it carries that type’s icon and leaves the
-label plain. Aggregate category and family rows are text-only.
-The icon is what identifies a type everywhere else in the app, and tinting a whole
-column of labels makes the hues compete with the selected-state mark instead of helping
-anyone scan the list.
+label plain. Aggregate category and family rows are text-only; the heading of a family
+section names a category and leads with its icon
+([File-Type Category Icons](#file-type-category-icons)). The icon is what identifies a
+type everywhere else in the app, and tinting a whole column of labels makes the hues
+compete with the selected-state mark instead of helping anyone scan the list.
 
 ### Selection Kind Is Visible Before the Click
 
@@ -3646,7 +3699,9 @@ it resets them all, Show ignored back on, and keeps the grouping.
   tree of the group’s members after the filters.
   The heading starts on the tree’s row inset, as a menu’s starts on its rows’, and names
   the section and its tree; sections after the first draw the divider above themselves.
-  A folder opened inside a section lists only that group’s members.
+  A file type section’s heading starts with its category’s icon
+  ([File-Type Category Icons](#file-type-category-icons)); an age band names no category
+  and has none. A folder opened inside a section lists only that group’s members.
   A section is a fixed heading that never closes, where the Pulls tab’s
   [stack group](#stack-groups-in-the-pulls-tab) is a row that opens and closes, and the
   difference is deliberate: a grouping splits the whole tree into sections, while a
@@ -3853,6 +3908,66 @@ correspondence, the separation floor, and the tone.
 Adding a family GitHub has no color for starts with `--suggest`, which prints the widest
 free hue.
 
+### File-Type Category Icons
+
+**A file-type category is named one way wherever it appears: the category heading, gray,
+all caps, bold, and tracked, led by the category’s icon in the same gray.** The icon is
+the one its representative format draws, typically the category’s most important format:
+Documentation leads with Markdown’s icon.
+The heading draws it in its own ink, never the format’s color, because it names the
+category and not a format.
+A specific format, a family or an extension, keeps its own icon and its own color.
+
+- **Type.** The heading is the label register category headings already read in,
+  `--label-color`, `--label-font-size`, `--label-font-weight`, `--label-letter-spacing`,
+  and `--label-text-transform`; the icon changes none of it.
+- **Icon.** `.category-icon` in `styles.css`: `--icon-glyph` square, in `currentColor`,
+  with `--category-icon-gap` between it and the name.
+  A heading that starts on a row inset starts there with the icon, and the name follows.
+  In Details the icon stands in its rows’ icon box, so the heading’s icon and name start
+  where its family rows’ do.
+- **Where.** Every heading that names a category: a section of Group by’s By file type
+  ([Grouping the Files Tree](#grouping-the-files-tree)), each family section of the type
+  chooser ([Groups Or Dropdowns](#groups-or-dropdowns)), and each group of File
+  Overview’s Details table ([Aggregate Distributions](#aggregate-distributions)).
+
+| Category | Representative | Icon | Why |
+| --- | --- | --- | --- |
+| Documentation | Markdown | `doc` | Markdown is what a repository’s documentation is written in: READMEs and guides. |
+| Code | Python | `alignLeft` | Python leads the registry’s Code families, and every Code family takes its shape. |
+| Data | JSON | `list` | JSON is a repository’s commonest data: configuration, manifests, and payloads; the tabular formats keep their own grid. |
+| Archives | Archives | `copy` | Archives has one family, which holds every archive format. |
+| Media | Images | `monitor` | Images are the media a repository holds most: screenshots, diagrams, and icons. |
+| Other | None | `file` | Other is mostly files the registry does not recognize, so the plain file shape stands for it; its one family, Log files, would misname the rest. |
+
+The table is `_REPRESENTATIVE_FAMILIES` in `file_type_filters.py`, and
+`tests/test_category_icons.py` holds this copy to it.
+The registry already draws each group’s families in one shape, the group’s `icon`,
+unless a family declares its own, so a category’s icon is that shape:
+`file_type_filters.py` refuses a representative that is not one of its group’s families
+or that declares an icon of its own, and the choice and the shape cannot disagree.
+Which format represents a category is presentation, as the display order is, so it lives
+beside the categories and not in the registry, whose groups the File Rollup Format
+fingerprints. The browser reads the icon as each group’s `icon` in
+`fileTypes.displayGroups`, and a grouped tree’s answer carries it on each type group
+(`/api/tree?group_by=type`, null for an age group), pinned by
+`tests/golden/cli-api-tree-groups.tryscript.md`, and
+`tests/dom/files-group-by-session.js` pins that each section carries it.
+`tests/dom/file-overview-session.js` and `tests/dom/filter-controls-behavior.js` pin
+that a Details heading and a menu heading lead with it.
+In Chrome, `tests/test_files_tab_chrome.py` measures the icon’s size, ink, and place in
+a menu’s headings and a section’s, and in a section’s after a refresh rewrites it, and
+`tests/test_overview_legend_hover_chrome.py` measures it in Details.
+
+Some places name a category without a heading, and keep their own style:
+
+- The type chooser’s Groups section lists the categories as rows to pick, text-only as
+  every aggregate row in it is ([Groups Or Dropdowns](#groups-or-dropdowns)): a row is a
+  value, not a heading.
+- The File type trigger names a selected category as its value, in the trigger’s words.
+- The Overview legend’s Other is the families it does not name, not the Other category,
+  and the legend and tracks name families, so they take the families’ colors.
+
 ### Aggregate Distributions
 
 An aggregate distribution relates exact categories through one selected metric column in
@@ -3886,11 +4001,12 @@ A caption naming the population labels the legend and the table for assistive te
 only. Legend items wrap whole.
 The table sits behind a **Details** toggle, the same trigger and bold label as an **N
 more** row, which starts closed on each mount and keeps its state through repaints.
-Every row names its category and reports absolute values and percentages; fills are not
-tab stops, carry no duplicate tooltips, and are hidden from the accessibility tree, and
-no label relies on color or sits on a fill.
-Membership comes from the File Rollup Format type definitions that rollups, filters, and
-Treemap colors also use, by the format’s
+Each group of rows is headed by its category, led by the category’s icon
+([File-Type Category Icons](#file-type-category-icons)). Every row names its category
+and reports absolute values and percentages; fills are not tab stops, carry no duplicate
+tooltips, and are hidden from the accessibility tree, and no label relies on color or
+sits on a fill. Membership comes from the File Rollup Format type definitions that
+rollups, filters, and Treemap colors also use, by the format’s
 [Logical Extension](project/architecture/file-rollup-format/file-rollup-format.md#logical-extension)
 rule, and the row grammar, from family parents to **N more**, is in
 `builtin_plugins/folder/file-type-summary-model.js` beside
@@ -4406,6 +4522,23 @@ in the Commits slot, and 12px muted text with no space above it under the Pulls 
   of its own, the line stands in the slot and its text sits as far from either rule as
   it does under the Files and Pulls toolbars.
   Consecutive lines are one band: padding above the first, below the last, and one rule.
+- **Placement.** Every line stands in the fixed chrome over its panel, never in the
+  panel’s scroller, so it stays in view while the tree or the list scrolls, and its rule
+  runs the pane’s full width, as the tab bar’s and the toolbar’s do.
+  On Commits the line is the toolbar slot; on Files and Pulls the lines are a band of
+  their own directly under the toolbar, `.nav-metadata-band`, which the shell draws
+  empty under each toolbar, the tab fills, and which shows only while its toolbar does.
+  The scroller reserves its scrollbar’s gutter (`scrollbar-gutter: stable`) and clips
+  what it holds at its padding box, so a line inside it ended its rule a gutter short of
+  the pane’s edge, 11 px with classic scrollbars, at every pane width.
+  While the panel says it could not load, the band gives way to that alert, as the lines
+  went with it when they were the panel’s; they show again with the next list.
+  The cost, accepted: a line that comes or goes while the reader has scrolled, such as a
+  recency window’s note that its list may be out of date, moves the scroller’s top and
+  the rows with it, by a line’s height.
+  In the scroller, scroll anchoring held the rows still.
+  Holding them from the band takes a script that watches the band’s height on every
+  page, which the move out of the scroller did not add to the shell’s startup scripts.
 - **Spacing.** `--nav-metadata-gap` between a line’s items and between the words of an
   item built of spans, about a word space and a half.
 - **Pending.** A figure still being counted is the pending tally inside the span its
@@ -4414,8 +4547,8 @@ in the Commits slot, and 12px muted text with no space above it under the Pulls 
 - **The Files totals.** The tracked count is the first line and the gitignored count a
   line of its own under it.
   Each is one line in every pane: in a pane too narrow for it, its size is cut short at
-  its end, “+ 7,906 ignored (133.4 …” at the 180 px minimum, never wrapped, and its
-  whole phrase is its tooltip, which the shell shows only while it is cut
+  its end, as “+ 10,000 ignored (1001.4 MB)” is at the 180 px minimum, never wrapped,
+  and its whole phrase is its tooltip, which the shell shows only while it is cut
   ([Tooltips Add Information](#tooltips-add-information)). So the band’s height is
   decided by whether it has the ignored line, never by the figures’ lengths.
   The shell inlines the root’s totals with its first rows (the root’s own entry carries
@@ -4467,7 +4600,10 @@ at one wide enough for every text: the Files totals settled, pending, counting,
 filtered, with the outside-filter note, and with the stale recent-files note; the
 Commits tally settled, as the server ships it pending, and failed; and the Pulls lines
 loading, updated, unreachable, signed out, and with no gh; and the Pulls count cut short
-in a narrow pane.
+in a narrow pane. It also holds every section rule on Files, Commits, and Pulls, the tab
+bar’s, the toolbar’s, and the band’s, to the pane’s full width, at the narrowest pane,
+the default, and a wide one, with the content under them overflowing its scroller and
+not.
 
 ### Section Headings
 
@@ -4894,7 +5030,7 @@ and a plugin’s use the same markup:
 
 ```html
 <div class="menu-group" role="group" aria-labelledby="types-section-1">
-  <div class="group-heading" id="types-section-1">Code</div>
+  <div class="group-heading" id="types-section-1"><svg class="category-icon">…</svg>Code</div>
   <!-- the group's .menu-item rows -->
 </div>
 ```
@@ -4905,6 +5041,8 @@ and a plugin’s use the same markup:
   labelled `.menu-row`, and `.menu-version` start on.
   It is not indented to the rows’ labels: a heading on the label column reads as a row
   of its group rather than its name.
+  A heading that names a file-type category starts there with the category’s icon, and
+  its name follows ([File-Type Category Icons](#file-type-category-icons)).
 - **Separator.** A `.menu-group` draws its own divider as its top edge, in the
   `.menu-separator` geometry, unless it is the menu’s first child, where the menu’s edge
   already sets it off, or follows a `.menu-separator`, which already draws the rule.
@@ -4923,10 +5061,10 @@ and a plugin’s use the same markup:
   A menu with two or more groups names each one, as above.
 
 `tests/test_files_tab_chrome.py` and the stack part of
-`tests/test_github_pull_header_chrome.py` measure in Chrome that each heading’s text
-starts on its rows’ inset and names its group or its menu;
-`tests/test_browser_filter_ui.py` pins that the row, title, labelled row, foot, and
-heading all read the one token.
+`tests/test_github_pull_header_chrome.py` measure in Chrome that each heading starts on
+its rows’ inset, with its icon where it names a category, and names its group or its
+menu; `tests/test_browser_filter_ui.py` pins that the row, title, labelled row, foot,
+and heading all read the one token.
 
 ### Heading Tallies
 

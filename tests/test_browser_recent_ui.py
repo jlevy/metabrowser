@@ -227,6 +227,23 @@ def test_dom_contract_filter_bar_sits_outside_the_scrolling_tree() -> None:
     assert html.index('class="tab-bar nav-tab-bar"') < html.index('id="nav-filter-bar"')
 
 
+def test_dom_contract_files_totals_band_sits_under_the_bar_outside_the_scroller() -> None:
+    """The Files totals and their remarks are a metadata band directly under the filter bar,
+    outside #tree-content: that scroller reserves its scrollbar's gutter and clips what it
+    holds at its padding box, so a line inside it drew its rule short of the pane's edge
+    (docs/design-system.md, "Navigation Metadata Line"). The band follows the bar with
+    nothing between them, which is how it shows only while the bar does
+    (`[data-nav-toolbar][hidden] + .nav-metadata-band` in styles.css), and it ships empty
+    for app.js to fill, so its scroll shadow waits for its lines (`:not(:empty)`)."""
+
+    html = _render_index_html()
+    bar = html.index('id="nav-filter-bar"')
+    band = html.index('<div class="nav-metadata-band" id="nav-metadata-files"></div>')
+    assert html.index("</div>", bar) < band < html.index('id="tree-content"')
+    assert html[html.index("</div>", bar) + len("</div>") : band].strip() == ""
+    assert 'getElementById("nav-metadata-files")' in _read_app_js()
+
+
 # ── Client wiring ──────────────────────────────────────────────
 
 
@@ -657,7 +674,7 @@ def test_ambiguous_recent_count_downgrades_to_a_safe_bounded_lower_bound() -> No
     lower_bound = _function_source(js, "markRecentTotalAsRetainedLowerBound")
     assert "recentTotalMatching = lowerBound" in lower_bound
     assert "recentTotalMatchingExact = false" in lower_bound
-    assert "_renderFilteredTally(panel, state, recentTotalMatching)" in lower_bound
+    assert "_renderFilteredTally(filterState.get(), recentTotalMatching)" in lower_bound
     assert "for (" not in lower_bound
 
     change = _function_source(js, "fileStoreApplyChangeInner")

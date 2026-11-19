@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 import tarfile
+import tempfile
 import zipfile
 from pathlib import Path
 from textwrap import dedent
@@ -379,12 +380,25 @@ def _smoke_install(wheel: Path) -> None:
         "metab",
         "--doctor",
     ]
+    # `--doctor` counts an `open_in` it cannot read, or `app` where no app takes a target,
+    # as a problem, so the developer's own preference and config.yml would decide this
+    # step. `browser` looks for no app, and an empty configuration directory sets nothing.
     # The doctor's GitHub section runs `gh auth status`, so the failing stand-in the
     # goldens use comes first on PATH: no build reaches a developer's signed-in gh. Its
     # state is reported and never changes the doctor's exit status.
     no_real_gh = ROOT / "tests" / "no-real-gh"
-    doctor_env = {**env, "PATH": f"{no_real_gh}{os.pathsep}{env.get('PATH', '')}"}
-    subprocess.run(doctor_command, cwd=ROOT, env=doctor_env, check=True)
+    with tempfile.TemporaryDirectory(prefix="metab-doctor-config-") as configuration:
+        subprocess.run(
+            doctor_command,
+            cwd=ROOT,
+            env={
+                **env,
+                "METABROWSER_OPEN_IN": "browser",
+                "METABROWSER_CONFIG_DIR": configuration,
+                "PATH": f"{no_real_gh}{os.pathsep}{env.get('PATH', '')}",
+            },
+            check=True,
+        )
 
     api_check_command = [
         *uv_command,

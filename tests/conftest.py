@@ -29,6 +29,9 @@ os.environ["METABROWSER_PLUGINS_DIRS"] = ""
 os.environ["METABROWSER_RECORD_RECENT"] = "0"
 for _capability_env in ("METAB_UNTRUSTED", "METAB_ACTIVE_CONTENT", "METAB_ALLOW_EDITS"):
     os.environ.pop(_capability_env, None)
+# Where `--present` opens a target is the operator's preference; a test that reads one
+# sets it.
+os.environ.pop("METABROWSER_OPEN_IN", None)
 
 # The pre-push gate runs this suite inside a githook, and from a linked worktree git
 # exports GIT_DIR there. It outranks the working directory and `git -C`, so a fixture
@@ -356,6 +359,36 @@ def _reset_label_sets() -> Generator[None, None, None]:  # pyright: ignore[repor
     forget()
     yield
     forget()
+
+
+@pytest.fixture(scope="session")
+def _no_server_command(tmp_path_factory: pytest.TempPathFactory) -> str:  # pyright: ignore[reportUnusedFunction]
+    refuser = tmp_path_factory.mktemp("no-detached-server") / "metab"
+    refuser.write_text(
+        "#!/bin/sh\necho 'no metab server starts in a test; set present.server_command' >&2\n"
+        "exit 1\n",
+        encoding="utf-8",
+    )
+    refuser.chmod(0o755)
+    return str(refuser)
+
+
+@pytest.fixture(autouse=True)
+def _no_detached_server(_no_server_command: str) -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
+    """Start no real server from ``metab --present``, unless a test names its own.
+
+    A browser delivery starts ``metab ROOT`` detached, which outlives the test and opens
+    the page in the browser of whoever runs the suite. Every test starts with
+    ``present.server_command`` set to a program that exits 1 at once, as a server that
+    cannot start does; a test that needs a server sets its own. Its own ``MonkeyPatch``,
+    as ``_no_real_gh`` explains.
+    """
+
+    from metabrowser.cli import present
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(present, "server_command", (_no_server_command,))
+        yield
 
 
 @pytest.fixture(autouse=True)

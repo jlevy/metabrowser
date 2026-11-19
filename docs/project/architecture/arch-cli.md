@@ -1,10 +1,12 @@
 # Architecture: Command Line
 
-**Status:** Built, in `src/metabrowser/cli/`, including the first slice of `--present`:
-a handoff to the macOS app that the app does not yet answer.
-Planned: a reply from the app, navigation of a page already open, and a browser when
-there is no app
-([native macOS app plan](../specs/active/plan-2026-11-10-native-macos-app.md), Phase 3).
+**Status:** Built, in `src/metabrowser/cli/`, including `--present`: a handoff to the
+macOS app that the app does not yet answer, or a browser on a detached `metab` server,
+as the `open_in` preference chooses.
+Planned: a reply from the app, navigation of a page already open, and reuse of a running
+server ([native macOS app plan](../specs/active/plan-2026-11-10-native-macos-app.md),
+Phase 3;
+[open-anything plan](../specs/active/plan-2026-11-17-open-anything-from-cli-and-app.md)).
 
 `metab` is one flat command whose default operation is serving a folder.
 Every other operation is a mode flag on the same command.
@@ -35,7 +37,7 @@ produce is refused rather than ignored.
 | Change set | `--diff SPEC` | `diff_cli.py` |
 | Remote host | `--remote HOST` | `remote.py` |
 | Plugins | `--plugins`, `--plugin NAME`, `--doctor` | `plugins.py` |
-| Hand a target to the macOS app | `--present` | `present.py` |
+| Open a target in the macOS app or a browser | `--present` | `present.py`, with `open_in.py` for the preference |
 | Recent targets | `--recent`, `--recent-add`, `--recent-forget`, `--recent-clear` | `recent_cli.py`, over [`recent_targets.py`](arch-recent-targets.md) |
 
 `_classified_root` decides whether ROOT is a local path or a Git source.
@@ -137,12 +139,14 @@ acquisition, so cache inspection cannot expose origin objects through `/api/tree
 
 ## Presenting to the App
 
-`run_present` in `cli/present.py` resolves ROOT and, unless `--dry-run`, hands it to the
-macOS app. A dry run loads nothing beyond what `metab --version` loads except
-`cli/present.py`, the property-list reader, and for a link the URL grammar, and starts
-no process and opens no connection, which
-`test_present_dry_run_loads_little_beyond_version` in `tests/test_plugin_public_api.py`
-holds, so the app can run `--present --dry-run` to check what a user types.
+`run_present` in `cli/present.py` resolves ROOT, decides where it goes, and, unless
+`--dry-run`, hands it to the macOS app or starts a server for a browser.
+A dry run loads nothing beyond what `metab --version` loads except `cli/present.py`, the
+preference’s reader of `config.yml` and the owner-only file helpers under it, the
+property-list reader, and for a link the URL grammar, and starts no process and opens no
+connection, which `test_present_dry_run_loads_little_beyond_version` in
+`tests/test_plugin_public_api.py` holds, so the app can run `--present --dry-run` to
+check what a user types.
 It still pays `metab`’s startup, which `--version` measures, because `cli/main.py`
 imports the serve mode’s modules before a mode is chosen.
 
@@ -159,7 +163,16 @@ imports the serve mode’s modules before a mode is chosen.
    file a Changes tab URL’s `#diff-<hash>` anchor names (`_source_page`). A file named
    alone is handed over alone, for the app to place as it places any file; a file
    `--path` names is handed over after ROOT, which makes the app open the root named.
-2. **Find the app.** `bundle_lookup` asks LaunchServices through
+2. **Decide.** `resolve_open_in` (`open_in.py`) reads the preference from `--open-in`,
+   `METABROWSER_OPEN_IN`, then `open_in` in `config.yml`, which it reads alone, through
+   the owner-only helper and within `CONFIG_MAX_BYTES` (`config_file.py`), without the
+   record’s contract and its schema library; `tests/test_open_in.py` holds it to
+   `read_config`. `decide` sends `browser` to a browser without a lookup; otherwise it
+   finds the app as below, and under `auto` sends a target no app takes, any code
+   `DELIVERY_EXIT_CODES` maps to `PRESENT_NO_APP_EXIT_CODE`, to a browser, and one
+   LaunchServices could not be asked about nowhere.
+   A dry run prints the decision.
+3. **Find the app.** `bundle_lookup` asks LaunchServices through
    `LSCopyApplicationURLsForBundleIdentifier` for each identifier in turn, release
    first, and takes the bundle LaunchServices prefers, the one `open -b` opens.
    That is the database `open -b` reads; Spotlight’s index (`mdfind`) is not asked,
@@ -167,7 +180,7 @@ imports the serve mode’s modules before a mode is chosen.
    Off macOS the lookup is `None` and nothing is sent.
    A lookup LaunchServices does not answer, as under a sandbox that denies its database,
    raises `AppLookupError` rather than reading as no app.
-3. **Check what the app takes.** A folder inside the root is refused before the lookup,
+4. **Check what the app takes.** A folder inside the root is refused before the lookup,
    because the app opens each folder in a window of its own.
    Every identifier’s bundle passes `app_refusal` or the next identifier is tried, so a
    stray registration of one does not hide an installed build of the other: the bundle
@@ -179,14 +192,39 @@ imports the serve mode’s modules before a mode is chosen.
    an older app drops a URL while `open` still succeeds and an app an override names
    must not be handed a file it would run.
    It is a path check, not a signature; a release’s team identifier is not checked.
-4. **Send.** `/usr/bin/open -b <bundle id> <handoff>`, by its absolute path
+5. **Send.** `/usr/bin/open -b <bundle id> <handoff>`, by its absolute path
    (`open_executable`), bounded by `OPEN_TIMEOUT_S`. Exit 0 from `open` means
    LaunchServices took it, so the report says `confirmed: false` until the app can
    reply.
-5. **Report.** A `key: value` report, or with `--format json` one object with the
-   handoff, the bundle’s path, and a `code`; a refusal exits with
-   `PRESENT_REFUSED_EXIT_CODE`, and each delivery code with its status in
-   `DELIVERY_EXIT_CODES` (`cli/exit_codes.py` documents the statuses).
+6. **Serve for a browser.** `serve_detached` starts `server_command`, this interpreter
+   running `metab ROOT` with its `--path` and without `--no-open`, through
+   `subprocess.Popen` with `start_new_session`, stdin at `/dev/null`, stdout and stderr
+   in a `mkstemp` log in the temporary folder, and every other descriptor closed, so the
+   server outlives the command and its terminal and nothing reading the command’s output
+   waits on it. It reads the log for the `Serving <root> at <url>` line, which
+   `serving_url` parses as the macOS app’s `CLIServeLaunch` does, then asks that address
+   for `GET /api/identity` until it answers as a server of the target’s root
+   (`_is_target_identity`), the server exits, or `server_announce_timeout_s` passes.
+   Serve mode prints the line after it finds a free port and before uvicorn binds it, so
+   two servers started together can print one address; the identity tells servers of
+   different roots apart, and binding before printing (`mb-afxa`) would close the race
+   for every reader of the line.
+   Before it starts anything, `allow_browser` reads `present_browser` from `config.yml`
+   (`open_in.py` `browser_delivery_allowed`), and turns a decision for a browser into
+   `browser_off` when it is false.
+   No option of the command overrides it, and `cli/main.py` refuses `--config-dir` with
+   `--present`; the configuration directory is the environment’s
+   (`METABROWSER_CONFIG_DIR`, `XDG_CONFIG_HOME`, `HOME`), and one without `config.yml`
+   allows a browser. The server opens the browser itself once its page answers, as serve
+   mode always does. Nothing records the server: the report’s `pid` is how to stop it.
+   Tests start no real server unless they say so: an autouse fixture in
+   `tests/conftest.py` points `server_command` at a program that exits 1.
+7. **Report.** A `key: value` report, or with `--format json` one object with the
+   preference, the handoff, the bundle’s path or the server’s `url`, `pid`, and `log`,
+   and a `code`; a refusal exits with `PRESENT_REFUSED_EXIT_CODE`, and each delivery
+   code with its status in `DELIVERY_EXIT_CODES` (`cli/exit_codes.py` documents the
+   statuses). `doctor_open_in` gives `metab --doctor` the preference, its source, and the
+   app a lookup finds, sending nothing.
 
 ## Remote Tunnels
 

@@ -8,6 +8,7 @@ env:
   TZ: "UTC"
   METABROWSER_PLUGINS_DIRS: ""
   METABROWSER_LOG_LEVEL: "WARNING"
+  METABROWSER_OPEN_IN: "browser"
 patterns:
   PYDANTIC_URL: 'https://errors\.pydantic\.dev/\d+\.\d+/v/value_error'
   FAKE_GH: '[^\s"]+/fixtures/github-status/gh'
@@ -92,6 +93,12 @@ $ metab --doctor --json --plugins-dir pair 2>/dev/null
   "problems": [
     "plugin 'beta': view 'more' of kind 'myk' declares key 'm', but view 'main' (plugin 'alpha') already holds it; the view is served without a key"
   ],
+  "open_in": {
+    "value": "browser",
+    "source": "environment",
+    "present_browser": true,
+    "app": null
+  },
   "github": {
     "host": "github.com",
     "state": "ok",
@@ -123,6 +130,12 @@ $ metab --doctor --json --plugins-dir stack 2>/dev/null
   "ok": true,
   "plugin_count": 12,
   "problems": [],
+  "open_in": {
+    "value": "browser",
+    "source": "environment",
+    "present_browser": true,
+    "app": null
+  },
   "github": {
     "host": "github.com",
     "state": "ok",
@@ -156,6 +169,12 @@ $ metab --doctor --json --plugins-dir pulls 2>/dev/null
   "problems": [
     "[CWD]/pulls/pullkey/manifest.toml: 1 validation error for PluginManifest\nview.0.key\n  Value error, key 'P' is reserved for the shell's Pulls tab [type=value_error, input_value='P', input_type=str]\n    For further information visit [PYDANTIC_URL]"
   ],
+  "open_in": {
+    "value": "browser",
+    "source": "environment",
+    "present_browser": true,
+    "app": null
+  },
   "github": {
     "host": "github.com",
     "state": "ok",
@@ -188,6 +207,12 @@ $ metab --doctor --json --plugins-dir reserved 2>/dev/null
   "problems": [
     "[CWD]/reserved/reskey/manifest.toml: 1 validation error for PluginManifest\nview.0.key\n  Value error, key 'T' is reserved for the shell's Quick Search [type=value_error, input_value='T', input_type=str]\n    For further information visit [PYDANTIC_URL]"
   ],
+  "open_in": {
+    "value": "browser",
+    "source": "environment",
+    "present_browser": true,
+    "app": null
+  },
   "github": {
     "host": "github.com",
     "state": "ok",

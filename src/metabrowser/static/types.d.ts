@@ -96,6 +96,11 @@ type MetabrowserPullsNavHost = Readonly<{
   checkout: boolean;
   /** The tab's toolbar in the navigation's slot, which the list's filters fill; or null. */
   toolbar?: HTMLElement | null;
+  /**
+   * The band under the toolbar, outside the panel's scroller, which the list's count and
+   * connection lines fill; or null.
+   */
+  metadata?: HTMLElement | null;
   scrollRoot: HTMLElement | null;
   open(route: MetabrowserPullRoute): unknown;
   /** A changed file's address, through the route's encoder; null where a path is not one. */
@@ -642,10 +647,25 @@ type MetabrowserFormatterRuntime = Readonly<{
 
 type MetabrowserFileTypeCategoryId = string;
 
+/** The shared icon registry (static/icons.js): each icon's SVG markup by name. */
+type MetabrowserIconRegistry = Readonly<Record<string, string>> & {
+  /**
+   * The named icon with `cls` on its root `<svg>`, or "" for a name it does not hold.
+   * Optional because a page without icons.js has an empty registry.
+   */
+  withClass?: (name: string | null | undefined, cls: string) => string;
+};
+
 type MetabrowserFileTypeCategory = Readonly<{
   id: MetabrowserFileTypeCategoryId;
   label: string;
   order: number;
+  /**
+   * The category's icon, which leads its heading wherever it is named, in the heading's
+   * gray: its representative format's, and the shape every family in the group takes
+   * unless it declares its own (file_type_filters.py, `_REPRESENTATIVE_FAMILIES`).
+   */
+  icon: string;
 }>;
 
 type MetabrowserFileTypeFamily = Readonly<{
@@ -1040,9 +1060,14 @@ type MetabrowserFilterSnapshot = {
   types: Array<string> | null;
 };
 
+/** One section of a grouped tree (tree-filter-model.js, groupSections). */
 type MetabrowserTreeSection = {
+  /** Null where the source could not count the group (a truncated Git index). */
   files: number | null;
+  /** A type group's category icon, a name in the icon registry; null by age. */
+  icon: string | null;
   id: string;
+  /** `<by>:<id>`, the group a folder inside it opens under. */
   key: string;
   label: string;
   size: number | null;
@@ -1121,6 +1146,8 @@ type MetabrowserFilterControls = {
     presetSections?: Array<{
       id: string;
       label?: string;
+      /** A category's icon, as markup from the icon registry, which leads its heading. */
+      icon?: string;
       presets: Array<MetabrowserFilterPreset>;
     }>;
     select?: string;
@@ -1561,7 +1588,7 @@ type MetabrowserSdk = {
   formatFileCount(value: number): string;
   formatInteger(value: number): string;
   getRegisteredView(kind: string, view: string): MetabrowserViewSpec | undefined;
-  icons: Record<string, string>;
+  icons: MetabrowserIconRegistry;
   highlightSyntax(
     source: string,
     language: string,
@@ -4026,7 +4053,7 @@ declare global {
     MetabrowserGitGraph: MetabrowserGitGraphRuntime;
     MetabrowserGitHistoryWindow: MetabrowserGitHistoryWindowRuntime;
     MetabrowserGitPanel?: MetabrowserGitPanelRuntime;
-    MetabrowserIcons?: Record<string, string>;
+    MetabrowserIcons?: MetabrowserIconRegistry;
     MetabrowserKnownFileCatalog: MetabrowserKnownFileCatalogRuntime;
     MetabrowserKeyboardShortcuts: MetabrowserKeyboardShortcutsRuntime;
     MetabrowserKeyboardHelp: MetabrowserKeyboardHelpRuntime;

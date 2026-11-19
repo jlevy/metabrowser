@@ -160,14 +160,16 @@ const PROBE = `(() => {
     const shown = rows.length > 0 && getComputedStyle(rows[0]).visibility === "visible";
     if (panel && shown) {
       const boxes = { bar: box(document.getElementById("nav-filter-bar")) };
-      panel.querySelectorAll(".nav-metadata").forEach((line, i) => { boxes["line " + i] = box(line); });
+      // The totals and their remarks are the band over the panel, outside its scroller.
+      const band = document.getElementById("nav-metadata-files");
+      band.querySelectorAll(".nav-metadata").forEach((line, i) => { boxes["line " + i] = box(line); });
       rows.forEach((row, i) => { boxes["row " + i] = box(row); });
-      const summary = panel.querySelector(".tree-summary");
+      const summary = band.querySelector(".tree-summary");
       const frame = {
         at: Math.round(performance.now()),
         boxes,
         reads: summary ? summary.textContent.replace(/\\s+/g, " ").trim() : null,
-        ignoredLine: panel.querySelector(".tree-summary-ignored-none") ? "no ignored files" : panel.querySelector(".tree-summary-ignored") ? "counted" : panel.querySelector(".tree-summary-ignored-pending") ? "held" : "none",
+        ignoredLine: band.querySelector(".tree-summary-ignored-none") ? "no ignored files" : band.querySelector(".tree-summary-ignored") ? "counted" : band.querySelector(".tree-summary-ignored-pending") ? "held" : "none",
       };
       const key = JSON.stringify([frame.boxes, frame.reads, frame.ignoredLine]);
       if (key !== last) {
@@ -397,11 +399,11 @@ async function main() {
           paneWidth: Math.round(document.querySelector('.tree-pane').getBoundingClientRect().width),
           scheme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
           tip: (() => {
-            const line = document.querySelector('#tab-files .tree-summary-ignored:not(.tree-summary-ignored-none)');
+            const line = document.querySelector('#nav-metadata-files .tree-summary-ignored:not(.tree-summary-ignored-none)');
             return line && { text: line.dataset.tipText, cut: tipAnchorIsCut(line), shows: tipAddsInformation(line) };
           })(),
           trackedTip: (() => {
-            const line = document.querySelector('#tab-files .tree-summary-line[data-tip-text]');
+            const line = document.querySelector('#nav-metadata-files .tree-summary-line[data-tip-text]');
             return line && { text: line.dataset.tipText, cut: tipAnchorIsCut(line), shows: tipAddsInformation(line) };
           })(),
         })`,

@@ -8,6 +8,7 @@ env:
   TZ: "UTC"
   METABROWSER_PLUGINS_DIRS: ""
   METABROWSER_LOG_LEVEL: "WARNING"
+  METABROWSER_OPEN_IN: "browser"
 patterns:
   FAKE_GH: '[^\s"]+/fixtures/github-status/gh'
 before: >-
@@ -262,6 +263,7 @@ with no `gh`, or one not signed in, has nothing wrong with its plugins.
 
 ```console
 $ FAKE_GH_STATUS=signed-out metab --doctor 2>/dev/null
+metab --doctor: open_in browser (environment); --present looks for no app
 metab --doctor: 11 plugin(s) OK
 github: not_logged_in: GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry.
   gh: [FAKE_GH] (version 2.98.0)
@@ -271,6 +273,7 @@ github: not_logged_in: GitHub CLI is not signed in to github.com. Run gh auth lo
 
 ```console
 $ FAKE_GH_STATUS=too-old metab --doctor 2>/dev/null
+metab --doctor: open_in browser (environment); --present looks for no app
 metab --doctor: 11 plugin(s) OK
 github: gh_too_old: This GitHub CLI cannot report the active account. Update gh from https://cli.github.com/, then run gh auth status --hostname github.com.
   gh: [FAKE_GH] (version 2.20.2)
@@ -284,6 +287,12 @@ $ FAKE_GH_STATUS=offline metab --doctor --json 2>/dev/null
   "ok": true,
   "plugin_count": 11,
   "problems": [],
+  "open_in": {
+    "value": "browser",
+    "source": "environment",
+    "present_browser": true,
+    "app": null
+  },
   "github": {
     "host": "github.com",
     "state": "network_error",
@@ -303,6 +312,7 @@ $ FAKE_GH_STATUS=offline metab --doctor --json 2>/dev/null
 
 ```console
 $ PATH=/nonexistent "$(command -v metab)" --doctor 2>/dev/null
+metab --doctor: open_in browser (environment); --present looks for no app
 metab --doctor: 11 plugin(s) OK
 github: gh_missing: Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com.
   gh: not found on PATH

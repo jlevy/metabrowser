@@ -561,6 +561,8 @@ async function filesStory() {
       "filterHasConstraints",
       "setSelectedPath",
       "renderSelectionOutsideFilterNote",
+      "addFilesRemark",
+      "filesMetadataBand",
       "treeOmitsPath",
       "treePageHolds",
       "selectedTreeRowFollows",
@@ -611,8 +613,11 @@ async function filesStory() {
       ...children,
     ),
   ];
+  // The totals stand in their band over the panel, as the shell draws it (server.py), and the
+  // outside-filter note joins them there.
+  const band = element(document, "div", { id: "nav-metadata-files" });
   const panel = element(document, "div", { id: "tab-files", "data-tab-content": "files" });
-  document.body.append(panel);
+  document.body.append(band, panel);
   /** The tree as the filter left it. With .md files only, src and long have no rows. */
   function draw({ filtered = false } = {}) {
     context.pendingTreePages.clear();
@@ -626,8 +631,8 @@ async function filesStory() {
       );
       long.push(...holder.childNodes);
     }
+    band.replaceChildren(element(document, "div", { class: "tree-summary" }));
     panel.replaceChildren(
-      element(document, "div", { class: "tree-summary" }),
       ...folder("docs", [
         ...folder("docs/deep", [
           ...folder("docs/deep/deeper", [fileRow("docs/deep/deeper/leaf.md")]),
@@ -673,11 +678,13 @@ async function filesStory() {
       .filter((row) => row.getAttribute("aria-expanded") === "true")
       .map((row) => row.dataset.path);
     const drawn = longFolder();
+    // A remark on the totals is a line of their band, never a row of the panel under it.
+    assert.equal(panel.querySelector(".tree-selection-note"), null);
     return {
       open,
       selected: [...panel.querySelectorAll(".tree-item.selected")].map((row) => row.dataset.path),
       scrolled: scrolled.splice(0),
-      note: panel.querySelector(".tree-selection-note")?.textContent ?? null,
+      note: band.querySelector(".tree-selection-note")?.textContent ?? null,
       ...(drawn === null ? {} : { "long folder": drawn }),
     };
   };

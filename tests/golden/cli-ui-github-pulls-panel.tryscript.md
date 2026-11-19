@@ -546,6 +546,9 @@ The landing pane gives the neutral selection instruction while the list owns sta
 `reader` follows a selected PR through its cache-only read and explicit detail fetch.
 `paint` checks tree roles, absolute positions, numeric-only emphasis, text-only titles,
 cached append behavior, and changed-file tree retention.
+Given the shell’s toolbar slot and the band under it, the filters fill the slot, the
+count and connection lines fill the band, outside the list’s scroller, and a disposed
+list leaves both empty.
 `numbers` runs the production shortcut registry and plugin facade around the panel: the
 Open, Closed, and All chips and Reload take `1` to `4` in reading order, before the
 page’s numbered link, and each number asks for what its control’s click asks for.
@@ -905,9 +908,9 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "the list": "ul .github-pulls-list role=\"tree\" aria-label=\"Pull requests of octo/demo: 102 pull requests\"",
     "a row": [
       "li .github-pulls-item role=\"none\"",
-      "a .github-pulls-row href=\"/pull/106\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"true\" aria-owns=\"github-pull-change-106\" tabindex=\"-1\" aria-posinset=\"1\" aria-setsize=\"102\""
+      "a .github-pulls-row href=\"/pull/106\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"false\" aria-describedby=\"github-pull-change-106\" tabindex=\"-1\" aria-posinset=\"1\" aria-setsize=\"102\""
     ],
-    "the row whose page is shown": "a .github-pulls-row.selected href=\"/pull/105\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"true\" aria-owns=\"github-pull-change-105\" tabindex=\"0\" aria-current=\"page\" aria-selected=\"true\" aria-posinset=\"2\" aria-setsize=\"102\"",
+    "the row whose page is shown": "a .github-pulls-row.selected href=\"/pull/105\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"true\" aria-describedby=\"github-pull-change-105\" tabindex=\"0\" aria-current=\"page\" aria-selected=\"true\" aria-posinset=\"2\" aria-setsize=\"102\" aria-owns=\"github-pull-files-105\"",
     "its parts": [
       "span .github-pull-state-icon role=\"img\" aria-label=\"Open\"",
       "span .github-pulls-title",
@@ -916,13 +919,15 @@ $ node tests/dom/github-pulls-panel-second-session.js
     ],
     "its text leads with its title": true,
     "a PR preview leaves its files expanded": false,
-    "Right to its change line, and Right again, opens its cached changed files": "/api/plugin/github/pull-files?number=105&offset=0",
-    "they hang under it as a group it owns": [
-      "a .github-pulls-row.selected href=\"/pull/105\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"true\" aria-owns=\"github-pull-change-105\" tabindex=\"0\" aria-current=\"page\" aria-selected=\"true\" aria-posinset=\"2\" aria-setsize=\"102\"",
-      "div .github-pulls-change-group role=\"group\" id=\"github-pull-change-105\"",
+    "Right on its row opens its cached changed files": "/api/plugin/github/pull-files?number=105&offset=0",
+    "they hang under its three lines as a group": [
+      "div .github-pulls-entry",
       "div .tree-children.github-pull-files role=\"group\" id=\"github-pull-files-105\" aria-label=\"Changed files of #105: 2 files\""
     ],
-    "its change line, the row's child, owns them": "div .github-pulls-change.disclosure-toggle.expanded role=\"treeitem\" aria-level=\"2\" aria-posinset=\"1\" aria-setsize=\"1\" aria-expanded=\"true\" tabindex=\"-1\" aria-label=\"Changed files\" aria-owns=\"github-pull-files-105\"",
+    "its row owns them, and its change line, hidden, only turns its chevron": [
+      "a .github-pulls-row.selected href=\"/pull/105\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"true\" aria-describedby=\"github-pull-change-105\" tabindex=\"0\" aria-current=\"page\" aria-selected=\"true\" aria-posinset=\"2\" aria-setsize=\"102\" aria-owns=\"github-pull-files-105\"",
+      "div .github-pulls-change.disclosure-toggle.expanded aria-hidden=\"true\""
+    ],
     "a title written as markup is one text node": [
       {
         "node": "#text",
@@ -944,7 +949,25 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "whileExpanded": 10,
       "afterClosingAll": 9
     },
-    "disposed: what is left in the tab": 0
+    "disposed: what is left in the tab": 0,
+    "with the host's toolbar and band: what each holds": {
+      "toolbar": [
+        "github-pulls-filters"
+      ],
+      "band": [
+        "github-pulls-status",
+        "github-pulls-connection"
+      ],
+      "tab": [
+        "github-pulls-list",
+        "github-pulls-empty"
+      ]
+    },
+    "with the host's toolbar and band: what each holds once disposed": {
+      "toolbar": 0,
+      "band": 0,
+      "tab": 0
+    }
   },
   "numbers": {
     "the Pulls tab, loading": [

@@ -67,14 +67,13 @@ already reads behind you for the rows in view and from trees you open, and a gra
 placeholder holds the line’s place until one arrives.
 
 Click a row’s title or number to open its pull request; its files stay as they were.
-The change line carries the chevron for the files, which start collapsed: click it to
-show or hide them under the row.
+The change line carries the chevron for the files, which start collapsed: click anywhere
+on that line to show or hide them under the row.
 No row expands on its own.
 Click a file to open **Changes** at that file.
-Move between rows with `J` and `K` or the arrow keys, and Enter opens the focused pull
-request. Right moves to the row’s change line, where Enter or Space shows or hides the
-files, Right shows them or moves into them, Left hides them and then returns to the row,
-and Up returns to the row.
+Move between pull requests with `J` and `K` or the arrow keys; each one’s three lines
+are one row. Enter opens the focused pull request, and Space shows or hides its files.
+Right shows them, or moves into them once shown, and Left hides them.
 The file list says **Listing changed files…** until GitHub answers.
 Once the files show, a later page or an updated list does not move the rows you are
 reading: it is offered as **Show N more files** or **Show the updated list of N files**.

@@ -311,10 +311,12 @@ def _provider_sections() -> tuple[ProviderStatus, ...]:
 
 
 def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = False) -> None:
-    """Validate every discovered plugin and the packaged cache record contracts, and
-    report each repository provider's tools, such as GitHub CLI's sign-in.
+    """Validate every discovered plugin and the packaged cache record contracts, report
+    where ``--present`` opens a target, and report each repository provider's tools, such
+    as GitHub CLI's sign-in.
 
-    Exit non-zero on any plugin or contract problem; a provider's state never changes it.
+    Exit non-zero on any plugin, contract, or preference problem; a provider's state never
+    changes it.
     The provider sections follow the verdict, on stdout after a clean run and on stderr
     after the problems.
     """
@@ -377,11 +379,18 @@ def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = Fal
     problems.extend(_view_key_problems(result.plugins))
 
     providers = _provider_sections()
+    # Where `--present` opens a target, and the app it would find (`cli/present.py`).
+    from metabrowser.cli.present import doctor_open_in
+
+    open_in = doctor_open_in()
+    problems.extend(open_in.problems)
+
     if as_json:
         report: dict[str, object] = {
             "ok": not problems,
             "plugin_count": len(result.plugins),
             "problems": problems,
+            "open_in": open_in.section,
         }
         report.update((section.name, dict(section.report)) for section in providers)
         typer.echo(json.dumps(report, indent=2))
@@ -396,6 +405,9 @@ def doctor_plugins(plugins_dir: list[Path] | None = None, *, as_json: bool = Fal
         _echo_provider_sections(providers, err=True)
         raise typer.Exit(code=1)
 
+    # A run with a problem writes nothing to stdout, so the preference's line is part of
+    # the answer of a clean one.
+    typer.echo(open_in.line)
     typer.echo(f"metab --doctor: {len(result.plugins)} plugin(s) OK")
     _echo_provider_sections(providers, err=False)
 
