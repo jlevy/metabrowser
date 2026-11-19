@@ -1598,7 +1598,7 @@
       "refreshing": false,
       "last_refresh": {
         "outcome": "network_error",
-        "message": "gh could not reach api.github.com",
+        "message": "Couldn't connect to GitHub (api.github.com): the connection timed out",
         "reset_at": null,
         "at": "2026-09-17T12:30:00Z"
       },
@@ -1635,7 +1635,7 @@
         "refreshing": false,
         "last_refresh": {
           "outcome": "network_error",
-          "message": "gh could not reach api.github.com",
+          "message": "Couldn't connect to GitHub (api.github.com): the connection timed out",
           "reset_at": null,
           "at": "2026-09-17T12:30:00Z"
         },
@@ -1674,7 +1674,7 @@
         "refreshing": true,
         "last_refresh": {
           "outcome": "network_error",
-          "message": "gh could not reach api.github.com",
+          "message": "Couldn't connect to GitHub (api.github.com): the connection timed out",
           "reset_at": null,
           "at": "2026-09-17T12:30:00Z"
         },
