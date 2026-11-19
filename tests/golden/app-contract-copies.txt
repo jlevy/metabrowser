@@ -15,6 +15,7 @@ metabrowser.cli.doctor:METAB_UPGRADE_COMMANDS = {"uv_tool": "uv tool install --u
 metabrowser.cli.doctor:UV_RECEIPT = "uv-receipt.toml"
 metabrowser.cli.doctor:PIPX_METADATA = "pipx_metadata.json"
 metabrowser.cli.doctor:CHECKOUT_VENV = ".venv"
+metabrowser.commit_ids:SHORT_COMMIT_CHARS = 7
 metabrowser.cli.present:RELEASE_BUNDLE_ID = "io.github.jlevy.metabrowser"
 metabrowser.cli.present:DEV_BUNDLE_ID = "io.github.jlevy.metabrowser.dev"
 metabrowser.cli.present:MINIMUM_METAB_KEY = "MetabrowserMinimumMetab"

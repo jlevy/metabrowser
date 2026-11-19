@@ -108,6 +108,11 @@ style = "pep440"
 # (0.12.0 + commits -> 0.13.0.devN), not the next patch, so it meets the macOS app's
 # minimum metab, which is a minor release (docs/publishing.md#choosing-a-version).
 bump = { enable = true, index = 1 }
+# The commit in a development version, as in 0.13.0.dev5+abc1234, is cut to the length
+# every line shows a commit (SHORT_COMMIT_CHARS in src/metabrowser/commit_ids.py), not
+# Git's abbreviation, so the version label and the line after it name it alike.
+# tests/test_short_commit.py holds the two equal.
+commit-length = 7
 
 [tool.uv]
 # An editable install records its version once, when uv builds it, and uv rebuilds it

@@ -5527,14 +5527,14 @@ function renderRecentList(data) {
 
 // ── Navigation filter bar ───────────────────────────────────────
 //
-// One always-visible row (Group by and Show ignored) plus a drawer
-// holding the three filters. Controls come from the shared chip family
+// One always-visible row (Group by) plus a drawer holding the three
+// filters and Show ignored. Controls come from the shared chip family
 // (static/filter-controls.js) and every click writes through to the
 // shared state (static/filter-state.js), so the bar holds no state of
 // its own.
 //
 // The drawer carries no section headings: its three menus' triggers
-// say what they are.
+// and the checkbox's label say what they are.
 //
 // See docs/project/specs/done/plan-2026-08-09-nav-filter-controls.md.
 
@@ -5814,8 +5814,8 @@ function renderNavFilterBar() {
     return;
   }
   var st = filterState.get();
-  // Clear resets every filter, Show ignored included; the chevron's badge counts only the
-  // filters behind it, because Show ignored on the row shows its own state.
+  // Clear resets every filter, Show ignored included. The chevron's badge counts what is
+  // set behind it, Show ignored turned off among them, since the closed drawer hides it.
   var count = filterState.activeCount();
   var drawerCount = treeFilterModel.drawerFilterCount(st);
   var fc = filterControls;
@@ -5855,16 +5855,25 @@ function renderNavFilterBar() {
     open: filterOpenMenu === "size",
     menuId: "filter-size-menu",
   });
+  // Show ignored follows the three filters in the drawer: turned off, it removes rows as
+  // they do, and its tick states its own direction. A Git revision has no gitignored
+  // entries to show, so it has no Show ignored.
+  var ignoredCheck = isGitRevisionSource()
+    ? ""
+    : fc.checkHtml({
+        key: "showIgnored",
+        label: "Show ignored",
+        checked: st.showIgnored,
+      });
   var main =
     // A toolbar row, which wraps between its controls in a narrow pane (styles.css,
     // `.nav-toolbar-row`).
     '<div class="nav-filter-bar-main nav-toolbar-row">' +
     // Group by leads the row: splitting the tree by age or by type is the simplest way to
-    // see a folder, and it removes nothing, so it needs no drawer. Show ignored follows it,
-    // a checkbox whose tick states its own direction, so it needs no drawer either. The
-    // filters, which remove rows by value, sit behind the chevron, whose badge counts the
-    // ones set (docs/design-system.md, "Grouping the Files Tree"). A Git revision has no
-    // gitignored entries to show, so it has no Show ignored.
+    // see a folder, and it removes nothing, so it needs no drawer. The filters and Show
+    // ignored, which remove rows, sit behind the chevron, whose name counts the ones set; it
+    // has no visible count, so Clear and the chevron fit beside Group by
+    // (docs/design-system.md, "Grouping the Files Tree").
     fc.menuGroupHtml({
       key: "group",
       select: "one",
@@ -5877,13 +5886,6 @@ function renderNavFilterBar() {
       open: filterOpenMenu === "group",
       menuId: "filter-group-menu",
     }) +
-    (isGitRevisionSource()
-      ? ""
-      : fc.checkHtml({
-          key: "showIgnored",
-          label: "Show ignored",
-          checked: st.showIgnored,
-        })) +
     '<span class="nav-filter-bar-end">' +
     // Clear sits on the row with the chevron: it can only appear when a filter is set,
     // and having to open the drawer to undo one is a step too many. "Clear", not "Clear
@@ -5896,7 +5898,6 @@ function renderNavFilterBar() {
       icon: ICONS.toggle || "",
       className: "filter-drawer-toggle disclosure-toggle",
       pressed: filterDrawerOpen,
-      badge: drawerCount,
       // A glyph-only control needs a name that says what happens, and
       // the badge is decorative once the count is spoken here.
       ariaLabel:
@@ -5922,6 +5923,7 @@ function renderNavFilterBar() {
     recencyMenu +
     typeMenu +
     sizeMenu +
+    ignoredCheck +
     "</div></div>";
   // The rebuild replaces the control that has focus: a menu row, its trigger, a checkbox.
   // Focus goes back to the same control, or to the trigger of a menu the rebuild closed,
@@ -10090,7 +10092,6 @@ function startNavCollapse() {
   }
   button.removeEventListener("click", onEarlyNavCollapseClick);
   navCollapse = window.MetabrowserNavCollapse.create({
-    anchor: document.getElementById("nav-shortcut-hints"),
     button: button,
     container: container,
     focusFallback: () => document.getElementById("preview-pane"),

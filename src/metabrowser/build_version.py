@@ -37,6 +37,8 @@ import subprocess
 from functools import cache
 from pathlib import Path
 
+from metabrowser.commit_ids import short_commit
+
 _GIT_TIMEOUT_SECONDS = 2.0
 """Long enough for a local repository, short enough to never be the reason a
 command felt slow. A version string is not worth waiting on."""
@@ -121,7 +123,9 @@ def build_state() -> str:
     # Not `--dirty`: that refreshes the index and writes it back under
     # index.lock whatever --no-optional-locks says, and a version string must
     # never be the reason a concurrent `git commit` finds the index locked.
-    described = _git(repository, "describe", "--tags", "--long")
+    # The commit is named as every line names one, cut from its full ID, never Git's
+    # abbreviation, which grows with the repository (metabrowser.commit_ids).
+    described = _git(repository, "describe", "--tags", "--long", "--abbrev=40")
     if described:
         # git describe gives `<tag>-<commits>-g<sha>`; the tag itself is
         # already in the package version, so only the distance and sha are new.
@@ -131,12 +135,12 @@ def build_state() -> str:
             if ahead.isdigit() and int(ahead) > 0:
                 parts.append(f"+{ahead} commits")
             if sha.startswith("g"):
-                parts.append(sha[1:])
+                parts.append(short_commit(sha[1:]))
     else:
         # A repository with no tags at all still has a commit worth naming.
-        head = _git(repository, "rev-parse", "--short", "HEAD")
+        head = _git(repository, "rev-parse", "HEAD")
         if head:
-            parts.append(head)
+            parts.append(short_commit(head))
 
     # Tracked edits, staged changes, and new files all change the build.
     if _git(repository, "--no-optional-locks", "status", "--porcelain"):

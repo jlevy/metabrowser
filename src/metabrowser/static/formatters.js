@@ -91,10 +91,11 @@
   }
 
   // How much of a commit ID a line shows wherever it names a commit, in the commit-ID
-  // face: the navigation heading, the ref chooser's button and rows, and a mirror's offer
-  // of its ref's newer commit. The server's copy, which draws the heading and the button,
-  // is `SHORT_COMMIT_CHARS` in root_identity.py; tests/test_short_commit.py holds them equal.
-  const SHORT_COMMIT_CHARS = 12;
+  // face, `.git-commit-sha` (docs/design-system.md, "Short Commit IDs"): seven characters,
+  // as GitHub shows them, cut from the full ID. The server's copy, which draws the heading
+  // and the button, is `SHORT_COMMIT_CHARS` in commit_ids.py; tests/test_short_commit.py
+  // holds them equal.
+  const SHORT_COMMIT_CHARS = 7;
 
   /** A commit ID as a line names it. @param {string} commit @returns {string} */
   function shortCommit(commit) {

@@ -10,6 +10,7 @@ headers with their production code in headless Chrome at 980, 560, and 360 px, e
 the Diff summary the diff plugin draws in its place, and holds every line under each title
 and every run of its text to the body size, a chip to its own and a revision to its one step
 down, the two pages' lines to one size and one line height, the shared lines to one order,
+each title as tall as its lines and its first line `--page-title-gap` under it (mb-wcbc),
 both authors' boxes to 18 px holding the person glyph, both names to one start and one
 type, and an avatar arriving in either box to moving nothing (docs/design-system.md, "Page
 Headers" and "Actor Identity").

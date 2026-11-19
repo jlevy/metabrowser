@@ -64,6 +64,26 @@ final class FolderWindows {
             Self.orderInAlone(window)
             window.makeKeyAndOrderFront(nil)
         }
+        placed(controller)
+    }
+
+    /// Shows a repository's new mirror window as a tab of `checkout`'s window, the one
+    /// of its windows on screen shown most recently (`CheckoutWindow`), whatever Settings
+    /// says of new folders: the link names the repository that window shows. With none of
+    /// its windows on screen, as `place(_:)`.
+    func place(_ controller: BrowserWindowController, besides checkout: FolderSession) {
+        let shown = checkout.pages.filter { $0.host?.window?.isVisible == true }
+        guard let window = controller.window,
+              let host = shown.max(by: { shownAt($0) < shownAt($1) })?.host?.window
+        else { return place(controller) }
+        host.addTabbedWindow(window, ordered: .above)
+        window.makeKeyAndOrderFront(nil)
+        placed(controller)
+    }
+
+    private func shownAt(_ page: FolderPage) -> UInt64 { lastShown[ObjectIdentifier(page)] ?? 0 }
+
+    private func placed(_ controller: BrowserWindowController) {
         // Shown now even if the app is not active and the window does not become key, as
         // when a folder arrives from `open -a` while another app is in front.
         noteShown(controller.page)

@@ -124,7 +124,8 @@ status: 200
   "full_name": "<SERVED>",
   "kind": "folder",
   "kind_label": "Local folder",
-  "title": "served • Metabrowser"
+  "title": "served • Metabrowser",
+  "repository": null
 }
 --- stderr ---
 --- contract ---
@@ -138,11 +139,27 @@ status: 200
   "full_name": "~/served",
   "kind": "folder",
   "kind_label": "Local folder",
-  "title": "served • Metabrowser"
+  "title": "served • Metabrowser",
+  "repository": null
 }
 --- stderr ---
 --- contract ---
 identity/under-home
+# metab <ROOT>/checkout --api /api/identity
+exit: 0
+--- stdout ---
+status: 200
+{
+  "short_name": "checkout",
+  "full_name": "<SERVED>",
+  "kind": "folder",
+  "kind_label": "Local folder",
+  "title": "checkout • Metabrowser",
+  "repository": "https://github.com/octo/demo"
+}
+--- stderr ---
+--- contract ---
+identity/checkout
 # metab <ROOT>/served --api /api/source/status
 exit: 0
 --- stdout ---
@@ -180,7 +197,8 @@ status: 200
   "full_name": "<ROOT>/origin.git@main",
   "kind": "mirror",
   "kind_label": "Cached mirror",
-  "title": "origin • Metabrowser"
+  "title": "origin • Metabrowser",
+  "repository": null
 }
 --- stderr ---
 --- contract ---

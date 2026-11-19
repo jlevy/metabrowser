@@ -104,8 +104,9 @@ describe_quarantine() {
 # Prints, one per line, what is wrong with an app's identity for a release: it must be
 # the release variant ("$1" is its bundle identifier), the version "$4" ("$2" is its
 # CFBundleShortVersionString), and built from the commit "$5", the tag's full SHA, with
-# nothing uncommitted ("$3" is its MetabrowserSourceCommit, a short hash that
-# scripts/build-app.sh records, with -dirty for uncommitted changes).
+# nothing uncommitted ("$3" is its MetabrowserSourceCommit, the full SHA that
+# scripts/build-app.sh records, with -dirty for uncommitted changes). The two are
+# compared whole: a shared prefix is not the same commit.
 release_identity_problems() {
   local id="$1" version="$2" commit="$3" want_version="$4" want_commit="$5"
   [[ "$(variant_of_bundle_id "$id")" == release ]] || echo "the app is $id, not the release variant"
@@ -114,7 +115,7 @@ release_identity_problems() {
     echo "the app records no source commit (MetabrowserSourceCommit)"
   elif [[ "$commit" == *-dirty ]]; then
     echo "the app was built from $commit, with uncommitted changes"
-  elif ((${#commit} < 7)) || [[ "$want_commit" != "$commit"* ]]; then
+  elif [[ "$commit" != "$want_commit" ]]; then
     echo "the app was built from $commit, not from $want_commit, the tag's commit"
   fi
   return 0

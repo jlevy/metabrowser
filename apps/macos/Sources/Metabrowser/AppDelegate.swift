@@ -532,8 +532,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// The repository's window, whose server starts again on `link`, or a new session whose
-    /// server starts on it. Without a runtime accepted now, the link waits for one, and is
-    /// resolved again.
+    /// server starts on it. A new session's window joins the window of an open checkout of
+    /// the repository as a tab, if one is on screen (`CheckoutWindow`), and is placed as a
+    /// new folder's otherwise. Without a runtime accepted now, the link waits for one, and
+    /// is resolved again.
     ///
     /// Either is an open, so the repository moves to the front of the recent targets: a
     /// new session's server records it as it starts, and the app records one already open
@@ -548,11 +550,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if !selection.isBusy { showSettings(nil) }
             return
         }
-        folderWindows.place(session.makeWindow())
+        let window = session.makeWindow()
+        if let checkout = checkout(of: root.url) {
+            AppLog.app.info(
+                "\(root.key, privacy: .public): its mirror opens as a tab of the checkout \(checkout.root.lastPathComponent, privacy: .private)")
+            folderWindows.place(window, besides: checkout)
+        } else {
+            folderWindows.place(window)
+        }
         Task {
             await session.startServer()
             self.recentFolders.refreshAfterOpen()
         }
+    }
+
+    /// The open checkout of `repository` whose window a new window of its mirror joins as
+    /// a tab, or nil (`CheckoutWindow`).
+    private func checkout(of repository: URL) -> FolderSession? {
+        let open = folderWindows.openFolders.byRecency.compactMap { sessions[$0] as? FolderSession }
+        let candidates = open.map { session in
+            CheckoutWindow.Candidate(
+                key: session.path, root: session.served, repository: session.title.identity.repository,
+                isShown: session.pages.contains { $0.host?.window?.isVisible == true })
+        }
+        return CheckoutWindow.host(for: repository, among: candidates).flatMap { sessions[$0] as? FolderSession }
     }
 
     private func noteLinkProblem(_ alert: LinkAlert) {

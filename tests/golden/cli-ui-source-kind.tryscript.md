@@ -107,11 +107,11 @@ $ node tests/dom/source-kind-session.js
       },
       "navFilterControls": [
         "group",
-        "showIgnored",
         "drawer",
         "recency",
         "types",
-        "size"
+        "size",
+        "showIgnored"
       ],
       "groupByOptions": [
         "age",
@@ -170,8 +170,8 @@ $ node tests/dom/source-kind-session.js
       }
     ],
     "heading": {
-      "served": "<span class=\"path\"><span class=\"path-base\">topic</span></span><span class=\"header-revision git-commit-sha\">232207c214b3</span>",
-      "afterTreeLoad": "<span class=\"path\"><span class=\"path-base\">topic</span></span><span class=\"header-revision git-commit-sha\">232207c214b3</span>"
+      "served": "<span class=\"path\"><span class=\"path-base\">topic</span></span><span class=\"header-revision git-commit-sha\">232207c</span>",
+      "afterTreeLoad": "<span class=\"path\"><span class=\"path-base\">topic</span></span><span class=\"header-revision git-commit-sha\">232207c</span>"
     },
     "tally": {
       "heading": {

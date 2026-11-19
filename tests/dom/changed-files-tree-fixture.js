@@ -41,13 +41,15 @@ function shellFormatters() {
  * The SDK's painters as a page has them, for a view handed an SDK of the caller's own: the
  * shell's one painter of a count summary, `countPartsNodes`, and its brief change line,
  * `changeLine` in the shell's number format and `changeLineNodes`, each drawing into whatever
- * document the caller has set up when it is called.
+ * document the caller has set up when it is called, and the one length a commit's ID is
+ * shown at, `shortCommit`.
  *
- * @returns {Pick<MetabrowserPublicSdk, "countPartsNodes" | "changeLine" | "changeLineNodes">}
+ * @returns {Pick<MetabrowserPublicSdk, "countPartsNodes" | "changeLine" | "changeLineNodes" | "shortCommit">}
  */
 function shellPainters() {
   const formatters = shellFormatters();
   return {
+    shortCommit: formatters.shortCommit,
     countPartsNodes: (parts) => formatters.countPartsNodes(globalThis.document, parts),
     changeLine: (change) => formatters.changeLine(change, formatters.formatInteger),
     changeLineNodes: (line, options) =>

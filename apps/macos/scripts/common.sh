@@ -134,11 +134,13 @@ dmg_path() {
   echo "build/$(artifact_label_of_variant "$1")-$2-$3.dmg"
 }
 
-# The commit the build comes from, for the About box: HEAD's short hash, with -dirty when
-# apps/macos has uncommitted changes. Prints nothing outside a Git checkout.
+# The commit the build comes from: HEAD's full ID, with -dirty when apps/macos has
+# uncommitted changes. Prints nothing outside a Git checkout. The full ID, so a release
+# check compares the whole commit with the tag's (gatekeeper-lib.sh); the About box cuts
+# it to a short commit ID as it shows it (AppIdentity.shortCommit).
 source_commit() {
   local commit changes
-  commit="$(git rev-parse --short=7 HEAD 2>/dev/null)" || return 0
+  commit="$(git rev-parse HEAD 2>/dev/null)" || return 0
   changes="$(git status --porcelain -- . 2>&1)" || die "git status failed: $changes"
   if [[ -n "$changes" ]]; then
     echo "$commit-dirty"

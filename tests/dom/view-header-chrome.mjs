@@ -6,15 +6,17 @@
 // metadata line's type, where the title's text and the line sit and their baselines, each
 // metadata item's box, and the button's; then it changes the line's values in place, as the
 // folder header's live refresh does (`folderHeaderSummaryHtml` in view-header.js), and
-// reads every box again. Then, in each theme: the button's menu opened with a click and
-// walked with the keys, a page with no counterpart, and a commit's page at a wide and a
-// narrow pane. The caller (tests/test_view_header_chrome.py) judges the record.
+// reads every box again. With each page it reads the top bar's rhythm across the divider
+// (RHYTHM_SOURCE). Then, in each theme: Up under the pointer and away, the button's menu
+// opened with a click and walked with the keys, a page with no counterpart, and a commit's
+// page at a wide and a narrow pane. The caller (tests/test_view_header_chrome.py) judges
+// the record.
 // Arguments: the `metab` executable, the served root, a port to start the server's search
 // from, a state directory for its cache and config, and the commit the served checkout is
 // at.
 //
 // Prints one JSON line, `{"results": [...], "menus": [...], "absent": [...],
-// "commits": [...]}`; each step's time goes to stderr.
+// "commits": [...], "ups": [...]}`; each step's time goes to stderr.
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { launchChrome } from "./chrome-session.mjs";
@@ -44,6 +46,14 @@ const ABSENT = "/view/docs/notes/draft.txt";
 // The commit's page at a pane where its reading column ends short of the corner, and one
 // where it reaches it.
 const COMMIT_PANES = [1180, 480];
+// Names the heading row's whole width holds, at main views where the corner's room beside
+// the title's first line broke them mid-word (review A on #608), and one main view wide
+// enough for that room and the name beside it.
+const BAND = [
+  { pane: 480, href: "/view/CONTRIBUTING.md" },
+  { pane: 560, href: "/view/docs/notes/arch-views-models-routes.md" },
+  { pane: 720, href: "/view/docs/notes/arch-views-models-routes.md" },
+];
 
 async function serve() {
   const server = spawn(
@@ -153,11 +163,94 @@ const BUTTON_SOURCE = `(corner) => {
   };
 }`;
 
+// The top bar's rhythm across the divider (mb-ch82, mb-tatf, mb-tl7p): the navigation's
+// path row, its rule, and its name's baseline; the Metabrowser menu's gear's center and the
+// chevron's, which hides the navigation; and in the main view's header *scope*, the
+// eyebrow's rule and its address's baseline, Up's box and paint at rest, the title's first
+// line's baseline and the View on GitHub label's, and the room the title's first line leaves
+// the corner. Its own function, so READ and COMMIT_READ share it in the page.
+const RHYTHM_SOURCE = `(scope) => {
+  const round = (n) => Math.round(n * 100) / 100;
+  const box = (el) => {
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { left: round(r.left), top: round(r.top), right: round(r.right), bottom: round(r.bottom), width: round(r.width), height: round(r.height) };
+  };
+  // A probe of no size before an element's first text rests on its first line's baseline.
+  // A flex or grid parent would make the probe a box of its own, so the text is wrapped in
+  // an inline span with the probe for the read, and put back.
+  const firstBaseline = (el) => {
+    if (!el) return null;
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
+      acceptNode: (node) => (node.textContent.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP),
+    });
+    const text = walker.nextNode();
+    if (!text) return null;
+    const probe = document.createElement('span');
+    probe.style.cssText = 'display:inline-block;width:0;height:0;vertical-align:baseline';
+    const wrap = document.createElement('span');
+    text.parentNode.insertBefore(wrap, text);
+    wrap.append(probe, text);
+    const y = probe.getBoundingClientRect().top;
+    wrap.replaceWith(text);
+    return round(y);
+  };
+  // Where a box's bottom rule is drawn: the top of its last pixel row, and its paint.
+  const rule = (el) => {
+    if (!el) return null;
+    const look = getComputedStyle(el);
+    const width = parseFloat(look.borderBottomWidth);
+    if (!width) return null;
+    return { top: round(el.getBoundingClientRect().bottom - width), width, color: look.borderBottomColor };
+  };
+  const centre = (el) => {
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return round(r.top + r.height / 2);
+  };
+  const nav = document.querySelector('.app-header');
+  const name = nav && nav.querySelector('.header-path');
+  const eyebrow = scope && scope.querySelector(':scope > .view-header-eyebrow');
+  const up = eyebrow && eyebrow.querySelector('.folder-up');
+  const group = scope && scope.querySelector('.view-header-title-group');
+  const chevron = document.getElementById('nav-collapse-toggle');
+  return {
+    navRow: box(nav),
+    navRule: rule(nav),
+    navNameBaseline: firstBaseline(name),
+    gear: centre(document.getElementById('settings-btn')),
+    chevron: centre(chevron),
+    chevronBox: box(chevron),
+    frame: box(document.querySelector('.preview-frame')),
+    eyebrowRule: rule(eyebrow),
+    addressBaseline: firstBaseline(eyebrow && eyebrow.querySelector('.file-header-path')),
+    upBox: box(up),
+    upRest: up ? { border: getComputedStyle(up).borderTopColor, ground: getComputedStyle(up).backgroundColor } : null,
+    titleBaseline: firstBaseline(scope && scope.querySelector('.page-heading')),
+    labelBaseline: firstBaseline(scope && scope.querySelector('.view-header-end .counterpart-label')),
+    // A room not drawn, display: none, still computes its width.
+    titleRoom: group ? (getComputedStyle(group, '::before').display === 'none' ? 0 : parseFloat(getComputedStyle(group, '::before').width) || 0) : null,
+  };
+}`;
+// Up's paint once its transitions have run.
+const UP_LOOK = `(() => {
+  const up = document.querySelector('#preview-pane > .file-header .view-header-eyebrow > .folder-up');
+  return Promise.all(up.getAnimations().map((animation) => animation.finished)).then(() => {
+    const look = getComputedStyle(up);
+    return { border: look.borderTopColor, ground: look.backgroundColor };
+  });
+})()`;
+const UP_AT = `(() => {
+  const r = document.querySelector('#preview-pane > .file-header .view-header-eyebrow > .folder-up').getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+})()`;
+
 // Every box the header draws, its ground and rules, and its type. It reads the layout
 // before this one too (a title cut to one row, the line on a row of its own under it), so
 // the record says how that layout misses the design rather than failing to read it.
 const READ = `(() => {
   const BUTTON = ${BUTTON_SOURCE};
+  const RHYTHM = ${RHYTHM_SOURCE};
   const header = document.querySelector('#preview-pane > .file-header');
   const bar = document.querySelector('#preview-pane > .tab-bar');
   const round = (n) => Math.round(n * 100) / 100;
@@ -193,9 +286,11 @@ const READ = `(() => {
   return {
     // The tokens the layout is held to, as the page resolves them.
     tokens: Object.fromEntries(
-      ["--view-header-row-gap", "--view-header-eyebrow-height", "--view-header-line-height", "--view-header-padding-top", "--view-header-padding-bottom", "--view-header-title-gap", "--page-title-font-size", "--body-font-size", "--view-header-up-size", "--view-header-corner-inset-top", "--view-header-corner-inset-end", "--view-header-corner-height", "--view-header-corner-room", "--content-padding-x"].map((name) => [name, token(name)]),
+      ["--pane-header-row-height", "--view-header-line-height", "--view-header-padding-top", "--view-header-padding-bottom", "--page-title-gap", "--page-title-font-size", "--body-font-size", "--nav-font-size", "--view-header-up-size", "--view-header-corner-inset-top", "--view-header-corner-inset-end", "--view-header-corner-height", "--view-header-corner-room", "--content-padding-x"].map((name) => [name, token(name)]),
     ),
     paneWidth: Math.round(pane.getBoundingClientRect().width),
+    // The width the main view's container queries test, kpress-doc's: its content box.
+    paneInline: pane.clientWidth,
     scheme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
     header: box(header),
     // Whether anything in the header runs past its box, as a name or a value pushed out of
@@ -227,6 +322,7 @@ const READ = `(() => {
     eyebrowRoom: q('.view-header-eyebrow') ? parseFloat(style(q('.view-header-eyebrow')).paddingInlineEnd) : null,
     addressBox: box(q('.view-header-eyebrow .file-header-path')),
     ...BUTTON(q('.view-header-end')),
+    rhythm: RHYTHM(header),
     line: box(line),
     items,
     bar: box(bar),
@@ -301,6 +397,7 @@ const ABSENT_READ = `(() => {
     marked: corner ? corner.hasAttribute('data-counterpart') : null,
     children: corner ? corner.children.length : null,
     eyebrowRoom: eyebrow ? parseFloat(getComputedStyle(eyebrow).paddingInlineEnd) : null,
+    titleRoom: (() => { const group = header && header.querySelector('.view-header-title-group'); return group ? parseFloat(getComputedStyle(group, '::before').width) || 0 : null; })(),
   };
 })()`;
 // A commit's page: its corner's button placed in the page, the page's box, and the room its
@@ -310,6 +407,7 @@ const ABSENT_READ = `(() => {
 // version-control tool as a word fails tests/test_git_hook_environment.py.
 const COMMIT_READ = `(() => {
   const BUTTON = ${BUTTON_SOURCE};
+  const RHYTHM = ${RHYTHM_SOURCE};
   const corners = document.querySelectorAll('#preview-pane .view-header-end');
   const corner = corners.length === 1 ? corners[0] : null;
   const view = corner && corner.offsetParent;
@@ -333,6 +431,9 @@ const COMMIT_READ = `(() => {
     subjectEnd: subject ? round(range.getBoundingClientRect().right) : null,
     paneScrolls: pane.scrollWidth > pane.clientWidth,
     ...BUTTON(corner),
+    rhythm: RHYTHM(corner && corner.parentElement),
+    subject: box(subject),
+    firstLine: box(subject && subject.parentElement.querySelector(':scope > .page-header-line')),
   };
 })()`;
 
@@ -369,6 +470,8 @@ async function main() {
   const menus = [];
   const absent = [];
   const commits = [];
+  const ups = [];
+  const band = [];
   try {
     phase("chrome");
     await browser.send("Page.enable");
@@ -410,6 +513,26 @@ async function main() {
         }
       }
       phase(`${theme} pages`);
+      for (const { pane, href } of theme === "light" ? BAND : []) {
+        await browser.send("Emulation.setDeviceMetricsOverride", {
+          width: pane + 300,
+          height: 800,
+          deviceScaleFactor: 1,
+          mobile: false,
+        });
+        await browser.send("Page.navigate", { url: `${server.base}${href}` });
+        await browser.waitFor("document.readyState === 'complete'");
+        await browser.evaluate(
+          "document.documentElement.style.setProperty('--tree-pane-width', '300px'), true",
+        );
+        await browser.waitFor(
+          "document.querySelector('#preview-pane > .file-header .view-header-end > .counterpart') !== null",
+        );
+        await browser.evaluate(
+          "document.fonts.ready.then(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))).then(() => true)",
+        );
+        band.push({ pane, href, ...(await browser.evaluate(READ)) });
+      }
       await browser.send("Emulation.setDeviceMetricsOverride", {
         width: 1200,
         height: 800,
@@ -439,6 +562,15 @@ async function main() {
         await browser.evaluate(frames);
         return browser.evaluate(MENU_READ);
       };
+      // Up under the pointer, then the pointer away (mb-igva): its hover surface and hairline
+      // show only while it is hovered.
+      const upAt = await browser.evaluate(UP_AT);
+      await browser.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: upAt.x, y: upAt.y });
+      await browser.evaluate(frames);
+      const upHover = await browser.evaluate(UP_LOOK);
+      await browser.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 700, y: 600 });
+      await browser.evaluate(frames);
+      ups.push({ theme, hover: upHover, away: await browser.evaluate(UP_LOOK) });
       const menu = { theme, steps: {} };
       menu.steps.closed = await browser.evaluate(MENU_READ);
       const at = await browser.evaluate(MENU_OPEN);
@@ -518,7 +650,7 @@ async function main() {
     await browser.close();
     await server.stop();
   }
-  process.stdout.write(`${JSON.stringify({ results, menus, absent, commits })}\n`);
+  process.stdout.write(`${JSON.stringify({ results, menus, absent, commits, ups, band })}\n`);
 }
 
 main().catch((error) => {

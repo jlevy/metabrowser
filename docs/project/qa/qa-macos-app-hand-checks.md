@@ -589,6 +589,20 @@ Markdown file open:
 4. **A file dragged onto the page** opens at its page, in the open folder that holds it
    or else in its own folder.
 
+## Find
+
+`PageFindWebKitTests` runs the searches against a real web view; this checks the bar
+itself on the built development app, with this repository’s folder open:
+
+1. **Command-F** opens the bar above the page with the field focused; typing `lefthook`
+   selects the `lefthook.yml` row in the navigation pane first, as a browser’s find
+   would, and Return moves on to the next match.
+2. **Another file.** Open SECURITY.md from the tree, press Command-F, and type
+   `supported`: “Supported Versions” is selected.
+   Shift-Return goes back a match, and a word that is not there shows “Not Found”.
+3. **Command-E** with a word selected on the page, then Command-G, finds that word.
+4. **Escape** in the field, or Done, closes the bar and gives the page focus back.
+
 ## Menu Actions and Closing a Window
 
 A window shows its folder’s page (`FolderPage`), and the menus’ page actions are

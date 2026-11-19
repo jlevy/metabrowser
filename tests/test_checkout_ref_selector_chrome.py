@@ -35,6 +35,7 @@ from typing import Any
 
 import pytest
 
+from metabrowser.commit_ids import SHORT_COMMIT_CHARS
 from metabrowser.git.process import acquisition_allowed, detect_git_version
 from metabrowser.paths_safe import tilde_path
 from tests.process_group import GROUP_STOP_S, PROFILE_TEARDOWN_S, run_in_own_group
@@ -62,14 +63,9 @@ pytestmark = [
 SWITCH_BOUND_MS = 5000
 WORKING_TREE = ["NOTES.md", "README.md", "STAGED.md", "UNTRACKED.md"]
 FEATURE = "c7ae2a331f546e6a2431ed7093e9e430a9d1269b"
-# Each ref's commit as every line names one (`short_commit` in root_identity.py), in the
+# Each ref's commit as every line names one (`short_commit` in commit_ids.py), in the
 # fixture, whose IDs are literal (tests/source_checkout_fixture.py).
-TOPIC, FEATURE_SHORT, LOCAL_WORK, V1 = (
-    "42382ea2303b",
-    "c7ae2a331f54",
-    "25e0a2a76ab4",
-    "fcb9d63c3c85",
-)
+TOPIC, FEATURE_SHORT, LOCAL_WORK, V1 = ("42382ea", "c7ae2a3", "25e0a2a", "fcb9d63")
 TRUSTED = {"active_content": True, "mutations": False}
 UNTRUSTED = {"active_content": False, "mutations": False}
 
@@ -84,6 +80,15 @@ def _free_port() -> int:
 
 def _rows(panel: dict[str, Any]) -> list[str]:
     return [row["text"] for row in panel["rows"]]
+
+
+def _one_look(name: str, shown: dict[str, Any]) -> None:
+    """Every short commit ID a page shows is one length, in the mono face, in the muted gray."""
+
+    face = shown["face"]
+    for entry in shown["ids"]:
+        assert len(entry["text"]) == SHORT_COMMIT_CHARS, (name, entry)
+        assert (entry["color"], entry["font"]) == (face["color"], face["font"]), (name, entry)
 
 
 def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrome(
@@ -176,6 +181,15 @@ def test_a_checkout_switches_between_its_working_tree_and_its_revisions_in_chrom
         # takes no more room than the narrowest.
         assert len(set(result[name]["ageColumn"])) == 1, (name, result[name]["ageColumn"])
         assert result[name]["commitColumns"] <= 1, name
+        # Every ref's commit, in the list as in the heading beside it, is one short ID: one
+        # length, the mono face, and the muted gray (docs/design-system.md, "Short Commit
+        # IDs"), which the owner asked for after seeing longer IDs in this list.
+        assert len(result[name]["commitIds"]["ids"]) >= len(result[name]["rows"]), name
+        _one_look(name, result[name]["commitIds"])
+    for name in ("workingTree", "branch", "tag", "reloaded", "back"):
+        _one_look(name, result[name]["commitIds"])
+    # A revision's heading names its commit the same way.
+    assert [entry["text"] for entry in result["branch"]["commitIds"]["ids"]] == [FEATURE_SHORT]
 
     # A branch: a revision's page, under the untrusted profile, with no file of the disk's.
     branch = result["branch"]

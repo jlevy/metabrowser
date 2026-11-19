@@ -338,6 +338,19 @@ GIT_HISTORY_SESSION_MAX_STORAGE_BYTES = 64 * 1024 * 1024
 # silently shortened.
 GIT_COMMIT_MAX_FILES = 1_000
 
+# UTF-8 bytes of a commit message's body that ``/api/git/commit-markdown/{revision}``
+# renders as Markdown; a longer body shows as written. Git's trailer block is outside the
+# bound: it is split off and answered as written, not rendered, so only the prose before
+# it counts (``git/message.py``). The bound a pull request's description has
+# (``MAX_BODY_BYTES`` in ``builtin_plugins/github/pull_record.py``, which
+# ``tests/test_git_commit_message.py`` pins this to), since the two render through the
+# same path. Measured 2026-11-18 on this
+# repository's 4,673 commits: the largest body is 9,105 bytes (p99 2,503, median 357), and
+# KPress's render and the allowlist took about 50 ms in process for 64 KiB of these bodies
+# (12 ms for 9 KiB, 190 ms for 256 KiB; Apple M1 Pro, load average 22), far inside the
+# Markdown child's deadline (``diff/markdown_projection_worker.py``).
+GIT_COMMIT_BODY_MARKDOWN_MAX_BYTES = 64 * 1024
+
 # Repository identity (root, HEAD, capability) is stable between commits
 # but must not go stale across a checkout. Short TTL, same shape as the
 # gitignore checker cache in ``tree.py``. Unborn HEAD entries bypass the
@@ -449,6 +462,7 @@ __all__ = [
     "DEFAULT_EXECUTOR_WORKERS",
     "DOC_MAX_CHARS_DEFAULT",
     "FOLDER_DISCOVERY_MAX_ENTRIES",
+    "GIT_COMMIT_BODY_MARKDOWN_MAX_BYTES",
     "GIT_COMMIT_MAX_FILES",
     "GIT_COMPARISON_CACHE_BYTES",
     "GIT_DETAIL_CACHE_SIZE",
