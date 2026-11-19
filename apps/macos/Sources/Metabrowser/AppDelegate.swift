@@ -951,7 +951,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.isRunning = true
         checkSetupRun = Task { [weak self] in
             let result = await CommandRunner.run(
-                DoctorRun.spec(setup: setup, inherited: ProcessInfo.processInfo.environment),
+                DoctorRun.spec(
+                    setup: setup, inherited: ProcessInfo.processInfo.environment, appBundle: Bundle.main.bundlePath),
                 timeout: DoctorRun.timeout)
             let answer = DoctorRun.answer(result)
             if case .unreadable(let reason, _) = answer {

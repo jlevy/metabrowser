@@ -90,25 +90,56 @@ import Testing
 
     /// How a `metab` was installed, from the files beside its canonical executable.
     @Test func theInstallIsReadFromBesideTheExecutable() {
-        func install(_ executable: String, real: String? = nil, files: Set<String>) -> MetabInstall {
+        let project = "[project]\nname = \"metabrowser\"\n"
+        func install(_ executable: String, real: String? = nil, files: [String: String]) -> MetabInstall {
             MetabInstall.of(
-                executable: executable, canonicalPath: { _ in real ?? executable }, fileExists: { files.contains($0) })
+                executable: executable, canonicalPath: { _ in real ?? executable }, fileExists: { files[$0] != nil },
+                readHead: { files[$0] })
         }
         let tool = "/Volumes/Home/.local/share/uv/tools/metabrowser"
-        #expect(install("/Volumes/Home/.local/bin/metab", real: tool + "/bin/metab", files: [tool + "/uv-receipt.toml"])
+        #expect(install("/Volumes/Home/.local/bin/metab", real: tool + "/bin/metab", files: [tool + "/uv-receipt.toml": ""])
             == .uvTool)
         let pipx = "/Volumes/Home/.local/pipx/venvs/metabrowser"
-        #expect(install(pipx + "/bin/metab", files: [pipx + "/pipx_metadata.json"]) == .pipx)
+        #expect(install(pipx + "/bin/metab", files: [pipx + "/pipx_metadata.json": "{}"]) == .pipx)
         let checkout = "/Volumes/Home/src/metabrowser"
-        #expect(install(checkout + "/.venv/bin/metab", files: [checkout + "/pyproject.toml"])
+        #expect(install(checkout + "/.venv/bin/metab", files: [checkout + "/pyproject.toml": project])
             == .checkout(root: checkout))
         // An editable uv tool install has a receipt too, and uv upgrades it.
-        #expect(install(checkout + "/.venv/bin/metab", files: [checkout + "/pyproject.toml", checkout + "/.venv/uv-receipt.toml"])
-            == .uvTool)
-        // A `.venv` with no project beside it, and anything else, is replaced by uv's.
-        #expect(install("/opt/venv/.venv/bin/metab", files: []) == .other)
-        #expect(install("/metab", files: []) == .other)
+        #expect(
+            install(
+                checkout + "/.venv/bin/metab",
+                files: [checkout + "/pyproject.toml": project, checkout + "/.venv/uv-receipt.toml": ""])
+                == .uvTool)
+        // Another project's `.venv`, a `.venv` with no project beside it, and anything
+        // else, is replaced by uv's, as `metab --doctor` says of itself.
+        let notes = "/Volumes/Home/src/notes"
+        #expect(install(notes + "/.venv/bin/metab", files: [notes + "/pyproject.toml": "name = \"notes\"\n"]) == .other)
+        #expect(install("/opt/venv/.venv/bin/metab", files: [:]) == .other)
+        #expect(install("/metab", files: [:]) == .other)
         #expect(MetabInstall.pipx.upgradeCommand(minimum: "0.13.0") == "pipx install --force 'metabrowser>=0.13.0'")
         #expect(MetabInstall.checkout(root: checkout).upgradeCommand(minimum: "0.13.0") == "git pull && make install")
+    }
+
+    /// The line `CHECKOUT_PROJECT` in `src/metabrowser/cli/doctor.py` matches, and no other.
+    @Test(arguments: [
+        ("name = \"metabrowser\"", true),
+        ("name=\"metabrowser\"  ", true),
+        ("[project]\r\nname = \"metabrowser\"\r\n", true),
+        ("name = \"metabrowser-extras\"", false),
+        ("  name = \"metabrowser\"", false),
+        ("names = \"metabrowser\"", false),
+        ("# name = \"metabrowser\"", false),
+    ])
+    func aCheckoutsProjectIsNamedOnItsOwnLine(pyproject: String, declares: Bool) {
+        #expect(MetabInstall.declaresThisProject(pyproject) == declares)
+    }
+
+    /// This repository's own `pyproject.toml` is the one a checkout has.
+    @Test func thisRepositoryIsACheckout() throws {
+        let root = URL(filePath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let pyproject = try #require(MetabInstall.readHead(root.appending(path: "pyproject.toml").path))
+        #expect(MetabInstall.declaresThisProject(pyproject))
+        #expect(MetabInstall.readHead(root.path) == nil, "a directory is not read")
     }
 }

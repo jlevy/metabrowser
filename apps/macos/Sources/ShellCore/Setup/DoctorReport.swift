@@ -1,16 +1,18 @@
 import Foundation
 
-/// What `metab --doctor --json` reports, as Help > Check Setup… shows it: one row for the
-/// plugins and settings, one for where `--present` opens a target, one for GitHub CLI, and
-/// one per setup check, each with its state, a sentence, details, and the step that fixes
-/// it.
+/// What `metab --doctor --json` reports, as Help > Check Setup… shows it: one row per
+/// entry of `checks`, in `metab`'s order, then one for GitHub CLI, each with its state, a
+/// sentence, details, and the step that fixes it.
 ///
 /// The shape is `metab`'s, documented in `src/metabrowser/cli/doctor.py` and pinned by
-/// `tests/golden/cli-doctor.tryscript.md`: `ok`, `problems`, `plugin_count`, `open_in`,
-/// the `github` object of the GitHub status check, and `checks`. A key the app does not
-/// read is ignored, and an object left out has no row, so a report from a `metab` whose
-/// doctor predates `checks` still shows the rest and says the checks are missing
-/// (`hasChecks`). The app reads `gh` and `git` only from here and never runs either.
+/// `tests/golden/cli-doctor.tryscript.md`: `ok`, `problems`, `checks`, and the `github`
+/// object of the GitHub status check. Every row comes from those structured entries and
+/// their `remedy` objects; no row is chosen by, and no step read from, a sentence's
+/// words. A key the app does not read is ignored. A check or `github` object the app
+/// cannot decode is one unreadable row, and the rest still shows. A report from a `metab`
+/// whose doctor predates `checks` lists its `problems` in one row and says the checks are
+/// missing (`hasChecks`). The app reads `gh` and `git` only from here and never runs
+/// either.
 public nonisolated struct DoctorReport: Equatable, Sendable {
     public enum State: Equatable, Sendable {
         case ok, warning, problem
@@ -61,7 +63,7 @@ public nonisolated struct DoctorReport: Equatable, Sendable {
     }
 
     public struct Row: Equatable, Sendable {
-        /// The check's `id`, or `plugins`, `open_in`, or `github`.
+        /// The check's `id`, or `github`, or `problems` for an older report's problems.
         public var id: String
         public var title: String
         public var state: State
@@ -130,10 +132,17 @@ public nonisolated enum DoctorRun {
         "This metab reports no setup checks: it was built before metab --doctor checked Git and the "
         + "configuration and cache directories. Upgrade it to see them."
 
-    public static func spec(setup: RuntimeSetup, inherited: [String: String]) -> LaunchSpec {
-        LaunchSpec(
-            executable: setup.runtime.executable, arguments: arguments,
-            environment: ChildEnvironment.build(inherited: inherited, toolDirectories: setup.tools.directories))
+    /// Names this app's bundle to the doctor, whose `metab` check then compares with this
+    /// build's minimum (`DOCTOR_APP_ENV` in `src/metabrowser/cli/doctor.py`), not with
+    /// the app LaunchServices finds first, which is the release build when both are
+    /// installed.
+    public static let appVariable = "METABROWSER_DOCTOR_APP"
+
+    /// `appBundle` is this app's bundle path, which the doctor reads the minimum from.
+    public static func spec(setup: RuntimeSetup, inherited: [String: String], appBundle: String) -> LaunchSpec {
+        var environment = ChildEnvironment.build(inherited: inherited, toolDirectories: setup.tools.directories)
+        environment[appVariable] = appBundle
+        return LaunchSpec(executable: setup.runtime.executable, arguments: arguments, environment: environment)
     }
 
     /// What a copied report starts with: this app, the oldest `metab` it runs, and the
@@ -175,45 +184,63 @@ public nonisolated enum DoctorRun {
         case .success(let found): data = found
         case .failure(let problem): return .unreadable(reason: "\(problem.description) (\(status))", output: output)
         }
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        guard let wire = try? decoder.decode(Wire.self, from: data) else {
+        guard let wire = try? JSONDecoder().decode(Wire.self, from: data) else {
             return .unreadable(reason: "printed a report this app cannot read (\(status))", output: output)
         }
         return .report(report(wire))
     }
 
-    // The keys the app reads; any other is ignored.
+    // The keys the app reads, each named in a `CodingKeys` as `metab` spells it; any other
+    // is ignored.
     private struct Wire: Decodable {
         var ok: Bool
-        var problems: [String]
-        var pluginCount: Int?
-        var openIn: OpenIn?
-        var github: GitHub?
-        var checks: [Check]?
+        var problems: [String]?
+        var checks: [Entry<Check>]?
+        var github: Entry<GitHub>?
+
+        enum CodingKeys: String, CodingKey {
+            case ok = "ok"
+            case problems = "problems"
+            case checks = "checks"
+            case github = "github"
+        }
     }
 
-    private struct OpenIn: Decodable {
-        var value: String?
-        var source: String?
-        var app: App?
-    }
+    /// One entry that may not decode, such as a check from a later `metab` with a value
+    /// of another type: it is kept as unreadable, with its `id` when it has one, so one
+    /// entry never hides the rest of the report.
+    private enum Entry<Value: Decodable>: Decodable {
+        case read(Value)
+        case unreadable(id: String?)
 
-    private struct App: Decodable {
-        var found: Bool?
-        var bundlePath: String?
-        var code: String?
-        var reason: String?
+        init(from decoder: any Decoder) throws {
+            if let value = try? Value(from: decoder) {
+                self = .read(value)
+            } else {
+                let container = try? decoder.container(keyedBy: Check.CodingKeys.self)
+                self = .unreadable(id: try? container?.decode(String.self, forKey: .id))
+            }
+        }
     }
 
     private struct GitHub: Decodable {
         var state: String
         var message: String
-        var fix: String?
+        var remedy: Remedy?
         var ghPath: String?
         var ghVersion: String?
         var ghMinimum: String?
         var account: String?
+
+        enum CodingKeys: String, CodingKey {
+            case state = "state"
+            case message = "message"
+            case remedy = "remedy"
+            case ghPath = "gh_path"
+            case ghVersion = "gh_version"
+            case ghMinimum = "gh_minimum"
+            case account = "account"
+        }
     }
 
     private struct Check: Decodable {
@@ -223,64 +250,74 @@ public nonisolated enum DoctorRun {
         var summary: String
         var details: [Detail]?
         var remedy: Remedy?
+
+        enum CodingKeys: String, CodingKey {
+            case id = "id"
+            case title = "title"
+            case state = "state"
+            case summary = "summary"
+            case details = "details"
+            case remedy = "remedy"
+        }
     }
 
     private struct Detail: Decodable {
         var name: String
         var value: String
+
+        enum CodingKeys: String, CodingKey {
+            case name = "name"
+            case value = "value"
+        }
     }
 
     private struct Remedy: Decodable {
         var text: String
         var command: String?
         var url: String?
+
+        enum CodingKeys: String, CodingKey {
+            case text = "text"
+            case command = "command"
+            case url = "url"
+        }
     }
 
+    /// What the window says of an entry it cannot read.
+    static let unreadableSummary = "metab reported this in a shape this app cannot read; a newer Metabrowser may."
+
     private static func report(_ wire: Wire) -> DoctorReport {
-        let checks = wire.checks ?? []
-        // A check's problem is listed as "<id>: …" too; the rest belong to the plugins and
-        // the settings `--present` reads.
-        let owned = Set(checks.map(\.id))
-        let others = wire.problems.filter { problem in
-            !owned.contains { problem.hasPrefix($0 + ": ") }
-        }
-        let openInProblems = others.filter { $0.hasPrefix("open_in: ") || $0.hasPrefix("open_in is ") }
-        let pluginProblems = others.filter { !openInProblems.contains($0) }
         var rows: [DoctorReport.Row] = []
-        let plugins = wire.pluginCount.map { $0 == 1 ? "1 plugin" : "\($0) plugins" } ?? "The plugins"
-        rows.append(DoctorReport.Row(
-            id: "plugins", title: "Plugins", state: pluginProblems.isEmpty ? .ok : .problem,
-            summary: pluginProblems.isEmpty
-                ? "\(plugins) and the packaged cache record contracts check out"
-                : "\(pluginProblems.count) problem(s) with the plugins or the packaged cache record contracts",
-            details: pluginProblems.map { DoctorReport.Detail(name: "problem", value: $0) }))
-        if let openIn = wire.openIn {
-            rows.append(openInRow(openIn, problems: openInProblems))
+        if let checks = wire.checks {
+            rows += checks.map { entry in
+                switch entry {
+                case .read(let check): checkRow(check)
+                case .unreadable(let id): unreadableRow(id: id ?? "unreadable", title: id ?? "A check")
+                }
+            }
+        } else if let problems = wire.problems, !problems.isEmpty {
+            // An older `metab` lists its problems only as text, which is shown as it is.
+            rows.append(DoctorReport.Row(
+                id: "problems", title: "Problems", state: .problem, summary: "\(problems.count) problem(s)",
+                details: problems.map { DoctorReport.Detail(name: "problem", value: $0) }))
         }
-        if let github = wire.github {
-            rows.append(gitHubRow(github))
-        }
-        rows += checks.map { check in
-            DoctorReport.Row(
-                id: check.id, title: check.title, state: DoctorReport.State(check.state), summary: check.summary,
-                details: (check.details ?? []).map { DoctorReport.Detail(name: $0.name, value: $0.value) },
-                remedy: check.remedy.map { remedy($0.text, command: $0.command, url: $0.url) })
+        switch wire.github {
+        case .read(let github): rows.append(gitHubRow(github))
+        case .unreadable: rows.append(unreadableRow(id: "github", title: "GitHub CLI"))
+        case nil: break
         }
         return DoctorReport(ok: wire.ok, rows: rows, hasChecks: wire.checks != nil)
     }
 
-    private static func openInRow(_ openIn: OpenIn, problems: [String]) -> DoctorReport.Row {
-        let named = openIn.value.map { "\($0) (\(openIn.source ?? "unknown"))" } ?? "unreadable"
-        var details: [DoctorReport.Detail] = []
-        if let app = openIn.app {
-            let found = app.found == true ? (app.bundlePath ?? "found") : "none (\(app.code ?? "unknown"))"
-            details.append(DoctorReport.Detail(name: "app", value: found))
-            if app.found != true, let reason = app.reason { details.append(DoctorReport.Detail(name: "why", value: reason)) }
-        }
-        details += problems.map { DoctorReport.Detail(name: "problem", value: $0) }
-        return DoctorReport.Row(
-            id: "open_in", title: "Opening from Terminal", state: problems.isEmpty ? .ok : .problem,
-            summary: "metab --present opens a target with open_in \(named)", details: details)
+    private static func checkRow(_ check: Check) -> DoctorReport.Row {
+        DoctorReport.Row(
+            id: check.id, title: check.title, state: DoctorReport.State(check.state), summary: check.summary,
+            details: (check.details ?? []).map { DoctorReport.Detail(name: $0.name, value: $0.value) },
+            remedy: check.remedy.map(remedyOf))
+    }
+
+    private static func unreadableRow(id: String, title: String) -> DoctorReport.Row {
+        DoctorReport.Row(id: id, title: title, state: .other("unreadable"), summary: unreadableSummary)
     }
 
     /// GitHub CLI's state is never a problem: only GitHub work needs it. Its path, version,
@@ -295,17 +332,13 @@ public nonisolated enum DoctorRun {
             details.append(DoctorReport.Detail(name: "gh", value: "not found on PATH"))
         }
         if let account = github.account { details.append(DoctorReport.Detail(name: "account", value: account)) }
-        let fix = github.fix.map { fix in
-            fix.hasPrefix("https://") ? remedy("Install or update GitHub CLI:", command: nil, url: fix)
-                : remedy("In Terminal:", command: fix, url: nil)
-        }
         return DoctorReport.Row(
             id: "github", title: "GitHub CLI", state: github.state == "ok" ? .ok : .warning,
-            summary: github.message, details: details, remedy: fix)
+            summary: github.message, details: details, remedy: github.remedy.map(remedyOf))
     }
 
-    private static func remedy(_ text: String, command: String?, url: String?) -> DoctorReport.Remedy {
-        let page = url.flatMap(URL.init(string:)).flatMap { $0.scheme == "https" ? $0 : nil }
-        return DoctorReport.Remedy(text: text, command: command, url: page)
+    private static func remedyOf(_ wire: Remedy) -> DoctorReport.Remedy {
+        let page = wire.url.flatMap(URL.init(string:)).flatMap { $0.scheme == "https" ? $0 : nil }
+        return DoctorReport.Remedy(text: wire.text, command: wire.command, url: page)
     }
 }

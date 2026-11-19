@@ -308,7 +308,8 @@ struct LiveMetabTests {
         let tools = RuntimeDiscovery.resolveTools(loginPath: nil, isExecutable: FileChecks.isExecutableFile)
         let setup = RuntimeSetup(
             runtime: Runtime(executable: path, version: "live", source: .chosen, fingerprint: nil), tools: tools)
-        var spec = DoctorRun.spec(setup: setup, inherited: ProcessInfo.processInfo.environment)
+        var spec = DoctorRun.spec(
+            setup: setup, inherited: ProcessInfo.processInfo.environment, appBundle: "/Applications/Metabrowser.app")
         spec.environment = liveEnvironment(configuration: configuration, toolDirectories: tools.directories)
         let answer = DoctorRun.answer(await CommandRunner.run(spec, timeout: DoctorRun.timeout))
         guard case .report(let report) = answer else {
@@ -316,7 +317,8 @@ struct LiveMetabTests {
             return
         }
         #expect(report.hasChecks)
-        #expect(Set(["plugins", "open_in", "github", "metab", "git", "config", "cache"]) == Set(report.rows.map(\.id)))
+        #expect(report.rows.map(\.id) == ["plugins", "open_in", "metab", "git", "config", "cache", "github"])
+        #expect(!report.rows.contains { $0.state == .other("unreadable") })
     }
 
     /// File > Open URL… asks the command a link sent to the app is resolved with: a

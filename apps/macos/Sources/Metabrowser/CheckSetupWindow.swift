@@ -42,7 +42,9 @@ struct CheckSetupView: View {
             }
             Divider()
             HStack {
-                Button("Check Again", action: actions.checkAgain).disabled(model.isRunning || !model.hasRuntime)
+                // Enabled with no `metab` selected too: it rereads the selection, so one
+                // chosen in Settings meanwhile is checked.
+                Button("Check Again", action: actions.checkAgain).disabled(model.isRunning)
                 Button("Copy Report") {
                     guard let text = model.copyText else { return }
                     NSPasteboard.general.clearContents()
@@ -63,7 +65,10 @@ struct CheckSetupView: View {
 
     @ViewBuilder private var content: some View {
         if !model.hasRuntime {
-            Text("No metab is selected, so there is nothing to check. Settings finds or chooses one.")
+            Text(
+                "No metab is selected, so there is nothing to check. Settings finds or chooses one; "
+                    + "then Check Again."
+            )
                 .fixedSize(horizontal: false, vertical: true)
         } else {
             switch model.answer {

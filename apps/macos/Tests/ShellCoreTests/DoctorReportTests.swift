@@ -42,14 +42,17 @@ private func report(_ output: [String], code: Int32 = 0) throws -> DoctorReport 
         let report = try report(transcript("metab --doctor --json"))
         #expect(report.ok)
         #expect(report.hasChecks)
-        #expect(report.rows.map(\.id) == ["plugins", "open_in", "github", "metab", "git", "config", "cache"])
+        #expect(report.rows.map(\.id) == ["plugins", "open_in", "metab", "git", "config", "cache", "github"])
         #expect(report.rows.allSatisfy { $0.state == .ok })
+        #expect(report.rows[0].summary == "11 plugins and the packaged cache record contracts check out")
+        #expect(report.rows[1].title == "Opening from a terminal")
         let git = try #require(report.rows.first { $0.id == "git" })
         #expect(git.title == "Git")
         #expect(git.summary == "git version 2.50.1, which meets every floor")
         #expect(git.details.map(\.name) == ["executable", "version"])
-        let github = try #require(report.rows.first { $0.id == "github" })
+        let github = try #require(report.rows.last)
         #expect(github.details.first?.value == "[FAKE_GH] (version 2.98.0; needs 2.81.0 or later)")
+        #expect(github.remedy == nil)
     }
 
     /// A check's problem is listed among the problems too; the row is the check's own.
@@ -66,22 +69,25 @@ private func report(_ output: [String], code: Int32 = 0) throws -> DoctorReport 
         #expect(plugins.state == .ok, "the cache's problem is not the plugins'")
     }
 
+    /// Every row is an entry of `checks` or the `github` object, as `metab` sent it: no
+    /// problem is placed by its words, and a step is a command only when `remedy` says so.
     @Test func readsAReportAmongOtherOutputAndIgnoresKeysItDoesNotKnow() throws {
         let output = ["warning: something on stderr"] + lines("""
             {
               "ok": false,
               "plugin_count": 1,
-              "problems": [
-                "plugin 'x' data_hook 'y': cannot import 'z': no module",
-                "open_in is app (config.yml), and no app takes a target: LaunchServices knows no app",
-                "git: a later check's problem"
-              ],
-              "open_in": {"value": "app", "source": "config.yml", "app": {"found": false, "code": "app_not_found",
-                          "reason": "LaunchServices knows no app"}},
-              "github": {"state": "gh_too_old", "message": "GitHub CLI 2.80.0 is too old.", "fix": "brew upgrade gh",
+              "problems": ["plugin 'x' data_hook 'y': cannot import 'z': no module", "git: a later check's problem"],
+              "github": {"state": "not_logged_in", "message": "GH_TOKEN is not accepted.",
+                         "fix": "replace the token in GH_TOKEN, or unset it and run gh auth login",
+                         "remedy": {"text": "Replace the token in GH_TOKEN, or unset it and run gh auth login.",
+                                    "command": null, "url": null},
                          "gh_path": "/opt/homebrew/bin/gh", "gh_version": "2.80.0", "gh_minimum": "2.81.0",
                          "a_later_key": [1, 2]},
               "checks": [
+                {"id": "plugins", "title": "Plugins", "state": "problem", "summary": "1 problem(s)",
+                 "details": [{"name": "plugins", "value": "1"},
+                             {"name": "problem", "value": "plugin 'x' data_hook 'y': cannot import 'z': no module"}],
+                 "remedy": null},
                 {"id": "git", "title": "Git", "state": "problem", "summary": "a later check's problem",
                  "details": [{"name": "version", "value": "git version 2.40.0"}],
                  "remedy": {"text": "Install Git.", "command": null, "url": "https://git-scm.com/downloads"}},
@@ -93,51 +99,75 @@ private func report(_ output: [String], code: Int32 = 0) throws -> DoctorReport 
             """)
         let report = try report(output, code: 1)
         #expect(!report.ok)
-        #expect(report.rows.map(\.id) == ["plugins", "open_in", "github", "git", "later"])
+        #expect(report.rows.map(\.id) == ["plugins", "git", "later", "github"])
         let plugins = report.rows[0]
         #expect(plugins.state == .problem)
-        #expect(plugins.summary == "1 problem(s) with the plugins or the packaged cache record contracts")
-        #expect(plugins.details == [.init(name: "problem", value: "plugin 'x' data_hook 'y': cannot import 'z': no module")])
-        let openIn = report.rows[1]
-        #expect(openIn.state == .problem)
-        #expect(openIn.summary == "metab --present opens a target with open_in app (config.yml)")
-        #expect(openIn.details.map(\.name) == ["app", "why", "problem"])
-        let github = report.rows[2]
-        #expect(github.state == .warning, "GitHub CLI is never a problem: only GitHub work needs it")
-        #expect(github.remedy == DoctorReport.Remedy(text: "In Terminal:", command: "brew upgrade gh"))
-        #expect(github.details.first?.value == "/opt/homebrew/bin/gh (version 2.80.0; needs 2.81.0 or later)")
-        #expect(report.rows[3].remedy?.url == URL(string: "https://git-scm.com/downloads"))
-        let later = report.rows[4]
+        #expect(plugins.details.map(\.name) == ["plugins", "problem"])
+        #expect(report.rows[1].remedy?.url == URL(string: "https://git-scm.com/downloads"))
+        let later = report.rows[2]
         #expect(later.state == .other("notice"))
         #expect(later.remedy == DoctorReport.Remedy(text: "Open this."), "only an https page opens")
+        let github = report.rows[3]
+        #expect(github.state == .warning, "GitHub CLI is never a problem: only GitHub work needs it")
+        #expect(
+            github.remedy == DoctorReport.Remedy(text: "Replace the token in GH_TOKEN, or unset it and run gh auth login."),
+            "a sentence is never a command to copy")
+        #expect(github.details.first?.value == "/opt/homebrew/bin/gh (version 2.80.0; needs 2.81.0 or later)")
     }
 
-    /// A `metab` whose doctor predates the setup checks and GitHub's section still reports
-    /// what it has, and the window says the checks are missing.
-    @Test func anOlderReportHasNoCheckRows() throws {
+    /// One entry a later or broken `metab` sends in another shape is one row the window
+    /// cannot read, with its `id` when it has one; the rest of the report still shows.
+    @Test func aCheckThatDoesNotDecodeIsOneUnreadableRow() throws {
         let report = try report(lines("""
             {
               "ok": true,
-              "plugin_count": 9,
               "problems": [],
-              "open_in": {"value": "browser", "source": "default", "present_browser": true, "app": null}
+              "checks": [
+                {"id": "plugins", "title": "Plugins", "state": "ok", "summary": "fine"},
+                {"id": "git", "title": "Git", "state": "ok", "summary": "fine", "details": [{"name": "major", "value": 2}]},
+                {"title": "No id", "state": "ok", "summary": "fine", "remedy": {"command": "true"}},
+                null
+              ],
+              "github": {"state": "ok", "message": "fine", "remedy": {"text": 3}}
             }
             """))
-        #expect(report.ok)
-        #expect(!report.hasChecks)
-        #expect(report.rows.map(\.id) == ["plugins", "open_in"])
-        #expect(report.rows[0].summary == "9 plugins and the packaged cache record contracts check out")
-        #expect(report.text(after: []).hasSuffix(DoctorRun.noChecks + "\n"))
+        #expect(report.rows.map(\.id) == ["plugins", "git", "unreadable", "unreadable", "github"])
+        #expect(report.rows[0].state == .ok)
+        for row in report.rows.dropFirst() {
+            #expect(row.state == .other("unreadable"))
+            #expect(row.summary == DoctorRun.unreadableSummary)
+        }
+        #expect(report.rows.map(\.title) == ["Plugins", "git", "A check", "A check", "GitHub CLI"])
+    }
+
+    /// A `metab` whose doctor predates the setup checks and GitHub's section still reports
+    /// its problems, as it words them, and the window says the checks are missing.
+    @Test func anOlderReportHasNoCheckRows() throws {
+        let older = try report(lines("""
+            {
+              "ok": false,
+              "plugin_count": 9,
+              "problems": ["plugin 'x': index.js missing"],
+              "open_in": {"value": "browser", "source": "default", "present_browser": true, "app": null}
+            }
+            """), code: 1)
+        #expect(!older.ok)
+        #expect(!older.hasChecks)
+        #expect(older.rows.map(\.id) == ["problems"])
+        #expect(older.rows[0].details == [.init(name: "problem", value: "plugin 'x': index.js missing")])
+        #expect(older.text(after: []).hasSuffix(DoctorRun.noChecks + "\n"))
+        let clean = try report(lines(#"{"ok": true, "plugin_count": 9, "problems": []}"#))
+        #expect(clean.rows.isEmpty)
+        #expect(!clean.hasChecks)
     }
 
     @Test(arguments: [
         // No report at all, as from a crash on import.
         (["Traceback (most recent call last):", "ImportError: x"], 1, "printed no answer (exit status 1)"),
-        // Not the doctor's shape: `ok` is required.
+        // Not the doctor's shape: `ok` is required, and `checks` is a list.
         (["{\"problems\": []}"], 0, "printed a report this app cannot read (exit status 0)"),
         (["{\"ok\": \"yes\", \"problems\": []}"], 0, "printed a report this app cannot read (exit status 0)"),
-        (["{\"ok\": true, \"problems\": [], \"checks\": [{\"id\": \"git\"}]}"], 0,
-         "printed a report this app cannot read (exit status 0)"),
+        (["{\"ok\": true, \"checks\": {\"id\": \"git\"}}"], 0, "printed a report this app cannot read (exit status 0)"),
         (["{\"ok\": true, \"problems\": []}", "{\"ok\": true, \"problems\": []}"], 0, "printed 2 answers (exit status 0)"),
     ])
     func malformedOutputIsNoReport(output: [String], code: Int32, reason: String) {
@@ -202,9 +232,13 @@ private func report(_ output: [String], code: Int32 = 0) throws -> DoctorReport 
         let setup = RuntimeSetup(
             runtime: Runtime(executable: "/opt/metab", version: "0.13.0", source: .chosen),
             tools: ToolPaths(git: "/opt/homebrew/bin/git", gh: "/opt/homebrew/bin/gh"))
-        let spec = DoctorRun.spec(setup: setup, inherited: ["PATH": "/usr/bin:/bin", "HOME": "/Volumes/Home"])
+        let spec = DoctorRun.spec(
+            setup: setup,
+            inherited: ["PATH": "/usr/bin:/bin", "HOME": "/Volumes/Home", DoctorRun.appVariable: "/elsewhere.app"],
+            appBundle: "/Applications/Metabrowser.app")
         #expect(spec.executable == "/opt/metab")
         #expect(spec.arguments == ["--doctor", "--json"])
         #expect(spec.environment["PATH"]?.hasPrefix("/opt/homebrew/bin") == true)
+        #expect(spec.environment[DoctorRun.appVariable] == "/Applications/Metabrowser.app", "this app, never an inherited one")
     }
 }
