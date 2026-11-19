@@ -67,6 +67,27 @@ import Testing
             + " --recent, and Metabrowser needs metab 0.13.0 or later, which is not on PyPI yet.")
     }
 
+    /// An installed 0.12.1.dev38, from before the minimum moved to the minor release and
+    /// before `--exit-on-eof`, is refused for its number, and the steps say so: while the
+    /// minimum is unreleased they point to the checkout, which `make install` brings to
+    /// 0.13.0.devN, and once it is released to uv's upgrade, which PyPI can satisfy.
+    @Test func anInstalledBuildFromBeforeTheMinorMinimumIsRefusedForItsNumber() {
+        let version = "0.12.1.dev38+5f0c2a1 (+38 commits, 5f0c2a1)"
+        #expect(MetabRequirement.flagShortfall(version) == nil)
+        let old = CandidateOutcome(path: bin + "/metab", source: .localBin, result: .tooOld(version: version))
+        let checkout = guide(tried: [old], uv: bin + "/uv", loginPath: [bin], released: false).steps
+        #expect(checkout == [.buildFromCheckout(oldPath: bin + "/metab", oldVersion: version, inNewTerminal: false)])
+        #expect(checkout[0].command == "make install")
+        #expect(checkout[0].title(home: "/Volumes/Home")
+            == "Build metab in the source checkout this app was built from, then choose its .venv/bin/metab"
+            + " with Choose metab… below: ~/.local/bin/metab is metab 0.12.1.dev38+5f0c2a1, and Metabrowser"
+            + " needs metab 0.13.0 or later, which is not on PyPI yet.")
+        let upgrade = guide(tried: [old], uv: bin + "/uv", loginPath: [bin]).steps
+        #expect(upgrade[0].title(home: "/Volumes/Home")
+            == "Upgrade metab: ~/.local/bin/metab is metab 0.12.1.dev38+5f0c2a1, and Metabrowser needs 0.13.0 or later.")
+        #expect(upgrade[0].command == "uv tool install --upgrade 'metabrowser>=0.13.0'")
+    }
+
     /// `uv tool install` says a broken tool is already installed and changes nothing.
     @Test func aBrokenToolInstallIsReinstalled() {
         let broken = CandidateOutcome(path: bin + "/metab", source: .localBin, result: .rejected("could not run: x"))
