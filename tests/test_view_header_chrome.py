@@ -98,7 +98,8 @@ _WRAPPED = (
     "of-the-view-header-so-it-wraps-and-its-size-and-age-follow-its-last-line.md"
 )
 # One server start, one Chrome, and 32 loads, each with three rewrites of its line, then in
-# each theme a menu's walk, a page with no counterpart, and two commit pages: the 32 loads
+# each theme a menu's walk, a page with no counterpart, and two commit pages, and in the
+# light theme three loads of names at the widths the corner's room broke: the 32 loads
 # alone took 37 s to 50 s on a 10-core Mac (24 loads took 28 s there at a load average
 # near 12). A cold Chrome start in CI has taken 28.2 s, and the server's start is bounded
 # at 30 s inside the session.
@@ -146,6 +147,10 @@ def _served(root: Path) -> tuple[Path, str]:
     )
     (notes / "b.txt").write_text("b\n" * 4000, encoding="utf-8")
     (notes / _WRAPPED).write_text("# A long name\n", encoding="utf-8")
+    # Names the heading row's whole width holds that the corner's room broke (review A on
+    # #608): the session draws them where it did.
+    (notes / "arch-views-models-routes.md").write_text("# Routes\n", encoding="utf-8")
+    (root / "CONTRIBUTING.md").write_text("# Contributing\n", encoding="utf-8")
     (root / "README.md").write_text("# Served\n", encoding="utf-8")
     _git(root, "init", "-q", "--initial-branch=main", ".")
     _git(root, "remote", "add", "origin", "https://github.com/octo/demo.git")
@@ -199,13 +204,13 @@ def _narrow_below_px() -> float:
 def test_the_corner_leaves_a_narrow_title_its_row() -> None:
     """Below a width, a view header's corner moves to the eyebrow's row.
 
-    Beside the corner's room, a title's first line in a 260 px main view was 20 px, and a
-    page title breaks anywhere (`.page-heading`), so a four-letter name broke after its first
-    letter rather than moving under the room (Chrome 152, 2026-11-18). The width is where the
-    title group, the main view less its side pads, the icon at the title's size, and the
-    heading row's gap, is two rooms wide, so the first line beside the room keeps at least
-    the room's width. A container condition takes no var(), so the width is a number, held
-    here to the tokens it is made of.
+    Beside the corner's room a page title breaks anywhere (`.page-heading`), so a name wider
+    than the first line there broke mid-word rather than moving under the room: "docs" in a
+    260 px main view, "CONTRIBUTING.md" at 380 px, and "arch-views-models-routes.md" at 560
+    px (Chrome 152, 2026-11-18 and 19; review A on #608). The width is where the title group,
+    the main view less its side pads, the icon at the title's size, and the heading row's
+    gap, holds the room and `--view-header-title-room` beside it. A container condition
+    takes no var(), so the width is a number, held here to the tokens it is made of.
     """
 
     css = _STYLES.read_text(encoding="utf-8")
@@ -217,7 +222,8 @@ def test_the_corner_leaves_a_narrow_title_its_row() -> None:
         2 * _token_px(css, "--content-padding-x")
         + _token_px(css, "--page-title-font-size")
         + float(gap.group(1))
-        + 2 * _token_px(css, "--view-header-corner-room")
+        + _token_px(css, "--view-header-corner-room")
+        + _token_px(css, "--view-header-title-room")
     )
     assert _narrow_below_px() == want
 
@@ -435,6 +441,11 @@ def test_view_headers_hold_their_rows_ground_and_values_in_chrome(
         assert (up_box["top"] + up_box["bottom"]) / 2 == line_middle, f"{name}: {up_box}"
         assert rhythm["frame"]["left"] <= chevron_box["left"], f"{name}: {rhythm}"
         assert chevron_box["right"] <= up_box["left"], f"{name}: {chevron_box} {up_box}"
+        # Each is a target of the Up size, 24 px, WCAG 2.2's minimum (review A on #608).
+        target = _px(tokens["--view-header-up-size"])
+        for box in (up_box, chevron_box):
+            assert box["right"] - box["left"] == target, f"{name}: {box}"
+            assert box["bottom"] - box["top"] == target, f"{name}: {box}"
         # Up at rest is the arrow alone: no hairline and no surface (mb-igva).
         clear = "rgba(0, 0, 0, 0)"
         assert rhythm["upRest"] == {"border": clear, "ground": clear}, f"{name}: {rhythm}"
@@ -627,6 +638,23 @@ def test_view_headers_hold_their_rows_ground_and_values_in_chrome(
         assert absent["children"] == 0, f"{name}: {absent}"
         assert absent["titleRoom"] == _px(first_tokens["--view-header-corner-room"]), absent
         assert absent["eyebrowRoom"] == _px(first_tokens["--content-padding-x"]), absent
+
+    # A name the heading row's whole width holds is one line whatever the main view's width:
+    # below the container width the corner is on the eyebrow's row and the title has the
+    # row, and above it the first line beside the room holds the name (review A on #608).
+    band = record["band"]
+    assert [(page["pane"], page["href"]) for page in band] == [
+        (480, "/view/CONTRIBUTING.md"),
+        (560, "/view/docs/notes/arch-views-models-routes.md"),
+        (720, "/view/docs/notes/arch-views-models-routes.md"),
+    ], band
+    for page in band:
+        name = f"{page['href']} at {page['pane']} px"
+        wide = page["paneInline"] >= _narrow_below_px()
+        assert wide is (page["pane"] == 720), f"{name}: {page['paneInline']}"
+        assert page["titleLines"] == 1, f"{name}: {page['titleLines']} lines"
+        room = _px(first_tokens["--view-header-corner-room"]) if wide else 0
+        assert page["rhythm"]["titleRoom"] == room, f"{name}: {page['rhythm']['titleRoom']}"
 
     # Up under the pointer shows the hover surface and its hairline, and away from it, in
     # each theme, neither (mb-igva).

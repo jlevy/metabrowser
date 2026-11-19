@@ -2363,10 +2363,11 @@ async def index(
       <div class="preview-pane" id="preview-pane" data-kpress-viewport tabindex="-1">
         {preview_loading}
       </div>
-      <!-- Hides and shows the navigation pane, as the backslash key does: on the main
-           page's left edge, beside the pane's shadow, on the shortcut strip's row. It
-           is in the frame, not the pane, so it stays when the pane is hidden and slides
-           with the page. app.js draws its chevron; static/nav-collapse.js runs it. -->
+      <!-- Hides and shows the navigation pane, as the backslash key does: at the start
+           of the main page's top row, in its gutter, across from the navigation title's
+           gear. It is in the frame, not the pane, so it stays when the pane is hidden and
+           slides with the page. app.js draws its chevron; static/nav-collapse.js runs it,
+           and static/styles.css places it. -->
       <button class="icon-btn nav-collapse-toggle disclosure-toggle" id="nav-collapse-toggle" type="button"
               aria-controls="tree-pane" aria-expanded="true"
               aria-label="Hide navigation"></button>

@@ -1037,10 +1037,14 @@ const PENDING_EM = 14.5;
 // its record. Every frame from the mount to the landing is read: whether the header and the
 // tab column show, the cold header or the record's, where the tab bar is against the same
 // record mounted in hand, and what the Diff summary's row holds. Its placeholder's own
-// reveal, the same quiet period's (`.mb-delayed-loading`), ends with it.
-const COLD_LANDING = `async (width, labelled, outcome) => {
+// reveal, the same quiet period's (`.mb-delayed-loading`), ends with it. A `seeded` page
+// has the Pulls tab's row for its pull request in hand, as the list notes it
+// (`noteListed`), so its cold header is titled as the record will be; the note outlives the
+// mount, so the seeded landings run last.
+const COLD_LANDING = `async (width, labelled, outcome, seeded) => {
   const recorded = window.__recorded ??= await (await fetch("/fixtures.json")).json();
   const page = window.__page ??= await import("/github/pull-page.js");
+  const states = window.__states ??= await import("/github/pull-state.js");
   const body = structuredClone(recorded.current.body);
   const holder = body.record?.same_as;
   if (holder !== undefined) {
@@ -1048,6 +1052,12 @@ const COLD_LANDING = `async (width, labelled, outcome) => {
   }
   if (!labelled) {
     body.record.pull.labels = [];
+  }
+  if (seeded) {
+    const pull = body.record.pull;
+    states.noteListed("https://github.com/octo/demo", [
+      { number: body.number, state: states.displayState(pull), updatedAt: pull.updated_at, title: pull.title },
+    ]);
   }
   const realFetch = window.__realFetch ??= window.fetch;
   const pane = document.getElementById("preview-pane");
@@ -1088,6 +1098,7 @@ const COLD_LANDING = `async (width, labelled, outcome) => {
   await document.fonts.ready;
   await frames();
   const landsAt = tabBarOf(inHand);
+  const inHandTitle = round(inHand.querySelector(".github-pull-header > h1").getBoundingClientRect().height);
   opened.dispose();
   document.documentElement.style.setProperty("--loading-state-delay", "60s");
   let answer = null;
@@ -1117,7 +1128,10 @@ const COLD_LANDING = `async (width, labelled, outcome) => {
       step,
       header: getComputedStyle(header).opacity,
       column: tabColumn ? getComputedStyle(tabColumn).opacity : null,
-      cold: (header.querySelector("h1")?.textContent ?? "").startsWith("Pull request #"),
+      cold: header.classList.contains("github-pull-cold"),
+      // The cold title the Pulls tab's row titles, the record's shape, or "Pull request #7".
+      seeded: header.querySelector("h1")?.classList.contains("github-pull-title-with-state") ?? false,
+      title: round(header.querySelector("h1")?.getBoundingClientRect().height ?? 0),
       tabBar: tabColumn ? tabBarOf(container) : null,
       live: tabColumn ? [...tabColumn.querySelectorAll(".tab-btn")].map((link) => link.checkVisibility({ visibilityProperty: true }) && !link.closest("[inert]")) : [],
       // The Diff summary's row: its pending placeholder from first paint (mb-30dz), and
@@ -1168,11 +1182,15 @@ const COLD_LANDING = `async (width, labelled, outcome) => {
   // A held landing's conversation is still out of sight, waiting for its Markdown.
   const bodyHeld =
     container.querySelector(".github-pull-body")?.classList.contains("github-pull-body-holding") ?? null;
+  // Whether the record's title keeps the cold title's two lines (the held class).
+  const held = header.classList.contains("github-pull-title-held");
   handle.dispose();
   document.documentElement.style.removeProperty("--loading-state-delay");
   window.fetch = realFetch;
   return {
     landsAt,
+    inHandTitle,
+    held,
     before,
     shownCold,
     landed,
@@ -2364,78 +2382,106 @@ async function main() {
       }
       if (runs("cold-landing")) {
         const landings = [];
-        for (const width of [560, 360]) {
-          for (const labelled of [false, true]) {
-            const kind = labelled ? "a labelled pull request" : "an unlabelled pull request";
-            for (const outcome of ["quiet", "held", "slow"]) {
-              const where = `${width} px, ${kind}, ${outcome}`;
-              const run = await browser.evaluate(
-                `(${COLD_LANDING})(${width}, ${labelled}, ${JSON.stringify(outcome)})`,
-              );
-              landings.push({ where, run });
-              const { before, shownCold, landed } = run;
-              check(
-                `${where}: the cold page's Diff summary row holds the placeholder from first paint, in its quiet period`,
-                before.pending === "hidden",
-                JSON.stringify(before),
-              );
-              check(
-                `${where}: the cold page is held unseen in the quiet period, its tab keys live`,
-                before.cold &&
-                  before.header === "0" &&
-                  before.column === "0" &&
-                  before.live.length === 3 &&
-                  before.live.every(Boolean),
-                JSON.stringify(before),
-              );
-              check(
-                `${where}: the record lands where it lands in hand, the header and tab column shown together`,
-                !landed.cold &&
-                  landed.header === "1" &&
-                  landed.column === "1" &&
-                  landed.tabBar === run.landsAt &&
-                  run.halfShown === 0,
-                JSON.stringify({ landsAt: run.landsAt, landed, halfShown: run.halfShown }),
-              );
-              if (outcome === "slow") {
-                // A read slower than the quiet period shows the cold header, rows held, its
-                // title two lines: one with labels lands moving the tab bar up by the title's
-                // held second line where its title is one line, if at all, and one with none
-                // up by the labels row and its gap too (mb-2u08, mb-wcbc). Never down.
+        for (const [seeded, outcomes] of [
+          [false, ["quiet", "held", "slow"]],
+          [true, ["quiet", "slow"]],
+        ]) {
+          for (const width of [560, 360]) {
+            for (const labelled of [false, true]) {
+              const kind = labelled ? "a labelled pull request" : "an unlabelled pull request";
+              for (const outcome of outcomes) {
+                const where = `${width} px, ${kind}, ${outcome}${seeded ? ", its Pulls row in hand" : ""}`;
+                const run = await browser.evaluate(
+                  `(${COLD_LANDING})(${width}, ${labelled}, ${JSON.stringify(outcome)}, ${seeded})`,
+                );
+                landings.push({ where, run });
+                const { before, shownCold, landed } = run;
                 check(
-                  `${where}: after the quiet period the cold header shows, rows held`,
-                  shownCold.cold && shownCold.header === "1" && shownCold.column === "1",
-                  JSON.stringify(shownCold),
+                  `${where}: the cold page's Diff summary row holds the placeholder from first paint, in its quiet period`,
+                  before.pending === "hidden",
+                  JSON.stringify(before),
                 );
                 check(
-                  `${where}: the placeholder shows with the cold header, so its row is never seen empty`,
-                  shownCold.pending === "visible",
-                  JSON.stringify(shownCold),
+                  `${where}: the cold page is held unseen in the quiet period, its tab keys live`,
+                  before.cold &&
+                    before.header === "0" &&
+                    before.column === "0" &&
+                    before.live.length === 3 &&
+                    before.live.every(Boolean),
+                  JSON.stringify(before),
                 );
                 check(
-                  `${where}: ${labelled ? "the record lands moving the tab bar up, if at all, never down" : "the record lands moving the tab bar up by the labels row and its gap, at least"}`,
-                  labelled ? shownCold.tabBar >= landed.tabBar : shownCold.tabBar > landed.tabBar,
-                  JSON.stringify({ shownCold, landed }),
+                  `${where}: the cold title is ${seeded ? "the Pulls row's, the record's shape" : '"Pull request #", held at two lines'}`,
+                  before.seeded === seeded &&
+                    (seeded ||
+                      before.title === 2 * run.inHandTitle ||
+                      before.title === run.inHandTitle),
+                  JSON.stringify({ before, inHandTitle: run.inHandTitle }),
                 );
-              } else {
+                // A record seen landing on a cold title held at two lines keeps them, so it
+                // lands moving nothing; one that lands unseen, or under its row's title, has its
+                // own lines, where it lands in hand.
+                const keeps = outcome === "slow" && !seeded;
+                const kept = landed.title - run.inHandTitle;
                 check(
-                  `${where}: the cold header never shows, so the tab bar never moves`,
-                  run.coldShown === 0 && run.tabBarsShown.length === 1,
-                  JSON.stringify({ coldShown: run.coldShown, tabBarsShown: run.tabBarsShown }),
+                  `${where}: the record lands where it lands in hand${keeps ? ", but for its title keeping the cold title's two lines" : ""}, the header and tab column shown together`,
+                  !landed.cold &&
+                    landed.header === "1" &&
+                    landed.column === "1" &&
+                    run.held === keeps &&
+                    (keeps ? kept === 0 || kept === run.inHandTitle : kept === 0) &&
+                    landed.tabBar === run.landsAt + kept &&
+                    run.halfShown === 0,
+                  JSON.stringify({
+                    landsAt: run.landsAt,
+                    inHandTitle: run.inHandTitle,
+                    held: run.held,
+                    landed,
+                    halfShown: run.halfShown,
+                  }),
                 );
-              }
-              if (outcome === "held") {
-                check(
-                  `${where}: a record that lands in the quiet period shows its header while the conversation still waits for its Markdown`,
-                  !landed.cold && landed.header === "1" && run.bodyHeld === true,
-                  JSON.stringify({ landed, bodyHeld: run.bodyHeld }),
-                );
+                if (outcome === "slow") {
+                  // A read slower than the quiet period shows the cold header, rows held, its
+                  // title the Pulls row's or two lines the record keeps: one with labels lands
+                  // moving nothing, and one with none moves the tab bar up by the labels row
+                  // and its gap (mb-2u08; review A on #608).
+                  check(
+                    `${where}: after the quiet period the cold header shows, rows held`,
+                    shownCold.cold && shownCold.header === "1" && shownCold.column === "1",
+                    JSON.stringify(shownCold),
+                  );
+                  check(
+                    `${where}: the placeholder shows with the cold header, so its row is never seen empty`,
+                    shownCold.pending === "visible",
+                    JSON.stringify(shownCold),
+                  );
+                  check(
+                    `${where}: ${labelled ? "the record lands moving nothing" : "the record lands moving the tab bar up by the labels row and its gap"}`,
+                    labelled
+                      ? shownCold.tabBar === landed.tabBar
+                      : shownCold.tabBar > landed.tabBar,
+                    JSON.stringify({ shownCold, landed }),
+                  );
+                } else {
+                  check(
+                    `${where}: the cold header never shows, so the tab bar never moves`,
+                    run.coldShown === 0 && run.tabBarsShown.length === 1,
+                    JSON.stringify({ coldShown: run.coldShown, tabBarsShown: run.tabBarsShown }),
+                  );
+                }
+                if (outcome === "held") {
+                  check(
+                    `${where}: a record that lands in the quiet period shows its header while the conversation still waits for its Markdown`,
+                    !landed.cold && landed.header === "1" && run.bodyHeld === true,
+                    JSON.stringify({ landed, bodyHeld: run.bodyHeld }),
+                  );
+                }
               }
             }
           }
         }
         process.stderr.write(
-          `cold-landing: ${JSON.stringify(landings.map(({ where, run }) => ({ where, landsAt: run.landsAt, cold: run.shownCold.tabBar, landed: run.landed.tabBar, coldShown: run.coldShown })))}\n`,
+          `cold-landing: ${JSON.stringify(landings.map(({ where, run }) => ({ where, landsAt: run.landsAt, cold: run.shownCold.tabBar, landed: run.landed.tabBar, held: run.held, coldShown: run.coldShown })))}\n`,
         );
         lap("the cold landings");
       }

@@ -2666,6 +2666,41 @@ async function coldHold(page) {
   const opened = await mountScripted(page, "");
   tell("mounted with its record in hand", opened.container);
   opened.handle.dispose();
+  // The cold header's title: "Pull request #7", held at two lines, or, with the Pulls tab's
+  // row for it in hand as the list notes it, the record's shape with the row's state and
+  // title, so the record lands on the same lines (review A on #608). A page does not know its
+  // repository before its record, so a number two repositories' lists both name titles no
+  // cold header. The rows are older than any record, so no later step's state is the list's.
+  const states = await import(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-state.js")).href
+  );
+  const titled = (step, container) => {
+    const title = container.querySelector(".github-pull-title");
+    const shape = title.classes.has("github-pull-title-with-state")
+      ? "the record's shape"
+      : "plain";
+    told.push(`${step}: title "${title.textContent}", ${shape}`);
+  };
+  const plain = await mountScripted(page, "", { cold: true });
+  titled("no Pulls row in hand, mounted with no record in hand", plain.container);
+  plain.handle.dispose();
+  const listedAt = "2000-01-01T00:00:00Z";
+  states.noteListed("https://github.com/octo/listed", [
+    { number: 7, state: "open", updatedAt: listedAt, title: "Count to two in the app" },
+  ]);
+  const seeded = await mountScripted(page, "", { cold: true });
+  titled("its Pulls row in hand, mounted with no record in hand", seeded.container);
+  tell("its Pulls row in hand, mounted with no record in hand", seeded.container);
+  seeded.handle.dispose();
+  states.noteListed("https://github.com/octo/also-listed", [
+    { number: 7, state: "merged", updatedAt: listedAt, title: "Another seven" },
+  ]);
+  const ambiguous = await mountScripted(page, "", { cold: true });
+  titled(
+    "two repositories' rows for its number, mounted with no record in hand",
+    ambiguous.container,
+  );
+  ambiguous.handle.dispose();
   return told;
 }
 

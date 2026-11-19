@@ -83,6 +83,19 @@ const READ = `(() => {
     pointsRight: Math.abs(turn.a - 1) < 0.01,
     animations: frame.getAnimations().length,
     buttonGround: getComputedStyle(button).backgroundColor,
+    // Whether a press anywhere in each box, its corners and middle a pixel in, lands on it.
+    owns: (() => {
+      const owns = (element) => {
+        if (!element) {
+          return null;
+        }
+        const rect = element.getBoundingClientRect();
+        const xs = [rect.left + 1, rect.left + rect.width / 2, rect.right - 1];
+        const ys = [rect.top + 1, rect.top + rect.height / 2, rect.bottom - 1];
+        return xs.every((x) => ys.every((y) => element.contains(document.elementFromPoint(x, y))));
+      };
+      return { button: owns(button), up: owns(up) };
+    })(),
   };
 })()`;
 
@@ -181,6 +194,19 @@ function checkChevron(where, at) {
       at.button.right <= at.up.left + TOLERANCE_PX &&
       at.up.top + at.up.height / 2 === buttonCenter,
     JSON.stringify({ button: at.button, frame: at.frame.left, up: at.up }),
+  );
+  // WCAG 2.2's minimum target, 2.5.8: at 20 px, 2 px apart, a press just left of Up hid the
+  // pane, and the divider's resize reach took the chevron's first 2 px (review A on #608).
+  const target = (rect) => rect.width >= 24 && rect.height >= 24;
+  check(
+    `${where}: the chevron and Up are each a 24 px target, neither over the other, and a press anywhere in either lands on it`,
+    at.up !== null &&
+      target(at.button) &&
+      target(at.up) &&
+      at.up.left >= at.button.right &&
+      at.owns.button === true &&
+      at.owns.up === true,
+    JSON.stringify({ button: at.button, up: at.up, owns: at.owns }),
   );
   check(
     `${where}: the chevron has no plate at rest`,

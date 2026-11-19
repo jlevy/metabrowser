@@ -404,6 +404,8 @@ path row across the divider: that row’s height, `--pane-header-row-height`, it
 across the window and the two rows’ text sits on one baseline.
 Up is an icon button, the arrow alone at rest and the hover surface and its hairline
 only while hovered or focused, as the navigation’s chevron is.
+Both are 24 px targets, `--view-header-up-size`, WCAG 2.2’s minimum, with 4 px between
+them; at 20 px and 2 px apart, a press just left of Up hid the navigation pane.
 It is optional by kind.
 A file’s and a folder’s always have one, because where a file is matters: Up, which
 keeps its place disabled at the served root, and the folders above the item, but not the
@@ -440,21 +442,28 @@ It is placed from the top of the title’s first line, the header’s top pad un
 eyebrow’s row, and from the header’s right edge, at a fixed height
 (`--view-header-corner-inset-top`, `--view-header-corner-inset-end`, and
 `--view-header-corner-height` in `static/styles.css`), whatever the rows hold, so a
-title that wraps or an address that fills the eyebrow never moves it, and a native bar
-that draws the same button can match it from the same three tokens.
-The corner follows the heading row in the reading order.
+title that wraps or an address that fills the eyebrow never moves it.
+Where on that line the button sits is the title’s, its label on the title’s first
+baseline, so a native bar that draws the same button matches it from those three tokens
+and the title’s type, `--page-title-font-size` and `--page-title-line-height`. The
+corner follows the heading row in the reading order.
 On a page whose repository is on github.com the corner is marked `data-counterpart`
 before the server has answered, and the title’s first line leaves it
 `--view-header-corner-room` from first paint, a float of the room’s width at that line’s
 end, so the button arriving moves nothing; the title’s lines under the first keep the
-row’s whole width.
-A main view too narrow to leave the title’s first line as much room as
-the corner’s, below the width the main view’s container condition names in
-`static/styles.css`, puts the corner on the eyebrow’s row instead, centered on its line
-as Up is, and the eyebrow’s end leaves it the room, so the title has the row’s whole
-width: beside the room, a title’s first line in a 260 px main view was 20 px, and a
-four-letter name broke after its first letter.
-`tests/test_view_header_chrome.py` holds that width to the tokens it is made of.
+row’s whole width. A main view too narrow to leave the title’s first line
+`--view-header-title-room` beside the corner’s room, below the width the main view’s
+container condition names in `static/styles.css`, puts the corner on the eyebrow’s row
+instead, centered on its line as Up is, and the eyebrow’s end leaves it the room, so the
+title has the row’s whole width.
+A page title breaks anywhere, so beside the room a name the row’s whole width holds
+broke mid-word: “docs” in a 260 px main view, “CONTRIBUTING.md” at 380 px, and
+“arch-views-models-routes.md” at 560 px.
+The title room is sized to hold most file and folder names at the title’s type, by the
+measurement beside the token; a longer name can still break beside the room in a main
+view a little wider than the condition’s. `tests/test_view_header_chrome.py` holds that
+width to the tokens it is made of, and draws those two names one line long at 480 and
+560 px, and the second beside the room at 720 px.
 A page with no counterpart keeps that room empty: a file that is not committed has none,
 and its corner says nothing.
 A plain folder, a checkout whose `origin` is on another host or that has none, and a
@@ -538,13 +547,15 @@ rest one gap apart. The title is as tall as its own lines, one or two.
 A title that held two lines from first paint, so a one-line title left the tab bar where
 a two-line one put it, stood its empty second line between the title and its author:
 36.5 px of space to the author’s text on a pull request’s page and 34 px on a commit’s,
-where a two-line title had 6 and 4 (Chrome 152, 2026-11-18). Only a pull request’s title
-while its record is on its way holds two lines, the most a record’s title takes, so the
-record lands moving the tab bar up a line, if at all, never down.
-Every line under the title is a `.page-header-line` at `--body-font-size`, the Diff
-summary’s row, the last line, among them, whose header the diff plugin sets at the same
-token; the one row that is not is a pull request’s labels, a row of chips at a chip’s
-size. An age in a line takes the line’s size, as an age does everywhere
+where a two-line title had 6 and 4 (Chrome 152, 2026-11-18). So moving between pull
+requests, or stepping through commits, whose titles take different lines moves the tab
+bar and the content under it by a line, as their content differs.
+A pull request’s title while its record is on its way lands moving nothing
+([The Pull Request Page](#the-pull-request-page)). Every line under the title is a
+`.page-header-line` at `--body-font-size`, the Diff summary’s row, the last line, among
+them, whose header the diff plugin sets at the same token; the one row that is not is a
+pull request’s labels, a row of chips at a chip’s size.
+An age in a line takes the line’s size, as an age does everywhere
 ([Type Scale](#type-scale)). A chip in a line keeps its own size, a ref chip by the
 [chip ratio](#one-ratio), and a state badge and a label at theirs
 ([Label Colors](#label-colors)), and a revision sits its one step down
@@ -2223,11 +2234,16 @@ The text wraps under its first line while the icon stays beside the first line, 
 lines at most, and one cut short there carries the whole of it in its tooltip.
 The title is as tall as its own lines, its author’s line `--page-title-gap` under it
 ([Page Headers](#page-headers)), so a pull request with a two-line title puts its tab
-bar a line lower than one with a one-line title; the cold page’s title holds two lines,
-the most a record’s takes, so a record lands moving the tab bar up a line, if at all.
-The icon and the text start at the header’s left edge, and the number, outside the
-clamped text, ends on the header’s right edge, level with the title’s last line, over
-the stack chip that ends the author’s row, whatever the title’s length.
+bar a line lower than one with a one-line title.
+The cold page’s title is the Pulls tab’s row for the pull request where the list has
+one, icon, text, and number, so it takes the record’s lines.
+Where the list has none it is “Pull request #7”, held at two lines, the most a record’s
+title takes, and a record that lands after the cold page was seen keeps those two lines
+on that page, so it lands moving nothing; a one-line title then has an empty second line
+there alone. A record that lands within the quiet period was never seen cold, and takes
+its own lines. The icon and the text start at the header’s left edge, and the number,
+outside the clamped text, ends on the header’s right edge, level with the title’s last
+line, over the stack chip that ends the author’s row, whatever the title’s length.
 The colored badge that leads the row of ages gives the state in text and the title icon
 is decorative. The header’s box is decided at first paint, on every tab, but for the
 title’s lines and two rows.
@@ -4557,16 +4573,18 @@ is not it.
 The chevron is the shared disclosure chevron in an icon button
 ([Every Icon-Only Control Is the Same Control](#every-icon-only-control-is-the-same-control)),
 muted at rest with the hover surface, pointing left at the pane it hides.
-It sits in the main frame’s gutter at the start of the top row, before a file’s or a
+It fills the main frame’s gutter at the start of the top row, before a file’s or a
 folder’s Up and address, centered on that row as the navigation title’s gear is across
 the divider, so the two read as the one top bar’s ends.
+It is a 24 px target, Up’s size, 4 px before Up, and the divider’s resize reach stops
+under the row, so a press anywhere in it hides the pane.
 A pull request’s and a commit’s page, which have no eyebrow, have it in the same place,
 in the gutter at the page’s top.
 It stays there while the pane is hidden.
-The stylesheet places it from the row’s height token, `--pane-header-row-height`, and
-the gutter’s, `--content-padding-x`, so no script measures it.
-It has no plate of its own, so the page’s edge and the pane’s shadow show through it;
-only the hover surface fills it.
+The stylesheet places it from the row’s height token, `--pane-header-row-height`, the
+gutter’s, `--content-padding-x`, and Up’s size, `--view-header-up-size`, so no script
+measures it. It has no plate of its own, so the page’s edge and the pane’s shadow show
+through it; only the hover surface fills it.
 Holding Shift badges it with Backslash, over its inline end, as every icon button’s
 badge sits, and over the Up beside it.
 

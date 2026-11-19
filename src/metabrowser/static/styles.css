@@ -735,20 +735,24 @@
      metadata line after it is every page's, `--page-title-gap`. The top pad is the
      content's, the pad a pull request's page and a commit's have above their titles, so a
      title sits as far under what is above it on every page. 22 px is the body size's line
-     (21 px) with room for a badge's box, 22 px. The Up control's box is 20 px, inside the
-     eyebrow's row. */
+     (21 px) with room for a badge's box, 22 px. The Up control's box is 24 px, inside the
+     eyebrow's row: a pointer target of WCAG 2.2's minimum (2.5.8), as the navigation
+     title's gear is, and the size of the chevron before it (`.nav-collapse-toggle`). At
+     20 px, 2 px apart, the two were each under the minimum, and a press just left of Up
+     hid the navigation pane (review A on pull request 608). */
   --view-header-padding-top: var(--content-padding-y);
   --view-header-padding-bottom: 8px;
   --view-header-line-height: 22px;
-  --view-header-up-size: 20px;
+  --view-header-up-size: 24px;
   /* The header's corner, which holds a page's View on GitHub button (docs/design-system.md,
      "View on GitHub"): at the end of the title's first line, from the top of that line
-     and the header's right edge, and the button's height. The corner sets its button on
-     the title's baseline (`.view-header-end`); a native bar that draws the same button,
-     as the macOS app's over its GitHub popover may, takes the same three, so the button
-     does not move between them. The top inset is the header's top pad, under the
-     eyebrow's row where there is one; the height is a chip group's whole box, a chip's
-     20 px line and its frame's 1 px above and below. */
+     and the header's right edge, and the button's height. Where on that line the button
+     sits is the title's: the corner sets its label on the title's first baseline
+     (`.view-header-end`), so a native bar that draws the same button, as the macOS app's
+     over its GitHub popover may, takes the title's type with these three to put it in the
+     same place. The top inset is the header's top pad, under the eyebrow's row where
+     there is one; the height is a chip group's whole box, a chip's 20 px line and its
+     frame's 1 px above and below. */
   --view-header-corner-inset-top: var(--view-header-padding-top);
   --view-header-corner-inset-end: var(--content-padding-x);
   --view-header-corner-height: 22px;
@@ -759,6 +763,15 @@
      to the next 10 px. tests/dom/github-pull-header-chrome.mjs (`corner`) and
      tests/dom/view-header-chrome.mjs hold the button and its gap within it. */
   --view-header-corner-room: 150px;
+  /* The first line a title keeps beside the corner's room: a name up to this wide is
+     whole on one line there. Below the main view's width that leaves it (the container
+     condition after `.view-header-title-group::before`), the corner is on the eyebrow's
+     row instead. Measured 2026-11-19 in Chrome 152 with the shell's faces, this
+     repository's 2,164 file and folder names at the title's type: half are at most 250
+     px, 90% at most 424 ("test_kpress_dynamic_render_smoke.py"), 95% at most 505. 450 px
+     holds 91% of them. A container condition takes no var(), so the condition is a number
+     tests/test_view_header_chrome.py holds to this and the tokens beside it. */
+  --view-header-title-room: 450px;
   --file-tab-padding-x: 12px;
   --file-tab-padding-y: 4px;
   --file-tab-align-adjust: 3px;
@@ -3023,10 +3036,14 @@ html.theme-anim .menu {
   z-index: var(--z-resize-handle);
   transition: background var(--transition-fast);
 }
+/* The handle's reach, 4 px either side of the divider, starts under the top row: in the
+   row the main page's side is the chevron's (`.nav-collapse-toggle`), which fills the
+   gutter there, and the reach took a press on its first 4 px for a resize (Chrome 152,
+   2026-11-19). The divider's own 4 px are the handle's in the row too. */
 .resize-handle::after {
   content: "";
   position: absolute;
-  top: 0;
+  top: var(--pane-header-row-height);
   bottom: 0;
   left: -4px;
   right: -4px;
@@ -3058,9 +3075,10 @@ html.theme-anim .menu {
    centered on, so it sits across from the menu's gear (mb-tl7p). A page with no eyebrow,
    a pull request's or a commit's, has it at the same place. It is in the frame, so it
    stays when the pane is hidden and slides with the page. Its box is the eyebrow's Up
-   control's, so the two icon buttons in the row are one size, the gutter's 2 px either
-   side of it; it has no plate, so the page's edge and the pane's shadow show through it,
-   and only the hover surface fills it. The shared chevron points right; turned, it points
+   control's, so the two icon buttons in the row are one size, and fills the gutter, the
+   divider's resize reach kept out of the row (`.resize-handle::after`); it has no plate,
+   so the page's edge and the pane's shadow show through it, and only the hover surface
+   fills it. The shared chevron points right; turned, it points
    left, at the pane it hides, and it turns back when the pane is hidden. On the shortcut
    strip's row at the page's foot, it was a script's measurement to keep there. */
 .nav-collapse-toggle {
@@ -4540,6 +4558,9 @@ a.tab-btn {
    disabled in place, dimmed, and surfaces nothing. */
 .view-header-eyebrow > .folder-up {
   --icon-btn-size: var(--view-header-up-size);
+  /* The navigation's chevron fills the gutter before it (`.nav-collapse-toggle`): 4 px
+     between the two targets, so neither is under the other's edge. */
+  margin-inline-start: 4px;
 }
 .view-header-eyebrow > .folder-up > .parent-nav-arrow {
   color: inherit;
@@ -4649,17 +4670,20 @@ a.tab-btn {
   inline-size: var(--view-header-corner-room);
   block-size: calc(var(--page-title-font-size) * var(--page-title-line-height));
 }
-/* A main view too narrow to leave the title's first line as much room as the corner's
-   puts the corner on the eyebrow's row, centered on its line as the row's controls are,
-   and gives the eyebrow's end its room, so the title has the heading row's whole width.
-   Beside the corner's room, a first line of 20 px broke a four-letter name after its
-   first letter, since a page title breaks anywhere (`.page-heading`), and a float does
-   not move a word that can break below it (Chrome 152, a 260 px main view, 2026-11-18).
-   The width is where the title group, the main view less its side pads, the icon, and
-   the icon's 8 px gap, is two rooms wide: 2 * 24 + 24 + 8 + 2 * 150 px.
-   tests/test_view_header_chrome.py holds it to those tokens. A container condition takes
-   no var(). */
-@container kpress-doc (width < 380px) {
+/* A main view too narrow to leave the title's first line `--view-header-title-room`
+   beside the corner's room puts the corner on the eyebrow's row, centered on its line as
+   the row's controls are, and gives the eyebrow's end its room, so the title has the
+   heading row's whole width. A name wider than the first line beside the room breaks
+   there, since a page title breaks anywhere (`.page-heading`), and a float does not move
+   a word that can break below it: beside the room, "docs" broke after its first letter in
+   a 260 px main view, "CONTRIBUTING.md" at 380 px, and "arch-views-models-routes.md" at
+   560 px, each of which the row's whole width holds (Chrome 152, 2026-11-18 and 19). The
+   width is the title group's, the main view less its side pads, the icon, and the icon's
+   8 px gap, at the room and the title's first line: 2 * 24 + 24 + 8 + 150 + 450 px.
+   tests/test_view_header_chrome.py holds it to those tokens. A name wider than
+   `--view-header-title-room` still breaks beside the room in a main view a little wider
+   than this. */
+@container kpress-doc (width < 680px) {
   .view-header:has(> .view-header-eyebrow:not(:empty)) > .view-header-end {
     inset-block-start: calc(
       (var(--pane-header-row-height) - 1px - var(--view-header-corner-height)) /

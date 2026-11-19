@@ -34,11 +34,25 @@
    switches between PRs. A record's title held two lines too, and its held second line
    stood between a one-line title and the author's line, 36.5 px of space where a two-line
    title had 6 (mb-wcbc); the title cut short at two lines is a page title's height, one
-   line or two, and the author's line `--page-title-gap` under it (`.page-header`). Only the
-   title while the record is on its way holds two (below), so a record lands moving the
-   tab bar up a line, if at all, never down. */
+   line or two, and the author's line `--page-title-gap` under it (`.page-header`). So a
+   switch between pull requests whose titles take different lines moves the tab bar by the
+   difference, as their content differs. The title while the record is on its way is the
+   Pulls tab's row's, or holds two lines that a record seen landing keeps (below), so a
+   record lands moving nothing. */
 .github-pull-header {
   padding: var(--view-header-padding-top) var(--content-padding-x) var(--content-padding-y);
+}
+/* A cold header seen with its title "Pull request #7", held at two lines (below) for want
+   of the Pulls tab's row to title it with, has the record's title keep the two lines for
+   the page's life (pull-page.js, `holdColdPage`), so a record read slower than the quiet
+   period lands moving nothing; a one-line title then has an empty second line on that page
+   alone. Where the Pulls tab has the row, the cold title is the row's and has the record's
+   lines, and a record that lands within the quiet period was never seen cold: both keep
+   their own lines. Measured in Chrome 152 at 560 px before the hold, 2026-11-18: a one-line
+   title's slow landing moved the tab bar up 30 px, from 240 to 210, and with no labels row
+   to keep, 56 px, to 184. */
+.github-pull-title-held > .github-pull-title {
+  min-height: 2lh;
 }
 /* The header's corner, its View on GitHub button (pull-page.js; docs/design-system.md, "View
    on GitHub"), is a view header's, `.view-header-end` in static/styles.css, placed in the

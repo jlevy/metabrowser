@@ -46,6 +46,14 @@ const ABSENT = "/view/docs/notes/draft.txt";
 // The commit's page at a pane where its reading column ends short of the corner, and one
 // where it reaches it.
 const COMMIT_PANES = [1180, 480];
+// Names the heading row's whole width holds, at main views where the corner's room beside
+// the title's first line broke them mid-word (review A on #608), and one main view wide
+// enough for that room and the name beside it.
+const BAND = [
+  { pane: 480, href: "/view/CONTRIBUTING.md" },
+  { pane: 560, href: "/view/docs/notes/arch-views-models-routes.md" },
+  { pane: 720, href: "/view/docs/notes/arch-views-models-routes.md" },
+];
 
 async function serve() {
   const server = spawn(
@@ -463,6 +471,7 @@ async function main() {
   const absent = [];
   const commits = [];
   const ups = [];
+  const band = [];
   try {
     phase("chrome");
     await browser.send("Page.enable");
@@ -504,6 +513,26 @@ async function main() {
         }
       }
       phase(`${theme} pages`);
+      for (const { pane, href } of theme === "light" ? BAND : []) {
+        await browser.send("Emulation.setDeviceMetricsOverride", {
+          width: pane + 300,
+          height: 800,
+          deviceScaleFactor: 1,
+          mobile: false,
+        });
+        await browser.send("Page.navigate", { url: `${server.base}${href}` });
+        await browser.waitFor("document.readyState === 'complete'");
+        await browser.evaluate(
+          "document.documentElement.style.setProperty('--tree-pane-width', '300px'), true",
+        );
+        await browser.waitFor(
+          "document.querySelector('#preview-pane > .file-header .view-header-end > .counterpart') !== null",
+        );
+        await browser.evaluate(
+          "document.fonts.ready.then(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))).then(() => true)",
+        );
+        band.push({ pane, href, ...(await browser.evaluate(READ)) });
+      }
       await browser.send("Emulation.setDeviceMetricsOverride", {
         width: 1200,
         height: 800,
@@ -621,7 +650,7 @@ async function main() {
     await browser.close();
     await server.stop();
   }
-  process.stdout.write(`${JSON.stringify({ results, menus, absent, commits, ups })}\n`);
+  process.stdout.write(`${JSON.stringify({ results, menus, absent, commits, ups, band })}\n`);
 }
 
 main().catch((error) => {
