@@ -414,7 +414,17 @@ Start signed out: choose Metabrowser > Clear GitHub Data… and Clear.
    signed in. The default browser’s own sign-in did not change.
    Note whether a passkey or a security key is offered and works, and what an
    organization’s single sign-on does; neither is checked yet.
-7. **Clear GitHub Data.** Metabrowser > Clear GitHub Data… asks first, with Cancel the
+7. **Switching and closing folders.** With Settings > Open folders in set to Windows,
+   open a second checkout of a repository on github.com, so two such folders are open,
+   and show the first in a window.
+   With the popover open, press Shift-Command-O and choose the second folder: the window
+   shows it, and no popover is left over it.
+   Click View on GitHub there, go to a pull request in the popover, and type a comment
+   without sending it. Switch the window to the first folder and back to the second
+   within `GitHubPopoverState.keptAfterClosing`, and click View on GitHub: the comment
+   is still there. With the popover open, choose File > Close Folder: the folder closes,
+   and the popover with it.
+8. **Clear GitHub Data.** Metabrowser > Clear GitHub Data… asks first, with Cancel the
    default: Return keeps the sign-in.
    Clear signs you out: an open popover reloads, signed out, and so does every other
    folder’s popover the next time it opens, in a window or in the background.

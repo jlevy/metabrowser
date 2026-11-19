@@ -393,7 +393,8 @@ The app moves nothing itself.
 - The View on GitHub popover cannot be resized: it takes most of the window each time it
   opens, so a larger window gives a larger popover.
 - Text typed in the View on GitHub popover and not sent is lost when its window or its
-  folder closes, or when its tab or background folder gives up its page to save memory.
+  folder closes, when its window switches to another folder while another window shows
+  this one, or when its tab or background folder gives up its page to save memory.
 - A restarted server comes back on a new port, and local storage is per origin, so what
   a page kept there starts fresh, as with the CLI.
 - The app does not pass state-location variables (`XDG_CACHE_HOME`,

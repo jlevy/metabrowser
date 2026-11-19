@@ -121,19 +121,23 @@ public nonisolated enum GitHubViewPolicy {
 /// What the popover's GitHub view was opened for, which decides whether opening it again
 /// loads a page.
 ///
-/// A window keeps its popover's web view for `keptAfterClosing` after the popover closes,
-/// so opening View on GitHub again for the same item within that time shows the popover at
-/// once, as it was left, wherever the user went on github.com since, with its Back and
+/// Each folder page has a popover of its own (`FolderPage`), and keeps its web view for
+/// `keptAfterClosing` after the popover closes, so opening View on GitHub again for the same
+/// item within that time shows the popover at once, as it was left, wherever the user went on github.com since, with its Back and
 /// Forward history; opening it for another item loads that item's page in it, and so does
 /// opening it for an item whose page never loaded. While the page holds text the user has
 /// not sent (`unsentTextProbe`), the web view stays.
 public nonisolated struct GitHubPopoverState: Equatable, Sendable {
     /// How long a closed popover keeps its web view, and with it a WebContent process of its
-    /// own, which `TabDiscardPolicy` does not count.
+    /// own, which `TabDiscardPolicy` does not count. A web view holding text the user has not
+    /// sent (`unsentTextProbe`) stays for another `keptAfterClosing`, as often as it still
+    /// does, so time alone does not bound these processes: there is at most one per live
+    /// folder page, since a page the policy discards, or that closes, lets its popover's web
+    /// view go at once.
     ///
     /// Long enough to look from the page to github.com and back a few times without a
-    /// reload, short enough that a window's GitHub page does not stay in memory while the
-    /// user works on in Metabrowser. Measured on macOS 26.5.2 with
+    /// reload, short enough that a page's GitHub view does not stay in memory while the user
+    /// works on in Metabrowser. Measured on macOS 26.5.2 with
     /// `scripts/measure-web-views.swift` on a github.com file page (a README), signed out,
     /// 3 views:
     ///

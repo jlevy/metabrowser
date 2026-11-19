@@ -671,8 +671,10 @@ view first built for `mb-lxgw`).
   WebKit’s reload does nothing without a committed page.
   The `NSPopover` holds its content, the controller, so the controller makes one each
   time the popover opens and lets it go when it closes, and a closed page frees both.
-  Its WebContent process is outside `TabDiscardPolicy`, bounded by that time instead;
-  the constant’s comment holds what one github.com page costs, measured, and notes that
+  Its WebContent process is outside `TabDiscardPolicy`. Unsent text keeps it again and
+  again, so time alone does not bound it: there is at most one per live page, as a page
+  the policy discards, or that closes, lets its popover’s web view go.
+  The constant’s comment holds what one github.com page costs, measured, and notes that
   WebKit, not the app, decides when a released view’s process ends.
 - **Tests.** `GitHubViewTests` cover the button’s page, the message’s shape, the anchor
   and the size, the policy, the popover’s state and reloads, and the location;
