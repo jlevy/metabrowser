@@ -873,6 +873,39 @@ host turns on.
 Until then `builtin_plugins/markdown/print-indicator.js` draws it, and its
 header says what KPress lacks.
 
+## View on GitHub
+
+### Where It Appears
+
+A page has a View on GitHub control when github.com has a page for the same thing.
+`GET /api/counterpart?page=<page>` (`src/metabrowser/counterpart.py`) is the one source
+of where it goes: it answers the URL, or `null` and the reason there is none, and no
+page builds a github.com URL itself.
+`PAGES` in that module is this table, and `tests/test_counterpart.py` holds the two
+together.
+
+Each counterpart is `https://github.com/<owner>/<repository>/` followed by the shape
+below. `<sha>` is the commit the page shows its content from: a pin’s, or `HEAD`’s for
+the working tree. `<hash>` is GitHub’s anchor for a changed file, the SHA-256 of its
+path. Every page also has none when the served folder has no repository on github.com
+(`no_repository`), and an address that is none of these pages has none (`not_a_page`).
+
+| Page | Counterpart | Other reasons it has none |
+| --- | --- | --- |
+| `/view/<path>` | `blob/<sha>/<repo path>` | `uncommitted`, `untracked`, `ignored`, `missing`, `not_on_origin` |
+| `/view/<path>/` | `tree/<sha>/<repo path>` | `uncommitted`, `untracked`, `ignored`, `missing`, `not_on_origin` |
+| `/view/` | `tree/<sha>/<served prefix>`, or `tree/<sha>` at the repository root | `uncommitted`, `untracked`, `ignored`, `missing`, `not_on_origin` |
+| `/pull/<n>`, `/pull/<n>/files`, `/pull/<n>/checks` | `pull/<n>`, `pull/<n>/files`, `pull/<n>/checks` | None |
+| `/pull/<n>/files/<path>` | `pull/<n>/files#diff-<hash>` | None |
+| `/commit/<sha>` | `commit/<sha>` | `not_on_origin` |
+| `/commit/<sha>/<path>` | `commit/<sha>#diff-<hash>` | `not_on_origin` |
+| `/pulls` | `pulls` | None |
+
+`CounterpartReason`, beside `PAGES`, says what each reason means.
+A file and a folder are told apart by the commit’s tree, not by the trailing slash.
+There is no page of a branch’s commits to map: the Commits tab is a pane, not an
+address.
+
 ## Control Families
 
 Every button belongs to one role-specific primitive:

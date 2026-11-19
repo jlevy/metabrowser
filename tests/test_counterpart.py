@@ -1,0 +1,191 @@
+"""A page's github.com counterpart: the mapping's one statement, and the route's refusals.
+
+``tests/golden/cli-api-counterpart.tryscript.md`` answers every page and every reason
+over a checkout and a mirror; this module holds the design system's table to
+:data:`~metabrowser.counterpart.PAGES`, and checks what needs no repository.
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+from typing import get_args
+
+import pytest
+from starlette.testclient import TestClient
+
+from metabrowser import server
+from metabrowser.builtin_plugins.github.pull_file_anchor import path_digest
+from metabrowser.builtin_plugins.github.urls import (
+    GithubUrlReducer,
+    file_anchor,
+    pulls_url,
+    repository_url,
+)
+from metabrowser.cache.urls import (
+    FileAnchor,
+    GitSource,
+    RepositorySelection,
+    classify_root_argument,
+)
+from metabrowser.counterpart import MAX_PAGE_CHARS, PAGES, REASONS, CounterpartReason
+
+DESIGN_SYSTEM = Path(__file__).resolve().parents[1] / "docs" / "design-system.md"
+CANONICAL = "https://github.com/octo/demo"
+COMMIT = "6df6ba6b3b36f70b432b10b50b9a156ba27bc348"
+# `printf README.md | shasum -a 256`, as tests/test_github_url_reducer.py has it.
+README_DIGEST = "b335630551682c19a781afebcf4d07bf978fb1f8ac04c6bf87428ed5106870f5"
+
+
+def _section(text: str, heading: str) -> str:
+    start = text.index(f"\n{heading}\n")
+    level = heading.split(" ", 1)[0]
+    after = text[start + len(heading) + 2 :]
+    following = re.search(rf"^#{{1,{len(level)}}} ", after, flags=re.MULTILINE)
+    return after if following is None else after[: following.start()]
+
+
+def _where_it_appears() -> str:
+    return _section(DESIGN_SYSTEM.read_text(encoding="utf-8"), "### Where It Appears")
+
+
+def _table_rows(section: str) -> list[list[str]]:
+    rows = [line for line in section.splitlines() if line.startswith("| ")]
+    cells = [[cell.strip() for cell in row.strip("|").split(" | ")] for row in rows]
+    # The header and its rule.
+    return cells[2:]
+
+
+def _plain(cell: str) -> str:
+    return cell.replace("`", "")
+
+
+def test_the_design_system_table_is_the_mapping() -> None:
+    rows = _table_rows(_where_it_appears())
+
+    assert [(_plain(page), _plain(counterpart)) for page, counterpart, _ in rows] == [
+        (shape.page, shape.counterpart) for shape in PAGES.values()
+    ]
+    assert [
+        () if reasons == "None" else tuple(_plain(reasons).split(", "))
+        for _page, _counterpart, reasons in rows
+    ] == [shape.reasons for shape in PAGES.values()]
+
+
+def test_every_reason_is_listed_once_and_named_where_the_table_is() -> None:
+    assert get_args(CounterpartReason.__value__) == REASONS
+    assert len(set(REASONS)) == len(REASONS)
+    for shape in PAGES.values():
+        assert set(shape.reasons) <= set(REASONS), shape
+        assert "no_repository" not in shape.reasons and "not_a_page" not in shape.reasons
+    section = _where_it_appears()
+    for reason in REASONS:
+        assert f"`{reason}`" in section, reason
+
+
+# ── The route ───────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "query",
+    [{}, {"page": ""}, {"page": "/" + "x" * MAX_PAGE_CHARS}],
+    ids=["absent", "empty", "too long"],
+)
+def test_a_request_without_a_page_is_refused(tmp_path: Path, query: dict[str, str]) -> None:
+    server._set_root_dir(tmp_path)
+
+    answer = TestClient(server.app).get("/api/counterpart", params=query)
+
+    assert answer.status_code == 400
+    assert answer.json()["code"] == "invalid_request"
+
+
+@pytest.mark.parametrize(
+    "page",
+    [
+        "/settings",
+        "/view",
+        "/pull/0",
+        "/pull/7/commits",
+        "/commit/6df6ba6",
+        "/commit/main",
+        "/" + "x" * (MAX_PAGE_CHARS - 1),
+    ],
+)
+def test_an_address_that_is_no_page_has_no_counterpart(tmp_path: Path, page: str) -> None:
+    # Told before the repository is looked for, so a folder with none answers it too.
+    server._set_root_dir(tmp_path)
+
+    answer = TestClient(server.app).get("/api/counterpart", params={"page": page})
+
+    assert answer.status_code == 200
+    assert answer.json() == {"page": page, "counterpart": None, "reason": "not_a_page"}
+
+
+def test_the_route_is_a_get(tmp_path: Path) -> None:
+    server._set_root_dir(tmp_path)
+
+    answer = TestClient(server.app).post("/api/counterpart?page=/view/", json={})
+
+    assert answer.status_code == 405
+
+
+# ── The URLs, which the GitHub plugin builds ────────────────────────
+
+
+def _selection(url: str) -> RepositorySelection:
+    classified = classify_root_argument(url, reducers=(GithubUrlReducer(),))
+    assert isinstance(classified, GitSource), classified
+    assert classified.normalized == CANONICAL
+    assert classified.selection is not None
+    return classified.selection
+
+
+def test_a_file_anchor_is_the_one_a_pull_request_file_resolves_by() -> None:
+    assert file_anchor(b"README.md") == FileAnchor(README_DIGEST)
+    for path in ("README.md", "docs/雪 notes.md"):
+        assert file_anchor(path.encode()).digest == path_digest(path)
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        (
+            f"{CANONICAL}/commit/{COMMIT}#diff-{README_DIGEST}",
+            RepositorySelection(kind="commit", commit=COMMIT, pull_file=FileAnchor(README_DIGEST)),
+        ),
+        (
+            f"{CANONICAL}/commit/{COMMIT}#diff-{README_DIGEST}R3",
+            RepositorySelection(
+                kind="commit", commit=COMMIT, pull_file=FileAnchor(README_DIGEST, "R3")
+            ),
+        ),
+        (f"{CANONICAL}/commit/{COMMIT}#L3", RepositorySelection(kind="commit", commit=COMMIT)),
+    ],
+    ids=["file", "file line", "other fragment"],
+)
+def test_a_commit_page_anchors_a_file_as_a_changes_tab_does(
+    url: str, expected: RepositorySelection
+) -> None:
+    selection = _selection(url)
+
+    assert selection == expected
+    again = GithubUrlReducer().web_url(CANONICAL, expected)
+    assert again is not None
+    assert _selection(again) == expected
+
+
+def test_a_pull_request_commit_keeps_no_anchor() -> None:
+    url = f"{CANONICAL}/pull/12/commits/abcdef0#diff-{README_DIGEST}"
+
+    selection = _selection(url)
+
+    assert selection == RepositorySelection(kind="commit", commit="abcdef0", pull_request=12)
+    assert GithubUrlReducer().web_url(CANONICAL, selection) == (
+        f"{CANONICAL}/pull/12/commits/abcdef0"
+    )
+
+
+def test_the_list_of_pull_requests_is_beside_the_repository() -> None:
+    assert pulls_url(repository_url("octo", "demo")) == f"{CANONICAL}/pulls"
+    assert pulls_url("https://example.com/octo/demo") is None

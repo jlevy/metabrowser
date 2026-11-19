@@ -37,6 +37,7 @@ registered, any other status, and a golden that never runs the route.
 | `/api/cache/source` | covered | `--api` | `cli-api-cache.tryscript.md` |
 | `/api/cache/stores` | covered | `--api` | `cli-api-cache.tryscript.md`, `cli-checkout-overlay.tryscript.md`, `cli-checkout-overlay.txt` |
 | `/api/identity` | covered | `--api` | `cli-api-shell.tryscript.md`, `cli-api-source.tryscript.md`, `cli-github-pull.tryscript.md` |
+| `/api/counterpart` | covered | `--api` | `cli-api-counterpart.tryscript.md` |
 | `/api/source/status` | covered | `--api` | `cli-api-shell.tryscript.md`, `cli-api-source.tryscript.md`, `cli-checkout-overlay.tryscript.md`, `cli-checkout-overlay.txt` |
 | `/api/source/refresh` | covered | `--api --data` | `cli-api-source.tryscript.md`, `cli-api-shell.tryscript.md` |
 | `/api/source/pin` | covered | `--api --data` | `cli-api-source.tryscript.md`, `cli-api-source-checkout.txt`, `cli-api-shell.tryscript.md`, `cli-api-diff-view-file.tryscript.md` |
@@ -114,6 +115,7 @@ interaction session and fails when a named function did not execute.
 | `navigation.served-source-kind` | interaction | `static/plugin-sdk.js#sourceKind`, `static/navigation.js#displayPath` | `/view`, `/api/tree` | `node tests/dom/source-kind-session.js` | `cli-ui-source-kind.tryscript.md` |
 | `source.pinned-revision` | data | `/api/source/status` | `owned-route` | `metab shellroot --api /api/source/status` | `cli-api-shell.tryscript.md` |
 | `shell.window-title` | data | `/api/identity` | `owned-route` | `metab shellroot --api /api/identity` | `cli-api-shell.tryscript.md` |
+| `github.page-counterpart` | data | `/api/counterpart` | `owned-route` | `metab checkout --api '/api/counterpart?page=/view/docs/guide.md'` | `cli-api-counterpart.tryscript.md` |
 | `shell.page-connections` | interaction | `static/navigation.js#createPageConnections` | `/api/catalog`, `transport-exempt:/api/events` | `node tests/dom/page-connections-session.js` | `cli-ui-page-connections.tryscript.md` |
 | `shell.key-reveal` | interaction | `static/key-reveal.js#createKeyReveal`, `static/keyboard-shortcuts.js#attachTarget`, `static/keyboard-shortcuts.js#attachNumbered`, `static/shell-keymap.js#createShellKeymap`, `static/filter-controls.js#activateMenuRow`, `static/filter-controls.js#focusMenu`, `static/filter-controls.js#keepFocus` | `/api/file`, `/api/git/repo`, `/api/source/status` | `node tests/dom/key-reveal-session.js` | `cli-ui-key-reveal.tryscript.md` |
 | `shell.shortcut-strip-fit` | interaction | `static/keyboard-help.js#keepStripOnOneRow`, `static/keyboard-help.js#stripItemsThatFit` | `local-only` | `node tests/dom/shortcut-strip-session.js` | `cli-ui-shortcut-strip.tryscript.md` |
