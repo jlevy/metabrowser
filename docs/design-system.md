@@ -3803,14 +3803,14 @@ stop, because each is an independent control.
 
 ### Grouping the Files Tree
 
-**The Files tab’s filter row holds Group by and Show ignored; the three filters sit in
+**The Files tab’s filter row holds Group by; the three filters and Show ignored sit in
 the drawer behind the chevron.** Group by splits the tree into sections and removes
 nothing, so it needs no drawer and no badge.
-Show ignored follows it: its tick states its own direction, so the row shows its state
-and the badge need not.
-A Git revision has no gitignored entries, so its row has no Show ignored.
-The drawer holds Modified within, File type, and Minimum file size, and the chevron’s
-badge counts the ones set.
+The drawer holds Modified within, File type, and Minimum file size, then Show ignored,
+whose tick states its own direction.
+The chevron’s badge counts the ones set, Show ignored turned off among them, since the
+closed drawer hides it.
+A Git revision has no gitignored entries, so its drawer has no Show ignored.
 Clear sits beside the chevron and shows while any filter is set, Show ignored included;
 it resets them all, Show ignored back on, and keeps the grouping.
 
@@ -3904,11 +3904,12 @@ it resets them all, Show ignored back on, and keeps the grouping.
   and runs once they paint; started at once, it would discard them and begin again, and
   on a folder whose files keep changing each refresh would restart the wait.
 - **Width.** The row fits the default pane width at its widest, “No grouping” with Clear
-  and the badge showing, in the default font set.
-  The badge sits against the chevron to make that room; the measurements are beside
-  `.nav-filter-bar-end > .chip-badge` in `styles.css`. In a narrower pane, or in the
-  system font set, the row wraps: Show ignored moves down, then Clear and the chevron
-  ([Navigation Toolbars Wrap](#navigation-toolbars-wrap)).
+  and the badge showing, in both font sets; the measurements are beside
+  `.nav-filter-bar-end > .chip-badge` in `styles.css`. In a narrower pane the row wraps,
+  Clear and the chevron moving down together
+  ([Navigation Toolbars Wrap](#navigation-toolbars-wrap)). The open drawer wraps the
+  same way: at the default pane its three menus take its first line and Show ignored its
+  second.
 
 The server decides membership, order, and counts (`/api/tree?group_by=` and `?group=`,
 `metabrowser/tree_groups.py`), pinned by
@@ -4477,7 +4478,10 @@ muted at rest with the hover surface, pointing left at the pane it hides.
 It sits in the main frame, just right of the pane’s shadow, centered on the shortcut
 strip’s row, so it reads as the strip’s neighbour while belonging to the page; it stays
 there, and on that row, while the pane is hidden.
-It has the page’s ground as a plate, since the page’s content can run under it.
+It has no plate of its own, so the page’s edge and the pane’s shadow show through it;
+only the hover surface fills it.
+Holding Shift badges it with Backslash, over its inline end, as every icon button’s
+badge sits.
 
 The pane does not shrink.
 Hidden, it leaves the layout, keeps its width under the frame, and is `inert`, so no Tab
@@ -4629,11 +4633,12 @@ The Files row and the Pulls filters are one primitive, `.nav-toolbar-row` in
   That is also the gap between controls along a line and above the first line and below
   the last, so a wrapped toolbar is a grid of one spacing and reads as one toolbar, and
   it grows by a line and a gap for each line it adds.
-  Every control is one line tall: a shorter one, Show ignored’s checkbox, is centered in
-  a line’s height, and a taller one, a `.btn` such as Reload, is held to it, so no line
-  is cramped and none stands taller than the rest.
-  An open drawer’s menus wrap on the same gap, and a closed drawer adds nothing under
-  the lines. The Commits tally is text, so its lines are its line height apart,
+  Every control is one line tall: a shorter one is centered in a line’s height, and a
+  taller one, a `.btn` such as Reload, is held to it, so no line is cramped and none
+  stands taller than the rest.
+  An open drawer’s controls wrap on the same gap and are one line tall too, Show
+  ignored’s checkbox centered in its line, and a closed drawer adds nothing under the
+  lines. The Commits tally is text, so its lines are its line height apart,
   `--nav-metadata-line-height`, as any metadata line’s are; a tab is its own line, so
   the tab bar’s lines are a tab’s height apart.
 - **A segmented group.** One that its whole line cannot hold joined takes the cluster
@@ -4974,7 +4979,7 @@ A pull request’s changed files under its row keep the tooltips the tree gives 
 its full path when its row shows only its name, “not in this comparison”, the name it
 was renamed from, and what a folder’s sums leave out, the counts alone.
 
-**Restating is not adding.** A “Show ignored” check, in the Files filter row and a
+**Restating is not adding.** A “Show ignored” check, in the Files filter drawer and a
 folder’s rollup, has no tooltip, as its label says it; nor has the treemap’s parent
 button, which shows the folder it opens; nor a merge’s arrow, beside the two names it
 would restate; and a crumb’s tooltip is its own name, cut short, not the path the trail

@@ -226,9 +226,9 @@
 
   /**
    * The filters set behind the Files drawer's chevron, which its badge counts: Modified
-   * within, File type, and Minimum file size. Show ignored sits on the row beside Group
-   * by and shows its own state, so the badge leaves it out; Clear, which resets every
-   * filter, still counts it (`filterState.activeCount`).
+   * within, File type, Minimum file size, and Show ignored turned off, since the closed
+   * drawer hides each of them. Group by, on the row, removes nothing and is no filter.
+   * Clear counts the same four (`filterState.activeCount`).
    *
    * @param {FilterSnapshot | null} state
    * @returns {number}
@@ -237,7 +237,12 @@
     if (!state) {
       return 0;
     }
-    return Number(state.recency !== "all") + Number(!!state.types) + Number(state.size !== "all");
+    return (
+      Number(state.recency !== "all") +
+      Number(!!state.types) +
+      Number(state.size !== "all") +
+      Number(state.showIgnored === false)
+    );
   }
 
   /**
