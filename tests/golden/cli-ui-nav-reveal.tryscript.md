@@ -1020,7 +1020,10 @@ no flicker, until the page that brings the row, which reveals it.
 and says nothing, and once the catalog has it, the next poll reveals it under Closed.
 One opened since the catalog’s last read is noted until a poll brings its row, which
 reveals it; under the other filter, the list asks again only after a poll says the
-catalog has read more, and then goes to All and reveals it.
+catalog has read more than the lookup that lacked it saw, though the read of the newest
+row saw it read in, and then goes to All and reveals it.
+A catalog that starts again drops what the old one lacked: the note goes, and comes back
+only once the new catalog, read to its end, lacks it too.
 `failing` has the Closed list fail, which the catalog’s lookups do not need, then the
 lookups fail, which leaves the list where it is until the next poll asks again, and then
 the list the navigation moved to fails its first read, so its next poll reveals the row.
@@ -1259,10 +1262,6 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
         "step": "the catalog reads #2995, and time passes: Closed's next poll says the catalog has read more, so the list asks again, goes to All, and reveals it",
         "read": [
           "closed",
-          "closed after #2801",
-          "closed after #2701",
-          "closed after #2601",
-          "closed after #2501",
           "lookup: #2995 or the next older",
           "lookup: the newest",
           "all",
@@ -1275,6 +1274,70 @@ $ node tests/dom/nav-reveal-session.js pulls-depth
           "note gone",
           "filter all",
           "revealed #2995"
+        ]
+      },
+      {
+        "step": "a link names open #2995 under Closed as the catalog reads it in: the lookup of #2995 answers before, and that of the newest row after, so the catalog as the first saw it lacks #2995, and the list says so",
+        "read": [
+          "lookup: #2995 or the next older",
+          "lookup: the newest"
+        ],
+        "told": [
+          "note: #2995 is not in this list."
+        ]
+      },
+      {
+        "step": "time passes: Closed's next poll says the catalog has read more than the lookup of #2995 saw, so the list asks again, goes to All, and reveals it",
+        "read": [
+          "closed",
+          "lookup: #2995 or the next older",
+          "lookup: the newest",
+          "all",
+          "all after #2901",
+          "all after #2801",
+          "all after #2701",
+          "all after #2601"
+        ],
+        "told": [
+          "note gone",
+          "filter all",
+          "revealed #2995"
+        ]
+      },
+      {
+        "step": "a link names #4000 under Closed: the catalog, read to its end, lacks it, so the list says so",
+        "read": [
+          "lookup: #4000 or the next older",
+          "lookup: the newest"
+        ],
+        "told": [
+          "note: #4000 is not in this list."
+        ]
+      },
+      {
+        "step": "the catalog starts again, as for a new reader, and has read 200 so far; time passes: what the old catalog lacked is not known of the new one yet, so the note goes and the list says nothing",
+        "read": [
+          "closed",
+          "lookup: #4000 or the next older",
+          "lookup: the newest"
+        ],
+        "told": [
+          "note gone"
+        ]
+      },
+      {
+        "step": "the catalog reads to its end, and time passes: it lacks #4000 too, so the list says so again",
+        "read": [
+          "closed",
+          "lookup: #4000 or the next older",
+          "lookup: the newest",
+          "closed after #2801",
+          "closed after #2701",
+          "closed after #2601",
+          "closed after #2501"
+        ],
+        "told": [
+          "note: #4000 is not in this list."
         ]
       }
     ],

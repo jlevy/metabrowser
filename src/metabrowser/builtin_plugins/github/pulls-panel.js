@@ -592,12 +592,13 @@ export function outsideText(number, catalogued) {
  * as it does when one is opened. Every list's envelope carries both.
  *
  * @param {PullsEnvelope | null} envelope
+ * @returns {{epoch: string, fetched: number} | null}
  */
 function catalogMark(envelope) {
   if (envelope === null) {
-    return "";
+    return null;
   }
-  return `${envelope.generation?.split(":")[0] ?? ""}:${envelope.catalog_fetched}`;
+  return { epoch: envelope.generation?.split(":")[0] ?? "", fetched: envelope.catalog_fetched };
 }
 
 /**
@@ -750,9 +751,9 @@ export function createPullsController(deps, options = {}) {
   let placing = sought !== null;
   /**
    * Where the catalog has *sought* (`readSought`): its state, and whether All's drawn rows
-   * reach it; "absent" while the whole catalog lacks it, with the catalog as it stood then
-   * (`catalogMark`); null until a read says.
-   * @type {{state: "open" | "closed", reach: boolean} | {state: "absent", mark: string} | null}
+   * reach it; "absent" while the whole catalog lacks it, with the catalog as the read that
+   * lacked it saw it (`catalogMark`); null until a read says.
+   * @type {{state: "open" | "closed", reach: boolean} | {state: "absent", mark: {epoch: string, fetched: number} | null} | null}
    */
   let soughtFound = null;
   /** The read of *sought*'s place in flight. @type {AbortController | null} */
@@ -1835,10 +1836,17 @@ export function createPullsController(deps, options = {}) {
       placing = false;
       return false;
     }
+    const now = catalogMark(list.envelope);
+    if (soughtFound?.state === "absent" && now !== null && soughtFound.mark?.epoch !== now.epoch) {
+      // A catalog started again, for a new reader or source, has not said yet what the old
+      // one lacked: the list says nothing until it does.
+      soughtFound = null;
+      noteOutside();
+    }
     if (soughtFound === null || soughtFound.state === "absent") {
       // A catalog that lacked it is asked again once it has read more pull requests, as it
       // does when one is opened, so an unchanged catalog is not asked at every poll.
-      if (mayRead && (soughtFound === null || soughtFound.mark !== catalogMark(list.envelope))) {
+      if (mayRead && (soughtFound === null || soughtFound.mark?.fetched !== now?.fetched)) {
         void readSought();
       }
       return false;
@@ -1896,7 +1904,9 @@ export function createPullsController(deps, options = {}) {
             (lists.get("all")?.displayLimit ?? DISPLAY_ROWS),
         };
       } else if (from === null || (from.complete && from.reason === null)) {
-        soughtFound = { state: "absent", mark: catalogMark(top.body) };
+        // The catalog as the read that lacked it saw it: the window and its envelope are read
+        // together, and the newest row's read may have seen a pull request read in since.
+        soughtFound = { state: "absent", mark: catalogMark(from ?? top.body) };
       } else {
         return;
       }

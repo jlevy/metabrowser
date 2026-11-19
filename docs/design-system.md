@@ -4717,6 +4717,8 @@ Each exception has a reason:
   its next poll. One the catalog, read to its end, lacks is asked for again after a poll
   whose list says the catalog has read more, as it has when a pull request was opened
   since its last read, and placed then; an unchanged catalog is not asked again.
+  A catalog that starts again, for a new reader or source, has not said what the old one
+  lacked, so the list says nothing of it until the new one can.
   The list a navigation moved to reveals the row at the first read that brings it,
   though its first read failed.
   When the list moves while focus is on one of its rows, the revealed row takes focus,
