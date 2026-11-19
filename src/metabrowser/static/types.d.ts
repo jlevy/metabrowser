@@ -3080,7 +3080,7 @@ declare global {
   type MetabrowserViewHeaderParts = {
     /** Extra classes on the header, as `folder-header`. */
     className?: string;
-    /** The item's path identity, the header's `data-path`, which the GitHub toggle reads. */
+    /** The item's path identity, written as the header's `data-path`. */
     path: string;
     /** The eyebrow's markup; an empty eyebrow is left out of the header's rhythm. */
     eyebrow: string;

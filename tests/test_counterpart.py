@@ -258,6 +258,14 @@ def test_the_button_is_one_menu_button_and_the_corner_follows_the_page() -> None
         "noopener",
     )
     assert external["href"] == link["href"]
+    # The design system states the app's contract as the markup is (#586's review).
+    section = DESIGN_SYSTEM.read_text(encoding="utf-8")
+    for hook, element in (("open", link), ("external", external)):
+        stated = (
+            f'`<a data-view-on-github="{hook}" href="…" '
+            f'target="{element["target"]}" rel="{element["rel"]}">`'
+        )
+        assert stated in " ".join(section.split()), stated
     # The menu holds a listener on the document only while it is open.
     for step in told["menu"]:
         assert step["outsideListeners"] == (1 if step["menu"] == "open" else 0), step
