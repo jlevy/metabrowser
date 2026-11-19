@@ -23,7 +23,7 @@ from metabrowser import kpress_adapter, paths_safe
 from metabrowser.builtin_plugins.github.pull_record import MAX_BODY_BYTES
 from metabrowser.diff.markdown_projection_worker import InertRenderRefused
 from metabrowser.git import repo as git_repo
-from metabrowser.git.message import COMMIT_MESSAGE_LINK_BASE, split_trailers
+from metabrowser.git.message import COMMIT_MESSAGE_LINK_BASE, message_body, split_trailers
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
 from metabrowser.inert_html import harden
 from metabrowser.server import app
@@ -168,12 +168,57 @@ def _answer(revision: str) -> tuple[int, dict[str, Any]]:
         ),
         pytest.param("Just prose.", "Just prose.", "", id="no trailers"),
         pytest.param("", "", "", id="empty"),
+        # Trailer-shaped lines whose tokens no trailer uses stay prose: the pull request's
+        # title GitHub's merge button writes as the body, a conventional commit's type, and
+        # a closing note.
+        pytest.param(
+            "Files: move Show ignored into the filter drawer (mb-ey0d)",
+            "Files: move Show ignored into the filter drawer (mb-ey0d)",
+            "",
+            id="a merge commit's pull request title",
+        ),
+        pytest.param("fix: x", "fix: x", "", id="a conventional commit's type"),
+        pytest.param(
+            "Prose.\n\nNote: the doctor golden pins its bound",
+            "Prose.\n\nNote: the doctor golden pins its bound",
+            "",
+            id="a closing note",
+        ),
+        # A token trailers use makes the block trailers, a single word in any case, and
+        # carries a trailer-shaped line beside it, as git reads the block.
+        pytest.param("Prose.\n\nfixes: #12", "Prose.", "fixes: #12", id="a known word"),
+        pytest.param("Prose.\n\nChange-Id: I0123", "Prose.", "Change-Id: I0123", id="hyphenated"),
+        pytest.param(
+            "Prose.\n\nNote: x\nSigned-off-by: A <a@example.com>",
+            "Prose.",
+            "Note: x\nSigned-off-by: A <a@example.com>",
+            id="a known token beside an unknown one",
+        ),
+        pytest.param(
+            "Prose.\n\n(cherry picked from commit 0123abcd)",
+            "Prose.",
+            "(cherry picked from commit 0123abcd)",
+            id="the cherry-pick note alone",
+        ),
     ],
 )
 def test_split_trailers_takes_the_last_paragraph_only_when_every_line_is_a_trailer(
     body: str, prose: str, trailers: str
 ) -> None:
     assert split_trailers(body) == (prose, trailers)
+
+
+@pytest.mark.parametrize(
+    ("message", "body"),
+    [
+        pytest.param("subject\n\n    code\n", "    code", id="indented code first"),
+        pytest.param("subject\n\n\n  \nProse.  \n\n", "Prose.", id="blank lines around"),
+        pytest.param("subject\n", "", id="no body"),
+        pytest.param("subject", "", id="no newline"),
+    ],
+)
+def test_the_body_keeps_its_first_lines_indentation(message: str, body: str) -> None:
+    assert message_body(message) == body
 
 
 # ── The route ────────────────────────────────────────────────
@@ -249,6 +294,38 @@ def test_a_commit_body_renders_as_a_pull_request_description_does(served: Path) 
     assert "teach the app" not in html
 
 
+def test_a_merge_commits_pull_request_title_renders_as_prose(served: Path) -> None:
+    """The body GitHub's merge button writes is the title, which can read ``Token: value``."""
+
+    revision = _commit(
+        served,
+        "Merge pull request #601 from someone/show-ignored-in-drawer\n\n"
+        "Files: move Show ignored into the filter drawer (mb-ey0d)\n",
+    )
+    status, answer = _answer(revision)
+    assert status == 200, answer
+    assert "<p>Files: move Show ignored into the filter drawer (mb-ey0d)</p>" in answer["html"]
+    assert answer["trailers"] == ""
+
+
+def test_a_body_that_opens_with_indented_code_is_code(served: Path) -> None:
+    revision = _commit(
+        served,
+        "fix: a crash\n\n"
+        "    Traceback (most recent call last):\n"
+        '      File "x.py", line 1, in <module>\n'
+        "\n"
+        "Then prose.\n",
+    )
+    status, answer = _answer(revision)
+    assert status == 200, answer
+    assert (
+        "<pre><code>Traceback (most recent call last):\n"
+        '  File "x.py", line 1, in &lt;module&gt;\n</code></pre>'
+    ) in answer["html"]
+    assert "<p>Then prose.</p>" in answer["html"]
+
+
 def test_a_body_of_only_trailers_renders_nothing(served: Path) -> None:
     revision = _commit(served, "chore: sign\n\nSigned-off-by: A <a@example.com>\n")
     status, answer = _answer(revision)
@@ -275,7 +352,7 @@ def test_the_bound_is_a_pull_request_descriptions(served: Path) -> None:
     assert status == 422
     assert answer == {
         "error": (
-            f"the message is {len(past.strip().encode())} bytes, more than the "
+            f"the body is {len(past.strip().encode())} bytes, more than the "
             f"{GIT_COMMIT_BODY_MARKDOWN_MAX_BYTES} rendered as Markdown"
         ),
         "code": "body_too_large",

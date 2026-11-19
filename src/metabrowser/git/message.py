@@ -22,7 +22,12 @@ What a commit body is, and how it differs from a description:
 - **Trailers.** Git's trailers (``Signed-off-by:``, ``Co-Authored-By:``) are lines a
   paragraph would join into one run of text, so the trailer block is split off before the
   render and answered as written, for the page to show as a block of its own lines
-  (:func:`split_trailers`).
+  (:func:`split_trailers`). Git's rule takes any final block of ``Token: value`` lines,
+  and the body GitHub's merge button writes is the pull request's title, often in that
+  shape (``Files: move ... (mb-ey0d)``, ``fix: ...``); so a block is trailers here only
+  when one of its tokens is one trailers use.
+- **The first line.** The body keeps its first line's indentation, which the commit
+  route's body drops, so a body that opens with indented code is code.
 - **Links.** A description's links resolve against its pull request's github.com page. A
   commit message has no page whose relative references it could mean, so its links
   resolve against :data:`COMMIT_MESSAGE_LINK_BASE`: an absolute ``http`` or ``https`` link
@@ -50,16 +55,18 @@ from metabrowser.diff.markdown_projection_worker import (
     shared_worker,
     text_identity,
 )
-from metabrowser.git.detail import _UNKNOWN_REVISION_MARKERS, _split_message
+from metabrowser.git.detail import _UNKNOWN_REVISION_MARKERS
 from metabrowser.git.process import GitCommandError, GitLocation, run_git_at
 from metabrowser.settings import GIT_COMMIT_BODY_MARKDOWN_MAX_BYTES
 
 # The base a commit body's links resolve against, on the server (``inert_html.harden``)
-# and in the page (``static/inert-html.js``, which the route's answer hands it). Nothing
-# relative resolves against ``about:blank`` in either: Python's ``urljoin`` returns a
-# reference unchanged for a base whose scheme takes no relative references, and a
-# browser's URL parser refuses one against an opaque base. Both then drop the address as
-# not ``http`` or ``https``, while an absolute ``http`` or ``https`` address is unchanged.
+# and in the page (``static/inert-html.js``, which the route's answer hands it). An
+# absolute ``http`` or ``https`` address is kept as written. Nothing else becomes one:
+# Python's ``urljoin`` hands every reference back unchanged, since ``about`` takes no
+# relative references, and a browser's URL parser refuses a relative path or a
+# protocol-relative address against this opaque base and resolves a fragment to
+# ``about:blank#...``. Both sides then drop the address as not ``http`` or ``https`` and
+# keep the link's text.
 COMMIT_MESSAGE_LINK_BASE: Final = "about:blank"
 
 # A trailer line, as git reads one: a token of letters, digits, and hyphens, a colon, and
@@ -70,6 +77,12 @@ _TRAILER_LINE: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*:[ \t]+\S.*")
 _CONTINUATION_LINE: Final = re.compile(r"[ \t]+\S.*")
 # The note ``git cherry-pick -x`` appends, which git counts as a trailer.
 _CHERRY_PICK_LINE: Final = re.compile(r"\(cherry picked from commit [0-9a-f]{4,64}\)")
+# A token that makes a block of trailer-shaped lines git's trailers rather than prose: a
+# hyphenated one (``Signed-off-by``, ``Co-Authored-By``, ``Change-Id``), or one of these
+# single words trailers use, in any case. A pull request's title in a merge commit's body,
+# or a closing ``Note: ...`` line, has neither, as a conventional commit's type does not.
+_HYPHENATED_TOKEN: Final = re.compile(r"[A-Za-z0-9]+(?:-[A-Za-z0-9]+)+")
+_SINGLE_WORD_TOKENS: Final = frozenset({"bug", "cc", "closes", "fixes", "link", "refs"})
 
 # ``%H`` first, so an object ID that is not a commit's, whose ``show`` is not this format,
 # is told apart from a commit; ``%B`` is the message as git writes it, the field
@@ -82,9 +95,11 @@ def split_trailers(body: str) -> tuple[str, str]:
 
     The trailer block is the body's last paragraph when every line of it is a trailer
     (``Token: value``), a value folded onto an indented line under one, or git's
-    cherry-pick note. That is git's own rule when every line is a trailer; git also takes
-    a block where a quarter of the lines are trailers, one of them ``Signed-off-by``, which
-    would show prose as trailers, so that one is not followed. A body that is only a
+    cherry-pick note, and one of them is a trailer by its token (:func:`_known_trailer`).
+    Git's own rule asks only the first; it would take a merge commit's body, its pull
+    request's title, for a trailer when that title reads ``type: subject``. Git also takes a
+    block where a quarter of the lines are trailers, one of them ``Signed-off-by``, which
+    would show prose as trailers, so that one is not followed either. A body that is only a
     trailer block has no prose. The block is returned as written, its lines joined by
     newlines; *prose* is what comes before it, without the blank lines between.
     """
@@ -97,12 +112,40 @@ def split_trailers(body: str) -> tuple[str, str]:
     if not block:
         return body, ""
     folded = False
+    known = False
     for line in block:
         if _TRAILER_LINE.fullmatch(line) or _CHERRY_PICK_LINE.fullmatch(line.rstrip()):
             folded = True
+            known = known or _known_trailer(line)
         elif not (folded and _CONTINUATION_LINE.fullmatch(line)):
             return body, ""
+    if not known:
+        return body, ""
     return "\n".join(lines[:start]).rstrip(), "\n".join(block)
+
+
+def _known_trailer(line: str) -> bool:
+    """Whether trailer-shaped *line* is a trailer by its token, or is the cherry-pick note."""
+
+    if _CHERRY_PICK_LINE.fullmatch(line.rstrip()):
+        return True
+    token = line.partition(":")[0]
+    return token.lower() in _SINGLE_WORD_TOKENS or _HYPHENATED_TOKEN.fullmatch(token) is not None
+
+
+def message_body(message: str) -> str:
+    """The body of *message* to render: everything after its subject line.
+
+    Without the blank lines around it or trailing whitespace, but with its first line's
+    indentation, which the commit route's body (``detail._split_message``) strips: four
+    spaces there make the body open with code.
+    """
+
+    lines = message.split("\n")[1:]
+    start = 0
+    while start < len(lines) and lines[start].strip() == "":
+        start += 1
+    return "\n".join(lines[start:]).rstrip()
 
 
 async def read_commit_message(location: GitLocation, revision: str) -> str | None:
@@ -135,13 +178,12 @@ async def render_commit_body(message: str, revision: str) -> tuple[int, dict[str
     trailers or empty; ``trailers`` is the trailer block as written, or empty.
     """
 
-    _subject, body = _split_message(message)
-    prose, trailers = split_trailers(body)
+    prose, trailers = split_trailers(message_body(message))
     size = len(prose.encode("utf-8", "surrogatepass"))
     if size > GIT_COMMIT_BODY_MARKDOWN_MAX_BYTES:
         return 422, {
             "error": (
-                f"the message is {size} bytes, more than the "
+                f"the body is {size} bytes, more than the "
                 f"{GIT_COMMIT_BODY_MARKDOWN_MAX_BYTES} rendered as Markdown"
             ),
             "code": "body_too_large",
@@ -194,6 +236,7 @@ async def render_commit_body(message: str, revision: str) -> tuple[int, dict[str
 
 __all__ = [
     "COMMIT_MESSAGE_LINK_BASE",
+    "message_body",
     "read_commit_message",
     "render_commit_body",
     "split_trailers",

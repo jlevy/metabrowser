@@ -4,18 +4,22 @@ sandbox: false
 ---
 # Golden Test: A Commit’s Body as Markdown on Its Page
 
-This session runs the production `placeCommitBody` and `fetchCommitBody` from
-`static/git-panel.js`, with `static/inert-html.js`, over a stand-in DOM, against the
-answers of `GET /api/git/commit-markdown/{revision}`: the rendered one is what
-`cli-api-git-commit-markdown.tryscript.md` pins for its fixture commit.
-Each step prints the requests it made, the SDK assets it loaded, what the body’s box
-holds, what the panel warned of, and which bodies it keeps.
+This session runs the production `placeCommitBody`, `fetchCommitBody`, and
+`prepareRevision` from `static/git-panel.js`, with `static/inert-html.js`, over a
+stand-in DOM, against the answers of `GET /api/git/commit-markdown/{revision}`: the
+rendered one is what `cli-api-git-commit-markdown.tryscript.md` pins for its fixture
+commit. Each step prints the requests it made, the SDK assets it loaded, what the body’s
+box holds, what the panel warned of, and which bodies it keeps.
 
 A body’s message as written is held out of sight (`waiting`) until its Markdown comes,
 then replaced by a KPress article of the allowlist’s nodes, as a pull request’s page
 sets a description: its code in KPress’s code block, an absolute link decorated as an
 outside link, a relative one with only its text, and the trailers after it as written.
 A kept render is placed at once with no request, and two callers share one request.
+A hover’s preparation (`prepareRevision`) asks for the body once its detail comes, and
+the reader’s open joins that request; when the hover’s request ends in a refusal the
+panel does not keep, such as a busy renderer, the open asks again and shows its own
+answer. A preparation given up before its detail comes asks for no body.
 A body of only trailers has no article.
 
 A body the route will not render shows as written: one too long, with a notice that is
@@ -212,6 +216,66 @@ $ node tests/dom/git-commit-body-session.js
     "same": true,
     "kind": "rendered"
   },
+  "a hover prefetches, and the open joins it": {
+    "hovered": 1,
+    "requests": [
+      "/api/git/commit/4444444444444444444444444444444444444444",
+      "/api/git/commit-markdown/4444444444444444444444444444444444444444"
+    ],
+    "box": {
+      "div.git-commit-body.page-card.chrome-prose": [
+        {
+          "div.metabrowser-kpress-host": [
+            {
+              "article.kpress.kpress-inert": [
+                {
+                  "div.kpress-prose": [
+                    {
+                      "p": "prefetched"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "kept": true
+  },
+  "a hover's refusal is asked again by the open": {
+    "hovered": 1,
+    "requests": [
+      "/api/git/commit/5555555555555555555555555555555555555555",
+      "/api/git/commit-markdown/5555555555555555555555555555555555555555",
+      "/api/git/commit-markdown/5555555555555555555555555555555555555555"
+    ],
+    "box": {
+      "div.git-commit-body.page-card.chrome-prose": [
+        {
+          "div.metabrowser-kpress-host": [
+            {
+              "article.kpress.kpress-inert": [
+                {
+                  "div.kpress-prose": [
+                    {
+                      "p": "rendered on the reader's request"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "kept": true
+  },
+  "a preparation given up asks for no body": {
+    "requests": [
+      "/api/git/commit/6666666666666666666666666666666666666666"
+    ]
+  },
   "a body of only trailers": {
     "waiting": true,
     "requests": [
@@ -231,6 +295,8 @@ $ node tests/dom/git-commit-body-session.js
     "kept": [
       "aaaaaaa",
       "3333333",
+      "4444444",
+      "5555555",
       "bbbbbbb"
     ]
   },
@@ -254,6 +320,8 @@ $ node tests/dom/git-commit-body-session.js
     "kept": [
       "aaaaaaa",
       "3333333",
+      "4444444",
+      "5555555",
       "bbbbbbb",
       "ccccccc"
     ]
@@ -276,6 +344,8 @@ $ node tests/dom/git-commit-body-session.js
     "kept": [
       "aaaaaaa",
       "3333333",
+      "4444444",
+      "5555555",
       "bbbbbbb",
       "ccccccc"
     ]
@@ -300,6 +370,8 @@ $ node tests/dom/git-commit-body-session.js
     "kept": [
       "aaaaaaa",
       "3333333",
+      "4444444",
+      "5555555",
       "bbbbbbb",
       "ccccccc"
     ]
@@ -324,6 +396,8 @@ $ node tests/dom/git-commit-body-session.js
     "kept": [
       "aaaaaaa",
       "3333333",
+      "4444444",
+      "5555555",
       "bbbbbbb",
       "ccccccc"
     ]
@@ -345,6 +419,8 @@ $ node tests/dom/git-commit-body-session.js
     "kept": [
       "aaaaaaa",
       "3333333",
+      "4444444",
+      "5555555",
       "bbbbbbb",
       "ccccccc"
     ]
@@ -370,6 +446,8 @@ $ node tests/dom/git-commit-body-session.js
     "kept": [
       "aaaaaaa",
       "3333333",
+      "4444444",
+      "5555555",
       "bbbbbbb",
       "ccccccc"
     ]
@@ -383,6 +461,8 @@ $ node tests/dom/git-commit-body-session.js
     "kept": [
       "aaaaaaa",
       "3333333",
+      "4444444",
+      "5555555",
       "bbbbbbb",
       "ccccccc"
     ]

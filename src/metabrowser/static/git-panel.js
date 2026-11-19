@@ -1238,7 +1238,9 @@
   // not repeat, and a request that failed, are asked again on the next visit.
   /** @type {Map<string, CommitBodyOutcome>} */
   const bodyCache = new Map();
-  /** @type {Map<string, Promise<CommitBodyOutcome>>} */
+  // Requests on their way, each marked when a hover's preparation made it rather than a
+  // reader's request (`prepareRevision`).
+  /** @type {Map<string, {request: Promise<CommitBodyOutcome>, speculative: boolean}>} */
   const bodyInFlight = new Map();
   // KPress's stylesheets, loaded once for every body, as a pull request's page loads them
   // once for its texts. A load that failed is tried again by the next body.
@@ -1287,17 +1289,27 @@
    * cannot change. A render is answered only once the allowlist and KPress's stylesheets
    * have loaded, so a caller can insert it at once.
    *
+   * A reader's request joins a hover's prefetch on its way, but not an outcome of it that
+   * is not kept: a busy or stopped renderer, or a request that failed, answered the hover,
+   * and the reader's own request is made when it does.
+   *
    * @param {string} revision A full commit ID.
+   * @param {boolean} [speculative] Whether a hover's preparation asks, not a reader.
    * @returns {Promise<CommitBodyOutcome>}
    */
-  function fetchCommitBody(revision) {
+  function fetchCommitBody(revision, speculative = false) {
     const kept = bodyCache.get(revision);
     if (kept) {
       return Promise.resolve(kept);
     }
     const existing = bodyInFlight.get(revision);
+    if (existing?.speculative && !speculative) {
+      // The prefetch leaves the requests on their way before this runs, so a body it did
+      // not keep is asked for again.
+      return existing.request.then(() => bodyCache.get(revision) ?? fetchCommitBody(revision));
+    }
     if (existing) {
-      return existing;
+      return existing.request;
     }
     const request = measureAsync(
       "gitRevision:bodyMarkdown",
@@ -1332,9 +1344,9 @@
       },
       { revision },
     );
-    bodyInFlight.set(revision, request);
+    bodyInFlight.set(revision, { request, speculative });
     void request.finally(() => {
-      if (bodyInFlight.get(revision) === request) {
+      if (bodyInFlight.get(revision)?.request === request) {
         bodyInFlight.delete(revision);
       }
     });
@@ -1631,10 +1643,11 @@
     const diff = beginDiffPreparation(revision, controller);
     const detail = fetchCommitDetail(revision, controller?.signal);
     // The body's Markdown is asked for once the detail says there is a body, beside the
-    // comparison, so a commit a hover prepared shows its body as Markdown when it opens.
+    // comparison, so a commit a hover prepared shows its body as Markdown when it opens. A
+    // preparation given up before then asks for none.
     void detail.then((read) => {
       if (read?.body && controller?.signal.aborted !== true) {
-        void fetchCommitBody(revision);
+        void fetchCommitBody(revision, speculative);
       }
     });
     preparationSlot = {
@@ -3994,6 +4007,8 @@
       selectCommit,
       fetchCommitDetail,
       fetchCommitBody,
+      prepareRevision,
+      cancelSpeculativePreparation,
       placeCommitBody,
       commitBodyNote,
       keptCommitBodies: () => [...bodyCache.keys()],

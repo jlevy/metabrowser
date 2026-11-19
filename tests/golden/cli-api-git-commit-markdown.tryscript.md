@@ -44,7 +44,9 @@ before: >-
   > ../message.txt &&
   git commit -q -F ../message.txt &&
   printf 'chore: sign\n\nSigned-off-by: Test <test@example.com>\n' > ../signed.txt &&
-  git commit -q --allow-empty -F ../signed.txt
+  git commit -q --allow-empty -F ../signed.txt &&
+  printf 'Merge pull request #601 from someone/drawer\n\nFiles: move Show ignored into the filter drawer (mb-ey0d)\n' > ../merge.txt &&
+  git commit -q --allow-empty -F ../merge.txt
 ---
 # Golden Test: A Commit Body as Markdown
 
@@ -53,12 +55,15 @@ request’s description takes: KPress in its sanitized mode in the Markdown chil
 code plain, and the inert allowlist (`src/metabrowser/git/message.py`). The fixture’s
 body is wrapped at 72 columns and has a list with each marker, an issue reference and a
 bare URL, inline HTML with a script, indented code, an absolute and a relative link, and
-Git’s trailers. The commit IDs are fixed by the pinned identity, dates, and messages.
+Git’s trailers. A third commit’s body is the one GitHub’s merge button writes, its pull
+request’s title, which reads `Token: value` like a trailer.
+The commit IDs are fixed by the pinned identity, dates, and messages.
 
 ## Test: the fixture’s commits
 
 ```console
 $ git -C gitroot log --format='%H %s'
+b8dcb03b7035e571a46c2ff29f398886c4f39a67 Merge pull request #601 from someone/drawer
 763a2e3f2e226b4fe326b3bdc40d6d3485ce7f12 chore: sign
 672d1c8eb2fba8e3206539e22505446a83e4a02a feat: teach the app to count
 ? 0
@@ -104,6 +109,28 @@ status: 200
   "revision": "763a2e3f2e226b4fe326b3bdc40d6d3485ce7f12",
   "html": "",
   "trailers": "Signed-off-by: Test <test@example.com>",
+  "link_base": "about:blank",
+  "assets": {
+...
+  }
+}
+? 0
+```
+
+## Test: a merge commit’s pull request title is prose
+
+Git would read the title as a trailer, but no trailer uses its token, so it renders as
+the body’s paragraph and there are no trailers.
+
+```console
+$ metab gitroot --api /api/git/commit-markdown/b8dcb03b7035e571a46c2ff29f398886c4f39a67
+api: /api/git/commit-markdown/b8dcb03b7035e571a46c2ff29f398886c4f39a67
+status: 200
+{
+  "is_repo": true,
+  "revision": "b8dcb03b7035e571a46c2ff29f398886c4f39a67",
+  "html": "\n<div><div><p>Files: move Show ignored into the filter drawer (mb-ey0d)</p></div></div>",
+  "trailers": "",
   "link_base": "about:blank",
   "assets": {
 ...

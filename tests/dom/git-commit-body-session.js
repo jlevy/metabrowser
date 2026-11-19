@@ -9,7 +9,9 @@
 // pins for its fixture commit, parsed here by a small reader of the hardened markup the
 // route sends (tags, quoted attributes, text, and the five entities it writes), since a
 // browser's template parse is not available to Node. The SDK's asset loads are stand-ins
-// that record what was asked and can fail.
+// that record what was asked and can fail. A hover's preparation (`prepareRevision`) asks
+// for a body once its detail comes, and the reader's open joins that request unless it
+// ended in an answer the panel does not keep.
 //
 // Each step prints the requests it made, what the body's box holds, and what the panel
 // keeps. Exits 1 on a failed invariant.
@@ -242,7 +244,8 @@ const document = new StandInDocument();
 const requests = [];
 const assetLoads = [];
 const options = { inertFails: false, stylesFail: false };
-/** @type {Map<string, {status: number, body: unknown} | Error>} */
+// A route's answer, or its answers in turn, the last repeated.
+/** @type {Map<string, {status: number, body: unknown} | Error | Array<{status: number, body: unknown}>>} */
 const answers = new Map();
 /** @type {Map<string, Promise<void>>} */
 const held = new Map();
@@ -266,7 +269,12 @@ const sandbox = {
     const route = String(url);
     requests.push(route);
     await held.get(route);
-    const answer = answers.get(route);
+    const listed = answers.get(route);
+    const answer = Array.isArray(listed)
+      ? listed.length > 1
+        ? listed.shift()
+        : listed[0]
+      : listed;
     if (answer instanceof Error) {
       throw answer;
     }
@@ -296,6 +304,8 @@ sandbox.metabrowser = {
     anchor.dataset.decorated = "external";
     return anchor;
   },
+  // What a preparation asks of the SDK for the diff beside the body.
+  ensureKindAssets: async () => {},
   // What renderCommitSummary reads of the SDK for the rest of the summary.
   delegateOwnerAttribute: () => "",
   actorIdentityHtml: (name) => `<span class="actor-identity">${name}</span>`,
@@ -325,6 +335,9 @@ const NO_BODY = "f".repeat(40);
 const STYLES = "1".repeat(40);
 const NO_ALLOWLIST = "2".repeat(40);
 const SHARED = "3".repeat(40);
+const PREFETCHED = "4".repeat(40);
+const BUSY = "5".repeat(40);
+const ABANDONED = "6".repeat(40);
 
 const ASSETS = {
   schema_version: "kpress-asset-manifest-v2",
@@ -360,7 +373,7 @@ answers.set(
 answers.set(route(TOO_LARGE), {
   status: 422,
   body: {
-    error: "the message is 70000 bytes, more than the 65536 rendered as Markdown",
+    error: "the body is 70000 bytes, more than the 65536 rendered as Markdown",
     code: "body_too_large",
     max_bytes: 65536,
     revision: TOO_LARGE,
@@ -377,6 +390,22 @@ answers.set(route(DEADLINE), {
   },
 });
 answers.set(route(OFFLINE), new TypeError("Failed to fetch"));
+answers.set(
+  route(PREFETCHED),
+  rendered(PREFETCHED, "\n<div><div><p>prefetched</p></div></div>", ""),
+);
+// The renderer is busy for the hover's prefetch, and renders for the reader's request.
+answers.set(route(BUSY), [
+  {
+    status: 503,
+    body: {
+      code: "renderer_busy",
+      error: "The renderer is busy with other texts",
+      revision: BUSY,
+    },
+  },
+  rendered(BUSY, "\n<div><div><p>rendered on the reader's request</p></div></div>", ""),
+]);
 
 const detail = (revision, body) => ({
   is_repo: true,
@@ -421,6 +450,42 @@ function summary(revision, body) {
 }
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+for (const revision of [PREFETCHED, BUSY, ABANDONED]) {
+  answers.set(`/api/git/commit/${revision}`, { status: 200, body: detail(revision, "body") });
+}
+const bodyRequests = () => requests.filter((request) => request.includes("/commit-markdown/"));
+/** Turns of the event loop until *done*, at most 50. */
+async function settle(done) {
+  for (let turn = 0; turn < 50 && !done(); turn += 1) {
+    await tick();
+  }
+}
+
+/**
+ * A hover prepares *revision* (`prepareRevision`), and then the reader opens it: the page
+ * places its body (`placeCommitBody`) while the hover's request for it is on its way.
+ */
+async function hoverThenOpen(revision) {
+  requests.length = 0;
+  let release = () => {};
+  held.set(route(revision), new Promise((resolve) => (release = resolve)));
+  internals.prepareRevision(revision, true);
+  await settle(() => bodyRequests().length > 0);
+  const hovered = bodyRequests().length;
+  const root = summary(revision, "body");
+  const placed = internals.placeCommitBody(root, detail(revision, "body"));
+  release();
+  await placed;
+  await tick();
+  held.delete(route(revision));
+  internals.cancelSpeculativePreparation();
+  return {
+    hovered,
+    requests: [...requests],
+    box: shape(root.querySelector(".git-commit-body")),
+    kept: internals.keptCommitBodies().includes(revision),
+  };
+}
 
 async function step(label, revision, body, before = null) {
   requests.length = 0;
@@ -502,6 +567,46 @@ async function step(label, revision, body, before = null) {
     kind: left.kind,
   };
   assert(requests.length === 1 && left === right, "one request answers both callers");
+
+  // A hover's preparation asks for the body once its detail says there is one, and the
+  // reader's open joins that request rather than making its own.
+  transcript["a hover prefetches, and the open joins it"] = await hoverThenOpen(PREFETCHED);
+  {
+    const joined = transcript["a hover prefetches, and the open joins it"];
+    assert(joined.hovered === 1, "the hover asks for the body once");
+    assert(
+      bodyRequests().length === 1 && joined.kept,
+      "the open joins the hover's request, and its render is kept",
+    );
+    assert(JSON.stringify(joined.box).includes("prefetched"), "the body opens as Markdown");
+  }
+
+  // The hover's request is refused by a busy renderer while the reader's open waits on it:
+  // the refusal answered the hover, so the open asks again, and shows that answer.
+  transcript["a hover's refusal is asked again by the open"] = await hoverThenOpen(BUSY);
+  {
+    const busy = transcript["a hover's refusal is asked again by the open"];
+    assert(busy.hovered === 1, "the hover asks once");
+    assert(bodyRequests().length === 2, "the open asks again after the hover's refusal");
+    const box = JSON.stringify(busy.box);
+    assert(box.includes("rendered on the reader") && !box.includes("notice"), "with no notice");
+  }
+
+  // A preparation given up before its detail comes asks for no body.
+  requests.length = 0;
+  {
+    let release = () => {};
+    const detailRoute = `/api/git/commit/${ABANDONED}`;
+    held.set(detailRoute, new Promise((resolve) => (release = resolve)));
+    internals.prepareRevision(ABANDONED, true);
+    await settle(() => requests.includes(detailRoute));
+    internals.cancelSpeculativePreparation();
+    release();
+    await settle(() => false);
+    held.delete(detailRoute);
+    transcript["a preparation given up asks for no body"] = { requests: [...requests] };
+    assert(requests.includes(detailRoute) && bodyRequests().length === 0, "no body is asked for");
+  }
 
   Object.assign(
     transcript,
