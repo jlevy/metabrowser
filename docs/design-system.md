@@ -4679,15 +4679,23 @@ Each exception has a reason:
   the file lacks it. A file in a folder the reader closed gets no note.
   Under Group by, the file is looked for in its own section first, then in each other
   section.
-- **A pull request outside the list is named.** Open and Closed hold only their state’s
-  pull requests, and the list reads its windows from the newest.
-  A pull request the list does not hold is named under its band: “#8 is not listed under
-  Open.”, or under All, “#8 is not in this list.”
-  A list that has not read as far says only “#8 is not among the pull requests loaded.”,
-  since it may be further down.
+- **A pull request the filter leaves out is revealed under All.** Open and Closed hold
+  only their state’s pull requests, and the list reads its windows from the newest.
+  A navigation to one that Open or Closed leaves out takes the list to All, which holds
+  every pull request, and reveals it there, as a reveal opens a stack the reader closed.
+  The list knows the filter leaves it out once it has read past the number, or once the
+  other state’s list holds it.
+  All, not the pull request’s own state, so that a stack walk across open and merged
+  pull requests stays on one list.
+  A filter the reader picks while a pull request is shown is theirs: the list says
+  nothing of a pull request it leaves out, since the filter’s chip says what it holds,
+  and a note that a filter leaves a pull request out reads as a row gone missing.
   Under All, the list keeps reading for one older than the rows it has read, up to its
-  display limit, and reveals it when it arrives.
-  A reveal never changes the filter, which is the reader’s choice.
+  display limit, and reveals it when it arrives; Open and Closed reveal one in the rows
+  they fill. Only a pull request a navigation named that the list still cannot show is
+  named under its band: one older than all the list draws, “#8 is not among the pull
+  requests loaded.”, since it may be further down, or one All has read past, “#8 is not
+  in this list.” (`outsideText` in `pulls-panel.js`).
 - **A commit outside the history read is not chased.** Commits reads history from the
   newest commit, 250 commits a page.
   A commit’s address reveals its row once the pages read hold it, so the first page’s

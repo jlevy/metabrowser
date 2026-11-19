@@ -570,22 +570,24 @@ function isEnvelope(value) {
 }
 
 /**
- * What the Pulls tab says of a pull request the address names that its list does not hold.
- * A list read only part of the way, newest first, may hold an older one further down, so
- * it says only what it has loaded (*read*: whether the list has read as far as *number*).
+ * What the Pulls tab says of a pull request a navigation named that its list could not
+ * reveal, or null when it says nothing. A list read only part of the way, newest first, may
+ * hold an older one further down, so it says only what it has loaded (*read*: whether the
+ * list has read as far as *number*). All holds every pull request, so one it has read past
+ * is not in the list the server holds. Open or Closed read past one has left it out by its
+ * state: a navigation takes the list to All for it (`widenForSought`), and a filter the
+ * reader chose needs no word, since its chip says what the list holds.
  *
  * @param {number} number
  * @param {string} filter
  * @param {boolean} read
+ * @returns {string | null}
  */
 export function outsideText(number, filter, read) {
-  const label = LIST_LABELS[/** @type {keyof typeof LIST_LABELS} */ (filter)];
   if (!read) {
     return `#${number} is not among the pull requests loaded.`;
   }
-  return filter === "all" || label === undefined
-    ? `#${number} is not in this list.`
-    : `#${number} is not listed under ${label}.`;
+  return filter === "all" ? `#${number} is not in this list.` : null;
 }
 
 /**
@@ -720,6 +722,19 @@ export function createPullsController(deps, options = {}) {
   /** @type {number | null} */
   let current = options.current ?? null;
   let revealCurrent = true;
+  /**
+   * The pull request a navigation asked the list to reveal (docs/design-system.md,
+   * "Navigation Reveals the Item"), until the address names another, a tab's landing keeps
+   * the list's place, or the reader picks a filter. Only it is noted when the list cannot
+   * show its row (`noteOutside`): one the reader's own filter leaves out needs no word.
+   * @type {number | null}
+   */
+  let sought = current;
+  /**
+   * Whether the list may still leave Open or Closed for All to reveal *sought*: once a
+   * navigation, decided as soon as the list can tell (`widenForSought`).
+   */
+  let widen = sought !== null;
   /**
    * What the list says of a current pull request it does not hold (`noteOutside`).
    * @type {string | null}
@@ -1695,8 +1710,9 @@ export function createPullsController(deps, options = {}) {
 
   /**
    * Show the current pull request's row: a closed stack that holds it opens, as a file the
-   * address names opens its folders, and the row scrolls into view; a row the list has not
-   * reached yet is chased, and one it does not hold is noted (`noteOutside`).
+   * address names opens its folders, and the row scrolls into view; one Open or Closed
+   * leaves out takes the list to All (`widenForSought`), a row the list has not reached yet
+   * is chased, and one it cannot show is noted (`noteOutside`).
    *
    * @param {number | null} number
    */
@@ -1708,6 +1724,9 @@ export function createPullsController(deps, options = {}) {
       render();
     }
     settleAnchor(true);
+    if (widenForSought()) {
+      return;
+    }
     if (number !== null && held().keys.has(number)) {
       if (revealCurrent) {
         deps.reveal(number);
@@ -1719,9 +1738,50 @@ export function createPullsController(deps, options = {}) {
   }
 
   /**
-   * Say so when the current pull request is not in the list, rather than leave the reader
-   * looking for its row: the filter leaves it out, or All has not listed it. Only once the
-   * list has its rows, and not while a chase may still reach it.
+   * Open and Closed hold only their state's pull requests, so a navigation to one the
+   * filter leaves out takes the list to All, which holds every pull request, as a reveal
+   * opens a stack the reader closed; All then reveals it as it reveals any row, by the
+   * first read of its rows or by its chase. All, and not the pull request's own state,
+   * because a stack walk crosses open and merged pull requests, and All keeps it on one
+   * list. The list decides once it can tell: when it has read past the number, or when the
+   * other state's list already holds it. A number older than the rows Open or Closed will
+   * draw may be further down, so the list stays. A filter the reader picks afterwards
+   * stays theirs. Whether the list left for All.
+   */
+  function widenForSought() {
+    const list = held();
+    if (!widen || sought === null || sought !== current || list.envelope === null) {
+      return false;
+    }
+    if (
+      filter === "all" ||
+      list.keys.has(sought) ||
+      list.error !== null ||
+      list.envelope.reason === "not_github"
+    ) {
+      widen = false;
+      return false;
+    }
+    const other = lists.get(filter === "open" ? "closed" : "open");
+    // The rows are newest first, and *nextAfter* is where the next window starts.
+    const unread = list.nextAfter !== null && sought < list.nextAfter;
+    if (unread && other?.keys.has(sought) !== true) {
+      // It may be further down this list: wait while the list fills what it draws.
+      if (list.rows.length >= list.displayLimit) {
+        widen = false;
+      }
+      return false;
+    }
+    widen = false;
+    setFilter("all", { reveal: true });
+    return true;
+  }
+
+  /**
+   * Say so when a pull request a navigation named is not in the list, rather than leave the
+   * reader looking for its row: All has not listed it, or the list has not read as far.
+   * Only once the list has its rows, and not while a chase or a move to All may still reach
+   * it. A pull request the reader's own filter leaves out is not noted.
    */
   function noteOutside() {
     const list = held();
@@ -1729,8 +1789,10 @@ export function createPullsController(deps, options = {}) {
     const unread = current !== null && list.nextAfter !== null && current < list.nextAfter;
     const settled =
       current !== null &&
+      current === sought &&
       list.envelope !== null &&
       !list.keys.has(current) &&
+      !(widen && filter !== "all") &&
       !(filter === "all" && unread && list.rows.length < list.displayLimit);
     const next = settled && current !== null ? outsideText(current, filter, !unread) : null;
     if (next !== outside) {
@@ -2001,6 +2063,10 @@ export function createPullsController(deps, options = {}) {
     }
     if (first && shown && revealCurrent && current !== null && list.keys.has(current)) {
       deps.reveal(current);
+    }
+    if (widenForSought()) {
+      // All's own first read reveals it, and this list's reads end with its filter.
+      return;
     }
     chaseCurrent();
     // Fill the reader's display budget from cached metadata, independently of provider paging.
@@ -2601,11 +2667,16 @@ export function createPullsController(deps, options = {}) {
     if (!disposed && epoch === requestEpoch && name === filter) {
       settleAnchor();
       render();
-      if (chasing && current !== null && list.keys.has(current)) {
+      // A chase in All, or Open or Closed filling its rows while a navigation waits on them.
+      const waited = chasing || (widen && sought === current);
+      if (waited && current !== null && list.keys.has(current)) {
         chasing = false;
         if (revealCurrent) {
           deps.reveal(current);
         }
+      }
+      if (widenForSought()) {
+        return;
       }
       if (advanced && list.nextAfter !== null && list.rows.length < list.displayLimit) {
         await loadWindow();
@@ -2869,14 +2940,20 @@ export function createPullsController(deps, options = {}) {
   }
 
   /**
-   * The list rows changed under the panel: a new filter, or it became visible.
+   * The list rows changed under the panel: a new filter, or it became visible. A filter the
+   * reader or the list's address picks ends a navigation's reveal; *reveal* is the move to
+   * All that a reveal makes itself (`widenForSought`).
    *
    * @param {string} name
-   * @param {{fromAddress?: boolean}} [how]
+   * @param {{fromAddress?: boolean, reveal?: boolean}} [how]
    */
   function setFilter(name, how = {}) {
     if (disposed || !LISTS.includes(name) || name === filter) {
       return;
+    }
+    if (how.reveal !== true) {
+      sought = null;
+      widen = false;
     }
     cancelReads();
     filter = name;
@@ -3036,15 +3113,21 @@ export function createPullsController(deps, options = {}) {
       }
       if (options.preserveScroll) {
         revealCurrent = false;
+        sought = null;
+        widen = false;
       }
       if (number === current) {
         if (options.again === true && number !== null) {
           revealCurrent = true;
+          sought = number;
+          widen = true;
           showCurrent(number);
         }
         return;
       }
       revealCurrent = !options.preserveScroll;
+      sought = options.preserveScroll ? null : number;
+      widen = sought !== null;
       // The address moved by itself, by Back or by a link on the page: a row that is still
       // waiting for its record to open does not open over it.
       cancelCoreRetry();

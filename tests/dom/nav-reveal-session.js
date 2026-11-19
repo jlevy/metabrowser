@@ -986,6 +986,7 @@ async function pullsStory() {
       },
       reveal: (number) => told.push(`revealed #${number}`),
       markOutside: (text) => told.push(text === null ? "note gone" : `note: ${text}`),
+      filterChanged: (name) => told.push(`filter ${name}`),
     },
     { current: null },
   );
@@ -1023,13 +1024,27 @@ async function pullsStory() {
   await step("Quick Search for #8 after that landing: revealed, which ends the kept place", () =>
     controller.setCurrent(8, { again: true }),
   );
-  await step("under Open, the list does not hold closed #8, and says so", () =>
+  await step("the reader picks Open, which leaves out closed #8: the list says nothing of it", () =>
     controller.setFilter("open"),
   );
-  await step("#10 named: listed, so revealed, and the note goes", () => controller.setCurrent(10));
-  await step("#4000 named under Open: not listed", () => controller.setCurrent(4000));
-  await step("under All, #4000 is still not listed, and the note names All", () =>
-    controller.setFilter("all"),
+  await step(
+    "Quick Search for #8 again: Open leaves it out, so the list goes to All and reveals it",
+    () => controller.setCurrent(8, { again: true }),
+  );
+  await step("the reader picks Open", () => controller.setFilter("open"));
+  await step("#10 named: listed, so revealed", () => controller.setCurrent(10));
+  await step(
+    "the reader picks Closed while open #10 is shown: Closed leaves it out, and the list says nothing of it",
+    () => controller.setFilter("closed"),
+  );
+  await step("#8 named under Closed: listed, so revealed", () => controller.setCurrent(8));
+  await step("open #10 named under Closed, by Back: the list goes to All and reveals it", () =>
+    controller.setCurrent(10),
+  );
+  await step("the reader picks Open", () => controller.setFilter("open"));
+  await step(
+    "#4000 named under Open: the list goes to All, which does not hold it either, and says so",
+    () => controller.setCurrent(4000),
   );
   await step("#6 named under All, past the rows read: the list reads on, and reveals it", () =>
     controller.setCurrent(6),
@@ -1043,7 +1058,112 @@ async function pullsStory() {
       "All, read past #8": panel.outsideText(8, "all", true),
       "any list, not read as far as #8": panel.outsideText(8, "open", false),
     },
+    "beyond the rows read": await pullsDepthStory(),
   };
+}
+
+/**
+ * A repository whose lists run past what the panel draws (pulls-panel.js `DISPLAY_ROWS`),
+ * served in windows as the route serves them: Open is #3000 to #2901 and an old #1000,
+ * Closed is #2900 down to #1001, and All is both. Each step names a pull request under
+ * Closed, as a link or Back does.
+ */
+async function pullsDepthStory() {
+  const panel = await import(pathToFileURL(path.join(GITHUB, "pulls-panel.js")).href);
+  const template = recordedLists().open_current.body;
+  const range = (high, low) => Array.from({ length: high - low + 1 }, (_, at) => high - at);
+  const numbers = {
+    open: [...range(3000, 2901), 1000],
+    closed: range(2900, 1001),
+  };
+  numbers.all = [...range(3000, 1000)];
+  const state = (number) => (number > 2900 || number === 1000 ? "open" : "closed");
+  const row = (number) => ({
+    ...template.rows[0],
+    number,
+    title: `Pull request ${number}`,
+    state: state(number),
+    merged: false,
+    merged_at: null,
+  });
+  const reads = [];
+  const told = [];
+  const controller = panel.createPullsController(
+    {
+      request(method, route) {
+        if (method !== "GET" || !route.startsWith("/api/plugin/github/pulls?")) {
+          return Promise.resolve({ status: 404, etag: null, body: null });
+        }
+        const query = new URL(route, "http://x").searchParams;
+        const name = query.get("state");
+        const limit = Number(query.get("limit"));
+        const after = query.has("after") ? Number(query.get("after")) : null;
+        const all = numbers[name];
+        const from = after === null ? 0 : all.findIndex((number) => number < after);
+        const rows = all.slice(from, from + limit);
+        const last = from + limit < all.length ? rows[rows.length - 1] : null;
+        reads.push(`${name}${after === null ? "" : ` after #${after}`}`);
+        const body = {
+          ...template,
+          list: name,
+          total: all.length,
+          fetched: all.length,
+          filter_totals: { all: numbers.all.length, open: 101, closed: 1900 },
+          rows: rows.map(row),
+          next_after: last,
+        };
+        return Promise.resolve({ status: 200, etag: `"${name}"`, body });
+      },
+      schedule: () => 0,
+      cancel() {},
+      now: () => Date.parse("2026-09-17T12:00:30Z"),
+      isVisible: () => true,
+      formatTime: (iso) => iso,
+      render() {},
+      markCurrent() {},
+      markAnchor() {},
+      open() {},
+      reveal: (number) => told.push(`revealed #${number}`),
+      markOutside: (text) => told.push(text === null ? "note gone" : `note: ${text}`),
+      filterChanged: (name) => told.push(`filter ${name}`),
+    },
+    { filter: "open", current: null },
+  );
+  await controller.start({ shown: true });
+  await settle();
+  const steps = [];
+  const step = async (what, act) => {
+    reads.length = 0;
+    told.length = 0;
+    act();
+    await settle();
+    steps.push({ step: what, read: [...new Set(reads)], told: [...told] });
+  };
+  await step(
+    "the reader picks Closed, and a link names closed #2700 before its rows arrive: past the first window, so the list stays, reads on, and reveals it",
+    () => {
+      controller.setFilter("closed");
+      controller.setCurrent(2700);
+    },
+  );
+  await step(
+    "open #2950, newer than every closed one: Closed has read past it, so the list goes to All and reveals it",
+    () => controller.setCurrent(2950),
+  );
+  await step("the reader picks Closed", () => controller.setFilter("closed"));
+  await step(
+    "open #1000, older than the closed rows drawn: Open holds it, so the list goes to All, which has not read as far, and says so",
+    () => controller.setCurrent(1000),
+  );
+  await step("the reader picks Closed: the filter is theirs, and the note goes", () =>
+    controller.setFilter("closed"),
+  );
+  await step(
+    "closed #1500, older than all Closed draws: it may be further down, so the list stays and says so",
+    () => controller.setCurrent(1500),
+  );
+  controller.dispose();
+  return steps;
 }
 
 (async () => {

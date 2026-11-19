@@ -40,8 +40,14 @@ drawn in its place if it was drawn again; an endless animation holds no scroll.
 `pulls list` runs the Pulls tab’s controller over the recorded lists and stack snapshot:
 an address naming a pull request in a closed stack opens the stack, the same pull
 request named again moves nothing unless it was opened again, which reveals it and ends
-a tab landing’s kept place, one the list does not hold is named under the band, and
-under All the list reads on for one past the rows it has read.
+a tab landing’s kept place, and under All the list reads on for one past the rows it has
+read. A pull request Open or Closed leaves out takes the list to All, which reveals it,
+when a navigation names it; when the reader picks the filter, the list says nothing of
+it. Only one a navigation named that the list still cannot show is named under the band.
+`beyond the rows read` serves lists longer than the panel draws, in the route’s windows:
+Closed reads on for one past its first window, goes to All for an open pull request it
+has read past or that Open holds, and for one older than all it draws stays, since it
+may be further down, and says so.
 
 ```console
 $ node tests/dom/nav-reveal-session.js
@@ -907,32 +913,70 @@ $ node tests/dom/nav-reveal-session.js
         ]
       },
       {
-        "step": "under Open, the list does not hold closed #8, and says so",
+        "step": "the reader picks Open, which leaves out closed #8: the list says nothing of it",
         "stack": "Stack #286 open",
         "told": [
-          "note: #8 is not listed under Open."
+          "filter open"
         ]
       },
       {
-        "step": "#10 named: listed, so revealed, and the note goes",
+        "step": "Quick Search for #8 again: Open leaves it out, so the list goes to All and reveals it",
         "stack": "Stack #286 open",
         "told": [
-          "revealed #10",
-          "note gone"
+          "filter all",
+          "revealed #8"
         ]
       },
       {
-        "step": "#4000 named under Open: not listed",
+        "step": "the reader picks Open",
         "stack": "Stack #286 open",
         "told": [
-          "note: #4000 is not listed under Open."
+          "filter open"
         ]
       },
       {
-        "step": "under All, #4000 is still not listed, and the note names All",
+        "step": "#10 named: listed, so revealed",
         "stack": "Stack #286 open",
         "told": [
-          "note: #4000 is not in this list."
+          "revealed #10"
+        ]
+      },
+      {
+        "step": "the reader picks Closed while open #10 is shown: Closed leaves it out, and the list says nothing of it",
+        "stack": "Stack #286 open",
+        "told": [
+          "filter closed"
+        ]
+      },
+      {
+        "step": "#8 named under Closed: listed, so revealed",
+        "stack": "Stack #286 open",
+        "told": [
+          "revealed #8"
+        ]
+      },
+      {
+        "step": "open #10 named under Closed, by Back: the list goes to All and reveals it",
+        "stack": "Stack #286 open",
+        "told": [
+          "filter all",
+          "revealed #10"
+        ]
+      },
+      {
+        "step": "the reader picks Open",
+        "stack": "Stack #286 open",
+        "told": [
+          "filter open",
+          "revealed #10"
+        ]
+      },
+      {
+        "step": "#4000 named under Open: the list goes to All, which does not hold it either, and says so",
+        "stack": "Stack #286 open",
+        "told": [
+          "note: #4000 is not in this list.",
+          "filter all"
         ]
       },
       {
@@ -945,11 +989,77 @@ $ node tests/dom/nav-reveal-session.js
       }
     ],
     "notes": {
-      "Open, read past #8": "#8 is not listed under Open.",
-      "Closed, read past #8": "#8 is not listed under Closed.",
+      "Open, read past #8": null,
+      "Closed, read past #8": null,
       "All, read past #8": "#8 is not in this list.",
       "any list, not read as far as #8": "#8 is not among the pull requests loaded."
-    }
+    },
+    "beyond the rows read": [
+      {
+        "step": "the reader picks Closed, and a link names closed #2700 before its rows arrive: past the first window, so the list stays, reads on, and reveals it",
+        "read": [
+          "closed",
+          "closed after #2801",
+          "closed after #2701",
+          "closed after #2601",
+          "closed after #2501"
+        ],
+        "told": [
+          "filter closed",
+          "revealed #2700"
+        ]
+      },
+      {
+        "step": "open #2950, newer than every closed one: Closed has read past it, so the list goes to All and reveals it",
+        "read": [
+          "all",
+          "all after #2901",
+          "all after #2801",
+          "all after #2701",
+          "all after #2601"
+        ],
+        "told": [
+          "filter all",
+          "revealed #2950"
+        ]
+      },
+      {
+        "step": "the reader picks Closed",
+        "read": [
+          "closed"
+        ],
+        "told": [
+          "filter closed"
+        ]
+      },
+      {
+        "step": "open #1000, older than the closed rows drawn: Open holds it, so the list goes to All, which has not read as far, and says so",
+        "read": [
+          "all"
+        ],
+        "told": [
+          "note: #1000 is not among the pull requests loaded.",
+          "filter all"
+        ]
+      },
+      {
+        "step": "the reader picks Closed: the filter is theirs, and the note goes",
+        "read": [
+          "closed"
+        ],
+        "told": [
+          "note gone",
+          "filter closed"
+        ]
+      },
+      {
+        "step": "closed #1500, older than all Closed draws: it may be further down, so the list stays and says so",
+        "read": [],
+        "told": [
+          "note: #1500 is not among the pull requests loaded."
+        ]
+      }
+    ]
   },
   "invariants": {
     "no route moves focus": true,

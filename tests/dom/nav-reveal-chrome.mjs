@@ -449,7 +449,7 @@ try {
   );
 
   // 9. A key that opens an item: Control-N or Control-P walks the stack from #7 to its
-  // neighbour, which the Pulls tab reveals, or, when the list does not hold it, names. #7
+  // neighbour, which the Pulls tab reveals, under All when its filter leaves it out. #7
   // ends its stack, so one of the two goes nowhere. On a page that reached #7 by Forward on
   // a server that had just started, neither chord walked, with or without this change
   // (2026-11-15), so the walk starts from the page's own address. The chords are bound
@@ -485,29 +485,18 @@ try {
   }
   const walked = Number((await evaluate("location.pathname")).split("/")[2]);
   phase("stack walk");
-  const listed = await evaluate(
-    `document.querySelector(${JSON.stringify(pullRow(walked))}) !== null`,
+  // A neighbour the list's filter leaves out, as Open leaves out a merged one, takes the
+  // list to All, which reveals it like any other row, with nothing noted. The stand-in's
+  // #8 and #9 are closed (tests/github_pull_fixture.py), and the list opens under Open.
+  await revealed(`a stack key to #${walked}`, pullRow(walked), "pulls");
+  const listFilter = await evaluate(
+    `document.querySelector("#tab-pulls .github-pulls-list")?.dataset.filter ?? null`,
   );
-  if (listed) {
-    await revealed(`a stack key to #${walked}`, pullRow(walked), "pulls");
-  } else {
-    await waitFor(
-      `[...document.querySelectorAll(".github-pulls-outside")].some((n) => n.textContent.includes("#${walked} "))`,
-      `the Pulls tab names #${walked}`,
-    );
-    const pane = await evaluate(PANE(pullRow(walked)));
-    check(
-      `a stack key to #${walked}: Pulls is in front`,
-      pane.tab === "pulls",
-      JSON.stringify(pane),
-    );
-    check(
-      `a stack key to #${walked}: the list says it does not hold it`,
-      pane.notes.some((note) => note.startsWith(`#${walked} is not`)),
-      JSON.stringify(pane),
-    );
-    check(`a stack key to #${walked}: focus stays`, !pane.focusInNav, JSON.stringify(pane));
-  }
+  check(
+    `a stack key to #${walked}: the list is under ${walked === 8 || walked === 9 ? "All" : "Open"}`,
+    listFilter === (walked === 8 || walked === 9 ? "all" : "open"),
+    JSON.stringify({ walked, listFilter }),
+  );
   await shot("control-n");
 
   const STACK = `#tab-pulls .github-pulls-stack-row[data-stack="286"]`;
