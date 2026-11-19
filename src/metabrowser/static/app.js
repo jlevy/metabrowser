@@ -6638,6 +6638,12 @@ async function selectFile(path, preferredViewId) {
           };
         }
         var retainedPreview = beginPreviewNavigation(previewClaim);
+        // The page's View on GitHub link is asked for while its file loads, so it can come
+        // with the header (plugin-sdk-views.js, prefetchCounterpart). Only a page whose
+        // repository is on github.com draws the button (view-header.js).
+        if (window.METABROWSER_REPOSITORY_CONTEXT) {
+          window.metabrowser?.prefetchCounterpart?.(location.pathname);
+        }
         await settleHoverPrefetchForSelection(path);
         if (currentPath !== path || !isPreviewClaimCurrent(previewClaim)) {
           return { status: "cancelled" };
@@ -7230,6 +7236,13 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
           },
           filePerfMeta(data, { html_chars: html.length }),
         );
+        // The View on GitHub button in the header's corner, which view-header.js marks on
+        // a page whose repository is on github.com; the server says whether this page has
+        // a counterpart (plugin-sdk-views.js, mountCounterpart).
+        const counterpartCorner = stage.querySelector(".view-header-end[data-counterpart]");
+        if (counterpartCorner) {
+          void window.metabrowser?.mountCounterpart?.(counterpartCorner, location.pathname);
+        }
         if (initialActiveView) {
           setActivePreviewView(initialActiveView.id, stage);
         } else {

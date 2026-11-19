@@ -16,9 +16,9 @@
 // `header-narrow`), the offers the status row draws (`offers`), the Pulls rows (`pulls`),
 // the run badge (`badges`), the label chips' colors in both themes (`labels`), the Diff
 // summary's row while its comparison is read, as it arrives, as it fails, and as the same
-// pull request is opened again in the document (`summary-wait`), and a page mounted with no
-// record in hand as its record lands (`cold-landing`). With no
-// part it runs every one. Each part writes how long
+// pull request is opened again in the document (`summary-wait`), a page mounted with no
+// record in hand as its record lands (`cold-landing`), and the View on GitHub button in the
+// header's corner (`corner`). With no part it runs every one. Each part writes how long
 // each of its steps took to stderr.
 //
 // KPRESS_STATIC holds KPress's style-tokens.css and the faces it names, which
@@ -490,7 +490,10 @@ const MEASURE = `async (name, change, tab, width) => {
     probe.dispose();
     holder.remove();
   }
-  const rows = [...header.children].map((row) => ({
+  // The header's rows: its children but the corner, the View on GitHub button's, which is
+  // placed in the page's upper right out of their flow (mb-4wqh).
+  const headerRows = [...header.children].filter((row) => !row.matches(".view-header-end"));
+  const rows = headerRows.map((row) => ({
     row: row.tagName === "H1" ? "title" : [...row.classList].find((c) => c.startsWith("github-pull-")).slice(12),
     height: Math.round(box(row).height * 100) / 100,
   }));
@@ -515,12 +518,16 @@ const MEASURE = `async (name, change, tab, width) => {
     const number = numberRange.getBoundingClientRect();
     const slot = header.querySelector(".github-pull-meta .github-pull-stacks");
     const r = (v) => Math.round(v * 100) / 100;
+    // The room the title leaves the corner's button where the reading column reaches it
+    // (github/styles.css), which its number ends short of.
+    const room = parseFloat(getComputedStyle(heading).paddingInlineEnd);
     return {
       iconLeft: r(icon.left - left),
       textAfterIcon: r(text.left - icon.right),
       gap: r(parseFloat(getComputedStyle(heading).columnGap)),
-      numberRight: r(number.right - right),
-      numberOverSlot: slot ? r(number.right - box(slot).right) : null,
+      room: r(room),
+      numberRight: r(number.right + room - right),
+      numberOverSlot: slot ? r(number.right + room - box(slot).right) : null,
       numberBelowText: r(number.bottom - text.bottom),
     };
   })();
@@ -528,7 +535,7 @@ const MEASURE = `async (name, change, tab, width) => {
   // between rows: the status line, while it has something to say, is one of the metadata
   // lines under the title, as tall as the row of ages and one gap under the row before it,
   // with no empty labels row between (mb-2u08); with nothing to say it is not there (mb-ne91).
-  const lines = [...header.children]
+  const lines = headerRows
     .map((row, at) => ({
       row: rows[at].row,
       shown: !row.hidden,
@@ -538,8 +545,8 @@ const MEASURE = `async (name, change, tab, width) => {
     .filter((each) => each.shown)
     .map(({ shown, ...each }) => each);
   const r2 = (value) => Math.round(value * 100) / 100;
-  // Refresh's slot ends the row of ages, after View on GitHub and Browse code, so it is
-  // numbered after them (A1 of review A on #506).
+  // Refresh's slot ends the row of ages, after Browse code, so it is numbered after it (A1
+  // of review A on #506).
   const refresh = header.querySelector(".github-pull-opened > .github-pull-refresh");
   const contentEdge = box(header).right - parseFloat(getComputedStyle(header).paddingRight);
   // The freshness note ends the author's row's lead (mb-ne91). Its slot is as wide as its
@@ -605,16 +612,18 @@ const MEASURE = `async (name, change, tab, width) => {
     login: login ? { width: r2(box(login).width), natural: natural(login) } : null,
     action: action ? { width: r2(box(action).width), natural: natural(action) } : null,
   };
-  // The row of ages: its ages give way first, and View on GitHub and Browse code after them
-  // stay whole (B4 of review B on #506). How much of the links shows, and how wide the ages
-  // are drawn against their own width.
+  // The row of ages: its ages give way first, and Browse code after them stays whole (B4 of
+  // review B on #506). How much of the link shows, all of it where there is none, and how
+  // wide the ages are drawn against their own width.
   const agesText = header.querySelector(".github-pull-opened .github-pull-ages");
   const agesLinks = header.querySelector(".github-pull-opened .github-pull-ages-links");
   const agesRow = agesText === null
     ? null
     : {
-        linksShown: Math.round(shown(agesLinks) * 1000) / 1000,
-        links: [...agesLinks.querySelectorAll("a, button")].map((node) => node.textContent.trim()),
+        linksShown: agesLinks === null ? 1 : Math.round(shown(agesLinks) * 1000) / 1000,
+        links: agesLinks === null
+          ? []
+          : [...agesLinks.querySelectorAll("a, button")].map((node) => node.textContent.trim()),
         agesWidth: r2(box(agesText).width),
         agesNatural: r2(agesText.scrollWidth),
         text: agesText.textContent,
@@ -915,8 +924,9 @@ const SUMMARY_WAIT = `async (width, theme, outcome, change = null) => {
   await new Promise((resolve) => setTimeout(resolve, delay * 2));
   await frames();
   const contentLeft = box(header).left + parseFloat(getComputedStyle(header).paddingLeft);
+  // The header's rows, but not the corner, which is out of their flow (mb-4wqh).
   const places = () => ({
-    rows: [...header.children].map((child) => [
+    rows: [...header.children].filter((child) => !child.matches(".view-header-end")).map((child) => [
       child.tagName === "H1" ? "title" : [...child.classList].find((c) => c.startsWith("github-pull-")).slice(12),
       round(box(child).top - box(header).top),
       round(box(child).height),
@@ -1157,6 +1167,172 @@ const COLD_LANDING = `async (width, labelled, outcome) => {
     tabBarsShown: [...new Set(seen.filter((state) => Number(state.header) > 0).map((state) => state.tabBar))],
   };
 }`;
+// The View on GitHub button in the pull request header's corner (mb-4wqh;
+// docs/design-system.md, "View on GitHub"), drawn by the SDK's `mountCounterpart` from what
+// `GET /api/counterpart` answers, here a stand-in answer for the page's address, which
+// tests/golden/cli-api-counterpart.tryscript.md pins. Read: where the button is in the page,
+// its size, where the title's text and number end, the title's room for it, and the inks and
+// fills of its parts and frame, beside the tokens each should resolve to in this theme, read
+// from a probe painted with them. The reading column is the width the server gives a page by
+// default, *maxChars* characters (`--doc-max-chars`), so a wide pane's column ends short of
+// the button. The page stays mounted, in `window.__corner`, so the pointer can be put on the
+// chevron; CORNER_HOVERED reads it there and CORNER_DONE unmounts it.
+const CORNER = `async (width, theme, longTitle, maxChars) => {
+  const recorded = window.__recorded ??= await (await fetch("/fixtures.json")).json();
+  const page = window.__page ??= await import("/github/pull-page.js");
+  const body = structuredClone(recorded.current.body);
+  const holder = body.record?.same_as;
+  if (holder !== undefined) {
+    body.record = structuredClone(recorded[holder].body.record);
+  }
+  // A title of two lines and more, cut short at two.
+  if (longTitle) {
+    body.record.pull.title = "Decide every region's box at first paint, so nothing that arrives later moves the tab bar, a stack, a label, or a Refresh";
+  }
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.style.setProperty("--doc-max-chars", String(maxChars));
+  const url = "https://github.com/octo/demo/pull/" + body.number;
+  window.fetch = async (address) =>
+    String(address).startsWith("/api/counterpart?")
+      ? Response.json({
+          page: "/pull/" + body.number,
+          counterpart: { provider: "github", label: "View on GitHub", url },
+          reason: null,
+        })
+      : new Response(null, { status: 304 });
+  history.replaceState(null, "", "/pull/" + body.number);
+  const pane = document.getElementById("preview-pane");
+  pane.style.width = width + "px";
+  const container = document.createElement("div");
+  pane.replaceChildren(container);
+  const mb = window.metabrowser;
+  const handle = page.mountPullPage(
+    container,
+    { number: body.number, tab: "", reader: { initial: { etag: null, body }, fetchAfterMs: 60000 } },
+    {
+      perf: { measure: (_label, work) => work(), measureAsync: (_label, work) => work() },
+      ensureAsset: async () => {},
+      whenIdle: mb.whenIdle,
+      ensureKindAssets: async () => {},
+      loadChangedFilesTree: async () => {},
+      getRegisteredView: () => null,
+      decorateExternalLink: mb.decorateExternalLink,
+      refChip: mb.refChip,
+      refChipHtml: mb.refChipHtml,
+      mergeRefs: mb.mergeRefs,
+      mountRefCopies: mb.mountRefCopies,
+      actorIdentity: mb.actorIdentity,
+      titleNodes: mb.titleNodes,
+      countPartsNodes: mb.countPartsNodes,
+      formatAge: () => ({ label: "now", className: "age" }),
+      formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
+      navigation: { href: () => "/view/" },
+      sourceKind: () => "filesystem",
+      icons: { toggle: "" },
+      mountCounterpart: mb.mountCounterpart,
+    },
+  );
+  window.__corner = handle;
+  await document.fonts.ready;
+  const header = container.querySelector(".github-pull-header");
+  const corner = header.querySelector(":scope > .view-header-end");
+  for (let frame = 0; frame < 20 && !corner?.querySelector(".counterpart"); frame += 1) {
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+  }
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const round = (value) => Math.round(value * 100) / 100;
+  const box = (node) => node.getBoundingClientRect();
+  const button = corner?.querySelector(":scope > .counterpart") ?? null;
+  if (button === null) {
+    return { button: null, corner: corner !== null, marked: corner?.hasAttribute("data-counterpart") ?? false };
+  }
+  // A token as the engine resolves it: a length as a probe's width, a color as its ink.
+  const resolved = (property, value) => {
+    const probe = document.createElement("span");
+    probe.style.position = "absolute";
+    probe.style[property] = value;
+    container.append(probe);
+    const out = property === "width" ? round(box(probe).width) : getComputedStyle(probe)[property];
+    probe.remove();
+    return out;
+  };
+  const paint = (node) => {
+    const style = getComputedStyle(node);
+    return { ink: style.color, fill: style.backgroundColor };
+  };
+  const title = header.querySelector(".github-pull-title");
+  const group = button.querySelector(".counterpart-group");
+  const open = button.querySelector('[data-view-on-github="open"]');
+  const external = button.querySelector('[data-view-on-github="external"]');
+  const more = button.querySelector(".counterpart-more");
+  const frame = getComputedStyle(group);
+  const at = box(container);
+  const placed = box(group);
+  const chevron = box(more);
+  return {
+    button: {
+      top: round(placed.top - at.top),
+      end: round(at.right - placed.right),
+      start: round(placed.left),
+      height: round(placed.height),
+      width: round(placed.width),
+    },
+    afterTitle: corner.previousElementSibling === title,
+    marked: corner.hasAttribute("data-counterpart"),
+    hooks: {
+      root: button.hasAttribute("data-view-on-github"),
+      open: open?.getAttribute("href") ?? null,
+      openTarget: open?.getAttribute("target") ?? null,
+      external: external?.getAttribute("href") ?? null,
+      externalTarget: external?.getAttribute("target") ?? null,
+      externalRel: external?.getAttribute("rel") ?? null,
+    },
+    label: open.textContent,
+    textEnd: round(box(title.querySelector(".github-pull-title-text")).right),
+    numberEnd: round(box(title.querySelector(".github-pull-number")).right),
+    titleRoom: round(Number.parseFloat(getComputedStyle(title).paddingInlineEnd)),
+    column: round(box(header).width),
+    page: round(at.width),
+    paneScrolls: pane.scrollWidth > pane.clientWidth,
+    tokens: {
+      insetTop: resolved("width", "var(--view-header-corner-inset-top)"),
+      insetEnd: resolved("width", "var(--view-header-corner-inset-end)"),
+      height: resolved("width", "var(--view-header-corner-height)"),
+      room: resolved("width", "var(--view-header-corner-room)"),
+    },
+    states: {
+      open: paint(open),
+      more: paint(more),
+      frame: { border: frame.borderTopColor, ground: frame.backgroundColor, radius: frame.borderTopLeftRadius },
+    },
+    want: {
+      muted: resolved("color", "var(--muted)"),
+      text: resolved("color", "var(--text)"),
+      hover: resolved("backgroundColor", "var(--hover-bg)"),
+      border: resolved("borderTopColor", "var(--viz-border)"),
+      surface: resolved("backgroundColor", "var(--viz-surface)"),
+      radius: resolved("borderTopLeftRadius", "var(--radius-pill)"),
+    },
+    url,
+    chevron: { x: chevron.left + chevron.width / 2, y: chevron.top + chevron.height / 2 },
+  };
+}`;
+// The chevron's ink and fill once every transition on it has ended.
+const CORNER_HOVERED = `(async () => {
+  const more = document.querySelector("#preview-pane .github-pull-header .counterpart-more");
+  await Promise.all(more.getAnimations().map((motion) => motion.finished));
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const style = getComputedStyle(more);
+  return { ink: style.color, fill: style.backgroundColor, hovered: more.matches(":hover") };
+})()`;
+const CORNER_DONE = `(() => {
+  window.__corner?.dispose();
+  window.__corner = null;
+  delete document.documentElement.dataset.theme;
+  document.documentElement.style.removeProperty("--doc-max-chars");
+  return true;
+})()`;
+
 // Pulls rows built as pulls-panel.js#buildRow and #rowMeta build them, whose order
 // github-pulls-panel-session.js pins: the row's link, the state icon, the title, the age,
 // and the number's line, which the stylesheet lays out as two lines (mb-lkkt): the icon in
@@ -1596,6 +1772,7 @@ const PARTS = [
   "labels",
   "summary-wait",
   "cold-landing",
+  "corner",
 ];
 const PART = (() => {
   const at = process.argv.indexOf("--part");
@@ -1812,13 +1989,13 @@ async function main() {
               // The ages give way first, cut short at their end, and the links after them stay
               // whole while any of the ages shows (B4 of review B on #506).
               check(
-                `${where}: the ages give way before View on GitHub and Browse code, which show whole while any age does`,
+                `${where}: the ages give way before Browse code, which shows whole while any age does`,
                 shape.agesRow.linksShown >= 0.99 || shape.agesRow.agesWidth < 1,
                 JSON.stringify(shape.agesRow),
               );
               if (width >= 420) {
                 check(
-                  `${where}: View on GitHub and Browse code show whole`,
+                  `${where}: Browse code shows whole`,
                   shape.agesRow.linksShown >= 0.99,
                   JSON.stringify(shape.agesRow),
                 );
@@ -1851,7 +2028,7 @@ async function main() {
                 JSON.stringify(shape.edges),
               );
               check(
-                `${where}: the title's number ends on the header's right edge, over the stack slot's end`,
+                `${where}: the title's number ends on the header's right edge, over the stack slot's end, less the room it leaves the corner's button`,
                 Math.abs(numberRight) <= 0.5 &&
                   numberOverSlot !== null &&
                   Math.abs(numberOverSlot) <= 0.5,
@@ -2196,6 +2373,133 @@ async function main() {
           `cold-landing: ${JSON.stringify(landings.map(({ where, run }) => ({ where, landsAt: run.landsAt, cold: run.shownCold.tabBar, landed: run.landed.tabBar, coldShown: run.coldShown })))}\n`,
         );
         lap("the cold landings");
+      }
+      // The View on GitHub button in the header's corner (mb-4wqh): at a pane where the
+      // reading column ends short of the button and two where it reaches it, in both themes,
+      // with a title of one line and one cut short at two. At the middle width the pointer is
+      // put on the chevron, then moved away.
+      if (runs("corner")) {
+        // The server's default reading width, which the caller passes from settings.py.
+        const maxChars = Number(process.env.METABROWSER_DOC_MAX_CHARS_DEFAULT);
+        if (!Number.isFinite(maxChars) || maxChars <= 0) {
+          throw new Error("METABROWSER_DOC_MAX_CHARS_DEFAULT names no reading width");
+        }
+        const tops = new Map();
+        const widths = new Set();
+        for (const theme of ["light", "dark"]) {
+          for (const width of [980, 560, 360]) {
+            for (const longTitle of [false, true]) {
+              const where = `${width} px, ${theme}, a ${longTitle ? "long" : "short"} title`;
+              const read = await browser.evaluate(
+                `(${CORNER})(${width}, ${JSON.stringify(theme)}, ${longTitle}, ${maxChars})`,
+              );
+              const near = (a, b) => Math.abs(a - b) <= 0.5;
+              check(
+                `${where}: the button is drawn in the header's corner, after the title, the corner marked for its room`,
+                read.button !== null && read.afterTitle && read.marked,
+                JSON.stringify(read),
+              );
+              if (read.button === null) {
+                await browser.evaluate(CORNER_DONE);
+                continue;
+              }
+              const { button, tokens, states, want, hooks } = read;
+              check(
+                `${where}: the button links to the pull request's page on GitHub through the app's hooks`,
+                read.label === "View on GitHub" &&
+                  hooks.root &&
+                  hooks.open === read.url &&
+                  hooks.openTarget === "_blank" &&
+                  hooks.external === read.url &&
+                  hooks.externalTarget === "_blank" &&
+                  hooks.externalRel === "noopener",
+                JSON.stringify({ label: read.label, hooks, url: read.url }),
+              );
+              check(
+                `${where}: the button is at the corner's insets from the page's top and right edges`,
+                near(button.top, tokens.insetTop) && near(button.end, tokens.insetEnd),
+                JSON.stringify({ button, tokens }),
+              );
+              check(
+                `${where}: the button is the corner's height`,
+                near(button.height, tokens.height),
+                JSON.stringify({ button, tokens }),
+              );
+              widths.add(button.width);
+              check(
+                `${where}: the corner's room holds the button and the 8 px gap before it`,
+                button.width + 8 <= tokens.room + 0.5,
+                JSON.stringify({ button, tokens }),
+              );
+              const key = `${width} ${theme}`;
+              if (tops.has(key)) {
+                check(
+                  `${where}: the button is where it is with a title of one line`,
+                  near(button.top, tops.get(key)),
+                  JSON.stringify({ top: button.top, short: tops.get(key) }),
+                );
+              } else {
+                tops.set(key, button.top);
+              }
+              const clear = button.start - 8;
+              check(
+                `${where}: the title's text and number end the gap clear of the button`,
+                read.textEnd <= clear + 0.5 && read.numberEnd <= clear + 0.5,
+                JSON.stringify({ textEnd: read.textEnd, numberEnd: read.numberEnd, clear }),
+              );
+              check(
+                width === 980
+                  ? `${where}: the reading column ends short of the button, so the title keeps its width`
+                  : `${where}: the reading column reaches the button, so the title leaves it its room`,
+                width === 980 ? read.titleRoom === 0 : near(read.titleRoom, tokens.room),
+                JSON.stringify({
+                  titleRoom: read.titleRoom,
+                  room: tokens.room,
+                  column: read.column,
+                  page: read.page,
+                }),
+              );
+              check(`${where}: the pane does not scroll sideways`, !read.paneScrolls);
+              check(
+                `${where}: the link is in the text ink and the chevron muted, neither filled at rest`,
+                states.open.ink === want.text &&
+                  states.more.ink === want.muted &&
+                  states.open.fill === "rgba(0, 0, 0, 0)" &&
+                  states.more.fill === "rgba(0, 0, 0, 0)",
+                JSON.stringify({ states, want }),
+              );
+              check(
+                `${where}: the button has the joined chip group's frame`,
+                states.frame.border === want.border &&
+                  states.frame.ground === want.surface &&
+                  states.frame.radius === want.radius,
+                JSON.stringify({ frame: states.frame, want }),
+              );
+              if (width === 560 && !longTitle) {
+                await browser.send("Input.dispatchMouseEvent", {
+                  type: "mouseMoved",
+                  x: read.chevron.x,
+                  y: read.chevron.y,
+                });
+                const hovered = await browser.evaluate(CORNER_HOVERED);
+                check(
+                  `${where}: the chevron under the pointer is in the text ink on the hover fill`,
+                  hovered.hovered && hovered.ink === want.text && hovered.fill === want.hover,
+                  JSON.stringify({ hovered, want }),
+                );
+                await browser.send("Input.dispatchMouseEvent", {
+                  type: "mouseMoved",
+                  x: 1,
+                  y: 899,
+                });
+              }
+              await browser.evaluate(CORNER_DONE);
+            }
+          }
+        }
+        // The widths the button was drawn at, for the room's token (static/styles.css).
+        process.stderr.write(`corner: the button's widths ${[...widths].join(", ")} px\n`);
+        lap("the corner");
       }
       if (runs("labels")) {
         const github = JSON.parse(fs.readFileSync(LABEL_COLORS, "utf8"));

@@ -88,6 +88,7 @@ from metabrowser.charts import clear_charts_cache
 from metabrowser.checkout_revisions import checkout_revisions, lifespan_checkout
 from metabrowser.client_disconnect import CLIENT_CLOSED, unless_disconnected
 from metabrowser.content_sniff import ContentClass, sniff_artifact
+from metabrowser.counterpart import COUNTERPART_ROUTES
 from metabrowser.diff.markdown_projection_worker import (
     InertRender,
     InertRenderRefused,
@@ -1359,22 +1360,6 @@ def _mirror_heading_attrs(status: SourceStatus) -> str:
 
 
 @functools.cache
-def _github_page_script() -> str:
-    """`static/github-page.js`, as the shell of a page with a GitHub repository carries it.
-
-    Only a page whose repository context the server found, a checkout whose ``origin`` is
-    on github.com or a mirror the GitHub provider owns, has a GitHub page to toggle to, so
-    the toggle's code is written into that page and is no startup script of a folder's
-    (docs/design-system.md, "View Headers").
-    """
-
-    script = STATIC_DIR.joinpath("github-page.js").read_text(encoding="utf-8")
-    if "</script" in script.lower():
-        raise RuntimeError("github-page.js cannot be safely embedded in the index shell")
-    return script
-
-
-@functools.cache
 def _mirror_heading_script() -> str:
     """`static/mirror-heading.js`, as a served mirror's shell carries it inline.
 
@@ -1975,8 +1960,6 @@ async def index(
         )
         if mirror_attrs:
             repository_context_block += f"<script>{_mirror_heading_script()}</script>"
-    if repository_context is not None:
-        repository_context_block += f"<script>{_github_page_script()}</script>"
     if checkout is not None:
         # A checkout's page says so, and whether it shows the working tree: the ref
         # selector reads it for what it offers, and the pin guard, which the selector's
@@ -5239,6 +5222,8 @@ routes = [
     *SOURCE_ROUTES,
     # What the served subject is called, as the shell's title and a native window say.
     *IDENTITY_ROUTES,
+    # A page's github.com counterpart, which every View on GitHub control links to.
+    *COUNTERPART_ROUTES,
     *build_plugin_routes(_LOADED_PLUGINS, asset_trees=_PLUGIN_ASSET_TREES),
 ]
 

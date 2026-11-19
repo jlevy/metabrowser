@@ -1133,4 +1133,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func openDocumentation(_ sender: Any?) {
         NSWorkspace.shared.open(ProjectLinks.readme)
     }
+
+    // MARK: - GitHub data
+
+    /// Metabrowser > Clear GitHub Data…: empties the store every GitHub popover shares
+    /// (`GitHubDataStore`), which signs you out of GitHub in every window, then reloads each
+    /// open page's popover, signed out, whether a window shows the page or its folder is in
+    /// the background. Cancel is the default button, as for the clone question, so a stray
+    /// Return keeps the sign-in.
+    @objc func clearGitHubData(_ sender: Any?) {
+        let alert = NSAlert()
+        alert.messageText = "Clear GitHub data?"
+        alert.informativeText =
+            "This signs you out of GitHub in Metabrowser’s View on GitHub popovers and removes the cookies, cache, and other data github.com stored there. It does not change your gh sign-in, your browser, or Metabrowser’s own settings."
+        alert.addButton(withTitle: "Cancel")  // the first button is the default
+        let clear = alert.addButton(withTitle: "Clear")
+        clear.hasDestructiveAction = true
+        guard alert.runModal() == .alertSecondButtonReturn else { return }
+        AppLog.app.info("clearing the GitHub popovers' data")
+        Task {
+            await GitHubDataStore.clear()
+            for page in folderSessions.flatMap(\.pages) { page.reloadGitHubPopover() }
+        }
+    }
 }

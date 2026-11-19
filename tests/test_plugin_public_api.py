@@ -242,6 +242,7 @@ _FOLDER_ROUTES = (
     "/api/git/repo",
     "/api/source/status",
     "/api/identity",
+    "/api/counterpart?page=/view/README.md",
 )
 
 

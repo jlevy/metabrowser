@@ -11,7 +11,8 @@ The WebKit measurement gate failed on 2026-11-11 (`mb-gvtw`), and its rerun is o
 
 The app finds a command-line install of `metab`, starts one server per folder or GitHub
 repository the user opens, and shows each in a native window or tab.
-Everything a window shows comes from that server: the page talks to it over HTTP and
+Everything a window shows comes from that server, apart from View on GitHub’s popover
+([View on GitHub](#view-on-github)): the page talks to the server over HTTP and
 server-sent events and never calls into the app, so any shell can replace another.
 The app adds what a browser tab cannot: a Dock icon, folders opened with Open With or
 dropped on it, native menus, windows, and tabs, a session that comes back at the next
@@ -28,7 +29,7 @@ Paths are under `apps/macos/`.
 | `Sources/ShellCore/Supervision/` | Spawning a server, what it says as it starts, recognizing it as ready, checking its health, and stopping it |
 | `Sources/ShellCore/Runtime/` | Finding `metab`, settling which one runs, and the child environment |
 | `Sources/ShellCore/Setup/` | The version floor and how a `metab` was installed, the first-run steps, the doctor’s report for Check Setup…, file watches, the restart offer after an upgrade, and the launch notice |
-| `Sources/ShellCore/Logs/`, `Folders/`, `Web/` | Server logs; folder identity, titles, files opened inside folders, GitHub links, their failures, and File > Open URL…, tab placement, and the saved session; the navigation policy, web view configuration, tab discards, reloads, and downloads |
+| `Sources/ShellCore/Logs/`, `Folders/`, `Web/` | Server logs; folder identity, titles, files opened inside folders, GitHub links, their failures, and File > Open URL…, tab placement, and the saved session; the navigation policy, web view configuration, tab discards, reloads, downloads, and View on GitHub’s policy, popover state and layout, and data store |
 | `Sources/ShellCore/App/` | Which build is running (`AppIdentity`), and the title-bar mark |
 | `Sources/ShellViews/` | `DropAwareWebView` and `WebContainerView`, a library of their own so that the WebKit gate’s driver builds the same views |
 | `Sources/Metabrowser/` | The AppKit app: lifecycle, menus, folder sessions, windows, and the SwiftUI status and settings views |
@@ -76,6 +77,7 @@ before one exists, windows, menus, the Dock, and file events.
    so a first clone holds up no folder.
 4. **Show.** The window’s `WKWebView` uses the persistent default data store
    (`WebConfiguration.make`), since Metabrowser keeps preferences in host-only cookies.
+   View on GitHub’s popover uses a store of its own ([View on GitHub](#view-on-github)).
    A status view covers it until the page commits, and only the navigation the window
    submitted last can reveal the page (`PageReveal`), so a late commit cannot hide a
    server’s failure.
@@ -560,6 +562,8 @@ Applications.
   A clicked link to another `http`, `https`, or `mailto` URL opens in the default
   browser; the same URL reached by script, redirect, or history is cancelled, and so are
   `file://` and other schemes.
+  The page’s View on GitHub button is the one link the app answers itself, with a
+  popover ([View on GitHub](#view-on-github)).
 - **Downloads.** `WKDownload` with a save panel.
   A confirmed Replace downloads to a staging file on the same volume and renames it over
   the original only when it finishes (`StagedDownload`).
@@ -632,6 +636,106 @@ A background root is admitted again at its turn and just before its server spawn
 process that changes the path after that check can still win, and macOS enforces its
 privacy grants regardless.
 
+### View on GitHub
+
+A page whose file, folder, pull request, or commit has a page on github.com carries a
+View on GitHub button in its upper right, and in the app its main link opens that page
+in a native popover over the window (bead `mb-4wqh`, which replaced the in-window GitHub
+view first built for `mb-lxgw`).
+
+- **The page’s contract.** The page marks the button’s root `data-view-on-github`, its
+  main link `data-view-on-github="open"`, with the github.com page as its `href`, and
+  its menu’s Open in Browser link `data-view-on-github="external"`, each with
+  `target=_blank`. Only the `open` link is the app’s: Copy Link is the page’s own, and
+  the `external` link is a link to another site, which `NavigationPolicy` opens in the
+  default browser.
+- **Only the button.** `GitHubViewRequests` installs a user script in the page’s main
+  frame, in the app’s own content world, that takes a trusted primary click with no
+  modifier key on the `open` link, cancels the link’s new window, and posts its `href`,
+  its client rectangle, and the viewport’s width to a handler in that world, which the
+  page’s scripts cannot reach.
+  It takes only an `href` the window opens as it is (`GitHubViewRequests.opensHere`),
+  and leaves any other, such as one longer than `GitHubLink.maximumLength`, to the link,
+  which opens in the default browser, rather than cancel a click the window would drop.
+  The window opens the popover only for the main frame of a document of the server’s own
+  origin (`GitHubViewRequests.allows`, the check the page’s Print button has) and only
+  for an `https` page on github.com (`GitHubView.page`). A modified click on the button,
+  and any other github.com link in a page, opens in the default browser.
+- **The inverse direction.** A github.com link handed to the app (`open -b`, File > Open
+  URL…, `metab --present`) resolves to the Metabrowser view of its repository
+  ([GitHub Links](#github-links)), never to the popover, and closes the popover of the
+  page it shows in.
+- **The popover.** `GitHubPopover` is a transient `NSPopover`, which Escape, Command-W,
+  or a click outside closes.
+  Each folder page (`FolderPage`) has its own, made at the button’s first use, which
+  closes when the page leaves its window, as a window switched to another folder does.
+  It points at the button: `GitHubPopoverLayout.anchor` scales the button’s CSS
+  rectangle by the web view’s width over the viewport’s, which takes in page zoom, and
+  clips it to the web view.
+  It takes most of the window, and no less than `GitHubPopoverLayout.minimumSize` where
+  the screen allows (`contentSize`); `NSPopover` has no resize handle, so the size
+  follows the window’s each time it opens.
+  A one-line header holds Back, Forward, the page’s location (`GitHubView.location`),
+  Copy Link, and Open in Browser.
+  Its controller is in the popover’s responder chain, ahead of the window behind it, so
+  Back, Forward, Reload Page, zoom, Open in Default Browser, and Command-W act on the
+  popover, and Print and Find are off rather than acting on the hidden page.
+- **Its web view.** `WebConfiguration.makeGitHubWebView` makes a plain `WKWebView`, not
+  a `DropAwareWebView`, so a file dropped on it reaches github.com, such as a screenshot
+  on a comment box; a dropped file outside a drop zone would navigate to `file://`,
+  which the policy cancels.
+  Its zoom is its own, starts at 100%, and is never saved.
+  Its UI delegate, `GitHubViewUI`, answers the page’s file panel and its `alert`,
+  `confirm`, and `prompt`, which the popover shows as app-modal panels while it holds
+  itself open (`NSPopover.Behavior.applicationDefined`), and sends a new window to
+  `GitHubViewPolicy.decideNewWindow`.
+- **Navigation.** `GitHubViewPolicy` keeps a main-frame `https` page on github.com,
+  githubusercontent.com, or githubassets.com, with their subdomains, in the popover;
+  GitHub Pages (`github.io`) runs anyone’s script and is not one of them.
+  A link clicked or a form sent to anything else opens in the default browser, and the
+  same URL reached by script is cancelled.
+  A `target=_blank` link to GitHub loads in place, and a download opens in the default
+  browser rather than as a save panel over a popover.
+- **One sign-in.** Every popover’s web view uses `GitHubDataStore.shared`, one
+  persistent `WKWebsiteDataStore` named by a fixed identifier, so signing in once holds
+  in every window and tab and after a relaunch.
+  The pages keep the default store, whose host-only cookies hold Metabrowser’s
+  preferences across ports and whose local storage stays per origin, so a page a
+  folder’s server serves never shares a cookie jar with github.com.
+  WebKit keeps the store under `~/Library/WebKit/<bundle identifier>/WebsiteDataStore/`,
+  so each variant has its own.
+  Anyone using the Mac account can use the sign-in, as in a browser.
+  Metabrowser > Clear GitHub Data… removes everything in it (`GitHubDataStore.clear`)
+  after a confirmation whose default is Cancel, and reloads any popover’s page, signed
+  out.
+- **Lifetime.** A closed popover keeps its web view for
+  `GitHubPopoverState.keptAfterClosing`, so opening it again for the same item shows it
+  as it was left, and then lets it go, unless the page holds text the user has not sent
+  (`GitHubPopoverState.unsentTextProbe`, evaluated in the app’s content world), which
+  keeps it for another while; a page that gives up its web view, and a page that closes,
+  let it go at once. A page that never committed, such as one asked for offline, loads
+  again when the popover opens or reloads (`GitHubPopoverState.pageToLoad`), since
+  WebKit’s reload does nothing without a committed page.
+  The `NSPopover` holds its content, the controller, so the controller makes one each
+  time the popover opens and lets it go when it closes, and a closed page frees both.
+  Its WebContent process is outside `TabDiscardPolicy`. Unsent text keeps it again and
+  again, so time alone does not bound it: there is at most one per live page, as a page
+  the policy discards, or that closes, lets its popover’s web view go.
+  The constant’s comment holds what one github.com page costs, measured, and notes that
+  WebKit, not the app, decides when a released view’s process ends.
+- **Tests.** `GitHubViewTests` cover the button’s page, the message’s shape, the anchor
+  and the size, the policy, the popover’s state and reloads, and the location;
+  `GitHubViewWebKitTests` cover the shared persistent store, the pages’ default store, a
+  cookie one popover’s web view sets reaching another and not the pages, the web view’s
+  own drops and zoom, its dialogs, file panel, and new windows, the unsent-text probe,
+  and the script in a real `WKWebView`: a user’s click on the button reaches the handler
+  with where the button is and cancels the link’s new window, and a scripted click, a
+  Command-click, the menu’s Open in Browser, a plain link to the same page, and a button
+  whose `href` the window would not open do not; every `href` the script takes is one
+  `GitHubView.page` accepts as it is; and the page cannot see the handler.
+  [The hand checks](../qa/qa-macos-app-hand-checks.md#view-on-github) cover the popover
+  and signing in.
+
 ## The Title-Bar Accessory
 
 AppKit draws a system title in one font and color, so the window hides it and draws its
@@ -700,6 +804,9 @@ The page is the one any browser opens, and the app handles what WebKit does diff
   prints only for a document whose security origin is the server’s own.
   It checks the origin, not the URL, because a `/raw` response’s CSP sandbox gives it an
   opaque origin.
+- **View on GitHub’s link** would take the page to github.com, which the app sends to
+  the default browser, so a user script in the app’s own content world takes the user’s
+  click on it and opens the popover instead (`GitHubViewRequests`).
 - **A dropped file** would make WebKit navigate to its `file://` URL, so
   `DropAwareWebView` takes file and folder drops before WebKit sees them and hands them
   to the app (`FileDrop`).
