@@ -344,6 +344,8 @@ Keep these roles distinct:
   [actor identity](#actor-identity);
 - branch names use the shared [ref chip](#branch-chips), including its color and
   hover-to-copy control, in navigation, headers, and histories;
+- a commit is named by its [short ID](#short-commit-ids), `.git-commit-sha`, one length,
+  monospace, and gray wherever it appears;
 - filenames are the identity of a row and carry bold weight at full contrast, while the
   parent path beside them is context and stays regular weight and muted;
 - byte counts, durations, timestamps, and numeric table columns use tabular numerals;
@@ -1664,6 +1666,33 @@ Do not assemble commit-summary fragments in `renderCommitDetail` or add a second
 `tests/test_design_vocabulary.py::test_git_commit_summary_is_one_component` maintains
 the renderer, root, child, styling, and documentation contract.
 
+### Short Commit IDs
+
+**A short commit ID looks the same wherever it appears, as GitHub’s do: always the same
+length, always monospace, always the same gray.**
+
+- **One length.** Every line that names a commit shows the first `SHORT_COMMIT_CHARS`
+  characters of its full ID, from one formatter on each side:
+  `MetabrowserFormatters.shortCommit` in `static/formatters.js` on the page, which
+  plugins reach as `metabrowser.shortCommit`, and `short_commit` in `commit_ids.py` on
+  the server and in the CLI. The ID is cut from the full one, never asked of Git, whose
+  abbreviation grows in a large repository; the full ID stays a copy or a link away
+  ([Copyable Identifiers Use One Delegate](#copyable-identifiers-use-one-delegate)).
+- **One look.** A shown ID is an element of class `.git-commit-sha`, the commit-ID face:
+  `--font-mono` and `--muted`, whatever ink the line around it has, one step below the
+  sans beside it. A tooltip or a CLI message is plain text, so there it is the same
+  length in the text’s face.
+
+It holds in the branch and tag chooser’s button and rows, the navigation heading, a
+commit’s page and hover card, a mirror’s freshness row, and a pull request’s timeline
+and offers, a linked ID among them, which hovers with an underline and stays gray.
+It holds outside the page too: a development version’s label (`commit-length` in
+`pyproject.toml`), the version line after it, and the macOS app’s About box
+(`AppIdentity.shortCommitChars`), which cuts the full ID the build records.
+`tests/test_short_commit.py` holds the lengths equal, the app’s through
+`tests/test_macos_app_pins.py`, and fails a display that abbreviates a commit any other
+way.
+
 ### Branch Chips
 
 Git ref chips (`.git-ref`) are their own vocabulary, not filter chips.
@@ -2489,8 +2518,8 @@ Its measurements in Chrome and the app’s WebKit are in
 | File of a review comment | Sans, bold, at the card head’s size | A path is chrome, and in the main view it reads at the body size, as a diff file bar’s does ([Type Scale](#type-scale)) |
 | Link, including a check’s action off GitHub | `--link`, underline on hover, the focus ring | As the freshness row’s link is, so a check’s action never reads as the muted description after it |
 | View on GitHub | The [View on GitHub](#view-on-github) button in the header’s corner, the page’s own counterpart on github.com | One button in one place on every page that has a counterpart, so it is never a link in the metadata |
-| GitHub action: a check’s action on GitHub, a conversation commit hash | `.github-pull-external-action`: `--muted`, with the leading GitHub mark in the same ink; `--link` on hover and focus | Quiet beside the metadata it follows, and the same in both. A check is GitHub’s by the rule that gives a link the GitHub mark, so its look and its mark agree |
-| Conversation commit hash | `.git-commit-sha` at its own `--nav-font-size` | A [revision](#git-commit-summary) sits one step below the sans beside it, and a commit row is set at `--body-font-size` ([Conversation Timeline](#conversation-timeline)) |
+| GitHub action: a check’s action on GitHub | `.github-pull-external-action`: `--muted`, with the leading GitHub mark in the same ink; `--link` on hover and focus | Quiet beside the metadata it follows. A check is GitHub’s by the rule that gives a link the GitHub mark, so its look and its mark agree |
+| Conversation commit hash | `.git-commit-sha` at its own `--nav-font-size`, a link to the commit on GitHub with the leading GitHub mark, in the commit-ID gray at rest, on hover, and on focus; hover underlines it | A [short commit ID](#short-commit-ids) is the same gray wherever it appears. A [revision](#git-commit-summary) sits one step below the sans beside it, and a commit row is set at `--body-font-size` ([Conversation Timeline](#conversation-timeline)) |
 | Browse code, and a review comment’s file | [Text action](#control-families): a link, or `.github-pull-text-action` on a button where it first serves the pull request’s head | The look of the Link row in both forms, so moving the pin never looks like something else |
 | Section title | [`.section-heading`](#section-headings) |  |
 | Note about the content | [`.notice`](#notices) | `warning` when a text, list, or hunk was cut or a part could not be read; `error` when Changes cannot be drawn; no severity for the offer of newer changes, which carries its own control |
@@ -3668,7 +3697,8 @@ A copyable path, revision, or other exact identifier pairs its visible value wit
 adjacent `.icon-btn.icon-btn-reveal` using the registry’s `copy` icon.
 The visible value may be abbreviated when its meaning remains clear, but the copy
 payload must preserve the complete identifier.
-The Git commit header therefore shows the short revision and copies the full commit ID.
+The Git commit header therefore shows the short revision
+([Short Commit IDs](#short-commit-ids)) and copies the full commit ID.
 
 Explicit values use `data-mb-copy="text"`, carry their escaped payload in
 `data-mb-copy-text`, and name the resting action in `data-mb-copy-label`,
@@ -5218,22 +5248,17 @@ list chooser, a filter box, and one row for each ref (`static/source-ref-selecto
   ref’s name, its commit, and the commit’s age need the room.
 
 - **A ref’s row is its name, its commit, and its age.** The name is its
-  [chip](#branch-chips), the commit is its short ID in the commit-ID face
-  (`.git-commit-sha`), muted, and the age is `MetabrowserFormatters.age` in the compact
-  style, in its tier’s ink, with the commit’s time as its tooltip ([Age](#age)). A tag’s
-  age is its commit’s. The ID sits one step below the text beside it, as it does in a
-  history, and since this list is at the small size, the ramp’s last step before the
-  micro marks, it takes the ratio a chip takes to its text.
-  The ages end the rows in one column, so the IDs line up.
+  [chip](#branch-chips), the commit is its [short ID](#short-commit-ids), and the age is
+  `MetabrowserFormatters.age` in the compact style, in its tier’s ink, with the commit’s
+  time as its tooltip ([Age](#age)). A tag’s age is its commit’s. The ID sits one step
+  below the text beside it, as it does in a history, and since this list is at the small
+  size, the ramp’s last step before the micro marks, it takes the ratio a chip takes to
+  its text. The ages end the rows in one column, so the IDs line up.
   A pin that names no ref puts “Commit:” and the same face on the button.
 
 - **A commit reads the same wherever a line names it.** The navigation heading, the
-  button, the rows, and a mirror’s offer of its ref’s newer commit all show the first
-  `SHORT_COMMIT_CHARS` characters of its ID, from one formatter:
-  `MetabrowserFormatters.shortCommit` on the page and `short_commit` in
-  `root_identity.py` on the server, which `tests/test_short_commit.py` holds equal.
-  A Commits tab’s row keeps Git’s own abbreviation, which grows in a large repository so
-  that it stays unique.
+  button, the rows, and a mirror’s offer of its ref’s newer commit all show it by the
+  one rule in [Short Commit IDs](#short-commit-ids).
 
 A checkout adds three things, and each uses a primitive the control already had:
 

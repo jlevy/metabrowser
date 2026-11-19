@@ -2838,17 +2838,25 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert github[".github-pull-header a:not(:where(.view-header-end *))"]["color"] == (
         "var(--link)"
     )
-    # A GitHub action (a check's action on GitHub, a conversation commit hash) is quiet:
-    # muted at rest, the link token on hover and focus. A check's is at its row's size; a
-    # commit hash is one step below its row (below). View on GitHub is the header corner's
-    # button, a chip (mb-4wqh), and not one of them.
-    for place in (".github-pull-checks", ".github-pull-commit"):
-        action = f"{place} .github-pull-external-action"
-        assert github[action] == {"color": "var(--muted)"}, action
-        for state in (":hover", ":focus-visible"):
-            assert github[action + state]["color"] == "var(--link)", action + state
+    # A check's action on GitHub is quiet: muted at rest, the link token on hover and
+    # focus, at its row's size. View on GitHub is the header corner's button, a chip
+    # (mb-4wqh), and not one of them.
+    action = ".github-pull-checks .github-pull-external-action"
+    assert github[action] == {"color": "var(--muted)"}, action
+    for state in (":hover", ":focus-visible"):
+        assert github[action + state]["color"] == "var(--link)", action + state
     assert page.count('"github-pull-external-action"') == 1, "a check's"
+    # A conversation commit's hash links to it on GitHub and is a short commit ID, in the
+    # commit-ID gray under the pointer too, which only underlines it (docs/design-system.md,
+    # "Short Commit IDs"); tests/test_github_pull_timeline_chrome.py measures it.
     assert '"github-pull-commit-id git-commit-sha github-pull-external-action"' in page
+    assert not any(
+        "color" in declarations
+        for selector, declarations in _rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css")
+        if ".github-pull-commit-id" in selector
+        or ".github-pull-commit .github-pull-external-action" in selector
+    )
+    assert github[".github-pull-commit-id:hover"]["text-decoration"] == "underline"
     # A check's own site is an ordinary link, so it never reads as the description after it.
     assert github[".github-pull-checks a"]["color"] == "var(--link)"
     # A conversation commit is said in a card head's type ("Conversation Timeline"): its

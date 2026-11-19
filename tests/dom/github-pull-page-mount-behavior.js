@@ -1590,7 +1590,7 @@ async function headerShape(page) {
   const STATUS = {
     failed: "The last refresh failed: gh could not reach api.github.com",
     "behind the head":
-      "This page's code is f7c5a9918657, not the pull request's head 85fcb2fa9e77. Switch to the head",
+      "This page's code is f7c5a99, not the pull request's head 85fcb2f. Switch to the head",
     "a checkout at the head":
       "This checkout's HEAD is this pull request's head. Browse the checkout",
     "on its way, its last refresh failed":

@@ -41,6 +41,7 @@ from metabrowser.cli.present import (
     DeliveryCode,
     PresentKind,
 )
+from metabrowser.commit_ids import SHORT_COMMIT_CHARS
 from metabrowser.constants import LOGS_DIR, STATE_DIR
 from metabrowser.dotenv import ALLOWED_KEYS
 from metabrowser.file_extensions import BROWSER_TRACKABLE_EXTS
@@ -183,6 +184,12 @@ def stated_values() -> list[Stated]:
             "the trunk branches",
             r"the trunk\s+branches `(\w+)` and `(\w+)`, locally and on `(\w+)`",
             (*TRUNK_BRANCH_NAMES, *TRUNK_REMOTES),
+        ),
+        Stated(
+            "docs/browsing-history.md",
+            "the short commit ID's length",
+            r"the\s+short\s+ID,\s+its\s+first\s+(\w+)\s+characters,\s+as\s+GitHub",
+            (_NUMBER_WORDS.get(SHORT_COMMIT_CHARS, str(SHORT_COMMIT_CHARS)),),
         ),
         Stated(
             "docs/working-with-agents.md",

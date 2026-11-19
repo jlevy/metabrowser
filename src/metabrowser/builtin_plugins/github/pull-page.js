@@ -355,8 +355,8 @@ const TRUNCATED = Object.freeze({
 /**
  * What Browse code is. One server has one pin, and other tabs share it, so opening a pull
  * request moves nothing: a `link` goes to the root of what is served, and a `switch` first
- * serves this pull request's head, by its commit and under its ref. `at` is the commit that
- * opens, as a reader sees it.
+ * serves this pull request's head, by its commit and under its ref. `at` is the full ID of the
+ * commit that opens, which a tooltip names short (`mb.shortCommit`).
  *
  * @typedef {{kind: "link", at: string} | {kind: "switch", ref: string, head: string, at: string}} BrowseCode
  */
@@ -400,7 +400,7 @@ const TRUNCATED = Object.freeze({
  *   browse: BrowseCode | null,
  *   filesUnavailable: string,
  *   changesPending: boolean,
- *   headOffer: {ref: string, head: string, pin: string, text: string} | null,
+ *   headOffer: {ref: string, head: string, pin: string} | null,
  *   checkoutAtHead: string | null,
  *   newCommits: string | null,
  * }} PullModel
@@ -1469,21 +1469,16 @@ export function describePull(envelope, page) {
   model.baseRef = text(pull.base?.ref) || null;
   const headRef = `refs/pull/${pull.number}/head`;
   if (envelope.pin !== null && head !== "") {
-    model.browse = { kind: "link", at: envelope.pin.slice(0, 12) };
+    model.browse = { kind: "link", at: envelope.pin };
     if (envelope.pin !== head && envelope.pin_ref === headRef) {
       // Served from this pull request's head, and a refresh found a newer one: the ref
       // moved, which the refresh fetched, so the page offers it rather than switching
       // under the reader.
-      model.headOffer = {
-        ref: headRef,
-        head,
-        pin: envelope.pin,
-        text: `This page's code is ${envelope.pin.slice(0, 12)}, not the pull request's head ${head.slice(0, 12)}.`,
-      };
+      model.headOffer = { ref: headRef, head, pin: envelope.pin };
     } else if (envelope.pin !== head) {
       // Anything else, such as a branch, a tag, or another pull request. Nothing is wrong,
       // so nothing is said: reading a pull request does not need its code served.
-      model.browse = { kind: "switch", ref: headRef, head, at: head.slice(0, 12) };
+      model.browse = { kind: "switch", ref: headRef, head, at: head };
     }
   }
   if (envelope.pin === null && head !== "" && page.checkoutHead === head) {
@@ -4824,10 +4819,11 @@ export function mountPullPage(container, ctx, mb) {
     if (browse === null) {
       return {};
     }
+    const at = mb.shortCommit(browse.at);
     const detail =
       browse.kind === "link"
-        ? `Open ${what} at ${browse.at}, the commit this page shows`
-        : `Switch to ${browse.at}, this pull request's head, and open ${what}`;
+        ? `Open ${what} at ${at}, the commit this page shows`
+        : `Switch to ${at}, this pull request's head, and open ${what}`;
     return { "data-tip-text": detail, "aria-label": `${label}: ${detail}` };
   }
 
@@ -5178,15 +5174,25 @@ export function mountPullPage(container, ctx, mb) {
   }
 
   /**
+   * A commit named in a sentence, as every line names one: its short ID in the commit-ID
+   * face (docs/design-system.md, "Short Commit IDs").
+   *
+   * @param {string} commit
+   */
+  function commitId(commit) {
+    return h("span", { class: "git-commit-sha" }, [mb.shortCommit(commit)]);
+  }
+
+  /**
    * An offer at the status row's end: its sentence is cut short before its control is,
    * so a narrow pane still shows the control inside the header (styles.css, "The offers").
    *
-   * @param {string} text
+   * @param {Array<Node | string>} sentence
    * @param {HTMLElement} control
    */
-  function offer(text, control) {
+  function offer(sentence, control) {
     return h("span", { class: "github-pull-offer" }, [
-      tipWhenCut(h("span", { class: "github-pull-offer-text" }, [text])),
+      tipWhenCut(h("span", { class: "github-pull-offer-text" }, sentence)),
       " ",
       control,
     ]);
@@ -5475,9 +5481,9 @@ export function mountPullPage(container, ctx, mb) {
     /** @type {Element[]} */
     const ending = [];
     if (model.headOffer !== null) {
-      const text = model.headOffer.text;
+      const { pin, head } = model.headOffer;
       const switchNow = () => void controller.switchToHead();
-      const held = headerPart("switch offer", text, () => {
+      const held = headerPart("switch offer", [pin, head], () => {
         // A text action, as Refresh is: following it switches the served pin.
         const button = h(
           "button",
@@ -5485,7 +5491,14 @@ export function mountPullPage(container, ctx, mb) {
           ["Switch to the head"],
         );
         button.addEventListener("click", switchNow);
-        return { offer: offer(text, button), button };
+        const sentence = [
+          "This page's code is ",
+          commitId(pin),
+          ", not the pull request's head ",
+          commitId(head),
+          ".",
+        ];
+        return { offer: offer(sentence, button), button };
       });
       numbered.set("switch", { element: held.button, run: switchNow });
       ending.push(held.offer);
@@ -5495,7 +5508,7 @@ export function mountPullPage(container, ctx, mb) {
       const href = mb.navigation.href({ path: "" });
       const held = headerPart("checkout offer", [checkoutAtHead, href], () => {
         const link = h("a", { href }, ["Browse the checkout"]);
-        return { offer: offer(checkoutAtHead, link), link };
+        return { offer: offer([checkoutAtHead], link), link };
       });
       numbered.set("checkout", {
         element: held.link,
@@ -5622,7 +5635,7 @@ export function mountPullPage(container, ctx, mb) {
           mb,
           href,
           "",
-          [event.oid.slice(0, 7)],
+          [mb.shortCommit(event.oid)],
           "github-pull-commit-id git-commit-sha github-pull-external-action",
         ),
         { icon: "github", position: "before" },
@@ -6672,9 +6685,9 @@ export function mountPullPage(container, ctx, mb) {
       });
       body.querySelector(".github-pull-newer-offer")?.remove();
       const said = notice(null, [
-        diffFor?.right === comparison.right
-          ? "The comparison has changed. "
-          : `The pull request now ends at ${comparison.right.slice(0, 12)}. `,
+        ...(diffFor?.right === comparison.right
+          ? ["The comparison has changed. "]
+          : ["The pull request now ends at ", commitId(comparison.right), ". "]),
         offer,
       ]);
       said.classList.add("github-pull-newer-offer");

@@ -182,9 +182,9 @@ id = "identity"
 route = "/api/identity"
 literal = "api/identity"
 source = "Sources/ShellCore/Folders/FolderIdentity.swift"
-json = ["short_name", "full_name", "kind", "kind_label", "title"]
+json = ["short_name", "full_name", "kind", "kind_label", "title", "repository"]
 values = { kind = ["folder", "mirror"] }
-note = "Names each window. Status 200, or the window keeps the name it derived."
+note = "Names each window. Status 200, or the window keeps the name it derived. `repository` puts a link's new mirror window beside an open checkout of the same GitHub repository (`CheckoutWindow`)."
 
 [[route]]
 id = "source-status"
@@ -446,6 +446,13 @@ swift = "FolderIdentity.localFolder, repository"
 source = "Sources/ShellCore/Folders/FolderIdentity.swift"
 metab = "the identity `/api/identity` answers, which a window shows in its place once the server is ready"
 pinned_by = "apps/macos/Tests/ShellCoreTests/AppContractTests.swift::aWindowIsNamedAsTheServerNamesIt"
+
+[[copy]]
+swift = "AppIdentity.shortCommitChars"
+source = "Sources/ShellCore/App/AppIdentity.swift"
+metab = "SHORT_COMMIT_CHARS in commit_ids.py: how much of a commit ID a line shows, which the About box shows of the commit the build records"
+pinned_by = "tests/test_macos_app_pins.py::test_the_about_box_cuts_a_commit_as_every_line_does"
+values = ["metabrowser.commit_ids:SHORT_COMMIT_CHARS"]
 
 [[copy]]
 swift = "GitHubViewRequests.marker"

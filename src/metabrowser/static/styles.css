@@ -184,11 +184,14 @@
        highlighted source, code blocks, Markdown inline code, and raw
        log payloads.
 
-     Three deliberate exceptions, and no others:
+     Four deliberate exceptions, and no others:
        .compression-badge          a 7px glyph — iconography, not text
        .metabrowser-kpress-error-detail   a verbatim error payload
        .log-event-header           structured log values (event type,
                                    timestamps) rather than prose or paths
+       .git-commit-sha             a short commit ID, where every character
+                                   is identity (docs/design-system.md,
+                                   "Short Commit IDs")
      tests/test_chrome_typography.py enforces this list, so a new mono
      use site fails the build until it is classified here.
 
@@ -2872,13 +2875,12 @@ html.theme-anim .menu {
   border-radius: var(--radius-chrome);
   color: var(--muted);
 }
-/* A ref's commit as the history shows one: Git's short ID in the commit-ID face
-   (`.git-commit-sha`), muted beside the ref's name, then its age, whose tier sets its
-   colour and weight (`.age-*`). Neither shrinks: the name gives way first. The age ends
-   the row in a column as wide as the widest compact age, so the IDs line up. */
+/* A ref's commit as every line names one: its short ID in the commit-ID face and gray
+   (`.git-commit-sha`) beside the ref's name, then its age, whose tier sets its colour
+   and weight (`.age-*`). Neither shrinks: the name gives way first. The age ends the row
+   in a column as wide as the widest compact age, so the IDs line up. */
 .source-ref-selector-commit {
   flex: 0 0 auto;
-  color: var(--muted);
 }
 /* A commit ID sits one step below the sans beside it (`.git-commit-sha`), and this list
    and the button are at the small size, the ramp's last step before the micro marks. So
@@ -7464,7 +7466,12 @@ pre.code-block.metabrowser-source-lines > code {
   font-size: var(--body-font-size);
 }
 
+/* A short commit ID, wherever a line names a commit (docs/design-system.md, "Short
+   Commit IDs"): the one face and the one gray, whatever the line around it is in, so
+   every ID reads as the same kind of thing. Its text is `shortCommit`'s, a fixed length
+   cut from the full ID. */
 .git-commit-sha {
+  color: var(--muted);
   font-family: var(--font-mono);
   /* One step below the sans metadata beside it: SF Mono's x-height and
      advance run visually larger than SF Pro at the same nominal size,

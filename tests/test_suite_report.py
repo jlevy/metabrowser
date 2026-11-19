@@ -12,6 +12,7 @@ from devtools import suite_report
 from devtools.check_goldens import recipe
 from devtools.run_goldens import PREFIX
 from devtools.suite_report import REPO_ROOT, Size
+from metabrowser.commit_ids import short_commit
 from tests.required_tools import require_git
 from tests.suite_timing import TITLE
 
@@ -234,13 +235,15 @@ def test_a_real_session_lists_its_files_as_the_report_reads_them(tmp_path: Path)
 
 def _head() -> str:
     require_git()
-    return subprocess.run(
-        ["git", "rev-parse", "--short", "HEAD"],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
+    return short_commit(
+        subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+    )
 
 
 def test_the_working_tree_and_a_commit_are_read_and_named() -> None:

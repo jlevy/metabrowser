@@ -506,7 +506,9 @@ Questions 1, 2, 5, and 6 are answered; 3 and 4 wait for the owner.
    opens the mirror. When a checkout of its repository is known, Open URL… is to offer
    “borrow from the checkout” or “open the checkout instead”
    ([The File Menu](../../architecture/arch-open-modes.md#the-file-menu)). The mirror is
-   built (jlevy/metabrowser#560); the offer is not (`mb-bkk2`).
+   built (jlevy/metabrowser#560); the offer is not (`mb-bkk2`). Later the same day the
+   owner asked that the mirror land in the checkout’s window: its new window joins an
+   open checkout’s window of that repository as a tab (`mb-h5dd`).
 3. **New local roots from an agent in Phase 1.** `open -a` admits any folder today, so
    an agent’s `--present` could raise a privacy prompt in the app’s name.
    Accept that for the first release, or send roots the app does not have open to the

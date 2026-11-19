@@ -13,7 +13,8 @@ public nonisolated enum FolderKind: String, Codable, Equatable, Sendable {
 /// Which folder a window shows, as `GET /api/identity` names it:
 ///
 ///     {"short_name": "fdu", "full_name": "~/wrk/github/fdu", "kind": "folder",
-///      "kind_label": "Local folder", "title": "fdu • Metabrowser"}
+///      "kind_label": "Local folder", "title": "fdu • Metabrowser",
+///      "repository": "https://github.com/jlevy/fdu"}
 public nonisolated struct FolderIdentity: Codable, Equatable, Sendable {
     public static let appName = "Metabrowser"
 
@@ -26,13 +27,23 @@ public nonisolated struct FolderIdentity: Codable, Equatable, Sendable {
     public var kindLabel: String
     /// "fdu • Metabrowser", the plain title.
     public var title: String
+    /// The GitHub repository the folder is a checkout of, by its `origin`, or a mirror
+    /// mirrors: `https://github.com/<owner>/<repo>` in lowercase, as `metab` names a
+    /// link's repository (`PresentPlan.repository`). Nil off github.com, and until the
+    /// server answers. A link's new mirror window joins a checkout's window by it
+    /// (`CheckoutWindow`).
+    public var repository: URL?
 
-    public init(shortName: String, fullName: String, kind: FolderKind, kindLabel: String, title: String) {
+    public init(
+        shortName: String, fullName: String, kind: FolderKind, kindLabel: String, title: String,
+        repository: URL? = nil
+    ) {
         self.shortName = shortName
         self.fullName = fullName
         self.kind = kind
         self.kindLabel = kindLabel
         self.title = title
+        self.repository = repository
     }
 
     enum CodingKeys: String, CodingKey {
@@ -41,6 +52,7 @@ public nonisolated struct FolderIdentity: Codable, Equatable, Sendable {
         case kind
         case kindLabel = "kind_label"
         case title
+        case repository
     }
 
     /// The plain title for `shortName`, worded as the server words it.
@@ -77,7 +89,8 @@ public nonisolated struct FolderIdentity: Codable, Equatable, Sendable {
         let name = (path as NSString).lastPathComponent
         let fullName = (url.host(percentEncoded: false) ?? "") + path
         return FolderIdentity(
-            shortName: name, fullName: fullName, kind: .mirror, kindLabel: "Cached mirror", title: title(for: name))
+            shortName: name, fullName: fullName, kind: .mirror, kindLabel: "Cached mirror", title: title(for: name),
+            repository: url)
     }
 
     /// `path` with the home folder written `~`, as `metab` writes it.

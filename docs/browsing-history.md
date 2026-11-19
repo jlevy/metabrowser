@@ -46,7 +46,8 @@ The page begins with the commit’s summary, laid out as a pull request’s head
 
 - the subject
 - the author, with a person icon where a pull request shows the author’s avatar
-- the short ID with a copy control, and the commit’s branches and tags
+- the short ID, its first seven characters, as GitHub shows them, with a copy control
+  for the full ID, and the commit’s branches and tags
 - “Committed” and the age
 - the **Diff summary**, on every commit, one file or many: the files changed, counted by
   status, and the lines added and deleted; it starts collapsed and opens into the tree

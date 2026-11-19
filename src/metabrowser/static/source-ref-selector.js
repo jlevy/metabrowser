@@ -597,7 +597,7 @@
         parts.label.append(model.button.slice(0, -model.pullNumber.length), number);
       } else if (model.commitId !== null) {
         // A commit's ID is set in the commit-ID face wherever it appears
-        // (docs/design-system.md, "Git Commit Summary").
+        // (docs/design-system.md, "Short Commit IDs").
         const id = document.createElement("span");
         id.className = "git-commit-sha";
         id.textContent = model.commitId;
@@ -670,7 +670,7 @@
         badge.textContent = row.default ? "default" : "checked out";
         button.append(badge);
       }
-      // The commit as the history shows one: Git's short ID in the commit-ID face, then
+      // The commit as every line names one, its short ID in the commit-ID face, then
       // its age, in the compact style of navigation, with the exact time as its tooltip
       // (docs/design-system.md, "Age"). A date Git did not give has no age.
       const commit = document.createElement("span");

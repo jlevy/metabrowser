@@ -77,9 +77,11 @@ Both are named Metabrowser:
 | DMG | `build/Metabrowser-Dev-<VERSION>-arm64.dmg` | `build/Metabrowser-<VERSION>-arm64.dmg` |
 
 `scripts/build-app.sh` writes the variant and the commit into the bundle’s property list
-(`MetabrowserBuildVariant` and `MetabrowserSourceCommit`, the commit with `-dirty` when
-`apps/macos` had uncommitted changes), and the app reads them (`AppIdentity`). A bundle
-without the release variant counts as a development build.
+(`MetabrowserBuildVariant` and `MetabrowserSourceCommit`, the commit’s full ID with
+`-dirty` when `apps/macos` had uncommitted changes), and the app reads them
+(`AppIdentity`). The release check compares the full ID with the tag’s, and the About
+box shows it as a [short commit ID](../../docs/design-system.md#short-commit-ids).
+A bundle without the release variant counts as a development build.
 
 The rule: **the canary icon is for development builds, and the published icon only for
 official releases.**

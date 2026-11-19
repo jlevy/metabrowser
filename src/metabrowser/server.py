@@ -87,6 +87,7 @@ from metabrowser.capabilities import (
 from metabrowser.charts import clear_charts_cache
 from metabrowser.checkout_revisions import checkout_revisions, lifespan_checkout
 from metabrowser.client_disconnect import CLIENT_CLOSED, unless_disconnected
+from metabrowser.commit_ids import short_commit
 from metabrowser.content_sniff import ContentClass, sniff_artifact
 from metabrowser.counterpart import COUNTERPART_ROUTES
 from metabrowser.diff.markdown_projection_worker import (
@@ -200,7 +201,7 @@ from metabrowser.recent import (
     recent_result_from_projection,
 )
 from metabrowser.repository_context import discover_repository_context
-from metabrowser.root_identity import IDENTITY_ROUTES, root_identity, short_commit
+from metabrowser.root_identity import IDENTITY_ROUTES, root_identity
 from metabrowser.settings import (
     DOC_MAX_CHARS_DEFAULT,
     FOLDER_DISCOVERY_MAX_ENTRIES,
@@ -1289,8 +1290,8 @@ def _pin_label_html(status: SourceStatus) -> str:
     wherever it appears. The full commit is in the heading's tooltip.
 
     A pin with no mirror has no origin to take a name from. Its ref stands as the name
-    with the short commit after it, or the short commit alone when no ref is known,
-    and the full commit is its served root.
+    with the short commit after it, or the short commit alone when no ref is known, in
+    the same face, and the full commit is its served root.
     """
 
     short = html_escape(short_commit(status["pin"] or ""))
@@ -1302,7 +1303,9 @@ def _pin_label_html(status: SourceStatus) -> str:
 
     commit = f'<span class="header-revision git-commit-sha">{short}</span>'
     if name is None:
-        return base(short) if ref_name is None else base(html_escape(ref_name)) + commit
+        if ref_name is None:
+            return base(f'<span class="git-commit-sha">{short}</span>')
+        return base(html_escape(ref_name)) + commit
     ref = (
         ""
         if ref_name is None
