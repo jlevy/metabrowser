@@ -5,14 +5,14 @@ title: CHANGELOG.md conflicts on every merge to main serialize landing
 kind: task
 status: closed
 priority: 2
-version: 6
+version: 7
 delegate: claude-code@spud10
 labels: []
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-18T07:00:11.492Z
-updated_at: 2026-11-18T23:32:24.972Z
+updated_at: 2026-11-19T00:16:07.825Z
 started_at: 2026-11-18T22:09:13.346Z
 closed_at: 2026-11-18T23:32:24.969Z
 close_reason: "Merged in #585"
@@ -26,3 +26,5 @@ Overnight 2026-11-18 every merge to main made each open PR with an Unreleased en
 2026-11-18: tested option (a). With CHANGELOG.md merge=union in .gitattributes on both sides, local git merge-tree merged two top-of-Unreleased additions cleanly, but GitHub's server-side merge (POST /repos/{owner}/{repo}/merges between two scratch branches, since deleted) returned 409 Merge conflict: GitHub ignores merge=union. Option (a) is out. Remaining: (b) changelog fragments, one file per change (e.g. changelog.d/<bead>.md), assembled into CHANGELOG.md at release.
 
 2026-11-18: implemented option (b) in PR #585 (branch claude/changelog-fragments): changelog.d/<bead>.md fragments; devtools/changelog.py check/show/assemble; make lint-check runs `check --against origin/main`, which fails a branch whose Unreleased section gains entries (edits and assembled fragments pass). Release checklist (docs/publishing.md) runs assemble in the release-prep PR. After merge every open PR that adds an Unreleased bullet must move it into changelog.d/<bead>.md.
+
+2026-11-18: PR #585 merged 23:32Z (merge f9198f46d, head 7dabb3209). Follow-up commit 7ac78f6cd: entries already at the REF tip are known, so an uncommitted merge of main is not flagged. Full PR CI green at 2b286810b (run 44411188383); later PR runs and main push run 44421606268 were cancelled (lint and goldens 3.12 passed there); main run 44421892715 for 729b67553 was queued at report time. #583 already moved its entry to changelog.d/mb-hqje.md.

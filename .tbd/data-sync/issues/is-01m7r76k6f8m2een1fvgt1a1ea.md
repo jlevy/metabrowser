@@ -5,7 +5,7 @@ title: Revise the object data model plan against main as of 2026-11-18 and the P
 kind: task
 status: in_progress
 priority: 2
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-11-14-object-data-model-and-views.md
 delegate: claude-code@spud10
 labels: []
@@ -14,7 +14,7 @@ parent_id: is-01m7f2vek3t6sca32adhd4gq33
 hold: null
 hold_until: null
 created_at: 2026-11-18T20:57:30.574Z
-updated_at: 2026-11-18T22:46:33.875Z
+updated_at: 2026-11-19T00:14:50.711Z
 started_at: 2026-11-18T20:57:35.381Z
 ---
 Since #453 merged, #487, #491, #484, #536, #522, #529, #506, #528, #558, #546, #540, #559, #511, #493 landed and #550/#552, #380, #534, the fdu stack are open. Fold reuse points (pull-files-summary, ChangeSums, actorIdentity, page/view header, drawn-from-disk fixture), fix Background, terms (view, recent, kind), Pulls row structure, readers list, decision options, and 33 drifted anchors. Decisions stay open for the owner.
@@ -24,3 +24,5 @@ Since #453 merged, #487, #491, #484, #536, #522, #529, #506, #528, #558, #546, #
 Owner decisions, 2026-11-18 (to record in the plans): Block-accepted the recommendations for 2, 3, 4, 6, 9, 10, 11, 13, 14, 15, 16, 17, 18, 21, 23. Decisions 1 and 31: SoftSchema for both objects and UI state. Decision 5: pull-request everywhere (rename the --present kind and SelectionKind tokens with the macOS app in one commit; repository/tree map to folder, blob to file). Decision 8: UTC strings at second precision. Decision 12: host frame plus an SDK header frame (noted on mb-7t5s). Decision 19: a main navigation tab named Recent, showing everything happening on the GitHub repo, the Git repo, or the working directory by root type, with working-tree changes as an object and time-clumped updates beside atomic events (design in a companion Recent-tab plan). Decision 20: follow #380's caret rule if it is accepted; until then additions do not bump. Decision 22: D, the page first and the contracts second. Layout: six plan specs (object model, view model, Recent tab, agent interface, plugin authoring, implementation map) in one PR, #570. Owner also asked to plan incremental delivery, weighing an early working-tree diff object against safe cleanups first, and asked for a first-principles walkthrough of every decision before they are final.
 
 Walkthrough, 2026-11-18: the owner confirmed group 1 (Decisions 1/31, 2, 3, 4, 5, 6, 7 A, 8, 10) after the first-principles explanation. Decision 7 A is now taken. Next: group 2 (views and lists: 11, 12, 13, 14, 17, 21, 23).
+
+Walkthrough, 2026-11-18: the owner confirmed group 2 (Decisions 11, 12, 13, 14, 17, 21, 23) at their recommendations, with one refinement to 11: card stays in the named shape set, but its frame is built only with its first real use (the Recent plan moved /recent cards to R4). Next: group 3 (9, 15, 16, 20, PS-1 to PS-7).
