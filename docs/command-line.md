@@ -475,7 +475,7 @@ metab ./repo --diff <revision> --diff-check               # rebuild and verify
 metab ./notes --check-api    # pass or fail for the navigation requests
 metab --plugins              # every discovered plugin
 metab --plugin markdown      # one plugin's resolved manifest
-metab --doctor               # validate every plugin; non-zero exit on a problem
+metab --doctor               # check the plugins and the setup; non-zero exit on a problem
 ```
 
 `--check-api` runs the browser’s navigation sequence against `ROOT`, prints each step,
@@ -495,6 +495,29 @@ A script that needs only this report issues its route, which any served root ans
 ```shell
 echo '{}' | metab . --api /api/plugin/github/status --data -
 ```
+
+Then come the setup checks, each with a state (`ok`, `warning`, or `problem`), a
+sentence, the details it read, and the step that fixes it:
+
+- **`metab`:** its version, executable, Python, and how it was installed (uv, pipx, a
+  source checkout, or another environment).
+  When `--present` would open the macOS app, the check compares this `metab` with the
+  oldest that app runs, and an older one is a warning whose step upgrades it with the
+  tool that installed it.
+- **`git`:** the `git` on `PATH`, against the floor for cloning and fetching and the one
+  for showing a branch or tag of a partial clone.
+  Below either is a warning: browsing a folder needs no Git.
+- **`config`:** the configuration directory: its override is valid, it is private, and
+  its `config.yml` is one this release reads.
+- **`cache`:** the cache directory: its override is valid, it is private and writable,
+  it is apart from the configuration, and how much space its volume has free.
+
+A `problem` stops `metab` from serving a folder, so it is also listed with the plugin
+problems and makes the exit status 1; a `warning` never changes it.
+None of these opens a network connection, and none checks uv, which `metab` never runs.
+With `--json`, the checks are the `checks` list, whose shape
+[`cli/doctor.py`](../src/metabrowser/cli/doctor.py) documents; the
+[macOS app’s Check Setup…](macos-app.md#checking-the-setup) reads it.
 
 ## Presenting a Target: `--present`
 

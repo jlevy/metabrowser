@@ -120,6 +120,9 @@ accepts. Showing another branch or tag of a local checkout needs the same Git, a
 newer one in a partial clone (`git clone --filter`), whose refusal names it; browsing
 the folder and reading its commits and diffs do not.
 
+GitHub work needs `gh` 2.81.0 or later, which reports the signed-in account; an older
+`gh` is reported with the command that upgrades it.
+
 Check the tools and the signed-in account in the terminal that runs `metab`:
 
 ```shell
@@ -130,8 +133,11 @@ gh auth status --active --hostname github.com
 
 `metab --doctor` runs the same check Metabrowser runs before GitHub work and prints
 `gh`’s path and version, the account, its token scopes, and the step that fixes a
-problem. A private repository needs a token with the `repo` scope, which `gh auth login`
-grants by default.
+problem. It also checks Git against both floors, `metab` itself, and the configuration
+and cache directories ([Diagnostics](command-line.md#diagnostics-and-plugins)), so it is
+the first thing to run when something does not work.
+A private repository needs a token with the `repo` scope, which `gh auth login` grants
+by default.
 
 If `gh` says you are not signed in, run `gh auth login --hostname github.com` and check
 again. A saved login is enough; for headless use `gh` also reads an
@@ -190,7 +196,9 @@ Without a `metab` it can run, the app lists the steps still missing
 
 The app has no updater: rebuild it from a newer checkout.
 Upgrading `metab` is separate, and the app offers to restart its servers when it notices
-([Choosing a metab](macos-app.md#choosing-a-metab)).
+([Choosing a metab](macos-app.md#choosing-a-metab)). Help > Check Setup… runs
+`metab --doctor` as the app’s servers run it and shows the report
+([Checking the Setup](macos-app.md#checking-the-setup)).
 
 A disk image you build yourself (`make macos-dmg`) is signed only for the Mac that built
 it. Drag the app from an image to Applications and open it from there.

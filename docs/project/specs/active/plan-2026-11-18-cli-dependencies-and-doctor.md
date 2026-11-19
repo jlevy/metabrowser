@@ -4,13 +4,11 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Phase 1 (the versioning contract) is in the pull request that adds this
-plan; Phases 2 and 3 are not started.
+**Status:** Phase 1 (the versioning contract) shipped in jlevy/metabrowser#590. Phases 2
+and 3 are in the pull request that checks them off below, on top of the GitHub status
+check (`mb-si2g`, jlevy/metabrowser#581). The checks Phase 2 did not build, and why, are
+under [What Phase 2 Built](#what-phase-2-built).
 Bead `mb-bxli` tracks the work.
-Phase 2 waits for the GitHub status check (`mb-si2g`, jlevy/metabrowser#581), which
-rewrites the same doctor function.
-jlevy/metabrowser#581 declares no `gh` minimum; Phase 2 of this plan declares it, as
-review A6 on jlevy/metabrowser#581 asks.
 [Owner Decisions](#owner-decisions) lists what the owner decides.
 
 ## The Owner’s Words
@@ -154,8 +152,11 @@ Review A6 on jlevy/metabrowser#581 sets how `gh_status` uses the minimum:
 - `gh_too_old`’s fix is the upgrade for the install method found.
 - The doctor’s `github` object gains the minimum; no second `gh` entry is added.
 
-Phase 2 adds a check that ShellCore holds no version literal for `gh` or `git`, and
-AGENTS.md gains the rule with it, not before.
+Phase 2 was to add a check that ShellCore holds no version literal for `gh` or `git`. It
+is not built: a text search cannot tell a requirement from a comment that records a
+measured version, and the structure already holds the rule, since ShellCore has no `gh`
+or `git` requirement type and `DoctorReport` is the only place the app reads either
+version. AGENTS.md gains no rule without the check.
 
 ### The Versioning Contract
 
@@ -294,8 +295,27 @@ one fixes it). The text output prints one line per check and the remedy under it
   `metab` it runs and how it was found, so a mismatch with Terminal’s shows.
 - **No `metab`.** The window shows the `metab` requirement and `SetupGuide`’s steps
   instead of a report.
-- **An older `metab` without `checks`** cannot occur: the app needs the minimum that
-  adds them (no compatibility layer; the minimum is raised in the same change).
+- **An older `metab` without `checks`** can run: a checkout’s development build of
+  `0.13.0` from before the checks meets the floor.
+  The window shows the rows the report has, says the checks are missing, and offers the
+  upgrade for how that `metab` was installed.
+  The floor is not raised, since `0.13.0` is unreleased and its release has the checks.
+
+### What Phase 2 Built
+
+`cli/doctor.py` has the checks `metab`, `git`, `config`, and `cache`, in that order.
+`python` is a detail of the `metab` check, and `macos_app` is that check’s comparison
+with the app `--present` would open, whose `Info.plist` declares its minimum.
+`plugins` stays the doctor’s verdict and `problems`, and the app shows it as a row.
+No check reports `skipped`, so the states are `ok`, `warning`, and `problem`.
+
+- **Not uv.** `metab` never runs uv, so a missing or old uv breaks nothing the doctor
+  can see; uv appears only in the step that upgrades a uv install.
+- **Not the network.** Off by default, as [Owner Decisions](#owner-decisions) item 6
+  proposes; `gh auth status` already reaches github.com when `gh` is signed in.
+- **Not built, as follow-ups:** `markdown_renderer` (starting the child adds seconds to
+  every doctor run), `browser`, `recent_targets`, `locks`, and the stale editable
+  install. Each needs its own bound and fixture, and none blocks serving a folder.
 
 ## Implementation Plan
 
@@ -316,34 +336,40 @@ one fixes it). The text output prints one line per check and the remedy under it
 
 ### Phase 2: A Complete Doctor (after jlevy/metabrowser#581 merges)
 
-- [ ] `gh`’s minimum, one constant in `gh_status.py` with its reason; `gh_too_old`
+- [x] `gh`’s minimum, one constant in `gh_status.py` with its reason; `gh_too_old`
   decided by comparing `gh_version` with it, with the unknown-flag probe as a fallback;
   its fix the install-method upgrade; and the `github` object extended with it (review
   A6 on jlevy/metabrowser#581).
-- [ ] The `checks` list and each check in the table above, in a new `cli/doctor.py` that
-  `doctor_plugins` calls; text and JSON; bounded.
-- [ ] A check that ShellCore holds no version literal for `gh` or `git`, and the rule in
-  AGENTS.md beside it.
-- [ ] The app’s `Info.plist` key for its minimum `metab`, and its pin.
-- [ ] The golden, the parity rows, and the installed-wheel smoke run.
-- [ ] `docs/command-line.md` and [installation](../../../installation.md) name the
+- [x] The `checks` list in a new `cli/doctor.py` that `doctor_plugins` calls; text and
+  JSON; bounded. [What Phase 2 Built](#what-phase-2-built) lists the checks.
+- [x] ~~A check that ShellCore holds no version literal for `gh` or `git`~~, not built:
+  [A Minimum Lives with the Program That Runs the Tool](#a-minimum-lives-with-the-program-that-runs-the-tool)
+  says why.
+- [x] The app’s `Info.plist` key for its minimum `metab`, and its pin.
+- [x] The golden, the parity row, and the installed-wheel smoke run, which now gives the
+  doctor a private cache directory of its own.
+- [x] `docs/command-line.md` and [installation](../../../installation.md) name the
   doctor as the first step when something fails.
 
 ### Phase 3: Requirements and Check Setup… in the App
 
-- [ ] `MetabRequirement` gains `metab`’s install-method detection and commands above,
-  with tests for each method.
-  ShellCore gets no `gh` or `git` requirement.
-- [ ] A `DoctorReport` decoded from `--doctor --json`, and the Check Setup… window, menu
-  item, Copy Report, and Check Again; Settings’ Run Doctor opens it.
-- [ ] `MetabRequirement.minimumRelease` raised to the release that adds `checks`, which
-  is a minor one by Phase 1’s rule.
-- [ ] `docs/macos-app.md` says where Check Setup… is and what it shows.
+- [x] `MetabRequirement` gains `metab`’s install-method detection and commands above
+  (`MetabInstall`), with tests for each method; `tests/test_macos_app_pins.py` holds
+  them to the doctor’s. ShellCore gets no `gh` or `git` requirement.
+- [x] A `DoctorReport` decoded from `--doctor --json`, and the Check Setup… window, menu
+  item, Copy Report, and Check Again; Settings’ Check Setup… opens it.
+- [x] `MetabRequirement.minimumRelease` is already `0.13.0`, the unreleased minor
+  release that adds `checks`.
+- [x] `docs/macos-app.md` says where Check Setup… is and what it shows, and the
+  [hand checks](../../qa/qa-macos-app-hand-checks.md) cover the window.
 
 ### Follow-Up
 
 - The app contract golden (separate PR): one golden over every flag, route, JSON field,
   output line, and exit status the app reads.
+  `--doctor --json` is pinned by `tests/golden/cli-doctor.tryscript.md`, whose
+  `metab --doctor --json` test it can cite.
+- The checks [What Phase 2 Built](#what-phase-2-built) lists as not built.
 
 ## Owner Decisions
 
@@ -370,11 +396,15 @@ Each is a proposal until the owner decides it.
    older app. Once the app is published, a user can update `metab` without updating the
    app. Should a `metab` minor release keep what the last published app reads until an
    app release that no longer needs it has shipped?
-6. **The network check.** Proposed: `--doctor` opens one TLS connection to github.com,
-   which `gh auth status` already does when `gh` is signed in, and reports `skipped`,
-   not `problem`, with no network.
-7. **Where Check Setup… lives.** Proposed: Help > Check Setup…. The alternative is
-   Metabrowser > Check Setup…, beside Settings….
+6. **The network check.** Not built: no setup check opens a connection, and only
+   `gh auth status`, in the GitHub section, reaches github.com.
+   Proposed: a `network` check that opens one TLS connection to github.com, at most a
+   `warning`, so that a failure without `gh` is named too.
+   The release gate’s isolated doctor run would then need it switched off.
+7. **Where Check Setup… lives.** Built as Help > Check Setup…, with a button of the same
+   name in Settings. The alternative is Metabrowser > Check Setup…, beside Settings….
+8. **uv.** Proposed: the doctor does not check uv, which `metab` never runs; it names uv
+   only in the step that upgrades a uv install.
 
 ## References
 

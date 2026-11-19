@@ -27,7 +27,7 @@ Paths are under `apps/macos/`.
 | --- | --- |
 | `Sources/ShellCore/Supervision/` | Spawning a server, what it says as it starts, recognizing it as ready, checking its health, and stopping it |
 | `Sources/ShellCore/Runtime/` | Finding `metab`, settling which one runs, and the child environment |
-| `Sources/ShellCore/Setup/` | The version floor, the first-run steps, file watches, the restart offer after an upgrade, and the launch notice |
+| `Sources/ShellCore/Setup/` | The version floor and how a `metab` was installed, the first-run steps, the doctor’s report for Check Setup…, file watches, the restart offer after an upgrade, and the launch notice |
 | `Sources/ShellCore/Logs/`, `Folders/`, `Web/` | Server logs; folder identity, titles, files opened inside folders, GitHub links, their failures, and File > Open URL…, tab placement, and the saved session; the navigation policy, web view configuration, tab discards, reloads, and downloads |
 | `Sources/ShellCore/App/` | Which build is running (`AppIdentity`), and the title-bar mark |
 | `Sources/ShellViews/` | `DropAwareWebView` and `WebContainerView`, a library of their own so that the WebKit gate’s driver builds the same views |
@@ -421,8 +421,16 @@ alone does not prove the flags, and `RuntimeDiscovery.validate` runs
 number; exit status 2 naming any of the flags means a build that predates it, which is
 too old whatever its number; anything else rejects the `metab` with the probe’s last
 line. Below the floor, discovery tries the next place.
-`MetabRequirement.upgradeCommand` asks uv for a floor rather than a pin, because uv
-keeps the requirement in the tool’s receipt.
+`MetabRequirement.upgradeCommand(for:)` upgrades a `metab` with the tool that installed
+it, which `MetabInstall` reads from beside the canonical executable: uv’s receipt,
+pipx’s metadata, or a checkout’s `.venv` beside its `pyproject.toml`. uv and pipx are
+asked for a floor rather than a pin, because uv keeps the requirement in the tool’s
+receipt, and a checkout runs `git pull && make install` at its root.
+`metab --doctor` names the same steps (`METAB_UPGRADE_COMMANDS` in `cli/doctor.py`),
+which `tests/test_macos_app_pins.py` holds to these.
+The app’s `Info.plist` declares the floor as `MetabrowserMinimumMetab`, which the same
+test holds to `minimumRelease`, so the doctor in a terminal can compare its `metab` with
+the app `--present` would open.
 
 The floor is a minor release, raised as
 [Choosing a Version](../../publishing.md#choosing-a-version) says.
@@ -448,7 +456,7 @@ command to copy (`SetupGuide`):
 | No uv | uv’s installer, then the `metab` step in a new Terminal window |
 | uv, no `metab` | `RuntimeDiscovery.installCommand` |
 | A `metab` in uv’s tool directory that does not run | A reinstall |
-| A `metab` below the floor, or built before the flag | `MetabRequirement.upgradeCommand` |
+| A `metab` below the floor, or built before the flag | `MetabRequirement.upgradeCommand(for:)`, by how it was installed; no uv step for pipx |
 
 Until the floor is on PyPI (`MetabRequirement.isReleased`), every case ends instead in
 `make install` at the source checkout the app was built from, then Choose metab…. The
@@ -456,6 +464,31 @@ app asks a uv that passes `ExecutableTrust` where `metab` will appear
 (`uv tool dir --bin`), watches there and every place discovery looks, and when `metab`
 appears searches again and opens the folders that were waiting.
 It never runs an installer itself.
+
+### Check Setup…
+
+Help > Check Setup…, and Settings’ button of the same name, run `metab --doctor --json`
+from the accepted runtime in a server’s environment (`DoctorRun`, `ChildEnvironment`),
+bounded by `RuntimeDiscovery.doctorTimeout`, and show the report as rows
+(`DoctorReport`): the plugins, `open_in`, the `github` object, and each entry of
+`checks`, whose shape `cli/doctor.py` documents.
+The app reads `gh`’s and `git`’s path, version, and minimum only from the report, which
+ran with the tool directories first on `PATH`, so they are the tools its servers run; it
+never runs either itself.
+The window adds what only the app knows: its build, its floor, and the `metab` it ran
+and how it found it, which head Copy Report’s text.
+
+- **Unknown keys** are ignored and an unknown state is shown as named, so a newer
+  `metab`’s report still reads.
+- **No `checks`:** a development build of the floor from before the setup checks meets
+  the floor, so the window shows its other rows, says the checks are missing, and offers
+  the upgrade for its install.
+- **No report:** a `metab` that cannot start, runs out the deadline, or prints no single
+  JSON object (`JSONAnswer`) is shown with the reason and its output.
+
+`DoctorReportTests` reads the doctor’s own transcript,
+`tests/golden/cli-doctor.tryscript.md`, so a change to the report’s shape fails there as
+well, and `LiveMetabTests` runs a real `metab`.
 
 A copy opened from its disk image, or translocated by Gatekeeper, cannot be replaced in
 place. macOS has no API for either, so `LaunchLocation` reads the bundle’s path and
