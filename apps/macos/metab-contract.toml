@@ -182,9 +182,9 @@ id = "identity"
 route = "/api/identity"
 literal = "api/identity"
 source = "Sources/ShellCore/Folders/FolderIdentity.swift"
-json = ["short_name", "full_name", "kind", "kind_label", "title"]
+json = ["short_name", "full_name", "kind", "kind_label", "title", "repository"]
 values = { kind = ["folder", "mirror"] }
-note = "Names each window. Status 200, or the window keeps the name it derived."
+note = "Names each window. Status 200, or the window keeps the name it derived. `repository` puts a link's new mirror window beside an open checkout of the same GitHub repository (`CheckoutWindow`)."
 
 [[route]]
 id = "source-status"
@@ -526,6 +526,7 @@ values = ["metabrowser.cli.present:OPENS_URLS_KEY"]
 "Sources/ShellCore/Web/PagePrint.swift" = ["own: window.print, which WebKit gives the app no public way to receive"]
 "Sources/ShellCore/Web/GitHubViewRequests.swift" = ["view-on-github-link"]
 "Sources/Metabrowser/GitHubPopover.swift" = ["own: whether the popover's github.com page holds text not yet sent"]
+"Sources/ShellCore/Web/PageFind.swift" = ["own: the page's selection, which find reads and starts from, through the DOM's own Selection"]
 
 # ── What the scans pass over ────────────────────────────────────────────────────────────
 #

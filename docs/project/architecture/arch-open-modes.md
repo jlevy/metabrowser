@@ -463,6 +463,10 @@ opened by URL, a GitHub link sent to the app or a URL entered in Open URL… amo
   folders join when an entry records its repository.
   If the mirror already has a window, the window switches to the branch or pull request
   the URL selects, and it never shows another revision silently.
+  If it has none but a window shows a checkout of the same repository, the mirror’s
+  window opens as a tab of that one, by the owner’s word on 2026-11-18: the mirror still
+  serves the URL, and the checkout keeps its own tab
+  ([GitHub Links](arch-macos-app.md#github-links)).
 - **Open Recent** lists the recent targets `metab` keeps, repositories opened by URL
   among them, and reopens each in the mode it records.
 
@@ -521,6 +525,7 @@ the design that carries it out.
 | Pulls and View on GitHub stay on a revision view, and it links to the commit viewed | 2026-11-18 | [Pull Requests in a Repository Folder](#pull-requests-in-a-repository-folder) |
 | View on branch and Browse code go to the pull request’s head as a revision view; the working-tree copy is a separate, labelled action | 2026-11-18 | [Pull Requests in a Repository Folder](#pull-requests-in-a-repository-folder) |
 | Open URL… opens the mirror, always, offers a known checkout, and never silently shows another revision | 2026-11-18 | [The File Menu](#the-file-menu) |
+| A URL’s new mirror window joins an open checkout’s window of the same repository as a tab | 2026-11-18 | [The File Menu](#the-file-menu) |
 | The indicator sits with the root’s name; the cloud alone is the fallback; folder mode uses a folder icon | 2026-11-18 | [The Indicator and View on GitHub](#the-indicator-and-view-on-github) |
 | The GitHub control is separate from the indicator, for github.com repositories only | 2026-11-18 | [The Indicator and View on GitHub](#the-indicator-and-view-on-github) |
 | One View on GitHub button in the upper right of every page github.com has a page for, which the app opens in a native popover and whose menu copies the link or opens it in the browser, in place of the Metabrowser and GitHub toggle and the pull request’s View on GitHub link | 2026-11-18 | [View on GitHub](../../design-system.md#view-on-github) |

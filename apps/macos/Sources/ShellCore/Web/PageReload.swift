@@ -98,8 +98,7 @@ public nonisolated enum PageMenu {
     }
 
     /// Whether `item` is enabled in `window`. Reload always is (`PageReload`); the others
-    /// act on the page itself, so they need it on screen. Find also asks the window's text
-    /// finder.
+    /// act on the page itself, so they need it on screen.
     public static func isEnabled(_ item: Item, in window: FolderWindowState) -> Bool {
         switch item {
         case .reload: true
