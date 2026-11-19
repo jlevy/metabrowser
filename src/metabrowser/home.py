@@ -795,6 +795,15 @@ def configuration_directory(environ: Mapping[str, str] | None = None) -> Path:
     return _storage_directory("METABROWSER_CONFIG_DIR", "XDG_CONFIG_HOME", ".config", environ)
 
 
+def state_directory(environ: Mapping[str, str] | None = None) -> Path:
+    """Resolve METABROWSER_STATE_DIR, XDG_STATE_HOME/metabrowser, or ~/.local/state/metabrowser.
+
+    The XDG directory for state that outlives a restart but is not configuration: the
+    event log (:mod:`metabrowser.event_log`) lives here.
+    """
+    return _storage_directory("METABROWSER_STATE_DIR", "XDG_STATE_HOME", ".local/state", environ)
+
+
 @_without_file_names
 def validate_storage_separation(cache: Path) -> None:
     """Refuse overlapping roots so discarding cache cannot discard configuration."""

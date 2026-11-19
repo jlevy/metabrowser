@@ -42,6 +42,7 @@ import asyncio
 import contextlib
 import logging
 import re
+import time
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -49,6 +50,7 @@ from datetime import UTC, datetime
 from functools import partial
 from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, Protocol, TypedDict
 
+from metabrowser import event_log
 from metabrowser.git.process import GIT_ACQUISITION_TIMEOUT_S
 from metabrowser.paths_safe import register_root_callback
 from metabrowser.repository_context import RepositoryContext
@@ -683,8 +685,15 @@ class RefreshCoordinator:
             return "joined"
         if self._closed:
             raise RuntimeError("the refresh coordinator is closed")
+        # The job's span in the event log, started here so its parent is the request
+        # that asked for it, and its start is on record even if it never ends.
         job = asyncio.create_task(
-            self._run(work, network=network), name=f"metabrowser-refresh:{key[:24]}"
+            event_log.job(
+                self._run(work, network=network),
+                event_log.job_name(work),
+                attrs={"key": key, "network": network},
+            ),
+            name=f"metabrowser-refresh:{key[:24]}",
         )
         self._jobs[key] = job
 
@@ -696,13 +705,18 @@ class RefreshCoordinator:
         return "started"
 
     async def _run(self, work: Callable[[], Awaitable[None]], *, network: bool) -> None:
+        queued = time.perf_counter()
         async with self._semaphore if network else contextlib.nullcontext():
+            if network:
+                # How long the job waited for a slot: a queue, not slow work.
+                event_log.current().set(queued_ms=round((time.perf_counter() - queued) * 1000, 1))
             try:
                 await work()
             except asyncio.CancelledError:
                 raise
-            except Exception:
+            except Exception as exc:
                 log.exception("a background refresh failed")
+                event_log.current().end("failed", error=event_log.describe_error(exc))
 
     def cancel(self, key: str) -> asyncio.Task[None] | None:
         """Signal a live keyed job and return it to a caller that needs to drain it."""

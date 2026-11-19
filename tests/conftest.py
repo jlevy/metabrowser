@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import os
 import sys
+import tempfile
 from collections.abc import Generator
 from html.parser import HTMLParser
 from pathlib import Path
@@ -27,6 +28,13 @@ os.environ["METABROWSER_PLUGINS_DIRS"] = ""
 # module- or session-scoped fixture that starts before any test's exists, in the list of
 # whoever runs the suite. A test of the record itself turns it back on.
 os.environ["METABROWSER_RECORD_RECENT"] = "0"
+# Nor does any server a test starts write an event log (metabrowser.event_log) into the
+# state directory of whoever runs the suite; and a read of the log, as `/api/event-log`
+# does, reads an empty directory of the suite's own. A test of the log opens one itself.
+os.environ["METABROWSER_EVENT_LOG"] = "0"
+os.environ["METABROWSER_STATE_DIR"] = os.path.join(
+    tempfile.gettempdir(), f"metabrowser-test-state-{os.getpid()}"
+)
 for _capability_env in ("METAB_UNTRUSTED", "METAB_ACTIVE_CONTENT", "METAB_ALLOW_EDITS"):
     os.environ.pop(_capability_env, None)
 # Where `--present` opens a target is the operator's preference; a test that reads one

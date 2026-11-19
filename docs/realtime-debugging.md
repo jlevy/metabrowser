@@ -34,6 +34,56 @@ and a slow fetch message includes total, server, and transit time:
 - **Fetch fast but render slow:** inspect DOM volume, syntax highlighting, charts, or
   plugin rendering.
 
+## Event Log
+
+A served process also writes a structured event log (`metabrowser/event_log.py`): one
+JSON line for every request, every background job, and every `git` and `gh` process,
+with its duration, how it ended, and the span that started it.
+It covers what the stderr log cannot: a pull request’s refresh or a comparison’s listing
+runs after the request that asked for it has returned, and a `gh` that times out there
+writes nothing to stderr.
+The design and its schema are in
+[the plan](project/specs/active/plan-2026-11-19-structured-event-log.md).
+
+The log lives in `events/` under the state directory: `METABROWSER_STATE_DIR`, else
+`$XDG_STATE_HOME/metabrowser`, else `~/.local/state/metabrowser`, whether the server
+runs from a terminal or inside the macOS app.
+Each server writes its own owner-only segment, named for when it started and its process
+ID; a segment rolls at `MAX_FILE_BYTES` and the directory is kept within
+`MAX_TOTAL_BYTES` by deleting the oldest.
+`METABROWSER_EVENT_LOG=0` turns it off.
+A one-shot command, such as `--api`, writes none.
+
+Read it with `/api/event-log`, from a running server or from a terminal:
+
+```shell
+metab . --api '/api/event-log?outcome=timeout,failed'
+metab . --api '/api/event-log?kind=job&sort=duration&limit=10'
+metab . --api '/api/event-log?span=8'
+```
+
+The answer names the directory and its segments, and reads the one this server writes,
+else the newest; `file=` reads another.
+Filters are `kind`, `outcome`, `event`, `name`, `client`, `span` (that span’s records
+and those of the spans it started), and `min_ms`, and `sort=duration` puts the slowest
+first. From a running server, `open` lists what it is waiting on now.
+
+For a page that waits and nothing arrives:
+
+1. Find the request the page sent, such as `POST /api/plugin/github/pull-refresh`, and
+   its `span`.
+2. `span=<id>` shows the job it started: a `start`, `open` records at `OPEN_AFTER_MS`
+   and each doubling, and its `end`, or no end when it never finished.
+3. The job’s own `span` shows its `gh` and `git` processes.
+   A `gh` that timed out says where it stalled (`before any answer` or partway) and the
+   end of its stderr; a job whose work failed ends `failed` with the `failure` its
+   refresh recorded.
+
+At shutdown each span still open ends `abandoned`, and a turn of the event loop that
+took longer than `OPEN_AFTER_MS` is a `loop` record, so a blocked loop is on record too.
+The log holds request paths and folder names but never a token: command lines drop field
+and header values, and process text is redacted.
+
 ## Debug Endpoints
 
 ```shell

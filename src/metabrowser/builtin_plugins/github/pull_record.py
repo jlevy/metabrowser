@@ -35,6 +35,7 @@ from pydantic import (
     field_validator,
 )
 
+from metabrowser import event_log
 from metabrowser.builtin_plugins.github.avatars import AvatarUrl
 from metabrowser.cache.atomic import RecordError, read_bytes_bounded
 from metabrowser.cache.locks import source_alias_lock
@@ -763,11 +764,14 @@ class PullRefreshStamp(_Model):
 def write_refresh_stamp(home: Path, slug: str, relative: str, stamp: PullRefreshStamp) -> None:
     """Publish *stamp* atomically at *relative*, under the source's ``pulls`` directory.
 
-    Blocking; run it off the event loop.
+    Blocking; run it off the event loop. A failure it records is the failure of the job
+    that writes it, in the event log (:mod:`metabrowser.event_log`).
     """
 
     ensure_pulls_directory(home, slug)
     write_private_file_atomic(home, relative, stamp.model_dump_json().encode("utf-8"))
+    if stamp.outcome != "succeeded":
+        event_log.current().note_failure(stamp.outcome, stamp.message)
 
 
 def read_refresh_stamp(home: Path, relative: str) -> PullRefreshStamp | None:

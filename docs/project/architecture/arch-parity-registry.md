@@ -29,6 +29,7 @@ registered, any other status, and a golden that never runs the route.
 | `/api/catalog` | covered | `--api` | `cli-api-shell.tryscript.md` |
 | `/api/routes` | covered | `--api` | `cli-api-shell.tryscript.md` |
 | `/api/diagnostics/pending-tallies` | covered | `--api --data` | `cli-api-shell.tryscript.md` |
+| `/api/event-log` | covered | `--api` | `cli-api-event-log.tryscript.md` |
 | `/api/capabilities` | covered | `--api` | `cli-api-shell.tryscript.md` |
 | `/api/index/progress` | covered | `--api` | `cli-api-shell.tryscript.md` |
 | `/api/index/meta` | covered | `--api` | `cli-api-shell.tryscript.md` |

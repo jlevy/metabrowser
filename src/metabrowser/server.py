@@ -68,7 +68,7 @@ from starlette.responses import (
 from starlette.routing import Mount, Route
 from strif import file_mtime_hash
 
-from metabrowser import __version__, delivery, kpress_adapter, server_timing
+from metabrowser import __version__, delivery, event_log, kpress_adapter, server_timing
 from metabrowser.active_tracker import activity_snapshot
 from metabrowser.activity import ACTIVITY_POLL_INTERVAL_MS
 from metabrowser.asset_stamps import StampedStaticFiles, StampedTree, split_stamp
@@ -101,6 +101,7 @@ from metabrowser.diff.markdown_projection_worker import (
 from metabrowser.dotenv import load_dotenv_chain
 from metabrowser.embedded_resources import embedded_raw_paths
 from metabrowser.encoded_assets import EncodedAssetResponse
+from metabrowser.event_log_route import EVENT_LOG_ROUTES
 from metabrowser.file_extensions import (
     BROWSER_IMAGE_EXTS,
     BROWSER_TEXT_EXTS,
@@ -1144,6 +1145,42 @@ def _pin_is_served() -> bool:
         return True
 
 
+def _end_request_span(
+    span: event_log.Span,
+    *,
+    status: int | None,
+    body_bytes: int,
+    start_ms: float | None,
+    query: str,
+    record: server_timing.Record,
+    failure: BaseException | None,
+) -> None:
+    """End a request's event-log span with what the request log line says.
+
+    A status of 500 or more is ``failed``; a request the client left before an answer
+    began is ``cancelled``, and one the application raised on is ``failed``.
+    """
+
+    attrs: dict[str, Any] = {"status": status, "bytes": body_bytes}
+    if query:
+        attrs["query"] = event_log.redact(query, limit=event_log.MAX_TEXT_CHARS)
+    if start_ms is not None:
+        attrs["start_ms"] = round(start_ms, 1)
+    phases = record.totals()
+    if phases:
+        attrs["phases"] = {name: round(ms, 1) for name, ms in phases}
+    processes = record.git_processes()
+    if processes:
+        attrs["git_processes"] = processes
+    if failure is not None:
+        cancelled = isinstance(failure, asyncio.CancelledError) and status is None
+        if not cancelled:
+            attrs["error"] = event_log.describe_error(failure)
+        span.end("cancelled" if cancelled else "failed", **attrs)
+    else:
+        span.end("failed" if status is not None and status >= 500 else "ok", **attrs)
+
+
 class _SlowRequestLogMiddleware:
     """Time + log browser server requests.
 
@@ -1192,6 +1229,10 @@ class _SlowRequestLogMiddleware:
         body_bytes = 0
         start_ms: float | None = None
         record, token = server_timing.begin()
+        # The event log's record of the request (metabrowser.event_log): current while
+        # the application runs, so a job the request starts names it as its parent.
+        method = scope.get("method", "")
+        request_span = event_log.begin("request", f"{method} {path}")
 
         async def send_wrapper(message: dict[str, Any]) -> None:
             nonlocal body_bytes, start_ms, status
@@ -1220,8 +1261,13 @@ class _SlowRequestLogMiddleware:
                 body_bytes += len(body)
             await send(message)
 
+        failure: BaseException | None = None
         try:
-            await self.app(scope, receive, send_wrapper)
+            with event_log.within(request_span):
+                await self.app(scope, receive, send_wrapper)
+        except BaseException as exc:
+            failure = exc
+            raise
         finally:
             server_timing.end(record, token)
             # The time to the end of the body, which no header can carry.
@@ -1230,6 +1276,16 @@ class _SlowRequestLogMiddleware:
             phases = server_timing.log_value(record)
             query = (scope.get("query_string") or b"").decode("latin-1")
             full_path = f"{path}?{query}" if query else path
+            if request_span is not event_log.NULL_SPAN:
+                _end_request_span(
+                    request_span,
+                    status=status,
+                    body_bytes=body_bytes,
+                    start_ms=start_ms,
+                    query=query,
+                    record=record,
+                    failure=failure,
+                )
             if self.verbose:
                 # Verbose mode: every request, with arrival + completion
                 # epochs so correlation against browser-side perf.js
@@ -5266,6 +5322,8 @@ routes = [
     *SOURCE_ROUTES,
     # What the served subject is called, as the shell's title and a native window say.
     *IDENTITY_ROUTES,
+    # Where the event log is, and its records (metabrowser.event_log).
+    *EVENT_LOG_ROUTES,
     # A page's github.com counterpart, which every View on GitHub control links to.
     *COUNTERPART_ROUTES,
     *build_plugin_routes(_LOADED_PLUGINS, asset_trees=_PLUGIN_ASSET_TREES),
@@ -5324,6 +5382,8 @@ async def _lifespan(app: Starlette) -> AsyncIterator[None]:
     # refresh jobs start once the pin is attached and are cancelled before it closes.
     # What a folder's server keeps for its checkout comes last, so it is left first: a
     # revision of the checkout still served at shutdown is closed while the rest is up.
+    # A served process's event log pings this loop, so a turn that blocks it is on record.
+    event_log.watch_loop(asyncio.get_running_loop())
     async with (
         lifespan_subject(),
         build_lifespan(app=app, root_provider=_inventory_root_provider),

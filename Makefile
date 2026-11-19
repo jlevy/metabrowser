@@ -112,10 +112,14 @@ lint-check:
 # line. It is a wall-clock measurement and not behavior, so the threshold is put past
 # tryscript's own 30 s command timeout, where it cannot fire before the command fails.
 #
-# `env` sets both, so the same words work as a shell command and as the command
+# A golden that serves writes no event log into the state directory of whoever runs it
+# (METABROWSER_EVENT_LOG=0, as tests/conftest.py sets for pytest); one that reads the log
+# names its own directory.
+#
+# `env` sets all three, so the same words work as a shell command and as the command
 # devtools/run_goldens.py runs once for each golden.
 TRYSCRIPT := env PATH="$(CURDIR)/tests/no-real-gh:$$PATH" METABROWSER_SLOW_SERVER_MS=60000 \
-	npx --no-install tryscript
+	METABROWSER_EVENT_LOG=0 npx --no-install tryscript
 GOLDENS := tests/golden/*.tryscript.md
 # How many golden files devtools/run_goldens.py runs at a time: one per processor of a CI
 # runner, which has four. tryscript runs a file's commands one after another, each in a
