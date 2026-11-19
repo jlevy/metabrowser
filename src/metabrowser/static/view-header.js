@@ -113,7 +113,8 @@
 
     /**
      * A metadata line's items, each after a muted dot but the first and one box with it, so
-     * a narrow line drops both whole (`.view-header-line`); an empty item is left out.
+     * a line too wide for its row wraps both whole (`.view-header-line`); an empty item is
+     * left out.
      * @param {string[]} items
      */
     function viewHeaderItemsHtml(items) {
@@ -133,11 +134,13 @@
 
     /**
      * One view header (docs/design-system.md, "View Headers"): the eyebrow, which an empty
-     * one leaves out, the heading row (icon and title), the header's corner, and the
-     * metadata line. The corner is placed in the header's upper right and follows the
-     * heading row in the reading order. On a page whose repository is on github.com it is
-     * marked `data-counterpart`, so the first row leaves it room for the View on GitHub
-     * button the shell then asks for (`mountCounterpart`, plugin-sdk-views.js).
+     * one leaves out; the heading row: the icon, then the title with the metadata line right
+     * after it; and the header's corner. The name is whole, never cut, so it has no tooltip:
+     * a name too long for the row wraps, and the line with it. The corner is placed in the
+     * header's upper right and follows the heading row in the reading order. On a page whose
+     * repository is on github.com it is marked `data-counterpart`, so the heading row leaves
+     * it room for the View on GitHub button the shell then asks for (`mountCounterpart`,
+     * plugin-sdk-views.js).
      * @param {MetabrowserViewHeaderParts} parts
      */
     function viewHeaderHtml(parts) {
@@ -147,10 +150,12 @@
         `<div class="view-header-eyebrow">${parts.eyebrow}</div>` +
         '<div class="view-header-heading">' +
         `<span class="view-header-icon file-identity-icon${parts.iconClass ? ` ${parts.iconClass}` : ""}"${parts.iconStyle ? ` style="${esc(parts.iconStyle)}"` : ""} aria-hidden="true">${parts.iconHtml}</span>` +
-        `<h1 class="view-header-title page-heading" data-tip-text="${esc(parts.title)}">${esc(parts.title)}</h1>` +
+        '<div class="view-header-title-group">' +
+        `<h1 class="view-header-title page-heading">${esc(parts.title)}</h1>` +
+        `<div class="view-header-line page-header-line">${parts.line}</div>` +
+        "</div>" +
         "</div>" +
         `<span class="view-header-end"${counterpart}></span>` +
-        `<div class="view-header-line page-header-line">${parts.line}</div>` +
         "</div>"
       );
     }

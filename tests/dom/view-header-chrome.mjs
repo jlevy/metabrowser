@@ -3,14 +3,15 @@
 // View on GitHub button in its corner (docs/design-system.md, "View on GitHub").
 //
 // For each page it reads the header's rows, its ground and rules, the title's and the
-// metadata line's type, each metadata item's box, and the button's; then it changes the
-// line's values in place, as the folder header's live refresh does
-// (`folderHeaderSummaryHtml` in view-header.js), and reads every box again. Then, in each
-// theme: the button's menu opened with a click and walked with the keys, a page with no
-// counterpart, and a commit's page at a wide and a narrow pane. The caller
-// (tests/test_view_header_chrome.py) judges the record. Arguments: the `metab` executable,
-// the served root, a port to start the server's search from, a state directory for its
-// cache and config, and the commit the served checkout is at.
+// metadata line's type, where the title's text and the line sit and their baselines, each
+// metadata item's box, and the button's; then it changes the line's values in place, as the
+// folder header's live refresh does (`folderHeaderSummaryHtml` in view-header.js), and
+// reads every box again. Then, in each theme: the button's menu opened with a click and
+// walked with the keys, a page with no counterpart, and a commit's page at a wide and a
+// narrow pane. The caller (tests/test_view_header_chrome.py) judges the record.
+// Arguments: the `metab` executable, the served root, a port to start the server's search
+// from, a state directory for its cache and config, and the commit the served checkout is
+// at.
 //
 // Prints one JSON line, `{"results": [...], "menus": [...], "absent": [...],
 // "commits": [...]}`; each step's time goes to stderr.
@@ -23,15 +24,20 @@ const started = Date.now();
 const phase = (name) => process.stderr.write(`phase ${name} ${Date.now() - started}\n`);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const SERVING = /Serving .* at http:\/\/127\.0\.0\.1:(\d+)\/view\//;
-// The window is 1280 px wide and the navigation pane is set to 300 px, so these are the
-// main view's widths: a wide pane, the default window's, a narrow one, and the narrowest
-// a 620 px window gives at the narrowest navigation pane.
-const PANES = [1180, 900, 480, 260];
-// The pages: a file two folders down with a long name, its folder, and the served root.
+// The navigation pane is set to 300 px and the window sized to each, so these are the
+// main view's widths: a wide pane, a middling one, a phone's, and the narrowest a 620 px
+// window gives at the narrowest navigation pane.
+const PANES = [1400, 800, 360, 260];
+// The name no pane holds on one line (tests/test_view_header_chrome.py, `_WRAPPED`).
+const WRAPPED =
+  "a-file-name-so-long-that-no-pane-the-session-draws-holds-it-on-one-line-3f9a0c5be1d2476a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a-of-the-view-header-so-it-wraps-and-its-size-and-age-follow-its-last-line.md";
+// The pages: a file two folders down with a long name, its folder, the served root, and a
+// file whose name is too long for any pane's row.
 const PAGES = [
   { kind: "file", href: "/view/docs/notes/a-long-name-for-a-view-header-title.md" },
   { kind: "folder", href: "/view/docs/notes/" },
   { kind: "root", href: "/view/" },
+  { kind: "wrapped", href: `/view/docs/notes/${WRAPPED}` },
 ];
 // A file the checkout does not track, which has no counterpart on github.com.
 const ABSENT = "/view/docs/notes/draft.txt";
@@ -83,12 +89,13 @@ async function serve() {
 }
 
 // What a corner's View on GitHub button draws: its group's box, the hooks the macOS app reads
-// (mb-4wqh), its mark's box, the inks and fills of its link and chevron and its frame, and
-// the tokens they should resolve to, read from a probe painted with each. As a function's
-// source, so READ and COMMIT_READ share it in the page.
+// (mb-4wqh), its mark's box, its label's size, the inks and fills of its link and chevron
+// and its frame (`buttonInks`, apart from the header's own `inks`), and the tokens they
+// should resolve to, read from a probe painted with each. As a function's source, so READ
+// and COMMIT_READ share it in the page.
 const BUTTON_SOURCE = `(corner) => {
   const button = corner ? corner.querySelector(':scope > .counterpart') : null;
-  if (!button) return { button: null, hooks: null, inks: null, want: null, markBox: null };
+  if (!button) return { button: null, hooks: null, buttonInks: null, want: null, markBox: null };
   const round = (n) => Math.round(n * 100) / 100;
   const box = (el) => {
     if (!el) return null;
@@ -110,9 +117,11 @@ const BUTTON_SOURCE = `(corner) => {
   const more = button.querySelector('.counterpart-more');
   const paint = (el) => ({ ink: getComputedStyle(el).color, fill: getComputedStyle(el).backgroundColor });
   const frame = getComputedStyle(group);
+  const label = button.querySelector('.counterpart-label');
   return {
     button: box(group),
     markBox: box(button.querySelector('.counterpart-mark svg')),
+    buttonFont: label ? getComputedStyle(label).fontSize : null,
     hooks: {
       root: button.hasAttribute('data-view-on-github'),
       label: open ? open.textContent : null,
@@ -127,7 +136,7 @@ const BUTTON_SOURCE = `(corner) => {
       popup: more ? more.getAttribute('aria-haspopup') : null,
       menuHidden: button.querySelector('.counterpart-menu').hidden,
     },
-    inks: {
+    buttonInks: {
       open: paint(open),
       more: paint(more),
       frame: { border: frame.borderTopColor, ground: frame.backgroundColor, radius: frame.borderTopLeftRadius },
@@ -139,46 +148,59 @@ const BUTTON_SOURCE = `(corner) => {
       surface: resolved('backgroundColor', 'var(--viz-surface)'),
       radius: resolved('borderTopLeftRadius', 'var(--radius-pill)'),
       glyph: resolved('width', 'var(--icon-glyph)'),
+      chipFont: resolved('fontSize', 'var(--ui-small-font-size)'),
     },
   };
 }`;
 
-// Every box the header draws, its ground and rules, and its type.
+// Every box the header draws, its ground and rules, and its type. It reads the layout
+// before this one too (a title cut to one row, the line on a row of its own under it), so
+// the record says how that layout misses the design rather than failing to read it.
 const READ = `(() => {
   const BUTTON = ${BUTTON_SOURCE};
   const header = document.querySelector('#preview-pane > .file-header');
   const bar = document.querySelector('#preview-pane > .tab-bar');
-  const box = (el) => {
-    if (!el) return null;
-    const r = el.getBoundingClientRect();
-    const round = (n) => Math.round(n * 100) / 100;
-    return { left: round(r.left), top: round(r.top), right: round(r.right), bottom: round(r.bottom), width: round(r.width), height: round(r.height) };
-  };
+  const round = (n) => Math.round(n * 100) / 100;
+  const rect = (r) => ({ left: round(r.left), top: round(r.top), right: round(r.right), bottom: round(r.bottom), width: round(r.width), height: round(r.height) });
+  const box = (el) => (el ? rect(el.getBoundingClientRect()) : null);
   const style = (el) => (el ? getComputedStyle(el) : null);
   const q = (sel) => header && header.querySelector(sel);
-  const line = q('.view-header-line');
-  const lineBox = box(line);
-  const items = line ? [...line.querySelectorAll('.view-header-item')].map((item) => {
-    const b = box(item);
-    return {
-      text: item.textContent.replace(/\\s+/g, ' ').trim(),
-      box: b,
-      // On the line's one visible row, or wrapped to the clipped row under it.
-      shown: b.top < lineBox.bottom - 0.5,
-      whole: b.right <= lineBox.right + 0.5 && b.bottom <= lineBox.bottom + 0.5,
-    };
-  }) : [];
+  // Where a box's text sits: a probe of no size at its end rests on the baseline of its
+  // last line.
+  const baseline = (el) => {
+    if (!el) return null;
+    const probe = document.createElement('span');
+    probe.style.cssText = 'display:inline-block;width:0;height:0;vertical-align:baseline';
+    el.append(probe);
+    const y = probe.getBoundingClientRect().top;
+    probe.remove();
+    return round(y);
+  };
   const title = q('.view-header-title');
+  const group = title ? title.parentElement : null;
+  const line = q('.view-header-line');
+  // The title's text, a box per line it takes, as its glyphs lie, without its padding.
+  const range = document.createRange();
+  if (title) range.selectNodeContents(title);
+  const textRects = title ? [...range.getClientRects()].filter((r) => r.width > 0).map(rect) : [];
+  const textLines = [...new Set(textRects.map((r) => Math.round(r.top)))].length;
+  const items = line ? [...line.querySelectorAll('.view-header-item')].map((item) => ({
+    text: item.textContent.replace(/\\s+/g, ' ').trim(),
+    box: box(item),
+  })) : [];
   const pane = document.getElementById('preview-pane');
   const token = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   return {
     // The tokens the layout is held to, as the page resolves them.
     tokens: Object.fromEntries(
-      ["--view-header-row-gap", "--view-header-eyebrow-height", "--view-header-line-height", "--page-title-font-size", "--body-font-size", "--view-header-up-size", "--view-header-corner-inset-top", "--view-header-corner-inset-end", "--view-header-corner-height", "--view-header-corner-room", "--content-padding-x"].map((name) => [name, token(name)]),
+      ["--view-header-row-gap", "--view-header-eyebrow-height", "--view-header-line-height", "--view-header-padding-top", "--view-header-padding-bottom", "--view-header-title-gap", "--page-title-font-size", "--body-font-size", "--view-header-up-size", "--view-header-corner-inset-top", "--view-header-corner-inset-end", "--view-header-corner-height", "--view-header-corner-room", "--content-padding-x"].map((name) => [name, token(name)]),
     ),
     paneWidth: Math.round(pane.getBoundingClientRect().width),
     scheme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
     header: box(header),
+    // Whether anything in the header runs past its box, as a name or a value pushed out of
+    // the pane would.
+    headerOverflows: header ? header.scrollWidth > header.clientWidth + 0.5 : null,
     eyebrow: box(q('.view-header-eyebrow')),
     up: box(q('.view-header-eyebrow > .folder-up')),
     upDisabled: !!q('.view-header-eyebrow > .folder-up[disabled]'),
@@ -186,19 +208,26 @@ const READ = `(() => {
     heading: box(q('.view-header-heading')),
     icon: box(q('.view-header-icon')),
     iconGlyph: box(q('.view-header-icon svg')),
+    group: box(group),
     title: box(title),
     titleText: title ? title.textContent : null,
-    titleCut: title ? title.scrollWidth > title.clientWidth + 0.5 : null,
-    // Whether the shell's own rule would show the title's tooltip, and the heights it
-    // reads, which a large font's glyphs can make disagree with the width.
+    titleTextRects: textRects,
+    titleLines: textLines,
+    // The title's line height, which the heading row's first line is.
+    titleLineHeight: title ? parseFloat(style(title).lineHeight) : null,
+    // Cut short: an ellipsis, or a box whose text runs past it.
+    titleCut: title ? style(title).textOverflow === 'ellipsis' && title.scrollWidth > title.clientWidth + 0.5 : null,
+    titleClipped: title ? textRects.some((r) => r.right > box(group).right + 0.5 || r.left < box(group).left - 0.5) : null,
+    // Whether the shell's own rule would show the title's tooltip.
     titleTip: title ? tipAddsInformation(title) : null,
-    titleHeights: title ? { scroll: title.scrollHeight, client: title.clientHeight } : null,
+    titleBaseline: baseline(title),
+    lineBaseline: baseline(q('.view-header-line .file-header-size')),
     end: box(q('.view-header-end')),
     endMarked: q('.view-header-end') ? q('.view-header-end').hasAttribute('data-counterpart') : null,
     eyebrowRoom: q('.view-header-eyebrow') ? parseFloat(style(q('.view-header-eyebrow')).paddingInlineEnd) : null,
     addressBox: box(q('.view-header-eyebrow .file-header-path')),
     ...BUTTON(q('.view-header-end')),
-    line: lineBox,
+    line: box(line),
     items,
     bar: box(bar),
     type: {
@@ -206,6 +235,10 @@ const READ = `(() => {
       titleWeight: style(title) && style(title).fontWeight,
       eyebrow: style(q('.view-header-eyebrow .file-header-path')) && style(q('.view-header-eyebrow .file-header-path')).fontSize,
       line: style(line) && style(line).fontSize,
+    },
+    inks: {
+      line: style(line) && style(line).color,
+      muted: (() => { const probe = document.createElement('span'); probe.style.color = 'var(--muted)'; header.append(probe); const color = getComputedStyle(probe).color; probe.remove(); return color; })(),
     },
     grounds: {
       body: style(document.body).backgroundColor,
@@ -220,7 +253,6 @@ const READ = `(() => {
       barBottomColor: style(bar).borderBottomColor,
       barTop: style(bar).borderTopWidth,
     },
-    line_ink: style(line) && style(line).color,
   };
 })()`;
 
@@ -311,7 +343,7 @@ const COMMIT_READ = `(() => {
 const RELABEL = (kind, step) => `(() => {
   const now = Date.now() / 1000;
   const mtime = ${step === "pending" ? "null" : step === "fresh" ? "now" : "now - 59 * 60"};
-  if ('${kind}' === 'file') {
+  if ('${kind}' === 'file' || '${kind}' === 'wrapped') {
     const age = document.querySelector('#preview-pane > .file-header .view-header-age');
     age.outerHTML = viewHeaderBuilders().viewHeaderAgeHtml(mtime);
     return true;

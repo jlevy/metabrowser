@@ -24,13 +24,13 @@ final class TitleBarMarkController: NSTitlebarAccessoryViewController {
 /// becomes a window drag instead, as on the rest of the title bar, so a click never
 /// moves the window and a drag never opens the page.
 ///
-/// What each event means is `TitleBarMarkInteraction`'s, tested in `ShellCore`; this view
+/// What each event means is `TitleBarPressInteraction`'s, tested in `ShellCore`; this view
 /// feeds it AppKit's events and carries out the effects it returns, through `openPage`
 /// and `dragWindow`.
 final class TitleBarMarkButton: NSView {
     private let mark = TitleBarMarkImageView()
     private var trackingArea: NSTrackingArea?
-    private var interaction = TitleBarMarkInteraction() {
+    private var interaction = TitleBarPressInteraction() {
         didSet {
             if interaction.isHovered != oldValue.isHovered || interaction.isPressed != oldValue.isPressed {
                 needsDisplay = true

@@ -412,8 +412,11 @@ def test_row_text_shares_one_baseline() -> None:
                 assert applying, f"{label}: text slot .{name} does not opt in to the baseline"
             elif child.role == "box":
                 assert not applying, f"{label}: box .{name} is baseline-aligned by {applying}"
-    # A view header's rows each set their text at one size, so they center it and need no
-    # baseline (docs/design-system.md, "View Headers"): no baseline rule reaches them.
+    # A view header's eyebrow sets its text at one size and centers it, and its heading row
+    # sets the title and the metadata line after it as one run of inline text, so the line
+    # sits on the title's baseline as text does (docs/design-system.md, "View Headers"). No
+    # flex baseline rule reaches either: an item holding only a pending skeleton, aligned
+    # as a flex item, would sit the skeleton's bottom edge on the baseline.
     for selector, _is_items in rules:
         assert not re.search(r"\.(?:file-header|view-header)", selector), (
             f"{selector} aligns a view header's text to a baseline"

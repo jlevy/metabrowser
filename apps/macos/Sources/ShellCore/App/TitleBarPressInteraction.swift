@@ -1,22 +1,26 @@
 import CoreGraphics
 
-/// What the title bar's mark does with the pointer: when it lights, and whether a press
-/// opens the project's page or drags the window. `TitleBarMarkButton` feeds it AppKit's
-/// events and carries out the effects it returns.
+/// What a title-bar control that opens something on a click does with the pointer: when
+/// it lights, and whether a press opens or drags the window. Two controls use it, and
+/// feed it AppKit's events and carry out the effects it returns: the mark
+/// (`TitleBarMarkButton`), which opens the project's page, and the title
+/// (`TitleBarTitleView`), which opens the folder chooser.
 ///
-/// - A press that is released inside the mark's highlight opens the page, once.
+/// - A press that is released inside the control's highlight opens, once.
 /// - A press that moves `dragDistance` points or more drags the window instead, as the
 ///   rest of the title bar does, and its release opens nothing.
 /// - A press is forgotten when its window resigns key or the app resigns active, so a
 ///   release after that opens nothing.
 /// - The hover goes out when the pointer leaves, and on those same deactivations, which
 ///   stop the key-window tracking area from reporting the pointer's exit.
-/// - A press counts the same whether or not the mark was lit: in a window that is not
-///   key the tracking area reports no hover, and a first click there still opens the
-///   page, as the window buttons act on a first click.
-public nonisolated struct TitleBarMarkInteraction: Equatable, Sendable {
+/// - A press counts the same whether or not the control was lit, and whether or not its
+///   window was key. In a window that is not key the tracking area reports no hover, and
+///   a press there still opens, or drags. Each control takes the press that makes its
+///   window key (`acceptsFirstMouse`): neither is a window-drag region, so a press it is
+///   not given would neither drag the window nor open.
+public nonisolated struct TitleBarPressInteraction: Equatable, Sendable {
     public enum Effect: Equatable, Sendable {
-        /// Open the project's page in the default browser.
+        /// Open what the control opens: the project's page, or the chooser.
         case open
         /// Drag the window from the press.
         case drag
@@ -27,12 +31,12 @@ public nonisolated struct TitleBarMarkInteraction: Equatable, Sendable {
 
     /// Whether the highlight is lit for the pointer over it.
     public private(set) var isHovered = false
-    /// Where a press that may still open the page began, in window coordinates.
+    /// Where a press that may still open began, in window coordinates.
     private var press: CGPoint?
 
     public init() {}
 
-    /// Whether a press is held that would open the page on release; the highlight deepens.
+    /// Whether a press is held that would open on release; the highlight deepens.
     public var isPressed: Bool { press != nil }
 
     public mutating func pointerEntered() { isHovered = true }
@@ -68,8 +72,8 @@ public nonisolated struct TitleBarMarkInteraction: Equatable, Sendable {
         return opened()
     }
 
-    /// The page opens in another app, which takes the pointer's attention: the highlight
-    /// goes out.
+    /// The page opens in another app, or a menu opens and tracks the pointer itself; either
+    /// takes the pointer's attention, so the highlight goes out.
     private mutating func opened() -> Effect {
         isHovered = false
         return .open
