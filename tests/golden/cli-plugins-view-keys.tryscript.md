@@ -1,6 +1,7 @@
 ---
 sandbox: true
 path:
+  - ../fixtures/github-status
   - ../../.venv/bin
 env:
   TERM: "dumb"
@@ -10,6 +11,7 @@ env:
   METABROWSER_OPEN_IN: "browser"
 patterns:
   PYDANTIC_URL: 'https://errors\.pydantic\.dev/\d+\.\d+/v/value_error'
+  FAKE_GH: '[^\s"]+/fixtures/github-status/gh'
 before: >-
   mkdir -p viewroot mdroot pair/alpha pair/beta stack/prnotes pulls/pullkey reserved/reskey override/steal &&
   printf 'mine\n' > viewroot/b.myk &&
@@ -67,6 +69,10 @@ The problem is on stderr.
 $ metab --doctor --plugins-dir pair >/dev/null
 metab --doctor: 1 problem(s):
   • plugin 'beta': view 'more' of kind 'myk' declares key 'm', but view 'main' (plugin 'alpha') already holds it; the view is served without a key
+github: ok: GitHub CLI is signed in to github.com as octo-reader.
+  gh: [FAKE_GH] (version 2.98.0)
+  account: octo-reader (token from keyring)
+  scopes: gist, read:org, repo, workflow
 ? 1
 ```
 
@@ -92,6 +98,22 @@ $ metab --doctor --json --plugins-dir pair 2>/dev/null
     "source": "environment",
     "present_browser": true,
     "app": null
+  },
+  "github": {
+    "host": "github.com",
+    "state": "ok",
+    "message": "GitHub CLI is signed in to github.com as octo-reader.",
+    "fix": null,
+    "gh_path": "[FAKE_GH]",
+    "gh_version": "2.98.0",
+    "account": "octo-reader",
+    "token_source": "keyring",
+    "scopes": [
+      "gist",
+      "read:org",
+      "repo",
+      "workflow"
+    ]
   }
 }
 ? 1
@@ -113,6 +135,22 @@ $ metab --doctor --json --plugins-dir stack 2>/dev/null
     "source": "environment",
     "present_browser": true,
     "app": null
+  },
+  "github": {
+    "host": "github.com",
+    "state": "ok",
+    "message": "GitHub CLI is signed in to github.com as octo-reader.",
+    "fix": null,
+    "gh_path": "[FAKE_GH]",
+    "gh_version": "2.98.0",
+    "account": "octo-reader",
+    "token_source": "keyring",
+    "scopes": [
+      "gist",
+      "read:org",
+      "repo",
+      "workflow"
+    ]
   }
 }
 ? 0
@@ -136,6 +174,22 @@ $ metab --doctor --json --plugins-dir pulls 2>/dev/null
     "source": "environment",
     "present_browser": true,
     "app": null
+  },
+  "github": {
+    "host": "github.com",
+    "state": "ok",
+    "message": "GitHub CLI is signed in to github.com as octo-reader.",
+    "fix": null,
+    "gh_path": "[FAKE_GH]",
+    "gh_version": "2.98.0",
+    "account": "octo-reader",
+    "token_source": "keyring",
+    "scopes": [
+      "gist",
+      "read:org",
+      "repo",
+      "workflow"
+    ]
   }
 }
 ? 1
@@ -158,6 +212,22 @@ $ metab --doctor --json --plugins-dir reserved 2>/dev/null
     "source": "environment",
     "present_browser": true,
     "app": null
+  },
+  "github": {
+    "host": "github.com",
+    "state": "ok",
+    "message": "GitHub CLI is signed in to github.com as octo-reader.",
+    "fix": null,
+    "gh_path": "[FAKE_GH]",
+    "gh_version": "2.98.0",
+    "account": "octo-reader",
+    "token_source": "keyring",
+    "scopes": [
+      "gist",
+      "read:org",
+      "repo",
+      "workflow"
+    ]
   }
 }
 ? 1
@@ -187,6 +257,10 @@ The problem names the built-in `markdown` plugin, whose Source lost the key, and
 $ metab --doctor --plugins-dir override >/dev/null
 metab --doctor: 1 problem(s):
   • plugin 'markdown': view 'source' of kind 'markdown' declares key 's', but view 'rendered' (plugin 'steal') already holds it; the view is served without a key
+github: ok: GitHub CLI is signed in to github.com as octo-reader.
+  gh: [FAKE_GH] (version 2.98.0)
+  account: octo-reader (token from keyring)
+  scopes: gist, read:org, repo, workflow
 ? 1
 ```
 

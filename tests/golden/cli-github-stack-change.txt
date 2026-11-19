@@ -21,6 +21,7 @@ status: 200
 cloning https://github.com/octo/demo into <HOME>
 cloned https://github.com/octo/demo in 0.0 s
 --- gh ---
+gh auth status
 gh api repos/octo/demo --jq .size
 ## With the snapshot, a stack whose members' lists are not fetched has no change.
 # metab https://github.com/octo/demo --api /api/plugin/github/stacks-refresh --data request.json

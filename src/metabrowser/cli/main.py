@@ -651,7 +651,8 @@ def _metab(
     doctor: bool = typer.Option(
         False,
         "--doctor",
-        help="Validate every discovered plugin; exit non-zero on any problem.",
+        help="Validate every discovered plugin, exiting non-zero on any problem, and report "
+        "GitHub CLI's path, version, account, and scopes.",
         rich_help_panel=_PANEL_MODES,
     ),
     present: bool = typer.Option(

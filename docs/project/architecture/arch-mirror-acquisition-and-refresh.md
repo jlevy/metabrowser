@@ -64,6 +64,9 @@ Credentials belong to the provider:
 - Acquisition never inherits a checkout’s remote or credential helper.
 - With `gh` installed, `check_first_clone` refuses a first clone that GitHub reports
   over `MAX_FIRST_CLONE_KB`, which `METABROWSER_MAX_FIRST_CLONE_KB` raises.
+  It first runs
+  [the GitHub status check](arch-github-pull-requests.md#the-github-status-check), and
+  refuses a pull-request URL that `gh` is missing, too old, or not signed in to read.
 
 Every fetch runs under `ACQUISITION_POLICY`, in the isolated Git environment of
 `git/process.py`: no inherited `GIT_*` variable, no system or global configuration,

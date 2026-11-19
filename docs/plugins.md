@@ -47,9 +47,11 @@ metab --doctor --plugins-dir ./examples
 `--doctor` validates manifests, `index.js` files, installed-plugin data-hook imports,
 operator-directory JavaScript-only boundaries, view keys, and high-priority kind
 conflicts, and checks that the packaged repository-cache record schemas are intact.
-All three modes take `--json`, write data to standard output and errors to standard
-error, and exit nonzero on any problem, including a discovery error beside plugins that
-loaded, so a script cannot mistake a partial registry for a complete one.
+After the verdict it reports GitHub CLI’s state, which never changes the exit status
+([diagnostics](command-line.md#diagnostics-and-plugins)). All three modes take `--json`,
+write data to standard output and errors to standard error, and exit nonzero on any
+problem, including a discovery error beside plugins that loaded, so a script cannot
+mistake a partial registry for a complete one.
 
 ## Path Identity
 

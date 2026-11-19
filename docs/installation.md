@@ -128,6 +128,11 @@ gh --version
 gh auth status --active --hostname github.com
 ```
 
+`metab --doctor` runs the same check Metabrowser runs before GitHub work and prints
+`gh`’s path and version, the account, its token scopes, and the step that fixes a
+problem. A private repository needs a token with the `repo` scope, which `gh auth login`
+grants by default.
+
 If `gh` says you are not signed in, run `gh auth login --hostname github.com` and check
 again. A saved login is enough; for headless use `gh` also reads an
 [environment token](https://cli.github.com/manual/gh_help_environment). Metabrowser
