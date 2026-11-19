@@ -604,6 +604,14 @@ _sys.modules[__name__].__class__ = _ProcBrowserModule
 STATIC_DIR: Path = Path(__file__).parent / "static"
 # The stamp `?v=` names: each static file's own bytes (asset_stamps.StampedStaticFiles).
 _STATIC_TREE = StampedTree(STATIC_DIR, live=editable_install("metabrowser"))
+# Mermaid's chunks, which its build names `<name>-<hash>.mjs` by a hash of each one's
+# content and its entry imports by relative specifiers that drop the entry's `?v=`. The
+# name names the bytes, so a chunk the stamp holds is answered immutable at its plain
+# address. Before this, each chunk a page imported, of 105 (5,404,632 bytes), was
+# `no-cache` and asked for again on every load with a conditional request answered 304
+# (measured 2026-11-19). Its bytes change only with its name: `devtools/vendor_assets.py
+# --check` refuses vendored bytes its manifest does not pin.
+_SELF_NAMED_STATIC = ("vendor/mermaid/chunks/",)
 # The reading-width state machine is first-paint configuration and only 1 KiB
 # compressed. Embed its exact tested source once instead of spending a startup
 # request on it; keeping the file authoritative preserves the browserless
@@ -2043,6 +2051,26 @@ async def index(
         # first tree is usable. renderFile awaits this bundle and rechecks its
         # ownership claim before preparing or mounting a view.
         "view-composition": [{"src": view_composition_url}],
+        # Mermaid 12.3.0's ESM entry (static/vendor/mermaid/), imported by the Markdown
+        # plugin's diagram renderer only when a mounted view holds a diagram. The entry
+        # imports the chunks of each diagram type it draws by relative specifiers, so a
+        # document fetches the 30,936-byte entry and its types' chunks, and a document
+        # with no diagram fetches nothing (docs/project/specs/active/
+        # plan-2026-08-21-mermaid-diagram-rendering.md has the measurement).
+        "mermaid": [{"module": _static_asset_url("vendor/mermaid/mermaid.esm.min.mjs")}],
+        # KPress's diagram renderer and its opt-in controls, at the stamped URLs a
+        # render's asset manifest names, so they import the one KPress runtime the
+        # document's other modules share. Fetched with the first diagram, beside Mermaid.
+        "kpress-diagrams": [
+            {"module": kpress_adapter.kpress_static_url("js/diagrams.js", prefix=kpress_prefix)}
+        ],
+        "kpress-diagram-controls": [
+            {
+                "module": kpress_adapter.kpress_static_url(
+                    "js/diagram-controls.js", prefix=kpress_prefix
+                )
+            }
+        ],
         # A file's and a folder's view header: its builders, and the folder line's live
         # refresh. renderFile draws a header only after loadViewComposition, which fetches
         # this beside the compositor and the SDK's view helpers, so the first tree never
@@ -2418,7 +2446,14 @@ async def index(
     return HTMLResponse(
         html,
         headers={
-            "Content-Security-Policy": untrusted_shell_csp(nonce, origin),
+            "Content-Security-Policy": untrusted_shell_csp(
+                nonce,
+                origin,
+                tuple(
+                    kpress_adapter.kpress_static_url(module, prefix=kpress_prefix)
+                    for module in kpress_adapter.DIAGRAM_MODULES
+                ),
+            ),
             "X-Frame-Options": "DENY",
         },
     )
@@ -5213,7 +5248,11 @@ routes = [
     Route("/raw/{path:path}", raw_file),
     Route("/kpress-static/{path:path}", kpress_static_asset),
     Mount(
-        "/static", app=StampedStaticFiles(directory=STATIC_DIR, tree=_STATIC_TREE), name="static"
+        "/static",
+        app=StampedStaticFiles(
+            directory=STATIC_DIR, tree=_STATIC_TREE, self_named=_SELF_NAMED_STATIC
+        ),
+        name="static",
     ),
     # Read-only git history, kept as its own collection in
     # ``metabrowser.git.routes``: separate wire model, separate failure

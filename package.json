@@ -15,6 +15,7 @@
     "chartjs-adapter-date-fns": "3.0.0",
     "chartjs-plugin-annotation": "3.1.0",
     "lefthook": "2.1.9",
+    "mermaid": "12.3.0",
     "mustache": "4.2.0",
     "tryscript": "0.4.0",
     "typescript": "6.0.3"

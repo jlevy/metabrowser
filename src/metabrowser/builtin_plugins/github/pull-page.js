@@ -30,7 +30,9 @@
 // class, id, data, style, or event attribute survives, nor any SVG, media, stylesheet,
 // frame, or form; an image becomes a link to it; a link is made absolute against the
 // pull request's github.com page, kept only for http(s), and opened in a new tab with
-// rel="noopener noreferrer"; and no KPress script is loaded for a text. KPress's
+// rel="noopener noreferrer"; and no KPress script is loaded for a text, but on a pinned
+// revision's page, for one with a Mermaid block (a `pre` keeps `lang="mermaid"`), KPress's
+// diagram modules, which draw each block as an image (`drawTextDiagrams`). KPress's
 // stylesheets are, the route's one fixed list, and the page sets the rebuilt nodes in a
 // KPress article of its own making, so a text reads as the same Markdown in a file does.
 
@@ -76,6 +78,9 @@ export const MARKDOWN_CONCURRENCY = 2;
 // took about 10 to 15 ms in a browser (2026-11-01), so one screen ahead is plenty, and it
 // stays lazy: what is further off is not asked for until the reader comes nearer.
 export const MARKDOWN_AHEAD = "100% 0px";
+// A Mermaid block in a text's Markdown: the inert allowlist reduces KPress's figure to
+// GitHub's own fallback markup and keeps that one language (src/metabrowser/inert_html.py).
+const TEXT_DIAGRAM = 'pre[lang="mermaid"]';
 // How long a conversation's first paint waits, out of sight, for the Markdown of the texts
 // its first screen shows, so each is final when it first shows; kept renders wait for
 // nothing. A core preview's first paint waits for its description the same way. Past this
@@ -4563,7 +4568,7 @@ export function mountPullPage(container, ctx, mb) {
     const kept = controller.renderedFor(part, value);
     const inert = insertableNow(kept) ? window.MetabrowserInertHtml : undefined;
     if (kept !== null && inert !== undefined) {
-      element.append(kpressHost(inert, kept));
+      element.append(kpressHost(inert, kept, element));
     } else {
       element.append(h("div", { class: "github-pull-plain" }, [value]));
       const refused = refusedNotes.get(part);
@@ -4693,15 +4698,16 @@ export function mountPullPage(container, ctx, mb) {
 
   /**
    * KPress's Markdown HTML, reduced to the allowlist on the server; GitHub's own body_html is
-   * never used, and no KPress script is loaded for it. static/inert-html.js parses it into an
-   * inert template and inserts only nodes rebuilt from the same allowlist, links made absolute
-   * against the pull request. The article and the classes on its tables and code blocks are
-   * the page's own.
+   * never used, and no KPress script is loaded for it but the diagram modules a Mermaid block
+   * asks for (`drawTextDiagrams`). static/inert-html.js parses it into an inert template and
+   * inserts only nodes rebuilt from the same allowlist, links made absolute against the pull
+   * request. The article and the classes on its tables and code blocks are the page's own.
    *
    * @param {MetabrowserInertHtmlRuntime} inert
    * @param {Record<string, any>} rendered
+   * @param {Element} element The text element the host goes in.
    */
-  function kpressHost(inert, rendered) {
+  function kpressHost(inert, rendered, element) {
     const nodes = inert.sanitizeHtml(
       String(rendered.html),
       shown?.pull?.htmlUrl ?? "https://github.com/",
@@ -4714,7 +4720,74 @@ export function mountPullPage(container, ctx, mb) {
     for (const anchor of article.querySelectorAll("a[href]")) {
       decoratePullLink(/** @type {HTMLElement} */ (anchor), shown?.pull ?? null, mb);
     }
+    drawTextDiagrams(element, article);
     return h("div", { class: "metabrowser-kpress-host" }, [article]);
+  }
+
+  /**
+   * The Mermaid diagrams each text with one draws, by its text element. A binding lasts as
+   * long as its text's section: a section kept across polls and tabs keeps its drawings live,
+   * one the conversation drops ends them (`paintConversation`), and so does the page's end.
+   *
+   * @type {Map<Element, {dispose(): void}>}
+   */
+  const textDiagrams = new Map();
+
+  /**
+   * Draw the Mermaid blocks of a text's Markdown, placed in *article*, as github.com draws
+   * them in a description or comment. A text is untrusted, so each is an image, which runs
+   * no script and loads nothing. A text with no block asks for nothing.
+   *
+   * Only on a page under the untrusted Content-Security-Policy, which a pinned revision's
+   * page always is (`capabilities_for` in capabilities.py, `index` in server.py). Mermaid
+   * lays a diagram out in the page before it becomes an image, and there its image shape
+   * loads its URL and a label's markup is live while it is measured (KPress's
+   * `js/diagrams.js`); that policy's `img-src` and script rules are what bound it. A folder's
+   * page has the policy only when served untrusted, which the SDK does not say, so there a
+   * block stays its source, as the text's other Markdown keeps every other load away.
+   *
+   * The Markdown plugin owns the host for KPress's diagrams (markdown/diagrams.js) and
+   * publishes it as `mb.builtins.markdown.drawDiagrams`, read at render time once its kind's
+   * assets are in (docs/plugins.md, "Render-Time-Only Namespace Rule"), so this plugin
+   * neither imports another plugin's files nor keeps a second copy of the adapter. That
+   * plugin's static modules come with the first diagram, beside KPress's diagram modules
+   * and Mermaid, which are far larger.
+   *
+   * @param {Element} element
+   * @param {HTMLElement} article
+   */
+  function drawTextDiagrams(element, article) {
+    disposeTextDiagrams(element);
+    if (article.querySelector(TEXT_DIAGRAM) === null || mb.sourceKind() !== "git_revision") {
+      return;
+    }
+    let disposed = false;
+    /** @type {{dispose(): void} | null} */
+    let drawn = null;
+    textDiagrams.set(element, {
+      dispose() {
+        disposed = true;
+        drawn?.dispose();
+        drawn = null;
+      },
+    });
+    void mb
+      .ensureKindAssets("markdown")
+      .then(() => {
+        if (!disposed && !listening.signal.aborted) {
+          drawn = mb.builtins.markdown?.drawDiagrams?.(article, { inert: true }) ?? null;
+        }
+      })
+      .catch((error) => {
+        // The text stays as it is, its block showing the diagram's source.
+        console.warn("metabrowser github: a text's diagrams could not be drawn", error);
+      });
+  }
+
+  /** @param {Element} element */
+  function disposeTextDiagrams(element) {
+    textDiagrams.get(element)?.dispose();
+    textDiagrams.delete(element);
   }
 
   /**
@@ -4789,8 +4862,8 @@ export function mountPullPage(container, ctx, mb) {
         element === undefined || texts.get(part) !== element || textOf.get(element) !== text
           ? null
           : element.querySelector(":scope > .github-pull-plain");
-      if (plain && inert !== null) {
-        plain.replaceWith(kpressHost(inert, rendered));
+      if (plain && element !== undefined && inert !== null) {
+        plain.replaceWith(kpressHost(inert, rendered, element));
         // The text is rendered now, so what said why it was plain goes with the plain text.
         element?.querySelector(":scope > .github-pull-text-refused")?.remove();
         if (refusedNotes.get(part)?.text === text) {
@@ -5938,6 +6011,15 @@ export function mountPullPage(container, ctx, mb) {
     }
     for (const [index, note] of (model.corePreview ? [] : model.notes).entries()) {
       section(["note", index, note], () => notice("warning", [note]));
+    }
+    // A section the conversation no longer shows takes its texts' diagrams with it.
+    const kept = new Set(order);
+    for (const node of sections.values()) {
+      if (!kept.has(node)) {
+        for (const text of sectionTexts.get(node) ?? []) {
+          disposeTextDiagrams(text);
+        }
+      }
     }
     sections = next;
 
@@ -7442,6 +7524,10 @@ export function mountPullPage(container, ctx, mb) {
     wantedFile = null;
     listening.abort();
     summaryBrief?.dispose();
+    // A disposed binding leaves its figures as drawn, so the handoff keeps them on screen.
+    for (const text of [...textDiagrams.keys()]) {
+      disposeTextDiagrams(text);
+    }
     cancelTimeline();
     body.querySelector(".github-pull-diff-loading")?.remove();
     observer?.disconnect();

@@ -33,7 +33,7 @@ from html import escape
 from importlib.metadata import version as distribution_version
 from importlib.util import find_spec
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Final, Literal, cast
 from urllib.parse import quote
 
 from metabrowser.asset_stamps import StampedTree
@@ -141,6 +141,20 @@ __all__ = [
     "render_kpress_view",
     "set_kpress_static_root_for_tests",
 ]
+
+
+# The KPress modules that draw Mermaid diagrams: the renderer and its controls, and the
+# modules they import by relative URL. The page imports the first two as module bundles
+# (server.py, `kpress-diagrams` and `kpress-diagram-controls`), and an untrusted page's
+# policy admits exactly these (capabilities.untrusted_shell_csp). KPress publishes the
+# list as `kpress.contract.PUBLIC_DIAGRAM_SCRIPT_MODULES`; a shell page names it without
+# importing KPress, so tests/test_kpress_dependency_contract.py pins the copy.
+DIAGRAM_MODULES: Final = (
+    "js/diagrams.js",
+    "js/diagram-controls.js",
+    "js/runtime.js",
+    "js/icons.js",
+)
 
 
 def kpress_static_url(rel_path: str, *, prefix: str | None = None) -> str:
@@ -285,6 +299,9 @@ def render_kpress_view(
         show_doc_header=False,
         include_toc=include_toc,
         toc_collapse_depth=_TOC_COLLAPSE_DEPTH,
+        # Mermaid fences draw as diagrams and ```svg fences stay highlighted code, as
+        # GitHub shows both, so a page reads here as it does there.
+        diagrams="mermaid",
     )
     plain = _PLAIN_CODE.set(plain_code)
     try:

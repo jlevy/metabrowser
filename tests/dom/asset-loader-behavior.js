@@ -4,10 +4,27 @@
 // consuming view pays nothing, and that a document which opens two of them
 // pays once. Neither is visible from a request count in a real page, so the
 // script element is faked here and every append is recorded.
+//
+// A module bundle's `import()` is answered by Node's own module loader, which is
+// what `import()` in a vm script needs without a flag: the modules are `data:`
+// URLs and a file this session writes, so the session holds an import in flight
+// and fails one when it chooses.
 
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 const vm = require("node:vm");
+
+// Node calls the main-context loader experimental on every use; the warning
+// carries a process id, so it is kept out of the transcript.
+const emitWarning = process.emitWarning;
+process.emitWarning = (warning, ...rest) => {
+  if (String(warning).includes("USE_MAIN_CONTEXT_DEFAULT_LOADER")) {
+    return;
+  }
+  emitWarning.call(process, warning, ...rest);
+};
 
 const repoRoot = path.resolve(process.argv[2] || path.join(__dirname, "../.."));
 const sourcePath = path.join(repoRoot, "src/metabrowser/static/asset-loader.js");
@@ -97,8 +114,16 @@ function makeSandbox(
   sandbox.window = sandbox;
   sandbox.globalThis = sandbox;
   vm.createContext(sandbox);
-  vm.runInContext(source, sandbox, { filename: sourcePath });
+  vm.runInContext(source, sandbox, {
+    filename: sourcePath,
+    importModuleDynamically: vm.constants.USE_MAIN_CONTEXT_DEFAULT_LOADER,
+  });
   return sandbox;
+}
+
+/** A module bundle's URL for *code*, which runs in Node's own realm. */
+function moduleUrl(code) {
+  return `data:text/javascript,${encodeURIComponent(code)}`;
 }
 
 /** The loader starts its chain on a microtask, so appends land after the
@@ -306,6 +331,81 @@ async function main() {
     held.get("shared.js")();
     await retry;
     results.concurrentStrongRetryLoaded = sandbox.MetabrowserAssets.assetLoaded("strong");
+  }
+
+  // 11. A module bundle is imported once: simultaneous callers, and a later one,
+  //     receive the one import's promise. The bundle is not loaded until that import
+  //     has succeeded, so a module still evaluating is not reported ready.
+  {
+    let release = () => {};
+    globalThis.assetLoaderModuleGate = new Promise((resolve) => {
+      release = resolve;
+    });
+    const sandbox = makeSandbox({
+      held: [
+        {
+          module: moduleUrl(
+            'await globalThis.assetLoaderModuleGate;\nexport const name = "held";\n',
+          ),
+        },
+      ],
+    });
+    const first = sandbox.MetabrowserAssets.ensureModule("held");
+    const second = sandbox.MetabrowserAssets.ensureModule("held");
+    await flush();
+    results.moduleCallersShareImport = first === second;
+    results.moduleLoadedWhileImporting = sandbox.MetabrowserAssets.assetLoaded("held");
+    release();
+    const namespaces = await Promise.all([first, second]);
+    results.moduleNamespaces = namespaces.map((namespace) => namespace.name);
+    results.moduleLoadedAfterImport = sandbox.MetabrowserAssets.assetLoaded("held");
+    results.moduleLaterCallerShares = sandbox.MetabrowserAssets.ensureModule("held") === first;
+  }
+
+  // 12. A failed import is not remembered: it rejects, the bundle is not loaded, and
+  //     the next caller imports again, which succeeds once the module can be had. The
+  //     module's file is missing on the first attempt, as a failed fetch leaves it.
+  {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "metabrowser-asset-loader-"));
+    try {
+      const file = path.join(directory, "retry.mjs");
+      const sandbox = makeSandbox({ retry: [{ module: pathToFileURL(file).href }] });
+      const failed = sandbox.MetabrowserAssets.ensureModule("retry");
+      try {
+        await failed;
+        results.moduleFailedImport = "resolved";
+      } catch (error) {
+        results.moduleFailedImport = error.code;
+      }
+      results.moduleLoadedAfterFailure = sandbox.MetabrowserAssets.assetLoaded("retry");
+      fs.writeFileSync(file, 'export const attempt = "retried";\n');
+      const retried = sandbox.MetabrowserAssets.ensureModule("retry");
+      results.moduleRetryIsNewImport = retried !== failed;
+      results.moduleRetryNamespace = (await retried).attempt;
+      results.moduleLoadedAfterRetry = sandbox.MetabrowserAssets.assetLoaded("retry");
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  }
+
+  // 13. An unknown name rejects, and so does a script bundle's: it installs globals
+  //     and has no namespace to resolve to. Neither appends a script.
+  {
+    appended.length = 0;
+    const sandbox = makeSandbox({ chart: [{ src: "chart.js" }] });
+    for (const [key, name] of [
+      ["moduleUnknownBundle", "absent"],
+      ["moduleScriptBundle", "chart"],
+    ]) {
+      try {
+        await sandbox.MetabrowserAssets.ensureModule(name);
+        results[key] = "resolved";
+      } catch (error) {
+        results[key] = error.message;
+      }
+    }
+    results.moduleUnknownAppends = appended.length;
+    results.moduleUnknownLoaded = sandbox.MetabrowserAssets.assetLoaded("absent");
   }
 
   process.stdout.write(`${JSON.stringify(results)}\n`);

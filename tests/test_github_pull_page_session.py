@@ -553,6 +553,36 @@ _REFRESH_BODY = (
 )
 
 
+def _text_diagram_steps() -> list[str]:
+    """What the mount session's ``textDiagrams`` story says, step by step."""
+
+    body = "body as image, 1 figure, Mermaid on demand"
+    comment = "issue_comment/3341937855 as image, 1 figure, Mermaid on demand"
+    gone = ", disposed"
+    modules = "kpress-diagrams, kpress-diagram-controls"
+    both = "2 blocks, 2 in a figure"
+    one = "1 block, 1 in a figure"
+    return [
+        "a description and a comment with no Mermaid block: 0 blocks, 0 in a figure; "
+        "asked nothing; bindings none",
+        # A folder's page may lack the untrusted policy, which the SDK does not say.
+        "the same with Mermaid blocks, on a folder's page: 2 blocks, 0 in a figure; "
+        "asked nothing; bindings none",
+        f"a description and a comment each with a Mermaid block: {both}; asked markdown "
+        f"plugin, markdown plugin, {modules}, {modules}; bindings {body}; {comment}",
+        f"a poll of the same record: {both}; asked nothing; bindings {body}; {comment}",
+        f"Changes and back to Conversation: {both}; asked nothing; bindings {body}; {comment}",
+        f"the description edited, the comment not: {both}; asked markdown plugin, "
+        f"{modules}; bindings {body}{gone}; {comment}; {body}",
+        f"the description's block taken out: {one}; asked nothing; bindings {body}{gone}; "
+        f"{comment}; {body}{gone}",
+        f"a block whose text is replaced before the Markdown plugin arrives: {one}; asked "
+        f"markdown plugin; bindings {body}{gone}; {comment}; {body}{gone}",
+        f"the page ends: {one}; asked nothing; bindings {body}{gone}; {comment}{gone}; "
+        f"{body}{gone}",
+    ]
+
+
 def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
     """Asset and renderer failures recover without a dangling readiness rejection."""
 
@@ -783,6 +813,11 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
             "as plain text. Reload to try again., new element",
             "a newer record whose Markdown renders: rendered rendered A, no notice, same element",
         ],
+        # A text's Mermaid blocks, in the description and in a comment, drawn as images
+        # through the Markdown plugin's published host, asked for only once a text has one;
+        # a binding lasts as long as its text's section and ends with the page (A3 of the
+        # review of #597).
+        "textDiagrams": _text_diagram_steps(),
         # Browse code's switch is the diff plugin's, in a module it loads on demand: the
         # plugin's assets or that module not loading is said as a failed request, and asks
         # the server nothing (A3 of review A on #511).

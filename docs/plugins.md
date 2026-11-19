@@ -556,8 +556,8 @@ Useful helpers include:
 - `filterControls` for the host’s accessible filter chips and menus, and for any
   exclusive choice among labelled values;
 - `shortcuts.attach(element, spec)`; see [Keyboard Shortcuts](#keyboard-shortcuts);
-- `chart(container, type, data, options)`, `ensureAsset(name)`, and
-  `ensureKindAssets(kind)`, below;
+- `chart(container, type, data, options)`, `ensureAsset(name)`, `ensureModule(name)`,
+  and `ensureKindAssets(kind)`, below;
 - `whenIdle(callback, {timeout})`, which runs `callback` when the page is free, no later
   than `timeout` milliseconds, and returns a canceller
   ([Idle Work](project/architecture/arch-browser-shell.md#idle-work));
@@ -622,6 +622,11 @@ callers share one load, and it rejects for an unknown name or a failed script, s
 can say so.
 The bundles are named in `on_demand_script_bundles` in `server.py`; `"chart"`
 is Chart.js with its annotation plugin and date adapter.
+`ensureModule(name)` is its counterpart for a bundle that is one ES module, declared
+there as `{"module": url}`, such as `"mermaid"`: it imports the module once and resolves
+to its namespace, so read the library from what it returns rather than from a global.
+Simultaneous callers share one import, a failed import rejects and the next call imports
+again, and a name that is not a module bundle, a script bundle’s among them, rejects.
 [Asset Loading Tiers](project/architecture/arch-browser-shell.md#asset-loading-tiers)
 says which tier an asset belongs in.
 
@@ -873,6 +878,17 @@ Obsidian transclusions.
 Transclusions share depth, document, source-byte, cycle, abort, and disposal limits
 across the mounted document, and each embed’s time limit starts when that embed begins
 loading. Do not copy Markdown DOM or table-of-contents behavior into a contribution.
+
+`mb.builtins.markdown.drawDiagrams(root, {inert})` draws the Mermaid diagrams of a
+KPress render your plugin placed under `root`, as the Markdown view draws its own: an
+inert render’s `<pre lang="mermaid">` blocks become images, and only `inert: false`, for
+a render the reader trusts, puts the SVG in the page.
+It returns null, and loads nothing, when `root` holds no diagram; otherwise its
+`dispose()` stops drawing and leaves the figures as drawn, so call it when you replace
+`root`. Mermaid lays an image out in the page before it becomes one, so draw an
+untrusted render only on a page under the untrusted Content-Security-Policy, as a pull
+request’s page does
+([Inert Markdown](project/architecture/arch-server-and-content.md#inert-markdown)).
 
 ### The SDK Version
 

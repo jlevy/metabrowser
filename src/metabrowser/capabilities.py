@@ -174,14 +174,19 @@ def raw_sandbox_csp(*, active_content: bool) -> str:
     )
 
 
-def untrusted_shell_csp(nonce: str, origin: str) -> str:
+def untrusted_shell_csp(nonce: str, origin: str, kpress_scripts: tuple[str, ...]) -> str:
     """The Content-Security-Policy of the application page when active content is off.
 
     Rendered Markdown is already reduced to an allowlist before it reaches the page
     (:mod:`metabrowser.inert_html`); this is the second line. Scripts run only from the
     application's own static paths on *origin* -- ``/static/`` and ``/plugin-static/``,
     never ``/raw``, where the browsed repository's own files are -- and the shell's
-    inline scripts only by *nonce*; no inline handler runs. Stylesheets come from those
+    inline scripts only by *nonce*; no inline handler runs. The one exception is
+    *kpress_scripts*, each an exact KPress module path on *origin*: KPress's diagram
+    renderer and controls and the two modules they import, which draw an inert render's
+    Mermaid diagrams as images (``builtin_plugins/markdown/diagrams.js``). They are the
+    installed KPress package's own code, served as ``/static/`` is, and admitted by full
+    path, so no other KPress script runs over an untrusted document. Stylesheets come from those
     paths and ``/kpress-static/``; the Markdown worker from ``/plugin-static/``. Fonts
     and requests stay on this origin. Images also admit ``data:`` ones the stylesheet
     draws and GitHub's exact avatar host for application-owned author portraits;
@@ -189,7 +194,13 @@ def untrusted_shell_csp(nonce: str, origin: str) -> str:
     -- the untrusted profile removes the HTML preview, its only frame -- is framed by
     nothing, and has no plugins, ``<base>``, or form submission. Inline ``style``
     attributes stay allowed because the application writes them; an outside ``url()``
-    inside one is still limited to those image origins.
+    inside one is still limited to those image origins. A ``<style>`` element is not:
+    Mermaid lays each diagram out with one, so an untrusted document with diagrams logs
+    one expected ``style-src-elem`` violation per diagram, which costs nothing because
+    KPress's measuring host carries Mermaid's font and the image applies the style
+    outside the page (``tests/dom/markdown-diagrams-chrome.mjs`` admits only those). The
+    same image-origin limit bounds the one network load an untrusted diagram can still
+    make, Mermaid's image shape (``A@{ img: … }``) while it lays the diagram out.
     """
 
     static = f"{origin}/static/"
@@ -198,7 +209,12 @@ def untrusted_shell_csp(nonce: str, origin: str) -> str:
     return "; ".join(
         (
             "default-src 'self'",
-            f"script-src 'nonce-{nonce}' {static} {plugins}",
+            " ".join(
+                (
+                    f"script-src 'nonce-{nonce}' {static} {plugins}",
+                    *(f"{origin}{path}" for path in kpress_scripts),
+                )
+            ),
             f"style-src {static} {plugins} {kpress}",
             "style-src-attr 'unsafe-inline'",
             "img-src 'self' data: https://avatars.githubusercontent.com",

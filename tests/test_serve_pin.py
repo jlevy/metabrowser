@@ -34,7 +34,7 @@ from starlette.testclient import TestClient
 from typer.testing import CliRunner
 
 from devtools import check_startup_scripts
-from metabrowser import recent_targets, server
+from metabrowser import kpress_adapter, recent_targets, server
 from metabrowser.cache.acquire import PublishedSource, acquire_source
 from metabrowser.cache.repository_store import open_revision
 from metabrowser.capabilities import get_capabilities, untrusted_shell_csp
@@ -776,7 +776,14 @@ def test_repository_content_cannot_read_where_the_mirror_is_kept(
         policy = shell.headers["content-security-policy"]
         nonce = re.search(r"'nonce-([^']+)'", policy)
         assert nonce is not None
-        assert policy == untrusted_shell_csp(nonce.group(1), "http://testserver")
+        assert policy == untrusted_shell_csp(
+            nonce.group(1),
+            "http://testserver",
+            tuple(
+                kpress_adapter.kpress_static_url(module)
+                for module in kpress_adapter.DIAGRAM_MODULES
+            ),
+        )
         for directive in (
             "img-src 'self' data:",
             "connect-src 'self'",
