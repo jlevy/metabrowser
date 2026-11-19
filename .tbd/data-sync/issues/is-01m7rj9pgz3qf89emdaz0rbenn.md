@@ -5,7 +5,7 @@ title: "One rule for the app's command-line dependencies (metab, gh, future tool
 kind: feature
 status: in_progress
 priority: 1
-version: 7
+version: 8
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -14,7 +14,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-19T00:11:26.622Z
-updated_at: 2026-11-19T02:00:49.109Z
+updated_at: 2026-11-19T02:17:25.071Z
 started_at: 2026-11-19T00:12:06.859Z
 ---
 Owner, 2026-11-18, verbatim: "another question for us to review is to be clear about the dependency between metab CLI and the native app. Let's figure out what the best way to handle this is. Probably it's just to have a minimum version dependency represented in each native app build and then to instruct the user on how to upgrade metab if necessary. And same for gh and potentially, in the future, other CLI dependencies". Today: MetabRequirement.minimumRelease (apps/macos ShellCore) for metab; the gh status check (mb-si2g, PR #581) for gh. Goal: one declared requirement per tool in each app build (name, minimum version, how it is found, how its version is read, upgrade instructions by install method), one status/remedy UI in the app, one doc, and the rule for when a minimum is raised.
@@ -29,3 +29,6 @@ Review A on #590 (2 Medium, 5 Low) all fixed at head 0fe93f6d0; dispositions pos
 
 
 Progress 2026-11-18 (PR #596, branch claude/doctor-check-setup, head c22544545+docs 6b607cfdb, base 8ce5c4c72): Phases 2 and 3 built. Phase 2: cli/doctor.py checks list (metab: version/executable/python/install method + app minimum from Info.plist MetabrowserMinimumMetab read via doctor_open_in; git: ACQUISITION_MINIMUM and PARTIAL_CLONE_GIT_MINIMUM with install-method remedy; config; cache incl. free space). Warning never changes exit; config/cache problem exits 1. gh: GH_MINIMUM (2,81,0) in gh_status.py (gh auth status --json, cli/cli#11544), gh_too_old by version then probe, fix by install method (tool_install.py), github.gh_minimum. Golden tests/golden/cli-doctor.tryscript.md (9 tests), parity row app.check-setup, distribution smoke gets a private cache dir. Not built (plan lists as follow-ups): markdown_renderer, browser, recent_targets, locks, stale editable install; the ShellCore no-gh/git-literal text check (dropped, reason in plan); uv check (decided no); network check (off, proposal). Phase 3: MetabInstall (uv receipt/pipx metadata/checkout .venv) and MetabRequirement.upgradeCommand(for:); DoctorReport/DoctorRun decode (unknown keys ignored, unknown state shown, missing checks = older 0.13.0.devN, unreadable shows output); Help > Check Setup... window with Check Again and Copy Report; Settings button opens it. Pins in test_macos_app_pins (plist minimum, upgrade commands). Minimum not raised (0.13.0 unreleased). Owner decisions now eight (uv added). Local: lint-check pass, goldens pass, focused pytest pass, Swift suites pass (quarantine-helper script check fails locally, environmental). Window hand checks written, not run.
+
+
+CI 2026-11-18: PR #596 head 7afa78fd0 all checks pass (macOS 26 job included; stack-integration skipped). First run failed tests/test_icon_catalog.py (Check Setup SF Symbols uncataloged); fixed by rows in docs/design-system-icons.md. Not merged; awaiting owner decisions 1-8 in the plan.
