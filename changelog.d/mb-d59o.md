@@ -6,5 +6,7 @@
   A text whose render is still on its way past the page’s short first-paint hold shows a
   quiet placeholder in its place, never its source; source shows only when the render
   will not come, with the line that says why.
-  `GET /api/plugin/github/pull-markdown` renders a pull request’s description from its
-  prepared core when no record is cached, and answers `core_revision` for it.
+  The same holds for the comments in view when the full record arrives, which are now
+  asked for before they first show, and the placeholder stops pulsing under reduced
+  motion. `GET /api/plugin/github/pull-markdown` renders a pull request’s description
+  from its prepared core when no record is cached, and answers `core_revision` for it.
