@@ -8,7 +8,6 @@
     "body": {
       "kind": "branch",
       "query": "",
-      "limit": 100,
       "pin": null,
       "ref": null,
       "kinds": [
@@ -23,8 +22,6 @@
         "name": "checkout",
         "location": "/sandbox/checkout"
       },
-      "total": 3,
-      "truncated": false,
       "refs": [
         {
           "name": "topic",
@@ -36,19 +33,19 @@
           "current": false
         },
         {
-          "name": "feature",
-          "ref": "refs/heads/feature",
-          "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
-          "committed_at": 1767232800.0,
+          "name": "local-work",
+          "ref": "refs/heads/local-work",
+          "commit": "25e0a2a76ab47a407f3dee083221e6efdcca6283",
+          "committed_at": 1769904000.0,
           "default": false,
           "checked_out": false,
           "current": false
         },
         {
-          "name": "local-work",
-          "ref": "refs/heads/local-work",
-          "commit": "25e0a2a76ab47a407f3dee083221e6efdcca6283",
-          "committed_at": 1769904000.0,
+          "name": "feature",
+          "ref": "refs/heads/feature",
+          "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+          "committed_at": 1767232800.0,
           "default": false,
           "checked_out": false,
           "current": false
@@ -61,7 +58,6 @@
     "body": {
       "kind": "tag",
       "query": "",
-      "limit": 100,
       "pin": null,
       "ref": null,
       "kinds": [
@@ -76,8 +72,6 @@
         "name": "checkout",
         "location": "/sandbox/checkout"
       },
-      "total": 2,
-      "truncated": false,
       "refs": [
         {
           "name": "local-tag",
@@ -105,7 +99,6 @@
     "body": {
       "kind": "remote",
       "query": "",
-      "limit": 100,
       "pin": null,
       "ref": null,
       "kinds": [
@@ -120,8 +113,6 @@
         "name": "checkout",
         "location": "/sandbox/checkout"
       },
-      "total": 2,
-      "truncated": false,
       "refs": [
         {
           "name": "origin/feature",
@@ -214,7 +205,6 @@
     "body": {
       "kind": "branch",
       "query": "",
-      "limit": 100,
       "pin": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
       "ref": "refs/heads/feature",
       "kinds": [
@@ -229,8 +219,6 @@
         "name": "checkout",
         "location": "/sandbox/checkout"
       },
-      "total": 3,
-      "truncated": false,
       "refs": [
         {
           "name": "topic",
@@ -242,15 +230,6 @@
           "current": false
         },
         {
-          "name": "feature",
-          "ref": "refs/heads/feature",
-          "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
-          "committed_at": 1767232800.0,
-          "default": false,
-          "checked_out": false,
-          "current": true
-        },
-        {
           "name": "local-work",
           "ref": "refs/heads/local-work",
           "commit": "25e0a2a76ab47a407f3dee083221e6efdcca6283",
@@ -258,6 +237,15 @@
           "default": false,
           "checked_out": false,
           "current": false
+        },
+        {
+          "name": "feature",
+          "ref": "refs/heads/feature",
+          "commit": "c7ae2a331f546e6a2431ed7093e9e430a9d1269b",
+          "committed_at": 1767232800.0,
+          "default": false,
+          "checked_out": false,
+          "current": true
         }
       ]
     }

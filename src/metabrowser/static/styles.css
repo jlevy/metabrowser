@@ -2873,12 +2873,24 @@ html.theme-anim .menu {
   outline: 2px solid var(--link);
   outline-offset: -2px;
 }
+/* The list holds every ref and draws only the rows near its view
+   (static/source-ref-selector.js, `drawWindow`): the sizer is as tall as every row, and
+   each drawn row is placed over it by its index. It sets its own scroll position, and
+   adds and removes rows on every scroll, so the browser's scroll anchoring, which moves
+   a scroll position to keep a row in place when the rows around it change, is off. */
 .source-ref-selector-list {
+  position: relative;
   max-height: min(50vh, 320px);
   margin: 0;
   padding: 0;
   overflow-y: auto;
+  overflow-anchor: none;
   list-style: none;
+}
+.source-ref-selector-item {
+  position: absolute;
+  left: 0;
+  right: 0;
 }
 .source-ref-selector-row[aria-current="true"],
 .source-ref-selector-working-tree[aria-current="true"] {
@@ -2890,8 +2902,13 @@ html.theme-anim .menu {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* The badge's border reaches into the row's padding rather than making its row taller:
+   every row is placed at one row's height (`drawWindow` in source-ref-selector.js), and
+   the badged row, measured first, was 2px taller than the rest, which left a gap under
+   every row. */
 .source-ref-selector-badge {
   flex: 0 0 auto;
+  margin-block: -1px;
   padding: 0 4px;
   border: 1px solid var(--border);
   border-radius: var(--radius-chrome);

@@ -5323,6 +5323,20 @@ list chooser, a filter box, and one row for each ref (`static/source-ref-selecto
   the owner found them clutter.
   A pin with no mirror has no selector, so its heading is its ref and its short commit.
 
+- **The list holds every ref, newest first, and draws only the rows near its view.** It
+  reads by the age its rows show, after the mirror’s default branch or the checkout’s
+  checked-out one, and states no count, since it leaves nothing out.
+  Each row is placed by its index at one row’s height over a box as tall as the whole
+  list (`ROWS_OVERSCAN` and `drawWindow` in `static/source-ref-selector.js`), so nothing
+  in a row may make it taller than the rest: the badge’s border reaches into the row’s
+  padding. The row that takes Tab stays drawn however far the list scrolls from it, so
+  focus on it is never lost, and a list that holds the served ref opens scrolled to its
+  row. The `ul` says `role="list"`, which WebKit drops from a list drawn without markers.
+  `tests/test_ref_selector_long_list_chrome.py` measures in headless Chrome over
+  thousands of branches that the rows are one height and abut, that a scroll and End
+  draw the rows they bring into view, that a focused row keeps focus, and that the
+  filter narrows the list.
+
 A checkout adds three things, and each uses a primitive the control already had:
 
 - **The working tree is a row, above the lists, and not in them.** It is a `.menu-item`

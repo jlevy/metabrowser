@@ -337,6 +337,9 @@ Which modes exist, what each shows, and why is [Open Modes](arch-open-modes.md).
   otherwise says whether the working tree is served, which branch `HEAD` is on, and the
   folder’s `name` and `location`, as the page names the folder, and a row’s
   `checked_out` marks that branch, which lists first.
+  Every ref is listed, the rest newest first by the committer date each row shows, then
+  by name, as a mirror’s are, and the answer is kept, within the same limits, under the
+  checkout’s ref state and the branch `HEAD` is on, as a mirror’s is under its store’s.
   Each row has its commit and `committed_at`, the committer date a row’s age is read
   from: a tag’s is its commit’s, by `for-each-ref`’s `*committerdate`, in the same one
   process. The page shortens the commit as every line names one (`shortCommit` in

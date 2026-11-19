@@ -8,9 +8,12 @@ it carries an ETag so an unchanged answer is a ``304``. The browser's revision l
 rendered from the same :func:`source_status`, so the label and
 ``metab --api /api/source/status`` cannot disagree.
 
-``GET /api/source/refs`` lists the mirror's branches or tags for the ref selector,
-filtered and bounded, with the default branch first and the served ref marked. It reads
-the mirror alone, never the network.
+``GET /api/source/refs`` lists every one of the mirror's branches or tags for the ref
+selector, filtered by name, the default branch first and then newest first, with the
+served ref marked. It reads the mirror alone, never the network. An answer the Git
+routes' memo can keep is kept under the refs' state, so asking again while no ref moved
+runs no Git; past about 9,000 branches, or past ``MAX_REF_ENTRIES`` loose refs, every
+listing runs Git.
 
 A folder that is a repository's root answers the same two routes for its own checkout
 (:mod:`metabrowser.checkout_revisions`): the refs route lists its branches, tags, and
@@ -46,6 +49,10 @@ from metabrowser.checkout_revisions import (
     checkout_revisions,
 )
 from metabrowser.content_errors import ContentReadError
+from metabrowser.git.process import GitLocation
+from metabrowser.git.ref_state import ref_state
+from metabrowser.git.repo import repo_info
+from metabrowser.git.route_memo import keep_body, kept_answer
 from metabrowser.http_caching import build_scoped_etag, etag_headers, matches_if_none_match
 from metabrowser.mirror_refresh import (
     UNSERVED_FRESHNESS,
@@ -86,19 +93,27 @@ log = logging.getLogger(__name__)
 # bounds a ref name at the file system's name length; four KiB holds any real one with
 # room for the JSON around it and an address a few levels deep.
 MAX_SOURCE_REQUEST_BYTES: Final = 4 * 1024
-# Refs one listing answers. The selector shows a page of plain rows and narrows by the
-# filter box rather than scrolling far: a hundred rows is a few kilobytes of JSON. A
-# caller's limit is clamped to the range, as the ``/api/git/`` routes clamp theirs.
-# The listing's cost is one ``for-each-ref`` of the whole namespace whatever the page
-# size or filter, so it grows with the mirror's refs, not with ``limit``. Measured on
-# 2026-09-24, macOS, Git 2.50.1, under a load average above 20: over 3,000 branches the
-# ``for-each-ref`` took 0.23-0.26 s with loose refs and 0.13 s packed, and the review
-# measured 0.25-0.36 s per route call loose and 0.11 s packed. The browser asks after a
-# pause in typing and aborts a request a newer filter replaces, so a reader typing
-# costs about one listing per pause. No answer is memoized, since the refs change
-# whenever a fetch ends; the pause and the abort bound the calls instead.
-REFS_DEFAULT_LIMIT: Final = 100
-REFS_MAX_LIMIT: Final = 1000
+# A listing answers every matching ref; nothing pages or caps it. Its cost is one
+# ``for-each-ref`` of the kind's whole namespace, which the earlier page of 100 rows never
+# bounded, so a listing of every ref costs the server what a page did, plus encoding the
+# rows. Measured 2026-11-19 in process on macOS, Git 2.50.1, at a load average of 13, on
+# synthetic checkouts (``for-each-ref`` and parsing, then the rows encoded as JSON):
+#
+#   branches                1,301 loose  1,301 packed  10,001 loose  10,001 packed
+#   for-each-ref, ms                 77            29           478            120
+#   JSON, bytes, encode ms     291 KB, 1.7   291 KB, 1.7   2.2 MB, 12    2.2 MB, 12
+#
+# What bounds a listing is the store-read policy's output cap and deadline
+# (``GIT_SUBPROCESS_MAX_BYTES``, ``GIT_SUBPROCESS_TIMEOUT_S``): about 105 bytes of Git's
+# output a ref there, so the cap is reached past about 300,000 refs, and the deadline
+# sooner in a repository of loose refs. Past either the listing is refused, as it was
+# with a page, rather than cut short. The browser draws only the rows in view, so its
+# cost does not grow with the rows (static/source-ref-selector.js, ``ROWS_OVERSCAN``).
+# An answer is kept under the refs' state (:func:`_refs_answer_key`), so asking again
+# while no ref moved runs no Git, but only an answer the memo can keep: one under its
+# ``MAX_ENTRY_BYTES``, about 9,000 branches, from a repository with no more loose refs than
+# ``MAX_REF_ENTRIES``. Neither 10,001-branch case above is kept, so each listing there
+# costs what the table says.
 # The filter is a name fragment; a ref name longer than this is not one a reader types.
 REFS_MAX_QUERY_CHARS: Final = 256
 # The lists a mirror has, and the ones a checkout has: its remote-tracking branches too.
@@ -283,24 +298,21 @@ class WorkingTree(TypedDict):
 class SourceRefs(TypedDict):
     """The envelope of ``GET /api/source/refs``.
 
-    ``refs`` are the matching refs in listing order, at most ``limit`` of them;
-    ``total`` counts every match, and ``truncated`` says the page stops short of it.
-    ``pin`` and ``ref`` are what the server serves now, so the selector marks the
-    served ref even when the page was rendered for another; both are ``None`` while a
-    checkout's working tree is served. ``kinds`` are the lists the subject has: a
+    ``refs`` are every matching ref, in listing order: the default or checked-out branch
+    first, then newest first by the date each row shows (``_newest_first`` in
+    ``cache/resolve.py``). ``pin`` and ``ref`` are what the server serves now, so the
+    selector marks the served ref even when the page was rendered for another; both are
+    ``None`` while a checkout's working tree is served. ``kinds`` are the lists the subject has: a
     checkout's remote-tracking branches are a third. ``working_tree`` is ``None`` for a
     mirror, which has none.
     """
 
     kind: RefKind
     query: str
-    limit: int
     pin: str | None
     ref: str | None
     kinds: list[RefKind]
     working_tree: WorkingTree | None
-    total: int
-    truncated: bool
     refs: list[SourceRef]
 
 
@@ -310,10 +322,9 @@ def source_refs(
     *,
     kind: RefKind,
     query: str,
-    limit: int,
     working_tree: WorkingTree | None = None,
 ) -> SourceRefs:
-    """The page of *listed* that matches *query*, a case-insensitive name fragment.
+    """Every ref of *listed* that matches *query*, a case-insensitive name fragment.
 
     *subject* is the served revision, ``None`` on a checkout's working tree, and
     *working_tree* is given for a checkout, whose first-listed branch is the one checked
@@ -327,13 +338,10 @@ def source_refs(
     return SourceRefs(
         kind=kind,
         query=query,
-        limit=limit,
         pin=subject.commit_oid if subject is not None else None,
         ref=served_ref,
         kinds=list(_CHECKOUT_REF_KINDS if of_checkout else _MIRROR_REF_KINDS),
         working_tree=working_tree,
-        total=len(matches),
-        truncated=len(matches) > limit,
         refs=[
             SourceRef(
                 name=entry.name,
@@ -344,21 +352,72 @@ def source_refs(
                 checked_out=entry.default and of_checkout,
                 current=served_ref is not None and entry.ref == served_ref,
             )
-            for entry in matches[:limit]
+            for entry in matches
         ],
     )
 
 
-def _refs_limit(value: str | None) -> int:
-    try:
-        limit = int(value) if value is not None else REFS_DEFAULT_LIMIT
-    except ValueError:
-        limit = REFS_DEFAULT_LIMIT
-    return max(1, min(limit, REFS_MAX_LIMIT))
+async def _refs_answer_key(
+    location: GitLocation,
+    *,
+    kind: RefKind,
+    query: str,
+    subject: GitRevisionSubject | None,
+    first_ref: str | None,
+) -> tuple[str, ...] | None:
+    """What a listing is kept under in the Git routes' memo, or ``None`` to keep nothing.
+
+    Everything the answer reads: the repository's refs, whose state
+    :func:`~metabrowser.git.ref_state.ref_state` names; the list and the filter; what is
+    served, which marks a row and says whether the working tree is; and *first_ref*, the
+    branch listed first and marked. That is a mirror's default branch, which its store
+    records outside its refs, or the branch a checkout's ``HEAD`` is on as
+    :func:`~metabrowser.git.repo.repo_info` names it, which ``working_tree`` reports too.
+    ``repo_info`` keeps ``HEAD`` for ``GIT_REPO_INFO_TTL_S``, so the state alone, which
+    reads ``HEAD`` afresh, could key a listing made from the ``HEAD`` it kept before a
+    switch, and serve it until a ref moved; ``/api/git/refs`` keys its answer on
+    ``HEAD``'s ref for the same reason. The served root's name and path cannot change
+    while it is served, and a new root empties the memo. ``None`` when the state cannot
+    be named, as for a repository with more loose refs than one state may stat
+    (``MAX_REF_ENTRIES``).
+    """
+
+    state = await ref_state(location)
+    if state is None:
+        return None
+    return (
+        "source-refs",
+        location.identity,
+        kind,
+        query,
+        subject.commit_oid if subject is not None else "",
+        (subject.ref or "") if subject is not None else "",
+        first_ref or "",
+        state,
+    )
 
 
-async def api_source_refs(request: Request) -> JSONResponse:
-    """``GET /api/source/refs?kind=branch|tag|remote&q=&limit=`` — the refs to choose among.
+def _encoded_refs(
+    listed: tuple[MirrorRef, ...],
+    subject: GitRevisionSubject | None,
+    *,
+    kind: RefKind,
+    query: str,
+    working_tree: WorkingTree | None,
+) -> bytes:
+    """The listing's body, as :func:`keep_body` keeps it, filtered and encoded.
+
+    Run off the event loop: its cost grows with every ref the namespace holds, which only
+    Git's output cap bounds. Measured 2026-11-19 at a load average of about 20, filtering
+    10,001 refs took 7 ms and encoding them 13 ms.
+    """
+
+    page = source_refs(listed, subject, kind=kind, query=query, working_tree=working_tree)
+    return bytes(JSONResponse(dict(page)).body)
+
+
+async def api_source_refs(request: Request) -> Response:
+    """``GET /api/source/refs?kind=branch|tag|remote&q=`` — the refs to choose among.
 
     A mirror's branches or tags, read from the mirror alone. A checkout's branches, tags,
     or remote-tracking branches (``kind=remote``), read from its own Git directory, with
@@ -366,6 +425,17 @@ async def api_source_refs(request: Request) -> JSONResponse:
     subdirectory of a checkout, or a pin with no mirror answers
     ``unsupported_for_subject`` (409); a ``kind`` the subject has no list of, or an
     overlong ``q``, ``invalid_request`` (400).
+
+    The answer is kept in the Git routes' memo (:mod:`metabrowser.git.route_memo`) under
+    :func:`_refs_answer_key`, and carries that memo's entity tag, so the same listing
+    asked again while no ref moved runs no Git. Measured 2026-11-19 at a load average of
+    13: naming the state took 20 ms over 1,301 loose branches and 0.4 ms packed, against
+    the 77 and 29 ms a listing takes. The memo keeps only what it can: a body over its
+    ``MAX_ENTRY_BYTES``, past about 9,000 branches, is served and not kept, and a
+    repository with more loose refs than ``MAX_REF_ENTRIES`` has no state to key on, so
+    every listing of either runs Git. Both 10,001-branch checkouts measured beside
+    ``REFS_MAX_QUERY_CHARS`` are such, the packed one by its body and the loose one by
+    its 20,001 loose refs.
     """
 
     params = request.query_params
@@ -388,8 +458,24 @@ async def api_source_refs(request: Request) -> JSONResponse:
     working_tree: WorkingTree | None = None
     try:
         if isinstance(source, CheckoutRevisions):
+            # HEAD as the listing will read it (`_repository`), and the key names it.
+            context, _info = await repo_info(source.root)
+            head_ref = context.head["ref"] if context is not None else None
+            key = await _refs_answer_key(
+                GitLocation.filesystem(source.root),
+                kind=kind,
+                query=query,
+                subject=subject,
+                first_ref=head_ref,
+            )
+            kept = kept_answer(request, key)
+            if kept is not None:
+                return kept
             # One reading of the repository answers both: its HEAD and its refs.
             head, listed = await source.list_refs(kind)
+            if head != head_ref:
+                # HEAD was read again between the key and the listing: keep nothing.
+                key = None
             working_tree = WorkingTree(
                 current=subject is None,
                 head=head,
@@ -398,7 +484,20 @@ async def api_source_refs(request: Request) -> JSONResponse:
                 location=source.display.location,
             )
         else:
-            listed = await source.mirror.list_refs(kind)
+            # A mirror is the source only while it serves a pin (`_switchable`).
+            pin = cast("GitRevisionSubject", subject)
+            default_ref = await source.mirror.default_ref() if kind == "branch" else None
+            key = await _refs_answer_key(
+                GitLocation.revision(pin.command_target, pin.commit_oid),
+                kind=kind,
+                query=query,
+                subject=pin,
+                first_ref=default_ref,
+            )
+            kept = kept_answer(request, key)
+            if kept is not None:
+                return kept
+            listed = await source.mirror.list_refs(kind, default_ref=default_ref)
     except UnsupportedSourceCapabilityError as exc:
         # Git does not take the served root for a repository's root.
         return JSONResponse(unsupported_source_payload(exc), status_code=409)
@@ -410,15 +509,10 @@ async def api_source_refs(request: Request) -> JSONResponse:
         log.warning("listing the refs failed: %s", exc)
         where = "checkout" if isinstance(source, CheckoutRevisions) else "mirror"
         return _error(f"the {where}'s refs could not be listed", exc.code, exc.http_status)
-    page = source_refs(
-        listed,
-        subject,
-        kind=kind,
-        query=query,
-        limit=_refs_limit(params.get("limit")),
-        working_tree=working_tree,
+    body = await asyncio.to_thread(
+        _encoded_refs, listed, subject, kind=kind, query=query, working_tree=working_tree
     )
-    return JSONResponse(dict(page))
+    return keep_body(request, key, body)
 
 
 def _served_mirror(request: Request, capability: str) -> MirrorSession:
@@ -1002,8 +1096,6 @@ __all__ = [
     "MAX_SOURCE_REQUEST_BYTES",
     "PIN_CHANGED_HEADER",
     "PIN_HEADER",
-    "REFS_DEFAULT_LIMIT",
-    "REFS_MAX_LIMIT",
     "REFS_MAX_QUERY_CHARS",
     "SOURCE_ROUTES",
     "WORKING_TREE_PIN",

@@ -327,10 +327,15 @@ class ServedMirror(Protocol):
         """
         ...
 
-    async def list_refs(self, kind: RefKind) -> tuple[MirrorRef, ...]:
+    async def default_ref(self) -> str | None:
+        """The store's record of the origin's default branch, as its full ref, or ``None``."""
+        ...
+
+    async def list_refs(self, kind: RefKind, *, default_ref: str | None) -> tuple[MirrorRef, ...]:
         """Every branch, or every tag, the mirror holds that names a commit.
 
-        Branches in name order with the default branch first; tags newest first.
+        *default_ref*, :meth:`default_ref` as the caller read it, lists first and is
+        marked; then newest first by the commit each ref names, then by name.
         """
         ...
 

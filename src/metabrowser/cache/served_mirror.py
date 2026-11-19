@@ -282,8 +282,10 @@ class StoreMirror:
         default_ref = await asyncio.to_thread(self._default_ref)
         return None if default_ref is None else await ref_tip(self._target(), default_ref)
 
-    async def list_refs(self, kind: RefKind) -> tuple[MirrorRef, ...]:
-        default_ref = await asyncio.to_thread(self._default_ref) if kind == "branch" else None
+    async def default_ref(self) -> str | None:
+        return await asyncio.to_thread(self._default_ref)
+
+    async def list_refs(self, kind: RefKind, *, default_ref: str | None) -> tuple[MirrorRef, ...]:
         return await list_mirror_refs(self._target(), kind, default_ref=default_ref)
 
     def repository_context(self, *, revision: str, branch: str | None) -> RepositoryContext | None:

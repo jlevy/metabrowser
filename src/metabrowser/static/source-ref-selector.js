@@ -1,9 +1,10 @@
 // The branch and tag selector of a served mirror, and of a served checkout.
 //
 // A page on a mirror's pin shows a compact button naming the ref it was rendered for.
-// Opening it lists the mirror's branches or tags from GET /api/source/refs, the
-// default branch first and the served ref marked, narrowed by a filter box; the server
-// bounds and counts the list, and the page says when it stops short. Choosing a ref
+// Opening it lists every one of the mirror's branches or tags from GET /api/source/refs,
+// the default branch first and then newest first, with the served ref marked, narrowed
+// by a filter box. The list draws only the rows near its view (`drawWindow`), so what it
+// draws costs the same over ten thousand branches as over ten. Choosing a ref
 // switches the served pin with POST /api/source/pin -- a same-origin JSON request
 // behind the server's guard -- and names the page's own /view/ address, so the answer
 // says where the page goes: the same file or folder when the new revision has it,
@@ -52,6 +53,22 @@
   // Typing narrows the list through the server, which reads the mirror's refs once per
   // request; waiting for a short pause in typing asks once per word, not per key.
   const FILTER_DELAY_MS = 150;
+  // Rows drawn beyond the list's view on either side, so a scroll or a key finds the next
+  // rows drawn already. The list draws the rows in its view and these, whatever the
+  // listing holds, and places each by its index over a box as tall as all of them
+  // (`drawWindow`). Drawing every row instead cost the same main-thread time per row
+  // whatever was in view. Measured 2026-11-19 in headless Chrome 152 on an M1 Pro at a
+  // load average of 17 to 19, building the rows and then laying them out: 1,301 rows took
+  // 8 and 54 ms, and 10,001 took 57 and 430 ms and 320 ms more to the next frame, while
+  // `content-visibility: auto` on each row made 10,001 slower, 0.8 to 1.0 s and 2.6 to
+  // 2.9 s. Drawing this window instead, 32 rows at the list's 320 px, ran no task over
+  // 50 ms: opening painted in a median 68 ms over 1,301 branches, and 0.25 and 0.67 s
+  // over 10,001 with packed and loose refs, of which fetching the listing alone took 30
+  // ms, 0.21 s, and 0.57 s; End, each ArrowDown, and a scroll to the foot each reached the
+  // next frame in 30 to 34 ms (same machine, a load average of 17 to 33). Twenty rows is
+  // 580 px, more than the list's tallest view, so a scroll of a whole view between two
+  // frames, before its scroll event draws, still lands on rows already drawn.
+  const ROWS_OVERSCAN = 20;
 
   /** @type {Readonly<Record<MetabrowserSourceRefKind, string>>} */
   const KIND_PLURAL = Object.freeze({
@@ -114,8 +131,6 @@
     return (
       (record.kind === "branch" || record.kind === "tag" || record.kind === "remote") &&
       typeof record.query === "string" &&
-      typeof record.total === "number" &&
-      typeof record.truncated === "boolean" &&
       Array.isArray(record.refs)
     );
   }
@@ -156,8 +171,6 @@
         listing.query === ""
           ? `The ${checkout ? "checkout" : "mirror"} has no ${plural}.`
           : `No ${plural} match.`;
-    } else if (listing?.truncated) {
-      note = `Showing ${listing.refs.length} of ${listing.total} ${plural}; filter to narrow.`;
     }
     // The working tree is a checkout's alone, and is no ref: it is listed whatever the
     // list and the filter show, named by the folder's path. Until the first listing says
@@ -250,6 +263,38 @@
       default:
         return null;
     }
+  }
+
+  /**
+   * Which of *count* rows, each *rowHeight* tall, a list scrolled to *scrollTop* draws in
+   * a view *viewHeight* tall: those in view and ROWS_OVERSCAN more on either side, as the
+   * range from *start* up to *end*, and the row at *roving*, the one that takes Tab, as
+   * *also* when the range leaves it out, else -1. That row may have focus, and Tab from
+   * the filter box goes to it, so it stays drawn however far the list scrolls from it.
+   * Until a row has been measured, *rowHeight* is 0 and the first rows are drawn, as many
+   * as the overscan on both sides. Pure.
+   *
+   * @param {number} count
+   * @param {number} rowHeight
+   * @param {number} scrollTop
+   * @param {number} viewHeight
+   * @param {number} roving
+   * @returns {{start: number, end: number, also: number}}
+   */
+  function rowWindow(count, rowHeight, scrollTop, viewHeight, roving) {
+    if (count <= 0) {
+      return { start: 0, end: 0, also: -1 };
+    }
+    let start = 0;
+    let end = Math.min(count, 2 * ROWS_OVERSCAN);
+    if (rowHeight > 0) {
+      const first = Math.floor(scrollTop / rowHeight) - ROWS_OVERSCAN;
+      const last = Math.ceil((scrollTop + viewHeight) / rowHeight) + ROWS_OVERSCAN;
+      start = Math.max(0, Math.min(count, first));
+      end = Math.max(start, Math.min(count, last));
+    }
+    const outside = roving >= 0 && roving < count && (roving < start || roving >= end);
+    return { start, end, also: outside ? roving : -1 };
   }
 
   /**
@@ -569,9 +614,8 @@
    *
    * @param {MetabrowserSourceRefSelectorParts} parts
    * @param {MetabrowserSourceRefSelectorModel} model
-   * @param {(ref: string) => void} choose
    */
-  function paint(parts, model, choose) {
+  function paint(parts, model) {
     // A folder Git does not take for a repository's root has no selector after all.
     parts.root.hidden = model.removed;
     // Shown while the list is closed too: the page is no longer what the server shows.
@@ -638,69 +682,7 @@
       parts.filter.value = model.query;
     }
     parts.list.setAttribute("aria-busy", String(model.loading || model.switching));
-    // One row takes Tab at a time: the served one, else the first. Arrow keys move
-    // among the rest.
-    const current = model.rows.findIndex((row) => row.current);
-    const roving = current >= 0 ? current : 0;
-    const items = model.rows.map((row, index) => {
-      const item = document.createElement("li");
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "menu-item source-ref-selector-row";
-      button.disabled = model.switching;
-      button.tabIndex = index === roving ? 0 : -1;
-      if (row.current) {
-        button.setAttribute("aria-current", "true");
-      }
-      const name = document.createElement("span");
-      name.className = "source-ref-selector-name";
-      // A mirror's branch is a remote chip and its tag a tag chip, as on the button; a
-      // checkout's own branch is a local chip. The default branch is not drawn as trunk:
-      // trunk is the server's `is_trunk` on a Git ref, and the mirror's default need not
-      // be the branch the history draws solid. The badge below says "default", or
-      // "checked out" for the branch a checkout's HEAD is on, in words
-      // (docs/design-system.md, "Branch Chips").
-      name.appendChild(
-        window.metabrowser.refChip(row.ref, { label: row.name, kind: row.chip, copy: false }),
-      );
-      button.append(name);
-      if (row.default || row.checkedOut) {
-        const badge = document.createElement("span");
-        badge.className = "source-ref-selector-badge";
-        badge.textContent = row.default ? "default" : "checked out";
-        button.append(badge);
-      }
-      // The commit as every line names one, its short ID in the commit-ID face, then
-      // its age, in the compact style of navigation, with the exact time as its tooltip
-      // (docs/design-system.md, "Age"). A date Git did not give has no age.
-      const commit = document.createElement("span");
-      commit.className = "git-commit-sha source-ref-selector-commit";
-      commit.textContent = row.commit;
-      const age = document.createElement("span");
-      if (row.committedAt !== null) {
-        const shown = window.MetabrowserFormatters.age(row.committedAt);
-        age.className = `source-ref-selector-age ${shown.className}`;
-        age.textContent = shown.label;
-        age.dataset.tipText = window.metabrowser.formatTimestamp(row.committedAt);
-      } else {
-        age.className = "source-ref-selector-age";
-      }
-      button.append(commit, age);
-      button.addEventListener("click", () => choose(row.ref));
-      // The row's name is cut short with an ellipsis when it is wider than the list;
-      // the tooltip then carries the whole name. pointerenter comes before the
-      // mouseenter the shell's tooltip listens for.
-      button.addEventListener("pointerenter", () => {
-        if (name.scrollWidth > name.clientWidth) {
-          button.dataset.tipText = row.name;
-        } else {
-          delete button.dataset.tipText;
-        }
-      });
-      item.append(button);
-      return item;
-    });
-    parts.list.replaceChildren(...items);
+    paintRows(parts, model);
     parts.note.textContent = model.note;
     parts.note.hidden = model.note === "";
     parts.error.textContent = model.error ?? "";
@@ -708,13 +690,240 @@
   }
 
   /**
+   * One row: its ref's chip, a badge, its commit, and its commit's age. Browser only.
+   *
+   * @param {MetabrowserSourceRefSelectorModel["rows"][number]} row
+   * @param {number} at Its index among every row the list shows.
+   * @param {MetabrowserSourceRefSelectorRows} rows
+   * @returns {HTMLLIElement}
+   */
+  function rowElement(row, at, rows) {
+    const item = document.createElement("li");
+    item.className = "source-ref-selector-item";
+    // Only the rows near the view are in the document, so each says where it stands.
+    item.setAttribute("aria-posinset", String(at + 1));
+    item.setAttribute("aria-setsize", String(rows.shown.length));
+    item.style.top = `${at * rows.rowHeight}px`;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "menu-item source-ref-selector-row";
+    button.dataset.index = String(at);
+    button.disabled = rows.switching;
+    button.tabIndex = at === rows.roving ? 0 : -1;
+    if (row.current) {
+      button.setAttribute("aria-current", "true");
+    }
+    const name = document.createElement("span");
+    name.className = "source-ref-selector-name";
+    // A mirror's branch is a remote chip and its tag a tag chip, as on the button; a
+    // checkout's own branch is a local chip. The default branch is not drawn as trunk:
+    // trunk is the server's `is_trunk` on a Git ref, and the mirror's default need not
+    // be the branch the history draws solid. The badge below says "default", or
+    // "checked out" for the branch a checkout's HEAD is on, in words
+    // (docs/design-system.md, "Branch Chips").
+    name.appendChild(
+      window.metabrowser.refChip(row.ref, { label: row.name, kind: row.chip, copy: false }),
+    );
+    button.append(name);
+    if (row.default || row.checkedOut) {
+      const badge = document.createElement("span");
+      badge.className = "source-ref-selector-badge";
+      badge.textContent = row.default ? "default" : "checked out";
+      button.append(badge);
+    }
+    // The commit as every line names one, its short ID in the commit-ID face, then
+    // its age, in the compact style of navigation, with the exact time as its tooltip
+    // (docs/design-system.md, "Age"). A date Git did not give has no age.
+    const commit = document.createElement("span");
+    commit.className = "git-commit-sha source-ref-selector-commit";
+    commit.textContent = row.commit;
+    const age = document.createElement("span");
+    if (row.committedAt !== null) {
+      const shown = window.MetabrowserFormatters.age(row.committedAt);
+      age.className = `source-ref-selector-age ${shown.className}`;
+      age.textContent = shown.label;
+      age.dataset.tipText = window.metabrowser.formatTimestamp(row.committedAt);
+    } else {
+      age.className = "source-ref-selector-age";
+    }
+    button.append(commit, age);
+    button.addEventListener("click", () => rows.choose(row.ref));
+    // The row's name is cut short with an ellipsis when it is wider than the list;
+    // the tooltip then carries the whole name. pointerenter comes before the
+    // mouseenter the shell's tooltip listens for.
+    button.addEventListener("pointerenter", () => {
+      if (name.scrollWidth > name.clientWidth) {
+        button.dataset.tipText = row.name;
+      } else {
+        delete button.dataset.tipText;
+      }
+    });
+    item.append(button);
+    return item;
+  }
+
+  /**
+   * Draw the rows in the list's view, ROWS_OVERSCAN more on either side, and the row that
+   * takes Tab, wherever it is; take the rest out. Browser only.
+   *
+   * Each row is placed by its index over the sizer, which is as tall as every row, so the
+   * list scrolls over all of them and its scroll bar says how far through it is. A row
+   * already drawn is kept, so a scroll draws only the rows it brings near, and the rows
+   * stay in the document in their order.
+   *
+   * @param {MetabrowserSourceRefSelectorParts} parts
+   */
+  function drawWindow(parts) {
+    const rows = parts.rows;
+    const count = rows.shown.length;
+    parts.sizer.style.height = `${count * rows.rowHeight}px`;
+    const { start, end, also } = rowWindow(
+      count,
+      rows.rowHeight,
+      parts.list.scrollTop || 0,
+      parts.list.clientHeight || 0,
+      rows.roving,
+    );
+    /** @type {number[]} */
+    const wanted = [];
+    if (also >= 0 && also < start) {
+      wanted.push(also);
+    }
+    for (let at = start; at < end; at += 1) {
+      wanted.push(at);
+    }
+    if (also >= end) {
+      wanted.push(also);
+    }
+    const keep = new Set(wanted);
+    for (const [at, item] of rows.drawn) {
+      if (!keep.has(at)) {
+        item.remove();
+        rows.drawn.delete(at);
+      }
+    }
+    let cursor = /** @type {Element | null} */ (parts.sizer.nextElementSibling);
+    for (const at of wanted) {
+      const drawn = rows.drawn.get(at);
+      if (drawn === undefined) {
+        const item = rowElement(rows.shown[at], at, rows);
+        rows.drawn.set(at, item);
+        parts.list.insertBefore(item, cursor);
+      } else if (drawn === cursor) {
+        cursor = cursor.nextElementSibling;
+      }
+    }
+  }
+
+  /**
+   * The rows of a new model: drawn afresh, the window first measured by one of them.
+   * Browser only.
+   *
+   * The row that takes Tab is the one that had focus when this listing still has its
+   * ref, else the served one, else the first; a row that had focus keeps it.
+   *
+   * @param {MetabrowserSourceRefSelectorParts} parts
+   * @param {MetabrowserSourceRefSelectorModel} model
+   */
+  function paintRows(parts, model) {
+    const rows = parts.rows;
+    const active = /** @type {HTMLElement | null} */ (document.activeElement);
+    const hadFocus =
+      active !== null && parts.list.contains(active) && active.dataset.index !== undefined
+        ? rows.shown[Number(active.dataset.index)]?.ref
+        : undefined;
+    // A new list, or a new filter, starts at its top, its newest refs, unless it shows
+    // the served ref: then at that ref's row, once its rows arrive (below).
+    const shows = `${model.kind}\0${model.query}`;
+    if (rows.listing !== shows) {
+      rows.listing = shows;
+      rows.revealed = false;
+      parts.list.scrollTop = 0;
+    }
+    for (const item of rows.drawn.values()) {
+      item.remove();
+    }
+    rows.drawn.clear();
+    rows.shown = model.rows;
+    rows.switching = model.switching;
+    const kept = hadFocus === undefined ? -1 : model.rows.findIndex((row) => row.ref === hadFocus);
+    const current = model.rows.findIndex((row) => row.current);
+    rows.roving = kept >= 0 ? kept : current >= 0 ? current : 0;
+    drawWindow(parts);
+    // One row's height places every row; it is measured again on each new listing, so a
+    // change of font or density is followed.
+    const first = rows.drawn.values().next().value;
+    const height = first === undefined ? 0 : first.getBoundingClientRect().height;
+    if (height > 0 && Math.abs(height - rows.rowHeight) > 0.01) {
+      rows.rowHeight = height;
+      for (const [at, item] of rows.drawn) {
+        item.style.top = `${at * height}px`;
+      }
+      drawWindow(parts);
+    }
+    if (!rows.revealed && model.rows.length > 0 && rows.rowHeight > 0) {
+      rows.revealed = true;
+      if (current > 0 && kept < 0) {
+        revealRow(parts, current);
+        drawWindow(parts);
+      }
+    }
+    if (kept >= 0) {
+      /** @type {HTMLElement | null | undefined} */ (
+        rows.drawn.get(kept)?.firstElementChild
+      )?.focus({ preventScroll: true });
+    }
+  }
+
+  /**
+   * Scroll the list the least that brings the row at *at* into its view; nothing until a
+   * row has been measured. Browser only.
+   *
+   * @param {MetabrowserSourceRefSelectorParts} parts
+   * @param {number} at
+   */
+  function revealRow(parts, at) {
+    const { list, rows } = parts;
+    if (!(rows.rowHeight > 0)) {
+      return;
+    }
+    const top = at * rows.rowHeight;
+    if (top < list.scrollTop) {
+      list.scrollTop = top;
+    } else if (top + rows.rowHeight > list.scrollTop + list.clientHeight) {
+      list.scrollTop = top + rows.rowHeight - list.clientHeight;
+    }
+  }
+
+  /**
+   * Move the row that takes Tab to *at*, bring it into the list's view, and focus it.
+   * Browser only.
+   *
+   * @param {MetabrowserSourceRefSelectorParts} parts
+   * @param {number} at
+   */
+  function focusRow(parts, at) {
+    const rows = parts.rows;
+    rows.roving = at;
+    revealRow(parts, at);
+    drawWindow(parts);
+    for (const [index, item] of rows.drawn) {
+      /** @type {HTMLElement} */ (item.firstElementChild).tabIndex = index === at ? 0 : -1;
+    }
+    /** @type {HTMLElement | null | undefined} */ (rows.drawn.get(at)?.firstElementChild)?.focus({
+      preventScroll: true,
+    });
+  }
+
+  /**
    * Build the selector's elements inside *element*. Browser only.
    *
    * @param {HTMLElement} element
    * @param {boolean} checkout Whether the page is a checkout's, with its third list.
+   * @param {(ref: string) => void} choose What a press on a row does.
    * @returns {MetabrowserSourceRefSelectorParts}
    */
-  function build(element, checkout) {
+  function build(element, checkout, choose) {
     // The server draws the button in the Files toolbar's row, so the row keeps its layout
     // from first paint. That button is adopted, not replaced: focus a reader put on it
     // before this module arrived stays where it is.
@@ -788,6 +997,14 @@
     filter.spellcheck = false;
     const list = document.createElement("ul");
     list.className = "source-ref-selector-list";
+    // `list-style: none` drops a list's role in WebKit; the rows' places need it.
+    list.setAttribute("role", "list");
+    // As tall as every row together; the rows near the view are placed over it.
+    const sizer = document.createElement("li");
+    sizer.className = "source-ref-selector-sizer";
+    sizer.setAttribute("role", "none");
+    sizer.setAttribute("aria-hidden", "true");
+    list.append(sizer);
     const note = document.createElement("p");
     note.className = "source-ref-selector-note";
     note.setAttribute("role", "status");
@@ -857,8 +1074,19 @@
       tabs,
       filter,
       list,
+      sizer,
       note,
       error,
+      rows: {
+        shown: [],
+        drawn: new Map(),
+        roving: 0,
+        rowHeight: 0,
+        listing: "",
+        revealed: false,
+        switching: false,
+        choose,
+      },
     };
   }
 
@@ -932,10 +1160,9 @@
    */
   function mount(element) {
     const checkout = Boolean(window.METABROWSER_SOURCE_CHECKOUT);
-    const parts = build(element, checkout);
     /** @type {ReturnType<typeof createSelector> | null} */
     let selector = null;
-    const choose = (/** @type {string} */ ref) => void selector?.choose(ref);
+    const parts = build(element, checkout, (ref) => void selector?.choose(ref));
     selector = createSelector(
       {
         async request(method, route, body, signal) {
@@ -956,7 +1183,7 @@
         },
         schedule: (callback, delayMs) => window.setTimeout(callback, delayMs),
         cancel: (handle) => window.clearTimeout(/** @type {number} */ (handle)),
-        render: (model) => paint(parts, model, choose),
+        render: (model) => paint(parts, model),
         navigate: (href) => window.location.assign(href),
         currentView: () => window.location.pathname,
         hold: (going) => window.MetabrowserSourcePinGuard?.hold(going),
@@ -1041,8 +1268,11 @@
     parts.filter.addEventListener("input", () => mounted.setQuery(parts.filter.value), {
       signal,
     });
+    // The rows drawn now: those near the list's view, and the one that takes Tab.
     const rows = () =>
       /** @type {HTMLButtonElement[]} */ ([...parts.list.querySelectorAll("button")]);
+    // A scroll draws the rows it brings near; a scroll event comes at most once a frame.
+    parts.list.addEventListener("scroll", () => drawWindow(parts), { signal, passive: true });
     // While the list is open, Escape closes it from anywhere on the page and Tab stays
     // inside it, wrapping at either end, as in a dialog.
     // A key held with Command or Control is the browser's, as is one held with Option
@@ -1095,12 +1325,17 @@
         if (event.altKey || event.ctrlKey || event.metaKey) {
           return;
         }
-        const list = rows();
-        const index = list.indexOf(/** @type {HTMLButtonElement} */ (event.target));
-        if (index < 0 && event.target !== parts.filter) {
+        // A row's index is among every row the list shows, drawn or not.
+        const target = /** @type {HTMLElement} */ (event.target);
+        const index =
+          rows().includes(/** @type {HTMLButtonElement} */ (target)) &&
+          target.dataset.index !== undefined
+            ? Number(target.dataset.index)
+            : -1;
+        if (index < 0 && target !== parts.filter) {
           return;
         }
-        const next = moveRow(event.key, index, list.length);
+        const next = moveRow(event.key, index, parts.rows.shown.length);
         if (next === null) {
           return;
         }
@@ -1109,10 +1344,7 @@
           parts.filter.focus();
           return;
         }
-        for (const [at, row] of list.entries()) {
-          row.tabIndex = at === next ? 0 : -1;
-        }
-        list[next]?.focus();
+        focusRow(parts, next);
       },
       { signal },
     );
@@ -1168,11 +1400,13 @@
 
   window.MetabrowserSourceRefSelector = Object.freeze({
     FILTER_DELAY_MS,
+    ROWS_OVERSCAN,
     createSelector,
     describe,
     mount,
     mounted: () => mountedSelector,
     moveRow,
+    rowWindow,
     shownLabel,
   });
 })();
