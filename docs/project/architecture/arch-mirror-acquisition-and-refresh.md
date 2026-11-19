@@ -26,10 +26,12 @@ starts with `scheme://`; today it opens the folder named, and
 repository’s root. Anything else goes to `classify_root_argument` in `cache/urls.py`,
 whose grammar is frozen in `tests/fixtures/repository-cache/url-grammar.json`; a bare
 path is never rewritten into a `file://` source.
-Provider reducers run first (`cache/providers.py`); core names no provider, and the
-GitHub reducer in `builtin_plugins/github/urls.py` turns web, raw, and SSH spellings of
-a github.com repository into its canonical `https://` source plus a selection.
-`file://` and `https://` sources are acquired; SSH is classified and refused.
+An argument that names nothing on disk and begins with a host a reducer claims, such as
+`github.com/owner/repo`, is given `https://` before it is classified (`_root_in_full` in
+`cli/main.py`). Provider reducers run first (`cache/providers.py`); core names no
+provider, and the GitHub reducer in `builtin_plugins/github/urls.py` turns web, raw, and
+SSH spellings of a github.com repository into its canonical `https://` source plus a
+selection. `file://` and `https://` sources are acquired; SSH is classified and refused.
 
 A new acquisition needs a Git at or above the acquisition security floor
 (`ACQUISITION_MINIMUM` and `ACQUISITION_PATCHED_TRACKS` in `git/process.py`, frozen in

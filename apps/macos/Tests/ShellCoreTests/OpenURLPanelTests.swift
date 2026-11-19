@@ -8,7 +8,8 @@ nonisolated private let plan = PresentPlan(kind: .pullRequest, repository: repos
 nonisolated private let metab = "metab 0.13.0 at /opt/metab"
 
 /// What File > Open URL… hands to `metab`: only a full GitHub URL that `GitHubLink`, the
-/// check every link sent to the app passes, accepts.
+/// check every link sent to the app passes, accepts, once text that is plainly one is
+/// written in full.
 @Suite struct OpenURLEntryTests {
     /// Each kind of link `metab` opens, as typed or pasted, is the link given to `metab`,
     /// unchanged but for the white space around it.
@@ -33,16 +34,94 @@ nonisolated private let metab = "metab 0.13.0 at /opt/metab"
         }
     }
 
-    /// Anything else is said in the panel and never reaches `metab`, which would read a
-    /// shorthand as a local path.
+    /// Text that is plainly a GitHub URL is written in full, and then is exactly what the
+    /// full URL is: the same link, or the same problem. GitHub answers each spelling as it
+    /// answers the full one.
+    @Test(arguments: [
+        ("github.com/jlevy/kpress", "https://github.com/jlevy/kpress"),
+        ("GitHub.com/jlevy/kpress", "https://GitHub.com/jlevy/kpress"),
+        ("www.github.com/jlevy/kpress", "https://www.github.com/jlevy/kpress"),
+        ("github.com/jlevy/metabrowser/pull/539/files", "https://github.com/jlevy/metabrowser/pull/539/files"),
+        ("raw.githubusercontent.com/jlevy/metabrowser/main/README.md",
+         "https://raw.githubusercontent.com/jlevy/metabrowser/main/README.md"),
+        ("github.com", "https://github.com"),
+        ("github.com?tab=repositories", "https://github.com?tab=repositories"),
+        ("github.com/octo/demo/blob/main/a b.md", "https://github.com/octo/demo/blob/main/a b.md"),
+        ("github.com/octo/demo/blob/main/a\\b.md", "https://github.com/octo/demo/blob/main/a\\b.md"),
+        ("http://github.com/jlevy/kpress", "https://github.com/jlevy/kpress"),
+        ("HTTP://www.GitHub.com/jlevy/kpress", "https://www.GitHub.com/jlevy/kpress"),
+        ("http://raw.githubusercontent.com/jlevy/metabrowser/main/README.md",
+         "https://raw.githubusercontent.com/jlevy/metabrowser/main/README.md"),
+        ("//github.com/jlevy/kpress", "https://github.com/jlevy/kpress"),
+        ("jlevy/kpress", "https://github.com/jlevy/kpress"),
+        ("jlevy/kpress/", "https://github.com/jlevy/kpress/"),
+        ("jlevy/kpress.git", "https://github.com/jlevy/kpress.git"),
+        ("Octo-Cat/my_repo.v2", "https://github.com/Octo-Cat/my_repo.v2"),
+        ("  github.com/jlevy/kpress\n", "https://github.com/jlevy/kpress"),
+    ])
+    func plainlyAGitHubURLIsWrittenInFull(_ text: String, _ full: String) {
+        #expect(OpenURLEntry.corrected(text) == full)
+        #expect(OpenURLEntry.link(text) == OpenURLEntry.link(full))
+    }
+
+    /// The owner's example, 2026-11-19, opens what the full URL opens.
+    @Test func theOwnersExampleOpens() throws {
+        let link = try OpenURLEntry.link("github.com/jlevy/kpress").get()
+        #expect(link.absoluteString == "https://github.com/jlevy/kpress")
+        #expect(GitHubLink.accepts(link))
+    }
+
+    /// Anything not plainly a GitHub URL is left as it is: another host, a host with a user
+    /// name, a password, or a port, an SSH address, a path, and a GitHub path longer than
+    /// `owner/repo`.
+    @Test(arguments: [
+        "https://github.com/jlevy/kpress",
+        "gitlab.com/jlevy/kpress",
+        "gist.github.com/jlevy/0123",
+        "github.com.evil.example/jlevy/kpress",
+        "evilgithub.com/jlevy/kpress",
+        "http://gitlab.com/jlevy/kpress",
+        "http://user@github.com/jlevy/kpress",
+        "http://github.com:80/jlevy/kpress",
+        "ftp://github.com/jlevy/kpress",
+        "//gitlab.com/jlevy/kpress",
+        "///github.com/jlevy/kpress",
+        "user@github.com/jlevy/kpress",
+        "user:secret@github.com/jlevy/kpress",
+        "github.com:8443/jlevy/kpress",
+        "github.com:443/jlevy/kpress",
+        "git@github.com:jlevy/kpress.git",
+        "https:/github.com/jlevy/kpress",
+        "~/src/kpress",
+        "/srv/git/kpress",
+        "./jlevy/kpress",
+        "jlevy",
+        "jlevy/kpress/pull/1",
+        "jlevy/kpress#12",
+        "jlevy/.",
+        "jlevy/..",
+        "jle.vy/kpress",
+        "jlevy/kp ress",
+    ])
+    func anythingElseIsLeftAsItIs(_ text: String) {
+        #expect(OpenURLEntry.corrected(text) == text)
+    }
+
+    /// Anything else is said in the panel and never reaches `metab`, which would read
+    /// text with no scheme as a local path.
     @Test(arguments: [
         ("", OpenURLEntry.Problem.empty),
         (" \n\t", .empty),
-        ("jlevy/metabrowser", .notAFullURL),
-        ("github.com/jlevy/metabrowser", .notAFullURL),
+        ("gitlab.com/jlevy/metabrowser", .notAFullURL),
+        ("gist.github.com/jlevy/0123", .notAFullURL),
+        ("user:secret@github.com/jlevy/metabrowser", .notAFullURL),
+        ("github.com:8443/jlevy/metabrowser", .notAFullURL),
+        ("jlevy/metabrowser/pull/539", .notAFullURL),
         ("git@github.com:jlevy/metabrowser.git", .notAFullURL),
         ("~/src/metabrowser", .notAFullURL),
-        ("http://github.com/jlevy/metabrowser", .notHTTPS),
+        ("//gitlab.com/jlevy/metabrowser", .notAFullURL),
+        ("http://gitlab.com/jlevy/metabrowser", .notHTTPS),
+        ("http://user@github.com/jlevy/metabrowser", .notHTTPS),
         ("ssh://git@github.com/jlevy/metabrowser", .notHTTPS),
         ("file:///tmp/metabrowser", .notHTTPS),
         ("https://user:secret@github.com/jlevy/metabrowser", .credentials),
@@ -68,6 +147,8 @@ nonisolated private let metab = "metab 0.13.0 at /opt/metab"
         ("https://github.com/octo/demo/blob/main/100%.md", .percent),
         ("https://github.com/octo/demo/blob/main/a%zz.md", .percent),
         ("https://github.com/octo/demo/blob/main/a%2", .percent),
+        ("github.com/octo/demo/blob/main/a\\b.md", .character("\\")),
+        ("jlevy/..", .notAFullURL),
     ])
     func anythingElseIsSaidAndNotSent(_ text: String, _ problem: OpenURLEntry.Problem) {
         #expect(OpenURLEntry.link(text) == .failure(problem))
@@ -97,6 +178,11 @@ nonisolated private let metab = "metab 0.13.0 at /opt/metab"
     }
 
     @Test func aLinkPastTheLimitIsTooLong() {
+        // Within the limit as typed, but not once `https://` is written before it.
+        let start = "github.com/octo/demo/blob/main/"
+        let bare = start + String(repeating: "a", count: GitHubLink.maximumLength - start.utf8.count)
+        #expect(bare.utf8.count == GitHubLink.maximumLength)
+        #expect(OpenURLEntry.link(bare) == .failure(.tooLong))
         let long = "https://github.com/octo/demo/blob/main/" + String(repeating: "a", count: GitHubLink.maximumLength)
         #expect(OpenURLEntry.link(long) == .failure(.tooLong))
         // Within the limit as typed, but not once each é is sent as %C3%A9.
@@ -151,17 +237,62 @@ nonisolated private let metab = "metab 0.13.0 at /opt/metab"
         #expect(panel.canOpen)
     }
 
-    /// A shorthand is not sent: the panel says why, stays open, and the next edit clears it.
+    /// Text that is not a link is not sent: the panel says why, stays open with the text as
+    /// typed, and the next edit clears the reason.
     @Test func textThatIsNotALinkIsSaidUnderTheField() {
         var panel = OpenURLPanel()
-        panel.edit("jlevy/metabrowser")
+        panel.edit(" gitlab.com/jlevy/metabrowser ")
         let opened = panel.open()
         #expect(opened == nil)
         #expect(panel.message == OpenURLEntry.Problem.notAFullURL.message)
+        #expect(panel.text == " gitlab.com/jlevy/metabrowser ")
         #expect(panel.phase == .editing)
         #expect(panel.canOpen)
         panel.edit("https://github.com/jlevy/metabrowser")
         #expect(panel.message == nil)
+    }
+
+    /// Open writes text that is plainly a GitHub URL in full, says nothing about it, and
+    /// asks `metab` about the full URL, which the field now holds.
+    @Test(arguments: [
+        "github.com/jlevy/metabrowser/pull/539",
+        " http://github.com/jlevy/metabrowser/pull/539\n",
+        "//github.com/jlevy/metabrowser/pull/539",
+    ])
+    func openWritesAGitHubURLInFull(_ typed: String) {
+        var panel = OpenURLPanel()
+        panel.edit(typed)
+        let opened = panel.open()
+        #expect(opened == pullRequest)
+        #expect(panel.text == pullRequest.absoluteString)
+        #expect(panel.message == nil)
+        #expect(panel.phase == .checking(pullRequest))
+    }
+
+    /// The field holds the full URL, so a refusal of it, the panel's or `metab`'s, is about
+    /// what the field shows; editing it from there works as any edit does.
+    @Test func aRefusalOfACorrectedURLIsAboutWhatTheFieldShows() throws {
+        var panel = OpenURLPanel()
+        panel.edit("github.com/octo/demo/blob/main/a\\b.md")
+        let refused = panel.open()
+        #expect(refused == nil)
+        #expect(panel.text == "https://github.com/octo/demo/blob/main/a\\b.md")
+        #expect(panel.message == OpenURLEntry.Problem.character("\\").message)
+
+        let issues = try #require(URL(string: "https://github.com/jlevy/metabrowser/issues/1"))
+        panel.edit("github.com/jlevy/metabrowser/issues/1")
+        let opened = panel.open()
+        #expect(opened == issues)
+        #expect(panel.text == issues.absoluteString)
+        let refusal = PresentRefusal(code: "unsupported_github_url", message: "GitHub issues pages are not opened")
+        _ = panel.answered(.refused(refusal), for: issues, metab: metab)
+        #expect(panel.text == issues.absoluteString)
+        #expect(panel.message == refusal.message)
+        let dropped = panel.edit("jlevy/metabrowser")
+        #expect(dropped == nil)
+        let reopened = panel.open()
+        #expect(reopened == repository)
+        #expect(panel.text == repository.absoluteString)
     }
 
     /// Open sends the link once: a second press while `metab` is asked does nothing.

@@ -309,12 +309,21 @@ only shows its state and passes on edits, Open, and Cancel.
 
 - **The text is checked first.** `OpenURLEntry` hands `metab` only a link `GitHubLink`
   accepts, the check every link sent to the app passes.
-  `metab TARGET --present --dry-run` reads a target with no scheme as a local path, so a
-  shorthand such as `owner/repo` would name a folder under its working directory: the
-  panel takes none, as the owner decided on 2026-11-18, and asks for the full URL. Its
-  other messages, for a scheme other than `https`, a user name or password, a port,
-  another host, and a character it does not send, are the app’s own words about what was
-  typed; `metab` would refuse each of those too.
+- **An obvious GitHub URL is written in full.** The panel takes nothing but GitHub URLs,
+  so `OpenURLEntry.corrected` completes text that can only be one before it is checked,
+  as the owner asked on 2026-11-19: a GitHub host with no scheme, or after `//`, gets
+  `https://`; `http://` on a GitHub host becomes `https://`, all GitHub serves; and
+  `owner/repo`, with the names `metab`’s GitHub reducer takes (pinned in
+  `tests/test_macos_app_pins.py`), gets `https://github.com/`. Open puts the corrected
+  text in the field, with no message, so a refusal is about what the field shows.
+  A host with a user name, a password, or a port, another host, and a longer path with
+  no host are left as typed, and refused.
+  `metab` gets only the full URL: `metab TARGET --present --dry-run` reads text with no
+  scheme as a local path, and completes only a GitHub host that names nothing on disk
+  (`_root_in_full` in `cli/main.py`), so `owner/repo` would name a folder.
+  The panel’s other messages, for text it cannot complete, a scheme other than `https`,
+  a user name or password, a port, another host, and a character it does not send, are
+  the app’s own words about what was typed; `metab` would refuse each of those too.
 - **Sent as a browser sends it.** The scheme and host are checked as typed.
   The path, query, and fragment are then encoded as a browser sends them, each as UTF-8
   escapes: a space and a character outside ASCII that shows, as `metab`’s GitHub reducer

@@ -331,29 +331,36 @@ What the panel decides is unit-tested in `OpenURLPanelTests`, and against the re
 3. **Each kind.** `$REPO`, `$REPO/tree/main/docs`, `$REPO/blob/main/README.md`, and
    `$REPO/commit/dcf2bcfa8` each bring the repository’s window forward at that page, as
    GitHub Links check 2 does.
-4. **The app’s refusals.** `jlevy/metabrowser`, `github.com/jlevy/metabrowser`,
-   `http://github.com/jlevy/metabrowser`,
+4. **The app’s refusals.** `gitlab.com/jlevy/metabrowser`,
+   `git@github.com:jlevy/metabrowser.git`, `http://gitlab.com/jlevy/metabrowser`,
    `https://user:secret@github.com/jlevy/metabrowser`,
    `https://github.com:8443/jlevy/metabrowser`, and
    `https://gitlab.com/jlevy/metabrowser` each show a reason under the field, with no
    alert and no window; the panel stays open with the text, editing it clears the
    reason, and `log show --last 2m --predicate "subsystem == '$APP_ID'"` has no
    `Open URL…` line for any of them, since no `metab` ran.
-5. **`metab`’s refusals.** `$REPO/issues/1` shows `metab`’s message about issues pages,
+5. **An obvious URL is written in full.** `github.com/jlevy/metabrowser`,
+   `http://github.com/jlevy/metabrowser`, and `jlevy/metabrowser` each show
+   `https://github.com/jlevy/metabrowser` in the field when Return is pressed, with no
+   message, and open the repository as check 3 does.
+   `github.com/jlevy/metabrowser/issues/1` shows
+   `https://github.com/jlevy/metabrowser/issues/1` in the field and `metab`’s message
+   about issues pages under it.
+6. **`metab`’s refusals.** `$REPO/issues/1` shows `metab`’s message about issues pages,
    and `$REPO/pull/0` its message about pull request numbers, under the field, with no
    alert and no window, and never JSON or a traceback; then editing the text to
    `$REPO/pull/517` and pressing Return opens it.
-6. **Cancel.** Escape, the Cancel button, the close button, and File > Close Window
+7. **Cancel.** Escape, the Cancel button, the close button, and File > Close Window
    (Command-W) each close the panel and open nothing, and close no window behind it.
    The panel comes back empty.
-7. **A repository the cache does not hold.** A small public repository you have never
+8. **A repository the cache does not hold.** A small public repository you have never
    opened: the panel closes, and the confirmation of GitHub Links check 4 appears.
-8. **No runtime yet.** As in GitHub Links check 10, choose a file that is not a `metab`
+9. **No runtime yet.** As in GitHub Links check 10, choose a file that is not a `metab`
    in Settings, then Open URL… `$REPO`: the panel closes and no window opens; choose
    this checkout’s `.venv/bin/metab`, and the repository opens.
-9. **Editing.** Command-V and Edit > Paste paste into the field, and Command-A selects
-   its text.
-10. **A space in the path.** `$REPO/blob/main/docs/a b.md` closes the panel and brings
+10. **Editing.** Command-V and Edit > Paste paste into the field, and Command-A selects
+    its text.
+11. **A space in the path.** `$REPO/blob/main/docs/a b.md` closes the panel and brings
     the repository’s window forward at the `handoff` that
     `metab "$REPO/blob/main/docs/a b.md" --present --dry-run --format json` prints,
     `docs/a%20b.md`, which the mirror reports missing.

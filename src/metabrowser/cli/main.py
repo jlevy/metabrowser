@@ -372,11 +372,45 @@ def _names_existing_path(value: str) -> bool:
        rather than a refusal that describes a URL.
     3. Everything else is classified by the grammar, so an scp-like address, a
        malformed URL, or remote-helper syntax that names nothing on disk is refused
-       or acquired exactly as the grammar says.
+       or acquired exactly as the grammar says. Before that, a URL typed without its
+       ``https://``, such as ``github.com/octo/demo``, is written in full
+       (:func:`_root_in_full`).
     """
     if value == "" or _EXPLICIT_URL.match(value) is not None:
         return False
     return os.path.lexists(value)
+
+
+# The host that begins an argument with no scheme, such as ``github.com`` in
+# ``github.com/octo/demo``: letters, digits, and hyphens in two or more labels joined by
+# dots, then a ``/`` or the end. No ``@`` or ``:``, so no user name or port is read.
+_LEADING_HOST = re.compile(r"^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+(?=/|$)")
+
+
+def _root_in_full(value: str) -> str:
+    """*value*, or the ``https://`` URL it plainly is.
+
+    An argument that names nothing on disk, begins with a host (``_LEADING_HOST``), and
+    that a provider's URL reducer claims once ``https://`` is written before it, such as
+    ``github.com/octo/demo``, is that URL: as a path it could only be "nothing is at".
+    The reducer then accepts or refuses it as it would the full URL. A path that exists
+    is still that path (rule 2 of :func:`_names_existing_path`), so a folder named
+    ``github.com/octo/demo`` in the working directory is served as before. Core names no
+    host: which hosts are a provider's is its reducer's to say.
+
+    Only a host is completed. ``octo/demo`` is as much a relative path as a repository,
+    so it stays a path; the macOS app's Open URL…, which takes nothing but GitHub URLs,
+    reads it as a repository (``OpenURLEntry.corrected`` in
+    ``apps/macos/Sources/ShellCore/Folders/OpenURLPanel.swift``).
+    """
+    if _LEADING_HOST.match(value) is None or os.path.lexists(value):
+        return value
+    from metabrowser.cache.providers import url_reducers
+
+    in_full = f"https://{value}"
+    if any(reducer.reduce(in_full) is not None for reducer in url_reducers()):
+        return in_full
+    return value
 
 
 def _local_root(ctx: typer.Context, value: str) -> Path:
@@ -417,6 +451,7 @@ def _classified_root(ctx: typer.Context, root: str | None, mode: str) -> Path | 
     """Return a local path or a classified Git source, or fail the invocation."""
     if root is None:
         _root_required(ctx, mode)
+    root = _root_in_full(root)
     if _is_plain_local_root(root) or _names_existing_path(root):
         return _local_root(ctx, root)
     from metabrowser.cache.providers import url_reducers
@@ -1218,6 +1253,7 @@ def _metab(
             ctx.fail("--config-dir not valid with --present, so no option lifts present_browser")
         if root is None:
             _root_required(ctx, mode)
+        root = _root_in_full(root)
         from metabrowser.cli.present import run_present
 
         run_present(
