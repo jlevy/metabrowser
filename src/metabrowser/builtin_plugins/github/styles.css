@@ -22,9 +22,11 @@
   padding: 0;
   color: var(--text);
 }
-/* A page header (`.page-header`, static/styles.css): the title, then its lines 6 px apart. */
+/* A page header (`.page-header`, static/styles.css): the title, then its lines 6 px apart.
+   Its top pad is a view header's, the corner's inset (below), so the title's first line is
+   the corner's line. */
 .github-pull-header {
-  padding: var(--content-padding-y) var(--content-padding-x);
+  padding: var(--view-header-padding-top) var(--content-padding-x) var(--content-padding-y);
 }
 /* The header's box is decided at first paint: each row is one line, or the title's two,
    in every state and on every tab, so the tab bar under it never moves between pull
@@ -37,8 +39,9 @@
 /* The header's corner, its View on GitHub button (pull-page.js; docs/design-system.md, "View
    on GitHub"), is a view header's, `.view-header-end` in static/styles.css, placed in the
    page rather than in the header: the page is as wide as the main view, so the button is at
-   the same inset from its top and right edges as a file's and a folder's, and where it will
-   be once the header is a view header as wide as the view (mb-7t5s). The header is the
+   the same insets from the title's first line and the page's right edge as a file's and a
+   folder's from theirs, on the title's baseline, and where it will be once the header is a
+   view header as wide as the view (mb-7t5s). The header is the
    reading column, which in a wide pane ends left of the button; where it does not, the
    title leaves the button its room, less the space beside the column: the page's width,
    `100cqi` of the main view, which is the query container, less the header's, the title's

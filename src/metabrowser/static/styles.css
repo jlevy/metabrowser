@@ -356,6 +356,10 @@
   --tooltip-font-size: var(--body-font-size);
   --micro-font-size: 10px;
   --page-title-font-size: 24px;
+  /* The page title's line height (`.page-heading`), which a view header's icon and the
+     strut in its corner (`.view-header-end`) take too, so the corner's baseline is the
+     title's first line's. */
+  --page-title-line-height: 1.25;
   /* A ref chip is slightly smaller than the text around it: one ratio, not
      one size. Measured in Chrome, the text a chip sits in is 12px (a Pulls
      row, the ref selector) to 14px (a pull request's header, a commit's
@@ -702,39 +706,42 @@
      align their border instead, since that is their visual edge. */
   --pane-header-padding-x: 12px;
   --pane-header-padding-y: 8px;
-  /* The height of the navigation column's path row, border included: a fixed
-     height rather than its content's, so the column's rules sit where they sit
-     whatever the path's font set measures. The row is border-box, so this is the
-     whole row. The main view's header is a view header (below), not a twin of it.
-     34 px centers the path's 18.5 px line with 7.25 px above and below it, the inset the
-     tabs under it give their labels (7 px above, measured 2026-11-18 in Chrome); 41 px
-     left 10.75 px, which read as loose beside the tabs. */
+  /* The height of the top bar's rows, border included: the navigation column's path
+     row and, across the divider, a view header's eyebrow (docs/design-system.md, "View
+     Headers"), so their rules are one line across the window and their text one
+     baseline. A fixed height rather than its content's, so the rules sit where they sit
+     whatever the text's font set measures; the rows are border-box, so this is the whole
+     row. 34 px centers the path's 18.5 px line with 7.25 px above and below it, the inset
+     the tabs under it give their labels (7 px above, measured 2026-11-18 in Chrome); 41
+     px left 10.75 px, which read as loose beside the tabs. */
   --pane-header-row-height: 34px;
-  /* A view header's rhythm (docs/design-system.md, "View Headers"): the pads above
-     its first row and below its last, the gap between rows, the eyebrow's and
-     the metadata line's heights, which a row holds whatever fills it, so nothing
-     under it moves as a value arrives, and the gap between the title and the metadata
-     line after it. 22 px is the body size's line (21 px) with room for a badge's box,
-     22 px, on the metadata line, and the Up control's box, 20 px, on the eyebrow. The
-     title gap is half the title's size, wider than the line's own 8 px between items,
-     so the line reads as its own phrase after the name rather than as more of it. */
-  --view-header-padding-top: 12px;
+  /* A view header's rhythm (docs/design-system.md, "View Headers"): the pad above the
+     heading row, under the eyebrow's rule or, with no eyebrow, the page's top, and the
+     pad under the last row; the metadata line's height, which it holds whatever fills
+     it, so nothing under it moves as a value arrives; and the gap between the title and
+     the metadata line after it. The top pad is the content's, the pad a pull request's
+     page and a commit's have above their titles, so a title sits as far under what is
+     above it on every page. 22 px is the body size's line (21 px) with room for a
+     badge's box, 22 px. The title gap is half the title's size, wider than the line's
+     own 8 px between items, so the line reads as its own phrase after the name rather
+     than as more of it. The Up control's box is 20 px, inside the eyebrow's row. */
+  --view-header-padding-top: var(--content-padding-y);
   --view-header-padding-bottom: 8px;
-  --view-header-row-gap: 4px;
-  --view-header-eyebrow-height: 22px;
   --view-header-line-height: 22px;
   --view-header-title-gap: 12px;
   --view-header-up-size: 20px;
-  /* The header's corner, its upper right, which holds a page's View on GitHub button
-     (docs/design-system.md, "View on GitHub"): the button's inset from the header's top
-     and right edges and its height. A native bar that draws the same button, as the
-     macOS app's over its GitHub popover may, takes the same three, so the button does
-     not move between them. The inset is the header's top and side pads and the height
-     the eyebrow's, so the button is level with the eyebrow. */
+  /* The header's corner, which holds a page's View on GitHub button (docs/design-system.md,
+     "View on GitHub"): at the end of the title's first line, from the top of that line
+     and the header's right edge, and the button's height. The corner sets its button on
+     the title's baseline (`.view-header-end`); a native bar that draws the same button,
+     as the macOS app's over its GitHub popover may, takes the same three, so the button
+     does not move between them. The top inset is the header's top pad, under the
+     eyebrow's row where there is one; the height is a chip group's whole box, a chip's
+     20 px line and its frame's 1 px above and below. */
   --view-header-corner-inset-top: var(--view-header-padding-top);
   --view-header-corner-inset-end: var(--content-padding-x);
-  --view-header-corner-height: var(--view-header-eyebrow-height);
-  /* The room the header's first row leaves the corner from first paint, before the
+  --view-header-corner-height: 22px;
+  /* The room the title's first line leaves the corner from first paint, before the
      button is drawn: the button's width and the heading row's 8 px gap. Measured
      2026-11-18 in Chrome 152 with the shell's faces, the button is 140.05 px wide at
      every pane width and in both themes, 148.05 px with the gap; the room rounds that up
@@ -1599,8 +1606,9 @@ body {
 
 /* The navigation column's path row: one row, the path and then the
    Metabrowser menu, at one fixed height (--pane-header-row-height) with its
-   hairline under it. The main view's header across the divider is a view
-   header of its own rows (.view-header, below), not a twin of this one. */
+   hairline under it. Across the divider a file's or a folder's view header opens
+   with this row's twin, its eyebrow (.view-header-eyebrow, below): the same height,
+   rule, and text size, so the two read as one bar and their text as one baseline. */
 .app-header {
   background: var(--header-bg);
   color: var(--header-text);
@@ -1734,9 +1742,10 @@ body {
   outline: 2px solid var(--link);
   outline-offset: 1px;
 }
-/* Parent navigation is a button, not a bare icon action. Labelled and
-   icon-only forms share the same compact arrow, persistent boundary,
-   hover, and focus vocabulary through `.btn`. */
+/* Parent navigation with a label, the treemap's Zoom out, is a bordered `.btn`
+   (docs/design-system.md, "Parent Navigation"). Up alone, in a view header's
+   eyebrow, is an icon button with the same arrow (`.view-header-eyebrow >
+   .folder-up`, below). */
 .parent-nav-btn {
   display: inline-flex;
   height: var(--icon-btn-size);
@@ -1744,11 +1753,6 @@ body {
   gap: 6px;
   border-color: var(--viz-border-strong);
   background: var(--viz-surface);
-}
-.parent-nav-btn-icon-only {
-  width: var(--icon-btn-size);
-  justify-content: center;
-  padding: 3px;
 }
 .parent-nav-arrow {
   color: var(--muted);
@@ -4464,10 +4468,11 @@ a.tab-btn {
 
 /* The block above a file's or a folder's tab bar (docs/design-system.md, "View
    Headers"; view-header.js, viewHeaderHtml): the eyebrow, then the heading row, which
-   holds the title and the metadata line after it, on the main view's own ground, --bg,
-   with no rule of its own. The one rule under a view's header is the tab bar's, under
-   the tabs. Every row holds its height whatever fills it, so a value arriving or
-   changing moves nothing below it.
+   holds the title and the metadata line after it, on the main view's own ground, --bg.
+   The eyebrow is the top bar's half over the main view, and its rule the bar's; under
+   the heading row the one rule is the tab bar's, under the tabs. Every row holds its
+   height whatever fills it, so a value arriving or changing moves nothing below it.
+   Each row carries the content's side pads, so the eyebrow's rule spans the pane.
    The block's rules are on .view-header, the structure a kind's header takes;
    .file-header names a file's or a folder's for the keymap and the key badges. */
 .view-header {
@@ -4475,16 +4480,18 @@ a.tab-btn {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: var(--view-header-row-gap);
-  padding: var(--view-header-padding-top) var(--content-padding-x) var(--view-header-padding-bottom);
+  padding-block-end: var(--view-header-padding-bottom);
   background: var(--bg);
   flex-shrink: 0;
   min-width: 0;
 }
-/* The eyebrow: what holds the item, quiet, at the body size, above its title. It is
-   one line, which a long address gives way inside (`.folder-breadcrumb`). A kind
-   with nothing to say there writes it empty, and an empty eyebrow is left out of
-   the header, its height and its gap with it. */
+/* The eyebrow: what holds the item, quiet, above its title, as the top bar's half over
+   the main view. It is the twin of the navigation's path row across the divider
+   (`.app-header`): that row's height and rule, and its text at that row's size,
+   centered as that row centers its path, so the two rules are one line and the two
+   rows' text sits on one baseline. It is one line, which a long address gives way
+   inside (`.folder-breadcrumb`). A kind with nothing to say there writes it empty, and
+   an empty eyebrow is left out of the header, its row and its rule with it. */
 .view-header-eyebrow:empty {
   display: none;
 }
@@ -4493,13 +4500,29 @@ a.tab-btn {
   align-items: center;
   gap: 6px;
   min-width: 0;
-  height: var(--view-header-eyebrow-height);
+  height: var(--pane-header-row-height);
+  padding-inline: var(--content-padding-x);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--nav-font-size);
 }
-/* Up, at the eyebrow's height, so the control reads as part of the line it leads. */
+/* Up is an icon button (`.icon-btn`): the arrow alone at rest, and the hover surface and
+   its hairline only while hovered or focused, as the navigation's collapse chevron
+   (`.nav-collapse-toggle`), at a box the eyebrow's row holds. At the served root it is
+   disabled in place, dimmed, and surfaces nothing. */
 .view-header-eyebrow > .folder-up {
-  width: var(--view-header-up-size);
-  height: var(--view-header-up-size);
-  padding: 0;
+  --icon-btn-size: var(--view-header-up-size);
+}
+.view-header-eyebrow > .folder-up > .parent-nav-arrow {
+  color: inherit;
+}
+.view-header-eyebrow > .folder-up[disabled] {
+  cursor: default;
+  opacity: 0.4;
+}
+.view-header-eyebrow > .folder-up[disabled]:hover {
+  color: var(--muted);
+  background: transparent;
+  border-color: transparent;
 }
 .view-header-eyebrow > .file-header-path {
   font-weight: var(--weight-normal);
@@ -4512,15 +4535,17 @@ a.tab-btn {
   height: var(--view-header-up-size);
 }
 /* The heading row: the kind's icon, then the title at the page title's size with the
-   metadata line after it. The icon is the title's first line's height and starts the
-   row, so a name that wraps keeps it beside its first line. The header's controls are
-   not in the row: they are its corner's (`.view-header-end`, below), so nothing here
-   takes the title's size but the icon and the title. */
+   metadata line after it, the header's top pad under the eyebrow's rule. The icon is
+   the title's first line's height and starts the row, so a name that wraps keeps it
+   beside its first line. The header's controls are not in the row: they are its
+   corner's (`.view-header-end`, below), so nothing here takes the title's size but the
+   icon and the title. */
 .view-header-heading {
   display: flex;
   align-items: flex-start;
   gap: 8px;
   min-width: 0;
+  padding: var(--view-header-padding-top) var(--content-padding-x) 0;
 }
 /* The icon a navigation row draws for the item, at the title's size, as a pull
    request's state icon is in its title. */
@@ -4529,7 +4554,7 @@ a.tab-btn {
   width: 1em;
   height: 1lh;
   font-size: var(--page-title-font-size);
-  line-height: 1.25;
+  line-height: var(--page-title-line-height);
 }
 .view-header-icon.file-identity-icon svg {
   width: 1em;
@@ -4552,13 +4577,16 @@ a.tab-btn {
   display: inline;
   padding-inline-end: var(--view-header-title-gap);
 }
-/* The header's corner, its upper right (docs/design-system.md, "View on GitHub"): at a
-   fixed inset from the header's top and right edges and a fixed height, whatever the rows
-   under it hold, so a title that wraps or an eyebrow a long address fills never moves it.
-   A corner that may hold a button (`data-counterpart`, which view-header.js sets on a
-   page whose repository is on github.com) has the header's first row leave it its room
-   from first paint, so the button arriving moves nothing; the rows under it keep the
-   header's whole width. */
+/* The header's corner (docs/design-system.md, "View on GitHub"): at the end of the
+   title's first line, the line's top and the header's right edge its insets, whatever
+   the rows hold, so a title that wraps or an address that fills the eyebrow never moves
+   it. A pull request's page and a commit's place the same corner in the page, whose top
+   pad is the header's (`.github-pull-header`, `.git-commit-view`). Its first item is a
+   strut, a line of the title's type with nothing to see in it, so the corner's line is
+   the title's first line, size, weight, and line height alike, from first paint; what
+   the corner holds opts in to that line's baseline, as a row's text does
+   (docs/design-system.md, "Row Text Shares a Baseline"), so View on GitHub's label sits
+   on the title's baseline, whatever the two sizes measure. */
 .view-header-end {
   position: absolute;
   inset-block-start: var(--view-header-corner-inset-top);
@@ -4566,11 +4594,31 @@ a.tab-btn {
   display: flex;
   align-items: center;
   gap: 4px;
-  block-size: var(--view-header-corner-height);
 }
-.view-header:has(> .view-header-end[data-counterpart])
-  > :is(.view-header-eyebrow, .view-header-eyebrow:empty + .view-header-heading) {
-  padding-inline-end: var(--view-header-corner-room);
+.view-header-end::before {
+  content: "\200b" / "";
+  align-self: baseline;
+  font-size: var(--page-title-font-size);
+  font-weight: var(--weight-bold);
+  line-height: var(--page-title-line-height);
+}
+.view-header-end > .counterpart {
+  align-self: baseline;
+}
+/* Under an eyebrow, the title's first line is the eyebrow's row further down. */
+.view-header-eyebrow:not(:empty) ~ .view-header-end {
+  inset-block-start: calc(var(--pane-header-row-height) + var(--view-header-corner-inset-top));
+}
+/* A corner that may hold a button (`data-counterpart`, which view-header.js sets on a
+   page whose repository is on github.com) has the title's first line leave it its room
+   from first paint, so the button arriving moves nothing: a float of the room's width
+   and the title's line height, at the end of the title's first line. Only that line
+   gives way, so a name that wraps keeps the row's whole width under it. */
+.view-header:has(> .view-header-end[data-counterpart]) .view-header-title-group::before {
+  content: "";
+  float: inline-end;
+  inline-size: var(--view-header-corner-room);
+  block-size: calc(var(--page-title-font-size) * var(--page-title-line-height));
 }
 /* The metadata line: badges, then the item's values after muted dots, at the body size,
    on the title's baseline. A line wider than its row wraps between items, each item whole
@@ -4630,6 +4678,17 @@ a.tab-btn {
   gap: 6px;
   color: var(--text);
   text-decoration: none;
+}
+/* The label is the button's text, and so its baseline: it opts in to its chip's
+   baseline, as a row's text does, and the mark stays centered (docs/design-system.md,
+   "Row Text Shares a Baseline"). Without it the button's baseline was the mark's lower
+   edge, which a box with no text gives, and a corner that sets the button on its
+   title's baseline (`.view-header-end`) set the mark there, not the label. Baseline
+   alignment puts the label at the chip's top, so its line is the chip's whole height,
+   the group's less its frame, and it stays centered. */
+.counterpart-open > .counterpart-label {
+  align-self: baseline;
+  line-height: calc(var(--view-header-corner-height) - 2 * var(--chip-border));
 }
 .counterpart-more {
   padding-inline: 5px;
@@ -5090,7 +5149,7 @@ a.tab-btn {
 .page-heading {
   font-size: var(--page-title-font-size);
   font-weight: var(--weight-bold);
-  line-height: 1.25;
+  line-height: var(--page-title-line-height);
   overflow-wrap: anywhere;
 }
 /* A commit's subject holds two lines from first paint, so the diff under a one-line
@@ -7317,14 +7376,16 @@ pre.code-block.metabrowser-source-lines > code {
 /* ── Commit detail view ─────────────────────────────────────── */
 
 .git-commit-view {
-  /* The box the header's corner is placed in (below). */
+  /* The box the header's corner is placed in (below). Its top pad is a view header's, the
+     corner's inset, so the subject's first line is the corner's line. */
   position: relative;
-  padding: var(--content-padding-y) var(--content-padding-x);
+  padding: var(--view-header-padding-top) var(--content-padding-x) var(--content-padding-y);
 }
 /* The header's corner, its View on GitHub button (git-panel.js; docs/design-system.md, "View
    on GitHub"), is a view header's, `.view-header-end` above, placed in the page rather than
-   in the header, as a pull request's is (github/styles.css): at the same inset from the
-   page's top and right edges as a file's and a folder's. The header is the reading column,
+   in the header, as a pull request's is (github/styles.css): at the same insets from the
+   subject's first line and the page's right edge as a file's and a folder's from their
+   title's, and on the subject's baseline. The header is the reading column,
    which in a wide pane ends left of the button; where it does not, the subject leaves the
    button its room, less the space beside the column: the main view's width, `100cqi`, less
    the page's pads and the subject's `100%`. */
