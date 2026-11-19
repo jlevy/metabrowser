@@ -25,19 +25,19 @@ looks for no app, so the report is the same on every machine.
 
 ```console
 $ metab --plugins
-NAME           SOURCE   KINDS       VIEWS  HOOKS
--------------  -------  ----------  -----  ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-agent-log      builtin  agent-log   3      charts
-binary         builtin  -           1      chunk
-diff           builtin  diff        1      document,children,comparison
-folder         builtin  -           2      -
-github         builtin  -           2      pull,pull-refresh,pull-cores-prepare,pull-comparison,pull-image,pull-rendered-diff,pull-timeline,pull-markdown,pulls,pulls-refresh,stacks,stacks-refresh,stack-change,labels,labels-refresh,pull-files,pull-files-summary,pull-files-refresh,pulls-prefetch,cache-clear,status
-html           builtin  html        2      -
-image          builtin  -           1      -
-markdown       builtin  markdown    2      -
-structured     builtin  structured  2      parsed
-text           builtin  -           1      -
-unknown-jsonl  builtin  -           2      -
+NAME           SOURCE   KINDS             VIEWS  HOOKS
+-------------  -------  ----------------  -----  ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+agent-log      builtin  agent-log         3      charts
+binary         builtin  -                 1      chunk
+diff           builtin  diff              1      document,children,comparison
+folder         builtin  -                 2      -
+github         builtin  -                 2      pull,pull-refresh,pull-cores-prepare,pull-comparison,pull-image,pull-rendered-diff,pull-timeline,pull-markdown,pulls,pulls-refresh,stacks,stacks-refresh,stack-change,labels,labels-refresh,pull-files,pull-files-summary,pull-files-refresh,pulls-prefetch,cache-clear,status
+html           builtin  html              2      -
+image          builtin  -                 1      -
+markdown       builtin  markdown,mermaid  4      -
+structured     builtin  structured        2      parsed
+text           builtin  -                 1      -
+unknown-jsonl  builtin  -                 2      -
 ? 0
 ```
 
@@ -193,13 +193,16 @@ $ metab --plugins --json
       "source": "builtin",
       "static_root": "[BUILTIN]/markdown",
       "kinds": [
-        "markdown"
+        "markdown",
+        "mermaid"
       ],
       "views": [
         "rendered",
+        "source",
+        "diagram",
         "source"
       ],
-      "view_count": 2,
+      "view_count": 4,
       "data_hooks": [],
       "disabled_data_hooks": []
     },
@@ -270,15 +273,19 @@ static_root:  [BUILTIN]/markdown
 
 kinds:
   - id=markdown priority=0 match={'ext': '.md'}
+  - id=mermaid priority=0 match={'exts': ['.mmd', '.mermaid']}
 
 views:
   - markdown/rendered 'Document' (default, key V)
   - markdown/source 'Source' (key S)
+  - mermaid/diagram 'Diagram' (default, key V)
+  - mermaid/source 'Source' (key S)
 
 data hooks:
   (none)
 
 assets in static_root:
+  - diagrams.js
   - dom-traversal.js
   - github-localizer.js
   - index.js
@@ -291,6 +298,7 @@ assets in static_root:
   - markdown-worker-operations.js
   - markdown-worker.js
   - markdown.css
+  - mermaid-view.js
   - package.json
   - place-rendered.js
   - print-indicator.js
@@ -326,6 +334,16 @@ $ metab --plugin markdown --json
           "ext": ".md"
         },
         "priority": 0
+      },
+      {
+        "id": "mermaid",
+        "match": {
+          "exts": [
+            ".mmd",
+            ".mermaid"
+          ]
+        },
+        "priority": 0
       }
     ],
     "views": [
@@ -350,11 +368,34 @@ $ metab --plugin markdown --json
         "printable": true,
         "print_profile": "source",
         "render_runtime": "client"
+      },
+      {
+        "kind": "mermaid",
+        "id": "diagram",
+        "label": "Diagram",
+        "key": "v",
+        "default": true,
+        "container_class": "content-body metabrowser-diagram-host",
+        "printable": false,
+        "print_profile": "plain",
+        "render_runtime": "client"
+      },
+      {
+        "kind": "mermaid",
+        "id": "source",
+        "label": "Source",
+        "key": "s",
+        "default": false,
+        "container_class": "content-body metabrowser-source-host",
+        "printable": true,
+        "print_profile": "source",
+        "render_runtime": "client"
       }
     ],
     "data_hooks": [],
     "disabled_data_hooks": [],
     "assets": [
+      "diagrams.js",
       "dom-traversal.js",
       "github-localizer.js",
       "index.js",
@@ -367,6 +408,7 @@ $ metab --plugin markdown --json
       "markdown-worker-operations.js",
       "markdown-worker.js",
       "markdown.css",
+      "mermaid-view.js",
       "package.json",
       "place-rendered.js",
       "print-indicator.js",
