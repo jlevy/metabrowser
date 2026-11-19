@@ -32,8 +32,12 @@
 // Rows the first draw mounts. In document order, a modified mapping or list opens while
 // its page of rows fits, and a whole added or removed value opens as the file view would
 // open it (tree.js `EXPANSION`) while its rows fit; what does not fit stays closed, with
-// its change and a preview. Every real answer fits: the 552 of this repository's history
-// draw p50 78, p90 432, p99 741 and at most 2,077 rows (mb-8274 review C). Drawing N rows
+// its change and a preview. These counts are of rows at the first draw. The 582 ready
+// answers of this repository's history (explorations/structured-diff/measure.py's pairs),
+// opened by initialExpansion as if the budget were unbounded, draw p50 75, p90 432 and
+// p99 741 rows; all but two fit, and those two, which would draw 1,452 and 1,568 rows,
+// open their first 1,000 (2026-11-18, mb-8274 review E4). Round 1 opened every change
+// whole, and its largest real answer drew 2,077 rows (review C). Drawing N rows
 // in headless Chrome 152 to the next frame (Apple M1 Pro, 10 cores, load average 115 to
 // 117, 2026-11-18; medians of 3, `STRUCTURED_SWEEP=1` in tests/dom/diff-structured-chrome.mjs):
 // 1,000 rows of numbers, strings or open records took 24 to 30 ms, and of closed records,
