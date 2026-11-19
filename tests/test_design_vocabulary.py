@@ -1146,7 +1146,11 @@ def test_git_commit_summary_is_one_component() -> None:
     # Its face is chrome prose's, which its markup carries (test_serif_is_only_for_documents).
     assert "font-family" not in summary_body
     assert "font-size: var(--document-body-font-size)" in summary_body
-    assert "white-space: pre-wrap" in summary_body
+    # Its Markdown is set as a PR description's (placeCommitBody); the message as written,
+    # until then and where it is not rendered, and its trailers keep their newlines.
+    assert "white-space" not in summary_body
+    written = _rule(styles, ".git-commit-body-plain,\n.git-commit-trailers")
+    assert "white-space: pre-wrap" in written
     for rule in (
         change_stats,
         meta,

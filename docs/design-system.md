@@ -1624,7 +1624,17 @@ mono at body size renders optically larger than the sans text beside it, so it u
 The compact tooltip is bounded by width and subject line count, not made denser with
 smaller type. The optional full-summary description is chrome prose, as a PR description
 is (`.chrome-prose`), at `--document-body-font-size` and `--kpress-line-height-normal`.
-It preserves authored newlines and wraps long text.
+It is Markdown, set as a PR description is: the body after the subject line, rendered by
+`GET /api/git/commit-markdown/<rev>` through KPress and the inert allowlist, in a KPress
+article (`placeCommitBody`), so a body hard-wrapped at 72 columns reflows into
+paragraphs, `-` and `*` lines are lists, and indented and fenced code stays code.
+Git’s trailers, such as `Signed-off-by:`, follow the prose as written, one per line, in
+the muted ink (`.git-commit-trailers`). `src/metabrowser/git/message.py` says how a body
+differs from a description: which lines are trailers, why only an absolute link keeps
+its address, and the size past which a body is not rendered.
+Until its Markdown comes the message as written is held out of sight, as a PR text’s
+source is, and where the Markdown will not come it shows as written, wrapping long text,
+with a notice when the reason is the reader’s to know.
 Commit descriptions and PR discussion cards share `.page-card`: the normal page
 background, text ink, border, and chrome radius.
 Each content type owns its inner padding; code blocks and diffs keep their source
@@ -3848,8 +3858,9 @@ the drawer behind the chevron.** Group by splits the tree into sections and remo
 nothing, so it needs no drawer and no badge.
 The drawer holds Modified within, File type, and Minimum file size, then Show ignored,
 whose tick states its own direction.
-The chevron’s badge counts the ones set, Show ignored turned off among them, since the
-closed drawer hides it.
+The chevron shows no count, so Clear and the chevron fit beside Group by; its accessible
+name counts the ones set, Show ignored turned off among them, since the closed drawer
+hides it, and Clear says that some are set.
 A Git revision has no gitignored entries, so its drawer has no Show ignored.
 Clear sits beside the chevron and shows while any filter is set, Show ignored included;
 it resets them all, Show ignored back on, and keeps the grouping.
@@ -3944,12 +3955,12 @@ it resets them all, Show ignored back on, and keeps the grouping.
   and runs once they paint; started at once, it would discard them and begin again, and
   on a folder whose files keep changing each refresh would restart the wait.
 - **Width.** The row fits the default pane width at its widest, “No grouping” with Clear
-  and the badge showing, in both font sets; the measurements are beside
-  `.nav-filter-bar-end > .chip-badge` in `styles.css`. In a narrower pane the row wraps,
-  Clear and the chevron moving down together
-  ([Navigation Toolbars Wrap](#navigation-toolbars-wrap)). The open drawer wraps the
-  same way: at the default pane its three menus take its first line and Show ignored its
-  second.
+  showing, in the default font set, in a Git checkout whose branch chooser shares the
+  row; the measurements are beside `.nav-filter-bar-end` in `styles.css`. In a narrower
+  pane, or in the system font set in a checkout, the row wraps, Clear and the chevron
+  moving down together ([Navigation Toolbars Wrap](#navigation-toolbars-wrap)). The open
+  drawer wraps the same way: at the default pane its three menus take its first line and
+  Show ignored its second.
 
 The server decides membership, order, and counts (`/api/tree?group_by=` and `?group=`,
 `metabrowser/tree_groups.py`), pinned by

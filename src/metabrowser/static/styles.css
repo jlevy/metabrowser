@@ -4277,7 +4277,16 @@ a.tab-btn {
   padding-inline: 7px;
 }
 /* Pushes the drawer toggle and Clear to the trailing edge, so Group by
-   always starts at the same x as the tree's first row. */
+   always starts at the same x as the tree's first row. The chevron has no
+   count badge (its name carries the count), which leaves Clear and the
+   chevron room beside the branch chooser and Group by in a checkout.
+   Measured in headless Chrome on 2026-11-18 at the default 300 px pane in a
+   Git checkout, its branch chooser showing "Working tree", with a filter set
+   so Clear shows: in the default font set "No grouping", the widest trigger,
+   has 3.03 px to spare, "By file type" 8.97, and "By age" 31.84; with the
+   count badge "No grouping" overflowed by about 11 px and the span wrapped.
+   In the system font set "No grouping" overflows by 16.78 px and "By file
+   type" by 11.91, so there the span wraps as a narrower pane's does. */
 .nav-filter-bar-end {
   position: relative;
   display: flex;
@@ -4285,24 +4294,6 @@ a.tab-btn {
   gap: 4px;
   margin-left: auto;
   flex: 0 0 auto;
-}
-/* The chevron's count sits outside its fixed-size button
-   (filter-controls.js#toggleHtml) and counts the chevron's filters, so it
-   sits against the chevron: the margin cancels the span's gap on that
-   side, and the 5 px a badge keeps from a chip's label goes, since the
-   gap already parts it from Clear. That gave the row 9 px (mb-x1h6).
-   Measured in headless Chrome on 2026-11-15 at the default 299 px bar
-   (a 275 px row), in the default font set, with a filter set so Clear
-   and the badge "1" show, while Show ignored was on the row: "No
-   grouping", the widest trigger, overflowed by 7.11 px and then had
-   1.89 px to spare; "By file type" overflowed by about 1 px and had
-   7.83; "By age" had 30.7. With Show ignored in the drawer (mb-ey0d),
-   measured the same way on 2026-11-18, "No grouping" has 95.05 px to
-   spare, "By file type" 100.98, and "By age" 123.86. In a pane narrower
-   than the widths beside `.nav-toolbar-row`, the row wraps. */
-.nav-filter-bar-end > .chip-badge {
-  margin-left: 0;
-  margin-right: -4px;
 }
 /* The closed drawer's filters take their keyboard numbers on these stand-ins: no box, no
    focus, and a badge that sits beside the chevron, Modified within's before File type's.
@@ -7605,15 +7596,82 @@ pre.code-block.metabrowser-source-lines > code {
   gap: 4px;
 }
 
+/* A commit's body: its Markdown in a KPress article, as a pull request's description is set
+   (git-panel.js, `placeCommitBody`), then its trailers; or, until the Markdown comes and
+   where it will not, the message as written, wrapped where it was written. */
 .git-commit-body {
   margin: 16px 0;
   padding: var(--pane-header-padding-y) var(--pane-header-padding-x);
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
   overflow-x: auto;
   font-size: var(--document-body-font-size);
   font-weight: var(--weight-normal);
   line-height: var(--kpress-line-height-normal);
+}
+
+.git-commit-body-plain,
+.git-commit-trailers {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+/* The card's padding is the space around the body, so the first and last block have none of
+   their own, as in a pull request's text (builtin_plugins/github/styles.css). */
+.git-commit-body .kpress-prose > :first-child {
+  margin-block-start: 0;
+}
+
+.git-commit-body .kpress-prose > :last-child {
+  margin-block-end: 0;
+}
+
+/* Git's trailers, a block of their own lines under the prose, a paragraph's gap below it
+   (KPress's `.kpress-prose p`), in the muted ink of metadata. */
+.git-commit-trailers {
+  color: var(--muted);
+}
+
+.git-commit-body .metabrowser-kpress-host + .git-commit-trailers {
+  margin-block-start: 0.75rem;
+}
+
+.git-commit-body-notice {
+  margin-block: var(--pane-header-padding-y) 0;
+}
+
+/* A body whose Markdown is on its way keeps its box out of sight, and past the shell's quiet
+   period shows the loading blocks' gray rows and pulse, so its first sight is its Markdown,
+   as a pull request's text's is (`.github-pull-plain-pending`). */
+.git-commit-body-plain-pending {
+  position: relative;
+  visibility: hidden;
+}
+
+.git-commit-body-plain-pending::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 4px,
+    var(--tally-skeleton-bg) 4px,
+    var(--tally-skeleton-bg) calc(var(--ui-row-height) - 4px),
+    transparent calc(var(--ui-row-height) - 4px),
+    transparent var(--ui-row-height)
+  );
+  background-size: 70% 100%;
+  background-repeat: repeat-y;
+  animation:
+    mb-delayed-loading-reveal 0s linear var(--loading-state-delay) forwards,
+    tally-pending-pulse 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .git-commit-body-plain-pending::after {
+    animation: mb-delayed-loading-reveal 0s linear var(--loading-state-delay) forwards;
+    opacity: 0.7;
+  }
 }
 
 .git-commit-files {
