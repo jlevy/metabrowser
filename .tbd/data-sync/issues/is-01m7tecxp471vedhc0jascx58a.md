@@ -3,17 +3,21 @@ type: is
 id: is-01m7tecxp471vedhc0jascx58a
 title: Pulls list never reveals a pull request newer than the catalog once a poll brings it in
 kind: bug
-status: in_progress
+status: closed
 priority: 3
-version: 5
+version: 6
 delegate: claude-code@macbookpro
 labels: []
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-19T17:41:46.817Z
-updated_at: 2026-11-19T19:44:29.546Z
+updated_at: 2026-11-19T19:51:15.458Z
 started_at: 2026-11-19T19:07:25.518Z
+closed_at: 2026-11-19T19:51:15.457Z
+close_reason: "PR #615 merged"
+resolution: null
+duplicate_of: null
 ---
 From review A on #611 (L7, predates it): a pull request created after the last refresh, named by a navigation, gets 'not in this list'; when a later poll brings its row in, the note goes but the row is not revealed, because only a list's first poll reveals and the chase looks only at older numbers (pulls-panel.js createPullsController).
 
