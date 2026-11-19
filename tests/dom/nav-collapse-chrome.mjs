@@ -238,7 +238,9 @@ const RING_PROBE = `(() => {
   const pane = document.getElementById("preview-pane");
   const band = document.createElement("div");
   band.id = "ring-probe";
-  band.style.cssText = "position: absolute; inset: 0 0 auto; height: 40px; background: rgb(255, 0, 0)";
+  // At the folder plugin's level, the highest a plugin's positioned ground takes.
+  band.style.cssText =
+    "position: absolute; inset: 0 0 auto; z-index: 3; height: 40px; background: rgb(255, 0, 0)";
   pane.prepend(band);
   pane.focus();
   const frame = document.querySelector(".preview-frame").getBoundingClientRect();
@@ -361,8 +363,32 @@ function checkSlide(where, all, from, to, width, ends) {
 }
 
 try {
-  phase("load");
+  phase("before the shell's tools");
+  // The chevron is on the strip's row from the first paint, before the bundle that runs
+  // it loads: held off here, with the scan's progress showing under the strip, and the
+  // divider's reach kept off it (review A on #609).
   await browser.send("Page.enable");
+  await browser.send("Network.enable");
+  await browser.send("Network.setBlockedURLs", { urls: ["*nav-collapse*.js*"] });
+  await browser.send("Page.navigate", { url: `${base}/view/` });
+  await browser.waitFor(
+    `document.querySelector("#preview-pane > .preview-file-stage") === null &&
+     document.querySelector("#preview-pane .view-header-eyebrow > .folder-up") !== null`,
+    STEP_MS,
+  );
+  await browser.evaluate(`document.getElementById("index-progress").hidden = false, true`);
+  await browser.evaluate(
+    "new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))",
+  );
+  const early = await read();
+  check(
+    "before the shell's tools: the module that runs the chevron has not loaded",
+    !(await browser.evaluate("Boolean(window.MetabrowserNavCollapse)")),
+  );
+  checkChevron("before the shell's tools, with the scan's progress showing", early);
+  await browser.send("Network.setBlockedURLs", { urls: [] });
+
+  phase("load");
   await browser.send("Page.navigate", { url: `${base}/view/` });
   // The shell's tools are ready before the folder's view is in the page: the view is built
   // in the pane's staging layer (`.preview-file-stage`, app.js), inert, unseen, and taking

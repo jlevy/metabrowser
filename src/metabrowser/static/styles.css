@@ -729,8 +729,9 @@
      10.75 px under, which read as loose beside the tabs. */
   --pane-header-row-height: 34px;
   /* The shortcut strip's row under its rule (`.nav-shortcut-hints`): its padding, a
-     hint's padding, and a keycap's border and 1.5 lines. static/nav-collapse.js gives the
-     container the strip's measured height in its place, which this is until it does. */
+     hint's padding, and a keycap's border and 1.5 lines. app.js
+     (`alignNavCollapseButton`) gives the chevron and the divider the strip's measured
+     row instead, which this is until it does. */
   --nav-shortcut-row-height: calc(12px + 6px + 2px + 1.5 * var(--kbd-font-size));
   /* A view header's rhythm (docs/design-system.md, "View Headers"): the pad above the
      heading row, under the eyebrow's rule or, with no eyebrow, the page's top, and the
@@ -741,9 +742,8 @@
      title sits as far under what is above it on every page. 22 px is the body size's line
      (21 px) with room for a badge's box, 22 px. The Up control's box is 24 px, inside the
      eyebrow's row: a pointer target of WCAG 2.2's minimum (2.5.8), as the navigation
-     title's gear is, and the size of the chevron before it (`.nav-collapse-toggle`). At
-     20 px, 2 px apart, the two were each under the minimum, and a press just left of Up
-     hid the navigation pane (review A on pull request 608). */
+     title's gear is, and the size of the navigation's chevron (`.nav-collapse-toggle`),
+     so the page's icon buttons are one size. */
   --view-header-padding-top: var(--content-padding-y);
   --view-header-padding-bottom: 8px;
   --view-header-line-height: 22px;
@@ -2003,8 +2003,7 @@ summary {
    the menu's anchored positioning live here. The menu surface comes from the
    .menu primitive, and the segments from the .menu-chooser primitive below. */
 /* A flex box as tall as its gear, so the path row centers the gear itself on the row's
-   line, the line the main page's chevron is centered on across the divider
-   (`.nav-collapse-toggle`). As a block it was a 25 px line box with the gear at its top,
+   line, the line the main page's Up is centered on across the divider. As a block it was a 25 px line box with the gear at its top,
    and the gear's center 0.5 px above the row's (Chrome 152, 2026-11-18). */
 .settings-toggle {
   position: relative;
@@ -3048,7 +3047,7 @@ html.theme-anim .menu {
   content: "";
   position: absolute;
   top: 0;
-  bottom: calc(100% - var(--nav-shortcut-row-top, 100% - var(--nav-shortcut-row-height)));
+  bottom: calc(100% - (var(--nav-shortcut-row-top, 100% - var(--nav-shortcut-row-height))));
   left: -4px;
   right: -4px;
   cursor: col-resize;
@@ -3076,8 +3075,9 @@ html.theme-anim .menu {
    gutter before the content's edge, and on the shortcut strip's row (mb-yw18): centered
    on the strip below its rule, the line its keys are on, across the divider. The strip
    moves when a row under it shows, the scan's progress or a mirror's freshness, so
-   static/nav-collapse.js measures it and gives the container `--nav-shortcut-row-top`
-   and `--nav-shortcut-row-height`; until it does, the row is the strip's height at the
+   app.js (`alignNavCollapseButton`) measures it from the first paint and gives the button
+   `--nav-shortcut-row-top` and `--nav-shortcut-row-height`; until it does, the row is the
+   strip's height at the
    pane's foot. It is in the frame, so it stays when the pane is hidden and slides with the
    page. Its box is the eyebrow's Up control's, so the page's icon buttons are one size,
    and fills the gutter, the divider's resize reach kept off the row
@@ -3089,7 +3089,7 @@ html.theme-anim .menu {
   --icon-btn-size: var(--view-header-up-size);
   position: absolute;
   inset-block-start: calc(
-    var(--nav-shortcut-row-top, 100% - var(--nav-shortcut-row-height)) +
+    (var(--nav-shortcut-row-top, 100% - var(--nav-shortcut-row-height))) +
     (var(--nav-shortcut-row-height) - var(--icon-btn-size)) /
     2
   );
@@ -3238,7 +3238,10 @@ html[data-prose-font="sans"] .kpress-prose h2,
    own, so a page drawn on the file stage (`.preview-file-stage`), as a pull request's
    tab bar is, covered the ring (the macOS app; in Chrome 152 on 2026-11-19 a band placed
    at the pane's top covered it too, tests/dom/nav-collapse-chrome.mjs). Over the frame's
-   content, it takes no press (mb-0rop). */
+   content, it takes no press (mb-0rop). It is at the anchored menus' level, over the
+   plugins' positioned grounds (the Pulls filters' and the folder plugin's, z-index 1 to
+   3) and under KPress's floating UI (its TOC, settings, and tooltips, 199 and up), which
+   covers the page's edge on purpose; print drops it with the rest of the chrome. */
 .preview-pane:focus-visible {
   outline: none;
 }
@@ -4578,9 +4581,6 @@ a.tab-btn {
    disabled in place, dimmed, and surfaces nothing. */
 .view-header-eyebrow > .folder-up {
   --icon-btn-size: var(--view-header-up-size);
-  /* The navigation's chevron fills the gutter before it (`.nav-collapse-toggle`): 4 px
-     between the two targets, so neither is under the other's edge. */
-  margin-inline-start: 4px;
 }
 .view-header-eyebrow > .folder-up > .parent-nav-arrow {
   color: inherit;
@@ -6902,6 +6902,8 @@ pre.code-block.metabrowser-source-lines > code {
   .tree-pane,
   .resize-handle,
   .nav-collapse-toggle,
+  /* The main page's focus ring. */
+  .preview-frame::after,
   .app-header,
   .file-header,
   .tab-bar,

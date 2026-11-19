@@ -10065,6 +10065,46 @@ function drawNavCollapseButton() {
   // The chevron of the "icon-btn nav-collapse-toggle disclosure-toggle" server.py writes.
   button.innerHTML = `${ICONS.toggle}`;
   button.addEventListener("click", onEarlyNavCollapseClick);
+  alignNavCollapseButton(button);
+}
+
+/**
+ * Keep the chevron on the shortcut strip's row (mb-yw18), from the first paint on. The
+ * strip moves when a row under it shows, the scan's progress or a mirror's freshness,
+ * so a ResizeObserver on the pane and the rows from the strip down measures the row below
+ * the strip's rule, from the pane's top, where the frame and the divider start too, and
+ * gives `--nav-shortcut-row-top` and `--nav-shortcut-row-height` to the chevron, which it
+ * places, and to the divider, whose resize reach stops above it (`.nav-collapse-toggle`
+ * and `.resize-handle::after` in styles.css). Only those two take them: a property set on
+ * a shared ancestor restyled the whole open document on every change, 100 ms for a
+ * 28,000-node file in headless Chrome 152 (review A on #609). Boxes, not offsets, so the
+ * row is not rounded to a whole pixel under the app's fractional page zoom.
+ *
+ * @param {HTMLElement} button
+ */
+function alignNavCollapseButton(button) {
+  var pane = document.getElementById("tree-pane");
+  var strip = document.getElementById("nav-shortcut-hints");
+  var handle = document.getElementById("tree-resize");
+  if (!pane || !strip || typeof ResizeObserver !== "function") {
+    return;
+  }
+  var targets = handle ? [button, handle] : [button];
+  var row = strip;
+  var start = pane;
+  var observer = new ResizeObserver(() => {
+    var rect = row.getBoundingClientRect();
+    var top = `${rect.top + row.clientTop - start.getBoundingClientRect().top}px`;
+    var height = `${rect.height - row.clientTop}px`;
+    for (var target of targets) {
+      target.style.setProperty("--nav-shortcut-row-top", top);
+      target.style.setProperty("--nav-shortcut-row-height", height);
+    }
+  });
+  observer.observe(pane);
+  for (var node = /** @type {Element | null} */ (strip); node; node = node.nextElementSibling) {
+    observer.observe(node);
+  }
 }
 
 /** @param {MouseEvent} event */
@@ -10092,7 +10132,6 @@ function startNavCollapse() {
   }
   button.removeEventListener("click", onEarlyNavCollapseClick);
   navCollapse = window.MetabrowserNavCollapse.create({
-    anchor: document.getElementById("nav-shortcut-hints"),
     button: button,
     container: container,
     focusFallback: () => document.getElementById("preview-pane"),

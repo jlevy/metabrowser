@@ -365,16 +365,13 @@ a pull request, and a commit.
 
 ```text
 +------------------------------------------------------------------------------+
-|<[Up] ~/wrk/project / docs / specs  [copy]                                    |  1 eyebrow, optional; its rule
+| [Up] ~/wrk/project / docs / specs  [copy]                                    |  1 eyebrow, optional; its rule
 +------------------------------------------------------------------------------+    the top bar's
 | [icon] Title, at the page title's size  33.9 KB · 2h ago  [View on GitHub v] |  2 heading row, 3 metadata; the corner
 | DOCUMENT   SOURCE                                                            |  4 tab bar
 +------------------------------------------------------------------------------+  the tab bar's rule
 | content                                                                      |
 ```
-
-The `<` at the eyebrow’s start is the navigation’s chevron, which is the main view’s,
-not the header’s ([Hiding the Navigation Pane](#hiding-the-navigation-pane)).
 
 | Part | A file | A folder | A pull request | A commit |
 | --- | --- | --- | --- | --- |
@@ -404,10 +401,8 @@ path row across the divider: that row’s height, `--pane-header-row-height`, it
 across the window and the two rows’ text sits on one baseline.
 Up is an icon button, the arrow alone at rest and the hover surface and its hairline
 only while hovered or focused, as the navigation’s chevron is.
-Both are targets of `--view-header-up-size`, WCAG 2.2’s minimum target size, with space
-between them (`.view-header-eyebrow > .folder-up` in `static/styles.css`); at 20 px and
-2 px apart, a press just left of Up hid the navigation pane.
-It is optional by kind.
+It is a target of `--view-header-up-size`, WCAG 2.2’s minimum target size
+(`.view-header-eyebrow > .folder-up` in `static/styles.css`). It is optional by kind.
 A file’s and a folder’s always have one, because where a file is matters: Up, which
 keeps its place disabled at the served root, and the folders above the item, but not the
 item, which is the title under it.
@@ -3745,7 +3740,7 @@ bordered button: `.btn` with `.parent-nav-btn`, the shared `.parent-nav-arrow`, 
 visible resting boundary.
 Up alone, at the start of a view header’s eyebrow, is an icon button, `.icon-btn`: the
 arrow alone at rest, and the hover surface and its hairline only while hovered or
-focused, as the navigation’s chevron beside it is, at the eyebrow’s control size
+focused, as the navigation’s chevron is, at the eyebrow’s control size
 (`--view-header-up-size`), its destination in its accessible label and tooltip.
 At the served root it keeps its place, disabled and dimmed, and surfaces nothing.
 The owner asked for Up without a box but on hover, like the collapse chevron
@@ -4561,6 +4556,16 @@ Source view, Commits, and the root at Treemap.
 It also checks that the pane never blanks on the way, that the tooltip survives the
 click, and that the name is called “Home: <folder>”.
 
+### The Main Page’s Focus Ring
+
+**With the main page focused from the keyboard, a 2 px `--link` ring frames it, over
+anything the page draws.** The ring is on the frame (`.preview-frame::after` in
+`static/styles.css`), not on the scrolling pane: the pane’s own inset outline painted
+under a positioned box with a ground of its own, so a pull request’s tab bar covered its
+top edge. It takes no press, sits under KPress’s floating UI, and does not print.
+`tests/test_nav_collapse_chrome.py` samples a painted pixel at its top edge over a
+positioned band.
+
 ### Hiding the Navigation Pane
 
 **A chevron at the start of the main page’s foot hides the navigation pane, and so does
@@ -4581,11 +4586,13 @@ It is a target of Up’s size, and the divider’s resize reach stops above the 
 press anywhere in it hides the pane.
 Every page has it in the same place, and it stays there while the pane is hidden.
 The strip moves up when a row under it shows, the scan’s progress or a mirror’s
-freshness, so `static/nav-collapse.js` measures the strip’s row and gives the container
-`--nav-shortcut-row-top` and `--nav-shortcut-row-height`, and the stylesheet places the
-chevron from them, the gutter’s `--content-padding-x`, and Up’s size,
-`--view-header-up-size`. It has no plate of its own, so the page’s edge and the pane’s
-shadow show through it; only the hover surface fills it.
+freshness, so `alignNavCollapseButton` in `static/app.js`, in the shell’s eager path,
+measures the strip’s row from the first paint and gives `--nav-shortcut-row-top` and
+`--nav-shortcut-row-height` to the chevron and the divider alone; set on their shared
+container, each change restyled the whole open document.
+The stylesheet places the chevron from them, the gutter’s `--content-padding-x`, and
+Up’s size, `--view-header-up-size`. It has no plate of its own, so the page’s edge and
+the pane’s shadow show through it; only the hover surface fills it.
 Holding Shift badges it with Backslash, over its inline end, as every icon button’s
 badge sits.
 
