@@ -3,9 +3,9 @@ type: is
 id: is-01m7pfyxz015mfas5phhvtqz33
 title: Rendered diffs for YAML, JSON, and Markdown front matter on a pull request's Changes
 kind: epic
-status: open
+status: closed
 priority: 2
-version: 14
+version: 15
 labels: []
 dependencies: []
 child_order_hints:
@@ -21,9 +21,9 @@ child_order_hints:
   - is-01m7r96aynkd71s9ehjw8y4ze7
   - is-01m7r96j1rqavpv1pgx5fh6nwc
 created_at: 2026-11-18T04:52:07.776Z
-updated_at: 2026-11-19T00:22:58.701Z
-closed_at: null
-close_reason: null
+updated_at: 2026-11-19T01:04:50.339Z
+closed_at: 2026-11-19T01:04:50.338Z
+close_reason: "Landed in #557 (8437e48b0); follow-ups mb-hs06, mb-59mp, mb-10ip, mb-c14s, mb-xyxt stay open"
 resolution: null
 duplicate_of: null
 ---
