@@ -85,8 +85,9 @@ In the file tree:
 In the Commits list, Up and Down or `K` and `J` move a row, and Enter or Space opens the
 commit.
 
-In the Pulls list, Up and Down or `K` and `J` move a row, Enter opens the pull request,
-and Space shows or hides its changed files; Right shows them and Left hides them.
+In the Pulls list, Up and Down or `K` and `J` move a row, a pull request’s three lines
+being one, Enter opens the pull request, and Space shows or hides its changed files;
+Right shows them or moves into them, and Left hides them.
 Grouped by stack, a stack’s row opens nothing: Enter and Space open or close it, Right
 opens it or goes to its first pull request, and Left closes it or returns to it from a
 pull request inside it whose files are closed.

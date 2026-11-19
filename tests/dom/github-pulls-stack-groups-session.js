@@ -177,25 +177,40 @@ async function mountStory() {
     );
     await paint();
     const list = container.childNodes.find((node) => node.classList?.contains("github-pulls-list"));
-    const rowOf = (item) => item.childNodes[0];
+    // A stack's row is its item's one line; a pull request's row leads its three lines' zone
+    // (mb-1z7j).
+    const rowOf = (item) =>
+      item.childNodes[0].classList.contains("github-pulls-entry")
+        ? item.childNodes[0].childNodes[0]
+        : item.childNodes[0];
     const drawnRows = () =>
       list.childNodes.filter((item) => item.classList.contains("github-pulls-item")).map(rowOf);
     const stackRow = () => drawnRows().find((row) => row.dataset.stack === "286");
-    // A pull request's change line, its third line and its one child item (mb-h0ml), which
-    // owns its changed files.
+    // A pull request's change line, its third line, which carries the toggle of the changed
+    // files its row owns (mb-1z7j).
     const changeOf = (row) =>
-      row.parentNode.childNodes.find((node) =>
-        node.classList?.contains("github-pulls-change-group"),
-      )?.firstElementChild ?? null;
-    const change = (number) =>
-      changeOf(drawnRows().find((row) => row.dataset.number === String(number)));
-    /** One item as drawn: its name, role, level, place, expansion, Tab stop, and focus. */
+      row.parentNode.childNodes.find((node) => node.classList?.contains("github-pulls-change")) ??
+      null;
+    const pullRow = (number) => drawnRows().find((row) => row.dataset.number === String(number));
+    /** The line under a row: hidden from assistive technology, its chevron turned or not. */
+    const saidLine = (line, name) =>
+      [
+        name,
+        line.getAttribute("aria-hidden") === "true" ? "hidden" : "exposed",
+        `chevron ${line.classList.contains("expanded") ? "expanded" : "collapsed"}`,
+        document.activeElement === line ? "focused" : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+    /** One element as drawn: its name, role, level, place, expansion, Tab stop, and focus. */
     const said = (row, name) =>
       [
         name,
         row.getAttribute("role"),
-        `level ${row.getAttribute("aria-level")}`,
-        `${row.getAttribute("aria-posinset")}/${row.getAttribute("aria-setsize")}`,
+        row.getAttribute("aria-level") === null ? null : `level ${row.getAttribute("aria-level")}`,
+        row.getAttribute("aria-posinset") === null
+          ? null
+          : `${row.getAttribute("aria-posinset")}/${row.getAttribute("aria-setsize")}`,
         `expanded ${row.getAttribute("aria-expanded")}`,
         row.getAttribute("tabindex") === "0" ? "Tab stop" : null,
         document.activeElement === row ? "focused" : null,
@@ -203,7 +218,7 @@ async function mountStory() {
         .filter(Boolean)
         .join(" · ");
     /** The tree as drawn, to the first pull request in no stack, with its roles and places:
-     * each pull request's row, then its change line, the row's child. */
+     * each pull request's row, then the change line under it. */
     const tree = () => {
       const rows = drawnRows();
       const end = rows.findIndex(
@@ -216,7 +231,7 @@ async function mountStory() {
             ? [said(row, `Stack #${row.dataset.stack}`)]
             : [
                 said(row, `#${row.dataset.number}`),
-                said(changeOf(row), `  #${row.dataset.number}'s change line`),
+                saidLine(changeOf(row), `  #${row.dataset.number}'s change line`),
               ],
         );
     };
@@ -268,14 +283,12 @@ async function mountStory() {
     await step("Right on the stack's row goes to its first pull request, which opens", () =>
       handle.expand(),
     );
-    await step("Right on that pull request goes to its change line, and opens nothing", () =>
+    await step("Right on that pull request opens its files, as on a folder's", () =>
       handle.expand(),
     );
-    await step("Right on the change line opens its files", () => handle.expand());
-    const filesOpen = change(8).getAttribute("aria-expanded");
-    await step("Left first closes its files, keeping the change line", () => handle.collapse());
-    const filesClosed = change(8).getAttribute("aria-expanded");
-    await step("Left again goes back to the pull request", () => handle.collapse());
+    const filesOpen = pullRow(8).getAttribute("aria-expanded");
+    await step("Left first closes its files, keeping the pull request", () => handle.collapse());
+    const filesClosed = pullRow(8).getAttribute("aria-expanded");
     await step("Left again goes to the stack's row", () => handle.collapse());
     await step("Left on the stack's row closes it", () => handle.collapse());
     // A press on the stack's label, in its heading, as a click lands: the row takes the
@@ -293,8 +306,7 @@ async function mountStory() {
     // opens #8's files, walks to the first pull request in no stack, and closes the stack;
     // Home opens it, closes #8's files, and gives the Tab stop back to the stack's row. The
     // address it opens names no pull request, which the host tells the list next.
-    await step("Right, Right, Right: #8 opens, then its change line, then its files", () => {
-      handle.expand();
+    await step("Right, Right: #8 opens, then its files", () => {
       handle.expand();
       return handle.expand();
     });
@@ -313,10 +325,10 @@ async function mountStory() {
     const homed = steps.at(-1).tree;
     assert.ok(homed[0].startsWith("Stack #286") && homed[0].endsWith("Tab stop"), homed[0]);
     assert.ok(
-      homed.every((row) => !row.includes("change line") || row.includes("expanded false")),
+      homed.every((row) => !row.includes("change line") || row.includes("chevron collapsed")),
       "no pull request's files are open",
     );
-    assert.equal(change(8).getAttribute("aria-expanded"), "false", "#8's files closed");
+    assert.equal(pullRow(8).getAttribute("aria-expanded"), "false", "#8's files closed");
     assert.deepEqual(requests.slice(homeRequests), [], "Home reads nothing");
     handle.dispose();
     return {
